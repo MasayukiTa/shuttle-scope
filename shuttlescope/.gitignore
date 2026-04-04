@@ -4,6 +4,12 @@ dist/
 .venv/
 *.db
 *.sqlite
+players.db
+matches.db
+results.db
+player*.db
+match*.db
+result*.db
 __pycache__/
 .pytest_cache/
 *.pyc
