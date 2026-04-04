@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── ダークモード（デフォルト） ─────────────────────────────── */
 :root {
   --background: 222.2 84% 4.9%;
   --foreground: 210 40% 98%;
@@ -21,6 +22,59 @@
   --radius: 0.5rem;
 }
 
+/* ─── ライトモード上書き ─────────────────────────────────────── */
+/* html[data-theme="light"] が付いたとき Tailwind グレー系を白寄りに反転 */
+
+html[data-theme="light"] {
+  --background: 210 40% 98%;
+  --foreground: 222.2 84% 4.9%;
+  --border: 214.3 31.8% 85%;
+  --input: 214.3 31.8% 85%;
+  color-scheme: light;
+}
+
+/* ページ背景 */
+html[data-theme="light"] .bg-gray-900  { background-color: #f8fafc !important; }
+html[data-theme="light"] .bg-gray-800  { background-color: #f1f5f9 !important; }
+html[data-theme="light"] .bg-gray-700  { background-color: #e2e8f0 !important; }
+html[data-theme="light"] .bg-gray-600  { background-color: #cbd5e1 !important; }
+
+/* ホバー */
+html[data-theme="light"] .hover\:bg-gray-700:hover  { background-color: #e2e8f0 !important; }
+html[data-theme="light"] .hover\:bg-gray-600:hover  { background-color: #cbd5e1 !important; }
+html[data-theme="light"] .hover\:bg-gray-800:hover  { background-color: #f1f5f9 !important; }
+
+/* 半透明 bg */
+html[data-theme="light"] .bg-gray-800\/50 { background-color: rgba(241,245,249,0.7) !important; }
+html[data-theme="light"] .bg-gray-800\/30 { background-color: rgba(241,245,249,0.5) !important; }
+html[data-theme="light"] .bg-gray-700\/30 { background-color: rgba(226,232,240,0.5) !important; }
+
+/* テキスト */
+html[data-theme="light"] .text-white   { color: #0f172a !important; }
+html[data-theme="light"] .text-gray-100 { color: #1e293b !important; }
+html[data-theme="light"] .text-gray-200 { color: #334155 !important; }
+html[data-theme="light"] .text-gray-300 { color: #475569 !important; }
+html[data-theme="light"] .text-gray-400 { color: #64748b !important; }
+html[data-theme="light"] .text-gray-500 { color: #94a3b8 !important; }
+
+/* ボーダー */
+html[data-theme="light"] .border-gray-700 { border-color: #cbd5e1 !important; }
+html[data-theme="light"] .border-gray-600 { border-color: #e2e8f0 !important; }
+html[data-theme="light"] .border-gray-800 { border-color: #e2e8f0 !important; }
+
+/* インプット・セレクト */
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea {
+  color: #0f172a;
+}
+
+/* スクロールバー */
+html[data-theme="light"] ::-webkit-scrollbar-track { background: #f1f5f9; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ─── 共通リセット ───────────────────────────────────────────── */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -34,7 +88,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* スクロールバースタイル */
+/* スクロールバースタイル（ダーク） */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

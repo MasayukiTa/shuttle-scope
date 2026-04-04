@@ -37,6 +37,8 @@ export function AnnotatorPage() {
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
+  // Ref guard: prevent useEffect from re-running doInit on every Zustand state change
+  const initStartedRef = useRef(false)
 
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
@@ -68,8 +70,13 @@ export function AnnotatorPage() {
   })
 
   // --- ストア初期化（セット作成 + ラリー番号取得） ---
+  // NOTE: initStartedRef で多重実行を防止。store を deps に含めると
+  //       store.init() → Zustand状態変化 → store 参照変化 → effect 再実行 の
+  //       無限ループが起きるため、getState() で安定参照を使う。
   useEffect(() => {
-    if (!matchId || !annotationStateData || !setsData || initialized) return
+    if (!matchId || !annotationStateData || !setsData) return
+    if (initStartedRef.current) return
+    initStartedRef.current = true
 
     const state = annotationStateData.data
     const sets = setsData.data
@@ -91,7 +98,8 @@ export function AnnotatorPage() {
           setId = res.data.id
         }
 
-        store.init(
+        // getState() で stable 参照を取得（リアクティブ購読を避ける）
+        useAnnotationStore.getState().init(
           Number(matchId),
           setId,
           state.current_set_num,
@@ -101,12 +109,14 @@ export function AnnotatorPage() {
         )
         setInitialized(true)
       } catch (err: any) {
+        initStartedRef.current = false // リトライ可能にする
         setInitError(err?.message ?? '初期化に失敗しました')
       }
     }
 
     doInit()
-  }, [matchId, annotationStateData, setsData, initialized, store])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId, annotationStateData, setsData])
 
   // --- ラリー保存 ---
   const batchSaveMutation = useMutation({
@@ -119,22 +129,23 @@ export function AnnotatorPage() {
 
   const handleConfirmRally = useCallback(
     async (winner: 'player_a' | 'player_b', endType: string) => {
-      const setId = store.currentSetId
+      const s = useAnnotationStore.getState()
+      const setId = s.currentSetId
       if (!setId) {
         alert('セットIDが未設定です。再読み込みしてください。')
         return
       }
 
       // confirmRally の前にスコア・ラリー番号をキャプチャ
-      const strokes = [...store.currentStrokes]
-      const rallyNum = store.currentRallyNum
-      const scoreA = store.scoreA
-      const scoreB = store.scoreB
+      const strokes = [...s.currentStrokes]
+      const rallyNum = s.currentRallyNum
+      const scoreA = s.scoreA
+      const scoreB = s.scoreB
       const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
       const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB
-      const rallyStart = store.rallyStartTimestamp
+      const rallyStart = s.rallyStartTimestamp
 
-      store.confirmRally(winner, endType)
+      s.confirmRally(winner, endType)
 
       try {
         await batchSaveMutation.mutateAsync({
@@ -166,36 +177,37 @@ export function AnnotatorPage() {
         alert(`保存エラー: ${err?.message ?? '不明なエラー'}`)
       }
     },
-    [store, batchSaveMutation]
+    [batchSaveMutation]
   )
 
   // --- セット終了 → 次のセット作成 ---
   const handleNextSet = useCallback(async () => {
-    const setId = store.currentSetId
+    const s = useAnnotationStore.getState()
+    const setId = s.currentSetId
     if (!setId) return
 
-    const winner = store.scoreA > store.scoreB ? 'player_a' : 'player_b'
+    const winner = s.scoreA > s.scoreB ? 'player_a' : 'player_b'
     try {
       // 現セット終了
       await apiPut(`/sets/${setId}/end`, {
         winner,
-        score_a: store.scoreA,
-        score_b: store.scoreB,
+        score_a: s.scoreA,
+        score_b: s.scoreB,
       })
 
       // 次のセット作成
-      const nextSetNum = store.currentSetNum + 1
+      const nextSetNum = s.currentSetNum + 1
       const res = await apiPost<{ success: boolean; data: GameSet }>('/sets', {
         match_id: Number(matchId),
         set_num: nextSetNum,
       })
 
-      store.nextSet(res.data.id, nextSetNum)
+      useAnnotationStore.getState().nextSet(res.data.id, nextSetNum)
       queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
     } catch (err: any) {
       alert(`セット移行エラー: ${err?.message ?? '不明なエラー'}`)
     }
-  }, [store, matchId, queryClient])
+  }, [matchId, queryClient])
 
   // --- 動画ソース: match.video_url をURLInputに同期 ---
   useEffect(() => {
@@ -204,6 +216,10 @@ export function AnnotatorPage() {
 
   // --- ファイルピッカー（Electron IPC） ---
   const handleFileOpen = useCallback(async () => {
+    if (!window.shuttlescope?.openVideoFile) {
+      alert('ファイル選択はElectronアプリ版のみ使用できます。')
+      return
+    }
     const fileUrl = await window.shuttlescope.openVideoFile()
     if (!fileUrl) return
     try {
@@ -289,7 +305,7 @@ export function AnnotatorPage() {
           {match?.video_local_path || match?.video_url ? (
             <VideoPlayer
               videoRefProp={videoRef}
-              src={match.video_local_path ?? match.video_url ?? ''}
+              src={match.video_local_path || match.video_url || ''}
               playbackRate={playbackRate}
               onPlaybackRateChange={setPlaybackRate}
             />
@@ -518,6 +534,16 @@ export function AnnotatorPage() {
                 }}
                 disabled={false}
               />
+            )}
+
+            {/* ラリー開始ボタン（待機中かつラリー未開始） */}
+            {initialized && !store.isRallyActive && store.inputStep === 'idle' && (
+              <button
+                onClick={() => store.startRally(videoRef.current?.currentTime ?? 0)}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium"
+              >
+                ▶ ラリー開始
+              </button>
             )}
 
             {/* ストローク履歴 */}

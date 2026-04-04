@@ -22,8 +22,10 @@ class VideoDownloader:
         """ダウンロードジョブIDを生成"""
         return str(uuid.uuid4())
 
-    async def start_download(self, url: str, job_id: str) -> None:
-        """非同期でダウンロードを開始。進捗をjob_idで管理。"""
+    async def start_download(self, url: str, job_id: str, quality: str = "1080") -> None:
+        """非同期でダウンロードを開始。進捗をjob_idで管理。
+        quality: "360" / "480" / "720" / "1080" / "best"
+        """
         if not YT_DLP_AVAILABLE:
             self.active_downloads[job_id] = {
                 "status": "error",
@@ -33,9 +35,20 @@ class VideoDownloader:
 
         self.active_downloads[job_id] = {"status": "pending"}
 
+        # 画質に応じたformat指定
+        # YouTube は映像と音声が別ストリームなので bestvideo+bestaudio でマージする
+        height = quality if quality != "best" else "2160"
+        fmt = (
+            f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]"
+            f"/bestvideo[height<={height}]+bestaudio"
+            f"/best[height<={height}]"
+            "/best"
+        )
+
         yt_opts = {
             "outtmpl": str(self.DOWNLOAD_DIR / f"{job_id}.%(ext)s"),
-            "format": "best[height<=1080]",
+            "format": fmt,
+            "merge_output_format": "mp4",
             "progress_hooks": [lambda d: self._update_progress(job_id, d)],
             "quiet": True,
             "no_warnings": True,

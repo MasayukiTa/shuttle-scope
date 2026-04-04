@@ -36,6 +36,7 @@ export interface Player {
   birth_year?: number
   world_ranking?: number
   is_target: boolean
+  match_count?: number
   notes?: string
   created_at: string
 }

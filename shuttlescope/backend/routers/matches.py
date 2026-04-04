@@ -174,9 +174,14 @@ def get_match_rallies(match_id: int, db: Session = Depends(get_db)):
     return {"success": True, "data": result}
 
 
+class DownloadRequest(BaseModel):
+    quality: str = "1080"  # "360" / "480" / "720" / "1080" / "best"
+
+
 @router.post("/matches/{match_id}/download")
 async def start_download(
     match_id: int,
+    body: DownloadRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
@@ -188,7 +193,7 @@ async def start_download(
         raise HTTPException(status_code=400, detail="動画URLが設定されていません")
 
     job_id = video_downloader.create_job_id()
-    background_tasks.add_task(video_downloader.start_download, match.video_url, job_id)
+    background_tasks.add_task(video_downloader.start_download, match.video_url, job_id, body.quality)
     return {"success": True, "data": {"job_id": job_id}}
 
 

@@ -34,7 +34,7 @@ class PlayerUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-def player_to_dict(p: Player) -> dict:
+def player_to_dict(p: Player, match_count: int = 0) -> dict:
     return {
         "id": p.id,
         "name": p.name,
@@ -45,6 +45,7 @@ def player_to_dict(p: Player) -> dict:
         "birth_year": p.birth_year,
         "world_ranking": p.world_ranking,
         "is_target": p.is_target,
+        "match_count": match_count,
         "notes": p.notes,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
@@ -52,9 +53,15 @@ def player_to_dict(p: Player) -> dict:
 
 @router.get("/players")
 def list_players(db: Session = Depends(get_db)):
-    """選手一覧"""
+    """選手一覧（試合数付き）"""
     players = db.query(Player).order_by(Player.name).all()
-    return {"success": True, "data": [player_to_dict(p) for p in players]}
+    result = []
+    for p in players:
+        cnt = db.query(Match).filter(
+            (Match.player_a_id == p.id) | (Match.player_b_id == p.id)
+        ).count()
+        result.append(player_to_dict(p, match_count=cnt))
+    return {"success": True, "data": result}
 
 
 @router.post("/players", status_code=201)

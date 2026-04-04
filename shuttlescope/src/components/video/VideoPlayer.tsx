@@ -22,8 +22,9 @@ function isYouTubeUrl(url: string): boolean {
 }
 
 function getYouTubeEmbedUrl(url: string): string {
-  const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
-  if (match) return `https://www.youtube.com/embed/${match[1]}?enablejsapi=1`
+  const match = url.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/)
+  // youtube-nocookie.com は Electron での iframe 制限が少ない
+  if (match) return `https://www.youtube-nocookie.com/embed/${match[1]}?rel=0&modestbranding=1`
   return url
 }
 

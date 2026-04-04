@@ -187,6 +187,23 @@
     "speed": "再生速度",
     "youtube_warning": "YouTube動画はコマ送りが使用できません"
   },
+  "theme": {
+    "dark": "ダークモード",
+    "light": "ライトモード",
+    "toggle": "テーマ切替"
+  },
+  "analysis": {
+    "overview": "概要",
+    "shots": "ショット分析",
+    "rally": "ラリー分析",
+    "matrix": "遷移マトリクス",
+    "no_data": "データ不足（アノテーション後に解析可能）",
+    "player_types": {
+      "short_game_specialist": "短期決戦型",
+      "balanced": "バランス型",
+      "endurance_player": "持久型"
+    }
+  },
   "download": {
     "start": "ダウンロード開始",
     "progress": "ダウンロード中",

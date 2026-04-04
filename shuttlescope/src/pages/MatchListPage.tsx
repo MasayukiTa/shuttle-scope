@@ -51,6 +51,7 @@ export function MatchListPage() {
   const [filterLevel, setFilterLevel] = useState<string>('')
   const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false)
   const [downloadJobIds, setDownloadJobIds] = useState<Record<number, string>>({})
+  const [downloadQuality, setDownloadQuality] = useState<string>('720')
 
   // 試合一覧取得
   const { data: matchesData, isLoading } = useQuery({
@@ -88,8 +89,9 @@ export function MatchListPage() {
 
   // 動画ダウンロード開始
   const startDownload = useMutation({
-    mutationFn: (matchId: number) => apiPost(`/matches/${matchId}/download`, {}),
-    onSuccess: (data: any, matchId) => {
+    mutationFn: ({ matchId, quality }: { matchId: number; quality: string }) =>
+      apiPost(`/matches/${matchId}/download`, { quality }),
+    onSuccess: (data: any, { matchId }) => {
       if (data?.data?.job_id) {
         setDownloadJobIds((prev) => ({ ...prev, [matchId]: data.data.job_id }))
       }
@@ -168,6 +170,21 @@ export function MatchListPage() {
           />
           <span className="text-gray-300">未完了のみ</span>
         </label>
+        <div className="ml-auto flex items-center gap-2 text-sm text-gray-400">
+          <Download size={13} />
+          <span>画質:</span>
+          <select
+            value={downloadQuality}
+            onChange={(e) => setDownloadQuality(e.target.value)}
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+          >
+            <option value="360">360p</option>
+            <option value="480">480p</option>
+            <option value="720">720p (推奨)</option>
+            <option value="1080">1080p</option>
+            <option value="best">最高画質</option>
+          </select>
+        </div>
       </div>
 
       {/* 試合一覧テーブル */}
@@ -237,9 +254,10 @@ export function MatchListPage() {
                       {/* 動画ダウンロード */}
                       {m.video_url && !m.video_local_path && (
                         <button
-                          onClick={() => startDownload.mutate(m.id)}
+                          onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality })}
                           className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
-                          title="動画ダウンロード"
+                          title={`動画ダウンロード (${downloadQuality}p)`}
+                          disabled={startDownload.isPending}
                         >
                           <Download size={14} />
                         </button>

@@ -1,9 +1,14 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol, net } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as http from 'http'
 import { existsSync } from 'fs'
 import { pathToFileURL } from 'url'
+
+// Register custom scheme before app is ready (required by Electron)
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'localfile', privileges: { secure: true, standard: true, stream: true, bypassCSP: true } },
+])
 
 let pythonProcess: ChildProcess | null = null
 let mainWindow: BrowserWindow | null = null
@@ -76,8 +81,9 @@ ipcMain.handle('open-video-file', async () => {
     ],
   })
   if (result.canceled || result.filePaths.length === 0) return null
-  // Convert OS path to file:// URL so <video src> can load it
-  return pathToFileURL(result.filePaths[0]).href
+  // Convert Windows path to localfile:// protocol (forward slashes, triple slash for absolute path)
+  const normalized = result.filePaths[0].replace(/\\/g, '/')
+  return `localfile:///${normalized}`
 })
 
 // Create main window
@@ -90,7 +96,7 @@ function createWindow(): void {
     title: 'ShuttleScope',
     backgroundColor: '#0f172a',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -119,7 +125,33 @@ async function startApp(): Promise<void> {
     pythonProcess = startPythonBackend()
     await waitForBackend('http://localhost:8765/api/health', 10000)
     console.log('[Main] Backend ready')
+
+    // Register localfile:// protocol handler to serve local video files
+    // (file:// cross-origin is blocked in Electron; this custom protocol bypasses it)
+    protocol.handle('localfile', (request) => {
+      const url = request.url.slice('localfile:///'.length)
+      const decodedPath = decodeURIComponent(url)
+      // Re-add the leading slash for absolute paths
+      return net.fetch(`file:///${decodedPath}`)
+    })
+
     createWindow()
+
+    // YouTube / 外部コンテンツを iframe で読み込めるよう CSP を緩和
+    mainWindow?.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self' 'unsafe-inline' 'unsafe-eval' file: localfile: blob: data: http://localhost:*;" +
+            " script-src 'self' 'unsafe-inline' 'unsafe-eval';" +
+            " frame-src https://www.youtube.com https://www.youtube-nocookie.com;" +
+            " img-src 'self' file: localfile: blob: data: https:;" +
+            " connect-src 'self' http://localhost:* ws://localhost:*;"
+          ],
+        },
+      })
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[Main] Startup failed:', msg)

@@ -20,6 +20,11 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'electron/preload.ts'),
         },
+        output: {
+          // package.json "type":"module" だと .mjs になり Electron sandbox と非互換のため CJS 強制
+          format: 'cjs',
+          entryFileNames: '[name].js',
+        },
       },
     },
   },
