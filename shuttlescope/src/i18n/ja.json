@@ -1,0 +1,198 @@
+{
+  "app": {
+    "name": "ShuttleScope",
+    "loading": "読み込み中...",
+    "error": "エラーが発生しました",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "delete": "削除",
+    "edit": "編集",
+    "add": "追加",
+    "close": "閉じる",
+    "back": "戻る",
+    "confirm": "確認",
+    "yes": "はい",
+    "no": "いいえ"
+  },
+  "nav": {
+    "matches": "試合一覧",
+    "annotator": "アノテーター",
+    "dashboard": "ダッシュボード",
+    "players": "選手管理",
+    "settings": "設定"
+  },
+  "shot_types": {
+    "short_service": "ショートサーブ",
+    "long_service": "ロングサーブ",
+    "net_shot": "ネットショット",
+    "clear": "クリア",
+    "push_rush": "プッシュ/ラッシュ",
+    "smash": "スマッシュ",
+    "defensive": "ディフェンス",
+    "drive": "ドライブ",
+    "lob": "ロブ",
+    "drop": "ドロップ",
+    "cross_net": "クロスネット",
+    "slice": "スライス",
+    "around_head": "ラウンドヘッド",
+    "cant_reach": "届かず",
+    "flick": "フリック",
+    "half_smash": "ハーフスマッシュ",
+    "block": "ブロック",
+    "other": "その他"
+  },
+  "shot_categories": {
+    "serve": "サーブ系",
+    "net": "ネット前",
+    "back": "バック系",
+    "mid": "中距離",
+    "special": "特殊"
+  },
+  "zones": {
+    "BL": "バック左",
+    "BC": "バック中",
+    "BR": "バック右",
+    "ML": "ミドル左",
+    "MC": "ミドル中",
+    "MR": "ミドル右",
+    "NL": "ネット左",
+    "NC": "ネット中",
+    "NR": "ネット右"
+  },
+  "roles": {
+    "analyst": "アナリスト",
+    "coach": "コーチ",
+    "player": "選手"
+  },
+  "confidence": {
+    "low": "参考値",
+    "medium": "中程度",
+    "high": "高信頼",
+    "low_label": "参考値（データ蓄積中）",
+    "medium_label": "中程度（解釈に注意）",
+    "high_label": "高信頼（実用レベル）",
+    "sample_size": "サンプル数",
+    "strokes": "球"
+  },
+  "end_types": {
+    "ace": "エース",
+    "forced_error": "強制エラー",
+    "unforced_error": "自滅",
+    "net": "ネット",
+    "out": "アウト",
+    "cant_reach": "届かず"
+  },
+  "reports": {
+    "weakness_label": "伸びしろ",
+    "strength_label": "強み",
+    "growth_label": "成長",
+    "scout": "スカウティングレポート",
+    "growth": "成長レポート",
+    "interval": "セット間速報"
+  },
+  "match": {
+    "tournament": "大会名",
+    "tournament_level": "大会レベル",
+    "round": "ラウンド",
+    "date": "日付",
+    "venue": "会場",
+    "format": "形式",
+    "result": "結果",
+    "score": "スコア",
+    "video_url": "動画URL",
+    "notes": "メモ",
+    "annotation_status": "アノテーション状態",
+    "annotation_progress": "進捗",
+    "start_annotation": "アノテーション開始",
+    "formats": {
+      "singles": "シングルス",
+      "womens_doubles": "女子ダブルス",
+      "mixed_doubles": "混合ダブルス"
+    },
+    "results": {
+      "win": "勝ち",
+      "loss": "負け",
+      "walkover": "不戦勝",
+      "unfinished": "未完了"
+    },
+    "statuses": {
+      "pending": "未着手",
+      "in_progress": "作業中",
+      "complete": "完了",
+      "reviewed": "確認済み"
+    },
+    "levels": {
+      "IC": "IC（国際）",
+      "IS": "IS（国際シリーズ）",
+      "SJL": "SJL",
+      "全日本": "全日本",
+      "国内": "国内",
+      "その他": "その他"
+    }
+  },
+  "player": {
+    "name": "選手名",
+    "name_en": "英語名",
+    "team": "チーム",
+    "nationality": "国籍",
+    "dominant_hand": "利き手",
+    "birth_year": "生年",
+    "world_ranking": "世界ランキング",
+    "is_target": "解析対象",
+    "notes": "メモ",
+    "right_hand": "右利き",
+    "left_hand": "左利き"
+  },
+  "annotator": {
+    "rally_start": "ラリー開始",
+    "rally_confirm": "ラリー確定",
+    "rally_cancel": "取消",
+    "undo": "アンドゥ",
+    "timestamp": "タイムスタンプ記録",
+    "hit_zone": "打点ゾーン",
+    "land_zone": "着地ゾーン",
+    "shot_type": "ショット種別",
+    "attributes": "属性",
+    "backhand": "バックハンド",
+    "around_head": "ラウンドヘッド",
+    "above_net": "ネット上",
+    "below_net": "ネット下",
+    "net_unknown": "不明",
+    "recent_strokes": "直近ストローク",
+    "score": "スコア",
+    "set": "セット",
+    "rally": "ラリー",
+    "server": "サーバー",
+    "winner_a": "A",
+    "winner_b": "B",
+    "input_step": {
+      "idle": "Space でラリー開始",
+      "timestamp": "タイムスタンプ記録中...",
+      "hit_zone": "打点ゾーンをクリック",
+      "land_zone": "着地ゾーンをクリック",
+      "shot_type": "ショット種別をキー入力",
+      "attributes": "属性を確認してEnter",
+      "complete": "Enter でストローク確定"
+    },
+    "player_a_label": "自チーム",
+    "player_b_label": "相手"
+  },
+  "video": {
+    "play": "再生",
+    "pause": "一時停止",
+    "frame_back": "1フレーム戻し",
+    "frame_forward": "1フレーム進め",
+    "seek_back": "10秒戻し",
+    "seek_forward": "10秒進め",
+    "speed": "再生速度",
+    "youtube_warning": "YouTube動画はコマ送りが使用できません"
+  },
+  "download": {
+    "start": "ダウンロード開始",
+    "progress": "ダウンロード中",
+    "complete": "完了",
+    "error": "エラー",
+    "speed": "速度",
+    "eta": "残り時間"
+  }
+}

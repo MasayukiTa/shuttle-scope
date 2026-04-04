@@ -1,0 +1,13 @@
+node_modules/
+out/
+dist/
+.venv/
+*.db
+*.sqlite
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.env.local
+videos/
+reports/
