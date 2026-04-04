@@ -1,0 +1,511 @@
+# ShuttleScope
+
+ShuttleScope is a local-first Windows desktop workbench for badminton match annotation, review, and analysis.
+
+The quickest honest summary is:
+
+- it is already usable as an internal tool for rally-by-rally annotation and coach / analyst review
+- it is strongest in local workflows: match setup, annotation, dashboard review, local video, desktop capture, and post-match analysis
+- it already includes CV, prediction, LAN sharing, and remote-camera groundwork, but those layers are still less proven than the annotation core
+- it is not yet a finished public product, and advanced CV / remote / prediction areas are still under active validation
+
+In short, ShuttleScope is well past a loose PoC, but it should still be described as an internal product-grade system rather than a finished commercial release.
+
+## What You Can Actually Do With It Today
+
+If someone opens ShuttleScope today, the parts they can realistically expect to use are:
+
+- create and edit matches, players, and doubles pairings
+- sign in with role-aware local auth flows for admin / analyst / coach / player
+- manage teams and team-owned access boundaries for coach / analyst / player workflows
+- annotate rallies stroke by stroke
+- review rallies with comments, bookmarks, review-later markers, and warm-up notes
+- run badminton-specific dashboard analysis across matches
+- inspect condition data through role-aware filtered views rather than one unrestricted surface
+- use local video, second-screen playback, and court calibration support
+- capture desktop video regions, define ROI, and run ROI-aware CV batch analysis on prepared environments
+- test CV-assisted annotation flows, candidate review, and TrackNet / YOLO readiness on prepared environments
+- benchmark CPU / GPU / OpenVINO / Ray-capable environments from Settings and compare available inference targets
+- configure Ray / cluster routing from Settings and inspect worker availability, load limits, and network health
+- share sessions on nearby devices over LAN with password-protected join flow
+
+The parts that still need more real-world proof are:
+
+- real-video CV quality and threshold tuning
+- remote camera and browser video transport
+- prediction quality under live or operational use
+- fully automatic annotation without human verification
+- long-running operator recovery and failure handling under heavy live use
+
+## Current Product Position
+
+ShuttleScope is currently best understood as:
+
+- an internal product-grade badminton analysis system
+- a practical annotation and review tool for coaches / analysts
+- a local-first experimentation platform for deeper analytics, prediction, CV assistance, and sharing workflows
+
+It is strongest in the annotation / review core, with research and CV layers built on top of that core rather than replacing it.
+
+## Current Focus
+
+The strongest parts of ShuttleScope today are:
+
+- structured match annotation
+- post-match review
+- badminton-specific analytics
+- local video workflow
+- desktop capture and ROI-based CV workflow
+- limited LAN sharing for nearby devices
+
+Prediction, CV-assisted annotation, remote camera support, and research views are present in the codebase, but they are still uneven in real-world validation and should be treated as active development areas.
+
+## What Works Well Today
+
+### Annotation
+
+- quick-start match creation
+- match create / edit flow
+- rally-by-rally stroke annotation
+- stroke history and rally-by-rally review
+- numpad-based landing input
+- skipped rally handling
+- score correction and forced set end handling
+- doubles hitter switching
+- initial server selection and analyst viewpoint persistence
+- manual record / assisted record modes
+- review-later flow for incomplete rallies
+- warm-up / pre-match observation capture
+- comments, bookmarks, and review markers around a match session
+
+### Match and Player Management
+
+- searchable player selectors in match creation
+- provisional player creation during match setup
+- team-aware player registration flow
+- normalized team records with team ID ownership for users, players, and matches
+- user management for role-aware local access control
+- match editing after creation
+- player deletion guard when the player is still referenced by matches
+- player team history support at the data model and settings level
+
+### Review and Analysis
+
+- court heatmaps
+- score progression and set comparison
+- shot, rally, and time-based analysis
+- zone maps and effective / vulnerable area views
+- date-range filtering and recent-match filtering
+- growth and trend views across matches
+- doubles and partner analysis
+- warm-up observation analysis
+- recommendation and ranking style views
+- stable / advanced / research dashboard split
+- dashboard split into overview / live / review / growth / advanced / research
+
+### Prediction and Research
+
+- match preview and pair-oriented prediction views
+- pre-match snapshot groundwork
+- human forecast / analyst comparison groundwork
+- fatigue and hazard style research views
+- research cards for state / value / counterfactual-oriented analysis
+- promotion workflow and evidence metadata groundwork
+
+These areas are usable for internal exploration, but they are still a step behind the annotation / review core in real-world confidence.
+
+### Video and CV Workflow
+
+- local video import
+- desktop capture with ROI selection
+- second-screen `Video Only` view
+- court calibration overlay
+- backend-persisted calibration with local fallback
+- ROI-aware TrackNet / YOLO batch processing
+- CV resume / diff workflow foundation
+- TrackNet and YOLO readiness checks
+- GPU device selection and setup checks in Settings
+- TrackNet shuttle-track persistence
+- YOLO player-position artifact flow
+- CV assist candidate flow, candidate badges, and review queue foundation
+- player / shuttle overlay groundwork in the annotator
+- realtime YOLO overlay and player-tracking foundation
+- benchmark jobs, device probing, and doctor scripts for CV environment validation
+- YOLO benchmark target and backend override controls
+- Ray / worker-aware benchmark routing for cluster environments
+
+These areas are useful for development and internal testing, but CV quality still depends heavily on real-video validation.
+
+### Sharing and Access
+
+- LAN session sharing
+- password-protected LAN sessions
+- role-aware local login flow for admin / analyst / coach / player
+- JWT-backed local auth session handling
+- user management page with role-scoped editing (admin sees all, coach sees own team, player sees self)
+- team management page for admin / coach-facing team metadata workflows
+- access logging groundwork for auth and sensitive data access
+- condition views filtered by audience and field sensitivity
+- public landing site at shuttle-scope.com with v7 design and light / dark theme toggle
+- admin notification inbox for contact-form inquiries
+- comments and bookmarks
+- QR-based join flow
+- device manager and camera sender pages
+- viewer page and grouped device / handoff UX groundwork
+- tunnel-provider selection and remote health status groundwork
+- Cloudflare named tunnel deployment at `https://app.shuttle-scope.com` with SSH-via-tunnel for unattended remote operation
+- email-based authentication (register / verify / password reset / invitation) backed by a Cloudflare Worker + MailChannels mailer abstraction; admin approval gates self-registered users
+- sender-side server recording (R-1) so iOS / Android camera senders persist video to the server through chunked upload rather than only producing a P2P stream
+- LAN-first endpoint resolution (R-2) on the sender so devices on the same Wi-Fi take a `192.168.*` direct path instead of round-tripping through Cloudflare
+- worker HTTP file-sharing endpoints (R-3, preliminary) so an out-of-band worker can pull persisted sender uploads via authenticated HTTP Range
+- supervisor + Scheduled Task + cloudflared Windows service stack for unattended operation across long absences (auto-restart on crash, automatic startup on boot)
+- admin user-limit visibility chips (lock / failed-attempts / upload-saturated / exfil-rate) with per-category reset, and an audit log rendered in JST
+
+Remote and browser-based video workflows exist, but they should still be treated as experimental compared with the core local workflow.
+
+### Cluster and Distributed Processing
+
+- two-node cluster foundation for a primary machine plus worker machine
+- Ray-aware task routing for TrackNet, pose, clip extraction, and analysis stages
+- Settings-based cluster management with interface selection, worker list, ping tests, and load thresholds
+- worker bootstrap support for K10-style CPU / iGPU nodes
+- firewall / routing support scripts for Windows cluster deployment
+- graceful fallback to local execution when Ray or worker capabilities are unavailable
+
+## Main Screens
+
+- `Login`
+- `Match List`
+- `Annotator`
+- `Dashboard`
+- `Prediction`
+- `Settings`
+- `User Management`
+- `Notification Inbox` (admin)
+- `Video Only`
+
+## Current Product Shape
+
+In practical terms, ShuttleScope currently behaves like a desktop badminton analysis workbench with several layers:
+
+- a core annotation workflow that is already useful
+- a growing post-match analysis stack
+- a research layer that is visible in the product but still being validated
+- a CV layer that assists annotation rather than fully replacing it
+- a LAN / remote collaboration layer that is promising but not yet the main operating mode
+
+## Intended Use Right Now
+
+ShuttleScope is currently strongest for:
+
+- structured post-match annotation
+- coach / analyst review
+- role-aware internal access for coaches, analysts, admins, and players
+- exploratory tactical analysis
+- doubles-aware review
+- small-team internal testing and iteration
+- internal testing with local or nearby devices
+
+It should not be read as a finished commercial product yet.
+
+## Tech Stack
+
+- Electron
+- React 18 + TypeScript + Vite
+- Zustand
+- TanStack Query
+- FastAPI
+- PostgreSQL as the current development database target
+- SQLite legacy / fallback support for older local setups and selected test fixtures
+- Alembic
+- Recharts / D3
+- NumPy / SciPy / scikit-learn
+
+## Repository Layout
+
+```text
+shuttle-scope/
+├─ README.md
+├─ CHANGELOG.md
+├─ SECURITY.md
+├─ LICENSE
+├─ private_docs/              # local private notes, ignored
+├─ .github/workflows/         # CI, smoke, and security scanning workflows
+└─ shuttlescope/
+   ├─ electron/
+   ├─ src/
+   ├─ backend/
+   ├─ docs/                   # including docs/validation/ for verification history
+   ├─ scripts/
+   └─ start.bat
+```
+
+## Setup
+
+### Requirements
+
+- Windows as the main target environment
+- Node.js 18+
+- Python 3.10+
+- optional: `ffmpeg`
+- optional: `ngrok`
+- optional: `cloudflared`
+
+### Fastest New-Device Bootstrap
+
+For a fresh Windows machine:
+
+```powershell
+cd shuttlescope
+.\bootstrap_windows.ps1 -RunDoctor
+```
+
+If PowerShell is inconvenient:
+
+```bat
+cd shuttlescope
+bootstrap_windows.bat -RunDoctor
+```
+
+Optional extras:
+
+```powershell
+.\bootstrap_windows.ps1 -IncludeYolo
+.\bootstrap_windows.ps1 -SetupTrackNet
+```
+
+The doctor can also be run directly:
+
+```powershell
+.\backend\.venv\Scripts\python -m backend.tools.setup_doctor
+```
+
+Useful variants:
+
+```powershell
+.\backend\.venv\Scripts\python -m backend.tools.setup_doctor --format json
+.\backend\.venv\Scripts\python -m backend.tools.setup_doctor --strict
+```
+
+### Worker / Cluster Setup
+
+If you are preparing a second Windows machine as a Ray worker:
+
+```powershell
+cd shuttlescope
+.\scripts\setup_k10_worker.ps1
+```
+
+Related files:
+
+- `shuttlescope\requirements_worker.txt`
+- `shuttlescope\cluster.config.yaml`
+- `shuttlescope\scripts\cluster\start_primary.bat`
+- `shuttlescope\scripts\fix_ray_firewall.ps1`
+
+The doctor reports:
+
+- missing Python / npm tools
+- TrackNet readiness
+- YOLO readiness
+- `ngrok` / `cloudflared` availability
+- key Python package versions
+- recommended next steps for the current machine
+
+This setup path is already one of the stronger parts of the project: new-device bootstrap is much better than a typical research prototype, even though model/runtime setup still needs attention.
+
+### Install and Run
+
+```bash
+cd shuttlescope
+npm install
+npm run dev
+```
+
+### Build
+
+```bash
+cd shuttlescope
+npm run build
+```
+
+### Desktop Start
+
+```bash
+cd shuttlescope
+npm run start
+```
+
+or:
+
+```bat
+shuttlescope\start.bat
+```
+
+### Backend Only
+
+```bash
+cd shuttlescope/backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
+```
+
+The default backend URL is `http://127.0.0.1:8765`.
+
+### Authentication Notes
+
+- ShuttleScope now includes a local role-aware login flow with separate paths for admin, analyst, coach, and player access.
+- Current development configuration uses PostgreSQL by default (`DATABASE_URL` in `shuttlescope/.env.development`).
+- Player access is designed around player-linked accounts and PIN-style entry, while admin access uses password login.
+- Coach and analyst views are intended for internal workflows and are scoped to their assigned team unless the backend explicitly treats the data as public / cross-team accessible.
+- Sensitive access now depends on backend auth context rather than only frontend role selection.
+- Users, players, matches, and derived records are being normalized around team IDs rather than free-form team strings.
+- The first admin user is no longer created with a hard-coded password. For a fresh environment, set `BOOTSTRAP_ADMIN_PASSWORD` before the first admin login.
+- Optional bootstrap knobs are `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_DISPLAY_NAME`; if omitted, the first admin defaults to username `admin`.
+
+## TrackNet / YOLO Notes
+
+- TrackNet needs weights and runtime support
+- YOLO can run through a local ONNX / PT model and the repository already includes a checked-in `yolov8n.onnx` baseline asset for current flows
+- the bootstrap and doctor commands above are the quickest way to check readiness on a new device
+- current CV support should be read as assistive and development-stage, not fully automatic production annotation
+- real match videos are still the main requirement for confidence tuning, threshold adjustment, and practical validation
+- base backend requirements are intentionally CI-safe; GPU-specific runtime pieces should be added through setup scripts or targeted machine prep rather than assumed in every environment
+
+## Tests
+
+### Frontend
+
+```bash
+cd shuttlescope
+npx vitest run --config vitest.config.ts
+```
+
+### Backend
+
+```bash
+cd shuttlescope
+.\backend\.venv\Scripts\python -m pytest backend/tests/ -q
+```
+
+### Build Check
+
+```bash
+cd shuttlescope
+npm run build
+```
+
+## CI
+
+GitHub Actions workflows are included for:
+
+- CI (build + frontend / backend tests on Ubuntu and Windows)
+- Desktop package smoke
+- TrackNet smoke
+- CodeQL Advanced (actions / javascript-typescript / python)
+- Bandit (Python static analysis)
+- ESLint (with SARIF upload)
+- DevSkim (Microsoft static analysis)
+- OSV-Scanner and OSV-Scanner PR (Python dependency vulnerabilities)
+- Microsoft Defender For Devops (MSDO)
+- OpenSSF Scorecard (supply-chain posture)
+
+Recent CI hardening:
+
+- base backend install no longer assumes `onnxruntime-gpu` in generic CI environments
+- benchmark tests now respect explicit mock mode and avoid spurious `ffmpeg`-driven failures
+- backend pipeline mock loading is aligned with the benchmark / smoke test path
+- every workflow declares minimal top-level token permissions (`contents: read`) and only grants `security-events: write` at the job level that actually uploads SARIF
+- every `uses:` reference is pinned to a commit SHA with the version tag kept as a trailing comment
+
+## Security Posture
+
+- Vulnerability reports are handled through `SECURITY.md` at the repository root.
+- `main` is protected against force-push and branch deletion; normal pushes remain available so solo / cross-device workflows are not blocked.
+- Known accepted risks (e.g. `paramiko` AutoAddPolicy for loopback / private-LAN SSH, and Electron `webSecurity: false` required for the `localfile://` video scheme) are documented in `shuttlescope/docs/validation/security-code-scanning-2026-04-23.md` rather than left implicit.
+- Code Scanning alerts are actively triaged: false positives are dismissed with explicit justification, known-unfixable findings are marked `won't fix` with the reason, and remaining real findings are fixed in the source.
+
+## Local Data
+
+- current development configuration points `DATABASE_URL` to local PostgreSQL by default
+- SQLite is still available as a fallback / legacy local mode for some setups, older data, and selected tests, but it is no longer the primary development target
+- `shuttlescope/.env.development` is the practical source of truth for the active local DB target
+- `private_docs/` is ignored
+- `shuttlescope/docs/validation/` is committed and used as implementation / verification history
+- local DBs, DB backups, videos, CV weights, and generated artifacts are not committed
+
+## Current Status
+
+ShuttleScope is already useful as an internal badminton analysis tool.
+Its strongest areas today are:
+
+- annotation flow
+- review and dashboard structure
+- badminton-specific analysis
+- local setup / bootstrap / doctor support
+- local video and ROI-based CV batch workflow
+- cluster / benchmark groundwork for multi-machine inference experiments
+
+It is weaker, or still more conditional, in:
+
+- real-video CV quality
+- remote video transport and browser-camera reliability
+- prediction quality under live use
+- broad operator-facing polish and recovery behavior
+
+The biggest areas still under active validation are:
+
+- CV quality on real match video
+- remote camera and browser video workflows
+- prediction quality under real use
+- operator-facing polish and failure recovery
+
+This repository should be read as an active internal product prototype with many working features, not as a finished public release announcement.
+
+## Runtime Environment Variables (not committed)
+
+`shuttlescope/.env.development` is machine-local and not tracked by git. Key settings to add manually on each machine:
+
+```env
+# GPU inference / clip extraction (0=CPU only, 1=enable NVENC/QSV auto-detection)
+SS_USE_GPU=1
+
+# Clip extraction parallelism (0=auto based on cpu_count)
+SS_CLIP_WORKERS=0
+SS_CLIP_FFMPEG_THREADS=0
+```
+
+- NVIDIA GPU machine: set `SS_USE_GPU=1` — selects NVDEC+NVENC when `nvidia-smi` is detected
+- Intel Xe / QSV machine (no NVIDIA): set `SS_USE_GPU=1` — skips NVENC (no `nvidia-smi`) and selects QSV
+- AMD iGPU / CPU-only: leave `SS_USE_GPU=0` (default)
+
+```env
+# YouTube Live archive destination on external HDD (do NOT set to the drive root or any other folder)
+# Only this exact subdirectory is accessible from the app — all other paths on the same drive are blocked.
+# Example: SS_LIVE_ARCHIVE_ROOT=E:\shuttlescope_archive
+SS_LIVE_ARCHIVE_ROOT=
+```
+
+- Set `SS_LIVE_ARCHIVE_ROOT` to a dedicated subdirectory on the HDD, not the drive root (`E:\`)
+- Paths on the same drive outside this root are hard-blocked at the Electron protocol layer
+- Leave empty to keep recordings on the SSD (`backend/data/youtube_live/`)
+
+```env
+# Phase A: Data protection keys (rotate independently — purpose-isolated)
+# A1: Field-level transparent encryption (Fernet, AES-128-CBC + HMAC-SHA256)
+# Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+SS_FIELD_ENCRYPTION_KEY=
+
+# A2: Backup ZIP AES-256 passphrase
+# Generate: python -c "import secrets; print(secrets.token_hex(32))"
+SS_BACKUP_PASSPHRASE=
+
+# A3: Export package HMAC-SHA256 signing key
+# Generate: python -c "import secrets; print(secrets.token_hex(32))"
+SS_EXPORT_SIGNING_KEY=
+```
+
+- Without these keys, the system falls back to plaintext for backward compatibility but logs warnings.
+- Production deployments MUST set all three. They are isolated by purpose so a single compromise does not expose all data.
