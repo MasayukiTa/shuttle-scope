@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.config import settings
 from backend.db.database import create_tables
 from backend.routers import matches, rallies, strokes, players, analysis, reports, sets
+from backend.utils.video_downloader import video_downloader
 
 
 @asynccontextmanager
@@ -56,6 +57,16 @@ app.include_router(reports.router, prefix="/api")
 async def health():
     """ヘルスチェック（Electron起動確認用）"""
     return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/api/system/capabilities")
+async def system_capabilities():
+    """動作環境の依存ツール可用性を返す（フロントエンド向け）
+    - yt_dlp: ダウンロード機能が使えるか
+    - ffmpeg: 高画質マージダウンロードが使えるか（未インストール時は低画質フォールバック）
+    """
+    caps = video_downloader.get_capabilities()
+    return {"success": True, "data": caps}
 
 
 @app.get("/api/version")

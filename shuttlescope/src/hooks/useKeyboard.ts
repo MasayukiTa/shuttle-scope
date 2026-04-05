@@ -117,6 +117,12 @@ export function useKeyboard({ videoRef, enabled = true }: UseKeyboardOptions = {
         if (shotType) {
           e.preventDefault()
           const currentSec = videoRef?.current?.currentTime ?? 0
+          // ショットキーと同時に再生/一時停止トグル（Space と同じ動作）
+          // → ショットを押した瞬間に止めて正確な時刻を取れる
+          const v = videoRef?.current
+          if (v) {
+            if (v.paused) { v.play() } else { v.pause() }
+          }
           store.inputShotType(shotType, currentSec)
           return
         }

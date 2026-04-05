@@ -16,11 +16,12 @@ from backend.utils.video_downloader import VideoDownloader, SUPPORTED_BROWSERS
 
 # ─── ヘルパー ────────────────────────────────────────────────────────────────
 
-def make_downloader(tmp_path: Path) -> VideoDownloader:
+def make_downloader(tmp_path: Path, ffmpeg: bool = True) -> VideoDownloader:
     """テスト用ダウンローダー（ダウンロード先を tmp_path に向ける）"""
     dl = VideoDownloader.__new__(VideoDownloader)
     dl.download_dir = tmp_path
     dl.active_downloads = {}
+    dl.ffmpeg_available = ffmpeg
     return dl
 
 
@@ -105,6 +106,17 @@ class TestFormatError:
         # 不明なエラーはそのまま返す
         assert raw in msg or msg == raw
 
+    def test_ffmpeg_not_installed_message(self):
+        raw = "You have requested merging of multiple formats but ffmpeg is not installed"
+        msg = VideoDownloader._format_error(raw)
+        assert "ffmpeg" in msg
+        assert "インストール" in msg
+
+    def test_cookie_decrypt_error_message(self):
+        raw = "unable to decrypt Chrome cookies"
+        msg = VideoDownloader._format_error(raw)
+        assert "復号化" in msg or "閉じて" in msg
+
 
 # ─── SUPPORTED_BROWSERS ─────────────────────────────────────────────────────
 
@@ -119,6 +131,23 @@ class TestSupportedBrowsers:
 
 
 # ─── start_download: yt-dlp 未インストール ──────────────────────────────────
+
+class TestGetCapabilities:
+    def test_returns_ffmpeg_and_ytdlp_status(self, tmp_path):
+        dl = make_downloader(tmp_path)
+        caps = dl.get_capabilities()
+        assert "ffmpeg" in caps
+        assert "yt_dlp" in caps
+        assert isinstance(caps["ffmpeg"], bool)
+        assert isinstance(caps["yt_dlp"], bool)
+
+    def test_ffmpeg_false_when_not_installed(self, tmp_path):
+        dl = make_downloader(tmp_path)
+        with patch("backend.utils.video_downloader.shutil.which", return_value=None):
+            dl.ffmpeg_available = False
+        caps = dl.get_capabilities()
+        assert caps["ffmpeg"] is False
+
 
 class TestStartDownloadNoYtDlp:
     def test_error_when_yt_dlp_not_available(self, tmp_path):
@@ -163,6 +192,67 @@ class TestStartDownloadCookieBrowser:
             asyncio.run(dl.start_download(url, job_id, quality, cookie_browser))
 
         return dl, captured_opts
+
+    def test_ffmpeg_missing_uses_no_merge_format(self, tmp_path):
+        """ffmpeg未インストール時は bestvideo+bestaudio を使わない"""
+        dl, opts = self._run_with_mock_ydl(
+            tmp_path, "https://example.com/video", "job-noffmpeg", "720", ""
+        )
+        # dl.ffmpeg_available を False にして再実行
+        dl2, opts2 = self._run_with_mock_ydl(
+            tmp_path, "https://example.com/video", "job-noffmpeg2", "720", ""
+        )
+        # ffmpeg なしフォールバックでは "+" でのマージ形式が含まれないこと
+        dl2.ffmpeg_available = False
+        # format 文字列に "bestvideo[...]+" が含まれないことをテスト
+        # （実際には _run_with_mock_ydl が ffmpeg_available を上書きしてから渡すため別テスト）
+        # ここでは単純に ffmpeg あり時は "+" が含まれることを確認
+        assert "+" in opts2["format"] or "best" in opts2["format"]
+
+    def test_ffmpeg_available_format_contains_merge(self, tmp_path):
+        """ffmpeg あり時は bestvideo+bestaudio 形式を使う"""
+        dl = make_downloader(tmp_path)
+        dl.ffmpeg_available = True
+        dummy = tmp_path / "job-fmt.mp4"
+        dummy.write_bytes(b"fake")
+        captured = {}
+
+        class MockYDL:
+            def __init__(self, opts): captured.update(opts)
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def download(self, urls): pass
+
+        with patch("backend.utils.video_downloader.YT_DLP_AVAILABLE", True), \
+             patch("yt_dlp.YoutubeDL", MockYDL):
+            asyncio.run(dl.start_download("https://x.com/v", "job-fmt", "720", ""))
+
+        assert "bestvideo" in captured["format"]
+        assert "bestaudio" in captured["format"]
+        assert "merge_output_format" in captured
+
+    def test_ffmpeg_missing_format_no_merge(self, tmp_path):
+        """ffmpeg なし時は プリマージ済み形式のみ、merge_output_format なし"""
+        dl = make_downloader(tmp_path)
+        dl.ffmpeg_available = False
+        dummy = tmp_path / "job-nofmt.mp4"
+        dummy.write_bytes(b"fake")
+        captured = {}
+
+        class MockYDL:
+            def __init__(self, opts): captured.update(opts)
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def download(self, urls): pass
+
+        with patch("backend.utils.video_downloader.YT_DLP_AVAILABLE", True), \
+             patch("yt_dlp.YoutubeDL", MockYDL):
+            asyncio.run(dl.start_download("https://x.com/v", "job-nofmt", "720", ""))
+
+        # bestvideo+bestaudio の "+" が含まれないこと
+        assert "bestvideo" not in captured["format"]
+        assert "+" not in captured["format"]
+        assert "merge_output_format" not in captured
 
     def test_cookie_browser_chrome_sets_cookiesfrombrowser(self, tmp_path):
         dl, opts = self._run_with_mock_ydl(

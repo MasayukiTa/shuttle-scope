@@ -7,9 +7,14 @@
  * yt-dlp でダウンロードし、完了後は localfile:// 経由でローカル再生に自動切替する。
  * ログイン必須サイトは「Cookieブラウザ」で使用ブラウザを選択すると、
  * そのブラウザのCookieを自動取得して認証を通過できる。
+ *
+ * 【ffmpegについて】
+ * ffmpegが未インストールの場合、映像+音声マージが不要な
+ * プリマージ済みストリームのみを使用するフォールバックモードで動作する。
+ * 画質が制限される場合がある。
  */
 import { useState, useEffect, useCallback } from 'react'
-import { Download, AlertCircle, CheckCircle, Loader2, Film, Cookie, ChevronDown } from 'lucide-react'
+import { Download, AlertCircle, CheckCircle, Loader2, Film, Cookie, ChevronDown, WifiOff } from 'lucide-react'
 import { apiGet, apiPost } from '@/api/client'
 
 interface StreamingDownloadPanelProps {
@@ -29,6 +34,11 @@ interface ProgressInfo {
   percent: string
   speed: string
   eta: string
+}
+
+interface Capabilities {
+  yt_dlp: boolean
+  ffmpeg: boolean
 }
 
 const QUALITY_OPTIONS = [
@@ -62,6 +72,17 @@ export function StreamingDownloadPanel({
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState<ProgressInfo>({ percent: '0%', speed: '', eta: '' })
   const [errorMsg, setErrorMsg] = useState('')
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
+
+  // ── システム機能確認（ffmpeg / yt-dlp 可用性） ────────────────────────────
+  useEffect(() => {
+    apiGet<{ success: boolean; data: Capabilities }>('/system/capabilities')
+      .then((res) => setCapabilities(res.data))
+      .catch(() => {
+        // 取得失敗時はデフォルトとして両方 true 扱い（旧バックエンド互換）
+        setCapabilities({ yt_dlp: true, ffmpeg: true })
+      })
+  }, [])
 
   // ── ダウンロード進捗ポーリング ──────────────────────────────────────────────
   useEffect(() => {
@@ -141,6 +162,7 @@ export function StreamingDownloadPanel({
   const isActive = dlState === 'starting' || dlState === 'downloading' || dlState === 'processing'
   const percentNum = Math.max(0, Math.min(100, parseFloat(progress.percent) || 0))
   const showCookieHint = !!cookieBrowser
+  const ffmpegMissing = capabilities !== null && !capabilities.ffmpeg
 
   return (
     <div
@@ -157,6 +179,17 @@ export function StreamingDownloadPanel({
       <div className="text-xs text-gray-400 font-mono bg-gray-900/60 rounded px-2 py-1.5 truncate">
         {url}
       </div>
+
+      {/* ── ffmpeg 未インストール警告 ── */}
+      {ffmpegMissing && dlState === 'idle' && (
+        <div className="flex items-start gap-2 text-xs text-orange-300 bg-orange-900/20 border border-orange-700/40 rounded p-2">
+          <WifiOff size={13} className="shrink-0 mt-0.5 text-orange-400" />
+          <span>
+            <strong>ffmpegが未インストール</strong> のため、画質が制限される場合があります。
+            高画質が必要な場合は <code className="bg-gray-700 px-1 rounded">winget install ffmpeg</code> でインストール後アプリを再起動してください。
+          </span>
+        </div>
+      )}
 
       {/* ── 説明バナー ── */}
       <div className="flex items-start gap-2 text-xs text-yellow-300 bg-yellow-900/20 border border-yellow-700/40 rounded p-2">
@@ -245,10 +278,13 @@ export function StreamingDownloadPanel({
               >
                 {QUALITY_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
-                    {opt.label}
+                    {opt.label}{ffmpegMissing && opt.value !== '360' && opt.value !== '480' ? ' *' : ''}
                   </option>
                 ))}
               </select>
+              {ffmpegMissing && (
+                <span className="text-[10px] text-orange-400" title="ffmpeg未インストールのため画質制限あり">*制限あり</span>
+              )}
             </div>
 
             {/* Cookie ブラウザ選択 */}
@@ -274,10 +310,10 @@ export function StreamingDownloadPanel({
 
           {/* Cookie 使用時の注意 */}
           {cookieBrowser && (
-            <div className="text-xs text-blue-300 bg-blue-900/20 border border-blue-700/40 rounded px-2 py-1.5">
-              🍪 <strong>{COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label}</strong> のCookieを使用します。
-              事前にそのブラウザでサイトへログインしておいてください。
-              ダウンロード中はブラウザを閉じてください（Chromeは起動中でも動作する場合があります）。
+            <div className="text-xs text-blue-300 bg-blue-900/20 border border-blue-700/40 rounded px-2 py-1.5 space-y-0.5">
+              <div>🍪 <strong>{COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label}</strong> のCookieをディスクから直接読み取ります。</div>
+              <div className="text-blue-400">✅ ブラウザの起動は不要です。事前にそのブラウザでサイトへログインしておくだけでOKです。</div>
+              <div className="text-gray-400">⚠️ そのブラウザが起動中の場合はDBがロックされることがあります。エラーが出たら一度閉じてから再試行してください。</div>
             </div>
           )}
 
@@ -288,6 +324,7 @@ export function StreamingDownloadPanel({
           >
             <Download size={15} />
             ダウンロードして再生
+            {ffmpegMissing && <span className="text-xs text-blue-300 ml-1">（低画質モード）</span>}
           </button>
         </div>
       )}

@@ -6,9 +6,16 @@
 
 完了後は localfile:// 形式の絶対URLを返すため、
 Electron のカスタムプロトコルでそのまま再生可能。
+
+【ffmpeg について】
+映像と音声を別ストリームで配信するサービス（YouTube等）は
+高画質ダウンロードに ffmpeg が必要。
+ffmpeg が未インストールの場合は自動的に「プリマージ済みストリーム」
+形式にフォールバックするが、画質が制限される場合がある。
 """
 import asyncio
 import os
+import shutil
 import uuid
 from pathlib import Path
 
@@ -23,6 +30,11 @@ except ImportError:
 SUPPORTED_BROWSERS = {"chrome", "edge", "firefox", "brave", "opera", "vivaldi", "chromium", "safari"}
 
 
+def _check_ffmpeg() -> bool:
+    """ffmpegがPATH上に存在するか確認する"""
+    return shutil.which("ffmpeg") is not None
+
+
 class VideoDownloader:
 
     def __init__(self):
@@ -30,9 +42,18 @@ class VideoDownloader:
         self.download_dir = Path(os.path.abspath("./videos"))
         self.download_dir.mkdir(exist_ok=True)
         self.active_downloads: dict[str, dict] = {}
+        # ffmpeg 可用性をインスタンス生成時に一度だけ確認する
+        self.ffmpeg_available: bool = _check_ffmpeg()
 
     def create_job_id(self) -> str:
         return str(uuid.uuid4())
+
+    def get_capabilities(self) -> dict:
+        """ダウンローダーの動作環境を返す（フロントエンド向け）"""
+        return {
+            "yt_dlp": YT_DLP_AVAILABLE,
+            "ffmpeg": self.ffmpeg_available,
+        }
 
     async def start_download(
         self,
@@ -58,26 +79,42 @@ class VideoDownloader:
             }
             return
 
-        self.active_downloads[job_id] = {"status": "pending"}
+        self.active_downloads[job_id] = {
+            "status": "pending",
+            "ffmpeg_available": self.ffmpeg_available,
+        }
 
-        # 画質に応じた format 指定
-        # YouTube は映像と音声が別ストリームなので bestvideo+bestaudio でマージ
         height = quality if quality != "best" else "2160"
-        fmt = (
-            f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]"
-            f"/bestvideo[height<={height}]+bestaudio"
-            f"/best[height<={height}]"
-            "/best"
-        )
+
+        if self.ffmpeg_available:
+            # ffmpegあり: 映像・音声を別ストリームでダウンロードしてマージ（高画質）
+            fmt = (
+                f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]"
+                f"/bestvideo[height<={height}]+bestaudio"
+                f"/best[height<={height}]"
+                "/best"
+            )
+        else:
+            # ffmpegなし: プリマージ済みストリームのみ（画質が制限される場合あり）
+            # bestvideo+bestaudio 形式を使うと ffmpeg 必須エラーになるため使わない
+            fmt = (
+                f"best[height<={height}][ext=mp4]"
+                f"/best[height<={height}]"
+                "/best"
+            )
 
         yt_opts: dict = {
             "outtmpl": str(self.download_dir / f"{job_id}.%(ext)s"),
             "format": fmt,
-            "merge_output_format": "mp4",
             "progress_hooks": [lambda d: self._update_progress(job_id, d)],
             "quiet": True,
             "no_warnings": True,
         }
+
+        # ffmpeg がある場合のみ merge_output_format を指定
+        # （指定すると ffmpeg がない環境で強制マージが走りエラーになる）
+        if self.ffmpeg_available:
+            yt_opts["merge_output_format"] = "mp4"
 
         # ── Cookie 設定 ──────────────────────────────────────────────────────
         # ログイン必須サイトでは指定したブラウザの Cookie を自動取得する
@@ -147,11 +184,30 @@ class VideoDownloader:
         """yt-dlp のエラーメッセージを日本語で補足する"""
         msg = raw
 
-        if "cookiesfrombrowser" in raw or "cookies" in raw.lower():
+        # ── ffmpeg 関連 ──────────────────────────────────────────────────────
+        if "ffmpeg" in raw.lower() and (
+            "not installed" in raw.lower()
+            or "not found" in raw.lower()
+            or "merging" in raw.lower()
+        ):
+            msg = (
+                "ffmpegがインストールされていません。\n"
+                "高画質ダウンロード（映像+音声のマージ）にはffmpegが必要です。\n"
+                "【インストール方法】\n"
+                "  Windows: https://ffmpeg.org/download.html からダウンロードし、\n"
+                "  展開したbinフォルダをシステムのPATHに追加してください。\n"
+                "  または winget install ffmpeg でもインストールできます。\n"
+                "インストール後はアプリを再起動してください。\n"
+                f"（詳細: {raw}）"
+            )
+
+        # ── Cookie 関連 ──────────────────────────────────────────────────────
+        elif "cookiesfrombrowser" in raw or "cookies" in raw.lower():
             if "locked" in raw.lower() or "database" in raw.lower():
                 msg = (
-                    "Cookieの読み取りに失敗しました。\n"
+                    "Cookieの読み取りに失敗しました（データベースがロックされています）。\n"
                     "対象ブラウザが起動中の場合は閉じてから再試行してください。\n"
+                    "Chromeはすべてのウィンドウを閉じてから実行してください。\n"
                     f"（詳細: {raw}）"
                 )
             elif "not installed" in raw.lower() or "not found" in raw.lower():
@@ -160,9 +216,17 @@ class VideoDownloader:
                     "ブラウザがインストールされているか確認してください。\n"
                     f"（詳細: {raw}）"
                 )
+            elif "decrypt" in raw.lower() or "unable to" in raw.lower():
+                msg = (
+                    "Cookieの復号化に失敗しました。\n"
+                    "Chromeの場合: すべてのウィンドウを閉じてから再試行してください。\n"
+                    "それでも失敗する場合は別のブラウザ（Edge等）を試してください。\n"
+                    f"（詳細: {raw}）"
+                )
             else:
                 msg = f"Cookie取得エラー: {raw}"
 
+        # ── HTTP エラー ──────────────────────────────────────────────────────
         elif "HTTP Error 403" in raw or "Private video" in raw:
             msg = (
                 "アクセスが拒否されました（403）。\n"
@@ -173,15 +237,19 @@ class VideoDownloader:
             msg = "動画が見つかりません（404）。URLを確認してください。"
         elif "This video is not available" in raw:
             msg = "この動画はご利用の地域では視聴できません（地域制限）。"
+
+        # ── 認証 ────────────────────────────────────────────────────────────
         elif "Sign in" in raw or "login" in raw.lower():
             msg = (
                 "ログインが必要な動画です。\n"
                 "「Cookieブラウザ」でログイン済みのブラウザを選択してください。"
             )
+
+        # ── DRM ─────────────────────────────────────────────────────────────
         elif "DRM" in raw or "Widevine" in raw or "drm" in raw.lower():
             msg = (
                 "DRM保護されたコンテンツはダウンロードできません。\n"
-                "埋め込みブラウザ（WebView）での視聴機能を使用してください。"
+                "「ブラウザ内視聴モード」ボタンを使用してください。"
             )
 
         return msg
