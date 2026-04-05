@@ -201,11 +201,104 @@
     "shots": "ショット分析",
     "rally": "ラリー分析",
     "matrix": "遷移マトリクス",
+    "b_detail": "詳細分析",
+    "c_spatial": "空間分析",
+    "d_time": "時間・体力",
+    "e_opponent": "対戦相手",
+    "f_doubles": "ダブルス",
+    "g_markov": "詳細解析",
     "no_data": "データ不足（アノテーション後に解析可能）",
+    "loading": "読み込み中...",
+    "restricted": "このコンテンツはアナリスト・コーチ向けです",
     "player_types": {
       "short_game_specialist": "短期決戦型",
       "balanced": "バランス型",
       "endurance_player": "持久型"
+    },
+    "score_progression": {
+      "title": "スコア推移",
+      "set_selector": "セット",
+      "point_diff": "点差",
+      "rally_num": "ラリー番号"
+    },
+    "win_loss_comparison": {
+      "title": "勝ち試合 vs 負け試合 比較",
+      "win_matches": "勝ち試合",
+      "loss_matches": "負け試合（課題のある試合）",
+      "avg_rally": "平均ラリー長",
+      "serve_win_rate": "サーブ勝率",
+      "top_shots": "主要ショット"
+    },
+    "tournament_comparison": {
+      "title": "大会レベル別比較",
+      "level": "大会レベル",
+      "match_count": "試合数",
+      "win_rate": "勝率",
+      "avg_rally": "平均ラリー長"
+    },
+    "pre_loss": {
+      "title": "失点前パターン",
+      "pre1": "1球前",
+      "pre2": "2球前",
+      "pre3": "3球前",
+      "growth_title": "成長エリア分析",
+      "rate": "発生率"
+    },
+    "first_return": {
+      "title": "ファーストリターン分析",
+      "zone": "ゾーン",
+      "win_rate": "勝率",
+      "freq_rate": "出現率",
+      "top_zones": "主要ゾーン"
+    },
+    "temporal": {
+      "title": "スコアフェーズ別パフォーマンス",
+      "phase": "フェーズ",
+      "win_rate": "勝率",
+      "rally_count": "ラリー数"
+    },
+    "post_long_rally": {
+      "title": "長ラリー後のパフォーマンス",
+      "normal": "通常時",
+      "post_long": "長ラリー後",
+      "diff": "差",
+      "win_rate": "勝率",
+      "avg_rally": "平均ラリー長",
+      "threshold": "閾値"
+    },
+    "opponent_stats": {
+      "title": "対戦相手別統計",
+      "opponent": "対戦相手",
+      "match_count": "試合数",
+      "win_rate": "勝率",
+      "avg_rally": "平均ラリー長"
+    },
+    "epv": {
+      "title": "期待パターン価値 (EPV)",
+      "pattern": "パターン",
+      "epv": "EPV",
+      "count": "出現数",
+      "ci": "信頼区間",
+      "top_patterns": "上位パターン",
+      "bottom_patterns": "成長エリアパターン"
+    },
+    "interval_report": {
+      "title": "セット間速報レポート",
+      "set": "セット",
+      "posterior_mean": "推定勝率",
+      "ci": "信頼区間",
+      "current_estimate": "現在の推定値",
+      "select_match": "試合を選択"
+    },
+    "filter": {
+      "result": "試合結果",
+      "all": "全て",
+      "win": "勝ち",
+      "loss": "課題のある試合",
+      "opponent": "対戦相手",
+      "level": "大会レベル",
+      "all_opponents": "全対戦相手",
+      "all_levels": "全レベル"
     }
   },
   "download": {

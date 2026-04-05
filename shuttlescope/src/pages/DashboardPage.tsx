@@ -21,6 +21,16 @@ import { RallyLengthWinRate } from '@/components/analysis/RallyLengthWinRate'
 import { PressurePerformance } from '@/components/analysis/PressurePerformance'
 import { SetComparison } from '@/components/analysis/SetComparison'
 import { TransitionMatrix } from '@/components/analysis/TransitionMatrix'
+import { ScoreProgression } from '@/components/analysis/ScoreProgression'
+import { WinLossComparison } from '@/components/analysis/WinLossComparison'
+import { TournamentComparison } from '@/components/analysis/TournamentComparison'
+import { PreLossPatterns } from '@/components/analysis/PreLossPatterns'
+import { FirstReturnAnalysis } from '@/components/analysis/FirstReturnAnalysis'
+import { TemporalPerformance } from '@/components/analysis/TemporalPerformance'
+import { PostLongRallyStats } from '@/components/analysis/PostLongRallyStats'
+import { OpponentStats } from '@/components/analysis/OpponentStats'
+import { MarkovEPV } from '@/components/analysis/MarkovEPV'
+import { IntervalReport } from '@/components/analysis/IntervalReport'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -58,7 +68,7 @@ interface MatchSummary {
 }
 
 // タブ種別
-type TabKey = 'overview' | 'shots' | 'rally' | 'matrix'
+type TabKey = 'overview' | 'shots' | 'rally' | 'matrix' | 'b_detail' | 'c_spatial' | 'd_time' | 'e_opponent' | 'f_doubles' | 'g_markov'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -178,6 +188,14 @@ export function DashboardPage() {
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null)
   const [heatmapTab, setHeatmapTab] = useState<'hit' | 'land'>('hit')
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  // J-001: フィルターパネルの状態
+  const [filterResult, setFilterResult] = useState<'all' | 'win' | 'loss'>('all')
+  const [filterOpponent, setFilterOpponent] = useState<number | null>(null)
+  const [filterLevel, setFilterLevel] = useState<string | null>(null)
+  // インターバルレポート用に試合を選択
+  const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
+  const [intervalSet, setIntervalSet] = useState<number>(1)
+  const [showIntervalModal, setShowIntervalModal] = useState(false)
 
   // ── Players ──
   const { data: playersResp, isLoading: loadingPlayers } = useQuery({
@@ -380,20 +398,75 @@ export function DashboardPage() {
             />
           </div>
 
+          {/* ── J-001: フィルターパネル ── */}
+          <div className="flex gap-2 flex-wrap items-center bg-gray-800/50 rounded-lg px-3 py-2">
+            <span className="text-xs text-gray-400 shrink-0">{t('analysis.filter.result')}:</span>
+            <select
+              className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none"
+              value={filterResult}
+              onChange={(e) => setFilterResult(e.target.value as 'all' | 'win' | 'loss')}
+            >
+              <option value="all">{t('analysis.filter.all')}</option>
+              <option value="win">{t('analysis.filter.win')}</option>
+              <option value="loss">{t('analysis.filter.loss')}</option>
+            </select>
+            <span className="text-xs text-gray-400 shrink-0 ml-2">{t('analysis.filter.level')}:</span>
+            <select
+              className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none"
+              value={filterLevel ?? ''}
+              onChange={(e) => setFilterLevel(e.target.value || null)}
+            >
+              <option value="">{t('analysis.filter.all_levels')}</option>
+              {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((lv) => (
+                <option key={lv} value={lv}>{lv}</option>
+              ))}
+            </select>
+            {(filterResult !== 'all' || filterLevel) && (
+              <button
+                className="text-xs text-blue-400 hover:text-blue-300 ml-1"
+                onClick={() => { setFilterResult('all'); setFilterLevel(null); setFilterOpponent(null) }}
+              >
+                リセット
+              </button>
+            )}
+          </div>
+
           {/* ── タブナビゲーション ── */}
           <div className="flex gap-2 flex-wrap">
             <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>
-              概要
+              {t('analysis.overview')}
             </TabButton>
             <TabButton active={activeTab === 'shots'} onClick={() => setActiveTab('shots')}>
-              ショット分析
+              {t('analysis.shots')}
             </TabButton>
             <TabButton active={activeTab === 'rally'} onClick={() => setActiveTab('rally')}>
-              ラリー分析
+              {t('analysis.rally')}
             </TabButton>
             <TabButton active={activeTab === 'matrix'} onClick={() => setActiveTab('matrix')}>
-              遷移マトリクス
+              {t('analysis.matrix')}
             </TabButton>
+            <TabButton active={activeTab === 'b_detail'} onClick={() => setActiveTab('b_detail')}>
+              {t('analysis.b_detail')}
+            </TabButton>
+            <TabButton active={activeTab === 'c_spatial'} onClick={() => setActiveTab('c_spatial')}>
+              {t('analysis.c_spatial')}
+            </TabButton>
+            <TabButton active={activeTab === 'd_time'} onClick={() => setActiveTab('d_time')}>
+              {t('analysis.d_time')}
+            </TabButton>
+            <RoleGuard allowedRoles={['analyst', 'coach']}>
+              <TabButton active={activeTab === 'e_opponent'} onClick={() => setActiveTab('e_opponent')}>
+                {t('analysis.e_opponent')}
+              </TabButton>
+            </RoleGuard>
+            <TabButton active={activeTab === 'f_doubles'} onClick={() => setActiveTab('f_doubles')}>
+              {t('analysis.f_doubles')}
+            </TabButton>
+            <RoleGuard allowedRoles={['analyst', 'coach']}>
+              <TabButton active={activeTab === 'g_markov'} onClick={() => setActiveTab('g_markov')}>
+                {t('analysis.g_markov')}
+              </TabButton>
+            </RoleGuard>
           </div>
 
           {/* ── 概要タブ ── */}
@@ -660,7 +733,10 @@ export function DashboardPage() {
                         {matches.map((m) => (
                           <tr
                             key={m.match_id}
-                            className="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors"
+                            className="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors cursor-pointer"
+                            onClick={() => {
+                              setSelectedMatchId(m.match_id)
+                            }}
                           >
                             <td className="py-2 pr-4 text-white">{m.opponent}</td>
                             <td className="py-2 pr-4 text-gray-300">{m.tournament}</td>
@@ -684,6 +760,38 @@ export function DashboardPage() {
                   </div>
                 )}
               </div>
+
+              {/* B-001: スコア推移（選択した試合） */}
+              {selectedMatchId && (
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
+                    <span className="text-xs text-gray-500">試合ID: {selectedMatchId}</span>
+                  </div>
+                  <ScoreProgression matchId={selectedMatchId} />
+                </div>
+              )}
+
+              {/* インターバルレポートボタン */}
+              {selectedMatchId && (
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
+                    <div className="flex gap-2 items-center">
+                      <label className="text-xs text-gray-400">完了セット:</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={3}
+                        value={intervalSet}
+                        onChange={(e) => setIntervalSet(Number(e.target.value))}
+                        className="w-12 bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1"
+                      />
+                    </div>
+                  </div>
+                  <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
+                </div>
+              )}
             </div>
             </ErrorBoundary>
           )}
@@ -749,6 +857,122 @@ export function DashboardPage() {
                 <div className="bg-gray-800 rounded-lg p-4">
                   <SectionTitle>ショット遷移マトリクス</SectionTitle>
                   <TransitionMatrix playerId={selectedPlayerId!} />
+                </div>
+              </RoleGuard>
+            </ErrorBoundary>
+          )}
+
+          {/* ── 詳細分析タブ (B-001, B-004, B-006) ── */}
+          {activeTab === 'b_detail' && (
+            <ErrorBoundary>
+              <div className="space-y-5">
+                {/* スコア推移 */}
+                {selectedMatchId ? (
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
+                    <ScoreProgression matchId={selectedMatchId} />
+                  </div>
+                ) : (
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
+                    <p className="text-gray-500 text-sm text-center py-4">
+                      概要タブの試合一覧から試合を選択してください
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                  {/* 勝ち/課題のある試合比較 */}
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.win_loss_comparison.title')}</SectionTitle>
+                    <WinLossComparison playerId={selectedPlayerId!} />
+                  </div>
+
+                  {/* 大会レベル別比較 */}
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.tournament_comparison.title')}</SectionTitle>
+                    <TournamentComparison playerId={selectedPlayerId!} />
+                  </div>
+                </div>
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {/* ── 空間分析タブ (C-002, C-003) ── */}
+          {activeTab === 'c_spatial' && (
+            <ErrorBoundary>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <SectionTitle>{t('analysis.pre_loss.title')}</SectionTitle>
+                  <PreLossPatterns playerId={selectedPlayerId!} />
+                </div>
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <SectionTitle>{t('analysis.first_return.title')}</SectionTitle>
+                  <FirstReturnAnalysis playerId={selectedPlayerId!} />
+                </div>
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {/* ── 時間・体力タブ (D-002, D-003) ── */}
+          {activeTab === 'd_time' && (
+            <ErrorBoundary>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <SectionTitle>{t('analysis.temporal.title')}</SectionTitle>
+                  <TemporalPerformance playerId={selectedPlayerId!} />
+                </div>
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <SectionTitle>{t('analysis.post_long_rally.title')}</SectionTitle>
+                  <PostLongRallyStats playerId={selectedPlayerId!} />
+                </div>
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {/* ── 対戦相手タブ (E-001) ── */}
+          {activeTab === 'e_opponent' && (
+            <ErrorBoundary>
+              <RoleGuard
+                allowedRoles={['analyst', 'coach']}
+                fallback={
+                  <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
+                    {t('analysis.restricted')}
+                  </div>
+                }
+              >
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <SectionTitle>{t('analysis.opponent_stats.title')}</SectionTitle>
+                  <OpponentStats playerId={selectedPlayerId!} />
+                </div>
+              </RoleGuard>
+            </ErrorBoundary>
+          )}
+
+          {/* ── ダブルスタブ (F-001〜F-004) ── */}
+          {activeTab === 'f_doubles' && (
+            <ErrorBoundary>
+              <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
+                ダブルス分析は対象選手のダブルス試合データが必要です。
+                試合一覧から該当試合を確認してください。
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {/* ── 詳細解析タブ (G-001: MarkovEPV) ── */}
+          {activeTab === 'g_markov' && (
+            <ErrorBoundary>
+              <RoleGuard
+                allowedRoles={['analyst', 'coach']}
+                fallback={
+                  <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
+                    {t('analysis.restricted')}
+                  </div>
+                }
+              >
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <SectionTitle>{t('analysis.epv.title')}</SectionTitle>
+                  <MarkovEPV playerId={selectedPlayerId!} />
                 </div>
               </RoleGuard>
             </ErrorBoundary>
