@@ -7,6 +7,7 @@ import { clsx } from 'clsx'
 
 import { VideoPlayer } from '@/components/video/VideoPlayer'
 import { StreamingDownloadPanel } from '@/components/video/StreamingDownloadPanel'
+import { WebViewPlayer } from '@/components/video/WebViewPlayer'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
@@ -105,6 +106,8 @@ export function AnnotatorPage() {
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
+  // DRM対応WebViewモード: yt-dlpでダウンロードできないDRM保護コンテンツに使用
+  const [useWebView, setUseWebView] = useState(false)
   // Ref guard: prevent useEffect from re-running doInit on every Zustand state change
   const initStartedRef = useRef(false)
 
@@ -413,15 +416,41 @@ export function AnnotatorPage() {
             }
 
             if (streamingSiteName) {
+              // WebViewモード: DRM保護コンテンツをインブラウザで視聴
+              if (useWebView) {
+                return (
+                  <div className="flex flex-col gap-1">
+                    <WebViewPlayer url={videoSrc} siteName={streamingSiteName} />
+                    <button
+                      onClick={() => setUseWebView(false)}
+                      className="text-xs text-gray-500 hover:text-gray-300 text-left px-1"
+                    >
+                      ← ダウンロード再生に戻る
+                    </button>
+                  </div>
+                )
+              }
+
+              // yt-dlpダウンロードモード（デフォルト）
               return (
-                <StreamingDownloadPanel
-                  url={videoSrc}
-                  matchId={matchId!}
-                  siteName={streamingSiteName}
-                  onDownloadComplete={() => {
-                    queryClient.invalidateQueries({ queryKey: ['match', matchId] })
-                  }}
-                />
+                <div className="flex flex-col gap-1">
+                  <StreamingDownloadPanel
+                    url={videoSrc}
+                    matchId={matchId!}
+                    siteName={streamingSiteName}
+                    onDownloadComplete={() => {
+                      queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+                    }}
+                  />
+                  {/* DRM保護コンテンツはWebViewモードで視聴 */}
+                  <button
+                    onClick={() => setUseWebView(true)}
+                    className="text-xs text-gray-500 hover:text-blue-400 text-left px-1 flex items-center gap-1"
+                    title="DRM保護コンテンツ（yt-dlpでダウンロードできない場合）はこちら"
+                  >
+                    🔒 DRM保護コンテンツ／ログイン必須サイトはブラウザ内視聴モードを使用
+                  </button>
+                </div>
               )
             }
 

@@ -197,6 +197,8 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false,
+      // <webview> タグを有効化（DRM対応 WebView プレイヤーに必要）
+      webviewTag: true,
     },
   })
 
@@ -236,6 +238,29 @@ async function startApp(): Promise<void> {
 
     if (!mainWindow) return
 
+    // ── DRM / EME 権限ハンドラー ──────────────────────────────────────────────
+    // <webview> 内で DRM コンテンツ（Widevine L3）を再生するために
+    // EME（Encrypted Media Extensions）と保護コンテンツの権限を許可する。
+    // Electron 20+ は Widevine L3（ソフトウェア CDM）を内蔵している。
+    mainWindow.webContents.session.setPermissionRequestHandler(
+      (_webContents, permission, callback) => {
+        // EME (encrypted-media), media, notifications などを許可
+        const ALLOWED = new Set([
+          'media',
+          'mediaKeySystem',
+          'geolocation', // 一部サイトが要求
+        ])
+        callback(ALLOWED.has(permission))
+      }
+    )
+
+    mainWindow.webContents.session.setPermissionCheckHandler(
+      (_webContents, permission) => {
+        const ALLOWED = new Set(['media', 'mediaKeySystem'])
+        return ALLOWED.has(permission)
+      }
+    )
+
     // YouTube / 外部コンテンツを iframe で読み込めるよう CSP を設定
     // onHeadersReceived は HTTP/HTTPS レスポンスのみ対象（dev モード用）
     mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
@@ -244,11 +269,11 @@ async function startApp(): Promise<void> {
           ...details.responseHeaders,
           'Content-Security-Policy': [
             "default-src 'self' 'unsafe-inline' 'unsafe-eval' localfile: blob: data: http://localhost:*;" +
-            " media-src 'self' localfile: blob: data:;" +
+            " media-src 'self' localfile: blob: data: https:;" +
             " script-src 'self' 'unsafe-inline' 'unsafe-eval';" +
-            " frame-src https://www.youtube.com https://www.youtube-nocookie.com;" +
+            " frame-src *;" +
             " img-src 'self' localfile: blob: data: https:;" +
-            " connect-src 'self' http://localhost:* ws://localhost:*;"
+            " connect-src 'self' http://localhost:* ws://localhost:* https:;"
           ],
         },
       })

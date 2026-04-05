@@ -175,7 +175,8 @@ def get_match_rallies(match_id: int, db: Session = Depends(get_db)):
 
 
 class DownloadRequest(BaseModel):
-    quality: str = "1080"  # "360" / "480" / "720" / "1080" / "best"
+    quality: str = "720"        # "360" / "480" / "720" / "1080" / "best"
+    cookie_browser: str = ""    # "" / "chrome" / "edge" / "firefox" / "brave" / "opera" / ...
 
 
 @router.post("/matches/{match_id}/download")
@@ -185,7 +186,9 @@ async def start_download(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """YouTube動画ダウンロード開始"""
+    """配信動画ダウンロード開始（yt-dlp）
+    cookie_browser を指定するとそのブラウザの Cookie を使ってログイン認証を通過する。
+    """
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -193,7 +196,13 @@ async def start_download(
         raise HTTPException(status_code=400, detail="動画URLが設定されていません")
 
     job_id = video_downloader.create_job_id()
-    background_tasks.add_task(video_downloader.start_download, match.video_url, job_id, body.quality)
+    background_tasks.add_task(
+        video_downloader.start_download,
+        match.video_url,
+        job_id,
+        body.quality,
+        body.cookie_browser,
+    )
     return {"success": True, "data": {"job_id": job_id}}
 
 

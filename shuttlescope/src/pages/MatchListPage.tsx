@@ -52,6 +52,7 @@ export function MatchListPage() {
   const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false)
   const [downloadJobIds, setDownloadJobIds] = useState<Record<number, string>>({})
   const [downloadQuality, setDownloadQuality] = useState<string>('720')
+  const [downloadCookieBrowser, setDownloadCookieBrowser] = useState<string>('')
 
   // 試合一覧取得
   const { data: matchesData, isLoading } = useQuery({
@@ -89,8 +90,8 @@ export function MatchListPage() {
 
   // 動画ダウンロード開始
   const startDownload = useMutation({
-    mutationFn: ({ matchId, quality }: { matchId: number; quality: string }) =>
-      apiPost(`/matches/${matchId}/download`, { quality }),
+    mutationFn: ({ matchId, quality, cookieBrowser }: { matchId: number; quality: string; cookieBrowser: string }) =>
+      apiPost(`/matches/${matchId}/download`, { quality, cookie_browser: cookieBrowser }),
     onSuccess: (data: any, { matchId }) => {
       if (data?.data?.job_id) {
         setDownloadJobIds((prev) => ({ ...prev, [matchId]: data.data.job_id }))
@@ -184,6 +185,22 @@ export function MatchListPage() {
             <option value="1080">1080p</option>
             <option value="best">最高画質</option>
           </select>
+          <span className="text-gray-500">🍪</span>
+          <select
+            value={downloadCookieBrowser}
+            onChange={(e) => setDownloadCookieBrowser(e.target.value)}
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+            title="ログイン必須サイトのCookieを取得するブラウザ"
+          >
+            <option value="">Cookie: なし</option>
+            <option value="chrome">Chrome</option>
+            <option value="edge">Edge</option>
+            <option value="firefox">Firefox</option>
+            <option value="brave">Brave</option>
+            <option value="opera">Opera</option>
+            <option value="vivaldi">Vivaldi</option>
+            <option value="chromium">Chromium</option>
+          </select>
         </div>
       </div>
 
@@ -254,9 +271,13 @@ export function MatchListPage() {
                       {/* 動画ダウンロード */}
                       {m.video_url && !m.video_local_path && (
                         <button
-                          onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality })}
+                          onClick={() => startDownload.mutate({
+                            matchId: m.id,
+                            quality: downloadQuality,
+                            cookieBrowser: downloadCookieBrowser,
+                          })}
                           className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
-                          title={`動画ダウンロード (${downloadQuality}p)`}
+                          title={`動画ダウンロード (${downloadQuality}p${downloadCookieBrowser ? ` / Cookie: ${downloadCookieBrowser}` : ''})`}
                           disabled={startDownload.isPending}
                         >
                           <Download size={14} />
