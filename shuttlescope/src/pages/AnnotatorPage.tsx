@@ -223,7 +223,7 @@ export function AnnotatorPage() {
           rally: {
             set_id: setId,
             rally_num: rallyNum,
-            server: 'player_a',
+            server: strokes[0]?.player ?? 'player_a',
             winner,
             end_type: endType,
             rally_length: strokes.length,

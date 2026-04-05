@@ -10,8 +10,11 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
+import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { RoleGuard } from '@/components/common/RoleGuard'
 import { apiGet } from '@/api/client'
 import { Player } from '@/types'
+import { useAuth } from '@/hooks/useAuth'
 import { User, BarChart2, Activity, Target, TrendingUp, Award } from 'lucide-react'
 import { ShotWinLoss } from '@/components/analysis/ShotWinLoss'
 import { RallyLengthWinRate } from '@/components/analysis/RallyLengthWinRate'
@@ -37,6 +40,12 @@ interface ShotTypeRow {
   shot_type: string
   count: number
   win_rate: number
+}
+
+interface HeatmapResponse {
+  success: boolean
+  data: Record<string, number>
+  meta?: { sample_size?: number }
 }
 
 interface MatchSummary {
@@ -81,11 +90,19 @@ function StatCard({
   icon,
   label,
   value,
+  sampleSize,
 }: {
   icon: React.ReactNode
   label: string
   value: string | number | undefined
+  sampleSize?: number
 }) {
+  // 信頼度判定
+  const stars = sampleSize === undefined ? null
+    : sampleSize < 500 ? '★☆☆'
+    : sampleSize < 2000 ? '★★☆'
+    : '★★★'
+
   return (
     <div className="bg-gray-800 rounded-lg p-4 flex items-start gap-3">
       <div className="text-blue-400 mt-0.5">{icon}</div>
@@ -94,6 +111,11 @@ function StatCard({
         <p className="text-xl font-semibold text-white">
           {value !== undefined && value !== null ? value : '—'}
         </p>
+        {sampleSize !== undefined && (
+          <p className="text-[10px] text-gray-500 mt-0.5">
+            {stars} N={sampleSize.toLocaleString()}ラリー
+          </p>
+        )}
       </div>
     </div>
   )
@@ -137,8 +159,22 @@ function TabButton({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+// ロールラベルマップ
+const ROLE_LABELS: Record<string, string> = {
+  analyst: 'アナリスト',
+  coach: 'コーチ',
+  player: '選手',
+}
+
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  analyst: 'bg-blue-900/50 border-blue-500 text-blue-300',
+  coach: 'bg-emerald-900/50 border-emerald-500 text-emerald-300',
+  player: 'bg-purple-900/50 border-purple-500 text-purple-300',
+}
+
 export function DashboardPage() {
   const { t } = useTranslation()
+  const { role } = useAuth()
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null)
   const [heatmapTab, setHeatmapTab] = useState<'hit' | 'land'>('hit')
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
@@ -176,7 +212,7 @@ export function DashboardPage() {
   const { data: heatmapHitResp, isLoading: loadingHeatmapHit } = useQuery({
     queryKey: ['analysis-heatmap-hit', selectedPlayerId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: Record<string, number> }>(
+      apiGet<HeatmapResponse>(
         '/analysis/heatmap',
         { player_id: selectedPlayerId!, type: 'hit' }
       ),
@@ -187,7 +223,7 @@ export function DashboardPage() {
   const { data: heatmapLandResp, isLoading: loadingHeatmapLand } = useQuery({
     queryKey: ['analysis-heatmap-land', selectedPlayerId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: Record<string, number> }>(
+      apiGet<HeatmapResponse>(
         '/analysis/heatmap',
         { player_id: selectedPlayerId!, type: 'land' }
       ),
@@ -241,11 +277,12 @@ export function DashboardPage() {
         .map((d) => ({ name: String(d.length), count: d.count }))
     : []
 
-  // ── Shot type chart data ──
+  // ── Shot type chart data（日本語ラベルに変換）──
   const shotChartData = topShotTypes.map((d) => ({
-    name: d.shot_type,
+    name: t(`shot_types.${d.shot_type}`, d.shot_type),
     count: d.count,
   }))
+  const shotSampleSize = shotTypes.reduce((sum, r) => sum + r.count, 0)
 
   // 選手変更時はタブをリセットしない（概要を維持する）
   function handlePlayerChange(id: number | null) {
@@ -256,9 +293,18 @@ export function DashboardPage() {
     <div className="flex flex-col h-full bg-gray-900 text-white overflow-y-auto">
       {/* ── Header ── */}
       <div className="px-6 pt-6 pb-4 border-b border-gray-800">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-3 mb-4">
           <BarChart2 className="text-blue-400" size={20} />
           <h1 className="text-xl font-semibold">{t('nav.dashboard', '解析ダッシュボード')}</h1>
+          {role && (
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${
+                ROLE_BADGE_CLASS[role] ?? 'bg-gray-700 border-gray-500 text-gray-300'
+              }`}
+            >
+              {ROLE_LABELS[role] ?? role}
+            </span>
+          )}
         </div>
 
         {/* 選手セレクター */}
@@ -310,6 +356,7 @@ export function DashboardPage() {
               icon={<Activity size={18} />}
               label="ラリー数"
               value={descriptive?.total_rallies}
+              sampleSize={descriptive?.total_rallies}
             />
             <StatCard
               icon={<TrendingUp size={18} />}
@@ -319,6 +366,7 @@ export function DashboardPage() {
                   ? pct(descriptive.win_rate)
                   : undefined
               }
+              sampleSize={descriptive?.total_rallies}
             />
             <StatCard
               icon={<Target size={18} />}
@@ -328,6 +376,7 @@ export function DashboardPage() {
                   ? descriptive.avg_rally_length.toFixed(1)
                   : undefined
               }
+              sampleSize={descriptive?.total_rallies}
             />
           </div>
 
@@ -357,7 +406,15 @@ export function DashboardPage() {
                 <div className="xl:col-span-2 space-y-5">
                   {/* ラリー終了タイプ */}
                   <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>ラリー終了タイプ</SectionTitle>
+                    <div className="flex items-center justify-between mb-3">
+                      <SectionTitle>ラリー終了タイプ</SectionTitle>
+                      {descriptive && (
+                        <ConfidenceBadge
+                          sampleSize={descriptive.total_rallies}
+                          className="text-[10px] shrink-0"
+                        />
+                      )}
+                    </div>
                     {loadingDescriptive ? (
                       <LoadingRow />
                     ) : endTypeData.length === 0 ? (
@@ -389,7 +446,15 @@ export function DashboardPage() {
 
                   {/* ショットタイプ分布 */}
                   <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>ショットタイプ分布（上位10件）</SectionTitle>
+                    <div className="flex items-center justify-between mb-3">
+                      <SectionTitle>ショットタイプ分布（上位10件）</SectionTitle>
+                      {shotSampleSize > 0 && (
+                        <ConfidenceBadge
+                          sampleSize={shotSampleSize}
+                          className="text-[10px] shrink-0"
+                        />
+                      )}
+                    </div>
                     {loadingShotTypes ? (
                       <LoadingRow />
                     ) : shotChartData.length === 0 ? (
@@ -421,7 +486,15 @@ export function DashboardPage() {
 
                   {/* ラリー長分布 */}
                   <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>ラリー長分布（〜20打）</SectionTitle>
+                    <div className="flex items-center justify-between mb-3">
+                      <SectionTitle>ラリー長分布（〜20打）</SectionTitle>
+                      {descriptive && (
+                        <ConfidenceBadge
+                          sampleSize={descriptive.total_rallies}
+                          className="text-[10px] shrink-0"
+                        />
+                      )}
+                    </div>
                     {loadingDescriptive ? (
                       <LoadingRow />
                     ) : rallyHistData.length === 0 ? (
@@ -460,7 +533,17 @@ export function DashboardPage() {
                 <div className="space-y-5">
                   {/* コートヒートマップ */}
                   <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>コートヒートマップ</SectionTitle>
+                    <div className="flex items-center justify-between mb-3">
+                      <SectionTitle>コートヒートマップ</SectionTitle>
+                      {(() => {
+                        const s = heatmapTab === 'hit'
+                          ? heatmapHitResp?.meta?.sample_size
+                          : heatmapLandResp?.meta?.sample_size
+                        return s != null && s > 0
+                          ? <ConfidenceBadge sampleSize={s} className="text-[10px] shrink-0" />
+                          : null
+                      })()}
+                    </div>
 
                     <div className="flex gap-1 mb-3">
                       {(['hit', 'land'] as const).map((tab) => (
@@ -494,44 +577,63 @@ export function DashboardPage() {
                     )}
                   </div>
 
-                  {/* サーブ勝率 */}
-                  <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>サーブ勝率</SectionTitle>
-                    {loadingDescriptive || !descriptive?.server_win_rate ? (
-                      <LoadingRow />
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-400">サーバー時</span>
-                          <span className="text-lg font-semibold text-blue-400">
-                            {pct(descriptive.server_win_rate.as_server)}
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-700 rounded-full h-2">
-                          <div
-                            className="bg-blue-500 h-2 rounded-full"
-                            style={{
-                              width: `${(descriptive.server_win_rate.as_server * 100).toFixed(1)}%`,
-                            }}
-                          />
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-400">レシーバー時</span>
-                          <span className="text-lg font-semibold text-emerald-400">
-                            {pct(descriptive.server_win_rate.as_receiver)}
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-700 rounded-full h-2">
-                          <div
-                            className="bg-emerald-500 h-2 rounded-full"
-                            style={{
-                              width: `${(descriptive.server_win_rate.as_receiver * 100).toFixed(1)}%`,
-                            }}
-                          />
-                        </div>
+                  {/* サーブ勝率（アナリスト・コーチのみ） */}
+                  <RoleGuard
+                    allowedRoles={['analyst', 'coach']}
+                    fallback={
+                      <div className="bg-gray-800 rounded-lg p-4">
+                        <p className="text-xs text-gray-500 text-center py-2">
+                          ※ このコンテンツはアナリスト・コーチ向けです
+                        </p>
                       </div>
-                    )}
-                  </div>
+                    }
+                  >
+                    <div className="bg-gray-800 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <SectionTitle>サーブ勝率</SectionTitle>
+                        {descriptive && (
+                          <ConfidenceBadge
+                            sampleSize={descriptive.total_rallies}
+                            className="text-[10px] shrink-0"
+                          />
+                        )}
+                      </div>
+                      {loadingDescriptive || !descriptive?.server_win_rate ? (
+                        <LoadingRow />
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-400">サーバー時</span>
+                            <span className="text-lg font-semibold text-blue-400">
+                              {pct(descriptive.server_win_rate.as_server)}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-700 rounded-full h-2">
+                            <div
+                              className="bg-blue-500 h-2 rounded-full"
+                              style={{
+                                width: `${(descriptive.server_win_rate.as_server * 100).toFixed(1)}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-400">レシーバー時</span>
+                            <span className="text-lg font-semibold text-emerald-400">
+                              {pct(descriptive.server_win_rate.as_receiver)}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-700 rounded-full h-2">
+                            <div
+                              className="bg-emerald-500 h-2 rounded-full"
+                              style={{
+                                width: `${(descriptive.server_win_rate.as_receiver * 100).toFixed(1)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </RoleGuard>
                 </div>
               </div>
 
@@ -589,19 +691,28 @@ export function DashboardPage() {
           {/* ── ショット分析タブ ── */}
           {activeTab === 'shots' && (
             <ErrorBoundary>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-              {/* ショット別得点・失点 */}
-              <div className="bg-gray-800 rounded-lg p-4">
-                <SectionTitle>ショット別 得点・失点</SectionTitle>
-                <ShotWinLoss playerId={selectedPlayerId!} />
-              </div>
+              <RoleGuard
+                allowedRoles={['analyst', 'coach']}
+                fallback={
+                  <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
+                    ショット分析はアナリスト・コーチ向けコンテンツです
+                  </div>
+                }
+              >
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                  {/* ショット別得点・失点 */}
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>ショット別 得点・失点</SectionTitle>
+                    <ShotWinLoss playerId={selectedPlayerId!} />
+                  </div>
 
-              {/* セット別パフォーマンス */}
-              <div className="bg-gray-800 rounded-lg p-4">
-                <SectionTitle>セット別パフォーマンス</SectionTitle>
-                <SetComparison playerId={selectedPlayerId!} />
-              </div>
-            </div>
+                  {/* セット別パフォーマンス */}
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>セット別パフォーマンス</SectionTitle>
+                    <SetComparison playerId={selectedPlayerId!} />
+                  </div>
+                </div>
+              </RoleGuard>
             </ErrorBoundary>
           )}
 
@@ -627,10 +738,19 @@ export function DashboardPage() {
           {/* ── 遷移マトリクスタブ ── */}
           {activeTab === 'matrix' && (
             <ErrorBoundary>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <SectionTitle>ショット遷移マトリクス</SectionTitle>
-              <TransitionMatrix playerId={selectedPlayerId!} />
-            </div>
+              <RoleGuard
+                allowedRoles={['analyst', 'coach']}
+                fallback={
+                  <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
+                    遷移マトリクスはアナリスト・コーチ向けコンテンツです
+                  </div>
+                }
+              >
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <SectionTitle>ショット遷移マトリクス</SectionTitle>
+                  <TransitionMatrix playerId={selectedPlayerId!} />
+                </div>
+              </RoleGuard>
             </ErrorBoundary>
           )}
         </div>
