@@ -1,8 +1,7 @@
 import { useRef, useState, useEffect, useCallback, RefObject } from 'react'
-import { useTranslation } from 'react-i18next'
 import {
   Play, Pause, SkipBack, SkipForward,
-  ChevronLeft, ChevronRight, AlertTriangle
+  ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -17,21 +16,10 @@ interface VideoPlayerProps {
 const PLAYBACK_RATES = [0.25, 0.5, 1, 2] as const
 const FRAME_DURATION = 1 / 30
 
-function isYouTubeUrl(url: string): boolean {
-  return url.includes('youtube.com') || url.includes('youtu.be')
-}
-
-function getYouTubeEmbedUrl(url: string): string {
-  const match = url.match(/(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/)
-  // youtube-nocookie.com は Electron での iframe 制限が少ない
-  if (match) return `https://www.youtube-nocookie.com/embed/${match[1]}?rel=0&modestbranding=1`
-  return url
-}
-
 /**
- * 動画プレイヤーコンポーネント
- * - videoRefProp: 親の useRef を接続して useKeyboard からシーク・再生制御可能にする
- * - Space キーのブラウザデフォルト動作を preventDefault — useKeyboard 側で一元管理
+ * ローカル動画プレイヤーコンポーネント
+ * localfile:// URL または直接再生可能な URL を受け付ける。
+ * 配信URL（YouTube 等）は AnnotatorPage 側の StreamingDownloadPanel で処理する。
  */
 export function VideoPlayer({
   src,
@@ -39,18 +27,12 @@ export function VideoPlayer({
   onPlaybackRateChange,
   videoRefProp,
 }: VideoPlayerProps) {
-  const { t } = useTranslation()
   const internalRef = useRef<HTMLVideoElement>(null)
   const videoRef = videoRefProp ?? internalRef
 
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [isYouTube, setIsYouTube] = useState(false)
-
-  useEffect(() => {
-    setIsYouTube(isYouTubeUrl(src))
-  }, [src])
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = playbackRate
@@ -66,16 +48,16 @@ export function VideoPlayer({
   }, [isPlaying, videoRef])
 
   const stepForward = useCallback(() => {
-    if (!videoRef.current || isYouTube) return
+    if (!videoRef.current) return
     videoRef.current.pause()
     videoRef.current.currentTime = Math.min(videoRef.current.currentTime + FRAME_DURATION, duration)
-  }, [isYouTube, duration, videoRef])
+  }, [duration, videoRef])
 
   const stepBackward = useCallback(() => {
-    if (!videoRef.current || isYouTube) return
+    if (!videoRef.current) return
     videoRef.current.pause()
     videoRef.current.currentTime = Math.max(videoRef.current.currentTime - FRAME_DURATION, 0)
-  }, [isYouTube, videoRef])
+  }, [videoRef])
 
   const seekForward = useCallback(() => {
     if (!videoRef.current) return
@@ -101,25 +83,6 @@ export function VideoPlayer({
     const m = Math.floor(sec / 60)
     const s = Math.floor(sec % 60)
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  }
-
-  if (isYouTube) {
-    return (
-      <div className="flex flex-col gap-2">
-        <div className="relative w-full" style={{ paddingTop: '56.25%' }}>
-          <iframe
-            src={getYouTubeEmbedUrl(src)}
-            className="absolute inset-0 w-full h-full rounded"
-            allowFullScreen
-            title="YouTube Video"
-          />
-        </div>
-        <div className="flex items-center gap-2 p-2 bg-yellow-900/30 border border-yellow-600/50 rounded text-yellow-300 text-xs">
-          <AlertTriangle size={14} />
-          <span>{t('video.youtube_warning')}</span>
-        </div>
-      </div>
-    )
   }
 
   return (

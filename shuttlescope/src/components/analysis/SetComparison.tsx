@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -110,7 +111,7 @@ export function SetComparison({ playerId }: SetComparisonProps) {
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
           <Bar dataKey="win_rate_pct" radius={[4, 4, 0, 0]} name="勝率">
             {chartData.map((_, i) => (
-              <rect key={i} fill={SET_COLORS[i % SET_COLORS.length]} />
+              <Cell key={i} fill={SET_COLORS[i % SET_COLORS.length]} />
             ))}
           </Bar>
         </BarChart>

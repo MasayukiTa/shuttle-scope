@@ -18,6 +18,7 @@ import { RallyLengthWinRate } from '@/components/analysis/RallyLengthWinRate'
 import { PressurePerformance } from '@/components/analysis/PressurePerformance'
 import { SetComparison } from '@/components/analysis/SetComparison'
 import { TransitionMatrix } from '@/components/analysis/TransitionMatrix'
+import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -348,6 +349,7 @@ export function DashboardPage() {
 
           {/* ── 概要タブ ── */}
           {activeTab === 'overview' && (
+            <ErrorBoundary>
             <div className="space-y-5">
               {/* 2カラムレイアウト */}
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
@@ -581,48 +583,55 @@ export function DashboardPage() {
                 )}
               </div>
             </div>
+            </ErrorBoundary>
           )}
 
           {/* ── ショット分析タブ ── */}
           {activeTab === 'shots' && (
+            <ErrorBoundary>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
               {/* ショット別得点・失点 */}
               <div className="bg-gray-800 rounded-lg p-4">
                 <SectionTitle>ショット別 得点・失点</SectionTitle>
-                <ShotWinLoss playerId={selectedPlayerId} />
+                <ShotWinLoss playerId={selectedPlayerId!} />
               </div>
 
               {/* セット別パフォーマンス */}
               <div className="bg-gray-800 rounded-lg p-4">
                 <SectionTitle>セット別パフォーマンス</SectionTitle>
-                <SetComparison playerId={selectedPlayerId} />
+                <SetComparison playerId={selectedPlayerId!} />
               </div>
             </div>
+            </ErrorBoundary>
           )}
 
           {/* ── ラリー分析タブ ── */}
           {activeTab === 'rally' && (
+            <ErrorBoundary>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
               {/* ラリー長別勝率 */}
               <div className="bg-gray-800 rounded-lg p-4">
                 <SectionTitle>ラリー長別 勝率</SectionTitle>
-                <RallyLengthWinRate playerId={selectedPlayerId} />
+                <RallyLengthWinRate playerId={selectedPlayerId!} />
               </div>
 
               {/* プレッシャー下のパフォーマンス */}
               <div className="bg-gray-800 rounded-lg p-4">
                 <SectionTitle>プレッシャー下のパフォーマンス</SectionTitle>
-                <PressurePerformance playerId={selectedPlayerId} />
+                <PressurePerformance playerId={selectedPlayerId!} />
               </div>
             </div>
+            </ErrorBoundary>
           )}
 
           {/* ── 遷移マトリクスタブ ── */}
           {activeTab === 'matrix' && (
+            <ErrorBoundary>
             <div className="bg-gray-800 rounded-lg p-4">
               <SectionTitle>ショット遷移マトリクス</SectionTitle>
-              <TransitionMatrix playerId={selectedPlayerId} />
+              <TransitionMatrix playerId={selectedPlayerId!} />
             </div>
+            </ErrorBoundary>
           )}
         </div>
       )}

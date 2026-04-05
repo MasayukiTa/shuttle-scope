@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronRight, FolderOpen, Link } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
 import { VideoPlayer } from '@/components/video/VideoPlayer'
+import { StreamingDownloadPanel } from '@/components/video/StreamingDownloadPanel'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
@@ -15,6 +16,73 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
 import { apiGet, apiPost, apiPut } from '@/api/client'
 import { Match, Zone9, ShotType, GameSet } from '@/types'
+
+// ─── 配信URL検出 ──────────────────────────────────────────────────────────────
+// Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
+// localfile:// または直接再生できる URL 以外を検出する。
+
+const STREAMING_SITE_NAMES: Record<string, string> = {
+  'youtube.com': 'YouTube',
+  'youtu.be': 'YouTube',
+  'twitter.com': 'Twitter/X',
+  'x.com': 'Twitter/X',
+  't.co': 'Twitter/X',
+  'instagram.com': 'Instagram',
+  'tiktok.com': 'TikTok',
+  'vm.tiktok.com': 'TikTok',
+  'bilibili.com': 'Bilibili',
+  'nicovideo.jp': 'ニコニコ動画',
+  'nico.ms': 'ニコニコ動画',
+  'twitch.tv': 'Twitch',
+  'vimeo.com': 'Vimeo',
+  'dailymotion.com': 'Dailymotion',
+  'facebook.com': 'Facebook',
+  'streamable.com': 'Streamable',
+  'youku.com': 'Youku',
+}
+
+const DIRECT_VIDEO_EXTS = new Set(['.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.ts', '.mts'])
+
+/**
+ * URL が Electron で直接再生できない配信サービスのものか判定し、
+ * サービス名を返す。直接再生可能な場合は null を返す。
+ */
+function detectStreamingSite(url: string): string | null {
+  if (!url) return null
+  // localfile:// はローカルファイル → 直接再生
+  if (url.startsWith('localfile://')) return null
+  // 拡張子が動画ファイルなら直接再生を試みる
+  try {
+    const pathname = new URL(url).pathname.toLowerCase()
+    const ext = pathname.substring(pathname.lastIndexOf('.'))
+    if (DIRECT_VIDEO_EXTS.has(ext)) return null
+  } catch {
+    // URL パース失敗は無視
+  }
+  // 既知の配信サービスに一致するか確認
+  for (const [domain, name] of Object.entries(STREAMING_SITE_NAMES)) {
+    if (url.includes(domain)) return name
+  }
+  // 未知の http(s) URL も配信URLとして扱う（yt-dlp が対応している可能性がある）
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return 'Web動画'
+  }
+  return null
+}
+
+/**
+ * 旧バージョンで保存された生のWindowsパスを localfile:// URL に変換する
+ * 例: C:\path\video.mp4 → localfile:///C:/path/video.mp4
+ */
+function normalizeVideoPath(path: string): string {
+  if (!path) return path
+  if (/^[A-Za-z]:[/\\]/.test(path)) {
+    return 'localfile:///' + path.replace(/\\/g, '/')
+  }
+  return path
+}
+
+// ─── END_TYPES ────────────────────────────────────────────────────────────────
 
 const END_TYPES = [
   { value: 'ace', label: 'エース' },
@@ -209,6 +277,34 @@ export function AnnotatorPage() {
     }
   }, [matchId, queryClient])
 
+  // --- 前セットへ戻る ---
+  const handlePrevSet = useCallback(async () => {
+    const s = useAnnotationStore.getState()
+    const sets = setsData?.data ?? []
+    const prevSetNum = s.currentSetNum - 1
+    if (prevSetNum < 1) return
+
+    const prevSet = sets.find((set) => set.set_num === prevSetNum)
+    if (!prevSet) return
+
+    try {
+      const res = await apiGet<{ success: boolean; data: { count: number; next_rally_num: number } }>(
+        `/sets/${prevSet.id}/rally_count`
+      )
+      useAnnotationStore.getState().init(
+        Number(matchId),
+        prevSet.id,
+        prevSetNum,
+        res.data.next_rally_num,
+        prevSet.score_a ?? 0,
+        prevSet.score_b ?? 0
+      )
+      queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
+    } catch (err: any) {
+      alert(`前セット移行エラー: ${err?.message ?? '不明なエラー'}`)
+    }
+  }, [matchId, setsData, queryClient])
+
   // --- 動画ソース: match.video_url をURLInputに同期 ---
   useEffect(() => {
     if (matchData?.data?.video_url) setUrlInput(matchData.data.video_url)
@@ -302,18 +398,42 @@ export function AnnotatorPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* 左: 動画エリア (60%) */}
         <div className="w-[60%] flex flex-col p-3 gap-2 overflow-y-auto">
-          {match?.video_local_path || match?.video_url ? (
-            <VideoPlayer
-              videoRefProp={videoRef}
-              src={match.video_local_path || match.video_url || ''}
-              playbackRate={playbackRate}
-              onPlaybackRateChange={setPlaybackRate}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-40 bg-gray-800 rounded text-gray-500 text-sm border-2 border-dashed border-gray-700">
-              動画が設定されていません
-            </div>
-          )}
+          {(() => {
+            // 動画ソース決定（旧形式の Windows パスを normalizeVideoPath で変換）
+            const rawSrc = match?.video_local_path || match?.video_url || ''
+            const videoSrc = normalizeVideoPath(rawSrc)
+            const streamingSiteName = videoSrc ? detectStreamingSite(videoSrc) : null
+
+            if (!videoSrc) {
+              return (
+                <div className="flex items-center justify-center bg-gray-800 rounded text-gray-500 text-sm border-2 border-dashed border-gray-700" style={{ aspectRatio: '16/9' }}>
+                  動画が設定されていません
+                </div>
+              )
+            }
+
+            if (streamingSiteName) {
+              return (
+                <StreamingDownloadPanel
+                  url={videoSrc}
+                  matchId={matchId!}
+                  siteName={streamingSiteName}
+                  onDownloadComplete={() => {
+                    queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+                  }}
+                />
+              )
+            }
+
+            return (
+              <VideoPlayer
+                videoRefProp={videoRef}
+                src={videoSrc}
+                playbackRate={playbackRate}
+                onPlaybackRateChange={setPlaybackRate}
+              />
+            )
+          })()}
 
           {/* 動画ソース設定 */}
           <div className="bg-gray-800 rounded p-2 text-xs shrink-0">
@@ -346,7 +466,7 @@ export function AnnotatorPage() {
             {(match?.video_local_path || match?.video_url) && (
               <div className="mt-1 text-gray-500 truncate">
                 {match?.video_local_path
-                  ? `📁 ${match.video_local_path.split(/[/\\]/).pop()}`
+                  ? `📁 ${match.video_local_path.split(/[/\\]/).pop()?.replace('localfile:///', '') ?? match.video_local_path}`
                   : `🔗 ${match?.video_url}`}
               </div>
             )}
@@ -591,13 +711,23 @@ export function AnnotatorPage() {
             {initialized && !store.isRallyActive && (
               <div className="border border-gray-700 rounded p-2 text-xs shrink-0">
                 <div className="text-gray-400 mb-1.5 font-medium">セット管理</div>
-                <button
-                  onClick={handleNextSet}
-                  className="flex items-center gap-1 w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center"
-                >
-                  <ChevronRight size={12} />
-                  次のセットへ (Set {store.currentSetNum + 1})
-                </button>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={handlePrevSet}
+                    disabled={store.currentSetNum <= 1}
+                    className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft size={12} />
+                    前のセット (Set {store.currentSetNum - 1})
+                  </button>
+                  <button
+                    onClick={handleNextSet}
+                    className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center"
+                  >
+                    <ChevronRight size={12} />
+                    次のセットへ (Set {store.currentSetNum + 1})
+                  </button>
+                </div>
               </div>
             )}
           </div>

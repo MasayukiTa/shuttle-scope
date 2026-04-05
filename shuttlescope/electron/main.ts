@@ -1,19 +1,34 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, net } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as http from 'http'
-import { existsSync } from 'fs'
-import { pathToFileURL } from 'url'
+import { existsSync, statSync, createReadStream } from 'fs'
+import { Readable } from 'stream'
 
-// Register custom scheme before app is ready (required by Electron)
+// YouTube が Electron UA を検知してブロックするのを回避するための汎用ブラウザ UA
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+
+// カスタムスキームはアプリ起動前に登録する必要がある（Electron の要件）
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'localfile', privileges: { secure: true, standard: true, stream: true, bypassCSP: true } },
+  {
+    scheme: 'localfile',
+    privileges: {
+      secure: true,
+      standard: true,
+      stream: true,
+      bypassCSP: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
 ])
 
 let pythonProcess: ChildProcess | null = null
 let mainWindow: BrowserWindow | null = null
 
-// Wait for backend to be ready (polling)
+// ─── バックエンド起動待機 ────────────────────────────────────────────────────
+
 function waitForBackend(url: string, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const start = Date.now()
@@ -39,7 +54,8 @@ function waitForBackend(url: string, timeoutMs: number): Promise<void> {
   })
 }
 
-// Start Python backend as child process
+// ─── Python バックエンド起動 ─────────────────────────────────────────────────
+
 function startPythonBackend(): ChildProcess {
   const appPath = app.getAppPath()
   const pythonExecutable = process.platform === 'win32'
@@ -71,7 +87,87 @@ function startPythonBackend(): ChildProcess {
   return proc
 }
 
-// IPC: open video file picker dialog
+// ─── ローカルファイルプロトコルハンドラー ────────────────────────────────────
+//
+// localfile:///C:/path/to/video.mp4 を Node.js の fs.createReadStream で
+// 直接ストリーミングする。Range ヘッダーを処理することでシーク操作も動作する。
+// net.fetch('file://') は Range を透過しないためこの実装が必要。
+
+const VIDEO_MIME: Record<string, string> = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  mov: 'video/quicktime',
+  wmv: 'video/x-ms-wmv',
+  flv: 'video/x-flv',
+  m4v: 'video/mp4',
+  ts: 'video/mp2t',
+  mts: 'video/mp2t',
+}
+
+function registerLocalFileProtocol(): void {
+  protocol.handle('localfile', (request) => {
+    // URL から localfile:/// プレフィックスを除去してファイルパスを復元
+    const rawPath = request.url.slice('localfile:///'.length)
+    const filePath = decodeURIComponent(rawPath)
+
+    // ファイル存在確認
+    let fileStat: ReturnType<typeof statSync>
+    try {
+      fileStat = statSync(filePath)
+    } catch {
+      console.error('[localfile] File not found:', filePath)
+      return new Response(null, { status: 404 })
+    }
+
+    const fileSize = fileStat.size
+    const ext = path.extname(filePath).slice(1).toLowerCase()
+    const contentType = VIDEO_MIME[ext] ?? 'application/octet-stream'
+
+    // Range ヘッダー処理（ビデオシーク操作に必須）
+    const rangeHeader = request.headers.get('range')
+    if (rangeHeader) {
+      const m = rangeHeader.match(/bytes=(\d+)-(\d*)/)
+      if (m) {
+        const start = parseInt(m[1], 10)
+        const end = m[2] ? Math.min(parseInt(m[2], 10), fileSize - 1) : fileSize - 1
+        const chunkSize = end - start + 1
+
+        const nodeStream = createReadStream(filePath, { start, end })
+        nodeStream.on('error', (err) => console.error('[localfile] Stream error:', err))
+        const webStream = Readable.toWeb(nodeStream) as ReadableStream
+
+        return new Response(webStream, {
+          status: 206,
+          headers: {
+            'Content-Type': contentType,
+            'Content-Length': String(chunkSize),
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+          },
+        })
+      }
+    }
+
+    // Range なし: フルファイル送信
+    const nodeStream = createReadStream(filePath)
+    nodeStream.on('error', (err) => console.error('[localfile] Stream error:', err))
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream
+
+    return new Response(webStream, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Content-Length': String(fileSize),
+        'Accept-Ranges': 'bytes',
+      },
+    })
+  })
+}
+
+// ─── IPC: 動画ファイル選択ダイアログ ─────────────────────────────────────────
+
 ipcMain.handle('open-video-file', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -81,12 +177,13 @@ ipcMain.handle('open-video-file', async () => {
     ],
   })
   if (result.canceled || result.filePaths.length === 0) return null
-  // Convert Windows path to localfile:// protocol (forward slashes, triple slash for absolute path)
+  // Windows パスを localfile:// プロトコル URL に変換（バックスラッシュをフォワードスラッシュへ）
   const normalized = result.filePaths[0].replace(/\\/g, '/')
   return `localfile:///${normalized}`
 })
 
-// Create main window
+// ─── メインウィンドウ作成 ─────────────────────────────────────────────────────
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -99,8 +196,13 @@ function createWindow(): void {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webSecurity: false,
     },
   })
+
+  // YouTube が Electron UA を検知してブロックするのを防ぐため UA を上書き
+  // （loadURL より前に設定すること）
+  mainWindow.webContents.setUserAgent(BROWSER_UA)
 
   const rendererFile = path.join(app.getAppPath(), 'out', 'renderer', 'index.html')
   if (process.env.NODE_ENV === 'development') {
@@ -119,39 +221,51 @@ function createWindow(): void {
   })
 }
 
-// App startup flow
+// ─── アプリ起動フロー ─────────────────────────────────────────────────────────
+
 async function startApp(): Promise<void> {
   try {
     pythonProcess = startPythonBackend()
     await waitForBackend('http://localhost:8765/api/health', 10000)
     console.log('[Main] Backend ready')
 
-    // Register localfile:// protocol handler to serve local video files
-    // (file:// cross-origin is blocked in Electron; this custom protocol bypasses it)
-    protocol.handle('localfile', (request) => {
-      const url = request.url.slice('localfile:///'.length)
-      const decodedPath = decodeURIComponent(url)
-      // Re-add the leading slash for absolute paths
-      return net.fetch(`file:///${decodedPath}`)
-    })
+    // localfile:// プロトコルハンドラーを登録
+    registerLocalFileProtocol()
 
     createWindow()
 
-    // YouTube / 外部コンテンツを iframe で読み込めるよう CSP を緩和
-    mainWindow?.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    if (!mainWindow) return
+
+    // YouTube / 外部コンテンツを iframe で読み込めるよう CSP を設定
+    // onHeadersReceived は HTTP/HTTPS レスポンスのみ対象（dev モード用）
+    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
-            "default-src 'self' 'unsafe-inline' 'unsafe-eval' file: localfile: blob: data: http://localhost:*;" +
+            "default-src 'self' 'unsafe-inline' 'unsafe-eval' localfile: blob: data: http://localhost:*;" +
+            " media-src 'self' localfile: blob: data:;" +
             " script-src 'self' 'unsafe-inline' 'unsafe-eval';" +
             " frame-src https://www.youtube.com https://www.youtube-nocookie.com;" +
-            " img-src 'self' file: localfile: blob: data: https:;" +
+            " img-src 'self' localfile: blob: data: https:;" +
             " connect-src 'self' http://localhost:* ws://localhost:*;"
           ],
         },
       })
     })
+
+    // YouTube リクエストに対して UA を明示的にブラウザ UA に設定（iframe 内も含む）
+    mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+      { urls: ['https://*.youtube.com/*', 'https://*.youtube-nocookie.com/*', 'https://*.googlevideo.com/*', 'https://*.ytimg.com/*'] },
+      (details, callback) => {
+        callback({
+          requestHeaders: {
+            ...details.requestHeaders,
+            'User-Agent': BROWSER_UA,
+          },
+        })
+      }
+    )
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[Main] Startup failed:', msg)
