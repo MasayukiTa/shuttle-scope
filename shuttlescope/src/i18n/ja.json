@@ -46,7 +46,11 @@
     "net": "ネット前",
     "back": "バック系",
     "mid": "中距離",
-    "special": "特殊"
+    "special": "特殊",
+    "defend": "受け/ロブ",
+    "back_attack": "バック攻撃",
+    "drive_defend": "ドライブ/受け",
+    "attack_lob": "攻撃/ロブ"
   },
   "zones": {
     "BL": "バック左",

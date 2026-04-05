@@ -313,7 +313,7 @@ export function StreamingDownloadPanel({
             <div className="text-xs text-blue-300 bg-blue-900/20 border border-blue-700/40 rounded px-2 py-1.5 space-y-0.5">
               <div>🍪 <strong>{COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label}</strong> のCookieをディスクから直接読み取ります。</div>
               <div className="text-blue-400">✅ ブラウザの起動は不要です。事前にそのブラウザでサイトへログインしておくだけでOKです。</div>
-              <div className="text-gray-400">⚠️ そのブラウザが起動中の場合はDBがロックされることがあります。エラーが出たら一度閉じてから再試行してください。</div>
+              <div className="text-orange-300 font-medium">⚠️ ダウンロード前にそのブラウザをすべて閉じてください。起動中はDBがロックされCookieが読めません（Edge・Chromeは特に注意）。</div>
             </div>
           )}
 

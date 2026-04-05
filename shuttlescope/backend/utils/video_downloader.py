@@ -202,12 +202,25 @@ class VideoDownloader:
             )
 
         # ── Cookie 関連 ──────────────────────────────────────────────────────
-        elif "cookiesfrombrowser" in raw or "cookies" in raw.lower():
-            if "locked" in raw.lower() or "database" in raw.lower():
+        elif (
+            "cookiesfrombrowser" in raw
+            or "cookies" in raw.lower()
+            or "cookie" in raw.lower()
+        ):
+            if "could not copy" in raw.lower() or "copy" in raw.lower() and "database" in raw.lower():
+                # Edge/Chrome が起動中だとDBファイルのコピーに失敗する
+                msg = (
+                    "ブラウザのCookieデータベースのコピーに失敗しました。\n"
+                    "Edge・Chrome（Chromiumベース）は起動中にファイルがロックされます。\n"
+                    "【対処法】すべてのEdge / Chromeウィンドウを閉じてから再試行してください。\n"
+                    "タスクマネージャーでedge.exe / chrome.exeが残っていないか確認してください。\n"
+                    f"（詳細: {raw}）"
+                )
+            elif "locked" in raw.lower() or "database" in raw.lower():
                 msg = (
                     "Cookieの読み取りに失敗しました（データベースがロックされています）。\n"
                     "対象ブラウザが起動中の場合は閉じてから再試行してください。\n"
-                    "Chromeはすべてのウィンドウを閉じてから実行してください。\n"
+                    "すべてのウィンドウを閉じてから実行してください。\n"
                     f"（詳細: {raw}）"
                 )
             elif "not installed" in raw.lower() or "not found" in raw.lower():
@@ -219,8 +232,8 @@ class VideoDownloader:
             elif "decrypt" in raw.lower() or "unable to" in raw.lower():
                 msg = (
                     "Cookieの復号化に失敗しました。\n"
-                    "Chromeの場合: すべてのウィンドウを閉じてから再試行してください。\n"
-                    "それでも失敗する場合は別のブラウザ（Edge等）を試してください。\n"
+                    "すべてのブラウザウィンドウを閉じてから再試行してください。\n"
+                    "それでも失敗する場合は別のブラウザ（Firefox等）を試してください。\n"
                     f"（詳細: {raw}）"
                 )
             else:

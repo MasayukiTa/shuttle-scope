@@ -509,7 +509,7 @@ export function AnnotatorPage() {
               <span><kbd className="bg-gray-700 px-1 rounded">Tab</kbd> プレイヤー切替</span>
               <span><kbd className="bg-gray-700 px-1 rounded">s/c/p…</kbd> ショット入力</span>
               <span><kbd className="bg-gray-700 px-1 rounded">Enter</kbd> ラリー終了確認</span>
-              <span><kbd className="bg-gray-700 px-1 rounded">Ctrl+Z</kbd> アンドゥ</span>
+              <span><kbd className="bg-gray-700 px-1 rounded">Ctrl+Z</kbd> 戻す</span>
               <span><kbd className="bg-gray-700 px-1 rounded">Esc</kbd> キャンセル</span>
               <span><kbd className="bg-gray-700 px-1 rounded">←/→</kbd> 1フレーム</span>
               <span><kbd className="bg-gray-700 px-1 rounded">Shift+←/→</kbd> 10秒</span>
@@ -638,6 +638,12 @@ export function AnnotatorPage() {
                   store.inputShotType(st, currentSec)
                 }}
                 disabled={false}
+                strokeNum={store.currentStrokeNum}
+                lastShotType={
+                  store.currentStrokes.length > 0
+                    ? store.currentStrokes[store.currentStrokes.length - 1].shot_type
+                    : null
+                }
               />
             )}
 
@@ -721,7 +727,7 @@ export function AnnotatorPage() {
                   className="flex items-center gap-1 justify-center py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
                 >
                   <RotateCcw size={14} />
-                  アンドゥ (Ctrl+Z)
+                  戻す (Ctrl+Z)
                 </button>
               )}
 
