@@ -49,6 +49,7 @@ class RallyData(BaseModel):
     is_deuce: bool = False
     video_timestamp_start: Optional[float] = None
     video_timestamp_end: Optional[float] = None
+    is_skipped: bool = False
 
 
 class BatchSaveRequest(BaseModel):

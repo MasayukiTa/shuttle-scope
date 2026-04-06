@@ -36,7 +36,18 @@ export type AnnotationStatus = 'pending' | 'in_progress' | 'complete' | 'reviewe
 
 export type RallyWinner = 'player_a' | 'player_b'
 
-export type EndType = 'ace' | 'forced_error' | 'unforced_error' | 'net' | 'out' | 'cant_reach'
+export type EndType = 'ace' | 'forced_error' | 'unforced_error' | 'net' | 'out' | 'cant_reach' | 'skipped'
+
+/** 映像ソースモード */
+export type VideoSourceMode = 'local' | 'webview' | 'none'
+
+/** Electronディスプレイ情報 */
+export interface DisplayInfo {
+  id: number
+  label: string
+  isPrimary: boolean
+  bounds: { x: number; y: number; width: number; height: number }
+}
 
 export type ShotQuality = 'excellent' | 'good' | 'neutral' | 'poor'
 
@@ -151,6 +162,7 @@ export interface Rally {
   is_deuce: boolean
   video_timestamp_start?: number
   video_timestamp_end?: number
+  is_skipped?: boolean
   strokes?: Stroke[]
 }
 

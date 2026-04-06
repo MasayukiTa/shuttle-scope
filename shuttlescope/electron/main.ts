@@ -5,7 +5,7 @@ import * as http from 'http'
 import { existsSync, statSync, createReadStream } from 'fs'
 import { Readable } from 'stream'
 
-const { app, BrowserWindow, dialog, ipcMain, protocol } = electron
+const { app, BrowserWindow, dialog, ipcMain, protocol, screen } = electron
 
 // YouTube が Electron UA を検知してブロックするのを回避するための汎用ブラウザ UA
 const BROWSER_UA =
@@ -29,6 +29,7 @@ protocol.registerSchemesAsPrivileged([
 let pythonProcess: ChildProcess | null = null
 let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null
+let videoWindow: BrowserWindow | null = null
 
 // ─── スプラッシュ画面 HTML（ファイルなし・data URL で即時表示） ────────────────
 const SPLASH_HTML = `<!DOCTYPE html>
@@ -203,6 +204,75 @@ function registerLocalFileProtocol(): void {
   })
 }
 
+// ─── IPC: ディスプレイ一覧 ──────────────────────────────────────────────────
+
+ipcMain.handle('get-displays', () => {
+  const primary = screen.getPrimaryDisplay()
+  return screen.getAllDisplays().map((d) => ({
+    id: d.id,
+    label: `${d.size.width}×${d.size.height}${d.id === primary.id ? ' (メイン)' : ''}`,
+    isPrimary: d.id === primary.id,
+    bounds: d.bounds,
+  }))
+})
+
+// ─── IPC: 別ウィンドウで動画を表示 ──────────────────────────────────────────
+
+ipcMain.handle('open-video-window', (_event, src: string, displayId: number) => {
+  if (videoWindow && !videoWindow.isDestroyed()) {
+    videoWindow.focus()
+    return
+  }
+
+  const allDisplays = screen.getAllDisplays()
+  const targetDisplay = allDisplays.find((d) => d.id === displayId) ?? allDisplays[0]
+
+  videoWindow = new BrowserWindow({
+    x: targetDisplay.bounds.x,
+    y: targetDisplay.bounds.y,
+    width: targetDisplay.bounds.width,
+    height: targetDisplay.bounds.height,
+    fullscreen: true,
+    frame: false,
+    title: 'ShuttleScope Video',
+    backgroundColor: '#000000',
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false,
+      webviewTag: true,
+    },
+  })
+
+  videoWindow.webContents.setUserAgent(BROWSER_UA)
+
+  const encodedSrc = encodeURIComponent(src)
+  if (process.env.NODE_ENV === 'development') {
+    videoWindow.loadURL(`http://localhost:5173/#/video-only?src=${encodedSrc}`)
+  } else if (app.isPackaged) {
+    videoWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      hash: `/video-only?src=${encodedSrc}`,
+    })
+  } else {
+    const rendererFile = path.join(app.getAppPath(), 'out', 'renderer', 'index.html')
+    videoWindow.loadFile(rendererFile, { hash: `/video-only?src=${encodedSrc}` })
+  }
+
+  videoWindow.on('closed', () => {
+    videoWindow = null
+    // メインウィンドウに通知
+    mainWindow?.webContents.send('video-window-closed')
+  })
+})
+
+ipcMain.handle('close-video-window', () => {
+  if (videoWindow && !videoWindow.isDestroyed()) {
+    videoWindow.close()
+    videoWindow = null
+  }
+})
+
 // ─── IPC: 動画ファイル選択ダイアログ ─────────────────────────────────────────
 
 ipcMain.handle('open-video-file', async () => {
@@ -294,6 +364,10 @@ function createWindow(): void {
   })
 
   mainWindow.on('closed', () => {
+    if (videoWindow && !videoWindow.isDestroyed()) {
+      videoWindow.close()
+      videoWindow = null
+    }
     mainWindow = null
   })
 }

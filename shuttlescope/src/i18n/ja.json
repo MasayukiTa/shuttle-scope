@@ -385,6 +385,41 @@
       "next_set": "次のセットへ"
     }
   },
+  "skip_rally": {
+    "button": "見逃しラリー",
+    "title": "得点者を選択",
+    "hint": "ストロークなしで得点を記録します",
+    "score_correction": "スコア補正",
+    "score_correction_title": "スコア補正",
+    "score_correction_hint": "複数ラリーを見逃した場合に実際のスコアへ合わせます",
+    "current": "現在",
+    "target": "修正後",
+    "apply": "補正実行",
+    "cannot_decrease": "スコアを下げることはできません",
+    "force_set_end": "セット強制終了",
+    "force_set_end_title": "セット強制終了",
+    "force_set_end_hint": "実際の最終スコアを入力して終了します",
+    "final_score": "最終スコア",
+    "confirm_end": "終了する"
+  },
+  "video_source": {
+    "mode_local": "ローカル動画",
+    "mode_webview": "中継（ブラウザ）",
+    "mode_none": "映像なし（現地）",
+    "mode_label": "映像モード"
+  },
+  "timer": {
+    "start": "試合開始",
+    "pause": "一時停止",
+    "resume": "再開",
+    "reset": "リセット",
+    "label": "経過時間"
+  },
+  "dual_monitor": {
+    "open": "別モニタで動画表示",
+    "close": "別モニタを閉じる",
+    "unavailable": "別モニタが見つかりません"
+  },
   "download": {
     "start": "ダウンロード開始",
     "progress": "ダウンロード中",

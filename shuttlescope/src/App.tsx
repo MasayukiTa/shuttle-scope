@@ -10,6 +10,7 @@ import { MatchListPage } from '@/pages/MatchListPage'
 import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { checkHealth } from '@/api/client'
@@ -204,7 +205,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeApplier>
         <HashRouter>
-          <MainLayout />
+          <Routes>
+            {/* 別モニタ動画専用（サイドバーなし） */}
+            <Route path="/video-only" element={<VideoOnlyPage />} />
+            {/* 通常レイアウト */}
+            <Route path="/*" element={<MainLayout />} />
+          </Routes>
         </HashRouter>
       </ThemeApplier>
     </QueryClientProvider>

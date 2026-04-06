@@ -88,6 +88,11 @@ interface AnnotationState {
   confirmRally: (winner: 'player_a' | 'player_b', endType: string) => StrokeInput[]
   resetRally: () => void
 
+  // 見逃しラリー（ストロークなしで得点だけ記録）
+  skipRallyState: (winner: 'player_a' | 'player_b') => void
+  // スコア補正（スコア・ラリー番号を直接更新。API保存はページ側で行う）
+  applyScoreCorrection: (scoreA: number, scoreB: number, rallyNum: number) => void
+
   // アンドゥ
   undoLastStroke: () => void
 
@@ -345,4 +350,19 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       inputStep: 'idle',
       // currentPlayer はセット最終ラリーの勝者を引き継ぐ（バドミントンルール）
     }),
+
+  // 見逃しラリー: スコア更新 + サーバー更新（ストロークなし）
+  skipRallyState: (winner) => {
+    const { currentRallyNum, scoreA, scoreB } = get()
+    set({
+      currentRallyNum: currentRallyNum + 1,
+      scoreA: winner === 'player_a' ? scoreA + 1 : scoreA,
+      scoreB: winner === 'player_b' ? scoreB + 1 : scoreB,
+      currentPlayer: winner,  // 勝者が次のサーバー
+    })
+  },
+
+  // スコア補正: 外部でAPIを保存した後に呼ぶ
+  applyScoreCorrection: (scoreA, scoreB, rallyNum) =>
+    set({ scoreA, scoreB, currentRallyNum: rallyNum }),
 }))

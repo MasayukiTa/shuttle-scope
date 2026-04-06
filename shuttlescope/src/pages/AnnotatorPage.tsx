@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap, ClipboardEdit, OctagonX } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -17,7 +17,8 @@ import { useAnnotationStore } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
 import { apiGet, apiPost, apiPut } from '@/api/client'
-import { Match, Zone9, ShotType, GameSet, Player } from '@/types'
+import { Match, Zone9, ShotType, GameSet, Player, VideoSourceMode, DisplayInfo } from '@/types'
+import { useMatchTimer } from '@/hooks/useMatchTimer'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -141,6 +142,23 @@ export function AnnotatorPage() {
   // 11点インターバル解析
   const [showMidGameSummary, setShowMidGameSummary] = useState(false)
   const [midGameShown, setMidGameShown] = useState(false)  // セットごとにリセット
+
+  // P1: 見逃しラリー・スコア補正・セット強制終了
+  const [showSkipRallyDialog, setShowSkipRallyDialog] = useState(false)
+  const [showScoreCorrection, setShowScoreCorrection] = useState(false)
+  const [correctionTargetA, setCorrectionTargetA] = useState(0)
+  const [correctionTargetB, setCorrectionTargetB] = useState(0)
+  const [showForceSetEnd, setShowForceSetEnd] = useState(false)
+  const [forceSetScoreA, setForceSetScoreA] = useState(0)
+  const [forceSetScoreB, setForceSetScoreB] = useState(0)
+
+  // P2: 映像ソースモード + 手動タイマー
+  const [videoSourceMode, setVideoSourceMode] = useState<VideoSourceMode>('local')
+  const timer = useMatchTimer()
+
+  // P4: デュアルモニター
+  const [displays, setDisplays] = useState<DisplayInfo[]>([])
+  const [videoWindowOpen, setVideoWindowOpen] = useState(false)
 
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
@@ -484,6 +502,218 @@ export function AnnotatorPage() {
     }
   }, [exceptionReason, matchId, navigate])
 
+  // P1: 見逃しラリー保存
+  const handleSkipRally = useCallback((winner: 'player_a' | 'player_b') => {
+    const s = useAnnotationStore.getState()
+    const setId = s.currentSetId
+    if (!setId) return
+
+    const rallyNum = s.currentRallyNum
+    const scoreA = s.scoreA
+    const scoreB = s.scoreB
+    const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
+    const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB
+
+    // 11点インターバルチェック
+    const prevMax = Math.max(scoreA, scoreB)
+    const newMax = Math.max(newScoreA, newScoreB)
+    if (prevMax < 11 && newMax >= 11 && !midGameShownRef.current) {
+      setMidGameShown(true)
+      setShowMidGameSummary(true)
+    }
+
+    s.skipRallyState(winner)
+    setShowSkipRallyDialog(false)
+
+    s.incrementPending()
+    apiPost('/strokes/batch', {
+      rally: {
+        set_id: setId,
+        rally_num: rallyNum,
+        server: s.currentPlayer,
+        winner,
+        end_type: 'skipped',
+        rally_length: 0,
+        is_skipped: true,
+        score_a_after: newScoreA,
+        score_b_after: newScoreB,
+        is_deuce: newScoreA >= 20 && newScoreB >= 20,
+      },
+      strokes: [],
+    }).then(() => {
+      useAnnotationStore.getState().decrementPending()
+      queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
+    }).catch((err: any) => {
+      useAnnotationStore.getState().decrementPending()
+      useAnnotationStore.getState().addSaveError({ rallyNum, error: err?.message ?? '保存失敗' })
+    })
+  }, [matchId, queryClient])
+
+  // P1: スコア補正（差分をスキップラリーで埋める）
+  const handleScoreCorrection = useCallback(async () => {
+    const s = useAnnotationStore.getState()
+    const setId = s.currentSetId
+    if (!setId || s.isRallyActive) return
+
+    const diffA = correctionTargetA - s.scoreA
+    const diffB = correctionTargetB - s.scoreB
+    if (diffA < 0 || diffB < 0) {
+      alert(t('skip_rally.cannot_decrease'))
+      return
+    }
+    if (diffA === 0 && diffB === 0) {
+      setShowScoreCorrection(false)
+      return
+    }
+
+    // 補完ラリーシーケンス（A点 + B点 を交互）
+    const sequence: Array<'player_a' | 'player_b'> = []
+    let a = diffA, b = diffB
+    while (a > 0 || b > 0) {
+      if (a > 0) { sequence.push('player_a'); a-- }
+      if (b > 0) { sequence.push('player_b'); b-- }
+    }
+
+    let rallyNum = s.currentRallyNum
+    let scoreA = s.scoreA
+    let scoreB = s.scoreB
+
+    s.incrementPending()
+    try {
+      for (const winner of sequence) {
+        const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
+        const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB
+        await apiPost('/strokes/batch', {
+          rally: {
+            set_id: setId,
+            rally_num: rallyNum,
+            server: winner,
+            winner,
+            end_type: 'skipped',
+            rally_length: 0,
+            is_skipped: true,
+            score_a_after: newScoreA,
+            score_b_after: newScoreB,
+            is_deuce: newScoreA >= 20 && newScoreB >= 20,
+          },
+          strokes: [],
+        })
+        scoreA = newScoreA
+        scoreB = newScoreB
+        rallyNum++
+      }
+      useAnnotationStore.getState().applyScoreCorrection(correctionTargetA, correctionTargetB, rallyNum)
+      queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
+      setShowScoreCorrection(false)
+    } catch (err: any) {
+      alert(`スコア補正エラー: ${err?.message ?? '不明なエラー'}`)
+    } finally {
+      useAnnotationStore.getState().decrementPending()
+    }
+  }, [correctionTargetA, correctionTargetB, matchId, queryClient, t])
+
+  // P1: セット強制終了（残りをスキップラリーで埋めてセット終了）
+  const handleForceSetEnd = useCallback(async () => {
+    const s = useAnnotationStore.getState()
+    const setId = s.currentSetId
+    if (!setId || s.isRallyActive) return
+
+    const diffA = forceSetScoreA - s.scoreA
+    const diffB = forceSetScoreB - s.scoreB
+    if (diffA < 0 || diffB < 0) {
+      alert(t('skip_rally.cannot_decrease'))
+      return
+    }
+
+    // スコア補正
+    const sequence: Array<'player_a' | 'player_b'> = []
+    let a = diffA, b = diffB
+    while (a > 0 || b > 0) {
+      if (a > 0) { sequence.push('player_a'); a-- }
+      if (b > 0) { sequence.push('player_b'); b-- }
+    }
+
+    let rallyNum = s.currentRallyNum
+    let scoreA = s.scoreA
+    let scoreB = s.scoreB
+
+    s.incrementPending()
+    try {
+      for (const winner of sequence) {
+        const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
+        const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB
+        await apiPost('/strokes/batch', {
+          rally: {
+            set_id: setId, rally_num: rallyNum, server: winner, winner,
+            end_type: 'skipped', rally_length: 0, is_skipped: true,
+            score_a_after: newScoreA, score_b_after: newScoreB,
+            is_deuce: newScoreA >= 20 && newScoreB >= 20,
+          },
+          strokes: [],
+        })
+        scoreA = newScoreA; scoreB = newScoreB; rallyNum++
+      }
+      useAnnotationStore.getState().applyScoreCorrection(forceSetScoreA, forceSetScoreB, rallyNum)
+      setShowForceSetEnd(false)
+      // セット終了フロー（handleNextSet と同じ）
+      await handleNextSet()
+    } catch (err: any) {
+      alert(`セット強制終了エラー: ${err?.message ?? '不明なエラー'}`)
+    } finally {
+      useAnnotationStore.getState().decrementPending()
+    }
+  }, [forceSetScoreA, forceSetScoreB, matchId, queryClient, t, handleNextSet])
+
+  // P4: 別モニタで動画を開く
+  const handleOpenVideoWindow = useCallback(() => {
+    const rawSrc = match?.video_local_path || match?.video_url || ''
+    const src = normalizeVideoPath(rawSrc)
+    if (!src || !window.shuttlescope?.openVideoWindow) return
+    const secondary = displays.find((d) => !d.isPrimary) ?? displays[0]
+    if (!secondary) return
+    window.shuttlescope.openVideoWindow(src, secondary.id)
+    setVideoWindowOpen(true)
+    setVideoSourceMode('none')  // メイン側は映像なしモードに切替
+  }, [match, displays])
+
+  const handleCloseVideoWindow = useCallback(() => {
+    window.shuttlescope?.closeVideoWindow?.()
+    setVideoWindowOpen(false)
+    setVideoSourceMode('local')
+  }, [])
+
+  // P2: 映像モード自動検出（match データが揃ったとき）
+  useEffect(() => {
+    if (!matchData?.data) return
+    const m = matchData.data
+    const rawSrc = m.video_local_path || m.video_url || ''
+    if (!rawSrc) {
+      setVideoSourceMode('none')
+    } else {
+      const site = detectStreamingSite(normalizeVideoPath(rawSrc))
+      setVideoSourceMode(site ? 'webview' : 'local')
+    }
+  }, [matchData?.data?.video_local_path, matchData?.data?.video_url])
+
+  // P2: タイムスタンプ取得（モードによって切替）
+  const getTimestamp = useCallback((): number => {
+    if (videoSourceMode === 'local' && videoRef.current) {
+      return videoRef.current.currentTime
+    }
+    return timer.elapsedSec
+  }, [videoSourceMode, timer.elapsedSec])
+
+  // P4: ディスプレイ一覧取得
+  useEffect(() => {
+    window.shuttlescope?.getDisplays?.()?.then?.((d: DisplayInfo[]) => setDisplays(d ?? []))
+  }, [])
+
+  // P4: 別ウィンドウが閉じられたら状態をリセット
+  useEffect(() => {
+    const cleanup = window.shuttlescope?.onVideoWindowClosed?.(() => setVideoWindowOpen(false))
+    return () => { cleanup?.() }
+  }, [])
+
   // ステップラベル
   const stepLabel = {
     idle: store.isRallyActive
@@ -555,6 +785,28 @@ export function AnnotatorPage() {
               {t('in_match_panel.opponent_info')}
             </button>
           )}
+          {/* P4: デュアルモニター（2画面以上のとき表示） */}
+          {displays.length >= 2 && match && (match.video_local_path || match.video_url) && (
+            videoWindowOpen ? (
+              <button
+                onClick={handleCloseVideoWindow}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
+                title={t('dual_monitor.close')}
+              >
+                <MonitorX size={12} />
+                {t('dual_monitor.close')}
+              </button>
+            ) : (
+              <button
+                onClick={handleOpenVideoWindow}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                title={t('dual_monitor.open')}
+              >
+                <MonitorPlay size={12} />
+                {t('dual_monitor.open')}
+              </button>
+            )
+          )}
           {/* 途中終了ボタン */}
           <button
             onClick={() => setShowExceptionDialog(true)}
@@ -590,10 +842,10 @@ export function AnnotatorPage() {
 
       {/* メインレイアウト */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左: 動画エリア (60%) — マッチデーモード時は非表示 */}
+        {/* 左: 動画エリア (60%) — マッチデーモード時 or none モード時は非表示 */}
         <div className={clsx(
           'flex flex-col p-3 gap-2 overflow-y-auto',
-          isMatchDayMode ? 'hidden' : 'w-[60%]'
+          (isMatchDayMode || videoSourceMode === 'none') ? 'hidden' : 'w-[60%]'
         )}>
           {(() => {
             // 動画ソース決定（旧形式の Windows パスを normalizeVideoPath で変換）
@@ -693,6 +945,29 @@ export function AnnotatorPage() {
                   : `🔗 ${match?.video_url}`}
               </div>
             )}
+            {/* P2: 映像モードセレクター */}
+            <div className="mt-1.5 flex gap-1">
+              {(
+                [
+                  { mode: 'local' as VideoSourceMode, label: t('video_source.mode_local') },
+                  { mode: 'webview' as VideoSourceMode, label: t('video_source.mode_webview') },
+                  { mode: 'none' as VideoSourceMode, label: t('video_source.mode_none') },
+                ] as const
+              ).map(({ mode, label }) => (
+                <button
+                  key={mode}
+                  onClick={() => setVideoSourceMode(mode)}
+                  className={clsx(
+                    'flex-1 py-0.5 rounded text-[10px] border transition-colors',
+                    videoSourceMode === mode
+                      ? 'bg-blue-600 border-blue-500 text-white'
+                      : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* ショートカットガイド */}
@@ -736,6 +1011,31 @@ export function AnnotatorPage() {
               <div className="text-center text-xs text-gray-500">
                 <div>Set {store.currentSetNum}</div>
                 <div>Rally {store.currentRallyNum}</div>
+                {/* P2: タイマー（none/webviewモード） */}
+                {videoSourceMode !== 'local' && (
+                  <div className="mt-1 flex flex-col items-center gap-0.5">
+                    <div className={clsx(
+                      'font-mono text-sm font-bold',
+                      timer.isRunning ? 'text-green-400' : 'text-gray-400'
+                    )}>
+                      {timer.displayTime}
+                    </div>
+                    <div className="flex gap-1">
+                      {!timer.isRunning ? (
+                        <button onClick={timer.start} className="px-1.5 py-0.5 bg-green-700 hover:bg-green-600 text-white rounded text-[9px] flex items-center gap-0.5">
+                          <Play size={8} />{t('timer.start')}
+                        </button>
+                      ) : (
+                        <button onClick={timer.pause} className="px-1.5 py-0.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-[9px] flex items-center gap-0.5">
+                          <Pause size={8} />{t('timer.pause')}
+                        </button>
+                      )}
+                      <button onClick={timer.reset} className="px-1.5 py-0.5 bg-gray-600 hover:bg-gray-500 text-gray-300 rounded text-[9px]">
+                        {t('timer.reset')}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="text-center min-w-[60px]">
                 <div className="text-[10px] text-gray-400 truncate">{match?.player_b?.name ?? 'B'}</div>
@@ -884,8 +1184,7 @@ export function AnnotatorPage() {
               <ShotTypePanel
                 selected={store.pendingStroke.shot_type ?? null}
                 onSelect={(st: ShotType) => {
-                  const currentSec = videoRef.current?.currentTime ?? 0
-                  store.inputShotType(st, currentSec)
+                  store.inputShotType(st, getTimestamp())
                 }}
                 disabled={false}
                 strokeNum={store.currentStrokeNum}
@@ -948,14 +1247,24 @@ export function AnnotatorPage() {
               />
             )}
 
-            {/* ラリー開始ボタン（待機中かつラリー未開始） */}
+            {/* ラリー開始ボタン + 見逃しラリーボタン（待機中かつラリー未開始） */}
             {initialized && !store.isRallyActive && store.inputStep === 'idle' && (
-              <button
-                onClick={() => store.startRally(videoRef.current?.currentTime ?? 0)}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium"
-              >
-                ▶ ラリー開始
-              </button>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => store.startRally(getTimestamp())}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium"
+                >
+                  ▶ ラリー開始
+                </button>
+                <button
+                  onClick={() => setShowSkipRallyDialog(true)}
+                  className="px-3 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs flex items-center gap-1 whitespace-nowrap"
+                  title={t('skip_rally.hint')}
+                >
+                  <SkipForward size={12} />
+                  {t('skip_rally.button')}
+                </button>
+              </div>
             )}
 
             {/* ストローク履歴 */}
@@ -1003,7 +1312,7 @@ export function AnnotatorPage() {
             {initialized && !store.isRallyActive && (
               <div className="border border-gray-700 rounded p-2 text-xs shrink-0">
                 <div className="text-gray-400 mb-1.5 font-medium">セット管理</div>
-                <div className="flex gap-1.5">
+                <div className="flex gap-1.5 mb-1.5">
                   <button
                     onClick={handlePrevSet}
                     disabled={store.currentSetNum <= 1}
@@ -1018,6 +1327,29 @@ export function AnnotatorPage() {
                   >
                     <ChevronRight size={12} />
                     次のセットへ (Set {store.currentSetNum + 1})
+                  </button>
+                </div>
+                {/* P1: スコア補正・強制セット終了 */}
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => {
+                      setCorrectionTargetA(store.scoreA)
+                      setCorrectionTargetB(store.scoreB)
+                      setShowScoreCorrection(true)
+                    }}
+                    className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-[10px]"
+                  >
+                    {t('skip_rally.score_correction')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setForceSetScoreA(store.scoreA)
+                      setForceSetScoreB(store.scoreB)
+                      setShowForceSetEnd(true)
+                    }}
+                    className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-[10px]"
+                  >
+                    {t('skip_rally.force_set_end')}
                   </button>
                 </div>
               </div>
@@ -1191,6 +1523,113 @@ export function AnnotatorPage() {
               >
                 {t('exception.confirm')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* P1: 見逃しラリーダイアログ */}
+      {showSkipRallyDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-800 border border-gray-600 rounded-lg w-72 shadow-2xl">
+            <div className="px-4 py-3 border-b border-gray-700">
+              <div className="text-sm font-medium text-gray-200 flex items-center gap-2">
+                <SkipForward size={14} className="text-yellow-400" />
+                {t('skip_rally.title')}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">{t('skip_rally.hint')}</div>
+            </div>
+            <div className="p-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleSkipRally('player_a')}
+                className="py-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-bold"
+              >
+                {match?.player_a?.name ?? 'A'} 得点
+              </button>
+              <button
+                onClick={() => handleSkipRally('player_b')}
+                className="py-4 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-bold"
+              >
+                {match?.player_b?.name ?? 'B'} 得点
+              </button>
+            </div>
+            <div className="px-4 pb-4">
+              <button
+                onClick={() => setShowSkipRallyDialog(false)}
+                className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* P1: スコア補正ダイアログ */}
+      {showScoreCorrection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-800 border border-gray-600 rounded-lg w-80 shadow-2xl">
+            <div className="px-4 py-3 border-b border-gray-700">
+              <div className="text-sm font-medium text-gray-200">{t('skip_rally.score_correction_title')}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{t('skip_rally.score_correction_hint')}</div>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="text-xs text-gray-400">
+                {t('skip_rally.current')}: {match?.player_a?.name ?? 'A'} {store.scoreA} — {match?.player_b?.name ?? 'B'} {store.scoreB}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { label: match?.player_a?.name ?? 'A', val: correctionTargetA, setVal: setCorrectionTargetA },
+                  { label: match?.player_b?.name ?? 'B', val: correctionTargetB, setVal: setCorrectionTargetB },
+                ] as const).map(({ label, val, setVal }) => (
+                  <div key={label}>
+                    <div className="text-xs text-gray-400 mb-1 truncate">{label}</div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setVal(Math.max(0, val - 1))} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">−</button>
+                      <span className="flex-1 text-center text-lg font-bold text-white">{val}</span>
+                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">＋</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="px-4 pb-4 flex gap-2">
+              <button onClick={() => setShowScoreCorrection(false)} className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">キャンセル</button>
+              <button onClick={handleScoreCorrection} className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium">{t('skip_rally.apply')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* P1: セット強制終了ダイアログ */}
+      {showForceSetEnd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-800 border border-orange-700/50 rounded-lg w-80 shadow-2xl">
+            <div className="px-4 py-3 border-b border-gray-700">
+              <div className="text-sm font-medium text-orange-400">{t('skip_rally.force_set_end_title')}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{t('skip_rally.force_set_end_hint')}</div>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="text-xs text-gray-400">{t('skip_rally.final_score')}</div>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { label: match?.player_a?.name ?? 'A', val: forceSetScoreA, setVal: setForceSetScoreA },
+                  { label: match?.player_b?.name ?? 'B', val: forceSetScoreB, setVal: setForceSetScoreB },
+                ] as const).map(({ label, val, setVal }) => (
+                  <div key={label}>
+                    <div className="text-xs text-gray-400 mb-1 truncate">{label}</div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setVal(Math.max(0, val - 1))} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">−</button>
+                      <span className="flex-1 text-center text-lg font-bold text-white">{val}</span>
+                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">＋</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="px-4 pb-4 flex gap-2">
+              <button onClick={() => setShowForceSetEnd(false)} className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">キャンセル</button>
+              <button onClick={handleForceSetEnd} className="flex-1 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-medium">{t('skip_rally.confirm_end')}</button>
             </div>
           </div>
         </div>

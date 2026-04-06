@@ -43,8 +43,11 @@ def validate_stroke(stroke_data: dict) -> tuple[bool, Optional[str]]:
 def validate_rally(rally_data: dict, strokes: list[dict]) -> tuple[bool, Optional[str]]:
     """
     ラリー全体の整合性チェック。
+    is_skipped=True の見逃しラリーはストローク空を許容する。
     """
     if not strokes:
+        if rally_data.get("is_skipped"):
+            return True, None  # 見逃しラリーはストロークなしでOK
         return False, "ストロークが1球もありません"
 
     # 1球目がサーブかどうかの確認（警告レベル）

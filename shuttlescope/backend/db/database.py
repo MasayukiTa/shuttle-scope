@@ -59,6 +59,8 @@ def add_columns_if_missing(eng) -> None:
         ("matches", "metadata_status",          "TEXT DEFAULT 'minimal'"),
         # 途中終了理由（retired_a / retired_b / abandoned）
         ("matches", "exception_reason",         "TEXT"),
+        # 見逃しラリー（ストロークなしで得点だけ記録）
+        ("rallies", "is_skipped",               "INTEGER DEFAULT 0"),
     ]
     with eng.connect() as conn:
         for table, col, col_type in new_cols:

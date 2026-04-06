@@ -126,6 +126,8 @@ class Rally(Base):
     is_deuce: Mapped[bool] = mapped_column(Boolean, default=False)
     video_timestamp_start: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     video_timestamp_end: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # 見逃しラリー（ストロークなしで得点だけ記録）
+    is_skipped: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # リレーション
     game_set: Mapped["GameSet"] = relationship("GameSet", back_populates="rallies")
