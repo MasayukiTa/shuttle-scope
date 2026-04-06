@@ -3,7 +3,7 @@
 ## Purpose
 - ShuttleScope is a desktop badminton video annotation and analysis application.
 - The tracked app code lives under `shuttlescope/`.
-- The git repository root also contains local confidential planning documents that must not be committed.
+- The git repository root also contains local confidential planning documents under `private_docs/`; they must not be committed.
 - This file exists to preserve the most important product and implementation rules even when the confidential source documents are unavailable.
 
 ## Working Directory Map
@@ -15,10 +15,10 @@
 - `shuttlescope/scripts/`: local helper scripts and test dataset utilities.
 
 ## Confidentiality Rules
-- Never commit or upload the root confidential files:
-  - `ShuttleScope_SPEC.md`
-  - `ShuttleScope_TASKS.md`
-  - `ShuttleScope_PRD_v1.0.docx`
+- Never commit or upload the confidential files under `private_docs/`, including:
+  - `private_docs/ShuttleScope_SPEC.md`
+  - `private_docs/ShuttleScope_TASKS.md`
+  - `private_docs/ShuttleScope_PRD_v1.0.docx`
 - Treat those files as local-only reference material.
 - Do not quote or copy confidential business content into public issues, commit messages, or generated docs unless the user explicitly asks for a sanitized version.
 - Do not commit local databases, downloaded videos, build output, virtual environments, caches, or machine-specific files.
@@ -202,4 +202,3 @@
   - more uncertainty disclosure
   - stricter player-facing restrictions
   - smaller scoped changes
-
