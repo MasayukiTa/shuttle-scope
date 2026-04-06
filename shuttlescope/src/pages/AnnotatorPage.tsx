@@ -103,15 +103,47 @@ function computePlayerASide(
 }
 
 // ─── END_TYPES ────────────────────────────────────────────────────────────────
+// B-1: ace はバドミントン用語として誤解を招くため UI 表示を「ウィナー」に変更
+// 内部コード値は backward-compat のため ace のまま維持
 
 const END_TYPES = [
-  { value: 'ace', label: 'エース' },
+  { value: 'ace', label: 'ウィナー' },
   { value: 'forced_error', label: '強制エラー' },
   { value: 'unforced_error', label: '自滅' },
   { value: 'net', label: 'ネット' },
   { value: 'out', label: 'アウト' },
   { value: 'cant_reach', label: '届かず' },
 ]
+
+// B-2: エンドタイプと最終打者から勝者を推定
+// out/net → 打者の相手が勝つ（打者がアウト/ネット）
+// cant_reach → 打者が勝つ（相手が取れない）
+// ace → 打者が勝つ（クリーンウィナー）
+// forced_error/unforced_error → 文脈依存のため手動選択
+function getSuggestedWinner(
+  endType: string | null,
+  lastStriker: 'player_a' | 'player_b' | undefined
+): 'player_a' | 'player_b' | null {
+  if (!endType || !lastStriker) return null
+  const opponent = lastStriker === 'player_a' ? 'player_b' : 'player_a'
+  if (endType === 'out' || endType === 'net') return opponent
+  if (endType === 'cant_reach' || endType === 'ace') return lastStriker
+  return null
+}
+
+// B-3: 無効な勝者/エンドタイプの組み合わせを検出
+function isWinnerBlocked(
+  winner: 'player_a' | 'player_b',
+  endType: string | null,
+  lastStriker: 'player_a' | 'player_b' | undefined
+): boolean {
+  if (!endType || !lastStriker) return false
+  // 打者自身がアウト/ネット → 打者は勝てない
+  if ((endType === 'out' || endType === 'net') && winner === lastStriker) return true
+  // 相手が取れなかった → 相手は勝てない
+  if (endType === 'cant_reach' && winner !== lastStriker) return true
+  return false
+}
 
 export function AnnotatorPage() {
   const { matchId } = useParams<{ matchId: string }>()
@@ -144,6 +176,10 @@ export function AnnotatorPage() {
   // 一時保存（Auto-save）
   const autoSaveKey = matchId ? `shuttlescope.autosave.${matchId}` : null
   const [autoSaveRestored, setAutoSaveRestored] = useState(false)
+  const [lastAutoSaveTime, setLastAutoSaveTime] = useState<number | null>(null)
+
+  // C-1: セット移行確認ダイアログ
+  const [setNavConfirm, setSetNavConfirm] = useState<{ direction: 'prev' | 'next' } | null>(null)
 
   // K-003: セット間サマリーモーダル
   const [showIntervalSummary, setShowIntervalSummary] = useState(false)
@@ -321,6 +357,7 @@ export function AnnotatorPage() {
       setPendingEndType(null)
       // 一時保存をクリア
       if (autoSaveKey) localStorage.removeItem(autoSaveKey)
+      setLastAutoSaveTime(null)
 
       // 11点インターバル: どちらかが11点に到達したとき（BWFルール）
       const prevMax = Math.max(scoreA, scoreB)
@@ -494,28 +531,44 @@ export function AnnotatorPage() {
       setPendingEndType((prev) => prev === endType ? null : endType)
     },
     onWinnerSelect: (winner) => {
-      // A/B キーで勝者確定（pendingEndType が選択済みの場合のみ）
-      if (pendingEndType) handleConfirmRally(winner, pendingEndType)
+      // A/B キーで勝者確定（pendingEndType が選択済み かつ 無効な組み合わせでない場合のみ）
+      if (!pendingEndType) return
+      const lastStroke = store.currentStrokes[store.currentStrokes.length - 1]
+      if (isWinnerBlocked(winner, pendingEndType, lastStroke?.player)) return
+      handleConfirmRally(winner, pendingEndType)
     },
     onSkipRallyOpen: () => setShowSkipRallyDialog(true),
   })
 
-  // rally_end を離れたら pendingEndType をリセット
+  // rally_end に入ったときエンドタイプを自動プリフィル（B-4）
+  // OOB → out, NET → net を先行選択してオペレーター負荷を削減
   useEffect(() => {
-    if (store.inputStep !== 'rally_end') setPendingEndType(null)
+    if (store.inputStep !== 'rally_end') {
+      setPendingEndType(null)
+      return
+    }
+    const lastStroke = store.currentStrokes[store.currentStrokes.length - 1]
+    const lz = lastStroke?.land_zone ? String(lastStroke.land_zone) : ''
+    if (lz.startsWith('OB_')) {
+      setPendingEndType('out')
+    } else if (lz.startsWith('NET_')) {
+      setPendingEndType('net')
+    }
   }, [store.inputStep])
 
   // ─── 一時保存（Auto-save） ───────────────────────────────────────────────────
   // ストローク確定のたびに localStorage へ書き込み
   useEffect(() => {
     if (!autoSaveKey || !store.isRallyActive || store.currentStrokes.length === 0) return
+    const now = Date.now()
     const data = {
       setId: store.currentSetId,
       rallyNum: store.currentRallyNum,
       strokes: store.currentStrokes,
-      savedAt: Date.now(),
+      savedAt: now,
     }
     localStorage.setItem(autoSaveKey, JSON.stringify(data))
+    setLastAutoSaveTime(now)
   }, [autoSaveKey, store.currentStrokes, store.isRallyActive, store.currentSetId, store.currentRallyNum])
 
   // 初期化完了後: 前回の未保存ストロークがあれば復元確認
@@ -1220,8 +1273,23 @@ export function AnnotatorPage() {
             <div className="flex gap-4 items-start">
               {/* ゾーンキー */}
               <div className="space-y-1 flex-1">
-                {/* 文字キー落点 */}
-                <div className="text-[10px] text-gray-500 mb-0.5">文字キー（主）</div>
+                {/* テンキー落点（主） */}
+                <div className="text-[10px] text-blue-400 mb-0.5 font-medium">テンキー（推奨）</div>
+                <div className="grid grid-cols-3 gap-1">
+                  {[
+                    { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
+                    { k: '4', zone: 'ML' }, { k: '5', zone: 'MC' }, { k: '6', zone: 'MR' },
+                    { k: '1', zone: 'NL' }, { k: '2', zone: 'NC' }, { k: '3', zone: 'NR' },
+                  ].map(({ k, zone }) => (
+                    <div key={k} className="text-center">
+                      <kbd className="block bg-blue-900/40 border border-blue-700/40 text-blue-200 rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                      <span className="text-[11px] text-blue-400 font-medium">{zone}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[11px] text-gray-500 mt-0.5">0/Num0 = スキップ　Esc/BS = キャンセル</div>
+                {/* 文字キー落点（副・ノートPC向け） */}
+                <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">文字キー（ノートPC向け）</div>
                 <div className="grid grid-cols-3 gap-1">
                   {[
                     { k: 'U', zone: 'BL' }, { k: 'I', zone: 'BC' }, { k: 'O', zone: 'BR' },
@@ -1230,28 +1298,13 @@ export function AnnotatorPage() {
                   ].map(({ k, zone }) => (
                     <div key={k} className="text-center">
                       <kbd className="block bg-gray-600 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
-                      <span className="text-[11px] text-blue-400 font-medium">{zone}</span>
+                      <span className="text-[11px] text-gray-400 font-medium">{zone}</span>
                     </div>
                   ))}
                 </div>
                 <div className="text-[11px] text-gray-500 mt-0.5">
                   Shift+U/I/O=OB後 Shift+J/L=OB側 -/=/\=NET
                 </div>
-                {/* テンキー落点 */}
-                <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">テンキー（副）</div>
-                <div className="grid grid-cols-3 gap-1">
-                  {[
-                    { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
-                    { k: '4', zone: 'ML' }, { k: '5', zone: 'MC' }, { k: '6', zone: 'MR' },
-                    { k: '1', zone: 'NL' }, { k: '2', zone: 'NC' }, { k: '3', zone: 'NR' },
-                  ].map(({ k, zone }) => (
-                    <div key={k} className="text-center">
-                      <kbd className="block bg-gray-600 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
-                      <span className="text-[11px] text-blue-400 font-medium">{zone}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="text-[11px] text-gray-500 mt-1">0/Num0 = スキップ　Esc/BS = キャンセル</div>
               </div>
               {/* コートチェンジ情報 */}
               <div className="flex-1 border-l border-gray-700 pl-3 space-y-1.5">
@@ -1330,6 +1383,41 @@ export function AnnotatorPage() {
               </div>
             </div>
 
+            {/* D-1: 自動保存ステータス */}
+            <div className="flex items-center justify-between text-[10px] shrink-0 px-0.5">
+              {store.isRallyActive && store.currentStrokes.length > 0 ? (
+                lastAutoSaveTime ? (
+                  <span className="text-green-500">
+                    ✓ 自動保存済 {new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                ) : (
+                  <span className="text-yellow-500 animate-pulse">● 未保存</span>
+                )
+              ) : (
+                <span className="text-gray-600">—</span>
+              )}
+              {/* D-3: 手動保存ボタン */}
+              {store.isRallyActive && store.currentStrokes.length > 0 && autoSaveKey && (
+                <button
+                  onClick={() => {
+                    const now = Date.now()
+                    const data = {
+                      setId: store.currentSetId,
+                      rallyNum: store.currentRallyNum,
+                      strokes: store.currentStrokes,
+                      savedAt: now,
+                    }
+                    localStorage.setItem(autoSaveKey, JSON.stringify(data))
+                    setLastAutoSaveTime(now)
+                  }}
+                  className="text-gray-500 hover:text-green-400 px-1"
+                  title="今すぐ保存"
+                >
+                  💾 保存
+                </button>
+              )}
+            </div>
+
             {/* プレイヤー切替 */}
             {store.isRallyActive && (() => {
               const aPos = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB)
@@ -1373,71 +1461,107 @@ export function AnnotatorPage() {
             })()}
 
             {/* ラリー終了確認パネル */}
-            {store.inputStep === 'rally_end' && (
-              <div className="border border-yellow-700/50 bg-yellow-900/20 rounded p-2 shrink-0">
-                <div className="text-xs text-yellow-400 mb-2 font-medium">ラリー終了 — 得点者と終了種別を選択</div>
+            {store.inputStep === 'rally_end' && (() => {
+              const lastStroke = store.currentStrokes[store.currentStrokes.length - 1]
+              const lastStriker = lastStroke?.player
+              const suggestedWinner = getSuggestedWinner(pendingEndType, lastStriker)
+              return (
+                <div className="border border-yellow-700/50 bg-yellow-900/20 rounded p-2 shrink-0">
+                  <div className="text-xs text-yellow-400 mb-2 font-medium">
+                    ラリー終了 — エンドタイプ→勝者の順に選択
+                    {lastStriker && (
+                      <span className="ml-1 text-gray-500">
+                        （最終打者: {lastStriker === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B'}）
+                      </span>
+                    )}
+                  </div>
 
-                {/* 統一2ステップモデル: エンドタイプ選択（1–6キー）→ 勝者確定（A/Bキー） */}
-                <div className="space-y-2">
-                  {/* Step 1: エンドタイプ選択 */}
-                  <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-6' : 'grid-cols-3')}>
-                    {END_TYPES.map(({ value, label: endLabel }, idx) => (
-                      <button
-                        key={value}
-                        onClick={() => setPendingEndType((prev) => prev === value ? null : value)}
-                        className={clsx(
-                          'px-1 rounded text-xs font-medium transition-colors text-center',
-                          isMatchDayMode ? 'py-2' : 'py-1.5',
-                          pendingEndType === value
-                            ? 'bg-yellow-600 text-white border border-yellow-400'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                        )}
-                        title={`${idx + 1}: ${endLabel}`}
-                      >
-                        <span className="block text-[9px] opacity-60 font-mono">{idx + 1}</span>
-                        <span className="block leading-tight">{endLabel}</span>
-                      </button>
-                    ))}
+                  {/* 統一2ステップモデル: エンドタイプ選択（1–6キー）→ 勝者確定（A/Bキー） */}
+                  <div className="space-y-2">
+                    {/* Step 1: エンドタイプ選択 */}
+                    <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-6' : 'grid-cols-3')}>
+                      {END_TYPES.map(({ value, label: endLabel }, idx) => (
+                        <button
+                          key={value}
+                          onClick={() => setPendingEndType((prev) => prev === value ? null : value)}
+                          className={clsx(
+                            'px-1 rounded text-xs font-medium transition-colors text-center',
+                            isMatchDayMode ? 'py-2' : 'py-1.5',
+                            pendingEndType === value
+                              ? 'bg-yellow-600 text-white border border-yellow-400'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          )}
+                          title={`${idx + 1}: ${endLabel}`}
+                        >
+                          <span className="block text-[9px] opacity-60 font-mono">{idx + 1}</span>
+                          <span className="block leading-tight">{endLabel}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Step 2: 勝者確定 */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {(
+                        [
+                          { winner: 'player_a' as const, label: match?.player_a?.name ?? 'A', color: 'blue', key: 'A' },
+                          { winner: 'player_b' as const, label: match?.player_b?.name ?? 'B', color: 'orange', key: 'B' },
+                        ] as const
+                      ).map(({ winner, label, color, key }) => {
+                        const blocked = isWinnerBlocked(winner, pendingEndType, lastStriker)
+                        const suggested = suggestedWinner === winner
+                        const dimmed = !pendingEndType || blocked || (suggestedWinner !== null && !suggested)
+                        return (
+                          <button
+                            key={winner}
+                            onClick={() => !blocked && pendingEndType && handleConfirmRally(winner, pendingEndType)}
+                            disabled={!pendingEndType || blocked}
+                            className={clsx(
+                              'relative rounded text-sm font-bold transition-colors',
+                              isMatchDayMode ? 'py-4' : 'py-2.5',
+                              !pendingEndType || blocked
+                                ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-40'
+                                : suggested
+                                  ? color === 'blue'
+                                    ? 'bg-blue-500 hover:bg-blue-400 text-white ring-2 ring-blue-300'
+                                    : 'bg-orange-500 hover:bg-orange-400 text-white ring-2 ring-orange-300'
+                                  : dimmed
+                                    ? color === 'blue'
+                                      ? 'bg-blue-900/40 hover:bg-blue-800/60 text-blue-300'
+                                      : 'bg-orange-900/40 hover:bg-orange-800/60 text-orange-300'
+                                    : color === 'blue'
+                                      ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                      : 'bg-orange-600 hover:bg-orange-500 text-white'
+                            )}
+                          >
+                            <span className="absolute top-0.5 right-1.5 text-[9px] font-mono opacity-60">{key}</span>
+                            {label} 得点
+                            {suggested && pendingEndType && (
+                              <span className="block text-[9px] opacity-70">← 推定</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {!pendingEndType && (
+                      <p className="text-[10px] text-gray-500 text-center">1–6キーまたはボタンでエンドタイプを選択</p>
+                    )}
+                    {pendingEndType && suggestedWinner && (
+                      <p className="text-[10px] text-blue-400 text-center">
+                        推定: {suggestedWinner === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B'} 得点 — A/Bキーまたはボタンで確定
+                      </p>
+                    )}
                   </div>
-                  {/* Step 2: 勝者確定（エンドタイプ選択後に有効） */}
-                  <div className="grid grid-cols-2 gap-2">
-                    {(
-                      [
-                        { winner: 'player_a' as const, label: match?.player_a?.name ?? 'A', color: 'blue', key: 'A' },
-                        { winner: 'player_b' as const, label: match?.player_b?.name ?? 'B', color: 'orange', key: 'B' },
-                      ] as const
-                    ).map(({ winner, label, color, key }) => (
-                      <button
-                        key={winner}
-                        onClick={() => handleConfirmRally(winner, pendingEndType ?? 'ace')}
-                        disabled={!pendingEndType}
-                        className={clsx(
-                          'relative rounded text-sm font-bold transition-colors',
-                          isMatchDayMode ? 'py-4' : 'py-2.5',
-                          color === 'blue'
-                            ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                            : 'bg-orange-600 hover:bg-orange-500 text-white',
-                          !pendingEndType && 'opacity-40 cursor-not-allowed'
-                        )}
-                      >
-                        <span className="absolute top-0.5 right-1.5 text-[9px] font-mono opacity-60">{key}</span>
-                        {label} 得点
-                      </button>
-                    ))}
-                  </div>
-                  {!pendingEndType && (
-                    <p className="text-[10px] text-gray-500 text-center">1–6キーまたはボタンでエンドタイプを選択</p>
-                  )}
+
+                  <button
+                    onClick={() => store.cancelRallyEnd()}
+                    className="w-full mt-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-xs"
+                  >
+                    ← キャンセル (Esc)
+                  </button>
                 </div>
-
-                <button
-                  onClick={() => store.cancelRallyEnd()}
-                  className="w-full mt-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-xs"
-                >
-                  ← キャンセル (Esc)
-                </button>
-              </div>
-            )}
+              )
+            })()}
 
             {/* ショット種別パネル（ラリー中 & ショット選択ステップのみ） */}
             {store.isRallyActive && store.inputStep === 'idle' && (
@@ -1630,27 +1754,59 @@ export function AnnotatorPage() {
               )}
             </div>
 
-            {/* セット管理 */}
+            {/* セット管理（C-1: 確認ダイアログ付き） */}
             {initialized && !store.isRallyActive && (
               <div className="border border-gray-700 rounded p-2 text-xs shrink-0">
-                <div className="text-gray-400 mb-1.5 font-medium">セット管理</div>
-                <div className="flex gap-1.5 mb-1.5">
-                  <button
-                    onClick={handlePrevSet}
-                    disabled={store.currentSetNum <= 1}
-                    className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <ChevronLeft size={12} />
-                    前のセット (Set {store.currentSetNum - 1})
-                  </button>
-                  <button
-                    onClick={handleNextSet}
-                    className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center"
-                  >
-                    <ChevronRight size={12} />
-                    次のセットへ (Set {store.currentSetNum + 1})
-                  </button>
-                </div>
+                <div className="text-gray-400 mb-1.5 font-medium">管理操作</div>
+
+                {/* C-1: セット移行確認ダイアログ */}
+                {setNavConfirm ? (
+                  <div className="bg-yellow-900/20 border border-yellow-700/50 rounded p-2 mb-1.5">
+                    <p className="text-yellow-400 text-[11px] mb-2">
+                      {setNavConfirm.direction === 'next'
+                        ? `Set ${store.currentSetNum} を終了して Set ${store.currentSetNum + 1} へ移行しますか？`
+                        : `Set ${store.currentSetNum - 1} へ戻りますか？（現在のセット進行は変わりません）`
+                      }
+                    </p>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => {
+                          const dir = setNavConfirm.direction
+                          setSetNavConfirm(null)
+                          if (dir === 'next') handleNextSet()
+                          else handlePrevSet()
+                        }}
+                        className="flex-1 py-1 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-[11px] font-medium"
+                      >
+                        確定
+                      </button>
+                      <button
+                        onClick={() => setSetNavConfirm(null)}
+                        className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[11px]"
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5 mb-1.5">
+                    <button
+                      onClick={() => setSetNavConfirm({ direction: 'prev' })}
+                      disabled={store.currentSetNum <= 1}
+                      className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft size={12} />
+                      前のセット (Set {store.currentSetNum - 1})
+                    </button>
+                    <button
+                      onClick={() => setSetNavConfirm({ direction: 'next' })}
+                      className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center"
+                    >
+                      <ChevronRight size={12} />
+                      次のセットへ (Set {store.currentSetNum + 1})
+                    </button>
+                  </div>
+                )}
                 {/* P1: スコア補正・強制セット終了 */}
                 <div className="flex gap-1.5">
                   <button
