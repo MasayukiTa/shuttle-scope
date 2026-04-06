@@ -1,105 +1,116 @@
-/**
- * ShuttleScope 高速起動スクリプト
- *
- * ── renderer の再ビルド判定 ────────────────────────────────────────────────────
- *   src/ または electron/ 配下に renderer ビルドより新しいファイルがあれば再ビルド
- *   変更がなければキャッシュを再利用 → 0.5s でアプリ起動
- *
- * ── 起動フロー ─────────────────────────────────────────────────────────────────
- *   main+preload ビルド (0.5s)
- *     → Electron 起動（スプラッシュ即時表示）
- *     → [変更あり] renderer を並行ビルド (~10s) → 完了後アプリ表示
- *     → [変更なし] そのままアプリ表示
- */
-
 import { execSync, spawn } from 'node:child_process'
-import { existsSync, statSync, readdirSync, rmSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
 
-// electron パッケージから直接バイナリパスを取得（PATH に依存しない）
-const require = createRequire(pathToFileURL(join(root, 'package.json')).href)
+const require = createRequire(import.meta.url)
 const electronExe = require('electron')
 const rendererOut = join(root, 'out', 'renderer', 'index.html')
+const electronEnv = { ...process.env }
 
-// ── ソースファイルの最終更新時刻を再帰取得 ────────────────────────────────────
-const SKIP_DIRS = new Set(['node_modules', '.venv', 'out', '__pycache__', '.git', 'dist', 'scripts'])
+delete electronEnv.ELECTRON_RUN_AS_NODE
+
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.venv',
+  'out',
+  '__pycache__',
+  '.git',
+  'dist',
+  'scripts',
+])
 
 function newestMtime(dir) {
   let newest = 0
-  let entries
-  try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return 0 }
-  for (const e of entries) {
-    if (SKIP_DIRS.has(e.name)) continue
-    const p = join(dir, e.name)
-    if (e.isDirectory()) {
-      const t = newestMtime(p)
-      if (t > newest) newest = t
-    } else {
-      try {
-        const t = statSync(p).mtimeMs
-        if (t > newest) newest = t
-      } catch {}
+  let entries = []
+
+  try {
+    entries = readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return 0
+  }
+
+  for (const entry of entries) {
+    if (SKIP_DIRS.has(entry.name)) continue
+
+    const fullPath = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      const childMtime = newestMtime(fullPath)
+      if (childMtime > newest) newest = childMtime
+      continue
+    }
+
+    try {
+      const mtime = statSync(fullPath).mtimeMs
+      if (mtime > newest) newest = mtime
+    } catch {
+      // Ignore transient filesystem errors while checking timestamps.
     }
   }
+
   return newest
 }
 
-// ── renderer 再ビルドが必要か判定 ─────────────────────────────────────────────
-let needsRendererBuild = !existsSync(rendererOut)
+function shouldBuildRenderer() {
+  if (!existsSync(rendererOut)) return true
 
-if (!needsRendererBuild) {
   const rendererMtime = statSync(rendererOut).mtimeMs
-  const srcMtime    = newestMtime(join(root, 'src'))
+  const srcMtime = newestMtime(join(root, 'src'))
   const electronMtime = newestMtime(join(root, 'electron'))
-  const newest = Math.max(srcMtime, electronMtime)
-  if (newest > rendererMtime) {
-    console.log('[start] ソース変更を検出 → renderer 再ビルドします')
-    rmSync(join(root, 'out', 'renderer'), { recursive: true, force: true })
-    needsRendererBuild = true
-  } else {
-    console.log('[start] ソース変更なし → renderer キャッシュ利用')
-  }
+
+  return Math.max(srcMtime, electronMtime) > rendererMtime
 }
 
-// ── Step 1: main + preload ビルド (~0.5s) ────────────────────────────────────
+let needsRendererBuild = shouldBuildRenderer()
+
+if (needsRendererBuild && existsSync(join(root, 'out', 'renderer'))) {
+  console.log('[start] Source changed. Clearing renderer cache...')
+  rmSync(join(root, 'out', 'renderer'), { recursive: true, force: true })
+} else if (!needsRendererBuild) {
+  console.log('[start] Source unchanged. Reusing renderer cache.')
+}
+
 process.stdout.write('[start] Building main/preload... ')
 const t0 = Date.now()
 execSync('npm run build', {
   cwd: root,
-  stdio: 'pipe',  // "renderer config is missing" 警告を抑制
+  stdio: 'pipe',
   env: { ...process.env, SKIP_RENDERER: 'true' },
 })
 console.log(`done (${Date.now() - t0}ms)`)
 
-// ── Step 2: Electron 起動（スプラッシュ即時表示） ─────────────────────────────
-const label = needsRendererBuild
-  ? '[start] Electron 起動 → renderer をバックグラウンドでビルド中...'
-  : '[start] Electron 起動 → キャッシュ済み renderer をロード'
-console.log(label)
+const launchLabel = needsRendererBuild
+  ? '[start] Launching Electron. Renderer will build in the background...'
+  : '[start] Launching Electron with cached renderer...'
+console.log(launchLabel)
 
 const electron = spawn(electronExe, ['.'], {
   cwd: root,
   stdio: 'inherit',
   detached: false,
+  env: electronEnv,
 })
+
 electron.on('exit', (code) => process.exit(code ?? 0))
 
-// ── Step 3: renderer 再ビルド（変更があった場合のみ） ─────────────────────────
 if (needsRendererBuild) {
   const t1 = Date.now()
+
   try {
     execSync('npm run build', {
       cwd: root,
       stdio: 'inherit',
       env: { ...process.env, SKIP_RENDERER: 'false' },
     })
-    console.log(`[start] renderer ビルド完了 (${Date.now() - t1}ms) → アプリを自動表示`)
-  } catch (err) {
-    console.error('[start] renderer ビルド失敗:', err.message)
+    console.log(
+      `[start] Renderer build finished (${Date.now() - t1}ms). App should now be visible.`
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('[start] Renderer build failed:', message)
   }
 }

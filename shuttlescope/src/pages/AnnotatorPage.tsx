@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap } from 'lucide-react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap, ClipboardEdit } from 'lucide-react'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
 import { VideoPlayer } from '@/components/video/VideoPlayer'
@@ -17,7 +17,7 @@ import { useAnnotationStore } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
 import { apiGet, apiPost, apiPut } from '@/api/client'
-import { Match, Zone9, ShotType, GameSet } from '@/types'
+import { Match, Zone9, ShotType, GameSet, Player } from '@/types'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -113,9 +113,11 @@ export function AnnotatorPage() {
   // Ref guard: prevent useEffect from re-running doInit on every Zustand state change
   const initStartedRef = useRef(false)
 
-  // K-001: マッチデーモード（localStorage 永続化）
+  // K-001: マッチデーモード（localStorage 永続化 + ?matchDayMode=true URL パラメータで自動有効化）
   const [isMatchDayMode, setIsMatchDayMode] = useState(
-    () => localStorage.getItem('shuttlescope.matchDayMode') === 'true'
+    () =>
+      localStorage.getItem('shuttlescope.matchDayMode') === 'true' ||
+      searchParams.get('matchDayMode') === 'true'
   )
   // K-001: rally_end ステップでの選択中エンドタイプ
   const [pendingEndType, setPendingEndType] = useState<string | null>(null)
@@ -124,6 +126,13 @@ export function AnnotatorPage() {
   const [showIntervalSummary, setShowIntervalSummary] = useState(false)
   const [intervalSummarySetId, setIntervalSummarySetId] = useState<number | null>(null)
   const [nextSetPending, setNextSetPending] = useState<{ id: number; num: number } | null>(null)
+
+  // V4-U-001: 試合中補完パネル
+  const [showInMatchPanel, setShowInMatchPanel] = useState(false)
+  const [inMatchDominantHand, setInMatchDominantHand] = useState<string>('')
+  const [inMatchOrganization, setInMatchOrganization] = useState<string>('')
+  const [inMatchScoutingNotes, setInMatchScoutingNotes] = useState<string>('')
+  const [inMatchSaved, setInMatchSaved] = useState(false)
 
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
@@ -407,6 +416,27 @@ export function AnnotatorPage() {
 
   const match = matchData?.data
 
+  // V4-U-001: 試合中補完パネルの相手選手ミューテーション
+  const updateOpponent = useMutation({
+    mutationFn: (body: Partial<Player>) =>
+      apiPut(`/players/${match?.player_b_id}`, body),
+    onSuccess: () => {
+      setInMatchSaved(true)
+      setTimeout(() => setInMatchSaved(false), 2000)
+      queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+    },
+  })
+
+  // V4-U-001: パネルを開いたとき既存値で初期化
+  useEffect(() => {
+    if (showInMatchPanel && match?.player_b) {
+      setInMatchDominantHand(match.player_b.dominant_hand ?? '')
+      setInMatchOrganization(match.player_b.organization ?? '')
+      setInMatchScoutingNotes(match.player_b.scouting_notes ?? '')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInMatchPanel])
+
   // ステップラベル
   const stepLabel = {
     idle: store.isRallyActive
@@ -460,6 +490,22 @@ export function AnnotatorPage() {
               title={store.saveErrors.map((e) => `Rally ${e.rallyNum}: ${e.error}`).join('\n')}
             >
               {t('annotator.save_error_title')} {store.saveErrors.length}件 ✕
+            </button>
+          )}
+          {/* V4-U-001: 試合中補完パネル（暫定相手がいる場合に表示） */}
+          {match?.player_b?.needs_review && (
+            <button
+              onClick={() => setShowInMatchPanel((v) => !v)}
+              className={clsx(
+                'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
+                showInMatchPanel
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-orange-500/20 text-orange-300 hover:bg-orange-500/40'
+              )}
+              title={t('in_match_panel.title')}
+            >
+              <ClipboardEdit size={12} />
+              {t('in_match_panel.opponent_info')}
             </button>
           )}
           {/* K-001: マッチデーモード切替 */}
@@ -917,6 +963,90 @@ export function AnnotatorPage() {
           </div>
         </div>
       </div>
+
+      {/* V4-U-001: 試合中補完パネル（暫定相手選手情報の追記） */}
+      {showInMatchPanel && match?.player_b && (
+        <div className="fixed bottom-4 right-4 z-40 w-72 bg-gray-800 border border-orange-500/40 rounded-lg shadow-xl">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <ClipboardEdit size={14} className="text-orange-400" />
+              {t('in_match_panel.title')}
+              {match.player_b.profile_status === 'provisional' && (
+                <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1.5 rounded">
+                  {t('in_match_panel.provisional_badge')}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setShowInMatchPanel(false)}
+              className="text-gray-400 hover:text-white text-xs"
+            >✕</button>
+          </div>
+          <div className="p-4 flex flex-col gap-3">
+            <div className="text-xs text-gray-400 truncate">{match.player_b.name}</div>
+            {/* 利き手 */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t('in_match_panel.dominant_hand')}</label>
+              <div className="flex gap-1.5">
+                {[
+                  { value: 'R', label: t('in_match_panel.hand_right') },
+                  { value: 'L', label: t('in_match_panel.hand_left') },
+                  { value: '', label: t('in_match_panel.hand_unknown') },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setInMatchDominantHand(opt.value)}
+                    className={clsx(
+                      'flex-1 py-1 rounded text-xs border',
+                      inMatchDominantHand === opt.value
+                        ? 'bg-blue-600 border-blue-500 text-white'
+                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* 所属 */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t('in_match_panel.organization')}</label>
+              <input
+                value={inMatchOrganization}
+                onChange={(e) => setInMatchOrganization(e.target.value)}
+                className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs"
+                placeholder="チーム・所属"
+              />
+            </div>
+            {/* メモ */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t('in_match_panel.scouting_notes')}</label>
+              <textarea
+                value={inMatchScoutingNotes}
+                onChange={(e) => setInMatchScoutingNotes(e.target.value)}
+                rows={2}
+                className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs resize-none"
+                placeholder="気づいたこと、プレースタイルなど"
+              />
+            </div>
+            {/* 保存 */}
+            <button
+              onClick={() => {
+                updateOpponent.mutate({
+                  dominant_hand: inMatchDominantHand || undefined,
+                  organization: inMatchOrganization || undefined,
+                  scouting_notes: inMatchScoutingNotes || undefined,
+                  profile_status: 'partial',
+                })
+              }}
+              disabled={updateOpponent.isPending}
+              className="w-full py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded text-xs font-medium disabled:opacity-50"
+            >
+              {inMatchSaved ? t('in_match_panel.saved') : t('in_match_panel.save')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* K-003: セット間サマリーモーダル */}
       {showIntervalSummary && intervalSummarySetId != null && (

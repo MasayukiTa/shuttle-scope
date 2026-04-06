@@ -14,7 +14,7 @@ echo   ShuttleScope
 echo ============================================
 echo.
 
-:: Check Python
+rem Check Python
 where python >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python not found. Install Python 3.10+
@@ -22,7 +22,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Check npm
+rem Check npm
 where npm >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] npm not found. Install Node.js
@@ -30,7 +30,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Setup Python venv (first run only)
+rem Setup Python venv on first run
 if not exist "%PYTHON%" (
     echo [SETUP] Creating Python venv...
     python -m venv "%VENV%"
@@ -42,7 +42,7 @@ if not exist "%PYTHON%" (
     echo.
 )
 
-:: npm install (first run only)
+rem Run npm install on first run
 if not exist "%ROOT%node_modules" (
     echo [SETUP] Running npm install...
     cd /d "%ROOT%"
@@ -52,12 +52,11 @@ if not exist "%ROOT%node_modules" (
     echo.
 )
 
-:: Kill old Python backend
+rem Kill old Python backend
 powershell -NoProfile -Command "Stop-Process -Name python -Force -ErrorAction SilentlyContinue" >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-:: Launch
-:: - 初回: main+preload ビルド(0.5s) → Electron起動(スプラッシュ) → renderer並行ビルド(10s)
-:: - 2回目以降: main+preload ビルド(0.5s) → Electron起動 → すぐアプリ表示
+rem Launch app
+set "ELECTRON_RUN_AS_NODE="
 cd /d "%ROOT%"
 npm run start

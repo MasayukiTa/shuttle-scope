@@ -1,4 +1,7 @@
 """選手管理API（/api/players）"""
+import json
+import re
+import unicodedata
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -15,11 +18,18 @@ class PlayerCreate(BaseModel):
     name_en: Optional[str] = None
     team: Optional[str] = None
     nationality: Optional[str] = None
-    dominant_hand: str = "R"
+    dominant_hand: Optional[str] = None        # R / L / null（未確認）
     birth_year: Optional[int] = None
     world_ranking: Optional[int] = None
     is_target: bool = False
     notes: Optional[str] = None
+    # V4: プロフィール確定度・暫定作成管理
+    profile_status: Optional[str] = "verified"
+    needs_review: bool = False
+    created_via_quick_start: bool = False
+    organization: Optional[str] = None
+    aliases: Optional[list[str]] = None
+    scouting_notes: Optional[str] = None
 
 
 class PlayerUpdate(BaseModel):
@@ -32,9 +42,32 @@ class PlayerUpdate(BaseModel):
     world_ranking: Optional[int] = None
     is_target: Optional[bool] = None
     notes: Optional[str] = None
+    # V4
+    profile_status: Optional[str] = None
+    needs_review: Optional[bool] = None
+    organization: Optional[str] = None
+    aliases: Optional[list[str]] = None
+    scouting_notes: Optional[str] = None
+
+
+def normalize_name(name: str) -> str:
+    """検索用の正規化名を生成する（全角→半角、大文字→小文字、スペース・記号除去）"""
+    # Unicode正規化（全角→半角）
+    normalized = unicodedata.normalize("NFKC", name)
+    # 大文字→小文字
+    normalized = normalized.lower()
+    # スペース・記号除去
+    normalized = re.sub(r"[\s\-_.・]", "", normalized)
+    return normalized
 
 
 def player_to_dict(p: Player, match_count: int = 0) -> dict:
+    aliases_list: list[str] = []
+    if p.aliases:
+        try:
+            aliases_list = json.loads(p.aliases)
+        except Exception:
+            aliases_list = []
     return {
         "id": p.id,
         "name": p.name,
@@ -48,6 +81,14 @@ def player_to_dict(p: Player, match_count: int = 0) -> dict:
         "match_count": match_count,
         "notes": p.notes,
         "created_at": p.created_at.isoformat() if p.created_at else None,
+        # V4
+        "profile_status": p.profile_status or "verified",
+        "needs_review": bool(p.needs_review),
+        "created_via_quick_start": bool(p.created_via_quick_start),
+        "organization": p.organization,
+        "aliases": aliases_list,
+        "name_normalized": p.name_normalized,
+        "scouting_notes": p.scouting_notes,
     }
 
 
@@ -64,10 +105,87 @@ def list_players(db: Session = Depends(get_db)):
     return {"success": True, "data": result}
 
 
+@router.get("/players/search")
+def search_players(q: str = "", db: Session = Depends(get_db)):
+    """選手名検索（正規化・alias対応）クイックスタート用"""
+    if not q or not q.strip():
+        return {"success": True, "data": []}
+
+    q_norm = normalize_name(q.strip())
+    all_players = db.query(Player).order_by(Player.name).all()
+
+    exact: list[Player] = []
+    prefix: list[Player] = []
+    contains: list[Player] = []
+    alias_match: list[Player] = []
+
+    for p in all_players:
+        pn_norm = p.name_normalized or normalize_name(p.name)
+        # 完全一致
+        if pn_norm == q_norm:
+            exact.append(p)
+            continue
+        # 前方一致
+        if pn_norm.startswith(q_norm) or (p.name_en and normalize_name(p.name_en).startswith(q_norm)):
+            prefix.append(p)
+            continue
+        # 部分一致
+        if q_norm in pn_norm or (p.name_en and q_norm in normalize_name(p.name_en)):
+            contains.append(p)
+            continue
+        # alias一致
+        if p.aliases:
+            try:
+                aliases_list = json.loads(p.aliases)
+                for alias in aliases_list:
+                    if q_norm in normalize_name(alias):
+                        alias_match.append(p)
+                        break
+            except Exception:
+                pass
+
+    ordered = exact + prefix + contains + alias_match
+    # 重複除去（順序保持）
+    seen: set[int] = set()
+    result = []
+    for p in ordered:
+        if p.id not in seen:
+            seen.add(p.id)
+            cnt = db.query(Match).filter(
+                (Match.player_a_id == p.id) | (Match.player_b_id == p.id)
+            ).count()
+            result.append(player_to_dict(p, match_count=cnt))
+
+    return {"success": True, "data": result}
+
+
+@router.get("/players/needs_review")
+def list_needs_review(db: Session = Depends(get_db)):
+    """要レビュー選手一覧（V4-U-003）"""
+    players = db.query(Player).filter(Player.needs_review == True).order_by(Player.created_at.desc()).all()  # noqa: E712
+    result = []
+    for p in players:
+        cnt = db.query(Match).filter(
+            (Match.player_a_id == p.id) | (Match.player_b_id == p.id)
+        ).count()
+        result.append(player_to_dict(p, match_count=cnt))
+    return {"success": True, "data": result}
+
+
 @router.post("/players", status_code=201)
 def create_player(body: PlayerCreate, db: Session = Depends(get_db)):
     """選手登録"""
-    player = Player(**body.model_dump())
+    data = body.model_dump()
+    aliases = data.pop("aliases", None)
+    aliases_json = json.dumps(aliases, ensure_ascii=False) if aliases else None
+    # 正規化名を自動生成
+    name_normalized = normalize_name(data["name"])
+
+    player = Player(
+        **data,
+        aliases=aliases_json,
+        name_normalized=name_normalized,
+    )
     db.add(player)
     db.commit()
     db.refresh(player)
@@ -89,7 +207,14 @@ def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
-    for key, value in body.model_dump(exclude_none=True).items():
+    data = body.model_dump(exclude_none=True)
+    # aliases をJSON化
+    if "aliases" in data:
+        data["aliases"] = json.dumps(data["aliases"], ensure_ascii=False)
+    # name 変更時に name_normalized を更新
+    if "name" in data:
+        data["name_normalized"] = normalize_name(data["name"])
+    for key, value in data.items():
         setattr(player, key, value)
     db.commit()
     db.refresh(player)

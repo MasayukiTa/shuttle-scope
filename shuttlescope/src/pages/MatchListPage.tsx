@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Play, Edit2, Trash2, Download, Filter } from 'lucide-react'
+import { Plus, Play, Trash2, Download, Filter, Zap, AlertCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
 import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS } from '@/types'
+import { QuickStartModal } from '@/components/annotation/QuickStartModal'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -46,6 +47,7 @@ export function MatchListPage() {
   const queryClient = useQueryClient()
 
   const [showForm, setShowForm] = useState(false)
+  const [showQuickStart, setShowQuickStart] = useState(false)
   const [form, setForm] = useState<MatchFormData>(defaultForm())
   const [filterPlayer, setFilterPlayer] = useState<string>('')
   const [filterLevel, setFilterLevel] = useState<string>('')
@@ -131,13 +133,22 @@ export function MatchListPage() {
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
         <h1 className="text-xl font-semibold">{t('nav.matches')}</h1>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
-        >
-          <Plus size={16} />
-          試合登録
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowQuickStart(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-semibold rounded text-sm"
+          >
+            <Zap size={15} />
+            {t('quick_start.button')}
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+          >
+            <Plus size={16} />
+            試合登録
+          </button>
+        </div>
       </div>
 
       {/* フィルター */}
@@ -235,7 +246,14 @@ export function MatchListPage() {
                     <span className="px-1.5 py-0.5 rounded bg-gray-700 text-xs">{m.tournament_level}</span>
                   </td>
                   <td className="py-2 pr-4 text-gray-300">{t(`match.formats.${m.format}`)}</td>
-                  <td className="py-2 pr-4">{m.player_b?.name ?? `#${m.player_b_id}`}</td>
+                  <td className="py-2 pr-4">
+                    <span>{m.player_b?.name ?? `#${m.player_b_id}`}</span>
+                    {m.player_b?.needs_review && (
+                      <span className="ml-1 text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded" title={t('player.profile_status_provisional')}>
+                        暫定
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 pr-4">
                     <span className={clsx(
                       'font-medium',
@@ -303,6 +321,18 @@ export function MatchListPage() {
           </table>
         )}
       </div>
+
+      {/* クイックスタートモーダル */}
+      {showQuickStart && (
+        <QuickStartModal
+          onClose={() => setShowQuickStart(false)}
+          onStarted={(matchId) => {
+            setShowQuickStart(false)
+            queryClient.invalidateQueries({ queryKey: ['matches'] })
+            navigate(`/annotator/${matchId}?matchDayMode=true&quickStart=true`)
+          }}
+        />
+      )}
 
       {/* 試合登録モーダル */}
       {showForm && (

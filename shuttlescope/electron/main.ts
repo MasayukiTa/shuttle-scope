@@ -1,9 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol } from 'electron'
+import electron from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as http from 'http'
 import { existsSync, statSync, createReadStream } from 'fs'
 import { Readable } from 'stream'
+
+const { app, BrowserWindow, dialog, ipcMain, protocol } = electron
 
 // YouTube が Electron UA を検知してブロックするのを回避するための汎用ブラウザ UA
 const BROWSER_UA =
@@ -63,15 +65,17 @@ function waitForBackend(url: string, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const start = Date.now()
     const check = () => {
-      http.get(url, (res) => {
-        if (res.statusCode === 200) {
-          resolve()
-        } else {
+      http
+        .get(url, (res) => {
+          if (res.statusCode === 200) {
+            resolve()
+          } else {
+            retry()
+          }
+        })
+        .on('error', () => {
           retry()
-        }
-      }).on('error', () => {
-        retry()
-      })
+        })
     }
     const retry = () => {
       if (Date.now() - start > timeoutMs) {
@@ -88,9 +92,10 @@ function waitForBackend(url: string, timeoutMs: number): Promise<void> {
 
 function startPythonBackend(): ChildProcess {
   const appPath = app.getAppPath()
-  const pythonExecutable = process.platform === 'win32'
-    ? path.join(appPath, 'backend', '.venv', 'Scripts', 'python.exe')
-    : path.join(appPath, 'backend', '.venv', 'bin', 'python')
+  const pythonExecutable =
+    process.platform === 'win32'
+      ? path.join(appPath, 'backend', '.venv', 'Scripts', 'python.exe')
+      : path.join(appPath, 'backend', '.venv', 'bin', 'python')
 
   const scriptPath = path.join(appPath, 'backend', 'main.py')
 
@@ -204,7 +209,10 @@ ipcMain.handle('open-video-file', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [
-      { name: 'Video', extensions: ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv', 'm4v', 'webm', 'ts', 'mts'] },
+      {
+        name: 'Video',
+        extensions: ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv', 'm4v', 'webm', 'ts', 'mts'],
+      },
       { name: 'All Files', extensions: ['*'] },
     ],
   })
@@ -241,9 +249,9 @@ function createWindow(): void {
     minHeight: 700,
     title: 'ShuttleScope',
     backgroundColor: '#0f172a',
-    show: false,  // スプラッシュが閉じてから表示する
+    show: false,
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
+      preload: path.join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false,
@@ -265,8 +273,7 @@ function createWindow(): void {
   } else if (existsSync(rendererFile)) {
     mainWindow.loadFile(rendererFile)
   } else {
-    // rendererがまだビルド中（start スクリプトでの並行ビルド時）
-    // ファイルが現れるまでポーリングして読み込む
+    // renderer がまだビルド中のときは、生成完了まで待ってから読み込む
     const pollRenderer = () => {
       if (existsSync(rendererFile)) {
         mainWindow?.loadFile(rendererFile)
@@ -303,8 +310,7 @@ async function startApp(): Promise<void> {
     // localfile:// プロトコルハンドラーを登録（ウィンドウ作成前に必要）
     registerLocalFileProtocol()
 
-    // メインウィンドウをバックグラウンドでロード（show:false なので画面には出ない）
-    // ロード完了後に did-finish-load でスプラッシュを閉じて表示する
+    // メインウィンドウをバックグラウンドでロード
     createWindow()
 
     if (!mainWindow) return
@@ -315,49 +321,43 @@ async function startApp(): Promise<void> {
       .catch((err) => console.error('[Main] Backend startup warning:', err.message))
 
     // ── DRM / EME 権限ハンドラー ──────────────────────────────────────────────
-    // <webview> 内で DRM コンテンツ（Widevine L3）を再生するために
-    // EME（Encrypted Media Extensions）と保護コンテンツの権限を許可する。
-    // Electron 20+ は Widevine L3（ソフトウェア CDM）を内蔵している。
-    mainWindow.webContents.session.setPermissionRequestHandler(
-      (_webContents, permission, callback) => {
-        // EME (encrypted-media), media, notifications などを許可
-        const ALLOWED = new Set([
-          'media',
-          'mediaKeySystem',
-          'geolocation', // 一部サイトが要求
-        ])
-        callback(ALLOWED.has(permission))
-      }
-    )
+    mainWindow.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+      const allowed = new Set(['media', 'mediaKeySystem', 'geolocation'])
+      callback(allowed.has(permission))
+    })
 
-    mainWindow.webContents.session.setPermissionCheckHandler(
-      (_webContents, permission) => {
-        const ALLOWED = new Set(['media', 'mediaKeySystem'])
-        return ALLOWED.has(permission)
-      }
-    )
+    mainWindow.webContents.session.setPermissionCheckHandler((_webContents, permission) => {
+      const allowed = new Set(['media', 'mediaKeySystem'])
+      return allowed.has(permission)
+    })
 
     // YouTube / 外部コンテンツを iframe で読み込めるよう CSP を設定
-    // onHeadersReceived は HTTP/HTTPS レスポンスのみ対象（dev モード用）
     mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
             "default-src 'self' 'unsafe-inline' 'unsafe-eval' localfile: blob: data: http://localhost:*;" +
-            " media-src 'self' localfile: blob: data: https:;" +
-            " script-src 'self' 'unsafe-inline' 'unsafe-eval';" +
-            " frame-src *;" +
-            " img-src 'self' localfile: blob: data: https:;" +
-            " connect-src 'self' http://localhost:* ws://localhost:* https:;"
+              " media-src 'self' localfile: blob: data: https:;" +
+              " script-src 'self' 'unsafe-inline' 'unsafe-eval';" +
+              " frame-src *;" +
+              " img-src 'self' localfile: blob: data: https:;" +
+              " connect-src 'self' http://localhost:* ws://localhost:* https:;",
           ],
         },
       })
     })
 
-    // YouTube リクエストに対して UA を明示的にブラウザ UA に設定（iframe 内も含む）
+    // YouTube リクエストに対して UA を明示的にブラウザ UA に設定
     mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
-      { urls: ['https://*.youtube.com/*', 'https://*.youtube-nocookie.com/*', 'https://*.googlevideo.com/*', 'https://*.ytimg.com/*'] },
+      {
+        urls: [
+          'https://*.youtube.com/*',
+          'https://*.youtube-nocookie.com/*',
+          'https://*.googlevideo.com/*',
+          'https://*.ytimg.com/*',
+        ],
+      },
       (details, callback) => {
         callback({
           requestHeaders: {

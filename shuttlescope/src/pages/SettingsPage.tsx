@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play } from 'lucide-react'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, UserRole } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -38,12 +39,20 @@ export function SettingsPage() {
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
-  const [activeTab, setActiveTab] = useState<'players' | 'account'>('players')
+  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'account'>('players')
+  const navigate = useNavigate()
 
   // 選手一覧取得
   const { data: playersData } = useQuery({
     queryKey: ['players'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
+  })
+
+  // V4-U-003: 要レビュー選手取得
+  const { data: reviewPlayersData } = useQuery({
+    queryKey: ['players-needs-review'],
+    queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/needs_review'),
+    enabled: activeTab === 'review',
   })
 
   // 選手作成
@@ -71,6 +80,16 @@ export function SettingsPage() {
   const deletePlayer = useMutation({
     mutationFn: (id: number) => apiDelete(`/players/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['players'] }),
+  })
+
+  // V4-U-003: 選手を「確認済み」にする
+  const markVerified = useMutation({
+    mutationFn: (id: number) =>
+      apiPut(`/players/${id}`, { profile_status: 'verified', needs_review: false }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['players'] })
+      queryClient.invalidateQueries({ queryKey: ['players-needs-review'] })
+    },
   })
 
   const handlePlayerSubmit = (e: React.FormEvent) => {
@@ -101,7 +120,7 @@ export function SettingsPage() {
       name_en: player.name_en ?? '',
       team: player.team ?? '',
       nationality: player.nationality ?? '',
-      dominant_hand: player.dominant_hand,
+      dominant_hand: (player.dominant_hand === 'R' || player.dominant_hand === 'L') ? player.dominant_hand : 'R',
       birth_year: player.birth_year ? String(player.birth_year) : '',
       world_ranking: player.world_ranking ? String(player.world_ranking) : '',
       is_target: player.is_target,
@@ -121,17 +140,26 @@ export function SettingsPage() {
 
       {/* タブ */}
       <div className="flex border-b border-gray-700">
-        {(['players', 'account'] as const).map((tab) => (
+        {([
+          { key: 'players', label: '選手管理' },
+          { key: 'review', label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
+          { key: 'account', label: 'アカウント設定' },
+        ] as const).map((tab) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key as any)}
+            className={`flex items-center gap-1.5 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.key
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            {tab === 'players' ? '選手管理' : 'アカウント設定'}
+            {tab.label}
+            {'badge' in tab && tab.badge > 0 && (
+              <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] bg-orange-500 text-white rounded-full">
+                {tab.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -172,7 +200,9 @@ export function SettingsPage() {
                     </td>
                     <td className="py-2 pr-4 text-gray-300">{p.team ?? '-'}</td>
                     <td className="py-2 pr-4 text-gray-300">{p.nationality ?? '-'}</td>
-                    <td className="py-2 pr-4 text-gray-300">{p.dominant_hand === 'R' ? '右' : '左'}</td>
+                    <td className="py-2 pr-4 text-gray-300">
+                      {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : '-'}
+                    </td>
                     <td className="py-2 pr-4 text-gray-300">{p.world_ranking ? `#${p.world_ranking}` : '-'}</td>
                     <td className="py-2 pr-4">
                       {p.is_target && <CheckCircle size={14} className="text-green-400" />}
@@ -205,6 +235,74 @@ export function SettingsPage() {
                 選手が登録されていません。「選手追加」ボタンで追加してください。
               </div>
             )}
+          </div>
+        )}
+
+        {/* 要レビュータブ（V4-U-003） */}
+        {activeTab === 'review' && (
+          <div>
+            <h2 className="text-lg font-medium mb-4">{t('review.title')}</h2>
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                <AlertCircle size={14} className="text-orange-400" />
+                {t('review.provisional_players')}
+              </h3>
+              {!reviewPlayersData?.data?.length ? (
+                <div className="text-sm text-gray-500 py-4">{t('review.no_items')}</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-400 border-b border-gray-700">
+                      <th className="text-left py-2 pr-4">名前</th>
+                      <th className="text-left py-2 pr-4">{t('review.profile_status')}</th>
+                      <th className="text-left py-2 pr-4">利き手</th>
+                      <th className="text-left py-2 pr-4">試合数</th>
+                      <th className="text-left py-2">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reviewPlayersData.data.map((p) => (
+                      <tr key={p.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                        <td className="py-2 pr-4">
+                          <div className="flex items-center gap-2">
+                            {p.name}
+                            {p.profile_status === 'provisional' && (
+                              <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded">暫定</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-4 text-gray-300">
+                          {t(`player.profile_status_${p.profile_status ?? 'provisional'}`)}
+                        </td>
+                        <td className="py-2 pr-4 text-gray-300">
+                          {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : t('player.unknown_hand')}
+                        </td>
+                        <td className="py-2 pr-4 text-gray-300">{p.match_count ?? 0}</td>
+                        <td className="py-2">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => openEdit(p)}
+                              className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                              title="編集"
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                            <button
+                              onClick={() => markVerified.mutate(p.id)}
+                              disabled={markVerified.isPending}
+                              className="p-1.5 rounded bg-green-800 hover:bg-green-700 text-green-300"
+                              title={t('review.mark_verified')}
+                            >
+                              <CheckCircle size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
 

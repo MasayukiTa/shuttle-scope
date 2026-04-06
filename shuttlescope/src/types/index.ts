@@ -17,7 +17,13 @@ export const DEFAULT_FILTERS: AnalysisFilters = {
 
 export type UserRole = 'analyst' | 'coach' | 'player'
 
-export type DominantHand = 'R' | 'L'
+export type DominantHand = 'R' | 'L' | 'unknown'
+
+export type ProfileStatus = 'provisional' | 'partial' | 'verified'
+
+export type CompetitionType = 'official' | 'practice_match' | 'open_practice' | 'unknown'
+
+export type MetadataStatus = 'minimal' | 'partial' | 'verified'
 
 export type MatchFormat = 'singles' | 'womens_doubles' | 'mixed_doubles'
 
@@ -64,13 +70,21 @@ export interface Player {
   name_en?: string
   team?: string
   nationality?: string
-  dominant_hand: DominantHand
+  dominant_hand?: DominantHand | null
   birth_year?: number
   world_ranking?: number
   is_target: boolean
   match_count?: number
   notes?: string
   created_at: string
+  // V4: プロフィール確定度・暫定作成管理
+  profile_status?: ProfileStatus
+  needs_review?: boolean
+  created_via_quick_start?: boolean
+  organization?: string
+  aliases?: string[]
+  name_normalized?: string
+  scouting_notes?: string
 }
 
 export interface Match {
@@ -101,6 +115,11 @@ export interface Match {
   // リレーション（フロント側で結合）
   player_a?: Player
   player_b?: Player
+  // V4: クイックスタート・試合メタデータ
+  initial_server?: string
+  competition_type?: CompetitionType
+  created_via_quick_start?: boolean
+  metadata_status?: MetadataStatus
 }
 
 export interface GameSet {

@@ -26,27 +26,29 @@ export default defineConfig({
         output: {
           // package.json "type":"module" だと .mjs になり Electron sandbox と非互換のため CJS 強制
           format: 'cjs',
-          entryFileNames: '[name].js',
+          entryFileNames: '[name].cjs',
         },
       },
     },
   },
-  ...(skipRenderer ? {} : {
-    renderer: {
-      root: 'src',
-      build: {
-        rollupOptions: {
-          input: {
-            index: resolve(__dirname, 'src/index.html'),
+  ...(skipRenderer
+    ? {}
+    : {
+        renderer: {
+          root: 'src',
+          build: {
+            rollupOptions: {
+              input: {
+                index: resolve(__dirname, 'src/index.html'),
+              },
+            },
+          },
+          plugins: [react()],
+          resolve: {
+            alias: {
+              '@': resolve(__dirname, 'src'),
+            },
           },
         },
-      },
-      plugins: [react()],
-      resolve: {
-        alias: {
-          '@': resolve(__dirname, 'src'),
-        },
-      },
-    },
-  }),
+      }),
 })

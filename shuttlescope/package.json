@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "preview": "electron .",
+    "preview": "node scripts/preview.mjs",
     "start": "node scripts/start.mjs",
     "test": "vitest",
     "lint": "eslint ."

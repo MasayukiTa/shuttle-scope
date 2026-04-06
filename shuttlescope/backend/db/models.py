@@ -27,12 +27,21 @@ class Player(Base):
     name_en: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 英語名（BWF検索用）
     team: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     nationality: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    dominant_hand: Mapped[str] = mapped_column(String(1), nullable=False, default="R")  # R / L
+    dominant_hand: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default=None)  # R / L / unknown / null
     birth_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     world_ranking: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 記録時点
     is_target: Mapped[bool] = mapped_column(Boolean, default=False)           # 解析対象フラグ
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # V4: プロフィール確定度・暫定作成管理
+    profile_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="verified")  # provisional/partial/verified
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_via_quick_start: Mapped[bool] = mapped_column(Boolean, default=False)
+    # V4: 所属・表記揺れ・別名
+    organization: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    aliases: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON文字列 ["alias1","alias2"]
+    name_normalized: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # 正規化名（検索用）
+    scouting_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # リレーション
     matches_as_a: Mapped[list["Match"]] = relationship(
@@ -70,6 +79,11 @@ class Match(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # V4: クイックスタート・試合メタデータ
+    initial_server: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)     # player_a / player_b
+    competition_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True, default="unknown")  # official/practice_match/open_practice/unknown
+    created_via_quick_start: Mapped[bool] = mapped_column(Boolean, default=False)
+    metadata_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="minimal")  # minimal/partial/verified
 
     # リレーション
     player_a: Mapped["Player"] = relationship("Player", foreign_keys=[player_a_id], back_populates="matches_as_a")

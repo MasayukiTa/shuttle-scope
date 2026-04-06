@@ -1,5 +1,8 @@
 """試合管理API（/api/matches）"""
 import asyncio
+import json
+import re
+import unicodedata
 from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -29,6 +32,11 @@ class MatchCreate(BaseModel):
     final_score: Optional[str] = None
     video_url: Optional[str] = None
     notes: Optional[str] = None
+    # V4
+    initial_server: Optional[str] = None
+    competition_type: Optional[str] = "unknown"
+    created_via_quick_start: bool = False
+    metadata_status: Optional[str] = "minimal"
 
 
 class MatchUpdate(BaseModel):
@@ -45,6 +53,10 @@ class MatchUpdate(BaseModel):
     video_local_path: Optional[str] = None
     annotation_status: Optional[str] = None
     notes: Optional[str] = None
+    # V4
+    initial_server: Optional[str] = None
+    competition_type: Optional[str] = None
+    metadata_status: Optional[str] = None
 
 
 def match_to_dict(m: Match, include_players: bool = True, db: Session = None) -> dict:
@@ -73,6 +85,11 @@ def match_to_dict(m: Match, include_players: bool = True, db: Session = None) ->
         "notes": m.notes,
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+        # V4
+        "initial_server": m.initial_server,
+        "competition_type": m.competition_type or "unknown",
+        "created_via_quick_start": bool(m.created_via_quick_start),
+        "metadata_status": m.metadata_status or "minimal",
     }
     if include_players and db:
         pa = db.get(Player, m.player_a_id)
@@ -147,6 +164,90 @@ def delete_match(match_id: int, db: Session = Depends(get_db)):
     db.delete(match)
     db.commit()
     return {"success": True, "data": {"id": match_id}}
+
+
+class QuickStartBody(BaseModel):
+    """クイックスタート専用リクエスト（V4）"""
+    player_a_id: int                           # 自チーム選手（登録済み）
+    opponent_name: str                         # 相手選手名（新規または既存）
+    opponent_id: Optional[int] = None          # 既存選手を選択した場合はIDを指定
+    initial_server: Optional[str] = None       # player_a / player_b
+    competition_type: str = "unknown"          # official/practice_match/open_practice/unknown
+    tournament: Optional[str] = None           # 大会名（任意）
+    round: Optional[str] = None               # ラウンド（任意）
+    format: str = "singles"
+
+
+def _normalize_name(name: str) -> str:
+    n = unicodedata.normalize("NFKC", name).lower()
+    return re.sub(r"[\s\-_.・]", "", n)
+
+
+@router.post("/matches/quick-start", status_code=201)
+def quick_start_match(body: QuickStartBody, db: Session = Depends(get_db)):
+    """クイックスタート: 相手選手auto-create + 試合作成を一括実行（V4）"""
+    # 自チーム選手確認
+    player_a = db.get(Player, body.player_a_id)
+    if not player_a:
+        raise HTTPException(status_code=404, detail="自チーム選手が見つかりません")
+
+    # 相手選手の解決
+    if body.opponent_id:
+        player_b = db.get(Player, body.opponent_id)
+        if not player_b:
+            raise HTTPException(status_code=404, detail="指定された相手選手が見つかりません")
+    else:
+        # 相手選手を暫定作成（provisional）
+        name_normalized = _normalize_name(body.opponent_name)
+        player_b = Player(
+            name=body.opponent_name,
+            name_normalized=name_normalized,
+            is_target=False,
+            dominant_hand=None,
+            profile_status="provisional",
+            needs_review=True,
+            created_via_quick_start=True,
+        )
+        db.add(player_b)
+        db.flush()  # IDを確定させる
+
+    today = date.today()
+    match = Match(
+        tournament=body.tournament or "未設定",
+        tournament_level="その他",
+        round=body.round or "未設定",
+        date=today,
+        format=body.format,
+        player_a_id=body.player_a_id,
+        player_b_id=player_b.id,
+        result="unfinished",
+        initial_server=body.initial_server,
+        competition_type=body.competition_type,
+        created_via_quick_start=True,
+        metadata_status="minimal",
+        annotation_status="in_progress",
+    )
+    db.add(match)
+    db.commit()
+    db.refresh(match)
+    db.refresh(player_b)
+
+    return {
+        "success": True,
+        "data": {
+            "match": match_to_dict(match, include_players=True, db=db),
+            "opponent_created": body.opponent_id is None,
+        },
+    }
+
+
+@router.get("/matches/needs_review")
+def list_needs_review_matches(db: Session = Depends(get_db)):
+    """要レビュー試合一覧（V4-U-003）"""
+    matches = db.query(Match).filter(
+        Match.metadata_status != "verified"
+    ).order_by(Match.created_at.desc()).all()
+    return {"success": True, "data": [match_to_dict(m, include_players=True, db=db) for m in matches]}
 
 
 @router.get("/matches/{match_id}/rallies")
