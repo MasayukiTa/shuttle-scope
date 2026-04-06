@@ -50,13 +50,13 @@ function OpponentTable({ playerId }: { playerId: number }) {
       <ConfidenceBadge sampleSize={sampleSize} />
 
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full min-w-[320px] text-xs">
           <thead>
             <tr className="text-gray-400 border-b border-gray-700">
               <th className="text-left py-1.5 pr-3">{t('analysis.opponent_stats.opponent')}</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.opponent_stats.match_count')}</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.opponent_stats.win_rate')}</th>
-              <th className="text-right py-1.5">{t('analysis.opponent_stats.avg_rally')}</th>
+              <th className="text-right py-1.5 pr-2">{t('analysis.opponent_stats.avg_rally')}</th>
             </tr>
           </thead>
           <tbody>
@@ -82,7 +82,7 @@ function OpponentTable({ playerId }: { playerId: number }) {
                       {(opp.win_rate * 100).toFixed(1)}%
                     </span>
                   </td>
-                  <td className="py-1.5 text-right text-gray-300">{opp.avg_rally_length.toFixed(1)}</td>
+                  <td className="py-1.5 pr-2 text-right text-gray-300">{opp.avg_rally_length.toFixed(1)}</td>
                 </tr>
               ))}
           </tbody>

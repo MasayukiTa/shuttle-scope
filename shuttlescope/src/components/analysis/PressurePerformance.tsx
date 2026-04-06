@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
-import { perfColor, WIN, LOSS } from '@/styles/colors'
+import { perfColor, lightSafe, WIN, LOSS } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface PressurePerformanceProps {
   playerId: number
@@ -37,12 +38,14 @@ function pctStr(v: number): string {
 function SegmentCard({
   segment,
   highlight,
+  isLight,
 }: {
   segment: PressureSegment
   highlight?: boolean
+  isLight: boolean
 }) {
   const barWidth = `${Math.min(segment.win_rate * 100, 100).toFixed(1)}%`
-  const color = perfColor(segment.win_rate)
+  const color = lightSafe(perfColor(segment.win_rate), !isLight)
   return (
     <div
       className={`rounded-lg p-4 flex flex-col gap-2 ${
@@ -68,6 +71,7 @@ function SegmentCard({
 }
 
 export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: PressurePerformanceProps) {
+  const isLight = useIsLightMode()
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
@@ -110,9 +114,9 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
       return <span className="text-xs text-gray-500">±0.0%</span>
     }
     return delta > 0 ? (
-      <span className="text-xs font-semibold" style={{ color: WIN }}>+{absPct}%</span>
+      <span className="text-xs font-semibold" style={{ color: lightSafe(WIN, !isLight) }}>+{absPct}%</span>
     ) : (
-      <span className="text-xs font-semibold" style={{ color: LOSS }}>−{absPct}%</span>
+      <span className="text-xs font-semibold" style={{ color: lightSafe(LOSS, !isLight) }}>−{absPct}%</span>
     )
   }
 
@@ -123,9 +127,9 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
 
       {/* 3列カード */}
       <div className="grid grid-cols-3 gap-3">
-        <SegmentCard segment={normal} />
-        <SegmentCard segment={endgame} highlight />
-        <SegmentCard segment={deuce} highlight />
+        <SegmentCard segment={normal} isLight={isLight} />
+        <SegmentCard segment={endgame} highlight isLight={isLight} />
+        <SegmentCard segment={deuce} highlight isLight={isLight} />
       </div>
 
       {/* 通常時からの変化 */}

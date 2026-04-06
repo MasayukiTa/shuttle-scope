@@ -1247,6 +1247,7 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
             prev_diff = point_diff
 
         sets_data.append({
+            "set_id": game_set.id,
             "set_num": game_set.set_num,
             "rallies": rally_data,
             "momentum_changes": momentum_changes,
@@ -2995,18 +2996,17 @@ END_TYPE_JA = {
 
 
 @router.get("/analysis/set_summary")
-def get_set_summary(set_id: int, db: Session = Depends(get_db)):
-    """K-003: セット終了時の即時サマリー（セット間5秒レビュー用）"""
+def get_set_summary(set_id: int, max_rally_num: Optional[int] = None, db: Session = Depends(get_db)):
+    """K-003: セット終了時の即時サマリー（セット間5秒レビュー用）
+    max_rally_num: 指定した場合、そのラリー番号以前のデータのみで解析（途中地点解析用）"""
     game_set = db.get(GameSet, set_id)
     if not game_set:
         return {"success": False, "error": "セットが見つかりません"}
 
-    rallies = (
-        db.query(Rally)
-        .filter(Rally.set_id == set_id)
-        .order_by(Rally.rally_num)
-        .all()
-    )
+    q = db.query(Rally).filter(Rally.set_id == set_id)
+    if max_rally_num is not None:
+        q = q.filter(Rally.rally_num <= max_rally_num)
+    rallies = q.order_by(Rally.rally_num).all()
     total_rallies = len(rallies)
     if total_rallies == 0:
         return {

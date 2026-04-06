@@ -1,5 +1,4 @@
-import { useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -33,6 +32,7 @@ import { PostLongRallyStats } from '@/components/analysis/PostLongRallyStats'
 import { OpponentStats } from '@/components/analysis/OpponentStats'
 import { MarkovEPV } from '@/components/analysis/MarkovEPV'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
+import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { DoublesAnalysis } from '@/components/analysis/DoublesAnalysis'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { ChartModal } from '@/components/common/ChartModal'
@@ -198,7 +198,6 @@ const ROLE_BADGE_CLASS: Record<string, string> = {
 export function DashboardPage() {
   const { t } = useTranslation()
   const { role } = useAuth()
-  const navigate = useNavigate()
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null)
   const [heatmapTab, setHeatmapTab] = useState<'hit' | 'land'>('hit')
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
@@ -220,15 +219,31 @@ export function DashboardPage() {
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
   const [intervalSet, setIntervalSet] = useState<number>(1)
 
-  // M-002: スコア推移クリック → アノテーターへシーク
-  const handleRallyClick = useCallback((rallyId: number, timestamp: number) => {
-    if (!selectedMatchId) return
-    if (!window.confirm(`ラリー ${rallyId} の位置（${timestamp.toFixed(1)}秒）をアノテーターで開きますか？`)) return
-    navigate(`/annotator/${selectedMatchId}?seek=${timestamp}`)
-  }, [selectedMatchId, navigate])
-  const [showIntervalModal, setShowIntervalModal] = useState(false)
+  // 試合一覧テーブルのソート
+  type SortCol = 'date' | 'opponent' | 'tournament_level' | 'result' | 'rally_count'
+  const [matchSort, setMatchSort] = useState<{ col: SortCol; order: 'asc' | 'desc' }>({ col: 'date', order: 'desc' })
+  function toggleSort(col: SortCol) {
+    setMatchSort((prev) =>
+      prev.col === col ? { col, order: prev.order === 'asc' ? 'desc' : 'asc' } : { col, order: col === 'date' || col === 'rally_count' ? 'desc' : 'asc' }
+    )
+  }
+
+  // 選手が切り替わったら試合選択をリセット
+  useEffect(() => {
+    setSelectedMatchId(null)
+  }, [selectedPlayerId])
+
   // 全画面グラフ表示
   const [expandedChart, setExpandedChart] = useState<string | null>(null)
+
+  // M-001: スコア推移途中解析モーダル（ダッシュボード用）
+  const [pointAnalysis, setPointAnalysis] = useState<{
+    setId: number
+    setNum: number
+    rallyNum: number
+    scoreA: number
+    scoreB: number
+  } | null>(null)
 
   // ── Players ──
   const { data: playersResp, isLoading: loadingPlayers } = useQuery({
@@ -321,12 +336,33 @@ export function DashboardPage() {
 
   const matches: MatchSummary[] = matchesResp?.data ?? []
 
-  // フィルター即時適用（クライアントサイド）
-  const filteredMatches = matches.filter((m) => {
-    if (filterResult !== 'all' && m.result !== filterResult) return false
-    if (filterLevel && m.tournament_level !== filterLevel) return false
-    return true
-  })
+  // M-001: スコア推移グラフ途中クリック → 途中解析モーダル表示
+  const handleSetPointClick = useCallback((
+    setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number
+  ) => {
+    setPointAnalysis({ setId, setNum, rallyNum, scoreA, scoreB })
+  }, [])
+
+  // フィルター即時適用（クライアントサイド）+ ソート
+  const filteredMatches = [...matches]
+    .filter((m) => {
+      if (filterResult !== 'all' && m.result !== filterResult) return false
+      if (filterLevel && m.tournament_level !== filterLevel) return false
+      if (filterDateFrom && m.date < filterDateFrom) return false
+      if (filterDateTo && m.date > filterDateTo) return false
+      return true
+    })
+    .sort((a, b) => {
+      const dir = matchSort.order === 'asc' ? 1 : -1
+      switch (matchSort.col) {
+        case 'date':             return dir * a.date.localeCompare(b.date)
+        case 'opponent':         return dir * a.opponent.localeCompare(b.opponent, 'ja')
+        case 'tournament_level': return dir * (a.tournament_level ?? '').localeCompare(b.tournament_level ?? '')
+        case 'result':           return dir * a.result.localeCompare(b.result)
+        case 'rally_count':      return dir * (a.rally_count - b.rally_count)
+        default:                 return 0
+      }
+    })
 
   // ── End type chart data ──
   const endTypeData = descriptive
@@ -361,7 +397,7 @@ export function DashboardPage() {
       <div className="px-6 pt-6 pb-4 border-b border-gray-800">
         <div className="flex items-center gap-3 mb-4">
           <BarChart2 className="text-blue-400" size={20} />
-          <h1 className="text-xl font-semibold">{t('nav.dashboard', '解析ダッシュボード')}</h1>
+          <h1 className="text-xl font-semibold">{t('nav.dashboard_title', 'ダッシュボード')}</h1>
           {role && (
             <span
               className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${
@@ -674,18 +710,18 @@ export function DashboardPage() {
                 <div className="space-y-5">
                   {/* コートヒートマップ */}
                   <div className="bg-gray-800 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
                       <SectionTitle>コートヒートマップ</SectionTitle>
-                      <div className="flex items-center gap-2">
-                      {(() => {
-                        const s = heatmapTab === 'hit'
-                          ? heatmapHitResp?.meta?.sample_size
-                          : heatmapLandResp?.meta?.sample_size
-                        return s != null && s > 0
-                          ? <ConfidenceBadge sampleSize={s} className="text-[10px] shrink-0" />
-                          : null
-                      })()}
-                      <ExpandBtn onClick={() => setExpandedChart('court_heat')} />
+                      <div className="flex items-center gap-1 ml-auto shrink-0">
+                        {(() => {
+                          const s = heatmapTab === 'hit'
+                            ? heatmapHitResp?.meta?.sample_size
+                            : heatmapLandResp?.meta?.sample_size
+                          return s != null && s > 0
+                            ? <ConfidenceBadge sampleSize={s} className="text-[10px]" />
+                            : null
+                        })()}
+                        <ExpandBtn onClick={() => setExpandedChart('court_heat')} />
                       </div>
                     </div>
 
@@ -798,12 +834,29 @@ export function DashboardPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-gray-400 border-b border-gray-700">
-                          <th className="text-left py-2 pr-3 font-medium">対戦相手</th>
-                          <th className="text-left py-2 pr-3 font-medium">大会</th>
-                          <th className="text-center py-2 pr-3 font-medium">レベル</th>
-                          <th className="text-left py-2 pr-3 font-medium">日付</th>
-                          <th className="text-center py-2 pr-3 font-medium">結果</th>
-                          <th className="text-right py-2 font-medium">ラリー数</th>
+                          {(
+                            [
+                              { col: 'opponent' as const,         label: '対戦相手', align: 'left'   },
+                              { col: null,                         label: '大会',     align: 'left'   },
+                              { col: 'tournament_level' as const,  label: 'レベル',   align: 'center' },
+                              { col: 'date' as const,              label: '日付',     align: 'left'   },
+                              { col: 'result' as const,            label: '結果',     align: 'center' },
+                              { col: 'rally_count' as const,       label: 'ラリー',   align: 'right'  },
+                            ] as const
+                          ).map(({ col, label, align }) => (
+                            <th
+                              key={label}
+                              className={`py-2 pr-3 font-medium select-none ${
+                                col ? 'cursor-pointer hover:text-gray-200' : ''
+                              } text-${align}`}
+                              onClick={() => col && toggleSort(col)}
+                            >
+                              {label}
+                              {col && matchSort.col === col && (
+                                <span className="ml-0.5 text-[10px]">{matchSort.order === 'asc' ? '▲' : '▼'}</span>
+                              )}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
@@ -840,36 +893,67 @@ export function DashboardPage() {
               </div>
 
               {/* B-001: スコア推移（選択した試合） */}
-              {selectedMatchId && (
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
-                    <span className="text-xs text-gray-500">試合ID: {selectedMatchId}</span>
-                  </div>
-                  <ScoreProgression matchId={selectedMatchId} onRallyClick={handleRallyClick} />
+              <div className="bg-gray-800 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
+                  <select
+                    className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 max-w-[220px]"
+                    value={selectedMatchId ?? ''}
+                    onChange={(e) => setSelectedMatchId(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">— 試合を選択 —</option>
+                    {matches.map((m) => (
+                      <option key={m.match_id} value={m.match_id}>
+                        {m.date} vs {m.opponent}（{m.result === 'win' ? '勝' : '負'}）
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              )}
+                {selectedMatchId ? (
+                  <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
+                ) : (
+                  <p className="text-gray-500 text-sm text-center py-6">試合を選択するとスコア推移が表示されます</p>
+                )}
+              </div>
 
-              {/* インターバルレポートボタン */}
-              {selectedMatchId && (
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
-                    <div className="flex gap-2 items-center">
-                      <label className="text-xs text-gray-400">完了セット:</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={3}
-                        value={intervalSet}
-                        onChange={(e) => setIntervalSet(Number(e.target.value))}
-                        className="w-12 bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1"
-                      />
-                    </div>
+              {/* インターバルレポート */}
+              <div className="bg-gray-800 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <select
+                      className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 max-w-[220px]"
+                      value={selectedMatchId ?? ''}
+                      onChange={(e) => setSelectedMatchId(e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">— 試合を選択 —</option>
+                      {matches.map((m) => (
+                        <option key={m.match_id} value={m.match_id}>
+                          {m.date} vs {m.opponent}（{m.result === 'win' ? '勝' : '負'}）
+                        </option>
+                      ))}
+                    </select>
+                    {selectedMatchId && (
+                      <>
+                        <label className="text-xs text-gray-400">完了セット:</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={3}
+                          value={intervalSet}
+                          onChange={(e) => setIntervalSet(Number(e.target.value))}
+                          className="w-12 bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1"
+                        />
+                      </>
+                    )}
                   </div>
-                  <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
                 </div>
-              )}
+                {selectedMatchId ? (
+                  <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
+                ) : (
+                  <p className="text-gray-500 text-sm text-center py-6">試合を選択するとインターバルレポートが表示されます</p>
+                )}
+              </div>
             </div>
             </ErrorBoundary>
           )}
@@ -978,7 +1062,7 @@ export function DashboardPage() {
                     </select>
                   </div>
                   {selectedMatchId ? (
-                    <ScoreProgression matchId={selectedMatchId} onRallyClick={handleRallyClick} />
+                    <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
                   ) : (
                     <p className="text-gray-500 text-sm text-center py-4">
                       試合を選択するとスコア推移が表示されます
@@ -1094,6 +1178,22 @@ export function DashboardPage() {
         </div>
       )}
 
+      {/* ── M-001: スコア推移途中解析モーダル ── */}
+      {pointAnalysis && selectedPlayerId && (
+        <SetIntervalSummary
+          setId={pointAnalysis.setId}
+          playerAName={players.find((p) => p.id === selectedPlayerId)?.name ?? 'A'}
+          playerBName={matches.find((m) => m.match_id === selectedMatchId)?.opponent ?? 'B'}
+          onClose={() => setPointAnalysis(null)}
+          onNextSet={() => setPointAnalysis(null)}
+          isMidGame={true}
+          midGameScoreA={pointAnalysis.scoreA}
+          midGameScoreB={pointAnalysis.scoreB}
+          maxRallyNum={pointAnalysis.rallyNum}
+          titleOverride={`Set ${pointAnalysis.setNum} 途中解析（ラリー ${pointAnalysis.rallyNum}）`}
+        />
+      )}
+
       {/* ── 全画面グラフモーダル ── */}
       {expandedChart && selectedPlayerId && (() => {
         const CHART_TITLES: Record<string, string> = {
@@ -1152,7 +1252,7 @@ export function DashboardPage() {
                   selectedZone={null}
                   onZoneSelect={() => {}}
                   label={heatmapTab === 'hit' ? '打点分布' : '着地点分布'}
-                  maxWidth={520}
+                  maxHeight={typeof window !== 'undefined' ? Math.max(300, window.innerHeight - 160) : 600}
                 />
               </div>
             )

@@ -43,11 +43,11 @@ function ComparisonCard({
       <div className="space-y-1.5">
         <div className="flex justify-between text-xs">
           <span className="text-gray-400">勝率</span>
-          <span className="text-white font-semibold">{(stats.win_rate * 100).toFixed(1)}%</span>
+          <span className="text-gray-100 font-semibold">{(stats.win_rate * 100).toFixed(1)}%</span>
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-gray-400">平均ラリー長</span>
-          <span className="text-white">{stats.avg_rally_length.toFixed(1)}</span>
+          <span className="text-gray-100">{stats.avg_rally_length.toFixed(1)}</span>
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-gray-400">ラリー数</span>

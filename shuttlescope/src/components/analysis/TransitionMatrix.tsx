@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface TransitionMatrixProps {
@@ -54,7 +55,8 @@ function calcSvgSize(n: number) {
 
 function drawMatrix(
   svgEl: SVGSVGElement,
-  matrixData: MatrixData
+  matrixData: MatrixData,
+  isLight: boolean
 ) {
   const { matrix, shot_labels, raw_counts } = matrixData
   const n = shot_labels.length
@@ -66,6 +68,15 @@ function drawMatrix(
   const svg = d3.select(svgEl)
     .attr('width', w)
     .attr('height', h)
+
+  // ライトモード: SVG 背景を明示的に設定（透明だと白背景との区別が消える）
+  if (isLight) {
+    svg.append('rect')
+      .attr('width', w)
+      .attr('height', h)
+      .attr('fill', '#f7f9fc')
+      .attr('rx', 4)
+  }
 
   const g = svg.append('g')
     .attr('transform', `translate(${MARGIN_LEFT},${MARGIN_TOP})`)
@@ -139,6 +150,10 @@ function drawMatrix(
     })
   })
 
+  // テーマ別テキスト色
+  const labelColor  = isLight ? '#334155' : '#9ca3af'
+  const titleColor  = isLight ? '#475569' : '#6b7280'
+
   // ── X 軸ラベル（下部） ──
   const xLabelY = n * CELL + 8
   shot_labels.forEach((label, ci) => {
@@ -148,7 +163,7 @@ function drawMatrix(
       .attr('text-anchor', 'start')
       .attr('dominant-baseline', 'middle')
       .attr('transform', `rotate(45, ${ci * CELL + CELL / 2}, ${xLabelY})`)
-      .attr('fill', '#9ca3af')
+      .attr('fill', labelColor)
       .attr('font-size', 10)
       .text(truncate(label, 6))
   })
@@ -160,7 +175,7 @@ function drawMatrix(
       .attr('y', ri * CELL + CELL / 2)
       .attr('text-anchor', 'end')
       .attr('dominant-baseline', 'middle')
-      .attr('fill', '#9ca3af')
+      .attr('fill', labelColor)
       .attr('font-size', 10)
       .text(truncate(label, 7))
   })
@@ -170,7 +185,7 @@ function drawMatrix(
     .attr('x', MARGIN_LEFT + (n * CELL) / 2)
     .attr('y', MARGIN_TOP + n * CELL + MARGIN_BOTTOM - 10)
     .attr('text-anchor', 'middle')
-    .attr('fill', '#6b7280')
+    .attr('fill', titleColor)
     .attr('font-size', 11)
     .text('次のショット →')
 
@@ -179,7 +194,7 @@ function drawMatrix(
     .attr('x', -(MARGIN_TOP + (n * CELL) / 2))
     .attr('y', 14)
     .attr('text-anchor', 'middle')
-    .attr('fill', '#6b7280')
+    .attr('fill', titleColor)
     .attr('font-size', 11)
     .text('現在のショット')
 }
@@ -199,6 +214,7 @@ function shot_keys_fallback(i: number): string {
 
 export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: TransitionMatrixProps) {
   const svgRef = useRef<SVGSVGElement>(null)
+  const isLight = useIsLightMode()
 
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -219,16 +235,16 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
   const matrixData = resp?.data
   const sampleSize = resp?.meta?.sample_size ?? 0
 
-  // データが変わるたびに D3 で再描画
+  // データまたはテーマが変わるたびに D3 で再描画
   useEffect(() => {
     if (!svgRef.current || !matrixData?.matrix?.length) return
-    drawMatrix(svgRef.current, matrixData)
+    drawMatrix(svgRef.current, matrixData, isLight)
 
     // クリーンアップ: ツールチップ要素を削除
     return () => {
       d3.select('#transition-matrix-tooltip').remove()
     }
-  }, [matrixData])
+  }, [matrixData, isLight])
 
   if (isLoading) {
     return (

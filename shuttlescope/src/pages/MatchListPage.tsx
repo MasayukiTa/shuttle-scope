@@ -196,7 +196,6 @@ export function MatchListPage() {
             <option value="1080">1080p</option>
             <option value="best">最高画質</option>
           </select>
-          <span className="text-gray-500">🍪</span>
           <select
             value={downloadCookieBrowser}
             onChange={(e) => setDownloadCookieBrowser(e.target.value)}

@@ -51,9 +51,13 @@ export function ChartModal({ title, onClose, children }: ChartModalProps) {
         </div>
       </div>
 
-      {/* チャートエリア */}
-      <div className="flex-1 overflow-auto p-8 bg-gray-900">
-        {children}
+      {/* チャートエリア: 横長グラフは横最大、縦長グラフは縦最大まで展開 */}
+      <div className="flex-1 overflow-auto bg-gray-900">
+        <div className="min-h-full flex items-center justify-center p-6">
+          <div className="w-full">
+            {children}
+          </div>
+        </div>
       </div>
     </div>
   )

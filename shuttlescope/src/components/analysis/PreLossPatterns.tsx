@@ -105,8 +105,12 @@ function PreLossContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: num
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className="px-3 py-1 text-xs rounded font-medium transition-colors bg-gray-700 text-gray-400 hover:bg-gray-600"
-            style={activeTab === tab.key ? { backgroundColor: LOSS, color: '#fff' } : {}}
+            className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+              activeTab === tab.key
+                ? ''
+                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+            }`}
+            style={activeTab === tab.key ? { backgroundColor: LOSS, color: '#ffffff' } : {}}
           >
             {tab.label}
           </button>

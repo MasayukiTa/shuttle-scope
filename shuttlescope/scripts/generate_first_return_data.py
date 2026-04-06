@@ -67,7 +67,9 @@ def generate_strokes(db, rally_id: int, rally_length: int,
                      player_role: str, is_receiver: bool):
     """ストローク生成。is_receiver=True の場合、stroke_num=2 にファーストリターン着地ゾーンを設定"""
     for i in range(1, rally_length + 1):
-        is_player_stroke = (i % 2 == (2 if is_receiver else 1))
+        # is_receiver=True → 偶数打（2,4,6...）が自分、i%2==0
+        # is_receiver=False → 奇数打（1,3,5...）が自分、i%2==1
+        is_player_stroke = (i % 2 == (0 if is_receiver else 1))
         player = player_role if is_player_stroke else (
             "player_b" if player_role == "player_a" else "player_a"
         )

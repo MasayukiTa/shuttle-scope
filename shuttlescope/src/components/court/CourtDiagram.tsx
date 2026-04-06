@@ -9,6 +9,17 @@ import { seqBlue } from '@/styles/colors'
 const SVG_WIDTH = 300
 const SVG_HEIGHT = 400
 
+/**
+ * ヒートマップ色に対して可読性の高いテキスト色を返す。
+ * seqBlue は t=0（白背景）→ t=1（深青背景）の線形スケール。
+ * 輝度計算に基づき 0.65 以上で白テキスト、未満で暗いテキストに切り替え。
+ */
+function heatmapTextColor(value: number, max: number): string {
+  if (max === 0) return '#374151'
+  const ratio = value / max
+  return ratio >= 0.65 ? '#ffffff' : '#1e3a5f'
+}
+
 interface ZoneRect {
   zone: Zone9
   x: number
@@ -51,7 +62,8 @@ interface CourtDiagramProps {
   showLabels?: boolean
   interactive?: boolean                         // アノテーション時はtrue
   label?: string                               // コート上部のラベル
-  maxWidth?: number                            // SVG最大幅（デフォルト200、全画面表示時は大きく）
+  maxWidth?: number                            // SVG最大幅（デフォルト200）
+  maxHeight?: number                           // SVG最大高さ（全画面モード用: ウィンドウ高さ基準）
 }
 
 function getHeatmapColor(value: number, max: number): string {
@@ -70,6 +82,7 @@ export function CourtDiagram({
   interactive = true,
   label,
   maxWidth = 200,
+  maxHeight,
 }: CourtDiagramProps) {
   const { t } = useTranslation()
 
@@ -110,10 +123,15 @@ export function CourtDiagram({
         {showLabels && (
           <text
             x={z.x + z.w / 2}
-            y={z.y + z.h / 2 + 5}
+            y={z.y + z.h / 2 + (heatmapData && heatValue > 0 ? 0 : 5)}
             textAnchor="middle"
-            fontSize="11"
-            fill={isSelected ? '#fff' : isActive ? '#9ca3af' : '#4b5563'}
+            fontSize="12"
+            fontWeight={heatmapData ? '700' : '400'}
+            fill={
+              heatmapData
+                ? heatmapTextColor(heatValue, heatmapMax)
+                : isSelected ? '#fff' : isActive ? '#9ca3af' : '#4b5563'
+            }
             fontFamily="monospace"
             pointerEvents="none"
           >
@@ -123,10 +141,11 @@ export function CourtDiagram({
         {heatmapData && heatValue > 0 && (
           <text
             x={z.x + z.w / 2}
-            y={z.y + z.h / 2 + 18}
+            y={z.y + z.h / 2 + 16}
             textAnchor="middle"
-            fontSize="9"
-            fill="rgba(255,255,255,0.7)"
+            fontSize="11"
+            fontWeight="600"
+            fill={heatmapTextColor(heatValue, heatmapMax)}
             pointerEvents="none"
           >
             {heatValue}
@@ -141,10 +160,25 @@ export function CourtDiagram({
       {label && (
         <span className="text-xs text-gray-400">{label}</span>
       )}
+      {/* 上ラベル: 相手コート */}
+      <span className="text-[10px] text-gray-500">相手コート（着地点）</span>
       <svg
         viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-        width="100%"
-        style={{ maxWidth }}
+        style={
+          maxHeight
+            ? {
+                // 高さ基準でサイズ決定（縦長コートを縦方向いっぱいに展開）
+                height: maxHeight,
+                width: Math.round(maxHeight * SVG_WIDTH / SVG_HEIGHT),
+                maxWidth: '100%',
+                display: 'block',
+              }
+            : {
+                width: '100%',
+                maxWidth,
+                display: 'block',
+              }
+        }
         className="select-none"
       >
         {/* 相手コートゾーン（上半分） */}
@@ -170,14 +204,9 @@ export function CourtDiagram({
           strokeWidth={2}
         />
 
-        {/* コートラベル */}
-        <text x={SVG_WIDTH / 2} y={14} textAnchor="middle" fontSize="9" fill="#6b7280">
-          相手コート（着地点）
-        </text>
-        <text x={SVG_WIDTH / 2} y={395} textAnchor="middle" fontSize="9" fill="#6b7280">
-          自コート（打点）
-        </text>
       </svg>
+      {/* 下ラベル: 自コート */}
+      <span className="text-[10px] text-gray-500">自コート（打点）</span>
     </div>
   )
 }

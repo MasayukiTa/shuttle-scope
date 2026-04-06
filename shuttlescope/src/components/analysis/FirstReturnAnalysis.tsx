@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
-import { perfColor, BAR } from '@/styles/colors'
+import { perfColor, lightSafe, BAR } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface FirstReturnAnalysisProps {
   playerId: number
@@ -30,6 +31,7 @@ interface FirstReturnResponse {
 
 export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: FirstReturnAnalysisProps) {
   const { t } = useTranslation()
+  const isLight = useIsLightMode()
 
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -76,7 +78,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
               <th className="text-left py-1.5 pr-3">{t('analysis.first_return.zone')}</th>
               <th className="text-center py-1.5 pr-3">件数</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.first_return.freq_rate')}</th>
-              <th className="text-right py-1.5">{t('analysis.first_return.win_rate')}</th>
+              <th className="text-right py-1.5 pr-2">{t('analysis.first_return.win_rate')}</th>
             </tr>
           </thead>
           <tbody>
@@ -91,10 +93,10 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
                   <td className="py-1.5 pr-3 text-center text-gray-300">
                     {(z.freq_rate * 100).toFixed(1)}%
                   </td>
-                  <td className="py-1.5 text-right">
+                  <td className="py-1.5 pr-2 text-right">
                     <span
                       className="font-semibold"
-                      style={{ color: perfColor(z.win_rate) }}
+                      style={{ color: lightSafe(perfColor(z.win_rate), !isLight) }}
                     >
                       {(z.win_rate * 100).toFixed(1)}%
                     </span>

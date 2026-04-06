@@ -1,118 +1,119 @@
 # ShuttleScope
 
-ShuttleScope は、バドミントンの試合動画を対象にしたデスクトップ型のアノテーション / 分析アプリです。  
-Electron 上で React の UI を動かし、ローカルの FastAPI バックエンドと SQLite を使って、動画・ラリー・ストローク・分析結果を一体で扱います。
+ShuttleScope は、バドミントンの試合アノテーションと試合分析を一体化した Windows デスクトップアプリです。  
+Electron 上の React UI と、ローカル FastAPI バックエンド、SQLite を組み合わせて動作します。
 
-## 現在の実装範囲
+現状は「試合中でも回る注釈入力」と「試合後すぐ使える分析」を主軸にしており、将来的な共有・映像連携・自動追跡まで見据えた構成になっています。
 
-- 動画アノテーション
-- ラリー / ストローク入力
-- キーボード中心の入力フロー
-- 解析ダッシュボード
-- コートヒートマップ
-- ショット遷移マトリクス
-- ラリー長 / セット / 時間帯分析
-- EPV / Markov 系の詳細分析
-- 対戦相手分析
+## What It Does
+
+- 試合一覧・選手管理
+- クイックスタートからの試合作成
+- 試合中アノテーション
+- ラリー、ショット、落点、例外終了、見逃しラリー、スコア補正
+- マッチデーモードとセット間サマリー
+- ダッシュボード分析
+- ヒートマップ、ショット遷移、失点前分析、プレッシャー局面分析
+- EPV / Markov 系分析
 - ダブルス分析
-- コーチ / アナリスト / 選手のロール切り替え
-- PDF / JSON ベースのレポート出力
-- ストリーミング動画ダウンロード補助
+- PDF / JSON レポート出力
+- セッション共有、コーチビュー、コメント、ブックマーク
+- ネットワーク診断と LAN 共有補助
+- TrackNet ベースの自動追跡統合用土台
 
-## アーキテクチャ
+## Current Product Shape
 
-- デスクトップシェル: Electron
-- レンダラー: React 18 + TypeScript + Vite
-- 状態管理 / データ取得: Zustand, TanStack Query
-- グラフ: Recharts, D3.js
-- バックエンド: FastAPI
-- DB: SQLite
-- 解析: NumPy, SciPy, scikit-learn
-- レポート: ReportLab, matplotlib
+### Annotator
 
-フロントエンドは Electron IPC ではなく、`localhost` 上の FastAPI に HTTP で接続します。  
-この構成は、将来的なサーバー移行を見据えたものです。
+- 試合中の高速入力を前提にした注釈画面
+- 大きい操作ボタンとキーボード入力
+- 動画なしでも使えるタイマーモード
+- 見逃しラリー、スコア補正、途中終了対応
+- クイックスタートから即座に試合開始
+- セッション共有コードの発行
 
-## リポジトリ構成
+### Dashboard
+
+- 試合、セット、相手、ラリー長、ショット種別ごとの集計
+- コートヒートマップ
+- 先手・返球・失点前傾向の分析
+- ダブルス分析
+- EPV / Markov、Shot Influence、各種比較表示
+- 信頼度表示を前提にした分析 UI
+
+### Sharing / Live Workflow
+
+- 試合ごとの共有セッション作成
+- コーチ向けライブビュー
+- コメント投稿
+- ブックマーク追加
+- LAN モード
+- 接続診断
+
+## Tech Stack
+
+- Desktop shell: Electron
+- Frontend: React 18, TypeScript, Vite
+- State / data: Zustand, TanStack Query
+- Charts: Recharts, D3
+- Backend: FastAPI
+- Database: SQLite
+- Analysis: NumPy, SciPy, scikit-learn
+- Reporting: ReportLab, matplotlib
+- Tracking integration: ONNX / TensorFlow / OpenVINO route for TrackNet
+
+## Repository Layout
 
 ```text
 shuttle-scope/
 ├─ CLAUDE.md
+├─ LICENSE
 ├─ README.md
-├─ private_docs/                 # ローカル専用の機密資料（Git管理外）
+├─ private_docs/                  # private, ignored
 └─ shuttlescope/
-   ├─ electron/                  # Electron main / preload
+   ├─ electron/                   # Electron main / preload
    ├─ src/
    │  ├─ api/
    │  ├─ components/
-   │  │  ├─ analysis/
-   │  │  ├─ annotation/
-   │  │  ├─ common/
-   │  │  ├─ court/
-   │  │  └─ video/
    │  ├─ hooks/
    │  ├─ i18n/
    │  ├─ pages/
-   │  └─ styles/
+   │  ├─ store/
+   │  ├─ styles/
+   │  └─ types/
    ├─ backend/
    │  ├─ analysis/
    │  ├─ db/
    │  ├─ routers/
    │  ├─ tests/
-   │  └─ utils/
+   │  ├─ tracknet/
+   │  └─ ws/
+   ├─ docs/
+   │  └─ validation/              # local validation notes, ignored
    ├─ scripts/
-   └─ docs/
-      └─ validation/             # ローカル検証メモ（Git管理外）
+   └─ shuttlescope.db
 ```
 
-## 主な画面
+## Roles
 
-### Annotator
-
-- 動画を見ながらラリー単位で入力
-- ストローク番号や直前ショットに応じて候補を絞るアダプティブ入力
-- キーボードショートカット中心の入力
-- サーブ / レシーブ / 終了種別 / 着地点などを記録
-
-### Dashboard
-
-- 概要 KPI
-- ラリー終了タイプ
-- ショットタイプ分布
-- ラリー長分布
-- コートヒートマップ
-- スコア推移
-- ショット別得点 / 失点
-- セット比較
-- ラリー長別勝率
-- プレッシャー下の傾向
-- ショット遷移マトリクス
-- 時間帯別パフォーマンス
-- ロングラリー後の傾向
-- 対戦相手分析
-- ダブルス分析
-- EPV / Markov 分析
-
-## ロール
-
-POC 段階では `localStorage` を使った簡易ロール切り替えです。
+POC 段階ではローカルの role 切り替えを前提にしています。
 
 - `analyst`
 - `coach`
 - `player`
 
-`player` には一部の分析を見せず、`RoleGuard` と `ConfidenceBadge` を使って表示制御と不確実性表示を行っています。
+`player` には一部分析をそのまま見せず、`RoleGuard` と confidence 表示を前提にしています。
 
-## セットアップ
+## Setup
 
-### 前提
+### Requirements
 
-- Node.js 18 以上
-- Python 3.10 以上
-- Windows 環境を前提に調整済み
-- 動画ダウンロード補助を使う場合は `ffmpeg` があると便利
+- Node.js 18+
+- Python 3.10+
+- Windows での利用を主対象
+- `ffmpeg` があると動画ダウンロード系の補助が広がる
 
-### フロントエンド / Electron
+### Frontend / Electron
 
 ```bash
 cd shuttlescope
@@ -120,47 +121,65 @@ npm install
 npm run dev
 ```
 
-本番ビルド確認:
+本番ビルド:
 
 ```bash
 cd shuttlescope
 npm run build
 ```
 
-### バックエンド
+起動補助スクリプト:
+
+```bash
+cd shuttlescope
+npm run start
+```
+
+または `start.bat` を利用できます。
+
+### Backend
 
 ```bash
 cd shuttlescope/backend
 python -m venv .venv
-.venv/Scripts/activate
+.venv\Scripts\activate
 pip install -r requirements.txt
 python main.py
 ```
 
-FastAPI は通常 `http://127.0.0.1:8765` で起動します。  
-ヘルスチェック:
+既定では FastAPI は `http://127.0.0.1:8765` で起動します。
 
-```text
-GET /api/health
-```
+## Tests
 
-## テスト
-
-バックエンド:
+Backend:
 
 ```bash
 cd shuttlescope
 .\backend\.venv\Scripts\python -m pytest -v
 ```
 
-フロントエンド:
+Frontend:
 
 ```bash
 cd shuttlescope
 npx vitest run --config vitest.config.ts
 ```
 
-## テストデータ生成スクリプト
+Build check:
+
+```bash
+cd shuttlescope
+npm run build
+```
+
+## Data / Database
+
+- 現状のアプリ DB は SQLite です
+- 既定の DB ファイルは `shuttlescope/shuttlescope.db`
+- 選手、試合、ラリー、ショット、共有セッションなどが保存されます
+- 将来的な PostgreSQL 移行を見据えた構成です
+
+## Scripts
 
 `shuttlescope/scripts/` にはローカル検証用の補助スクリプトがあります。
 
@@ -168,16 +187,22 @@ npx vitest run --config vitest.config.ts
 - `generate_doubles_data.py`
 - `generate_first_return_data.py`
 
-これらはローカル DB に検証データを追加する用途です。
+## TrackNet Integration
 
-## 重要な運用ルール
+TrackNet 連携の土台は入っていますが、重みファイルや生成物は Git には含めていません。
 
-- 機密資料は `private_docs/` に置き、Git に含めない
-- 検証メモは `shuttlescope/docs/validation/` に置き、Git に含めない
-- ローカル DB、動画、生成物、キャッシュはコミットしない
-- 日本語 UI 文言は `shuttlescope/src/i18n/ja.json` を優先する
+- backend 設定から有効化
+- backend 種別は `auto`, `openvino`, `onnx_cpu`, `tensorflow_cpu`
+- weights / ONNX はローカル管理
 
-## 補足
+## Notes
 
-現時点では README は実装済み機能の概要とローカル開発手順に絞っています。  
-ライセンスやデータ利用条件は、別途確定後に専用ドキュメントとして追加する前提です。
+- `private_docs/` は Git 管理対象外です
+- `shuttlescope/docs/validation/` のメモも Git 管理対象外です
+- ローカル DB、動画、weights、生成物は `.gitignore` で除外されています
+- 日本語 UI 文言は `shuttlescope/src/i18n/ja.json` を基準にしています
+
+## Status
+
+ShuttleScope は既に注釈入力と分析の主機能を持つデスクトップアプリとして動作します。  
+一方で、共有、映像統合、自動追跡、比較可視化、ネットワーク環境耐性は継続強化中です。

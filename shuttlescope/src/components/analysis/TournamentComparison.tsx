@@ -12,7 +12,8 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { perfColor, TOOLTIP_STYLE } from '@/styles/colors'
+import { perfColor, lightSafe, TOOLTIP_STYLE } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface TournamentComparisonProps {
@@ -39,6 +40,7 @@ interface TournamentResponse {
 
 export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: TournamentComparisonProps) {
   const { t } = useTranslation()
+  const isLight = useIsLightMode()
 
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -89,7 +91,7 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
           />
           <Bar dataKey="win_rate" radius={[3, 3, 0, 0]} name={t('analysis.tournament_comparison.win_rate')}>
             {chartData.map((entry) => (
-              <Cell key={entry.name} fill={perfColor(entry.win_rate / 100)} />
+              <Cell key={entry.name} fill={lightSafe(perfColor(entry.win_rate / 100), !isLight)} />
             ))}
           </Bar>
         </BarChart>
@@ -103,20 +105,20 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
               <th className="text-left py-1.5 pr-3">{t('analysis.tournament_comparison.level')}</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.tournament_comparison.match_count')}</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.tournament_comparison.win_rate')}</th>
-              <th className="text-right py-1.5">{t('analysis.tournament_comparison.avg_rally')}</th>
+              <th className="text-right py-1.5 pr-2">{t('analysis.tournament_comparison.avg_rally')}</th>
             </tr>
           </thead>
           <tbody>
             {levels.map((l) => (
               <tr key={l.level} className="border-b border-gray-700/40 hover:bg-gray-700/20">
-                <td className="py-1.5 pr-3 font-medium" style={{ color: perfColor(l.win_rate) }}>
+                <td className="py-1.5 pr-3 font-medium" style={{ color: lightSafe(perfColor(l.win_rate), !isLight) }}>
                   {l.level}
                 </td>
                 <td className="py-1.5 pr-3 text-center text-gray-300">{l.match_count}</td>
-                <td className="py-1.5 pr-3 text-center text-white font-semibold">
+                <td className="py-1.5 pr-3 text-center font-semibold" style={{ color: lightSafe(perfColor(l.win_rate), !isLight) }}>
                   {(l.win_rate * 100).toFixed(1)}%
                 </td>
-                <td className="py-1.5 text-right text-gray-300">{l.avg_rally_length.toFixed(1)}</td>
+                <td className="py-1.5 pr-2 text-right text-gray-300">{l.avg_rally_length.toFixed(1)}</td>
               </tr>
             ))}
           </tbody>

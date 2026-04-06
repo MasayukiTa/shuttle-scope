@@ -16,7 +16,8 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { WIN, LOSS, BAR, perfColor, TOOLTIP_STYLE } from '@/styles/colors'
+import { WIN, LOSS, BAR, perfColor, lightSafe, TOOLTIP_STYLE } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface MatchItem {
   match_id: number
@@ -44,6 +45,7 @@ interface PartnerItem {
 }
 
 function PartnerComparison({ playerId }: { playerId: number }) {
+  const isLight = useIsLightMode()
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-partner-comparison', playerId],
     queryFn: () =>
@@ -70,20 +72,20 @@ function PartnerComparison({ playerId }: { playerId: number }) {
         {partners.map((p) => (
           <div key={p.partner_id} className="bg-gray-700/40 rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-white font-medium">{p.partner_name}</span>
+              <span className="text-sm font-medium" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{p.partner_name}</span>
               <span className="text-xs text-gray-400">{p.match_count}試合</span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
-                <p className="text-lg font-bold text-blue-300">{(p.win_rate * 100).toFixed(0)}%</p>
+                <p className="text-lg font-bold" style={{ color: isLight ? '#1d4ed8' : '#93c5fd' }}>{(p.win_rate * 100).toFixed(0)}%</p>
                 <p className="text-[10px] text-gray-500">勝率</p>
               </div>
               <div>
-                <p className="text-lg font-bold text-amber-300">{(p.synergy_score * 100).toFixed(0)}</p>
+                <p className="text-lg font-bold" style={{ color: isLight ? '#b45309' : '#fcd34d' }}>{(p.synergy_score * 100).toFixed(0)}</p>
                 <p className="text-[10px] text-gray-500">相乗効果</p>
               </div>
               <div>
-                <p className="text-lg font-bold text-cyan-300">{p.avg_rally_length.toFixed(1)}</p>
+                <p className="text-lg font-bold" style={{ color: isLight ? '#0e7490' : '#67e8f9' }}>{p.avg_rally_length.toFixed(1)}</p>
                 <p className="text-[10px] text-gray-500">平均打数</p>
               </div>
             </div>
@@ -104,6 +106,7 @@ interface ServeReceiveData {
 }
 
 function ServeReceiveStats({ playerId }: { playerId: number }) {
+  const isLight = useIsLightMode()
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-doubles-serve-receive', playerId],
     queryFn: () =>
@@ -178,9 +181,9 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
                 className="rounded p-1.5 text-center text-xs"
                 style={{ backgroundColor: perfColor(z.win_rate, 0.6) }}
               >
-                <p className="text-white font-medium">{z.zone}</p>
-                <p className="text-gray-300">{(z.win_rate * 100).toFixed(0)}%</p>
-                <p className="text-gray-500 text-[10px]">{z.count}回</p>
+                <p className="font-medium" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{z.zone}</p>
+                <p style={{ color: isLight ? '#334155' : '#d1d5db' }}>{(z.win_rate * 100).toFixed(0)}%</p>
+                <p className="text-[10px]" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>{z.count}回</p>
               </div>
             ))}
           </div>
@@ -277,6 +280,7 @@ interface CoverageData {
 }
 
 function CourtCoverage({ matchId }: { matchId: number }) {
+  const isLight = useIsLightMode()
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-court-coverage-split', matchId],
     queryFn: () =>
@@ -311,14 +315,23 @@ function CourtCoverage({ matchId }: { matchId: number }) {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-xs text-gray-400">バランススコア:</span>
-        <span className={`text-sm font-bold ${d.balance_score >= 0.8 ? 'text-green-400' : d.balance_score >= 0.6 ? 'text-amber-400' : 'text-red-400'}`}>
+        <span
+          className="text-sm font-bold"
+          style={{
+            color: d.balance_score >= 0.8
+              ? (isLight ? '#15803d' : '#4ade80')
+              : d.balance_score >= 0.6
+              ? (isLight ? '#b45309' : '#fbbf24')
+              : (isLight ? '#b91c1c' : '#f87171'),
+          }}
+        >
           {(d.balance_score * 100).toFixed(0)}
         </span>
       </div>
 
       <ResponsiveContainer width="100%" height={200}>
         <RadarChart data={radarData}>
-          <PolarGrid stroke="#374151" />
+          <PolarGrid stroke={isLight ? '#cbd5e1' : '#374151'} />
           <PolarAngleAxis dataKey="area" tick={{ fill: '#9ca3af', fontSize: 11 }} />
           {players.map((p, i) => (
             <Radar

@@ -1,4 +1,5 @@
 // K-003: セット間5秒サマリー（セット終了後ワンクリックで要約を表示）
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { X, ChevronRight, AlertTriangle } from 'lucide-react'
@@ -18,6 +19,10 @@ interface SetIntervalSummaryProps {
   /** 中間インターバル時の現スコア表示用 */
   midGameScoreA?: number
   midGameScoreB?: number
+  /** 途中地点解析: このラリー番号以前のデータのみ使用 */
+  maxRallyNum?: number
+  /** モーダルタイトル上書き（ダッシュボード途中解析用） */
+  titleOverride?: string
 }
 
 interface LossPattern {
@@ -59,6 +64,14 @@ const TREND_LABEL: Record<string, string> = {
   long: '長め（8球超）',
 }
 
+type TabKey = 'overview' | 'loss' | 'shots'
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'overview', label: '概要' },
+  { key: 'loss',     label: '失点' },
+  { key: 'shots',    label: 'ショット' },
+]
+
 export function SetIntervalSummary({
   setId,
   playerAName,
@@ -68,12 +81,18 @@ export function SetIntervalSummary({
   isMidGame = false,
   midGameScoreA,
   midGameScoreB,
+  maxRallyNum,
+  titleOverride,
 }: SetIntervalSummaryProps) {
   const { t } = useTranslation()
+  const [activeTab, setActiveTab] = useState<TabKey>('overview')
 
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['set-summary', setId],
-    queryFn: () => apiGet<SetSummaryResponse>('/analysis/set_summary', { set_id: setId }),
+    queryKey: ['set-summary', setId, maxRallyNum],
+    queryFn: () => apiGet<SetSummaryResponse>('/analysis/set_summary', {
+      set_id: setId,
+      ...(maxRallyNum != null ? { max_rally_num: maxRallyNum } : {}),
+    }),
     staleTime: 0,
   })
 
@@ -87,7 +106,9 @@ export function SetIntervalSummary({
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-white">
-              {isMidGame
+              {titleOverride
+                ? titleOverride
+                : isMidGame
                 ? `Set ${data?.set_num ?? ''} インターバル（11点）`
                 : data ? `Set ${data.set_num} 終了` : 'セット終了サマリー'}
             </span>
@@ -110,6 +131,26 @@ export function SetIntervalSummary({
           </button>
         </div>
 
+        {/* タブ */}
+        {data && (
+          <div className="flex gap-1 px-4 pt-3">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+                  activeTab === tab.key
+                    ? ''
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+                style={activeTab === tab.key ? { backgroundColor: BAR, color: '#ffffff' } : {}}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="p-4 space-y-4">
           {isLoading && (
             <p className="text-gray-500 text-sm text-center py-4">{t('analysis.loading')}</p>
@@ -121,113 +162,140 @@ export function SetIntervalSummary({
 
           {data && (
             <>
-              {/* 信頼度バッジ */}
+              {/* 信頼度バッジ（全タブ共通） */}
               <ConfidenceBadge sampleSize={sampleSize} />
 
-              {/* 基本統計 */}
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-gray-700/50 rounded p-2">
-                  <div className="text-[10px] text-gray-500 mb-0.5">ラリー数</div>
-                  <div className="text-lg font-bold text-white">{data.total_rallies}</div>
+              {/* ── 概要タブ ── */}
+              {activeTab === 'overview' && (
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-gray-700/50 rounded p-2">
+                    <div className="text-[10px] text-gray-500 mb-0.5">ラリー数</div>
+                    <div className="text-lg font-bold text-white">{data.total_rallies}</div>
+                  </div>
+                  <div className="bg-gray-700/50 rounded p-2">
+                    <div className="text-[10px] text-gray-500 mb-0.5">平均球数</div>
+                    <div className="text-lg font-bold text-white">{data.avg_rally_length}</div>
+                  </div>
+                  <div className="bg-gray-700/50 rounded p-2">
+                    <div className="text-[10px] text-gray-500 mb-0.5">ラリー傾向</div>
+                    <div className="text-xs font-semibold text-white">{TREND_LABEL[data.rally_length_trend]?.split('（')[0]}</div>
+                  </div>
                 </div>
-                <div className="bg-gray-700/50 rounded p-2">
-                  <div className="text-[10px] text-gray-500 mb-0.5">平均球数</div>
-                  <div className="text-lg font-bold text-white">{data.avg_rally_length}</div>
-                </div>
-                <div className="bg-gray-700/50 rounded p-2">
-                  <div className="text-[10px] text-gray-500 mb-0.5">ラリー傾向</div>
-                  <div className="text-xs font-semibold text-white">{TREND_LABEL[data.rally_length_trend]?.split('（')[0]}</div>
-                </div>
-              </div>
+              )}
 
-              {/* アナリスト・コーチ向け詳細 */}
-              <RoleGuard
-                allowedRoles={['analyst', 'coach']}
-                fallback={
-                  // 選手向け: 成長フレーミング
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-400 font-medium">{t('analysis.set_summary.growth_area')}</p>
-                    {data.risky_shots.length === 0 ? (
-                      <p className="text-xs text-gray-500">{t('analysis.no_data')}</p>
-                    ) : (
+              {/* ── 失点タブ ── */}
+              {activeTab === 'loss' && (
+                <RoleGuard
+                  allowedRoles={['analyst', 'coach']}
+                  fallback={
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400 font-medium">{t('analysis.set_summary.growth_area')}</p>
+                      {data.risky_shots.length === 0 ? (
+                        <p className="text-xs text-gray-500">{t('analysis.no_data')}</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {data.risky_shots.map((s, i) => (
+                            <div key={i} className="flex items-center gap-2 text-xs">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LINE }} />
+                              <span className="text-gray-300">{s.shot_type_ja} — {t('analysis.set_summary.growth_hint')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  }
+                >
+                  {data.recent_loss_patterns.length > 0 ? (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-1">
+                        <AlertTriangle size={12} style={{ color: LOSS }} />
+                        {t('analysis.set_summary.recent_loss_patterns')}（直近 10 失点）
+                      </p>
                       <div className="space-y-1.5">
-                        {data.risky_shots.map((s, i) => (
+                        {data.recent_loss_patterns.slice(0, 3).map((p, i) => (
                           <div key={i} className="flex items-center gap-2 text-xs">
-                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LINE }} />
-                            <span className="text-gray-300">{s.shot_type_ja} — {t('analysis.set_summary.growth_hint')}</span>
+                            <span className="text-gray-500 font-mono w-3 shrink-0">{i + 1}</span>
+                            <span className="flex-1 text-gray-300 truncate">{p.label}</span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="w-16 bg-gray-700 rounded-full h-1.5">
+                                <div className="h-1.5 rounded-full" style={{ width: `${(p.pct * 100).toFixed(0)}%`, backgroundColor: LOSS }} />
+                              </div>
+                              <span className="text-gray-400 w-8 text-right">{p.count}回</span>
+                            </div>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-                }
-              >
-                {/* 直近失点パターン */}
-                {data.recent_loss_patterns.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-1">
-                      <AlertTriangle size={12} style={{ color: LOSS }} />
-                      {t('analysis.set_summary.recent_loss_patterns')}（直近 10 失点）
-                    </p>
-                    <div className="space-y-1.5">
-                      {data.recent_loss_patterns.slice(0, 3).map((p, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs">
-                          <span className="text-gray-500 font-mono w-3 shrink-0">{i + 1}</span>
-                          <span className="flex-1 text-gray-300 truncate">{p.label}</span>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <div className="w-16 bg-gray-700 rounded-full h-1.5">
-                              <div className="h-1.5 rounded-full" style={{ width: `${(p.pct * 100).toFixed(0)}%`, backgroundColor: LOSS }} />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 text-center py-3">{t('analysis.no_data')}</p>
+                  )}
+                </RoleGuard>
+              )}
+
+              {/* ── ショットタブ ── */}
+              {activeTab === 'shots' && (
+                <RoleGuard
+                  allowedRoles={['analyst', 'coach']}
+                  fallback={
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400 font-medium">{t('analysis.set_summary.growth_area')}</p>
+                      {data.risky_shots.length === 0 ? (
+                        <p className="text-xs text-gray-500">{t('analysis.no_data')}</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {data.risky_shots.map((s, i) => (
+                            <div key={i} className="flex items-center gap-2 text-xs">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LINE }} />
+                              <span className="text-gray-300">{s.shot_type_ja} — {t('analysis.set_summary.growth_hint')}</span>
                             </div>
-                            <span className="text-gray-400 w-8 text-right">{p.count}回</span>
-                          </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+                    </div>
+                  }
+                >
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs font-semibold mb-1.5" style={{ color: WIN }}>
+                        {t('analysis.set_summary.effective_shots')}
+                      </p>
+                      {data.effective_shots.length === 0 ? (
+                        <p className="text-xs text-gray-600">{t('analysis.no_data')}</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {data.effective_shots.map((s, i) => (
+                            <div key={i} className="flex items-center justify-between text-xs">
+                              <span className="text-gray-300 truncate flex-1">{s.shot_type_ja}</span>
+                              <span className="font-semibold ml-2 shrink-0" style={{ color: WIN }}>
+                                {s.win_rate !== undefined ? `${(s.win_rate * 100).toFixed(0)}%` : '-'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold mb-1.5" style={{ color: LINE }}>
+                        {t('analysis.set_summary.risky_shots')}
+                      </p>
+                      {data.risky_shots.length === 0 ? (
+                        <p className="text-xs text-gray-600">{t('analysis.no_data')}</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {data.risky_shots.map((s, i) => (
+                            <div key={i} className="flex items-center justify-between text-xs">
+                              <span className="text-gray-300 truncate flex-1">{s.shot_type_ja}</span>
+                              <span className="font-semibold ml-2 shrink-0" style={{ color: LINE }}>
+                                {s.loss_rate !== undefined ? `失${(s.loss_rate * 100).toFixed(0)}%` : '-'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
-
-                {/* 有効ショット / 注意ショット */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-xs font-semibold mb-1.5" style={{ color: WIN }}>
-                      {t('analysis.set_summary.effective_shots')}
-                    </p>
-                    {data.effective_shots.length === 0 ? (
-                      <p className="text-xs text-gray-600">{t('analysis.no_data')}</p>
-                    ) : (
-                      <div className="space-y-1">
-                        {data.effective_shots.map((s, i) => (
-                          <div key={i} className="flex items-center justify-between text-xs">
-                            <span className="text-gray-300 truncate flex-1">{s.shot_type_ja}</span>
-                            <span className="font-semibold ml-2 shrink-0" style={{ color: WIN }}>
-                              {s.win_rate !== undefined ? `${(s.win_rate * 100).toFixed(0)}%` : '-'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold mb-1.5" style={{ color: LINE }}>
-                      {t('analysis.set_summary.risky_shots')}
-                    </p>
-                    {data.risky_shots.length === 0 ? (
-                      <p className="text-xs text-gray-600">{t('analysis.no_data')}</p>
-                    ) : (
-                      <div className="space-y-1">
-                        {data.risky_shots.map((s, i) => (
-                          <div key={i} className="flex items-center justify-between text-xs">
-                            <span className="text-gray-300 truncate flex-1">{s.shot_type_ja}</span>
-                            <span className="font-semibold ml-2 shrink-0" style={{ color: LINE }}>
-                              {s.loss_rate !== undefined ? `失${(s.loss_rate * 100).toFixed(0)}%` : '-'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </RoleGuard>
+                </RoleGuard>
+              )}
             </>
           )}
 
@@ -242,8 +310,8 @@ export function SetIntervalSummary({
             {!isMidGame && (
               <button
                 onClick={onNextSet}
-                className="flex-1 py-2 rounded text-sm font-medium flex items-center justify-center gap-1 text-white"
-                style={{ backgroundColor: WIN }}
+                className="flex-1 py-2 rounded text-sm font-medium flex items-center justify-center gap-1"
+                style={{ backgroundColor: WIN, color: '#ffffff' }}
               >
                 {t('analysis.set_summary.next_set')}
                 <ChevronRight size={14} />

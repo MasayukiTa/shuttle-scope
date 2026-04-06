@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2 } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2 } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -930,7 +930,6 @@ export function AnnotatorPage() {
             )}
             title={isMatchDayMode ? t('annotator.match_day_mode_on') : t('annotator.match_day_mode_off')}
           >
-            <Zap size={12} />
             {isMatchDayMode ? 'MD' : t('annotator.match_day_mode')}
           </button>
           {/* P3: TrackNet バッチ解析ボタン（TrackNet有効 & 動画あり時） */}
@@ -950,7 +949,6 @@ export function AnnotatorPage() {
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-purple-900/40 text-purple-300 hover:bg-purple-800/60 transition-colors"
                 title={t('tracknet.batch_start')}
               >
-                <Zap size={12} />
                 {t('tracknet.batch_start')}
               </button>
             )

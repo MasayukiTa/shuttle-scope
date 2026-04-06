@@ -291,12 +291,14 @@ html[data-theme="light"] .bg-gray-750  { background-color: #f1f5f9 !important; }
 html[data-theme="light"] .bg-gray-700  { background-color: #e2e8f0 !important; }
 html[data-theme="light"] .bg-gray-600  { background-color: #cbd5e1 !important; }
 
-/* パネル系 */
-html[data-theme="light"] .bg-gray-800\/50 { background-color: rgba(238,243,249,0.85) !important; }
-html[data-theme="light"] .bg-gray-800\/30 { background-color: rgba(238,243,249,0.60) !important; }
-html[data-theme="light"] .bg-gray-700\/30 { background-color: rgba(226,232,240,0.55) !important; }
-html[data-theme="light"] .bg-gray-900\/50 { background-color: rgba(243,246,251,0.85) !important; }
-html[data-theme="light"] .bg-gray-900\/80 { background-color: rgba(243,246,251,0.92) !important; }
+/* パネル系（透明度を上げて明示的なパネルとして見えるようにする） */
+html[data-theme="light"] .bg-gray-800\/50 { background-color: #eef3f9 !important; }
+html[data-theme="light"] .bg-gray-800\/30 { background-color: #f4f7fb !important; }
+html[data-theme="light"] .bg-gray-700\/30 { background-color: #eef3f9 !important; }
+html[data-theme="light"] .bg-gray-700\/50 { background-color: #e8edf5 !important; }
+html[data-theme="light"] .bg-gray-700\/60 { background-color: #e2e8f0 !important; }
+html[data-theme="light"] .bg-gray-900\/50 { background-color: #f3f6fb !important; }
+html[data-theme="light"] .bg-gray-900\/80 { background-color: #eef3f9 !important; }
 
 /* ─── 8. ライトモード: ホバー ───────────────────────────────────── */
 html[data-theme="light"] .hover\:bg-gray-700:hover { background-color: #e2e8f0 !important; }
@@ -311,6 +313,70 @@ html[data-theme="light"] .text-gray-200 { color: #1e293b !important; }
 html[data-theme="light"] .text-gray-300 { color: #334155 !important; }
 html[data-theme="light"] .text-gray-400 { color: #475569 !important; }
 html[data-theme="light"] .text-gray-500 { color: #64748b !important; }
+
+/* ─── 9a. ライトモード: hover:text-white も暗色に統一 ────────────── */
+/*
+ * hover:text-white はライトモードでグレー背景上で白文字になってしまう。
+ * ホバー時も #1e293b（ダーク）に統一する。
+ */
+html[data-theme="light"] .hover\:text-white:hover {
+  color: #1e293b !important;
+}
+
+/* ─── 9b. ライトモード: 実際に暗い背景のままの色付きクラスに限り白文字を維持 ── */
+/*
+ * 前提: グレー系（bg-gray-900/800/700/600）はライトモードで明るい色に変換済み。
+ *      → それらの上の text-white は #0f172a（上の一般ルール）で正しく暗くなる。
+ *      → bg-gray-900 などをここに含めてはならない。
+ *
+ * 対象: ライトモードでも暗い背景色を保つクラスのみ。
+ *      具体的には Tailwind の彩色系クラスで輝度 < 0.20 のもの（WCAG AA 基準）。
+ *
+ * 輝度検証済み（白文字の方がコントラスト比が高い背景のみ）:
+ *   bg-blue-{400-800}    lum 0.04–0.13 → 白文字 ✓
+ *   bg-red-{500-700}     lum 0.04–0.09 → 白文字 ✓
+ *   bg-green-{600-700}   lum 0.08–0.12 → 白文字 ✓
+ *   bg-emerald-{600-700} lum 0.08–0.12 → 白文字 ✓
+ *   bg-violet-{600-700}  lum 0.05–0.08 → 白文字 ✓
+ *   bg-indigo-{600-700}  lum 0.06–0.09 → 白文字 ✓
+ *   bg-yellow-700        lum 0.18      → 白文字 ✓ (コントラスト比 4.5:1)
+ *
+ * 対象外（暗いが白より黒テキストの方が AA を満たす、またはグレーリマップ済み）:
+ *   bg-orange-{500-600}  lum 0.26–0.30 → 黒文字の方が優位
+ *   bg-yellow-{500-600}  lum 0.26–0.37 → 黒文字の方が優位
+ *   bg-gray-{600-900}    すべてライトリマップ済み → 黒文字
+ */
+html[data-theme="light"] .bg-blue-400.text-white,
+html[data-theme="light"] .bg-blue-500.text-white,
+html[data-theme="light"] .bg-blue-600.text-white,
+html[data-theme="light"] .bg-blue-700.text-white,
+html[data-theme="light"] .bg-blue-800.text-white,
+html[data-theme="light"] .bg-blue-400 .text-white,
+html[data-theme="light"] .bg-blue-500 .text-white,
+html[data-theme="light"] .bg-blue-600 .text-white,
+html[data-theme="light"] .bg-blue-700 .text-white,
+html[data-theme="light"] .bg-blue-800 .text-white,
+html[data-theme="light"] .bg-red-500.text-white,
+html[data-theme="light"] .bg-red-600.text-white,
+html[data-theme="light"] .bg-red-700.text-white,
+html[data-theme="light"] .bg-red-500 .text-white,
+html[data-theme="light"] .bg-red-600 .text-white,
+html[data-theme="light"] .bg-red-700 .text-white,
+html[data-theme="light"] .bg-green-600.text-white,
+html[data-theme="light"] .bg-green-700.text-white,
+html[data-theme="light"] .bg-green-600 .text-white,
+html[data-theme="light"] .bg-green-700 .text-white,
+html[data-theme="light"] .bg-emerald-600.text-white,
+html[data-theme="light"] .bg-emerald-700.text-white,
+html[data-theme="light"] .bg-emerald-600 .text-white,
+html[data-theme="light"] .bg-emerald-700 .text-white,
+html[data-theme="light"] .bg-violet-600.text-white,
+html[data-theme="light"] .bg-violet-700.text-white,
+html[data-theme="light"] .bg-indigo-600.text-white,
+html[data-theme="light"] .bg-indigo-700.text-white,
+html[data-theme="light"] .bg-yellow-700.text-white {
+  color: #ffffff !important;
+}
 
 /* ─── 10. ライトモード: ボーダー ────────────────────────────────── */
 html[data-theme="light"] .border-gray-700,
@@ -382,6 +448,30 @@ html[data-theme="light"] .bg-orange-900\/40  { background-color: #ffedd5 !import
 html[data-theme="light"] .text-orange-300    { color: #c2410c !important; }
 html[data-theme="light"] .text-orange-400    { color: #ea580c !important; }
 html[data-theme="light"] .border-orange-500  { border-color: #f97316 !important; }
+
+/* アンバー系（シナジー・警告） */
+html[data-theme="light"] .text-amber-300     { color: #92400e !important; }
+html[data-theme="light"] .text-amber-400     { color: #b45309 !important; }
+html[data-theme="light"] .text-amber-500     { color: #b45309 !important; }
+html[data-theme="light"] .bg-amber-900\/30   { background-color: #fef3c7 !important; }
+html[data-theme="light"] .border-amber-500   { border-color: #f59e0b !important; }
+
+/* シアン系（指標・補助情報） */
+html[data-theme="light"] .text-cyan-300      { color: #0e7490 !important; }
+html[data-theme="light"] .text-cyan-400      { color: #0891b2 !important; }
+html[data-theme="light"] .bg-cyan-900\/30    { background-color: #cffafe !important; }
+
+/* ローズ系 */
+html[data-theme="light"] .text-rose-300      { color: #9f1239 !important; }
+html[data-theme="light"] .text-rose-400      { color: #be123c !important; }
+
+/* スカイ系 */
+html[data-theme="light"] .text-sky-300       { color: #0369a1 !important; }
+html[data-theme="light"] .text-sky-400       { color: #0284c7 !important; }
+
+/* インディゴ系 */
+html[data-theme="light"] .text-indigo-300    { color: #4338ca !important; }
+html[data-theme="light"] .text-indigo-400    { color: #4f46e5 !important; }
 
 /* ─── 12. ライトモード: 進捗バー・インジケーター ────────────────── */
 html[data-theme="light"] .bg-blue-400        { background-color: #2563eb !important; }

@@ -97,6 +97,7 @@ export function perfColor(rate: number, alpha = 1): string {
 export const TOOLTIP_BG     = '#1f2937'
 export const TOOLTIP_BORDER = '#374151'
 export const AXIS_TICK      = '#9ca3af'
+export const AXIS_TICK_LIGHT = '#475569'   // ライトモード用軸ラベル色
 export const AXIS_LABEL     = '#6b7280'
 export const CURSOR_FILL    = 'rgba(255,255,255,0.04)'
 
@@ -108,3 +109,40 @@ export const TOOLTIP_STYLE = {
   color: '#f9fafb',
   fontSize: 12,
 } as const
+
+// ── ライトモード対応ユーティリティ ─────────────────────────────────────────────
+
+/**
+ * 分析カラーをライトモードで安全に表示するためのコントラスト補正。
+ * 色相を保ちながら輝度を下げ、白背景に対してWCAG AA水準(4.5:1)を近似する。
+ * isDark=true（ダークモード）のときは色をそのまま返す。
+ *
+ * 典型的な問題: perfColor(0.5) ≈ #dddddd（neutral gray）は白背景で不可視。
+ * 本関数で rgb(109,109,109) 程度に補正し、コントラスト比 4.6:1 を確保する。
+ */
+export function lightSafe(color: string, isDark: boolean): string {
+  if (isDark) return color
+  // rgb(r,g,b) または #rrggbb をパース
+  let r: number, g: number, b: number
+  const rgbM = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+  const hexM = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+  if (rgbM) {
+    r = +rgbM[1]; g = +rgbM[2]; b = +rgbM[3]
+  } else if (hexM) {
+    r = parseInt(hexM[1], 16); g = parseInt(hexM[2], 16); b = parseInt(hexM[3], 16)
+  } else {
+    return color
+  }
+  // WCAG 相対輝度（sRGB → 線形）
+  const lin = (c: number) => {
+    const v = c / 255
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  }
+  const lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+  // lum<=0.18 なら白背景でコントラスト比≥4.5:1 → そのまま返す
+  if (lum <= 0.18) return color
+  // sRGB スケールダウン（色相維持・輝度削減）
+  // target lum = 0.18 → scale = sqrt(0.18 / lum) で近似
+  const scale = Math.sqrt(0.18 / lum)
+  return `rgb(${Math.round(r * scale)},${Math.round(g * scale)},${Math.round(b * scale)})`
+}

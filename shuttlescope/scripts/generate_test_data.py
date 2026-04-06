@@ -82,24 +82,30 @@ def generate_rally_strokes(
     is_doubles: bool = False,
     partner_a_role: str = None,
     partner_b_role: str = None,
+    server_role: str = "player_a",
 ) -> list[Stroke]:
     """ラリーのストロークリストを生成する"""
     strokes = []
-    # 最初のストローク（サーブ）は player_a_role
-    # 2打目以降は交互に打つ
-    # ダブルスの場合は partner も使用
+    # 奇数打: サーバー側、偶数打: レシーバー側
+    # server_role に基づいて正しく割り当てる
+    a_serves = (server_role == player_a_role)
 
     for i in range(1, rally_length + 1):
         # ストロークを打つプレイヤーを決定
         if is_doubles:
-            if i % 2 == 1:
-                # A側: player_a または partner_a
+            # 奇数打がサーバー側
+            if (i % 2 == 1) == a_serves:
+                # A側
                 player = player_a_role if random.random() < 0.55 else (partner_a_role or player_a_role)
             else:
-                # B側: player_b または partner_b
+                # B側
                 player = player_b_role if random.random() < 0.55 else (partner_b_role or player_b_role)
         else:
-            player = player_a_role if i % 2 == 1 else player_b_role
+            # 奇数打がサーバー側
+            if (i % 2 == 1) == a_serves:
+                player = player_a_role
+            else:
+                player = player_b_role
 
         shot_type = random_shot_type()
         # 最初はサーブ系
@@ -222,6 +228,7 @@ def generate_set(
             is_doubles=is_doubles,
             partner_a_role="partner_a" if is_doubles else None,
             partner_b_role="partner_b" if is_doubles else None,
+            server_role=server,
         )
         for stroke in strokes:
             db.add(stroke)

@@ -14,12 +14,16 @@ import {
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { WIN, LOSS, TOOLTIP_STYLE } from '@/styles/colors'
+import { WIN, LOSS } from '@/styles/colors'
 
 interface ScoreProgressionProps {
   matchId: number
-  /** M-001: ラリークリック時に呼び出す（アノテーターへのシーク） */
-  onRallyClick?: (rallyId: number, timestamp: number) => void
+  /**
+   * M-001ダッシュボード用: 折れ線グラフのラリー点クリック時に呼び出す。
+   * セットID・セット番号・ラリー番号・その時点のスコアを渡す。
+   * このプロップが渡された場合はクリック可能になりセット間速報を表示できる。
+   */
+  onSetPointClick?: (setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number) => void
 }
 
 interface RallyPoint {
@@ -33,6 +37,7 @@ interface RallyPoint {
 }
 
 interface SetData {
+  set_id: number
   set_num: number
   rallies: RallyPoint[]
   momentum_changes: number[]
@@ -66,7 +71,7 @@ function CustomTooltip({ active, payload }: any) {
   )
 }
 
-export function ScoreProgression({ matchId, onRallyClick }: ScoreProgressionProps) {
+export function ScoreProgression({ matchId, onSetPointClick }: ScoreProgressionProps) {
   const { t } = useTranslation()
   const [selectedSet, setSelectedSet] = useState<number>(1)
 
@@ -124,12 +129,18 @@ export function ScoreProgression({ matchId, onRallyClick }: ScoreProgressionProp
           <LineChart
             data={chartData}
             margin={{ top: 10, right: 16, left: 0, bottom: 10 }}
-            style={onRallyClick ? { cursor: 'pointer' } : undefined}
-            onClick={(chartData) => {
-              if (!onRallyClick || !chartData?.activePayload?.[0]) return
-              const point = chartData.activePayload[0].payload as RallyPoint
-              if (point.rally_id != null && point.video_timestamp_start != null) {
-                onRallyClick(point.rally_id, point.video_timestamp_start)
+            style={onSetPointClick ? { cursor: 'pointer' } : undefined}
+            onClick={(chart) => {
+              if (!onSetPointClick || !chart?.activePayload?.[0]) return
+              const point = chart.activePayload[0].payload as RallyPoint
+              if (currentSet?.set_id != null) {
+                onSetPointClick(
+                  currentSet.set_id,
+                  currentSet.set_num,
+                  point.rally_num,
+                  point.score_a,
+                  point.score_b,
+                )
               }
             }}
           >
@@ -181,8 +192,8 @@ export function ScoreProgression({ matchId, onRallyClick }: ScoreProgressionProp
           <span className="inline-block w-3 h-0.5 bg-yellow-500" style={{ borderTop: '1px dashed' }} />
           流れの変化点
         </span>
-        {onRallyClick && (
-          <span className="text-blue-400">クリックでアノテーターへ</span>
+        {onSetPointClick && (
+          <span className="text-blue-400">クリックで途中解析</span>
         )}
       </div>
     </div>

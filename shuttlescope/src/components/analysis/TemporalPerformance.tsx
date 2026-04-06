@@ -13,7 +13,8 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { perfColor, TOOLTIP_STYLE, AXIS_TICK } from '@/styles/colors'
+import { perfColor, lightSafe, TOOLTIP_STYLE, AXIS_TICK } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface TemporalPerformanceProps {
@@ -38,6 +39,7 @@ interface TemporalResponse {
 
 export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEFAULT_FILTERS }: TemporalPerformanceProps) {
   const { t } = useTranslation()
+  const isLight = useIsLightMode()
 
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -67,7 +69,8 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
     name: p.phase,
     win_rate_pct: Math.round(p.win_rate * 100),
     rally_count: p.rally_count,
-    color: perfColor(p.win_rate),  // 勝率に基づく色: 高=青(良), 低=赤(悪)
+    // ライトモードではコントラスト補正（perfColor中間値が白背景で不可視になるため）
+    color: lightSafe(perfColor(p.win_rate), !isLight),
   }))
 
   return (
@@ -119,7 +122,9 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
               {p.phase}
             </span>
             <span className="text-gray-400">{p.rally_count}ラリー</span>
-            <span className="text-white font-semibold">{(p.win_rate * 100).toFixed(1)}%</span>
+            <span className="font-semibold" style={{ color: chartData[i]?.color }}>
+              {(p.win_rate * 100).toFixed(1)}%
+            </span>
           </div>
         ))}
       </div>

@@ -11,7 +11,8 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { perfColor, WIN, TOOLTIP_STYLE } from '@/styles/colors'
+import { perfColor, lightSafe, WIN, TOOLTIP_STYLE } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface SetComparisonProps {
@@ -52,6 +53,7 @@ function CustomTooltip({ active, payload, label }: any) {
 // セット別の色は勝率に基づいて動的に決定（perfColor: 高勝率=青=良い, 低勝率=赤=悪い）
 
 export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_FILTERS }: SetComparisonProps) {
+  const isLight = useIsLightMode()
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
@@ -131,7 +133,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
             </p>
             <p
               className="text-lg font-bold"
-              style={{ color: perfColor(s.win_rate) }}
+              style={{ color: lightSafe(perfColor(s.win_rate), !isLight) }}
             >
               {(s.win_rate * 100).toFixed(1)}%
             </p>
