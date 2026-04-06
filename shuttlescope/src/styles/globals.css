@@ -2,8 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── ダークモード（デフォルト） ─────────────────────────────── */
-:root {
+/* ═══════════════════════════════════════════════════════════════════
+   ShuttleScope Global CSS  —  COLOR_SPEC_v1 準拠
+   セマンティックトークン + テーマ別明示ルール
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. ダークテーマ セマンティックトークン（デフォルト） ─────── */
+:root,
+html[data-theme="dark"] {
+  /* shadcn 互換 HSL 変数 */
   --background: 222.2 84% 4.9%;
   --foreground: 210 40% 98%;
   --border: 217.2 32.6% 17.5%;
@@ -20,89 +27,326 @@
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 210 40% 98%;
   --radius: 0.5rem;
+
+  /* COLOR_SPEC_v1 Foundation Tokens — Dark */
+  --ss-bg-app:        #111827;
+  --ss-bg-page:       #111827;
+  --ss-bg-panel:      #1f2937;
+  --ss-bg-panel-alt:  #243041;
+  --ss-bg-elevated:   #2b3648;
+  --ss-bg-overlay:    rgba(0, 0, 0, 0.55);
+
+  --ss-text-primary:  #f9fafb;
+  --ss-text-secondary:#d1d5db;
+  --ss-text-muted:    #9ca3af;
+  --ss-text-disabled: #6b7280;
+
+  --ss-border-default:#374151;
+  --ss-border-strong: #4b5563;
+  --ss-border-subtle: rgba(255, 255, 255, 0.08);
+
+  --ss-accent-primary:       #3b82f6;
+  --ss-accent-primary-hover: #2563eb;
+  --ss-accent-primary-soft:  rgba(59, 130, 246, 0.18);
+  --ss-focus-ring:           #60a5fa;
+
+  /* Form controls */
+  --ss-ctrl-bg:         #243041;
+  --ss-ctrl-text:       #f9fafb;
+  --ss-ctrl-placeholder:#9ca3af;
+  --ss-ctrl-border:     #374151;
+  --ss-ctrl-border-hover:#4b5563;
+  --ss-ctrl-border-focus:#3b82f6;
+  --ss-ctrl-focus-ring: rgba(59, 130, 246, 0.25);
+
+  /* Status: Success */
+  --ss-success-text:   #86efac;
+  --ss-success-bg:     rgba(34, 197, 94, 0.16);
+  --ss-success-border: rgba(34, 197, 94, 0.35);
+
+  /* Status: Warning */
+  --ss-warning-text:   #fcd34d;
+  --ss-warning-bg:     rgba(245, 158, 11, 0.18);
+  --ss-warning-border: rgba(245, 158, 11, 0.35);
+
+  /* Status: Danger */
+  --ss-danger-text:    #fca5a5;
+  --ss-danger-bg:      rgba(239, 68, 68, 0.16);
+  --ss-danger-border:  rgba(239, 68, 68, 0.35);
+
+  /* Status: Info */
+  --ss-info-text:      #93c5fd;
+  --ss-info-bg:        rgba(59, 130, 246, 0.16);
+  --ss-info-border:    rgba(59, 130, 246, 0.35);
+
+  /* Status: Neutral advisory */
+  --ss-advisory-text:  #d1d5db;
+  --ss-advisory-bg:    rgba(148, 163, 184, 0.14);
+  --ss-advisory-border:rgba(148, 163, 184, 0.30);
+
+  /* Table */
+  --ss-table-header-bg:#243041;
+  --ss-table-odd-bg:   #1f2937;
+  --ss-table-even-bg:  #1a2333;
+  --ss-table-hover-bg: rgba(59, 130, 246, 0.10);
+  --ss-table-divider:  #374151;
+
+  color-scheme: dark;
 }
 
-/* ─── ライトモード上書き ─────────────────────────────────────── */
-/* html[data-theme="light"] が付いたとき Tailwind グレー系を白寄りに反転 */
-
+/* ─── 2. ライトテーマ セマンティックトークン ────────────────────── */
 html[data-theme="light"] {
+  /* shadcn 互換 HSL 変数 */
   --background: 210 40% 98%;
   --foreground: 222.2 84% 4.9%;
   --border: 214.3 31.8% 85%;
   --input: 214.3 31.8% 85%;
+  --ring: 221.2 83.2% 53.3%;
+  --primary: 222.2 47.4% 11.2%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+
+  /* COLOR_SPEC_v1 Foundation Tokens — Light */
+  --ss-bg-app:        #f3f6fb;
+  --ss-bg-page:       #f7f9fc;
+  --ss-bg-panel:      #ffffff;
+  --ss-bg-panel-alt:  #eef3f9;
+  --ss-bg-elevated:   #ffffff;
+  --ss-bg-overlay:    rgba(15, 23, 42, 0.28);
+
+  --ss-text-primary:  #0f172a;
+  --ss-text-secondary:#334155;
+  --ss-text-muted:    #64748b;
+  --ss-text-disabled: #94a3b8;
+
+  --ss-border-default:#cbd5e1;
+  --ss-border-strong: #94a3b8;
+  --ss-border-subtle: rgba(15, 23, 42, 0.08);
+
+  --ss-accent-primary:       #2563eb;
+  --ss-accent-primary-hover: #1d4ed8;
+  --ss-accent-primary-soft:  rgba(37, 99, 235, 0.10);
+  --ss-focus-ring:           #3b82f6;
+
+  /* Form controls */
+  --ss-ctrl-bg:         #ffffff;
+  --ss-ctrl-text:       #0f172a;
+  --ss-ctrl-placeholder:#94a3b8;
+  --ss-ctrl-border:     #cbd5e1;
+  --ss-ctrl-border-hover:#94a3b8;
+  --ss-ctrl-border-focus:#2563eb;
+  --ss-ctrl-focus-ring: rgba(37, 99, 235, 0.18);
+
+  /* Status: Success */
+  --ss-success-text:   #166534;
+  --ss-success-bg:     #dcfce7;
+  --ss-success-border: #86efac;
+
+  /* Status: Warning */
+  --ss-warning-text:   #92400e;
+  --ss-warning-bg:     #fef3c7;
+  --ss-warning-border: #fcd34d;
+
+  /* Status: Danger */
+  --ss-danger-text:    #991b1b;
+  --ss-danger-bg:      #fee2e2;
+  --ss-danger-border:  #fca5a5;
+
+  /* Status: Info */
+  --ss-info-text:      #1d4ed8;
+  --ss-info-bg:        #dbeafe;
+  --ss-info-border:    #93c5fd;
+
+  /* Status: Neutral advisory */
+  --ss-advisory-text:  #334155;
+  --ss-advisory-bg:    #f1f5f9;
+  --ss-advisory-border:#cbd5e1;
+
+  /* Table */
+  --ss-table-header-bg:#eef3f9;
+  --ss-table-odd-bg:   #ffffff;
+  --ss-table-even-bg:  #fbfdff;
+  --ss-table-hover-bg: #eff6ff;
+  --ss-table-divider:  #e2e8f0;
+
   color-scheme: light;
 }
 
-/* ページ背景 */
-html[data-theme="light"] .bg-gray-900  { background-color: #f8fafc !important; }
-html[data-theme="light"] .bg-gray-800  { background-color: #f1f5f9 !important; }
-html[data-theme="light"] .bg-gray-700  { background-color: #e2e8f0 !important; }
-html[data-theme="light"] .bg-gray-600  { background-color: #cbd5e1 !important; }
+/* ─── 3. ページ基底 ─────────────────────────────────────────────── */
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
 
-/* ホバー */
-html[data-theme="light"] .hover\:bg-gray-700:hover  { background-color: #e2e8f0 !important; }
-html[data-theme="light"] .hover\:bg-gray-600:hover  { background-color: #cbd5e1 !important; }
-html[data-theme="light"] .hover\:bg-gray-800:hover  { background-color: #f1f5f9 !important; }
+html[data-theme="light"] body {
+  background-color: var(--ss-bg-app);
+  color: var(--ss-text-primary);
+}
 
-/* 半透明 bg */
-html[data-theme="light"] .bg-gray-800\/50 { background-color: rgba(241,245,249,0.7) !important; }
-html[data-theme="light"] .bg-gray-800\/30 { background-color: rgba(241,245,249,0.5) !important; }
-html[data-theme="light"] .bg-gray-700\/30 { background-color: rgba(226,232,240,0.5) !important; }
+/* ─── 4. フォームコントロール共通（ダーク） ─────────────────────── */
+input,
+textarea,
+select {
+  background-color: var(--ss-ctrl-bg);
+  color: var(--ss-ctrl-text);
+  border-color: var(--ss-ctrl-border);
+}
 
-/* テキスト */
-html[data-theme="light"] .text-white   { color: #0f172a !important; }
-html[data-theme="light"] .text-gray-100 { color: #1e293b !important; }
-html[data-theme="light"] .text-gray-200 { color: #334155 !important; }
-html[data-theme="light"] .text-gray-300 { color: #475569 !important; }
-html[data-theme="light"] .text-gray-400 { color: #64748b !important; }
-html[data-theme="light"] .text-gray-500 { color: #94a3b8 !important; }
+input::placeholder,
+textarea::placeholder {
+  color: var(--ss-ctrl-placeholder);
+}
 
-/* ボーダー */
-html[data-theme="light"] .border-gray-700 { border-color: #cbd5e1 !important; }
-html[data-theme="light"] .border-gray-600 { border-color: #e2e8f0 !important; }
-html[data-theme="light"] .border-gray-800 { border-color: #e2e8f0 !important; }
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: var(--ss-ctrl-border-hover);
+}
 
-/* インプット・セレクト */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--ss-ctrl-border-focus);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ss-ctrl-focus-ring);
+}
+
+/* ─── 5. ライトモード: フォームコントロール（重要） ────────────── */
 html[data-theme="light"] input,
-html[data-theme="light"] select,
-html[data-theme="light"] textarea {
+html[data-theme="light"] textarea,
+html[data-theme="light"] select {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+  color: #94a3b8;
+}
+
+html[data-theme="light"] input:hover,
+html[data-theme="light"] textarea:hover,
+html[data-theme="light"] select:hover {
+  border-color: #94a3b8;
+}
+
+html[data-theme="light"] input:focus,
+html[data-theme="light"] textarea:focus,
+html[data-theme="light"] select:focus {
+  border-color: #2563eb;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+html[data-theme="light"] input:disabled,
+html[data-theme="light"] textarea:disabled,
+html[data-theme="light"] select:disabled {
+  background-color: #f1f5f9;
+  color: #94a3b8;
+  border-color: #e2e8f0;
+  cursor: not-allowed;
+}
+
+/* ─── 6. ライトモード: select option（ドロップダウン内部） ────── */
+html[data-theme="light"] select option,
+html[data-theme="light"] select optgroup {
+  background-color: #ffffff;
   color: #0f172a;
 }
 
-/* スクロールバー */
-html[data-theme="light"] ::-webkit-scrollbar-track { background: #f1f5f9; }
-html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
-html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+html[data-theme="light"] select option:checked,
+html[data-theme="light"] select option:hover {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
 
-/* ─── ライトモード: 非グレー系カラークラスの上書き ───────────── */
+/* ダークモード: select option */
+html[data-theme="dark"] select option,
+html[data-theme="dark"] select optgroup {
+  background-color: #1f2937;
+  color: #f9fafb;
+}
 
-/* 赤系（低信頼度・失点・エラー） */
+html[data-theme="dark"] select option:checked,
+html[data-theme="dark"] select option:hover {
+  background-color: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+}
+
+/* ─── 7. ライトモード: Tailwindグレー系 背景 ────────────────────── */
+html[data-theme="light"] .bg-gray-950,
+html[data-theme="light"] .bg-gray-900  { background-color: #f3f6fb !important; }
+html[data-theme="light"] .bg-gray-800  { background-color: #eef3f9 !important; }
+html[data-theme="light"] .bg-gray-750  { background-color: #f1f5f9 !important; }
+html[data-theme="light"] .bg-gray-700  { background-color: #e2e8f0 !important; }
+html[data-theme="light"] .bg-gray-600  { background-color: #cbd5e1 !important; }
+
+/* パネル系 */
+html[data-theme="light"] .bg-gray-800\/50 { background-color: rgba(238,243,249,0.85) !important; }
+html[data-theme="light"] .bg-gray-800\/30 { background-color: rgba(238,243,249,0.60) !important; }
+html[data-theme="light"] .bg-gray-700\/30 { background-color: rgba(226,232,240,0.55) !important; }
+html[data-theme="light"] .bg-gray-900\/50 { background-color: rgba(243,246,251,0.85) !important; }
+html[data-theme="light"] .bg-gray-900\/80 { background-color: rgba(243,246,251,0.92) !important; }
+
+/* ─── 8. ライトモード: ホバー ───────────────────────────────────── */
+html[data-theme="light"] .hover\:bg-gray-700:hover { background-color: #e2e8f0 !important; }
+html[data-theme="light"] .hover\:bg-gray-600:hover { background-color: #cbd5e1 !important; }
+html[data-theme="light"] .hover\:bg-gray-800:hover { background-color: #eef3f9 !important; }
+html[data-theme="light"] .hover\:bg-gray-750:hover { background-color: #e8edf5 !important; }
+
+/* ─── 9. ライトモード: テキスト ─────────────────────────────────── */
+html[data-theme="light"] .text-white   { color: #0f172a !important; }
+html[data-theme="light"] .text-gray-100 { color: #0f172a !important; }
+html[data-theme="light"] .text-gray-200 { color: #1e293b !important; }
+html[data-theme="light"] .text-gray-300 { color: #334155 !important; }
+html[data-theme="light"] .text-gray-400 { color: #475569 !important; }
+html[data-theme="light"] .text-gray-500 { color: #64748b !important; }
+
+/* ─── 10. ライトモード: ボーダー ────────────────────────────────── */
+html[data-theme="light"] .border-gray-700,
+html[data-theme="light"] .border-gray-700\/50 { border-color: #cbd5e1 !important; }
+html[data-theme="light"] .border-gray-600 { border-color: #e2e8f0 !important; }
+html[data-theme="light"] .border-gray-800 { border-color: #e2e8f0 !important; }
+
+/* ─── 11. ライトモード: ステータス / バッジ系 ───────────────────── */
+
+/* 赤系（低信頼度・失点・エラー・Danger） */
 html[data-theme="light"] .bg-red-900\/30    { background-color: #fee2e2 !important; }
 html[data-theme="light"] .bg-red-900\/50    { background-color: #fecaca !important; }
 html[data-theme="light"] .bg-red-900\/20    { background-color: #fef2f2 !important; }
 html[data-theme="light"] .bg-red-900        { background-color: #fecaca !important; }
-html[data-theme="light"] .text-red-300      { color: #dc2626 !important; }
+html[data-theme="light"] .text-red-300      { color: #991b1b !important; }
 html[data-theme="light"] .text-red-400      { color: #dc2626 !important; }
 html[data-theme="light"] .border-red-400    { border-color: #f87171 !important; }
 html[data-theme="light"] .border-red-700\/40 { border-color: #fca5a5 !important; }
 
-/* 黄系（中信頼度・警告） */
-html[data-theme="light"] .bg-yellow-900\/30  { background-color: #fef9c3 !important; }
+/* 黄系（中信頼度・警告・Warning） */
+html[data-theme="light"] .bg-yellow-900\/30  { background-color: #fef3c7 !important; }
 html[data-theme="light"] .bg-yellow-900\/20  { background-color: #fefce8 !important; }
 html[data-theme="light"] .bg-yellow-700\/50  { background-color: #fef08a !important; }
-html[data-theme="light"] .text-yellow-300    { color: #b45309 !important; }
+html[data-theme="light"] .text-yellow-300    { color: #92400e !important; }
 html[data-theme="light"] .text-yellow-400    { color: #b45309 !important; }
 html[data-theme="light"] .border-yellow-400  { border-color: #eab308 !important; }
 html[data-theme="light"] .border-yellow-600\/50 { border-color: #ca8a04 !important; }
 html[data-theme="light"] .border-yellow-700\/50 { border-color: #a16207 !important; }
 
-/* 緑系（高信頼度・成功） */
+/* 緑系（高信頼度・成功・Success） */
 html[data-theme="light"] .bg-green-900\/30   { background-color: #dcfce7 !important; }
 html[data-theme="light"] .bg-green-900\/40   { background-color: #bbf7d0 !important; }
 html[data-theme="light"] .bg-green-900\/20   { background-color: #f0fdf4 !important; }
 html[data-theme="light"] .bg-green-700       { background-color: #16a34a !important; }
 html[data-theme="light"] .hover\:bg-green-600:hover { background-color: #15803d !important; }
-html[data-theme="light"] .text-green-300     { color: #16a34a !important; }
+html[data-theme="light"] .text-green-300     { color: #166534 !important; }
 html[data-theme="light"] .text-green-400     { color: #16a34a !important; }
 html[data-theme="light"] .border-green-400   { border-color: #4ade80 !important; }
 html[data-theme="light"] .border-green-500   { border-color: #22c55e !important; }
@@ -111,17 +355,17 @@ html[data-theme="light"] .border-green-700\/40 { border-color: #86efac !importan
 /* エメラルド系（コーチ・成長フレーミング） */
 html[data-theme="light"] .bg-emerald-900\/50  { background-color: #d1fae5 !important; }
 html[data-theme="light"] .bg-emerald-900\/20  { background-color: #ecfdf5 !important; }
-html[data-theme="light"] .text-emerald-300    { color: #059669 !important; }
+html[data-theme="light"] .text-emerald-300    { color: #065f46 !important; }
 html[data-theme="light"] .text-emerald-400    { color: #059669 !important; }
 html[data-theme="light"] .border-emerald-500  { border-color: #10b981 !important; }
 
-/* 青系（アナリスト・情報） */
+/* 青系（アナリスト・情報・Info） */
 html[data-theme="light"] .bg-blue-900\/30    { background-color: #dbeafe !important; }
 html[data-theme="light"] .bg-blue-900\/40    { background-color: #bfdbfe !important; }
 html[data-theme="light"] .bg-blue-900\/50    { background-color: #dbeafe !important; }
 html[data-theme="light"] .bg-blue-900        { background-color: #bfdbfe !important; }
 html[data-theme="light"] .text-blue-300      { color: #1d4ed8 !important; }
-html[data-theme="light"] .text-blue-400      { color: #1d4ed8 !important; }
+html[data-theme="light"] .text-blue-400      { color: #2563eb !important; }
 html[data-theme="light"] .border-blue-500    { border-color: #3b82f6 !important; }
 html[data-theme="light"] .border-blue-700    { border-color: #93c5fd !important; }
 html[data-theme="light"] .border-blue-700\/40 { border-color: #bfdbfe !important; }
@@ -129,73 +373,156 @@ html[data-theme="light"] .border-blue-700\/40 { border-color: #bfdbfe !important
 /* 紫系（選手ロール） */
 html[data-theme="light"] .bg-purple-900\/40  { background-color: #f3e8ff !important; }
 html[data-theme="light"] .bg-purple-900\/50  { background-color: #ede9fe !important; }
-html[data-theme="light"] .text-purple-300    { color: #7e22ce !important; }
+html[data-theme="light"] .text-purple-300    { color: #6b21a8 !important; }
+html[data-theme="light"] .text-purple-400    { color: #7e22ce !important; }
 html[data-theme="light"] .border-purple-500  { border-color: #a855f7 !important; }
 
-/* オレンジ系（短ラリースペシャリスト） */
+/* オレンジ系（短ラリー） */
 html[data-theme="light"] .bg-orange-900\/40  { background-color: #ffedd5 !important; }
-html[data-theme="light"] .text-orange-300    { color: #ea580c !important; }
+html[data-theme="light"] .text-orange-300    { color: #c2410c !important; }
+html[data-theme="light"] .text-orange-400    { color: #ea580c !important; }
 html[data-theme="light"] .border-orange-500  { border-color: #f97316 !important; }
 
-/* bg-gray-750（非標準クラス: MarkovEPVカード）*/
-html[data-theme="light"] .bg-gray-750        { background-color: #f8fafc !important; }
-
-/* ─── ライトモード: 進捗バー fill 色 ─────────────────────────── */
-/* bg-blue-400 の進捗バーを視認性の高い色に */
+/* ─── 12. ライトモード: 進捗バー・インジケーター ────────────────── */
 html[data-theme="light"] .bg-blue-400        { background-color: #2563eb !important; }
 html[data-theme="light"] .bg-blue-500        { background-color: #2563eb !important; }
 html[data-theme="light"] .bg-emerald-500     { background-color: #059669 !important; }
 
-/* ─── ライトモード: Recharts SVG 要素 ──────────────────────────── */
-/* BAR (#8db0fe) はライト背景でコントラスト不足のため濃い青に変換 */
-html[data-theme="light"] .recharts-rectangle[fill="#8db0fe"] {
-  fill: #3b7ad4 !important;
+/* ─── 13. ライトモード: テーブル ───────────────────────────────── */
+html[data-theme="light"] table thead tr,
+html[data-theme="light"] .table-header-row {
+  background-color: #eef3f9 !important;
+  color: #334155 !important;
 }
-html[data-theme="light"] .recharts-bar-background-rectangle[fill="#8db0fe"] {
-  fill: #3b7ad4 !important;
+
+html[data-theme="light"] table tbody tr:nth-child(odd) {
+  background-color: #ffffff;
 }
-/* グリッド線: ダーク (#374151) → ライトグレー */
-html[data-theme="light"] .recharts-cartesian-grid line {
-  stroke: #e2e8f0 !important;
+
+html[data-theme="light"] table tbody tr:nth-child(even) {
+  background-color: #fbfdff;
 }
-/* y=0 基準線 (白) → ライトモード用の濃い色 */
-html[data-theme="light"] .recharts-reference-line line[stroke="#ffffff"] {
-  stroke: #475569 !important;
+
+html[data-theme="light"] table tbody tr:hover,
+html[data-theme="light"] .hover\:bg-gray-700\/50:hover {
+  background-color: #eff6ff !important;
 }
+
+html[data-theme="light"] table th {
+  background-color: #eef3f9;
+  color: #334155;
+  border-bottom-color: #cbd5e1;
+}
+
+html[data-theme="light"] table td {
+  border-bottom-color: #e2e8f0;
+  color: #0f172a;
+}
+
+/* ─── 14. ライトモード: モーダル・オーバーレイ ──────────────────── */
+/* オーバーレイ暗幕 */
+html[data-theme="light"] .modal-overlay,
+html[data-theme="light"] .fixed.inset-0.bg-black\/50,
+html[data-theme="light"] .fixed.inset-0.bg-black\/60,
+html[data-theme="light"] .fixed.inset-0.bg-black\/70,
+html[data-theme="light"] .fixed.inset-0.bg-black\/80 {
+  background-color: rgba(15, 23, 42, 0.45) !important;
+}
+
+/* モーダル本体 */
+html[data-theme="light"] .bg-gray-800.rounded,
+html[data-theme="light"] .bg-gray-800.rounded-xl,
+html[data-theme="light"] .bg-gray-800.rounded-2xl,
+html[data-theme="light"] .bg-gray-800.rounded-lg,
+html[data-theme="light"] .bg-gray-900.rounded,
+html[data-theme="light"] .bg-gray-900.rounded-xl,
+html[data-theme="light"] .bg-gray-900.rounded-2xl,
+html[data-theme="light"] .bg-gray-900.rounded-lg {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18), 0 4px 16px rgba(15, 23, 42, 0.10) !important;
+}
+
+/* ─── 15. ライトモード: ナビゲーション・タブ ────────────────────── */
+/* アクティブタブは青テキスト + 下線 または 背景 */
+html[data-theme="light"] .tab-active,
+html[data-theme="light"] [data-active="true"] {
+  background-color: var(--ss-accent-primary-soft);
+  border-bottom: 2px solid var(--ss-accent-primary);
+  color: var(--ss-accent-primary) !important;
+}
+
+/* サイドバー・ナビ非アクティブ */
+html[data-theme="light"] .nav-item-inactive {
+  color: var(--ss-text-secondary);
+}
+
+html[data-theme="light"] .nav-item-inactive:hover {
+  background-color: var(--ss-bg-panel-alt);
+  color: var(--ss-text-primary);
+}
+
+/* ─── 16. ライトモード: フローティング・ドロップダウンパネル ─────── */
+html[data-theme="light"] .dropdown-panel,
+html[data-theme="light"] .popover-panel,
+html[data-theme="light"] .command-panel {
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+/* ─── 17. ライトモード: Recharts SVG ────────────────────────────── */
+/* BAR (#8db0fe) はライト背景でコントラスト不足 → 濃い青 */
+html[data-theme="light"] .recharts-rectangle[fill="#8db0fe"] { fill: #3b7ad4 !important; }
+html[data-theme="light"] .recharts-bar-background-rectangle[fill="#8db0fe"] { fill: #3b7ad4 !important; }
+/* グリッド線 */
+html[data-theme="light"] .recharts-cartesian-grid line { stroke: #e2e8f0 !important; }
+/* y=0 基準線 (白) → 視認できる濃さ */
+html[data-theme="light"] .recharts-reference-line line[stroke="#ffffff"] { stroke: #475569 !important; }
 /* 軸テキスト */
-html[data-theme="light"] .recharts-text.recharts-cartesian-axis-tick-value {
-  fill: #475569 !important;
-}
-html[data-theme="light"] .recharts-label {
-  fill: #64748b !important;
+html[data-theme="light"] .recharts-text.recharts-cartesian-axis-tick-value { fill: #475569 !important; }
+html[data-theme="light"] .recharts-label { fill: #64748b !important; }
+
+/* ─── 18. スクロールバー（ダーク） ─────────────────────────────── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1f2937; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+/* スクロールバー（ライト） */
+html[data-theme="light"] ::-webkit-scrollbar-track { background: #f1f5f9; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ─── 19. ライトモード: チェックボックス・トグル ────────────────── */
+html[data-theme="light"] input[type="checkbox"],
+html[data-theme="light"] input[type="radio"] {
+  accent-color: #2563eb;
+  border-color: #cbd5e1;
 }
 
-/* ─── 共通リセット ───────────────────────────────────────────── */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* ─── 20. ライトモード: ボタン上書き（特殊ケース） ─────────────── */
+/* primary ボタン: ダーク背景上のテキストは白を維持 */
+html[data-theme="light"] .btn-primary,
+html[data-theme="light"] button.bg-blue-600,
+html[data-theme="light"] button.bg-blue-500 {
+  color: #ffffff !important;
 }
 
-body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  -webkit-font-smoothing: antialiased;
+/* ─── 21. ライトモード: ツールチップ ───────────────────────────── */
+html[data-theme="light"] .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12) !important;
+  color: #0f172a !important;
 }
 
-/* スクロールバースタイル（ダーク） */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+html[data-theme="light"] .recharts-tooltip-label {
+  color: #334155 !important;
 }
-::-webkit-scrollbar-track {
-  background: #1f2937;
-}
-::-webkit-scrollbar-thumb {
-  background: #374151;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+
+html[data-theme="light"] .recharts-tooltip-item {
+  color: #0f172a !important;
 }
