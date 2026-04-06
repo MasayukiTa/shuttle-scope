@@ -217,8 +217,9 @@ def toggle_lan_mode(enable: bool):
        本エンドポイントは設定フラグの更新のみ行う。
     """
     # .env.development に書き込む（次回起動時に有効）
+    # config.py が読む env_file と同じパスに書く（CWD=shuttlescope/ を前提）
     import pathlib
-    env_file = pathlib.Path(".env.development")
+    env_file = pathlib.Path(__file__).resolve().parent.parent.parent / ".env.development"
     lines: list[str] = []
     if env_file.exists():
         lines = env_file.read_text(encoding="utf-8").splitlines()
@@ -236,10 +237,13 @@ def toggle_lan_mode(enable: bool):
 
     env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    # メモリ上の設定値も即時反映（再起動なしでトグル状態を UI に返す）
+    settings.LAN_MODE = enable
+
     return {
         "success": True,
         "data": {
             "lan_mode": enable,
-            "note": "次回バックエンド起動時に有効になります",
+            "note": "設定を更新しました",
         },
     }

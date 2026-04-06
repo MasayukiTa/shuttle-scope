@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Play, Trash2, Download, Filter, Zap, AlertCircle } from 'lucide-react'
+import { Plus, Play, Trash2, Download, Filter, AlertCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
 import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS } from '@/types'
@@ -136,9 +136,8 @@ export function MatchListPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowQuickStart(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-semibold rounded text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded text-sm"
           >
-            <Zap size={15} />
             {t('quick_start.button')}
           </button>
           <button

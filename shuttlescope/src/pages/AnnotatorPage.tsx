@@ -13,11 +13,12 @@ import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
+import { SessionShareModal } from '@/components/annotation/SessionShareModal'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
 import { apiGet, apiPost, apiPut } from '@/api/client'
-import { Match, Zone9, ShotType, GameSet, Player, VideoSourceMode, DisplayInfo } from '@/types'
+import { Match, Zone9, LandZone, ShotType, GameSet, Player, VideoSourceMode, DisplayInfo } from '@/types'
 import { useMatchTimer } from '@/hooks/useMatchTimer'
 import { useSettings } from '@/hooks/useSettings'
 
@@ -84,6 +85,21 @@ function normalizeVideoPath(path: string): string {
     return 'localfile:///' + path.replace(/\\/g, '/')
   }
   return path
+}
+
+// ─── コートチェンジ計算 ────────────────────────────────────────────────────────
+// BWFルール: セット開始ごとにサイドチェンジ、第3セットは11点でサイドチェンジ
+// setNum=1 → 0回チェンジ, setNum=2 → 1回, setNum=3 → 2回（+11pt時さらに1回）
+function computePlayerASide(
+  initial: 'top' | 'bottom',
+  setNum: number,
+  scoreA: number,
+  scoreB: number
+): 'top' | 'bottom' {
+  const betweenSets = setNum - 1
+  const midSet = setNum === 3 && Math.max(scoreA, scoreB) >= 11 ? 1 : 0
+  const flipped = (betweenSets + midSet) % 2 === 1
+  return flipped ? (initial === 'top' ? 'bottom' : 'top') : initial
 }
 
 // ─── END_TYPES ────────────────────────────────────────────────────────────────
@@ -154,6 +170,11 @@ export function AnnotatorPage() {
   const [forceSetScoreA, setForceSetScoreA] = useState(0)
   const [forceSetScoreB, setForceSetScoreB] = useState(0)
 
+  // アナリスト視点（セット1開始時のplayer_aの位置）
+  const [playerAStart] = useState<'top' | 'bottom'>(
+    () => (localStorage.getItem(`shuttlescope.viewpoint.${matchId}`) as 'top' | 'bottom') ?? 'bottom'
+  )
+
   // P2: 映像ソースモード + 手動タイマー
   const [videoSourceMode, setVideoSourceMode] = useState<VideoSourceMode>('local')
   const timer = useMatchTimer()
@@ -172,6 +193,7 @@ export function AnnotatorPage() {
 
   // R-001/R-002: セッション
   const [activeSession, setActiveSession] = useState<{ session_code: string; coach_urls: string[] } | null>(null)
+  const [showSessionModal, setShowSessionModal] = useState(false)
 
   // P3: TrackNet バッチ解析
   const [tracknetJobId, setTracknetJobId] = useState<string | null>(null)
@@ -925,7 +947,7 @@ export function AnnotatorPage() {
             className={clsx(
               'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
               isMatchDayMode
-                ? 'bg-yellow-500 text-gray-900'
+                ? 'bg-yellow-600 text-white'
                 : 'bg-gray-700 text-gray-400 hover:text-white'
             )}
             title={isMatchDayMode ? t('annotator.match_day_mode_on') : t('annotator.match_day_mode_off')}
@@ -955,19 +977,14 @@ export function AnnotatorPage() {
           )}
           {/* R-001/R-002: セッション共有ボタン */}
           {activeSession ? (
-            <div className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-900/40 text-blue-300">
+            <button
+              onClick={() => setShowSessionModal(true)}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-900/40 text-blue-300 hover:bg-blue-800/60 transition-colors"
+              title="クリックしてQRコード・URLを表示"
+            >
               <Share2 size={12} />
               <span className="font-mono font-bold">{activeSession.session_code}</span>
-              {activeSession.coach_urls[0] && (
-                <button
-                  onClick={() => navigator.clipboard.writeText(activeSession.coach_urls[0]).catch(() => {})}
-                  className="ml-1 hover:text-blue-200"
-                  title={t('sharing.copy_url')}
-                >
-                  <Bookmark size={10} />
-                </button>
-              )}
-            </div>
+            </button>
           ) : (
             <button
               onClick={handleCreateOrGetSession}
@@ -1119,17 +1136,70 @@ export function AnnotatorPage() {
           </div>
 
           {/* ショートカットガイド */}
-          <div className="bg-gray-800 rounded p-2 text-xs text-gray-400 shrink-0">
-            <div className="font-medium text-gray-300 mb-1">キーボードショートカット</div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-              <span><kbd className="bg-gray-700 px-1 rounded">Space</kbd> 再生/一時停止</span>
-              <span><kbd className="bg-gray-700 px-1 rounded">Tab</kbd> プレイヤー切替</span>
-              <span><kbd className="bg-gray-700 px-1 rounded">s/c/p…</kbd> ショット入力</span>
-              <span><kbd className="bg-gray-700 px-1 rounded">Enter</kbd> ラリー終了確認</span>
-              <span><kbd className="bg-gray-700 px-1 rounded">Ctrl+Z</kbd> 戻す</span>
-              <span><kbd className="bg-gray-700 px-1 rounded">Esc</kbd> キャンセル</span>
-              <span><kbd className="bg-gray-700 px-1 rounded">←/→</kbd> 1フレーム</span>
-              <span><kbd className="bg-gray-700 px-1 rounded">Shift+←/→</kbd> 10秒</span>
+          <div className="bg-gray-800 rounded p-3 text-gray-300 shrink-0">
+            <div className="font-semibold text-gray-200 mb-2 text-sm">キーボードショートカット</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Space</kbd> 再生/停止</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Tab</kbd> 選手切替</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">s/c/p…</kbd> ショット入力</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> ラリー終了</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> 戻す</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> キャンセル</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">←/→</kbd> 1フレーム</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Shift+←/→</kbd> 10秒</span>
+            </div>
+          </div>
+
+          {/* テンキーガイド */}
+          <div className="bg-gray-800 rounded p-3 text-gray-300 shrink-0">
+            <div className="font-semibold text-gray-200 mb-2 text-sm">テンキー — 落点入力</div>
+            <div className="flex gap-4 items-start">
+              {/* ゾーンキー */}
+              <div className="space-y-1">
+                {/* 属性キー行 */}
+                <div className="grid grid-cols-3 gap-1 mb-1">
+                  {[
+                    { k: '/', label: 'BH', title: 'バックハンド', color: 'text-purple-400' },
+                    { k: '*', label: 'RH', title: 'ラウンドヘッド', color: 'text-purple-400' },
+                    { k: '−', label: 'NET', title: 'ネット上下切替', color: 'text-purple-400' },
+                  ].map(({ k, label, title, color }) => (
+                    <div key={k} title={title} className="text-center">
+                      <kbd className="block bg-gray-600 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                      <span className={`text-[11px] font-medium ${color}`}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* 落点ゾーン */}
+                <div className="grid grid-cols-3 gap-1">
+                  {[
+                    { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
+                    { k: '4', zone: 'ML' }, { k: '5', zone: 'MC' }, { k: '6', zone: 'MR' },
+                    { k: '1', zone: 'NL' }, { k: '2', zone: 'NC' }, { k: '3', zone: 'NR' },
+                  ].map(({ k, zone }) => (
+                    <div key={k} className="text-center">
+                      <kbd className="block bg-gray-600 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                      <span className="text-[11px] text-blue-400 font-medium">{zone}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[11px] text-gray-500 mt-1">0 / . / Enter = スキップ</div>
+              </div>
+              {/* コートチェンジ情報 */}
+              <div className="flex-1 border-l border-gray-700 pl-3 space-y-1.5">
+                <p className="text-xs text-gray-400 font-medium">コートチェンジ</p>
+                {[1, 2, 3].map((sn) => {
+                  const isCurrent = store.currentSetNum === sn
+                  const aPos = computePlayerASide(playerAStart, sn, sn === store.currentSetNum ? store.scoreA : 0, sn === store.currentSetNum ? store.scoreB : 0)
+                  return (
+                    <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-yellow-300 font-medium' : 'text-gray-500'}`}>
+                      <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-yellow-400' : 'bg-gray-700'}`} />
+                      <span>Set {sn}: A={aPos === 'top' ? '↑上' : '↓下'}</span>
+                      {sn === 3 && <span className="text-gray-600 text-[10px]">(11pt↔)</span>}
+                    </div>
+                  )
+                })}
+                <p className="text-xs text-gray-500 mt-1"><span className="text-blue-400">■</span> 青=A　<span className="text-orange-400">■</span> 橙=B</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1192,39 +1262,46 @@ export function AnnotatorPage() {
             </div>
 
             {/* プレイヤー切替 */}
-            {store.isRallyActive && (
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => store.setPlayer('player_a')}
-                  className={clsx(
-                    'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
-                    store.currentPlayer === 'player_a'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                  )}
-                >
-                  {match?.player_a?.name ?? 'A'}
-                </button>
-                <button
-                  onClick={() => store.togglePlayer()}
-                  className="px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs"
-                  title="Tab でも切替可能"
-                >
-                  <Users size={12} />
-                </button>
-                <button
-                  onClick={() => store.setPlayer('player_b')}
-                  className={clsx(
-                    'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
-                    store.currentPlayer === 'player_b'
-                      ? 'bg-orange-600 text-white'
-                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                  )}
-                >
-                  {match?.player_b?.name ?? 'B'}
-                </button>
-              </div>
-            )}
+            {store.isRallyActive && (() => {
+              const aPos = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB)
+              const posLabel = (player: 'player_a' | 'player_b') => {
+                const side = player === 'player_a' ? aPos : (aPos === 'top' ? 'bottom' : 'top')
+                return side === 'top' ? '↑' : '↓'
+              }
+              return (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => store.setPlayer('player_a')}
+                    className={clsx(
+                      'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
+                      store.currentPlayer === 'player_a'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                    )}
+                  >
+                    <span className="opacity-60 mr-0.5">{posLabel('player_a')}</span>{match?.player_a?.name ?? 'A'}
+                  </button>
+                  <button
+                    onClick={() => store.togglePlayer()}
+                    className="px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs"
+                    title="Tab でも切替可能"
+                  >
+                    <Users size={12} />
+                  </button>
+                  <button
+                    onClick={() => store.setPlayer('player_b')}
+                    className={clsx(
+                      'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
+                      store.currentPlayer === 'player_b'
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                    )}
+                  >
+                    <span className="opacity-60 mr-0.5">{posLabel('player_b')}</span>{match?.player_b?.name ?? 'B'}
+                  </button>
+                </div>
+              )
+            })()}
 
             {/* ラリー終了確認パネル */}
             {store.inputStep === 'rally_end' && (
@@ -1243,7 +1320,7 @@ export function AnnotatorPage() {
                           className={clsx(
                             'px-1 py-2 rounded text-xs font-medium transition-colors text-center',
                             pendingEndType === value
-                              ? 'bg-yellow-500 text-gray-900 border border-yellow-300'
+                              ? 'bg-yellow-600 text-white border border-yellow-400'
                               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                           )}
                           title={`${idx + 1}: ${endLabel}`}
@@ -1299,18 +1376,19 @@ export function AnnotatorPage() {
                         >
                           {label} 得点
                         </div>
-                        {END_TYPES.map(({ value, label: endLabel }) => (
+                        {END_TYPES.map(({ value, label: endLabel }, idx) => (
                           <button
                             key={value}
                             onClick={() => handleConfirmRally(winner, value)}
                             className={clsx(
-                              'px-2 py-1 rounded text-xs transition-colors',
+                              'px-2 py-1 rounded text-xs transition-colors flex items-center justify-between gap-2',
                               color === 'blue'
                                 ? 'bg-gray-700 hover:bg-blue-700 text-gray-200'
                                 : 'bg-gray-700 hover:bg-orange-700 text-gray-200'
                             )}
                           >
-                            {endLabel}
+                            <span>{endLabel}</span>
+                            <kbd className="text-[9px] font-mono opacity-40 bg-black/20 px-0.5 rounded">{idx + 1}</kbd>
                           </button>
                         ))}
                       </div>
@@ -1348,16 +1426,31 @@ export function AnnotatorPage() {
             {/* 落点選択（land_zone ステップ時） */}
             {store.inputStep === 'land_zone' && (
               <div className="flex flex-col gap-1 shrink-0">
-                <div className="text-xs text-gray-400 text-center">
-                  {t('annotator.land_zone')} — テンキー1–9 or クリック
+                <div className="text-xs text-center">
+                  {/* player_bの返球は自コートに着地 → 下半分をクリック可能にする */}
+                  {store.currentPlayer === 'player_b' ? (
+                    <span className="text-orange-400 font-medium">
+                      着地ゾーン（自コート↓） — テンキー1–9 or クリック
+                    </span>
+                  ) : (
+                    <span className="text-blue-400 font-medium">
+                      {t('annotator.land_zone')} — テンキー1–9 or クリック
+                    </span>
+                  )}
                 </div>
                 <div className="flex justify-center">
                   <CourtDiagram
-                    mode="land"
+                    mode={store.currentPlayer === 'player_b' ? 'hit' : 'land'}
                     selectedZone={store.pendingStroke.land_zone ?? null}
-                    onZoneSelect={(zone: Zone9) => store.selectLandZone(zone)}
+                    onZoneSelect={(zone: LandZone) => store.selectLandZone(zone)}
                     interactive={true}
-                    label={t('annotator.land_zone')}
+                    showOOB={true}
+                    label={undefined}
+                    playerSides={(() => {
+                      const aTop = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB) === 'top'
+                      return { top: aTop ? 'a' : 'b', bottom: aTop ? 'b' : 'a' }
+                    })()}
+                    activePlayer={store.currentPlayer === 'player_a' ? 'a' : 'b'}
                   />
                 </div>
                 <button
@@ -1794,6 +1887,15 @@ export function AnnotatorPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* R-001/R-002: セッション共有モーダル（QRコード） */}
+      {showSessionModal && activeSession && (
+        <SessionShareModal
+          sessionCode={activeSession.session_code}
+          coachUrls={activeSession.coach_urls}
+          onClose={() => setShowSessionModal(false)}
+        />
       )}
 
       {/* P1: セット強制終了ダイアログ */}

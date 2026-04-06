@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface GrowthJudgmentCardProps {
@@ -56,9 +57,10 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
+  const sampleSize = resp?.meta?.sample_size ?? 0
   const data = resp?.data
-  if (!data) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+  if (!data || sampleSize === 0) {
+    return <NoDataMessage sampleSize={sampleSize} minRequired={minMatches} unit="試合" />
   }
 
   const style = JUDGMENT_STYLE[data.judgment] ?? JUDGMENT_STYLE.pending

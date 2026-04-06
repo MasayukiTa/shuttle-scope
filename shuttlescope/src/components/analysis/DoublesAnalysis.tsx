@@ -16,7 +16,8 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { WIN, LOSS, BAR, perfColor, lightSafe, TOOLTIP_STYLE } from '@/styles/colors'
+import { WIN, LOSS, BAR, perfColor, lightSafe, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
+import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface MatchItem {
@@ -62,7 +63,7 @@ function PartnerComparison({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (partners.length === 0) {
-    return <p className="text-gray-500 text-sm py-3 text-center">ダブルスデータがありません</p>
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ダブルス試合" />
   }
 
   return (
@@ -70,7 +71,14 @@ function PartnerComparison({ playerId }: { playerId: number }) {
       <ConfidenceBadge sampleSize={sampleSize} />
       <div className="space-y-2">
         {partners.map((p) => (
-          <div key={p.partner_id} className="bg-gray-700/40 rounded-lg p-3">
+          <div
+            key={p.partner_id}
+            className="rounded-lg p-3"
+            style={{
+              backgroundColor: isLight ? '#f8fafc' : '#1f2937',
+              border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}`,
+            }}
+          >
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{p.partner_name}</span>
               <span className="text-xs text-gray-400">{p.match_count}試合</span>
@@ -123,7 +131,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (!d || sampleSize === 0) {
-    return <p className="text-gray-500 text-sm py-3 text-center">ダブルスデータがありません</p>
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ダブルス試合" />
   }
 
   const srData = [
@@ -141,10 +149,10 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
       {/* サーブ/レシーブ勝率バー */}
       <ResponsiveContainer width="100%" height={100}>
         <BarChart data={srData} layout="vertical" margin={{ top: 0, right: 40, left: 8, bottom: 0 }}>
-          <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fill: '#9ca3af', fontSize: 10 }} />
-          <YAxis type="category" dataKey="name" width={72} tick={{ fill: '#d1d5db', fontSize: 11 }} />
+          <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 10 }} />
+          <YAxis type="category" dataKey="name" width={72} tick={{ fill: isLight ? AXIS_TICK_LIGHT : '#d1d5db', fontSize: 11 }} />
           <Tooltip
-            contentStyle={TOOLTIP_STYLE}
+            contentStyle={getTooltipStyle(isLight)}
             formatter={(v: number) => [`${v.toFixed(1)}%`, '勝率']}
           />
           <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
@@ -159,8 +167,15 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
           <p className="text-xs text-gray-500 mb-1.5">サーブ種別比率</p>
           <div className="flex gap-3">
             {serveStyleEntries.map(([st, rate]) => (
-              <div key={st} className="flex-1 bg-gray-700/40 rounded p-2 text-center">
-                <p className="text-sm font-bold text-white">{(rate * 100).toFixed(0)}%</p>
+              <div
+                key={st}
+                className="flex-1 rounded p-2 text-center"
+                style={{
+                  backgroundColor: isLight ? '#f8fafc' : '#1f2937',
+                  border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}`,
+                }}
+              >
+                <p className="text-sm font-bold" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{(rate * 100).toFixed(0)}%</p>
                 <p className="text-[10px] text-gray-400">
                   {st === 'short_service' ? 'ショート' : 'ロング'}サーブ
                 </p>
@@ -204,6 +219,7 @@ interface StrokeSharingData {
 }
 
 function StrokeSharing({ playerId }: { playerId: number }) {
+  const isLight = useIsLightMode()
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-stroke-sharing', playerId],
     queryFn: () =>
@@ -220,7 +236,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (!d || sampleSize === 0) {
-    return <p className="text-gray-500 text-sm py-3 text-center">ダブルスデータがありません</p>
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ダブルス試合" />
   }
 
   const shareData = [
@@ -235,7 +251,13 @@ function StrokeSharing({ playerId }: { playerId: number }) {
       <ConfidenceBadge sampleSize={sampleSize} />
 
       {/* 平均バランス比率メーター */}
-      <div className="bg-gray-700/40 rounded-lg p-3">
+      <div
+        className="rounded-lg p-3"
+        style={{
+          backgroundColor: isLight ? '#f8fafc' : '#1f2937',
+          border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}`,
+        }}
+      >
         <p className="text-xs text-gray-400 mb-2">平均打球分担バランス</p>
         <div className="relative h-4 bg-gray-700 rounded-full overflow-hidden">
           <div
@@ -243,7 +265,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
             style={{ width: `${balancePct}%` }}
           />
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs font-bold text-white drop-shadow">{balancePct}%</span>
+            <span className="text-xs font-bold drop-shadow" style={{ color: '#ffffff' }}>{balancePct}%</span>
           </div>
         </div>
         <div className="flex justify-between text-[10px] text-gray-600 mt-0.5">
@@ -254,10 +276,10 @@ function StrokeSharing({ playerId }: { playerId: number }) {
       {/* バランス別勝率 */}
       <ResponsiveContainer width="100%" height={90}>
         <BarChart data={shareData} layout="vertical" margin={{ top: 0, right: 40, left: 8, bottom: 0 }}>
-          <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fill: '#9ca3af', fontSize: 10 }} />
-          <YAxis type="category" dataKey="name" width={60} tick={{ fill: '#d1d5db', fontSize: 11 }} />
+          <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 10 }} />
+          <YAxis type="category" dataKey="name" width={60} tick={{ fill: isLight ? AXIS_TICK_LIGHT : '#d1d5db', fontSize: 11 }} />
           <Tooltip
-            contentStyle={TOOLTIP_STYLE}
+            contentStyle={getTooltipStyle(isLight)}
             formatter={(v: number, _: string, entry: any) =>
               [`${v.toFixed(1)}% (${entry.payload.count}ラリー)`, '勝率']
             }
@@ -332,7 +354,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
       <ResponsiveContainer width="100%" height={200}>
         <RadarChart data={radarData}>
           <PolarGrid stroke={isLight ? '#cbd5e1' : '#374151'} />
-          <PolarAngleAxis dataKey="area" tick={{ fill: '#9ca3af', fontSize: 11 }} />
+          <PolarAngleAxis dataKey="area" tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 11 }} />
           {players.map((p, i) => (
             <Radar
               key={p.label}
@@ -351,7 +373,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
           <div key={p.label} className="flex items-center gap-1.5 text-xs">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i] }} />
             <span className="text-gray-400">{p.label}</span>
-            <span className="text-gray-300">{p.data!.total_strokes}打</span>
+            <span style={{ color: isLight ? '#475569' : '#d1d5db' }}>{p.data!.total_strokes}打</span>
           </div>
         ))}
       </div>

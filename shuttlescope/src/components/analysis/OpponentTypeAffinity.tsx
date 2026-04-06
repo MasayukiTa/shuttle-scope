@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -66,7 +67,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
   const summary = resp?.data?.summary ?? []
 
   if (sampleSize === 0 || summary.length === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" />
   }
 
   const labelColor = isLight ? '#475569' : '#9ca3af'

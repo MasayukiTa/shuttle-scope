@@ -5,7 +5,7 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Zap, X, Search, UserPlus, User, ChevronDown } from 'lucide-react'
+import { X, Search, UserPlus, User, ChevronDown } from 'lucide-react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
 import { Player, MATCH_ROUNDS } from '@/types'
@@ -34,6 +34,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   const [showCandidates, setShowCandidates] = useState(false)
   // 試合設定
   const [initialServer, setInitialServer] = useState<'player_a' | 'player_b' | ''>('')
+  // アナリスト視点: セット1開始時に自選手がいる側（top=画面上 / bottom=画面下）
+  const [analystSide, setAnalystSide] = useState<'top' | 'bottom'>('bottom')
   const [competitionType, setCompetitionType] = useState<string>('unknown')
   const [tournament, setTournament] = useState('')
   const [round, setRound] = useState('')
@@ -64,6 +66,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
     onSuccess: (data: any) => {
       const matchId = data?.data?.match?.id
       if (matchId) {
+        // アナリスト視点をlocalStorageに保存（AnnotatorPageで読み込む）
+        localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, analystSide)
         onStarted(matchId)
       }
     },
@@ -132,7 +136,6 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
-            <Zap size={18} className="text-yellow-400" />
             <h2 className="text-lg font-semibold">{t('quick_start.title')}</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
@@ -251,6 +254,32 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
             </div>
           </div>
 
+          {/* アナリスト視点（コートのどちら側が自選手か） */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">
+              セット1開始時の自選手の位置
+            </label>
+            <div className="flex gap-2">
+              {[
+                { value: 'bottom' as const, label: '⬇ 画面下（アナリスト手前）', hint: '一般的な配置' },
+                { value: 'top' as const, label: '⬆ 画面上（奥側）' , hint: '' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setAnalystSide(opt.value)}
+                  className={`flex-1 py-1.5 rounded text-sm border text-left px-2 ${
+                    analystSide === opt.value
+                      ? 'bg-blue-600 border-blue-500 text-white'
+                      : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  <span className="block text-xs font-medium">{opt.label}</span>
+                  {opt.hint && <span className="block text-[10px] opacity-60">{opt.hint}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* 大会区分 */}
           <div>
             <label className="block text-sm text-gray-400 mb-1">
@@ -320,9 +349,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
               type="button"
               onClick={handleStart}
               disabled={!canStart || quickStart.isPending}
-              className="flex-1 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-semibold rounded text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+              className="flex-1 py-2 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded text-sm flex items-center justify-center gap-2 disabled:opacity-40"
             >
-              <Zap size={15} />
               {quickStart.isPending ? t('quick_start.starting') : t('quick_start.start_now')}
             </button>
           </div>

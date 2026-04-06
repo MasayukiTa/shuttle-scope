@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { perfColor, lightSafe, BAR } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -55,7 +56,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (zones.length === 0 || sampleSize === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="リターン" />
   }
 
   return (

@@ -21,32 +21,38 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
   return (
     <div className="flex flex-wrap items-center gap-3 text-sm">
       {/* バックハンド */}
-      <label className="flex items-center gap-1 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={attributes.is_backhand}
-          onChange={(e) => toggle('is_backhand', e.target.checked)}
-          disabled={disabled}
-          className="w-4 h-4 rounded"
-        />
-        <span className="text-gray-300">{t('annotator.backhand')} (BH)</span>
-      </label>
+      <button
+        onClick={() => toggle('is_backhand', !attributes.is_backhand)}
+        disabled={disabled}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded border transition-colors ${
+          attributes.is_backhand
+            ? 'bg-purple-700 border-purple-500 text-white'
+            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+        } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+      >
+        <span>{t('annotator.backhand')} (BH)</span>
+        <kbd className="text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">Num/</kbd>
+      </button>
 
       {/* ラウンドヘッド */}
-      <label className="flex items-center gap-1 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={attributes.is_around_head}
-          onChange={(e) => toggle('is_around_head', e.target.checked)}
-          disabled={disabled}
-          className="w-4 h-4 rounded"
-        />
-        <span className="text-gray-300">{t('annotator.around_head')} (AH)</span>
-      </label>
+      <button
+        onClick={() => toggle('is_around_head', !attributes.is_around_head)}
+        disabled={disabled}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded border transition-colors ${
+          attributes.is_around_head
+            ? 'bg-purple-700 border-purple-500 text-white'
+            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+        } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+      >
+        <span>{t('annotator.around_head')} (RH)</span>
+        <kbd className="text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">Num*</kbd>
+      </button>
 
       {/* ネット上下 */}
       <div className="flex items-center gap-1">
-        <span className="text-gray-500 text-xs">ネット:</span>
+        <span className="text-gray-500 text-xs">
+          ネット <kbd className="text-[10px] font-mono opacity-60 bg-gray-700 px-1 rounded">Num−</kbd>:
+        </span>
         {[
           { value: true, label: t('annotator.above_net') },
           { value: false, label: t('annotator.below_net') },

@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 type Metric = 'win_rate' | 'avg_rally_length' | 'serve_win_rate'
@@ -78,7 +79,7 @@ export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }
   const trendDelta = resp?.data?.trend_delta ?? 0
 
   if (sampleSize === 0 || points.length === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" />
   }
 
   const cfg = METRIC_CONFIG[metric]

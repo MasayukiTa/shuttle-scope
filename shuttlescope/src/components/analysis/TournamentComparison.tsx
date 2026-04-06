@@ -12,7 +12,8 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { perfColor, lightSafe, TOOLTIP_STYLE } from '@/styles/colors'
+import { NoDataMessage } from '@/components/common/NoDataMessage'
+import { perfColor, lightSafe, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
@@ -63,7 +64,7 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (levels.length === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="試合" />
   }
 
   const chartData = levels.map((l) => ({
@@ -79,14 +80,14 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
       {/* 棒グラフ */}
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={chartData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
-          <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 11 }} />
+          <XAxis dataKey="name" tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 11 }} />
           <YAxis
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
+            tick={{ fill: isLight ? AXIS_TICK_LIGHT : AXIS_TICK, fontSize: 11 }}
             domain={[0, 100]}
             tickFormatter={(v) => `${v}%`}
           />
           <Tooltip
-            contentStyle={TOOLTIP_STYLE}
+            contentStyle={getTooltipStyle(isLight)}
             formatter={(value: number) => [`${value}%`, t('analysis.tournament_comparison.win_rate')]}
           />
           <Bar dataKey="win_rate" radius={[3, 3, 0, 0]} name={t('analysis.tournament_comparison.win_rate')}>
@@ -114,11 +115,11 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
                 <td className="py-1.5 pr-3 font-medium" style={{ color: lightSafe(perfColor(l.win_rate), !isLight) }}>
                   {l.level}
                 </td>
-                <td className="py-1.5 pr-3 text-center text-gray-300">{l.match_count}</td>
+                <td className="py-1.5 pr-3 text-center" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.match_count}</td>
                 <td className="py-1.5 pr-3 text-center font-semibold" style={{ color: lightSafe(perfColor(l.win_rate), !isLight) }}>
                   {(l.win_rate * 100).toFixed(1)}%
                 </td>
-                <td className="py-1.5 pr-2 text-right text-gray-300">{l.avg_rally_length.toFixed(1)}</td>
+                <td className="py-1.5 pr-2 text-right" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.avg_rally_length.toFixed(1)}</td>
               </tr>
             ))}
           </tbody>

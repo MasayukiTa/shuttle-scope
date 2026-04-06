@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { ShotType, StrokeInput, Zone9 } from '@/types'
+import { ShotType, StrokeInput, Zone9, LandZone } from '@/types'
 
 export type InputStep =
   | 'idle'        // 待機中（ショットキーでラリー開始）
@@ -9,7 +9,7 @@ export type InputStep =
 export interface PendingStroke {
   shot_type?: ShotType
   hit_zone?: Zone9
-  land_zone?: Zone9
+  land_zone?: LandZone
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean
@@ -73,7 +73,7 @@ interface AnnotationState {
 
   // ストローク入力（2アクション：ショットキー → 落点入力）
   inputShotType: (shotType: ShotType, timestamp: number) => void
-  selectLandZone: (zone: Zone9) => void   // 落点クリック or テンキー → 自動確定
+  selectLandZone: (zone: LandZone) => void  // 落点クリック or テンキー → 自動確定
   skipLandZone: () => void                // 落点スキップ（0キー / Numpad0）→ 自動確定
   selectHitZone: (zone: Zone9) => void    // 打点（任意で上書き）
   toggleAttribute: (key: 'is_backhand' | 'is_around_head') => void
@@ -195,12 +195,15 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   },
 
   // ② 落点ゾーン選択 → ストローク自動確定
+  // OOBゾーン（'OB_'で始まる）の場合はアウト確定なのでそのままrally_endへ移行
   selectLandZone: (zone) => {
     const state = get()
     if (!state.pendingStroke.shot_type) return
 
     const prevStroke = state.currentStrokes[state.currentStrokes.length - 1]
-    const autoHitZone = prevStroke?.land_zone ?? state.pendingStroke.hit_zone
+    const autoHitZone = prevStroke?.land_zone && !String(prevStroke.land_zone).startsWith('OB_')
+      ? (prevStroke.land_zone as Zone9)
+      : state.pendingStroke.hit_zone
 
     const stroke: StrokeInput = {
       stroke_num: state.currentStrokeNum,
@@ -217,13 +220,16 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     const nextPlayer: 'player_a' | 'player_b' =
       state.currentPlayer === 'player_a' ? 'player_b' : 'player_a'
 
+    const isOOB = String(zone).startsWith('OB_')
+
     set({
       currentStrokes: [...state.currentStrokes, stroke],
       undoStack: [...state.currentStrokes],
       currentStrokeNum: state.currentStrokeNum + 1,
       currentPlayer: nextPlayer,
       pendingStroke: emptyPending(),
-      inputStep: 'idle',
+      // OOBならそのままrally_end（アウト確定のためラリー継続なし）
+      inputStep: isOOB ? 'rally_end' : 'idle',
     })
   },
 

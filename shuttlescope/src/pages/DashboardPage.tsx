@@ -38,6 +38,7 @@ import { PreWinPatterns } from '@/components/analysis/PreWinPatterns'
 import { EffectiveDistributionMap } from '@/components/analysis/EffectiveDistributionMap'
 import { ReceivedVulnerabilityMap } from '@/components/analysis/ReceivedVulnerabilityMap'
 import { FlashAdvicePanel } from '@/components/analysis/FlashAdvicePanel'
+import { RallyPickerModal } from '@/components/analysis/RallyPickerModal'
 import { GrowthJudgmentCard } from '@/components/analysis/GrowthJudgmentCard'
 import { GrowthTimeline } from '@/components/analysis/GrowthTimeline'
 import { PairCombinedView } from '@/components/analysis/PairCombinedView'
@@ -71,6 +72,13 @@ interface HeatmapResponse {
   meta?: { sample_size?: number }
 }
 
+interface SetScore {
+  set_num: number
+  score_player: number
+  score_opponent: number
+  won: boolean
+}
+
 interface MatchSummary {
   match_id: number
   opponent: string
@@ -80,6 +88,8 @@ interface MatchSummary {
   result: 'win' | 'loss' | string
   rally_count: number
   format: string
+  set_count: number
+  set_scores: SetScore[]
 }
 
 // タブ種別
@@ -232,6 +242,7 @@ export function DashboardPage() {
   const [flashMatchId, setFlashMatchId] = useState<number | null>(null)
   const [flashSet, setFlashSet] = useState<number>(1)
   const [flashRallyNum, setFlashRallyNum] = useState<string>('')
+  const [showRallyPicker, setShowRallyPicker] = useState(false)
 
   // ペアモード（成長タブ・ダブルスタブで使用）
   const [pairMode, setPairMode] = useState(false)
@@ -577,13 +588,13 @@ export function DashboardPage() {
               {t('analysis.d_time')}
             </TabButton>
             <TabButton active={activeTab === 'flash'} onClick={() => setActiveTab('flash')}>
-              {t('analysis.flash')}
+              {t('analysis.flash.title')}
             </TabButton>
             <TabButton active={activeTab === 'review'} onClick={() => setActiveTab('review')}>
-              {t('analysis.review')}
+              {t('analysis.review.title')}
             </TabButton>
             <TabButton active={activeTab === 'growth'} onClick={() => setActiveTab('growth')}>
-              {t('analysis.growth')}
+              {t('analysis.growth.title')}
             </TabButton>
             <RoleGuard allowedRoles={['analyst', 'coach']}>
               <TabButton active={activeTab === 'e_opponent'} onClick={() => setActiveTab('e_opponent')}>
@@ -1135,39 +1146,54 @@ export function DashboardPage() {
                         }}
                       >
                         <option value="">{t('analysis.flash.no_match')}</option>
-                        {matches.map((m) => (
-                          <option key={m.match_id} value={m.match_id}>
-                            {m.date} vs {m.opponent}
-                          </option>
-                        ))}
+                        {matches.map((m) => {
+                          const scoreStr = m.set_scores?.map(
+                            (s) => `${s.score_player}-${s.score_opponent}${s.won ? '○' : '●'}`
+                          ).join(' ') ?? ''
+                          return (
+                            <option key={m.match_id} value={m.match_id}>
+                              {m.date} vs {m.opponent}{scoreStr ? `  ${scoreStr}` : ''}
+                            </option>
+                          )
+                        })}
                       </select>
                     </div>
 
-                    {/* セット選択 */}
-                    <div className="flex flex-col gap-1 min-w-[100px]">
+                    {/* セット選択（選択中試合の実セット数のみ・ボタン式） */}
+                    <div className="flex flex-col gap-1">
                       <label className="text-xs text-gray-400">{t('analysis.flash.set_select')}</label>
-                      <select
-                        className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1.5"
-                        value={flashSet}
-                        onChange={(e) => setFlashSet(Number(e.target.value))}
-                      >
-                        {[1, 2, 3].map((n) => (
-                          <option key={n} value={n}>Set {n}</option>
+                      <div className="flex gap-1">
+                        {Array.from(
+                          { length: matches.find((m) => m.match_id === flashMatchId)?.set_count || 3 },
+                          (_, i) => i + 1
+                        ).map((n) => (
+                          <button
+                            key={n}
+                            onClick={() => setFlashSet(n)}
+                            className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+                              flashSet === n
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                            }`}
+                          >
+                            Set {n}
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     </div>
 
-                    {/* 地点（ラリー番号 任意） */}
-                    <div className="flex flex-col gap-1 min-w-[130px]">
-                      <label className="text-xs text-gray-400">{t('analysis.flash.rally_select')}（任意）</label>
-                      <input
-                        type="number"
-                        min={1}
-                        className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1.5 w-full"
-                        placeholder="全ラリー"
-                        value={flashRallyNum}
-                        onChange={(e) => setFlashRallyNum(e.target.value)}
-                      />
+                    {/* 地点（ラリー番号）— グラフから選択 */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-gray-400">{t('analysis.flash.rally_select')}</label>
+                      <button
+                        disabled={!flashMatchId}
+                        onClick={() => setShowRallyPicker(true)}
+                        className="px-3 py-1 text-xs rounded font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600 whitespace-nowrap"
+                      >
+                        {flashRallyNum
+                          ? `Set ${flashSet} — R.${flashRallyNum}`
+                          : '全ラリー（グラフから選択）'}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1186,6 +1212,25 @@ export function DashboardPage() {
                   <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
                     試合と選手を選択すると速報アドバイスが表示されます
                   </div>
+                )}
+
+                {/* ラリー地点選択モーダル */}
+                {showRallyPicker && flashMatchId && (
+                  <RallyPickerModal
+                    matchId={flashMatchId}
+                    matchLabel={(() => {
+                      const m = matches.find((m) => m.match_id === flashMatchId)
+                      return m ? `${m.date} vs ${m.opponent}` : ''
+                    })()}
+                    initialSet={flashSet}
+                    selectedRallyNum={flashRallyNum ? Number(flashRallyNum) : null}
+                    onSelect={(setNum, rallyNum) => {
+                      setFlashSet(setNum)
+                      setFlashRallyNum(String(rallyNum))
+                    }}
+                    onClear={() => setFlashRallyNum('')}
+                    onClose={() => setShowRallyPicker(false)}
+                  />
                 )}
               </div>
             </ErrorBoundary>

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
@@ -111,7 +112,7 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
   const extended = resp?.data?.extended_items_included ?? false
 
   if (sampleSize === 0 || items.length === 0) {
-    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ラリー" />
   }
 
   return (

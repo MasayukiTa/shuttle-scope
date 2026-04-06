@@ -72,6 +72,18 @@ export type MatchRound = typeof MATCH_ROUNDS[number]
 
 export type Zone9 = 'BL' | 'BC' | 'BR' | 'ML' | 'MC' | 'MR' | 'NL' | 'NC' | 'NR'
 
+/** コート外アウトゾーン (Out of Bounds)
+ *  OB_B* = バック外、OB_L* = 左サイド外、OB_R* = 右サイド外、OB_F* = ネット前
+ */
+export type ZoneOOB =
+  | 'OB_BL' | 'OB_BC' | 'OB_BR'   // バックライン外（B=Back, L/C/R）
+  | 'OB_LL' | 'OB_LM' | 'OB_LN'   // 左サイドライン外（B/M/N 行）
+  | 'OB_RL' | 'OB_RM' | 'OB_RN'   // 右サイドライン外
+  | 'OB_FL' | 'OB_FR'              // ネット前（ショートサービスライン内に落下）
+
+/** 落点ゾーン = コート内9マス + コート外11マス */
+export type LandZone = Zone9 | ZoneOOB
+
 export type ShotType =
   | 'short_service' | 'long_service' | 'net_shot' | 'clear'
   | 'push_rush' | 'smash' | 'defensive' | 'drive' | 'lob' | 'drop'
@@ -182,7 +194,7 @@ export interface Stroke {
   opponent_x?: number
   opponent_y?: number
   hit_zone?: Zone9
-  land_zone?: Zone9
+  land_zone?: LandZone
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean
@@ -205,7 +217,7 @@ export interface StrokeInput {
   player: string
   shot_type: ShotType
   hit_zone?: Zone9
-  land_zone?: Zone9
+  land_zone?: LandZone
   is_backhand: boolean
   is_around_head: boolean
   above_net?: boolean

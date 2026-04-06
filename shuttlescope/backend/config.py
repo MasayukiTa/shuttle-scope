@@ -1,5 +1,9 @@
 """ShuttleScope バックエンド設定・定数定義"""
+import pathlib
 from pydantic_settings import BaseSettings
+
+# プロジェクトルート（shuttlescope/）を絶対パスで特定
+_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
@@ -11,7 +15,8 @@ class Settings(BaseSettings):
     LAN_MODE: bool = False
 
     class Config:
-        env_file = ".env"
+        # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）
+        env_file = (str(_ROOT / ".env.development"), str(_ROOT / ".env"))
 
 
 settings = Settings()

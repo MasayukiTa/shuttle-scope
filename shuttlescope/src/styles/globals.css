@@ -374,7 +374,14 @@ html[data-theme="light"] .bg-violet-600.text-white,
 html[data-theme="light"] .bg-violet-700.text-white,
 html[data-theme="light"] .bg-indigo-600.text-white,
 html[data-theme="light"] .bg-indigo-700.text-white,
+html[data-theme="light"] .bg-yellow-600.text-white,
 html[data-theme="light"] .bg-yellow-700.text-white {
+  color: #ffffff !important;
+}
+
+/* hover:bg-yellow-500 時も白文字を維持 */
+html[data-theme="light"] .bg-yellow-600.text-white:hover,
+html[data-theme="light"] .hover\:bg-yellow-500.text-white:hover {
   color: #ffffff !important;
 }
 

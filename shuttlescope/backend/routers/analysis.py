@@ -390,10 +390,14 @@ def get_shot_types(
 
 @router.get("/analysis/matches_summary")
 def get_matches_summary(player_id: int, db: Session = Depends(get_db)):
+    # ダブルスのパートナーとして登録されている試合も含める
     matches = (
         db.query(Match)
         .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+            (Match.player_a_id == player_id) |
+            (Match.player_b_id == player_id) |
+            (Match.partner_a_id == player_id) |
+            (Match.partner_b_id == player_id)
         )
         .all()
     )
@@ -414,29 +418,58 @@ def get_matches_summary(player_id: int, db: Session = Depends(get_db)):
         match_id = set_to_match[rally.set_id]
         rally_count_by_match[match_id] += 1
 
-    # 対戦相手プレイヤー名を取得
-    opponent_ids: set[int] = set()
+    # 対戦相手プレイヤー名・パートナー名を取得
+    related_ids: set[int] = set()
     for m in matches:
-        if m.player_a_id == player_id:
-            opponent_ids.add(m.player_b_id)
-        else:
-            opponent_ids.add(m.player_a_id)
+        related_ids.update(filter(None, [m.player_a_id, m.player_b_id, m.partner_a_id, m.partner_b_id]))
 
-    players = db.query(Player).filter(Player.id.in_(opponent_ids)).all() if opponent_ids else []
-    player_name_by_id: dict[int, str] = {p.id: p.name for p in players}
+    players_all = db.query(Player).filter(Player.id.in_(related_ids)).all() if related_ids else []
+    player_name_by_id: dict[int, str] = {p.id: p.name for p in players_all}
+
+    # セット情報をまとめる（match_id → sets リスト）
+    sets_by_match: dict[int, list] = defaultdict(list)
+    for s in sets:
+        sets_by_match[s.match_id].append(s)
 
     data = []
     for m in matches:
-        opponent_id = m.player_b_id if m.player_a_id == player_id else m.player_a_id
-        opponent_name = player_name_by_id.get(opponent_id, "")
+        # ダブルスパートナーも含めたロール決定（チームA = player_a + partner_a）
+        if m.player_a_id == player_id or m.partner_a_id == player_id:
+            player_role = "player_a"
+            # 対戦相手 = チームB
+            opp_names = [player_name_by_id.get(m.player_b_id, "")]
+            if m.partner_b_id:
+                opp_names.append(player_name_by_id.get(m.partner_b_id, ""))
+        else:
+            player_role = "player_b"
+            # 対戦相手 = チームA
+            opp_names = [player_name_by_id.get(m.player_a_id, "")]
+            if m.partner_a_id:
+                opp_names.append(player_name_by_id.get(m.partner_a_id, ""))
+        opponent_name = " / ".join(filter(None, opp_names))
 
         # result は player_a 基準で格納されているため player_b の場合は反転
         result = m.result
-        if m.player_b_id == player_id:
+        if player_role == "player_b":
             if result == "win":
                 result = "loss"
             elif result == "loss":
                 result = "win"
+
+        # セット別スコア（プレイヤー視点: score_player - score_opponent, won）
+        match_sets = sorted(sets_by_match.get(m.id, []), key=lambda s: s.set_num)
+        set_scores = []
+        for s in match_sets:
+            if player_role == "player_a":
+                sp, so = s.score_a, s.score_b
+            else:
+                sp, so = s.score_b, s.score_a
+            set_scores.append({
+                "set_num": s.set_num,
+                "score_player": sp,
+                "score_opponent": so,
+                "won": s.winner == player_role,
+            })
 
         data.append(
             {
@@ -448,6 +481,8 @@ def get_matches_summary(player_id: int, db: Session = Depends(get_db)):
                 "result": result,
                 "rally_count": rally_count_by_match.get(m.id, 0),
                 "format": m.format,
+                "set_count": len(match_sets),
+                "set_scores": set_scores,
             }
         )
 
@@ -1648,13 +1683,11 @@ def get_first_return_analysis(
     rally_ids = [r.id for r in rallies]
 
     rally_player_won: dict[int, bool] = {}
-    rally_to_role: dict[int, str] = {}
     # サーバーではなくレシーバー側のプレイヤーのみ
     receiver_rally_ids: set[int] = set()
     for rally in rallies:
         match_id = set_to_match[rally.set_id]
         role = role_by_match[match_id]
-        rally_to_role[rally.id] = role
         rally_player_won[rally.id] = rally.winner == role
         # プレイヤーがレシーバーの場合にstroke_num=2を集計
         if rally.server != role:
@@ -1682,9 +1715,7 @@ def get_first_return_analysis(
 
     for stroke in return_strokes:
         r_id = stroke.rally_id
-        player_role = rally_to_role.get(r_id)
-        if stroke.player != player_role:
-            continue
+        # stroke_num==2 in a receiver rally is the player's return shot by definition
         zone = stroke.land_zone or "unknown"
         zone_total[zone] += 1
         if rally_player_won.get(r_id, False):
@@ -3476,7 +3507,7 @@ def get_received_vulnerability(
 
 # ─── R-006: 速報 flash_advice ─────────────────────────────────────────────────
 
-@router.get("/flash_advice")
+@router.get("/analysis/flash_advice")
 def get_flash_advice(
     match_id: int,
     as_of_set: int,
@@ -3507,7 +3538,8 @@ def get_flash_advice(
         return {"success": True, "data": {"items": [], "item_count": 0, "extended_items_included": False},
                 "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
 
-    player_role = "player_a" if match.player_a_id == player_id else "player_b"
+    # ダブルスのパートナーも含めてロール決定
+    player_role = "player_a" if (match.player_a_id == player_id or match.partner_a_id == player_id) else "player_b"
     opp_role = "player_b" if player_role == "player_a" else "player_a"
 
     # セット内ラリー
@@ -3702,7 +3734,7 @@ def _shot_ja(shot_type: str | None) -> str:
 
 # ─── Phase 2: 継続成長ビュー ───────────────────────────────────────────────────
 
-@router.get("/growth_timeline")
+@router.get("/analysis/growth_timeline")
 def get_growth_timeline(
     player_id: int,
     metric: str = Query("win_rate", pattern="^(win_rate|avg_rally_length|serve_win_rate)$"),
@@ -3788,7 +3820,7 @@ def get_growth_timeline(
     }
 
 
-@router.get("/growth_judgment")
+@router.get("/analysis/growth_judgment")
 def get_growth_judgment(
     player_id: int,
     min_matches: int = Query(5, ge=1, le=20),
@@ -3814,6 +3846,7 @@ def get_growth_judgment(
                 "match_count": match_count,
                 "min_matches_required": min_matches,
             },
+            "meta": {"sample_size": match_count, "confidence": check_confidence("descriptive_basic", match_count)},
         }
 
     metrics_result = {}
@@ -3888,7 +3921,7 @@ def get_growth_judgment(
 
 # ─── Phase 2: ダブルスペア両選手監視 ─────────────────────────────────────────
 
-@router.get("/pair_combined")
+@router.get("/analysis/pair_combined")
 def get_pair_combined(
     player_a_id: int,
     player_b_id: int,
@@ -4015,7 +4048,7 @@ def get_pair_combined(
     }
 
 
-@router.get("/partner_timeline")
+@router.get("/analysis/partner_timeline")
 def get_partner_timeline(
     player_id: int,
     partner_id: int,
@@ -4066,7 +4099,7 @@ def get_partner_timeline(
 
 # ─── Phase 3: 相手タイプ別相性 ────────────────────────────────────────────────
 
-@router.get("/opponent_type_affinity")
+@router.get("/analysis/opponent_type_affinity")
 def get_opponent_type_affinity(
     player_id: int,
     result: Optional[str] = None,
@@ -4187,7 +4220,7 @@ def get_opponent_type_affinity(
 
 # ─── Phase 3: ペア別プレースタイル分類 ──────────────────────────────────────
 
-@router.get("/pair_playstyle")
+@router.get("/analysis/pair_playstyle")
 def get_pair_playstyle(
     player_a_id: int,
     player_b_id: int,
