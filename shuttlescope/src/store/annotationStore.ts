@@ -96,6 +96,9 @@ interface AnnotationState {
   // アンドゥ
   undoLastStroke: () => void
 
+  // ペンディング中のストロークをキャンセル（落点待ち中にEsc/Backspace/Ctrl+Z）
+  cancelPendingStroke: () => void
+
   // セット移行
   nextSet: (setId: number, setNum: number) => void
 }
@@ -331,6 +334,10 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentStrokeNum: 1,
       // currentPlayer は変えない（キャンセルなのでサーバーは同じ）
     }),
+
+  // ペンディング中のストロークをキャンセル（確定済みストロークには触れない）
+  cancelPendingStroke: () =>
+    set({ inputStep: 'idle', pendingStroke: emptyPending() }),
 
   // アンドゥ（直前ストローク削除）
   undoLastStroke: () => {

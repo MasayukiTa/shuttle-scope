@@ -32,13 +32,16 @@ interface ShotTypePanelProps {
 // ─── キーボードショートカットマップ（useKeyboard.ts と同期すること） ──────────
 // cant_reach はショット種別ではなくエンドタイプとして扱うため削除
 // テンキー数字（1-9）はShotTypePanelでは扱わない（落点入力に使用）
+// around_head は a→ショットキーなし（rally_end の A=勝者と衝突を避けるため）
+// around_head は W キーで is_around_head 属性トグルとして扱う
+// other は G キー（0は落点スキップに使用）
 const KEYBOARD_MAP: Record<string, ShotType> = {
   '1': 'short_service', '2': 'long_service',
   'n': 'net_shot',     'c': 'clear',       'p': 'push_rush',
   's': 'smash',        'd': 'defensive',   'v': 'drive',
   'l': 'lob',          'o': 'drop',        'x': 'cross_net',
-  'z': 'slice',        'a': 'around_head',
-  'f': 'flick',        'h': 'half_smash',  'b': 'block',      '0': 'other',
+  'z': 'slice',
+  'f': 'flick',        'h': 'half_smash',  'b': 'block',      'g': 'other',
 }
 
 // ─── コンテキスト判定 ───────────────────────────────────────────────────────
@@ -171,6 +174,16 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
       ))}
     </div>
   )
+}
+
+/**
+ * 現在のコンテキストで有効なショット種別セットを返す。
+ * useKeyboard.ts がキーガードに使用する。
+ */
+export function getValidShotTypes(strokeNum: number, lastShotType: ShotType | null): Set<ShotType> {
+  const context = getShotContext(strokeNum, lastShotType)
+  const groups = buildGroups(context)
+  return new Set(groups.flatMap((g) => g.shots))
 }
 
 export { KEYBOARD_MAP }

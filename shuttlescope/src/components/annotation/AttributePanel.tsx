@@ -31,7 +31,8 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
         } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <span>{t('annotator.backhand')} (BH)</span>
-        <kbd className="text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">Num/</kbd>
+        <kbd className="text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">Q</kbd>
+        <kbd className="text-[10px] font-mono opacity-40 bg-black/20 px-1 rounded">Num/</kbd>
       </button>
 
       {/* ラウンドヘッド */}
@@ -45,13 +46,14 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
         } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <span>{t('annotator.around_head')} (RH)</span>
-        <kbd className="text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">Num*</kbd>
+        <kbd className="text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">W</kbd>
+        <kbd className="text-[10px] font-mono opacity-40 bg-black/20 px-1 rounded">Num*</kbd>
       </button>
 
       {/* ネット上下 */}
       <div className="flex items-center gap-1">
         <span className="text-gray-500 text-xs">
-          ネット <kbd className="text-[10px] font-mono opacity-60 bg-gray-700 px-1 rounded">Num−</kbd>:
+          ネット <kbd className="text-[10px] font-mono opacity-60 bg-gray-700 px-1 rounded">E</kbd><kbd className="text-[10px] font-mono opacity-40 bg-gray-700 px-1 rounded">Num−</kbd>:
         </span>
         {[
           { value: true, label: t('annotator.above_net') },

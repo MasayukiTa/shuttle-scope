@@ -493,6 +493,11 @@ export function AnnotatorPage() {
       // rally_end ステップ中のみ有効（useKeyboard内でフィルタ済み）
       setPendingEndType((prev) => prev === endType ? null : endType)
     },
+    onWinnerSelect: (winner) => {
+      // A/B キーで勝者確定（pendingEndType が選択済みの場合のみ）
+      if (pendingEndType) handleConfirmRally(winner, pendingEndType)
+    },
+    onSkipRallyOpen: () => setShowSkipRallyDialog(true),
   })
 
   // rally_end を離れたら pendingEndType をリセット
@@ -1195,36 +1200,45 @@ export function AnnotatorPage() {
             <div className="font-semibold text-gray-200 mb-2 text-sm">キーボードショートカット</div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
               <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Space</kbd> 再生/停止</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Tab</kbd> 選手切替</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">s/c/p…</kbd> ショット入力</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> ラリー終了</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> 戻す</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> キャンセル</span>
               <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">←/→</kbd> 1フレーム</span>
               <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Shift+←/→</kbd> 10秒</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> ラリー開始/終了</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">N/C/P…G</kbd> ショット入力</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Q/W/E</kbd> BH/RH/NET属性</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> 戻す</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> キャンセル</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">1–6</kbd> エンドタイプ</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">A/B</kbd> 勝者確定</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">K</kbd> 見逃しラリー</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Backspace</kbd> 落点キャンセル</span>
             </div>
           </div>
 
           {/* テンキーガイド */}
           <div className="bg-gray-800 rounded p-3 text-gray-300 shrink-0">
-            <div className="font-semibold text-gray-200 mb-2 text-sm">テンキー — 落点入力</div>
+            <div className="font-semibold text-gray-200 mb-2 text-sm">落点入力（land_zone中のみ）</div>
             <div className="flex gap-4 items-start">
               {/* ゾーンキー */}
-              <div className="space-y-1">
-                {/* 属性キー行 */}
-                <div className="grid grid-cols-3 gap-1 mb-1">
+              <div className="space-y-1 flex-1">
+                {/* 文字キー落点 */}
+                <div className="text-[10px] text-gray-500 mb-0.5">文字キー（主）</div>
+                <div className="grid grid-cols-3 gap-1">
                   {[
-                    { k: '/', label: 'BH', title: 'バックハンド', color: 'text-purple-400' },
-                    { k: '*', label: 'RH', title: 'ラウンドヘッド', color: 'text-purple-400' },
-                    { k: '−', label: 'NET', title: 'ネット上下切替', color: 'text-purple-400' },
-                  ].map(({ k, label, title, color }) => (
-                    <div key={k} title={title} className="text-center">
+                    { k: 'U', zone: 'BL' }, { k: 'I', zone: 'BC' }, { k: 'O', zone: 'BR' },
+                    { k: 'J', zone: 'ML' }, { k: 'K', zone: 'MC' }, { k: 'L', zone: 'MR' },
+                    { k: 'M', zone: 'NL' }, { k: ',', zone: 'NC' }, { k: '.', zone: 'NR' },
+                  ].map(({ k, zone }) => (
+                    <div key={k} className="text-center">
                       <kbd className="block bg-gray-600 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
-                      <span className={`text-[11px] font-medium ${color}`}>{label}</span>
+                      <span className="text-[11px] text-blue-400 font-medium">{zone}</span>
                     </div>
                   ))}
                 </div>
-                {/* 落点ゾーン */}
+                <div className="text-[11px] text-gray-500 mt-0.5">
+                  Shift+U/I/O=OB後 Shift+J/L=OB側 -/=/\=NET
+                </div>
+                {/* テンキー落点 */}
+                <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">テンキー（副）</div>
                 <div className="grid grid-cols-3 gap-1">
                   {[
                     { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
@@ -1237,7 +1251,7 @@ export function AnnotatorPage() {
                     </div>
                   ))}
                 </div>
-                <div className="text-[11px] text-gray-500 mt-1">0 / . / Enter = スキップ</div>
+                <div className="text-[11px] text-gray-500 mt-1">0/Num0 = スキップ　Esc/BS = キャンセル</div>
               </div>
               {/* コートチェンジ情報 */}
               <div className="flex-1 border-l border-gray-700 pl-3 space-y-1.5">
@@ -1339,7 +1353,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => store.togglePlayer()}
                     className="px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs"
-                    title="Tab でも切替可能"
+                    title="プレイヤー切替"
                   >
                     <Users size={12} />
                   </button>
@@ -1363,93 +1377,58 @@ export function AnnotatorPage() {
               <div className="border border-yellow-700/50 bg-yellow-900/20 rounded p-2 shrink-0">
                 <div className="text-xs text-yellow-400 mb-2 font-medium">ラリー終了 — 得点者と終了種別を選択</div>
 
-                {/* K-001: マッチデーモード — エンドタイプ選択（1–6キー）→ プレイヤーボタン確定 */}
-                {isMatchDayMode ? (
-                  <div className="space-y-2">
-                    {/* エンドタイプ選択行 */}
-                    <div className="grid grid-cols-6 gap-1">
-                      {END_TYPES.map(({ value, label: endLabel }, idx) => (
-                        <button
-                          key={value}
-                          onClick={() => setPendingEndType((prev) => prev === value ? null : value)}
-                          className={clsx(
-                            'px-1 py-2 rounded text-xs font-medium transition-colors text-center',
-                            pendingEndType === value
-                              ? 'bg-yellow-600 text-white border border-yellow-400'
-                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                          )}
-                          title={`${idx + 1}: ${endLabel}`}
-                        >
-                          <span className="block text-[9px] opacity-60">{idx + 1}</span>
-                          <span className="block leading-tight">{endLabel}</span>
-                        </button>
-                      ))}
-                    </div>
-                    {/* プレイヤー確定ボタン */}
-                    <div className="grid grid-cols-2 gap-2">
-                      {(
-                        [
-                          { winner: 'player_a' as const, label: match?.player_a?.name ?? 'A', color: 'blue' },
-                          { winner: 'player_b' as const, label: match?.player_b?.name ?? 'B', color: 'orange' },
-                        ] as const
-                      ).map(({ winner, label, color }) => (
-                        <button
-                          key={winner}
-                          onClick={() => handleConfirmRally(winner, pendingEndType ?? 'ace')}
-                          disabled={!pendingEndType}
-                          className={clsx(
-                            'py-4 rounded text-sm font-bold transition-colors',
-                            color === 'blue'
-                              ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                              : 'bg-orange-600 hover:bg-orange-500 text-white',
-                            !pendingEndType && 'opacity-40 cursor-not-allowed'
-                          )}
-                        >
-                          {label} 得点
-                        </button>
-                      ))}
-                    </div>
-                    {!pendingEndType && (
-                      <p className="text-[10px] text-gray-500 text-center">1–6キーまたはボタンでエンドタイプを選択</p>
-                    )}
+                {/* 統一2ステップモデル: エンドタイプ選択（1–6キー）→ 勝者確定（A/Bキー） */}
+                <div className="space-y-2">
+                  {/* Step 1: エンドタイプ選択 */}
+                  <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-6' : 'grid-cols-3')}>
+                    {END_TYPES.map(({ value, label: endLabel }, idx) => (
+                      <button
+                        key={value}
+                        onClick={() => setPendingEndType((prev) => prev === value ? null : value)}
+                        className={clsx(
+                          'px-1 rounded text-xs font-medium transition-colors text-center',
+                          isMatchDayMode ? 'py-2' : 'py-1.5',
+                          pendingEndType === value
+                            ? 'bg-yellow-600 text-white border border-yellow-400'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        )}
+                        title={`${idx + 1}: ${endLabel}`}
+                      >
+                        <span className="block text-[9px] opacity-60 font-mono">{idx + 1}</span>
+                        <span className="block leading-tight">{endLabel}</span>
+                      </button>
+                    ))}
                   </div>
-                ) : (
-                  /* 通常モード */
+                  {/* Step 2: 勝者確定（エンドタイプ選択後に有効） */}
                   <div className="grid grid-cols-2 gap-2">
                     {(
                       [
-                        { winner: 'player_a' as const, label: match?.player_a?.name ?? 'A', color: 'blue' },
-                        { winner: 'player_b' as const, label: match?.player_b?.name ?? 'B', color: 'orange' },
+                        { winner: 'player_a' as const, label: match?.player_a?.name ?? 'A', color: 'blue', key: 'A' },
+                        { winner: 'player_b' as const, label: match?.player_b?.name ?? 'B', color: 'orange', key: 'B' },
                       ] as const
-                    ).map(({ winner, label, color }) => (
-                      <div key={winner} className="flex flex-col gap-1">
-                        <div
-                          className={clsx(
-                            'text-xs font-medium text-center pb-1 border-b',
-                            color === 'blue' ? 'text-blue-400 border-blue-700' : 'text-orange-400 border-orange-700'
-                          )}
-                        >
-                          {label} 得点
-                        </div>
-                        {END_TYPES.map(({ value, label: endLabel }, idx) => (
-                          <button
-                            key={value}
-                            onClick={() => handleConfirmRally(winner, value)}
-                            className={clsx(
-                              'px-2 py-1 rounded text-xs transition-colors flex items-center justify-between gap-2',
-                              color === 'blue'
-                                ? 'bg-gray-700 hover:bg-blue-700 text-gray-200'
-                                : 'bg-gray-700 hover:bg-orange-700 text-gray-200'
-                            )}
-                          >
-                            <span>{endLabel}</span>
-                            <kbd className="text-[9px] font-mono opacity-40 bg-black/20 px-0.5 rounded">{idx + 1}</kbd>
-                          </button>
-                        ))}
-                      </div>
+                    ).map(({ winner, label, color, key }) => (
+                      <button
+                        key={winner}
+                        onClick={() => handleConfirmRally(winner, pendingEndType ?? 'ace')}
+                        disabled={!pendingEndType}
+                        className={clsx(
+                          'relative rounded text-sm font-bold transition-colors',
+                          isMatchDayMode ? 'py-4' : 'py-2.5',
+                          color === 'blue'
+                            ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                            : 'bg-orange-600 hover:bg-orange-500 text-white',
+                          !pendingEndType && 'opacity-40 cursor-not-allowed'
+                        )}
+                      >
+                        <span className="absolute top-0.5 right-1.5 text-[9px] font-mono opacity-60">{key}</span>
+                        {label} 得点
+                      </button>
                     ))}
                   </div>
-                )}
+                  {!pendingEndType && (
+                    <p className="text-[10px] text-gray-500 text-center">1–6キーまたはボタンでエンドタイプを選択</p>
+                  )}
+                </div>
 
                 <button
                   onClick={() => store.cancelRallyEnd()}
@@ -1460,8 +1439,8 @@ export function AnnotatorPage() {
               </div>
             )}
 
-            {/* ショット種別パネル（ラリー中 & rally_end 以外） */}
-            {store.isRallyActive && store.inputStep !== 'rally_end' && (
+            {/* ショット種別パネル（ラリー中 & ショット選択ステップのみ） */}
+            {store.isRallyActive && store.inputStep === 'idle' && (
               <ShotTypePanel
                 selected={store.pendingStroke.shot_type ?? null}
                 onSelect={(st: ShotType) => {
