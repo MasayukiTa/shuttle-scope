@@ -52,10 +52,10 @@ function CustomTooltip({ active, payload, label }: any) {
   const rate = total > 0 ? ((win / total) * 100).toFixed(1) : '0.0'
   return (
     <div style={TOOLTIP_STYLE} className="px-3 py-2">
-      <p className="font-semibold text-white mb-1">{label}</p>
-      <p className="text-blue-300">得点: {win}</p>
-      <p className="text-red-300">失点: {lose}</p>
-      <p className="text-gray-300">勝率: {rate}%</p>
+      <p className="font-semibold mb-1" style={{ color: '#f9fafb' }}>{label}</p>
+      <p style={{ color: WIN }}>得点: {win}</p>
+      <p style={{ color: LOSS }}>失点: {lose}</p>
+      <p style={{ color: '#d1d5db' }}>勝率: {rate}%</p>
     </div>
   )
 }
@@ -149,8 +149,8 @@ export function ShotWinLoss({ playerId, filters = DEFAULT_FILTERS }: ShotWinLoss
               <span className="w-[88px] shrink-0 text-gray-400 truncate">{d.name}</span>
               <div className="flex-1 bg-gray-700 rounded-full h-1.5 min-w-0">
                 <div
-                  className="bg-blue-400 h-1.5 rounded-full transition-all"
-                  style={{ width: barWidth }}
+                  className="h-1.5 rounded-full transition-all"
+                  style={{ width: barWidth, backgroundColor: WIN }}
                 />
               </div>
               <span className="w-10 text-right text-gray-300 shrink-0">{ratePct}%</span>

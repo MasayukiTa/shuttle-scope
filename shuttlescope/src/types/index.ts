@@ -33,6 +33,23 @@ export type ShotQuality = 'excellent' | 'good' | 'neutral' | 'poor'
 
 export type TournamentLevel = 'IC' | 'IS' | 'SJL' | '全日本' | '国内' | 'その他'
 
+/**
+ * 試合のラウンド選択肢（Best XX 表記で統一）
+ * ドロー規模に依らず大会内での位置が明確になるよう国際標準に準拠。
+ * フォームの選択肢・デフォルト値・フィルター等すべてこの定数から参照すること。
+ */
+export const MATCH_ROUNDS = [
+  '予選（グループリーグ含む）',
+  'Best 64',
+  'Best 32',
+  'Best 16',
+  'Best 8（準々決勝）',
+  'Best 4（準決勝）',
+  '決勝',
+] as const
+
+export type MatchRound = typeof MATCH_ROUNDS[number]
+
 export type Zone9 = 'BL' | 'BC' | 'BR' | 'ML' | 'MC' | 'MR' | 'NL' | 'NC' | 'NR'
 
 export type ShotType =

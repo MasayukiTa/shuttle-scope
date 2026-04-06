@@ -6,6 +6,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+import { WIN, LOSS } from '@/styles/colors'
 
 interface MarkovEPVProps {
   playerId: number
@@ -31,13 +32,12 @@ interface EPVResponse {
 }
 
 function EPVCard({ pattern, isPositive, rank }: { pattern: EPVPattern; isPositive: boolean; rank: number }) {
-  const borderColor = isPositive ? 'border-l-blue-500' : 'border-l-orange-500'
-  const epvColor = isPositive ? 'text-blue-300' : 'text-orange-300'
+  const accentColor = isPositive ? WIN : LOSS
   const epvSign = pattern.epv >= 0 ? '+' : ''
   const barWidth = Math.min(Math.abs(pattern.epv) * 400, 100)
 
   return (
-    <div className={`rounded-lg p-3 bg-gray-750 border border-gray-700 border-l-4 ${borderColor}`}>
+    <div className="rounded-lg p-3 bg-gray-750 border border-gray-700 border-l-4" style={{ borderLeftColor: accentColor }}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -48,15 +48,15 @@ function EPVCard({ pattern, isPositive, rank }: { pattern: EPVPattern; isPositiv
           <div className="flex items-center gap-2 mt-1.5">
             <div className="flex-1 bg-gray-700 rounded-full h-1.5">
               <div
-                className={`h-1.5 rounded-full ${isPositive ? 'bg-blue-500' : 'bg-orange-500'}`}
-                style={{ width: `${barWidth}%` }}
+                className="h-1.5 rounded-full"
+                style={{ width: `${barWidth}%`, backgroundColor: accentColor }}
               />
             </div>
             <span className="text-[10px] text-gray-500 shrink-0">{pattern.count}回</span>
           </div>
         </div>
         <div className="text-right shrink-0">
-          <p className={`text-xl font-bold tabular-nums ${epvColor}`}>
+          <p className="text-xl font-bold tabular-nums" style={{ color: accentColor }}>
             {epvSign}{(pattern.epv * 100).toFixed(1)}
           </p>
           <p className="text-[10px] text-gray-600 tabular-nums">
@@ -108,8 +108,8 @@ export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProp
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         {/* 上位パターン（全ロール） */}
         <div>
-          <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider mb-2.5 flex items-center gap-1.5" style={{ color: WIN }}>
+            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: WIN }} />
             {t('analysis.epv.top_patterns')}（有効パターン）
           </h3>
           {topPatterns.length === 0 ? (
@@ -126,8 +126,8 @@ export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProp
         {/* 下位パターン（アナリスト・コーチのみ） */}
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
           <div>
-            <h3 className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-              <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
+            <h3 className="text-xs font-semibold uppercase tracking-wider mb-2.5 flex items-center gap-1.5" style={{ color: LOSS }}>
+              <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: LOSS }} />
               {t('analysis.epv.bottom_patterns')}（要改善パターン）
             </h3>
             {bottomPatterns.length === 0 ? (

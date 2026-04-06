@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+import { perfColor, BAR } from '@/styles/colors'
 
 interface FirstReturnAnalysisProps {
   playerId: number
@@ -62,7 +63,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
       {topZones.length > 0 && (
         <div className="text-xs text-gray-400">
           {t('analysis.first_return.top_zones')}:
-          <span className="ml-2 text-blue-300 font-semibold">
+          <span className="ml-2 font-semibold" style={{ color: BAR }}>
             {topZones.map((z) => t(`zones.${z}`, z)).join('・')}
           </span>
         </div>
@@ -92,13 +93,8 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
                   </td>
                   <td className="py-1.5 text-right">
                     <span
-                      className={
-                        z.win_rate >= 0.6
-                          ? 'text-blue-300 font-semibold'
-                          : z.win_rate <= 0.4
-                          ? 'text-red-300'
-                          : 'text-gray-300'
-                      }
+                      className="font-semibold"
+                      style={{ color: perfColor(z.win_rate) }}
                     >
                       {(z.win_rate * 100).toFixed(1)}%
                     </span>

@@ -14,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { WIN, LOSS, TOOLTIP_STYLE } from '@/styles/colors'
 
 interface ScoreProgressionProps {
   matchId: number
@@ -53,10 +54,10 @@ function CustomTooltip({ active, payload }: any) {
   if (!d) return null
   return (
     <div style={TOOLTIP_STYLE} className="px-3 py-2">
-      <p className="font-semibold text-white mb-1">ラリー {d.rally_num}</p>
-      <p className="text-blue-300">A: {d.score_a}</p>
-      <p className="text-red-300">B: {d.score_b}</p>
-      <p className="text-gray-300">点差: {d.point_diff > 0 ? '+' : ''}{d.point_diff}</p>
+      <p className="font-semibold mb-1" style={{ color: '#f9fafb' }}>ラリー {d.rally_num}</p>
+      <p style={{ color: WIN }}>A: {d.score_a}</p>
+      <p style={{ color: LOSS }}>B: {d.score_b}</p>
+      <p style={{ color: '#d1d5db' }}>点差: {d.point_diff > 0 ? '+' : ''}{d.point_diff}</p>
     </div>
   )
 }

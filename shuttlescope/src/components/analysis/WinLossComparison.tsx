@@ -5,6 +5,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+import { WIN, LOSS } from '@/styles/colors'
 
 interface WinLossComparisonProps {
   playerId: number
@@ -36,8 +37,8 @@ function StatRow({ label, winVal, lossVal }: { label: string; winVal: string; lo
   return (
     <tr className="border-b border-gray-700/50">
       <td className="py-2 text-gray-400 text-sm">{label}</td>
-      <td className="py-2 text-center text-blue-300 font-semibold text-sm">{winVal}</td>
-      <td className="py-2 text-center text-orange-300 font-semibold text-sm">{lossVal}</td>
+      <td className="py-2 text-center font-semibold text-sm" style={{ color: WIN }}>{winVal}</td>
+      <td className="py-2 text-center font-semibold text-sm" style={{ color: LOSS }}>{lossVal}</td>
     </tr>
   )
 }
@@ -82,10 +83,10 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
           <thead>
             <tr className="text-gray-300 border-b border-gray-600">
               <th className="text-left py-2 pr-4 font-medium text-gray-400">項目</th>
-              <th className="text-center py-2 pr-4 font-medium text-blue-400">
+              <th className="text-center py-2 pr-4 font-medium" style={{ color: WIN }}>
                 {t('analysis.win_loss_comparison.win_matches')} ({winStats?.count ?? 0}試合)
               </th>
-              <th className="text-center py-2 font-medium text-orange-400">
+              <th className="text-center py-2 font-medium" style={{ color: LOSS }}>
                 {t('analysis.win_loss_comparison.loss_matches')} ({lossStats?.count ?? 0}試合)
               </th>
             </tr>
@@ -108,7 +109,7 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
       {/* トップショット比較 */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <p className="text-xs text-blue-400 mb-2">{t('analysis.win_loss_comparison.win_matches')} {t('analysis.win_loss_comparison.top_shots')}</p>
+          <p className="text-xs mb-2" style={{ color: WIN }}>{t('analysis.win_loss_comparison.win_matches')} {t('analysis.win_loss_comparison.top_shots')}</p>
           <div className="space-y-1">
             {(winStats?.top_shots ?? []).slice(0, 3).map((s) => (
               <div key={s.shot_type} className="text-xs text-gray-300">
@@ -119,7 +120,7 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
           </div>
         </div>
         <div>
-          <p className="text-xs text-orange-400 mb-2">{t('analysis.win_loss_comparison.loss_matches')} {t('analysis.win_loss_comparison.top_shots')}</p>
+          <p className="text-xs mb-2" style={{ color: LOSS }}>{t('analysis.win_loss_comparison.loss_matches')} {t('analysis.win_loss_comparison.top_shots')}</p>
           <div className="space-y-1">
             {(lossStats?.top_shots ?? []).slice(0, 3).map((s) => (
               <div key={s.shot_type} className="text-xs text-gray-300">

@@ -11,7 +11,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { perfColor, TOOLTIP_STYLE } from '@/styles/colors'
+import { perfColor, WIN, TOOLTIP_STYLE } from '@/styles/colors'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface SetComparisonProps {
@@ -42,9 +42,9 @@ function CustomTooltip({ active, payload, label }: any) {
   const avgRally = payload.find((p: any) => p.dataKey === 'avg_rally_length')?.value ?? 0
   return (
     <div style={TOOLTIP_STYLE} className="px-3 py-2">
-      <p className="font-semibold text-white mb-1">{label}</p>
-      <p className="text-blue-300">勝率: {typeof winRate === 'number' ? winRate.toFixed(1) : winRate}%</p>
-      <p className="text-gray-300">平均ラリー長: {typeof avgRally === 'number' ? avgRally.toFixed(1) : avgRally}</p>
+      <p className="font-semibold mb-1" style={{ color: '#f9fafb' }}>{label}</p>
+      <p style={{ color: WIN }}>勝率: {typeof winRate === 'number' ? winRate.toFixed(1) : winRate}%</p>
+      <p style={{ color: '#d1d5db' }}>平均ラリー長: {typeof avgRally === 'number' ? avgRally.toFixed(1) : avgRally}</p>
     </div>
   )
 }

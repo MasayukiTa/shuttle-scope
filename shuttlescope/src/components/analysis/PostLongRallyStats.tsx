@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+import { WIN, LOSS, BAR, LINE } from '@/styles/colors'
 
 interface PostLongRallyStatsProps {
   playerId: number
@@ -33,13 +34,12 @@ function ComparisonCard({
 }: {
   label: string
   stats: StatSummary
-  highlight: 'blue' | 'amber'
+  highlight: 'normal' | 'post_long'
 }) {
-  const borderColor = highlight === 'blue' ? 'border-blue-500' : 'border-amber-500'
-  const textColor = highlight === 'blue' ? 'text-blue-400' : 'text-amber-400'
+  const accentColor = highlight === 'normal' ? BAR : LINE
   return (
-    <div className={`bg-gray-700/50 rounded-lg p-3 border-l-4 ${borderColor}`}>
-      <p className={`text-xs font-semibold mb-2 ${textColor}`}>{label}</p>
+    <div className="bg-gray-700/50 rounded-lg p-3 border-l-4" style={{ borderLeftColor: accentColor }}>
+      <p className="text-xs font-semibold mb-2" style={{ color: accentColor }}>{label}</p>
       <div className="space-y-1.5">
         <div className="flex justify-between text-xs">
           <span className="text-gray-400">勝率</span>
@@ -96,19 +96,19 @@ export function PostLongRallyStats({ playerId, filters = DEFAULT_FILTERS }: Post
         <ComparisonCard
           label={t('analysis.post_long_rally.normal')}
           stats={data.normal}
-          highlight="blue"
+          highlight="normal"
         />
         <ComparisonCard
           label={t('analysis.post_long_rally.post_long')}
           stats={data.post_long}
-          highlight="amber"
+          highlight="post_long"
         />
       </div>
 
       {/* 差分表示 */}
       <div className="text-center text-sm">
         <span className="text-gray-400">長ラリー後の勝率差: </span>
-        <span className={isPositive ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>
+        <span className="font-semibold" style={{ color: isPositive ? WIN : LOSS }}>
           {isPositive ? '+' : ''}{diffPct}%
         </span>
       </div>

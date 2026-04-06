@@ -66,9 +66,9 @@ function CustomTooltip({ active, payload, label }: any) {
   const winRate = payload.find((p: any) => p.dataKey === 'win_rate_pct')?.value ?? 0
   return (
     <div style={TOOLTIP_STYLE} className="px-3 py-2">
-      <p className="font-semibold text-white mb-1">{label}</p>
-      <p className="text-blue-300">件数: {count}</p>
-      <p className="text-emerald-300">勝率: {typeof winRate === 'number' ? winRate.toFixed(1) : winRate}%</p>
+      <p className="font-semibold mb-1" style={{ color: '#f9fafb' }}>{label}</p>
+      <p style={{ color: BAR }}>件数: {count}</p>
+      <p style={{ color: LINE }}>勝率: {typeof winRate === 'number' ? winRate.toFixed(1) : winRate}%</p>
     </div>
   )
 }

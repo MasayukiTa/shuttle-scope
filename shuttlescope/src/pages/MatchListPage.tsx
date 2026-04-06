@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Play, Edit2, Trash2, Download, Filter } from 'lucide-react'
 import { clsx } from 'clsx'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
-import { Match, Player, TournamentLevel, MatchFormat, MatchResult } from '@/types'
+import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS } from '@/types'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -27,7 +27,7 @@ interface MatchFormData {
 const defaultForm = (): MatchFormData => ({
   tournament: '',
   tournament_level: '国内',
-  round: '1回戦',
+  round: MATCH_ROUNDS[3],
   date: new Date().toISOString().split('T')[0],
   format: 'singles',
   player_a_id: '',
@@ -343,7 +343,7 @@ export function MatchListPage() {
                     onChange={(e) => setForm({ ...form, round: e.target.value })}
                     className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
                   >
-                    {['1回戦', '2回戦', '3回戦', '準々決勝', '準決勝', '決勝'].map((r) => (
+                    {MATCH_ROUNDS.map((r) => (
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>

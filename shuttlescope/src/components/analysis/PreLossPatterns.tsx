@@ -7,6 +7,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+import { LOSS } from '@/styles/colors'
 
 interface PreLossPatternsProps {
   playerId: number
@@ -45,8 +46,8 @@ function PatternList({ patterns, isPlayerView }: { patterns: ShotPattern[]; isPl
           <span className="w-28 shrink-0 text-xs text-gray-300 truncate">{p.shot_type_ja}</span>
           <div className="flex-1 bg-gray-700 rounded-full h-1.5">
             <div
-              className="bg-amber-500 h-1.5 rounded-full transition-all"
-              style={{ width: `${Math.min(p.rate * 100, 100).toFixed(1)}%` }}
+              className="h-1.5 rounded-full transition-all"
+              style={{ width: `${Math.min(p.rate * 100, 100).toFixed(1)}%`, backgroundColor: LOSS }}
             />
           </div>
           <span className="w-10 text-right text-xs text-gray-400 shrink-0">
@@ -104,11 +105,8 @@ function PreLossContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: num
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
-              activeTab === tab.key
-                ? 'bg-amber-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-            }`}
+            className="px-3 py-1 text-xs rounded font-medium transition-colors bg-gray-700 text-gray-400 hover:bg-gray-600"
+            style={activeTab === tab.key ? { backgroundColor: LOSS, color: '#fff' } : {}}
           >
             {tab.label}
           </button>

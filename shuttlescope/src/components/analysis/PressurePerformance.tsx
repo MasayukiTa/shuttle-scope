@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+import { perfColor, WIN, LOSS } from '@/styles/colors'
 
 interface PressurePerformanceProps {
   playerId: number
@@ -32,19 +33,6 @@ function pctStr(v: number): string {
   return `${(v * 100).toFixed(1)}%`
 }
 
-// 勝率に応じたカラー
-function winRateColor(rate: number): string {
-  if (rate >= 0.55) return 'text-emerald-400'
-  if (rate >= 0.45) return 'text-yellow-400'
-  return 'text-red-400'
-}
-
-function winRateBarColor(rate: number): string {
-  if (rate >= 0.55) return 'bg-emerald-500'
-  if (rate >= 0.45) return 'bg-yellow-500'
-  return 'bg-red-500'
-}
-
 // 単一の圧力セグメントカード
 function SegmentCard({
   segment,
@@ -54,6 +42,7 @@ function SegmentCard({
   highlight?: boolean
 }) {
   const barWidth = `${Math.min(segment.win_rate * 100, 100).toFixed(1)}%`
+  const color = perfColor(segment.win_rate)
   return (
     <div
       className={`rounded-lg p-4 flex flex-col gap-2 ${
@@ -61,14 +50,14 @@ function SegmentCard({
       }`}
     >
       <p className="text-xs text-gray-400 font-medium">{segment.label}</p>
-      <p className={`text-2xl font-bold ${winRateColor(segment.win_rate)}`}>
+      <p className="text-2xl font-bold" style={{ color }}>
         {pctStr(segment.win_rate)}
       </p>
       {/* 進捗バー */}
       <div className="w-full bg-gray-600 rounded-full h-1.5">
         <div
-          className={`${winRateBarColor(segment.win_rate)} h-1.5 rounded-full transition-all`}
-          style={{ width: barWidth }}
+          className="h-1.5 rounded-full transition-all"
+          style={{ width: barWidth, backgroundColor: color }}
         />
       </div>
       <p className="text-xs text-gray-500">
@@ -121,9 +110,9 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
       return <span className="text-xs text-gray-500">±0.0%</span>
     }
     return delta > 0 ? (
-      <span className="text-xs text-emerald-400">+{absPct}%</span>
+      <span className="text-xs font-semibold" style={{ color: WIN }}>+{absPct}%</span>
     ) : (
-      <span className="text-xs text-red-400">−{absPct}%</span>
+      <span className="text-xs font-semibold" style={{ color: LOSS }}>−{absPct}%</span>
     )
   }
 

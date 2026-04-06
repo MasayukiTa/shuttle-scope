@@ -74,6 +74,102 @@ html[data-theme="light"] ::-webkit-scrollbar-track { background: #f1f5f9; }
 html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
 html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
+/* ─── ライトモード: 非グレー系カラークラスの上書き ───────────── */
+
+/* 赤系（低信頼度・失点・エラー） */
+html[data-theme="light"] .bg-red-900\/30    { background-color: #fee2e2 !important; }
+html[data-theme="light"] .bg-red-900\/50    { background-color: #fecaca !important; }
+html[data-theme="light"] .bg-red-900\/20    { background-color: #fef2f2 !important; }
+html[data-theme="light"] .bg-red-900        { background-color: #fecaca !important; }
+html[data-theme="light"] .text-red-300      { color: #dc2626 !important; }
+html[data-theme="light"] .text-red-400      { color: #dc2626 !important; }
+html[data-theme="light"] .border-red-400    { border-color: #f87171 !important; }
+html[data-theme="light"] .border-red-700\/40 { border-color: #fca5a5 !important; }
+
+/* 黄系（中信頼度・警告） */
+html[data-theme="light"] .bg-yellow-900\/30  { background-color: #fef9c3 !important; }
+html[data-theme="light"] .bg-yellow-900\/20  { background-color: #fefce8 !important; }
+html[data-theme="light"] .bg-yellow-700\/50  { background-color: #fef08a !important; }
+html[data-theme="light"] .text-yellow-300    { color: #b45309 !important; }
+html[data-theme="light"] .text-yellow-400    { color: #b45309 !important; }
+html[data-theme="light"] .border-yellow-400  { border-color: #eab308 !important; }
+html[data-theme="light"] .border-yellow-600\/50 { border-color: #ca8a04 !important; }
+html[data-theme="light"] .border-yellow-700\/50 { border-color: #a16207 !important; }
+
+/* 緑系（高信頼度・成功） */
+html[data-theme="light"] .bg-green-900\/30   { background-color: #dcfce7 !important; }
+html[data-theme="light"] .bg-green-900\/40   { background-color: #bbf7d0 !important; }
+html[data-theme="light"] .bg-green-900\/20   { background-color: #f0fdf4 !important; }
+html[data-theme="light"] .bg-green-700       { background-color: #16a34a !important; }
+html[data-theme="light"] .hover\:bg-green-600:hover { background-color: #15803d !important; }
+html[data-theme="light"] .text-green-300     { color: #16a34a !important; }
+html[data-theme="light"] .text-green-400     { color: #16a34a !important; }
+html[data-theme="light"] .border-green-400   { border-color: #4ade80 !important; }
+html[data-theme="light"] .border-green-500   { border-color: #22c55e !important; }
+html[data-theme="light"] .border-green-700\/40 { border-color: #86efac !important; }
+
+/* エメラルド系（コーチ・成長フレーミング） */
+html[data-theme="light"] .bg-emerald-900\/50  { background-color: #d1fae5 !important; }
+html[data-theme="light"] .bg-emerald-900\/20  { background-color: #ecfdf5 !important; }
+html[data-theme="light"] .text-emerald-300    { color: #059669 !important; }
+html[data-theme="light"] .text-emerald-400    { color: #059669 !important; }
+html[data-theme="light"] .border-emerald-500  { border-color: #10b981 !important; }
+
+/* 青系（アナリスト・情報） */
+html[data-theme="light"] .bg-blue-900\/30    { background-color: #dbeafe !important; }
+html[data-theme="light"] .bg-blue-900\/40    { background-color: #bfdbfe !important; }
+html[data-theme="light"] .bg-blue-900\/50    { background-color: #dbeafe !important; }
+html[data-theme="light"] .bg-blue-900        { background-color: #bfdbfe !important; }
+html[data-theme="light"] .text-blue-300      { color: #1d4ed8 !important; }
+html[data-theme="light"] .text-blue-400      { color: #1d4ed8 !important; }
+html[data-theme="light"] .border-blue-500    { border-color: #3b82f6 !important; }
+html[data-theme="light"] .border-blue-700    { border-color: #93c5fd !important; }
+html[data-theme="light"] .border-blue-700\/40 { border-color: #bfdbfe !important; }
+
+/* 紫系（選手ロール） */
+html[data-theme="light"] .bg-purple-900\/40  { background-color: #f3e8ff !important; }
+html[data-theme="light"] .bg-purple-900\/50  { background-color: #ede9fe !important; }
+html[data-theme="light"] .text-purple-300    { color: #7e22ce !important; }
+html[data-theme="light"] .border-purple-500  { border-color: #a855f7 !important; }
+
+/* オレンジ系（短ラリースペシャリスト） */
+html[data-theme="light"] .bg-orange-900\/40  { background-color: #ffedd5 !important; }
+html[data-theme="light"] .text-orange-300    { color: #ea580c !important; }
+html[data-theme="light"] .border-orange-500  { border-color: #f97316 !important; }
+
+/* bg-gray-750（非標準クラス: MarkovEPVカード）*/
+html[data-theme="light"] .bg-gray-750        { background-color: #f8fafc !important; }
+
+/* ─── ライトモード: 進捗バー fill 色 ─────────────────────────── */
+/* bg-blue-400 の進捗バーを視認性の高い色に */
+html[data-theme="light"] .bg-blue-400        { background-color: #2563eb !important; }
+html[data-theme="light"] .bg-blue-500        { background-color: #2563eb !important; }
+html[data-theme="light"] .bg-emerald-500     { background-color: #059669 !important; }
+
+/* ─── ライトモード: Recharts SVG 要素 ──────────────────────────── */
+/* BAR (#8db0fe) はライト背景でコントラスト不足のため濃い青に変換 */
+html[data-theme="light"] .recharts-rectangle[fill="#8db0fe"] {
+  fill: #3b7ad4 !important;
+}
+html[data-theme="light"] .recharts-bar-background-rectangle[fill="#8db0fe"] {
+  fill: #3b7ad4 !important;
+}
+/* グリッド線: ダーク (#374151) → ライトグレー */
+html[data-theme="light"] .recharts-cartesian-grid line {
+  stroke: #e2e8f0 !important;
+}
+/* y=0 基準線 (白) → ライトモード用の濃い色 */
+html[data-theme="light"] .recharts-reference-line line[stroke="#ffffff"] {
+  stroke: #475569 !important;
+}
+/* 軸テキスト */
+html[data-theme="light"] .recharts-text.recharts-cartesian-axis-tick-value {
+  fill: #475569 !important;
+}
+html[data-theme="light"] .recharts-label {
+  fill: #64748b !important;
+}
+
 /* ─── 共通リセット ───────────────────────────────────────────── */
 * {
   box-sizing: border-box;
