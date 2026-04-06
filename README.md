@@ -1,77 +1,74 @@
 # ShuttleScope
 
-ShuttleScope は、バドミントンの試合アノテーションと試合分析を一体化した Windows デスクトップアプリです。  
-Electron 上の React UI と、ローカル FastAPI バックエンド、SQLite を組み合わせて動作します。
+ShuttleScope is a Windows desktop app for badminton annotation, review, and match analysis.
+It combines an Electron + React UI with a local FastAPI backend and SQLite database, with a strong focus on:
 
-現状は「試合中でも回る注釈入力」と「試合後すぐ使える分析」を主軸にしており、将来的な共有・映像連携・自動追跡まで見据えた構成になっています。
+- fast point-by-point annotation during or after matches
+- post-match review for coaches and analysts
+- player-safe presentation of analytics
+- local-first operation with optional LAN/session sharing
 
-## What It Does
-
-- 試合一覧・選手管理
-- クイックスタートからの試合作成
-- 試合中アノテーション
-- ラリー、ショット、落点、例外終了、見逃しラリー、スコア補正
-- マッチデーモードとセット間サマリー
-- ダッシュボード分析
-- ヒートマップ、ショット遷移、失点前分析、プレッシャー局面分析
-- EPV / Markov 系分析
-- ダブルス分析
-- PDF / JSON レポート出力
-- セッション共有、コーチビュー、コメント、ブックマーク
-- ネットワーク診断と LAN 共有補助
-- TrackNet ベースの自動追跡統合用土台
+This repository contains the app shell, annotation workflow, analytics dashboard, sharing workflow, and TrackNet integration scaffolding.
 
 ## Current Product Shape
 
 ### Annotator
 
-- 試合中の高速入力を前提にした注釈画面
-- 大きい操作ボタンとキーボード入力
-- 動画なしでも使えるタイマーモード
-- 見逃しラリー、スコア補正、途中終了対応
-- クイックスタートから即座に試合開始
-- セッション共有コードの発行
+- quick-start match creation
+- rally-by-rally stroke annotation
+- numpad-based landing input and keyboard-first workflow
+- skipped rally handling and score correction
+- match-day mode for faster live operation
+- set interval summary and mid-game review hooks
+- video modes for local, WebView, and no-video operation
+- dual-monitor / video-only workflow in Electron
 
-### Dashboard
+### Analytics / Review
 
-- 試合、セット、相手、ラリー長、ショット種別ごとの集計
-- コートヒートマップ
-- 先手・返球・失点前傾向の分析
-- ダブルス分析
-- EPV / Markov、Shot Influence、各種比較表示
-- 信頼度表示を前提にした分析 UI
+- court heatmaps and zone-level review
+- shot-type and pattern analysis
+- score progression and set comparison
+- first-return, pre-win, pre-loss, and temporal analysis
+- growth / trend views across matches
+- doubles / partner-oriented analysis
+- EPV / Markov / shot influence style analysis
+- confidence-aware presentation for analytics
 
-### Sharing / Live Workflow
+### Sharing / Collaboration
 
-- 試合ごとの共有セッション作成
-- コーチ向けライブビュー
-- コメント投稿
-- ブックマーク追加
-- LAN モード
-- 接続診断
+- live session creation and LAN sharing
+- coach-view / session share flows
+- comments and bookmarks
+- network diagnostics
+
+### Tracking
+
+- TrackNet backend route and runtime selection
+- ONNX / TensorFlow / OpenVINO-oriented integration path
+- local weights and exported artifacts kept out of Git
 
 ## Tech Stack
 
-- Desktop shell: Electron
+- Desktop: Electron
 - Frontend: React 18, TypeScript, Vite
 - State / data: Zustand, TanStack Query
-- Charts: Recharts, D3
+- Charts / visualization: Recharts, D3
 - Backend: FastAPI
 - Database: SQLite
 - Analysis: NumPy, SciPy, scikit-learn
 - Reporting: ReportLab, matplotlib
-- Tracking integration: ONNX / TensorFlow / OpenVINO route for TrackNet
+- Tracking integration: ONNX Runtime / TensorFlow / OpenVINO path
 
 ## Repository Layout
 
 ```text
 shuttle-scope/
-├─ CLAUDE.md
-├─ LICENSE
 ├─ README.md
-├─ private_docs/                  # private, ignored
+├─ LICENSE
+├─ CLAUDE.md
+├─ private_docs/                # local private notes, ignored
 └─ shuttlescope/
-   ├─ electron/                   # Electron main / preload
+   ├─ electron/                 # Electron main / preload
    ├─ src/
    │  ├─ api/
    │  ├─ components/
@@ -89,31 +86,44 @@ shuttle-scope/
    │  ├─ tracknet/
    │  └─ ws/
    ├─ docs/
-   │  └─ validation/              # local validation notes, ignored
    ├─ scripts/
    └─ shuttlescope.db
 ```
 
+## Main Screens
+
+- `MatchListPage`
+  - quick start, match creation, and match entry point
+- `AnnotatorPage`
+  - live / post-match annotation workflow
+- `DashboardPage`
+  - analysis, review, growth, and doubles views
+- `SettingsPage`
+  - app, video, sharing, and TrackNet-related settings
+- `VideoOnlyPage`
+  - second-screen / video-only presentation
+
 ## Roles
 
-POC 段階ではローカルの role 切り替えを前提にしています。
+The app is designed around role-aware presentation:
 
 - `analyst`
 - `coach`
 - `player`
 
-`player` には一部分析をそのまま見せず、`RoleGuard` と confidence 表示を前提にしています。
+Player-facing presentation is intentionally more conservative than coach / analyst views.
+The codebase uses role gating and confidence-aware analytics to avoid exposing raw weak-point language or overconfident conclusions where inappropriate.
 
 ## Setup
 
 ### Requirements
 
+- Windows as the primary target environment
 - Node.js 18+
 - Python 3.10+
-- Windows での利用を主対象
-- `ffmpeg` があると動画ダウンロード系の補助が広がる
+- `ffmpeg` if you want broader download or media processing capability
 
-### Frontend / Electron
+### App install and dev run
 
 ```bash
 cd shuttlescope
@@ -121,23 +131,27 @@ npm install
 npm run dev
 ```
 
-本番ビルド:
+### Production build
 
 ```bash
 cd shuttlescope
 npm run build
 ```
 
-起動補助スクリプト:
+### Desktop startup
 
 ```bash
 cd shuttlescope
 npm run start
 ```
 
-または `start.bat` を利用できます。
+You can also launch with:
 
-### Backend
+```bat
+shuttlescope\start.bat
+```
+
+### Backend only
 
 ```bash
 cd shuttlescope/backend
@@ -147,62 +161,70 @@ pip install -r requirements.txt
 python main.py
 ```
 
-既定では FastAPI は `http://127.0.0.1:8765` で起動します。
+The local FastAPI backend runs on `http://127.0.0.1:8765` by default.
 
 ## Tests
 
-Backend:
-
-```bash
-cd shuttlescope
-.\backend\.venv\Scripts\python -m pytest -v
-```
-
-Frontend:
+### Frontend tests
 
 ```bash
 cd shuttlescope
 npx vitest run --config vitest.config.ts
 ```
 
-Build check:
+### Backend tests
+
+```bash
+cd shuttlescope
+.\backend\.venv\Scripts\python -m pytest -v
+```
+
+### Build check
 
 ```bash
 cd shuttlescope
 npm run build
 ```
 
-## Data / Database
+## Data and Database
 
-- 現状のアプリ DB は SQLite です
-- 既定の DB ファイルは `shuttlescope/shuttlescope.db`
-- 選手、試合、ラリー、ショット、共有セッションなどが保存されます
-- 将来的な PostgreSQL 移行を見据えた構成です
+- the current local database is SQLite
+- the default database file is `shuttlescope/shuttlescope.db`
+- player, match, rally, stroke, sharing, and settings data live in the local app DB
+- the architecture is intended to allow a future move to PostgreSQL or a more networked deployment model
+
+## TrackNet Notes
+
+- TrackNet support is being integrated as a local runtime option
+- large weights and exported model artifacts are intentionally ignored by Git
+- backend settings support backend selection such as `auto`, `onnx_cpu`, `tensorflow_cpu`, and `openvino`
 
 ## Scripts
 
-`shuttlescope/scripts/` にはローカル検証用の補助スクリプトがあります。
+`shuttlescope/scripts/` contains local helper scripts for startup, data generation, and migration-style support work.
+Examples include:
 
+- `start.mjs`
+- `preview.mjs`
 - `generate_test_data.py`
 - `generate_doubles_data.py`
 - `generate_first_return_data.py`
 
-## TrackNet Integration
-
-TrackNet 連携の土台は入っていますが、重みファイルや生成物は Git には含めていません。
-
-- backend 設定から有効化
-- backend 種別は `auto`, `openvino`, `onnx_cpu`, `tensorflow_cpu`
-- weights / ONNX はローカル管理
-
 ## Notes
 
-- `private_docs/` は Git 管理対象外です
-- `shuttlescope/docs/validation/` のメモも Git 管理対象外です
-- ローカル DB、動画、weights、生成物は `.gitignore` で除外されています
-- 日本語 UI 文言は `shuttlescope/src/i18n/ja.json` を基準にしています
+- `private_docs/` is private and ignored
+- `shuttlescope/docs/validation/` contains local validation notes and is ignored
+- local databases, videos, TrackNet weights, and generated artifacts are kept out of Git
+- Japanese UI strings should be managed through `shuttlescope/src/i18n/ja.json`
 
 ## Status
 
-ShuttleScope は既に注釈入力と分析の主機能を持つデスクトップアプリとして動作します。  
-一方で、共有、映像統合、自動追跡、比較可視化、ネットワーク環境耐性は継続強化中です。
+ShuttleScope is already useful as a badminton-specific analysis PoC and internal tool, especially for:
+
+- post-match review
+- structured annotation
+- exploratory tactical analysis
+- growth and trend tracking
+
+It is not yet positioned as a finished commercial-grade platform.
+The strongest current areas are badminton-specific analytics and review workflows; the main areas still evolving are operational polish, collaboration depth, and long-term automation.
