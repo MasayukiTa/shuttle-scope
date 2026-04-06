@@ -27,7 +27,10 @@ export type MetadataStatus = 'minimal' | 'partial' | 'verified'
 
 export type MatchFormat = 'singles' | 'womens_doubles' | 'mixed_doubles'
 
-export type MatchResult = 'win' | 'loss' | 'walkover' | 'unfinished'
+export type MatchResult = 'win' | 'loss' | 'walkover' | 'unfinished' | 'retired'
+
+/** 途中終了の理由 */
+export type ExceptionReason = 'retired_a' | 'retired_b' | 'abandoned' | null
 
 export type AnnotationStatus = 'pending' | 'in_progress' | 'complete' | 'reviewed'
 
@@ -112,6 +115,7 @@ export interface Match {
   notes?: string
   created_at: string
   updated_at: string
+  exception_reason?: ExceptionReason
   // リレーション（フロント側で結合）
   player_a?: Player
   player_b?: Player

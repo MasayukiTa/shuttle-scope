@@ -84,6 +84,8 @@ class Match(Base):
     competition_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True, default="unknown")  # official/practice_match/open_practice/unknown
     created_via_quick_start: Mapped[bool] = mapped_column(Boolean, default=False)
     metadata_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="minimal")  # minimal/partial/verified
+    # 途中終了: retired_a（自棄権）/ retired_b（相手棄権）/ abandoned（外的中断）
+    exception_reason: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
 
     # リレーション
     player_a: Mapped["Player"] = relationship("Player", foreign_keys=[player_a_id], back_populates="matches_as_a")

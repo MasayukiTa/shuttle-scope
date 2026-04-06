@@ -1,31 +1,55 @@
 import { useEffect, useCallback } from 'react'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { KEYBOARD_MAP } from '@/components/annotation/ShotTypePanel'
-import { ShotType } from '@/types'
+import { ShotType, Zone9 } from '@/types'
 
 interface UseKeyboardOptions {
   videoRef?: React.RefObject<HTMLVideoElement>
   enabled?: boolean
-  /** K-001: マッチデーモード用 1–6 キーでエンドタイプ選択 */
+  /** K-001: マッチデーモード用 1–5 キーでエンドタイプ選択（cant_reach 削除後は5種類） */
   onEndTypeSelect?: (endType: string) => void
 }
 
 /**
  * キーボードショートカット一元管理フック
  *
- * 2アクションフロー:
- *   ショットキー(s/c/p…) → 着地ゾーンクリック → 自動確定
+ * ─── 入力フロー ──────────────────────────────────────────────────────────────
+ *  ショットキー(s/c/p…) → テンキー1-9で落点 or テンキー0でスキップ → 自動確定
  *
- * Space     : 再生 / 一時停止
- * ←/→       : 1フレーム移動 (30fps想定)
- * Shift+←/→ : 10秒スキップ
- * s,c,p…   : ショット種別入力 (idle / land_zone どちらでも有効)
- * Tab       : プレイヤー切替 (A ↔ B)
- * Enter     : ラリー終了確認画面へ
- * Ctrl+Z    : アンドゥ（直前ストローク削除）
- * Escape    : キャンセル (rally_end → idle, land_zone → idle)
+ * ─── テンキーマッピング ───────────────────────────────────────────────────────
+ *  コート配置とテンキー物理配列が一致（バック上・ネット下）:
+ *    Numpad7=BL  Numpad8=BC  Numpad9=BR
+ *    Numpad4=ML  Numpad5=MC  Numpad6=MR
+ *    Numpad1=NL  Numpad2=NC  Numpad3=NR
+ *    Numpad0 / NumpadDecimal / NumpadEnter = スキップ（落点なし）
+ *
+ * ─── 属性テンキー ─────────────────────────────────────────────────────────────
+ *    Numpad/ = バックハンドトグル
+ *    Numpad* = ラウンドヘッドトグル
+ *    Numpad- = ネット上下サイクル（未指定→上→下→未指定）
+ *
+ * ─── その他 ──────────────────────────────────────────────────────────────────
+ *  Space     : 再生 / 一時停止
+ *  ←/→       : 1フレーム移動 (30fps想定)
+ *  Shift+←/→ : 10秒スキップ
+ *  Tab       : プレイヤー切替 (A ↔ B)
+ *  Enter     : ラリー終了確認画面へ
+ *  Ctrl+Z    : アンドゥ
+ *  Escape    : キャンセル (rally_end → idle, land_zone → idle)
  */
+
+// エンドタイプ: cant_reach はショット種別から削除、エンドタイプとしてのみ残す
 const END_TYPE_KEYS = ['ace', 'forced_error', 'unforced_error', 'net', 'out', 'cant_reach']
+
+// テンキー → 落点ゾーン（null = スキップ）
+const NUMPAD_ZONE: Record<string, Zone9 | null> = {
+  Numpad7: 'BL', Numpad8: 'BC', Numpad9: 'BR',
+  Numpad4: 'ML', Numpad5: 'MC', Numpad6: 'MR',
+  Numpad1: 'NL', Numpad2: 'NC', Numpad3: 'NR',
+  Numpad0: null,          // スキップ
+  NumpadDecimal: null,    // スキップ（.キー）
+  NumpadEnter: null,      // スキップ（Enterキー）
+}
 
 export function useKeyboard({ videoRef, enabled = true, onEndTypeSelect }: UseKeyboardOptions = {}) {
   const store = useAnnotationStore()
@@ -39,7 +63,13 @@ export function useKeyboard({ videoRef, enabled = true, onEndTypeSelect }: UseKe
       const { inputStep, isRallyActive, currentStrokes } = store
 
       // K-001: マッチデーモード — rally_end 中に 1–6 でエンドタイプ選択
-      if (inputStep === 'rally_end' && onEndTypeSelect && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // 通常の数字キーのみ（テンキーは落点入力に使用するため除外）
+      if (
+        inputStep === 'rally_end' &&
+        onEndTypeSelect &&
+        !e.ctrlKey && !e.metaKey && !e.altKey &&
+        !e.code.startsWith('Numpad')
+      ) {
         const idx = parseInt(e.key) - 1
         if (idx >= 0 && idx < END_TYPE_KEYS.length) {
           e.preventDefault()
@@ -48,7 +78,44 @@ export function useKeyboard({ videoRef, enabled = true, onEndTypeSelect }: UseKe
         }
       }
 
-      // --- 動画シーク（常時有効） ---
+      // ─── テンキー処理（落点入力・属性トグル） ───────────────────────────────
+      if (e.code.startsWith('Numpad') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // 属性テンキー: ラリー中かつ落点待ちまたはidle時
+        if (isRallyActive && (inputStep === 'land_zone' || inputStep === 'idle')) {
+          if (e.code === 'NumpadDivide') {
+            e.preventDefault()
+            store.toggleAttribute('is_backhand')
+            return
+          }
+          if (e.code === 'NumpadMultiply') {
+            e.preventDefault()
+            store.toggleAttribute('is_around_head')
+            return
+          }
+          if (e.code === 'NumpadSubtract') {
+            e.preventDefault()
+            store.cycleAboveNet()
+            return
+          }
+        }
+
+        // 落点テンキー: 落点待ちステップのみ有効
+        if (inputStep === 'land_zone') {
+          if (e.code in NUMPAD_ZONE) {
+            e.preventDefault()
+            const zone = NUMPAD_ZONE[e.code]
+            if (zone === null) {
+              // スキップ（Numpad0, NumpadDecimal, NumpadEnter）
+              store.skipLandZone()
+            } else {
+              store.selectLandZone(zone)
+            }
+            return
+          }
+        }
+      }
+
+      // ─── 動画シーク（常時有効） ──────────────────────────────────────────────
       if (e.shiftKey && e.key === 'ArrowLeft') {
         e.preventDefault()
         if (videoRef?.current)
@@ -80,16 +147,12 @@ export function useKeyboard({ videoRef, enabled = true, onEndTypeSelect }: UseKe
         return
       }
 
-      // Space: 再生/一時停止（ラリー管理には使わない）
+      // Space: 再生/一時停止
       if (e.key === ' ') {
         e.preventDefault()
         const v = videoRef?.current
         if (!v) return
-        if (v.paused) {
-          v.play()
-        } else {
-          v.pause()
-        }
+        v.paused ? v.play() : v.pause()
         return
       }
 
@@ -114,8 +177,8 @@ export function useKeyboard({ videoRef, enabled = true, onEndTypeSelect }: UseKe
         return
       }
 
-      // Enter: ラリー終了確認へ
-      if (e.key === 'Enter') {
+      // Enter: ラリー終了確認へ（テンキーEnterは落点スキップで上で処理済み）
+      if (e.key === 'Enter' && e.code !== 'NumpadEnter') {
         e.preventDefault()
         if (isRallyActive && currentStrokes.length > 0 && inputStep !== 'rally_end') {
           store.endRallyRequest()
@@ -123,15 +186,17 @@ export function useKeyboard({ videoRef, enabled = true, onEndTypeSelect }: UseKe
         return
       }
 
-      // ショット種別キー (idle / land_zone 時に有効)
-      // Ctrl/Meta/Alt との組み合わせは除外
-      if ((inputStep === 'idle' || inputStep === 'land_zone') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // ショット種別キー: テンキー数字と区別するため e.code で判定
+      // idle または land_zone ステップ時のみ有効
+      if (
+        (inputStep === 'idle' || inputStep === 'land_zone') &&
+        !e.ctrlKey && !e.metaKey && !e.altKey &&
+        !e.code.startsWith('Numpad')  // テンキーの数字は落点入力に使用
+      ) {
         const key = e.key.toLowerCase()
         const shotType = KEYBOARD_MAP[key] as ShotType | undefined
         if (shotType) {
           e.preventDefault()
-          // 再生中のみ一時停止（その瞬間を記録するため）
-          // 停止中 → 再生はしない（誤操作を防ぐ）
           const v = videoRef?.current
           if (v && !v.paused) v.pause()
           const currentSec = v?.currentTime ?? 0

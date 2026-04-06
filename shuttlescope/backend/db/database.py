@@ -57,6 +57,8 @@ def add_columns_if_missing(eng) -> None:
         ("matches", "competition_type",         "TEXT DEFAULT 'unknown'"),
         ("matches", "created_via_quick_start",  "INTEGER DEFAULT 0"),
         ("matches", "metadata_status",          "TEXT DEFAULT 'minimal'"),
+        # 途中終了理由（retired_a / retired_b / abandoned）
+        ("matches", "exception_reason",         "TEXT"),
     ]
     with eng.connect() as conn:
         for table, col, col_type in new_cols:

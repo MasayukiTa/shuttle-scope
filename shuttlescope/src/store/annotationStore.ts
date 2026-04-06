@@ -2,8 +2,8 @@ import { create } from 'zustand'
 import { ShotType, StrokeInput, Zone9 } from '@/types'
 
 export type InputStep =
-  | 'idle'        // 待機中（Space/ショットキーでラリー開始）
-  | 'land_zone'   // 着地ゾーン選択待ち（ショット入力直後）
+  | 'idle'        // 待機中（ショットキーでラリー開始）
+  | 'land_zone'   // 落点選択待ち（ショット入力直後）
   | 'rally_end'   // ラリー終了確認中
 
 export interface PendingStroke {
@@ -40,7 +40,7 @@ interface AnnotationState {
   pendingStroke: PendingStroke
   inputStep: InputStep
   currentStrokeNum: number
-  currentPlayer: 'player_a' | 'player_b'  // 現在打球するプレイヤー
+  currentPlayer: 'player_a' | 'player_b'  // 現在打球するプレイヤー（= 次ラリーのサーバー）
 
   // アンドゥ（最大10件）
   undoStack: StrokeInput[]
@@ -50,7 +50,15 @@ interface AnnotationState {
   saveErrors: SaveError[]
 
   // アクション
-  init: (matchId: number, setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number) => void
+  init: (
+    matchId: number,
+    setId: number,
+    setNum: number,
+    rallyNum: number,
+    scoreA: number,
+    scoreB: number,
+    initialServer?: 'player_a' | 'player_b'
+  ) => void
   setCurrentSet: (setId: number, setNum: number) => void
   // K-002: 保存キュー操作
   incrementPending: () => void
@@ -60,15 +68,17 @@ interface AnnotationState {
 
   // ラリー操作
   startRally: (timestamp: number) => void
-  endRallyRequest: () => void   // ラリー終了確認画面へ
+  endRallyRequest: () => void
   cancelRallyEnd: () => void
 
-  // ストローク入力（2アクション：ショットキー → 着地クリック）
-  inputShotType: (shotType: ShotType, timestamp: number) => void  // ショットキー押下
-  selectLandZone: (zone: Zone9) => void  // 着地クリック → 自動確定
-  selectHitZone: (zone: Zone9) => void   // 打点（任意で上書き）
+  // ストローク入力（2アクション：ショットキー → 落点入力）
+  inputShotType: (shotType: ShotType, timestamp: number) => void
+  selectLandZone: (zone: Zone9) => void   // 落点クリック or テンキー → 自動確定
+  skipLandZone: () => void                // 落点スキップ（0キー / Numpad0）→ 自動確定
+  selectHitZone: (zone: Zone9) => void    // 打点（任意で上書き）
   toggleAttribute: (key: 'is_backhand' | 'is_around_head') => void
   setAboveNet: (v: boolean | undefined) => void
+  cycleAboveNet: () => void              // ネット上下サイクル（未指定→上→下→未指定）
 
   // プレイヤー制御
   togglePlayer: () => void
@@ -81,7 +91,7 @@ interface AnnotationState {
   // アンドゥ
   undoLastStroke: () => void
 
-  // スコア更新（デュース含む）
+  // セット移行
   nextSet: (setId: number, setNum: number) => void
 }
 
@@ -115,7 +125,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   addSaveError: (err) => set((s) => ({ saveErrors: [...s.saveErrors, err] })),
   clearSaveErrors: () => set({ saveErrors: [] }),
 
-  init: (matchId, setId, setNum, rallyNum, scoreA, scoreB) =>
+  init: (matchId, setId, setNum, rallyNum, scoreA, scoreB, initialServer) =>
     set({
       matchId,
       currentSetId: setId,
@@ -128,7 +138,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       pendingStroke: emptyPending(),
       inputStep: 'idle',
       currentStrokeNum: 1,
-      currentPlayer: 'player_a',
+      // 最初のラリーのみ initial_server を使用。それ以降は confirmRally が維持する
+      currentPlayer: initialServer ?? 'player_a',
       undoStack: [],
       pendingSaveCount: 0,
       saveErrors: [],
@@ -137,7 +148,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   setCurrentSet: (setId, setNum) =>
     set({ currentSetId: setId, currentSetNum: setNum }),
 
-  // ラリー開始
+  // ラリー開始: currentPlayer は前ラリー winner を引き継ぐため変更しない
   startRally: (timestamp) =>
     set({
       isRallyActive: true,
@@ -145,20 +156,18 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentStrokes: [],
       undoStack: [],
       currentStrokeNum: 1,
-      currentPlayer: 'player_a',
       pendingStroke: emptyPending(),
       inputStep: 'idle',
     }),
 
-  // ラリー終了確認へ
   endRallyRequest: () => set({ inputStep: 'rally_end' }),
   cancelRallyEnd: () => set({ inputStep: 'idle' }),
 
-  // ① ショットキー押下（ラリー中でなければ自動起動）
+  // ① ショットキー押下（ラリー未開始なら自動起動）
   inputShotType: (shotType, timestamp) => {
-    const { isRallyActive, currentStrokes, pendingStroke } = get()
+    const { isRallyActive } = get()
 
-    // ラリー未開始なら自動起動
+    // ラリー未開始なら自動起動（currentPlayer は変えない = 前ラリー winner がサーバー）
     if (!isRallyActive) {
       set({
         isRallyActive: true,
@@ -166,38 +175,10 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
         currentStrokes: [],
         undoStack: [],
         currentStrokeNum: 1,
-        currentPlayer: 'player_a',
       })
     }
 
-    // cant_reach は着地ゾーン不要 → 即確定
-    if (shotType === 'cant_reach') {
-      const state = get()
-      const stroke: StrokeInput = {
-        stroke_num: state.currentStrokeNum,
-        player: state.currentPlayer,
-        shot_type: 'cant_reach',
-        hit_zone: state.pendingStroke.hit_zone,
-        land_zone: undefined,
-        is_backhand: state.pendingStroke.is_backhand,
-        is_around_head: state.pendingStroke.is_around_head,
-        above_net: state.pendingStroke.above_net,
-        timestamp_sec: timestamp,
-      }
-      const nextPlayer: 'player_a' | 'player_b' =
-        state.currentPlayer === 'player_a' ? 'player_b' : 'player_a'
-      set({
-        currentStrokes: [...state.currentStrokes, stroke],
-        undoStack: [...state.currentStrokes],
-        currentStrokeNum: state.currentStrokeNum + 1,
-        currentPlayer: nextPlayer,
-        pendingStroke: emptyPending(),
-        inputStep: 'idle',
-      })
-      return
-    }
-
-    // 通常: ショット入力後に着地ゾーン待ち
+    // 通常: ショット入力後に落点待ち
     set((s) => ({
       pendingStroke: {
         ...s.pendingStroke,
@@ -208,12 +189,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     }))
   },
 
-  // ② 着地ゾーン選択 → ストローク自動確定
+  // ② 落点ゾーン選択 → ストローク自動確定
   selectLandZone: (zone) => {
     const state = get()
     if (!state.pendingStroke.shot_type) return
 
-    // 直前ストロークの着地ゾーンを今回の打点として自動セット
     const prevStroke = state.currentStrokes[state.currentStrokes.length - 1]
     const autoHitZone = prevStroke?.land_zone ?? state.pendingStroke.hit_zone
 
@@ -242,11 +222,44 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     })
   },
 
+  // ② 落点スキップ（アウト・ネット時など） → land_zone なしで確定
+  skipLandZone: () => {
+    const state = get()
+    if (!state.pendingStroke.shot_type) return
+
+    const prevStroke = state.currentStrokes[state.currentStrokes.length - 1]
+    const autoHitZone = prevStroke?.land_zone ?? state.pendingStroke.hit_zone
+
+    const stroke: StrokeInput = {
+      stroke_num: state.currentStrokeNum,
+      player: state.currentPlayer,
+      shot_type: state.pendingStroke.shot_type,
+      hit_zone: autoHitZone,
+      land_zone: undefined,
+      is_backhand: state.pendingStroke.is_backhand,
+      is_around_head: state.pendingStroke.is_around_head,
+      above_net: state.pendingStroke.above_net,
+      timestamp_sec: state.pendingStroke.timestamp_sec,
+    }
+
+    const nextPlayer: 'player_a' | 'player_b' =
+      state.currentPlayer === 'player_a' ? 'player_b' : 'player_a'
+
+    set({
+      currentStrokes: [...state.currentStrokes, stroke],
+      undoStack: [...state.currentStrokes],
+      currentStrokeNum: state.currentStrokeNum + 1,
+      currentPlayer: nextPlayer,
+      pendingStroke: emptyPending(),
+      inputStep: 'idle',
+    })
+  },
+
   // 打点の手動上書き
   selectHitZone: (zone) =>
     set((s) => ({ pendingStroke: { ...s.pendingStroke, hit_zone: zone } })),
 
-  // 属性トグル（いつでも変更可能）
+  // 属性トグル（ラリー中いつでも変更可能）
   toggleAttribute: (key) =>
     set((s) => ({
       pendingStroke: { ...s.pendingStroke, [key]: !s.pendingStroke[key] },
@@ -254,6 +267,14 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
   setAboveNet: (v) =>
     set((s) => ({ pendingStroke: { ...s.pendingStroke, above_net: v } })),
+
+  // ネット上下サイクル: 未指定 → 上（true）→ 下（false）→ 未指定
+  cycleAboveNet: () =>
+    set((s) => {
+      const cur = s.pendingStroke.above_net
+      const next = cur === undefined ? true : cur === true ? false : undefined
+      return { pendingStroke: { ...s.pendingStroke, above_net: next } }
+    }),
 
   // プレイヤー切替（Tab）
   togglePlayer: () =>
@@ -263,7 +284,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
   setPlayer: (p) => set({ currentPlayer: p }),
 
-  // ラリー確定（ストロークリストを返してDB保存はページ側）
+  // ラリー確定: 勝者が次のサーバーになる（バドミントンラリーポイント制）
   confirmRally: (winner, endType) => {
     const { currentStrokes, currentRallyNum, scoreA, scoreB } = get()
     const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
@@ -279,7 +300,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       pendingStroke: emptyPending(),
       inputStep: 'idle',
       currentStrokeNum: 1,
-      currentPlayer: 'player_a',
+      currentPlayer: winner,  // 勝者が次のサーバー（ラリーポイント制）
     })
     return currentStrokes
   },
@@ -292,11 +313,12 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       pendingStroke: emptyPending(),
       inputStep: 'idle',
       currentStrokeNum: 1,
+      // currentPlayer は変えない（キャンセルなのでサーバーは同じ）
     }),
 
   // アンドゥ（直前ストローク削除）
   undoLastStroke: () => {
-    const { currentStrokes, currentStrokeNum, currentPlayer, undoStack } = get()
+    const { currentStrokes, currentStrokeNum, currentPlayer } = get()
     if (currentStrokes.length === 0) return
     const newStrokes = currentStrokes.slice(0, -1)
     const prevPlayer: 'player_a' | 'player_b' =
@@ -321,5 +343,6 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentStrokes: [],
       pendingStroke: emptyPending(),
       inputStep: 'idle',
+      // currentPlayer はセット最終ラリーの勝者を引き継ぐ（バドミントンルール）
     }),
 }))

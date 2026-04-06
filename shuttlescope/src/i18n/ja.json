@@ -94,6 +94,16 @@
     "growth": "成長レポート",
     "interval": "セット間速報"
   },
+  "exception": {
+    "title": "途中終了",
+    "subtitle": "現在までのデータは解析に使用されます",
+    "retired_a": "自チーム棄権",
+    "retired_b": "相手棄権",
+    "abandoned": "試合中断（外的要因）",
+    "confirm": "終了する",
+    "cancel": "キャンセル",
+    "mid_rally_warning": "入力中のラリーは破棄されます"
+  },
   "match": {
     "tournament": "大会名",
     "tournament_level": "大会レベル",
@@ -208,8 +218,9 @@
     "rally_cancel": "取消",
     "undo": "アンドゥ",
     "timestamp": "タイムスタンプ記録",
-    "hit_zone": "打点ゾーン",
-    "land_zone": "着地ゾーン",
+    "hit_zone": "打点",
+    "land_zone": "落点",
+    "land_zone_skip": "落点スキップ (Numpad0)",
     "shot_type": "ショット種別",
     "attributes": "属性",
     "backhand": "バックハンド",
@@ -363,12 +374,14 @@
     },
     "set_summary": {
       "title": "セット終了サマリー",
+      "interval_title": "インターバル速報（11点）",
       "recent_loss_patterns": "直近失点パターン",
       "effective_shots": "有効ショット",
       "risky_shots": "注意ショット",
       "growth_area": "成長エリア（伸びしろ）",
       "growth_hint": "継続して練習中",
       "skip": "スキップ",
+      "resume": "試合に戻る",
       "next_set": "次のセットへ"
     }
   },

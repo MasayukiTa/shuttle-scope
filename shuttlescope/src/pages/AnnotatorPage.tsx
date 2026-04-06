@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap, ClipboardEdit } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap, ClipboardEdit, OctagonX } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -134,6 +134,14 @@ export function AnnotatorPage() {
   const [inMatchScoutingNotes, setInMatchScoutingNotes] = useState<string>('')
   const [inMatchSaved, setInMatchSaved] = useState(false)
 
+  // 途中終了ダイアログ
+  const [showExceptionDialog, setShowExceptionDialog] = useState(false)
+  const [exceptionReason, setExceptionReason] = useState<'retired_a' | 'retired_b' | 'abandoned' | null>(null)
+
+  // 11点インターバル解析
+  const [showMidGameSummary, setShowMidGameSummary] = useState(false)
+  const [midGameShown, setMidGameShown] = useState(false)  // セットごとにリセット
+
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
     queryKey: ['match', matchId],
@@ -223,6 +231,9 @@ export function AnnotatorPage() {
   }, [initialized])
 
   // K-002: ラリー保存（fire-and-forget、UIをブロックしない）
+  const midGameShownRef = useRef(midGameShown)
+  useEffect(() => { midGameShownRef.current = midGameShown }, [midGameShown])
+
   const handleConfirmRally = useCallback(
     (winner: 'player_a' | 'player_b', endType: string) => {
       const s = useAnnotationStore.getState()
@@ -244,6 +255,14 @@ export function AnnotatorPage() {
       // UI を即時更新（fire-and-forget）
       s.confirmRally(winner, endType)
       setPendingEndType(null)
+
+      // 11点インターバル: どちらかが11点に到達したとき（BWFルール）
+      const prevMax = Math.max(scoreA, scoreB)
+      const newMax = Math.max(newScoreA, newScoreB)
+      if (prevMax < 11 && newMax >= 11 && !midGameShown) {
+        setMidGameShown(true)
+        setShowMidGameSummary(true)
+      }
 
       // バックグラウンド保存
       const storeState = useAnnotationStore.getState()
@@ -326,6 +345,7 @@ export function AnnotatorPage() {
     setShowIntervalSummary(false)
     setNextSetPending(null)
     setIntervalSummarySetId(null)
+    setMidGameShown(false)  // 次セットのインターバルをリセット
   }, [nextSetPending, matchId, queryClient])
 
   // --- 前セットへ戻る ---
@@ -437,6 +457,33 @@ export function AnnotatorPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showInMatchPanel])
 
+  // V4: initial_server を最初のラリー前にストアへ反映
+  useEffect(() => {
+    if (!initialized || !match?.initial_server) return
+    const s = useAnnotationStore.getState()
+    if (s.currentRallyNum === 1 && !s.isRallyActive) {
+      s.setPlayer(match.initial_server as 'player_a' | 'player_b')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, match?.initial_server])
+
+  // 途中終了: ダイアログ確定
+  const handleException = useCallback(async () => {
+    if (!exceptionReason) return
+    // 入力中のラリーは破棄
+    useAnnotationStore.getState().resetRally()
+    try {
+      await apiPut(`/matches/${matchId}`, {
+        result: 'retired',
+        exception_reason: exceptionReason,
+        metadata_status: 'partial',
+      })
+      navigate('/matches')
+    } catch (err: any) {
+      alert(`途中終了の保存に失敗しました: ${err?.message ?? '不明なエラー'}`)
+    }
+  }, [exceptionReason, matchId, navigate])
+
   // ステップラベル
   const stepLabel = {
     idle: store.isRallyActive
@@ -508,6 +555,15 @@ export function AnnotatorPage() {
               {t('in_match_panel.opponent_info')}
             </button>
           )}
+          {/* 途中終了ボタン */}
+          <button
+            onClick={() => setShowExceptionDialog(true)}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-900/30 text-red-400 hover:bg-red-800/50 transition-colors"
+            title={t('exception.title')}
+          >
+            <OctagonX size={12} />
+            {t('exception.title')}
+          </button>
           {/* K-001: マッチデーモード切替 */}
           <button
             onClick={toggleMatchDayMode}
@@ -842,11 +898,11 @@ export function AnnotatorPage() {
               />
             )}
 
-            {/* 着地ゾーン選択（land_zone ステップ時） */}
+            {/* 落点選択（land_zone ステップ時） */}
             {store.inputStep === 'land_zone' && (
               <div className="flex flex-col gap-1 shrink-0">
                 <div className="text-xs text-gray-400 text-center">
-                  着地ゾーンをクリック（自動確定）
+                  {t('annotator.land_zone')} — テンキー1–9 or クリック
                 </div>
                 <div className="flex justify-center">
                   <CourtDiagram
@@ -854,13 +910,19 @@ export function AnnotatorPage() {
                     selectedZone={store.pendingStroke.land_zone ?? null}
                     onZoneSelect={(zone: Zone9) => store.selectLandZone(zone)}
                     interactive={true}
-                    label="着地点（相手コート）"
+                    label={t('annotator.land_zone')}
                   />
                 </div>
+                <button
+                  onClick={() => store.skipLandZone()}
+                  className="text-xs text-gray-500 hover:text-gray-300 text-center py-0.5"
+                >
+                  {t('annotator.land_zone_skip')}
+                </button>
                 {/* 打点（自動推定済み） */}
                 {store.pendingStroke.hit_zone && (
                   <div className="text-[10px] text-gray-500 text-center">
-                    打点 (自動): {store.pendingStroke.hit_zone}
+                    {t('annotator.hit_zone')} (自動): {store.pendingStroke.hit_zone}
                   </div>
                 )}
               </div>
@@ -1057,6 +1119,81 @@ export function AnnotatorPage() {
           onClose={handleModalNextSet}
           onNextSet={handleModalNextSet}
         />
+      )}
+
+      {/* 11点インターバル解析モーダル */}
+      {showMidGameSummary && store.currentSetId != null && (
+        <SetIntervalSummary
+          setId={store.currentSetId}
+          playerAName={match?.player_a?.name ?? 'A'}
+          playerBName={match?.player_b?.name ?? 'B'}
+          isMidGame={true}
+          midGameScoreA={store.scoreA}
+          midGameScoreB={store.scoreB}
+          onClose={() => setShowMidGameSummary(false)}
+          onNextSet={() => setShowMidGameSummary(false)}
+        />
+      )}
+
+      {/* 途中終了ダイアログ */}
+      {showExceptionDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-800 border border-red-700/50 rounded-lg w-80 shadow-2xl">
+            <div className="px-4 py-3 border-b border-gray-700">
+              <div className="flex items-center gap-2 text-sm font-medium text-red-400">
+                <OctagonX size={16} />
+                {t('exception.title')}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">{t('exception.subtitle')}</div>
+            </div>
+            <div className="p-4 flex flex-col gap-2">
+              {/* 終了理由選択 */}
+              {(
+                [
+                  { value: 'retired_a', label: t('exception.retired_a') },
+                  { value: 'retired_b', label: t('exception.retired_b') },
+                  { value: 'abandoned', label: t('exception.abandoned') },
+                ] as const
+              ).map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setExceptionReason(value)}
+                  className={clsx(
+                    'w-full py-2 px-3 rounded text-sm text-left transition-colors border',
+                    exceptionReason === value
+                      ? 'bg-red-800/50 border-red-500 text-red-200'
+                      : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+              {store.isRallyActive && (
+                <div className="text-xs text-yellow-400 flex items-center gap-1 mt-1">
+                  ⚠ {t('exception.mid_rally_warning')}
+                </div>
+              )}
+            </div>
+            <div className="px-4 pb-4 flex gap-2">
+              <button
+                onClick={() => {
+                  setShowExceptionDialog(false)
+                  setExceptionReason(null)
+                }}
+                className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
+              >
+                {t('exception.cancel')}
+              </button>
+              <button
+                onClick={handleException}
+                disabled={!exceptionReason}
+                className="flex-1 py-2 bg-red-700 hover:bg-red-600 text-white rounded text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t('exception.confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

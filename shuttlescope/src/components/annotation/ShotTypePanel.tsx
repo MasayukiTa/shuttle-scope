@@ -30,12 +30,14 @@ interface ShotTypePanelProps {
 }
 
 // ─── キーボードショートカットマップ（useKeyboard.ts と同期すること） ──────────
+// cant_reach はショット種別ではなくエンドタイプとして扱うため削除
+// テンキー数字（1-9）はShotTypePanelでは扱わない（落点入力に使用）
 const KEYBOARD_MAP: Record<string, ShotType> = {
   '1': 'short_service', '2': 'long_service',
   'n': 'net_shot',     'c': 'clear',       'p': 'push_rush',
   's': 'smash',        'd': 'defensive',   'v': 'drive',
   'l': 'lob',          'o': 'drop',        'x': 'cross_net',
-  'z': 'slice',        'a': 'around_head', 'q': 'cant_reach',
+  'z': 'slice',        'a': 'around_head',
   'f': 'flick',        'h': 'half_smash',  'b': 'block',      '0': 'other',
 }
 
@@ -94,14 +96,14 @@ function buildGroups(context: ShotContext): ShotGroup[] {
       // 非表示: clear, around_head, slice（バック後方ポジション必須）
       return [
         { labelKey: 'shot_categories.net',        shots: ['net_shot', 'push_rush', 'cross_net', 'flick', 'block'] },
-        { labelKey: 'shot_categories.attack_lob',  shots: ['smash', 'half_smash', 'lob', 'drive', 'defensive', 'cant_reach'] },
+        { labelKey: 'shot_categories.attack_lob',  shots: ['smash', 'half_smash', 'lob', 'drive', 'defensive'] },
         { labelKey: 'shot_categories.special',     shots: ['other'] },
       ]
 
     case 'after_back_attack':
       // スマッシュ/ハーフスマッシュ/アラウンドヘッド後。受け側優先。
       return [
-        { labelKey: 'shot_categories.defend',      shots: ['defensive', 'lob', 'drive', 'clear', 'block', 'cant_reach'] },
+        { labelKey: 'shot_categories.defend',      shots: ['defensive', 'lob', 'drive', 'clear', 'block'] },
         { labelKey: 'shot_categories.net',         shots: ['net_shot', 'push_rush', 'cross_net', 'flick'] },
         { labelKey: 'shot_categories.back',        shots: ['smash', 'half_smash', 'drop', 'around_head', 'slice'] },
         { labelKey: 'shot_categories.special',     shots: ['other'] },
@@ -113,7 +115,7 @@ function buildGroups(context: ShotContext): ShotGroup[] {
         { labelKey: 'shot_categories.back_attack', shots: ['smash', 'half_smash', 'drop', 'around_head', 'clear', 'slice'] },
         { labelKey: 'shot_categories.drive_defend',shots: ['drive', 'lob', 'defensive', 'block'] },
         { labelKey: 'shot_categories.net',         shots: ['net_shot', 'push_rush', 'cross_net', 'flick'] },
-        { labelKey: 'shot_categories.special',     shots: ['cant_reach', 'other'] },
+        { labelKey: 'shot_categories.special',     shots: ['other'] },
       ]
 
     case 'neutral':
@@ -123,7 +125,7 @@ function buildGroups(context: ShotContext): ShotGroup[] {
         { labelKey: 'shot_categories.net',  shots: ['net_shot', 'push_rush', 'cross_net', 'flick', 'block'] },
         { labelKey: 'shot_categories.back', shots: ['smash', 'half_smash', 'clear', 'drop', 'around_head', 'slice'] },
         { labelKey: 'shot_categories.mid',  shots: ['drive', 'lob', 'defensive'] },
-        { labelKey: 'shot_categories.special', shots: ['cant_reach', 'other'] },
+        { labelKey: 'shot_categories.special', shots: ['other'] },
       ]
   }
 }

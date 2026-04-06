@@ -57,6 +57,7 @@ class MatchUpdate(BaseModel):
     initial_server: Optional[str] = None
     competition_type: Optional[str] = None
     metadata_status: Optional[str] = None
+    exception_reason: Optional[str] = None
 
 
 def match_to_dict(m: Match, include_players: bool = True, db: Session = None) -> dict:
@@ -90,6 +91,7 @@ def match_to_dict(m: Match, include_players: bool = True, db: Session = None) ->
         "competition_type": m.competition_type or "unknown",
         "created_via_quick_start": bool(m.created_via_quick_start),
         "metadata_status": m.metadata_status or "minimal",
+        "exception_reason": m.exception_reason,
     }
     if include_players and db:
         pa = db.get(Player, m.player_a_id)

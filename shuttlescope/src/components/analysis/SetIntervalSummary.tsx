@@ -13,6 +13,11 @@ interface SetIntervalSummaryProps {
   playerBName: string
   onClose: () => void
   onNextSet: () => void
+  /** 11点インターバル（セット終了ではなく試合中の休憩）*/
+  isMidGame?: boolean
+  /** 中間インターバル時の現スコア表示用 */
+  midGameScoreA?: number
+  midGameScoreB?: number
 }
 
 interface LossPattern {
@@ -60,6 +65,9 @@ export function SetIntervalSummary({
   playerBName,
   onClose,
   onNextSet,
+  isMidGame = false,
+  midGameScoreA,
+  midGameScoreB,
 }: SetIntervalSummaryProps) {
   const { t } = useTranslation()
 
@@ -79,15 +87,23 @@ export function SetIntervalSummary({
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-white">
-              {data ? `Set ${data.set_num} 終了` : 'セット終了サマリー'}
+              {isMidGame
+                ? `Set ${data?.set_num ?? ''} インターバル（11点）`
+                : data ? `Set ${data.set_num} 終了` : 'セット終了サマリー'}
             </span>
-            {data && (
+            {isMidGame && midGameScoreA !== undefined && midGameScoreB !== undefined ? (
+              <span className="text-xs text-gray-400">
+                {playerAName} <span className="font-bold text-white">{midGameScoreA}</span>
+                {' — '}
+                <span className="font-bold text-white">{midGameScoreB}</span> {playerBName}
+              </span>
+            ) : data && !isMidGame ? (
               <span className="text-xs text-gray-400">
                 {playerAName} <span style={{ color: data.winner === 'player_a' ? WIN : LOSS }} className="font-bold">{data.score_a}</span>
                 {' — '}
                 <span style={{ color: data.winner === 'player_b' ? WIN : LOSS }} className="font-bold">{data.score_b}</span> {playerBName}
               </span>
-            )}
+            ) : null}
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
             <X size={16} />
@@ -221,16 +237,18 @@ export function SetIntervalSummary({
               onClick={onClose}
               className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
             >
-              {t('analysis.set_summary.skip')}
+              {isMidGame ? t('analysis.set_summary.resume') : t('analysis.set_summary.skip')}
             </button>
-            <button
-              onClick={onNextSet}
-              className="flex-1 py-2 rounded text-sm font-medium flex items-center justify-center gap-1 text-white"
-              style={{ backgroundColor: WIN }}
-            >
-              {t('analysis.set_summary.next_set')}
-              <ChevronRight size={14} />
-            </button>
+            {!isMidGame && (
+              <button
+                onClick={onNextSet}
+                className="flex-1 py-2 rounded text-sm font-medium flex items-center justify-center gap-1 text-white"
+                style={{ backgroundColor: WIN }}
+              >
+                {t('analysis.set_summary.next_set')}
+                <ChevronRight size={14} />
+              </button>
+            )}
           </div>
         </div>
       </div>
