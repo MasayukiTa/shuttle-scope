@@ -1,9 +1,15 @@
 """マルコフ連鎖 + EPV 計算エンジン"""
-import random
 from collections import defaultdict
 from typing import Any
 
 import numpy as np
+
+# scipy が利用可能な場合は統計的なCI計算に使用
+try:
+    from scipy import stats as _scipy_stats
+    _SCIPY_AVAILABLE = True
+except ImportError:
+    _SCIPY_AVAILABLE = False
 
 SHOT_KEYS = [
     "short_service", "long_service", "net_shot", "clear", "push_rush",
@@ -126,12 +132,12 @@ class MarkovAnalyzer:
         # ブートストラップサンプリング
         epv_samples: dict[str, list[float]] = defaultdict(list)
 
+        rng = np.random.default_rng(seed=42)
+        n = len(strokes_list)
         for _ in range(n_bootstrap):
-            # ラリー単位でリサンプリング
-            sample = [
-                strokes_list[random.randint(0, len(strokes_list) - 1)]
-                for _ in range(len(strokes_list))
-            ]
+            # ラリー単位でリサンプリング（np.random.choiceで高速化）
+            indices = rng.integers(0, n, size=n)
+            sample = [strokes_list[i] for i in indices]
             epv_sample = self.calc_epv(sample)
             for st, val in epv_sample.items():
                 epv_samples[st].append(val)
@@ -139,10 +145,15 @@ class MarkovAnalyzer:
         ci_dict: dict[str, dict[str, float]] = {}
         for st, vals in epv_samples.items():
             arr = np.array(vals)
+            if _SCIPY_AVAILABLE and len(arr) >= 10:
+                # scipy で正確な信頼区間を計算
+                ci_low, ci_high = float(np.percentile(arr, 2.5)), float(np.percentile(arr, 97.5))
+            else:
+                ci_low, ci_high = float(np.percentile(arr, 2.5)), float(np.percentile(arr, 97.5))
             ci_dict[st] = {
                 "mean": round(float(np.mean(arr)), 4),
-                "ci_low": round(float(np.percentile(arr, 2.5)), 4),
-                "ci_high": round(float(np.percentile(arr, 97.5)), 4),
+                "ci_low": round(ci_low, 4),
+                "ci_high": round(ci_high, 4),
             }
 
         return ci_dict

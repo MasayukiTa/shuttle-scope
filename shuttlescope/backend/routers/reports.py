@@ -11,6 +11,37 @@ from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player
 from backend.utils.confidence import check_confidence
 
+# matplotlib ヒートマップ生成用
+try:
+    import matplotlib
+    matplotlib.use("Agg")  # GUIなし描画
+    import matplotlib.pyplot as plt
+    import matplotlib.font_manager as _fm
+    import numpy as np
+
+    # 日本語フォントを設定（Windows: Meiryo / Linux: Noto Sans CJK）
+    _JP_FONT = None
+    for _candidate in ["Meiryo", "MS Gothic", "Noto Sans CJK JP", "IPAGothic"]:
+        try:
+            _fp = _fm.findfont(_fm.FontProperties(family=_candidate), fallback_to_default=False)
+            if _fp and "DejaVu" not in _fp:
+                _JP_FONT = _candidate
+                break
+        except Exception:
+            pass
+    if _JP_FONT is None:
+        # Windowsシステムフォントから直接探す
+        import os
+        _meiryo = "C:/Windows/Fonts/meiryo.ttc"
+        if os.path.exists(_meiryo):
+            _fm.fontManager.addfont(_meiryo)
+            _JP_FONT = "Meiryo"
+
+    _MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    _MATPLOTLIB_AVAILABLE = False
+    _JP_FONT = None
+
 router = APIRouter()
 
 # 禁止ワードと置換ワードのマッピング（選手向けテキスト用）
@@ -23,6 +54,58 @@ FORBIDDEN_WORDS = {
 }
 
 DISCLAIMER_JA = "このデータは相関を示すものであり、因果関係を示すものではありません"
+
+
+def _build_court_heatmap_png(zone_counts: dict[str, int]) -> bytes | None:
+    """コートゾーン別ヒートマップをmatplotlibでPNG生成する"""
+    if not _MATPLOTLIB_AVAILABLE:
+        return None
+
+    # 9ゾーンのグリッド配置（行=奥→手前, 列=左→右）
+    ZONES = [
+        ["BL", "BC", "BR"],
+        ["ML", "MC", "MR"],
+        ["NL", "NC", "NR"],
+    ]
+    ZONE_LABELS_JA = {
+        "BL": "バック左", "BC": "バック中", "BR": "バック右",
+        "ML": "ミドル左", "MC": "ミドル中", "MR": "ミドル右",
+        "NL": "ネット左", "NC": "ネット中", "NR": "ネット右",
+    }
+
+    data = np.zeros((3, 3), dtype=float)
+    for r, row in enumerate(ZONES):
+        for c, zone in enumerate(row):
+            data[r][c] = zone_counts.get(zone, 0)
+
+    fig, ax = plt.subplots(figsize=(4, 3), facecolor="#1f2937")
+    ax.set_facecolor("#1f2937")
+
+    im = ax.imshow(data, cmap="Blues", vmin=0, vmax=max(data.max(), 1))
+
+    font_kwargs = {"fontfamily": _JP_FONT} if _JP_FONT else {}
+    for r in range(3):
+        for c in range(3):
+            zone = ZONES[r][c]
+            count = int(data[r][c])
+            label = ZONE_LABELS_JA.get(zone, zone) if _JP_FONT else zone
+            ax.text(c, r, f"{label}\n{count}",
+                    ha="center", va="center", fontsize=8, color="white",
+                    **font_kwargs)
+
+    ax.set_xticks([])
+    ax.set_yticks([])
+    title = "打点分布ヒートマップ" if _JP_FONT else "Hit Zone Heatmap"
+    ax.set_title(title, color="white", fontsize=9, pad=6,
+                 **({"fontfamily": _JP_FONT} if _JP_FONT else {}))
+
+    plt.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=100, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()
 
 
 def sanitize_player_text(text: str) -> str:
@@ -92,12 +175,15 @@ def get_scouting_report(player_id: int, db: Session = Depends(get_db)):
         rally_to_role[rally.id] = role_by_match[match_id]
 
     shot_counter: dict[str, int] = defaultdict(int)
+    zone_counts: dict[str, int] = defaultdict(int)
     if rally_ids:
         strokes = db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
         for stroke in strokes:
             role = rally_to_role.get(stroke.rally_id)
             if stroke.player == role:
                 shot_counter[stroke.shot_type] += 1
+                if stroke.hit_zone:
+                    zone_counts[stroke.hit_zone] += 1
 
     top_shots = sorted(
         [{"shot_type": st, "count": cnt} for st, cnt in shot_counter.items()],
@@ -105,11 +191,14 @@ def get_scouting_report(player_id: int, db: Session = Depends(get_db)):
         reverse=True,
     )[:5]
 
+    # コートヒートマップ PNG 生成（matplotlib）
+    heatmap_png = _build_court_heatmap_png(dict(zone_counts))
+
     # reportlab を使用してPDFを生成
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.units import mm
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib import colors
         from reportlab.pdfbase import pdfmetrics
@@ -183,7 +272,16 @@ def get_scouting_report(player_id: int, db: Session = Depends(get_db)):
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ]))
         content.append(shot_table)
-        content.append(Spacer(1, 30*mm))
+        content.append(Spacer(1, 5*mm))
+
+        # コートヒートマップ画像（matplotlib生成）
+        if heatmap_png:
+            img_buf = io.BytesIO(heatmap_png)
+            img = Image(img_buf, width=80*mm, height=60*mm)
+            content.append(img)
+            content.append(Spacer(1, 5*mm))
+
+        content.append(Spacer(1, 10*mm))
 
         # 免責事項フッター
         content.append(Paragraph(DISCLAIMER_JA, footer_style))
