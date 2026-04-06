@@ -6,6 +6,8 @@ import { ShotType } from '@/types'
 interface UseKeyboardOptions {
   videoRef?: React.RefObject<HTMLVideoElement>
   enabled?: boolean
+  /** K-001: マッチデーモード用 1–6 キーでエンドタイプ選択 */
+  onEndTypeSelect?: (endType: string) => void
 }
 
 /**
@@ -23,7 +25,9 @@ interface UseKeyboardOptions {
  * Ctrl+Z    : アンドゥ（直前ストローク削除）
  * Escape    : キャンセル (rally_end → idle, land_zone → idle)
  */
-export function useKeyboard({ videoRef, enabled = true }: UseKeyboardOptions = {}) {
+const END_TYPE_KEYS = ['ace', 'forced_error', 'unforced_error', 'net', 'out', 'cant_reach']
+
+export function useKeyboard({ videoRef, enabled = true, onEndTypeSelect }: UseKeyboardOptions = {}) {
   const store = useAnnotationStore()
 
   const handleKeyDown = useCallback(
@@ -33,6 +37,16 @@ export function useKeyboard({ videoRef, enabled = true }: UseKeyboardOptions = {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
 
       const { inputStep, isRallyActive, currentStrokes } = store
+
+      // K-001: マッチデーモード — rally_end 中に 1–6 でエンドタイプ選択
+      if (inputStep === 'rally_end' && onEndTypeSelect && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const idx = parseInt(e.key) - 1
+        if (idx >= 0 && idx < END_TYPE_KEYS.length) {
+          e.preventDefault()
+          onEndTypeSelect(END_TYPE_KEYS[idx])
+          return
+        }
+      }
 
       // --- 動画シーク（常時有効） ---
       if (e.shiftKey && e.key === 'ArrowLeft') {
@@ -126,7 +140,7 @@ export function useKeyboard({ videoRef, enabled = true }: UseKeyboardOptions = {
         }
       }
     },
-    [enabled, store, videoRef]
+    [enabled, store, videoRef, onEndTypeSelect]
   )
 
   useEffect(() => {

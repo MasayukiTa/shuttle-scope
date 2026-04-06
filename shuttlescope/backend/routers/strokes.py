@@ -27,6 +27,13 @@ class StrokeData(BaseModel):
     above_net: Optional[bool] = None
     is_cross: bool = False
     timestamp_sec: Optional[float] = None
+    # N-002: 空間座標拡張
+    opponent_contact_x: Optional[float] = None
+    opponent_contact_y: Optional[float] = None
+    player_contact_x:   Optional[float] = None
+    player_contact_y:   Optional[float] = None
+    return_target_x:    Optional[float] = None
+    return_target_y:    Optional[float] = None
 
 
 class RallyData(BaseModel):
@@ -71,6 +78,12 @@ def stroke_to_dict(s: Stroke) -> dict:
         "timestamp_sec": s.timestamp_sec,
         "epv": s.epv,
         "shot_influence": s.shot_influence,
+        "opponent_contact_x": s.opponent_contact_x,
+        "opponent_contact_y": s.opponent_contact_y,
+        "player_contact_x":   s.player_contact_x,
+        "player_contact_y":   s.player_contact_y,
+        "return_target_x":    s.return_target_x,
+        "return_target_y":    s.return_target_y,
     }
 
 

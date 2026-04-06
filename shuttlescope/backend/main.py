@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
-from backend.db.database import create_tables
+from backend.db.database import create_tables, add_columns_if_missing, engine
 from backend.routers import matches, rallies, strokes, players, analysis, reports, sets
 from backend.utils.video_downloader import video_downloader
 
@@ -23,6 +23,7 @@ from backend.utils.video_downloader import video_downloader
 async def lifespan(app: FastAPI):
     """アプリ起動時にテーブル作成"""
     create_tables()
+    add_columns_if_missing(engine)
     yield
 
 

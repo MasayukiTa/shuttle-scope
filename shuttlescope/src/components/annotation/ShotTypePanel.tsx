@@ -25,6 +25,8 @@ interface ShotTypePanelProps {
   strokeNum: number
   /** 直前に確定したショット種別（最初のストロークは null） */
   lastShotType: ShotType | null
+  /** K-001: マッチデーモード — 2カラム・大きめボタン */
+  isMatchDayMode?: boolean
 }
 
 // ─── キーボードショートカットマップ（useKeyboard.ts と同期すること） ──────────
@@ -128,7 +130,7 @@ function buildGroups(context: ShotContext): ShotGroup[] {
 
 // ─── コンポーネント ──────────────────────────────────────────────────────────
 
-export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum, lastShotType }: ShotTypePanelProps) {
+export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum, lastShotType, isMatchDayMode = false }: ShotTypePanelProps) {
   const { t } = useTranslation()
 
   const context = getShotContext(strokeNum, lastShotType)
@@ -139,7 +141,7 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
       {groups.map((group) => (
         <div key={group.labelKey}>
           <div className="text-xs text-gray-500 mb-1 px-1">{t(group.labelKey)}</div>
-          <div className="grid grid-cols-3 gap-1">
+          <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-2' : 'grid-cols-3')}>
             {group.shots.map((type) => {
               const key = Object.entries(KEYBOARD_MAP).find(([, v]) => v === type)?.[0] ?? ''
               return (
@@ -148,7 +150,8 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
                   onClick={() => !disabled && onSelect(type)}
                   disabled={disabled}
                   className={clsx(
-                    'relative px-2 py-1.5 rounded text-xs font-medium transition-colors',
+                    'relative px-2 rounded text-xs font-medium transition-colors',
+                    isMatchDayMode ? 'py-3 text-sm' : 'py-1.5',
                     selected === type
                       ? 'bg-blue-600 text-white border border-blue-400'
                       : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600',

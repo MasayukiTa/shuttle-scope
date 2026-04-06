@@ -155,6 +155,13 @@ export interface Stroke {
   timestamp_sec?: number
   epv?: number
   shot_influence?: number
+  // N-002: 空間座標拡張
+  opponent_contact_x?: number
+  opponent_contact_y?: number
+  player_contact_x?: number
+  player_contact_y?: number
+  return_target_x?: number
+  return_target_y?: number
 }
 
 // アノテーション入力用（IDなし）

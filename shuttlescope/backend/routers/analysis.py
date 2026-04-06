@@ -1224,11 +1224,13 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
         for rally in set_rallies:
             point_diff = rally.score_a_after - rally.score_b_after
             rally_data.append({
+                "rally_id": rally.id,
                 "rally_num": rally.rally_num,
                 "score_a": rally.score_a_after,
                 "score_b": rally.score_b_after,
                 "winner": rally.winner,
                 "point_diff": point_diff,
+                "video_timestamp_start": rally.video_timestamp_start,
             })
             # 点差が3点以上変化した場合をモメンタム変化点とする
             if prev_diff is not None and abs(point_diff - prev_diff) >= 3:
@@ -2966,4 +2968,161 @@ def get_interval_report(
         "success": True,
         "data": result["data"],
         "meta": {"sample_size": total_rallies, "confidence": confidence},
+    }
+
+
+# ---------------------------------------------------------------------------
+# K-003: セット間5秒サマリー
+# ---------------------------------------------------------------------------
+
+END_TYPE_JA = {
+    "ace": "エース",
+    "forced_error": "強制エラー",
+    "unforced_error": "自滅",
+    "net": "ネット",
+    "out": "アウト",
+    "cant_reach": "届かず",
+}
+
+
+@router.get("/analysis/set_summary")
+def get_set_summary(set_id: int, db: Session = Depends(get_db)):
+    """K-003: セット終了時の即時サマリー（セット間5秒レビュー用）"""
+    game_set = db.get(GameSet, set_id)
+    if not game_set:
+        return {"success": False, "error": "セットが見つかりません"}
+
+    rallies = (
+        db.query(Rally)
+        .filter(Rally.set_id == set_id)
+        .order_by(Rally.rally_num)
+        .all()
+    )
+    total_rallies = len(rallies)
+    if total_rallies == 0:
+        return {
+            "success": True,
+            "data": None,
+            "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+        }
+
+    # 基本統計
+    total_length = sum(r.rally_length for r in rallies)
+    avg_rally_length = round(total_length / total_rallies, 2)
+    if avg_rally_length < 4:
+        rally_length_trend = "short"
+    elif avg_rally_length < 8:
+        rally_length_trend = "medium"
+    else:
+        rally_length_trend = "long"
+
+    last_rally = rallies[-1]
+    score_a = last_rally.score_a_after
+    score_b = last_rally.score_b_after
+    winner = "player_a" if score_a > score_b else "player_b"
+
+    # ストローク取得
+    rally_ids = [r.id for r in rallies]
+    strokes = (
+        db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all()
+        if rally_ids else []
+    )
+    strokes_by_rally: dict[int, list] = defaultdict(list)
+    for s in strokes:
+        strokes_by_rally[s.rally_id].append(s)
+
+    # 直近失点パターン（player_a 視点 / 最近 10 失点ラリー）
+    loss_rallies = [r for r in rallies if r.winner == "player_b"][-10:]
+    loss_pattern_counts: dict[str, int] = defaultdict(int)
+    loss_pattern_labels: dict[str, str] = {}
+    for r in loss_rallies:
+        s_list = sorted(strokes_by_rally.get(r.id, []), key=lambda x: x.stroke_num)
+        last_s = s_list[-1] if s_list else None
+        et = END_TYPE_JA.get(r.end_type, r.end_type)
+        st = SHOT_TYPE_JA.get(last_s.shot_type, last_s.shot_type) if last_s else "-"
+        key = f"{r.end_type}_{last_s.shot_type if last_s else 'unknown'}"
+        loss_pattern_counts[key] += 1
+        loss_pattern_labels[key] = f"{et}（{st}）"
+
+    total_losses = len(loss_rallies)
+    recent_loss_patterns = sorted(
+        [
+            {
+                "label": loss_pattern_labels[k],
+                "count": v,
+                "pct": round(v / total_losses, 2) if total_losses else 0,
+            }
+            for k, v in loss_pattern_counts.items()
+        ],
+        key=lambda x: -x["count"],
+    )[:5]
+
+    # 有効ショット（player_a がそのショットを使ったラリーの勝率 ≥ 0.6 かつ ≥ 5回）
+    shot_stats: dict[str, dict] = defaultdict(lambda: {"wins": 0, "total": 0})
+    for r in rallies:
+        s_list = strokes_by_rally.get(r.id, [])
+        used = set(s.shot_type for s in s_list if s.player == "player_a")
+        won = r.winner == "player_a"
+        for st in used:
+            shot_stats[st]["total"] += 1
+            if won:
+                shot_stats[st]["wins"] += 1
+
+    effective_shots = sorted(
+        [
+            {
+                "shot_type": k,
+                "shot_type_ja": SHOT_TYPE_JA.get(k, k),
+                "win_rate": round(v["wins"] / v["total"], 2),
+                "count": v["total"],
+            }
+            for k, v in shot_stats.items()
+            if v["total"] >= 5 and v["wins"] / v["total"] >= 0.6
+        ],
+        key=lambda x: -x["win_rate"],
+    )[:3]
+
+    # 注意ショット（player_a の最終ショットが失点につながった率 ≥ 0.6 かつ ≥ 3回）
+    last_shot_stats: dict[str, dict] = defaultdict(lambda: {"losses": 0, "total": 0})
+    for r in rallies:
+        s_list = sorted(strokes_by_rally.get(r.id, []), key=lambda x: x.stroke_num)
+        a_strokes = [s for s in s_list if s.player == "player_a"]
+        if a_strokes:
+            last = a_strokes[-1]
+            last_shot_stats[last.shot_type]["total"] += 1
+            if r.winner == "player_b":
+                last_shot_stats[last.shot_type]["losses"] += 1
+
+    risky_shots = sorted(
+        [
+            {
+                "shot_type": k,
+                "shot_type_ja": SHOT_TYPE_JA.get(k, k),
+                "loss_rate": round(v["losses"] / v["total"], 2),
+                "count": v["total"],
+            }
+            for k, v in last_shot_stats.items()
+            if v["total"] >= 3 and v["losses"] / v["total"] >= 0.6
+        ],
+        key=lambda x: -x["loss_rate"],
+    )[:3]
+
+    total_strokes = len(strokes)
+    confidence = check_confidence("descriptive_basic", total_strokes)
+
+    return {
+        "success": True,
+        "data": {
+            "set_num": game_set.set_num,
+            "score_a": score_a,
+            "score_b": score_b,
+            "winner": winner,
+            "total_rallies": total_rallies,
+            "avg_rally_length": avg_rally_length,
+            "rally_length_trend": rally_length_trend,
+            "recent_loss_patterns": recent_loss_patterns,
+            "effective_shots": effective_shots,
+            "risky_shots": risky_shots,
+        },
+        "meta": {"sample_size": total_strokes, "confidence": confidence},
     }

@@ -179,7 +179,13 @@
       "complete": "Enter でストローク確定"
     },
     "player_a_label": "自チーム",
-    "player_b_label": "相手"
+    "player_b_label": "相手",
+    "match_day_mode": "マッチデーモード",
+    "match_day_mode_on": "マッチデーモード ON",
+    "match_day_mode_off": "マッチデーモード OFF",
+    "pending_saves": "保存中",
+    "save_error_title": "保存失敗",
+    "save_error_clear": "エラーを消去"
   },
   "video": {
     "play": "再生",
@@ -299,6 +305,16 @@
       "level": "大会レベル",
       "all_opponents": "全対戦相手",
       "all_levels": "全レベル"
+    },
+    "set_summary": {
+      "title": "セット終了サマリー",
+      "recent_loss_patterns": "直近失点パターン",
+      "effective_shots": "有効ショット",
+      "risky_shots": "注意ショット",
+      "growth_area": "成長エリア（伸びしろ）",
+      "growth_hint": "継続して練習中",
+      "skip": "スキップ",
+      "next_set": "次のセットへ"
     }
   },
   "download": {

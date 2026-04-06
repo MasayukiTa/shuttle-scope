@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -197,6 +198,7 @@ const ROLE_BADGE_CLASS: Record<string, string> = {
 export function DashboardPage() {
   const { t } = useTranslation()
   const { role } = useAuth()
+  const navigate = useNavigate()
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null)
   const [heatmapTab, setHeatmapTab] = useState<'hit' | 'land'>('hit')
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
@@ -217,6 +219,13 @@ export function DashboardPage() {
   // インターバルレポート用に試合を選択
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
   const [intervalSet, setIntervalSet] = useState<number>(1)
+
+  // M-002: スコア推移クリック → アノテーターへシーク
+  const handleRallyClick = useCallback((rallyId: number, timestamp: number) => {
+    if (!selectedMatchId) return
+    if (!window.confirm(`ラリー ${rallyId} の位置（${timestamp.toFixed(1)}秒）をアノテーターで開きますか？`)) return
+    navigate(`/annotator/${selectedMatchId}?seek=${timestamp}`)
+  }, [selectedMatchId, navigate])
   const [showIntervalModal, setShowIntervalModal] = useState(false)
   // 全画面グラフ表示
   const [expandedChart, setExpandedChart] = useState<string | null>(null)
@@ -837,7 +846,7 @@ export function DashboardPage() {
                     <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
                     <span className="text-xs text-gray-500">試合ID: {selectedMatchId}</span>
                   </div>
-                  <ScoreProgression matchId={selectedMatchId} />
+                  <ScoreProgression matchId={selectedMatchId} onRallyClick={handleRallyClick} />
                 </div>
               )}
 
@@ -969,7 +978,7 @@ export function DashboardPage() {
                     </select>
                   </div>
                   {selectedMatchId ? (
-                    <ScoreProgression matchId={selectedMatchId} />
+                    <ScoreProgression matchId={selectedMatchId} onRallyClick={handleRallyClick} />
                   ) : (
                     <p className="text-gray-500 text-sm text-center py-4">
                       試合を選択するとスコア推移が表示されます

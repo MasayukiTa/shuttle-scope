@@ -16,6 +16,12 @@ export interface PendingStroke {
   timestamp_sec?: number
 }
 
+// K-002: 保存キュー
+export interface SaveError {
+  rallyNum: number
+  error: string
+}
+
 interface AnnotationState {
   // セット管理
   matchId: number | null
@@ -39,9 +45,18 @@ interface AnnotationState {
   // アンドゥ（最大10件）
   undoStack: StrokeInput[]
 
+  // K-002: 保存キュー状態
+  pendingSaveCount: number
+  saveErrors: SaveError[]
+
   // アクション
   init: (matchId: number, setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number) => void
   setCurrentSet: (setId: number, setNum: number) => void
+  // K-002: 保存キュー操作
+  incrementPending: () => void
+  decrementPending: () => void
+  addSaveError: (err: SaveError) => void
+  clearSaveErrors: () => void
 
   // ラリー操作
   startRally: (timestamp: number) => void
@@ -91,6 +106,14 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   currentStrokeNum: 1,
   currentPlayer: 'player_a',
   undoStack: [],
+  pendingSaveCount: 0,
+  saveErrors: [],
+
+  // K-002: 保存キュー操作
+  incrementPending: () => set((s) => ({ pendingSaveCount: s.pendingSaveCount + 1 })),
+  decrementPending: () => set((s) => ({ pendingSaveCount: Math.max(0, s.pendingSaveCount - 1) })),
+  addSaveError: (err) => set((s) => ({ saveErrors: [...s.saveErrors, err] })),
+  clearSaveErrors: () => set({ saveErrors: [] }),
 
   init: (matchId, setId, setNum, rallyNum, scoreA, scoreB) =>
     set({
@@ -107,6 +130,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentStrokeNum: 1,
       currentPlayer: 'player_a',
       undoStack: [],
+      pendingSaveCount: 0,
+      saveErrors: [],
     }),
 
   setCurrentSet: (setId, setNum) =>

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link } from 'lucide-react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
 import { VideoPlayer } from '@/components/video/VideoPlayer'
@@ -12,6 +12,7 @@ import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
+import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
@@ -97,6 +98,7 @@ const END_TYPES = [
 export function AnnotatorPage() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -110,6 +112,18 @@ export function AnnotatorPage() {
   const [useWebView, setUseWebView] = useState(false)
   // Ref guard: prevent useEffect from re-running doInit on every Zustand state change
   const initStartedRef = useRef(false)
+
+  // K-001: マッチデーモード（localStorage 永続化）
+  const [isMatchDayMode, setIsMatchDayMode] = useState(
+    () => localStorage.getItem('shuttlescope.matchDayMode') === 'true'
+  )
+  // K-001: rally_end ステップでの選択中エンドタイプ
+  const [pendingEndType, setPendingEndType] = useState<string | null>(null)
+
+  // K-003: セット間サマリーモーダル
+  const [showIntervalSummary, setShowIntervalSummary] = useState(false)
+  const [intervalSummarySetId, setIntervalSummarySetId] = useState<number | null>(null)
+  const [nextSetPending, setNextSetPending] = useState<{ id: number; num: number } | null>(null)
 
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
@@ -189,17 +203,19 @@ export function AnnotatorPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, annotationStateData, setsData])
 
-  // --- ラリー保存 ---
-  const batchSaveMutation = useMutation({
-    mutationFn: (body: any) => apiPost('/strokes/batch', body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
-      queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
-    },
-  })
+  // M-001: 初期化完了後、?seek= パラメータでビデオをシーク
+  useEffect(() => {
+    if (!initialized) return
+    const seekTo = searchParams.get('seek')
+    if (seekTo && videoRef.current) {
+      videoRef.current.currentTime = Number(seekTo)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized])
 
+  // K-002: ラリー保存（fire-and-forget、UIをブロックしない）
   const handleConfirmRally = useCallback(
-    async (winner: 'player_a' | 'player_b', endType: string) => {
+    (winner: 'player_a' | 'player_b', endType: string) => {
       const s = useAnnotationStore.getState()
       const setId = s.currentSetId
       if (!setId) {
@@ -216,42 +232,53 @@ export function AnnotatorPage() {
       const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB
       const rallyStart = s.rallyStartTimestamp
 
+      // UI を即時更新（fire-and-forget）
       s.confirmRally(winner, endType)
+      setPendingEndType(null)
 
-      try {
-        await batchSaveMutation.mutateAsync({
-          rally: {
-            set_id: setId,
-            rally_num: rallyNum,
-            server: strokes[0]?.player ?? 'player_a',
-            winner,
-            end_type: endType,
-            rally_length: strokes.length,
-            score_a_after: newScoreA,
-            score_b_after: newScoreB,
-            is_deuce: newScoreA >= 20 && newScoreB >= 20,
-            video_timestamp_start: rallyStart ?? undefined,
-          },
-          strokes: strokes.map((s) => ({
-            stroke_num: s.stroke_num,
-            player: s.player,
-            shot_type: s.shot_type,
-            hit_zone: s.hit_zone,
-            land_zone: s.land_zone,
-            is_backhand: s.is_backhand,
-            is_around_head: s.is_around_head,
-            above_net: s.above_net,
-            timestamp_sec: s.timestamp_sec,
-          })),
+      // バックグラウンド保存
+      const storeState = useAnnotationStore.getState()
+      storeState.incrementPending()
+      apiPost('/strokes/batch', {
+        rally: {
+          set_id: setId,
+          rally_num: rallyNum,
+          server: strokes[0]?.player ?? 'player_a',
+          winner,
+          end_type: endType,
+          rally_length: strokes.length,
+          score_a_after: newScoreA,
+          score_b_after: newScoreB,
+          is_deuce: newScoreA >= 20 && newScoreB >= 20,
+          video_timestamp_start: rallyStart ?? undefined,
+        },
+        strokes: strokes.map((st) => ({
+          stroke_num: st.stroke_num,
+          player: st.player,
+          shot_type: st.shot_type,
+          hit_zone: st.hit_zone,
+          land_zone: st.land_zone,
+          is_backhand: st.is_backhand,
+          is_around_head: st.is_around_head,
+          above_net: st.above_net,
+          timestamp_sec: st.timestamp_sec,
+        })),
+      }).then(() => {
+        useAnnotationStore.getState().decrementPending()
+        queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
+        queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
+      }).catch((err: any) => {
+        useAnnotationStore.getState().decrementPending()
+        useAnnotationStore.getState().addSaveError({
+          rallyNum,
+          error: err?.message ?? '保存失敗',
         })
-      } catch (err: any) {
-        alert(`保存エラー: ${err?.message ?? '不明なエラー'}`)
-      }
+      })
     },
-    [batchSaveMutation]
+    [matchId, queryClient]
   )
 
-  // --- セット終了 → 次のセット作成 ---
+  // --- セット終了 → 次のセット作成 (K-003: サマリーモーダル表示) ---
   const handleNextSet = useCallback(async () => {
     const s = useAnnotationStore.getState()
     const setId = s.currentSetId
@@ -273,12 +300,24 @@ export function AnnotatorPage() {
         set_num: nextSetNum,
       })
 
-      useAnnotationStore.getState().nextSet(res.data.id, nextSetNum)
-      queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
+      // K-003: 次のセット情報を保持し、サマリーモーダルを表示
+      setIntervalSummarySetId(setId)
+      setNextSetPending({ id: res.data.id, num: nextSetNum })
+      setShowIntervalSummary(true)
     } catch (err: any) {
       alert(`セット移行エラー: ${err?.message ?? '不明なエラー'}`)
     }
-  }, [matchId, queryClient])
+  }, [matchId])
+
+  // K-003: モーダルから「次のセットへ」
+  const handleModalNextSet = useCallback(() => {
+    if (!nextSetPending) return
+    useAnnotationStore.getState().nextSet(nextSetPending.id, nextSetPending.num)
+    queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
+    setShowIntervalSummary(false)
+    setNextSetPending(null)
+    setIntervalSummarySetId(null)
+  }, [nextSetPending, matchId, queryClient])
 
   // --- 前セットへ戻る ---
   const handlePrevSet = useCallback(async () => {
@@ -342,8 +381,29 @@ export function AnnotatorPage() {
     }
   }, [matchId, urlInput, queryClient])
 
+  // K-001: マッチデーモード切替
+  const toggleMatchDayMode = useCallback(() => {
+    setIsMatchDayMode((prev) => {
+      const next = !prev
+      localStorage.setItem('shuttlescope.matchDayMode', String(next))
+      return next
+    })
+  }, [])
+
   // --- キーボードショートカット ---
-  useKeyboard({ videoRef, enabled: initialized })
+  useKeyboard({
+    videoRef,
+    enabled: initialized,
+    onEndTypeSelect: (endType) => {
+      // rally_end ステップ中のみ有効（useKeyboard内でフィルタ済み）
+      setPendingEndType((prev) => prev === endType ? null : endType)
+    },
+  })
+
+  // rally_end を離れたら pendingEndType をリセット
+  useEffect(() => {
+    if (store.inputStep !== 'rally_end') setPendingEndType(null)
+  }, [store.inputStep])
 
   const match = matchData?.data
 
@@ -387,6 +447,35 @@ export function AnnotatorPage() {
             : 'ShuttleScope'}
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-400">
+          {/* K-002: 保存中バッジ */}
+          {store.pendingSaveCount > 0 && (
+            <span className="text-yellow-400 font-medium">
+              {t('annotator.pending_saves')} {store.pendingSaveCount}
+            </span>
+          )}
+          {store.saveErrors.length > 0 && (
+            <button
+              onClick={() => store.clearSaveErrors()}
+              className="text-red-400 hover:text-red-300 font-medium"
+              title={store.saveErrors.map((e) => `Rally ${e.rallyNum}: ${e.error}`).join('\n')}
+            >
+              {t('annotator.save_error_title')} {store.saveErrors.length}件 ✕
+            </button>
+          )}
+          {/* K-001: マッチデーモード切替 */}
+          <button
+            onClick={toggleMatchDayMode}
+            className={clsx(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
+              isMatchDayMode
+                ? 'bg-yellow-500 text-gray-900'
+                : 'bg-gray-700 text-gray-400 hover:text-white'
+            )}
+            title={isMatchDayMode ? t('annotator.match_day_mode_on') : t('annotator.match_day_mode_off')}
+          >
+            <Zap size={12} />
+            {isMatchDayMode ? 'MD' : t('annotator.match_day_mode')}
+          </button>
           <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
             <div
               className="h-full bg-blue-500 transition-all"
@@ -399,8 +488,11 @@ export function AnnotatorPage() {
 
       {/* メインレイアウト */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左: 動画エリア (60%) */}
-        <div className="w-[60%] flex flex-col p-3 gap-2 overflow-y-auto">
+        {/* 左: 動画エリア (60%) — マッチデーモード時は非表示 */}
+        <div className={clsx(
+          'flex flex-col p-3 gap-2 overflow-y-auto',
+          isMatchDayMode ? 'hidden' : 'w-[60%]'
+        )}>
           {(() => {
             // 動画ソース決定（旧形式の Windows パスを normalizeVideoPath で変換）
             const rawSrc = match?.video_local_path || match?.video_url || ''
@@ -517,8 +609,11 @@ export function AnnotatorPage() {
           </div>
         </div>
 
-        {/* 右: 入力パネル (40%) */}
-        <div className="w-[40%] flex flex-col border-l border-gray-700 overflow-y-auto">
+        {/* 右: 入力パネル — マッチデーモード時はフルスクリーン */}
+        <div className={clsx(
+          'flex flex-col border-l border-gray-700 overflow-y-auto',
+          isMatchDayMode ? 'flex-1' : 'w-[40%]'
+        )}>
           {/* ステップインジケーター */}
           <div
             className={clsx(
@@ -585,41 +680,94 @@ export function AnnotatorPage() {
             {store.inputStep === 'rally_end' && (
               <div className="border border-yellow-700/50 bg-yellow-900/20 rounded p-2 shrink-0">
                 <div className="text-xs text-yellow-400 mb-2 font-medium">ラリー終了 — 得点者と終了種別を選択</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {(
-                    [
-                      { winner: 'player_a' as const, label: match?.player_a?.name ?? 'A', color: 'blue' },
-                      { winner: 'player_b' as const, label: match?.player_b?.name ?? 'B', color: 'orange' },
-                    ] as const
-                  ).map(({ winner, label, color }) => (
-                    <div key={winner} className="flex flex-col gap-1">
-                      <div
-                        className={clsx(
-                          'text-xs font-medium text-center pb-1 border-b',
-                          color === 'blue' ? 'text-blue-400 border-blue-700' : 'text-orange-400 border-orange-700'
-                        )}
-                      >
-                        {label} 得点
-                      </div>
-                      {END_TYPES.map(({ value, label: endLabel }) => (
+
+                {/* K-001: マッチデーモード — エンドタイプ選択（1–6キー）→ プレイヤーボタン確定 */}
+                {isMatchDayMode ? (
+                  <div className="space-y-2">
+                    {/* エンドタイプ選択行 */}
+                    <div className="grid grid-cols-6 gap-1">
+                      {END_TYPES.map(({ value, label: endLabel }, idx) => (
                         <button
                           key={value}
-                          onClick={() => handleConfirmRally(winner, value)}
-                          disabled={batchSaveMutation.isPending}
+                          onClick={() => setPendingEndType((prev) => prev === value ? null : value)}
                           className={clsx(
-                            'px-2 py-1 rounded text-xs transition-colors',
-                            color === 'blue'
-                              ? 'bg-gray-700 hover:bg-blue-700 text-gray-200'
-                              : 'bg-gray-700 hover:bg-orange-700 text-gray-200',
-                            batchSaveMutation.isPending && 'opacity-50 cursor-not-allowed'
+                            'px-1 py-2 rounded text-xs font-medium transition-colors text-center',
+                            pendingEndType === value
+                              ? 'bg-yellow-500 text-gray-900 border border-yellow-300'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                           )}
+                          title={`${idx + 1}: ${endLabel}`}
                         >
-                          {endLabel}
+                          <span className="block text-[9px] opacity-60">{idx + 1}</span>
+                          <span className="block leading-tight">{endLabel}</span>
                         </button>
                       ))}
                     </div>
-                  ))}
-                </div>
+                    {/* プレイヤー確定ボタン */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {(
+                        [
+                          { winner: 'player_a' as const, label: match?.player_a?.name ?? 'A', color: 'blue' },
+                          { winner: 'player_b' as const, label: match?.player_b?.name ?? 'B', color: 'orange' },
+                        ] as const
+                      ).map(({ winner, label, color }) => (
+                        <button
+                          key={winner}
+                          onClick={() => handleConfirmRally(winner, pendingEndType ?? 'ace')}
+                          disabled={!pendingEndType}
+                          className={clsx(
+                            'py-4 rounded text-sm font-bold transition-colors',
+                            color === 'blue'
+                              ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                              : 'bg-orange-600 hover:bg-orange-500 text-white',
+                            !pendingEndType && 'opacity-40 cursor-not-allowed'
+                          )}
+                        >
+                          {label} 得点
+                        </button>
+                      ))}
+                    </div>
+                    {!pendingEndType && (
+                      <p className="text-[10px] text-gray-500 text-center">1–6キーまたはボタンでエンドタイプを選択</p>
+                    )}
+                  </div>
+                ) : (
+                  /* 通常モード */
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        { winner: 'player_a' as const, label: match?.player_a?.name ?? 'A', color: 'blue' },
+                        { winner: 'player_b' as const, label: match?.player_b?.name ?? 'B', color: 'orange' },
+                      ] as const
+                    ).map(({ winner, label, color }) => (
+                      <div key={winner} className="flex flex-col gap-1">
+                        <div
+                          className={clsx(
+                            'text-xs font-medium text-center pb-1 border-b',
+                            color === 'blue' ? 'text-blue-400 border-blue-700' : 'text-orange-400 border-orange-700'
+                          )}
+                        >
+                          {label} 得点
+                        </div>
+                        {END_TYPES.map(({ value, label: endLabel }) => (
+                          <button
+                            key={value}
+                            onClick={() => handleConfirmRally(winner, value)}
+                            className={clsx(
+                              'px-2 py-1 rounded text-xs transition-colors',
+                              color === 'blue'
+                                ? 'bg-gray-700 hover:bg-blue-700 text-gray-200'
+                                : 'bg-gray-700 hover:bg-orange-700 text-gray-200'
+                            )}
+                          >
+                            {endLabel}
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <button
                   onClick={() => store.cancelRallyEnd()}
                   className="w-full mt-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-xs"
@@ -644,6 +792,7 @@ export function AnnotatorPage() {
                     ? store.currentStrokes[store.currentStrokes.length - 1].shot_type
                     : null
                 }
+                isMatchDayMode={isMatchDayMode}
               />
             )}
 
@@ -768,6 +917,17 @@ export function AnnotatorPage() {
           </div>
         </div>
       </div>
+
+      {/* K-003: セット間サマリーモーダル */}
+      {showIntervalSummary && intervalSummarySetId != null && (
+        <SetIntervalSummary
+          setId={intervalSummarySetId}
+          playerAName={match?.player_a?.name ?? 'A'}
+          playerBName={match?.player_b?.name ?? 'B'}
+          onClose={handleModalNextSet}
+          onNextSet={handleModalNextSet}
+        />
+      )}
     </div>
   )
 }

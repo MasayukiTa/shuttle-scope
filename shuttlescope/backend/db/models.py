@@ -138,6 +138,14 @@ class Stroke(Base):
     opponent_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     opponent_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
+    # N-002: 空間座標拡張（相手打点・自分打点・返球目標）
+    opponent_contact_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    opponent_contact_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    player_contact_x:   Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    player_contact_y:   Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    return_target_x:    Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    return_target_y:    Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
     # ゾーン（集計・フィルタ用）
     hit_zone: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)   # BL/BC/BR/ML/MC/MR/NL/NC/NR
     land_zone: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # 同上
