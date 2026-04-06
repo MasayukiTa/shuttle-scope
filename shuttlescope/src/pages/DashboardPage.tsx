@@ -46,6 +46,13 @@ import { OpponentTypeAffinity } from '@/components/analysis/OpponentTypeAffinity
 import { PairPlaystyle } from '@/components/analysis/PairPlaystyle'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { ChartModal } from '@/components/common/ChartModal'
+import { OpponentAdaptiveShots } from '@/components/analysis/OpponentAdaptiveShots'
+import { PairSynergyCard } from '@/components/analysis/PairSynergyCard'
+import { RallySequencePatterns } from '@/components/analysis/RallySequencePatterns'
+import { ConfidenceCalibration } from '@/components/analysis/ConfidenceCalibration'
+import { RecommendationRanking } from '@/components/analysis/RecommendationRanking'
+import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
+import { SpatialDensityMap } from '@/components/analysis/SpatialDensityMap'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,7 +100,7 @@ interface MatchSummary {
 }
 
 // タブ種別
-type TabKey = 'overview' | 'shots' | 'rally' | 'matrix' | 'b_detail' | 'c_spatial' | 'd_time' | 'flash' | 'review' | 'growth' | 'e_opponent' | 'f_doubles' | 'g_markov'
+type TabKey = 'overview' | 'shots' | 'rally' | 'matrix' | 'b_detail' | 'c_spatial' | 'd_time' | 'flash' | 'review' | 'growth' | 'e_opponent' | 'f_doubles' | 'g_markov' | 'h_research'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -609,6 +616,11 @@ export function DashboardPage() {
                 {t('analysis.g_markov')}
               </TabButton>
             </RoleGuard>
+            <RoleGuard allowedRoles={['analyst', 'coach']}>
+              <TabButton active={activeTab === 'h_research'} onClick={() => setActiveTab('h_research')}>
+                研究解析
+              </TabButton>
+            </RoleGuard>
           </div>
 
           {/* ── 概要タブ ── */}
@@ -993,6 +1005,10 @@ export function DashboardPage() {
                 )}
               </div>
             </div>
+
+            {/* データ品質概況 (R-roadmap 3.5) */}
+            <ConfidenceCalibration playerId={selectedPlayerId!} />
+
             </ErrorBoundary>
           )}
 
@@ -1214,6 +1230,9 @@ export function DashboardPage() {
                   </div>
                 )}
 
+                {/* 推奨アドバイスランキング (R-roadmap 3.7) */}
+                <RecommendationRanking playerId={selectedPlayerId!} />
+
                 {/* ラリー地点選択モーダル */}
                 {showRallyPicker && flashMatchId && (
                   <RallyPickerModal
@@ -1278,6 +1297,9 @@ export function DashboardPage() {
                   </div>
                   <SetComparison playerId={selectedPlayerId!} filters={filters} />
                 </div>
+
+                {/* ラリー3連ショットパターン (R-roadmap 3.1) */}
+                <RallySequencePatterns playerId={selectedPlayerId!} />
               </div>
             </ErrorBoundary>
           )}
@@ -1285,15 +1307,19 @@ export function DashboardPage() {
           {/* ── 空間分析タブ (C-002, C-003) ── */}
           {activeTab === 'c_spatial' && (
             <ErrorBoundary>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <SectionTitle>{t('analysis.pre_loss.title')}</SectionTitle>
-                  <PreLossPatterns playerId={selectedPlayerId!} filters={filters} />
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.pre_loss.title')}</SectionTitle>
+                    <PreLossPatterns playerId={selectedPlayerId!} filters={filters} />
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.first_return.title')}</SectionTitle>
+                    <FirstReturnAnalysis playerId={selectedPlayerId!} filters={filters} />
+                  </div>
                 </div>
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <SectionTitle>{t('analysis.first_return.title')}</SectionTitle>
-                  <FirstReturnAnalysis playerId={selectedPlayerId!} filters={filters} />
-                </div>
+                {/* コート密度マップ (R-roadmap 3.6) */}
+                <SpatialDensityMap playerId={selectedPlayerId!} />
               </div>
             </ErrorBoundary>
           )}
@@ -1409,6 +1435,8 @@ export function DashboardPage() {
                     <p className="text-xs text-gray-500 mb-3">{t('analysis.opponent_type_affinity.subtitle')}</p>
                     <OpponentTypeAffinity playerId={selectedPlayerId!} filters={filters} />
                   </div>
+                  {/* 対戦相手別ショット有効性 (R-roadmap 3.3) */}
+                  <OpponentAdaptiveShots playerId={selectedPlayerId!} />
                 </div>
               </RoleGuard>
             </ErrorBoundary>
@@ -1435,6 +1463,8 @@ export function DashboardPage() {
                     />
                   </div>
                 )}
+                {/* ペアシナジースコア (R-roadmap 3.4) */}
+                <PairSynergyCard playerId={selectedPlayerId!} />
               </div>
             </ErrorBoundary>
           )}
@@ -1456,6 +1486,36 @@ export function DashboardPage() {
                     <ExpandBtn onClick={() => setExpandedChart('epv')} />
                   </div>
                   <MarkovEPV playerId={selectedPlayerId!} filters={filters} />
+                </div>
+              </RoleGuard>
+            </ErrorBoundary>
+          )}
+
+          {/* ── 研究解析タブ (H: Research Roadmap) ── */}
+          {activeTab === 'h_research' && (
+            <ErrorBoundary>
+              <RoleGuard
+                allowedRoles={['analyst', 'coach']}
+                fallback={
+                  <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
+                    {t('analysis.restricted')}
+                  </div>
+                }
+              >
+                <div className="space-y-5">
+                  {/* ロードマップ概要 */}
+                  <div className="bg-gray-800 rounded-lg p-4 border border-blue-900/40">
+                    <h3 className="text-sm font-semibold text-blue-300 mb-1">研究解析ロードマップ</h3>
+                    <p className="text-xs text-gray-400">
+                      高度な戦術モデリング・因果推論・空間モデリングによる拡張解析。サンプルサイズが増えるほど精度が向上します。
+                    </p>
+                  </div>
+
+                  {/* 反事実的ショット比較 (3.2) */}
+                  <CounterfactualShots playerId={selectedPlayerId!} />
+
+                  {/* コート密度マップ (3.6) — 研究タブ版 */}
+                  <SpatialDensityMap playerId={selectedPlayerId!} />
                 </div>
               </RoleGuard>
             </ErrorBoundary>

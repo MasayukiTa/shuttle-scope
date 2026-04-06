@@ -4335,3 +4335,722 @@ def get_pair_playstyle(
         },
         "meta": {"sample_size": total_strokes, "confidence": confidence},
     }
+
+
+# ---------------------------------------------------------------------------
+# Research Roadmap R1: Opponent-Adaptive Shots (3.3)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/opponent_adaptive_shots")
+def get_opponent_adaptive_shots(
+    player_id: int,
+    db: Session = Depends(get_db),
+):
+    """対戦相手別ショット有効性 — 各対戦相手に対するショット種別勝率"""
+    matches = (
+        db.query(Match)
+        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .all()
+    )
+    if not matches:
+        return {"success": True, "data": {"global_shot_winrates": {}, "opponents": []},
+                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+
+    # ラリーIDとロールのマッピング
+    match_ids = [m.id for m in matches]
+    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
+
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_ids = [s.id for s in sets]
+
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped == False).all()  # noqa: E712
+    rally_ids = [r.id for r in rallies]
+    rally_by_id = {r.id: r for r in rallies}
+    set_by_id = {s.id: s for s in sets}
+
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id.in_(rally_ids))
+        .order_by(Stroke.rally_id, Stroke.stroke_num)
+        .all()
+    )
+
+    # ショット別グローバル勝率
+    global_counts: dict[str, int] = defaultdict(int)
+    global_wins: dict[str, int] = defaultdict(int)
+
+    # 対戦相手IDごと: {opp_id: {shot_type: {"count": N, "wins": N}}}
+    opp_shot: dict[int, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"count": 0, "wins": 0}))
+    opp_match_ids: dict[int, set] = defaultdict(set)
+
+    for s in strokes:
+        rally = rally_by_id.get(s.rally_id)
+        if not rally or not s.shot_type:
+            continue
+        mid = set_to_match.get(rally.set_id)
+        if not mid:
+            continue
+        role = role_by_match.get(mid)
+        if not role:
+            continue
+        # このストロークはプレイヤーが打ったか
+        if s.player != role:
+            continue
+
+        match = next((m for m in matches if m.id == mid), None)
+        if not match:
+            continue
+
+        # 対戦相手ID
+        opp_id = match.player_b_id if match.player_a_id == player_id else match.player_a_id
+        won = 1 if rally.winner == role else 0
+
+        global_counts[s.shot_type] += 1
+        global_wins[s.shot_type] += won
+        opp_shot[opp_id][s.shot_type]["count"] += 1
+        opp_shot[opp_id][s.shot_type]["wins"] += won
+        opp_match_ids[opp_id].add(mid)
+
+    # グローバル勝率
+    global_winrates = {
+        st: round(global_wins[st] / global_counts[st], 3)
+        for st in global_counts if global_counts[st] > 0
+    }
+
+    # 対戦相手リスト（試合数上位順）
+    opp_players = {p.id: p for p in db.query(Player).filter(Player.id.in_(list(opp_shot.keys()))).all()}
+
+    opponents = []
+    for opp_id, shot_data in sorted(opp_shot.items(), key=lambda x: -len(opp_match_ids[x[0]])):
+        opp = opp_players.get(opp_id)
+        effectiveness = []
+        for shot_type, vals in shot_data.items():
+            if vals["count"] < 3:
+                continue
+            wr = round(vals["wins"] / vals["count"], 3)
+            global_wr = global_winrates.get(shot_type, 0.5)
+            effectiveness.append({
+                "shot_type": shot_type,
+                "shot_label": SHOT_TYPE_JA.get(shot_type, shot_type),
+                "count": vals["count"],
+                "win_rate": wr,
+                "lift": round(wr - global_wr, 3),
+            })
+        effectiveness.sort(key=lambda x: -x["count"])
+        opponents.append({
+            "opponent_id": opp_id,
+            "opponent_name": opp.name if opp else str(opp_id),
+            "match_count": len(opp_match_ids[opp_id]),
+            "shot_effectiveness": effectiveness,
+        })
+
+    total = sum(global_counts.values())
+    return {
+        "success": True,
+        "data": {"global_shot_winrates": global_winrates, "opponents": opponents},
+        "meta": {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Research Roadmap R2: Pair Synergy (3.4)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/pair_synergy")
+def get_pair_synergy(
+    player_id: int,
+    db: Session = Depends(get_db),
+):
+    """ペアシナジースコア — ダブルスペアごとの相性指標"""
+    # 全試合（シングルス含む）でプレイヤー勝率を計算
+    all_matches = (
+        db.query(Match)
+        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .all()
+    )
+    if not all_matches:
+        return {"success": True, "data": {"player_avg_win_rate": 0.0, "pairs": []},
+                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+
+    total_matches = len(all_matches)
+    win_count = sum(
+        1 for m in all_matches
+        if (m.player_a_id == player_id and m.result == "win")
+        or (m.player_b_id == player_id and m.result == "loss")
+    )
+    player_avg_win_rate = round(win_count / total_matches, 3) if total_matches > 0 else 0.0
+
+    # ダブルス試合のみ抽出
+    doubles_matches = [m for m in all_matches if m.format in ("womens_doubles", "mixed_doubles", "mens_doubles")]
+    if not doubles_matches:
+        return {
+            "success": True,
+            "data": {"player_avg_win_rate": player_avg_win_rate, "pairs": []},
+            "meta": {"sample_size": total_matches, "confidence": check_confidence("descriptive_basic", total_matches)},
+        }
+
+    # ペアIDごとに集計
+    pair_data: dict[int, dict] = defaultdict(lambda: {
+        "match_ids": [], "wins": 0, "total_rally_length": 0, "rally_count": 0,
+        "player_strokes": 0, "total_strokes": 0,
+    })
+
+    match_ids = [m.id for m in doubles_matches]
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_ids = [s.id for s in sets]
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids), Rally.is_skipped == False).all()  # noqa: E712
+    rally_ids = [r.id for r in rallies]
+
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id.in_(rally_ids))
+        .all()
+    )
+    strokes_by_rally: dict[int, list] = defaultdict(list)
+    for s in strokes:
+        strokes_by_rally[s.rally_id].append(s)
+
+    for m in doubles_matches:
+        role = _player_role_in_match(m, player_id)
+        if not role:
+            continue
+        partner_id = m.partner_a_id if role == "player_a" else m.partner_b_id
+        if not partner_id:
+            continue
+
+        is_win = (role == "player_a" and m.result == "win") or (role == "player_b" and m.result == "loss")
+        pair_data[partner_id]["match_ids"].append(m.id)
+        if is_win:
+            pair_data[partner_id]["wins"] += 1
+
+        # このマッチのラリーでストローク統計を収集
+        match_set_ids = {s.id for s in sets if s.match_id == m.id}
+        for rally in rallies:
+            if set_to_match.get(rally.set_id) != m.id:
+                continue
+            pair_data[partner_id]["total_rally_length"] += rally.rally_length
+            pair_data[partner_id]["rally_count"] += 1
+            for st in strokes_by_rally[rally.id]:
+                pair_data[partner_id]["total_strokes"] += 1
+                if st.player == role:
+                    pair_data[partner_id]["player_strokes"] += 1
+
+    # パートナー名を取得
+    partner_players = {p.id: p for p in db.query(Player).filter(Player.id.in_(list(pair_data.keys()))).all()}
+
+    pairs = []
+    for partner_id, pd in sorted(pair_data.items(), key=lambda x: -len(x[1]["match_ids"])):
+        mc = len(pd["match_ids"])
+        if mc == 0:
+            continue
+        wr = round(pd["wins"] / mc, 3)
+        synergy = round(wr - player_avg_win_rate, 3)
+        avg_rally = round(pd["total_rally_length"] / pd["rally_count"], 2) if pd["rally_count"] > 0 else 0.0
+        stroke_share = round(pd["player_strokes"] / pd["total_strokes"], 3) if pd["total_strokes"] > 0 else 0.0
+        partner = partner_players.get(partner_id)
+        pairs.append({
+            "partner_id": partner_id,
+            "partner_name": partner.name if partner else str(partner_id),
+            "match_count": mc,
+            "win_rate": wr,
+            "synergy_score": synergy,
+            "avg_rally_length": avg_rally,
+            "stroke_share": stroke_share,
+        })
+
+    pairs.sort(key=lambda x: -x["synergy_score"])
+
+    return {
+        "success": True,
+        "data": {"player_avg_win_rate": player_avg_win_rate, "pairs": pairs},
+        "meta": {"sample_size": total_matches, "confidence": check_confidence("descriptive_basic", total_matches)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Research Roadmap R3: Rally Sequence Patterns (3.1)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/rally_sequence_patterns")
+def get_rally_sequence_patterns(
+    player_id: int,
+    db: Session = Depends(get_db),
+):
+    """ラリー3連ショットパターン — 勝ち/負けに関連する3ショット連続パターン"""
+    matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
+    if not rallies:
+        return {"success": True, "data": {"win_sequences": [], "loss_sequences": [], "total_rallies": 0},
+                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+
+    rally_ids = [r.id for r in rallies]
+    rally_by_id = {r.id: r for r in rallies}
+
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id.in_(rally_ids))
+        .order_by(Stroke.rally_id, Stroke.stroke_num)
+        .all()
+    )
+    strokes_by_rally: dict[int, list] = defaultdict(list)
+    for s in strokes:
+        strokes_by_rally[s.rally_id].append(s)
+
+    # トライグラム集計: key=(t1,t2,t3) -> {"count":N,"wins":N}
+    trigram_stats: dict[tuple, dict] = defaultdict(lambda: {"count": 0, "wins": 0})
+
+    for rally in rallies:
+        mid = set_to_match.get(rally.set_id)
+        if not mid:
+            continue
+        role = role_by_match.get(mid)
+        if not role:
+            continue
+        is_win = rally.winner == role
+        rally_strokes = strokes_by_rally[rally.id]
+        # プレイヤーのストロークのみ抽出 (shot_type必須)
+        player_shots = [s.shot_type for s in rally_strokes if s.player == role and s.shot_type]
+        # 3連続パターン
+        for i in range(len(player_shots) - 2):
+            key = (player_shots[i], player_shots[i + 1], player_shots[i + 2])
+            trigram_stats[key]["count"] += 1
+            if is_win:
+                trigram_stats[key]["wins"] += 1
+
+    # 最低5回以上出現のパターンのみ
+    MIN_COUNT = 5
+    filtered = {k: v for k, v in trigram_stats.items() if v["count"] >= MIN_COUNT}
+
+    def to_entry(key, vals):
+        wr = round(vals["wins"] / vals["count"], 3)
+        return {
+            "sequence": list(key),
+            "labels": [SHOT_TYPE_JA.get(t, t) for t in key],
+            "count": vals["count"],
+            "win_rate": wr,
+            "win_count": vals["wins"],
+        }
+
+    entries = [to_entry(k, v) for k, v in filtered.items()]
+    win_seqs = sorted([e for e in entries if e["win_rate"] >= 0.5], key=lambda x: -x["win_rate"])[:8]
+    loss_seqs = sorted([e for e in entries if e["win_rate"] < 0.5], key=lambda x: x["win_rate"])[:8]
+
+    total_rallies = len(rallies)
+    total_strokes = sum(len(v) for v in strokes_by_rally.values())
+    return {
+        "success": True,
+        "data": {
+            "win_sequences": win_seqs,
+            "loss_sequences": loss_seqs,
+            "total_rallies": total_rallies,
+        },
+        "meta": {"sample_size": total_strokes, "confidence": check_confidence("descriptive_basic", total_strokes)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Research Roadmap R4: Confidence Calibration (3.5)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/confidence_calibration")
+def get_confidence_calibration(
+    player_id: int,
+    db: Session = Depends(get_db),
+):
+    """信頼度キャリブレーション — 各指標のサンプルサイズ分布"""
+    matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
+
+    match_count = len(matches)
+    rally_count = len(rallies)
+    rally_ids = [r.id for r in rallies]
+
+    strokes = db.query(Stroke).filter(Stroke.rally_id.in_(rally_ids)).all() if rally_ids else []
+    total_strokes = len(strokes)
+
+    # ショット種別別サンプルサイズ
+    shot_counts: dict[str, int] = defaultdict(int)
+    for s in strokes:
+        if s.shot_type:
+            shot_counts[s.shot_type] += 1
+
+    # 各指標のサンプルサイズを収集
+    sample_sizes: list[int] = []
+    # 試合数
+    sample_sizes.append(match_count)
+    # ラリー数
+    sample_sizes.append(rally_count)
+    # 総ストローク数
+    sample_sizes.append(total_strokes)
+    # ショット種別ごと
+    for st in SHOT_KEYS:
+        sample_sizes.append(shot_counts.get(st, 0))
+
+    # バケット分類
+    TIERS = [
+        {"tier": "データ不足 (<30)",   "min": 0,   "max": 29,  "label_en": "insufficient"},
+        {"tier": "低信頼 (30-100)",    "min": 30,  "max": 99,  "label_en": "low"},
+        {"tier": "中信頼 (100-300)",   "min": 100, "max": 299, "label_en": "medium"},
+        {"tier": "高信頼 (300+)",      "min": 300, "max": 10**9, "label_en": "high"},
+    ]
+
+    counts_by_tier = defaultdict(int)
+    for n in sample_sizes:
+        for t in TIERS:
+            if t["min"] <= n <= t["max"]:
+                counts_by_tier[t["tier"]] += 1
+                break
+
+    total_metrics = len(sample_sizes)
+    distribution = [
+        {
+            "tier": t["tier"],
+            "label_en": t["label_en"],
+            "count": counts_by_tier[t["tier"]],
+            "ratio": round(counts_by_tier[t["tier"]] / total_metrics, 3) if total_metrics > 0 else 0,
+        }
+        for t in TIERS
+    ]
+
+    # 全体品質判定
+    high_ratio = distribution[3]["ratio"]
+    med_ratio = distribution[2]["ratio"]
+    if high_ratio >= 0.5:
+        overall_quality = "高"
+    elif high_ratio + med_ratio >= 0.5:
+        overall_quality = "中"
+    elif high_ratio + med_ratio >= 0.25:
+        overall_quality = "低〜中"
+    else:
+        overall_quality = "低"
+
+    MIN_MATCHES_FOR_HIGH = 20
+    return {
+        "success": True,
+        "data": {
+            "distribution": distribution,
+            "total_metrics": total_metrics,
+            "overall_quality": overall_quality,
+            "min_matches_for_high": MIN_MATCHES_FOR_HIGH,
+            "current_match_count": match_count,
+        },
+        "meta": {"sample_size": total_strokes, "confidence": check_confidence("descriptive_basic", total_strokes)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Research Roadmap R5: Recommendation Ranking (3.7)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/recommendation_ranking")
+def get_recommendation_ranking(
+    player_id: int,
+    db: Session = Depends(get_db),
+):
+    """推奨アドバイスランキング — サンプルサイズと効果量に基づく優先度スコア順"""
+    import math
+
+    matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
+    if not rallies:
+        return {"success": True, "data": {"items": []},
+                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+
+    rally_ids = [r.id for r in rallies]
+    rally_by_id = {r.id: r for r in rallies}
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id.in_(rally_ids))
+        .all()
+    )
+
+    # ショット種別勝率
+    shot_win: dict[str, dict] = defaultdict(lambda: {"count": 0, "wins": 0})
+    zone_win: dict[str, dict] = defaultdict(lambda: {"count": 0, "wins": 0})
+
+    for s in strokes:
+        if not s.shot_type:
+            continue
+        mid = set_to_match.get(
+            next((r.set_id for r in rallies if r.id == s.rally_id), None) or -1
+        )
+        role = role_by_match.get(mid) if mid else None
+        if not role or s.player != role:
+            continue
+        rally = rally_by_id.get(s.rally_id)
+        if not rally:
+            continue
+        won = 1 if rally.winner == role else 0
+        shot_win[s.shot_type]["count"] += 1
+        shot_win[s.shot_type]["wins"] += won
+        if s.hit_zone:
+            zone_win[s.hit_zone]["count"] += 1
+            zone_win[s.hit_zone]["wins"] += won
+
+    NORM_N = 300.0
+    BASELINE = 0.5
+
+    items = []
+
+    # ショット種別シグナル
+    for shot_type, v in shot_win.items():
+        n = v["count"]
+        if n < 5:
+            continue
+        wr = v["wins"] / n
+        effect = abs(wr - BASELINE)
+        score = round(math.log(n + 1) / math.log(NORM_N + 1) * effect, 4)
+        label = SHOT_TYPE_JA.get(shot_type, shot_type)
+        if wr >= BASELINE:
+            title = f"{label}の継続強化"
+            body = f"{label}時の勝率{round(wr*100)}%（全体比{'+' if wr>BASELINE else ''}{round((wr-BASELINE)*100)}%）。優先度高。"
+        else:
+            title = f"{label}の改善余地"
+            body = f"{label}時の勝率{round(wr*100)}%。伸びしろあり。"
+        confidence_level = "★★★" if n >= 100 else "★★" if n >= 30 else "★"
+        items.append({
+            "category": "shot",
+            "title": title,
+            "body": body,
+            "priority_score": score,
+            "sample_size": n,
+            "confidence_level": confidence_level,
+            "win_rate": round(wr, 3),
+        })
+
+    # ゾーン別シグナル
+    ZONE_JA = {"BL": "左奥", "BC": "中央奥", "BR": "右奥", "ML": "左中", "MC": "中央", "MR": "右中", "NL": "左前", "NC": "ネット前", "NR": "右前"}
+    for zone, v in zone_win.items():
+        n = v["count"]
+        if n < 5:
+            continue
+        wr = v["wins"] / n
+        effect = abs(wr - BASELINE)
+        score = round(math.log(n + 1) / math.log(NORM_N + 1) * effect, 4)
+        zone_name = ZONE_JA.get(zone, zone)
+        if wr >= BASELINE:
+            title = f"{zone_name}エリア活用"
+            body = f"{zone_name}からの勝率{round(wr*100)}%。効果的なエリア。"
+        else:
+            title = f"{zone_name}エリアの改善"
+            body = f"{zone_name}からの勝率{round(wr*100)}%。伸びしろあり。"
+        confidence_level = "★★★" if n >= 100 else "★★" if n >= 30 else "★"
+        items.append({
+            "category": "zone",
+            "title": title,
+            "body": body,
+            "priority_score": score,
+            "sample_size": n,
+            "confidence_level": confidence_level,
+            "win_rate": round(wr, 3),
+        })
+
+    items.sort(key=lambda x: -x["priority_score"])
+    ranked = [{"rank": i + 1, **item} for i, item in enumerate(items[:7])]
+
+    total = sum(shot_win[k]["count"] for k in shot_win)
+    return {
+        "success": True,
+        "data": {"items": ranked},
+        "meta": {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Research Roadmap R6: Counterfactual Shots (3.2)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/counterfactual_shots")
+def get_counterfactual_shots(
+    player_id: int,
+    db: Session = Depends(get_db),
+):
+    """反事実的ショット比較 — 同じ文脈で異なる返球選択の勝率比較"""
+    matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
+    if not rallies:
+        return {"success": True, "data": {"comparisons": []},
+                "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
+
+    rally_ids = [r.id for r in rallies]
+    rally_by_id = {r.id: r for r in rallies}
+
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id.in_(rally_ids))
+        .order_by(Stroke.rally_id, Stroke.stroke_num)
+        .all()
+    )
+    strokes_by_rally: dict[int, list] = defaultdict(list)
+    for s in strokes:
+        strokes_by_rally[s.rally_id].append(s)
+
+    # context = 直前の相手ショット種別
+    # key=(prev_shot, response_shot) -> {"count":N,"wins":N}
+    ctx_stats: dict[tuple, dict] = defaultdict(lambda: {"count": 0, "wins": 0})
+
+    for rally in rallies:
+        mid = set_to_match.get(rally.set_id)
+        if not mid:
+            continue
+        role = role_by_match.get(mid)
+        if not role:
+            continue
+        opponent_role = "player_b" if role == "player_a" else "player_a"
+        is_win = rally.winner == role
+        rally_strokes = sorted(strokes_by_rally[rally.id], key=lambda x: x.stroke_num)
+
+        for i, s in enumerate(rally_strokes):
+            if s.player != role or not s.shot_type:
+                continue
+            # 直前の相手ショット
+            prev = None
+            for j in range(i - 1, -1, -1):
+                if rally_strokes[j].player == opponent_role and rally_strokes[j].shot_type:
+                    prev = rally_strokes[j].shot_type
+                    break
+            if not prev:
+                continue
+            key = (prev, s.shot_type)
+            ctx_stats[key]["count"] += 1
+            if is_win:
+                ctx_stats[key]["wins"] += 1
+
+    # 文脈ごとに集計: context -> {response_shot: stats}
+    context_map: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"count": 0, "wins": 0}))
+    for (prev, resp), vals in ctx_stats.items():
+        context_map[prev][resp]["count"] += vals["count"]
+        context_map[prev][resp]["wins"] += vals["wins"]
+
+    MIN_OBS = 5
+    comparisons = []
+    for prev_shot, resp_map in context_map.items():
+        choices = []
+        for resp_shot, v in resp_map.items():
+            if v["count"] < MIN_OBS:
+                continue
+            wr = round(v["wins"] / v["count"], 3)
+            choices.append({
+                "shot_type": resp_shot,
+                "label": SHOT_TYPE_JA.get(resp_shot, resp_shot),
+                "count": v["count"],
+                "win_rate": wr,
+            })
+        if len(choices) < 2:
+            continue
+        choices.sort(key=lambda x: -x["win_rate"])
+        best_wr = choices[0]["win_rate"]
+        second_wr = choices[1]["win_rate"]
+        lift = round(best_wr - second_wr, 3)
+        if lift < 0.05:
+            continue
+        context_label_ja = {
+            "smash": "スマッシュへの返球",
+            "clear": "クリアへの返球",
+            "drop": "ドロップへの返球",
+            "net_shot": "ネットショットへの返球",
+            "drive": "ドライブへの返球",
+            "defensive": "ディフェンスへの返球",
+            "lob": "ロブへの返球",
+            "push_rush": "プッシュ/ラッシュへの返球",
+        }
+        ctx_label = context_label_ja.get(prev_shot, f"{SHOT_TYPE_JA.get(prev_shot, prev_shot)}への返球")
+        comparisons.append({
+            "context_label": ctx_label,
+            "prev_shot": prev_shot,
+            "choices": choices,
+            "recommended": choices[0]["shot_type"],
+            "lift": lift,
+            "interpretation": f"{ctx_label}では{choices[0]['label']}が{choices[1]['label']}より{round(lift*100)}%高い勝率",
+        })
+
+    comparisons.sort(key=lambda x: -x["lift"])
+    comparisons = comparisons[:5]
+
+    total = sum(v["count"] for v in ctx_stats.values())
+    return {
+        "success": True,
+        "data": {"comparisons": comparisons},
+        "meta": {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Research Roadmap R7: Spatial Density Map (3.6)
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/spatial_density")
+def get_spatial_density(
+    player_id: int,
+    db: Session = Depends(get_db),
+):
+    """コート密度ヒートマップ — ゾーン別ストローク数をガウシアンカーネルで連続化"""
+    import math
+
+    matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
+    if not rallies:
+        empty_grid = [[0.0] * 30 for _ in range(60)]
+        return {
+            "success": True,
+            "data": {"grid": empty_grid, "grid_width": 30, "grid_height": 60, "zone_counts": {}},
+            "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)},
+        }
+
+    rally_ids = [r.id for r in rallies]
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id.in_(rally_ids))
+        .all()
+    )
+
+    # プレイヤーのストロークのみ
+    player_strokes = []
+    rally_set_map = {r.id: r.set_id for r in rallies}
+    for s in strokes:
+        mid = set_to_match.get(rally_set_map.get(s.rally_id, -1), -1)
+        role = role_by_match.get(mid)
+        if role and s.player == role:
+            player_strokes.append(s)
+
+    GRID_W, GRID_H = 30, 60
+    SIGMA = 4.0
+
+    # ゾーン → グリッドセントロイド (col, row) マッピング (30×60グリッド)
+    # コート: 横30, 縦60。近端=下(row高い), 遠端=上(row低い)
+    ZONE_CENTROIDS = {
+        "BL": (5,  10), "BC": (15, 10), "BR": (25, 10),
+        "ML": (5,  30), "MC": (15, 30), "MR": (25, 30),
+        "NL": (5,  50), "NC": (15, 50), "NR": (25, 50),
+    }
+
+    # ゾーンカウント
+    zone_counts: dict[str, int] = defaultdict(int)
+    # グリッド初期化
+    grid = [[0.0] * GRID_W for _ in range(GRID_H)]
+
+    for s in player_strokes:
+        zone = s.hit_zone or s.land_zone
+        if not zone or zone not in ZONE_CENTROIDS:
+            continue
+        zone_counts[zone] += 1
+        cx, cy = ZONE_CENTROIDS[zone]
+        # ガウシアンカーネル展開
+        for row in range(GRID_H):
+            for col in range(GRID_W):
+                dist2 = (col - cx) ** 2 + (row - cy) ** 2
+                grid[row][col] += math.exp(-dist2 / (2 * SIGMA * SIGMA))
+
+    # 0–1正規化
+    max_val = max(max(row) for row in grid) if any(any(row) for row in grid) else 1.0
+    if max_val > 0:
+        grid = [[round(v / max_val, 4) for v in row] for row in grid]
+
+    total = len(player_strokes)
+    return {
+        "success": True,
+        "data": {
+            "grid": grid,
+            "grid_width": GRID_W,
+            "grid_height": GRID_H,
+            "zone_counts": dict(zone_counts),
+        },
+        "meta": {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+    }
