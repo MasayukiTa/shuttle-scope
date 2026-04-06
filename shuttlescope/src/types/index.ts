@@ -81,8 +81,11 @@ export type ZoneOOB =
   | 'OB_RL' | 'OB_RM' | 'OB_RN'   // 右サイドライン外
   | 'OB_FL' | 'OB_FR'              // ネット前（ショートサービスライン内に落下）
 
-/** 落点ゾーン = コート内9マス + コート外11マス */
-export type LandZone = Zone9 | ZoneOOB
+/** ネット接触ゾーン（NL/NC/NR境界線上のネットテープ位置） */
+export type ZoneNet = 'NET_L' | 'NET_C' | 'NET_R'
+
+/** 落点ゾーン = コート内9マス + コート外11マス + ネット接触3マス */
+export type LandZone = Zone9 | ZoneOOB | ZoneNet
 
 export type ShotType =
   | 'short_service' | 'long_service' | 'net_shot' | 'clear'

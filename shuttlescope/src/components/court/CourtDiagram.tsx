@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
-import { Zone9, ZoneOOB, LandZone } from '@/types'
+import { Zone9, ZoneOOB, ZoneNet, LandZone } from '@/types'
 import { seqBlue } from '@/styles/colors'
 
 // SVG仕様: viewBox "0 0 300 400"（縦長）
@@ -35,6 +35,21 @@ interface OOBRect {
   h: number
   label: string
 }
+
+interface NetRect {
+  zone: ZoneNet
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+// ネット接触ゾーン: ネットライン（y=200）上に3分割で配置
+const NET_ZONE_RECTS: NetRect[] = [
+  { zone: 'NET_L', x: 0,   y: 193, w: 100, h: 14 },
+  { zone: 'NET_C', x: 100, y: 193, w: 100, h: 14 },
+  { zone: 'NET_R', x: 200, y: 193, w: 100, h: 14 },
+]
 
 // 相手コート（上半分）のゾーン座標
 const OPPONENT_ZONES: ZoneRect[] = [
@@ -267,6 +282,37 @@ export function CourtDiagram({
     )
   }
 
+  const renderNetZone = (z: NetRect) => {
+    const isSelected = selectedZone === z.zone
+    return (
+      <g key={z.zone}>
+        <rect
+          x={z.x + 1}
+          y={z.y}
+          width={z.w - 2}
+          height={z.h}
+          fill={isSelected ? 'rgba(251,146,60,0.85)' : 'rgba(251,146,60,0.25)'}
+          stroke={isSelected ? '#fb923c' : '#ea580c'}
+          strokeWidth={isSelected ? 2 : 1}
+          className="cursor-pointer"
+          onClick={() => onZoneSelect(z.zone)}
+        />
+        <text
+          x={z.x + z.w / 2}
+          y={z.y + z.h / 2 + 3}
+          textAnchor="middle"
+          fontSize="7"
+          fontWeight="700"
+          fill={isSelected ? '#fff' : '#fdba74'}
+          fontFamily="monospace"
+          pointerEvents="none"
+        >
+          NET
+        </text>
+      </g>
+    )
+  }
+
   // OOB表示時はviewBoxを拡張（上下左右にマージンを追加）
   const oobZones = showOOB ? buildOOBZones(mode) : []
   const vbLeft = showOOB ? -OOB_MARGIN_SIDE : 0
@@ -320,11 +366,15 @@ export function CourtDiagram({
           x1={0} y1={200} x2={SVG_WIDTH} y2={200}
           stroke="#6b7280"
           strokeWidth={3}
+          pointerEvents="none"
         />
-        <text x={SVG_WIDTH / 2} y={197} textAnchor="middle" fontSize="9" fill="#6b7280">ネット</text>
+        <text x={SVG_WIDTH / 2} y={197} textAnchor="middle" fontSize="9" fill="#6b7280" pointerEvents="none">ネット</text>
 
         {/* 自コートゾーン（下半分） */}
         {OWN_ZONES.map((z) => renderZone(z, mode === 'hit'))}
+
+        {/* ネット接触ゾーン — OWN_ZONES の後に描画してクリックイベントが届くようにする */}
+        {showOOB && interactive && NET_ZONE_RECTS.map(renderNetZone)}
 
         {/* コート外枠 */}
         <rect

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { ShotType, StrokeInput, Zone9, LandZone } from '@/types'
+import { ShotType, StrokeInput, Zone9, LandZone, ZoneNet } from '@/types'
 
 export type InputStep =
   | 'idle'        // 待機中（ショットキーでラリー開始）
@@ -201,8 +201,12 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     if (!state.pendingStroke.shot_type) return
 
     const prevStroke = state.currentStrokes[state.currentStrokes.length - 1]
-    const autoHitZone = prevStroke?.land_zone && !String(prevStroke.land_zone).startsWith('OB_')
-      ? (prevStroke.land_zone as Zone9)
+    const NET_ZONES: ZoneNet[] = ['NET_L', 'NET_C', 'NET_R']
+    const prevLandIsValid = prevStroke?.land_zone &&
+      !String(prevStroke.land_zone).startsWith('OB_') &&
+      !(NET_ZONES as string[]).includes(prevStroke.land_zone)
+    const autoHitZone = prevLandIsValid
+      ? (prevStroke!.land_zone as Zone9)
       : state.pendingStroke.hit_zone
 
     const stroke: StrokeInput = {
@@ -221,6 +225,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       state.currentPlayer === 'player_a' ? 'player_b' : 'player_a'
 
     const isOOB = String(zone).startsWith('OB_')
+    const isNet = (NET_ZONES as string[]).includes(zone)
 
     set({
       currentStrokes: [...state.currentStrokes, stroke],
@@ -228,8 +233,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentStrokeNum: state.currentStrokeNum + 1,
       currentPlayer: nextPlayer,
       pendingStroke: emptyPending(),
-      // OOBならそのままrally_end（アウト確定のためラリー継続なし）
-      inputStep: isOOB ? 'rally_end' : 'idle',
+      // OOB/NETならそのままrally_end（ラリー終了確定）
+      inputStep: isOOB || isNet ? 'rally_end' : 'idle',
     })
   },
 

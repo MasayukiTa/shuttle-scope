@@ -141,6 +141,10 @@ export function AnnotatorPage() {
   // K-001: rally_end ステップでの選択中エンドタイプ
   const [pendingEndType, setPendingEndType] = useState<string | null>(null)
 
+  // 一時保存（Auto-save）
+  const autoSaveKey = matchId ? `shuttlescope.autosave.${matchId}` : null
+  const [autoSaveRestored, setAutoSaveRestored] = useState(false)
+
   // K-003: セット間サマリーモーダル
   const [showIntervalSummary, setShowIntervalSummary] = useState(false)
   const [intervalSummarySetId, setIntervalSummarySetId] = useState<number | null>(null)
@@ -315,6 +319,8 @@ export function AnnotatorPage() {
       // UI を即時更新（fire-and-forget）
       s.confirmRally(winner, endType)
       setPendingEndType(null)
+      // 一時保存をクリア
+      if (autoSaveKey) localStorage.removeItem(autoSaveKey)
 
       // 11点インターバル: どちらかが11点に到達したとき（BWFルール）
       const prevMax = Math.max(scoreA, scoreB)
@@ -493,6 +499,54 @@ export function AnnotatorPage() {
   useEffect(() => {
     if (store.inputStep !== 'rally_end') setPendingEndType(null)
   }, [store.inputStep])
+
+  // ─── 一時保存（Auto-save） ───────────────────────────────────────────────────
+  // ストローク確定のたびに localStorage へ書き込み
+  useEffect(() => {
+    if (!autoSaveKey || !store.isRallyActive || store.currentStrokes.length === 0) return
+    const data = {
+      setId: store.currentSetId,
+      rallyNum: store.currentRallyNum,
+      strokes: store.currentStrokes,
+      savedAt: Date.now(),
+    }
+    localStorage.setItem(autoSaveKey, JSON.stringify(data))
+  }, [autoSaveKey, store.currentStrokes, store.isRallyActive, store.currentSetId, store.currentRallyNum])
+
+  // 初期化完了後: 前回の未保存ストロークがあれば復元確認
+  useEffect(() => {
+    if (!initialized || !autoSaveKey || autoSaveRestored) return
+    try {
+      const raw = localStorage.getItem(autoSaveKey)
+      if (!raw) return
+      const saved = JSON.parse(raw) as { setId: number; rallyNum: number; strokes: any[]; savedAt: number }
+      if (
+        saved.strokes.length > 0 &&
+        saved.setId === store.currentSetId &&
+        saved.rallyNum === store.currentRallyNum
+      ) {
+        const age = Math.round((Date.now() - saved.savedAt) / 60000)
+        const ok = window.confirm(
+          `前回の未保存ストロークが見つかりました（${saved.strokes.length}本、約${age}分前）。\n復元しますか？`
+        )
+        if (ok) {
+          // ストアに直接書き込み（store.startRally と同等の準備）
+          store.startRally(store.rallyStartTimestamp ?? 0)
+          for (const stroke of saved.strokes) {
+            useAnnotationStore.setState((s) => ({
+              currentStrokes: [...s.currentStrokes, stroke],
+              currentStrokeNum: s.currentStrokeNum + 1,
+            }))
+          }
+        } else {
+          localStorage.removeItem(autoSaveKey)
+        }
+      }
+    } catch {
+      // parse失敗は無視
+    }
+    setAutoSaveRestored(true)
+  }, [initialized]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const match = matchData?.data
 
@@ -1007,10 +1061,10 @@ export function AnnotatorPage() {
 
       {/* メインレイアウト */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左: 動画エリア (60%) — マッチデーモード時 or none モード時は非表示 */}
+        {/* 左: 動画エリア — マッチデーモード時のみ非表示。動画未設定時もファイルピッカーのために表示を維持 */}
         <div className={clsx(
           'flex flex-col p-3 gap-2 overflow-y-auto',
-          (isMatchDayMode || videoSourceMode === 'none') ? 'hidden' : 'w-[60%]'
+          isMatchDayMode ? 'hidden' : videoSourceMode === 'none' ? 'w-[280px]' : 'w-[60%]'
         )}>
           {(() => {
             // 動画ソース決定（旧形式の Windows パスを normalizeVideoPath で変換）
@@ -1020,8 +1074,9 @@ export function AnnotatorPage() {
 
             if (!videoSrc) {
               return (
-                <div className="flex items-center justify-center bg-gray-800 rounded text-gray-500 text-sm border-2 border-dashed border-gray-700" style={{ aspectRatio: '16/9' }}>
-                  動画が設定されていません
+                <div className="flex items-center justify-center bg-gray-800 rounded text-gray-500 text-sm border-2 border-dashed border-gray-700 py-6 px-4 text-center gap-2 flex-col">
+                  <span>動画が設定されていません</span>
+                  <span className="text-xs text-gray-600">下の「ファイルを開く」またはURLを設定してください</span>
                 </div>
               )
             }

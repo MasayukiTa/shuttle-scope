@@ -308,15 +308,15 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
                   className="flex items-center gap-2 text-xs"
                 >
                   <span className="w-4 text-gray-600 shrink-0">{i + 1}.</span>
-                  <span className="text-gray-300">
+                  <span className="text-gray-300 flex-1 min-w-0 truncate">
                     {fromLabel} → {toLabel}
                   </span>
-                  <span className="ml-auto text-blue-400 shrink-0">
-                    {seq.count}回
-                  </span>
-                  <span className="w-12 text-right text-gray-500 shrink-0">
-                    {(seq.probability * 100).toFixed(1)}%
-                  </span>
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    <span className="text-blue-400">{seq.count}回</span>
+                    <span className="text-gray-500 w-10 text-right">
+                      {(seq.probability * 100).toFixed(1)}%
+                    </span>
+                  </div>
                 </div>
               )
             })}

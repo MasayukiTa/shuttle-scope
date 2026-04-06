@@ -22,6 +22,7 @@ interface GrowthJudgmentResponse {
     judgment_ja: string
     metrics: Record<string, MetricResult>
     match_count: number
+    annotated_match_count?: number
     min_matches_required: number
   }
 }
@@ -85,10 +86,14 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
           </p>
         </div>
         <div className="ml-auto text-right">
-          <p className="text-xs" style={{ color: mutedColor }}>{data.match_count}試合分析</p>
+          <p className="text-xs" style={{ color: mutedColor }}>
+            {data.annotated_match_count ?? data.match_count}試合分析済
+          </p>
           {data.judgment === 'pending' && (
             <p className="text-[10px]" style={{ color: mutedColor }}>
-              {t('analysis.growth.pending_reason', { min: data.min_matches_required })}
+              {(data.annotated_match_count ?? 0) < data.min_matches_required
+                ? `判定に${data.min_matches_required}試合以上のアノテーションが必要`
+                : 'データ蓄積中（傾向算出に時間が必要）'}
             </p>
           )}
         </div>

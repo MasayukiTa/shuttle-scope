@@ -3850,7 +3850,6 @@ def get_growth_judgment(
         }
 
     metrics_result = {}
-    window = max(2, match_count // 3)
 
     for metric in ("win_rate", "serve_win_rate"):
         values = []
@@ -3872,7 +3871,10 @@ def get_growth_judgment(
                 if srv:
                     values.append(sum(1 for r in srv if r.winner == role) / len(srv))
 
-        if len(values) < window * 2:
+        # windowはアノテーション済み試合数ベース（未アノテ含む total match_count では誤判定になる）
+        annotated = len(values)
+        window = max(2, annotated // 3)
+        if annotated < max(window * 2, min_matches):
             metrics_result[metric] = {"trend": "pending", "delta": 0.0}
             continue
 
@@ -3907,6 +3909,15 @@ def get_growth_judgment(
         judgment = "stable"
         judgment_ja = "横ばい"
 
+    # アノテーション済み試合数（ラリーデータが存在する試合）
+    annotated_match_count = sum(
+        1 for m in matches
+        if db.query(GameSet).filter(GameSet.match_id == m.id).first() is not None
+        and db.query(Rally).filter(
+            Rally.set_id.in_([s.id for s in db.query(GameSet).filter(GameSet.match_id == m.id).all()])
+        ).first() is not None
+    )
+
     return {
         "success": True,
         "data": {
@@ -3914,8 +3925,10 @@ def get_growth_judgment(
             "judgment_ja": judgment_ja,
             "metrics": metrics_result,
             "match_count": match_count,
+            "annotated_match_count": annotated_match_count,
             "min_matches_required": min_matches,
         },
+        "meta": {"sample_size": annotated_match_count},
     }
 
 
