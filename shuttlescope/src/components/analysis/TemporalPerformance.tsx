@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -37,7 +38,7 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 }
 
-const PHASE_COLORS = ['#6366f1', '#3b82f6', '#10b981']
+const PHASE_COLORS = ['#f59e0b', '#06b6d4', '#22c55e']
 
 export function TemporalPerformance({ playerId }: TemporalPerformanceProps) {
   const { t } = useTranslation()
@@ -95,10 +96,13 @@ export function TemporalPerformance({ playerId }: TemporalPerformanceProps) {
           <ReferenceLine y={50} stroke="#6b7280" strokeDasharray="4 2" />
           <Bar
             dataKey="win_rate_pct"
-            fill="#3b82f6"
             radius={[3, 3, 0, 0]}
             name={t('analysis.temporal.win_rate')}
-          />
+          >
+            {[0, 1, 2].map((i) => (
+              <Cell key={i} fill={PHASE_COLORS[i]} />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
 

@@ -2,15 +2,24 @@
 from collections import defaultdict
 from typing import Any
 
-# sklearn が利用可能かチェック
-try:
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.preprocessing import OneHotEncoder
-    import numpy as np
-    _SKLEARN_AVAILABLE = True
-except ImportError:
-    _SKLEARN_AVAILABLE = False
-    import numpy as np
+import numpy as np
+
+# sklearn は使用時に遅延ロード（起動時間短縮のため）
+_sklearn_checked = False
+_SKLEARN_AVAILABLE = False
+
+def _ensure_sklearn() -> bool:
+    """sklearn が利用可能かチェックし、初回のみロードする"""
+    global _sklearn_checked, _SKLEARN_AVAILABLE
+    if _sklearn_checked:
+        return _SKLEARN_AVAILABLE
+    _sklearn_checked = True
+    try:
+        import sklearn  # noqa: F401
+        _SKLEARN_AVAILABLE = True
+    except ImportError:
+        _SKLEARN_AVAILABLE = False
+    return _SKLEARN_AVAILABLE
 
 
 SHOT_KEYS = [
@@ -96,9 +105,11 @@ class ShotInfluenceAnalyzer:
         all_rallies: [{strokes: [{shot_type, stroke_num, score_diff}], won: bool}]
         Returns: {shot_type: influence_coefficient}
         """
-        if not _SKLEARN_AVAILABLE:
+        if not _ensure_sklearn():
             # フォールバック: ヒューリスティック平均
             return {st: _SHOT_ATTACK_WEIGHT.get(st, 0.4) for st in SHOT_KEYS}
+
+        from sklearn.linear_model import LogisticRegression  # 遅延インポート
 
         X_rows = []
         y_labels = []
@@ -124,6 +135,7 @@ class ShotInfluenceAnalyzer:
             return {st: _SHOT_ATTACK_WEIGHT.get(st, 0.4) for st in SHOT_KEYS}
 
         try:
+            from sklearn.linear_model import LogisticRegression  # noqa: F811
             X = np.array(X_rows, dtype=float)
             y = np.array(y_labels, dtype=int)
             model = LogisticRegression(max_iter=200, C=1.0)

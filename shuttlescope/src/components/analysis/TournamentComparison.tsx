@@ -43,12 +43,12 @@ const TOOLTIP_STYLE = {
 }
 
 const LEVEL_COLORS: Record<string, string> = {
-  IC: '#3b82f6',
-  IS: '#6366f1',
-  SJL: '#8b5cf6',
+  IC: '#f59e0b',
+  IS: '#3b82f6',
+  SJL: '#06b6d4',
   全日本: '#ec4899',
-  国内: '#10b981',
-  その他: '#6b7280',
+  国内: '#22c55e',
+  その他: '#9ca3af',
 }
 
 export function TournamentComparison({ playerId }: TournamentComparisonProps) {

@@ -11,36 +11,44 @@ from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player
 from backend.utils.confidence import check_confidence
 
-# matplotlib ヒートマップ生成用
-try:
-    import matplotlib
-    matplotlib.use("Agg")  # GUIなし描画
-    import matplotlib.pyplot as plt
-    import matplotlib.font_manager as _fm
-    import numpy as np
+# matplotlib は使用時に遅延ロード（起動時間短縮のため）
+_matplotlib_initialized = False
+_MATPLOTLIB_AVAILABLE: bool | None = None
+_JP_FONT: str | None = None
 
-    # 日本語フォントを設定（Windows: Meiryo / Linux: Noto Sans CJK）
-    _JP_FONT = None
-    for _candidate in ["Meiryo", "MS Gothic", "Noto Sans CJK JP", "IPAGothic"]:
-        try:
-            _fp = _fm.findfont(_fm.FontProperties(family=_candidate), fallback_to_default=False)
-            if _fp and "DejaVu" not in _fp:
-                _JP_FONT = _candidate
-                break
-        except Exception:
-            pass
-    if _JP_FONT is None:
-        # Windowsシステムフォントから直接探す
+
+def _ensure_matplotlib() -> bool:
+    """matplotlib が利用可能かチェックし、初回のみロードする"""
+    global _matplotlib_initialized, _MATPLOTLIB_AVAILABLE, _JP_FONT
+    if _matplotlib_initialized:
+        return bool(_MATPLOTLIB_AVAILABLE)
+    _matplotlib_initialized = True
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.font_manager as _fm
         import os
-        _meiryo = "C:/Windows/Fonts/meiryo.ttc"
-        if os.path.exists(_meiryo):
-            _fm.fontManager.addfont(_meiryo)
-            _JP_FONT = "Meiryo"
 
-    _MATPLOTLIB_AVAILABLE = True
-except ImportError:
-    _MATPLOTLIB_AVAILABLE = False
-    _JP_FONT = None
+        # 日本語フォントを設定（Windows: Meiryo / Linux: Noto Sans CJK）
+        _JP_FONT = None
+        for _candidate in ["Meiryo", "MS Gothic", "Noto Sans CJK JP", "IPAGothic"]:
+            try:
+                _fp = _fm.findfont(_fm.FontProperties(family=_candidate), fallback_to_default=False)
+                if _fp and "DejaVu" not in _fp:
+                    _JP_FONT = _candidate
+                    break
+            except Exception:
+                pass
+        if _JP_FONT is None:
+            _meiryo = "C:/Windows/Fonts/meiryo.ttc"
+            if os.path.exists(_meiryo):
+                _fm.fontManager.addfont(_meiryo)
+                _JP_FONT = "Meiryo"
+
+        _MATPLOTLIB_AVAILABLE = True
+    except ImportError:
+        _MATPLOTLIB_AVAILABLE = False
+    return bool(_MATPLOTLIB_AVAILABLE)
 
 router = APIRouter()
 
@@ -58,8 +66,11 @@ DISCLAIMER_JA = "このデータは相関を示すものであり、因果関係
 
 def _build_court_heatmap_png(zone_counts: dict[str, int]) -> bytes | None:
     """コートゾーン別ヒートマップをmatplotlibでPNG生成する"""
-    if not _MATPLOTLIB_AVAILABLE:
+    if not _ensure_matplotlib():
         return None
+
+    import matplotlib.pyplot as plt
+    import numpy as np
 
     # 9ゾーンのグリッド配置（行=奥→手前, 列=左→右）
     ZONES = [
@@ -81,7 +92,7 @@ def _build_court_heatmap_png(zone_counts: dict[str, int]) -> bytes | None:
     fig, ax = plt.subplots(figsize=(4, 3), facecolor="#1f2937")
     ax.set_facecolor("#1f2937")
 
-    im = ax.imshow(data, cmap="Blues", vmin=0, vmax=max(data.max(), 1))
+    ax.imshow(data, cmap="coolwarm", vmin=0, vmax=max(data.max(), 1))
 
     font_kwargs = {"fontfamily": _JP_FONT} if _JP_FONT else {}
     for r in range(3):

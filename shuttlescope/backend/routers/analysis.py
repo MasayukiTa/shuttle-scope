@@ -741,9 +741,21 @@ def get_set_comparison(player_id: int, db: Session = Depends(get_db)):
 
     confidence = check_confidence("descriptive_basic", total_all)
 
+    # set_num → set_number + label に変換してフロントエンドの型に合わせる
+    by_set_formatted = [
+        {
+            "set_number": item["set_num"],
+            "label": f"第{item['set_num']}セット",
+            "total_rallies": item["total_rallies"],
+            "win_rate": item["win_rate"],
+            "avg_rally_length": item["avg_rally_length"],
+        }
+        for item in by_set
+    ]
+
     return {
         "success": True,
-        "data": {"by_set": by_set},
+        "data": by_set_formatted,
         "meta": {
             "sample_size": total_all,
             "confidence": confidence,

@@ -52,14 +52,29 @@ interface CourtDiagramProps {
   label?: string                               // コート上部のラベル
 }
 
+// matplotlib coolwarm の5制御点（RGB 0-255）
+const COOLWARM_STOPS = [
+  [59,  76,  192],  // t=0.00  deep blue
+  [141, 176, 254],  // t=0.25  light blue
+  [221, 221, 221],  // t=0.50  near white
+  [243, 138, 100],  // t=0.75  salmon
+  [180,   4,  38],  // t=1.00  deep red
+]
+
 function getHeatmapColor(value: number, max: number): string {
-  if (max === 0) return 'rgba(255,255,255,0.05)'
-  const ratio = value / max
-  // 白→薄青→青→濃青のグラデーション
-  const r = Math.round(255 * (1 - ratio))
-  const g = Math.round(255 * (1 - ratio))
-  const b = 255
-  return `rgba(${r},${g},${b},${0.1 + ratio * 0.7})`
+  if (max === 0 || value < 0) return 'rgba(59,76,192,0.80)'
+  // sqrt正規化: 分布の偏りを緩和して中間色（白/サーモン）が適切に出るようにする
+  const ratio = Math.sqrt(Math.min(value / max, 1))
+
+  // 4区間から該当区間を選んで線形補間
+  const seg = Math.min(Math.floor(ratio * 4), 3)
+  const t = ratio * 4 - seg  // 区間内の位置 0→1
+  const [r1, g1, b1] = COOLWARM_STOPS[seg]
+  const [r2, g2, b2] = COOLWARM_STOPS[seg + 1]
+  const r = Math.round(r1 + (r2 - r1) * t)
+  const g = Math.round(g1 + (g2 - g1) * t)
+  const b = Math.round(b1 + (b2 - b1) * t)
+  return `rgba(${r},${g},${b},0.85)`
 }
 
 export function CourtDiagram({

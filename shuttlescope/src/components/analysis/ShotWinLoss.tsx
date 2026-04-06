@@ -127,16 +127,16 @@ export function ShotWinLoss({ playerId }: ShotWinLossProps) {
             tick={{ fill: '#d1d5db', fontSize: 11 }}
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-          {/* 得点 (青) */}
-          <Bar dataKey="win_count" stackId="wl" fill="#3b82f6" name="得点" radius={[0, 0, 0, 0]}>
+          {/* 得点 (緑) */}
+          <Bar dataKey="win_count" stackId="wl" fill="#22c55e" name="得点" radius={[0, 0, 0, 0]}>
             {chartData.map((_, i) => (
-              <Cell key={i} fill="#3b82f6" />
+              <Cell key={i} fill="#22c55e" />
             ))}
           </Bar>
-          {/* 失点 (赤) */}
-          <Bar dataKey="lose_count" stackId="wl" fill="#ef4444" name="失点" radius={[0, 3, 3, 0]}>
+          {/* 失点 (オレンジ) */}
+          <Bar dataKey="lose_count" stackId="wl" fill="#f97316" name="失点" radius={[0, 3, 3, 0]}>
             {chartData.map((_, i) => (
-              <Cell key={i} fill="#ef4444" />
+              <Cell key={i} fill="#f97316" />
             ))}
           </Bar>
         </BarChart>

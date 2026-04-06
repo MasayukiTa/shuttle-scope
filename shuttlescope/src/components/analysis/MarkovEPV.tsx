@@ -28,23 +28,36 @@ interface EPVResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-function EPVCard({ pattern, isPositive }: { pattern: EPVPattern; isPositive: boolean }) {
-  const bgColor = isPositive ? 'bg-blue-900/30 border-blue-700' : 'bg-amber-900/30 border-amber-700'
-  const epvColor = isPositive ? 'text-blue-300' : 'text-amber-300'
+function EPVCard({ pattern, isPositive, rank }: { pattern: EPVPattern; isPositive: boolean; rank: number }) {
+  const borderColor = isPositive ? 'border-l-blue-500' : 'border-l-orange-500'
+  const epvColor = isPositive ? 'text-blue-300' : 'text-orange-300'
   const epvSign = pattern.epv >= 0 ? '+' : ''
+  const barWidth = Math.min(Math.abs(pattern.epv) * 400, 100)
 
   return (
-    <div className={`rounded-lg p-3 border ${bgColor}`}>
-      <div className="flex items-start justify-between gap-2">
+    <div className={`rounded-lg p-3 bg-gray-750 border border-gray-700 border-l-4 ${borderColor}`}>
+      <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-white font-medium truncate">{pattern.pattern}</p>
-          <p className="text-xs text-gray-400 mt-0.5">出現数: {pattern.count}</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] text-gray-600 font-mono w-4 shrink-0">#{rank}</span>
+            <p className="text-sm text-gray-100 font-medium leading-tight">{pattern.pattern}</p>
+          </div>
+          {/* EPVバー */}
+          <div className="flex items-center gap-2 mt-1.5">
+            <div className="flex-1 bg-gray-700 rounded-full h-1.5">
+              <div
+                className={`h-1.5 rounded-full ${isPositive ? 'bg-blue-500' : 'bg-orange-500'}`}
+                style={{ width: `${barWidth}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-gray-500 shrink-0">{pattern.count}回</span>
+          </div>
         </div>
         <div className="text-right shrink-0">
-          <p className={`text-lg font-bold ${epvColor}`}>
+          <p className={`text-xl font-bold tabular-nums ${epvColor}`}>
             {epvSign}{(pattern.epv * 100).toFixed(1)}
           </p>
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] text-gray-600 tabular-nums">
             [{(pattern.ci_low * 100).toFixed(1)}, {(pattern.ci_high * 100).toFixed(1)}]
           </p>
         </div>
@@ -76,45 +89,51 @@ export function MarkovEPV({ playerId }: MarkovEPVProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <ConfidenceBadge sampleSize={sampleSize} />
-
-      {/* 上位パターン（全ロール） */}
-      <div>
-        <h3 className="text-sm font-semibold text-blue-400 mb-2">{t('analysis.epv.top_patterns')}</h3>
-        {topPatterns.length === 0 ? (
-          <p className="text-gray-500 text-xs">{t('analysis.no_data')}</p>
-        ) : (
-          <div className="space-y-2">
-            {topPatterns.slice(0, 5).map((p, i) => (
-              <EPVCard key={i} pattern={p} isPositive={true} />
-            ))}
-          </div>
-        )}
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <ConfidenceBadge sampleSize={sampleSize} />
+        <span className="text-[11px] text-gray-500">
+          EPV = ベースライン勝率との差分（±100基準）
+        </span>
       </div>
 
-      {/* 下位パターン（アナリスト・コーチのみ） */}
-      <RoleGuard
-        allowedRoles={['analyst', 'coach']}
-        fallback={null}
-      >
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        {/* 上位パターン（全ロール） */}
         <div>
-          <h3 className="text-sm font-semibold text-amber-400 mb-2">{t('analysis.epv.bottom_patterns')}</h3>
-          {bottomPatterns.length === 0 ? (
+          <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+            {t('analysis.epv.top_patterns')}（有効パターン）
+          </h3>
+          {topPatterns.length === 0 ? (
             <p className="text-gray-500 text-xs">{t('analysis.no_data')}</p>
           ) : (
             <div className="space-y-2">
-              {bottomPatterns.slice(0, 5).map((p, i) => (
-                <EPVCard key={i} pattern={p} isPositive={false} />
+              {topPatterns.slice(0, 5).map((p, i) => (
+                <EPVCard key={i} pattern={p} isPositive={true} rank={i + 1} />
               ))}
             </div>
           )}
         </div>
-      </RoleGuard>
 
-      <p className="text-[10px] text-gray-600">
-        EPV値: ベースライン勝率からの差分（正 = プラス効果）
-      </p>
+        {/* 下位パターン（アナリスト・コーチのみ） */}
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={null}>
+          <div>
+            <h3 className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
+              {t('analysis.epv.bottom_patterns')}（要改善パターン）
+            </h3>
+            {bottomPatterns.length === 0 ? (
+              <p className="text-gray-500 text-xs">{t('analysis.no_data')}</p>
+            ) : (
+              <div className="space-y-2">
+                {bottomPatterns.slice(0, 5).map((p, i) => (
+                  <EPVCard key={i} pattern={p} isPositive={false} rank={i + 1} />
+                ))}
+              </div>
+            )}
+          </div>
+        </RoleGuard>
+      </div>
     </div>
   )
 }

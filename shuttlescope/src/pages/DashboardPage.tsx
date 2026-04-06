@@ -31,6 +31,7 @@ import { PostLongRallyStats } from '@/components/analysis/PostLongRallyStats'
 import { OpponentStats } from '@/components/analysis/OpponentStats'
 import { MarkovEPV } from '@/components/analysis/MarkovEPV'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
+import { DoublesAnalysis } from '@/components/analysis/DoublesAnalysis'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -511,7 +512,7 @@ export function DashboardPage() {
                             labelStyle={{ color: '#f9fafb' }}
                             cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                           />
-                          <Bar dataKey="count" fill="#3b82f6" radius={[0, 3, 3, 0]} name="件数" />
+                          <Bar dataKey="count" fill="#f59e0b" radius={[0, 3, 3, 0]} name="件数" />
                         </BarChart>
                       </ResponsiveContainer>
                     )}
@@ -551,7 +552,7 @@ export function DashboardPage() {
                             labelStyle={{ color: '#f9fafb' }}
                             cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                           />
-                          <Bar dataKey="count" fill="#10b981" radius={[0, 3, 3, 0]} name="件数" />
+                          <Bar dataKey="count" fill="#06b6d4" radius={[0, 3, 3, 0]} name="件数" />
                         </BarChart>
                       </ResponsiveContainer>
                     )}
@@ -595,7 +596,7 @@ export function DashboardPage() {
                             labelStyle={{ color: '#f9fafb' }}
                             cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                           />
-                          <Bar dataKey="count" fill="#3b82f6" radius={[3, 3, 0, 0]} name="件数" />
+                          <Bar dataKey="count" fill="#8b5cf6" radius={[3, 3, 0, 0]} name="件数" />
                         </BarChart>
                       </ResponsiveContainer>
                     )}
@@ -867,19 +868,31 @@ export function DashboardPage() {
             <ErrorBoundary>
               <div className="space-y-5">
                 {/* スコア推移 */}
-                {selectedMatchId ? (
-                  <div className="bg-gray-800 rounded-lg p-4">
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
                     <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
+                    {/* 試合セレクター */}
+                    <select
+                      className="text-xs bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-1 max-w-[220px]"
+                      value={selectedMatchId ?? ''}
+                      onChange={(e) => setSelectedMatchId(e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">-- 試合を選択 --</option>
+                      {matches.map((m) => (
+                        <option key={m.match_id} value={m.match_id}>
+                          {m.date} vs {m.opponent} ({m.result === 'win' ? '○' : '●'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedMatchId ? (
                     <ScoreProgression matchId={selectedMatchId} />
-                  </div>
-                ) : (
-                  <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
+                  ) : (
                     <p className="text-gray-500 text-sm text-center py-4">
-                      概要タブの試合一覧から試合を選択してください
+                      試合を選択するとスコア推移が表示されます
                     </p>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                   {/* 勝ち/課題のある試合比較 */}
@@ -952,10 +965,10 @@ export function DashboardPage() {
           {/* ── ダブルスタブ (F-001〜F-004) ── */}
           {activeTab === 'f_doubles' && (
             <ErrorBoundary>
-              <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
-                ダブルス分析は対象選手のダブルス試合データが必要です。
-                試合一覧から該当試合を確認してください。
-              </div>
+              <DoublesAnalysis
+                playerId={selectedPlayerId!}
+                doubleMatchId={selectedMatchId}
+              />
             </ErrorBoundary>
           )}
 

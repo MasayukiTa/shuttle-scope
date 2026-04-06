@@ -38,13 +38,17 @@ interface TransitionMatrixResponse {
 // D3 描画ロジック
 // ──────────────────────────────────────────────────────────────────────────────
 
-const SVG_WIDTH = 680
-const SVG_HEIGHT = 680
 const CELL = 32          // セルサイズ
 const MARGIN_LEFT = 100  // Y軸ラベル用
-const MARGIN_TOP = 100   // X軸ラベル用（上部）
+const MARGIN_TOP = 20    // 上余白（タイトルなし）
 const MARGIN_RIGHT = 20
-const MARGIN_BOTTOM = 20
+const MARGIN_BOTTOM = 110 // X軸ラベル（下部、回転あり）
+
+function calcSvgSize(n: number) {
+  const w = MARGIN_LEFT + n * CELL + MARGIN_RIGHT
+  const h = MARGIN_TOP + n * CELL + MARGIN_BOTTOM
+  return { w, h }
+}
 
 function drawMatrix(
   svgEl: SVGSVGElement,
@@ -52,21 +56,42 @@ function drawMatrix(
 ) {
   const { matrix, shot_labels, raw_counts } = matrixData
   const n = shot_labels.length
+  const { w, h } = calcSvgSize(n)
 
   // SVG クリア
   d3.select(svgEl).selectAll('*').remove()
 
   const svg = d3.select(svgEl)
-    .attr('width', SVG_WIDTH)
-    .attr('height', SVG_HEIGHT)
+    .attr('width', w)
+    .attr('height', h)
 
   const g = svg.append('g')
     .attr('transform', `translate(${MARGIN_LEFT},${MARGIN_TOP})`)
 
-  // カラースケール（0=白, 高=濃青）
+  // カラースケール: 低頻度=cool(青), 高頻度=warm(赤) — matplotlib coolwarm相当
   const maxVal = d3.max(matrix.flat()) ?? 1
-  const colorScale = d3.scaleSequential(d3.interpolateBlues)
-    .domain([0, maxVal > 0 ? maxVal : 1])
+  const colorScale = d3.scaleSequential(d3.interpolateCool)
+    .domain([maxVal > 0 ? maxVal : 1, 0])  // 反転: 低=青
+
+  // coolwarm: 低=青(#3b4cc0)→白→高=赤(#b40426)
+  function coolwarmColor(prob: number, max: number): string {
+    if (max === 0) return '#1f2937'
+    const t = prob / max  // 0(低)→1(高)
+    // 制御点: 0=#3b4cc0, 0.5=#dddddd, 1=#b40426
+    let r: number, g: number, b: number
+    if (t < 0.5) {
+      const u = t * 2
+      r = Math.round(59 + (221 - 59) * u)
+      g = Math.round(76 + (221 - 76) * u)
+      b = Math.round(192 + (221 - 192) * u)
+    } else {
+      const u = (t - 0.5) * 2
+      r = Math.round(221 + (180 - 221) * u)
+      g = Math.round(221 + (4 - 221) * u)
+      b = Math.round(221 + (38 - 221) * u)
+    }
+    return `rgb(${r},${g},${b})`
+  }
 
   // ツールチップ（HTMLのdivを使用）
   const tooltip = d3.select('body')
@@ -98,7 +123,7 @@ function drawMatrix(
         .attr('width', CELL - 1)
         .attr('height', CELL - 1)
         .attr('rx', 2)
-        .attr('fill', isDiag ? '#374151' : colorScale(prob))
+        .attr('fill', isDiag ? '#374151' : coolwarmColor(prob, maxVal))
         .attr('stroke', 'none')
         .style('cursor', isDiag ? 'default' : 'pointer')
         .on('mouseover', function (event) {
@@ -124,14 +149,15 @@ function drawMatrix(
     })
   })
 
-  // ── X 軸ラベル（上部） ──
+  // ── X 軸ラベル（下部） ──
+  const xLabelY = n * CELL + 8
   shot_labels.forEach((label, ci) => {
     g.append('text')
       .attr('x', ci * CELL + CELL / 2)
-      .attr('y', -6)
-      .attr('text-anchor', 'end')
+      .attr('y', xLabelY)
+      .attr('text-anchor', 'start')
       .attr('dominant-baseline', 'middle')
-      .attr('transform', `rotate(-60, ${ci * CELL + CELL / 2}, -6)`)
+      .attr('transform', `rotate(45, ${ci * CELL + CELL / 2}, ${xLabelY})`)
       .attr('fill', '#9ca3af')
       .attr('font-size', 10)
       .text(truncate(label, 6))
@@ -149,17 +175,15 @@ function drawMatrix(
       .text(truncate(label, 7))
   })
 
-  // ── 軸タイトル ──
-  // X 軸（上）: 「次のショット →」
+  // ── 軸タイトル（X軸: 下, Y軸: 左） ──
   svg.append('text')
     .attr('x', MARGIN_LEFT + (n * CELL) / 2)
-    .attr('y', 14)
+    .attr('y', MARGIN_TOP + n * CELL + MARGIN_BOTTOM - 10)
     .attr('text-anchor', 'middle')
     .attr('fill', '#6b7280')
     .attr('font-size', 11)
     .text('次のショット →')
 
-  // Y 軸（左）: 「← 現在のショット」
   svg.append('text')
     .attr('transform', `rotate(-90)`)
     .attr('x', -(MARGIN_TOP + (n * CELL) / 2))
@@ -238,14 +262,14 @@ export function TransitionMatrix({ playerId }: TransitionMatrixProps) {
         <svg ref={svgRef} style={{ display: 'block' }} />
       </div>
 
-      {/* 凡例: 薄→濃 */}
+      {/* 凡例: coolwarm（低=青, 高=赤） */}
       <div className="flex items-center gap-2 text-xs text-gray-400">
         <span>低頻度</span>
         <div
           className="h-3 w-32 rounded"
           style={{
             background:
-              'linear-gradient(to right, #f0f9ff, #0ea5e9, #1e3a5f)',
+              'linear-gradient(to right, #3b4cc0, #dddddd, #b40426)',
           }}
         />
         <span>高頻度</span>
