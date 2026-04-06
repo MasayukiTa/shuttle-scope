@@ -258,3 +258,70 @@ export interface DownloadProgress {
   filepath?: string
   error?: string
 }
+
+// ─── R-001/R-002: 共有セッション ────────────────────────────────────────────
+
+export interface SharedSession {
+  id: number
+  match_id: number
+  session_code: string
+  created_by_role: string
+  is_active: boolean
+  created_at: string
+  ws_connected: number
+  coach_urls: string[]
+  ws_url_template: string
+}
+
+// ─── S-003: コメント ──────────────────────────────────────────────────────────
+
+export interface Comment {
+  id: number
+  match_id: number
+  set_id?: number
+  rally_id?: number
+  stroke_id?: number
+  session_id?: number
+  author_role: string
+  text: string
+  is_flagged: boolean
+  created_at: string
+}
+
+// ─── U-001: イベントブックマーク ─────────────────────────────────────────────
+
+export type BookmarkType = 'manual' | 'coach_request' | 'auto_stat' | 'clip_request'
+
+export interface EventBookmark {
+  id: number
+  match_id: number
+  rally_id?: number
+  stroke_id?: number
+  bookmark_type: BookmarkType
+  video_timestamp_sec?: number
+  note?: string
+  is_reviewed: boolean
+  created_at: string
+}
+
+// ─── Q-002/Q-008: ネットワーク診断 ──────────────────────────────────────────
+
+export interface NetworkDiagnostics {
+  environment: 'open' | 'corporate_proxy' | 'vpn' | 'filtered' | 'captive_portal' | 'unknown'
+  capabilities: {
+    tcp_443: { ok: boolean; error?: string }
+    tcp_80: { ok: boolean; error?: string }
+    localhost_bridge: { ok: boolean; error?: string }
+    proxy_detected: boolean
+    proxy_env_vars: Record<string, string>
+  }
+  lan: {
+    lan_ips: string[]
+    lan_mode_enabled: boolean
+    api_port: number
+    accessible: boolean
+  }
+  platform: { os: string; version: string; hostname: string }
+  transport_ladder: string[]
+  probe_duration_ms: number
+}

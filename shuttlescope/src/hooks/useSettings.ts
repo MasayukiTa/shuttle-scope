@@ -9,7 +9,7 @@ import type { VideoSourceMode } from '@/types'
 
 export interface AppSettings {
   tracknet_enabled: boolean
-  tracknet_backend: 'openvino' | 'onnx_cpu'
+  tracknet_backend: 'auto' | 'tensorflow_cpu' | 'openvino' | 'onnx_cpu'
   tracknet_mode: 'batch' | 'assist'
   tracknet_max_cpu_pct: number
   video_source_mode: VideoSourceMode
@@ -17,7 +17,7 @@ export interface AppSettings {
 
 const DEFAULTS: AppSettings = {
   tracknet_enabled: false,
-  tracknet_backend: 'openvino',
+  tracknet_backend: 'auto',
   tracknet_mode: 'batch',
   tracknet_max_cpu_pct: 50,
   video_source_mode: 'local',

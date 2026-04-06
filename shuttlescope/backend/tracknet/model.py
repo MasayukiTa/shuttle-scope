@@ -1,80 +1,218 @@
-"""TrackNet V2 アーキテクチャ定義
-出典: Chang-Chia-Chi/TrackNet (MIT License)
-https://github.com/Chang-Chia-Chi/TrackNet
+"""TrackNet TensorFlow model wrapper.
 
-入力 : (N, 9, H, W) — 3フレーム × RGB 3ch をチャネル方向に結合
-出力 : (N, 1, H, W) — シャトル位置のヒートマップ（0~1）
-標準解像度: 512 × 288
+This vendors the architecture used by
+Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2
+(repository README states it is not the official implementation, but it is the
+public badminton-specific implementation with downloadable pretrained weights).
 
-ONNX変換コマンド（要PyTorch）:
-  python -m backend.tracknet.setup export
+The original project is MIT licensed:
+https://github.com/Chang-Chia-Chi/TrackNet-Badminton-Tracking-tensorflow2
 """
+
+from __future__ import annotations
+
 try:
-    import torch
-    import torch.nn as nn
-    _TORCH_AVAILABLE = True
-except ImportError:
-    _TORCH_AVAILABLE = False
+    import tensorflow as tf
+    from tensorflow import keras
+
+    _TF_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional runtime dependency
+    _TF_AVAILABLE = False
 
 
-if _TORCH_AVAILABLE:
-    def _vgg_block(in_ch: int, out_ch: int, n_conv: int) -> "nn.Sequential":
-        layers = []
-        for i in range(n_conv):
-            layers += [
-                nn.Conv2d(in_ch if i == 0 else out_ch, out_ch, 3, padding=1),
-                nn.BatchNorm2d(out_ch),
-                nn.ReLU(inplace=True),
-            ]
-        layers.append(nn.MaxPool2d(2, 2))
-        return nn.Sequential(*layers)
-
-    def _up_block(in_ch: int, out_ch: int, n_conv: int) -> "nn.Sequential":
-        layers = [nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)]
-        for i in range(n_conv):
-            layers += [
-                nn.Conv2d(in_ch if i == 0 else out_ch, out_ch, 3, padding=1),
-                nn.BatchNorm2d(out_ch),
-                nn.ReLU(inplace=True),
-            ]
-        return nn.Sequential(*layers)
-
-    class TrackNetV2(nn.Module):
-        """TrackNet V2: VGGベースのエンコーダ・デコーダ。
-        Chang-Chia-Chi/TrackNet (MIT) の実装に基づく。"""
-
-        def __init__(self):
+if _TF_AVAILABLE:
+    class ResNetBottleNeck(keras.layers.Layer):
+        def __init__(self, filters: int, strides: int, decoder: bool = False, **conv_kwargs):
             super().__init__()
-            # Encoder（VGG-like）
-            self.enc1 = _vgg_block(9,   64,  2)   # /2  → 256×144
-            self.enc2 = _vgg_block(64,  128, 2)   # /4  → 128×72
-            self.enc3 = _vgg_block(128, 256, 3)   # /8  →  64×36
-            self.enc4 = _vgg_block(256, 512, 3)   # /16 →  32×18
-            self.enc5 = _vgg_block(512, 512, 3)   # /32 →  16×9
-
-            # Decoder（bilinear upsample + conv）
-            self.dec4 = _up_block(512, 256, 2)    # /16
-            self.dec3 = _up_block(256, 128, 2)    # /8
-            self.dec2 = _up_block(128, 64,  2)    # /4
-            self.dec1 = _up_block(64,  32,  2)    # /2
-            self.dec0 = _up_block(32,  16,  2)    # /1
-
-            # 出力ヘッド
-            self.head = nn.Sequential(
-                nn.Conv2d(16, 1, 1),
-                nn.Sigmoid(),
+            self.bn_1 = keras.layers.BatchNormalization()
+            self.act_1 = keras.layers.Activation("relu")
+            self.conv_1 = keras.layers.Conv2D(
+                filters, kernel_size=(1, 1), strides=1, padding="same", data_format="channels_first", **conv_kwargs
             )
 
-        def forward(self, x):
-            e1 = self.enc1(x)
-            e2 = self.enc2(e1)
-            e3 = self.enc3(e2)
-            e4 = self.enc4(e3)
-            e5 = self.enc5(e4)
+            self.bn_2 = keras.layers.BatchNormalization()
+            self.act_2 = keras.layers.Activation("relu")
+            self.conv_2 = keras.layers.Conv2D(
+                filters, kernel_size=(3, 3), strides=strides, padding="same", data_format="channels_first", **conv_kwargs
+            )
 
-            d = self.dec4(e5)
-            d = self.dec3(d)
-            d = self.dec2(d)
-            d = self.dec1(d)
-            d = self.dec0(d)
-            return self.head(d)
+            self.bn_3 = keras.layers.BatchNormalization()
+            self.act_3 = keras.layers.Activation("relu")
+            self.conv_3 = keras.layers.Conv2D(
+                filters if decoder else 2 * filters,
+                (1, 1),
+                strides=1,
+                padding="same",
+                data_format="channels_first",
+                **conv_kwargs,
+            )
+
+            if strides == 2:
+                self.short_cut = keras.Sequential(
+                    [
+                        keras.layers.AveragePooling2D((2, 2), strides=strides, padding="same", data_format="channels_first"),
+                        keras.layers.Conv2D(2 * filters, (1, 1), strides=1, padding="same", data_format="channels_first"),
+                        keras.layers.BatchNormalization(),
+                    ]
+                )
+            elif decoder:
+                self.short_cut = keras.layers.Conv2D(filters, (1, 1), strides=1, padding="same", data_format="channels_first")
+            else:
+                self.short_cut = lambda x: x
+
+        def call(self, inputs):
+            x = self.bn_1(inputs)
+            x = self.act_1(x)
+            x = self.conv_1(x)
+
+            x = self.bn_2(x)
+            x = self.act_2(x)
+            x = self.conv_2(x)
+
+            x = self.bn_3(x)
+            x = self.act_3(x)
+            x = self.conv_3(x)
+
+            return keras.layers.add([x, self.short_cut(inputs)])
+
+
+    class ResNetTranspose(keras.layers.Layer):
+        def __init__(self, filters: int, strides: int, **conv_kwargs):
+            super().__init__()
+            self.bn_1 = keras.layers.BatchNormalization()
+            self.act_1 = keras.layers.Activation("relu")
+            self.conv_1 = keras.layers.Conv2D(
+                filters, kernel_size=(1, 1), strides=1, padding="same", data_format="channels_first", **conv_kwargs
+            )
+
+            self.bn_2 = keras.layers.BatchNormalization()
+            self.act_2 = keras.layers.Activation("relu")
+            self.conv_t = keras.layers.Conv2DTranspose(
+                filters,
+                kernel_size=(3, 3),
+                strides=strides,
+                padding="same",
+                data_format="channels_first",
+                output_padding=1,
+                **conv_kwargs,
+            )
+
+            self.bn_3 = keras.layers.BatchNormalization()
+            self.act_3 = keras.layers.Activation("relu")
+            self.conv_3 = keras.layers.Conv2D(filters, (1, 1), strides=1, padding="same", data_format="channels_first", **conv_kwargs)
+
+            self.short_cut = keras.Sequential(
+                [
+                    keras.layers.UpSampling2D((2, 2), interpolation="bilinear", data_format="channels_first"),
+                    keras.layers.Conv2D(filters, (1, 1), strides=1, padding="same", data_format="channels_first"),
+                    keras.layers.BatchNormalization(),
+                ]
+            )
+
+        def call(self, inputs):
+            x = self.bn_1(inputs)
+            x = self.act_1(x)
+            x = self.conv_1(x)
+
+            x = self.bn_2(x)
+            x = self.act_2(x)
+            x = self.conv_t(x)
+
+            x = self.bn_3(x)
+            x = self.act_3(x)
+            x = self.conv_3(x)
+
+            return keras.layers.add([x, self.short_cut(inputs)])
+
+
+    class TrackNetTF2(keras.models.Model):
+        """Badminton-focused TrackNet model with 3 stacked grayscale frames."""
+
+        def __init__(self, input_shape=(3, 288, 512), structure=(3, 3, 4, 3), num_filters=(16, 32, 64, 128)):
+            super().__init__()
+            self.initial = keras.Sequential(
+                [
+                    keras.layers.Conv2D(64, (3, 3), padding="same", data_format="channels_first", input_shape=input_shape),
+                    keras.layers.BatchNormalization(),
+                    keras.layers.Activation("relu"),
+                    keras.layers.Conv2D(64, (3, 3), padding="same", data_format="channels_first"),
+                    keras.layers.BatchNormalization(),
+                    keras.layers.Activation("relu"),
+                ]
+            )
+
+            self.block_1 = self._build_block(structure[0], num_filters[0], strides=2)
+            self.block_2 = self._build_block(structure[1], num_filters[1], strides=2)
+            self.block_3 = self._build_block(structure[2], num_filters[2], strides=2)
+            self.block_4 = self._build_block(structure[3], num_filters[3], strides=2)
+
+            self.conv_t1 = ResNetTranspose(num_filters[3], strides=2)
+            self.conv_d1 = self._build_block(structure[2] - 1, num_filters[3], strides=1, decoder=True)
+
+            self.conv_t2 = ResNetTranspose(num_filters[2], strides=2)
+            self.conv_d2 = self._build_block(structure[1] - 1, num_filters[2], strides=1, decoder=True)
+
+            self.conv_t3 = ResNetTranspose(num_filters[1], strides=2)
+            self.conv_d3 = self._build_block(structure[0] - 1, num_filters[1], strides=1, decoder=True)
+
+            self.conv_t4 = ResNetTranspose(num_filters[0], strides=2)
+
+            self.last = keras.Sequential(
+                [
+                    keras.layers.Conv2D(64, (3, 3), padding="same", data_format="channels_first"),
+                    keras.layers.BatchNormalization(),
+                    keras.layers.Activation("relu"),
+                    keras.layers.Conv2D(64, (3, 3), padding="same", data_format="channels_first"),
+                    keras.layers.BatchNormalization(),
+                    keras.layers.Activation("relu"),
+                    keras.layers.Conv2D(
+                        256,
+                        (3, 3),
+                        padding="same",
+                        data_format="channels_first",
+                        bias_initializer=keras.initializers.constant(-3.2),
+                    ),
+                    keras.layers.BatchNormalization(),
+                    keras.layers.Activation("relu"),
+                    keras.layers.Activation("softmax"),
+                ]
+            )
+
+        def _build_block(self, num_blocks: int, filters: int, strides: int, **conv_kwargs):
+            block = keras.Sequential()
+            block.add(ResNetBottleNeck(filters, strides=strides, **conv_kwargs))
+            for _ in range(num_blocks - 1):
+                block.add(ResNetBottleNeck(filters, strides=1, **conv_kwargs))
+            return block
+
+        def call(self, inputs):
+            x = self.initial(inputs)
+
+            e1 = self.block_1(x)
+            e2 = self.block_2(e1)
+            e3 = self.block_3(e2)
+            e4 = self.block_4(e3)
+
+            d_u3 = self.conv_t1(e4)
+            d_u3 = tf.concat([d_u3, e3], axis=1)
+            d_c3 = self.conv_d1(d_u3)
+
+            d_u2 = self.conv_t2(d_c3)
+            d_u2 = tf.concat([d_u2, e2], axis=1)
+            d_c2 = self.conv_d2(d_u2)
+
+            d_u1 = self.conv_t3(d_c2)
+            d_u1 = tf.concat([d_u1, e1], axis=1)
+            d_c1 = self.conv_d3(d_u1)
+
+            outputs = self.conv_t4(d_c1)
+            outputs = self.last(outputs)
+            outputs = tf.reduce_max(outputs, axis=1)
+            outputs = tf.expand_dims(outputs, axis=1)
+            return outputs
+
+
+    def build_tracknet_model() -> "TrackNetTF2":
+        model = TrackNetTF2(input_shape=(3, 288, 512))
+        model.build((None, 3, 288, 512))
+        return model

@@ -4,11 +4,13 @@ from typing import Any
 
 import numpy as np
 
-# scipy が利用可能な場合は統計的なCI計算に使用
+# scipy が利用可能かつ numpy バイナリ互換性がある場合のみ統計CI計算に使用
+# numpy 2.x + 古い scipy ビルドの組み合わせで ValueError が発生するケースを考慮
 try:
     from scipy import stats as _scipy_stats
     _SCIPY_AVAILABLE = True
-except ImportError:
+except (ImportError, ValueError, Exception):
+    _scipy_stats = None  # type: ignore[assignment]
     _SCIPY_AVAILABLE = False
 
 SHOT_KEYS = [

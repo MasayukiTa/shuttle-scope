@@ -1,87 +1,120 @@
-"""TrackNet V2 推論ラッパー
-OpenVINO（推奨）または ONNX Runtime CPU（フォールバック）で動作。
+"""TrackNet inference wrapper.
+
+Runtime priority:
+1. OpenVINO
+2. ONNX Runtime CPU
+3. TensorFlow CPU / Intel
+
+The currently bundled real pretrained weights are the public badminton-specific
+TensorFlow checkpoint. ONNX / OpenVINO remain optional acceleration targets.
 """
-import os
+
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Optional
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# 標準解像度（TrackNetV2 学習時）
 INPUT_W, INPUT_H = 512, 288
-# 3フレーム × 3チャネル = 9チャネル
-INPUT_C = 9
+FRAME_STACK = 3
 
 WEIGHTS_DIR = Path(__file__).parent / "weights"
-OPENVINO_XML = WEIGHTS_DIR / "tracknet_v2.xml"
-OPENVINO_BIN = WEIGHTS_DIR / "tracknet_v2.bin"
-ONNX_MODEL   = WEIGHTS_DIR / "tracknet_v2.onnx"
+TF_CKPT_PREFIX = WEIGHTS_DIR / "TrackNet"
+
+ONNX_CANDIDATES = [
+    WEIGHTS_DIR / "tracknet.onnx",
+    WEIGHTS_DIR / "tracknet_v2.onnx",
+]
+OPENVINO_XML_CANDIDATES = [
+    WEIGHTS_DIR / "tracknet.xml",
+    WEIGHTS_DIR / "tracknet_v2.xml",
+]
+
+
+def _existing_path(paths: list[Path]) -> Optional[Path]:
+    for path in paths:
+        if path.exists():
+            return path
+    return None
 
 
 class TrackNetInference:
-    """TrackNet V2 推論クラス。
-    バックエンドは OpenVINO → ONNX CPU の優先順で自動選択。
-    """
-
     def __init__(self, backend: str = "auto", device: str = "GPU"):
-        """
-        backend: 'openvino' | 'onnx_cpu' | 'auto'
-        device:  OpenVINO デバイス名 ('GPU', 'CPU', 'AUTO')
-        """
         self._infer_fn = None
         self._backend_name = "unloaded"
         self._device = device
         self._backend = backend
 
     def is_available(self) -> bool:
-        """モデルウェイトが配置されているかどうかを返す"""
-        return ONNX_MODEL.exists() or (OPENVINO_XML.exists() and OPENVINO_BIN.exists())
+        tf_ckpt_exists = (TF_CKPT_PREFIX.with_suffix(".index").exists() and
+                          TF_CKPT_PREFIX.parent.joinpath("TrackNet.data-00000-of-00001").exists())
+        return (
+            tf_ckpt_exists
+            or _existing_path(ONNX_CANDIDATES) is not None
+            or _existing_path(OPENVINO_XML_CANDIDATES) is not None
+        )
 
     def load(self) -> bool:
-        """推論エンジンをロード。失敗しても例外を投げず False を返す。"""
         if self._infer_fn is not None:
-            return True  # 既にロード済み
+            return True
 
         if not self.is_available():
             logger.warning("TrackNet weights not found at %s", WEIGHTS_DIR)
             return False
 
-        # OpenVINO を試みる
-        if self._backend in ("auto", "openvino") and OPENVINO_XML.exists():
+        openvino_xml = _existing_path(OPENVINO_XML_CANDIDATES)
+        if self._backend in ("auto", "openvino") and openvino_xml is not None:
             try:
                 from openvino.runtime import Core
+
                 ie = Core()
-                model = ie.read_model(str(OPENVINO_XML))
-                # GPU（Iris Xe）→ CPU フォールバック
+                model = ie.read_model(str(openvino_xml))
                 for dev in [self._device, "CPU"]:
                     try:
                         compiled = ie.compile_model(model, dev)
+                        input_name = compiled.input(0).any_name
                         req = compiled.create_infer_request()
-                        self._infer_fn = lambda frames: self._run_openvino(req, frames)
+                        self._infer_fn = lambda frames: self._run_openvino(req, input_name, frames)
                         self._backend_name = f"openvino:{dev}"
                         logger.info("TrackNet loaded via OpenVINO on %s", dev)
                         return True
                     except Exception:
                         continue
             except ImportError:
-                logger.info("openvino not installed, falling back to ONNX")
+                logger.info("openvino not installed, falling back")
 
-        # ONNX Runtime CPU
-        if self._backend in ("auto", "onnx_cpu") and ONNX_MODEL.exists():
+        onnx_model = _existing_path(ONNX_CANDIDATES)
+        if self._backend in ("auto", "onnx_cpu") and onnx_model is not None:
             try:
                 import onnxruntime as ort
-                sess = ort.InferenceSession(
-                    str(ONNX_MODEL),
-                    providers=["CPUExecutionProvider"],
-                )
-                self._infer_fn = lambda frames: self._run_onnx(sess, frames)
+
+                sess = ort.InferenceSession(str(onnx_model), providers=["CPUExecutionProvider"])
+                input_name = sess.get_inputs()[0].name
+                self._infer_fn = lambda frames: self._run_onnx(sess, input_name, frames)
                 self._backend_name = "onnx_cpu"
                 logger.info("TrackNet loaded via ONNX Runtime CPU")
                 return True
             except ImportError:
-                logger.warning("onnxruntime not installed")
+                logger.info("onnxruntime not installed, falling back")
+
+        if self._backend in ("auto", "tensorflow_cpu") and TF_CKPT_PREFIX.with_suffix(".index").exists():
+            try:
+                from backend.tracknet.model import build_tracknet_model
+
+                model = build_tracknet_model()
+                model.load_weights(str(TF_CKPT_PREFIX)).expect_partial()
+                self._infer_fn = lambda frames: self._run_tensorflow(model, frames)
+                self._backend_name = "tensorflow_cpu"
+                logger.info("TrackNet loaded via TensorFlow CPU/Intel backend")
+                return True
+            except ImportError:
+                logger.warning("tensorflow is not installed")
+            except Exception as exc:
+                logger.exception("TrackNet TensorFlow load failed: %s", exc)
 
         logger.error("TrackNet: no usable inference backend found")
         return False
@@ -89,69 +122,61 @@ class TrackNetInference:
     def backend_name(self) -> str:
         return self._backend_name
 
-    def predict_frames(
-        self,
-        frames: list[np.ndarray],  # list of (H, W, 3) uint8 BGR
-    ) -> list[dict]:
-        """3フレームずつウィンドウを滑らせて推論。
-        Returns: list of { frame_idx, x_norm, y_norm, confidence }
-        """
-        if self._infer_fn is None:
-            if not self.load():
-                return []
+    def predict_frames(self, frames: list[np.ndarray]) -> list[dict]:
+        if self._infer_fn is None and not self.load():
+            return []
 
         results = []
-        n = len(frames)
-
-        for i in range(n - 2):
-            triplet = frames[i : i + 3]
-            inp = self._preprocess(triplet)   # (1, 9, H, W) float32
-            heatmap = self._infer_fn(inp)     # (H, W) float32
+        for i in range(len(frames) - FRAME_STACK + 1):
+            triplet = frames[i : i + FRAME_STACK]
+            inp = self._preprocess(triplet)
+            heatmap = self._infer_fn(inp)
 
             from backend.tracknet.zone_mapper import heatmap_to_zone
-            zone, conf, coords = heatmap_to_zone(heatmap)
 
-            results.append({
-                "frame_idx": i + 1,  # 中央フレーム
-                "zone": zone,
-                "confidence": round(conf, 3),
-                "x_norm": round(coords[0], 4) if coords else None,
-                "y_norm": round(coords[1], 4) if coords else None,
-            })
+            zone, conf, coords = heatmap_to_zone(heatmap)
+            results.append(
+                {
+                    "frame_idx": i + 1,
+                    "zone": zone,
+                    "confidence": round(conf, 3),
+                    "x_norm": round(coords[0], 4) if coords else None,
+                    "y_norm": round(coords[1], 4) if coords else None,
+                }
+            )
 
         return results
 
-    # ───────────────────────────────────────────────────────
-    # Private
-
     def _preprocess(self, frames: list[np.ndarray]) -> np.ndarray:
-        """3フレームを正規化・リサイズして (1, 9, H, W) に変換"""
         import cv2
+
         channels = []
         for frame in frames:
             resized = cv2.resize(frame, (INPUT_W, INPUT_H))
-            # BGR→RGB、0~1正規化
-            rgb = resized[:, :, ::-1].astype(np.float32) / 255.0
-            channels.append(rgb.transpose(2, 0, 1))  # (3, H, W)
-        stacked = np.concatenate(channels, axis=0)    # (9, H, W)
-        return stacked[np.newaxis]                    # (1, 9, H, W)
+            gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+            channels.append(gray)
+        stacked = np.stack(channels, axis=0)  # (3, H, W)
+        return stacked[np.newaxis].astype(np.float32)  # (1, 3, H, W)
 
-    def _run_openvino(self, req, inp: np.ndarray) -> np.ndarray:
-        req.infer(inputs={"input": inp})
-        out = req.get_output_tensor(0).data  # (1, 1, H, W)
+    def _run_openvino(self, req, input_name: str, inp: np.ndarray) -> np.ndarray:
+        req.infer(inputs={input_name: inp})
+        out = req.get_output_tensor(0).data
         return out[0, 0]
 
-    def _run_onnx(self, sess, inp: np.ndarray) -> np.ndarray:
-        out = sess.run(None, {"input": inp})[0]  # (1, 1, H, W)
+    def _run_onnx(self, sess, input_name: str, inp: np.ndarray) -> np.ndarray:
+        out = sess.run(None, {input_name: inp})[0]
+        return out[0, 0]
+
+    def _run_tensorflow(self, model, inp: np.ndarray) -> np.ndarray:
+        out = model(inp, training=False).numpy()
         return out[0, 0]
 
 
-# シングルトン
 _instance: Optional[TrackNetInference] = None
 
 
 def get_inference(backend: str = "auto") -> TrackNetInference:
     global _instance
-    if _instance is None:
+    if _instance is None or (_instance._backend != backend and backend != "auto"):
         _instance = TrackNetInference(backend=backend)
     return _instance

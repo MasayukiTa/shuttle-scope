@@ -3,10 +3,12 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "sqlite:///./shuttlescope.db"
+    DATABASE_URL: str = "sqlite:///./backend/db/shuttlescope.db"
     API_PORT: int = 8765
     SECRET_KEY: str = "development-secret-key"
     ENVIRONMENT: str = "development"
+    # R-002: LAN共有モード（0.0.0.0バインドでLAN内アクセスを可能にする）
+    LAN_MODE: bool = False
 
     class Config:
         env_file = ".env"

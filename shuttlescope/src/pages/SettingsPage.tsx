@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy } from 'lucide-react'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
-import { Player, UserRole } from '@/types'
+import { Player, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
 
@@ -40,8 +40,9 @@ export function SettingsPage() {
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
-  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'account'>('players')
-  const { settings, updateSettings, loading: settingsLoading } = useSettings()
+  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'account'>('players')
+  const { settings: appSettings, updateSettings, loading: settingsLoading } = useSettings()
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const navigate = useNavigate()
 
   // 選手一覧取得
@@ -63,6 +64,26 @@ export function SettingsPage() {
     queryFn: () => apiGet<{ success: boolean; data: { available: boolean; backend: string | null; loaded: boolean } }>('/tracknet/status'),
     enabled: activeTab === 'tracknet',
     refetchInterval: activeTab === 'tracknet' ? 5000 : false,
+  })
+
+  // R-002: サーバー情報（LAN IP）
+  const { data: serverInfo, refetch: refetchServerInfo } = useQuery({
+    queryKey: ['server-my-info'],
+    queryFn: () => apiGet<{ success: boolean; data: { lan_ips: string[]; port: number; lan_mode: boolean; accessible: boolean } }>('/sessions/my-info'),
+    enabled: activeTab === 'sharing',
+  })
+
+  // Q-002/Q-008: ネットワーク診断
+  const { data: netDiag, isFetching: netDiagFetching, refetch: runDiagnostics } = useQuery({
+    queryKey: ['network-diagnostics'],
+    queryFn: () => apiGet<{ success: boolean; data: NetworkDiagnostics }>('/network/diagnostics'),
+    enabled: false,
+    retry: false,
+  })
+
+  const toggleLanMode = useMutation({
+    mutationFn: (enable: boolean) => apiPost('/network/lan-mode?enable=' + enable, {}),
+    onSuccess: () => { refetchServerInfo() },
   })
 
   // 選手作成
@@ -154,6 +175,7 @@ export function SettingsPage() {
           { key: 'players', label: '選手管理' },
           { key: 'review', label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
           { key: 'tracknet', label: t('tracknet.tab_label') },
+          { key: 'sharing', label: t('sharing.tab_label') },
           { key: 'account', label: 'アカウント設定' },
         ] as const).map((tab) => (
           <button
@@ -343,7 +365,7 @@ export function SettingsPage() {
                     <AlertCircle size={14} className="text-orange-400" />
                     <span className="text-sm text-orange-300">{t('tracknet.model_not_found')}</span>
                   </div>
-                  <div className="bg-gray-900 rounded p-3 text-xs text-gray-400 font-mono space-y-1">
+                <div className="bg-gray-900 rounded p-3 text-xs text-gray-400 font-mono space-y-1">
                     <p className="text-gray-300 font-sans font-medium text-xs mb-1">{t('tracknet.setup_instructions')}</p>
                     <p>python -m backend.tracknet.setup download</p>
                     <p>python -m backend.tracknet.setup export</p>
@@ -361,11 +383,11 @@ export function SettingsPage() {
                 <p className="text-xs text-gray-400 mt-0.5">{t('tracknet.enable_description')}</p>
               </div>
               <button
-                onClick={() => updateSettings({ tracknet_enabled: !settings.tracknet_enabled })}
+                onClick={() => updateSettings({ tracknet_enabled: !appSettings.tracknet_enabled })}
                 disabled={settingsLoading}
                 className="flex-shrink-0"
               >
-                {settings.tracknet_enabled
+                {appSettings.tracknet_enabled
                   ? <ToggleRight size={32} className="text-blue-400" />
                   : <ToggleLeft size={32} className="text-gray-500" />}
               </button>
@@ -379,6 +401,8 @@ export function SettingsPage() {
               </h3>
               <div className="flex gap-2">
                 {([
+                  { value: 'auto', label: 'Auto (OpenVINO → ONNX → TensorFlow)' },
+                  { value: 'tensorflow_cpu', label: 'TensorFlow CPU / Intel' },
                   { value: 'openvino', label: 'OpenVINO (Intel GPU / CPU)' },
                   { value: 'onnx_cpu', label: 'ONNX CPU' },
                 ] as const).map((opt) => (
@@ -386,7 +410,7 @@ export function SettingsPage() {
                     key={opt.value}
                     onClick={() => updateSettings({ tracknet_backend: opt.value })}
                     className={`flex-1 py-2 px-3 rounded text-sm border transition-colors ${
-                      settings.tracknet_backend === opt.value
+                      appSettings.tracknet_backend === opt.value
                         ? 'border-blue-500 bg-blue-900/30 text-blue-300'
                         : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
                     }`}
@@ -410,7 +434,7 @@ export function SettingsPage() {
                     key={opt.value}
                     onClick={() => updateSettings({ tracknet_mode: opt.value })}
                     className={`flex-1 py-2 px-3 rounded text-sm border transition-colors ${
-                      settings.tracknet_mode === opt.value
+                      appSettings.tracknet_mode === opt.value
                         ? 'border-blue-500 bg-blue-900/30 text-blue-300'
                         : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
                     }`}
@@ -425,14 +449,14 @@ export function SettingsPage() {
             <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-medium text-gray-300">{t('tracknet.cpu_limit_label')}</h3>
-                <span className="text-sm font-mono text-blue-300">{settings.tracknet_max_cpu_pct}%</span>
+                <span className="text-sm font-mono text-blue-300">{appSettings.tracknet_max_cpu_pct}%</span>
               </div>
               <input
                 type="range"
                 min={10}
                 max={90}
                 step={5}
-                value={settings.tracknet_max_cpu_pct}
+                value={appSettings.tracknet_max_cpu_pct}
                 onChange={(e) => updateSettings({ tracknet_max_cpu_pct: Number(e.target.value) })}
                 className="w-full accent-blue-500"
               />
@@ -440,6 +464,136 @@ export function SettingsPage() {
                 <span>10%</span>
                 <span>90%</span>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 共有設定タブ (R-001/R-002/Q-002/Q-008) */}
+        {activeTab === 'sharing' && (
+          <div className="max-w-xl space-y-6">
+            <h2 className="text-lg font-medium">{t('sharing.tab_label')}</h2>
+
+            {/* LAN モード設定 */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-medium">{t('sharing.lan_mode_label')}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t('sharing.lan_mode_description')}</p>
+                </div>
+                <button
+                  onClick={() => toggleLanMode.mutate(!serverInfo?.data?.lan_mode)}
+                  className="flex-shrink-0"
+                >
+                  {serverInfo?.data?.lan_mode
+                    ? <ToggleRight size={32} className="text-blue-400" />
+                    : <ToggleLeft size={32} className="text-gray-500" />}
+                </button>
+              </div>
+              {serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
+                <div className="bg-gray-900 rounded p-3 space-y-2">
+                  {serverInfo.data.lan_ips.map((ip) => (
+                    <div key={ip} className="flex items-center gap-2">
+                      <Wifi size={12} className="text-green-400" />
+                      <span className="text-xs font-mono text-green-300">
+                        http://{ip}:{serverInfo.data.port}/coach/&#123;セッションコード&#125;
+                      </span>
+                    </div>
+                  ))}
+                  <p className="text-xs text-gray-500">{t('sharing.lan_access_hint')}</p>
+                </div>
+              ) : serverInfo?.data?.lan_mode ? (
+                <div className="flex items-center gap-2 text-xs text-orange-400">
+                  <WifiOff size={12} />
+                  {t('sharing.lan_no_ip')}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">{t('sharing.lan_disabled_hint')}</p>
+              )}
+            </div>
+
+            {/* セッション作成ヘルプ */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <h3 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                <Share2 size={14} />
+                {t('sharing.session_guide_title')}
+              </h3>
+              <ol className="space-y-2 text-xs text-gray-400">
+                <li>1. {t('sharing.guide_step1')}</li>
+                <li>2. {t('sharing.guide_step2')}</li>
+                <li>3. {t('sharing.guide_step3')}</li>
+                <li>4. {t('sharing.guide_step4')}</li>
+              </ol>
+            </div>
+
+            {/* Q-002/Q-008: ネットワーク診断 */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                  <Wifi size={14} />
+                  {t('sharing.network_diag_title')}
+                </h3>
+                <button
+                  onClick={() => runDiagnostics()}
+                  disabled={netDiagFetching}
+                  className="px-3 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50"
+                >
+                  {netDiagFetching ? '診断中...' : t('sharing.run_diagnostics')}
+                </button>
+              </div>
+
+              {netDiag?.data && (
+                <div className="space-y-3">
+                  {/* 環境分類 */}
+                  <div className="flex items-center gap-2">
+                    {netDiag.data.environment === 'open'
+                      ? <CheckCircle size={14} className="text-green-400" />
+                      : <AlertCircle size={14} className="text-orange-400" />}
+                    <span className="text-sm font-medium">
+                      {{
+                        open: '✅ オープン環境',
+                        corporate_proxy: '⚠️ 企業プロキシ検出',
+                        vpn: '🔒 VPN 環境',
+                        filtered: '❌ 制限環境',
+                        captive_portal: '⚠️ キャプティブポータル',
+                        unknown: '❓ 不明',
+                      }[netDiag.data.environment] ?? netDiag.data.environment}
+                    </span>
+                    <span className="text-xs text-gray-500 ml-auto">{netDiag.data.probe_duration_ms}ms</span>
+                  </div>
+
+                  {/* capabilities */}
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    {([
+                      ['TCP 443', netDiag.data.capabilities.tcp_443.ok],
+                      ['TCP 80', netDiag.data.capabilities.tcp_80.ok],
+                      ['Localhost', netDiag.data.capabilities.localhost_bridge.ok],
+                    ] as [string, boolean][]).map(([label, ok]) => (
+                      <div key={label} className={`rounded px-2 py-1 text-center ${ok ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>
+                        {ok ? '✓' : '✗'} {label}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* LAN 情報 */}
+                  {netDiag.data.lan.lan_ips.length > 0 && (
+                    <div className="text-xs text-gray-400">
+                      LAN IP: {netDiag.data.lan.lan_ips.join(', ')}
+                    </div>
+                  )}
+
+                  {/* transport ladder 推奨 */}
+                  <div className="bg-gray-900 rounded p-3 space-y-1">
+                    <p className="text-xs font-medium text-gray-300 mb-1">{t('sharing.transport_ladder')}</p>
+                    {netDiag.data.transport_ladder.map((rec, i) => (
+                      <p key={i} className="text-xs text-gray-400">{rec}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!netDiag && !netDiagFetching && (
+                <p className="text-xs text-gray-500">{t('sharing.diag_not_run')}</p>
+              )}
             </div>
           </div>
         )}

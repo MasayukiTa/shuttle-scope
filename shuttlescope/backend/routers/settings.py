@@ -28,7 +28,7 @@ create_settings_table()
 # デフォルト設定
 DEFAULT_SETTINGS: dict = {
     "tracknet_enabled": False,
-    "tracknet_backend": "openvino",   # openvino | onnx_cpu
+    "tracknet_backend": "auto",       # auto | tensorflow_cpu | openvino | onnx_cpu
     "tracknet_mode": "batch",          # batch | assist
     "tracknet_max_cpu_pct": 50,
     "video_source_mode": "local",      # local | webview | none

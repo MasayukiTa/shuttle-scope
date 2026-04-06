@@ -105,7 +105,7 @@ function startPythonBackend(): ChildProcess {
     env: {
       ...process.env,
       API_PORT: '8765',
-      DATABASE_URL: `sqlite:///${path.join(appPath, 'shuttlescope.db')}`,
+      DATABASE_URL: `sqlite:///${path.join(appPath, 'backend', 'db', 'shuttlescope.db')}`,
       // watchfiles の自動リロードを無効化（起動時間を 10s → 1s に短縮）
       ENVIRONMENT: 'production',
     },

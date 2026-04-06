@@ -199,3 +199,79 @@ class AnalysisCache(Base):
     confidence_level: Mapped[float] = mapped_column(Float, default=0.0)  # 0.0-1.0
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+# ─── R-001: 共有セッション ───────────────────────────────────────────────────
+
+class SharedSession(Base):
+    """1試合に紐づく共有運用セッション（複数viewer/coach/analystが同時参加可能）"""
+    __tablename__ = "shared_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    session_code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)  # 参加コード（6文字英数字）
+    created_by_role: Mapped[str] = mapped_column(String(20), default="analyst")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_broadcast_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    match: Mapped["Match"] = relationship("Match")
+    participants: Mapped[list["SessionParticipant"]] = relationship(
+        "SessionParticipant", back_populates="session", cascade="all, delete-orphan"
+    )
+    comments: Mapped[list["Comment"]] = relationship(
+        "Comment", back_populates="session", cascade="all, delete-orphan"
+    )
+
+
+class SessionParticipant(Base):
+    """セッション参加者（ロール別・デバイス別）"""
+    __tablename__ = "session_participants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("shared_sessions.id"), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # analyst/coach/viewer
+    device_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    is_connected: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    session: Mapped["SharedSession"] = relationship("SharedSession", back_populates="participants")
+
+
+# ─── S-003: コメント・タグ ────────────────────────────────────────────────────
+
+class Comment(Base):
+    """試合 / セット / ラリー / ストロークへのコメント（セッション内外問わず付与可能）"""
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("shared_sessions.id"), nullable=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    set_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("sets.id"), nullable=True)
+    rally_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("rallies.id"), nullable=True)
+    stroke_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("strokes.id"), nullable=True)
+    author_role: Mapped[str] = mapped_column(String(20), nullable=False, default="analyst")
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    is_flagged: Mapped[bool] = mapped_column(Boolean, default=False)  # 重要フラグ
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    session: Mapped[Optional["SharedSession"]] = relationship("SharedSession", back_populates="comments")
+
+
+# ─── U-001: イベントブックマーク / クリップ要求 ────────────────────────────────
+
+class EventBookmark(Base):
+    """試合中・試合後のブックマーク（手動 / コーチ要求 / 統計自動）"""
+    __tablename__ = "event_bookmarks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    rally_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("rallies.id"), nullable=True)
+    stroke_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("strokes.id"), nullable=True)
+    # manual / coach_request / auto_stat / clip_request
+    bookmark_type: Mapped[str] = mapped_column(String(30), default="manual")
+    video_timestamp_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

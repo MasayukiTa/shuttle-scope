@@ -459,5 +459,36 @@
     "error": "エラー",
     "speed": "速度",
     "eta": "残り時間"
+  },
+  "sharing": {
+    "tab_label": "共有",
+    "share": "共有",
+    "create_session": "コーチ配信セッションを開始",
+    "copy_url": "URLをコピー",
+    "lan_mode_label": "LAN 共有モード",
+    "lan_mode_description": "コーチ・ベンチが同一ネットワーク内からブラウザでアクセスできるようにします（次回起動時に有効）",
+    "lan_access_hint": "コーチはこのURLをブラウザで開いてください",
+    "lan_disabled_hint": "有効にするとコーチが同一LAN内からアクセスできます",
+    "lan_no_ip": "LAN IPが取得できませんでした",
+    "session_guide_title": "コーチ配信の使い方",
+    "guide_step1": "「LAN 共有モード」を有効にしてバックエンドを再起動",
+    "guide_step2": "AnnotatorPage ヘッダーの「共有」ボタンでセッション作成",
+    "guide_step3": "表示されたURLをコーチ・ベンチのスマートフォン/PCで開く",
+    "guide_step4": "アナリストがラリーを保存するとコーチ画面がリアルタイム更新",
+    "network_diag_title": "ネットワーク診断（Q-002/Q-008）",
+    "run_diagnostics": "診断を実行",
+    "transport_ladder": "接続推奨（Transport Ladder）",
+    "diag_not_run": "「診断を実行」ボタンで接続環境を診断します"
+  },
+  "bookmark": {
+    "add": "ブックマーク追加",
+    "added": "ブックマーク済み",
+    "review_queue": "レビューキュー"
+  },
+  "comment": {
+    "add": "コメントを追加",
+    "placeholder": "コメントを入力（Enter で送信）",
+    "submit": "送信",
+    "flagged": "重要コメント"
   }
 }

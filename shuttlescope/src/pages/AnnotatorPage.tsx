@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, Zap, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2 } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -161,6 +161,17 @@ export function AnnotatorPage() {
   // P4: デュアルモニター
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
   const [videoWindowOpen, setVideoWindowOpen] = useState(false)
+
+  // U-001: ブックマーク
+  const [lastBookmarked, setLastBookmarked] = useState<number | null>(null)  // rally_id
+
+  // S-003: コメント
+  const [showCommentInput, setShowCommentInput] = useState(false)
+  const [commentText, setCommentText] = useState('')
+  const [commentRallyId, setCommentRallyId] = useState<number | null>(null)
+
+  // R-001/R-002: セッション
+  const [activeSession, setActiveSession] = useState<{ session_code: string; coach_urls: string[] } | null>(null)
 
   // P3: TrackNet バッチ解析
   const [tracknetJobId, setTracknetJobId] = useState<string | null>(null)
@@ -762,6 +773,50 @@ export function AnnotatorPage() {
     return () => clearInterval(id)
   }, [tracknetJobId, tracknetJob?.status, queryClient])
 
+  // U-001: ブックマーク追加
+  const handleBookmark = useCallback(async (rallyId: number | null, ts?: number) => {
+    if (!matchId) return
+    try {
+      await apiPost('/bookmarks', {
+        match_id: Number(matchId),
+        rally_id: rallyId ?? undefined,
+        bookmark_type: 'manual',
+        video_timestamp_sec: ts ?? getTimestamp(),
+      })
+      setLastBookmarked(rallyId)
+    } catch { /* bookmark failure is non-critical */ }
+  }, [matchId, getTimestamp])
+
+  // S-003: コメント投稿
+  const handleSubmitComment = useCallback(async () => {
+    if (!matchId || !commentText.trim()) return
+    try {
+      await apiPost('/comments', {
+        match_id: Number(matchId),
+        rally_id: commentRallyId ?? undefined,
+        text: commentText.trim(),
+        author_role: 'analyst',
+        is_flagged: false,
+      })
+      setCommentText('')
+      setShowCommentInput(false)
+      setCommentRallyId(null)
+    } catch { /* ignore */ }
+  }, [matchId, commentText, commentRallyId])
+
+  // R-001/R-002: セッション作成・取得
+  const handleCreateOrGetSession = useCallback(async () => {
+    if (!matchId) return
+    try {
+      const res = await apiPost<{ success: boolean; data: { session_code: string; coach_urls: string[] } }>(
+        '/sessions', { match_id: Number(matchId) }
+      )
+      if (res.success) {
+        setActiveSession({ session_code: res.data.session_code, coach_urls: res.data.coach_urls })
+      }
+    } catch { /* ignore */ }
+  }, [matchId])
+
   // ステップラベル
   const stepLabel = {
     idle: store.isRallyActive
@@ -899,6 +954,31 @@ export function AnnotatorPage() {
                 {t('tracknet.batch_start')}
               </button>
             )
+          )}
+          {/* R-001/R-002: セッション共有ボタン */}
+          {activeSession ? (
+            <div className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-900/40 text-blue-300">
+              <Share2 size={12} />
+              <span className="font-mono font-bold">{activeSession.session_code}</span>
+              {activeSession.coach_urls[0] && (
+                <button
+                  onClick={() => navigator.clipboard.writeText(activeSession.coach_urls[0]).catch(() => {})}
+                  className="ml-1 hover:text-blue-200"
+                  title={t('sharing.copy_url')}
+                >
+                  <Bookmark size={10} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={handleCreateOrGetSession}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-400 hover:text-white transition-colors"
+              title={t('sharing.create_session')}
+            >
+              <Share2 size={12} />
+              {t('sharing.share')}
+            </button>
           )}
           <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
             <div
@@ -1333,6 +1413,53 @@ export function AnnotatorPage() {
                 >
                   <SkipForward size={12} />
                   {t('skip_rally.button')}
+                </button>
+                {/* U-001: ブックマーク（現在タイムスタンプ） */}
+                <button
+                  onClick={() => handleBookmark(null, getTimestamp())}
+                  className={clsx(
+                    'px-2.5 py-2.5 rounded text-xs flex items-center transition-colors',
+                    lastBookmarked === null ? 'bg-gray-700 hover:bg-gray-600 text-gray-400' : 'bg-yellow-700/40 text-yellow-300'
+                  )}
+                  title={t('bookmark.add')}
+                >
+                  <Bookmark size={13} />
+                </button>
+                {/* S-003: コメント */}
+                <button
+                  onClick={() => { setShowCommentInput((v) => !v); setCommentRallyId(null) }}
+                  className="px-2.5 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-xs flex items-center transition-colors"
+                  title={t('comment.add')}
+                >
+                  <MessageSquare size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* S-003: コメント入力フォーム */}
+            {showCommentInput && (
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitComment() }}
+                  placeholder={t('comment.placeholder')}
+                  className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+                <button
+                  onClick={handleSubmitComment}
+                  disabled={!commentText.trim()}
+                  className="px-2 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-xs text-white"
+                >
+                  {t('comment.submit')}
+                </button>
+                <button
+                  onClick={() => { setShowCommentInput(false); setCommentText('') }}
+                  className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-400"
+                >
+                  ✕
                 </button>
               </div>
             )}

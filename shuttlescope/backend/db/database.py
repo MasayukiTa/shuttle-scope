@@ -61,6 +61,8 @@ def add_columns_if_missing(eng) -> None:
         ("matches", "exception_reason",         "TEXT"),
         # 見逃しラリー（ストロークなしで得点だけ記録）
         ("rallies", "is_skipped",               "INTEGER DEFAULT 0"),
+        # R-001: 共有セッション
+        ("shared_sessions", "last_broadcast_at", "TEXT"),
     ]
     with eng.connect() as conn:
         for table, col, col_type in new_cols:

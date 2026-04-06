@@ -133,6 +133,36 @@ def batch_save_rally(body: BatchSaveRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(rally)
 
+    # S-001: アクティブセッションへスコア更新をブロードキャスト（非同期）
+    import asyncio
+    from backend.ws.live import manager
+    from backend.db.models import SharedSession
+    sessions = (
+        db.query(SharedSession)
+        .filter(SharedSession.match_id == game_set.match_id, SharedSession.is_active.is_(True))
+        .all()
+    )
+    if sessions:
+        payload = {
+            "type": "rally_saved",
+            "data": {
+                "rally_num": rally.rally_num,
+                "winner": rally.winner,
+                "end_type": rally.end_type,
+                "score_a": rally.score_a_after,
+                "score_b": rally.score_b_after,
+                "rally_length": rally.rally_length,
+                "is_skipped": rally.is_skipped,
+            },
+        }
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                for s in sessions:
+                    asyncio.ensure_future(manager.broadcast(s.session_code, payload))
+        except Exception:
+            pass
+
     return {
         "success": True,
         "data": {
