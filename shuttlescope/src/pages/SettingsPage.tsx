@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight } from 'lucide-react'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, UserRole } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
+import { useSettings } from '@/hooks/useSettings'
 
 interface PlayerFormData {
   name: string
@@ -39,7 +40,8 @@ export function SettingsPage() {
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
-  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'account'>('players')
+  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'account'>('players')
+  const { settings, updateSettings, loading: settingsLoading } = useSettings()
   const navigate = useNavigate()
 
   // 選手一覧取得
@@ -53,6 +55,14 @@ export function SettingsPage() {
     queryKey: ['players-needs-review'],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/needs_review'),
     enabled: activeTab === 'review',
+  })
+
+  // TrackNetモデルステータス取得
+  const { data: tracknetStatus } = useQuery({
+    queryKey: ['tracknet-status'],
+    queryFn: () => apiGet<{ success: boolean; data: { available: boolean; backend: string | null; loaded: boolean } }>('/tracknet/status'),
+    enabled: activeTab === 'tracknet',
+    refetchInterval: activeTab === 'tracknet' ? 5000 : false,
   })
 
   // 選手作成
@@ -143,6 +153,7 @@ export function SettingsPage() {
         {([
           { key: 'players', label: '選手管理' },
           { key: 'review', label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
+          { key: 'tracknet', label: t('tracknet.tab_label') },
           { key: 'account', label: 'アカウント設定' },
         ] as const).map((tab) => (
           <button
@@ -302,6 +313,133 @@ export function SettingsPage() {
                   </tbody>
                 </table>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TrackNet設定タブ */}
+        {activeTab === 'tracknet' && (
+          <div className="max-w-xl space-y-6">
+            <h2 className="text-lg font-medium">{t('tracknet.tab_label')}</h2>
+
+            {/* モデルステータス */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+                <Zap size={14} className="text-yellow-400" />
+                {t('tracknet.model_status')}
+              </h3>
+              {!tracknetStatus ? (
+                <p className="text-sm text-gray-500">{t('tracknet.backend_offline')}</p>
+              ) : tracknetStatus.data?.available ? (
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={14} className="text-green-400" />
+                  <span className="text-sm text-green-300">
+                    {t('tracknet.model_ready')} — {tracknetStatus.data.backend}
+                  </span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={14} className="text-orange-400" />
+                    <span className="text-sm text-orange-300">{t('tracknet.model_not_found')}</span>
+                  </div>
+                  <div className="bg-gray-900 rounded p-3 text-xs text-gray-400 font-mono space-y-1">
+                    <p className="text-gray-300 font-sans font-medium text-xs mb-1">{t('tracknet.setup_instructions')}</p>
+                    <p>python -m backend.tracknet.setup download</p>
+                    <p>python -m backend.tracknet.setup export</p>
+                    <p>python -m backend.tracknet.setup convert</p>
+                    <p className="text-gray-500 font-sans"># または一括: python -m backend.tracknet.setup all</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 有効/無効トグル */}
+            <div className="flex items-center justify-between bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <div>
+                <p className="text-sm font-medium">{t('tracknet.enable_toggle')}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{t('tracknet.enable_description')}</p>
+              </div>
+              <button
+                onClick={() => updateSettings({ tracknet_enabled: !settings.tracknet_enabled })}
+                disabled={settingsLoading}
+                className="flex-shrink-0"
+              >
+                {settings.tracknet_enabled
+                  ? <ToggleRight size={32} className="text-blue-400" />
+                  : <ToggleLeft size={32} className="text-gray-500" />}
+              </button>
+            </div>
+
+            {/* バックエンド選択 */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+                <Cpu size={14} />
+                {t('tracknet.backend_label')}
+              </h3>
+              <div className="flex gap-2">
+                {([
+                  { value: 'openvino', label: 'OpenVINO (Intel GPU / CPU)' },
+                  { value: 'onnx_cpu', label: 'ONNX CPU' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => updateSettings({ tracknet_backend: opt.value })}
+                    className={`flex-1 py-2 px-3 rounded text-sm border transition-colors ${
+                      settings.tracknet_backend === opt.value
+                        ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                        : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 解析モード */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <h3 className="text-sm font-medium text-gray-300 mb-1">{t('tracknet.mode_label')}</h3>
+              <p className="text-xs text-gray-500 mb-3">{t('tracknet.mode_description')}</p>
+              <div className="flex gap-2">
+                {([
+                  { value: 'batch', label: t('tracknet.mode_batch') },
+                  { value: 'assist', label: t('tracknet.mode_assist') },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => updateSettings({ tracknet_mode: opt.value })}
+                    className={`flex-1 py-2 px-3 rounded text-sm border transition-colors ${
+                      settings.tracknet_mode === opt.value
+                        ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                        : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* CPU使用率上限 */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-300">{t('tracknet.cpu_limit_label')}</h3>
+                <span className="text-sm font-mono text-blue-300">{settings.tracknet_max_cpu_pct}%</span>
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={90}
+                step={5}
+                value={settings.tracknet_max_cpu_pct}
+                onChange={(e) => updateSettings({ tracknet_max_cpu_pct: Number(e.target.value) })}
+                className="w-full accent-blue-500"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>10%</span>
+                <span>90%</span>
+              </div>
             </div>
           </div>
         )}

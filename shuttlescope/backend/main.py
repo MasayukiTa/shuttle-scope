@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
 from backend.db.database import create_tables, add_columns_if_missing, engine
-from backend.routers import matches, rallies, strokes, players, analysis, reports, sets
+from backend.routers import matches, rallies, strokes, players, analysis, reports, sets, settings, tracknet
 from backend.utils.video_downloader import video_downloader
 
 
@@ -51,6 +51,8 @@ app.include_router(strokes.router, prefix="/api")
 app.include_router(sets.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
+app.include_router(settings.router, prefix="/api")
+app.include_router(tracknet.router, prefix="/api")
 
 
 

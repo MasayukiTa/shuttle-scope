@@ -273,6 +273,20 @@ ipcMain.handle('close-video-window', () => {
   }
 })
 
+// ─── IPC: P5 WebView フレームキャプチャ（実験的）─────────────────────────────
+// WebViewPlayer が表示している映像の現在フレームをキャプチャして Base64 で返す。
+// TrackNet frame_hint API に渡す3フレーム（前・中・後）を取得するために使用する。
+
+ipcMain.handle('capture-webview-frame', async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return null
+  try {
+    const image = await mainWindow.webContents.capturePage()
+    return image.toDataURL().replace(/^data:image\/png;base64,/, '')
+  } catch {
+    return null
+  }
+})
+
 // ─── IPC: 動画ファイル選択ダイアログ ─────────────────────────────────────────
 
 ipcMain.handle('open-video-file', async () => {

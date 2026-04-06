@@ -26,4 +26,8 @@ contextBridge.exposeInMainWorld('shuttlescope', {
     ipcRenderer.on('video-window-closed', () => cb())
     return () => ipcRenderer.removeAllListeners('video-window-closed')
   },
+
+  // ─── P5: WebView フレームキャプチャ（実験的）────────────────────────────────
+  captureWebviewFrame: (): Promise<string | null> =>
+    ipcRenderer.invoke('capture-webview-frame'),
 })

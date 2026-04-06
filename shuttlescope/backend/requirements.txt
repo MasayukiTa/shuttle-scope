@@ -14,3 +14,10 @@ pydantic-settings==2.1.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 httpx==0.26.0
+
+# P3: TrackNet + OpenVINO（任意インストール）
+# インストール: pip install openvino opencv-python onnxruntime
+# 注意: openvino は intel iGPU 最適化版。GPU非対応環境では onnxruntime のみで動作
+openvino>=2024.0; sys_platform != 'unsupported'
+onnxruntime>=1.17.0
+opencv-python>=4.9.0

@@ -1,2 +1,5 @@
 private_docs/
 shuttlescope/docs/validation/
+
+# TrackNet ウェイト（別途セットアップが必要）
+shuttlescope/backend/tracknet/weights/

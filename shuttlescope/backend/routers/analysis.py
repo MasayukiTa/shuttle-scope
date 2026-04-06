@@ -91,8 +91,11 @@ def _get_player_matches(
     return q.all()
 
 
-def _fetch_matches_sets_rallies(player_id: int, db: Session):
-    """プレイヤーIDに関連する試合・セット・ラリーを一括取得するヘルパー"""
+def _fetch_matches_sets_rallies(player_id: int, db: Session, include_skipped: bool = False):
+    """プレイヤーIDに関連する試合・セット・ラリーを一括取得するヘルパー。
+    include_skipped=False（デフォルト）では見逃しラリー(is_skipped=True)を除外する。
+    スコア推移など得点イベント全件が必要な場合は include_skipped=True を渡す。
+    """
     matches = (
         db.query(Match)
         .filter(
@@ -112,7 +115,13 @@ def _fetch_matches_sets_rallies(player_id: int, db: Session):
     set_ids = [s.id for s in sets]
     set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    if set_ids:
+        q = db.query(Rally).filter(Rally.set_id.in_(set_ids))
+        if not include_skipped:
+            q = q.filter(Rally.is_skipped == False)  # noqa: E712
+        rallies = q.all()
+    else:
+        rallies = []
 
     return matches, role_by_match, sets, set_to_match, rallies, {}
 

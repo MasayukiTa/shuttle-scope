@@ -19,6 +19,7 @@ import { useVideo } from '@/hooks/useVideo'
 import { apiGet, apiPost, apiPut } from '@/api/client'
 import { Match, Zone9, ShotType, GameSet, Player, VideoSourceMode, DisplayInfo } from '@/types'
 import { useMatchTimer } from '@/hooks/useMatchTimer'
+import { useSettings } from '@/hooks/useSettings'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -106,6 +107,7 @@ export function AnnotatorPage() {
   const { playbackRate, setPlaybackRate } = useVideo(videoRef)
 
   const store = useAnnotationStore()
+  const { settings: appSettings } = useSettings()
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
@@ -159,6 +161,13 @@ export function AnnotatorPage() {
   // P4: デュアルモニター
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
   const [videoWindowOpen, setVideoWindowOpen] = useState(false)
+
+  // P3: TrackNet バッチ解析
+  const [tracknetJobId, setTracknetJobId] = useState<string | null>(null)
+  const [tracknetJob, setTracknetJob] = useState<{
+    status: string; progress: number; processed_rallies: number;
+    total_rallies: number; updated_strokes: number; error: string | null
+  } | null>(null)
 
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
@@ -714,6 +723,45 @@ export function AnnotatorPage() {
     return () => { cleanup?.() }
   }, [])
 
+  // P3: TrackNet バッチ解析開始
+  const handleTracknetBatch = useCallback(async () => {
+    if (!matchId) return
+    const hasVideo = !!(match?.video_local_path || match?.video_url)
+    if (!hasVideo) {
+      alert(t('tracknet.batch_no_video'))
+      return
+    }
+    try {
+      const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
+        `/tracknet/batch/${matchId}`,
+        { backend: appSettings.tracknet_backend, confidence_threshold: 0.5 }
+      )
+      if (res.success) {
+        setTracknetJobId(res.data.job_id)
+        setTracknetJob({ status: 'pending', progress: 0, processed_rallies: 0, total_rallies: 0, updated_strokes: 0, error: null })
+      }
+    } catch {
+      alert(t('tracknet.batch_error'))
+    }
+  }, [matchId, match, appSettings.tracknet_backend, t])
+
+  // P3: TrackNet ジョブポーリング
+  useEffect(() => {
+    if (!tracknetJobId || tracknetJob?.status === 'complete' || tracknetJob?.status === 'error') return
+    const id = setInterval(async () => {
+      try {
+        const res = await apiGet<{ success: boolean; data: typeof tracknetJob }>(`/tracknet/batch/${tracknetJobId}/status`)
+        if (res.success && res.data) {
+          setTracknetJob(res.data)
+          if (res.data?.status === 'complete') {
+            queryClient.invalidateQueries({ queryKey: ['strokes'] })
+          }
+        }
+      } catch { /* ポーリング失敗は無視 */ }
+    }, 2000)
+    return () => clearInterval(id)
+  }, [tracknetJobId, tracknetJob?.status, queryClient])
+
   // ステップラベル
   const stepLabel = {
     idle: store.isRallyActive
@@ -830,6 +878,28 @@ export function AnnotatorPage() {
             <Zap size={12} />
             {isMatchDayMode ? 'MD' : t('annotator.match_day_mode')}
           </button>
+          {/* P3: TrackNet バッチ解析ボタン（TrackNet有効 & 動画あり時） */}
+          {appSettings.tracknet_enabled && (match?.video_local_path || match?.video_url) && (
+            tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') ? (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-purple-900/40 text-purple-300">
+                <span className="animate-pulse">●</span>
+                {t('tracknet.batch_running')} {Math.round(tracknetJob.progress * 100)}%
+              </div>
+            ) : tracknetJob?.status === 'complete' ? (
+              <div className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-green-900/40 text-green-300">
+                ✓ {t('tracknet.updated_strokes', { count: tracknetJob.updated_strokes })}
+              </div>
+            ) : (
+              <button
+                onClick={handleTracknetBatch}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-purple-900/40 text-purple-300 hover:bg-purple-800/60 transition-colors"
+                title={t('tracknet.batch_start')}
+              >
+                <Zap size={12} />
+                {t('tracknet.batch_start')}
+              </button>
+            )
+          )}
           <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
             <div
               className="h-full bg-blue-500 transition-all"
