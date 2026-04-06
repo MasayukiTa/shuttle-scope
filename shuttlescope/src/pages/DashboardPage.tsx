@@ -34,6 +34,15 @@ import { MarkovEPV } from '@/components/analysis/MarkovEPV'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { DoublesAnalysis } from '@/components/analysis/DoublesAnalysis'
+import { PreWinPatterns } from '@/components/analysis/PreWinPatterns'
+import { EffectiveDistributionMap } from '@/components/analysis/EffectiveDistributionMap'
+import { ReceivedVulnerabilityMap } from '@/components/analysis/ReceivedVulnerabilityMap'
+import { FlashAdvicePanel } from '@/components/analysis/FlashAdvicePanel'
+import { GrowthJudgmentCard } from '@/components/analysis/GrowthJudgmentCard'
+import { GrowthTimeline } from '@/components/analysis/GrowthTimeline'
+import { PairCombinedView } from '@/components/analysis/PairCombinedView'
+import { OpponentTypeAffinity } from '@/components/analysis/OpponentTypeAffinity'
+import { PairPlaystyle } from '@/components/analysis/PairPlaystyle'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { ChartModal } from '@/components/common/ChartModal'
 
@@ -74,7 +83,7 @@ interface MatchSummary {
 }
 
 // タブ種別
-type TabKey = 'overview' | 'shots' | 'rally' | 'matrix' | 'b_detail' | 'c_spatial' | 'd_time' | 'e_opponent' | 'f_doubles' | 'g_markov'
+type TabKey = 'overview' | 'shots' | 'rally' | 'matrix' | 'b_detail' | 'c_spatial' | 'd_time' | 'flash' | 'review' | 'growth' | 'e_opponent' | 'f_doubles' | 'g_markov'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -218,6 +227,15 @@ export function DashboardPage() {
   // インターバルレポート用に試合を選択
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
   const [intervalSet, setIntervalSet] = useState<number>(1)
+
+  // 速報タブ用の選択状態
+  const [flashMatchId, setFlashMatchId] = useState<number | null>(null)
+  const [flashSet, setFlashSet] = useState<number>(1)
+  const [flashRallyNum, setFlashRallyNum] = useState<string>('')
+
+  // ペアモード（成長タブ・ダブルスタブで使用）
+  const [pairMode, setPairMode] = useState(false)
+  const [partnerPlayerId, setPartnerPlayerId] = useState<number | null>(null)
 
   // 試合一覧テーブルのソート
   type SortCol = 'date' | 'opponent' | 'tournament_level' | 'result' | 'rally_count'
@@ -557,6 +575,15 @@ export function DashboardPage() {
             </TabButton>
             <TabButton active={activeTab === 'd_time'} onClick={() => setActiveTab('d_time')}>
               {t('analysis.d_time')}
+            </TabButton>
+            <TabButton active={activeTab === 'flash'} onClick={() => setActiveTab('flash')}>
+              {t('analysis.flash')}
+            </TabButton>
+            <TabButton active={activeTab === 'review'} onClick={() => setActiveTab('review')}>
+              {t('analysis.review')}
+            </TabButton>
+            <TabButton active={activeTab === 'growth'} onClick={() => setActiveTab('growth')}>
+              {t('analysis.growth')}
             </TabButton>
             <RoleGuard allowedRoles={['analyst', 'coach']}>
               <TabButton active={activeTab === 'e_opponent'} onClick={() => setActiveTab('e_opponent')}>
@@ -1087,6 +1114,129 @@ export function DashboardPage() {
             </ErrorBoundary>
           )}
 
+          {/* ── 速報タブ (R-006: flash_advice) ── */}
+          {activeTab === 'flash' && (
+            <ErrorBoundary>
+              <div className="space-y-4">
+                {/* 試合 / セット / 地点 セレクター */}
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <SectionTitle>{t('analysis.flash.title')}</SectionTitle>
+                  <div className="flex flex-wrap gap-3 mt-3">
+                    {/* 試合選択 */}
+                    <div className="flex flex-col gap-1 min-w-[180px] flex-1">
+                      <label className="text-xs text-gray-400">試合</label>
+                      <select
+                        className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1.5"
+                        value={flashMatchId ?? ''}
+                        onChange={(e) => {
+                          setFlashMatchId(e.target.value ? Number(e.target.value) : null)
+                          setFlashSet(1)
+                          setFlashRallyNum('')
+                        }}
+                      >
+                        <option value="">{t('analysis.flash.no_match')}</option>
+                        {matches.map((m) => (
+                          <option key={m.match_id} value={m.match_id}>
+                            {m.date} vs {m.opponent}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* セット選択 */}
+                    <div className="flex flex-col gap-1 min-w-[100px]">
+                      <label className="text-xs text-gray-400">{t('analysis.flash.set_select')}</label>
+                      <select
+                        className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1.5"
+                        value={flashSet}
+                        onChange={(e) => setFlashSet(Number(e.target.value))}
+                      >
+                        {[1, 2, 3].map((n) => (
+                          <option key={n} value={n}>Set {n}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 地点（ラリー番号 任意） */}
+                    <div className="flex flex-col gap-1 min-w-[130px]">
+                      <label className="text-xs text-gray-400">{t('analysis.flash.rally_select')}（任意）</label>
+                      <input
+                        type="number"
+                        min={1}
+                        className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1.5 w-full"
+                        placeholder="全ラリー"
+                        value={flashRallyNum}
+                        onChange={(e) => setFlashRallyNum(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* FlashAdvicePanel */}
+                {flashMatchId && selectedPlayerId ? (
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <FlashAdvicePanel
+                      matchId={flashMatchId}
+                      asOfSet={flashSet}
+                      asOfRallyNum={flashRallyNum ? Number(flashRallyNum) : undefined}
+                      playerId={selectedPlayerId}
+                    />
+                  </div>
+                ) : (
+                  <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
+                    試合と選手を選択すると速報アドバイスが表示されます
+                  </div>
+                )}
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {/* ── 振り返りタブ (R-003〜R-005) ── */}
+          {activeTab === 'review' && (
+            <ErrorBoundary>
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                  {/* 被打球弱点マップ */}
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.review.vulnerability_map')}</SectionTitle>
+                    <p className="text-xs text-gray-500 mb-3">{t('analysis.review.vulnerability_subtitle')}</p>
+                    <ReceivedVulnerabilityMap playerId={selectedPlayerId!} filters={filters} />
+                  </div>
+
+                  {/* 有効配球マップ */}
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.review.effective_map')}</SectionTitle>
+                    <p className="text-xs text-gray-500 mb-3">{t('analysis.review.effective_map_subtitle')}</p>
+                    <EffectiveDistributionMap playerId={selectedPlayerId!} filters={filters} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                  {/* 失点前パターン */}
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.review.pre_loss_title')}</SectionTitle>
+                    <PreLossPatterns playerId={selectedPlayerId!} filters={filters} />
+                  </div>
+
+                  {/* 得点前パターン */}
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.review.pre_win_title')}</SectionTitle>
+                    <PreWinPatterns playerId={selectedPlayerId!} filters={filters} />
+                  </div>
+                </div>
+
+                {/* セット比較 */}
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <SectionTitle>セット別パフォーマンス</SectionTitle>
+                    <ExpandBtn onClick={() => setExpandedChart('set_comparison')} />
+                  </div>
+                  <SetComparison playerId={selectedPlayerId!} filters={filters} />
+                </div>
+              </div>
+            </ErrorBoundary>
+          )}
+
           {/* ── 空間分析タブ (C-002, C-003) ── */}
           {activeTab === 'c_spatial' && (
             <ErrorBoundary>
@@ -1125,6 +1275,74 @@ export function DashboardPage() {
             </ErrorBoundary>
           )}
 
+          {/* ── 成長タブ (Phase 2) ── */}
+          {activeTab === 'growth' && selectedPlayerId && (
+            <ErrorBoundary>
+              <div className="space-y-5">
+                {/* ペアモードトグル（is_target 選手が2人以上いる場合のみ表示） */}
+                {sortedPlayers.filter((p) => p.is_target).length >= 2 && (
+                  <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-3">
+                    <span className="text-xs text-gray-400">{t('analysis.growth.pair_mode')}</span>
+                    <button
+                      onClick={() => { setPairMode((v) => !v); setPartnerPlayerId(null) }}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${pairMode ? 'bg-blue-500' : 'bg-gray-600'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${pairMode ? 'translate-x-5' : ''}`}
+                      />
+                    </button>
+                    {pairMode && (
+                      <select
+                        className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1"
+                        value={partnerPlayerId ?? ''}
+                        onChange={(e) => setPartnerPlayerId(e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">{t('analysis.growth.pair_select_b')}</option>
+                        {sortedPlayers
+                          .filter((p) => p.is_target && p.id !== selectedPlayerId)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                      </select>
+                    )}
+                  </div>
+                )}
+
+                {/* 成長判定カード */}
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <p className="text-sm font-semibold text-gray-200 mb-3">{t('analysis.growth.judgment_label')}</p>
+                  <GrowthJudgmentCard playerId={selectedPlayerId} />
+                </div>
+
+                {/* 勝率推移・サーブ勝率推移 */}
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <p className="text-xs font-semibold text-gray-400 mb-2">{t('analysis.growth.win_rate_label')}</p>
+                    <GrowthTimeline playerId={selectedPlayerId} metric="win_rate" />
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <p className="text-xs font-semibold text-gray-400 mb-2">{t('analysis.growth.serve_win_rate_label')}</p>
+                    <GrowthTimeline playerId={selectedPlayerId} metric="serve_win_rate" />
+                  </div>
+                </div>
+
+                {/* ペアモード: PairCombinedView */}
+                {pairMode && partnerPlayerId && (
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <p className="text-sm font-semibold text-gray-200 mb-3">{t('analysis.growth.pair_combined_title')}</p>
+                    <PairCombinedView
+                      playerAId={selectedPlayerId}
+                      playerBId={partnerPlayerId}
+                      playerAName={sortedPlayers.find((p) => p.id === selectedPlayerId)?.name}
+                      playerBName={sortedPlayers.find((p) => p.id === partnerPlayerId)?.name}
+                      filters={filters}
+                    />
+                  </div>
+                )}
+              </div>
+            </ErrorBoundary>
+          )}
+
           {/* ── 対戦相手タブ (E-001) ── */}
           {activeTab === 'e_opponent' && (
             <ErrorBoundary>
@@ -1136,9 +1354,16 @@ export function DashboardPage() {
                   </div>
                 }
               >
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <SectionTitle>{t('analysis.opponent_stats.title')}</SectionTitle>
-                  <OpponentStats playerId={selectedPlayerId!} />
+                <div className="space-y-5">
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.opponent_stats.title')}</SectionTitle>
+                    <OpponentStats playerId={selectedPlayerId!} />
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
+                    <p className="text-xs text-gray-500 mb-3">{t('analysis.opponent_type_affinity.subtitle')}</p>
+                    <OpponentTypeAffinity playerId={selectedPlayerId!} filters={filters} />
+                  </div>
                 </div>
               </RoleGuard>
             </ErrorBoundary>
@@ -1147,10 +1372,25 @@ export function DashboardPage() {
           {/* ── ダブルスタブ (F-001〜F-004) ── */}
           {activeTab === 'f_doubles' && (
             <ErrorBoundary>
-              <DoublesAnalysis
-                playerId={selectedPlayerId!}
-                allMatches={matches}
-              />
+              <div className="space-y-5">
+                <DoublesAnalysis
+                  playerId={selectedPlayerId!}
+                  allMatches={matches}
+                />
+                {/* Phase 3: ペアプレースタイル（ペアモード時） */}
+                {pairMode && partnerPlayerId && (
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <SectionTitle>{t('analysis.pair_playstyle.title')}</SectionTitle>
+                    <p className="text-xs text-gray-500 mb-3">{t('analysis.pair_playstyle.subtitle')}</p>
+                    <PairPlaystyle
+                      playerAId={selectedPlayerId!}
+                      playerBId={partnerPlayerId}
+                      playerAName={sortedPlayers.find((p) => p.id === selectedPlayerId)?.name}
+                      playerBName={sortedPlayers.find((p) => p.id === partnerPlayerId)?.name}
+                    />
+                  </div>
+                )}
+              </div>
             </ErrorBoundary>
           )}
 

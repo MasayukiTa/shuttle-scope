@@ -280,6 +280,9 @@
     "e_opponent": "対戦相手",
     "f_doubles": "ダブルス",
     "g_markov": "詳細解析",
+    "flash": "速報",
+    "review": "振り返り",
+    "growth": "成長",
     "no_data": "データ不足（アノテーション後に解析可能）",
     "loading": "読み込み中...",
     "restricted": "このコンテンツはアナリスト・コーチ向けです",
@@ -316,6 +319,74 @@
       "pre3": "3球前",
       "growth_title": "成長エリア分析",
       "rate": "発生率"
+    },
+    "pre_win": {
+      "title": "得点前パターン",
+      "pre1": "1球前",
+      "pre2": "2球前",
+      "pre3": "3球前",
+      "rate": "発生率"
+    },
+    "review": {
+      "title": "振り返り",
+      "match_select": "試合を選択してください",
+      "vulnerability_map": "被打球弱点マップ",
+      "effective_map": "有効配球マップ",
+      "effective_map_subtitle": "得点に繋がったショットの落点",
+      "vulnerability_subtitle": "失点時に打ち込まれたゾーン",
+      "pre_win_title": "得点前パターン",
+      "pre_loss_title": "失点前パターン",
+      "next_action": "次回アクション",
+      "next_action_placeholder": "分析からの推奨アクション（アナリストが記入）",
+      "weakness_label": "重点強化ポイント",
+      "danger_zone_label": "要注意ゾーン",
+      "top_zone_label": "有効ゾーン"
+    },
+    "effective_map": {
+      "zone": "ゾーン",
+      "win_rate": "得点率",
+      "effectiveness": "有効度",
+      "top_zones": "有効上位ゾーン"
+    },
+    "vulnerability_map": {
+      "zone": "ゾーン",
+      "loss_rate": "失点率",
+      "danger_zones": "要注意ゾーン"
+    },
+    "flash": {
+      "title": "速報",
+      "set_select": "セット",
+      "rally_select": "地点（ラリー番号）",
+      "no_match": "試合を選択してください",
+      "categories": {
+        "danger": "注意：失点パターン",
+        "opportunity": "好機：有効な攻め",
+        "pattern": "傾向：ラリー展開",
+        "opponent": "相手の多用ショット",
+        "next_action": "次に試す戦術",
+        "trend": "セット内勝率トレンド",
+        "fatigue_signal": "長ラリー後のパフォーマンス"
+      },
+      "extended_label": "★ 高確信度の追加示唆"
+    },
+    "opponent_type_affinity": {
+      "title": "相手タイプ別相性",
+      "subtitle": "攻撃型・守備型・バランス型ごとの勝率"
+    },
+    "pair_playstyle": {
+      "title": "ペアプレースタイル",
+      "subtitle": "前衛主体 / 後衛主体 / バランス型"
+    },
+    "growth": {
+      "title": "成長",
+      "judgment_label": "総合成長判定",
+      "pending_reason": "試合数が不足しています（最低{{min}}試合必要）",
+      "win_rate_label": "勝率推移",
+      "serve_win_rate_label": "サーブ勝率推移",
+      "pair_mode": "ペアモード",
+      "pair_select_b": "パートナー選択",
+      "pair_mode_off": "シングル表示",
+      "pair_combined_title": "ペア合算ビュー"
     },
     "first_return": {
       "title": "ファーストリターン分析",
