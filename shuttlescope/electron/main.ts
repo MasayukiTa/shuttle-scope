@@ -26,6 +26,36 @@ protocol.registerSchemesAsPrivileged([
 
 let pythonProcess: ChildProcess | null = null
 let mainWindow: BrowserWindow | null = null
+let splashWindow: BrowserWindow | null = null
+
+// ─── スプラッシュ画面 HTML（ファイルなし・data URL で即時表示） ────────────────
+const SPLASH_HTML = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #0f172a; }
+  body { display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, sans-serif; }
+  .wrap { text-align: center; }
+  .logo { font-size: 2rem; font-weight: 800; color: #fff; letter-spacing: -0.02em; }
+  .logo span { color: #3b82f6; }
+  .sub { margin-top: 6px; font-size: 0.75rem; color: #6b7280; letter-spacing: 0.05em; }
+  .dots { display: flex; gap: 8px; justify-content: center; margin-top: 24px; }
+  .dot { width: 8px; height: 8px; background: #3b82f6; border-radius: 50%; animation: b 1.2s ease-in-out infinite; }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes b { 0%,80%,100%{opacity:.2;transform:scale(.8)} 40%{opacity:1;transform:scale(1)} }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">Shuttle<span>Scope</span></div>
+    <div class="sub">BADMINTON ANALYSIS</div>
+    <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  </div>
+</body>
+</html>`
 
 // ─── バックエンド起動待機 ────────────────────────────────────────────────────
 
@@ -70,6 +100,8 @@ function startPythonBackend(): ChildProcess {
       ...process.env,
       API_PORT: '8765',
       DATABASE_URL: `sqlite:///${path.join(appPath, 'shuttlescope.db')}`,
+      // watchfiles の自動リロードを無効化（起動時間を 10s → 1s に短縮）
+      ENVIRONMENT: 'production',
     },
     windowsHide: true,
   })
@@ -182,6 +214,23 @@ ipcMain.handle('open-video-file', async () => {
   return `localfile:///${normalized}`
 })
 
+// ─── スプラッシュウィンドウ作成（即時表示用） ─────────────────────────────────
+
+function createSplashWindow(): void {
+  splashWindow = new BrowserWindow({
+    width: 380,
+    height: 240,
+    frame: false,
+    transparent: false,
+    resizable: false,
+    center: true,
+    backgroundColor: '#0f172a',
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  })
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(SPLASH_HTML)}`)
+  splashWindow.once('ready-to-show', () => splashWindow?.show())
+}
+
 // ─── メインウィンドウ作成 ─────────────────────────────────────────────────────
 
 function createWindow(): void {
@@ -192,6 +241,7 @@ function createWindow(): void {
     minHeight: 700,
     title: 'ShuttleScope',
     backgroundColor: '#0f172a',
+    show: false,  // スプラッシュが閉じてから表示する
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -215,8 +265,26 @@ function createWindow(): void {
   } else if (existsSync(rendererFile)) {
     mainWindow.loadFile(rendererFile)
   } else {
-    mainWindow.loadURL('http://localhost:5173')
+    // rendererがまだビルド中（start スクリプトでの並行ビルド時）
+    // ファイルが現れるまでポーリングして読み込む
+    const pollRenderer = () => {
+      if (existsSync(rendererFile)) {
+        mainWindow?.loadFile(rendererFile)
+      } else {
+        setTimeout(pollRenderer, 500)
+      }
+    }
+    pollRenderer()
   }
+
+  // React が完全に描画されたらスプラッシュを閉じてメインウィンドウを表示
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+      splashWindow = null
+    }
+    mainWindow?.show()
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -227,16 +295,24 @@ function createWindow(): void {
 
 async function startApp(): Promise<void> {
   try {
-    pythonProcess = startPythonBackend()
-    await waitForBackend('http://localhost:8765/api/health', 10000)
-    console.log('[Main] Backend ready')
+    // スプラッシュを最初に表示（~100ms で表示される）
+    createSplashWindow()
 
-    // localfile:// プロトコルハンドラーを登録
+    pythonProcess = startPythonBackend()
+
+    // localfile:// プロトコルハンドラーを登録（ウィンドウ作成前に必要）
     registerLocalFileProtocol()
 
+    // メインウィンドウをバックグラウンドでロード（show:false なので画面には出ない）
+    // ロード完了後に did-finish-load でスプラッシュを閉じて表示する
     createWindow()
 
     if (!mainWindow) return
+
+    // バックエンド起動確認はバックグラウンドで継続（ログ用）
+    waitForBackend('http://localhost:8765/api/health', 30000)
+      .then(() => console.log('[Main] Backend ready'))
+      .catch((err) => console.error('[Main] Backend startup warning:', err.message))
 
     // ── DRM / EME 権限ハンドラー ──────────────────────────────────────────────
     // <webview> 内で DRM コンテンツ（Widevine L3）を再生するために
@@ -292,6 +368,10 @@ async function startApp(): Promise<void> {
       }
     )
   } catch (err) {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+      splashWindow = null
+    }
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[Main] Startup failed:', msg)
     dialog.showErrorBox(

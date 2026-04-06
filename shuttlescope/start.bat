@@ -9,9 +9,6 @@ set "VENV=%BACKEND%\.venv"
 set "PYTHON=%VENV%\Scripts\python.exe"
 set "PIP=%VENV%\Scripts\pip.exe"
 
-:: Strip trailing backslash
-set "APPDIR=%ROOT:~0,-1%"
-
 echo ============================================
 echo   ShuttleScope
 echo ============================================
@@ -39,7 +36,7 @@ if not exist "%PYTHON%" (
     python -m venv "%VENV%"
     if errorlevel 1 ( echo [ERROR] venv failed & pause & exit /b 1 )
     echo [SETUP] Installing packages...
-    "%PIP%" install -r "%BACKEND%equirements.txt"
+    "%PIP%" install -r "%BACKEND%\requirements.txt"
     if errorlevel 1 ( echo [ERROR] pip install failed & pause & exit /b 1 )
     echo [SETUP] Python done.
     echo.
@@ -55,27 +52,12 @@ if not exist "%ROOT%node_modules" (
     echo.
 )
 
-:: Build if output files are missing
-if not exist "%ROOT%out\main\index.js" goto build
-if not exist "%ROOT%outenderer\index.html" goto build
-goto launch
-
-:build
-echo [BUILD] Building app (takes 1-2 min)...
-cd /d "%ROOT%"
-call npm run build
-if errorlevel 1 ( echo [ERROR] Build failed & pause & exit /b 1 )
-echo [BUILD] Done.
-echo.
-
-:launch
 :: Kill old Python backend
 powershell -NoProfile -Command "Stop-Process -Name python -Force -ErrorAction SilentlyContinue" >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-echo [START] Launching ShuttleScope...
-echo        Close this window to stop the app.
-echo.
+:: Launch
+:: - 初回: main+preload ビルド(0.5s) → Electron起動(スプラッシュ) → renderer並行ビルド(10s)
+:: - 2回目以降: main+preload ビルド(0.5s) → Electron起動 → すぐアプリ表示
 cd /d "%ROOT%"
-npm run preview
-
+npm run start

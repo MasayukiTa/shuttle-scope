@@ -12,7 +12,35 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
+import { checkHealth } from '@/api/client'
 import { UserRole } from '@/types'
+
+// バックエンド起動を待機するフック
+function useBackendReady() {
+  const [ready, setReady] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const start = Date.now()
+
+    const poll = async () => {
+      while (!cancelled) {
+        if (await checkHealth()) {
+          if (!cancelled) setReady(true)
+          return
+        }
+        setElapsed(Math.floor((Date.now() - start) / 1000))
+        await new Promise<void>((r) => setTimeout(r, 500))
+      }
+    }
+
+    poll()
+    return () => { cancelled = true }
+  }, [])
+
+  return { ready, elapsed }
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -137,6 +165,30 @@ function ThemeApplier({ children }: { children: React.ReactNode }) {
 
 function App() {
   const { role, setRole } = useAuth()
+  const { ready, elapsed } = useBackendReady()
+
+  // バックエンド接続中はローディング画面を表示
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-3xl font-bold text-white">ShuttleScope</div>
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+          </div>
+          <p className="text-gray-400 text-sm">バックエンド起動中...</p>
+          {elapsed >= 10 && (
+            <p className="text-yellow-500 text-xs">
+              起動に時間がかかっています ({elapsed}秒)
+              <br />Python と requirements.txt のインストールを確認してください
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   if (!role) {
     return (

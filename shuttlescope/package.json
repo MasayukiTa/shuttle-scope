@@ -8,6 +8,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron .",
+    "start": "node scripts/start.mjs",
     "test": "vitest",
     "lint": "eslint ."
   },
