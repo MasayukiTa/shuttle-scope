@@ -16,6 +16,7 @@ import { apiGet } from '@/api/client'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { User, BarChart2, Activity, Target, TrendingUp, Award } from 'lucide-react'
+import { BAR, WIN, LOSS, TOOLTIP_STYLE as CW_TOOLTIP, AXIS_TICK, CURSOR_FILL } from '@/styles/colors'
 import { ShotWinLoss } from '@/components/analysis/ShotWinLoss'
 import { RallyLengthWinRate } from '@/components/analysis/RallyLengthWinRate'
 import { PressurePerformance } from '@/components/analysis/PressurePerformance'
@@ -66,6 +67,7 @@ interface MatchSummary {
   date: string
   result: 'win' | 'loss' | string
   rally_count: number
+  format: string
 }
 
 // タブ種別
@@ -84,12 +86,7 @@ const END_TYPE_LABELS: Record<string, string> = {
   cant_reach: '届かず',
 }
 
-const TOOLTIP_STYLE = {
-  backgroundColor: '#1f2937',
-  border: '1px solid #374151',
-  borderRadius: '6px',
-  color: '#f9fafb',
-}
+const TOOLTIP_STYLE = CW_TOOLTIP
 
 function pct(value: number): string {
   return `${(value * 100).toFixed(1)}%`
@@ -512,7 +509,7 @@ export function DashboardPage() {
                             labelStyle={{ color: '#f9fafb' }}
                             cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                           />
-                          <Bar dataKey="count" fill="#f59e0b" radius={[0, 3, 3, 0]} name="件数" />
+                          <Bar dataKey="count" fill={BAR} radius={[0, 3, 3, 0]} name="件数" />
                         </BarChart>
                       </ResponsiveContainer>
                     )}
@@ -552,7 +549,7 @@ export function DashboardPage() {
                             labelStyle={{ color: '#f9fafb' }}
                             cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                           />
-                          <Bar dataKey="count" fill="#06b6d4" radius={[0, 3, 3, 0]} name="件数" />
+                          <Bar dataKey="count" fill={BAR} radius={[0, 3, 3, 0]} name="件数" />
                         </BarChart>
                       </ResponsiveContainer>
                     )}
@@ -596,7 +593,7 @@ export function DashboardPage() {
                             labelStyle={{ color: '#f9fafb' }}
                             cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                           />
-                          <Bar dataKey="count" fill="#8b5cf6" radius={[3, 3, 0, 0]} name="件数" />
+                          <Bar dataKey="count" fill={BAR} radius={[3, 3, 0, 0]} name="件数" />
                         </BarChart>
                       </ResponsiveContainer>
                     )}
@@ -967,7 +964,7 @@ export function DashboardPage() {
             <ErrorBoundary>
               <DoublesAnalysis
                 playerId={selectedPlayerId!}
-                doubleMatchId={selectedMatchId}
+                allMatches={matches}
               />
             </ErrorBoundary>
           )}

@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { coolwarm, TOOLTIP_STYLE, AXIS_TICK } from '@/styles/colors'
 
 interface TemporalPerformanceProps {
   playerId: number
@@ -30,15 +31,8 @@ interface TemporalResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-const TOOLTIP_STYLE = {
-  backgroundColor: '#1f2937',
-  border: '1px solid #374151',
-  borderRadius: '6px',
-  color: '#f9fafb',
-  fontSize: 12,
-}
-
-const PHASE_COLORS = ['#f59e0b', '#06b6d4', '#22c55e']
+// 3フェーズをcoolwarmで等間隔サンプリング: 序盤=青, 中盤=白/中立, 終盤=赤
+const PHASE_COLORS = [coolwarm(0), coolwarm(0.5), coolwarm(1)]
 
 export function TemporalPerformance({ playerId }: TemporalPerformanceProps) {
   const { t } = useTranslation()

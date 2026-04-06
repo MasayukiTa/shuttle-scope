@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { coolwarm, TOOLTIP_STYLE } from '@/styles/colors'
 
 interface SetComparisonProps {
   playerId: number
@@ -32,14 +33,6 @@ interface SetComparisonResponse {
   }
 }
 
-const TOOLTIP_STYLE = {
-  backgroundColor: '#1f2937',
-  border: '1px solid #374151',
-  borderRadius: '6px',
-  color: '#f9fafb',
-  fontSize: 12,
-}
-
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   const winRate = payload.find((p: any) => p.dataKey === 'win_rate_pct')?.value ?? 0
@@ -53,8 +46,8 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
-// 勝率バーの色（セット番号で変える）
-const SET_COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b']
+// セット番号をcoolwarmで色付け（第1=青, 第2=中立, 第3=赤）
+const SET_COLORS = [coolwarm(0), coolwarm(0.5), coolwarm(1)]
 
 export function SetComparison({ playerId }: SetComparisonProps) {
   const { data: resp, isLoading } = useQuery({

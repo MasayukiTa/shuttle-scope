@@ -42,13 +42,16 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 }
 
+import { coolwarm } from '@/styles/colors'
+
+// 大会レベルを重要度順(高=hot, 低=cool)でcoolwarmに対応
 const LEVEL_COLORS: Record<string, string> = {
-  IC: '#f59e0b',
-  IS: '#3b82f6',
-  SJL: '#06b6d4',
-  全日本: '#ec4899',
-  国内: '#22c55e',
-  その他: '#9ca3af',
+  IC:    coolwarm(1.0),   // 最高レベル=深赤
+  IS:    coolwarm(0.75),  // 高=サーモン
+  SJL:   coolwarm(0.5),   // 中=白/ニュートラル
+  全日本: coolwarm(0.25),  // 低めのレベル
+  国内:  coolwarm(0.0),   // 国内=青
+  その他: '#6b7280',
 }
 
 export function TournamentComparison({ playerId }: TournamentComparisonProps) {

@@ -16,20 +16,21 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { WIN, LOSS, BAR, coolwarm, TOOLTIP_STYLE } from '@/styles/colors'
+
+interface MatchItem {
+  match_id: number
+  opponent: string
+  date: string
+  result: string
+  format: string
+}
 
 interface DoublesAnalysisProps {
   playerId: number
-  /** ダブルス試合のみ含むマッチリスト */
-  doubleMatchId?: number | null
+  allMatches: MatchItem[]
 }
 
-const TOOLTIP_STYLE = {
-  backgroundColor: '#1f2937',
-  border: '1px solid #374151',
-  borderRadius: '6px',
-  color: '#f9fafb',
-  fontSize: 12,
-}
 
 // ─── パートナー比較 (F-002) ──────────────────────────────────────────────────
 
@@ -123,8 +124,8 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
   }
 
   const srData = [
-    { name: 'サーブ側', rate: +(d.serve_win_rate * 100).toFixed(1), fill: '#f59e0b' },
-    { name: 'レシーブ側', rate: +(d.receive_win_rate * 100).toFixed(1), fill: '#06b6d4' },
+    { name: 'サーブ側', rate: +(d.serve_win_rate * 100).toFixed(1), fill: WIN },
+    { name: 'レシーブ側', rate: +(d.receive_win_rate * 100).toFixed(1), fill: BAR },
   ]
 
   const serveStyleEntries = Object.entries(d.serve_style)
@@ -175,7 +176,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
               <div
                 key={z.zone}
                 className="rounded p-1.5 text-center text-xs"
-                style={{ backgroundColor: `rgba(6,182,212,${0.15 + z.win_rate * 0.4})` }}
+                style={{ backgroundColor: coolwarm(z.win_rate, 0.6) }}
               >
                 <p className="text-white font-medium">{z.zone}</p>
                 <p className="text-gray-300">{(z.win_rate * 100).toFixed(0)}%</p>
@@ -220,8 +221,8 @@ function StrokeSharing({ playerId }: { playerId: number }) {
   }
 
   const shareData = [
-    { name: 'バランス良', rate: +(d.balanced_win_rate * 100).toFixed(1), count: d.balanced_count, fill: '#22c55e' },
-    { name: '偏り大', rate: +(d.imbalanced_win_rate * 100).toFixed(1), count: d.imbalanced_count, fill: '#f97316' },
+    { name: 'バランス良', rate: +(d.balanced_win_rate * 100).toFixed(1), count: d.balanced_count, fill: WIN },
+    { name: '偏り大', rate: +(d.imbalanced_win_rate * 100).toFixed(1), count: d.imbalanced_count, fill: LOSS },
   ]
 
   const balancePct = Math.round(d.avg_balance_ratio * 100)
@@ -304,7 +305,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
     { area: '後衛率', ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.back_rate * 100).toFixed(1)])) },
   ]
 
-  const COLORS = ['#3b82f6', '#f59e0b']
+  const COLORS = [WIN, BAR]
 
   return (
     <div className="space-y-3">
@@ -347,22 +348,10 @@ function CourtCoverage({ matchId }: { matchId: number }) {
 
 // ─── メインコンポーネント ────────────────────────────────────────────────────
 
-export function DoublesAnalysis({ playerId, doubleMatchId }: DoublesAnalysisProps) {
-  const [selectedDoubleMatchId, setSelectedDoubleMatchId] = useState<number | null>(doubleMatchId ?? null)
-
-  // ダブルス試合一覧を取得（court_coverage_split 用）
-  const { data: matchesResp } = useQuery({
-    queryKey: ['analysis-matches-summary', playerId],
-    queryFn: () =>
-      apiGet<{ success: boolean; data: { match_id: number; opponent: string; date: string; result: string; format?: string }[] }>(
-        '/analysis/matches_summary',
-        { player_id: playerId }
-      ),
-    enabled: !!playerId,
-  })
-
-  const doublesMatches = (matchesResp?.data ?? []).filter(
-    (m: any) => m.format && m.format !== 'singles'
+export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) {
+  const doublesMatches = allMatches.filter((m) => m.format && m.format !== 'singles')
+  const [selectedDoubleMatchId, setSelectedDoubleMatchId] = useState<number | null>(
+    doublesMatches[0]?.match_id ?? null
   )
 
   return (

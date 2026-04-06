@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { BAR, LINE, TOOLTIP_STYLE, AXIS_TICK } from '@/styles/colors'
 
 interface RallyLengthWinRateProps {
   playerId: number
@@ -39,14 +40,6 @@ interface RallyLengthResponse {
     sample_size: number
     confidence: { level: string; stars: string; label: string; warning?: string }
   }
-}
-
-const TOOLTIP_STYLE = {
-  backgroundColor: '#1f2937',
-  border: '1px solid #374151',
-  borderRadius: '6px',
-  color: '#f9fafb',
-  fontSize: 12,
 }
 
 // プレイヤータイプごとのバッジ色
@@ -154,7 +147,7 @@ export function RallyLengthWinRate({ playerId }: RallyLengthWinRateProps) {
           <Bar
             yAxisId="count"
             dataKey="count"
-            fill="#6366f1"
+            fill={BAR}
             radius={[3, 3, 0, 0]}
             name="件数"
             opacity={0.75}
@@ -163,9 +156,9 @@ export function RallyLengthWinRate({ playerId }: RallyLengthWinRateProps) {
             yAxisId="rate"
             type="monotone"
             dataKey="win_rate_pct"
-            stroke="#f59e0b"
+            stroke={LINE}
             strokeWidth={2}
-            dot={{ fill: '#f59e0b', r: 4 }}
+            dot={{ fill: LINE, r: 4 }}
             name="勝率"
           />
         </ComposedChart>
@@ -174,11 +167,11 @@ export function RallyLengthWinRate({ playerId }: RallyLengthWinRateProps) {
       {/* 凡例 */}
       <div className="flex gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded-sm bg-violet-500 opacity-75" />
+          <span className="inline-block w-3 h-3 rounded-sm opacity-75" style={{ backgroundColor: BAR }} />
           件数
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-0.5 bg-amber-400" />
+          <span className="inline-block w-3 h-0.5" style={{ backgroundColor: LINE }} />
           勝率
         </span>
       </div>

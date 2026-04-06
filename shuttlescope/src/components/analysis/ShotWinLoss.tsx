@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { WIN, LOSS, TOOLTIP_STYLE } from '@/styles/colors'
 
 interface ShotWinLossProps {
   playerId: number
@@ -38,14 +39,6 @@ interface ShotWinLossResponse {
     sample_size: number
     confidence: ConfidenceMeta
   }
-}
-
-const TOOLTIP_STYLE = {
-  backgroundColor: '#1f2937',
-  border: '1px solid #374151',
-  borderRadius: '6px',
-  color: '#f9fafb',
-  fontSize: 12,
 }
 
 // カスタムツールチップ
@@ -127,17 +120,13 @@ export function ShotWinLoss({ playerId }: ShotWinLossProps) {
             tick={{ fill: '#d1d5db', fontSize: 11 }}
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-          {/* 得点 (緑) */}
-          <Bar dataKey="win_count" stackId="wl" fill="#22c55e" name="得点" radius={[0, 0, 0, 0]}>
-            {chartData.map((_, i) => (
-              <Cell key={i} fill="#22c55e" />
-            ))}
+          {/* 得点 (WIN=coolwarm低端青) */}
+          <Bar dataKey="win_count" stackId="wl" fill={WIN} name="得点" radius={[0, 0, 0, 0]}>
+            {chartData.map((_, i) => <Cell key={i} fill={WIN} />)}
           </Bar>
-          {/* 失点 (オレンジ) */}
-          <Bar dataKey="lose_count" stackId="wl" fill="#f97316" name="失点" radius={[0, 3, 3, 0]}>
-            {chartData.map((_, i) => (
-              <Cell key={i} fill="#f97316" />
-            ))}
+          {/* 失点 (LOSS=coolwarm高端赤) */}
+          <Bar dataKey="lose_count" stackId="wl" fill={LOSS} name="失点" radius={[0, 3, 3, 0]}>
+            {chartData.map((_, i) => <Cell key={i} fill={LOSS} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -165,11 +154,11 @@ export function ShotWinLoss({ playerId }: ShotWinLossProps) {
       {/* 凡例 */}
       <div className="flex gap-4 text-xs text-gray-400 pt-1">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded-sm bg-blue-500" />
+          <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: WIN }} />
           得点
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded-sm bg-red-500" />
+          <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: LOSS }} />
           失点
         </span>
       </div>

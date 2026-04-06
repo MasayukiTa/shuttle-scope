@@ -405,6 +405,7 @@ def get_matches_summary(player_id: int, db: Session = Depends(get_db)):
                 "date": m.date.isoformat() if m.date else None,
                 "result": result,
                 "rally_count": rally_count_by_match.get(m.id, 0),
+                "format": m.format,
             }
         )
 
