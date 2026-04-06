@@ -16,7 +16,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { WIN, LOSS, BAR, coolwarm, TOOLTIP_STYLE } from '@/styles/colors'
+import { WIN, LOSS, BAR, perfColor, TOOLTIP_STYLE } from '@/styles/colors'
 
 interface MatchItem {
   match_id: number
@@ -176,7 +176,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
               <div
                 key={z.zone}
                 className="rounded p-1.5 text-center text-xs"
-                style={{ backgroundColor: coolwarm(z.win_rate, 0.6) }}
+                style={{ backgroundColor: perfColor(z.win_rate, 0.6) }}
               >
                 <p className="text-white font-medium">{z.zone}</p>
                 <p className="text-gray-300">{(z.win_rate * 100).toFixed(0)}%</p>

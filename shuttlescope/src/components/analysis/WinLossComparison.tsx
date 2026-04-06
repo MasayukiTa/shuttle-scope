@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface WinLossComparisonProps {
   playerId: number
+  filters?: AnalysisFilters
 }
 
 interface MatchStats {
@@ -40,13 +42,19 @@ function StatRow({ label, winVal, lossVal }: { label: string; winVal: string; lo
   )
 }
 
-function ComparisonContent({ playerId }: { playerId: number }) {
+function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: number; filters?: AnalysisFilters }) {
   const { t } = useTranslation()
 
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-win-loss-comparison', playerId],
+    queryKey: ['analysis-win-loss-comparison', playerId, filters],
     queryFn: () =>
-      apiGet<WinLossResponse>('/analysis/win_loss_comparison', { player_id: playerId }),
+      apiGet<WinLossResponse>('/analysis/win_loss_comparison', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 
@@ -126,7 +134,7 @@ function ComparisonContent({ playerId }: { playerId: number }) {
   )
 }
 
-export function WinLossComparison({ playerId }: WinLossComparisonProps) {
+export function WinLossComparison({ playerId, filters }: WinLossComparisonProps) {
   const { t } = useTranslation()
   return (
     <RoleGuard
@@ -135,7 +143,7 @@ export function WinLossComparison({ playerId }: WinLossComparisonProps) {
         <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.restricted')}</div>
       }
     >
-      <ComparisonContent playerId={playerId} />
+      <ComparisonContent playerId={playerId} filters={filters} />
     </RoleGuard>
   )
 }

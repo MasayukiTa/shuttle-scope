@@ -12,9 +12,11 @@ import {
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { WIN, LOSS, TOOLTIP_STYLE } from '@/styles/colors'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface ShotWinLossProps {
   playerId: number
+  filters?: AnalysisFilters
 }
 
 interface ShotRow {
@@ -58,11 +60,17 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
-export function ShotWinLoss({ playerId }: ShotWinLossProps) {
+export function ShotWinLoss({ playerId, filters = DEFAULT_FILTERS }: ShotWinLossProps) {
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-shot-win-loss', playerId],
+    queryKey: ['analysis-shot-win-loss', playerId, filters],
     queryFn: () =>
-      apiGet<ShotWinLossResponse>('/analysis/shot_win_loss', { player_id: playerId }),
+      apiGet<ShotWinLossResponse>('/analysis/shot_win_loss', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 

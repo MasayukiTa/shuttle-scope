@@ -12,9 +12,12 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { perfColor, TOOLTIP_STYLE } from '@/styles/colors'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface TournamentComparisonProps {
   playerId: number
+  filters?: AnalysisFilters
 }
 
 interface LevelData {
@@ -34,33 +37,19 @@ interface TournamentResponse {
   }
 }
 
-const TOOLTIP_STYLE = {
-  backgroundColor: '#1f2937',
-  border: '1px solid #374151',
-  borderRadius: '6px',
-  color: '#f9fafb',
-  fontSize: 12,
-}
-
-import { coolwarm } from '@/styles/colors'
-
-// 大会レベルを重要度順(高=hot, 低=cool)でcoolwarmに対応
-const LEVEL_COLORS: Record<string, string> = {
-  IC:    coolwarm(1.0),   // 最高レベル=深赤
-  IS:    coolwarm(0.75),  // 高=サーモン
-  SJL:   coolwarm(0.5),   // 中=白/ニュートラル
-  全日本: coolwarm(0.25),  // 低めのレベル
-  国内:  coolwarm(0.0),   // 国内=青
-  その他: '#6b7280',
-}
-
-export function TournamentComparison({ playerId }: TournamentComparisonProps) {
+export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: TournamentComparisonProps) {
   const { t } = useTranslation()
 
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-tournament-comparison', playerId],
+    queryKey: ['analysis-tournament-comparison', playerId, filters],
     queryFn: () =>
-      apiGet<TournamentResponse>('/analysis/tournament_level_comparison', { player_id: playerId }),
+      apiGet<TournamentResponse>('/analysis/tournament_level_comparison', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 
@@ -100,7 +89,7 @@ export function TournamentComparison({ playerId }: TournamentComparisonProps) {
           />
           <Bar dataKey="win_rate" radius={[3, 3, 0, 0]} name={t('analysis.tournament_comparison.win_rate')}>
             {chartData.map((entry) => (
-              <Cell key={entry.name} fill={LEVEL_COLORS[entry.name] ?? '#6b7280'} />
+              <Cell key={entry.name} fill={perfColor(entry.win_rate / 100)} />
             ))}
           </Bar>
         </BarChart>
@@ -120,7 +109,7 @@ export function TournamentComparison({ playerId }: TournamentComparisonProps) {
           <tbody>
             {levels.map((l) => (
               <tr key={l.level} className="border-b border-gray-700/40 hover:bg-gray-700/20">
-                <td className="py-1.5 pr-3 font-medium" style={{ color: LEVEL_COLORS[l.level] ?? '#9ca3af' }}>
+                <td className="py-1.5 pr-3 font-medium" style={{ color: perfColor(l.win_rate) }}>
                   {l.level}
                 </td>
                 <td className="py-1.5 pr-3 text-center text-gray-300">{l.match_count}</td>

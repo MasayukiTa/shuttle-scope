@@ -3,9 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface FirstReturnAnalysisProps {
   playerId: number
+  filters?: AnalysisFilters
 }
 
 interface ZoneData {
@@ -25,13 +27,19 @@ interface FirstReturnResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-export function FirstReturnAnalysis({ playerId }: FirstReturnAnalysisProps) {
+export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: FirstReturnAnalysisProps) {
   const { t } = useTranslation()
 
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-first-return', playerId],
+    queryKey: ['analysis-first-return', playerId, filters],
     queryFn: () =>
-      apiGet<FirstReturnResponse>('/analysis/first_return_analysis', { player_id: playerId }),
+      apiGet<FirstReturnResponse>('/analysis/first_return_analysis', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 

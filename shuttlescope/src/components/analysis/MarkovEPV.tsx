@@ -5,9 +5,11 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface MarkovEPVProps {
   playerId: number
+  filters?: AnalysisFilters
 }
 
 interface EPVPattern {
@@ -66,13 +68,19 @@ function EPVCard({ pattern, isPositive, rank }: { pattern: EPVPattern; isPositiv
   )
 }
 
-export function MarkovEPV({ playerId }: MarkovEPVProps) {
+export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProps) {
   const { t } = useTranslation()
 
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-epv', playerId],
+    queryKey: ['analysis-epv', playerId, filters],
     queryFn: () =>
-      apiGet<EPVResponse>('/analysis/epv', { player_id: playerId }),
+      apiGet<EPVResponse>('/analysis/epv', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 

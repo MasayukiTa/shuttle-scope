@@ -1,69 +1,130 @@
 # ShuttleScope
 
-バドミントン動画アノテーション・解析デスクトップアプリ
+ShuttleScope は、バドミントンの試合動画を対象にしたデスクトップ型のアノテーション / 分析アプリです。  
+Electron 上で React の UI を動かし、ローカルの FastAPI バックエンドと SQLite を使って、動画・ラリー・ストローク・分析結果を一体で扱います。
 
-## 概要
+## 現在の実装範囲
 
-ShuttleScope は、バドミントンの試合映像をアノテーションし、ショット・ラリー・得失点パターンを統計解析するデスクトップアプリケーションです。  
-アナリスト・コーチ・選手の3ロールに対応し、ロール別に表示内容を制御します。
-
-## 主な機能
-
-### アノテーション
-- 試合動画の再生・フレーム単位シーク
-- キーボードショートカットによるショット種別入力（18種類）
-- コート9ゾーン/12ゾーン着地点入力
-- ラリー確定・スコア連動
-
-### 解析ダッシュボード
-- 概要: ラリー終了タイプ分布、ショット種別分布、ラリー長分布
-- ショット分析: 勝率・得失点ショット比較、ラリー長×勝率、時間帯別パフォーマンス
-- 詳細解析: ショット遷移マトリクス（D3.js ヒートマップ）、EPV（Expected Pattern Value）、スコア推移
-- 大会比較: 大会レベル別勝率・平均ラリー長
-- セット別: セット進行に伴う勝率変化
-- ダブルス: コートカバレッジ、パートナー比較、サーブ/レシーブ分析、打球分担
-- 相手分析、ファーストリターン分析、インターバルレポート
-
-### レポート
-- PDF形式のコーチ向けレポート生成（ReportLab）
-- コートヒートマップ画像（matplotlib）
+- 動画アノテーション
+- ラリー / ストローク入力
+- キーボード中心の入力フロー
+- 解析ダッシュボード
+- コートヒートマップ
+- ショット遷移マトリクス
+- ラリー長 / セット / 時間帯分析
+- EPV / Markov 系の詳細分析
+- 対戦相手分析
+- ダブルス分析
+- コーチ / アナリスト / 選手のロール切り替え
+- PDF / JSON ベースのレポート出力
+- ストリーミング動画ダウンロード補助
 
 ## アーキテクチャ
 
-```
+- デスクトップシェル: Electron
+- レンダラー: React 18 + TypeScript + Vite
+- 状態管理 / データ取得: Zustand, TanStack Query
+- グラフ: Recharts, D3.js
+- バックエンド: FastAPI
+- DB: SQLite
+- 解析: NumPy, SciPy, scikit-learn
+- レポート: ReportLab, matplotlib
+
+フロントエンドは Electron IPC ではなく、`localhost` 上の FastAPI に HTTP で接続します。  
+この構成は、将来的なサーバー移行を見据えたものです。
+
+## リポジトリ構成
+
+```text
 shuttle-scope/
-└── shuttlescope/
-    ├── electron/          # Electron メイン/プリロード
-    ├── src/               # React + TypeScript レンダラー
-    │   ├── pages/         # 画面コンポーネント
-    │   ├── components/    # 共通・解析・コート・動画コンポーネント
-    │   ├── styles/        # カラーシステム（colors.ts）
-    │   └── i18n/          # 日本語翻訳
-    ├── backend/           # FastAPI バックエンド
-    │   ├── routers/       # エンドポイント（players, matches, rallies, strokes, sets, analysis, reports）
-    │   ├── analysis/      # 解析ロジック（Markov, EPV, Bayesian, ショット影響度）
-    │   ├── db/            # SQLAlchemy モデル・DB接続
-    │   └── utils/         # 動画ダウンロード、バリデーション
-    └── scripts/           # テストデータ生成スクリプト
+├─ CLAUDE.md
+├─ README.md
+├─ private_docs/                 # ローカル専用の機密資料（Git管理外）
+└─ shuttlescope/
+   ├─ electron/                  # Electron main / preload
+   ├─ src/
+   │  ├─ api/
+   │  ├─ components/
+   │  │  ├─ analysis/
+   │  │  ├─ annotation/
+   │  │  ├─ common/
+   │  │  ├─ court/
+   │  │  └─ video/
+   │  ├─ hooks/
+   │  ├─ i18n/
+   │  ├─ pages/
+   │  └─ styles/
+   ├─ backend/
+   │  ├─ analysis/
+   │  ├─ db/
+   │  ├─ routers/
+   │  ├─ tests/
+   │  └─ utils/
+   ├─ scripts/
+   └─ docs/
+      └─ validation/             # ローカル検証メモ（Git管理外）
 ```
 
-**通信:** Electron Renderer ↔ FastAPI (`localhost:8765`) over HTTP  
-**DB:** SQLite（POC）→ PostgreSQL（将来移行予定）
+## 主な画面
+
+### Annotator
+
+- 動画を見ながらラリー単位で入力
+- ストローク番号や直前ショットに応じて候補を絞るアダプティブ入力
+- キーボードショートカット中心の入力
+- サーブ / レシーブ / 終了種別 / 着地点などを記録
+
+### Dashboard
+
+- 概要 KPI
+- ラリー終了タイプ
+- ショットタイプ分布
+- ラリー長分布
+- コートヒートマップ
+- スコア推移
+- ショット別得点 / 失点
+- セット比較
+- ラリー長別勝率
+- プレッシャー下の傾向
+- ショット遷移マトリクス
+- 時間帯別パフォーマンス
+- ロングラリー後の傾向
+- 対戦相手分析
+- ダブルス分析
+- EPV / Markov 分析
+
+## ロール
+
+POC 段階では `localStorage` を使った簡易ロール切り替えです。
+
+- `analyst`
+- `coach`
+- `player`
+
+`player` には一部の分析を見せず、`RoleGuard` と `ConfidenceBadge` を使って表示制御と不確実性表示を行っています。
 
 ## セットアップ
 
-### 前提条件
-- Node.js 18+
-- Python 3.11+
-- ffmpeg（高画質ダウンロード用、任意）
+### 前提
 
-### フロントエンド
+- Node.js 18 以上
+- Python 3.10 以上
+- Windows 環境を前提に調整済み
+- 動画ダウンロード補助を使う場合は `ffmpeg` があると便利
+
+### フロントエンド / Electron
 
 ```bash
 cd shuttlescope
 npm install
-npm run dev       # 開発モード
-npm run build     # ビルド確認
+npm run dev
+```
+
+本番ビルド確認:
+
+```bash
+cd shuttlescope
+npm run build
 ```
 
 ### バックエンド
@@ -71,56 +132,52 @@ npm run build     # ビルド確認
 ```bash
 cd shuttlescope/backend
 python -m venv .venv
-.venv/Scripts/activate   # Windows
+.venv/Scripts/activate
 pip install -r requirements.txt
-python ../backend/main.py
+python main.py
 ```
 
-### テスト
+FastAPI は通常 `http://127.0.0.1:8765` で起動します。  
+ヘルスチェック:
+
+```text
+GET /api/health
+```
+
+## テスト
+
+バックエンド:
 
 ```bash
 cd shuttlescope
-# バックエンド
-.\backend\.venv\Scripts\python -m pytest
-
-# フロントエンドビルド確認
-npm run build
+.\backend\.venv\Scripts\python -m pytest -v
 ```
 
-## 技術スタック
+フロントエンド:
 
-| レイヤー | 技術 |
-|---|---|
-| デスクトップシェル | Electron 33 |
-| レンダラー | React 18 + TypeScript + Vite |
-| UIコンポーネント | Radix UI + Tailwind CSS |
-| チャート | Recharts + D3.js |
-| 状態管理 | TanStack Query + Zustand |
-| バックエンド | FastAPI + Uvicorn |
-| ORM | SQLAlchemy 2.0 |
-| 解析 | NumPy / SciPy / scikit-learn / pandas |
-| レポート生成 | ReportLab + matplotlib |
-| 動画取得 | yt-dlp |
-| テスト | pytest + Vitest |
+```bash
+cd shuttlescope
+npx vitest run --config vitest.config.ts
+```
 
-## カラーシステム
+## テストデータ生成スクリプト
 
-全チャートは `src/styles/colors.ts` で定義した coolwarm パレット（matplotlib 準拠）に統一:
+`shuttlescope/scripts/` にはローカル検証用の補助スクリプトがあります。
 
-- 連続値ヒートマップ: 深青 `#3b4cc0` → 白 `#dddddd` → 深赤 `#b40426`
-- 勝ち: `WIN = #3b4cc0`、負け: `LOSS = #b40426`
-- 単系列棒グラフ: `BAR = #8db0fe`、複合折れ線: `LINE = #f38a64`
+- `generate_test_data.py`
+- `generate_doubles_data.py`
+- `generate_first_return_data.py`
 
-## ロールモデル
+これらはローカル DB に検証データを追加する用途です。
 
-| ロール | 表示内容 |
-|---|---|
-| analyst | 全データ・生データ・操作UI |
-| coach | 解析・レポート・戦術分析 |
-| player | 成長指向のフィードバックのみ（弱点直接表示なし） |
+## 重要な運用ルール
 
-> POC段階のロール切り替えは localStorage ベース（本番認証ではありません）
+- 機密資料は `private_docs/` に置き、Git に含めない
+- 検証メモは `shuttlescope/docs/validation/` に置き、Git に含めない
+- ローカル DB、動画、生成物、キャッシュはコミットしない
+- 日本語 UI 文言は `shuttlescope/src/i18n/ja.json` を優先する
 
-## ライセンス
+## 補足
 
-Private — 社内研究プロジェクト
+現時点では README は実装済み機能の概要とローカル開発手順に絞っています。  
+ライセンスやデータ利用条件は、別途確定後に専用ドキュメントとして追加する前提です。

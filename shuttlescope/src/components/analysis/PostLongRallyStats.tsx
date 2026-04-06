@@ -3,9 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface PostLongRallyStatsProps {
   playerId: number
+  filters?: AnalysisFilters
 }
 
 interface StatSummary {
@@ -56,13 +58,19 @@ function ComparisonCard({
   )
 }
 
-export function PostLongRallyStats({ playerId }: PostLongRallyStatsProps) {
+export function PostLongRallyStats({ playerId, filters = DEFAULT_FILTERS }: PostLongRallyStatsProps) {
   const { t } = useTranslation()
 
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-post-long-rally', playerId],
+    queryKey: ['analysis-post-long-rally', playerId, filters],
     queryFn: () =>
-      apiGet<PostLongResponse>('/analysis/post_long_rally_stats', { player_id: playerId }),
+      apiGet<PostLongResponse>('/analysis/post_long_rally_stats', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 

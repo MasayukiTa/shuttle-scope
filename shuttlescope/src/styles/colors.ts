@@ -68,6 +68,31 @@ export function catColor(i: number): string {
   return CATS[i % CATS.length]
 }
 
+// ── 密度・頻度ヒートマップ用（白→深青）────────────────────────────────────────
+/**
+ * 密度/頻度ヒートマップ専用スケール。
+ * 0 = 白(活動なし)、1 = 深青(高頻度)。
+ * coolwarm(diverging)と異なり中央に意味のある中立色がない単方向データに使う。
+ */
+export function seqBlue(ratio: number): string {
+  const t = Math.max(0, Math.min(1, ratio))
+  // (240,244,255) = 白に近い薄青 → (59,76,192) = 深青
+  const r = Math.round(240 - (240 - 59) * t)
+  const g = Math.round(244 - (244 - 76) * t)
+  const b = Math.round(255 - (255 - 192) * t)
+  return `rgb(${r},${g},${b})`
+}
+
+// ── パフォーマンス指標用（高=青=良い, 低=赤=悪い）────────────────────────────
+/**
+ * 勝率・パフォーマンス指標用スケール。coolwarm を逆転させて使う。
+ * rate=1.0(高勝率) → 深青(良い)、rate=0.5 → 白(中立)、rate=0.0 → 深赤(悪い)。
+ * 「青=良い」の統一ルールに準拠。
+ */
+export function perfColor(rate: number, alpha = 1): string {
+  return coolwarm(1 - Math.max(0, Math.min(1, rate)), alpha)
+}
+
 // ── UI サーフェス ─────────────────────────────────────────────────────────────
 export const TOOLTIP_BG     = '#1f2937'
 export const TOOLTIP_BORDER = '#374151'

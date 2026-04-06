@@ -2,9 +2,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface PressurePerformanceProps {
   playerId: number
+  filters?: AnalysisFilters
 }
 
 interface PressureSegment {
@@ -76,12 +78,19 @@ function SegmentCard({
   )
 }
 
-export function PressurePerformance({ playerId }: PressurePerformanceProps) {
+export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: PressurePerformanceProps) {
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-pressure-performance', playerId],
+    queryKey: ['analysis-pressure-performance', playerId, filters],
     queryFn: () =>
       apiGet<PressureResponse>('/analysis/pressure_performance', {
         player_id: playerId,
+        ...fp,
       }),
     enabled: !!playerId,
   })

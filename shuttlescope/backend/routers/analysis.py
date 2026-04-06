@@ -1,7 +1,10 @@
 """解析API（/api/analysis）"""
 from collections import defaultdict
+from datetime import date as DateType
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.analysis.markov import MarkovAnalyzer
@@ -58,6 +61,36 @@ def _player_role_in_match(match: Match, player_id: int) -> str | None:
     return None
 
 
+def _get_player_matches(
+    db: Session,
+    player_id: int,
+    result: Optional[str] = None,
+    tournament_level: Optional[str] = None,
+    date_from: Optional[DateType] = None,
+    date_to: Optional[DateType] = None,
+) -> list[Match]:
+    """フィルター条件付きでプレイヤーの試合を取得"""
+    q = db.query(Match).filter(
+        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+    )
+    if tournament_level:
+        q = q.filter(Match.tournament_level == tournament_level)
+    if date_from:
+        q = q.filter(Match.date >= date_from)
+    if date_to:
+        q = q.filter(Match.date <= date_to)
+    if result in ("win", "loss"):
+        # resultはフロントから見たプレイヤー視点。DBはplayer_a基準で格納
+        opposite = "loss" if result == "win" else "win"
+        q = q.filter(
+            or_(
+                and_(Match.player_a_id == player_id, Match.result == result),
+                and_(Match.player_b_id == player_id, Match.result == opposite),
+            )
+        )
+    return q.all()
+
+
 def _fetch_matches_sets_rallies(player_id: int, db: Session):
     """プレイヤーIDに関連する試合・セット・ラリーを一括取得するヘルパー"""
     matches = (
@@ -89,15 +122,15 @@ def _fetch_matches_sets_rallies(player_id: int, db: Session):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/descriptive")
-def get_descriptive(player_id: int, db: Session = Depends(get_db)):
-    # 対象プレイヤーが出場した全試合を取得
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+def get_descriptive(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     match_ids = [m.id for m in matches]
     role_by_match: dict[int, str] = {
@@ -194,19 +227,18 @@ def get_descriptive(player_id: int, db: Session = Depends(get_db)):
 def get_heatmap(
     player_id: int,
     type: str = Query("hit", pattern="^(hit|land)$"),
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
     ALL_ZONES = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
 
-    # プレイヤーが player_a / player_b として出場した試合IDを取得
-    match_ids_as_a = [
-        m.id
-        for m in db.query(Match.id).filter(Match.player_a_id == player_id).all()
-    ]
-    match_ids_as_b = [
-        m.id
-        for m in db.query(Match.id).filter(Match.player_b_id == player_id).all()
-    ]
+    # フィルター済み試合からIDを分類
+    _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
+    match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
 
     zone_col = Stroke.hit_zone if type == "hit" else Stroke.land_zone
 
@@ -262,15 +294,15 @@ def get_heatmap(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/shot_types")
-def get_shot_types(player_id: int, db: Session = Depends(get_db)):
-    # 対象プレイヤーが出場した全試合とロールを取得
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+def get_shot_types(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": []}
 
@@ -402,6 +434,7 @@ def get_matches_summary(player_id: int, db: Session = Depends(get_db)):
                 "match_id": m.id,
                 "opponent": opponent_name,
                 "tournament": m.tournament,
+                "tournament_level": m.tournament_level,
                 "date": m.date.isoformat() if m.date else None,
                 "result": result,
                 "rally_count": rally_count_by_match.get(m.id, 0),
@@ -429,15 +462,16 @@ def get_confidence(player_id: int, analysis_type: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/shot_win_loss")
-def get_shot_win_loss(player_id: int, db: Session = Depends(get_db)):
+def get_shot_win_loss(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """B-002: ショット別の総数・得点・失点・勝率を返す"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     if not matches:
         confidence = check_confidence("win_loss_comparison", 0)
@@ -672,15 +706,16 @@ def get_consecutive_streaks(match_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/set_comparison")
-def get_set_comparison(player_id: int, db: Session = Depends(get_db)):
+def get_set_comparison(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """B-005: 1・2・3セット目別のパフォーマンス比較"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     if not matches:
         confidence = check_confidence("descriptive_basic", 0)
@@ -769,15 +804,16 @@ def get_set_comparison(player_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/rally_length_vs_winrate")
-def get_rally_length_vs_winrate(player_id: int, db: Session = Depends(get_db)):
+def get_rally_length_vs_winrate(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """D-001: ラリー長区間別勝率とプレイヤータイプを返す"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("rally_vs_winrate", 0)
     if not matches:
@@ -888,15 +924,16 @@ def get_rally_length_vs_winrate(player_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/pressure_performance")
-def get_pressure_performance(player_id: int, db: Session = Depends(get_db)):
+def get_pressure_performance(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """D-004: デュース時・終盤時・通常時のパフォーマンス比較"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("pressure_performance", 0)
     empty_stat = {"total": 0, "win_rate": 0.0, "avg_rally_length": 0.0}
@@ -977,15 +1014,16 @@ def get_pressure_performance(player_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/shot_transition_matrix")
-def get_shot_transition_matrix(player_id: int, db: Session = Depends(get_db)):
+def get_shot_transition_matrix(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """C-001: プレイヤーのショット遷移行列（18x18）を返す"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     n = len(SHOT_KEYS)
     empty_matrix = [[0.0] * n for _ in range(n)]
@@ -1215,15 +1253,16 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/win_loss_comparison")
-def get_win_loss_comparison(player_id: int, db: Session = Depends(get_db)):
+def get_win_loss_comparison(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """B-004: 勝ち試合と負け試合で主要統計を比較する"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("win_loss_comparison", 0)
     if not matches:
@@ -1353,15 +1392,16 @@ def get_win_loss_comparison(player_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/tournament_level_comparison")
-def get_tournament_level_comparison(player_id: int, db: Session = Depends(get_db)):
+def get_tournament_level_comparison(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """B-006: 大会レベル（IC/SJL/国内等）ごとの勝率・ラリー長を比較する"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("descriptive_basic", 0)
     if not matches:
@@ -1443,15 +1483,16 @@ def get_tournament_level_comparison(player_id: int, db: Session = Depends(get_db
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/pre_loss_patterns")
-def get_pre_loss_patterns(player_id: int, db: Session = Depends(get_db)):
+def get_pre_loss_patterns(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """C-002: 失点ラリーで失点の1・2・3球前のショットを集計する"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("win_loss_comparison", 0)
     if not matches:
@@ -1563,15 +1604,16 @@ def get_pre_loss_patterns(player_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/first_return_analysis")
-def get_first_return_analysis(player_id: int, db: Session = Depends(get_db)):
+def get_first_return_analysis(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """C-003: サーブ後最初のリターン（stroke_num=2）のゾーン別勝率を分析する"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("descriptive_basic", 0)
     if not matches:
@@ -1779,15 +1821,16 @@ def get_zone_detail(
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/temporal_performance")
-def get_temporal_performance(player_id: int, db: Session = Depends(get_db)):
+def get_temporal_performance(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """D-002: 序盤(0-7点)・中盤(8-14点)・終盤(15点以降)の勝率を集計する"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("temporal", 0)
     if not matches:
@@ -1862,16 +1905,14 @@ def get_temporal_performance(player_id: int, db: Session = Depends(get_db)):
 def get_post_long_rally_stats(
     player_id: int,
     threshold: int = Query(10, ge=1),
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
     """D-003: 長ラリー（threshold打以上）後の次ラリーのパフォーマンスを通常時と比較する"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("descriptive_basic", 0)
     if not matches:
@@ -2713,15 +2754,16 @@ def get_stroke_sharing(player_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/epv")
-def get_epv(player_id: int, db: Session = Depends(get_db)):
+def get_epv(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
     """G-001: マルコフ連鎖に基づくショットパターンのEPVを計算する（アナリスト・コーチ向け）"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
-    )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("shot_transition", 0)
     if not matches:

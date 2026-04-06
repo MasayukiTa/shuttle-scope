@@ -6,9 +6,11 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface PreLossPatternsProps {
   playerId: number
+  filters?: AnalysisFilters
 }
 
 interface ShotPattern {
@@ -56,14 +58,20 @@ function PatternList({ patterns, isPlayerView }: { patterns: ShotPattern[]; isPl
   )
 }
 
-function PreLossContent({ playerId }: { playerId: number }) {
+function PreLossContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: number; filters?: AnalysisFilters }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<PreKey>('pre_loss_1')
 
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-pre-loss-patterns', playerId],
+    queryKey: ['analysis-pre-loss-patterns', playerId, filters],
     queryFn: () =>
-      apiGet<PreLossResponse>('/analysis/pre_loss_patterns', { player_id: playerId }),
+      apiGet<PreLossResponse>('/analysis/pre_loss_patterns', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 
@@ -124,6 +132,6 @@ function PreLossContent({ playerId }: { playerId: number }) {
   )
 }
 
-export function PreLossPatterns({ playerId }: PreLossPatternsProps) {
-  return <PreLossContent playerId={playerId} />
+export function PreLossPatterns({ playerId, filters }: PreLossPatternsProps) {
+  return <PreLossContent playerId={playerId} filters={filters} />
 }

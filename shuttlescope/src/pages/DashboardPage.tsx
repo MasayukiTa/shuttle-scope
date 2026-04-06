@@ -13,9 +13,9 @@ import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { apiGet } from '@/api/client'
-import { Player } from '@/types'
+import { Player, AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
-import { User, BarChart2, Activity, Target, TrendingUp, Award } from 'lucide-react'
+import { User, BarChart2, Activity, Target, TrendingUp, Award, Maximize2 } from 'lucide-react'
 import { BAR, WIN, LOSS, TOOLTIP_STYLE as CW_TOOLTIP, AXIS_TICK, CURSOR_FILL } from '@/styles/colors'
 import { ShotWinLoss } from '@/components/analysis/ShotWinLoss'
 import { RallyLengthWinRate } from '@/components/analysis/RallyLengthWinRate'
@@ -34,6 +34,7 @@ import { MarkovEPV } from '@/components/analysis/MarkovEPV'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
 import { DoublesAnalysis } from '@/components/analysis/DoublesAnalysis'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { ChartModal } from '@/components/common/ChartModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ interface MatchSummary {
   match_id: number
   opponent: string
   tournament: string
+  tournament_level: string
   date: string
   result: 'win' | 'loss' | string
   rally_count: number
@@ -131,7 +133,19 @@ function StatCard({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-sm font-semibold text-gray-300 mb-3">{children}</h2>
+    <h2 className="text-sm font-semibold text-gray-300 mb-0">{children}</h2>
+  )
+}
+
+function ExpandBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title="全画面で表示"
+      className="shrink-0 text-gray-500 hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-700"
+    >
+      <Maximize2 size={13} />
+    </button>
   )
 }
 
@@ -190,10 +204,22 @@ export function DashboardPage() {
   const [filterResult, setFilterResult] = useState<'all' | 'win' | 'loss'>('all')
   const [filterOpponent, setFilterOpponent] = useState<number | null>(null)
   const [filterLevel, setFilterLevel] = useState<string | null>(null)
+  const [filterDateFrom, setFilterDateFrom] = useState<string | null>(null)
+  const [filterDateTo, setFilterDateTo] = useState<string | null>(null)
+
+  // フィルターオブジェクト（全サブコンポーネントへ渡す）
+  const filters: AnalysisFilters = {
+    result: filterResult,
+    tournamentLevel: filterLevel,
+    dateFrom: filterDateFrom,
+    dateTo: filterDateTo,
+  }
   // インターバルレポート用に試合を選択
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
   const [intervalSet, setIntervalSet] = useState<number>(1)
   const [showIntervalModal, setShowIntervalModal] = useState(false)
+  // 全画面グラフ表示
+  const [expandedChart, setExpandedChart] = useState<string | null>(null)
 
   // ── Players ──
   const { data: playersResp, isLoading: loadingPlayers } = useQuery({
@@ -211,13 +237,21 @@ export function DashboardPage() {
       return (b.match_count ?? 0) - (a.match_count ?? 0) || a.name.localeCompare(b.name, 'ja')
     })
 
+  // フィルターAPIパラメータ（undefined値を除外）
+  const filterApiParams = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
+
   // ── Descriptive ──
   const { data: descriptiveResp, isLoading: loadingDescriptive } = useQuery({
-    queryKey: ['analysis-descriptive', selectedPlayerId],
+    queryKey: ['analysis-descriptive', selectedPlayerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: DescriptiveData; meta?: { sample_size?: number } }>(
         '/analysis/descriptive',
-        { player_id: selectedPlayerId! }
+        { player_id: selectedPlayerId!, ...filterApiParams }
       ),
     enabled: !!selectedPlayerId,
   })
@@ -226,22 +260,22 @@ export function DashboardPage() {
 
   // ── Heatmap hit ──
   const { data: heatmapHitResp, isLoading: loadingHeatmapHit } = useQuery({
-    queryKey: ['analysis-heatmap-hit', selectedPlayerId],
+    queryKey: ['analysis-heatmap-hit', selectedPlayerId, filters],
     queryFn: () =>
       apiGet<HeatmapResponse>(
         '/analysis/heatmap',
-        { player_id: selectedPlayerId!, type: 'hit' }
+        { player_id: selectedPlayerId!, type: 'hit', ...filterApiParams }
       ),
     enabled: !!selectedPlayerId,
   })
 
   // ── Heatmap land ──
   const { data: heatmapLandResp, isLoading: loadingHeatmapLand } = useQuery({
-    queryKey: ['analysis-heatmap-land', selectedPlayerId],
+    queryKey: ['analysis-heatmap-land', selectedPlayerId, filters],
     queryFn: () =>
       apiGet<HeatmapResponse>(
         '/analysis/heatmap',
-        { player_id: selectedPlayerId!, type: 'land' }
+        { player_id: selectedPlayerId!, type: 'land', ...filterApiParams }
       ),
     enabled: !!selectedPlayerId,
   })
@@ -251,11 +285,11 @@ export function DashboardPage() {
 
   // ── Shot types ──
   const { data: shotTypesResp, isLoading: loadingShotTypes } = useQuery({
-    queryKey: ['analysis-shot-types', selectedPlayerId],
+    queryKey: ['analysis-shot-types', selectedPlayerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: ShotTypeRow[] }>(
         '/analysis/shot_types',
-        { player_id: selectedPlayerId! }
+        { player_id: selectedPlayerId!, ...filterApiParams }
       ),
     enabled: !!selectedPlayerId,
   })
@@ -277,6 +311,13 @@ export function DashboardPage() {
   })
 
   const matches: MatchSummary[] = matchesResp?.data ?? []
+
+  // フィルター即時適用（クライアントサイド）
+  const filteredMatches = matches.filter((m) => {
+    if (filterResult !== 'all' && m.result !== filterResult) return false
+    if (filterLevel && m.tournament_level !== filterLevel) return false
+    return true
+  })
 
   // ── End type chart data ──
   const endTypeData = descriptive
@@ -419,10 +460,30 @@ export function DashboardPage() {
                 <option key={lv} value={lv}>{lv}</option>
               ))}
             </select>
-            {(filterResult !== 'all' || filterLevel) && (
+            <span className="text-xs text-gray-400 shrink-0 ml-2">期間:</span>
+            <input
+              type="date"
+              className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none w-32"
+              value={filterDateFrom ?? ''}
+              onChange={(e) => setFilterDateFrom(e.target.value || null)}
+            />
+            <span className="text-xs text-gray-500">〜</span>
+            <input
+              type="date"
+              className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 focus:outline-none w-32"
+              value={filterDateTo ?? ''}
+              onChange={(e) => setFilterDateTo(e.target.value || null)}
+            />
+            {(filterResult !== 'all' || filterLevel || filterDateFrom || filterDateTo) && (
               <button
                 className="text-xs text-blue-400 hover:text-blue-300 ml-1"
-                onClick={() => { setFilterResult('all'); setFilterLevel(null); setFilterOpponent(null) }}
+                onClick={() => {
+                  setFilterResult('all')
+                  setFilterLevel(null)
+                  setFilterOpponent(null)
+                  setFilterDateFrom(null)
+                  setFilterDateTo(null)
+                }}
               >
                 リセット
               </button>
@@ -479,12 +540,12 @@ export function DashboardPage() {
                   <div className="bg-gray-800 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <SectionTitle>ラリー終了タイプ</SectionTitle>
-                      {descriptive && (
-                        <ConfidenceBadge
-                          sampleSize={descriptive.total_rallies}
-                          className="text-[10px] shrink-0"
-                        />
-                      )}
+                      <div className="flex items-center gap-2">
+                        {descriptive && (
+                          <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />
+                        )}
+                        <ExpandBtn onClick={() => setExpandedChart('end_type')} />
+                      </div>
                     </div>
                     {loadingDescriptive ? (
                       <LoadingRow />
@@ -519,12 +580,12 @@ export function DashboardPage() {
                   <div className="bg-gray-800 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <SectionTitle>ショットタイプ分布（上位10件）</SectionTitle>
-                      {shotSampleSize > 0 && (
-                        <ConfidenceBadge
-                          sampleSize={shotSampleSize}
-                          className="text-[10px] shrink-0"
-                        />
-                      )}
+                      <div className="flex items-center gap-2">
+                        {shotSampleSize > 0 && (
+                          <ConfidenceBadge sampleSize={shotSampleSize} className="text-[10px] shrink-0" />
+                        )}
+                        <ExpandBtn onClick={() => setExpandedChart('shot_type')} />
+                      </div>
                     </div>
                     {loadingShotTypes ? (
                       <LoadingRow />
@@ -559,12 +620,12 @@ export function DashboardPage() {
                   <div className="bg-gray-800 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <SectionTitle>ラリー長分布（〜20打）</SectionTitle>
-                      {descriptive && (
-                        <ConfidenceBadge
-                          sampleSize={descriptive.total_rallies}
-                          className="text-[10px] shrink-0"
-                        />
-                      )}
+                      <div className="flex items-center gap-2">
+                        {descriptive && (
+                          <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />
+                        )}
+                        <ExpandBtn onClick={() => setExpandedChart('rally_dist')} />
+                      </div>
                     </div>
                     {loadingDescriptive ? (
                       <LoadingRow />
@@ -606,6 +667,7 @@ export function DashboardPage() {
                   <div className="bg-gray-800 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <SectionTitle>コートヒートマップ</SectionTitle>
+                      <div className="flex items-center gap-2">
                       {(() => {
                         const s = heatmapTab === 'hit'
                           ? heatmapHitResp?.meta?.sample_size
@@ -614,6 +676,8 @@ export function DashboardPage() {
                           ? <ConfidenceBadge sampleSize={s} className="text-[10px] shrink-0" />
                           : null
                       })()}
+                      <ExpandBtn onClick={() => setExpandedChart('court_heat')} />
+                      </div>
                     </div>
 
                     <div className="flex gap-1 mb-3">
@@ -710,36 +774,43 @@ export function DashboardPage() {
 
               {/* 試合一覧テーブル */}
               <div className="bg-gray-800 rounded-lg p-4">
-                <SectionTitle>試合一覧</SectionTitle>
+                <div className="flex items-center justify-between mb-3">
+                  <SectionTitle>試合一覧</SectionTitle>
+                  <span className="text-xs text-gray-500">{filteredMatches.length} / {matches.length} 試合</span>
+                </div>
                 {loadingMatches ? (
                   <LoadingRow />
-                ) : matches.length === 0 ? (
-                  <p className="text-gray-500 text-sm text-center py-4">データなし</p>
+                ) : filteredMatches.length === 0 ? (
+                  <p className="text-gray-500 text-sm text-center py-4">
+                    {matches.length > 0 ? 'フィルター条件に一致する試合がありません' : 'データなし'}
+                  </p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-gray-400 border-b border-gray-700">
-                          <th className="text-left py-2 pr-4 font-medium">対戦相手</th>
-                          <th className="text-left py-2 pr-4 font-medium">大会</th>
-                          <th className="text-left py-2 pr-4 font-medium">日付</th>
-                          <th className="text-center py-2 pr-4 font-medium">結果</th>
+                          <th className="text-left py-2 pr-3 font-medium">対戦相手</th>
+                          <th className="text-left py-2 pr-3 font-medium">大会</th>
+                          <th className="text-center py-2 pr-3 font-medium">レベル</th>
+                          <th className="text-left py-2 pr-3 font-medium">日付</th>
+                          <th className="text-center py-2 pr-3 font-medium">結果</th>
                           <th className="text-right py-2 font-medium">ラリー数</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {matches.map((m) => (
+                        {filteredMatches.map((m) => (
                           <tr
                             key={m.match_id}
                             className="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors cursor-pointer"
-                            onClick={() => {
-                              setSelectedMatchId(m.match_id)
-                            }}
+                            onClick={() => setSelectedMatchId(m.match_id)}
                           >
-                            <td className="py-2 pr-4 text-white">{m.opponent}</td>
-                            <td className="py-2 pr-4 text-gray-300">{m.tournament}</td>
-                            <td className="py-2 pr-4 text-gray-300 whitespace-nowrap">{m.date}</td>
-                            <td className="py-2 pr-4 text-center">
+                            <td className="py-2 pr-3 text-white">{m.opponent}</td>
+                            <td className="py-2 pr-3 text-gray-300 text-xs">{m.tournament}</td>
+                            <td className="py-2 pr-3 text-center">
+                              <span className="text-xs text-gray-400">{m.tournament_level ?? '—'}</span>
+                            </td>
+                            <td className="py-2 pr-3 text-gray-300 whitespace-nowrap">{m.date}</td>
+                            <td className="py-2 pr-3 text-center">
                               <span
                                 className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
                                   m.result === 'win'
@@ -808,14 +879,20 @@ export function DashboardPage() {
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                   {/* ショット別得点・失点 */}
                   <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>ショット別 得点・失点</SectionTitle>
-                    <ShotWinLoss playerId={selectedPlayerId!} />
+                    <div className="flex items-center justify-between mb-3">
+                      <SectionTitle>ショット別 得点・失点</SectionTitle>
+                      <ExpandBtn onClick={() => setExpandedChart('shot_win_loss')} />
+                    </div>
+                    <ShotWinLoss playerId={selectedPlayerId!} filters={filters} />
                   </div>
 
                   {/* セット別パフォーマンス */}
                   <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>セット別パフォーマンス</SectionTitle>
-                    <SetComparison playerId={selectedPlayerId!} />
+                    <div className="flex items-center justify-between mb-3">
+                      <SectionTitle>セット別パフォーマンス</SectionTitle>
+                      <ExpandBtn onClick={() => setExpandedChart('set_comparison')} />
+                    </div>
+                    <SetComparison playerId={selectedPlayerId!} filters={filters} />
                   </div>
                 </div>
               </RoleGuard>
@@ -828,14 +905,20 @@ export function DashboardPage() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
               {/* ラリー長別勝率 */}
               <div className="bg-gray-800 rounded-lg p-4">
-                <SectionTitle>ラリー長別 勝率</SectionTitle>
-                <RallyLengthWinRate playerId={selectedPlayerId!} />
+                <div className="flex items-center justify-between mb-3">
+                  <SectionTitle>ラリー長別 勝率</SectionTitle>
+                  <ExpandBtn onClick={() => setExpandedChart('rally_win_rate')} />
+                </div>
+                <RallyLengthWinRate playerId={selectedPlayerId!} filters={filters} />
               </div>
 
               {/* プレッシャー下のパフォーマンス */}
               <div className="bg-gray-800 rounded-lg p-4">
-                <SectionTitle>プレッシャー下のパフォーマンス</SectionTitle>
-                <PressurePerformance playerId={selectedPlayerId!} />
+                <div className="flex items-center justify-between mb-3">
+                  <SectionTitle>プレッシャー下のパフォーマンス</SectionTitle>
+                  <ExpandBtn onClick={() => setExpandedChart('pressure')} />
+                </div>
+                <PressurePerformance playerId={selectedPlayerId!} filters={filters} />
               </div>
             </div>
             </ErrorBoundary>
@@ -853,8 +936,11 @@ export function DashboardPage() {
                 }
               >
                 <div className="bg-gray-800 rounded-lg p-4">
-                  <SectionTitle>ショット遷移マトリクス</SectionTitle>
-                  <TransitionMatrix playerId={selectedPlayerId!} />
+                  <div className="flex items-center justify-between mb-3">
+                    <SectionTitle>ショット遷移マトリクス</SectionTitle>
+                    <ExpandBtn onClick={() => setExpandedChart('transition')} />
+                  </div>
+                  <TransitionMatrix playerId={selectedPlayerId!} filters={filters} />
                 </div>
               </RoleGuard>
             </ErrorBoundary>
@@ -877,7 +963,7 @@ export function DashboardPage() {
                       <option value="">-- 試合を選択 --</option>
                       {matches.map((m) => (
                         <option key={m.match_id} value={m.match_id}>
-                          {m.date} vs {m.opponent} ({m.result === 'win' ? '○' : '●'})
+                          [{m.result === 'win' ? '○' : '●'}] {m.date} vs {m.opponent}{m.tournament_level ? ` (${m.tournament_level})` : ''}
                         </option>
                       ))}
                     </select>
@@ -895,13 +981,13 @@ export function DashboardPage() {
                   {/* 勝ち/課題のある試合比較 */}
                   <div className="bg-gray-800 rounded-lg p-4">
                     <SectionTitle>{t('analysis.win_loss_comparison.title')}</SectionTitle>
-                    <WinLossComparison playerId={selectedPlayerId!} />
+                    <WinLossComparison playerId={selectedPlayerId!} filters={filters} />
                   </div>
 
                   {/* 大会レベル別比較 */}
                   <div className="bg-gray-800 rounded-lg p-4">
                     <SectionTitle>{t('analysis.tournament_comparison.title')}</SectionTitle>
-                    <TournamentComparison playerId={selectedPlayerId!} />
+                    <TournamentComparison playerId={selectedPlayerId!} filters={filters} />
                   </div>
                 </div>
               </div>
@@ -914,11 +1000,11 @@ export function DashboardPage() {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <div className="bg-gray-800 rounded-lg p-4">
                   <SectionTitle>{t('analysis.pre_loss.title')}</SectionTitle>
-                  <PreLossPatterns playerId={selectedPlayerId!} />
+                  <PreLossPatterns playerId={selectedPlayerId!} filters={filters} />
                 </div>
                 <div className="bg-gray-800 rounded-lg p-4">
                   <SectionTitle>{t('analysis.first_return.title')}</SectionTitle>
-                  <FirstReturnAnalysis playerId={selectedPlayerId!} />
+                  <FirstReturnAnalysis playerId={selectedPlayerId!} filters={filters} />
                 </div>
               </div>
             </ErrorBoundary>
@@ -929,12 +1015,18 @@ export function DashboardPage() {
             <ErrorBoundary>
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <div className="bg-gray-800 rounded-lg p-4">
-                  <SectionTitle>{t('analysis.temporal.title')}</SectionTitle>
-                  <TemporalPerformance playerId={selectedPlayerId!} />
+                  <div className="flex items-center justify-between mb-3">
+                    <SectionTitle>{t('analysis.temporal.title')}</SectionTitle>
+                    <ExpandBtn onClick={() => setExpandedChart('temporal')} />
+                  </div>
+                  <TemporalPerformance playerId={selectedPlayerId!} filters={filters} />
                 </div>
                 <div className="bg-gray-800 rounded-lg p-4">
-                  <SectionTitle>{t('analysis.post_long_rally.title')}</SectionTitle>
-                  <PostLongRallyStats playerId={selectedPlayerId!} />
+                  <div className="flex items-center justify-between mb-3">
+                    <SectionTitle>{t('analysis.post_long_rally.title')}</SectionTitle>
+                    <ExpandBtn onClick={() => setExpandedChart('post_long')} />
+                  </div>
+                  <PostLongRallyStats playerId={selectedPlayerId!} filters={filters} />
                 </div>
               </div>
             </ErrorBoundary>
@@ -981,14 +1073,100 @@ export function DashboardPage() {
                 }
               >
                 <div className="bg-gray-800 rounded-lg p-4">
-                  <SectionTitle>{t('analysis.epv.title')}</SectionTitle>
-                  <MarkovEPV playerId={selectedPlayerId!} />
+                  <div className="flex items-center justify-between mb-3">
+                    <SectionTitle>{t('analysis.epv.title')}</SectionTitle>
+                    <ExpandBtn onClick={() => setExpandedChart('epv')} />
+                  </div>
+                  <MarkovEPV playerId={selectedPlayerId!} filters={filters} />
                 </div>
               </RoleGuard>
             </ErrorBoundary>
           )}
         </div>
       )}
+
+      {/* ── 全画面グラフモーダル ── */}
+      {expandedChart && selectedPlayerId && (() => {
+        const CHART_TITLES: Record<string, string> = {
+          end_type:      'ラリー終了タイプ',
+          shot_type:     'ショットタイプ分布（上位10件）',
+          rally_dist:    'ラリー長分布',
+          court_heat:    'コートヒートマップ',
+          shot_win_loss: 'ショット別 得点・失点',
+          set_comparison:'セット別パフォーマンス',
+          rally_win_rate:'ラリー長別 勝率',
+          pressure:      'プレッシャー下のパフォーマンス',
+          transition:    'ショット遷移マトリクス',
+          temporal:      '時間帯別パフォーマンス',
+          post_long:     'ロングラリー後の傾向',
+          epv:           '詳細解析（EPV）',
+        }
+        const pid = selectedPlayerId
+        const renderContent = () => {
+          switch (expandedChart) {
+            case 'end_type': return endTypeData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={500}>
+                <BarChart data={endTypeData} layout="vertical" margin={{ top: 0, right: 24, left: 16, bottom: 0 }}>
+                  <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 13 }} />
+                  <YAxis type="category" dataKey="name" width={100} tick={{ fill: '#9ca3af', fontSize: 13 }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
+                  <Bar dataKey="count" fill={BAR} radius={[0, 4, 4, 0]} name="件数" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : null
+            case 'shot_type': return shotChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={500}>
+                <BarChart data={shotChartData} layout="vertical" margin={{ top: 0, right: 24, left: 16, bottom: 0 }}>
+                  <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 13 }} />
+                  <YAxis type="category" dataKey="name" width={110} tick={{ fill: '#9ca3af', fontSize: 13 }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
+                  <Bar dataKey="count" fill={BAR} radius={[0, 4, 4, 0]} name="件数" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : null
+            case 'rally_dist': return rallyHistData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={400}>
+                <BarChart data={rallyHistData} margin={{ top: 0, right: 24, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 13 }} />
+                  <YAxis tick={{ fill: '#9ca3af', fontSize: 13 }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
+                  <Bar dataKey="count" fill={BAR} radius={[4, 4, 0, 0]} name="件数" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : null
+            case 'court_heat': return (
+              <div className="flex justify-center">
+                <CourtDiagram
+                  mode={heatmapTab}
+                  heatmapData={heatmapTab === 'hit' ? heatmapHit : heatmapLand}
+                  interactive={false}
+                  selectedZone={null}
+                  onZoneSelect={() => {}}
+                  label={heatmapTab === 'hit' ? '打点分布' : '着地点分布'}
+                  maxWidth={520}
+                />
+              </div>
+            )
+            case 'shot_win_loss':  return <ShotWinLoss playerId={pid} filters={filters} />
+            case 'set_comparison': return <SetComparison playerId={pid} chartHeight={480} filters={filters} />
+            case 'rally_win_rate': return <RallyLengthWinRate playerId={pid} chartHeight={500} filters={filters} />
+            case 'pressure':       return <PressurePerformance playerId={pid} filters={filters} />
+            case 'transition':     return <TransitionMatrix playerId={pid} filters={filters} />
+            case 'temporal':       return <TemporalPerformance playerId={pid} chartHeight={480} filters={filters} />
+            case 'post_long':      return <PostLongRallyStats playerId={pid} filters={filters} />
+            case 'epv':            return <MarkovEPV playerId={pid} filters={filters} />
+            default:               return null
+          }
+        }
+        return (
+          <ChartModal
+            title={CHART_TITLES[expandedChart] ?? expandedChart}
+            onClose={() => setExpandedChart(null)}
+          >
+            {renderContent()}
+          </ChartModal>
+        )
+      })()}
     </div>
   )
 }

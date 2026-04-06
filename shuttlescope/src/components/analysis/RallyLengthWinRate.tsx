@@ -13,9 +13,12 @@ import {
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { BAR, LINE, TOOLTIP_STYLE, AXIS_TICK } from '@/styles/colors'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface RallyLengthWinRateProps {
   playerId: number
+  chartHeight?: number
+  filters?: AnalysisFilters
 }
 
 interface RallyBucket {
@@ -70,12 +73,19 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
-export function RallyLengthWinRate({ playerId }: RallyLengthWinRateProps) {
+export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFAULT_FILTERS }: RallyLengthWinRateProps) {
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-rally-length-win-rate', playerId],
+    queryKey: ['analysis-rally-length-win-rate', playerId, filters],
     queryFn: () =>
       apiGet<RallyLengthResponse>('/analysis/rally_length_vs_winrate', {
         player_id: playerId,
+        ...fp,
       }),
     enabled: !!playerId,
   })
@@ -122,7 +132,7 @@ export function RallyLengthWinRate({ playerId }: RallyLengthWinRateProps) {
       </div>
 
       {/* コンポーズドチャート */}
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
         <ComposedChart
           data={chartData}
           margin={{ top: 8, right: 40, left: 0, bottom: 0 }}

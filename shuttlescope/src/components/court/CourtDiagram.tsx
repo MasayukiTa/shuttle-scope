@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { Zone9 } from '@/types'
-import { coolwarm } from '@/styles/colors'
+import { seqBlue } from '@/styles/colors'
 
 // SVG仕様: viewBox "0 0 300 400"（縦長）
 // 上半分（y:0-200）: 相手コート（着地点選択）
@@ -51,13 +51,14 @@ interface CourtDiagramProps {
   showLabels?: boolean
   interactive?: boolean                         // アノテーション時はtrue
   label?: string                               // コート上部のラベル
+  maxWidth?: number                            // SVG最大幅（デフォルト200、全画面表示時は大きく）
 }
 
 function getHeatmapColor(value: number, max: number): string {
-  // 0-1 線形正規化 → coolwarm（0=深青, 1=深赤）
-  if (max === 0) return coolwarm(0, 0.85)
+  // 0-1 線形正規化 → seqBlue（0=白, 1=深青）
+  if (max === 0) return seqBlue(0)
   const ratio = Math.max(0, Math.min(value / max, 1))
-  return coolwarm(ratio, 0.85)
+  return seqBlue(ratio)
 }
 
 export function CourtDiagram({
@@ -68,6 +69,7 @@ export function CourtDiagram({
   showLabels = true,
   interactive = true,
   label,
+  maxWidth = 200,
 }: CourtDiagramProps) {
   const { t } = useTranslation()
 
@@ -142,7 +144,7 @@ export function CourtDiagram({
       <svg
         viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
         width="100%"
-        style={{ maxWidth: 200 }}
+        style={{ maxWidth }}
         className="select-none"
       >
         {/* 相手コートゾーン（上半分） */}

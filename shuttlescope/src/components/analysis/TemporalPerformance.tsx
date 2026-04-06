@@ -13,10 +13,13 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { coolwarm, TOOLTIP_STYLE, AXIS_TICK } from '@/styles/colors'
+import { perfColor, TOOLTIP_STYLE, AXIS_TICK } from '@/styles/colors'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface TemporalPerformanceProps {
   playerId: number
+  chartHeight?: number
+  filters?: AnalysisFilters
 }
 
 interface PhaseData {
@@ -31,16 +34,21 @@ interface TemporalResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-// 3フェーズをcoolwarmで等間隔サンプリング: 序盤=青, 中盤=白/中立, 終盤=赤
-const PHASE_COLORS = [coolwarm(0), coolwarm(0.5), coolwarm(1)]
+// フェーズ色は勝率に基づいて動的に決定（perfColor: 高勝率=青=良い, 低勝率=赤=悪い）
 
-export function TemporalPerformance({ playerId }: TemporalPerformanceProps) {
+export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEFAULT_FILTERS }: TemporalPerformanceProps) {
   const { t } = useTranslation()
 
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-temporal-performance', playerId],
+    queryKey: ['analysis-temporal-performance', playerId, filters],
     queryFn: () =>
-      apiGet<TemporalResponse>('/analysis/temporal_performance', { player_id: playerId }),
+      apiGet<TemporalResponse>('/analysis/temporal_performance', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 
@@ -55,18 +63,18 @@ export function TemporalPerformance({ playerId }: TemporalPerformanceProps) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
   }
 
-  const chartData = phases.map((p, i) => ({
+  const chartData = phases.map((p) => ({
     name: p.phase,
     win_rate_pct: Math.round(p.win_rate * 100),
     rally_count: p.rally_count,
-    color: PHASE_COLORS[i % PHASE_COLORS.length],
+    color: perfColor(p.win_rate),  // 勝率に基づく色: 高=青(良), 低=赤(悪)
   }))
 
   return (
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} />
 
-      <ResponsiveContainer width="100%" height={180}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
         <BarChart data={chartData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
           <XAxis
             dataKey="name"
@@ -93,8 +101,8 @@ export function TemporalPerformance({ playerId }: TemporalPerformanceProps) {
             radius={[3, 3, 0, 0]}
             name={t('analysis.temporal.win_rate')}
           >
-            {[0, 1, 2].map((i) => (
-              <Cell key={i} fill={PHASE_COLORS[i]} />
+            {chartData.map((d, i) => (
+              <Cell key={i} fill={d.color} />
             ))}
           </Bar>
         </BarChart>
@@ -106,7 +114,7 @@ export function TemporalPerformance({ playerId }: TemporalPerformanceProps) {
           <div key={p.phase} className="flex items-center justify-between text-xs">
             <span
               className="font-medium"
-              style={{ color: PHASE_COLORS[i % PHASE_COLORS.length] }}
+              style={{ color: chartData[i]?.color }}
             >
               {p.phase}
             </span>

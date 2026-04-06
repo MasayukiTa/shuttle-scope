@@ -11,10 +11,13 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { coolwarm, TOOLTIP_STYLE } from '@/styles/colors'
+import { perfColor, TOOLTIP_STYLE } from '@/styles/colors'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface SetComparisonProps {
   playerId: number
+  chartHeight?: number
+  filters?: AnalysisFilters
 }
 
 interface SetData {
@@ -46,15 +49,21 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
-// セット番号をcoolwarmで色付け（第1=青, 第2=中立, 第3=赤）
-const SET_COLORS = [coolwarm(0), coolwarm(0.5), coolwarm(1)]
+// セット別の色は勝率に基づいて動的に決定（perfColor: 高勝率=青=良い, 低勝率=赤=悪い）
 
-export function SetComparison({ playerId }: SetComparisonProps) {
+export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_FILTERS }: SetComparisonProps) {
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-set-comparison', playerId],
+    queryKey: ['analysis-set-comparison', playerId, filters],
     queryFn: () =>
       apiGet<SetComparisonResponse>('/analysis/set_comparison', {
         player_id: playerId,
+        ...fp,
       }),
     enabled: !!playerId,
   })
@@ -89,7 +98,7 @@ export function SetComparison({ playerId }: SetComparisonProps) {
       <ConfidenceBadge sampleSize={sampleSize} />
 
       {/* 勝率縦棒グラフ */}
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
         <BarChart
           data={chartData}
           margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
@@ -103,8 +112,8 @@ export function SetComparison({ playerId }: SetComparisonProps) {
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
           <Bar dataKey="win_rate_pct" radius={[4, 4, 0, 0]} name="勝率">
-            {chartData.map((_, i) => (
-              <Cell key={i} fill={SET_COLORS[i % SET_COLORS.length]} />
+            {chartData.map((d, i) => (
+              <Cell key={i} fill={perfColor(d.win_rate_pct / 100)} />
             ))}
           </Bar>
         </BarChart>
@@ -122,7 +131,7 @@ export function SetComparison({ playerId }: SetComparisonProps) {
             </p>
             <p
               className="text-lg font-bold"
-              style={{ color: SET_COLORS[i % SET_COLORS.length] }}
+              style={{ color: perfColor(s.win_rate) }}
             >
               {(s.win_rate * 100).toFixed(1)}%
             </p>

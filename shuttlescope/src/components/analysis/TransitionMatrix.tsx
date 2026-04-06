@@ -5,9 +5,11 @@ import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface TransitionMatrixProps {
   playerId: number
+  filters?: AnalysisFilters
 }
 
 interface TopSequence {
@@ -68,28 +70,16 @@ function drawMatrix(
   const g = svg.append('g')
     .attr('transform', `translate(${MARGIN_LEFT},${MARGIN_TOP})`)
 
-  // カラースケール: 低頻度=cool(青), 高頻度=warm(赤) — matplotlib coolwarm相当
+  // カラースケール: 白→深青（密度ヒートマップ: seqBlue ルール）
   const maxVal = d3.max(matrix.flat()) ?? 1
-  const colorScale = d3.scaleSequential(d3.interpolateCool)
-    .domain([maxVal > 0 ? maxVal : 1, 0])  // 反転: 低=青
 
-  // coolwarm: 低=青(#3b4cc0)→白→高=赤(#b40426)
-  function coolwarmColor(prob: number, max: number): string {
-    if (max === 0) return '#1f2937'
-    const t = prob / max  // 0(低)→1(高)
-    // 制御点: 0=#3b4cc0, 0.5=#dddddd, 1=#b40426
-    let r: number, g: number, b: number
-    if (t < 0.5) {
-      const u = t * 2
-      r = Math.round(59 + (221 - 59) * u)
-      g = Math.round(76 + (221 - 76) * u)
-      b = Math.round(192 + (221 - 192) * u)
-    } else {
-      const u = (t - 0.5) * 2
-      r = Math.round(221 + (180 - 221) * u)
-      g = Math.round(221 + (4 - 221) * u)
-      b = Math.round(221 + (38 - 221) * u)
-    }
+  // seqBlue: 0=白(rgb 240,244,255) → 1=深青(#3b4cc0)
+  function seqBlueColor(prob: number, max: number): string {
+    if (max === 0) return 'rgb(240,244,255)'
+    const t = Math.max(0, Math.min(prob / max, 1))
+    const r = Math.round(240 - (240 - 59) * t)
+    const g = Math.round(244 - (244 - 76) * t)
+    const b = Math.round(255 - (255 - 192) * t)
     return `rgb(${r},${g},${b})`
   }
 
@@ -123,7 +113,7 @@ function drawMatrix(
         .attr('width', CELL - 1)
         .attr('height', CELL - 1)
         .attr('rx', 2)
-        .attr('fill', isDiag ? '#374151' : coolwarmColor(prob, maxVal))
+        .attr('fill', isDiag ? '#374151' : seqBlueColor(prob, maxVal))
         .attr('stroke', 'none')
         .style('cursor', isDiag ? 'default' : 'pointer')
         .on('mouseover', function (event) {
@@ -207,14 +197,21 @@ function shot_keys_fallback(i: number): string {
 // React コンポーネント
 // ──────────────────────────────────────────────────────────────────────────────
 
-export function TransitionMatrix({ playerId }: TransitionMatrixProps) {
+export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: TransitionMatrixProps) {
   const svgRef = useRef<SVGSVGElement>(null)
 
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
   const { data: resp, isLoading } = useQuery({
-    queryKey: ['analysis-shot-transition-matrix', playerId],
+    queryKey: ['analysis-shot-transition-matrix', playerId, filters],
     queryFn: () =>
       apiGet<TransitionMatrixResponse>('/analysis/shot_transition_matrix', {
         player_id: playerId,
+        ...fp,
       }),
     enabled: !!playerId,
   })
@@ -262,14 +259,13 @@ export function TransitionMatrix({ playerId }: TransitionMatrixProps) {
         <svg ref={svgRef} style={{ display: 'block' }} />
       </div>
 
-      {/* 凡例: coolwarm（低=青, 高=赤） */}
+      {/* 凡例: 白→深青（密度スケール） */}
       <div className="flex items-center gap-2 text-xs text-gray-400">
         <span>低頻度</span>
         <div
           className="h-3 w-32 rounded"
           style={{
-            background:
-              'linear-gradient(to right, #3b4cc0, #dddddd, #b40426)',
+            background: 'linear-gradient(to right, rgb(240,244,255), rgb(59,76,192))',
           }}
         />
         <span>高頻度</span>

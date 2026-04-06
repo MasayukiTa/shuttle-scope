@@ -1,5 +1,20 @@
 // ShuttleScope 共通型定義
 
+/** 解析フィルター（全解析コンポーネントで共有） */
+export interface AnalysisFilters {
+  result: 'all' | 'win' | 'loss'
+  tournamentLevel: string | null
+  dateFrom: string | null
+  dateTo: string | null
+}
+
+export const DEFAULT_FILTERS: AnalysisFilters = {
+  result: 'all',
+  tournamentLevel: null,
+  dateFrom: null,
+  dateTo: null,
+}
+
 export type UserRole = 'analyst' | 'coach' | 'player'
 
 export type DominantHand = 'R' | 'L'
