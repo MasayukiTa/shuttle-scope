@@ -550,12 +550,12 @@ export function SettingsPage() {
                       : <AlertCircle size={14} className="text-orange-400" />}
                     <span className="text-sm font-medium">
                       {{
-                        open: '✅ オープン環境',
-                        corporate_proxy: '⚠️ 企業プロキシ検出',
-                        vpn: '🔒 VPN 環境',
-                        filtered: '❌ 制限環境',
-                        captive_portal: '⚠️ キャプティブポータル',
-                        unknown: '❓ 不明',
+                        open: 'オープン環境',
+                        corporate_proxy: '企業プロキシ検出',
+                        vpn: 'VPN 環境',
+                        filtered: '制限環境',
+                        captive_portal: 'キャプティブポータル',
+                        unknown: '不明',
                       }[netDiag.data.environment] ?? netDiag.data.environment}
                     </span>
                     <span className="text-xs text-gray-500 ml-auto">{netDiag.data.probe_duration_ms}ms</span>

@@ -5,13 +5,15 @@ interface StrokeHistoryProps {
   strokes: StrokeInput[]
   playerAName?: string
   playerBName?: string
+  partnerAName?: string
+  partnerBName?: string
 }
 
 /**
  * 直近ストローク履歴表示
  * 「①A:クリア→BC」形式で表示
  */
-export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B' }: StrokeHistoryProps) {
+export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', partnerAName, partnerBName }: StrokeHistoryProps) {
   const { t } = useTranslation()
 
   // 直近5球のみ表示
@@ -27,11 +29,19 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B' }:
 
   const circledNumbers = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩']
 
+  function resolvePlayerLabel(player: string): string {
+    if (player === 'player_a') return playerAName
+    if (player === 'player_b') return playerBName
+    if (player === 'partner_a') return partnerAName ?? `${playerAName}P`
+    if (player === 'partner_b') return partnerBName ?? `${playerBName}P`
+    return player
+  }
+
   return (
     <div className="flex flex-col gap-1">
       <div className="text-xs text-gray-500">{t('annotator.recent_strokes')}</div>
       {recent.map((stroke, idx) => {
-        const playerLabel = stroke.player === 'player_a' ? playerAName : playerBName
+        const playerLabel = resolvePlayerLabel(stroke.player)
         const shotLabel = t(`shot_types.${stroke.shot_type}`)
         const landLabel = stroke.land_zone ? `→${stroke.land_zone}` : ''
         const hitLabel = stroke.hit_zone ? `(${stroke.hit_zone})` : ''

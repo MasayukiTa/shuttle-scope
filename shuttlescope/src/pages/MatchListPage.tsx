@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Play, Trash2, Download, Filter, AlertCircle, Search, UserPlus, User, FolderOpen, Zap } from 'lucide-react'
+import { Plus, Play, Trash2, Download, Filter, AlertCircle, Search, UserPlus, User, FolderOpen, TrendingUp } from 'lucide-react'
 import { clsx } from 'clsx'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
 import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS } from '@/types'
@@ -358,7 +358,7 @@ export function MatchListPage() {
                           className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
                           title="予測ページで確認"
                         >
-                          <Zap size={14} />
+                          <TrendingUp size={14} />
                         </button>
                       )}
                       {/* 動画ダウンロード */}

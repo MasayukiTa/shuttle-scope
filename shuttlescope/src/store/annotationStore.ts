@@ -40,7 +40,9 @@ interface AnnotationState {
   pendingStroke: PendingStroke
   inputStep: InputStep
   currentStrokeNum: number
-  currentPlayer: 'player_a' | 'player_b'  // 現在打球するプレイヤー（= 次ラリーのサーバー）
+  currentPlayer: 'player_a' | 'player_b'  // 現在打球するチーム側（= 次ラリーのサーバー）
+  isDoubles: boolean                        // ダブルスモード
+  currentHitter: string                     // 実際の打者: player_a | partner_a | player_b | partner_b
 
   // アンドゥ（最大10件）
   undoStack: StrokeInput[]
@@ -83,6 +85,10 @@ interface AnnotationState {
   // プレイヤー制御
   togglePlayer: () => void
   setPlayer: (p: 'player_a' | 'player_b') => void
+  // ダブルス制御
+  setIsDoubles: (v: boolean) => void
+  setHitter: (h: string) => void
+  toggleHitterWithinTeam: () => void
 
   // ラリー確定（DB保存はページ側で実行）
   confirmRally: (winner: 'player_a' | 'player_b', endType: string) => StrokeInput[]
@@ -132,6 +138,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   inputStep: 'idle',
   currentStrokeNum: 1,
   currentPlayer: 'player_a',
+  isDoubles: false,
+  currentHitter: 'player_a',
   undoStack: [],
   pendingSaveCount: 0,
   saveErrors: [],
@@ -157,6 +165,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentStrokeNum: 1,
       // 最初のラリーのみ initial_server を使用。それ以降は confirmRally が維持する
       currentPlayer: initialServer ?? 'player_a',
+      currentHitter: initialServer ?? 'player_a',
       undoStack: [],
       pendingSaveCount: 0,
       saveErrors: [],
@@ -223,7 +232,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
     const stroke: StrokeInput = {
       stroke_num: state.currentStrokeNum,
-      player: state.currentPlayer,
+      player: state.isDoubles ? state.currentHitter : state.currentPlayer,
       shot_type: state.pendingStroke.shot_type,
       hit_zone: autoHitZone,
       land_zone: zone,
@@ -244,6 +253,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       undoStack: [...state.currentStrokes],
       currentStrokeNum: state.currentStrokeNum + 1,
       currentPlayer: nextPlayer,
+      currentHitter: nextPlayer,  // 次チームの主プレイヤーにリセット
       pendingStroke: emptyPending(),
       // OOB/NETならそのままrally_end（ラリー終了確定）
       inputStep: isOOB || isNet ? 'rally_end' : 'idle',
@@ -260,7 +270,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
     const stroke: StrokeInput = {
       stroke_num: state.currentStrokeNum,
-      player: state.currentPlayer,
+      player: state.isDoubles ? state.currentHitter : state.currentPlayer,
       shot_type: state.pendingStroke.shot_type,
       hit_zone: autoHitZone,
       land_zone: undefined,
@@ -278,6 +288,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       undoStack: [...state.currentStrokes],
       currentStrokeNum: state.currentStrokeNum + 1,
       currentPlayer: nextPlayer,
+      currentHitter: nextPlayer,  // 次チームの主プレイヤーにリセット
       pendingStroke: emptyPending(),
       inputStep: 'idle',
     })
@@ -304,13 +315,27 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       return { pendingStroke: { ...s.pendingStroke, above_net: next } }
     }),
 
-  // プレイヤー切替（Tab）
+  // プレイヤー切替（Tab）— チーム側を強制切替。ヒッターも主プレイヤーにリセット
   togglePlayer: () =>
-    set((s) => ({
-      currentPlayer: s.currentPlayer === 'player_a' ? 'player_b' : 'player_a',
-    })),
+    set((s) => {
+      const next: 'player_a' | 'player_b' = s.currentPlayer === 'player_a' ? 'player_b' : 'player_a'
+      return { currentPlayer: next, currentHitter: next }
+    }),
 
-  setPlayer: (p) => set({ currentPlayer: p }),
+  setPlayer: (p) => set({ currentPlayer: p, currentHitter: p }),
+
+  // ダブルス制御
+  setIsDoubles: (v) => set({ isDoubles: v }),
+  setHitter: (h) => set({ currentHitter: h }),
+  toggleHitterWithinTeam: () =>
+    set((s) => {
+      if (!s.isDoubles) return {}
+      const next =
+        s.currentHitter === 'player_a' ? 'partner_a' :
+        s.currentHitter === 'partner_a' ? 'player_a' :
+        s.currentHitter === 'player_b' ? 'partner_b' : 'player_b'
+      return { currentHitter: next }
+    }),
 
   // ラリー確定: 勝者が次のサーバーになる（バドミントンラリーポイント制）
   confirmRally: (winner, endType) => {
@@ -329,6 +354,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       inputStep: 'idle',
       currentStrokeNum: 1,
       currentPlayer: winner,  // 勝者が次のサーバー（ラリーポイント制）
+      currentHitter: winner,  // ダブルス: 勝者チームの主プレイヤーにリセット
     })
     return currentStrokes
   },
@@ -350,22 +376,26 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
   // アンドゥ（直前ストローク削除）
   undoLastStroke: () => {
-    const { currentStrokes, currentStrokeNum, currentPlayer } = get()
+    const { currentStrokes, currentStrokeNum } = get()
     if (currentStrokes.length === 0) return
+    const removedStroke = currentStrokes[currentStrokes.length - 1]
     const newStrokes = currentStrokes.slice(0, -1)
-    const prevPlayer: 'player_a' | 'player_b' =
-      currentPlayer === 'player_a' ? 'player_b' : 'player_a'
+    // 削除したストロークの player から前チーム・前ヒッターを復元
+    const restoredHitter = removedStroke.player  // player_a/partner_a/player_b/partner_b
+    const restoredPlayer: 'player_a' | 'player_b' =
+      restoredHitter.includes('_a') ? 'player_a' : 'player_b'
     set({
       currentStrokes: newStrokes,
       currentStrokeNum: Math.max(1, currentStrokeNum - 1),
-      currentPlayer: prevPlayer,
+      currentPlayer: restoredPlayer,
+      currentHitter: restoredHitter,
       pendingStroke: emptyPending(),
       inputStep: 'idle',
     })
   },
 
   nextSet: (setId, setNum) =>
-    set({
+    set((s) => ({
       currentSetId: setId,
       currentSetNum: setNum,
       scoreA: 0,
@@ -376,7 +406,8 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       pendingStroke: emptyPending(),
       inputStep: 'idle',
       // currentPlayer はセット最終ラリーの勝者を引き継ぐ（バドミントンルール）
-    }),
+      currentHitter: s.currentPlayer,  // ダブルス: セット開始時は主プレイヤーにリセット
+    })),
 
   // 見逃しラリー: スコア更新 + サーバー更新（ストロークなし）
   skipRallyState: (winner) => {
@@ -386,6 +417,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       scoreA: winner === 'player_a' ? scoreA + 1 : scoreA,
       scoreB: winner === 'player_b' ? scoreB + 1 : scoreB,
       currentPlayer: winner,  // 勝者が次のサーバー
+      currentHitter: winner,  // ダブルス: 勝者チームの主プレイヤーにリセット
     })
   },
 

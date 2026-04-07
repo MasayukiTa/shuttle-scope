@@ -98,6 +98,16 @@ def match_to_dict(m: Match, include_players: bool = True, db: Session = None) ->
         pb = db.get(Player, m.player_b_id)
         d["player_a"] = {"id": pa.id, "name": pa.name, "team": pa.team} if pa else None
         d["player_b"] = {"id": pb.id, "name": pb.name, "team": pb.team} if pb else None
+        if m.partner_a_id:
+            ppa = db.get(Player, m.partner_a_id)
+            d["partner_a"] = {"id": ppa.id, "name": ppa.name, "team": ppa.team} if ppa else None
+        else:
+            d["partner_a"] = None
+        if m.partner_b_id:
+            ppb = db.get(Player, m.partner_b_id)
+            d["partner_b"] = {"id": ppb.id, "name": ppb.name, "team": ppb.team} if ppb else None
+        else:
+            d["partner_b"] = None
     return d
 
 

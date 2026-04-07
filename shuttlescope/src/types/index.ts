@@ -145,6 +145,8 @@ export interface Match {
   // リレーション（フロント側で結合）
   player_a?: Player
   player_b?: Player
+  partner_a?: { id: number; name: string; team?: string }
+  partner_b?: { id: number; name: string; team?: string }
   // V4: クイックスタート・試合メタデータ
   initial_server?: string
   competition_type?: CompetitionType

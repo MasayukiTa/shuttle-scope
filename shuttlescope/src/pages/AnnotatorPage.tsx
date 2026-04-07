@@ -578,6 +578,7 @@ export function AnnotatorPage() {
       handleConfirmRally(winner, pendingEndType)
     },
     onSkipRallyOpen: () => setShowSkipRallyDialog(true),
+    onToggleHitter: () => store.toggleHitterWithinTeam(),
   })
 
   // G2: ショット入力開始（land_zone へ遷移）でエンリッチメントストリップを自動消滅
@@ -701,6 +702,14 @@ export function AnnotatorPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialized, match?.initial_server])
+
+  // ダブルスモード検出 — match 読み込み後にストアへ反映
+  useEffect(() => {
+    if (!initialized || !match) return
+    const isDoubles = match.format !== 'singles'
+    useAnnotationStore.getState().setIsDoubles(isDoubles)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, match?.format])
 
   // 途中終了: ダイアログ確定
   const handleException = useCallback(async () => {
@@ -1049,9 +1058,16 @@ export function AnnotatorPage() {
           戻る
         </button>
         <div className="text-sm font-medium">
-          {match
-            ? `${match.tournament} — ${match.player_a?.name ?? 'A'} vs ${match.player_b?.name ?? 'B'}`
-            : 'ShuttleScope'}
+          {match ? (() => {
+            const isDoubles = match.format !== 'singles'
+            const sideA = isDoubles && match.partner_a
+              ? `${match.player_a?.name ?? 'A'} / ${match.partner_a.name}`
+              : (match.player_a?.name ?? 'A')
+            const sideB = isDoubles && match.partner_b
+              ? `${match.player_b?.name ?? 'B'} / ${match.partner_b.name}`
+              : (match.player_b?.name ?? 'B')
+            return `${match.tournament} — ${sideA} vs ${sideB}`
+          })() : 'ShuttleScope'}
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-400">
           {/* K-002: 保存中バッジ */}
@@ -1750,6 +1766,41 @@ export function AnnotatorPage() {
               )
             })()}
 
+            {/* ダブルスヒッターセレクター */}
+            {store.isDoubles && store.isRallyActive && store.inputStep === 'idle' && (() => {
+              const isTeamA = store.currentPlayer === 'player_a'
+              const mainName = isTeamA ? (match?.player_a?.name ?? 'A') : (match?.player_b?.name ?? 'B')
+              const partnerName = isTeamA ? (match?.partner_a?.name ?? `${mainName}P`) : (match?.partner_b?.name ?? `${mainName}P`)
+              const mainKey = isTeamA ? 'player_a' : 'player_b'
+              const partnerKey = isTeamA ? 'partner_a' : 'partner_b'
+              return (
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className="text-[10px] text-gray-500 shrink-0">{t('annotation.hitter_select')}</span>
+                  <button
+                    onClick={() => store.setHitter(mainKey)}
+                    className={`flex-1 py-1 rounded text-xs border transition-colors ${
+                      store.currentHitter === mainKey
+                        ? 'bg-blue-700 border-blue-500 text-white font-medium'
+                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {mainName}
+                  </button>
+                  <button
+                    onClick={() => store.setHitter(partnerKey)}
+                    className={`flex-1 py-1 rounded text-xs border transition-colors ${
+                      store.currentHitter === partnerKey
+                        ? 'bg-blue-700 border-blue-500 text-white font-medium'
+                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {partnerName}
+                  </button>
+                  <span className="text-[9px] text-gray-600 shrink-0">{t('annotation.hitter_toggle_hint')}</span>
+                </div>
+              )
+            })()}
+
             {/* ショット種別パネル（ラリー中 & ショット選択ステップのみ） */}
             {store.isRallyActive && store.inputStep === 'idle' && (
               <ShotTypePanel
@@ -1882,7 +1933,7 @@ export function AnnotatorPage() {
                     )}
                     title={t('warmup.button')}
                   >
-                    📋 {t('warmup.button')}
+                    {t('warmup.button')}
                   </button>
                 )}
               </div>
@@ -1936,6 +1987,8 @@ export function AnnotatorPage() {
               strokes={store.currentStrokes}
               playerAName={match?.player_a?.name ?? 'A'}
               playerBName={match?.player_b?.name ?? 'B'}
+              partnerAName={match?.partner_a?.name}
+              partnerBName={match?.partner_b?.name}
             />
 
             {/* G2+移動系: エンリッチメントストリップ（落点確定後、次ショット前にオプション表示） */}
@@ -2058,7 +2111,7 @@ export function AnnotatorPage() {
                   onClick={() => store.endRallyRequest()}
                   className="w-full py-2 bg-green-700 hover:bg-green-600 text-white rounded text-sm font-medium"
                 >
-                  ✅ ラリー終了 (Enter)
+                  ラリー終了 (Enter)
                 </button>
               )}
 

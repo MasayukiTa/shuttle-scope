@@ -12,6 +12,8 @@ interface UseKeyboardOptions {
   onWinnerSelect?: (winner: 'player_a' | 'player_b') => void
   /** プレラリー中に K キーで見逃しラリーダイアログを開く */
   onSkipRallyOpen?: () => void
+  /** ダブルスモードで Tab キーによりチーム内ヒッターを切替 */
+  onToggleHitter?: () => void
 }
 
 /**
@@ -113,6 +115,7 @@ export function useKeyboard({
   onEndTypeSelect,
   onWinnerSelect,
   onSkipRallyOpen,
+  onToggleHitter,
 }: UseKeyboardOptions = {}) {
   const store = useAnnotationStore()
 
@@ -311,6 +314,13 @@ export function useKeyboard({
         return
       }
 
+      // Tab: ダブルスモードのみ — チーム内ヒッター切替
+      if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        onToggleHitter?.()
+        return
+      }
+
       // 属性キー（Q/W/E + Numpad）
       if (!e.shiftKey) {
         if (e.key === 'q' || e.key === 'Q') { e.preventDefault(); store.toggleAttribute('is_backhand'); return }
@@ -341,7 +351,7 @@ export function useKeyboard({
         }
       }
     },
-    [enabled, store, videoRef, onEndTypeSelect, onWinnerSelect, onSkipRallyOpen]
+    [enabled, store, videoRef, onEndTypeSelect, onWinnerSelect, onSkipRallyOpen, onToggleHitter]
   )
 
   useEffect(() => {
