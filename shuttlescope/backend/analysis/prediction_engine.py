@@ -1,11 +1,13 @@
 """
 予測エンジン — 統計ベースの試合プレビュー予測
 Phase A + B + C + D 実装
+Phase 1 Rebuild: 多特徴量キャリブレーション、モメンタムセットモデル、アナリスト深掘り
 """
 from __future__ import annotations
 import math
 from collections import Counter
 from typing import Optional
+import numpy as np
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
@@ -642,3 +644,368 @@ def confidence_meta(confidence: float, sample_size: int) -> dict:
         'label': f'信頼度 {int(confidence * 100)}%',
         'warning': f'サンプル {sample_size} 試合' if sample_size < 10 else None,
     }
+
+
+# ─── Phase 1 Rebuild: 多特徴量モデル群 ────────────────────────────────────────
+
+def compute_recent_form(
+    matches: list[Match],
+    player_id: int,
+    n: int = 5,
+) -> dict:
+    """
+    直近 n 試合の指数重み付き勝率とトレンド方向を返す。
+    matches は日付降順（get_matches_for_player の出力）を想定。
+    """
+    if not matches:
+        return {'win_rate': 0.5, 'sample': 0, 'trend': 'stable', 'results': [], 'overall_wr': 0.5}
+
+    overall_wr, _ = compute_win_probability(matches, player_id)
+
+    recent = matches[:n]
+    sample = len(recent)
+
+    # 指数重み: index 0 = 最新, decay = 0.85
+    decay = 0.85
+    weights = [decay ** i for i in range(sample)]
+    w_sum = sum(weights)
+
+    weighted_wins = sum(
+        weights[i] for i, m in enumerate(recent)
+        if _player_wins_match(m, player_id)
+    )
+    recent_wr = weighted_wins / w_sum if w_sum > 0 else 0.5
+
+    # 結果列（古い順）: ['W', 'L', ...]
+    results = ['W' if _player_wins_match(m, player_id) else 'L' for m in reversed(recent)]
+
+    diff = recent_wr - overall_wr
+    if diff > 0.08:
+        trend = 'improving'
+    elif diff < -0.08:
+        trend = 'declining'
+    else:
+        trend = 'stable'
+
+    return {
+        'win_rate': round(recent_wr, 4),
+        'sample': sample,
+        'trend': trend,
+        'results': results,
+        'overall_wr': round(overall_wr, 4),
+    }
+
+
+def compute_growth_trend(
+    matches: list[Match],
+    player_id: int,
+) -> dict:
+    """
+    試合を時系列バケットに分割し、セットごとの勝率トレンドを算出する。
+    numpy.polyfit による線形回帰でスロープを計算。
+    """
+    if not matches:
+        return {'buckets': [], 'slope': 0.0, 'direction': 'flat', 'sample': 0}
+
+    # 古い順にソート
+    sorted_matches = sorted(matches, key=lambda m: m.date)
+    n = len(sorted_matches)
+
+    # 最大6バケット、各バケット ≥1 試合
+    n_buckets = min(6, n)
+    chunks = [arr.tolist() for arr in np.array_split(sorted_matches, n_buckets) if len(arr) > 0]
+
+    buckets: list[dict] = []
+    for chunk in chunks:
+        if not chunk:
+            continue
+        wins = sum(1 for m in chunk if _player_wins_match(m, player_id))
+        total = len(chunk)
+        wr = (wins + 0.5) / (total + 1.0)  # Laplace
+        label = chunk[0].date.strftime('%y/%m') if hasattr(chunk[0].date, 'strftime') else str(chunk[0].date)[:7]
+        buckets.append({'label': label, 'win_rate': round(wr, 4), 'sample': total})
+
+    if len(buckets) >= 2:
+        x = np.arange(len(buckets), dtype=float)
+        y = np.array([b['win_rate'] for b in buckets])
+        slope = float(np.polyfit(x, y, 1)[0])
+    else:
+        slope = 0.0
+
+    if slope > 0.02:
+        direction = 'up'
+    elif slope < -0.02:
+        direction = 'down'
+    else:
+        direction = 'flat'
+
+    return {
+        'buckets': buckets,
+        'slope': round(slope, 6),
+        'direction': direction,
+        'sample': n,
+    }
+
+
+def compute_feature_win_prob(
+    matches: list[Match],
+    player_id: int,
+    h2h_matches: list[Match],
+    recent_form: dict,
+    obs_context: dict,
+) -> tuple[float, dict]:
+    """
+    多特徴量ブレンドによるキャリブレーション済み勝率。
+    base_wr / recent_wr / h2h_wr を適応的な重みで統合し、
+    観察コンテキストの修正値を加算する。
+    """
+    base_wr, _ = compute_win_probability(matches, player_id)
+    recent_wr = recent_form.get('win_rate', base_wr)
+    recent_n = recent_form.get('sample', 0)
+    h2h_n = len(h2h_matches)
+
+    h2h_wr: Optional[float] = None
+    if h2h_n >= 3:
+        h2h_wr, _ = compute_win_probability(h2h_matches, player_id)
+
+    # 適応的重み選択
+    if h2h_wr is not None:
+        weights = {'base': 0.25, 'recent': 0.35, 'h2h': 0.40}
+        raw_blend = base_wr * 0.25 + recent_wr * 0.35 + h2h_wr * 0.40
+    elif recent_n >= 3:
+        weights = {'base': 0.40, 'recent': 0.60}
+        raw_blend = base_wr * 0.40 + recent_wr * 0.60
+    else:
+        weights = {'base': 1.0}
+        raw_blend = base_wr
+
+    # 観察コンテキスト修正
+    opp_obs = obs_context.get('opponent', {})
+    self_obs = obs_context.get('self', {})
+    obs_modifier = 0.0
+    if opp_obs.get('physical_caution', {}).get('value') in ('moderate', 'heavy'):
+        obs_modifier += 0.03
+    if self_obs.get('self_condition', {}).get('value') in ('poor', 'heavy'):
+        obs_modifier -= 0.05
+    if self_obs.get('self_timing', {}).get('value') == 'off':
+        obs_modifier -= 0.04
+
+    final = max(0.10, min(0.90, raw_blend + obs_modifier))
+
+    breakdown = {
+        'base_wr': round(base_wr, 4),
+        'recent_wr': round(recent_wr, 4),
+        'h2h_wr': round(h2h_wr, 4) if h2h_wr is not None else None,
+        'weights': weights,
+        'obs_modifier': round(obs_modifier, 4),
+        'raw_blend': round(raw_blend, 4),
+        'final': round(final, 4),
+    }
+    return round(final, 4), breakdown
+
+
+def compute_set_model_v2(
+    win_prob: float,
+    observed_dist: Optional[dict],
+) -> dict:
+    """
+    モメンタム考慮のセット分布モデル。
+    observed_dist が渡された場合（実測 ≥ 5 試合）はそのまま使用。
+    それ以外はモメンタムモデルで計算。
+    数学的に 合計 = 1.0 が保証されるが、min/max クランプ後に正規化する。
+    """
+    if observed_dist is not None:
+        return {'dist': observed_dist, 'model_type': 'observed'}
+
+    p = win_prob
+    # モメンタム係数
+    p2_w = min(0.92, p * 1.12)   # セット1勝利後のセット2勝率
+    p2_l = max(0.08, p * 0.88)   # セット1敗北後のセット2勝率
+    p3 = p                        # 第3セットはリセット
+
+    raw = {
+        '2-0': p * p2_w,
+        '2-1': p * (1 - p2_w) * p3 + (1 - p) * p2_l * p3,
+        '1-2': p * (1 - p2_w) * (1 - p3) + (1 - p) * p2_l * (1 - p3),
+        '0-2': (1 - p) * (1 - p2_l),
+    }
+    total = sum(raw.values())
+    if total <= 0:
+        total = 1.0
+    dist = {k: round(v / total, 4) for k, v in raw.items()}
+
+    return {'dist': dist, 'model_type': 'momentum'}
+
+
+def compute_brier_score(
+    matches: list[Match],
+    player_id: int,
+) -> dict:
+    """
+    Leave-one-out ブライアスコア。予測キャリブレーションの質を示す。
+    < 0.20: 良好  /  0.20–0.25: 普通  /  > 0.25: 要注意
+    5 試合未満は算出不可（score=None）。
+    """
+    if len(matches) < 5:
+        return {'score': None, 'sample': len(matches), 'grade': None}
+
+    squared_errors: list[float] = []
+    for i, m in enumerate(matches):
+        holdout = [x for x in matches if x is not m]
+        pred, _ = compute_win_probability(holdout, player_id)
+        actual = 1.0 if _player_wins_match(m, player_id) else 0.0
+        squared_errors.append((pred - actual) ** 2)
+
+    score = sum(squared_errors) / len(squared_errors)
+    if score < 0.20:
+        grade = 'good'
+    elif score <= 0.25:
+        grade = 'fair'
+    else:
+        grade = 'poor'
+
+    return {'score': round(score, 4), 'sample': len(matches), 'grade': grade}
+
+
+def compute_score_volatility(
+    matches: list[Match],
+    player_id: int,
+) -> dict:
+    """
+    Phase S4: スコアボラティリティ（試合展開の荒れやすさ）を推定。
+    - close_match_rate: 最終セットまで縺れた試合の割合
+    - dominant_match_rate: 2-0 ストレート勝ち/負けの割合
+    - typical_margin: 勝ったセットの典型的な得点差（自視点）
+    - volatility_score: 0.0（安定）〜 1.0（不安定）
+    """
+    if not matches:
+        return {
+            'volatility_score': 0.0,
+            'close_match_rate': 0.0,
+            'dominant_match_rate': 0.0,
+            'typical_margin': None,
+            'sample': 0,
+        }
+
+    close = 0
+    dominant = 0
+    margins: list[float] = []
+
+    for m in matches:
+        sets = sorted(m.sets or [], key=lambda s: s.set_num)
+        if not sets:
+            continue
+        n_sets = len(sets)
+        if n_sets == 3:
+            close += 1
+        elif n_sets == 2:
+            dominant += 1
+
+        for s in sets:
+            if m.player_a_id == player_id:
+                my, opp = s.score_a, s.score_b
+            else:
+                my, opp = s.score_b, s.score_a
+            if my is not None and opp is not None:
+                margins.append(abs(my - opp))
+
+    n = len(matches)
+    close_rate = round(close / n, 4) if n else 0.0
+    dominant_rate = round(dominant / n, 4) if n else 0.0
+    typical_margin = round(sum(margins) / len(margins), 2) if margins else None
+
+    # ボラティリティ: 接戦率が高いほど不安定
+    volatility = close_rate * 0.7 + (1 - dominant_rate) * 0.3
+    volatility = round(min(1.0, max(0.0, volatility)), 4)
+
+    return {
+        'volatility_score': volatility,
+        'close_match_rate': close_rate,
+        'dominant_match_rate': dominant_rate,
+        'typical_margin': typical_margin,
+        'sample': n,
+    }
+
+
+def compute_lineup_scores(
+    db: Session,
+    player_ids: list[int],
+    opponent_id: Optional[int] = None,
+    tournament_level: Optional[str] = None,
+) -> list[dict]:
+    """
+    Phase S3: 複数選手の勝率予測をランク付けしてラインナップ最適化を支援。
+    各 player_id に対して compute_feature_win_prob を実行し、降順で返す。
+    """
+    results: list[dict] = []
+    for pid in player_ids:
+        all_m = get_matches_for_player(db, pid)
+        h2h_m = (
+            get_matches_for_player(db, pid, opponent_id=opponent_id)
+            if opponent_id else []
+        )
+        obs = get_observation_context(db, pid, opponent_id)
+        recent = compute_recent_form(all_m, pid)
+        win_prob, breakdown = compute_feature_win_prob(all_m, pid, h2h_m, recent, obs)
+        conf = compute_confidence_score(len(all_m), len(h2h_m))
+        player = db.get(Player, pid)
+        results.append({
+            'player_id': pid,
+            'player_name': player.name if player else str(pid),
+            'win_probability': win_prob,
+            'confidence': conf,
+            'sample_size': len(all_m),
+            'h2h_sample': len(h2h_m),
+            'recent_trend': recent.get('trend', 'stable'),
+            'feature_breakdown': breakdown,
+        })
+
+    results.sort(key=lambda x: -x['win_probability'])
+    return results
+
+
+def find_nearest_matches(
+    matches: list[Match],
+    player_id: int,
+    current_level: str,
+    n: int = 5,
+) -> list[dict]:
+    """
+    特徴量類似度に基づく最近傍試合エビデンスの取得。
+    similarity_score: 同大会レベル +2 / 同フォーマット +1
+    """
+    if not matches:
+        return []
+
+    scored: list[tuple[int, Match]] = []
+    for m in matches:
+        score = 0
+        if (m.tournament_level or '') == current_level:
+            score += 2
+        scored.append((score, m))
+
+    scored.sort(key=lambda x: -x[0])
+
+    result: list[dict] = []
+    for sim_score, m in scored[:n]:
+        # プレイヤー視点のスコアサマリーを構築
+        score_parts: list[str] = []
+        for s in sorted(m.sets or [], key=lambda s: s.set_num):
+            if m.player_a_id == player_id:
+                score_parts.append(f"{s.score_a}-{s.score_b}")
+            else:
+                score_parts.append(f"{s.score_b}-{s.score_a}")
+        score_summary = ', '.join(score_parts) if score_parts else '—'
+
+        date_val = m.date
+        date_str = date_val.isoformat() if hasattr(date_val, 'isoformat') else str(date_val)
+
+        result.append({
+            'date': date_str,
+            'tournament_level': m.tournament_level or '—',
+            'result': 'win' if _player_wins_match(m, player_id) else 'loss',
+            'score_summary': score_summary,
+            'similarity_score': sim_score,
+        })
+
+    return result

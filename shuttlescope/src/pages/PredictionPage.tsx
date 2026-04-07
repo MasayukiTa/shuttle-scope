@@ -14,6 +14,8 @@ import { User, TrendingUp } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
+import { LineupOptimizerPanel } from '@/components/analysis/LineupOptimizerPanel'
+import { HumanForecastPanel } from '@/components/analysis/HumanForecastPanel'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { RoleGuard } from '@/components/common/RoleGuard'
@@ -26,7 +28,7 @@ interface PlayerSummary {
   match_count?: number
 }
 
-type SubTab = 'preview' | 'pair'
+type SubTab = 'preview' | 'pair' | 'lineup' | 'forecast'
 
 export function PredictionPage() {
   const { t } = useTranslation()
@@ -38,12 +40,24 @@ export function PredictionPage() {
     return pid ? Number(pid) : null
   })
   const [subTab, setSubTab] = useState<SubTab>('preview')
+  const [forecastMatchId, setForecastMatchId] = useState<number | null>(null)
 
   // URL パラメータ変化に追従
   useEffect(() => {
     const pid = searchParams.get('playerId')
     if (pid) setSelectedPlayerId(Number(pid))
   }, [searchParams])
+
+  const { data: matchesResp } = useQuery({
+    queryKey: ['matches-for-forecast', selectedPlayerId],
+    queryFn: () =>
+      apiGet<{ data: Array<{ id: number; date: string; tournament_level?: string; result?: string }> }>(
+        '/matches',
+        { player_id: selectedPlayerId }
+      ),
+    enabled: !!selectedPlayerId && subTab === 'forecast',
+  })
+  const forecastMatches = (matchesResp as any)?.data ?? []
 
   const { data: playersResp, isLoading: loadingPlayers } = useQuery({
     queryKey: ['players-list'],
@@ -116,17 +130,19 @@ export function PredictionPage() {
 
         {/* サブタブ */}
         {selectedPlayerId && (
-          <div className={`flex gap-1 px-6 py-2 border-b shrink-0 ${headerBg}`}>
+          <div className={`flex gap-1 px-6 py-2 border-b shrink-0 overflow-x-auto ${headerBg}`}>
             {(
               [
                 { key: 'preview' as const, label: t('prediction.title') },
                 { key: 'pair' as const, label: t('prediction.pair_simulation') },
+                { key: 'lineup' as const, label: t('prediction.lineup_optimizer') },
+                { key: 'forecast' as const, label: t('prediction.human_forecast') },
               ] as const
             ).map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => setSubTab(key)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors whitespace-nowrap ${
                   subTab === key ? tabActive : tabInactive
                 }`}
               >
@@ -150,9 +166,56 @@ export function PredictionPage() {
                 players={sortedPlayers}
               />
             </div>
-          ) : (
+          ) : subTab === 'pair' ? (
             <div className="max-w-2xl">
               <PairSimulationPanel players={sortedPlayers} />
+            </div>
+          ) : subTab === 'lineup' ? (
+            <div className="max-w-2xl">
+              <div className="bg-gray-800 rounded-lg p-4">
+                <p className="text-sm font-semibold mb-3" style={{ color: isLight ? '#1e293b' : '#d1d5db' }}>
+                  {t('prediction.lineup_optimizer')}
+                </p>
+                <LineupOptimizerPanel players={sortedPlayers} />
+              </div>
+            </div>
+          ) : (
+            /* forecast タブ: 試合選択 + HumanForecastPanel */
+            <div className="max-w-2xl space-y-4">
+              {/* 試合セレクター */}
+              <div className="bg-gray-800 rounded-lg p-4">
+                <p className="text-xs font-semibold mb-2" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>
+                  試合を選択
+                </p>
+                <select
+                  className={`text-sm rounded px-2 py-1.5 w-full focus:outline-none ${
+                    isLight
+                      ? 'bg-white border border-gray-300 text-gray-800'
+                      : 'bg-gray-700 border border-gray-600 text-gray-200'
+                  }`}
+                  value={forecastMatchId ?? ''}
+                  onChange={(e) => setForecastMatchId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">— 試合を選択 —</option>
+                  {forecastMatches.map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.date} {m.tournament_level ? `[${m.tournament_level}]` : ''} {m.result ? `(${m.result === 'win' ? 'W' : m.result === 'loss' ? 'L' : m.result})` : '(未確定)'}
+                    </option>
+                  ))}
+                </select>
+                {forecastMatches.length === 0 && (
+                  <p className="text-xs mt-1" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>
+                    試合データを読み込み中...
+                  </p>
+                )}
+              </div>
+
+              {/* 予測パネル */}
+              {forecastMatchId && (
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <HumanForecastPanel matchId={forecastMatchId} playerId={selectedPlayerId} />
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -18,6 +18,11 @@ interface CoachSummaryStripProps {
   cautionFlags: string[]
   tacticalNotes: Array<TacticalNote | string>
   sampleSize: number
+  recentForm?: {
+    trend: 'improving' | 'declining' | 'stable'
+    win_rate: number
+    sample: number
+  }
 }
 
 function winColor(p: number, neutral: string): string {
@@ -38,6 +43,7 @@ export function CoachSummaryStrip({
   cautionFlags,
   tacticalNotes,
   sampleSize,
+  recentForm,
 }: CoachSummaryStripProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
@@ -70,6 +76,17 @@ export function CoachSummaryStrip({
             {winPct}%
           </p>
           <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.win_probability')}</p>
+          {recentForm && recentForm.sample > 0 && (
+            <p className="text-[10px] mt-0.5 font-medium" style={{
+              color: recentForm.trend === 'improving' ? WIN
+                   : recentForm.trend === 'declining' ? LOSS
+                   : subText,
+            }}>
+              {recentForm.trend === 'improving' ? t('prediction.recent_form_improving')
+             : recentForm.trend === 'declining' ? t('prediction.recent_form_declining')
+             : t('prediction.recent_form_stable')}
+            </p>
+          )}
         </div>
 
         {/* 信頼度 */}

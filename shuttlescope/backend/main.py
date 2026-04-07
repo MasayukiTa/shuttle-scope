@@ -22,6 +22,7 @@ from backend.routers import matches, rallies, strokes, players, analysis, report
 from backend.routers import settings as settings_router
 from backend.routers import sessions, comments, bookmarks, network_diag, warmup
 from backend.routers import prediction, tunnel
+from backend.routers import human_forecast
 from backend.utils.video_downloader import video_downloader
 
 # React renderer ビルド出力パス（Electron / ブラウザ共用）
@@ -76,6 +77,8 @@ app.include_router(warmup.router, prefix="/api")
 app.include_router(prediction.router, prefix="/api")
 # Cloudflare Tunnel 管理
 app.include_router(tunnel.router, prefix="/api")
+# Phase S2: ヒューマンベンチマーク
+app.include_router(human_forecast.router, prefix="/api")
 
 
 

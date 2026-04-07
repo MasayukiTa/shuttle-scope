@@ -22,6 +22,7 @@ import { CoachSummaryStrip } from '@/components/analysis/CoachSummaryStrip'
 import { MatchScriptBlock } from '@/components/analysis/MatchScriptBlock'
 import { PredictionDriversBlock } from '@/components/analysis/PredictionDriversBlock'
 import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
+import { AnalystDepthPanel } from '@/components/analysis/AnalystDepthPanel'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
@@ -37,6 +38,31 @@ interface PredictionData {
   win_probability: number
   set_distribution: { '2-0': number; '2-1': number; '1-2': number; '0-2': number }
   score_bands: Record<string, { my_low: number; my_high: number; opp_low: number; opp_high: number; sample: number }>
+  win_probability_v2?: number
+  feature_breakdown?: {
+    base_wr: number
+    recent_wr: number
+    h2h_wr: number | null
+    weights: Record<string, number>
+    obs_modifier: number
+    raw_blend: number
+    final: number
+  }
+  recent_form?: {
+    win_rate: number
+    sample: number
+    trend: 'improving' | 'declining' | 'stable'
+    results: string[]
+    overall_wr: number
+  }
+  set_model_type?: 'observed' | 'momentum'
+  score_volatility?: {
+    volatility_score: number
+    close_match_rate: number
+    dominant_match_rate: number
+    typical_margin: number
+    sample: number
+  }
   calibrated_scorelines: Array<{ outcome: string; scoreline: string; count: number; frequency: number }>
   most_likely_scorelines: Array<{
     outcome: string
@@ -156,13 +182,14 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
     <div className="space-y-4">
       {/* CoachSummaryStrip — 常時表示（折りたたみなし） */}
       <CoachSummaryStrip
-        winProbability={d.win_probability}
+        winProbability={d.win_probability_v2 ?? d.win_probability}
         confidence={d.confidence}
         confidenceStars={meta?.confidence.stars ?? ''}
         setDistribution={d.set_distribution}
         cautionFlags={d.caution_flags}
         tacticalNotes={d.tactical_notes}
         sampleSize={d.sample_size}
+        recentForm={d.recent_form}
       />
 
       {/* フィルターバー */}
@@ -229,6 +256,43 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
             )}
           </div>
         </div>
+
+        {/* スコアボラティリティ */}
+        {d.score_volatility && d.score_volatility.sample >= 3 && (
+          <div className="border-t border-gray-700 pt-3">
+            <p className="text-xs font-medium mb-2" style={{ color: subText }}>
+              {t('prediction.score_volatility')}
+            </p>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.round(d.score_volatility.volatility_score * 100)}%`,
+                      background: d.score_volatility.volatility_score >= 0.6
+                        ? '#d97706'
+                        : d.score_volatility.volatility_score >= 0.4
+                        ? '#d97706'
+                        : '#22c55e',
+                    }}
+                  />
+                </div>
+                <span className="text-xs font-medium" style={{ color: neutral }}>
+                  {d.score_volatility.volatility_score >= 0.5
+                    ? t('prediction.volatility_volatile')
+                    : t('prediction.volatility_stable')}
+                </span>
+              </div>
+              <span className="text-[11px]" style={{ color: subText }}>
+                {t('prediction.close_match_rate')} {Math.round(d.score_volatility.close_match_rate * 100)}%
+              </span>
+              <span className="text-[11px]" style={{ color: subText }}>
+                {t('prediction.dominant_match_rate')} {Math.round(d.score_volatility.dominant_match_rate * 100)}%
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* 最頻スコアライン */}
         {d.most_likely_scorelines.length > 0 && (
@@ -440,6 +504,17 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
             {role === 'analyst' && (
               <div className="border-t border-gray-700 pt-3">
                 <CounterfactualShots playerId={playerId} />
+              </div>
+            )}
+
+            {/* Phase 1 Rebuild: アナリスト深掘りパネル */}
+            {role === 'analyst' && (
+              <div className="border-t border-gray-700 pt-3">
+                <AnalystDepthPanel
+                  playerId={playerId}
+                  opponentId={opponentId}
+                  tournamentLevel={tournamentLevel || undefined}
+                />
               </div>
             )}
           </div>

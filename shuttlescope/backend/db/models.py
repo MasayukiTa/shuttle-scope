@@ -305,3 +305,25 @@ class PreMatchObservation(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     created_by: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # analyst role identifier
+
+
+class HumanForecast(Base):
+    """Phase S2: コーチ / アナリストによる試合前予測。
+    モデル予測との比較ベンチマークに使用する。
+    """
+    __tablename__ = "human_forecasts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 対象試合と対象選手（誰について予測しているか）
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
+    # 予測者情報
+    forecaster_role: Mapped[str] = mapped_column(String(20), nullable=False)  # 'coach' | 'analyst'
+    forecaster_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # 予測内容
+    predicted_outcome: Mapped[str] = mapped_column(String(10), nullable=False)  # 'win' | 'loss'
+    predicted_set_path: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # '2-0'|'2-1'|'1-2'|'0-2'
+    predicted_win_probability: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 0-100
+    confidence_level: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # 'high'|'medium'|'low'
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
