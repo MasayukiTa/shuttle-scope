@@ -19,6 +19,7 @@ from backend.db.database import create_tables, add_columns_if_missing, engine, g
 from backend.routers import matches, rallies, strokes, players, analysis, reports, sets, tracknet
 from backend.routers import settings as settings_router
 from backend.routers import sessions, comments, bookmarks, network_diag, warmup
+from backend.routers import prediction
 from backend.utils.video_downloader import video_downloader
 
 
@@ -66,6 +67,8 @@ app.include_router(bookmarks.router, prefix="/api")
 app.include_router(network_diag.router, prefix="/api")
 # G3: ウォームアップ観察
 app.include_router(warmup.router, prefix="/api")
+# 予測エンジン (Phase A+B)
+app.include_router(prediction.router, prefix="/api")
 
 
 

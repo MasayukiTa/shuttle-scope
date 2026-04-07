@@ -1,0 +1,541 @@
+"""
+予測エンジン — 統計ベースの試合プレビュー予測
+Phase A + B + C + D 実装
+"""
+from __future__ import annotations
+import math
+from collections import Counter
+from typing import Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
+
+from backend.db.models import Match, GameSet, Rally, Player, PreMatchObservation
+
+# 大会重要度（TournamentComparison と共通）
+LEVEL_IMPORTANCE: dict[str, float] = {
+    'IC': 1.0, 'IS': 0.75, 'SJL': 0.5,
+    '全日本': 0.25, '国内': 0.0, 'その他': 0.1,
+}
+
+
+def _player_wins_match(match: Match, player_id: int) -> bool:
+    """試合結果をプレイヤー視点の bool に変換"""
+    if match.player_a_id == player_id:
+        return match.result == 'win'
+    else:
+        # player_b 視点: DB の result は player_a 基準なので反転
+        return match.result == 'loss'
+
+
+def get_matches_for_player(
+    db: Session,
+    player_id: int,
+    opponent_id: Optional[int] = None,
+    tournament_level: Optional[str] = None,
+) -> list[Match]:
+    """フィルタ済み試合リスト取得（棄権・未完了除外）"""
+    q = (
+        db.query(Match)
+        .filter(
+            or_(Match.player_a_id == player_id, Match.player_b_id == player_id)
+        )
+        .filter(Match.result.in_(['win', 'loss']))
+    )
+    if opponent_id is not None:
+        q = q.filter(
+            or_(
+                and_(Match.player_a_id == player_id, Match.player_b_id == opponent_id),
+                and_(Match.player_b_id == player_id, Match.player_a_id == opponent_id),
+            )
+        )
+    if tournament_level:
+        q = q.filter(Match.tournament_level == tournament_level)
+    return q.order_by(Match.date.desc()).all()
+
+
+def get_pair_matches(
+    db: Session,
+    player_id_1: int,
+    player_id_2: int,
+    tournament_level: Optional[str] = None,
+) -> list[Match]:
+    """ペアとして出場した試合を取得"""
+    q = (
+        db.query(Match)
+        .filter(Match.result.in_(['win', 'loss']))
+        .filter(
+            or_(
+                and_(Match.player_a_id == player_id_1, Match.partner_a_id == player_id_2),
+                and_(Match.player_a_id == player_id_2, Match.partner_a_id == player_id_1),
+                and_(Match.player_b_id == player_id_1, Match.partner_b_id == player_id_2),
+                and_(Match.player_b_id == player_id_2, Match.partner_b_id == player_id_1),
+            )
+        )
+    )
+    if tournament_level:
+        q = q.filter(Match.tournament_level == tournament_level)
+    return q.order_by(Match.date.desc()).all()
+
+
+def compute_win_probability(
+    matches: list[Match],
+    player_id: int,
+    prior_alpha: float = 2.0,
+) -> tuple[float, int]:
+    """
+    Laplace 平滑化した勝率を返す。
+    Returns: (win_probability, sample_size)
+    """
+    if not matches:
+        return 0.5, 0
+    wins = sum(1 for m in matches if _player_wins_match(m, player_id))
+    n = len(matches)
+    p = (wins + prior_alpha / 2) / (n + prior_alpha)
+    return round(p, 4), n
+
+
+def compute_set_distribution(
+    matches: list[Match],
+    player_id: int,
+    win_prob: float,
+) -> dict[str, float]:
+    """
+    2-0 / 2-1 / 1-2 / 0-2 の確率分布を計算。
+    実データ ≥ 5 試合: 観測値（Laplace 平滑化）
+    実データ < 5 試合: 二項分布近似
+    """
+    counter: dict[str, int] = {'2-0': 0, '2-1': 0, '1-2': 0, '0-2': 0}
+
+    for m in matches:
+        sets = sorted(m.sets or [], key=lambda s: s.set_num)
+        wins_sets = sum(
+            1 for s in sets
+            if (s.winner == 'player_a' and m.player_a_id == player_id)
+            or (s.winner == 'player_b' and m.player_b_id == player_id)
+        )
+        total_sets = len(sets)
+        if total_sets == 2:
+            if wins_sets == 2:
+                counter['2-0'] += 1
+            elif wins_sets == 0:
+                counter['0-2'] += 1
+        elif total_sets == 3:
+            if wins_sets == 2:
+                counter['2-1'] += 1
+            elif wins_sets == 1:
+                counter['1-2'] += 1
+
+    total = sum(counter.values())
+    if total >= 5:
+        return {k: round((v + 0.5) / (total + 2.0), 4) for k, v in counter.items()}
+
+    # 二項分布近似
+    p = win_prob
+    q = 1 - p
+    raw = {
+        '2-0': p * p,
+        '2-1': 2 * p * p * q,
+        '1-2': 2 * p * q * q,
+        '0-2': q * q,
+    }
+    total_prob = sum(raw.values())
+    if total_prob <= 0:
+        return {'2-0': 0.25, '2-1': 0.25, '1-2': 0.25, '0-2': 0.25}
+    return {k: round(v / total_prob, 4) for k, v in raw.items()}
+
+
+def compute_score_bands(
+    matches: list[Match],
+    player_id: int,
+) -> dict[str, dict[str, int]]:
+    """
+    各セット(1/2/3)のスコアバンドを計算。
+    Returns: { "set1": {"my_low", "my_high", "opp_low", "opp_high"}, ... }
+    """
+    set_scores: dict[int, list[tuple[int, int]]] = {1: [], 2: [], 3: []}
+
+    for m in matches:
+        for s in (m.sets or []):
+            if s.set_num not in set_scores:
+                continue
+            if m.player_a_id == player_id:
+                set_scores[s.set_num].append((s.score_a, s.score_b))
+            else:
+                set_scores[s.set_num].append((s.score_b, s.score_a))
+
+    bands: dict[str, dict[str, int]] = {}
+    for sn, scores in set_scores.items():
+        if len(scores) < 2:
+            continue
+        my = sorted(sc[0] for sc in scores)
+        opp = sorted(sc[1] for sc in scores)
+        n = len(my)
+        lo = max(0, int(n * 0.25))
+        hi = min(n - 1, int(n * 0.75))
+        bands[f'set{sn}'] = {
+            'my_low': my[lo],
+            'my_high': my[hi],
+            'opp_low': opp[lo],
+            'opp_high': opp[hi],
+            'sample': n,
+        }
+    return bands
+
+
+def compute_most_likely_scorelines(
+    set_distribution: dict[str, float],
+    score_bands: dict[str, dict[str, int]],
+) -> list[dict]:
+    """最頻スコアラインのリスト（確率上位3件）"""
+    results = []
+    s1 = score_bands.get('set1', {})
+    s2 = score_bands.get('set2', {})
+    s3 = score_bands.get('set3', {})
+
+    for outcome, prob in sorted(set_distribution.items(), key=lambda x: -x[1]):
+        is_win = outcome.startswith('2')
+        item: dict = {'outcome': outcome, 'probability': prob}
+
+        if s1:
+            my = s1['my_high'] if is_win else s1['my_low']
+            opp = s1['opp_low'] if is_win else s1['opp_high']
+            item['set1_score'] = f'{my}-{opp}'
+        else:
+            item['set1_score'] = '21-??' if is_win else '??-21'
+
+        if outcome in ('2-1', '1-2'):
+            if s2:
+                # 第2セットは逆パターン傾向
+                my2 = s2['my_low'] if is_win else s2['my_high']
+                opp2 = s2['opp_high'] if is_win else s2['opp_low']
+                item['set2_score'] = f'{my2}-{opp2}'
+            if s3:
+                my3 = s3['my_high'] if is_win else s3['my_low']
+                opp3 = s3['opp_low'] if is_win else s3['opp_high']
+                item['set3_score'] = f'{my3}-{opp3}'
+
+        results.append(item)
+    return results[:3]
+
+
+def get_observation_context(
+    db: Session,
+    player_id: int,
+    opponent_id: Optional[int] = None,
+    match_id: Optional[int] = None,
+) -> dict:
+    """ウォームアップ・自コンディション観察コンテキストを取得"""
+    if match_id:
+        m = db.get(Match, match_id)
+        if m:
+            opponent_actual = m.player_b_id if m.player_a_id == player_id else m.player_a_id
+            obs_list = (
+                db.query(PreMatchObservation)
+                .filter(PreMatchObservation.match_id == match_id)
+                .all()
+            )
+        else:
+            return {}
+    elif opponent_id:
+        opponent_actual = opponent_id
+        # 最近の対戦試合の観察を取得
+        recent = (
+            db.query(Match)
+            .filter(
+                Match.result.in_(['win', 'loss']),
+                or_(
+                    and_(Match.player_a_id == player_id, Match.player_b_id == opponent_id),
+                    and_(Match.player_b_id == player_id, Match.player_a_id == opponent_id),
+                )
+            )
+            .order_by(Match.date.desc())
+            .first()
+        )
+        if not recent:
+            return {}
+        obs_list = (
+            db.query(PreMatchObservation)
+            .filter(PreMatchObservation.match_id == recent.id)
+            .all()
+        )
+    else:
+        return {}
+
+    self_obs: dict = {}
+    opp_obs: dict = {}
+    for o in obs_list:
+        entry = {'value': o.observation_value, 'confidence': o.confidence_level}
+        if o.player_id == player_id:
+            self_obs[o.observation_type] = entry
+        elif o.player_id == opponent_actual:
+            opp_obs[o.observation_type] = entry
+
+    ctx: dict = {}
+    if self_obs:
+        ctx['self'] = self_obs
+    if opp_obs:
+        ctx['opponent'] = opp_obs
+    return ctx
+
+
+def build_tactical_notes(
+    win_prob: float,
+    sample_size: int,
+    obs_context: dict,
+    opponent_player: Optional[Player] = None,
+) -> list[str]:
+    """ヒューリスティックな戦術ノート（最大3件）"""
+    notes: list[str] = []
+    opp = obs_context.get('opponent', {})
+    self_obs = obs_context.get('self', {})
+
+    hand = opp.get('handedness', {})
+    if hand.get('value') == 'L':
+        notes.append('相手は左利き — バック側への配球が有効な可能性')
+
+    phys = opp.get('physical_caution', {})
+    if phys.get('value') in ('moderate', 'heavy'):
+        notes.append(f'相手に身体的ハンデあり（{phys["value"]}） — フットワークを多用する展開を検討')
+
+    style = opp.get('tactical_style', {})
+    if style.get('value') == 'attacker':
+        notes.append('相手は攻撃型 — クリアで展開を引き延ばし守備から攻撃へ転換する戦略が有効')
+    elif style.get('value') == 'defender':
+        notes.append('相手は守備型 — 積極的なネット前攻略で主導権を握る')
+
+    cond = self_obs.get('self_condition', {})
+    timing = self_obs.get('self_timing', {})
+    if cond.get('value') in ('heavy', 'poor'):
+        notes.append(f'自コンディション注意（{cond["value"]}） — ラリーを短くする方針を検討')
+    elif timing.get('value') == 'off':
+        notes.append('タイミング感覚が乱れている — 立ち上がりを慎重に')
+
+    if sample_size < 5 and not notes:
+        notes.append(f'対戦データが少ない（{sample_size}試合） — 予測信頼度が低め')
+
+    return notes[:3]
+
+
+def build_caution_flags(
+    win_prob: float,
+    sample_size: int,
+    obs_context: dict,
+) -> list[str]:
+    """注意フラグ（最大2件）"""
+    flags: list[str] = []
+    if win_prob < 0.35:
+        flags.append('過去の対戦成績が厳しい — 戦術の再検討が必要')
+    elif win_prob > 0.70 and sample_size >= 5:
+        flags.append('過去の勝率が高いが油断に注意')
+
+    opp = obs_context.get('opponent', {})
+    phys = opp.get('physical_caution', {})
+    if phys.get('value') == 'heavy':
+        flags.append('相手に重篤な身体的注意事項あり — 試合当日の変動に注意')
+
+    return flags[:2]
+
+
+def compute_confidence_score(sample_size: int, similar_matches: int) -> float:
+    """信頼度スコア (0.0–1.0)"""
+    base = 1.0 - math.exp(-sample_size / 20.0)
+    bonus = min(0.15, similar_matches * 0.015)
+    return round(min(0.95, base + bonus), 4)
+
+
+def compute_calibrated_scorelines(
+    matches: list[Match],
+    player_id: int,
+) -> list[dict]:
+    """
+    実測スコアラインの頻度ヒストグラム (Phase D キャリブレーション用)
+    上位8件を返す。
+    """
+    counter: Counter = Counter()
+    for m in matches:
+        sets = sorted(m.sets or [], key=lambda s: s.set_num)
+        if not sets:
+            continue
+        parts: list[str] = []
+        wins_sets = 0
+        for s in sets:
+            if m.player_a_id == player_id:
+                parts.append(f"{s.score_a}-{s.score_b}")
+                if s.winner == 'player_a':
+                    wins_sets += 1
+            else:
+                parts.append(f"{s.score_b}-{s.score_a}")
+                if s.winner == 'player_b':
+                    wins_sets += 1
+        total_sets = len(sets)
+        outcome = f"{wins_sets}-{total_sets - wins_sets}"
+        counter[(outcome, ', '.join(parts))] += 1
+
+    total = sum(counter.values())
+    if not total:
+        return []
+    return [
+        {
+            'outcome': outcome,
+            'scoreline': scoreline,
+            'count': count,
+            'frequency': round(count / total, 4),
+        }
+        for (outcome, scoreline), count in counter.most_common(8)
+    ]
+
+
+def _empty_fatigue_result() -> dict:
+    return {
+        'risk_score': 0.0,
+        'risk_signals': [],
+        'confidence': 0.0,
+        'recommendation': None,
+        'breakdown': {
+            'temporal_drop': 0.0, 'long_rally_penalty': 0.0, 'pressure_drop': 0.0,
+            'early_sample': 0, 'late_sample': 0, 'long_rally_sample': 0,
+            'pressure_sample': 0, 'total_rallies': 0,
+        },
+    }
+
+
+def compute_fatigue_risk(
+    db: Session,
+    player_id: int,
+    tournament_level: Optional[str] = None,
+) -> dict:
+    """
+    疲労・崩壊リスク推定 (Phase C)
+    3指標の加重平均:
+      - temporal_drop  (40%): 序盤(≤8点) vs 終盤(≥20点) の勝率差
+      - long_rally_penalty (30%): 長ラリー(≥7打) 直後の勝率低下
+      - pressure_drop  (30%): デュース時の勝率低下
+    """
+    matches = get_matches_for_player(db, player_id, tournament_level=tournament_level)
+    if not matches:
+        return _empty_fatigue_result()
+
+    # set_id → Match の逆引き
+    set_to_match: dict[int, Match] = {}
+    all_set_ids: list[int] = []
+    for m in matches:
+        for s in (m.sets or []):
+            set_to_match[s.id] = m
+            all_set_ids.append(s.id)
+
+    if not all_set_ids:
+        return _empty_fatigue_result()
+
+    rallies: list[Rally] = (
+        db.query(Rally)
+        .filter(Rally.set_id.in_(all_set_ids), Rally.is_skipped == False)
+        .order_by(Rally.set_id, Rally.rally_num)
+        .all()
+    )
+
+    if not rallies:
+        return _empty_fatigue_result()
+
+    def won(r: Rally) -> bool:
+        m = set_to_match.get(r.set_id)
+        if not m:
+            return False
+        return r.winner == ('player_a' if m.player_a_id == player_id else 'player_b')
+
+    # ── temporal drop ──
+    early_w = early_t = late_w = late_t = 0
+    for r in rallies:
+        total_pts = (r.score_a_after or 0) + (r.score_b_after or 0)
+        w = won(r)
+        if total_pts <= 8:
+            early_t += 1
+            if w:
+                early_w += 1
+        elif total_pts >= 20:
+            late_t += 1
+            if w:
+                late_w += 1
+
+    temporal_drop = 0.0
+    if early_t >= 5 and late_t >= 5:
+        temporal_drop = max(0.0, early_w / early_t - late_w / late_t)
+
+    # ── long rally penalty ──
+    LONG_THRESHOLD = 7
+    rally_lookup = {(r.set_id, r.rally_num): r for r in rallies}
+    post_long_w = post_long_t = 0
+    for r in rallies:
+        if (r.rally_length or 0) >= LONG_THRESHOLD:
+            nxt = rally_lookup.get((r.set_id, r.rally_num + 1))
+            if nxt:
+                post_long_t += 1
+                if won(nxt):
+                    post_long_w += 1
+
+    overall_wr = sum(1 for r in rallies if won(r)) / len(rallies)
+    long_rally_penalty = 0.0
+    if post_long_t >= 5:
+        long_rally_penalty = max(0.0, overall_wr - post_long_w / post_long_t)
+
+    # ── pressure drop (deuce) ──
+    deuce_w = deuce_t = 0
+    for r in rallies:
+        if r.is_deuce:
+            deuce_t += 1
+            if won(r):
+                deuce_w += 1
+
+    pressure_drop = 0.0
+    if deuce_t >= 5:
+        pressure_drop = max(0.0, overall_wr - deuce_w / deuce_t)
+
+    risk_score = temporal_drop * 0.40 + long_rally_penalty * 0.30 + pressure_drop * 0.30
+
+    signals: list[str] = []
+    if temporal_drop >= 0.08:
+        signals.append(f'試合後半の得点率が序盤より {int(temporal_drop * 100)}% 低下')
+    if long_rally_penalty >= 0.08:
+        signals.append(f'長ラリー直後の勝率が通常より {int(long_rally_penalty * 100)}% 低下')
+    if pressure_drop >= 0.08:
+        signals.append(f'デュース時の勝率が通常より {int(pressure_drop * 100)}% 低下')
+
+    recommendation: Optional[str] = None
+    if risk_score >= 0.12:
+        recommendation = '後半スタミナ管理が課題 — 早めに終わらせる配球・サービスパターンを意識'
+    elif risk_score >= 0.06:
+        recommendation = '終盤・デュース時の集中力維持に注意。事前にメンタルルーティンを準備'
+
+    conf = compute_confidence_score(len(rallies) // 15, 0)
+
+    return {
+        'risk_score': round(risk_score, 4),
+        'risk_signals': signals,
+        'confidence': conf,
+        'recommendation': recommendation,
+        'breakdown': {
+            'temporal_drop': round(temporal_drop, 4),
+            'long_rally_penalty': round(long_rally_penalty, 4),
+            'pressure_drop': round(pressure_drop, 4),
+            'early_sample': early_t,
+            'late_sample': late_t,
+            'long_rally_sample': post_long_t,
+            'pressure_sample': deuce_t,
+            'total_rallies': len(rallies),
+        },
+    }
+
+
+def confidence_meta(confidence: float, sample_size: int) -> dict:
+    """ConfidenceBadge 互換のメタ情報"""
+    if confidence >= 0.70:
+        level, stars = 'high', '★★★'
+    elif confidence >= 0.40:
+        level, stars = 'medium', '★★☆'
+    else:
+        level, stars = 'low', '★☆☆'
+    return {
+        'level': level,
+        'stars': stars,
+        'label': f'信頼度 {int(confidence * 100)}%',
+        'warning': f'サンプル {sample_size} 試合' if sample_size < 10 else None,
+    }

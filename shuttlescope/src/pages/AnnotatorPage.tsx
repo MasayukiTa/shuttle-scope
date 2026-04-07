@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2 } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -193,6 +193,9 @@ export function AnnotatorPage() {
   const [inMatchOrganization, setInMatchOrganization] = useState<string>('')
   const [inMatchScoutingNotes, setInMatchScoutingNotes] = useState<string>('')
   const [inMatchSaved, setInMatchSaved] = useState(false)
+
+  // マッチデーモード: キーボード凡例オーバーレイ
+  const [showLegendOverlay, setShowLegendOverlay] = useState(false)
 
   // 途中終了ダイアログ
   const [showExceptionDialog, setShowExceptionDialog] = useState(false)
@@ -1410,12 +1413,107 @@ export function AnnotatorPage() {
           {/* ステップインジケーター */}
           <div
             className={clsx(
-              'px-3 py-2 text-xs font-medium border-b border-gray-700 shrink-0',
+              'flex items-center justify-between px-3 py-2 text-xs font-medium border-b border-gray-700 shrink-0',
               store.inputStep === 'idle' ? 'text-gray-400 bg-gray-800' : 'text-blue-300 bg-blue-900/30'
             )}
           >
-            {initialized ? stepLabel : '読み込み中…'}
+            <span>{initialized ? stepLabel : '読み込み中…'}</span>
+            {isMatchDayMode && (
+              <button
+                onClick={() => setShowLegendOverlay((v) => !v)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+                title="キーボードショートカット凡例"
+              >
+                <Keyboard size={12} />
+              </button>
+            )}
           </div>
+
+          {/* マッチデーモード: キーボード凡例オーバーレイ */}
+          {isMatchDayMode && showLegendOverlay && (
+            <div
+              className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
+              onClick={() => setShowLegendOverlay(false)}
+            >
+              <div
+                className="bg-gray-900 border border-gray-700 rounded-lg p-5 max-w-lg w-full mx-4 space-y-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-gray-200">キーボードショートカット</span>
+                  <button
+                    onClick={() => setShowLegendOverlay(false)}
+                    className="text-gray-500 hover:text-white text-lg leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-300">
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Space</kbd> 再生/停止</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">←/→</kbd> 1フレーム</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Shift+←/→</kbd> 10秒</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> ラリー開始/終了</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">N/C/P…G</kbd> ショット入力</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Q/W/E</kbd> BH/RH/NET属性</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> 戻す</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> キャンセル</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">1–6</kbd> エンドタイプ</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">A/B</kbd> 勝者確定</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">K</kbd> 見逃しラリー</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Backspace</kbd> 落点キャンセル</span>
+                </div>
+                <div className="border-t border-gray-700 pt-3">
+                  <div className="font-semibold text-gray-200 mb-2 text-xs">落点入力テンキー（land_zone中）</div>
+                  <div className="flex gap-4 items-start">
+                    <div className="space-y-1 flex-1">
+                      <div className="text-[10px] text-gray-400 mb-0.5">テンキー（推奨）</div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {[
+                          { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
+                          { k: '4', zone: 'ML' }, { k: '5', zone: 'MC' }, { k: '6', zone: 'MR' },
+                          { k: '1', zone: 'NL' }, { k: '2', zone: 'NC' }, { k: '3', zone: 'NR' },
+                        ].map(({ k, zone }) => (
+                          <div key={k} className="text-center">
+                            <kbd className="block bg-gray-600 border border-gray-500 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                            <span className="text-[11px] text-gray-300 font-medium">{zone}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">0/Num0 = スキップ　Esc/BS = キャンセル</div>
+                      <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">文字キー（ノートPC向け）</div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {[
+                          { k: 'U', zone: 'BL' }, { k: 'I', zone: 'BC' }, { k: 'O', zone: 'BR' },
+                          { k: 'J', zone: 'ML' }, { k: 'K', zone: 'MC' }, { k: 'L', zone: 'MR' },
+                          { k: 'M', zone: 'NL' }, { k: ',', zone: 'NC' }, { k: '.', zone: 'NR' },
+                        ].map(({ k, zone }) => (
+                          <div key={k} className="text-center">
+                            <kbd className="block bg-gray-600 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                            <span className="text-[11px] text-gray-400 font-medium">{zone}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex-1 border-l border-gray-700 pl-3 space-y-1.5">
+                      <p className="text-xs text-gray-400 font-medium">コートチェンジ</p>
+                      {[1, 2, 3].map((sn) => {
+                        const isCurrent = store.currentSetNum === sn
+                        const aPos = computePlayerASide(playerAStart, sn, sn === store.currentSetNum ? store.scoreA : 0, sn === store.currentSetNum ? store.scoreB : 0)
+                        return (
+                          <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-yellow-300 font-medium' : 'text-gray-500'}`}>
+                            <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-yellow-400' : 'bg-gray-700'}`} />
+                            <span>Set {sn}: A={aPos === 'top' ? '↑上' : '↓下'}</span>
+                            {sn === 3 && <span className="text-gray-600 text-[10px]">(11pt↔)</span>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-600 text-center">背景クリックで閉じる</p>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3 p-3">
             {/* スコア表示 */}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { List, BarChart2, Settings, Sun, Moon } from 'lucide-react'
+import { List, BarChart2, Settings, Sun, Moon, Zap } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import '@/i18n'
@@ -11,6 +11,7 @@ import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
+import { PredictionPage } from '@/pages/PredictionPage'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { checkHealth } from '@/api/client'
@@ -90,6 +91,7 @@ function Sidebar() {
   const navItems = [
     { to: '/matches', label: t('nav.matches'), icon: List },
     { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
+    { to: '/prediction', label: t('nav.prediction'), icon: Zap },
     { to: '/settings', label: t('nav.settings'), icon: Settings },
   ]
 
@@ -143,6 +145,7 @@ function MainLayout() {
           <Route path="/matches" element={<MatchListPage />} />
           <Route path="/annotator/:matchId" element={<AnnotatorPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/prediction" element={<PredictionPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </div>

@@ -240,7 +240,7 @@ def main():
         # 2023年
         {
             "tournament": "全日本学生2023",
-            "tournament_level": "全国",
+            "tournament_level": "全日本",
             "round": "R16",
             "date": "2023-09-10",
             "venue": "代々木体育館",
@@ -269,7 +269,7 @@ def main():
         },
         {
             "tournament": "関東学生秋季2023",
-            "tournament_level": "地区",
+            "tournament_level": "国内",
             "round": "SF",
             "date": "2023-11-05",
             "venue": "東京武道館",
@@ -301,7 +301,7 @@ def main():
         # 2024年
         {
             "tournament": "全日本学生2024",
-            "tournament_level": "全国",
+            "tournament_level": "全日本",
             "round": "QF",
             "date": "2024-09-08",
             "venue": "代々木体育館",
@@ -330,7 +330,7 @@ def main():
         },
         {
             "tournament": "関東学生春季2024",
-            "tournament_level": "地区",
+            "tournament_level": "国内",
             "round": "F",
             "date": "2024-05-20",
             "venue": "日本武道館",
@@ -367,8 +367,38 @@ def main():
             ],
         },
         {
+            "tournament": "関東学生秋季2023",
+            "tournament_level": "国内",
+            "round": "R16",
+            "date": "2023-10-15",
+            "venue": "東京武道館",
+            "format": "singles",
+            "player_a_id": pid_a,
+            "player_b_id": pid_d,
+            "result": "win",
+            "final_score": "21-14, 21-18",
+            "notes": "2023年 対 中村（初対戦）",
+            "obs": {
+                "opponent_id": pid_d,
+                "handedness": "R",
+                "physical_caution": "none",
+                "tactical_style": "attacker",
+                "self_condition": "normal",
+                "self_timing": "normal",
+            },
+            "sets": [
+                [SMASH_WIN, NET_WIN_A, SMASH_WIN, B_WIN, SMASH_WIN,
+                 NET_WIN_A, OUT_B, SMASH_WIN, B_WIN, NET_WIN_A,
+                 SMASH_WIN, SMASH_WIN, NET_WIN_A, B_WIN],
+                [SMASH_WIN, NET_WIN_A, SMASH_WIN, B_WIN, NET_WIN_A,
+                 SMASH_WIN, OUT_B, NET_WIN_A, SMASH_WIN, B_WIN,
+                 SMASH_WIN, NET_WIN_A, SMASH_WIN, LONG_B_WIN, NET_WIN_A,
+                 SMASH_WIN, B_WIN, SMASH_WIN],
+            ],
+        },
+        {
             "tournament": "インカレ2024",
-            "tournament_level": "全国",
+            "tournament_level": "IC",
             "round": "R32",
             "date": "2024-12-14",
             "venue": "大阪府立体育館",
@@ -399,7 +429,7 @@ def main():
         # 2025年
         {
             "tournament": "全日本学生2025",
-            "tournament_level": "全国",
+            "tournament_level": "全日本",
             "round": "SF",
             "date": "2025-09-07",
             "venue": "代々木体育館",
@@ -425,8 +455,36 @@ def main():
             ],
         },
         {
+            "tournament": "関東学生秋季2025",
+            "tournament_level": "国内",
+            "round": "QF",
+            "date": "2025-10-12",
+            "venue": "東京武道館",
+            "format": "singles",
+            "player_a_id": pid_a,
+            "player_b_id": pid_d,
+            "result": "win",
+            "final_score": "21-11, 21-9",
+            "notes": "2025年 対 中村（完勝）",
+            "obs": {
+                "opponent_id": pid_d,
+                "handedness": "R",
+                "physical_caution": "light",
+                "tactical_style": "attacker",
+                "self_condition": "great",
+                "self_timing": "sharp",
+            },
+            "sets": [
+                [SMASH_WIN, SMASH_WIN, NET_WIN_A, SMASH_WIN, OUT_B,
+                 SMASH_WIN, NET_WIN_A, SMASH_WIN, SMASH_WIN, NET_WIN_A,
+                 SMASH_WIN],
+                [SMASH_WIN, SMASH_WIN, NET_WIN_A, SMASH_WIN, SMASH_WIN,
+                 OUT_B, SMASH_WIN, NET_WIN_A, SMASH_WIN],
+            ],
+        },
+        {
             "tournament": "関東学生春季2025",
-            "tournament_level": "地区",
+            "tournament_level": "国内",
             "round": "QF",
             "date": "2025-05-25",
             "venue": "東京武道館",
@@ -534,7 +592,7 @@ def main():
     print("  サンプルデータ投入完了！")
     print(f"  選手: A=id{pid_a} / B=id{pid_b} / C=id{pid_c} / D=id{pid_d}")
     print(f"  試合数: {len(MATCHES)}")
-    print("  ダッシュボードで佐藤健太 (id={}) を選択して確認してください".format(pid_a))
+    print("  ダッシュボード・予測ページで佐藤健太 (id={}) を選択して確認してください".format(pid_a))
     print("=" * 60)
 
 
