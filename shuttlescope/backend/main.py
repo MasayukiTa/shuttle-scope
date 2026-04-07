@@ -10,17 +10,22 @@ if _root not in sys.path:
 
 import uvicorn
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings as app_settings
 from backend.db.database import create_tables, add_columns_if_missing, engine, get_db
 from backend.routers import matches, rallies, strokes, players, analysis, reports, sets, tracknet
 from backend.routers import settings as settings_router
 from backend.routers import sessions, comments, bookmarks, network_diag, warmup
-from backend.routers import prediction
+from backend.routers import prediction, tunnel
 from backend.utils.video_downloader import video_downloader
+
+# React renderer ビルド出力パス（Electron / ブラウザ共用）
+_RENDERER_DIR = Path(__file__).resolve().parent.parent / "out" / "renderer"
 
 
 @asynccontextmanager
@@ -69,6 +74,8 @@ app.include_router(network_diag.router, prefix="/api")
 app.include_router(warmup.router, prefix="/api")
 # 予測エンジン (Phase A+B)
 app.include_router(prediction.router, prefix="/api")
+# Cloudflare Tunnel 管理
+app.include_router(tunnel.router, prefix="/api")
 
 
 
@@ -257,7 +264,13 @@ connectWS();
 
 @app.get("/coach/{session_code}", response_class=HTMLResponse)
 async def coach_view(session_code: str):
-    """S-001: コーチビュー HTML ページ（LAN ブラウザ向け）"""
+    """S-001: コーチビュー HTML ページ（後方互換、フル React アプリへ誘導）"""
+    # React SPA が利用可能な場合はリダイレクト
+    if _RENDERER_DIR.exists():
+        return HTMLResponse(
+            content=f'<meta http-equiv="refresh" content="0; url=/#/"><script>location.replace("/#/");</script>',
+            status_code=302,
+        )
     return HTMLResponse(content=_COACH_HTML)
 
 
@@ -275,6 +288,20 @@ async def system_capabilities():
 async def version():
     """バージョン情報"""
     return {"version": "1.0.0", "environment": app_settings.ENVIRONMENT}
+
+
+# ─── React SPA 配信（LAN / トンネルブラウザアクセス用）───────────────────────
+# out/renderer/ が存在するとき（npm run build 後）に有効化。
+# HashRouter 使用のため、/ のみ提供すれば全クライアントサイドルートが動作する。
+if _RENDERER_DIR.exists():
+    _assets_dir = _RENDERER_DIR / "assets"
+    if _assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="renderer-assets")
+
+    @app.get("/")
+    async def spa_root():
+        """React SPA エントリポイント（ブラウザアクセス用）"""
+        return FileResponse(str(_RENDERER_DIR / "index.html"))
 
 
 if __name__ == "__main__":

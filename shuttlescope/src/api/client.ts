@@ -1,7 +1,17 @@
 // FastAPI HTTPクライアント
-// IPC Bridgeを使わず fetch() で localhost:8765 に直接リクエスト
-
-const BASE_URL = 'http://localhost:8765/api'
+// IPC Bridgeを使わず fetch() で直接リクエスト
+//
+// Electron（file: / app: プロトコル）: localhost:8765 に固定
+// ブラウザ（http: / https:）: window.location.origin を使用（LAN・トンネル対応）
+const BASE_URL = (() => {
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+  ) {
+    return `${window.location.origin}/api`
+  }
+  return 'http://localhost:8765/api'
+})()
 
 export async function apiGet<T>(
   path: string,

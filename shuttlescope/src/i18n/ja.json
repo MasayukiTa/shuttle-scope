@@ -565,7 +565,18 @@
     "network_diag_title": "ネットワーク診断（Q-002/Q-008）",
     "run_diagnostics": "診断を実行",
     "transport_ladder": "接続推奨（Transport Ladder）",
-    "diag_not_run": "「診断を実行」ボタンで接続環境を診断します"
+    "diag_not_run": "「診断を実行」ボタンで接続環境を診断します",
+    "lan_app_url_hint": "スマホ・タブレットでこのURLを開くとアプリ全体にアクセスできます",
+    "tunnel_section_title": "インターネット公開（Cloudflare Tunnel）",
+    "tunnel_description": "cloudflared を使い、インターネット越しにどこからでもアクセスできる公開URLを生成します",
+    "tunnel_start": "Tunnel 起動",
+    "tunnel_stop": "Tunnel 停止",
+    "tunnel_starting": "起動中...",
+    "tunnel_running": "公開中",
+    "tunnel_not_running": "停止中",
+    "tunnel_url_hint": "このURLでインターネット越しにアクセスできます",
+    "tunnel_not_available": "cloudflared が見つかりません",
+    "tunnel_install_hint": "Cloudflare の公式サイトから cloudflared をインストールしてください"
   },
   "bookmark": {
     "add": "ブックマーク追加",

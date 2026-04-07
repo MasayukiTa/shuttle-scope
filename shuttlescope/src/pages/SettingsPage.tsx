@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff } from 'lucide-react'
+import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -31,6 +32,46 @@ const defaultPlayerForm = (): PlayerFormData => ({
   is_target: false,
   notes: '',
 })
+
+/** URL + QRコード + コピーボタンをまとめた小コンポーネント */
+function LanUrlCard({ url, hint }: { url: string; hint: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!canvasRef.current || !url) return
+    QRCode.toCanvas(canvasRef.current, url, {
+      width: 140,
+      margin: 1,
+      color: { dark: '#0f172a', light: '#f8fafc' },
+    }).catch(() => {})
+  }, [url])
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(url).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="flex items-start gap-3">
+      <canvas ref={canvasRef} className="rounded flex-shrink-0" />
+      <div className="min-w-0 space-y-1.5">
+        <p className="text-xs text-gray-400">{hint}</p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono text-green-300 break-all">{url}</span>
+          <button
+            onClick={handleCopy}
+            className="flex-shrink-0 p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+            title="コピー"
+          >
+            {copied ? <CheckCircle size={12} className="text-green-400" /> : <Copy size={12} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function SettingsPage() {
   const { t } = useTranslation()
@@ -84,6 +125,24 @@ export function SettingsPage() {
   const toggleLanMode = useMutation({
     mutationFn: (enable: boolean) => apiPost('/network/lan-mode?enable=' + enable, {}),
     onSuccess: () => { refetchServerInfo() },
+  })
+
+  // Cloudflare Tunnel ステータス
+  const { data: tunnelStatus, refetch: refetchTunnel } = useQuery({
+    queryKey: ['tunnel-status'],
+    queryFn: () => apiGet<{ success: boolean; data: { available: boolean; running: boolean; url: string | null; recent_log: string[] } }>('/tunnel/status'),
+    enabled: activeTab === 'sharing',
+    refetchInterval: activeTab === 'sharing' ? 3000 : false,
+  })
+
+  const tunnelStart = useMutation({
+    mutationFn: () => apiPost('/tunnel/start', {}),
+    onSuccess: () => { refetchTunnel() },
+  })
+
+  const tunnelStop = useMutation({
+    mutationFn: () => apiPost('/tunnel/stop', {}),
+    onSuccess: () => { refetchTunnel() },
   })
 
   // 選手作成
@@ -490,16 +549,13 @@ export function SettingsPage() {
                 </button>
               </div>
               {serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
-                <div className="bg-gray-900 rounded p-3 space-y-2">
-                  {serverInfo.data.lan_ips.map((ip) => (
-                    <div key={ip} className="flex items-center gap-2">
-                      <Wifi size={12} className="text-green-400" />
-                      <span className="text-xs font-mono text-green-300">
-                        http://{ip}:{serverInfo.data.port}/coach/&#123;セッションコード&#125;
-                      </span>
-                    </div>
-                  ))}
-                  <p className="text-xs text-gray-500">{t('sharing.lan_access_hint')}</p>
+                <div className="bg-gray-900 rounded p-3 space-y-3">
+                  {serverInfo.data.lan_ips.map((ip) => {
+                    const appUrl = `http://${ip}:${serverInfo.data.port}/`
+                    return (
+                      <LanUrlCard key={ip} url={appUrl} hint={t('sharing.lan_app_url_hint')} />
+                    )
+                  })}
                 </div>
               ) : serverInfo?.data?.lan_mode ? (
                 <div className="flex items-center gap-2 text-xs text-orange-400">
@@ -508,6 +564,77 @@ export function SettingsPage() {
                 </div>
               ) : (
                 <p className="text-xs text-gray-500">{t('sharing.lan_disabled_hint')}</p>
+              )}
+            </div>
+
+            {/* Cloudflare Tunnel */}
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <h3 className="text-sm font-medium text-gray-300 mb-1 flex items-center gap-2">
+                <Globe size={14} className="text-blue-400" />
+                {t('sharing.tunnel_section_title')}
+              </h3>
+              <p className="text-xs text-gray-500 mb-3">{t('sharing.tunnel_description')}</p>
+
+              {tunnelStatus?.data?.available === false ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs text-orange-400">
+                    <AlertCircle size={13} />
+                    {t('sharing.tunnel_not_available')}
+                  </div>
+                  <p className="text-xs text-gray-500">{t('sharing.tunnel_install_hint')}</p>
+                  <a
+                    href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 underline"
+                  >
+                    developers.cloudflare.com/downloads
+                  </a>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      {tunnelStatus?.data?.running
+                        ? <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                        : <span className="inline-block w-2 h-2 rounded-full bg-gray-500" />}
+                      <span className="text-sm">
+                        {tunnelStatus?.data?.running ? t('sharing.tunnel_running') : t('sharing.tunnel_not_running')}
+                      </span>
+                    </div>
+                    <div className="ml-auto flex gap-2">
+                      {!tunnelStatus?.data?.running ? (
+                        <button
+                          onClick={() => tunnelStart.mutate()}
+                          disabled={tunnelStart.isPending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-xs"
+                        >
+                          <Power size={12} />
+                          {tunnelStart.isPending ? t('sharing.tunnel_starting') : t('sharing.tunnel_start')}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => tunnelStop.mutate()}
+                          disabled={tunnelStop.isPending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded text-xs"
+                        >
+                          <PowerOff size={12} />
+                          {t('sharing.tunnel_stop')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {tunnelStatus?.data?.running && tunnelStatus.data.url && (
+                    <div className="bg-gray-900 rounded p-3">
+                      <LanUrlCard url={tunnelStatus.data.url} hint={t('sharing.tunnel_url_hint')} />
+                    </div>
+                  )}
+
+                  {tunnelStatus?.data?.running && !tunnelStatus.data.url && (
+                    <p className="text-xs text-gray-500 animate-pulse">URL取得中…（数秒かかります）</p>
+                  )}
+                </div>
               )}
             </div>
 

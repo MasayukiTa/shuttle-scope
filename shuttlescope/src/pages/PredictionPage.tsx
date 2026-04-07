@@ -71,8 +71,9 @@ export function PredictionPage() {
     }>
       <div className={`flex flex-col h-screen ${bodyBg}`}>
         {/* ヘッダー */}
-        <div className={`flex items-center justify-between px-6 py-3 border-b shrink-0 ${headerBg}`}>
-          <div className="flex items-center gap-2">
+        <div className={`px-6 pt-4 pb-3 border-b shrink-0 ${headerBg}`}>
+          {/* タイトル行 */}
+          <div className="flex items-center gap-2 mb-3">
             <TrendingUp size={18} className="text-gray-400" />
             <h1 className="text-lg font-semibold" style={{ color: isLight ? '#1e293b' : '#f1f5f9' }}>
               {t('nav.prediction_title')}
@@ -84,7 +85,7 @@ export function PredictionPage() {
             )}
           </div>
 
-          {/* 選手セレクター */}
+          {/* 選手セレクター行 */}
           <div className="flex items-center gap-3">
             <User size={16} className="text-gray-400 shrink-0" />
             <label className="text-sm text-gray-400 shrink-0">選手：</label>
@@ -92,7 +93,7 @@ export function PredictionPage() {
               <span className="text-gray-500 text-sm">読み込み中...</span>
             ) : (
               <select
-                className={`text-sm rounded-md px-3 py-1.5 focus:outline-none min-w-[240px] ${
+                className={`text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[260px] ${
                   isLight
                     ? 'bg-white border border-gray-300 text-gray-800'
                     : 'bg-gray-800 border border-gray-700 text-white'
