@@ -1,63 +1,127 @@
 # ShuttleScope
 
-ShuttleScope is a Windows desktop app for badminton annotation, review, and match analysis.
-It combines an Electron + React UI with a local FastAPI backend and SQLite database, with a strong focus on:
+ShuttleScope is a badminton annotation, review, analytics, and prediction platform built as a local-first Windows desktop app.
+It combines an Electron + React frontend with a FastAPI backend, SQLite storage, and an expanding set of badminton-specific research-inspired analysis modules.
 
-- fast point-by-point annotation during or after matches
+The current product is no longer just a rally tagging tool.
+It already covers:
+
+- fast live or post-match annotation
 - post-match review for coaches and analysts
-- player-safe presentation of analytics
-- local-first operation with optional LAN/session sharing
+- growth and trend tracking across matches
+- doubles / partner analysis
+- pre-match observation capture
+- prediction and pair simulation
+- LAN / browser sharing and temporary tunnel-based remote access
 
-This repository contains the app shell, annotation workflow, analytics dashboard, sharing workflow, and TrackNet integration scaffolding.
+## What ShuttleScope Is For
+
+ShuttleScope is designed to help a badminton team do three things in one system:
+
+1. Capture structured match data quickly
+2. Turn that data into useful review and coaching insight
+3. Use accumulated history to support future lineup, tactical, and match prediction decisions
+
+The intended users are mainly:
+
+- analysts
+- coaches
+- players
+
+Player-facing views are intentionally more conservative.
+Coach and analyst views can expose deeper tactical interpretation, prediction, and lineup support.
 
 ## Current Product Shape
 
-### Annotator
+### Match List
 
 - quick-start match creation
-- rally-by-rally stroke annotation
-- numpad-based landing input and keyboard-first workflow
-- skipped rally handling and score correction
-- match-day mode for faster live operation
-- set interval summary and mid-game review hooks
-- video modes for local, WebView, and no-video operation
-- dual-monitor / video-only workflow in Electron
+- singles and doubles entry flow
+- match-day oriented start flow
+- warm-up / pre-match observation entry
+- reviewable match list and seed-data support
 
-### Analytics / Review
+### Annotator
 
-- court heatmaps and zone-level review
-- shot-type and pattern analysis
+- keyboard-first stroke annotation
+- numpad-based landing input
+- live-friendly match-day mode
+- skipped rally handling
+- score correction
+- forced set end / exception handling
+- set interval summary and mid-game summary
+- doubles hitter switching inside the same side
+- stroke history with partner-aware labels
+
+### Analytics
+
+- court heatmaps and zone-level drill-down
 - score progression and set comparison
-- first-return, pre-win, pre-loss, and temporal analysis
-- growth / trend views across matches
-- doubles / partner-oriented analysis
+- first-return, pre-win, pre-loss, temporal, and pattern analysis
+- review and growth views
+- doubles / partner analysis
+- opponent-oriented analysis
+- warm-up observation analytics
 - EPV / Markov / shot influence style analysis
-- confidence-aware presentation for analytics
+- confidence-aware presentation
 
-### Sharing / Collaboration
+### Prediction
 
-- live session creation and LAN sharing
-- coach-view / session share flows
+- top-level prediction page
+- match preview
+- coach-ready summary strip
+- match script estimation
+- tactical recommendation ranking
+- prediction drivers / evidence source explanation
+- fatigue risk estimation
+- pair simulation
+- scoreline / set distribution displays
+
+### Sharing / Access
+
+- live session creation
+- coach-view / session share workflows
 - comments and bookmarks
-- network diagnostics
+- LAN access from browser clients on the same Wi-Fi
+- QR-code sharing for LAN URLs
+- optional Cloudflare Tunnel control from settings
+- network diagnostics and transport guidance
 
 ### Tracking
 
-- TrackNet backend route and runtime selection
-- ONNX / TensorFlow / OpenVINO-oriented integration path
-- local weights and exported artifacts kept out of Git
+- TrackNet integration path
+- backend selection (`auto`, `onnx_cpu`, `tensorflow_cpu`, `openvino`)
+- local weight / export workflow
+- Git-ignored model artifacts
+
+## Main Screens
+
+- `MatchListPage`
+  - match creation, quick start, and entry point
+- `AnnotatorPage`
+  - live / post-match annotation workflow
+- `DashboardPage`
+  - analytics, review, growth, doubles, and research-style analysis
+- `PredictionPage`
+  - match forecasting, fatigue risk, and pair simulation
+- `SettingsPage`
+  - player management, sharing, TrackNet, and account / role controls
+- `VideoOnlyPage`
+  - second-screen / video-only Electron workflow
 
 ## Tech Stack
 
-- Desktop: Electron
+- Desktop shell: Electron
 - Frontend: React 18, TypeScript, Vite
 - State / data: Zustand, TanStack Query
-- Charts / visualization: Recharts, D3
+- Visualization: Recharts, D3
 - Backend: FastAPI
 - Database: SQLite
-- Analysis: NumPy, SciPy, scikit-learn
+- Analysis libraries: NumPy, SciPy, scikit-learn
 - Reporting: ReportLab, matplotlib
-- Tracking integration: ONNX Runtime / TensorFlow / OpenVINO path
+- Tracking path: ONNX Runtime / TensorFlow / OpenVINO
+- Packaging: electron-builder
+- CI: GitHub Actions
 
 ## Repository Layout
 
@@ -67,6 +131,7 @@ shuttle-scope/
 ├─ LICENSE
 ├─ CLAUDE.md
 ├─ private_docs/                # local private notes, ignored
+├─ .github/workflows/           # CI / packaging / TrackNet smoke
 └─ shuttlescope/
    ├─ electron/                 # Electron main / preload
    ├─ src/
@@ -90,38 +155,32 @@ shuttle-scope/
    └─ shuttlescope.db
 ```
 
-## Main Screens
+## Backend Routes
 
-- `MatchListPage`
-  - quick start, match creation, and match entry point
-- `AnnotatorPage`
-  - live / post-match annotation workflow
-- `DashboardPage`
-  - analysis, review, growth, and doubles views
-- `SettingsPage`
-  - app, video, sharing, and TrackNet-related settings
-- `VideoOnlyPage`
-  - second-screen / video-only presentation
+The backend already includes dedicated routers for:
 
-## Roles
-
-The app is designed around role-aware presentation:
-
-- `analyst`
-- `coach`
-- `player`
-
-Player-facing presentation is intentionally more conservative than coach / analyst views.
-The codebase uses role gating and confidence-aware analytics to avoid exposing raw weak-point language or overconfident conclusions where inappropriate.
+- matches
+- players
+- strokes / rallies / sets
+- analysis
+- prediction
+- reports
+- warm-up observations
+- sharing sessions
+- comments / bookmarks
+- network diagnostics
+- TrackNet
+- tunnel control
 
 ## Setup
 
 ### Requirements
 
-- Windows as the primary target environment
+- Windows is the primary target environment
 - Node.js 18+
 - Python 3.10+
-- `ffmpeg` if you want broader download or media processing capability
+- `ffmpeg` for broader media workflows
+- optional: `cloudflared` for temporary external tunnel access
 
 ### App install and dev run
 
@@ -145,7 +204,7 @@ cd shuttlescope
 npm run start
 ```
 
-You can also launch with:
+or:
 
 ```bat
 shuttlescope\start.bat
@@ -161,22 +220,22 @@ pip install -r requirements.txt
 python main.py
 ```
 
-The local FastAPI backend runs on `http://127.0.0.1:8765` by default.
+The default local backend URL is `http://127.0.0.1:8765`.
 
 ## Tests
 
-### Frontend tests
+### Frontend
 
 ```bash
 cd shuttlescope
 npx vitest run --config vitest.config.ts
 ```
 
-### Backend tests
+### Backend
 
 ```bash
 cd shuttlescope
-.\backend\.venv\Scripts\python -m pytest -v
+.\backend\.venv\Scripts\python -m pytest backend/tests/ -q
 ```
 
 ### Build check
@@ -186,45 +245,62 @@ cd shuttlescope
 npm run build
 ```
 
+## CI
+
+GitHub Actions workflows are included for:
+
+- main CI (`build`, `vitest`, `pytest`)
+- desktop package smoke
+- TrackNet smoke / export checks
+
+See:
+
+- `.github/workflows/ci.yml`
+- `.github/workflows/desktop-package-smoke.yml`
+- `.github/workflows/tracknet-smoke.yml`
+
 ## Data and Database
 
 - the current local database is SQLite
-- the default database file is `shuttlescope/shuttlescope.db`
-- player, match, rally, stroke, sharing, and settings data live in the local app DB
-- the architecture is intended to allow a future move to PostgreSQL or a more networked deployment model
+- the default DB file is `shuttlescope/shuttlescope.db`
+- player, match, rally, stroke, warm-up observation, sharing, and settings data are stored locally
+- the architecture is intended to remain compatible with future networked or PostgreSQL-oriented expansion
 
 ## TrackNet Notes
 
-- TrackNet support is being integrated as a local runtime option
-- large weights and exported model artifacts are intentionally ignored by Git
-- backend settings support backend selection such as `auto`, `onnx_cpu`, `tensorflow_cpu`, and `openvino`
+- TrackNet support exists as an integration path, not a required dependency for normal app use
+- model weights and exported artifacts are intentionally ignored by Git
+- backend selection can be switched through settings
 
-## Scripts
+## Local-Only / Ignored Content
 
-`shuttlescope/scripts/` contains local helper scripts for startup, data generation, and migration-style support work.
-Examples include:
+The following are intentionally not committed:
 
-- `start.mjs`
-- `preview.mjs`
-- `generate_test_data.py`
-- `generate_doubles_data.py`
-- `generate_first_return_data.py`
+- `private_docs/`
+- `shuttlescope/docs/validation/`
+- local databases
+- videos and temporary media
+- TrackNet weights / exported artifacts
+- generated local outputs
 
-## Notes
+## Product Status
 
-- `private_docs/` is private and ignored
-- `shuttlescope/docs/validation/` contains local validation notes and is ignored
-- local databases, videos, TrackNet weights, and generated artifacts are kept out of Git
-- Japanese UI strings should be managed through `shuttlescope/src/i18n/ja.json`
+ShuttleScope is already useful as a badminton-specific PoC and internal competition tool.
+Its strongest areas are now:
 
-## Status
-
-ShuttleScope is already useful as a badminton-specific analysis PoC and internal tool, especially for:
-
-- post-match review
 - structured annotation
-- exploratory tactical analysis
-- growth and trend tracking
+- badminton-specific analytics
+- review and growth workflows
+- doubles-aware analysis
+- prediction / pair simulation foundations
+- local-first collaboration and browser access
 
-It is not yet positioned as a finished commercial-grade platform.
-The strongest current areas are badminton-specific analytics and review workflows; the main areas still evolving are operational polish, collaboration depth, and long-term automation.
+It is still evolving in:
+
+- operational polish
+- broader field validation
+- long-horizon prediction quality
+- advanced model-backed research modules
+- production-grade sharing / access hardening
+
+In short: ShuttleScope has moved well beyond a simple annotation prototype, but it is still being actively shaped into a full badminton intelligence platform.
