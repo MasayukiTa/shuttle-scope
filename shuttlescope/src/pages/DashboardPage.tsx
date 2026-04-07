@@ -53,6 +53,7 @@ import { ConfidenceCalibration } from '@/components/analysis/ConfidenceCalibrati
 import { RecommendationRanking } from '@/components/analysis/RecommendationRanking'
 import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
 import { SpatialDensityMap } from '@/components/analysis/SpatialDensityMap'
+import { CourtHeatModal } from '@/components/analysis/CourtHeatModal'
 import { PreMatchObservationAnalytics } from '@/components/analysis/PreMatchObservationAnalytics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -227,6 +228,9 @@ export function DashboardPage() {
   const { role } = useAuth()
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null)
   const [heatmapTab, setHeatmapTab] = useState<'hit' | 'land'>('hit')
+  // ヒートマップ専用フィルター（グローバルフィルターとは独立）
+  const [heatmapMatchId, setHeatmapMatchId] = useState<number | null>(null)
+  const [heatmapLastN, setHeatmapLastN] = useState<number | null>(null) // null=全期間
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
   // J-001: フィルターパネルの状態
   const [filterResult, setFilterResult] = useState<'all' | 'win' | 'loss'>('all')
@@ -272,6 +276,8 @@ export function DashboardPage() {
 
   // 全画面グラフ表示
   const [expandedChart, setExpandedChart] = useState<string | null>(null)
+  // コートヒートマップ全画面（専用モーダル）
+  const [courtHeatOpen, setCourtHeatOpen] = useState(false)
 
   // M-001: スコア推移途中解析モーダル（ダッシュボード用）
   const [pointAnalysis, setPointAnalysis] = useState<{
@@ -319,24 +325,41 @@ export function DashboardPage() {
 
   const descriptive: DescriptiveData | null = descriptiveResp?.data ?? null
 
+  // ── Heatmap専用フィルターパラメータ ──
+  // match_id指定 > 直近N試合（日付絞り） > 全期間の優先順
+  const heatmapApiParams = (() => {
+    if (heatmapMatchId != null) {
+      return { match_id: heatmapMatchId }
+    }
+    if (heatmapLastN != null) {
+      // matches は日付降順を前提にスライス
+      const recent = [...matches]
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, heatmapLastN)
+      const dateFrom = recent.length > 0 ? recent[recent.length - 1].date : undefined
+      return dateFrom ? { date_from: dateFrom } : {}
+    }
+    return {}
+  })()
+
   // ── Heatmap hit ──
   const { data: heatmapHitResp, isLoading: loadingHeatmapHit } = useQuery({
-    queryKey: ['analysis-heatmap-hit', selectedPlayerId, filters],
+    queryKey: ['analysis-heatmap-hit', selectedPlayerId, heatmapMatchId, heatmapLastN],
     queryFn: () =>
       apiGet<HeatmapResponse>(
         '/analysis/heatmap',
-        { player_id: selectedPlayerId!, type: 'hit', ...filterApiParams }
+        { player_id: selectedPlayerId!, type: 'hit', ...heatmapApiParams }
       ),
     enabled: !!selectedPlayerId,
   })
 
   // ── Heatmap land ──
   const { data: heatmapLandResp, isLoading: loadingHeatmapLand } = useQuery({
-    queryKey: ['analysis-heatmap-land', selectedPlayerId, filters],
+    queryKey: ['analysis-heatmap-land', selectedPlayerId, heatmapMatchId, heatmapLastN],
     queryFn: () =>
       apiGet<HeatmapResponse>(
         '/analysis/heatmap',
-        { player_id: selectedPlayerId!, type: 'land', ...filterApiParams }
+        { player_id: selectedPlayerId!, type: 'land', ...heatmapApiParams }
       ),
     enabled: !!selectedPlayerId,
   })
@@ -767,18 +790,19 @@ export function DashboardPage() {
                             ? <ConfidenceBadge sampleSize={s} className="text-[10px]" />
                             : null
                         })()}
-                        <ExpandBtn onClick={() => setExpandedChart('court_heat')} />
+                        <ExpandBtn onClick={() => setCourtHeatOpen(true)} />
                       </div>
                     </div>
 
-                    <div className="flex gap-1 mb-3">
+                    {/* 打点 / 着地点タブ */}
+                    <div className="flex gap-1 mb-2">
                       {(['hit', 'land'] as const).map((tab) => (
                         <button
                           key={tab}
                           onClick={() => setHeatmapTab(tab)}
                           className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${
                             heatmapTab === tab
-                              ? 'bg-blue-600 text-white'
+                              ? 'bg-gray-600 text-white'
                               : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                           }`}
                         >
@@ -787,18 +811,63 @@ export function DashboardPage() {
                       ))}
                     </div>
 
+                    {/* ヒートマップ専用フィルター */}
+                    <div className="mb-3 space-y-1.5">
+                      {/* 直近N試合プリセット */}
+                      <div className="flex gap-1 flex-wrap">
+                        {([null, 3, 5, 10] as const).map((n) => (
+                          <button
+                            key={n ?? 'all'}
+                            onClick={() => { setHeatmapLastN(n); setHeatmapMatchId(null) }}
+                            disabled={heatmapMatchId != null}
+                            className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                              heatmapMatchId == null && heatmapLastN === n
+                                ? 'bg-gray-500 border-gray-400 text-white'
+                                : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600 disabled:opacity-40'
+                            }`}
+                          >
+                            {n == null ? '全期間' : `直近${n}試合`}
+                          </button>
+                        ))}
+                      </div>
+                      {/* 試合個別選択 */}
+                      {matches.length > 0 && (
+                        <select
+                          value={heatmapMatchId ?? ''}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setHeatmapMatchId(v ? Number(v) : null)
+                            if (v) setHeatmapLastN(null)
+                          }}
+                          className="w-full text-[11px] bg-gray-700 border border-gray-600 text-gray-300 rounded px-2 py-1 focus:outline-none"
+                        >
+                          <option value="">試合を選択（個別）</option>
+                          {[...matches]
+                            .sort((a, b) => b.date.localeCompare(a.date))
+                            .map((m) => (
+                              <option key={m.match_id} value={m.match_id}>
+                                {m.date} {m.opponent} ({m.result === 'win' ? '勝' : '敗'})
+                              </option>
+                            ))}
+                        </select>
+                      )}
+                    </div>
+
                     {(heatmapTab === 'hit' ? loadingHeatmapHit : loadingHeatmapLand) ? (
                       <LoadingRow />
                     ) : (
-                      <div className="flex justify-center">
+                      <div className="flex flex-col items-center">
                         <CourtDiagram
                           mode={heatmapTab}
                           heatmapData={heatmapTab === 'hit' ? heatmapHit : heatmapLand}
-                          interactive={false}
+                          interactive={true}
                           selectedZone={null}
-                          onZoneSelect={() => {}}
+                          onZoneSelect={() => setCourtHeatOpen(true)}
                           label={heatmapTab === 'hit' ? '打点分布' : '着地点分布'}
                         />
+                        <p className="text-[10px] text-gray-600 mt-1">
+                          クリックで詳細分析を開く
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1279,8 +1348,8 @@ export function DashboardPage() {
             <ErrorBoundary>
               <div className="space-y-5">
                 {/* 推奨レビュー順序ガイド */}
-                <div className="bg-blue-950/30 border border-blue-800/40 rounded-lg px-4 py-3">
-                  <p className="text-xs font-semibold text-blue-300 mb-2">
+                <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3">
+                  <p className="text-xs font-semibold text-gray-300 mb-2">
                     {t('analysis.review.guide_title', '推奨レビュー順序')}
                   </p>
                   <ol className="flex flex-wrap gap-x-4 gap-y-1">
@@ -1290,7 +1359,7 @@ export function DashboardPage() {
                       t('analysis.review.guide_step3', '③ セット別パフォーマンスで変化点を特定'),
                       t('analysis.review.guide_step4', '④ ラリーシーケンスで繰り返しパターンを深掘り'),
                     ].map((step) => (
-                      <li key={step} className="text-[11px] text-blue-200/70">{step}</li>
+                      <li key={step} className="text-[11px] text-gray-400">{step}</li>
                     ))}
                   </ol>
                 </div>
@@ -1610,19 +1679,7 @@ export function DashboardPage() {
                 </BarChart>
               </ResponsiveContainer>
             ) : null
-            case 'court_heat': return (
-              <div className="flex justify-center">
-                <CourtDiagram
-                  mode={heatmapTab}
-                  heatmapData={heatmapTab === 'hit' ? heatmapHit : heatmapLand}
-                  interactive={false}
-                  selectedZone={null}
-                  onZoneSelect={() => {}}
-                  label={heatmapTab === 'hit' ? '打点分布' : '着地点分布'}
-                  maxHeight={typeof window !== 'undefined' ? Math.max(300, window.innerHeight - 160) : 600}
-                />
-              </div>
-            )
+            case 'court_heat': return null  // CourtHeatModal で独立表示
             case 'shot_win_loss':  return <ShotWinLoss playerId={pid} filters={filters} />
             case 'set_comparison': return <SetComparison playerId={pid} chartHeight={480} filters={filters} />
             case 'rally_win_rate': return <RallyLengthWinRate playerId={pid} chartHeight={500} filters={filters} />
@@ -1643,6 +1700,18 @@ export function DashboardPage() {
           </ChartModal>
         )
       })()}
+
+      {/* コートヒートマップ全画面モーダル */}
+      {courtHeatOpen && selectedPlayerId && (
+        <CourtHeatModal
+          playerId={selectedPlayerId}
+          matches={matches}
+          initialMatchId={heatmapMatchId}
+          initialLastN={heatmapLastN}
+          initialTab={heatmapTab}
+          onClose={() => setCourtHeatOpen(false)}
+        />
+      )}
     </div>
   )
 }

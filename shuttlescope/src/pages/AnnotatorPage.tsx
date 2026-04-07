@@ -243,6 +243,29 @@ export function AnnotatorPage() {
   // G3: ウォームアップメモパネル
   const [showWarmupPanel, setShowWarmupPanel] = useState(false)
 
+  // 左パネル幅（ドラッグリサイズ）
+  const [leftPanelWidth, setLeftPanelWidth] = useState<number | null>(null)
+  const dragStartX = useRef<number | null>(null)
+  const dragStartW = useRef<number>(0)
+  const leftPanelRef = useRef<HTMLDivElement>(null)
+  const handleResizeDragStart = useCallback((e: React.MouseEvent) => {
+    dragStartX.current = e.clientX
+    dragStartW.current = leftPanelRef.current?.offsetWidth ?? (window.innerWidth * 0.6)
+    const onMove = (ev: MouseEvent) => {
+      if (dragStartX.current === null) return
+      const delta = ev.clientX - dragStartX.current
+      const newW = Math.max(200, Math.min(window.innerWidth * 0.8, dragStartW.current + delta))
+      setLeftPanelWidth(newW)
+    }
+    const onUp = () => {
+      dragStartX.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [])
+
   // P3: TrackNet バッチ解析
   const [tracknetJobId, setTracknetJobId] = useState<string | null>(null)
   const [tracknetJob, setTracknetJob] = useState<{
@@ -1157,10 +1180,17 @@ export function AnnotatorPage() {
       {/* メインレイアウト */}
       <div className="flex flex-1 overflow-hidden">
         {/* 左: 動画エリア — マッチデーモード時のみ非表示。動画未設定時もファイルピッカーのために表示を維持 */}
-        <div className={clsx(
-          'flex flex-col p-3 gap-2 overflow-y-auto',
-          isMatchDayMode ? 'hidden' : videoSourceMode === 'none' ? 'w-[280px]' : 'w-[60%]'
-        )}>
+        <div
+          ref={leftPanelRef}
+          className={clsx('flex flex-col p-3 gap-2 overflow-y-auto shrink-0')}
+          style={
+            isMatchDayMode
+              ? { display: 'none' }
+              : leftPanelWidth != null
+                ? { width: leftPanelWidth }
+                : { width: videoSourceMode === 'none' ? 280 : '60%' }
+          }
+        >
           {(() => {
             // 動画ソース決定（旧形式の Windows パスを normalizeVideoPath で変換）
             const rawSrc = match?.video_local_path || match?.video_url || ''
@@ -1311,7 +1341,7 @@ export function AnnotatorPage() {
               {/* ゾーンキー */}
               <div className="space-y-1 flex-1">
                 {/* テンキー落点（主） */}
-                <div className="text-[10px] text-blue-400 mb-0.5 font-medium">テンキー（推奨）</div>
+                <div className="text-[10px] text-gray-300 mb-0.5 font-medium">テンキー（推奨）</div>
                 <div className="grid grid-cols-3 gap-1">
                   {[
                     { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
@@ -1319,8 +1349,8 @@ export function AnnotatorPage() {
                     { k: '1', zone: 'NL' }, { k: '2', zone: 'NC' }, { k: '3', zone: 'NR' },
                   ].map(({ k, zone }) => (
                     <div key={k} className="text-center">
-                      <kbd className="block bg-blue-900/40 border border-blue-700/40 text-blue-200 rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
-                      <span className="text-[11px] text-blue-400 font-medium">{zone}</span>
+                      <kbd className="block bg-gray-600 border border-gray-500 text-white rounded px-1.5 py-0.5 text-xs font-mono">{k}</kbd>
+                      <span className="text-[11px] text-gray-300 font-medium">{zone}</span>
                     </div>
                   ))}
                 </div>
@@ -1362,6 +1392,15 @@ export function AnnotatorPage() {
             </div>
           </div>
         </div>
+
+        {/* ドラッグリサイズハンドル */}
+        {!isMatchDayMode && (
+          <div
+            onMouseDown={handleResizeDragStart}
+            className="w-1 shrink-0 cursor-col-resize bg-gray-700 hover:bg-gray-500 transition-colors active:bg-gray-400"
+            title="ドラッグで幅を変更"
+          />
+        )}
 
         {/* 右: 入力パネル — マッチデーモード時はフルスクリーン */}
         <div className={clsx(
@@ -1597,7 +1636,7 @@ export function AnnotatorPage() {
                       <p className="text-[10px] text-gray-500 text-center">1–6キーまたはボタンでエンドタイプを選択</p>
                     )}
                     {pendingEndType && suggestedWinner && (
-                      <p className="text-[10px] text-blue-400 text-center">
+                      <p className="text-[10px] text-gray-300 text-center">
                         推定: {suggestedWinner === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B'} 得点 — A/Bキーまたはボタンで確定
                       </p>
                     )}
@@ -1759,7 +1798,9 @@ export function AnnotatorPage() {
                 playerBId={match.player_b_id}
                 playerAName={match.player_a?.name ?? 'A'}
                 playerBName={match.player_b?.name ?? 'B'}
-                locked={store.currentRallyNum > 1 || store.isRallyActive}
+                playerAHand={match.player_a?.dominant_hand ?? undefined}
+                playerBHand={match.player_b?.dominant_hand ?? undefined}
+                locked={store.isRallyActive}
                 onClose={() => setShowWarmupPanel(false)}
               />
             )}
@@ -1830,25 +1871,25 @@ export function AnnotatorPage() {
                 { value: 'lateral',   key: 'enrichment.movement_direction_lateral' },
               ]
               const chipClass = (active: boolean) => clsx(
-                'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
+                'px-2.5 py-1.5 rounded border text-xs transition-colors',
                 active
-                  ? 'bg-blue-600 border-blue-500 text-white'
+                  ? 'bg-gray-500 border-gray-400 text-white'
                   : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
               )
               return (
-                <div className="border border-gray-600/50 bg-gray-800/60 rounded p-2 text-[11px] space-y-1.5 shrink-0">
-                  <div className="flex items-center justify-between text-gray-500">
-                    <span>{t('enrichment.strip_label')}</span>
+                <div className="border border-gray-600 bg-gray-800 rounded p-3 text-[11px] space-y-2 shrink-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-300 font-medium">{t('enrichment.strip_label')}</span>
                     <button
                       onClick={() => setEnrichmentActive(false)}
-                      className="text-gray-600 hover:text-gray-400 text-xs px-1"
+                      className="text-gray-500 hover:text-gray-300 text-sm px-1"
                     >
                       ✕
                     </button>
                   </div>
                   {/* 返球品質 */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.return_quality')}:</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.return_quality')}:</span>
                     {RETURN_QUALITY.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.return_quality === value ? undefined : value
@@ -1859,8 +1900,8 @@ export function AnnotatorPage() {
                     ))}
                   </div>
                   {/* 打点高さ */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.contact_height')}:</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.contact_height')}:</span>
                     {CONTACT_HEIGHT.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.contact_height === value ? undefined : value
@@ -1871,8 +1912,8 @@ export function AnnotatorPage() {
                     ))}
                   </div>
                   {/* 打点コート位置 */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.contact_zone')}:</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.contact_zone')}:</span>
                     {CONTACT_ZONE.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.contact_zone === value ? undefined : value
@@ -1883,8 +1924,8 @@ export function AnnotatorPage() {
                     ))}
                   </div>
                   {/* 移動負荷 */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.movement_burden')}:</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.movement_burden')}:</span>
                     {MOVEMENT_BURDEN.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.movement_burden === value ? undefined : value
@@ -1895,8 +1936,8 @@ export function AnnotatorPage() {
                     ))}
                   </div>
                   {/* 移動方向 */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.movement_direction')}:</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-gray-400 min-w-[56px] text-xs">{t('enrichment.movement_direction')}:</span>
                     {MOVEMENT_DIRECTION.map(({ value, key }) => (
                       <button key={value} onClick={() => {
                         const next = last.movement_direction === value ? undefined : value
@@ -1906,7 +1947,7 @@ export function AnnotatorPage() {
                       </button>
                     ))}
                   </div>
-                  <div className="text-[10px] text-gray-600">{t('enrichment.expires_hint')}</div>
+                  <div className="text-[10px] text-gray-500">{t('enrichment.expires_hint')}</div>
                 </div>
               )
             })()}

@@ -41,7 +41,7 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B' }:
         return (
           <div
             key={stroke.stroke_num}
-            className={`text-xs px-2 py-0.5 rounded font-mono ${isLatest ? 'bg-blue-900/40 text-blue-200' : 'text-gray-400'}`}
+            className={`text-xs px-2 py-0.5 rounded font-mono ${isLatest ? 'bg-gray-700 text-gray-100' : 'text-gray-400'}`}
           >
             {num}{playerLabel}:{shotLabel}{hitLabel}{landLabel}
           </div>

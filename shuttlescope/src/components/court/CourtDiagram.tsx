@@ -187,7 +187,10 @@ export function CourtDiagram({
 
     let fillColor = 'rgba(255,255,255,0.03)'
     if (heatmapData) {
-      fillColor = getHeatmapColor(heatValue, heatmapMax)
+      // ヒートマップ表示時: アクティブ半面のみ密度色、非アクティブ半面は薄グレーで無効表示
+      fillColor = isActive
+        ? getHeatmapColor(heatValue, heatmapMax)
+        : 'rgba(55,65,81,0.5)'
     } else if (isSelected) {
       fillColor = 'rgba(59,130,246,0.6)'
     } else if (isActive) {
@@ -202,12 +205,13 @@ export function CourtDiagram({
           width={z.w - 2}
           height={z.h - 2}
           fill={fillColor}
-          stroke={isSelected ? '#3b82f6' : isActive ? '#4b5563' : '#374151'}
+          stroke={isSelected ? '#3b82f6' : isActive ? '#4b5563' : '#2d3748'}
           strokeWidth={isSelected ? 2 : 1}
           className={clsx(isActive && interactive && 'cursor-pointer')}
           onClick={isActive && interactive ? () => onZoneSelect(z.zone) : undefined}
         />
-        {showLabels && (
+        {/* ゾーンラベル: 非アクティブ半面はヒートマップ時に非表示 */}
+        {showLabels && (!heatmapData || isActive) && (
           <text
             x={z.x + z.w / 2}
             y={z.y + z.h / 2 + (heatmapData && heatValue > 0 ? 0 : 5)}
@@ -225,7 +229,8 @@ export function CourtDiagram({
             {z.zone}
           </text>
         )}
-        {heatmapData && heatValue > 0 && (
+        {/* カウント数値: アクティブ半面のみ */}
+        {heatmapData && isActive && heatValue > 0 && (
           <text
             x={z.x + z.w / 2}
             y={z.y + z.h / 2 + 16}

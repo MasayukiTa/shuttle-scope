@@ -305,18 +305,17 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
               return (
                 <div
                   key={i}
-                  className="flex items-center gap-2 text-xs"
+                  className="grid text-xs gap-x-2"
+                  style={{ gridTemplateColumns: '1rem 1fr 2.5rem 2.5rem' }}
                 >
-                  <span className="w-4 text-gray-600 shrink-0">{i + 1}.</span>
-                  <span className="text-gray-300 flex-1 min-w-0 truncate">
+                  <span className="text-gray-600">{i + 1}.</span>
+                  <span className="text-gray-300 truncate">
                     {fromLabel} → {toLabel}
                   </span>
-                  <div className="shrink-0 flex items-center gap-1.5">
-                    <span className="text-blue-400">{seq.count}回</span>
-                    <span className="text-gray-500 w-10 text-right">
-                      {(seq.probability * 100).toFixed(1)}%
-                    </span>
-                  </div>
+                  <span className="text-gray-400 text-right">{seq.count}回</span>
+                  <span className="text-gray-500 text-right">
+                    {(seq.probability * 100).toFixed(1)}%
+                  </span>
                 </div>
               )
             })}

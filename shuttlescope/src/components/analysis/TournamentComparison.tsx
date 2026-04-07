@@ -13,7 +13,7 @@ import {
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
-import { perfColor, lightSafe, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
+import { coolwarm, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
@@ -67,6 +67,12 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
     return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="試合" />
   }
 
+  // 大会重要度 → coolwarm 位置（色ルール §4: 高重要=熱=赤、低重要=冷=青）
+  const LEVEL_IMPORTANCE: Record<string, number> = {
+    'IC': 1.0, 'IS': 0.75, 'SJL': 0.5, '全日本': 0.25, '国内': 0.0,
+  }
+  const levelRatio = (level: string) => LEVEL_IMPORTANCE[level] ?? 0.5
+
   const chartData = levels.map((l) => ({
     name: l.level,
     win_rate: Math.round(l.win_rate * 100),
@@ -92,7 +98,7 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
           />
           <Bar dataKey="win_rate" radius={[3, 3, 0, 0]} name={t('analysis.tournament_comparison.win_rate')}>
             {chartData.map((entry) => (
-              <Cell key={entry.name} fill={lightSafe(perfColor(entry.win_rate / 100), !isLight)} />
+              <Cell key={entry.name} fill={coolwarm(levelRatio(entry.name))} />
             ))}
           </Bar>
         </BarChart>
@@ -112,11 +118,11 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
           <tbody>
             {levels.map((l) => (
               <tr key={l.level} className="border-b border-gray-700/40 hover:bg-gray-700/20">
-                <td className="py-1.5 pr-3 font-medium" style={{ color: lightSafe(perfColor(l.win_rate), !isLight) }}>
+                <td className="py-1.5 pr-3 font-medium" style={{ color: coolwarm(levelRatio(l.level)) }}>
                   {l.level}
                 </td>
                 <td className="py-1.5 pr-3 text-center" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.match_count}</td>
-                <td className="py-1.5 pr-3 text-center font-semibold" style={{ color: lightSafe(perfColor(l.win_rate), !isLight) }}>
+                <td className="py-1.5 pr-3 text-center font-semibold" style={{ color: isLight ? '#334155' : '#d1d5db' }}>
                   {(l.win_rate * 100).toFixed(1)}%
                 </td>
                 <td className="py-1.5 pr-2 text-right" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.avg_rally_length.toFixed(1)}</td>

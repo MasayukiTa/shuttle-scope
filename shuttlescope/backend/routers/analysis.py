@@ -240,12 +240,21 @@ def get_heatmap(
     tournament_level: Optional[str] = Query(None),
     date_from: Optional[DateType] = Query(None),
     date_to: Optional[DateType] = Query(None),
+    match_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
     ALL_ZONES = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
 
-    # フィルター済み試合からIDを分類
-    _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    # match_id 指定時は単一試合のみ対象
+    if match_id is not None:
+        m = db.query(Match).filter(Match.id == match_id).first()
+        if m is None:
+            _matches = []
+        else:
+            _matches = [m]
+    else:
+        _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+
     match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
     match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
 
@@ -295,6 +304,91 @@ def get_heatmap(
             "sample_size": total_strokes,
             "confidence": confidence,
         },
+    }
+
+
+@router.get("/analysis/heatmap_zone_detail")
+def get_heatmap_zone_detail(
+    player_id: int,
+    type: str = Query("hit", pattern="^(hit|land)$"),
+    zone: str = Query(...),
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    match_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """ゾーン別詳細: 特定ゾーンのショットタイプ分布・勝率・遷移先（type=hit時）を返す"""
+    # 試合絞り込み
+    if match_id is not None:
+        m = db.query(Match).filter(Match.id == match_id).first()
+        _matches = [m] if m else []
+    else:
+        _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+
+    match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
+    match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
+
+    zone_col = Stroke.hit_zone if type == "hit" else Stroke.land_zone
+
+    shot_type_counts: dict[str, int] = defaultdict(int)
+    land_zone_counts: dict[str, int] = defaultdict(int)  # type=hit 時の着地分布
+    total = 0
+    wins = 0
+
+    def _collect(match_ids: list[int], player_role: str) -> None:
+        nonlocal total, wins
+        if not match_ids:
+            return
+        set_ids = [s.id for s in db.query(GameSet.id).filter(GameSet.match_id.in_(match_ids)).all()]
+        if not set_ids:
+            return
+        rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+        rally_map = {r.id: r for r in rallies}
+        if not rally_map:
+            return
+
+        rows = (
+            db.query(Stroke)
+            .filter(
+                Stroke.rally_id.in_(list(rally_map.keys())),
+                Stroke.player == player_role,
+                zone_col == zone,
+            )
+            .all()
+        )
+        for stroke in rows:
+            total += 1
+            rally = rally_map.get(stroke.rally_id)
+            if rally and rally.winner == player_role:
+                wins += 1
+            if stroke.shot_type:
+                shot_type_counts[stroke.shot_type] += 1
+            # hit_zone の場合は land_zone 分布も集計
+            if type == "hit" and stroke.land_zone:
+                land_zone_counts[stroke.land_zone] += 1
+
+    _collect(match_ids_as_a, "player_a")
+    _collect(match_ids_as_b, "player_b")
+
+    win_rate = round(wins / total, 3) if total > 0 else None
+
+    top_shot_types = sorted(shot_type_counts.items(), key=lambda x: -x[1])[:5]
+    transitions = sorted(land_zone_counts.items(), key=lambda x: -x[1])[:5]
+
+    return {
+        "success": True,
+        "data": {
+            "zone": zone,
+            "type": type,
+            "count": total,
+            "wins": wins,
+            "win_rate": win_rate,
+            "top_shot_types": [{"shot_type": k, "count": v} for k, v in top_shot_types],
+            "transitions": [{"zone": k, "count": v} for k, v in transitions],
+        },
+        "meta": {"sample_size": total},
     }
 
 

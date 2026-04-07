@@ -4,24 +4,25 @@
  * G3 spec: ANNOTATION_GUARD_AND_WARMUP_SPEC_v1.md §9
  *
  * 仕様:
- * - Set 1 / Rally 1 開始前にのみ表示
+ * - ラリー進行中はロック（isRallyActive のみ）
  * - チェックリスト/チップ形式（ライブ速度に依存しないため）
  * - 各フィールドに confidence_level セレクター付き
  * - モーダルではなくインラインパネル（blocking しない）
- * - 保存後は locked 状態（ラリー開始後は変更不可）
+ * - 保存後はパネルを閉じる
+ * - 既存データをマウント時に読み込む
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { apiPost, apiGet } from '@/api/client'
 import { WarmupConfidence, PreMatchObservation } from '@/types'
 
-// 信頼度ラベル色
+// 信頼度ボタンスタイル（gray スケール、色ルール準拠）
 const CONFIDENCE_STYLE: Record<WarmupConfidence, string> = {
-  unknown:   'bg-gray-700 text-gray-400 border-gray-600',
-  tentative: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50',
-  likely:    'bg-blue-900/40 text-blue-300 border-blue-700/50',
-  confirmed: 'bg-green-900/40 text-green-300 border-green-700/50',
+  unknown:   'bg-gray-700 text-gray-500 border-gray-600',
+  tentative: 'bg-gray-600 text-gray-300 border-gray-500',
+  likely:    'bg-gray-500 text-gray-200 border-gray-400',
+  confirmed: 'bg-gray-400 text-gray-900 border-gray-300',
 }
 
 const CONFIDENCE_LEVELS: WarmupConfidence[] = ['unknown', 'tentative', 'likely', 'confirmed']
@@ -83,8 +84,38 @@ interface WarmupNotesPanelProps {
   playerBId: number
   playerAName: string
   playerBName: string
+  playerAHand?: string
+  playerBHand?: string
   locked: boolean
   onClose: () => void
+}
+
+function handToValue(hand?: string): string {
+  if (!hand) return ''
+  const h = hand.toLowerCase()
+  if (h === 'right' || h === 'r') return 'R'
+  if (h === 'left' || h === 'l') return 'L'
+  return 'unknown'
+}
+
+function initObs(hand?: string): PlayerObs {
+  const obs: PlayerObs = {}
+  for (const def of OBS_TYPES) {
+    obs[def.key] = { value: '', confidence: def.defaultConfidence }
+  }
+  const handVal = handToValue(hand)
+  if (handVal) {
+    obs['handedness'] = { value: handVal, confidence: 'likely' }
+  }
+  return obs
+}
+
+function initSelfObs(): PlayerObs {
+  const obs: PlayerObs = {}
+  for (const def of SELF_OBS_TYPES) {
+    obs[def.key] = { value: '', confidence: def.defaultConfidence }
+  }
+  return obs
 }
 
 export function WarmupNotesPanel({
@@ -93,38 +124,59 @@ export function WarmupNotesPanel({
   playerBId,
   playerAName,
   playerBName,
+  playerAHand,
+  playerBHand,
   locked,
   onClose,
 }: WarmupNotesPanelProps) {
   const { t } = useTranslation()
 
-  // 選択中の選手タブ
   const [activePlayer, setActivePlayer] = useState<'player_a' | 'player_b'>('player_a')
 
-  // 各観察フィールドの値・信頼度
-  const initObs = (): PlayerObs => {
-    const obs: PlayerObs = {}
-    for (const def of OBS_TYPES) {
-      obs[def.key] = { value: '', confidence: def.defaultConfidence }
-    }
-    return obs
-  }
-  const [obsA, setObsA] = useState<PlayerObs>(initObs)
-  const [obsB, setObsB] = useState<PlayerObs>(initObs)
-
-  // 自コンディション（player_a のみ）
-  const initSelfObs = (): PlayerObs => {
-    const obs: PlayerObs = {}
-    for (const def of SELF_OBS_TYPES) {
-      obs[def.key] = { value: '', confidence: def.defaultConfidence }
-    }
-    return obs
-  }
+  const [obsA, setObsA] = useState<PlayerObs>(() => initObs(playerAHand))
+  const [obsB, setObsB] = useState<PlayerObs>(() => initObs(playerBHand))
   const [selfObs, setSelfObs] = useState<PlayerObs>(initSelfObs)
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // マウント時に既存の観察データを読み込む
+  useEffect(() => {
+    apiGet<{ success: boolean; data: Array<{
+      player_id: number
+      observation_type: string
+      observation_value: string
+      confidence_level: string
+    }> }>(`/warmup/observations/${matchId}`)
+      .then((resp) => {
+        if (!resp?.data?.length) return
+        const newObsA = initObs(playerAHand)
+        const newObsB = initObs(playerBHand)
+        const newSelfObs = initSelfObs()
+        for (const o of resp.data) {
+          const isObsType = OBS_TYPES.some((d) => d.key === o.observation_type)
+          const isSelfType = SELF_OBS_TYPES.some((d) => d.key === o.observation_type)
+          const conf = o.confidence_level as WarmupConfidence
+          if (isObsType) {
+            if (o.player_id === playerAId) {
+              newObsA[o.observation_type] = { value: o.observation_value, confidence: conf }
+            } else if (o.player_id === playerBId) {
+              newObsB[o.observation_type] = { value: o.observation_value, confidence: conf }
+            }
+          } else if (isSelfType) {
+            newSelfObs[o.observation_type] = { value: o.observation_value, confidence: conf }
+          }
+        }
+        setObsA(newObsA)
+        setObsB(newObsB)
+        setSelfObs(newSelfObs)
+      })
+      .catch(() => {
+        // サイレント失敗（データなし扱い）
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId])
 
   const currentObs = activePlayer === 'player_a' ? obsA : obsB
   const setCurrentObs = activePlayer === 'player_a' ? setObsA : setObsB
@@ -153,7 +205,6 @@ export function WarmupNotesPanel({
     setSaving(true)
     setError(null)
     try {
-      // 両選手分の入力済みエントリをまとめてPOST
       const buildObs = (obs: PlayerObs, playerId: number): PreMatchObservation[] =>
         OBS_TYPES
           .filter((def) => obs[def.key]?.value)
@@ -166,7 +217,6 @@ export function WarmupNotesPanel({
             created_by: 'analyst',
           }))
 
-      // 自コンディション（SELF_OBS_TYPESを使って player_a に対して保存）
       const buildSelfObs = (obs: PlayerObs, playerId: number): PreMatchObservation[] =>
         SELF_OBS_TYPES
           .filter((def) => obs[def.key]?.value)
@@ -185,29 +235,23 @@ export function WarmupNotesPanel({
         ...buildSelfObs(selfObs, playerAId),
       ]
 
-      if (allObs.length === 0) {
-        onClose()
-        return
+      if (allObs.length > 0) {
+        await apiPost(`/warmup/observations/${matchId}`, { observations: allObs })
       }
-
-      await apiPost(`/warmup/observations/${matchId}`, { observations: allObs })
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      setTimeout(() => onClose(), 800)
     } catch (err: any) {
       setError(err?.message ?? '保存に失敗しました')
-    } finally {
       setSaving(false)
     }
   }
 
-  const playerName = activePlayer === 'player_a' ? playerAName : playerBName
-
   return (
-    <div className="border border-blue-700/40 bg-blue-950/30 rounded p-3 text-xs space-y-3">
+    <div className="border border-gray-700 bg-gray-800 rounded p-3 text-xs space-y-3">
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-blue-300 font-medium text-sm">{t('warmup.title')}</div>
+          <div className="text-gray-200 font-medium text-sm">{t('warmup.title')}</div>
           <div className="text-gray-500 mt-0.5">{t('warmup.subtitle')}</div>
         </div>
         <button
@@ -219,10 +263,10 @@ export function WarmupNotesPanel({
         </button>
       </div>
 
-      {/* ロック警告 */}
+      {/* ロック警告（ラリー進行中のみ） */}
       {locked && (
-        <div className="text-yellow-500 text-[11px] bg-yellow-900/20 border border-yellow-700/40 rounded px-2 py-1">
-          {t('warmup.locked_hint')}
+        <div className="text-gray-400 text-[11px] bg-gray-700 border border-gray-600 rounded px-2 py-1">
+          {t('warmup.locked_hint_rally', 'ラリー進行中は変更できません')}
         </div>
       )}
 
@@ -230,19 +274,17 @@ export function WarmupNotesPanel({
       <div className="flex gap-1.5">
         {(
           [
-            { key: 'player_a' as const, name: playerAName, color: 'blue' },
-            { key: 'player_b' as const, name: playerBName, color: 'orange' },
+            { key: 'player_a' as const, name: playerAName },
+            { key: 'player_b' as const, name: playerBName },
           ]
-        ).map(({ key, name, color }) => (
+        ).map(({ key, name }) => (
           <button
             key={key}
             onClick={() => setActivePlayer(key)}
             className={clsx(
               'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
               activePlayer === key
-                ? color === 'blue'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-orange-600 text-white'
+                ? 'bg-gray-600 text-white'
                 : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
             )}
           >
@@ -293,7 +335,7 @@ export function WarmupNotesPanel({
                     className={clsx(
                       'px-2 py-1 rounded border text-[11px] transition-colors',
                       entry.value === val
-                        ? 'bg-blue-600 border-blue-500 text-white'
+                        ? 'bg-gray-500 border-gray-400 text-white'
                         : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
                       locked && 'cursor-not-allowed opacity-50',
                     )}
@@ -363,7 +405,7 @@ export function WarmupNotesPanel({
                       className={clsx(
                         'px-2 py-1 rounded border text-[11px] transition-colors',
                         entry.value === val
-                          ? 'bg-blue-600 border-blue-500 text-white'
+                          ? 'bg-gray-500 border-gray-400 text-white'
                           : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
                         locked && 'cursor-not-allowed opacity-50',
                       )}
@@ -388,12 +430,12 @@ export function WarmupNotesPanel({
         <div className="flex gap-2">
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || saved}
             className={clsx(
               'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
               saved
-                ? 'bg-green-700 text-white'
-                : 'bg-blue-600 hover:bg-blue-500 text-white',
+                ? 'bg-gray-600 text-gray-300 cursor-default'
+                : 'bg-gray-600 hover:bg-gray-500 text-white',
               saving && 'opacity-60 cursor-not-allowed',
             )}
           >
