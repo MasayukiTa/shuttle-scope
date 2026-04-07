@@ -177,6 +177,10 @@ class Stroke(Base):
     # タイミング
     timestamp_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
+    # G2: 返球品質・打点高さ（ストローク確定後オプション入力）
+    return_quality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)   # attack/neutral/defensive/emergency
+    contact_height: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)   # overhead/side/underhand/scoop
+
     # 算出値（解析後にバッチ更新）
     epv: Mapped[Optional[float]] = mapped_column(Float, nullable=True)           # Expected Pattern Value
     shot_influence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # ショット影響度スコア
@@ -275,3 +279,25 @@ class EventBookmark(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ─── G3: 試合前ウォームアップ観察 ────────────────────────────────────────────
+
+class PreMatchObservation(Base):
+    """Set 1 前の公開練習・ウォームアップ中に収集した選手観察データ。
+    ラリーアノテーションとは独立して保存し、stroke-level モデルの汚染を防ぐ。
+    """
+    __tablename__ = "pre_match_observations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
+    # observation_type: handedness / physical_caution / tactical_style / court_preference
+    observation_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    observation_value: Mapped[str] = mapped_column(String(100), nullable=False)
+    # confidence_level: unknown / tentative / likely / confirmed
+    confidence_level: Mapped[str] = mapped_column(String(20), nullable=False, default="tentative")
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="warmup")
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_by: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # analyst role identifier

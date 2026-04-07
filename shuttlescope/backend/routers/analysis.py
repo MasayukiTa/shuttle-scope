@@ -12,7 +12,7 @@ from backend.analysis.shot_influence import ShotInfluenceAnalyzer
 from backend.analysis.bayesian_rt import BayesianRealTimeAnalyzer
 
 from backend.db.database import get_db
-from backend.db.models import Match, GameSet, Rally, Stroke, Player
+from backend.db.models import Match, GameSet, Rally, Stroke, Player, PreMatchObservation
 from backend.utils.confidence import check_confidence
 
 router = APIRouter()
@@ -4217,6 +4217,7 @@ def get_opponent_type_affinity(
             "opponent_type": opp_type,
             "win_rate": win_rate,
             "match_count": total,
+            "wins": stats["wins"],
         })
 
     # 得意順ソート
@@ -5053,4 +5054,93 @@ def get_spatial_density(
             "zone_counts": dict(zone_counts),
         },
         "meta": {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+    }
+
+
+# ─── 事前観察条件別勝率分析（PREMATCH_OBSERVATION_ANALYTICS） ────────────────
+
+@router.get("/analysis/observation_analytics")
+def get_observation_analytics(
+    player_id: int,
+    db: Session = Depends(get_db),
+):
+    """試合前観察記録を使った対戦相手条件別勝率分析。
+
+    観察タイプ（利き手・テーピング等）ごとに試合を分類し、各条件での勝率を返す。
+    少数サンプル・主観的データのため補助インサイトとして提示すること。
+    """
+    matches = db.query(Match).filter(
+        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+    ).all()
+
+    if not matches:
+        return {
+            "success": True,
+            "data": {"splits": [], "observation_count": 0},
+            "meta": {"sample_size": 0},
+        }
+
+    # (observation_type, observation_value) → {wins, total, confidence_levels, match_ids}
+    splits: dict[tuple[str, str], dict] = {}
+
+    for m in matches:
+        is_player_a = m.player_a_id == player_id
+        opponent_id = m.player_b_id if is_player_a else m.player_a_id
+
+        # この試合における相手選手への観察記録を取得
+        obs_list = (
+            db.query(PreMatchObservation)
+            .filter(
+                PreMatchObservation.match_id == m.id,
+                PreMatchObservation.player_id == opponent_id,
+            )
+            .all()
+        )
+        if not obs_list:
+            continue
+
+        # 自分視点での勝敗
+        won = (is_player_a and m.result == "win") or (not is_player_a and m.result == "loss")
+
+        for obs in obs_list:
+            key = (obs.observation_type, obs.observation_value)
+            if key not in splits:
+                splits[key] = {"wins": 0, "total": 0, "confidence_levels": [], "match_ids": []}
+            splits[key]["total"] += 1
+            if won:
+                splits[key]["wins"] += 1
+            splits[key]["confidence_levels"].append(obs.confidence_level)
+            splits[key]["match_ids"].append(m.id)
+
+    # 出力整形
+    CONF_PRIORITY = {"confirmed": 4, "likely": 3, "tentative": 2, "unknown": 1}
+    result_splits = []
+    for (obs_type, obs_value), stats in splits.items():
+        total = stats["total"]
+        win_rate = round(stats["wins"] / total, 3) if total > 0 else 0.0
+        # 信頼度は最低値を採用（過信防止）
+        min_conf = min(stats["confidence_levels"], key=lambda c: CONF_PRIORITY.get(c, 0))
+        result_splits.append({
+            "observation_type": obs_type,
+            "observation_value": obs_value,
+            "win_rate": win_rate,
+            "wins": stats["wins"],
+            "match_count": total,
+            "confidence": min_conf,
+        })
+
+    # 試合数降順 → 勝率降順
+    result_splits.sort(key=lambda x: (-x["match_count"], -x["win_rate"]))
+
+    matched_match_ids: set[int] = set()
+    for stats in splits.values():
+        matched_match_ids.update(stats["match_ids"])
+
+    return {
+        "success": True,
+        "data": {
+            "splits": result_splits,
+            "observation_count": sum(s["total"] for s in splits.values()),
+        },
+        "meta": {"sample_size": len(matched_match_ids)},
     }

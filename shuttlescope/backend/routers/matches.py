@@ -173,6 +173,7 @@ class QuickStartBody(BaseModel):
     player_a_id: int                           # 自チーム選手（登録済み）
     opponent_name: str                         # 相手選手名（新規または既存）
     opponent_id: Optional[int] = None          # 既存選手を選択した場合はIDを指定
+    opponent_team: Optional[str] = None        # 相手選手チーム名（同姓同名識別用）
     initial_server: Optional[str] = None       # player_a / player_b
     competition_type: str = "unknown"          # official/practice_match/open_practice/unknown
     tournament: Optional[str] = None           # 大会名（任意）
@@ -204,6 +205,7 @@ def quick_start_match(body: QuickStartBody, db: Session = Depends(get_db)):
         player_b = Player(
             name=body.opponent_name,
             name_normalized=name_normalized,
+            team=body.opponent_team or None,    # チーム名（同姓同名識別用）
             is_target=False,
             dominant_hand=None,
             profile_status="provisional",

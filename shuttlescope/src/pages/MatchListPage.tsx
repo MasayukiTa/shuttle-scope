@@ -60,6 +60,7 @@ export function MatchListPage() {
 
   // 対戦相手B コンボボックス
   const [playerBQuery, setPlayerBQuery] = useState('')
+  const [playerBTeam, setPlayerBTeam] = useState('')
   const [showPlayerBDropdown, setShowPlayerBDropdown] = useState(false)
   const playerBDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -100,6 +101,9 @@ export function MatchListPage() {
   })
   const playerBCandidates = playerBSearchData?.data ?? []
 
+  // チーム候補 = 現在の名前検索結果から抽出（名前に紐づくチームのみ提示）
+  const playerBTeamSuggestions = [...new Set(playerBCandidates.map((p) => p.team).filter(Boolean) as string[])]
+
   // 試合作成
   const createMatch = useMutation({
     mutationFn: (body: any) => apiPost('/matches', body),
@@ -108,6 +112,7 @@ export function MatchListPage() {
       setShowForm(false)
       setForm(defaultForm())
       setPlayerBQuery('')
+      setPlayerBTeam('')
     },
   })
 
@@ -146,6 +151,7 @@ export function MatchListPage() {
       try {
         const resp: any = await apiPost('/players', {
           name: newName,
+          team: playerBTeam.trim() || undefined,
           is_target: false,
           profile_status: 'provisional',
           needs_review: true,
@@ -507,13 +513,17 @@ export function MatchListPage() {
                           onClick={() => {
                             setForm((f) => ({ ...f, player_b_id: p.id }))
                             setPlayerBQuery(p.name)
+                            setPlayerBTeam(p.team ?? '')
                             setShowPlayerBDropdown(false)
                           }}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-600 text-sm flex items-center gap-2"
+                          className="w-full text-left px-3 py-2 hover:bg-gray-600 text-sm flex items-center gap-2 min-w-0"
                         >
                           <User size={12} className="text-gray-400 shrink-0" />
-                          <span>{p.name}</span>
-                          {p.needs_review && <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded">暫定</span>}
+                          <span className="truncate">{p.name}</span>
+                          {p.team && (
+                            <span className="text-xs text-blue-300 bg-blue-900/30 px-1.5 rounded shrink-0">{p.team}</span>
+                          )}
+                          {p.needs_review && <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">暫定</span>}
                         </button>
                       ))}
                       <button
@@ -530,6 +540,32 @@ export function MatchListPage() {
                     </div>
                   )}
                 </div>
+
+                {/* チーム名（対戦相手B の名前入力後に表示） */}
+                {playerBQuery.trim().length >= 1 && (
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">
+                      相手チーム名
+                      <span className="ml-1 text-gray-600 text-xs">（同姓同名の識別に使用）</span>
+                    </label>
+                    <input
+                      list="player-b-teams-list"
+                      value={playerBTeam}
+                      onChange={(e) => setPlayerBTeam(e.target.value)}
+                      placeholder="例: ○○クラブ、△△大学"
+                      className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                      autoComplete="off"
+                    />
+                    <datalist id="player-b-teams-list">
+                      {playerBTeamSuggestions.map((team) => (
+                        <option key={team} value={team} />
+                      ))}
+                    </datalist>
+                    {form.player_b_id !== '' && playerBTeam && (
+                      <p className="text-[11px] text-blue-400 mt-0.5">既存選手のチーム（変更可）</p>
+                    )}
+                  </div>
+                )}
                 {form.format !== 'singles' && (
                   <>
                     <div>

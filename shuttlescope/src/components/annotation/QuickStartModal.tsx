@@ -31,6 +31,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   const [opponentQuery, setOpponentQuery] = useState('')
   const [opponentId, setOpponentId] = useState<number | null>(null)
   const [opponentName, setOpponentName] = useState('')
+  const [opponentTeam, setOpponentTeam] = useState('')
   const [showCandidates, setShowCandidates] = useState(false)
   // 試合設定
   const [initialServer, setInitialServer] = useState<'player_a' | 'player_b' | ''>('')
@@ -60,6 +61,9 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   })
   const candidates = searchData?.data ?? []
 
+  // チーム候補 = 現在の名前検索結果から抽出（名前に紐づくチームのみ提示）
+  const teamSuggestions = [...new Set(candidates.map((p) => p.team).filter(Boolean) as string[])]
+
   // クイックスタートミューテーション
   const quickStart = useMutation({
     mutationFn: (body: object) => apiPost('/matches/quick-start', body),
@@ -78,6 +82,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
     if (opponentId !== null) {
       setOpponentId(null)
       setOpponentName('')
+      setOpponentTeam('')
     }
     setShowCandidates(opponentQuery.trim().length >= 1)
   }, [opponentQuery]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -102,6 +107,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
     setOpponentId(p.id)
     setOpponentName(p.name)
     setOpponentQuery(p.name)
+    // 既存選手のチームを自動セット（確認・修正可能）
+    setOpponentTeam(p.team ?? '')
     setShowCandidates(false)
   }
 
@@ -122,6 +129,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
       player_a_id: Number(playerAId),
       opponent_name: resolvedName,
       opponent_id: opponentId ?? undefined,
+      opponent_team: opponentTeam.trim() || undefined,
       initial_server: initialServer || undefined,
       competition_type: competitionType,
       tournament: tournament.trim() || undefined,
@@ -201,15 +209,18 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                         onClick={() => selectCandidate(p)}
                         className="w-full text-left px-3 py-2 hover:bg-gray-600 text-sm flex items-center justify-between"
                       >
-                        <span className="flex items-center gap-2">
+                        <span className="flex items-center gap-2 min-w-0">
                           <User size={12} className="text-gray-400 shrink-0" />
-                          <span>{p.name}</span>
+                          <span className="truncate">{p.name}</span>
+                          {p.team && (
+                            <span className="text-xs text-blue-300 bg-blue-900/30 px-1.5 rounded shrink-0">{p.team}</span>
+                          )}
                           {p.needs_review && (
-                            <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded">暫定</span>
+                            <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">暫定</span>
                           )}
                         </span>
                         {p.match_count ? (
-                          <span className="text-xs text-gray-400">{p.match_count}試合</span>
+                          <span className="text-xs text-gray-400 shrink-0 ml-1">{p.match_count}試合</span>
                         ) : null}
                       </button>
                     ))}
@@ -228,6 +239,32 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
               </div>
             )}
           </div>
+
+          {/* チーム名（名前入力後に表示） */}
+          {(opponentQuery.trim().length >= 1) && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">
+                相手チーム名
+                <span className="ml-1 text-gray-600 text-xs">（同姓同名の識別に使用）</span>
+              </label>
+              <input
+                list="opponent-teams-list"
+                value={opponentTeam}
+                onChange={(e) => setOpponentTeam(e.target.value)}
+                placeholder="例: ○○クラブ、△△大学"
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                autoComplete="off"
+              />
+              <datalist id="opponent-teams-list">
+                {teamSuggestions.map((team) => (
+                  <option key={team} value={team} />
+                ))}
+              </datalist>
+              {opponentId !== null && opponentTeam && (
+                <p className="text-[11px] text-blue-400 mt-0.5">既存選手のチーム（変更可）</p>
+              )}
+            </div>
+          )}
 
           {/* 先サーブ */}
           <div>

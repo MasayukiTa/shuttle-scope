@@ -172,6 +172,20 @@ def list_needs_review(db: Session = Depends(get_db)):
     return {"success": True, "data": result}
 
 
+@router.get("/players/teams")
+def list_teams(db: Session = Depends(get_db)):
+    """DBに登録済みの全チーム名を重複なしで返す（同姓同名識別・入力補完用）"""
+    from sqlalchemy import distinct
+    rows = (
+        db.query(distinct(Player.team))
+        .filter(Player.team.isnot(None), Player.team != "")
+        .order_by(Player.team)
+        .all()
+    )
+    teams = [row[0] for row in rows if row[0]]
+    return {"success": True, "data": teams}
+
+
 @router.post("/players", status_code=201)
 def create_player(body: PlayerCreate, db: Session = Depends(get_db)):
     """選手登録"""

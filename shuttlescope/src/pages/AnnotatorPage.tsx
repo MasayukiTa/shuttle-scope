@@ -14,6 +14,7 @@ import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SessionShareModal } from '@/components/annotation/SessionShareModal'
+import { WarmupNotesPanel } from '@/components/annotation/WarmupNotesPanel'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
@@ -235,6 +236,13 @@ export function AnnotatorPage() {
   const [activeSession, setActiveSession] = useState<{ session_code: string; coach_urls: string[] } | null>(null)
   const [showSessionModal, setShowSessionModal] = useState(false)
 
+  // G2: 直前確定ストロークへのエンリッチメント入力（return_quality / contact_height）
+  // 落点確定後に表示し、次のショットキー押下で自動消滅
+  const [enrichmentActive, setEnrichmentActive] = useState(false)
+
+  // G3: ウォームアップメモパネル
+  const [showWarmupPanel, setShowWarmupPanel] = useState(false)
+
   // P3: TrackNet バッチ解析
   const [tracknetJobId, setTracknetJobId] = useState<string | null>(null)
   const [tracknetJob, setTracknetJob] = useState<{
@@ -393,6 +401,9 @@ export function AnnotatorPage() {
           is_around_head: st.is_around_head,
           above_net: st.above_net,
           timestamp_sec: st.timestamp_sec,
+          // G2: オプションエンリッチメント
+          return_quality: st.return_quality,
+          contact_height: st.contact_height,
         })),
       }).then(() => {
         useAnnotationStore.getState().decrementPending()
@@ -539,6 +550,29 @@ export function AnnotatorPage() {
     },
     onSkipRallyOpen: () => setShowSkipRallyDialog(true),
   })
+
+  // G2: ショット入力開始（land_zone へ遷移）でエンリッチメントストリップを自動消滅
+  useEffect(() => {
+    if (store.inputStep === 'land_zone') {
+      setEnrichmentActive(false)
+    }
+  }, [store.inputStep])
+
+  // G2: 落点確定（idle に戻る）かつラリー中かつストロークがある → エンリッチメントストリップ表示
+  // ただし rally_end 遷移は除く（currentStrokes.length > prev + 1 で判定せず inputStep で判定）
+  const prevInputStepRef = useRef<string>('idle')
+  useEffect(() => {
+    const prev = prevInputStepRef.current
+    prevInputStepRef.current = store.inputStep
+    // land_zone → idle の遷移 = 落点確定完了
+    if (prev === 'land_zone' && store.inputStep === 'idle' && store.isRallyActive && store.currentStrokes.length > 0) {
+      setEnrichmentActive(true)
+    }
+    // rally_end や rally 終了でリセット
+    if (store.inputStep === 'rally_end' || !store.isRallyActive) {
+      setEnrichmentActive(false)
+    }
+  }, [store.inputStep, store.isRallyActive, store.currentStrokes.length])
 
   // rally_end に入ったときエンドタイプを自動プリフィル（B-4）
   // OOB → out, NET → net を先行選択してオペレーター負荷を削減
@@ -1419,39 +1453,52 @@ export function AnnotatorPage() {
             </div>
 
             {/* プレイヤー切替 */}
+            {/* G1: land_zone ステップ中は打者アイデンティティを固定（仕様 §5.3 Step C） */}
             {store.isRallyActive && (() => {
               const aPos = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB)
               const posLabel = (player: 'player_a' | 'player_b') => {
                 const side = player === 'player_a' ? aPos : (aPos === 'top' ? 'bottom' : 'top')
                 return side === 'top' ? '↑' : '↓'
               }
+              // G1: landing 中はプレイヤー切替を無効化（打者アイデンティティ保護）
+              const playerToggleDisabled = store.inputStep === 'land_zone'
               return (
                 <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => store.setPlayer('player_a')}
+                    onClick={() => !playerToggleDisabled && store.setPlayer('player_a')}
+                    disabled={playerToggleDisabled}
                     className={clsx(
                       'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
                       store.currentPlayer === 'player_a'
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+                      playerToggleDisabled && 'opacity-40 cursor-not-allowed grayscale',
                     )}
                   >
                     <span className="opacity-60 mr-0.5">{posLabel('player_a')}</span>{match?.player_a?.name ?? 'A'}
                   </button>
                   <button
-                    onClick={() => store.togglePlayer()}
-                    className="px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs"
-                    title="プレイヤー切替"
+                    onClick={() => !playerToggleDisabled && store.togglePlayer()}
+                    disabled={playerToggleDisabled}
+                    className={clsx(
+                      'px-2 py-1.5 rounded text-xs transition-colors',
+                      playerToggleDisabled
+                        ? 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-40 grayscale'
+                        : 'bg-gray-700 hover:bg-gray-600 text-gray-300',
+                    )}
+                    title={playerToggleDisabled ? '落点入力中は切替できません' : 'プレイヤー切替'}
                   >
                     <Users size={12} />
                   </button>
                   <button
-                    onClick={() => store.setPlayer('player_b')}
+                    onClick={() => !playerToggleDisabled && store.setPlayer('player_b')}
+                    disabled={playerToggleDisabled}
                     className={clsx(
                       'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
                       store.currentPlayer === 'player_b'
                         ? 'bg-orange-600 text-white'
-                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+                      playerToggleDisabled && 'opacity-40 cursor-not-allowed grayscale',
                     )}
                   >
                     <span className="opacity-60 mr-0.5">{posLabel('player_b')}</span>{match?.player_b?.name ?? 'B'}
@@ -1627,6 +1674,7 @@ export function AnnotatorPage() {
             )}
 
             {/* 属性パネル（ラリー中 & idle/land_zone） */}
+            {/* G1: land_zone ステップ中は属性パネルを disabled（落点確定を優先） */}
             {store.isRallyActive && store.inputStep !== 'rally_end' && (
               <AttributePanel
                 attributes={{
@@ -1642,7 +1690,7 @@ export function AnnotatorPage() {
                   if (attrs.above_net !== store.pendingStroke.above_net)
                     store.setAboveNet(attrs.above_net)
                 }}
-                disabled={false}
+                disabled={store.inputStep === 'land_zone'}
               />
             )}
 
@@ -1682,7 +1730,35 @@ export function AnnotatorPage() {
                 >
                   <MessageSquare size={13} />
                 </button>
+                {/* G3: ウォームアップメモボタン（Set 1 Rally 1 前にのみ表示） */}
+                {store.currentSetNum === 1 && store.currentRallyNum === 1 && (
+                  <button
+                    onClick={() => setShowWarmupPanel((v) => !v)}
+                    className={clsx(
+                      'px-2.5 py-2.5 rounded text-xs flex items-center gap-1 transition-colors whitespace-nowrap',
+                      showWarmupPanel
+                        ? 'bg-blue-700 text-white'
+                        : 'bg-gray-700 hover:bg-gray-600 text-blue-300'
+                    )}
+                    title={t('warmup.button')}
+                  >
+                    📋 {t('warmup.button')}
+                  </button>
+                )}
               </div>
+            )}
+
+            {/* G3: ウォームアップメモパネル */}
+            {showWarmupPanel && match && (
+              <WarmupNotesPanel
+                matchId={match.id}
+                playerAId={match.player_a_id}
+                playerBId={match.player_b_id}
+                playerAName={match.player_a?.name ?? 'A'}
+                playerBName={match.player_b?.name ?? 'B'}
+                locked={store.currentRallyNum > 1 || store.isRallyActive}
+                onClose={() => setShowWarmupPanel(false)}
+              />
             )}
 
             {/* S-003: コメント入力フォーム */}
@@ -1720,6 +1796,79 @@ export function AnnotatorPage() {
               playerBName={match?.player_b?.name ?? 'B'}
             />
 
+            {/* G2: 返球品質・打点高さ クイックタグストリップ（落点確定後、次ショット前にオプション表示） */}
+            {enrichmentActive && store.currentStrokes.length > 0 && (() => {
+              const last = store.currentStrokes[store.currentStrokes.length - 1]
+              const RETURN_QUALITY = [
+                { value: 'attack',    key: 'enrichment.return_quality_attack' },
+                { value: 'neutral',   key: 'enrichment.return_quality_neutral' },
+                { value: 'defensive', key: 'enrichment.return_quality_defensive' },
+                { value: 'emergency', key: 'enrichment.return_quality_emergency' },
+              ]
+              const CONTACT_HEIGHT = [
+                { value: 'overhead',  key: 'enrichment.contact_height_overhead' },
+                { value: 'side',      key: 'enrichment.contact_height_side' },
+                { value: 'underhand', key: 'enrichment.contact_height_underhand' },
+                { value: 'scoop',     key: 'enrichment.contact_height_scoop' },
+              ]
+              return (
+                <div className="border border-gray-600/50 bg-gray-800/60 rounded p-2 text-[11px] space-y-1.5 shrink-0">
+                  <div className="flex items-center justify-between text-gray-500">
+                    <span>{t('enrichment.strip_label')}</span>
+                    <button
+                      onClick={() => setEnrichmentActive(false)}
+                      className="text-gray-600 hover:text-gray-400 text-xs px-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {/* 返球品質 */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.return_quality')}:</span>
+                    {RETURN_QUALITY.map(({ value, key }) => (
+                      <button
+                        key={value}
+                        onClick={() => {
+                          const next = last.return_quality === value ? undefined : value
+                          store.updateLastStrokeEnrichment(next, undefined)
+                        }}
+                        className={clsx(
+                          'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
+                          last.return_quality === value
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
+                        )}
+                      >
+                        {t(key)}
+                      </button>
+                    ))}
+                  </div>
+                  {/* 打点高さ */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.contact_height')}:</span>
+                    {CONTACT_HEIGHT.map(({ value, key }) => (
+                      <button
+                        key={value}
+                        onClick={() => {
+                          const next = last.contact_height === value ? undefined : value
+                          store.updateLastStrokeEnrichment(undefined, next)
+                        }}
+                        className={clsx(
+                          'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
+                          last.contact_height === value
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
+                        )}
+                      >
+                        {t(key)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-gray-600">{t('enrichment.expires_hint')}</div>
+                </div>
+              )
+            })()}
+
             {/* アクションボタン */}
             <div className="flex flex-col gap-1.5 shrink-0">
               {/* ラリー終了ボタン */}
@@ -1755,9 +1904,20 @@ export function AnnotatorPage() {
             </div>
 
             {/* セット管理（C-1: 確認ダイアログ付き） */}
-            {initialized && !store.isRallyActive && (
-              <div className="border border-gray-700 rounded p-2 text-xs shrink-0">
-                <div className="text-gray-400 mb-1.5 font-medium">管理操作</div>
+            {/* G1: ラリー中は管理操作をグレースケールでロック表示（Step A のみ有効） */}
+            {initialized && (
+              <div className={clsx(
+                'border rounded p-2 text-xs shrink-0 transition-opacity',
+                store.isRallyActive
+                  ? 'border-gray-700/50 opacity-40 pointer-events-none'
+                  : 'border-gray-700',
+              )}>
+                <div className="text-gray-400 mb-1.5 font-medium flex items-center gap-1.5">
+                  管理操作
+                  {store.isRallyActive && (
+                    <span className="text-[10px] text-gray-600">（ラリー中は使用不可）</span>
+                  )}
+                </div>
 
                 {/* C-1: セット移行確認ダイアログ */}
                 {setNavConfirm ? (

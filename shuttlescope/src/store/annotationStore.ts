@@ -99,6 +99,9 @@ interface AnnotationState {
   // ペンディング中のストロークをキャンセル（落点待ち中にEsc/Backspace/Ctrl+Z）
   cancelPendingStroke: () => void
 
+  // G2: 直前確定ストロークのエンリッチメント更新（return_quality / contact_height）
+  updateLastStrokeEnrichment: (returnQuality?: string, contactHeight?: string) => void
+
   // セット移行
   nextSet: (setId: number, setNum: number) => void
 }
@@ -383,4 +386,16 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   // スコア補正: 外部でAPIを保存した後に呼ぶ
   applyScoreCorrection: (scoreA, scoreB, rallyNum) =>
     set({ scoreA, scoreB, currentRallyNum: rallyNum }),
+
+  // G2: 直前確定ストロークのエンリッチメント更新（落点確定直後のオプション入力）
+  updateLastStrokeEnrichment: (returnQuality, contactHeight) => {
+    const { currentStrokes } = get()
+    if (currentStrokes.length === 0) return
+    const updated = [...currentStrokes]
+    const last = { ...updated[updated.length - 1] }
+    if (returnQuality !== undefined) last.return_quality = returnQuality
+    if (contactHeight !== undefined) last.contact_height = contactHeight
+    updated[updated.length - 1] = last
+    set({ currentStrokes: updated })
+  },
 }))

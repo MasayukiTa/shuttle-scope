@@ -225,6 +225,23 @@ export interface StrokeInput {
   is_around_head: boolean
   above_net?: boolean
   timestamp_sec?: number
+  // G2: 返球品質・打点高さ（ストローク確定後オプション入力）
+  return_quality?: string   // attack/neutral/defensive/emergency
+  contact_height?: string   // overhead/side/underhand/scoop
+}
+
+// G3: ウォームアップ観察信頼度
+export type WarmupConfidence = 'unknown' | 'tentative' | 'likely' | 'confirmed'
+
+// G3: ウォームアップ観察エントリ
+export interface PreMatchObservation {
+  match_id: number
+  player_id: number
+  observation_type: string
+  observation_value: string
+  confidence_level: WarmupConfidence
+  note?: string
+  created_by?: string
 }
 
 export interface StrokeAttributes {

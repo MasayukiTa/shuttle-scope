@@ -23,6 +23,7 @@ interface SummaryEntry {
   opponent_type: string
   win_rate: number
   match_count: number
+  wins: number
 }
 
 interface OpponentTypeAffinityResponse {
@@ -104,7 +105,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
                     {(wr * 100).toFixed(0)}%
                   </span>
                   <span className="text-xs ml-1.5" style={{ color: labelColor }}>
-                    {entry.wins ?? 0}勝{entry.match_count - (entry.wins ?? 0)}敗
+                    {entry.wins}勝{entry.match_count - entry.wins}敗
                   </span>
                 </div>
               </div>

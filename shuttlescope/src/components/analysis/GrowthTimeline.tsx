@@ -85,12 +85,24 @@ export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }
   const cfg = METRIC_CONFIG[metric]
   const isRate = metric !== 'avg_rally_length'
 
-  // チャートデータ整形
-  const chartData = points.map((p) => ({
-    name: p.date.slice(5), // MM-DD 表示
-    value: isRate ? parseFloat((p.value * 100).toFixed(1)) : p.value,
-    moving_avg: p.moving_avg != null ? (isRate ? parseFloat((p.moving_avg * 100).toFixed(1)) : p.moving_avg) : null,
-  }))
+  // チャートデータ整形（年変わり目を検出してラベルに反映）
+  const chartData = points.map((p, i) => {
+    const year = p.date.slice(0, 4)
+    const prevYear = i > 0 ? points[i - 1].date.slice(0, 4) : year
+    const isYearBoundary = i > 0 && year !== prevYear
+    const displayName = isYearBoundary
+      ? `'${year.slice(2)}`   // 年変わり目: '25 形式
+      : p.date.slice(5)       // 通常: MM-DD
+    return {
+      name: displayName,
+      isYearBoundary,
+      value: isRate ? parseFloat((p.value * 100).toFixed(1)) : p.value,
+      moving_avg: p.moving_avg != null ? (isRate ? parseFloat((p.moving_avg * 100).toFixed(1)) : p.moving_avg) : null,
+    }
+  })
+
+  // 年境界の name 一覧（ReferenceLine 描画用）
+  const yearBoundaryNames = chartData.filter((d) => d.isYearBoundary).map((d) => d.name)
 
   const trendColor = TREND_COLORS[trend] ?? TREND_COLORS.pending
   const axisTick = isLight ? '#64748b' : '#9ca3af'
@@ -121,8 +133,8 @@ export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }
         </span>
       </div>
 
-      <ResponsiveContainer width="100%" height={160}>
-        <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
           <XAxis dataKey="name" tick={{ fill: axisTick, fontSize: 9 }} tickLine={false} axisLine={false} />
           <YAxis
             tick={{ fill: axisTick, fontSize: 9 }}
@@ -138,6 +150,17 @@ export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }
               name === 'value' ? cfg.label : `移動平均(${windowSize}試合)`,
             ]}
           />
+          {/* 年境界の縦線 */}
+          {yearBoundaryNames.map((name) => (
+            <ReferenceLine
+              key={name}
+              x={name}
+              stroke={gridColor}
+              strokeDasharray="3 2"
+              strokeWidth={1}
+              label={{ value: name, position: 'insideTopRight', fontSize: 8, fill: axisTick }}
+            />
+          ))}
           <Line
             type="monotone"
             dataKey="value"

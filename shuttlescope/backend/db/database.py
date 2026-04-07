@@ -63,6 +63,9 @@ def add_columns_if_missing(eng) -> None:
         ("rallies", "is_skipped",               "INTEGER DEFAULT 0"),
         # R-001: 共有セッション
         ("shared_sessions", "last_broadcast_at", "TEXT"),
+        # G2: 返球品質・打点高さ（ストローク確定後オプション入力）
+        ("strokes", "return_quality",            "TEXT"),
+        ("strokes", "contact_height",            "TEXT"),
     ]
     with eng.connect() as conn:
         for table, col, col_type in new_cols:

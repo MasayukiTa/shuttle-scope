@@ -53,6 +53,7 @@ import { ConfidenceCalibration } from '@/components/analysis/ConfidenceCalibrati
 import { RecommendationRanking } from '@/components/analysis/RecommendationRanking'
 import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
 import { SpatialDensityMap } from '@/components/analysis/SpatialDensityMap'
+import { PreMatchObservationAnalytics } from '@/components/analysis/PreMatchObservationAnalytics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ interface MatchSummary {
 }
 
 // タブ種別
-type TabKey = 'overview' | 'shots' | 'rally' | 'matrix' | 'b_detail' | 'c_spatial' | 'd_time' | 'flash' | 'review' | 'growth' | 'e_opponent' | 'f_doubles' | 'g_markov' | 'h_research'
+type TabKey = 'overview' | 'shots' | 'rally' | 'matrix' | 'b_detail' | 'c_spatial' | 'd_time' | 'flash' | 'review' | 'growth' | 'e_opponent' | 'f_doubles' | 'g_markov'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -614,11 +615,6 @@ export function DashboardPage() {
             <RoleGuard allowedRoles={['analyst', 'coach']}>
               <TabButton active={activeTab === 'g_markov'} onClick={() => setActiveTab('g_markov')}>
                 {t('analysis.g_markov')}
-              </TabButton>
-            </RoleGuard>
-            <RoleGuard allowedRoles={['analyst', 'coach']}>
-              <TabButton active={activeTab === 'h_research'} onClick={() => setActiveTab('h_research')}>
-                研究解析
               </TabButton>
             </RoleGuard>
           </div>
@@ -1137,6 +1133,29 @@ export function DashboardPage() {
                     <TournamentComparison playerId={selectedPlayerId!} filters={filters} />
                   </div>
                 </div>
+
+                {/* 反事実的ショット比較 (旧研究解析タブ 3.2) */}
+                <RoleGuard allowedRoles={['analyst', 'coach']}>
+                  <CounterfactualShots playerId={selectedPlayerId!} />
+                </RoleGuard>
+
+                {/* コート密度マップ (旧研究解析タブ 3.6) */}
+                <RoleGuard allowedRoles={['analyst', 'coach']}>
+                  <SpatialDensityMap playerId={selectedPlayerId!} />
+                </RoleGuard>
+
+                {/* 補助観察インサイト（事前観察条件別傾向） */}
+                <RoleGuard allowedRoles={['analyst', 'coach']}>
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <SectionTitle>{t('observation_analytics.title', '補助観察インサイト')}</SectionTitle>
+                      <span className="text-[9px] text-gray-500 border border-gray-600 rounded px-1.5 py-0.5">
+                        参考傾向
+                      </span>
+                    </div>
+                    <PreMatchObservationAnalytics playerId={selectedPlayerId!} />
+                  </div>
+                </RoleGuard>
               </div>
             </ErrorBoundary>
           )}
@@ -1385,16 +1404,15 @@ export function DashboardPage() {
                   <GrowthJudgmentCard playerId={selectedPlayerId} />
                 </div>
 
-                {/* 勝率推移・サーブ勝率推移 */}
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                  <div className="bg-gray-800 rounded-lg p-4">
-                    <p className="text-xs font-semibold text-gray-400 mb-2">{t('analysis.growth.win_rate_label')}</p>
-                    <GrowthTimeline playerId={selectedPlayerId} metric="win_rate" />
-                  </div>
-                  <div className="bg-gray-800 rounded-lg p-4">
-                    <p className="text-xs font-semibold text-gray-400 mb-2">{t('analysis.growth.serve_win_rate_label')}</p>
-                    <GrowthTimeline playerId={selectedPlayerId} metric="serve_win_rate" />
-                  </div>
+                {/* 勝率推移 */}
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-gray-400 mb-2">{t('analysis.growth.win_rate_label')}</p>
+                  <GrowthTimeline playerId={selectedPlayerId} metric="win_rate" />
+                </div>
+                {/* サーブ勝率推移 */}
+                <div className="bg-gray-800 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-gray-400 mb-2">{t('analysis.growth.serve_win_rate_label')}</p>
+                  <GrowthTimeline playerId={selectedPlayerId} metric="serve_win_rate" />
                 </div>
 
                 {/* ペアモード: PairCombinedView */}
@@ -1491,35 +1509,6 @@ export function DashboardPage() {
             </ErrorBoundary>
           )}
 
-          {/* ── 研究解析タブ (H: Research Roadmap) ── */}
-          {activeTab === 'h_research' && (
-            <ErrorBoundary>
-              <RoleGuard
-                allowedRoles={['analyst', 'coach']}
-                fallback={
-                  <div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">
-                    {t('analysis.restricted')}
-                  </div>
-                }
-              >
-                <div className="space-y-5">
-                  {/* ロードマップ概要 */}
-                  <div className="bg-gray-800 rounded-lg p-4 border border-blue-900/40">
-                    <h3 className="text-sm font-semibold text-blue-300 mb-1">研究解析ロードマップ</h3>
-                    <p className="text-xs text-gray-400">
-                      高度な戦術モデリング・因果推論・空間モデリングによる拡張解析。サンプルサイズが増えるほど精度が向上します。
-                    </p>
-                  </div>
-
-                  {/* 反事実的ショット比較 (3.2) */}
-                  <CounterfactualShots playerId={selectedPlayerId!} />
-
-                  {/* コート密度マップ (3.6) — 研究タブ版 */}
-                  <SpatialDensityMap playerId={selectedPlayerId!} />
-                </div>
-              </RoleGuard>
-            </ErrorBoundary>
-          )}
         </div>
       )}
 
