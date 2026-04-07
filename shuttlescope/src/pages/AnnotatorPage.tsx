@@ -401,9 +401,12 @@ export function AnnotatorPage() {
           is_around_head: st.is_around_head,
           above_net: st.above_net,
           timestamp_sec: st.timestamp_sec,
-          // G2: オプションエンリッチメント
+          // G2+移動系: オプションエンリッチメント
           return_quality: st.return_quality,
           contact_height: st.contact_height,
+          contact_zone: st.contact_zone,
+          movement_burden: st.movement_burden,
+          movement_direction: st.movement_direction,
         })),
       }).then(() => {
         useAnnotationStore.getState().decrementPending()
@@ -1796,7 +1799,7 @@ export function AnnotatorPage() {
               playerBName={match?.player_b?.name ?? 'B'}
             />
 
-            {/* G2: 返球品質・打点高さ クイックタグストリップ（落点確定後、次ショット前にオプション表示） */}
+            {/* G2+移動系: エンリッチメントストリップ（落点確定後、次ショット前にオプション表示） */}
             {enrichmentActive && store.currentStrokes.length > 0 && (() => {
               const last = store.currentStrokes[store.currentStrokes.length - 1]
               const RETURN_QUALITY = [
@@ -1811,6 +1814,27 @@ export function AnnotatorPage() {
                 { value: 'underhand', key: 'enrichment.contact_height_underhand' },
                 { value: 'scoop',     key: 'enrichment.contact_height_scoop' },
               ]
+              const CONTACT_ZONE = [
+                { value: 'front', key: 'enrichment.contact_zone_front' },
+                { value: 'mid',   key: 'enrichment.contact_zone_mid' },
+                { value: 'rear',  key: 'enrichment.contact_zone_rear' },
+              ]
+              const MOVEMENT_BURDEN = [
+                { value: 'low',    key: 'enrichment.movement_burden_low' },
+                { value: 'medium', key: 'enrichment.movement_burden_medium' },
+                { value: 'high',   key: 'enrichment.movement_burden_high' },
+              ]
+              const MOVEMENT_DIRECTION = [
+                { value: 'forward',   key: 'enrichment.movement_direction_forward' },
+                { value: 'backward',  key: 'enrichment.movement_direction_backward' },
+                { value: 'lateral',   key: 'enrichment.movement_direction_lateral' },
+              ]
+              const chipClass = (active: boolean) => clsx(
+                'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
+                active
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
+              )
               return (
                 <div className="border border-gray-600/50 bg-gray-800/60 rounded p-2 text-[11px] space-y-1.5 shrink-0">
                   <div className="flex items-center justify-between text-gray-500">
@@ -1826,19 +1850,10 @@ export function AnnotatorPage() {
                   <div className="flex items-center gap-1 flex-wrap">
                     <span className="text-gray-500 min-w-[52px]">{t('enrichment.return_quality')}:</span>
                     {RETURN_QUALITY.map(({ value, key }) => (
-                      <button
-                        key={value}
-                        onClick={() => {
-                          const next = last.return_quality === value ? undefined : value
-                          store.updateLastStrokeEnrichment(next, undefined)
-                        }}
-                        className={clsx(
-                          'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
-                          last.return_quality === value
-                            ? 'bg-blue-600 border-blue-500 text-white'
-                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
-                        )}
-                      >
+                      <button key={value} onClick={() => {
+                        const next = last.return_quality === value ? undefined : value
+                        store.updateLastStrokeEnrichment({ returnQuality: next })
+                      }} className={chipClass(last.return_quality === value)}>
                         {t(key)}
                       </button>
                     ))}
@@ -1847,19 +1862,46 @@ export function AnnotatorPage() {
                   <div className="flex items-center gap-1 flex-wrap">
                     <span className="text-gray-500 min-w-[52px]">{t('enrichment.contact_height')}:</span>
                     {CONTACT_HEIGHT.map(({ value, key }) => (
-                      <button
-                        key={value}
-                        onClick={() => {
-                          const next = last.contact_height === value ? undefined : value
-                          store.updateLastStrokeEnrichment(undefined, next)
-                        }}
-                        className={clsx(
-                          'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
-                          last.contact_height === value
-                            ? 'bg-blue-600 border-blue-500 text-white'
-                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
-                        )}
-                      >
+                      <button key={value} onClick={() => {
+                        const next = last.contact_height === value ? undefined : value
+                        store.updateLastStrokeEnrichment({ contactHeight: next })
+                      }} className={chipClass(last.contact_height === value)}>
+                        {t(key)}
+                      </button>
+                    ))}
+                  </div>
+                  {/* 打点コート位置 */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.contact_zone')}:</span>
+                    {CONTACT_ZONE.map(({ value, key }) => (
+                      <button key={value} onClick={() => {
+                        const next = last.contact_zone === value ? undefined : value
+                        store.updateLastStrokeEnrichment({ contactZone: next })
+                      }} className={chipClass(last.contact_zone === value)}>
+                        {t(key)}
+                      </button>
+                    ))}
+                  </div>
+                  {/* 移動負荷 */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.movement_burden')}:</span>
+                    {MOVEMENT_BURDEN.map(({ value, key }) => (
+                      <button key={value} onClick={() => {
+                        const next = last.movement_burden === value ? undefined : value
+                        store.updateLastStrokeEnrichment({ movementBurden: next })
+                      }} className={chipClass(last.movement_burden === value)}>
+                        {t(key)}
+                      </button>
+                    ))}
+                  </div>
+                  {/* 移動方向 */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-gray-500 min-w-[52px]">{t('enrichment.movement_direction')}:</span>
+                    {MOVEMENT_DIRECTION.map(({ value, key }) => (
+                      <button key={value} onClick={() => {
+                        const next = last.movement_direction === value ? undefined : value
+                        store.updateLastStrokeEnrichment({ movementDirection: next })
+                      }} className={chipClass(last.movement_direction === value)}>
                         {t(key)}
                       </button>
                     ))}

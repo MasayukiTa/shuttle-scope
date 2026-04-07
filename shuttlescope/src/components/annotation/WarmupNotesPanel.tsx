@@ -56,6 +56,20 @@ const OBS_TYPES: ObsTypeDef[] = [
   },
 ]
 
+// 自コンディション観察タイプ（player_a = self のみ）
+const SELF_OBS_TYPES: ObsTypeDef[] = [
+  {
+    key: 'self_condition',
+    values: ['great', 'normal', 'heavy', 'poor'],
+    defaultConfidence: 'confirmed',
+  },
+  {
+    key: 'self_timing',
+    values: ['sharp', 'normal', 'off'],
+    defaultConfidence: 'confirmed',
+  },
+]
+
 interface PlayerObs {
   [obsType: string]: {
     value: string
@@ -97,6 +111,16 @@ export function WarmupNotesPanel({
   }
   const [obsA, setObsA] = useState<PlayerObs>(initObs)
   const [obsB, setObsB] = useState<PlayerObs>(initObs)
+
+  // 自コンディション（player_a のみ）
+  const initSelfObs = (): PlayerObs => {
+    const obs: PlayerObs = {}
+    for (const def of SELF_OBS_TYPES) {
+      obs[def.key] = { value: '', confidence: def.defaultConfidence }
+    }
+    return obs
+  }
+  const [selfObs, setSelfObs] = useState<PlayerObs>(initSelfObs)
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -142,9 +166,23 @@ export function WarmupNotesPanel({
             created_by: 'analyst',
           }))
 
+      // 自コンディション（SELF_OBS_TYPESを使って player_a に対して保存）
+      const buildSelfObs = (obs: PlayerObs, playerId: number): PreMatchObservation[] =>
+        SELF_OBS_TYPES
+          .filter((def) => obs[def.key]?.value)
+          .map((def) => ({
+            match_id: matchId,
+            player_id: playerId,
+            observation_type: def.key,
+            observation_value: obs[def.key].value,
+            confidence_level: obs[def.key].confidence,
+            created_by: 'analyst',
+          }))
+
       const allObs = [
         ...buildObs(obsA, playerAId),
         ...buildObs(obsB, playerBId),
+        ...buildSelfObs(selfObs, playerAId),
       ]
 
       if (allObs.length === 0) {
@@ -268,6 +306,77 @@ export function WarmupNotesPanel({
           )
         })}
       </div>
+
+      {/* 自コンディション（player_a タブのみ表示） */}
+      {activePlayer === 'player_a' && (
+        <div className="border-t border-gray-700/60 pt-3 space-y-3">
+          <div className="text-[11px] text-gray-400 font-medium">
+            {t('warmup.self_condition_section', '自コンディション（任意）')}
+          </div>
+          {SELF_OBS_TYPES.map((def) => {
+            const entry = selfObs[def.key]
+            return (
+              <div key={def.key} className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300 font-medium">
+                    {t(`warmup.observation_${def.key}`, def.key)}
+                  </span>
+                  <div className="flex gap-1">
+                    {CONFIDENCE_LEVELS.map((lvl) => (
+                      <button
+                        key={lvl}
+                        onClick={() => {
+                          if (locked) return
+                          setSelfObs((prev) => ({
+                            ...prev,
+                            [def.key]: { ...prev[def.key], confidence: lvl },
+                          }))
+                          setSaved(false)
+                        }}
+                        disabled={locked}
+                        className={clsx(
+                          'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
+                          entry.confidence === lvl
+                            ? CONFIDENCE_STYLE[lvl]
+                            : 'bg-gray-800 text-gray-600 border-gray-700 hover:text-gray-400',
+                          locked && 'cursor-not-allowed opacity-50',
+                        )}
+                      >
+                        {t(`warmup.confidence_${lvl}`)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {def.values.map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => {
+                        if (locked) return
+                        setSelfObs((prev) => ({
+                          ...prev,
+                          [def.key]: { ...prev[def.key], value: prev[def.key].value === val ? '' : val },
+                        }))
+                        setSaved(false)
+                      }}
+                      disabled={locked}
+                      className={clsx(
+                        'px-2 py-1 rounded border text-[11px] transition-colors',
+                        entry.value === val
+                          ? 'bg-blue-600 border-blue-500 text-white'
+                          : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
+                        locked && 'cursor-not-allowed opacity-50',
+                      )}
+                    >
+                      {t(`warmup.value_self_${def.key.replace('self_', '')}_${val}`, val)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* エラー */}
       {error && (

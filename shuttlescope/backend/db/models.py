@@ -180,6 +180,10 @@ class Stroke(Base):
     # G2: 返球品質・打点高さ（ストローク確定後オプション入力）
     return_quality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)   # attack/neutral/defensive/emergency
     contact_height: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)   # overhead/side/underhand/scoop
+    # 移動系コンテキスト（4.1 Movement Features）
+    contact_zone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)      # front/mid/rear（打点コート位置）
+    movement_burden: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)   # low/medium/high（移動負荷粗見積もり）
+    movement_direction: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # forward/backward/lateral（移動方向）
 
     # 算出値（解析後にバッチ更新）
     epv: Mapped[Optional[float]] = mapped_column(Float, nullable=True)           # Expected Pattern Value

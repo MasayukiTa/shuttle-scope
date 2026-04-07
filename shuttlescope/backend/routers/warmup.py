@@ -9,13 +9,20 @@ from backend.db.models import PreMatchObservation, Match, Player
 
 router = APIRouter()
 
-# G3 許可観察タイプ（ライブ操作で現実的に収集可能な第1波）
+# G3 許可観察タイプ（ライブ操作で現実的に収集可能な第1波 + 自コンディション）
 ALLOWED_TYPES = frozenset([
+    # 相手観察
     "handedness",          # 利き手
     "physical_caution",    # テーピング・サポーター等の身体的注意
     "tactical_style",      # 戦術スタイル大まかな印象
     "court_preference",    # コート位置の好み（前衛/後衛傾向）
+    # 自コンディション（player_a 自己申告）
+    "self_condition",      # 身体的コンディション全般（great/normal/heavy/poor）
+    "self_timing",         # ショットタイミング感覚（sharp/normal/off）
 ])
+
+# 自コンディション専用タイプ（分析時に分離する）
+SELF_CONDITION_TYPES = frozenset(["self_condition", "self_timing"])
 
 ALLOWED_CONFIDENCE = frozenset(["unknown", "tentative", "likely", "confirmed"])
 

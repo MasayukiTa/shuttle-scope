@@ -99,8 +99,14 @@ interface AnnotationState {
   // ペンディング中のストロークをキャンセル（落点待ち中にEsc/Backspace/Ctrl+Z）
   cancelPendingStroke: () => void
 
-  // G2: 直前確定ストロークのエンリッチメント更新（return_quality / contact_height）
-  updateLastStrokeEnrichment: (returnQuality?: string, contactHeight?: string) => void
+  // G2+移動系: 直前確定ストロークのエンリッチメント更新
+  updateLastStrokeEnrichment: (fields: {
+    returnQuality?: string
+    contactHeight?: string
+    contactZone?: string
+    movementBurden?: string
+    movementDirection?: string
+  }) => void
 
   // セット移行
   nextSet: (setId: number, setNum: number) => void
@@ -387,14 +393,17 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   applyScoreCorrection: (scoreA, scoreB, rallyNum) =>
     set({ scoreA, scoreB, currentRallyNum: rallyNum }),
 
-  // G2: 直前確定ストロークのエンリッチメント更新（落点確定直後のオプション入力）
-  updateLastStrokeEnrichment: (returnQuality, contactHeight) => {
+  // G2+移動系: 直前確定ストロークのエンリッチメント更新（落点確定直後のオプション入力）
+  updateLastStrokeEnrichment: ({ returnQuality, contactHeight, contactZone, movementBurden, movementDirection }) => {
     const { currentStrokes } = get()
     if (currentStrokes.length === 0) return
     const updated = [...currentStrokes]
     const last = { ...updated[updated.length - 1] }
     if (returnQuality !== undefined) last.return_quality = returnQuality
     if (contactHeight !== undefined) last.contact_height = contactHeight
+    if (contactZone !== undefined) last.contact_zone = contactZone
+    if (movementBurden !== undefined) last.movement_burden = movementBurden
+    if (movementDirection !== undefined) last.movement_direction = movementDirection
     updated[updated.length - 1] = last
     set({ currentStrokes: updated })
   },

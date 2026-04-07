@@ -228,6 +228,10 @@ export interface StrokeInput {
   // G2: 返球品質・打点高さ（ストローク確定後オプション入力）
   return_quality?: string   // attack/neutral/defensive/emergency
   contact_height?: string   // overhead/side/underhand/scoop
+  // 移動系コンテキスト（4.1 Movement Features）
+  contact_zone?: string       // front/mid/rear
+  movement_burden?: string    // low/medium/high
+  movement_direction?: string // forward/backward/lateral
 }
 
 // G3: ウォームアップ観察信頼度

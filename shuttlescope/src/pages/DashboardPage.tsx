@@ -1278,47 +1278,80 @@ export function DashboardPage() {
           {activeTab === 'review' && (
             <ErrorBoundary>
               <div className="space-y-5">
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                  {/* 被打球弱点マップ */}
-                  <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>{t('analysis.review.vulnerability_map')}</SectionTitle>
-                    <p className="text-xs text-gray-500 mb-3">{t('analysis.review.vulnerability_subtitle')}</p>
-                    <ReceivedVulnerabilityMap playerId={selectedPlayerId!} filters={filters} />
-                  </div>
+                {/* 推奨レビュー順序ガイド */}
+                <div className="bg-blue-950/30 border border-blue-800/40 rounded-lg px-4 py-3">
+                  <p className="text-xs font-semibold text-blue-300 mb-2">
+                    {t('analysis.review.guide_title', '推奨レビュー順序')}
+                  </p>
+                  <ol className="flex flex-wrap gap-x-4 gap-y-1">
+                    {[
+                      t('analysis.review.guide_step1', '① 受け側の弱点・有効配球を確認'),
+                      t('analysis.review.guide_step2', '② 失点・得点前パターンを比較'),
+                      t('analysis.review.guide_step3', '③ セット別パフォーマンスで変化点を特定'),
+                      t('analysis.review.guide_step4', '④ ラリーシーケンスで繰り返しパターンを深掘り'),
+                    ].map((step) => (
+                      <li key={step} className="text-[11px] text-blue-200/70">{step}</li>
+                    ))}
+                  </ol>
+                </div>
 
-                  {/* 有効配球マップ */}
-                  <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>{t('analysis.review.effective_map')}</SectionTitle>
-                    <p className="text-xs text-gray-500 mb-3">{t('analysis.review.effective_map_subtitle')}</p>
-                    <EffectiveDistributionMap playerId={selectedPlayerId!} filters={filters} />
+                {/* STEP 1: 弱点・有効配球マップ */}
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
+                    {t('analysis.review.section_maps', 'STEP 1 — 弱点・配球マップ')}
+                  </p>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    <div className="bg-gray-800 rounded-lg p-4">
+                      <SectionTitle>{t('analysis.review.vulnerability_map')}</SectionTitle>
+                      <p className="text-xs text-gray-500 mb-3">{t('analysis.review.vulnerability_subtitle')}</p>
+                      <ReceivedVulnerabilityMap playerId={selectedPlayerId!} filters={filters} />
+                    </div>
+                    <div className="bg-gray-800 rounded-lg p-4">
+                      <SectionTitle>{t('analysis.review.effective_map')}</SectionTitle>
+                      <p className="text-xs text-gray-500 mb-3">{t('analysis.review.effective_map_subtitle')}</p>
+                      <EffectiveDistributionMap playerId={selectedPlayerId!} filters={filters} />
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                  {/* 失点前パターン */}
-                  <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>{t('analysis.review.pre_loss_title')}</SectionTitle>
-                    <PreLossPatterns playerId={selectedPlayerId!} filters={filters} />
-                  </div>
-
-                  {/* 得点前パターン */}
-                  <div className="bg-gray-800 rounded-lg p-4">
-                    <SectionTitle>{t('analysis.review.pre_win_title')}</SectionTitle>
-                    <PreWinPatterns playerId={selectedPlayerId!} filters={filters} />
+                {/* STEP 2: 失点・得点前パターン */}
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
+                    {t('analysis.review.section_patterns', 'STEP 2 — 失点・得点前パターン')}
+                  </p>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    <div className="bg-gray-800 rounded-lg p-4">
+                      <SectionTitle>{t('analysis.review.pre_loss_title')}</SectionTitle>
+                      <PreLossPatterns playerId={selectedPlayerId!} filters={filters} />
+                    </div>
+                    <div className="bg-gray-800 rounded-lg p-4">
+                      <SectionTitle>{t('analysis.review.pre_win_title')}</SectionTitle>
+                      <PreWinPatterns playerId={selectedPlayerId!} filters={filters} />
+                    </div>
                   </div>
                 </div>
 
-                {/* セット比較 */}
-                <div className="bg-gray-800 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <SectionTitle>セット別パフォーマンス</SectionTitle>
-                    <ExpandBtn onClick={() => setExpandedChart('set_comparison')} />
+                {/* STEP 3: セット比較 */}
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
+                    {t('analysis.review.section_sets', 'STEP 3 — セット別変化点')}
+                  </p>
+                  <div className="bg-gray-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <SectionTitle>セット別パフォーマンス</SectionTitle>
+                      <ExpandBtn onClick={() => setExpandedChart('set_comparison')} />
+                    </div>
+                    <SetComparison playerId={selectedPlayerId!} filters={filters} />
                   </div>
-                  <SetComparison playerId={selectedPlayerId!} filters={filters} />
                 </div>
 
-                {/* ラリー3連ショットパターン (R-roadmap 3.1) */}
-                <RallySequencePatterns playerId={selectedPlayerId!} />
+                {/* STEP 4: ラリーシーケンス */}
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
+                    {t('analysis.review.section_sequence', 'STEP 4 — ラリーシーケンス深掘り')}
+                  </p>
+                  <RallySequencePatterns playerId={selectedPlayerId!} />
+                </div>
               </div>
             </ErrorBoundary>
           )}

@@ -337,7 +337,16 @@
       "next_action_placeholder": "分析からの推奨アクション（アナリストが記入）",
       "weakness_label": "重点強化ポイント",
       "danger_zone_label": "要注意ゾーン",
-      "top_zone_label": "有効ゾーン"
+      "top_zone_label": "有効ゾーン",
+      "guide_title": "推奨レビュー順序",
+      "guide_step1": "① 受け側の弱点・有効配球を確認",
+      "guide_step2": "② 失点・得点前パターンを比較",
+      "guide_step3": "③ セット別パフォーマンスで変化点を特定",
+      "guide_step4": "④ ラリーシーケンスで繰り返しパターンを深掘り",
+      "section_maps": "STEP 1 — 弱点・配球マップ",
+      "section_patterns": "STEP 2 — 失点・得点前パターン",
+      "section_sets": "STEP 3 — セット別変化点",
+      "section_sequence": "STEP 4 — ラリーシーケンス深掘り"
     },
     "effective_map": {
       "zone": "ゾーン",
@@ -573,7 +582,19 @@
     "contact_height_underhand": "アンダー",
     "contact_height_scoop": "低い/スクープ",
     "skip": "スキップ",
-    "expires_hint": "次のショット入力で消えます"
+    "expires_hint": "次のショット入力で消えます",
+    "contact_zone": "打点位置",
+    "contact_zone_front": "前衛",
+    "contact_zone_mid": "中陣",
+    "contact_zone_rear": "後衛",
+    "movement_burden": "移動負荷",
+    "movement_burden_low": "軽",
+    "movement_burden_medium": "中",
+    "movement_burden_high": "重",
+    "movement_direction": "移動方向",
+    "movement_direction_forward": "前",
+    "movement_direction_backward": "後",
+    "movement_direction_lateral": "横"
   },
   "warmup": {
     "button": "公開練習メモ",
@@ -607,12 +628,23 @@
     "confidence_tentative": "仮説",
     "confidence_likely": "ほぼ確か",
     "confidence_confirmed": "確認済み",
-    "locked_hint": "Set 1 開始後はウォームアップメモを変更できません"
+    "locked_hint": "Set 1 開始後はウォームアップメモを変更できません",
+    "self_condition_section": "自コンディション（任意）",
+    "observation_self_condition": "身体的コンディション",
+    "observation_self_timing": "タイミング感覚",
+    "value_self_condition_great": "良好",
+    "value_self_condition_normal": "普通",
+    "value_self_condition_heavy": "重い",
+    "value_self_condition_poor": "不調",
+    "value_self_timing_sharp": "切れている",
+    "value_self_timing_normal": "普通",
+    "value_self_timing_off": "乱れ"
   },
   "observation_analytics": {
     "title": "補助観察インサイト",
     "subtitle": "試合前観察記録に基づく参考傾向（少数サンプル・主観的データを含む）",
     "no_data": "観察記録が蓄積されると表示されます",
-    "sample_note": "参考傾向（観察ベース）"
+    "sample_note": "参考傾向（観察ベース）",
+    "self_section": "自コンディション条件別傾向"
   }
 }

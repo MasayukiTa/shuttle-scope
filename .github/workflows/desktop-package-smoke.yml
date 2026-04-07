@@ -1,0 +1,54 @@
+name: Desktop Package Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: package-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-package-smoke:
+    name: Windows package smoke
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: shuttlescope
+
+    env:
+      CI: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: shuttlescope/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Package Windows app (unpacked)
+        run: npx electron-builder --win --dir
+
+      - name: Upload unpacked artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-package-smoke
+          path: shuttlescope/dist/**
+          if-no-files-found: error

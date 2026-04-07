@@ -23,6 +23,7 @@ interface ObsAnalyticsResponse {
   data: {
     splits: SplitEntry[]
     observation_count: number
+    self_observations: SplitEntry[]
   }
   meta: { sample_size: number }
 }
@@ -47,6 +48,8 @@ const TYPE_LABEL: Record<string, string> = {
   physical_caution: '身体的注意',
   tactical_style:   '戦術スタイル',
   court_preference: 'コート位置',
+  self_condition:   '自コンディション',
+  self_timing:      '自タイミング感覚',
 }
 
 export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAnalyticsProps) {
@@ -69,9 +72,10 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
   }
 
   const splits = resp?.data?.splits ?? []
+  const selfObs = resp?.data?.self_observations ?? []
   const sampleSize = resp?.meta?.sample_size ?? 0
 
-  if (splits.length === 0) {
+  if (splits.length === 0 && selfObs.length === 0) {
     return (
       <p className="text-xs py-3 text-center" style={{ color: labelColor }}>
         {t('observation_analytics.no_data', '観察記録が蓄積されると表示されます')}
@@ -109,6 +113,8 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
                 : obsType === 'physical_caution' ? 'physical_'
                 : obsType === 'tactical_style' ? 'tactical_'
                 : obsType === 'court_preference' ? 'court_'
+                : obsType === 'self_condition' ? 'self_condition_'
+                : obsType === 'self_timing' ? 'self_timing_'
                 : ''
               const valueLabel = t(
                 `warmup.value_${valTypePrefix}${entry.observation_value}`,
@@ -156,6 +162,53 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
           </div>
         </div>
       ))}
+
+      {/* 自コンディション分析 */}
+      {selfObs.length > 0 && (
+        <div className="border-t pt-3" style={{ borderColor: isLight ? '#e2e8f0' : '#374151' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: textMain }}>
+            {t('observation_analytics.self_section', '自コンディション条件別傾向')}
+          </p>
+          {(() => {
+            const selfGrouped: Record<string, SplitEntry[]> = {}
+            for (const entry of selfObs) {
+              if (!selfGrouped[entry.observation_type]) selfGrouped[entry.observation_type] = []
+              selfGrouped[entry.observation_type].push(entry)
+            }
+            return Object.entries(selfGrouped).map(([obsType, entries]) => (
+              <div key={obsType} className="mb-2">
+                <p className="text-[11px] mb-1" style={{ color: labelColor }}>
+                  {TYPE_LABEL[obsType] ?? obsType}
+                </p>
+                <div className="space-y-1">
+                  {entries.map((entry) => {
+                    const wr = entry.win_rate
+                    const barColor = wr >= 0.5 ? WIN : LOSS
+                    const labelKey = obsType === 'self_condition' ? `warmup.value_self_condition_${entry.observation_value}`
+                      : `warmup.value_self_timing_${entry.observation_value}`
+                    return (
+                      <div key={entry.observation_value}
+                        className="flex items-center gap-2 rounded p-1.5"
+                        style={{ backgroundColor: isLight ? '#f8fafc' : '#1f2937', border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}` }}
+                      >
+                        <span className="text-[11px] flex-1" style={{ color: textMain }}>
+                          {t(labelKey, entry.observation_value)}
+                        </span>
+                        <span className="text-[11px] font-semibold" style={{ color: barColor }}>
+                          {(wr * 100).toFixed(0)}%
+                        </span>
+                        <span className="text-[10px]" style={{ color: labelColor }}>
+                          {entry.wins}勝{entry.match_count - entry.wins}敗
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))
+          })()}
+        </div>
+      )}
 
       <p className="text-[9px]" style={{ color: labelColor }}>
         ※ 参考傾向（観察ベースの補助分析）。主要分析の補足として参照してください。

@@ -5064,11 +5064,15 @@ def get_observation_analytics(
     player_id: int,
     db: Session = Depends(get_db),
 ):
-    """試合前観察記録を使った対戦相手条件別勝率分析。
+    """試合前観察記録を使った対戦相手条件別勝率分析 + 自コンディション分析。
 
-    観察タイプ（利き手・テーピング等）ごとに試合を分類し、各条件での勝率を返す。
+    - splits: 相手への観察記録（利き手・テーピング等）に基づく勝率スプリット
+    - self_observations: 自コンディション（self_condition/self_timing）ごとの勝率
+
     少数サンプル・主観的データのため補助インサイトとして提示すること。
     """
+    from backend.routers.warmup import SELF_CONDITION_TYPES
+
     matches = db.query(Match).filter(
         (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
     ).all()
@@ -5076,33 +5080,35 @@ def get_observation_analytics(
     if not matches:
         return {
             "success": True,
-            "data": {"splits": [], "observation_count": 0},
+            "data": {"splits": [], "observation_count": 0, "self_observations": []},
             "meta": {"sample_size": 0},
         }
 
+    CONF_PRIORITY = {"confirmed": 4, "likely": 3, "tentative": 2, "unknown": 1}
+
+    # ─── 相手観察スプリット ───────────────────────────────────────────
     # (observation_type, observation_value) → {wins, total, confidence_levels, match_ids}
     splits: dict[tuple[str, str], dict] = {}
+
+    # ─── 自コンディションスプリット ──────────────────────────────────
+    self_splits: dict[tuple[str, str], dict] = {}
 
     for m in matches:
         is_player_a = m.player_a_id == player_id
         opponent_id = m.player_b_id if is_player_a else m.player_a_id
+        won = (is_player_a and m.result == "win") or (not is_player_a and m.result == "loss")
 
-        # この試合における相手選手への観察記録を取得
-        obs_list = (
+        # 相手への観察（opponent_id でフィルタ、自コンディション除外）
+        opp_obs = (
             db.query(PreMatchObservation)
             .filter(
                 PreMatchObservation.match_id == m.id,
                 PreMatchObservation.player_id == opponent_id,
+                PreMatchObservation.observation_type.notin_(SELF_CONDITION_TYPES),
             )
             .all()
         )
-        if not obs_list:
-            continue
-
-        # 自分視点での勝敗
-        won = (is_player_a and m.result == "win") or (not is_player_a and m.result == "loss")
-
-        for obs in obs_list:
+        for obs in opp_obs:
             key = (obs.observation_type, obs.observation_value)
             if key not in splits:
                 splits[key] = {"wins": 0, "total": 0, "confidence_levels": [], "match_ids": []}
@@ -5112,28 +5118,48 @@ def get_observation_analytics(
             splits[key]["confidence_levels"].append(obs.confidence_level)
             splits[key]["match_ids"].append(m.id)
 
-    # 出力整形
-    CONF_PRIORITY = {"confirmed": 4, "likely": 3, "tentative": 2, "unknown": 1}
-    result_splits = []
-    for (obs_type, obs_value), stats in splits.items():
-        total = stats["total"]
-        win_rate = round(stats["wins"] / total, 3) if total > 0 else 0.0
-        # 信頼度は最低値を採用（過信防止）
-        min_conf = min(stats["confidence_levels"], key=lambda c: CONF_PRIORITY.get(c, 0))
-        result_splits.append({
-            "observation_type": obs_type,
-            "observation_value": obs_value,
-            "win_rate": win_rate,
-            "wins": stats["wins"],
-            "match_count": total,
-            "confidence": min_conf,
-        })
+        # 自コンディション観察（player_id = self, observation_type in SELF_CONDITION_TYPES）
+        self_obs = (
+            db.query(PreMatchObservation)
+            .filter(
+                PreMatchObservation.match_id == m.id,
+                PreMatchObservation.player_id == player_id,
+                PreMatchObservation.observation_type.in_(SELF_CONDITION_TYPES),
+            )
+            .all()
+        )
+        for obs in self_obs:
+            key = (obs.observation_type, obs.observation_value)
+            if key not in self_splits:
+                self_splits[key] = {"wins": 0, "total": 0, "confidence_levels": [], "match_ids": []}
+            self_splits[key]["total"] += 1
+            if won:
+                self_splits[key]["wins"] += 1
+            self_splits[key]["confidence_levels"].append(obs.confidence_level)
+            self_splits[key]["match_ids"].append(m.id)
 
-    # 試合数降順 → 勝率降順
-    result_splits.sort(key=lambda x: (-x["match_count"], -x["win_rate"]))
+    def _build_splits(raw: dict) -> list:
+        result = []
+        for (obs_type, obs_value), stats in raw.items():
+            total = stats["total"]
+            win_rate = round(stats["wins"] / total, 3) if total > 0 else 0.0
+            min_conf = min(stats["confidence_levels"], key=lambda c: CONF_PRIORITY.get(c, 0))
+            result.append({
+                "observation_type": obs_type,
+                "observation_value": obs_value,
+                "win_rate": win_rate,
+                "wins": stats["wins"],
+                "match_count": total,
+                "confidence": min_conf,
+            })
+        result.sort(key=lambda x: (-x["match_count"], -x["win_rate"]))
+        return result
+
+    result_splits = _build_splits(splits)
+    result_self = _build_splits(self_splits)
 
     matched_match_ids: set[int] = set()
-    for stats in splits.values():
+    for stats in list(splits.values()) + list(self_splits.values()):
         matched_match_ids.update(stats["match_ids"])
 
     return {
@@ -5141,6 +5167,7 @@ def get_observation_analytics(
         "data": {
             "splits": result_splits,
             "observation_count": sum(s["total"] for s in splits.values()),
+            "self_observations": result_self,
         },
         "meta": {"sample_size": len(matched_match_ids)},
     }

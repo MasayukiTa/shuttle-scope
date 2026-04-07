@@ -37,6 +37,10 @@ class StrokeData(BaseModel):
     # G2: 返球品質・打点高さ（ストローク確定後オプション）
     return_quality: Optional[str] = None   # attack/neutral/defensive/emergency
     contact_height: Optional[str] = None   # overhead/side/underhand/scoop
+    # 移動系コンテキスト（4.1 Movement Features）
+    contact_zone: Optional[str] = None     # front/mid/rear
+    movement_burden: Optional[str] = None  # low/medium/high
+    movement_direction: Optional[str] = None  # forward/backward/lateral
 
 
 class RallyData(BaseModel):
@@ -90,6 +94,9 @@ def stroke_to_dict(s: Stroke) -> dict:
         "return_target_y":    s.return_target_y,
         "return_quality":     s.return_quality,
         "contact_height":     s.contact_height,
+        "contact_zone":       s.contact_zone,
+        "movement_burden":    s.movement_burden,
+        "movement_direction": s.movement_direction,
     }
 
 
