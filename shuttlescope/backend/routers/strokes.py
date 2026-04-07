@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Stroke, Rally, GameSet, Match
 from backend.utils.validators import validate_stroke, validate_rally
+from backend.analysis.shot_taxonomy import canonicalize as canonicalize_shot
 
 router = APIRouter()
 
@@ -127,15 +128,31 @@ def batch_save_rally(body: BatchSaveRequest, db: Session = Depends(get_db)):
                 detail={"code": "VALIDATION_ERROR", "message": error}
             )
 
-    # ラリー保存
+    # score_before を前のラリーから自動計算
+    prev_rally = (
+        db.query(Rally)
+        .filter(
+            Rally.set_id == body.rally.set_id,
+            Rally.rally_num == body.rally.rally_num - 1,
+        )
+        .first()
+    )
+    score_a_before = prev_rally.score_a_after if prev_rally else 0
+    score_b_before = prev_rally.score_b_after if prev_rally else 0
+
+    # ラリー保存（score_before はサーバー側で計算）
     rally = Rally(**body.rally.model_dump())
+    rally.score_a_before = score_a_before
+    rally.score_b_before = score_b_before
     db.add(rally)
     db.flush()  # IDを取得するため先にflush
 
-    # ストローク一括保存
+    # ストローク一括保存（shot_type を canonical 化）
     saved_strokes = []
     for stroke_data in body.strokes:
-        stroke = Stroke(rally_id=rally.id, **stroke_data.model_dump())
+        stroke_dict = stroke_data.model_dump()
+        stroke_dict["shot_type"] = canonicalize_shot(stroke_dict.get("shot_type", "other"))
+        stroke = Stroke(rally_id=rally.id, **stroke_dict)
         db.add(stroke)
         saved_strokes.append(stroke)
 

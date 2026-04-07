@@ -121,6 +121,8 @@ class Rally(Base):
     end_type: Mapped[str] = mapped_column(String(30), nullable=False)  # ace/forced_error/...
     rally_length: Mapped[int] = mapped_column(Integer, nullable=False)  # 総ストローク数
     duration_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    score_a_before: Mapped[int] = mapped_column(Integer, default=0)  # ラリー開始直前のスコア
+    score_b_before: Mapped[int] = mapped_column(Integer, default=0)
     score_a_after: Mapped[int] = mapped_column(Integer, default=0)  # 得点後のスコア
     score_b_after: Mapped[int] = mapped_column(Integer, default=0)
     is_deuce: Mapped[bool] = mapped_column(Boolean, default=False)

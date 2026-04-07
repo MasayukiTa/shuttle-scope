@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
 from backend.db.models import Match, GameSet, Rally, Player, PreMatchObservation
+from backend.analysis.player_context import player_wins_match as _player_wins_match_ctx
 
 # 大会重要度（TournamentComparison と共通）
 LEVEL_IMPORTANCE: dict[str, float] = {
@@ -21,12 +22,8 @@ LEVEL_IMPORTANCE: dict[str, float] = {
 
 
 def _player_wins_match(match: Match, player_id: int) -> bool:
-    """試合結果をプレイヤー視点の bool に変換"""
-    if match.player_a_id == player_id:
-        return match.result == 'win'
-    else:
-        # player_b 視点: DB の result は player_a 基準なので反転
-        return match.result == 'loss'
+    """試合結果をプレイヤー視点の bool に変換（player_context への委譲）"""
+    return _player_wins_match_ctx(match, player_id)
 
 
 def get_matches_for_player(

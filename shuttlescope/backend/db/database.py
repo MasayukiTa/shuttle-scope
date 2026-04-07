@@ -70,6 +70,9 @@ def add_columns_if_missing(eng) -> None:
         ("strokes", "contact_zone",              "TEXT"),
         ("strokes", "movement_burden",           "TEXT"),
         ("strokes", "movement_direction",        "TEXT"),
+        # score_before/after 分離（局面判定精度向上）
+        ("rallies", "score_a_before",            "INTEGER DEFAULT 0"),
+        ("rallies", "score_b_before",            "INTEGER DEFAULT 0"),
     ]
     with eng.connect() as conn:
         for table, col, col_type in new_cols:

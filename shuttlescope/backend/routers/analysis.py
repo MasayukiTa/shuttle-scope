@@ -13,38 +13,18 @@ from backend.analysis.bayesian_rt import BayesianRealTimeAnalyzer
 
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, PreMatchObservation
-from backend.utils.confidence import check_confidence
+from backend.utils.confidence import check_confidence, output_flags
+from backend.analysis.player_context import target_role as _target_role_ctx
+from backend.analysis.shot_taxonomy import SHOT_TYPE_JA as _SHOT_TYPE_JA_TAXONOMY, CANONICAL_SHOTS
+from backend.analysis.analysis_tiers import all_tiers_meta
 
 router = APIRouter()
 
-# ショット種別の日本語ラベル
-SHOT_TYPE_JA = {
-    "short_service": "ショートサーブ",
-    "long_service": "ロングサーブ",
-    "net_shot": "ネットショット",
-    "clear": "クリア",
-    "push_rush": "プッシュ/ラッシュ",
-    "smash": "スマッシュ",
-    "defensive": "ディフェンス",
-    "drive": "ドライブ",
-    "lob": "ロブ",
-    "drop": "ドロップ",
-    "cross_net": "クロスネット",
-    "slice": "スライス",
-    "around_head": "ラウンドヘッド",
-    "cant_reach": "届かず",
-    "flick": "フリック",
-    "half_smash": "ハーフスマッシュ",
-    "block": "ブロック",
-    "other": "その他",
-}
+# ショット種別の日本語ラベル（shot_taxonomy モジュールから参照）
+SHOT_TYPE_JA = _SHOT_TYPE_JA_TAXONOMY
 
-# 遷移行列用のショット順序（18種類）
-SHOT_KEYS = [
-    "short_service", "long_service", "net_shot", "clear", "push_rush",
-    "smash", "defensive", "drive", "lob", "drop", "cross_net", "slice",
-    "around_head", "cant_reach", "flick", "half_smash", "block", "other",
-]
+# 遷移行列用のショット順序（18種類 / CANONICAL_SHOTS と同順）
+SHOT_KEYS = CANONICAL_SHOTS
 SHOT_LABELS_JA = [SHOT_TYPE_JA[k] for k in SHOT_KEYS]
 
 
@@ -53,12 +33,10 @@ SHOT_LABELS_JA = [SHOT_TYPE_JA[k] for k in SHOT_KEYS]
 # ---------------------------------------------------------------------------
 
 def _player_role_in_match(match: Match, player_id: int) -> str | None:
-    """Return 'player_a' or 'player_b' for the given player_id, or None."""
-    if match.player_a_id == player_id:
-        return "player_a"
-    if match.player_b_id == player_id:
-        return "player_b"
-    return None
+    """Return 'player_a' or 'player_b' for the given player_id, or None.
+    player_context.target_role() への委譲。
+    """
+    return _target_role_ctx(match, player_id)
 
 
 def _get_player_matches(
@@ -5265,3 +5243,17 @@ def get_observation_analytics(
         },
         "meta": {"sample_size": len(matched_match_ids)},
     }
+
+
+
+# ---------------------------------------------------------------------------
+# Meta: 解析 tier 分類エンドポイント
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/meta/tiers")
+def get_analysis_tiers():
+    """
+    解析種別の stable / advanced / research 分類を返す。
+    フロントエンドがこれを使い、デフォルト表示範囲・confidence 要件を制御する。
+    """
+    return {"success": True, "data": all_tiers_meta()}
