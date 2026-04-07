@@ -288,13 +288,13 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
         <span className="ml-2 text-gray-600">（対角線はグレーでマスク）</span>
       </div>
 
-      {/* よく起きる遷移トップ5 */}
+      {/* 主要遷移パターン Top 5 */}
       {matrixData.top_sequences?.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-gray-400 mb-2">
-            頻出ショット遷移 Top 5
+            主要遷移パターン
           </p>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {matrixData.top_sequences.slice(0, 5).map((seq, i) => {
               const fromIdx = matrixData.shot_keys.indexOf(seq.from)
               const toIdx = matrixData.shot_keys.indexOf(seq.to)
@@ -303,18 +303,12 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
               const toLabel =
                 toIdx >= 0 ? matrixData.shot_labels[toIdx] : seq.to
               return (
-                <div
-                  key={i}
-                  className="grid text-xs gap-x-2"
-                  style={{ gridTemplateColumns: '1rem 1fr 2.5rem 2.5rem' }}
-                >
-                  <span className="text-gray-600">{i + 1}.</span>
-                  <span className="text-gray-300 truncate">
-                    {fromLabel} → {toLabel}
-                  </span>
-                  <span className="text-gray-400 text-right">{seq.count}回</span>
-                  <span className="text-gray-500 text-right">
-                    {(seq.probability * 100).toFixed(1)}%
+                <div key={i} className="flex items-center gap-1.5 text-xs">
+                  <span className="text-gray-600 shrink-0 w-4 text-right">{i + 1}.</span>
+                  <span className="text-gray-300">{fromLabel} → {toLabel}</span>
+                  <span className="text-gray-500 shrink-0">{seq.count}回</span>
+                  <span className="text-gray-600 shrink-0 font-mono">
+                    ({(seq.probability * 100).toFixed(1)}%)
                   </span>
                 </div>
               )

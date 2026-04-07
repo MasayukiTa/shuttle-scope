@@ -600,6 +600,9 @@ export function DashboardPage() {
             <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>
               {t('analysis.overview')}
             </TabButton>
+            <TabButton active={activeTab === 'flash'} onClick={() => setActiveTab('flash')}>
+              {t('analysis.flash.title')}
+            </TabButton>
             <TabButton active={activeTab === 'shots'} onClick={() => setActiveTab('shots')}>
               {t('analysis.shots')}
             </TabButton>
@@ -609,23 +612,14 @@ export function DashboardPage() {
             <TabButton active={activeTab === 'matrix'} onClick={() => setActiveTab('matrix')}>
               {t('analysis.matrix')}
             </TabButton>
-            <TabButton active={activeTab === 'b_detail'} onClick={() => setActiveTab('b_detail')}>
-              {t('analysis.b_detail')}
-            </TabButton>
             <TabButton active={activeTab === 'c_spatial'} onClick={() => setActiveTab('c_spatial')}>
               {t('analysis.c_spatial')}
             </TabButton>
             <TabButton active={activeTab === 'd_time'} onClick={() => setActiveTab('d_time')}>
               {t('analysis.d_time')}
             </TabButton>
-            <TabButton active={activeTab === 'flash'} onClick={() => setActiveTab('flash')}>
-              {t('analysis.flash.title')}
-            </TabButton>
-            <TabButton active={activeTab === 'review'} onClick={() => setActiveTab('review')}>
-              {t('analysis.review.title')}
-            </TabButton>
-            <TabButton active={activeTab === 'growth'} onClick={() => setActiveTab('growth')}>
-              {t('analysis.growth.title')}
+            <TabButton active={activeTab === 'b_detail'} onClick={() => setActiveTab('b_detail')}>
+              {t('analysis.b_detail')}
             </TabButton>
             <RoleGuard allowedRoles={['analyst', 'coach']}>
               <TabButton active={activeTab === 'e_opponent'} onClick={() => setActiveTab('e_opponent')}>
@@ -640,6 +634,12 @@ export function DashboardPage() {
                 {t('analysis.g_markov')}
               </TabButton>
             </RoleGuard>
+            <TabButton active={activeTab === 'review'} onClick={() => setActiveTab('review')}>
+              {t('analysis.review.title')}
+            </TabButton>
+            <TabButton active={activeTab === 'growth'} onClick={() => setActiveTab('growth')}>
+              {t('analysis.growth.title')}
+            </TabButton>
           </div>
 
           {/* ── 概要タブ ── */}

@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
-import { User, Zap } from 'lucide-react'
+import { User, TrendingUp } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
@@ -73,7 +73,7 @@ export function PredictionPage() {
         {/* ヘッダー */}
         <div className={`flex items-center justify-between px-6 py-3 border-b shrink-0 ${headerBg}`}>
           <div className="flex items-center gap-2">
-            <Zap size={18} className="text-gray-400" />
+            <TrendingUp size={18} className="text-gray-400" />
             <h1 className="text-lg font-semibold" style={{ color: isLight ? '#1e293b' : '#f1f5f9' }}>
               {t('nav.prediction_title')}
             </h1>

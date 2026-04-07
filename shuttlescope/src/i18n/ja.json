@@ -689,7 +689,15 @@
     "long_rally_penalty": "長ラリー後ペナルティ",
     "pressure_drop": "プレッシャー時低下",
     "scoreline_histogram": "実測スコアライン",
-    "frequency": "頻度"
+    "frequency": "頻度",
+    "coach_summary": "コーチ向けサマリー",
+    "match_script": "試合展開パターン",
+    "tactical_ranking": "戦術推奨",
+    "biggest_risk": "最大リスク",
+    "top_action": "推奨アクション",
+    "script_no_rally_data": "ラリーデータ不足のため展開詳細は未算出",
+    "observation_augmented": "観察データで補強済み",
+    "prediction_drivers": "予測根拠・データソース"
   },
   "observation_analytics": {
     "title": "補助観察インサイト",

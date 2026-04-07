@@ -14,6 +14,7 @@ from backend.analysis.prediction_engine import (
     compute_most_likely_scorelines,
     compute_calibrated_scorelines,
     compute_fatigue_risk,
+    compute_prediction_drivers,
     get_observation_context,
     build_tactical_notes,
     build_caution_flags,
@@ -60,6 +61,7 @@ def get_match_preview(
     score_bands = compute_score_bands(primary, player_id)
     scorelines = compute_most_likely_scorelines(set_dist, score_bands)
     calibrated_scorelines = compute_calibrated_scorelines(primary, player_id)
+    prediction_drivers = compute_prediction_drivers(db, player_id, opponent_id, tournament_level)
 
     obs_context = get_observation_context(db, player_id, opponent_id, match_id)
     opponent_player = db.get(Player, opponent_id) if opponent_id else None
@@ -83,6 +85,7 @@ def get_match_preview(
             "tactical_notes": tactical_notes,
             "caution_flags": caution_flags,
             "calibrated_scorelines": calibrated_scorelines,
+            "prediction_drivers": prediction_drivers,
         },
         "meta": {
             "sample_size": sample_size,

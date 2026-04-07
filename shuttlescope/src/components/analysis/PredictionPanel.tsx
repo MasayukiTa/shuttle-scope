@@ -1,9 +1,11 @@
 /**
  * PredictionPanel — 試合予測メインコンポーネント
  *
- * Layer A: コーチ向けサマリー（勝率・信頼度・最頻結果）
- * Layer B: セット分布（棒グラフ）
- * Layer C: 根拠・観察コンテキスト・戦術ノート
+ * CoachSummaryStrip: 常時表示の5スロット圧縮サマリー
+ * Layer A: 勝率・信頼度・展開パターン・戦術ランキング
+ * Layer B: セット分布（折りたたみ）
+ * Layer C: 根拠・観察・ドライバー・反事実（折りたたみ）
+ * FatigueRiskCard: 疲労リスク
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -16,6 +18,9 @@ import { SetDistributionBar } from '@/components/analysis/SetDistributionBar'
 import { MatchScoreBand } from '@/components/analysis/MatchScoreBand'
 import { ScorelineHistogram } from '@/components/analysis/ScorelineHistogram'
 import { FatigueRiskCard } from '@/components/analysis/FatigueRiskCard'
+import { CoachSummaryStrip } from '@/components/analysis/CoachSummaryStrip'
+import { MatchScriptBlock } from '@/components/analysis/MatchScriptBlock'
+import { PredictionDriversBlock } from '@/components/analysis/PredictionDriversBlock'
 import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -44,8 +49,17 @@ interface PredictionData {
   sample_size: number
   similar_matches: number
   observation_context: Record<string, unknown>
-  tactical_notes: string[]
+  tactical_notes: Array<{ note: string; estimated_impact: string; basis: string } | string>
   caution_flags: string[]
+  prediction_drivers?: {
+    primary_type: string
+    primary_count: number
+    h2h_count: number
+    same_level_count: number
+    all_count: number
+    has_observations: boolean
+    drivers: Array<{ label: string; type: string; count: number; weight: string }>
+  }
 }
 
 interface PredictionResponse {
@@ -94,6 +108,17 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
     enabled: !!playerId,
   })
 
+  // 疲労リスク（MatchScriptBlock / FatigueRiskCard 用）
+  const { data: fatigueResp } = useQuery({
+    queryKey: ['prediction-fatigue-risk-panel', playerId, tournamentLevel],
+    queryFn: () =>
+      apiGet<{ success: boolean; data: { breakdown: { temporal_drop: number; long_rally_penalty: number; pressure_drop: number; total_rallies: number } } }>(
+        '/prediction/fatigue_risk',
+        { player_id: playerId, ...(tournamentLevel ? { tournament_level: tournamentLevel } : {}) }
+      ),
+    enabled: !!playerId,
+  })
+
   const d = resp?.data
   const meta = resp?.meta
   const neutral = isLight ? '#334155' : '#d1d5db'
@@ -125,9 +150,21 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
 
   const winPct = Math.round(d.win_probability * 100)
   const topOutcome = Object.entries(d.set_distribution).sort((a, b) => b[1] - a[1])[0]
+  const fatigueBreakdown = fatigueResp?.data?.breakdown ?? null
 
   return (
     <div className="space-y-4">
+      {/* CoachSummaryStrip — 常時表示（折りたたみなし） */}
+      <CoachSummaryStrip
+        winProbability={d.win_probability}
+        confidence={d.confidence}
+        confidenceStars={meta?.confidence.stars ?? ''}
+        setDistribution={d.set_distribution}
+        cautionFlags={d.caution_flags}
+        tacticalNotes={d.tactical_notes}
+        sampleSize={d.sample_size}
+      />
+
       {/* フィルターバー */}
       <FilterBar
         players={players}
@@ -222,6 +259,50 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
           </div>
         )}
 
+        {/* 試合展開パターン (MatchScriptBlock) */}
+        <div className="border-t border-gray-700 pt-3">
+          <p className="text-xs font-medium mb-2" style={{ color: subText }}>
+            {t('prediction.match_script')}
+          </p>
+          <MatchScriptBlock
+            winProbability={d.win_probability}
+            fatigueBreakdown={fatigueBreakdown}
+          />
+        </div>
+
+        {/* 戦術推奨ランキング */}
+        {d.tactical_notes.length > 0 && (
+          <div className="border-t border-gray-700 pt-3">
+            <p className="text-xs font-semibold mb-2" style={{ color: subText }}>
+              {t('prediction.tactical_ranking')}
+            </p>
+            <ul className="space-y-1.5">
+              {d.tactical_notes.map((item, i) => {
+                const note = typeof item === 'string' ? item : item.note
+                const impact = typeof item === 'string' ? null : item.estimated_impact
+                return (
+                  <li key={i} className="flex items-start gap-2 text-xs">
+                    <span className="text-gray-500 shrink-0 w-4 text-right">{i + 1}.</span>
+                    <span style={{ color: neutral }}>{note}</span>
+                    {impact && (
+                      <span
+                        className="shrink-0 text-[10px] px-1 py-0.5 rounded font-medium"
+                        style={{
+                          color: impact === '高' ? WIN : impact === '低' ? '#6b7280' : '#d97706',
+                          backgroundColor: impact === '高' ? WIN + '20' : impact === '低' ? '#37415120' : '#d9770620',
+                          border: `1px solid ${impact === '高' ? WIN + '60' : impact === '低' ? '#37415160' : '#d9770660'}`,
+                        }}
+                      >
+                        {impact}
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+
         {/* 注意フラグ */}
         {d.caution_flags.length > 0 && (
           <div className="border-t border-gray-700 pt-3 space-y-1">
@@ -287,12 +368,19 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
                   {t('prediction.tactical_notes')}
                 </p>
                 <ul className="space-y-1">
-                  {d.tactical_notes.map((note, i) => (
-                    <li key={i} className="text-xs flex gap-2" style={{ color: neutral }}>
-                      <span style={{ color: subText }}>•</span>
-                      {note}
-                    </li>
-                  ))}
+                  {d.tactical_notes.map((item, i) => {
+                    const note = typeof item === 'string' ? item : item.note
+                    const basis = typeof item === 'string' ? null : item.basis
+                    return (
+                      <li key={i} className="text-xs flex gap-2" style={{ color: neutral }}>
+                        <span style={{ color: subText }}>•</span>
+                        <span>
+                          {note}
+                          {basis && <span className="ml-1 text-[10px]" style={{ color: subText }}>({basis})</span>}
+                        </span>
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             )}
@@ -310,21 +398,43 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
               </div>
             )}
 
-            {/* データソース注記 */}
-            <div className="border-t border-gray-700 pt-3">
-              <p className="text-[11px]" style={{ color: subText }}>
-                {d.similar_matches >= 3
-                  ? t('prediction.data_source_h2h')
-                  : t('prediction.data_source_all')}
-                {' — '}
-                {d.sample_size}試合から算出（統計ベース）
-              </p>
-              {meta?.confidence.warning && (
-                <p className="text-[11px] mt-1" style={{ color: subText }}>
-                  ⚠ {meta.confidence.warning}
+            {/* 予測ドライバー・データソース内訳 */}
+            {d.prediction_drivers ? (
+              <div className="border-t border-gray-700 pt-3">
+                <p className="text-xs font-semibold mb-2" style={{ color: subText }}>
+                  {t('prediction.prediction_drivers')}
                 </p>
-              )}
-            </div>
+                <PredictionDriversBlock
+                  primaryType={d.prediction_drivers.primary_type}
+                  primaryCount={d.prediction_drivers.primary_count}
+                  h2hCount={d.prediction_drivers.h2h_count}
+                  sameLevelCount={d.prediction_drivers.same_level_count}
+                  allCount={d.prediction_drivers.all_count}
+                  hasObservations={d.prediction_drivers.has_observations}
+                  drivers={d.prediction_drivers.drivers}
+                />
+                {meta?.confidence.warning && (
+                  <p className="text-[11px] mt-2" style={{ color: subText }}>
+                    ⚠ {meta.confidence.warning}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="border-t border-gray-700 pt-3">
+                <p className="text-[11px]" style={{ color: subText }}>
+                  {d.similar_matches >= 3
+                    ? t('prediction.data_source_h2h')
+                    : t('prediction.data_source_all')}
+                  {' — '}
+                  {d.sample_size}試合から算出（統計ベース）
+                </p>
+                {meta?.confidence.warning && (
+                  <p className="text-[11px] mt-1" style={{ color: subText }}>
+                    ⚠ {meta.confidence.warning}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Phase E: 反事実的ショット比較（アナリストのみ） */}
             {role === 'analyst' && (

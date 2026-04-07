@@ -283,35 +283,66 @@ def build_tactical_notes(
     sample_size: int,
     obs_context: dict,
     opponent_player: Optional[Player] = None,
-) -> list[str]:
-    """ヒューリスティックな戦術ノート（最大3件）"""
-    notes: list[str] = []
+) -> list[dict]:
+    """
+    ヒューリスティックな戦術ノート（最大3件）
+    Returns: [{note: str, estimated_impact: str, basis: str}]
+    """
+    notes: list[dict] = []
     opp = obs_context.get('opponent', {})
     self_obs = obs_context.get('self', {})
 
     hand = opp.get('handedness', {})
     if hand.get('value') == 'L':
-        notes.append('相手は左利き — バック側への配球が有効な可能性')
+        notes.append({
+            'note': '相手は左利き — バック側への配球が有効な可能性',
+            'estimated_impact': '高',
+            'basis': '利き手観察（確認済み）',
+        })
 
     phys = opp.get('physical_caution', {})
     if phys.get('value') in ('moderate', 'heavy'):
-        notes.append(f'相手に身体的ハンデあり（{phys["value"]}） — フットワークを多用する展開を検討')
+        notes.append({
+            'note': f'相手に身体的ハンデあり — フットワーク多用の展開を検討',
+            'estimated_impact': '中',
+            'basis': '試合前観察',
+        })
 
     style = opp.get('tactical_style', {})
     if style.get('value') == 'attacker':
-        notes.append('相手は攻撃型 — クリアで展開を引き延ばし守備から攻撃へ転換する戦略が有効')
+        notes.append({
+            'note': '相手は攻撃型 — クリアで引き延ばし守備から攻撃転換',
+            'estimated_impact': '中',
+            'basis': '戦術スタイル観察',
+        })
     elif style.get('value') == 'defender':
-        notes.append('相手は守備型 — 積極的なネット前攻略で主導権を握る')
+        notes.append({
+            'note': '相手は守備型 — ネット前攻略で主導権を握る',
+            'estimated_impact': '高',
+            'basis': '戦術スタイル観察',
+        })
 
     cond = self_obs.get('self_condition', {})
     timing = self_obs.get('self_timing', {})
     if cond.get('value') in ('heavy', 'poor'):
-        notes.append(f'自コンディション注意（{cond["value"]}） — ラリーを短くする方針を検討')
+        notes.append({
+            'note': '自コンディション注意 — ラリーを短くする方針を検討',
+            'estimated_impact': '高',
+            'basis': '自コンディション観察',
+        })
     elif timing.get('value') == 'off':
-        notes.append('タイミング感覚が乱れている — 立ち上がりを慎重に')
+        notes.append({
+            'note': 'タイミング感覚が乱れている — 立ち上がりを慎重に',
+            'estimated_impact': '中',
+            'basis': '自コンディション観察',
+        })
 
     if sample_size < 5 and not notes:
-        notes.append(f'対戦データが少ない（{sample_size}試合） — 予測信頼度が低め')
+        notes.append({
+            'note': f'対戦データが少ない（{sample_size}試合） — 予測信頼度が低め',
+            'estimated_impact': '低',
+            'basis': 'サンプルサイズ',
+        })
 
     return notes[:3]
 
@@ -341,6 +372,78 @@ def compute_confidence_score(sample_size: int, similar_matches: int) -> float:
     base = 1.0 - math.exp(-sample_size / 20.0)
     bonus = min(0.15, similar_matches * 0.015)
     return round(min(0.95, base + bonus), 4)
+
+
+def compute_prediction_drivers(
+    db: Session,
+    player_id: int,
+    opponent_id: Optional[int] = None,
+    tournament_level: Optional[str] = None,
+) -> dict:
+    """
+    予測に使ったデータソースの内訳と根拠を返す (Spec §3.5 / §3.6)
+    """
+    all_matches = get_matches_for_player(db, player_id)
+    h2h_matches = (
+        get_matches_for_player(db, player_id, opponent_id=opponent_id)
+        if opponent_id else []
+    )
+    level_matches = (
+        get_matches_for_player(db, player_id, tournament_level=tournament_level)
+        if tournament_level else []
+    )
+    obs = get_observation_context(db, player_id, opponent_id)
+
+    if len(h2h_matches) >= 3:
+        primary_type = 'h2h'
+        primary_count = len(h2h_matches)
+    elif tournament_level and len(level_matches) >= 3:
+        primary_type = 'level'
+        primary_count = len(level_matches)
+    else:
+        primary_type = 'all'
+        primary_count = len(all_matches)
+
+    drivers: list[dict] = []
+    if h2h_matches:
+        drivers.append({
+            'label': f'直接対戦実績',
+            'type': 'h2h',
+            'count': len(h2h_matches),
+            'weight': 'primary' if primary_type == 'h2h' else 'secondary',
+        })
+    if tournament_level and level_matches:
+        drivers.append({
+            'label': f'{tournament_level}大会実績',
+            'type': 'level',
+            'count': len(level_matches),
+            'weight': 'primary' if primary_type == 'level' else 'secondary',
+        })
+    drivers.append({
+        'label': '全試合統計',
+        'type': 'all',
+        'count': len(all_matches),
+        'weight': 'primary' if primary_type == 'all' else 'background',
+    })
+    if obs:
+        obs_count = len(obs.get('opponent', {})) + len(obs.get('self', {}))
+        if obs_count > 0:
+            drivers.append({
+                'label': 'ウォームアップ観察',
+                'type': 'observation',
+                'count': obs_count,
+                'weight': 'contextual',
+            })
+
+    return {
+        'primary_type': primary_type,
+        'primary_count': primary_count,
+        'h2h_count': len(h2h_matches),
+        'same_level_count': len(level_matches),
+        'all_count': len(all_matches),
+        'has_observations': bool(obs),
+        'drivers': drivers,
+    }
 
 
 def compute_calibrated_scorelines(
