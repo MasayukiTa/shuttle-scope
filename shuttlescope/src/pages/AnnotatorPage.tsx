@@ -315,6 +315,22 @@ export function AnnotatorPage() {
     enabled: !!matchId,
   })
 
+  // トンネル起動中はURLをトンネルベースに置換するため状態を取得
+  const { data: tunnelStatus } = useQuery({
+    queryKey: ['tunnel-status'],
+    queryFn: () => apiGet<{ success: boolean; data: { available: boolean; running: boolean; url: string | null } }>('/tunnel/status'),
+    refetchInterval: 5000,
+  })
+  const tunnelBase = tunnelStatus?.data?.running && tunnelStatus.data.url ? tunnelStatus.data.url : null
+  // LANベースURL（http://192.x.x.x:8765）をトンネルURLに置換するヘルパー
+  const rebaseUrl = (url: string) => {
+    if (!tunnelBase) return url
+    try {
+      const u = new URL(url)
+      return tunnelBase + u.hash
+    } catch { return url }
+  }
+
   const { data: annotationStateData } = useQuery({
     queryKey: ['annotation-state', matchId],
     queryFn: () =>
@@ -2849,8 +2865,8 @@ export function AnnotatorPage() {
       {showSessionModal && activeSession && (
         <SessionShareModal
           sessionCode={activeSession.session_code}
-          coachUrls={activeSession.coach_urls}
-          cameraSenderUrls={activeSession.camera_sender_urls}
+          coachUrls={(activeSession.coach_urls ?? []).map(rebaseUrl)}
+          cameraSenderUrls={(activeSession.camera_sender_urls ?? []).map(rebaseUrl)}
           sessionPassword={activeSession.session_password}
           onClose={() => setShowSessionModal(false)}
         />

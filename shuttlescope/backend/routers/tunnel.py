@@ -10,6 +10,7 @@ cloudflared がPATHにない場合は status の available=false で通知。
 import re
 import shutil
 import subprocess
+import sys
 import threading
 from typing import Optional
 
@@ -84,10 +85,19 @@ def tunnel_start():
         _stderr_lines = []
 
     port = settings.API_PORT
+    cloudflared_path = shutil.which("cloudflared")
+    # Windows では .cmd ラッパー経由になるため shell=True が必要
+    use_shell = sys.platform == "win32"
+    cmd = (
+        f'"{cloudflared_path}" tunnel --url http://localhost:{port}'
+        if use_shell
+        else [cloudflared_path, "tunnel", "--url", f"http://localhost:{port}"]
+    )
     proc = subprocess.Popen(
-        ["cloudflared", "tunnel", "--url", f"http://localhost:{port}"],
+        cmd,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
+        shell=use_shell,
     )
 
     with _lock:

@@ -47,8 +47,18 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
     }).catch(() => {})
   }, [url])
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(url).catch(() => {})
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = url
+      ta.style.cssText = 'position:fixed;opacity:0;'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -649,6 +659,17 @@ export function SettingsPage() {
           <div className="max-w-xl space-y-6">
             <h2 className="text-lg font-medium">{t('sharing.tab_label')}</h2>
 
+            {/* トンネル起動中バナー: URLをここで優先表示 */}
+            {tunnelStatus?.data?.running && tunnelStatus.data.url && (
+              <div className="bg-blue-900/30 border border-blue-500/40 rounded-lg p-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-blue-300">
+                  <Globe size={14} />
+                  トンネル接続中 — このURLを使用してください
+                </div>
+                <LanUrlCard url={tunnelStatus.data.url} hint="iOSを含む全デバイスからHTTPSでアクセス可能" />
+              </div>
+            )}
+
             {/* LAN モード設定 */}
             <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
               <div className="flex items-center justify-between mb-3">
@@ -733,7 +754,7 @@ export function SettingsPage() {
                         <button
                           onClick={() => tunnelStop.mutate()}
                           disabled={tunnelStop.isPending}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded text-xs"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded text-xs text-white"
                         >
                           <PowerOff size={12} />
                           {t('sharing.tunnel_stop')}
@@ -908,7 +929,24 @@ export function SettingsPage() {
               {exportMode === 'match' ? (
                 /* 試合選択 */
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">エクスポートする試合（クリックで選択）</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm text-gray-400">エクスポートする試合（クリックで選択）</label>
+                    {exportMatchList.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allIds = exportMatchList.map((m: any) => String(m.id))
+                          const currentIds = exportMatchIds ? exportMatchIds.split(',').map((s: string) => s.trim()).filter(Boolean) : []
+                          const allSelected = allIds.every((id: string) => currentIds.includes(id))
+                          setExportMatchIds(allSelected ? '' : allIds.join(', '))
+                        }}
+                        className="text-xs text-blue-400 hover:text-blue-300"
+                      >
+                        {exportMatchList.every((m: any) => exportMatchIds.split(',').map((s: string) => s.trim()).includes(String(m.id)))
+                          ? '選択解除' : 'すべて選択'}
+                      </button>
+                    )}
+                  </div>
                   <div className="flex gap-2 items-start">
                     <div className="flex-1">
                       <input
@@ -1083,7 +1121,7 @@ export function SettingsPage() {
                 <button
                   onClick={handleBackup}
                   disabled={backupRunning}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded text-sm font-medium transition-colors"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded text-sm font-medium transition-colors text-white"
                 >
                   <FileArchive size={14} />
                   {backupRunning ? 'バックアップ中...' : '今すぐバックアップ'}

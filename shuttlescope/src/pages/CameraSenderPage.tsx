@@ -218,8 +218,14 @@ export function CameraSenderPage() {
       wsRef.current = null
     }
 
-    const host = window.location.hostname
-    const wsUrl = `ws://${host}:8765/ws/camera/${code}?participant_id=${pid}`
+    // Electron(file:) → ws://localhost:8765
+    // LAN直接(http:)  → ws://192.168.x.x:8765
+    // Cloudflareトンネル(https:) → wss://xxxx.trycloudflare.com (ポートなし)
+    const isElectron = window.location.protocol === 'file:'
+    const isHttps = window.location.protocol === 'https:'
+    const wsProto = isHttps ? 'wss' : 'ws'
+    const wsHost = isElectron ? 'localhost:8765' : isHttps ? window.location.host : `${window.location.hostname}:8765`
+    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${code}?participant_id=${pid}`
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 

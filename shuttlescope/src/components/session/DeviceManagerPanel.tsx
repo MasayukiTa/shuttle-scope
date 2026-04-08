@@ -111,9 +111,14 @@ function useWebRTCReceiver(sessionCode: string) {
 
   const connect = useCallback(() => {
     if (wsRef.current) return
-    // Electron (file: プロトコル) では hostname が空になるため localhost を使う
-    const hostname = window.location.protocol === 'file:' ? 'localhost' : (window.location.hostname || 'localhost')
-    const wsUrl = `ws://${hostname}:8765/ws/camera/${sessionCode}?role=operator`
+    // Electron(file:) → ws://localhost:8765
+    // LAN直接(http:)  → ws://192.168.x.x:8765
+    // Cloudflareトンネル(https:) → wss://xxxx.trycloudflare.com (ポートなし)
+    const isElectron = window.location.protocol === 'file:'
+    const isHttps = window.location.protocol === 'https:'
+    const wsProto = isHttps ? 'wss' : 'ws'
+    const wsHost = isElectron ? 'localhost:8765' : isHttps ? window.location.host : `${window.location.hostname || 'localhost'}:8765`
+    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${sessionCode}?role=operator`
     let ws: WebSocket
     try {
       ws = new WebSocket(wsUrl)
