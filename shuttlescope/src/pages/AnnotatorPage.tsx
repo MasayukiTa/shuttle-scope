@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -174,6 +174,18 @@ export function AnnotatorPage() {
       localStorage.getItem('shuttlescope.matchDayMode') === 'true' ||
       searchParams.get('matchDayMode') === 'true'
   )
+
+  // Annotation モード: basic（後追い入力最適化）/ detailed（エンリッチメント自動展開）
+  const [annotationMode, setAnnotationMode] = useState<'basic' | 'detailed'>(
+    () => {
+      const stored = localStorage.getItem('shuttlescope.annotationMode')
+      if (stored === 'detailed') return 'detailed'
+      const param = searchParams.get('annotationMode')
+      if (param === 'detailed') return 'detailed'
+      return 'basic'
+    }
+  )
+  const isBasicMode = annotationMode === 'basic'
   // モバイル時はタッチ操作用に大きいボタンを使う（isMatchDayMode と同等）
   const useLargeTouch = isMatchDayMode || isMobile
   // K-001: rally_end ステップでの選択中エンドタイプ
@@ -234,6 +246,11 @@ export function AnnotatorPage() {
 
   // U-001: ブックマーク
   const [lastBookmarked, setLastBookmarked] = useState<number | null>(null)  // rally_id
+
+  // Review Later
+  const [lastSavedRallyId, setLastSavedRallyId] = useState<number | null>(null)
+  const [reviewLaterAdded, setReviewLaterAdded] = useState(false)
+  const [reviewQueueOpen, setReviewQueueOpen] = useState(false)
 
   // S-003: コメント
   const [showCommentInput, setShowCommentInput] = useState(false)
@@ -412,7 +429,7 @@ export function AnnotatorPage() {
       // バックグラウンド保存
       const storeState = useAnnotationStore.getState()
       storeState.incrementPending()
-      apiPost('/strokes/batch', {
+      apiPost<{ success: boolean; data: { rally_id: number; stroke_count: number } }>('/strokes/batch', {
         rally: {
           set_id: setId,
           rally_num: rallyNum,
@@ -424,6 +441,7 @@ export function AnnotatorPage() {
           score_b_after: newScoreB,
           is_deuce: newScoreA >= 20 && newScoreB >= 20,
           video_timestamp_start: rallyStart ?? undefined,
+          annotation_mode: isBasicMode ? 'manual_record' : 'assisted_record',
         },
         strokes: strokes.map((st) => ({
           stroke_num: st.stroke_num,
@@ -441,11 +459,16 @@ export function AnnotatorPage() {
           contact_zone: st.contact_zone,
           movement_burden: st.movement_burden,
           movement_direction: st.movement_direction,
+          source_method: isBasicMode ? 'manual' : 'assisted',
         })),
-      }).then(() => {
+      }).then((res) => {
         useAnnotationStore.getState().decrementPending()
         queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
         queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
+        if (res?.data?.rally_id) {
+          setLastSavedRallyId(res.data.rally_id)
+          setReviewLaterAdded(false)
+        }
       }).catch((err: any) => {
         useAnnotationStore.getState().decrementPending()
         useAnnotationStore.getState().addSaveError({
@@ -570,6 +593,15 @@ export function AnnotatorPage() {
     })
   }, [])
 
+  // Annotation モード切替
+  const toggleAnnotationMode = useCallback(() => {
+    setAnnotationMode((prev) => {
+      const next = prev === 'basic' ? 'detailed' : 'basic'
+      localStorage.setItem('shuttlescope.annotationMode', next)
+      return next
+    })
+  }, [])
+
   // --- キーボードショートカット ---
   useKeyboard({
     videoRef,
@@ -603,8 +635,11 @@ export function AnnotatorPage() {
     const prev = prevInputStepRef.current
     prevInputStepRef.current = store.inputStep
     // land_zone → idle の遷移 = 落点確定完了
+    // Detailed モードのみ自動展開。Basic モードは手動展開のみ。
     if (prev === 'land_zone' && store.inputStep === 'idle' && store.isRallyActive && store.currentStrokes.length > 0) {
-      setEnrichmentActive(true)
+      if (annotationMode === 'detailed') {
+        setEnrichmentActive(true)
+      }
     }
     // rally_end や rally 終了でリセット
     if (store.inputStep === 'rally_end' || !store.isRallyActive) {
@@ -1001,6 +1036,33 @@ export function AnnotatorPage() {
     } catch { /* bookmark failure is non-critical */ }
   }, [matchId, getTimestamp])
 
+  // Review Later: 直前ラリーに review_later ノートでブックマーク
+  const handleReviewLater = useCallback(async () => {
+    if (!matchId || !lastSavedRallyId) return
+    try {
+      await apiPost('/bookmarks', {
+        match_id: Number(matchId),
+        rally_id: lastSavedRallyId,
+        bookmark_type: 'manual',
+        note: 'review_later',
+      })
+      setReviewLaterAdded(true)
+      setTimeout(() => setReviewLaterAdded(false), 2000)
+      queryClient.invalidateQueries({ queryKey: ['bookmarks-review', matchId] })
+    } catch { /* non-critical */ }
+  }, [matchId, lastSavedRallyId, queryClient])
+
+  // T6: review_later ブックマーク一覧取得
+  const { data: reviewBookmarksData } = useQuery({
+    queryKey: ['bookmarks-review', matchId],
+    queryFn: () =>
+      apiGet<{ success: boolean; data: Array<{ id: number; rally_id: number | null; note: string | null; video_timestamp_sec: number | null }> }>(
+        `/bookmarks?match_id=${matchId}`
+      ),
+    enabled: !!matchId,
+    select: (res) => res?.data?.filter((b) => b.note === 'review_later') ?? [],
+  })
+
   // S-003: コメント投稿
   const handleSubmitComment = useCallback(async () => {
     if (!matchId || !commentText.trim()) return
@@ -1145,6 +1207,31 @@ export function AnnotatorPage() {
             <OctagonX size={12} />
             {t('exception.title')}
           </button>
+          {/* Annotation モード切替 (手動記録 / 補助記録) */}
+          <button
+            onClick={toggleAnnotationMode}
+            className={clsx(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
+              isBasicMode
+                ? 'bg-emerald-700 text-white'
+                : 'bg-purple-700 text-white'
+            )}
+            title={isBasicMode ? t('annotation_mode.basic_helper') : t('annotation_mode.detailed_helper')}
+          >
+            <span className="opacity-70">{t('annotation_mode.label')}</span>
+            {isBasicMode ? t('annotation_mode.basic') : t('annotation_mode.detailed')}
+          </button>
+          {/* T6: Review queue バッジ */}
+          {(reviewBookmarksData?.length ?? 0) > 0 && (
+            <button
+              onClick={() => setReviewQueueOpen((v) => !v)}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-amber-700/40 text-amber-300 hover:bg-amber-700/60 transition-colors"
+              title={t('review_later.queue_title')}
+            >
+              <Clock size={11} />
+              {reviewBookmarksData!.length}{t('review_later.queue_badge')}
+            </button>
+          )}
           {/* K-001: マッチデーモード切替 */}
           <button
             onClick={toggleMatchDayMode}
@@ -1292,6 +1379,47 @@ export function AnnotatorPage() {
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* T6: レビュー待ちラリーパネル */}
+      {reviewQueueOpen && (
+        <div className="bg-amber-900/20 border-b border-amber-700/40 px-4 py-2 shrink-0">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-medium text-amber-300 flex items-center gap-1.5">
+              <Clock size={11} />
+              {t('review_later.queue_title')}
+            </span>
+            <button
+              onClick={() => setReviewQueueOpen(false)}
+              className="text-gray-500 hover:text-gray-300 text-xs px-1"
+            >
+              {t('review_later.queue_close')}
+            </button>
+          </div>
+          {(reviewBookmarksData?.length ?? 0) === 0 ? (
+            <p className="text-xs text-gray-500">{t('review_later.queue_empty')}</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {reviewBookmarksData!.map((bm) => (
+                <button
+                  key={bm.id}
+                  onClick={() => {
+                    if (bm.video_timestamp_sec != null && videoRef.current) {
+                      videoRef.current.currentTime = bm.video_timestamp_sec
+                    }
+                    setReviewQueueOpen(false)
+                  }}
+                  className="px-2 py-0.5 bg-amber-800/40 hover:bg-amber-700/60 text-amber-200 rounded text-xs border border-amber-700/30"
+                >
+                  ラリー #{bm.rally_id ?? '?'}
+                  {bm.video_timestamp_sec != null && (
+                    <span className="ml-1 opacity-60 text-[10px]">{Math.floor(bm.video_timestamp_sec / 60)}:{String(Math.floor(bm.video_timestamp_sec % 60)).padStart(2, '0')}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1887,6 +2015,13 @@ export function AnnotatorPage() {
                     )}
                   </div>
 
+                  {/* T4: Soft warning — land_zone 未入力ストロークがある場合 */}
+                  {store.currentStrokes.some((s) => !s.land_zone) && (
+                    <p className="text-[10px] text-yellow-700/80 text-center py-0.5">
+                      着地点が未入力のストロークがあります（後から補完可能）
+                    </p>
+                  )}
+
                   <button
                     onClick={() => store.cancelRallyEnd()}
                     className={clsx(
@@ -1937,20 +2072,28 @@ export function AnnotatorPage() {
 
             {/* ショット種別パネル（ラリー中 & ショット選択ステップのみ） */}
             {store.isRallyActive && store.inputStep === 'idle' && (
-              <ShotTypePanel
-                selected={store.pendingStroke.shot_type ?? null}
-                onSelect={(st: ShotType) => {
-                  store.inputShotType(st, getTimestamp())
-                }}
-                disabled={false}
-                strokeNum={store.currentStrokeNum}
-                lastShotType={
-                  store.currentStrokes.length > 0
-                    ? store.currentStrokes[store.currentStrokes.length - 1].shot_type
-                    : null
-                }
-                isMatchDayMode={useLargeTouch}
-              />
+              <>
+                <ShotTypePanel
+                  selected={store.pendingStroke.shot_type ?? null}
+                  onSelect={(st: ShotType) => {
+                    store.inputShotType(st, getTimestamp())
+                  }}
+                  disabled={false}
+                  strokeNum={store.currentStrokeNum}
+                  lastShotType={
+                    store.currentStrokes.length > 0
+                      ? store.currentStrokes[store.currentStrokes.length - 1].shot_type
+                      : null
+                  }
+                  isMatchDayMode={useLargeTouch}
+                />
+                {/* T3: Basic モードで「ここまでで保存可能」ヒント */}
+                {isBasicMode && (
+                  <p className="text-[10px] text-gray-500 text-center px-1">
+                    {t('annotation_mode.saveable_hint')}
+                  </p>
+                )}
+              </>
             )}
 
             {/* 落点選択（land_zone ステップ時） */}
@@ -1992,6 +2135,9 @@ export function AnnotatorPage() {
                   )}
                 >
                   {t('annotator.land_zone_skip')}
+                  {isBasicMode && (
+                    <span className="ml-1 text-[10px] text-gray-600">（後から補完可能）</span>
+                  )}
                 </button>
                 {/* 打点（自動推定済み） */}
                 {store.pendingStroke.hit_zone && (
@@ -2065,6 +2211,23 @@ export function AnnotatorPage() {
                     >
                       <MessageSquare size={13} />
                     </button>
+                    {/* T5: Review Later — 直前ラリーにレビューフラグ */}
+                    {lastSavedRallyId != null && (
+                      <button
+                        onClick={handleReviewLater}
+                        disabled={reviewLaterAdded}
+                        className={clsx(
+                          'px-2.5 py-2.5 rounded text-xs flex items-center gap-1 transition-colors whitespace-nowrap',
+                          reviewLaterAdded
+                            ? 'bg-amber-700/40 text-amber-300 cursor-default'
+                            : 'bg-gray-700 hover:bg-amber-700/40 text-gray-400 hover:text-amber-300'
+                        )}
+                        title={t('review_later.hint')}
+                      >
+                        <Clock size={12} />
+                        {reviewLaterAdded ? t('review_later.added') : t('review_later.button')}
+                      </button>
+                    )}
                     {/* G3: ウォームアップメモ */}
                     {store.currentSetNum === 1 && store.currentRallyNum === 1 && (
                       <button
@@ -2151,7 +2314,19 @@ export function AnnotatorPage() {
                 playerBName={match?.player_b?.name ?? 'B'}
                 partnerAName={match?.partner_a?.name}
                 partnerBName={match?.partner_b?.name}
+                showLandZoneWarning={true}
               />
+            )}
+
+            {/* T2: Basic モード用 エンリッチメント手動展開ボタン */}
+            {!isMobile && isBasicMode && store.isRallyActive && store.inputStep !== 'rally_end' && store.currentStrokes.length > 0 && !enrichmentActive && (
+              <button
+                onClick={() => setEnrichmentActive(true)}
+                className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-gray-600 hover:text-gray-400 border border-gray-700 rounded transition-colors"
+              >
+                <ChevronDown size={11} />
+                {t('annotation_mode.enrichment_hint')}
+              </button>
             )}
 
             {/* G2+移動系: エンリッチメントストリップ（デスクトップのみ — モバイルでは省略） */}
@@ -2193,12 +2368,15 @@ export function AnnotatorPage() {
               return (
                 <div className="border border-gray-600 bg-gray-800 rounded p-3 text-[11px] space-y-2 shrink-0">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-300 font-medium">{t('enrichment.strip_label')}</span>
+                    <span className="text-gray-300 font-medium">
+                      {isBasicMode ? t('annotation_mode.enrichment_hint') : t('enrichment.strip_label')}
+                    </span>
                     <button
                       onClick={() => setEnrichmentActive(false)}
-                      className="text-gray-500 hover:text-gray-300 text-sm px-1"
+                      className="flex items-center gap-0.5 text-gray-500 hover:text-gray-300 text-xs px-1"
                     >
-                      ✕
+                      <ChevronUp size={11} />
+                      折りたたむ
                     </button>
                   </div>
                   {/* 返球品質 */}

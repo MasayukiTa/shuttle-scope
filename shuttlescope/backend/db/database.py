@@ -74,6 +74,11 @@ def add_columns_if_missing(eng) -> None:
         # score_before/after 分離（局面判定精度向上）
         ("rallies", "score_a_before",            "INTEGER DEFAULT 0"),
         ("rallies", "score_b_before",            "INTEGER DEFAULT 0"),
+        # アノテーション記録方式 / レビューステータス
+        ("rallies", "annotation_mode",           "TEXT"),
+        ("rallies", "review_status",             "TEXT"),
+        # 入力ソース
+        ("strokes", "source_method",             "TEXT"),
         # 同期メタデータ（全主要テーブル）
         ("players",              "uuid",             "TEXT"),
         ("players",              "updated_at",       "TEXT"),

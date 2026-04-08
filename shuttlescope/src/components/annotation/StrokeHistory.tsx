@@ -7,13 +7,15 @@ interface StrokeHistoryProps {
   playerBName?: string
   partnerAName?: string
   partnerBName?: string
+  /** T4: land_zone なしを soft warning 表示するか */
+  showLandZoneWarning?: boolean
 }
 
 /**
  * 直近ストローク履歴表示
  * 「①A:クリア→BC」形式で表示
  */
-export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', partnerAName, partnerBName }: StrokeHistoryProps) {
+export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', partnerAName, partnerBName, showLandZoneWarning = false }: StrokeHistoryProps) {
   const { t } = useTranslation()
 
   // 直近5球のみ表示
@@ -44,6 +46,7 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
         const playerLabel = resolvePlayerLabel(stroke.player)
         const shotLabel = t(`shot_types.${stroke.shot_type}`)
         const landLabel = stroke.land_zone ? `→${stroke.land_zone}` : ''
+        const missingLand = showLandZoneWarning && !stroke.land_zone
         const hitLabel = stroke.hit_zone ? `(${stroke.hit_zone})` : ''
         const num = circledNumbers[(stroke.stroke_num - 1) % 10]
         const isLatest = idx === recent.length - 1
@@ -51,9 +54,12 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
         return (
           <div
             key={stroke.stroke_num}
-            className={`text-xs px-2 py-0.5 rounded font-mono ${isLatest ? 'bg-gray-700 text-gray-100' : 'text-gray-400'}`}
+            className={`text-xs px-2 py-0.5 rounded font-mono flex items-center gap-1.5 ${isLatest ? 'bg-gray-700 text-gray-100' : 'text-gray-400'}`}
           >
-            {num}{playerLabel}:{shotLabel}{hitLabel}{landLabel}
+            <span>{num}{playerLabel}:{shotLabel}{hitLabel}{landLabel}</span>
+            {missingLand && (
+              <span className="text-[9px] text-yellow-700/80 border border-yellow-700/30 rounded px-1 shrink-0">着地点なし</span>
+            )}
           </div>
         )
       })}

@@ -176,6 +176,10 @@ class Rally(Base):
     video_timestamp_end: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     # 見逃しラリー（ストロークなしで得点だけ記録）
     is_skipped: Mapped[bool] = mapped_column(Boolean, default=False)
+    # アノテーション記録方式 (manual_record / assisted_record)
+    annotation_mode: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    # レビューステータス (pending / completed)
+    review_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # リレーション
     game_set: Mapped["GameSet"] = relationship("GameSet", back_populates="rallies")
@@ -251,6 +255,9 @@ class Stroke(Base):
     # 算出値（解析後にバッチ更新）
     epv: Mapped[Optional[float]] = mapped_column(Float, nullable=True)           # Expected Pattern Value
     shot_influence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # ショット影響度スコア
+
+    # 入力ソース (manual / assisted / corrected)
+    source_method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # リレーション
     rally: Mapped["Rally"] = relationship("Rally", back_populates="strokes")

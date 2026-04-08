@@ -770,5 +770,25 @@
     "no_data": "観察記録が蓄積されると表示されます",
     "sample_note": "参考傾向（観察ベース）",
     "self_section": "自コンディション条件別傾向"
+  },
+  "annotation_mode": {
+    "basic": "手動記録",
+    "detailed": "補助記録",
+    "label": "記録方式:",
+    "basic_title": "手動記録（現在の高速入力方式）",
+    "detailed_title": "補助記録（入力補助・後補完を前提に使う）",
+    "basic_helper": "現在の高速入力方式。まずは確実に記録したいときはこちら。",
+    "detailed_helper": "入力補助を使いながら記録する方式。候補提示や後補完を前提に使う。",
+    "saveable_hint": "ショット入力 → ラリー終了だけで保存できます",
+    "enrichment_hint": "詳細分析用・任意（後で入力可）"
+  },
+  "review_later": {
+    "button": "あとで見る",
+    "added": "✓ キューに追加",
+    "hint": "直前のラリーにレビューフラグを付けます",
+    "queue_badge": "件のレビュー待ち",
+    "queue_title": "レビュー待ちラリー",
+    "queue_empty": "レビュー待ちラリーはありません",
+    "queue_close": "閉じる"
   }
 }

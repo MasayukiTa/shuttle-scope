@@ -43,6 +43,8 @@ class StrokeData(BaseModel):
     contact_zone: Optional[str] = None     # front/mid/rear
     movement_burden: Optional[str] = None  # low/medium/high
     movement_direction: Optional[str] = None  # forward/backward/lateral
+    # アノテーション記録方式 (manual / assisted / corrected)
+    source_method: Optional[str] = None
 
 
 class RallyData(BaseModel):
@@ -59,6 +61,10 @@ class RallyData(BaseModel):
     video_timestamp_start: Optional[float] = None
     video_timestamp_end: Optional[float] = None
     is_skipped: bool = False
+    # アノテーション記録方式 (manual_record / assisted_record)
+    annotation_mode: Optional[str] = None
+    # レビューステータス (pending / completed)
+    review_status: Optional[str] = None
 
 
 class BatchSaveRequest(BaseModel):
@@ -99,6 +105,7 @@ def stroke_to_dict(s: Stroke) -> dict:
         "contact_zone":       s.contact_zone,
         "movement_burden":    s.movement_burden,
         "movement_direction": s.movement_direction,
+        "source_method":      s.source_method,
     }
 
 
