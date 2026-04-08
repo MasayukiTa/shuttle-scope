@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
-import { User, TrendingUp } from 'lucide-react'
+import { User, TrendingUp, BarChart2 } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
@@ -19,6 +19,7 @@ import { HumanForecastPanel } from '@/components/analysis/HumanForecastPanel'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
 
 interface PlayerSummary {
   id: number
@@ -77,24 +78,37 @@ export function PredictionPage() {
     ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
     : 'text-gray-400 hover:text-white hover:bg-gray-700'
 
+  const ROLE_LABELS: Record<string, string> = {
+    analyst: 'アナリスト',
+    coach: 'コーチ',
+    player: '選手',
+  }
+  const ROLE_BADGE_CLASS: Record<string, string> = {
+    analyst: 'bg-blue-900/50 border-blue-500 text-blue-300',
+    coach: 'bg-emerald-900/50 border-emerald-500 text-emerald-300',
+    player: 'bg-purple-900/50 border-purple-500 text-purple-300',
+  }
+
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']} fallback={
       <div className="flex items-center justify-center h-screen text-gray-500">
         予測機能はアナリスト・コーチのみ利用できます
       </div>
     }>
-      <div className={`flex flex-col h-screen ${bodyBg}`}>
+      <div className={`flex flex-col h-screen ${bodyBg} text-white`}>
         {/* ヘッダー */}
-        <div className={`px-6 pt-4 pb-3 border-b shrink-0 ${headerBg}`}>
+        <div className="px-6 pt-6 pb-4 border-b border-gray-800 shrink-0 bg-gray-900">
           {/* タイトル行 */}
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp size={18} className="text-gray-400" />
-            <h1 className="text-lg font-semibold" style={{ color: isLight ? '#1e293b' : '#f1f5f9' }}>
-              {t('nav.prediction_title')}
-            </h1>
+          <div className="flex items-center gap-3 mb-4">
+            <TrendingUp className="text-blue-400" size={20} />
+            <h1 className="text-xl font-semibold">{t('nav.prediction_title')}</h1>
             {role && (
-              <span className={`text-xs px-2 py-0.5 rounded ml-1 ${isLight ? 'bg-gray-100 border border-gray-300 text-gray-600' : 'bg-gray-700 border border-gray-600 text-gray-300'}`}>
-                {role === 'coach' ? 'コーチ' : 'アナリスト'}
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${
+                  ROLE_BADGE_CLASS[role] ?? 'bg-gray-700 border-gray-500 text-gray-300'
+                }`}
+              >
+                {ROLE_LABELS[role] ?? role}
               </span>
             )}
           </div>
@@ -103,54 +117,46 @@ export function PredictionPage() {
           <div className="flex items-center gap-3">
             <User size={16} className="text-gray-400 shrink-0" />
             <label className="text-sm text-gray-400 shrink-0">選手：</label>
-            {loadingPlayers ? (
-              <span className="text-gray-500 text-sm">読み込み中...</span>
-            ) : (
-              <select
-                className={`text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[260px] ${
-                  isLight
-                    ? 'bg-white border border-gray-300 text-gray-800'
-                    : 'bg-gray-800 border border-gray-700 text-white'
-                }`}
-                value={selectedPlayerId ?? ''}
-                onChange={(e) => setSelectedPlayerId(e.target.value ? Number(e.target.value) : null)}
-              >
-                <option value="">— 選手を選択 —</option>
-                {sortedPlayers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.is_target ? '★ ' : ''}{p.name}
-                    {p.team ? `（${p.team}）` : ''}
-                    {` [${p.match_count ?? 0}試合]`}
-                  </option>
-                ))}
-              </select>
-            )}
+            <SearchableSelect
+              options={sortedPlayers.map((p) => ({
+                value: p.id,
+                label: p.name,
+                searchText: p.team ?? '',
+                prefix: p.is_target ? '★' : undefined,
+                suffix: `${p.team ? `（${p.team}）` : ''} [${p.match_count ?? 0}試合]`,
+              }))}
+              value={selectedPlayerId}
+              onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
+              emptyLabel="— 選手を選択 —"
+              placeholder="選手名で検索..."
+              loading={loadingPlayers}
+              className="min-w-[280px]"
+            />
           </div>
         </div>
 
-        {/* サブタブ */}
-        {selectedPlayerId && (
-          <div className={`flex gap-1 px-6 py-2 border-b shrink-0 overflow-x-auto ${headerBg}`}>
-            {(
-              [
-                { key: 'preview' as const, label: t('prediction.title') },
-                { key: 'pair' as const, label: t('prediction.pair_simulation') },
-                { key: 'lineup' as const, label: t('prediction.lineup_optimizer') },
-                { key: 'forecast' as const, label: t('prediction.human_forecast') },
-              ] as const
-            ).map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setSubTab(key)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors whitespace-nowrap ${
-                  subTab === key ? tabActive : tabInactive
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* サブタブ — 常に表示してレイアウトシフトを防ぐ */}
+        <div className={`flex gap-1 px-6 py-2 border-b shrink-0 overflow-x-auto border-gray-800 bg-gray-900 ${!selectedPlayerId ? 'invisible' : ''}`}>
+          {(
+            [
+              { key: 'preview' as const, label: t('prediction.title') },
+              { key: 'pair' as const, label: t('prediction.pair_simulation') },
+              { key: 'lineup' as const, label: t('prediction.lineup_optimizer') },
+              { key: 'forecast' as const, label: t('prediction.human_forecast') },
+            ] as const
+          ).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setSubTab(key)}
+              disabled={!selectedPlayerId}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors whitespace-nowrap ${
+                subTab === key ? tabActive : tabInactive
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* コンテンツ */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
@@ -187,27 +193,19 @@ export function PredictionPage() {
                 <p className="text-xs font-semibold mb-2" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>
                   試合を選択
                 </p>
-                <select
-                  className={`text-sm rounded px-2 py-1.5 w-full focus:outline-none ${
-                    isLight
-                      ? 'bg-white border border-gray-300 text-gray-800'
-                      : 'bg-gray-700 border border-gray-600 text-gray-200'
-                  }`}
-                  value={forecastMatchId ?? ''}
-                  onChange={(e) => setForecastMatchId(e.target.value ? Number(e.target.value) : null)}
-                >
-                  <option value="">— 試合を選択 —</option>
-                  {forecastMatches.map((m: any) => (
-                    <option key={m.id} value={m.id}>
-                      {m.date} {m.tournament_level ? `[${m.tournament_level}]` : ''} {m.result ? `(${m.result === 'win' ? 'W' : m.result === 'loss' ? 'L' : m.result})` : '(未確定)'}
-                    </option>
-                  ))}
-                </select>
-                {forecastMatches.length === 0 && (
-                  <p className="text-xs mt-1" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>
-                    試合データを読み込み中...
-                  </p>
-                )}
+                <SearchableSelect
+                  options={forecastMatches.map((m: any) => ({
+                    value: m.id,
+                    label: `${m.date} ${m.tournament_level ? `[${m.tournament_level}]` : ''}`,
+                    suffix: m.result ? (m.result === 'win' ? 'W' : m.result === 'loss' ? 'L' : m.result) : '未確定',
+                    searchText: `${m.date} ${m.tournament_level ?? ''}`,
+                  }))}
+                  value={forecastMatchId}
+                  onChange={(v) => setForecastMatchId(v != null ? Number(v) : null)}
+                  emptyLabel="— 試合を選択 —"
+                  placeholder="日付・大会レベルで検索..."
+                  loading={forecastMatches.length === 0 && !!selectedPlayerId}
+                />
               </div>
 
               {/* 予測パネル */}

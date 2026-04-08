@@ -9,6 +9,7 @@ import { X, Search, UserPlus, User, ChevronDown } from 'lucide-react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
 import { Player, MATCH_ROUNDS } from '@/types'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 
 interface Props {
   onClose: () => void
@@ -157,16 +158,19 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
             <label className="block text-sm text-gray-400 mb-1">
               {t('quick_start.my_player')} *
             </label>
-            <select
-              value={playerAId}
-              onChange={(e) => setPlayerAId(e.target.value ? Number(e.target.value) : '')}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-            >
-              <option value="">{t('quick_start.select_player')}</option>
-              {(targetPlayers.length > 0 ? targetPlayers : allPlayers).map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={(targetPlayers.length > 0 ? targetPlayers : allPlayers).map((p) => ({
+                value: p.id,
+                label: p.name,
+                searchText: p.team ?? '',
+                prefix: p.is_target ? '★' : undefined,
+                suffix: p.team ? `（${p.team}）` : undefined,
+              }))}
+              value={playerAId === '' ? null : playerAId}
+              onChange={(v) => setPlayerAId(v != null ? Number(v) : '')}
+              emptyLabel={t('quick_start.select_player')}
+              placeholder="選手名で検索..."
+            />
           </div>
 
           {/* 対戦相手名（検索付き） */}

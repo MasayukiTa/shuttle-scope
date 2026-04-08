@@ -16,6 +16,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { WIN, LOSS, BAR, perfColor, lightSafe, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -414,18 +415,19 @@ export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) 
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-200">コートカバレッジ分担</h3>
             {doublesMatches.length > 0 && (
-              <select
-                className="text-xs bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-1 max-w-[180px]"
-                value={selectedDoubleMatchId ?? ''}
-                onChange={(e) => setSelectedDoubleMatchId(e.target.value ? Number(e.target.value) : null)}
-              >
-                <option value="">-- 試合を選択 --</option>
-                {doublesMatches.map((m: any) => (
-                  <option key={m.match_id} value={m.match_id}>
-                    {m.date} vs {m.opponent}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                options={doublesMatches.map((m) => ({
+                  value: m.match_id,
+                  label: `${m.date} vs ${m.opponent}`,
+                  suffix: m.result === 'win' ? '勝' : m.result === 'loss' ? '敗' : m.result,
+                  searchText: `${m.date} ${m.opponent}`,
+                }))}
+                value={selectedDoubleMatchId}
+                onChange={(v) => setSelectedDoubleMatchId(v != null ? Number(v) : null)}
+                emptyLabel="-- 試合を選択 --"
+                placeholder="日付・対戦相手で検索..."
+                className="max-w-[240px]"
+              />
             )}
           </div>
           {selectedDoubleMatchId ? (

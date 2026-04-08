@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { X, LayoutDashboard } from 'lucide-react'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { apiGet } from '@/api/client'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -188,25 +189,24 @@ export function CourtHeatModal({
                 ))}
               </div>
               {matches.length > 0 && (
-                <select
-                  value={matchId ?? ''}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    setMatchId(v ? Number(v) : null)
-                    if (v) setLastN(null)
+                <SearchableSelect
+                  options={[...matches]
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .map((m) => ({
+                      value: m.match_id,
+                      label: `${m.date} ${m.opponent}`,
+                      suffix: m.result === 'win' ? '勝' : '敗',
+                      searchText: `${m.date} ${m.opponent}`,
+                    }))}
+                  value={matchId}
+                  onChange={(v) => {
+                    setMatchId(v != null ? Number(v) : null)
+                    if (v != null) setLastN(null)
                     setSelectedZone(null)
                   }}
-                  className="w-full text-[11px] bg-gray-700 border border-gray-600 text-gray-300 rounded px-2 py-1 focus:outline-none"
-                >
-                  <option value="">試合を選択（個別）</option>
-                  {[...matches]
-                    .sort((a, b) => b.date.localeCompare(a.date))
-                    .map((m) => (
-                      <option key={m.match_id} value={m.match_id}>
-                        {m.date} {m.opponent} ({m.result === 'win' ? '勝' : '敗'})
-                      </option>
-                    ))}
-                </select>
+                  emptyLabel="試合を選択（個別）"
+                  placeholder="日付・対戦相手で検索..."
+                />
               )}
             </div>
 

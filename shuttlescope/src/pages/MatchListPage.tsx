@@ -7,6 +7,8 @@ import { clsx } from 'clsx'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
 import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS } from '@/types'
 import { QuickStartModal } from '@/components/annotation/QuickStartModal'
+import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
+import { DateRangeFilter } from '@/components/common/DateRangeFilter'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -54,6 +56,8 @@ export function MatchListPage() {
   const [filterPlayer, setFilterPlayer] = useState<string>('')
   const [filterLevel, setFilterLevel] = useState<string>('')
   const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false)
+  const [filterDateFrom, setFilterDateFrom] = useState<string>('')
+  const [filterDateTo, setFilterDateTo] = useState<string>('')
   const [downloadJobIds, setDownloadJobIds] = useState<Record<number, string>>({})
   const [downloadQuality, setDownloadQuality] = useState<string>('720')
   const [downloadCookieBrowser, setDownloadCookieBrowser] = useState<string>('')
@@ -183,8 +187,24 @@ export function MatchListPage() {
     setForm((f) => ({ ...f, video_local_path: fileUrl, video_url: '' }))
   }
 
-  const matches = matchesData?.data ?? []
+  const allMatches = matchesData?.data ?? []
   const players = playersData?.data ?? []
+
+  // 期間フィルター（クライアント側）
+  const matches = allMatches.filter((m) => {
+    if (filterDateFrom && m.date < filterDateFrom) return false
+    if (filterDateTo && m.date > filterDateTo) return false
+    return true
+  })
+
+  // 選手セレクター用オプション
+  const playerOptions: SearchableOption[] = players.map((p) => ({
+    value: String(p.id),
+    label: p.name,
+    searchText: p.team ?? '',
+    prefix: p.is_target ? '★' : undefined,
+    suffix: p.team ? `（${p.team}）` : undefined,
+  }))
 
   const statusColor = (status: string) => {
     switch (status) {
@@ -218,66 +238,72 @@ export function MatchListPage() {
       </div>
 
       {/* フィルター */}
-      <div className="flex items-center gap-4 px-6 py-3 bg-gray-800 border-b border-gray-700 text-sm">
-        <Filter size={14} className="text-gray-400" />
-        <select
-          value={filterPlayer}
-          onChange={(e) => setFilterPlayer(e.target.value)}
-          className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
-        >
-          <option value="">全選手</option>
-          {players.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        <select
-          value={filterLevel}
-          onChange={(e) => setFilterLevel(e.target.value)}
-          className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
-        >
-          <option value="">全大会レベル</option>
-          {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
-            <option key={l} value={l}>{l}</option>
-          ))}
-        </select>
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={filterIncompleteOnly}
-            onChange={(e) => setFilterIncompleteOnly(e.target.checked)}
+      <div className="flex flex-col gap-2 px-6 py-3 bg-gray-800 border-b border-gray-700 text-sm">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Filter size={14} className="text-gray-400 shrink-0" />
+          <SearchableSelect
+            options={playerOptions}
+            value={filterPlayer || null}
+            onChange={(v) => setFilterPlayer(v != null ? String(v) : '')}
+            emptyLabel="全選手"
+            placeholder="選手名で検索..."
+            className="min-w-[200px]"
           />
-          <span className="text-gray-300">未完了のみ</span>
-        </label>
-        <div className="ml-auto flex items-center gap-2 text-sm text-gray-400">
-          <Download size={13} />
-          <span>画質:</span>
           <select
-            value={downloadQuality}
-            onChange={(e) => setDownloadQuality(e.target.value)}
-            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+            value={filterLevel}
+            onChange={(e) => setFilterLevel(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm"
           >
-            <option value="360">360p</option>
-            <option value="480">480p</option>
-            <option value="720">720p (推奨)</option>
-            <option value="1080">1080p</option>
-            <option value="best">最高画質</option>
+            <option value="">全大会レベル</option>
+            {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
           </select>
-          <select
-            value={downloadCookieBrowser}
-            onChange={(e) => setDownloadCookieBrowser(e.target.value)}
-            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
-            title="ログイン必須サイトのCookieを取得するブラウザ"
-          >
-            <option value="">Cookie: なし</option>
-            <option value="chrome">Chrome</option>
-            <option value="edge">Edge</option>
-            <option value="firefox">Firefox</option>
-            <option value="brave">Brave</option>
-            <option value="opera">Opera</option>
-            <option value="vivaldi">Vivaldi</option>
-            <option value="chromium">Chromium</option>
-          </select>
+          <label className="flex items-center gap-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filterIncompleteOnly}
+              onChange={(e) => setFilterIncompleteOnly(e.target.checked)}
+            />
+            <span className="text-gray-300">未完了のみ</span>
+          </label>
+          <div className="ml-auto flex items-center gap-2 text-sm text-gray-400">
+            <Download size={13} />
+            <span>画質:</span>
+            <select
+              value={downloadQuality}
+              onChange={(e) => setDownloadQuality(e.target.value)}
+              className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+            >
+              <option value="360">360p</option>
+              <option value="480">480p</option>
+              <option value="720">720p (推奨)</option>
+              <option value="1080">1080p</option>
+              <option value="best">最高画質</option>
+            </select>
+            <select
+              value={downloadCookieBrowser}
+              onChange={(e) => setDownloadCookieBrowser(e.target.value)}
+              className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+              title="ログイン必須サイトのCookieを取得するブラウザ"
+            >
+              <option value="">Cookie: なし</option>
+              <option value="chrome">Chrome</option>
+              <option value="edge">Edge</option>
+              <option value="firefox">Firefox</option>
+              <option value="brave">Brave</option>
+              <option value="opera">Opera</option>
+              <option value="vivaldi">Vivaldi</option>
+              <option value="chromium">Chromium</option>
+            </select>
+          </div>
         </div>
+        {/* 期間フィルター */}
+        <DateRangeFilter
+          from={filterDateFrom}
+          to={filterDateTo}
+          onChange={(from, to) => { setFilterDateFrom(from); setFilterDateTo(to) }}
+        />
       </div>
 
       {/* 試合一覧テーブル */}
@@ -477,17 +503,13 @@ export function MatchListPage() {
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">対象選手（A）*</label>
-                  <select
-                    value={form.player_a_id}
-                    onChange={(e) => setForm({ ...form, player_a_id: e.target.value ? Number(e.target.value) : '' })}
-                    required
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-                  >
-                    <option value="">選択してください</option>
-                    {players.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    options={playerOptions}
+                    value={form.player_a_id || null}
+                    onChange={(v) => setForm({ ...form, player_a_id: v != null ? Number(v) : '' })}
+                    emptyLabel="選択してください"
+                    placeholder="選手名で検索..."
+                  />
                 </div>
                 <div className="relative" ref={playerBDropdownRef}>
                   <label className="block text-sm text-gray-400 mb-1">対戦相手（B）*</label>
@@ -580,29 +602,23 @@ export function MatchListPage() {
                   <>
                     <div>
                       <label className="block text-sm text-gray-400 mb-1">自チーム相方</label>
-                      <select
-                        value={form.partner_a_id}
-                        onChange={(e) => setForm({ ...form, partner_a_id: e.target.value ? Number(e.target.value) : '' })}
-                        className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-                      >
-                        <option value="">なし</option>
-                        {players.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        options={playerOptions}
+                        value={form.partner_a_id || null}
+                        onChange={(v) => setForm({ ...form, partner_a_id: v != null ? Number(v) : '' })}
+                        emptyLabel="なし"
+                        placeholder="選手名で検索..."
+                      />
                     </div>
                     <div>
                       <label className="block text-sm text-gray-400 mb-1">相手チーム相方</label>
-                      <select
-                        value={form.partner_b_id}
-                        onChange={(e) => setForm({ ...form, partner_b_id: e.target.value ? Number(e.target.value) : '' })}
-                        className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-                      >
-                        <option value="">なし</option>
-                        {players.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        options={playerOptions}
+                        value={form.partner_b_id || null}
+                        onChange={(v) => setForm({ ...form, partner_b_id: v != null ? Number(v) : '' })}
+                        emptyLabel="なし"
+                        placeholder="選手名で検索..."
+                      />
                     </div>
                   </>
                 )}

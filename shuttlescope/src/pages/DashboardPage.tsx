@@ -55,6 +55,7 @@ import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
 import { SpatialDensityMap } from '@/components/analysis/SpatialDensityMap'
 import { CourtHeatModal } from '@/components/analysis/CourtHeatModal'
 import { PreMatchObservationAnalytics } from '@/components/analysis/PreMatchObservationAnalytics'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -396,6 +397,14 @@ export function DashboardPage() {
 
   const matches: MatchSummary[] = matchesResp?.data ?? []
 
+  // 試合セレクター用オプション
+  const matchOptions = matches.map((m) => ({
+    value: m.match_id,
+    label: `${m.date} vs ${m.opponent}`,
+    suffix: m.result === 'win' ? '勝' : '負',
+    searchText: `${m.date} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
+  }))
+
   // M-001: スコア推移グラフ途中クリック → 途中解析モーダル表示
   const handleSetPointClick = useCallback((
     setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number
@@ -473,26 +482,21 @@ export function DashboardPage() {
         <div className="flex items-center gap-3">
           <User size={16} className="text-gray-400 shrink-0" />
           <label className="text-sm text-gray-400 shrink-0">選手：</label>
-          {loadingPlayers ? (
-            <span className="text-gray-500 text-sm">読み込み中...</span>
-          ) : (
-            <select
-              className="bg-gray-800 border border-gray-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[260px]"
-              value={selectedPlayerId ?? ''}
-              onChange={(e) =>
-                handlePlayerChange(e.target.value ? Number(e.target.value) : null)
-              }
-            >
-              <option value="">— 選手を選択 —</option>
-              {sortedPlayers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.is_target ? '★ ' : ''}{p.name}
-                  {p.team ? `（${p.team}）` : ''}
-                  {` [${p.match_count ?? 0}試合]`}
-                </option>
-              ))}
-            </select>
-          )}
+          <SearchableSelect
+            options={sortedPlayers.map((p) => ({
+              value: p.id,
+              label: p.name,
+              searchText: p.team ?? '',
+              prefix: p.is_target ? '★' : undefined,
+              suffix: `${p.team ? `（${p.team}）` : ''} [${p.match_count ?? 0}試合]`,
+            }))}
+            value={selectedPlayerId}
+            onChange={(v) => handlePlayerChange(v != null ? Number(v) : null)}
+            emptyLabel="— 選手を選択 —"
+            placeholder="選手名で検索..."
+            loading={loadingPlayers}
+            className="min-w-[280px]"
+          />
         </div>
       </div>
 
@@ -1011,18 +1015,14 @@ export function DashboardPage() {
               <div className="bg-gray-800 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-3">
                   <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
-                  <select
-                    className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 max-w-[220px]"
-                    value={selectedMatchId ?? ''}
-                    onChange={(e) => setSelectedMatchId(e.target.value ? Number(e.target.value) : null)}
-                  >
-                    <option value="">— 試合を選択 —</option>
-                    {matches.map((m) => (
-                      <option key={m.match_id} value={m.match_id}>
-                        {m.date} vs {m.opponent}（{m.result === 'win' ? '勝' : '負'}）
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    options={matchOptions}
+                    value={selectedMatchId}
+                    onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
+                    emptyLabel="— 試合を選択 —"
+                    placeholder="日付・対戦相手で検索..."
+                    className="max-w-[260px]"
+                  />
                 </div>
                 {selectedMatchId ? (
                   <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
@@ -1036,18 +1036,14 @@ export function DashboardPage() {
                 <div className="flex items-center justify-between mb-3">
                   <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
                   <div className="flex gap-2 items-center flex-wrap">
-                    <select
-                      className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1 max-w-[220px]"
-                      value={selectedMatchId ?? ''}
-                      onChange={(e) => setSelectedMatchId(e.target.value ? Number(e.target.value) : null)}
-                    >
-                      <option value="">— 試合を選択 —</option>
-                      {matches.map((m) => (
-                        <option key={m.match_id} value={m.match_id}>
-                          {m.date} vs {m.opponent}（{m.result === 'win' ? '勝' : '負'}）
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      options={matchOptions}
+                      value={selectedMatchId}
+                      onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
+                      emptyLabel="— 試合を選択 —"
+                      placeholder="日付・対戦相手で検索..."
+                      className="max-w-[260px]"
+                    />
                     {selectedMatchId && (
                       <>
                         <label className="text-xs text-gray-400">完了セット:</label>
@@ -1167,18 +1163,14 @@ export function DashboardPage() {
                   <div className="flex items-center justify-between mb-3">
                     <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
                     {/* 試合セレクター */}
-                    <select
-                      className="text-xs bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-1 max-w-[220px]"
-                      value={selectedMatchId ?? ''}
-                      onChange={(e) => setSelectedMatchId(e.target.value ? Number(e.target.value) : null)}
-                    >
-                      <option value="">-- 試合を選択 --</option>
-                      {matches.map((m) => (
-                        <option key={m.match_id} value={m.match_id}>
-                          [{m.result === 'win' ? '○' : '●'}] {m.date} vs {m.opponent}{m.tournament_level ? ` (${m.tournament_level})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      options={matchOptions}
+                      value={selectedMatchId}
+                      onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
+                      emptyLabel="-- 試合を選択 --"
+                      placeholder="日付・対戦相手で検索..."
+                      className="max-w-[260px]"
+                    />
                   </div>
                   {selectedMatchId ? (
                     <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
@@ -1240,27 +1232,27 @@ export function DashboardPage() {
                     {/* 試合選択 */}
                     <div className="flex flex-col gap-1 min-w-[180px] flex-1">
                       <label className="text-xs text-gray-400">試合</label>
-                      <select
-                        className="bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1.5"
-                        value={flashMatchId ?? ''}
-                        onChange={(e) => {
-                          setFlashMatchId(e.target.value ? Number(e.target.value) : null)
-                          setFlashSet(1)
-                          setFlashRallyNum('')
-                        }}
-                      >
-                        <option value="">{t('analysis.flash.no_match')}</option>
-                        {matches.map((m) => {
+                      <SearchableSelect
+                        options={matches.map((m) => {
                           const scoreStr = m.set_scores?.map(
                             (s) => `${s.score_player}-${s.score_opponent}${s.won ? '○' : '●'}`
                           ).join(' ') ?? ''
-                          return (
-                            <option key={m.match_id} value={m.match_id}>
-                              {m.date} vs {m.opponent}{scoreStr ? `  ${scoreStr}` : ''}
-                            </option>
-                          )
+                          return {
+                            value: m.match_id,
+                            label: `${m.date} vs ${m.opponent}`,
+                            suffix: scoreStr || (m.result === 'win' ? '勝' : '負'),
+                            searchText: `${m.date} ${m.opponent} ${m.tournament}`,
+                          }
                         })}
-                      </select>
+                        value={flashMatchId}
+                        onChange={(v) => {
+                          setFlashMatchId(v != null ? Number(v) : null)
+                          setFlashSet(1)
+                          setFlashRallyNum('')
+                        }}
+                        emptyLabel={t('analysis.flash.no_match')}
+                        placeholder="日付・対戦相手で検索..."
+                      />
                     </div>
 
                     {/* セット選択（選択中試合の実セット数のみ・ボタン式） */}
