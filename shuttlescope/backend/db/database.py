@@ -244,3 +244,24 @@ def _ensure_analytics_indexes(eng) -> None:
                 conn.commit()
             except Exception:
                 pass
+
+
+def run_db_migrations() -> None:
+    """Alembic migration を実行する（upgrade head）。
+
+    - インメモリ DB（テスト用）はスキップする
+    - migration ファイルは backend/db/migrations/versions/ に配置
+    - 失敗しても WARNING のみ（起動を止めない）
+    """
+    if ":memory:" in settings.DATABASE_URL:
+        return
+    try:
+        import pathlib
+        from alembic.config import Config
+        from alembic import command
+
+        alembic_ini = pathlib.Path(__file__).parent / "alembic.ini"
+        alembic_cfg = Config(str(alembic_ini))
+        command.upgrade(alembic_cfg, "head")
+    except Exception as e:
+        print(f"[migration] WARNING: Alembic migration failed: {e}")
