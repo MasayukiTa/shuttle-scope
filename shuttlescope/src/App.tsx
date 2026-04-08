@@ -11,6 +11,7 @@ import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
+import { CameraSenderPage } from '@/pages/CameraSenderPage'
 import { PredictionPage } from '@/pages/PredictionPage'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -261,6 +262,9 @@ function App() {
           <Routes>
             {/* 別モニタ動画専用（サイドバーなし） */}
             <Route path="/video-only" element={<VideoOnlyPage />} />
+            {/* LAN カメラ送信ページ（iOS/タブレット向け、サイドバーなし） */}
+            <Route path="/camera/:sessionCode" element={<CameraSenderPage />} />
+            <Route path="/camera" element={<CameraSenderPage />} />
             {/* 通常レイアウト */}
             <Route path="/*" element={<MainLayout />} />
           </Routes>

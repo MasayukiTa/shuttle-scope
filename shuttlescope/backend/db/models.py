@@ -292,6 +292,8 @@ class SharedSession(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_broadcast_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # LAN セッション認証（migration 0003）
+    password_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
     match: Mapped["Match"] = relationship("Match")
     participants: Mapped[list["SessionParticipant"]] = relationship(
@@ -313,6 +315,13 @@ class SessionParticipant(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     is_connected: Mapped[bool] = mapped_column(Boolean, default=False)
+    # LAN デバイス制御（migration 0003）
+    device_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)        # iphone/ipad/pc/usb_camera/builtin_camera
+    connection_role: Mapped[str] = mapped_column(String(30), default="viewer")           # viewer/coach/analyst/camera_candidate/active_camera
+    source_capability: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # camera/viewer/none
+    video_receive_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    authenticated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    connection_state: Mapped[str] = mapped_column(String(20), default="idle")            # idle/receiving_video/sending_video
 
     session: Mapped["SharedSession"] = relationship("SharedSession", back_populates="participants")
 

@@ -308,7 +308,41 @@ export interface SharedSession {
   created_at: string
   ws_connected: number
   coach_urls: string[]
+  camera_sender_urls: string[]
   ws_url_template: string
+  has_password: boolean
+  /** 作成時・再生成時のみ含まれる */
+  session_password?: string
+}
+
+export type DeviceType = 'iphone' | 'ipad' | 'pc' | 'usb_camera' | 'builtin_camera'
+export type ConnectionRole = 'viewer' | 'coach' | 'analyst' | 'camera_candidate' | 'active_camera'
+export type ConnectionState = 'idle' | 'receiving_video' | 'sending_video'
+export type SourceCapability = 'camera' | 'viewer' | 'none'
+
+export interface SessionParticipant {
+  id: number
+  session_id: number
+  role: string
+  device_name: string | null
+  device_type: DeviceType | null
+  connection_role: ConnectionRole
+  source_capability: SourceCapability | null
+  video_receive_enabled: boolean
+  authenticated_at: string | null
+  connection_state: ConnectionState
+  joined_at: string
+  last_seen_at: string
+  is_connected: boolean
+}
+
+/** ローカルカメラソース（PC 側 getUserMedia で列挙） */
+export interface LocalCameraSource {
+  deviceId: string
+  label: string
+  kind: 'videoinput'
+  /** USB 接続か内蔵か推定 */
+  type: 'usb' | 'builtin' | 'unknown'
 }
 
 // ─── S-003: コメント ──────────────────────────────────────────────────────────

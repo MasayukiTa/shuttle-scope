@@ -11,7 +11,7 @@ if _root not in sys.path:
 import uvicorn
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -101,6 +101,23 @@ async def ws_live(session_code: str, websocket: WebSocket):
         await ws_live_handler(session_code, websocket, db)
     finally:
         db.close()
+
+
+# ─── LAN カメラ: WebRTC シグナリング WS ──────────────────────────────────────
+
+@app.websocket("/ws/camera/{session_code}")
+async def ws_camera(
+    session_code: str,
+    websocket: WebSocket,
+    role: str = Query(default=None),
+    participant_id: str = Query(default=None),
+):
+    """WebRTC シグナリング中継エンドポイント
+    ?role=operator          → PC オペレーター
+    ?participant_id={id}    → iOS / タブレット デバイス
+    """
+    from backend.ws.camera import ws_camera_handler
+    await ws_camera_handler(session_code, websocket, role=role, participant_id=participant_id)
 
 
 # ─── S-001: コーチビュー HTML（LAN ブラウザ向けスタンドアロンページ） ──────────

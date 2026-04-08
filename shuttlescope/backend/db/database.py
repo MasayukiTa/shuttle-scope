@@ -79,6 +79,14 @@ def add_columns_if_missing(eng) -> None:
         ("rallies", "review_status",             "TEXT"),
         # 入力ソース
         ("strokes", "source_method",             "TEXT"),
+        # LAN セッション認証・デバイス制御 (migration 0003)
+        ("shared_sessions",    "password_hash",           "TEXT"),
+        ("session_participants", "device_type",           "TEXT"),
+        ("session_participants", "connection_role",       "TEXT DEFAULT 'viewer'"),
+        ("session_participants", "source_capability",     "TEXT"),
+        ("session_participants", "video_receive_enabled", "INTEGER DEFAULT 0"),
+        ("session_participants", "authenticated_at",      "TEXT"),
+        ("session_participants", "connection_state",      "TEXT DEFAULT 'idle'"),
         # 同期メタデータ（全主要テーブル）
         ("players",              "uuid",             "TEXT"),
         ("players",              "updated_at",       "TEXT"),

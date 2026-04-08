@@ -1,36 +1,82 @@
 /**
- * セッション共有モーダル — QRコード + URL表示
+ * セッション共有モーダル — QRコード + URL表示 + パスワード管理
  */
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { X, Copy, Check } from 'lucide-react'
+import { X, Copy, Check, Eye, EyeOff, RefreshCw, Camera } from 'lucide-react'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useTranslation } from 'react-i18next'
+import { apiPost } from '@/api/client'
 
 interface Props {
   sessionCode: string
   coachUrls: string[]
+  cameraSenderUrls?: string[]
+  sessionPassword?: string
   onClose: () => void
 }
 
-export function SessionShareModal({ sessionCode, coachUrls, onClose }: Props) {
+export function SessionShareModal({
+  sessionCode,
+  coachUrls,
+  cameraSenderUrls = [],
+  sessionPassword: initialPassword,
+  onClose,
+}: Props) {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const cameraCanvasRef = useRef<HTMLCanvasElement>(null)
   const [copied, setCopied] = useState(false)
+  const [passwordCopied, setPasswordCopied] = useState(false)
+  const [cameraUrlCopied, setCameraUrlCopied] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [sessionPassword, setSessionPassword] = useState(initialPassword ?? '')
+  const [regenerating, setRegenerating] = useState(false)
   const isLight = useIsLightMode()
-  const url = coachUrls[0] ?? ''
 
+  const coachUrl = coachUrls[0] ?? ''
+  const cameraUrl = cameraSenderUrls[0] ?? ''
+
+  // コーチ URL の QR
   useEffect(() => {
-    if (!canvasRef.current || !url) return
-    QRCode.toCanvas(canvasRef.current, url, {
-      width: 220,
+    if (!canvasRef.current || !coachUrl) return
+    QRCode.toCanvas(canvasRef.current, coachUrl, {
+      width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
     }).catch(() => {})
-  }, [url])
+  }, [coachUrl])
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(url).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  // カメラ送信 URL の QR
+  useEffect(() => {
+    if (!cameraCanvasRef.current || !cameraUrl) return
+    QRCode.toCanvas(cameraCanvasRef.current, cameraUrl, {
+      width: 180,
+      margin: 2,
+      color: { dark: '#0f172a', light: '#f8fafc' },
+    }).catch(() => {})
+  }, [cameraUrl])
+
+  const handleCopy = (text: string, setter: (v: boolean) => void) => {
+    navigator.clipboard.writeText(text).catch(() => {})
+    setter(true)
+    setTimeout(() => setter(false), 2000)
+  }
+
+  const handleRegeneratePassword = async () => {
+    setRegenerating(true)
+    try {
+      const res = await apiPost<{ success: boolean; data: { session_password: string } }>(
+        `/sessions/${sessionCode}/regenerate-password`, {}
+      )
+      if (res.success) {
+        setSessionPassword(res.data.session_password)
+      }
+    } catch {
+      // 再生成失敗は無視
+    } finally {
+      setRegenerating(false)
+    }
   }
 
   const panelBg = isLight ? 'bg-white border border-gray-200 shadow-xl' : 'bg-gray-800 border border-gray-700 shadow-2xl'
@@ -40,11 +86,13 @@ export function SessionShareModal({ sessionCode, coachUrls, onClose }: Props) {
   const urlBg = isLight ? 'bg-gray-100' : 'bg-gray-900/60'
   const urlColor = isLight ? 'text-gray-600' : 'text-gray-400'
   const noteColor = isLight ? 'text-gray-400' : 'text-gray-600'
+  const dividerColor = isLight ? 'border-gray-200' : 'border-gray-700'
+  const sectionTitle = isLight ? 'text-gray-700 font-medium' : 'text-gray-300 font-medium'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className={`rounded-xl w-72 p-5 ${panelBg}`}
+        className={`rounded-xl w-80 p-5 max-h-[90vh] overflow-y-auto ${panelBg}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ヘッダー */}
@@ -61,34 +109,100 @@ export function SessionShareModal({ sessionCode, coachUrls, onClose }: Props) {
           </button>
         </div>
 
-        {/* QRコード */}
-        {url ? (
-          <div className="flex justify-center mb-4 bg-slate-100 rounded-lg p-2">
+        {/* ─── コーチ URL / QR ─────────────────── */}
+        <p className={`text-xs mb-2 ${sectionTitle}`}>コーチビュー</p>
+        {coachUrl ? (
+          <div className="flex justify-center mb-3 bg-slate-100 rounded-lg p-2">
             <canvas ref={canvasRef} />
           </div>
         ) : (
-          <p className={`text-xs text-center mb-4 ${noteColor}`}>URLなし</p>
+          <p className={`text-xs text-center mb-3 ${noteColor}`}>URLなし</p>
         )}
-
-        {/* URL表示 + コピー */}
-        {url && (
-          <div className="flex items-center gap-1.5">
+        {coachUrl && (
+          <div className="flex items-center gap-1.5 mb-4">
             <p className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} ${urlColor}`}>
-              {url}
+              {coachUrl}
             </p>
             <button
-              onClick={handleCopy}
+              onClick={() => handleCopy(coachUrl, setCopied)}
               className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
             >
               {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? 'コピー済' : 'コピー'}
+              {copied ? 'コピー済' : t('lan_session.password_copy')}
             </button>
           </div>
         )}
 
-        <p className={`text-[10px] text-center mt-3 ${noteColor}`}>
-          QRコードをスマホで読み取り、コーチ/共有ビューを開く
-        </p>
+        {/* ─── パスワード ────────────────────── */}
+        <div className={`border-t pt-4 mb-4 ${dividerColor}`}>
+          <p className={`text-xs mb-2 ${sectionTitle}`}>{t('lan_session.password_label')}</p>
+          <div className="flex items-center gap-1.5">
+            <div className={`flex-1 flex items-center gap-1 rounded px-2 py-1 ${urlBg}`}>
+              <span className={`flex-1 text-xs font-mono ${urlColor}`}>
+                {sessionPassword
+                  ? showPassword ? sessionPassword : '••••••••'
+                  : <span className={noteColor}>未設定</span>
+                }
+              </span>
+              {sessionPassword && (
+                <button
+                  onClick={() => setShowPassword((v) => !v)}
+                  className={`${subColor} hover:${titleColor}`}
+                >
+                  {showPassword ? <EyeOff size={12} /> : <Eye size={12} />}
+                </button>
+              )}
+            </div>
+            {sessionPassword && (
+              <button
+                onClick={() => handleCopy(sessionPassword, setPasswordCopied)}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
+              >
+                {passwordCopied ? <Check size={12} /> : <Copy size={12} />}
+                {passwordCopied ? 'コピー済' : t('lan_session.password_copy')}
+              </button>
+            )}
+            <button
+              onClick={handleRegeneratePassword}
+              disabled={regenerating}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-amber-600 hover:bg-amber-500 text-white whitespace-nowrap disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={regenerating ? 'animate-spin' : ''} />
+              {t('lan_session.password_regenerate')}
+            </button>
+          </div>
+          <p className={`text-[10px] mt-1 ${noteColor}`}>
+            参加デバイスはセッションコードとパスワードの両方が必要です
+          </p>
+        </div>
+
+        {/* ─── カメラ送信 URL / QR ─────────────── */}
+        {cameraUrl && (
+          <div className={`border-t pt-4 ${dividerColor}`}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Camera size={12} className={subColor} />
+              <p className={`text-xs ${sectionTitle}`}>{t('lan_session.camera_sender_url_label')}</p>
+            </div>
+            <div className="flex justify-center mb-3 bg-slate-100 rounded-lg p-2">
+              <canvas ref={cameraCanvasRef} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <p className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} ${urlColor}`}>
+                {cameraUrl}
+              </p>
+              <button
+                onClick={() => handleCopy(cameraUrl, setCameraUrlCopied)}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
+              >
+                {cameraUrlCopied ? <Check size={12} /> : <Copy size={12} />}
+                {cameraUrlCopied ? 'コピー済' : t('lan_session.password_copy')}
+              </button>
+            </div>
+            <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
+              iPhoneでQRを読み取るとカメラ送信ページが開きます
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

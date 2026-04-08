@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp, Monitor } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -14,6 +14,7 @@ import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SessionShareModal } from '@/components/annotation/SessionShareModal'
+import { DeviceManagerPanel } from '@/components/session/DeviceManagerPanel'
 import { WarmupNotesPanel } from '@/components/annotation/WarmupNotesPanel'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
@@ -258,8 +259,14 @@ export function AnnotatorPage() {
   const [commentRallyId, setCommentRallyId] = useState<number | null>(null)
 
   // R-001/R-002: セッション
-  const [activeSession, setActiveSession] = useState<{ session_code: string; coach_urls: string[] } | null>(null)
+  const [activeSession, setActiveSession] = useState<{
+    session_code: string
+    coach_urls: string[]
+    camera_sender_urls?: string[]
+    session_password?: string
+  } | null>(null)
   const [showSessionModal, setShowSessionModal] = useState(false)
+  const [showDeviceManager, setShowDeviceManager] = useState(false)
 
   // モバイル: ヘッダーオーバーフローメニュー
   const [showMobileMenu, setShowMobileMenu] = useState(false)
@@ -1084,11 +1091,16 @@ export function AnnotatorPage() {
   const handleCreateOrGetSession = useCallback(async () => {
     if (!matchId) return
     try {
-      const res = await apiPost<{ success: boolean; data: { session_code: string; coach_urls: string[] } }>(
+      const res = await apiPost<{ success: boolean; data: { session_code: string; coach_urls: string[]; camera_sender_urls?: string[]; session_password?: string } }>(
         '/sessions', { match_id: Number(matchId) }
       )
       if (res.success) {
-        setActiveSession({ session_code: res.data.session_code, coach_urls: res.data.coach_urls })
+        setActiveSession({
+          session_code: res.data.session_code,
+          coach_urls: res.data.coach_urls,
+          camera_sender_urls: res.data.camera_sender_urls,
+          session_password: res.data.session_password,
+        })
       }
     } catch { /* ignore */ }
   }, [matchId])
@@ -1284,6 +1296,16 @@ export function AnnotatorPage() {
             >
               <Share2 size={12} />
               {t('sharing.share')}
+            </button>
+          )}
+          {/* デバイス管理ボタン */}
+          {activeSession && (
+            <button
+              onClick={() => setShowDeviceManager(true)}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-gray-700 text-gray-400 hover:text-white transition-colors"
+              title={t('lan_session.open_device_manager')}
+            >
+              <Monitor size={12} />
             </button>
           )}
           <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
@@ -2823,13 +2845,27 @@ export function AnnotatorPage() {
         </div>
       )}
 
-      {/* R-001/R-002: セッション共有モーダル（QRコード） */}
+      {/* R-001/R-002: セッション共有モーダル（QRコード + パスワード） */}
       {showSessionModal && activeSession && (
         <SessionShareModal
           sessionCode={activeSession.session_code}
           coachUrls={activeSession.coach_urls}
+          cameraSenderUrls={activeSession.camera_sender_urls}
+          sessionPassword={activeSession.session_password}
           onClose={() => setShowSessionModal(false)}
         />
+      )}
+
+      {/* LAN デバイス管理パネル */}
+      {showDeviceManager && activeSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowDeviceManager(false)}>
+          <div onClick={(e) => e.stopPropagation()}>
+            <DeviceManagerPanel
+              sessionCode={activeSession.session_code}
+              onClose={() => setShowDeviceManager(false)}
+            />
+          </div>
+        </div>
       )}
 
       {/* P1: セット強制終了ダイアログ */}
