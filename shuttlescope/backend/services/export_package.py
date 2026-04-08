@@ -23,6 +23,8 @@ from backend.db.models import (
 PACKAGE_VERSION = "1.0"
 SCHEMA_VERSION = 8  # 同期メタデータ導入後
 
+from sqlalchemy import text as _text
+
 
 # ─── 内部ヘルパー ──────────────────────────────────────────────────────────────
 
@@ -165,6 +167,76 @@ def export_player(db: Session, player_id: int, device_id: Optional[str] = None) 
     if not match_ids:
         raise ValueError("指定された選手の試合が見つかりません")
     return export_match(db, match_ids, device_id=device_id)
+
+
+# ─── エクスポート: Change Set ──────────────────────────────────────────────────
+
+def export_change_set(db: Session, since: str, device_id: Optional[str] = None) -> bytes:
+    """
+    since（ISO 8601）以降に updated_at が変化した全レコードをエクスポート。
+    仕様書 §6.3 Change Set Export。
+
+    Args:
+        since: "2026-04-01T00:00:00" 形式の日時文字列
+        device_id: エクスポート端末識別子
+    """
+    # updated_at で比較可能なテーブルのみ収集
+    def _changed(model_cls: type) -> list[Any]:
+        if not hasattr(model_cls, "updated_at"):
+            return []
+        try:
+            return db.query(model_cls).filter(
+                model_cls.updated_at >= since
+            ).all()
+        except Exception:
+            return []
+
+    players_list    = _changed(Player)
+    matches_list    = _changed(Match)
+    sets_list       = _changed(GameSet)
+    rallies_list    = _changed(Rally)
+    strokes_list    = _changed(Stroke)
+    obs_list        = _changed(PreMatchObservation)
+    forecast_list   = _changed(HumanForecast)
+    comment_list    = _changed(Comment)
+    bookmark_list   = _changed(EventBookmark)
+
+    payload = {
+        "players":         [_model_to_dict(p) for p in players_list],
+        "matches":         [_model_to_dict(m) for m in matches_list],
+        "sets":            [_model_to_dict(s) for s in sets_list],
+        "rallies":         [_model_to_dict(r) for r in rallies_list],
+        "strokes":         [_model_to_dict(s) for s in strokes_list],
+        "observations":    [_model_to_dict(o) for o in obs_list],
+        "human_forecasts": [_model_to_dict(f) for f in forecast_list],
+        "comments":        [_model_to_dict(c) for c in comment_list],
+        "bookmarks":       [_model_to_dict(b) for b in bookmark_list],
+    }
+
+    manifest = {
+        "package_version": PACKAGE_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        "exported_at": datetime.utcnow().isoformat(),
+        "exported_by_device": device_id or "unknown",
+        "export_mode": "change_set",
+        "change_set_since": since,
+        "record_counts": {k: len(v) for k, v in payload.items()},
+    }
+
+    buf = io.BytesIO()
+    checksums: dict[str, str] = {}
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in payload.items():
+            raw = _json_bytes(data)
+            checksums[f"{name}.json"] = _checksum(raw)
+            zf.writestr(f"{name}.json", raw)
+        manifest_raw = _json_bytes(manifest)
+        checksums["manifest.json"] = _checksum(manifest_raw)
+        zf.writestr("manifest.json", manifest_raw)
+        zf.writestr("assets_manifest.json", _json_bytes([]))
+        zf.writestr("checksums.json", _json_bytes(checksums))
+
+    return buf.getvalue()
 
 
 # ─── パッケージ検証 ────────────────────────────────────────────────────────────

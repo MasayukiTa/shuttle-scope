@@ -88,6 +88,8 @@ export function SettingsPage() {
 
   // データ管理タブ用状態
   const [exportMatchIds, setExportMatchIds] = useState<string>('')
+  const [exportSince, setExportSince] = useState<string>('')
+  const [exportMode, setExportMode] = useState<'match' | 'change_set'>('match')
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importPreview, setImportPreview] = useState<any>(null)
   const [importPreviewLoading, setImportPreviewLoading] = useState(false)
@@ -170,10 +172,43 @@ export function SettingsPage() {
   })
   const exportMatchList = (matchesForExport as any)?.data ?? []
 
+  // 競合レビュー一覧
+  const { data: conflictsData, refetch: refetchConflicts } = useQuery({
+    queryKey: ['sync-conflicts'],
+    queryFn: () => apiGet<{ success: boolean; data: Array<{ id: number; record_table: string; record_uuid: string; import_device: string; import_updated_at: string; local_updated_at: string; reason: string; created_at: string }> }>('/sync/conflicts'),
+    enabled: activeTab === 'data',
+  })
+  const conflicts = (conflictsData as any)?.data ?? []
+
+  async function resolveConflict(id: number, resolution: 'keep_local' | 'use_incoming') {
+    await fetch(`/api/sync/conflicts/${id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolution }),
+    })
+    refetchConflicts()
+    queryClient.invalidateQueries()
+  }
+
+  // クラウドフォルダ内パッケージ一覧
+  const { data: cloudPackagesData, refetch: refetchCloudPackages } = useQuery({
+    queryKey: ['sync-cloud-packages'],
+    queryFn: () => apiGet<{ success: boolean; data: Array<{ filename: string; path: string; size_bytes: number; modified_at: string }>; configured: boolean; folder: string }>('/sync/cloud/packages'),
+    enabled: activeTab === 'data',
+  })
+  const cloudPackages = (cloudPackagesData as any)?.data ?? []
+  const cloudFolderConfigured = (cloudPackagesData as any)?.configured ?? false
+
   async function handleExportMatch() {
-    if (!exportMatchIds.trim()) return
-    const url = `/api/sync/export/match?match_ids=${encodeURIComponent(exportMatchIds.trim())}`
-    window.open(url, '_blank')
+    if (exportMode === 'change_set') {
+      if (!exportSince.trim()) return
+      const url = `/api/sync/export/change_set?since=${encodeURIComponent(exportSince)}`
+      window.open(url, '_blank')
+    } else {
+      if (!exportMatchIds.trim()) return
+      const url = `/api/sync/export/match?match_ids=${encodeURIComponent(exportMatchIds.trim())}`
+      window.open(url, '_blank')
+    }
   }
 
   async function handlePreviewImport() {
@@ -811,6 +846,40 @@ export function SettingsPage() {
         {activeTab === 'data' && (
           <div className="max-w-2xl space-y-6">
 
+            {/* ── デバイス・同期設定 ────────────────────────── */}
+            <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <HardDrive size={16} className="text-gray-400" />
+                <h2 className="text-base font-semibold">同期設定</h2>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">デバイス名（エクスポートパッケージに記録）</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={appSettings.sync_device_id}
+                      onChange={(e) => updateSettings({ sync_device_id: e.target.value })}
+                      placeholder="自動生成されます"
+                      className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white font-mono"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-0.5">PC ごとに一意な識別子。パッケージのどの端末由来かを記録します。</p>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">同期フォルダパス（OneDrive / SharePoint / Google Drive 等）</label>
+                  <input
+                    type="text"
+                    value={appSettings.sync_folder_path}
+                    onChange={(e) => updateSettings({ sync_folder_path: e.target.value })}
+                    placeholder="例: C:\Users\YourName\OneDrive\ShuttleScope"
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white font-mono"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-0.5">設定するとフォルダ内の .sspkg ファイルを直接インポートできます。</p>
+                </div>
+              </div>
+            </section>
+
             {/* ── エクスポート ──────────────────────────────── */}
             <section className="bg-gray-800 rounded-lg p-5 space-y-4">
               <div className="flex items-center gap-2">
@@ -821,58 +890,91 @@ export function SettingsPage() {
                 試合データを <code className="bg-gray-700 px-1 rounded">.sspkg</code> 形式でダウンロード。別 PC へのデータ持ち運びや引き継ぎに使用します。
               </p>
 
-              {/* 試合選択 */}
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">エクスポートする試合ID（カンマ区切り）</label>
-                <div className="flex gap-2 items-start">
-                  <div className="flex-1">
-                    <input
-                      type="text"
-                      value={exportMatchIds}
-                      onChange={(e) => setExportMatchIds(e.target.value)}
-                      placeholder="例: 1, 3, 7"
-                      className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white"
-                    />
-                    {exportMatchList.length > 0 && (
-                      <div className="mt-2 max-h-40 overflow-y-auto rounded border border-gray-700 divide-y divide-gray-700">
-                        {exportMatchList.map((m: any) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => {
-                              const ids = exportMatchIds ? exportMatchIds.split(',').map(s => s.trim()).filter(Boolean) : []
-                              const sid = String(m.id)
-                              if (ids.includes(sid)) {
-                                setExportMatchIds(ids.filter(x => x !== sid).join(', '))
-                              } else {
-                                setExportMatchIds([...ids, sid].join(', '))
-                              }
-                            }}
-                            className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
-                              exportMatchIds.split(',').map(s => s.trim()).includes(String(m.id))
-                                ? 'bg-blue-900/40 text-blue-300'
-                                : 'text-gray-300 hover:bg-gray-700'
-                            }`}
-                          >
-                            <span>{m.date} {m.tournament}</span>
-                            <span className={`text-[10px] ${m.result === 'win' ? 'text-green-400' : 'text-red-400'}`}>
-                              {m.result === 'win' ? '勝' : m.result === 'loss' ? '敗' : m.result}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+              {/* エクスポートモード切替 */}
+              <div className="flex gap-1.5">
+                {([{ key: 'match', label: '試合選択' }, { key: 'change_set', label: '差分（更新日以降）' }] as const).map(({ key, label }) => (
                   <button
-                    onClick={handleExportMatch}
-                    disabled={!exportMatchIds.trim()}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
+                    key={key}
+                    onClick={() => setExportMode(key)}
+                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                      exportMode === key ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
+                    }`}
                   >
-                    <Download size={14} />
-                    ダウンロード
+                    {label}
                   </button>
-                </div>
+                ))}
               </div>
+
+              {exportMode === 'match' ? (
+                /* 試合選択 */
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">エクスポートする試合（クリックで選択）</label>
+                  <div className="flex gap-2 items-start">
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={exportMatchIds}
+                        onChange={(e) => setExportMatchIds(e.target.value)}
+                        placeholder="例: 1, 3, 7"
+                        className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white mb-1"
+                      />
+                      {exportMatchList.length > 0 && (
+                        <div className="max-h-40 overflow-y-auto rounded border border-gray-700 divide-y divide-gray-700">
+                          {exportMatchList.map((m: any) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                const ids = exportMatchIds ? exportMatchIds.split(',').map((s: string) => s.trim()).filter(Boolean) : []
+                                const sid = String(m.id)
+                                setExportMatchIds(ids.includes(sid) ? ids.filter((x: string) => x !== sid).join(', ') : [...ids, sid].join(', '))
+                              }}
+                              className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
+                                exportMatchIds.split(',').map((s: string) => s.trim()).includes(String(m.id))
+                                  ? 'bg-blue-900/40 text-blue-300' : 'text-gray-300 hover:bg-gray-700'
+                              }`}
+                            >
+                              <span>[{m.id}] {m.date} {m.tournament}</span>
+                              <span className={`text-[10px] ${m.result === 'win' ? 'text-green-400' : 'text-red-400'}`}>
+                                {m.result === 'win' ? '勝' : m.result === 'loss' ? '敗' : m.result}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleExportMatch}
+                      disabled={!exportMatchIds.trim()}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
+                    >
+                      <Download size={14} />
+                      ダウンロード
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Change Set */
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">この日時以降に更新されたデータを全てエクスポート</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="datetime-local"
+                      value={exportSince}
+                      onChange={(e) => setExportSince(e.target.value)}
+                      className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    />
+                    <button
+                      onClick={handleExportMatch}
+                      disabled={!exportSince.trim()}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
+                    >
+                      <Download size={14} />
+                      差分DL
+                    </button>
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* ── インポート ────────────────────────────────── */}
@@ -1006,6 +1108,96 @@ export function SettingsPage() {
                 </div>
               )}
             </section>
+
+            {/* ── クラウドフォルダ候補 ─────────────────────── */}
+            {cloudFolderConfigured && (
+              <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Share2 size={16} className="text-cyan-400" />
+                    <h2 className="text-base font-semibold">同期フォルダ内パッケージ</h2>
+                  </div>
+                  <button onClick={() => refetchCloudPackages()} className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-700">更新</button>
+                </div>
+                <p className="text-xs text-gray-400 font-mono truncate">{(cloudPackagesData as any)?.folder}</p>
+
+                {cloudPackages.length === 0 ? (
+                  <p className="text-sm text-gray-500">パッケージファイルがありません</p>
+                ) : (
+                  <div className="rounded border border-gray-700 divide-y divide-gray-700 max-h-60 overflow-y-auto">
+                    {cloudPackages.map((pkg: any) => (
+                      <div key={pkg.filename} className="flex items-center justify-between px-3 py-2 text-xs gap-3">
+                        <div className="min-w-0">
+                          <p className="text-gray-200 font-mono truncate">{pkg.filename}</p>
+                          <p className="text-gray-500">{(pkg.size_bytes / 1024).toFixed(0)} KB · {pkg.modified_at?.slice(0, 10)}</p>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            const resp = await fetch(`/api/sync/cloud/import_from_path?path=${encodeURIComponent(pkg.path)}&dry_run=false`, { method: 'POST' })
+                            const json = await resp.json()
+                            alert(json.success
+                              ? `完了: 追加${json.data.added} / 更新${json.data.updated} / 競合${json.data.conflicts}`
+                              : `エラー: ${json.detail}`)
+                            if (json.success) queryClient.invalidateQueries()
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-white whitespace-nowrap shrink-0"
+                        >
+                          <Upload size={11} />
+                          取込
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* ── 競合レビュー ─────────────────────────────── */}
+            {conflicts.length > 0 && (
+              <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={16} className="text-orange-400" />
+                    <h2 className="text-base font-semibold">競合レビュー</h2>
+                    <span className="text-xs bg-orange-500 text-white px-1.5 py-0.5 rounded-full">{conflicts.length}</span>
+                  </div>
+                  <button onClick={() => refetchConflicts()} className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-700">更新</button>
+                </div>
+                <p className="text-xs text-gray-400">
+                  インポート時に検出された競合レコードです。ローカルを維持するか、取込データで上書きするかを選択してください。
+                </p>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {conflicts.map((c: any) => (
+                    <div key={c.id} className="rounded border border-orange-900/60 bg-orange-900/10 p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-orange-300">{c.record_table} / <span className="font-mono">{c.record_uuid?.slice(0, 8)}…</span></p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">{c.reason}</p>
+                          <p className="text-[11px] text-gray-500">
+                            ローカル: {c.local_updated_at?.slice(0, 16)} ／ 取込: {c.import_updated_at?.slice(0, 16)}
+                            {c.import_device ? ` (${c.import_device})` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => resolveConflict(c.id, 'keep_local')}
+                          className="flex-1 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+                        >
+                          ローカルを維持
+                        </button>
+                        <button
+                          onClick={() => resolveConflict(c.id, 'use_incoming')}
+                          className="flex-1 py-1.5 text-xs bg-orange-700 hover:bg-orange-600 text-white rounded transition-colors"
+                        >
+                          取込データで上書き
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
           </div>
         )}

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Match, Player, GameSet, Rally
 from backend.utils.video_downloader import video_downloader
+from backend.utils.sync_meta import touch
 
 router = APIRouter()
 
@@ -139,6 +140,7 @@ def list_matches(
 def create_match(body: MatchCreate, db: Session = Depends(get_db)):
     """試合登録"""
     match = Match(**body.model_dump())
+    touch(match)
     db.add(match)
     db.commit()
     db.refresh(match)
@@ -171,6 +173,7 @@ def update_match(match_id: int, body: MatchUpdate, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     for key, value in body.model_dump(exclude_none=True).items():
         setattr(match, key, value)
+    touch(match)
     db.commit()
     db.refresh(match)
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}

@@ -20,6 +20,7 @@ from backend.services.merge_resolver import decide_merge, MergeDecision
 from backend.db.models import (
     Match, GameSet, Rally, Stroke, Player,
     PreMatchObservation, HumanForecast, Comment, EventBookmark,
+    SyncConflict,
 )
 
 # ─── インポートサマリー ────────────────────────────────────────────────────────
@@ -223,7 +224,22 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False) -> ImportSumm
                                 "uuid": uuid,
                                 "reason": decision.reason,
                             })
-                            # 競合は Phase 2 で解決、今は keep
+                            # 競合を DB に永続化
+                            try:
+                                conflict_rec = SyncConflict(
+                                    record_table=table_key,
+                                    record_uuid=uuid,
+                                    import_device=rec.get("source_device_id"),
+                                    import_updated_at=str(rec.get("updated_at") or ""),
+                                    local_updated_at=str((local_dict or {}).get("updated_at") or ""),
+                                    incoming_snapshot=json.dumps(rec, ensure_ascii=False)[:4000],
+                                    reason=decision.reason,
+                                )
+                                db.add(conflict_rec)
+                                db.commit()
+                            except Exception:
+                                db.rollback()
+                            # 競合は keep（Phase 3 の UI で解決）
                             old_id = rec.get("id")
                             if old_id and local_obj:
                                 id_remap.setdefault(table_key, {})[old_id] = local_obj.id

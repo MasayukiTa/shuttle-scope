@@ -7,6 +7,7 @@ from sqlalchemy import func
 
 from backend.db.database import get_db
 from backend.db.models import GameSet, Match, Rally
+from backend.utils.sync_meta import touch
 
 router = APIRouter()
 
@@ -59,6 +60,7 @@ def create_set(body: SetCreate, db: Session = Depends(get_db)):
         return {"success": True, "data": set_to_dict(existing)}
 
     game_set = GameSet(match_id=body.match_id, set_num=body.set_num)
+    touch(game_set)
     db.add(game_set)
     db.commit()
     db.refresh(game_set)
@@ -76,6 +78,7 @@ def end_set(set_id: int, body: SetEnd, db: Session = Depends(get_db)):
     game_set.score_a = body.score_a
     game_set.score_b = body.score_b
     game_set.is_deuce = body.score_a >= 20 and body.score_b >= 20
+    touch(game_set)
     db.commit()
     db.refresh(game_set)
     return {"success": True, "data": set_to_dict(game_set)}

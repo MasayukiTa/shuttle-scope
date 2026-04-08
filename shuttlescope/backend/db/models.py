@@ -399,3 +399,25 @@ class HumanForecast(Base):
     confidence_level: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # 'high'|'medium'|'low'
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+
+# ─── Phase S3: 同期競合ログ ──────────────────────────────────────────────────
+
+class SyncConflict(Base):
+    """インポート時に検出された競合レコードの記録。
+    Phase 2 以降の競合 UI で per-record 採用選択に使用する。
+    """
+    __tablename__ = "sync_conflicts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    record_table: Mapped[str] = mapped_column(String(50), nullable=False)
+    record_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    import_device: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    import_updated_at: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    local_updated_at: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    incoming_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reason: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    resolution: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

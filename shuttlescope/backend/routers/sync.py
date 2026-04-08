@@ -20,14 +20,28 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.services.export_package import export_match, export_player, validate_package
+from backend.services.export_package import export_match, export_player, export_change_set, validate_package
 from backend.services.import_package import import_package
 from backend.services.backup_service import create_backup, list_backups
+from backend.routers.settings import _load_all as _load_settings
+import shutil
+from pathlib import Path
+
+from backend.db.models import SyncConflict
+from pydantic import BaseModel as _BaseModel
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
 
 # ─── エクスポート ──────────────────────────────────────────────────────────────
+
+def _get_device_id(db: Session, override: Optional[str]) -> str:
+    """設定から device_id を取得。override が渡された場合はそちらを優先。"""
+    if override:
+        return override
+    settings = _load_settings(db)
+    return settings.get("sync_device_id") or "unknown"
+
 
 @router.get("/export/match")
 def export_match_endpoint(
@@ -48,7 +62,7 @@ def export_match_endpoint(
         raise HTTPException(status_code=400, detail="match_ids が空です")
 
     try:
-        pkg_bytes = export_match(db, ids, device_id=device_id)
+        pkg_bytes = export_match(db, ids, device_id=_get_device_id(db, device_id))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -71,7 +85,7 @@ def export_player_endpoint(
 ):
     """対象選手の全試合を .sspkg としてダウンロード"""
     try:
-        pkg_bytes = export_player(db, player_id, device_id=device_id)
+        pkg_bytes = export_player(db, player_id, device_id=_get_device_id(db, device_id))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -79,6 +93,27 @@ def export_player_endpoint(
 
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"shuttlescope_player{player_id}_{ts}.sspkg"
+    return Response(
+        content=pkg_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/export/change_set")
+def export_change_set_endpoint(
+    since: str = Query(..., description="ISO 8601 日時文字列 (例: 2026-04-01T00:00:00)"),
+    device_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """since 以降に更新されたレコードをまとめて .sspkg としてダウンロード"""
+    try:
+        pkg_bytes = export_change_set(db, since, device_id=_get_device_id(db, device_id))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"エクスポートエラー: {e}")
+
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    filename = f"shuttlescope_changeset_{ts}.sspkg"
     return Response(
         content=pkg_bytes,
         media_type="application/zip",
@@ -178,6 +213,96 @@ def get_backups():
     return {"success": True, "data": list_backups()}
 
 
+# ─── クラウドフォルダ連携 ──────────────────────────────────────────────────────
+
+@router.get("/cloud/packages")
+def list_cloud_packages(db: Session = Depends(get_db)):
+    """
+    設定済みの sync_folder_path から .sspkg ファイル一覧を返す。
+    OneDrive / SharePoint 等の共有フォルダに置いたパッケージの候補表示に使用。
+    """
+    settings = _load_settings(db)
+    folder = settings.get("sync_folder_path", "")
+    if not folder:
+        return {"success": True, "data": [], "folder": "", "configured": False}
+
+    folder_path = Path(folder)
+    if not folder_path.exists() or not folder_path.is_dir():
+        return {"success": True, "data": [], "folder": folder, "configured": True, "error": "フォルダが見つかりません"}
+
+    packages = []
+    for f in sorted(folder_path.glob("*.sspkg"), reverse=True):
+        stat = f.stat()
+        packages.append({
+            "filename": f.name,
+            "path": str(f),
+            "size_bytes": stat.st_size,
+            "modified_at": datetime.utcfromtimestamp(stat.st_mtime).isoformat(),
+        })
+
+    return {"success": True, "data": packages, "folder": folder, "configured": True}
+
+
+@router.post("/cloud/copy")
+async def copy_to_cloud(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    クライアントがアップロードした .sspkg を sync_folder_path へコピーする。
+    エクスポート後の自動コピーに使用。
+    """
+    settings = _load_settings(db)
+    folder = settings.get("sync_folder_path", "")
+    if not folder:
+        raise HTTPException(status_code=400, detail="sync_folder_path が設定されていません")
+
+    folder_path = Path(folder)
+    if not folder_path.exists():
+        try:
+            folder_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"フォルダ作成エラー: {e}")
+
+    dest = folder_path / file.filename
+    raw = await file.read()
+    dest.write_bytes(raw)
+
+    return {"success": True, "data": {"path": str(dest), "filename": file.filename}}
+
+
+@router.post("/cloud/import_from_path")
+def import_from_cloud_path(
+    path: str = Query(..., description="クラウドフォルダ内の .sspkg フルパス"),
+    dry_run: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    """
+    sync_folder_path 内の指定 .sspkg ファイルを直接インポート。
+    dry_run=True の場合はプレビューのみ。
+    """
+    pkg_path = Path(path)
+    if not pkg_path.exists():
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+
+    raw = pkg_path.read_bytes()
+    validation = validate_package(raw)
+    if not validation["valid"]:
+        raise HTTPException(status_code=422, detail=validation["error"])
+
+    summary = import_package(db, raw, dry_run=dry_run)
+    return {
+        "success": True,
+        "data": {
+            "dry_run": dry_run,
+            "added": summary.added,
+            "updated": summary.updated,
+            "kept": summary.kept,
+            "deleted": summary.deleted,
+            "conflicts": summary.conflicts,
+            "conflict_log": summary.conflict_log,
+            "errors": summary.errors,
+        },
+    }
+
+
 # ─── パッケージ検証のみ ────────────────────────────────────────────────────────
 
 @router.post("/validate")
@@ -186,3 +311,83 @@ async def validate_only(file: UploadFile = File(...)):
     raw = await file.read()
     result = validate_package(raw)
     return {"success": result["valid"], "data": result}
+
+
+# ─── 競合レビュー ──────────────────────────────────────────────────────────────
+
+class ConflictResolveBody(_BaseModel):
+    resolution: str  # "keep_local" | "use_incoming"
+
+
+@router.get("/conflicts")
+def list_conflicts(db: Session = Depends(get_db)):
+    """未解決の競合レコード一覧を返す"""
+    conflicts = (
+        db.query(SyncConflict)
+        .filter(SyncConflict.resolution.is_(None))
+        .order_by(SyncConflict.created_at.desc())
+        .all()
+    )
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": c.id,
+                "record_table": c.record_table,
+                "record_uuid": c.record_uuid,
+                "import_device": c.import_device,
+                "import_updated_at": c.import_updated_at,
+                "local_updated_at": c.local_updated_at,
+                "reason": c.reason,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+            }
+            for c in conflicts
+        ],
+    }
+
+
+@router.post("/conflicts/{conflict_id}/resolve")
+def resolve_conflict(
+    conflict_id: int,
+    body: ConflictResolveBody,
+    db: Session = Depends(get_db),
+):
+    """
+    競合を解決する。
+
+    resolution:
+      - keep_local: ローカルレコードをそのまま維持
+      - use_incoming: incoming スナップショットでローカルを上書き
+    """
+    conflict = db.get(SyncConflict, conflict_id)
+    if not conflict:
+        raise HTTPException(status_code=404, detail="競合が見つかりません")
+
+    if body.resolution not in ("keep_local", "use_incoming"):
+        raise HTTPException(status_code=400, detail="resolution は keep_local または use_incoming を指定してください")
+
+    if body.resolution == "use_incoming" and conflict.incoming_snapshot:
+        # incoming のスナップショットを対象テーブルに適用
+        import json as _json
+        from backend.services.import_package import _TABLE_MAP, _find_by_uuid, _get_columns, _remap_fks
+        table_map = {k: v for k, v in _TABLE_MAP}
+        model_cls = table_map.get(conflict.record_table)
+        if model_cls:
+            try:
+                incoming = _json.loads(conflict.incoming_snapshot)
+                local_obj = _find_by_uuid(db, model_cls, conflict.record_uuid)
+                if local_obj:
+                    valid_cols = _get_columns(model_cls)
+                    data = {k: v for k, v in incoming.items() if k in valid_cols and k != "id"}
+                    for k, v in data.items():
+                        setattr(local_obj, k, v)
+                    db.commit()
+            except Exception as e:
+                db.rollback()
+                raise HTTPException(status_code=500, detail=f"適用エラー: {e}")
+
+    conflict.resolution = body.resolution
+    conflict.resolved_at = datetime.utcnow()
+    db.commit()
+
+    return {"success": True, "data": {"id": conflict_id, "resolution": body.resolution}}

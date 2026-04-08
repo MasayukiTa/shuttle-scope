@@ -3,6 +3,8 @@
 TrackNet設定など再起動後も保持すべき設定に使用。
 """
 import json
+import socket
+import uuid as _uuid_mod
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -25,6 +27,13 @@ def create_settings_table():
 
 create_settings_table()
 
+def _default_device_id() -> str:
+    """ホスト名 + UUID ショートを組み合わせたデバイス識別子"""
+    hostname = socket.gethostname()
+    short_uuid = str(_uuid_mod.uuid4())[:8]
+    return f"{hostname}-{short_uuid}"
+
+
 # デフォルト設定
 DEFAULT_SETTINGS: dict = {
     "tracknet_enabled": False,
@@ -32,6 +41,9 @@ DEFAULT_SETTINGS: dict = {
     "tracknet_mode": "batch",          # batch | assist
     "tracknet_max_cpu_pct": 50,
     "video_source_mode": "local",      # local | webview | none
+    # データ同期設定
+    "sync_device_id": "",              # 空のときは初回起動時に自動生成
+    "sync_folder_path": "",            # クラウドフォルダパス（OneDrive 等）
 }
 
 
@@ -53,7 +65,17 @@ def _load_all(db: Session) -> dict:
 @router.get("/settings")
 def get_settings(db: Session = Depends(get_db)):
     """全設定を返す（未設定キーはデフォルト値）"""
-    return {"success": True, "data": _load_all(db)}
+    data = _load_all(db)
+    # sync_device_id が未設定なら自動生成して永続化
+    if not data.get("sync_device_id"):
+        new_id = _default_device_id()
+        db.execute(
+            text("INSERT OR REPLACE INTO app_settings(key, value) VALUES(:k, :v)"),
+            {"k": "sync_device_id", "v": json.dumps(new_id)},
+        )
+        db.commit()
+        data["sync_device_id"] = new_id
+    return {"success": True, "data": data}
 
 
 @router.put("/settings")

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Stroke, Rally, GameSet, Match
 from backend.utils.validators import validate_stroke, validate_rally
+from backend.utils.sync_meta import touch
 from backend.analysis.shot_taxonomy import canonicalize as canonicalize_shot
 
 router = APIRouter()
@@ -216,6 +217,7 @@ def create_stroke(rally_id: int, body: StrokeData, db: Session = Depends(get_db)
         )
 
     stroke = Stroke(rally_id=rally_id, **body.model_dump())
+    touch(stroke)
     db.add(stroke)
     db.commit()
     db.refresh(stroke)
@@ -230,6 +232,7 @@ def update_stroke(stroke_id: int, body: StrokeData, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
     for key, value in body.model_dump().items():
         setattr(stroke, key, value)
+    touch(stroke)
     db.commit()
     db.refresh(stroke)
     return {"success": True, "data": stroke_to_dict(stroke)}

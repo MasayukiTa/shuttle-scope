@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Player, Match
+from backend.utils.sync_meta import touch
 
 router = APIRouter()
 
@@ -200,6 +201,7 @@ def create_player(body: PlayerCreate, db: Session = Depends(get_db)):
         aliases=aliases_json,
         name_normalized=name_normalized,
     )
+    touch(player)
     db.add(player)
     db.commit()
     db.refresh(player)
@@ -230,6 +232,7 @@ def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_
         data["name_normalized"] = normalize_name(data["name"])
     for key, value in data.items():
         setattr(player, key, value)
+    touch(player)
     db.commit()
     db.refresh(player)
     return {"success": True, "data": player_to_dict(player)}

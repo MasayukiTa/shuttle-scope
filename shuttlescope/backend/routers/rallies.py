@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Rally, GameSet, Match, Stroke
+from backend.utils.sync_meta import touch
 
 router = APIRouter()
 
@@ -62,6 +63,7 @@ def create_rally(body: RallyCreate, db: Session = Depends(get_db)):
     if not game_set:
         raise HTTPException(status_code=404, detail="セットが見つかりません")
     rally = Rally(**body.model_dump())
+    touch(rally)
     db.add(rally)
     db.commit()
     db.refresh(rally)
@@ -76,6 +78,7 @@ def update_rally(rally_id: int, body: RallyUpdate, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
     for key, value in body.model_dump(exclude_none=True).items():
         setattr(rally, key, value)
+    touch(rally)
     db.commit()
     db.refresh(rally)
     return {"success": True, "data": rally_to_dict(rally)}
