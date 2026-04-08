@@ -109,6 +109,79 @@ def batch_status(job_id: str):
 
 
 # ────────────────────────────────────────────────────────────────────
+# /api/tracknet/live_frame_hint — ライブストリーム推論（LAN カメラ向け）
+# ────────────────────────────────────────────────────────────────────
+
+from collections import deque
+
+# セッションコードをキーにした直近フレームバッファ（3フレーム保持）
+_live_frame_buffers: dict[str, deque] = {}
+
+
+class LiveFrameHintRequest(BaseModel):
+    """ライブストリームから 1 フレームを受け取る。3 フレーム揃ったら推論。"""
+    session_code: str
+    frame_b64: str          # base64 JPEG/PNG（JS の canvas.toDataURL から）
+    frame_width: int = 512
+    frame_height: int = 288
+    confidence_threshold: float = 0.5
+
+
+@router.post("/tracknet/live_frame_hint")
+def live_frame_hint(body: LiveFrameHintRequest):
+    """ライブカメラ映像の 1 フレームを受け取り、3 フレーム蓄積後に TrackNet 推論を実行。
+    JS 側（DeviceManagerPanel / LiveInferenceOverlay）が 200ms 間隔で呼ぶ想定。
+    """
+    import base64
+    import cv2
+    import numpy as np
+
+    inf = get_inference()
+    if not inf.is_available() or not inf.load():
+        return {"success": True, "data": {"zone": None, "confidence": 0.0, "available": False}}
+
+    # フレームデコード
+    try:
+        # data URI の場合はヘッダー除去
+        b64 = body.frame_b64
+        if "," in b64:
+            b64 = b64.split(",", 1)[1]
+        img_bytes = base64.b64decode(b64)
+        arr = np.frombuffer(img_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if frame is None:
+            raise ValueError("decode failed")
+    except Exception:
+        return {"success": False, "error": "フレームデコードに失敗しました"}
+
+    # セッション別バッファに追加
+    if body.session_code not in _live_frame_buffers:
+        _live_frame_buffers[body.session_code] = deque(maxlen=3)
+    buf = _live_frame_buffers[body.session_code]
+    buf.append(frame)
+
+    # 3 フレーム未満は候補なし
+    if len(buf) < 3:
+        return {"success": True, "data": {"zone": None, "confidence": 0.0, "buffering": True}}
+
+    results = inf.predict_frames(list(buf))
+    if not results:
+        return {"success": True, "data": {"zone": None, "confidence": 0.0}}
+
+    r = results[0]
+    return {
+        "success": True,
+        "data": {
+            "zone": r["zone"] if r["confidence"] >= body.confidence_threshold else None,
+            "confidence": r["confidence"],
+            "x_norm": r["x_norm"],
+            "y_norm": r["y_norm"],
+            "available": True,
+        },
+    }
+
+
+# ────────────────────────────────────────────────────────────────────
 # /api/tracknet/frame_hint — シングルフレームヒント（P5向け実験的）
 # ────────────────────────────────────────────────────────────────────
 

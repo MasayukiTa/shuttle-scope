@@ -319,6 +319,9 @@ export type DeviceType = 'iphone' | 'ipad' | 'pc' | 'usb_camera' | 'builtin_came
 export type ConnectionRole = 'viewer' | 'coach' | 'analyst' | 'camera_candidate' | 'active_camera'
 export type ConnectionState = 'idle' | 'receiving_video' | 'sending_video'
 export type SourceCapability = 'camera' | 'viewer' | 'none'
+export type DeviceApprovalStatus = 'pending' | 'approved' | 'rejected'
+export type ViewerPermission = 'allowed' | 'blocked' | 'default'
+export type DeviceClass = 'phone' | 'tablet' | 'pc' | 'camera'
 
 export interface SessionParticipant {
   id: number
@@ -334,6 +337,28 @@ export interface SessionParticipant {
   joined_at: string
   last_seen_at: string
   is_connected: boolean
+  /** migration 0004 */
+  device_uid: string | null
+  approval_status: DeviceApprovalStatus
+  last_heartbeat: string | null
+  viewer_permission: ViewerPermission
+  device_class: DeviceClass | null
+  display_size_class: string
+}
+
+/** ライブカメラソース（セッション内ソース管理） */
+export interface LiveSource {
+  id: number
+  session_id: number
+  participant_id: number | null
+  source_kind: 'iphone_webrtc' | 'ipad_webrtc' | 'usb_camera' | 'builtin_camera' | 'pc_local'
+  source_priority: number
+  source_resolution: string | null
+  source_fps: number | null
+  source_status: 'inactive' | 'candidate' | 'active'
+  suitability: 'high' | 'usable' | 'fallback'
+  created_at: string
+  updated_at: string
 }
 
 /** ローカルカメラソース（PC 側 getUserMedia で列挙） */
@@ -343,6 +368,16 @@ export interface LocalCameraSource {
   kind: 'videoinput'
   /** USB 接続か内蔵か推定 */
   type: 'usb' | 'builtin' | 'unknown'
+}
+
+/** ライブ推論候補 */
+export interface LiveInferenceCandidate {
+  zone: string | null
+  confidence: number
+  x_norm: number
+  y_norm: number
+  available: boolean
+  buffering?: boolean
 }
 
 // ─── S-003: コメント ──────────────────────────────────────────────────────────

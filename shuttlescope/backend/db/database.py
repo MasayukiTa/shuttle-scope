@@ -87,6 +87,13 @@ def add_columns_if_missing(eng) -> None:
         ("session_participants", "video_receive_enabled", "INTEGER DEFAULT 0"),
         ("session_participants", "authenticated_at",      "TEXT"),
         ("session_participants", "connection_state",      "TEXT DEFAULT 'idle'"),
+        # デバイスライフサイクル (migration 0004)
+        ("session_participants", "device_uid",            "TEXT"),
+        ("session_participants", "approval_status",       "TEXT DEFAULT 'pending'"),
+        ("session_participants", "last_heartbeat",        "TEXT"),
+        ("session_participants", "viewer_permission",     "TEXT DEFAULT 'default'"),
+        ("session_participants", "device_class",          "TEXT"),
+        ("session_participants", "display_size_class",    "TEXT DEFAULT 'standard'"),
         # 同期メタデータ（全主要テーブル）
         ("players",              "uuid",             "TEXT"),
         ("players",              "updated_at",       "TEXT"),

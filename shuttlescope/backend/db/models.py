@@ -322,8 +322,39 @@ class SessionParticipant(Base):
     video_receive_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     authenticated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     connection_state: Mapped[str] = mapped_column(String(20), default="idle")            # idle/receiving_video/sending_video
+    # デバイスライフサイクル（migration 0004）
+    device_uid: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)         # デバイス固有 ID（再接続認識）
+    approval_status: Mapped[str] = mapped_column(String(20), default="pending")          # pending/approved/rejected
+    last_heartbeat: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    viewer_permission: Mapped[str] = mapped_column(String(20), default="default")        # allowed/blocked/default
+    device_class: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)       # phone/tablet/pc/camera
+    display_size_class: Mapped[str] = mapped_column(String(20), default="standard")      # standard/large_tablet
 
     session: Mapped["SharedSession"] = relationship("SharedSession", back_populates="participants")
+    live_sources: Mapped[list["LiveSource"]] = relationship(
+        "LiveSource", back_populates="participant", cascade="all, delete-orphan"
+    )
+
+
+class LiveSource(Base):
+    """セッション内カメラソース（種別・優先度・解像度・稼働状態を管理）"""
+    __tablename__ = "live_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("shared_sessions.id"), nullable=False)
+    participant_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("session_participants.id"), nullable=True)
+    source_kind: Mapped[str] = mapped_column(String(20), nullable=False)    # iphone_webrtc/usb_camera/builtin_camera/pc_local
+    source_priority: Mapped[int] = mapped_column(Integer, default=4)         # 1=最優先
+    source_resolution: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # "1280x720"
+    source_fps: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source_status: Mapped[str] = mapped_column(String(20), default="inactive")  # inactive/candidate/active
+    suitability: Mapped[str] = mapped_column(String(20), default="usable")       # high/usable/fallback
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    participant: Mapped[Optional["SessionParticipant"]] = relationship(
+        "SessionParticipant", back_populates="live_sources"
+    )
 
 
 # ─── S-003: コメント・タグ ────────────────────────────────────────────────────

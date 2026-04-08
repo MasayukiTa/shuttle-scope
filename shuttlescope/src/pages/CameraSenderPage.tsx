@@ -2,21 +2,25 @@
  * カメラ送信ページ — iOS / タブレット向け
  *
  * State 遷移:
- *   join → A（待機） → B（確認） → C（送信中）
+ *   join → connecting → A（待機） → B（確認） → C（送信中） → error
  *
- * WebRTC フロー:
- *   1. POST /api/sessions/{code}/join → participant_id 取得
- *   2. /ws/camera/{code}?participant_id={id} WS 接続
- *   3. device_hello 送信 → State A
- *   4. camera_request 受信 → State B
- *   5. ユーザー承認 → getUserMedia(rear) → offer → State C
- *   6. webrtc_answer / ice_candidate 交換
+ * T16 改善:
+ *   - セッション ID + ロール表示（全状態）
+ *   - useDeviceHeartbeat フック統合
+ *   - 切断後自動再接続（5 秒後リトライ × 3 回）
+ *   - RTCPeerConnection.getStats() ネットワーク品質ヒント
+ *   - navigator.getBattery() バッテリー残量表示
+ *   - 非技術ユーザー向け丁寧な状態テキスト
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Camera, WifiOff, Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import {
+  Camera, WifiOff, Loader2, CheckCircle2, XCircle, VideoOff,
+  BatteryFull, BatteryMedium, BatteryLow, Wifi, WifiZero,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
+import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
 
@@ -26,12 +30,68 @@ interface JoinForm {
   deviceName: string
 }
 
+// バッテリー API 型（型定義がない環境向け）
+interface BatteryManager {
+  level: number
+  charging: boolean
+  addEventListener: (event: string, cb: () => void) => void
+  removeEventListener: (event: string, cb: () => void) => void
+}
+
 function getDeviceType(): string {
   const ua = navigator.userAgent
   if (/iPad/.test(ua)) return 'ipad'
   if (/iPhone/.test(ua)) return 'iphone'
   return 'pc'
 }
+
+// ─── バッテリー表示 ──────────────────────────────────────────────────────────
+
+function BatteryIndicator({ level, charging }: { level: number; charging: boolean }) {
+  const pct = Math.round(level * 100)
+  const Icon = pct > 60 ? BatteryFull : pct > 25 ? BatteryMedium : BatteryLow
+  const color = pct > 60 ? 'text-green-400' : pct > 25 ? 'text-yellow-400' : 'text-red-400'
+  return (
+    <span className={`flex items-center gap-0.5 text-[10px] ${color}`}>
+      <Icon size={12} />
+      {pct}%{charging ? ' ⚡' : ''}
+    </span>
+  )
+}
+
+// ─── ネットワーク品質表示 ────────────────────────────────────────────────────
+
+function NetworkQualityIndicator({ rttMs }: { rttMs: number | null }) {
+  const { t } = useTranslation()
+  if (rttMs === null) return null
+  const good = rttMs < 80
+  const Icon = good ? Wifi : WifiZero
+  const color = good ? 'text-green-400' : 'text-yellow-400'
+  return (
+    <span className={`flex items-center gap-0.5 text-[10px] ${color}`}>
+      <Icon size={12} />
+      {t('camera_sender.network_quality')} {rttMs}ms
+    </span>
+  )
+}
+
+// ─── セッション情報バッジ ────────────────────────────────────────────────────
+
+function SessionBadge({ sessionCode, role }: { sessionCode: string; role: string }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-center gap-2 text-[10px] text-gray-500 mb-1">
+      <span>{t('camera_sender.session_label')}: <span className="font-mono text-gray-400">{sessionCode}</span></span>
+      <span>|</span>
+      <span>{t('camera_sender.role_display')}: <span className="text-blue-400">{role}</span></span>
+    </div>
+  )
+}
+
+// ─── メインコンポーネント ────────────────────────────────────────────────────
+
+const MAX_RECONNECT = 3
+const RECONNECT_DELAY_MS = 5_000
 
 export function CameraSenderPage() {
   const { sessionCode: paramCode } = useParams<{ sessionCode: string }>()
@@ -45,62 +105,117 @@ export function CameraSenderPage() {
   })
   const [errorMsg, setErrorMsg] = useState('')
   const [participantId, setParticipantId] = useState<number | null>(null)
+  const [activeSessionCode, setActiveSessionCode] = useState<string>(paramCode ?? '')
+  const [reconnectCount, setReconnectCount] = useState(0)
+  const [battery, setBattery] = useState<{ level: number; charging: boolean } | null>(null)
+  const [rttMs, setRttMs] = useState<number | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const previewRef = useRef<HTMLVideoElement>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rttTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 再接続判定用 ref（stale closure 回避）
+  const senderStateRef = useRef<SenderState>(senderState)
+  const reconnectCountRef = useRef(0)
+  const savedCodeRef = useRef(paramCode ?? '')
+  const savedPidRef = useRef<number | null>(null)
+  const savedPasswordRef = useRef('')
+  const savedDeviceNameRef = useRef('')
 
-  // ─── セッション参加 ───────────────────────────────────────────────────────
+  useEffect(() => { senderStateRef.current = senderState }, [senderState])
 
-  const joinSession = useCallback(async (code: string, password: string, deviceName: string) => {
-    setSenderState('connecting')
-    setErrorMsg('')
-    try {
-      const res = await apiPost<{ success: boolean; data: { participant_id: number; session_code: string; role: string; connection_role: string } }>(
-        `/sessions/${code}/join`, {
-          role: 'viewer',
-          device_name: deviceName || `${getDeviceType()}-camera`,
-          device_type: getDeviceType(),
-          session_password: password || undefined,
-        }
-      )
-      if (!res.success) throw new Error('join failed')
-      const pid = res.data.participant_id
-      setParticipantId(pid)
-      connectWs(code, pid)
-    } catch (err: any) {
-      const status = err?.response?.status
-      if (status === 401) {
-        setErrorMsg(t('camera_sender.join_error_invalid'))
-      } else {
-        setErrorMsg(t('camera_sender.join_error_network'))
-      }
-      setSenderState('join')
-    }
-  }, [t])
+  // ─── ハートビート ─────────────────────────────────────────────────────────
+  useDeviceHeartbeat(
+    senderState === 'state_a' || senderState === 'state_b' || senderState === 'state_c'
+      ? activeSessionCode
+      : null,
+    participantId,
+  )
 
-  // URL からセッションコードが渡された場合は直接参加試行
+  // ─── バッテリー API ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (paramCode && senderState === 'connecting') {
-      // パスワードなしで一旦試みる（パスワードなしセッションに対応）
-      joinSession(paramCode, '', '')
+    const nav = navigator as any
+    if (!nav.getBattery) return
+    let bm: BatteryManager | null = null
+    const update = () => {
+      if (bm) setBattery({ level: bm.level, charging: bm.charging })
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    nav.getBattery().then((b: BatteryManager) => {
+      bm = b
+      update()
+      b.addEventListener('levelchange', update)
+      b.addEventListener('chargingchange', update)
+    })
+    return () => {
+      if (bm) {
+        bm.removeEventListener('levelchange', update)
+        bm.removeEventListener('chargingchange', update)
+      }
+    }
+  }, [])
+
+  // ─── RTT 計測 ─────────────────────────────────────────────────────────────
+  const startRttPolling = useCallback((pc: RTCPeerConnection) => {
+    rttTimerRef.current = setInterval(async () => {
+      try {
+        const stats = await pc.getStats()
+        stats.forEach((report) => {
+          if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime != null) {
+            setRttMs(Math.round(report.currentRoundTripTime * 1000))
+          }
+        })
+      } catch { /* ignore */ }
+    }, 3000)
+  }, [])
+
+  const stopRttPolling = useCallback(() => {
+    if (rttTimerRef.current) {
+      clearInterval(rttTimerRef.current)
+      rttTimerRef.current = null
+    }
+    setRttMs(null)
+  }, [])
+
+  // ─── 自動再接続 ───────────────────────────────────────────────────────────
+  const scheduleReconnect = useCallback((code: string, pid: number) => {
+    const count = reconnectCountRef.current + 1
+    if (count > MAX_RECONNECT) {
+      setSenderState('error')
+      setErrorMsg(t('camera_sender.reconnect_failed'))
+      return
+    }
+    reconnectCountRef.current = count
+    setReconnectCount(count)
+    setSenderState('connecting')
+    reconnectTimerRef.current = setTimeout(() => {
+      connectWs(code, pid) // eslint-disable-line
+    }, RECONNECT_DELAY_MS)
+  }, [t]) // connectWs is defined below and used via closure
 
   // ─── WebSocket 接続 ───────────────────────────────────────────────────────
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const connectWs = useCallback((code: string, pid: number) => {
+    if (wsRef.current) {
+      wsRef.current.onclose = null
+      wsRef.current.onerror = null
+      wsRef.current.close()
+      wsRef.current = null
+    }
+
     const host = window.location.hostname
     const wsUrl = `ws://${host}:8765/ws/camera/${code}?participant_id=${pid}`
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
     ws.onopen = () => {
+      reconnectCountRef.current = 0
+      setReconnectCount(0)
       ws.send(JSON.stringify({
         type: 'device_hello',
         participant_id: pid,
-        device_name: form.deviceName || `${getDeviceType()}-camera`,
+        device_name: savedDeviceNameRef.current || `${getDeviceType()}-camera`,
         device_type: getDeviceType(),
       }))
       setSenderState('state_a')
@@ -125,20 +240,60 @@ export function CameraSenderPage() {
 
     ws.onclose = () => {
       wsRef.current = null
-      if (senderState === 'state_c' || senderState === 'state_a' || senderState === 'state_b') {
-        setSenderState('error')
-        setErrorMsg(t('camera_sender.join_error_network'))
+      const st = senderStateRef.current
+      if (st === 'state_c' || st === 'state_a' || st === 'state_b') {
+        scheduleReconnect(code, pid)
       }
     }
 
     ws.onerror = () => {
-      setSenderState('error')
-      setErrorMsg(t('camera_sender.join_error_network'))
+      // onclose も発火するので状態変更はそちらに委ねる
     }
-  }, [form.deviceName, t, senderState])
+  }, [scheduleReconnect])
+
+  // ─── セッション参加 ───────────────────────────────────────────────────────
+  const joinSession = useCallback(async (code: string, password: string, deviceName: string) => {
+    setSenderState('connecting')
+    setErrorMsg('')
+    savedCodeRef.current = code
+    savedPasswordRef.current = password
+    savedDeviceNameRef.current = deviceName
+    try {
+      const res = await apiPost<{
+        success: boolean
+        data: { participant_id: number; session_code: string; role: string; connection_role: string }
+      }>(`/sessions/${code}/join`, {
+        role: 'viewer',
+        device_name: deviceName || `${getDeviceType()}-camera`,
+        device_type: getDeviceType(),
+        session_password: password || undefined,
+      })
+      if (!res.success) throw new Error('join failed')
+      const pid = res.data.participant_id
+      setParticipantId(pid)
+      savedPidRef.current = pid
+      setActiveSessionCode(code)
+      reconnectCountRef.current = 0
+      connectWs(code, pid)
+    } catch (err: any) {
+      const status = err?.response?.status
+      if (status === 401) {
+        setErrorMsg(t('camera_sender.join_error_invalid'))
+      } else {
+        setErrorMsg(t('camera_sender.join_error_network'))
+      }
+      setSenderState('join')
+    }
+  }, [t, connectWs])
+
+  // URL からセッションコードが渡された場合は直接参加試行
+  useEffect(() => {
+    if (paramCode && senderState === 'connecting') {
+      joinSession(paramCode, '', '')
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── カメラ起動 & WebRTC offer ────────────────────────────────────────────
-
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -152,6 +307,7 @@ export function CameraSenderPage() {
 
       const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
       pcRef.current = pc
+      startRttPolling(pc)
 
       stream.getTracks().forEach((track) => pc.addTrack(track, stream))
 
@@ -184,11 +340,11 @@ export function CameraSenderPage() {
     } catch {
       setErrorMsg('カメラの起動に失敗しました。カメラへのアクセスを許可してください。')
     }
-  }, [participantId])
+  }, [participantId, startRttPolling])
 
   // ─── 配信停止 ─────────────────────────────────────────────────────────────
-
   const stopCamera = useCallback(() => {
+    stopRttPolling()
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     localStreamRef.current = null
     pcRef.current?.close()
@@ -198,23 +354,38 @@ export function CameraSenderPage() {
       participant_id: participantId,
     }))
     setSenderState('state_a')
-  }, [participantId])
+  }, [participantId, stopRttPolling])
 
   // アンマウント時クリーンアップ
   useEffect(() => {
     return () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      stopRttPolling()
       localStreamRef.current?.getTracks().forEach((t) => t.stop())
       pcRef.current?.close()
+      wsRef.current?.onclose && (wsRef.current.onclose = null)
       wsRef.current?.close()
     }
-  }, [])
+  }, [stopRttPolling])
+
+  // ─── ステータスバー（全状態共通） ─────────────────────────────────────────
+  const StatusBar = () => (
+    <div className="flex items-center justify-between w-full max-w-sm mb-3 px-1">
+      {activeSessionCode && (
+        <SessionBadge sessionCode={activeSessionCode} role={getDeviceType()} />
+      )}
+      <div className="flex items-center gap-2 ml-auto">
+        {battery && <BatteryIndicator level={battery.level} charging={battery.charging} />}
+        {rttMs !== null && <NetworkQualityIndicator rttMs={rttMs} />}
+      </div>
+    </div>
+  )
 
   // ─── レンダリング ──────────────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
       {/* ロゴ */}
-      <div className="mb-6 text-center">
+      <div className="mb-4 text-center">
         <div className="inline-flex items-center gap-2 text-blue-400 mb-1">
           <Camera size={24} />
           <span className="text-lg font-bold">ShuttleScope</span>
@@ -277,19 +448,24 @@ export function CameraSenderPage() {
       {senderState === 'connecting' && paramCode && (
         <div className="text-center">
           <Loader2 size={40} className="animate-spin text-blue-400 mx-auto mb-3" />
-          <p className="text-gray-300 text-sm">{t('camera_sender.join_connecting')}</p>
+          <p className="text-gray-300 text-sm">
+            {reconnectCount > 0
+              ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
+              : t('camera_sender.join_connecting')}
+          </p>
         </div>
       )}
 
       {/* ─── State A: 待機 ──────────────── */}
       {senderState === 'state_a' && (
-        <div className="w-full max-w-sm text-center">
-          <div className="bg-gray-800 rounded-xl p-8 shadow-2xl">
+        <div className="w-full max-w-sm flex flex-col items-center">
+          <StatusBar />
+          <div className="w-full bg-gray-800 rounded-xl p-8 shadow-2xl text-center">
             <div className="w-16 h-16 rounded-full bg-blue-900/50 flex items-center justify-center mx-auto mb-4">
               <Camera size={28} className="text-blue-400" />
             </div>
             <p className="text-lg font-semibold mb-2">{t('camera_sender.state_a_title')}</p>
-            <p className="text-gray-400 text-sm">{t('camera_sender.state_a_hint')}</p>
+            <p className="text-gray-400 text-sm leading-relaxed">{t('camera_sender.state_a_hint')}</p>
             <div className="mt-4 flex items-center justify-center gap-1.5 text-green-400 text-xs">
               <CheckCircle2 size={14} />
               {t('camera_sender.status_connected')}
@@ -300,12 +476,16 @@ export function CameraSenderPage() {
 
       {/* ─── State B: 確認 ──────────────── */}
       {senderState === 'state_b' && (
-        <div className="w-full max-w-sm">
-          <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-amber-500/40">
+        <div className="w-full max-w-sm flex flex-col items-center">
+          <StatusBar />
+          <div className="w-full bg-gray-800 rounded-xl p-6 shadow-2xl border border-amber-500/40">
             <div className="w-16 h-16 rounded-full bg-amber-900/50 flex items-center justify-center mx-auto mb-4">
               <Camera size={28} className="text-amber-400" />
             </div>
-            <p className="text-center text-lg font-semibold mb-5">{t('camera_sender.state_b_title')}</p>
+            <p className="text-center text-lg font-semibold mb-2">{t('camera_sender.state_b_title')}</p>
+            <p className="text-center text-xs text-gray-400 mb-5">
+              コートを映せる場所に端末を固定してから起動してください。
+            </p>
             <div className="space-y-2">
               <button
                 onClick={startCamera}
@@ -327,9 +507,10 @@ export function CameraSenderPage() {
 
       {/* ─── State C: 送信中 ────────────── */}
       {senderState === 'state_c' && (
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-sm flex flex-col items-center">
+          <StatusBar />
           {/* カメラプレビュー */}
-          <div className="relative mb-4 rounded-xl overflow-hidden bg-black aspect-video">
+          <div className="relative w-full mb-4 rounded-xl overflow-hidden bg-black aspect-video">
             <video
               ref={previewRef}
               autoPlay
@@ -358,13 +539,34 @@ export function CameraSenderPage() {
         <div className="w-full max-w-sm text-center">
           <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-red-500/40">
             <WifiOff size={36} className="text-red-400 mx-auto mb-3" />
-            <p className="text-sm text-gray-300 mb-4">{errorMsg || t('camera_sender.join_error_network')}</p>
-            <button
-              onClick={() => setSenderState('join')}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm"
-            >
-              もう一度試す
-            </button>
+            <p className="text-sm text-gray-300 mb-1">{errorMsg || t('camera_sender.join_error_network')}</p>
+            <p className="text-xs text-gray-500 mb-4">
+              Wi-Fi に接続されているか確認してから再試行してください。
+            </p>
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={() => {
+                  reconnectCountRef.current = 0
+                  setReconnectCount(0)
+                  const code = savedCodeRef.current
+                  const pid = savedPidRef.current
+                  if (code && pid) {
+                    connectWs(code, pid)
+                  } else {
+                    setSenderState('join')
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm"
+              >
+                もう一度試す
+              </button>
+              <button
+                onClick={() => { setSenderState('join'); setErrorMsg('') }}
+                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-gray-300"
+              >
+                最初から
+              </button>
+            </div>
           </div>
         </div>
       )}

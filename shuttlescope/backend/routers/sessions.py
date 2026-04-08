@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import Match, SharedSession, SessionParticipant
+from backend.db.models import Match, SharedSession, SessionParticipant, LiveSource
 
 router = APIRouter()
 
@@ -103,6 +103,18 @@ class ParticipantJoin(BaseModel):
     device_name: Optional[str] = None
     device_type: Optional[str] = None   # iphone/ipad/pc/usb_camera/builtin_camera
     session_password: Optional[str] = None
+    device_uid: Optional[str] = None    # デバイス固有 ID（再接続認識用）
+
+
+class ViewerPermissionBody(BaseModel):
+    viewer_permission: str  # allowed / blocked / default
+
+
+class RegisterSourceBody(BaseModel):
+    source_kind: str              # iphone_webrtc/usb_camera/builtin_camera/pc_local
+    participant_id: Optional[int] = None
+    source_resolution: Optional[str] = None  # "1280x720"
+    source_fps: Optional[int] = None
 
 
 class SetRoleBody(BaseModel):
@@ -224,22 +236,63 @@ def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)
         if not _verify_password(body.session_password, session.password_hash):
             raise HTTPException(status_code=401, detail="パスワードが正しくありません")
 
-    # デバイスタイプから source_capability を推定
+    # デバイスタイプから source_capability / device_class を推定
     source_cap = "none"
+    dev_class = "pc"
     if body.device_type in ("iphone", "ipad", "usb_camera", "builtin_camera"):
         source_cap = "camera"
-    elif body.device_type == "pc":
-        source_cap = "viewer"
+    if body.device_type == "iphone":
+        dev_class = "phone"
+    elif body.device_type == "ipad":
+        dev_class = "tablet"
+    elif body.device_type in ("usb_camera", "builtin_camera"):
+        dev_class = "camera"
+
+    # device_uid で同一デバイスの再接続を認識
+    existing = None
+    if body.device_uid:
+        existing = (
+            db.query(SessionParticipant)
+            .filter(
+                SessionParticipant.session_id == session.id,
+                SessionParticipant.device_uid == body.device_uid,
+            )
+            .first()
+        )
+    if existing:
+        existing.is_connected = True
+        existing.authenticated_at = datetime.utcnow()
+        existing.last_heartbeat = datetime.utcnow()
+        if body.device_name:
+            existing.device_name = body.device_name
+        db.commit()
+        db.refresh(existing)
+        return {
+            "success": True,
+            "data": {
+                "participant_id": existing.id,
+                "session_code": code,
+                "role": existing.role,
+                "connection_role": existing.connection_role,
+                "reconnected": True,
+            },
+        }
 
     participant = SessionParticipant(
         session_id=session.id,
         role=body.role,
         device_name=body.device_name,
         device_type=body.device_type,
+        device_uid=body.device_uid,
+        device_class=dev_class,
         connection_role="viewer",
         source_capability=source_cap,
         connection_state="idle",
+        approval_status="pending",
+        viewer_permission="default",
+        display_size_class="large_tablet" if body.device_type == "ipad" else "standard",
         authenticated_at=datetime.utcnow(),
+        last_heartbeat=datetime.utcnow(),
         is_connected=True,
     )
     db.add(participant)
@@ -361,6 +414,159 @@ def deactivate_camera(
     return {"success": True, "data": _participant_to_dict(participant)}
 
 
+@router.post("/sessions/{code}/devices/{participant_id}/approve")
+def approve_device(code: str, participant_id: int, db: Session = Depends(get_db)):
+    """デバイスを承認（approval_status → approved）"""
+    participant = _get_participant(code, participant_id, db)
+    participant.approval_status = "approved"
+    db.commit()
+    return {"success": True, "data": _participant_to_dict(participant)}
+
+
+@router.post("/sessions/{code}/devices/{participant_id}/reject")
+def reject_device(code: str, participant_id: int, db: Session = Depends(get_db)):
+    """デバイスを拒否（approval_status → rejected）"""
+    participant = _get_participant(code, participant_id, db)
+    participant.approval_status = "rejected"
+    participant.is_connected = False
+    db.commit()
+    return {"success": True, "data": _participant_to_dict(participant)}
+
+
+@router.post("/sessions/{code}/devices/{participant_id}/heartbeat")
+def device_heartbeat(code: str, participant_id: int, db: Session = Depends(get_db)):
+    """デバイスのハートビートを更新（30 秒ごとに呼ぶ）"""
+    participant = _get_participant(code, participant_id, db)
+    participant.last_heartbeat = datetime.utcnow()
+    participant.is_connected = True
+    db.commit()
+    return {"success": True}
+
+
+@router.post("/sessions/{code}/devices/{participant_id}/set-viewer-permission")
+def set_viewer_permission(
+    code: str,
+    participant_id: int,
+    body: ViewerPermissionBody,
+    db: Session = Depends(get_db),
+):
+    """ビューワー映像受信許可を設定"""
+    valid = {"allowed", "blocked", "default"}
+    if body.viewer_permission not in valid:
+        raise HTTPException(status_code=400, detail=f"無効な値: {body.viewer_permission}")
+    participant = _get_participant(code, participant_id, db)
+    participant.viewer_permission = body.viewer_permission
+    # viewer_permission=blocked なら video_receive_enabled も無効化
+    if body.viewer_permission == "blocked":
+        participant.video_receive_enabled = False
+    db.commit()
+    return {"success": True, "data": _participant_to_dict(participant)}
+
+
+# ─── ライブソース管理エンドポイント ──────────────────────────────────────────
+
+@router.get("/sessions/{code}/sources")
+def list_sources(code: str, db: Session = Depends(get_db)):
+    """セッションのライブソース一覧（優先度順）"""
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    sources = (
+        db.query(LiveSource)
+        .filter(LiveSource.session_id == session.id)
+        .order_by(LiveSource.source_priority, LiveSource.id)
+        .all()
+    )
+    return {"success": True, "data": [_source_to_dict(s) for s in sources]}
+
+
+@router.post("/sessions/{code}/sources", status_code=201)
+def register_source(code: str, body: RegisterSourceBody, db: Session = Depends(get_db)):
+    """ライブソースを登録（PC がローカルカメラや iOS を登録する）"""
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    # ソース種別からデフォルト優先度と suitability を決定
+    priority_map = {
+        "usb_camera": (1, "high"),
+        "iphone_webrtc": (2, "high"),
+        "ipad_webrtc": (2, "high"),
+        "pc_webcam": (3, "usable"),
+        "builtin_camera": (4, "fallback"),
+        "pc_local": (3, "usable"),
+    }
+    priority, suitability = priority_map.get(body.source_kind, (4, "fallback"))
+
+    source = LiveSource(
+        session_id=session.id,
+        participant_id=body.participant_id,
+        source_kind=body.source_kind,
+        source_priority=priority,
+        source_resolution=body.source_resolution,
+        source_fps=body.source_fps,
+        source_status="candidate",
+        suitability=suitability,
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+    return {"success": True, "data": _source_to_dict(source)}
+
+
+@router.post("/sessions/{code}/sources/{source_id}/activate")
+def activate_source(code: str, source_id: int, db: Session = Depends(get_db)):
+    """ソースをアクティブ化（1 ソース制限 — 既存 active を inactive に降格）"""
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    # 既存 active を降格
+    db.query(LiveSource).filter(
+        LiveSource.session_id == session.id,
+        LiveSource.source_status == "active",
+    ).update({"source_status": "candidate"})
+
+    # 対象ソースを昇格
+    source = db.get(LiveSource, source_id)
+    if not source or source.session_id != session.id:
+        raise HTTPException(status_code=404, detail="ソースが見つかりません")
+    source.source_status = "active"
+    db.commit()
+    return {"success": True, "data": _source_to_dict(source)}
+
+
+@router.post("/sessions/{code}/sources/{source_id}/deactivate")
+def deactivate_source(code: str, source_id: int, db: Session = Depends(get_db)):
+    """ソースを candidate に降格"""
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    source = db.get(LiveSource, source_id)
+    if not source or source.session_id != session.id:
+        raise HTTPException(status_code=404, detail="ソースが見つかりません")
+    source.source_status = "candidate"
+    db.commit()
+    return {"success": True, "data": _source_to_dict(source)}
+
+
 @router.post("/sessions/{code}/regenerate-password")
 def regenerate_password(code: str, db: Session = Depends(get_db)):
     """セッションパスワードを再生成。新しい平文パスワードを返す。"""
@@ -407,6 +613,29 @@ def _participant_to_dict(p: SessionParticipant) -> dict:
         "joined_at": p.joined_at.isoformat(),
         "last_seen_at": p.last_seen_at.isoformat(),
         "is_connected": p.is_connected,
+        # migration 0004
+        "device_uid": p.device_uid,
+        "approval_status": p.approval_status,
+        "last_heartbeat": p.last_heartbeat.isoformat() if p.last_heartbeat else None,
+        "viewer_permission": p.viewer_permission,
+        "device_class": p.device_class,
+        "display_size_class": p.display_size_class,
+    }
+
+
+def _source_to_dict(s: LiveSource) -> dict:
+    return {
+        "id": s.id,
+        "session_id": s.session_id,
+        "participant_id": s.participant_id,
+        "source_kind": s.source_kind,
+        "source_priority": s.source_priority,
+        "source_resolution": s.source_resolution,
+        "source_fps": s.source_fps,
+        "source_status": s.source_status,
+        "suitability": s.suitability,
+        "created_at": s.created_at.isoformat(),
+        "updated_at": s.updated_at.isoformat(),
     }
 
 

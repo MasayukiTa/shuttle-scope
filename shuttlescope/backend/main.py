@@ -8,10 +8,15 @@ _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
+import asyncio
+import logging
 import uvicorn
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi import FastAPI, Query, WebSocket
+
+logger = logging.getLogger(__name__)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,11 +35,45 @@ from backend.utils.video_downloader import video_downloader
 _RENDERER_DIR = Path(__file__).resolve().parent.parent / "out" / "renderer"
 
 
+async def _stale_device_cleanup():
+    """60 秒以上ハートビートがないデバイスを is_connected=False にする（30 秒ごと）"""
+    from backend.db.database import SessionLocal
+    from backend.db.models import SessionParticipant
+    while True:
+        await asyncio.sleep(30)
+        try:
+            db = SessionLocal()
+            cutoff = datetime.utcnow() - timedelta(seconds=60)
+            stale = (
+                db.query(SessionParticipant)
+                .filter(
+                    SessionParticipant.is_connected.is_(True),
+                    SessionParticipant.last_heartbeat.isnot(None),
+                    SessionParticipant.last_heartbeat < cutoff,
+                )
+                .all()
+            )
+            for p in stale:
+                p.is_connected = False
+                logger.debug("stale device disconnected: participant_id=%d", p.id)
+            if stale:
+                db.commit()
+            db.close()
+        except Exception as exc:
+            logger.warning("stale cleanup error: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """アプリ起動時にテーブル作成"""
+    """アプリ起動時にテーブル作成 + stale cleanup タスク開始"""
     bootstrap_database(engine, app_settings.DATABASE_URL)
+    cleanup_task = asyncio.create_task(_stale_device_cleanup())
     yield
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(
@@ -111,13 +150,18 @@ async def ws_camera(
     websocket: WebSocket,
     role: str = Query(default=None),
     participant_id: str = Query(default=None),
+    viewer_id: str = Query(default=None),
 ):
     """WebRTC シグナリング中継エンドポイント
-    ?role=operator          → PC オペレーター
-    ?participant_id={id}    → iOS / タブレット デバイス
+    ?role=operator               → PC オペレーター
+    ?role=viewer&viewer_id={id}  → ビューワーデバイス（他PC / タブレット）
+    ?participant_id={id}         → iOS / タブレット 送信デバイス
     """
     from backend.ws.camera import ws_camera_handler
-    await ws_camera_handler(session_code, websocket, role=role, participant_id=participant_id)
+    await ws_camera_handler(
+        session_code, websocket,
+        role=role, participant_id=participant_id, viewer_id=viewer_id,
+    )
 
 
 # ─── S-001: コーチビュー HTML（LAN ブラウザ向けスタンドアロンページ） ──────────

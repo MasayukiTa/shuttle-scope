@@ -848,6 +848,67 @@
     "join_error_network": "接続に失敗しました",
     "auth_required": "セッションコードとパスワードが必要です",
     "session_label": "セッション",
-    "status_connected": "接続済み"
+    "status_connected": "接続済み",
+    "reconnecting": "再接続中...",
+    "reconnect_failed": "再接続に失敗しました",
+    "reconnect_attempt": "回目の再接続試行",
+    "network_quality": "ネットワーク品質",
+    "battery_level": "バッテリー残量",
+    "role_display": "ロール"
+  },
+  "live_source": {
+    "title": "ライブソース",
+    "active": "アクティブ",
+    "candidate": "候補",
+    "inactive": "待機",
+    "suitability_high": "推奨",
+    "suitability_usable": "使用可",
+    "suitability_fallback": "フォールバック",
+    "activate": "このソースを使用",
+    "deactivate": "停止",
+    "register_local": "このPCのカメラを登録",
+    "priority_label": "優先度",
+    "resolution_label": "解像度",
+    "fps_label": "fps",
+    "source_kind_iphone_webrtc": "iPhone (LAN)",
+    "source_kind_ipad_webrtc": "iPad (LAN)",
+    "source_kind_usb_camera": "USBカメラ",
+    "source_kind_builtin_camera": "内蔵カメラ",
+    "source_kind_pc_local": "PCカメラ",
+    "no_sources": "登録済みソースはありません",
+    "register_title": "ソース登録"
+  },
+  "device_approval": {
+    "pending": "承認待ち",
+    "approved": "承認済み",
+    "rejected": "拒否",
+    "approve": "承認",
+    "reject": "拒否",
+    "approve_confirm": "このデバイスの参加を承認しますか？"
+  },
+  "viewer_relay": {
+    "allow_video": "映像受信を許可",
+    "block_video": "映像受信を停止",
+    "viewer_joined": "ビューワーが参加しました",
+    "phone_blocked": "スマートフォンへの映像配信はオフです",
+    "join_as_viewer": "ビューワーとして参加",
+    "receiving_video": "映像受信中"
+  },
+  "live_inference": {
+    "title": "ライブ推論",
+    "enabled": "推論オン",
+    "disabled": "推論オフ",
+    "candidate_zone": "候補ゾーン",
+    "confidence": "信頼度",
+    "no_candidate": "候補なし",
+    "model_unavailable": "モデル未導入",
+    "fps_label": "推論fps",
+    "buffering": "フレーム蓄積中"
+  },
+  "device_health": {
+    "heartbeat_ok": "正常",
+    "heartbeat_stale": "応答なし",
+    "last_seen_label": "最終応答",
+    "stale_warning": "デバイスが応答していません"
   }
 }
