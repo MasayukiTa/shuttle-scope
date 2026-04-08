@@ -49,7 +49,7 @@ export function LiveInferenceOverlay({ videoRef, sessionCode, className = '' }: 
   const { candidate, inferring } = useLiveInference(videoRef, sessionCode, enabled)
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={className}>
       {/* ゾーンマーカーオーバーレイ */}
       {enabled && candidate && (
         <div className="absolute inset-0 pointer-events-none z-10">
@@ -57,19 +57,21 @@ export function LiveInferenceOverlay({ videoRef, sessionCode, className = '' }: 
         </div>
       )}
 
-      {/* コントロールパネル（右上隅） */}
-      <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-1.5">
+      {/* コントロールパネル（左上隅 — 右上のTrash2と被らないよう左側に配置） */}
+      <div className="absolute top-2 left-2 z-20 flex flex-col items-start gap-1.5">
         {/* 推論オン/オフトグル */}
         <button
           onClick={() => setEnabled((v) => !v)}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors border ${
             enabled
-              ? 'bg-yellow-500 text-black hover:bg-yellow-400'
-              : 'bg-gray-800/80 text-gray-400 hover:bg-gray-700/80'
+              ? 'bg-yellow-500 text-black border-yellow-400 hover:bg-yellow-400'
+              : 'bg-black/70 border-gray-500 hover:bg-gray-800/90'
           }`}
         >
           {enabled ? <Zap size={10} /> : <ZapOff size={10} />}
-          {enabled ? t('live_inference.enabled') : t('live_inference.disabled')}
+          <span style={{ color: enabled ? 'inherit' : 'white' }}>
+            {enabled ? t('live_inference.enabled') : t('live_inference.disabled')}
+          </span>
         </button>
 
         {/* 推論結果表示 */}

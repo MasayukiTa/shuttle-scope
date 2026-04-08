@@ -196,6 +196,7 @@ async def ws_camera_handler(
                 target_pid = str(msg.get("target_participant_id", ""))
                 if target_pid and msg_type in (
                     "camera_request", "webrtc_answer", "ice_candidate",
+                    "camera_deactivate",
                 ):
                     await camera_manager.relay_to_device(session_code, target_pid, msg)
 

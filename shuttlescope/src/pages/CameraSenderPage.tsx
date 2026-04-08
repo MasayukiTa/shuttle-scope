@@ -118,6 +118,7 @@ export function CameraSenderPage() {
   // 端末名インライン編集用
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
+  const [isPortrait, setIsPortrait] = useState(() => window.innerHeight > window.innerWidth)
   const [participantId, setParticipantId] = useState<number | null>(null)
   const [activeSessionCode, setActiveSessionCode] = useState<string>(paramCode ?? '')
   const [reconnectCount, setReconnectCount] = useState(0)
@@ -167,6 +168,17 @@ export function CameraSenderPage() {
         bm.removeEventListener('levelchange', update)
         bm.removeEventListener('chargingchange', update)
       }
+    }
+  }, [])
+
+  // ─── 縦横向き検知（state_c で横向き要求） ────────────────────────────────
+  useEffect(() => {
+    const update = () => setIsPortrait(window.innerHeight > window.innerWidth)
+    window.addEventListener('resize', update)
+    window.addEventListener('orientationchange', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', update)
     }
   }, [])
 
@@ -246,6 +258,14 @@ export function CameraSenderPage() {
         const msg = JSON.parse(event.data)
         if (msg.type === 'camera_request') {
           setSenderState('state_b')
+        } else if (msg.type === 'camera_deactivate') {
+          // オペレーターから待機に戻す指示
+          localStreamRef.current?.getTracks().forEach((t) => t.stop())
+          localStreamRef.current = null
+          pcRef.current?.close()
+          pcRef.current = null
+          if (previewRef.current) previewRef.current.srcObject = null
+          setSenderState('state_a')
         } else if (msg.type === 'webrtc_answer' && pcRef.current) {
           await pcRef.current.setRemoteDescription({ type: 'answer', sdp: msg.sdp })
         } else if (msg.type === 'ice_candidate' && pcRef.current) {
@@ -544,13 +564,18 @@ export function CameraSenderPage() {
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={() => { setNameInput(savedDeviceNameRef.current || getDeviceTypeLabel()); setEditingName(true) }}
-                  className="flex items-center justify-center gap-1.5 mx-auto text-xs text-gray-400 hover:text-gray-200"
-                >
-                  <Pencil size={12} />
-                  端末名: <span className="text-gray-200 font-medium">{savedDeviceNameRef.current || getDeviceTypeLabel()}</span>
-                </button>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-xs text-gray-400">
+                    端末名: <span className="text-gray-200 font-medium">{savedDeviceNameRef.current || getDeviceTypeLabel()}</span>
+                  </span>
+                  <button
+                    onClick={() => { setNameInput(savedDeviceNameRef.current || getDeviceTypeLabel()); setEditingName(true) }}
+                    className="p-1 text-gray-500 hover:text-gray-300 rounded"
+                    title="端末名を編集"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -594,9 +619,21 @@ export function CameraSenderPage() {
         </div>
       )}
 
-      {/* ─── State C: 送信中 ────────────── */}
+      {/* ─── State C: 送信中（縦向き時はCSS回転で強制横表示） ── */}
       {senderState === 'state_c' && (
-        <div className="w-full max-w-sm flex flex-col items-center">
+        <div
+          className="flex flex-col items-center"
+          style={isPortrait ? {
+            position: 'fixed',
+            width: '100vh',
+            height: '100vw',
+            top: 'calc(50vh - 50vw)',
+            left: 'calc(50vw - 50vh)',
+            transform: 'rotate(90deg)',
+            transformOrigin: 'center center',
+            overflowY: 'auto',
+          } : { width: '100%', maxWidth: '384px' }}
+        >
           <StatusBar />
           {/* カメラプレビュー */}
           <div className="relative w-full mb-4 rounded-xl overflow-hidden bg-black aspect-video">

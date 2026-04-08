@@ -28,6 +28,8 @@ import type { SessionParticipant, LocalCameraSource, DeviceType } from '@/types'
 interface Props {
   sessionCode: string
   onClose: () => void
+  onRemoteStream?: (stream: MediaStream | null) => void
+  onLocalStream?: (stream: MediaStream | null) => void
 }
 
 // ─── ヘルパーコンポーネント ───────────────────────────────────────────────────
@@ -108,6 +110,12 @@ function useWebRTCReceiver(sessionCode: string) {
   const viewerPCsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
 
   useEffect(() => { streamRef.current = stream }, [stream])
+
+  const sendMessage = useCallback((msg: object) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(msg))
+    }
+  }, [])
 
   const connect = useCallback(() => {
     if (wsRef.current) return
@@ -238,7 +246,7 @@ function useWebRTCReceiver(sessionCode: string) {
   }, [])
 
   useEffect(() => () => { disconnect() }, [disconnect])
-  return { stream, activeParticipantId, connect, requestCamera, disconnect }
+  return { stream, activeParticipantId, connect, requestCamera, disconnect, sendMessage }
 }
 
 // ─── ローカルカメラ列挙 ───────────────────────────────────────────────────────
@@ -259,7 +267,7 @@ async function enumerateLocalCameras(): Promise<LocalCameraSource[]> {
 
 // ─── メインコンポーネント ─────────────────────────────────────────────────────
 
-export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
+export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLocalStream }: Props) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const [participants, setParticipants] = useState<SessionParticipant[]>([])
@@ -272,15 +280,17 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
 
-  const { stream: remoteStream, activeParticipantId, connect, requestCamera } = useWebRTCReceiver(sessionCode)
+  const { stream: remoteStream, activeParticipantId, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
 
   useEffect(() => { connect() }, [connect])
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) remoteVideoRef.current.srcObject = remoteStream
-  }, [remoteStream])
+    onRemoteStream?.(remoteStream)
+  }, [remoteStream, onRemoteStream])
   useEffect(() => {
     if (localVideoRef.current && localStream) localVideoRef.current.srcObject = localStream
-  }, [localStream])
+    onLocalStream?.(localStream)
+  }, [localStream, onLocalStream])
 
   const fetchDevices = useCallback(async () => {
     setLoading(true)
@@ -325,7 +335,10 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
     await post(`/devices/${p.id}/activate-camera`)
     requestCamera(p.id)
   }
-  const handleDeactivate     = (p: SessionParticipant) => post(`/devices/${p.id}/deactivate-camera`)
+  const handleDeactivate = async (p: SessionParticipant) => {
+    await post(`/devices/${p.id}/deactivate-camera`)
+    sendMessage({ type: 'camera_deactivate', target_participant_id: p.id })
+  }
   const handleMakeCandidate  = (p: SessionParticipant) => post(`/devices/${p.id}/set-role`, { connection_role: 'camera_candidate' })
   const handleAllowVideo     = (p: SessionParticipant) => post(`/devices/${p.id}/set-viewer-permission`, { viewer_permission: 'allowed' })
   const handleBlockVideo     = (p: SessionParticipant) => post(`/devices/${p.id}/set-viewer-permission`, { viewer_permission: 'blocked' })
@@ -349,7 +362,10 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
   }
   const handleStopLocal = () => {
     localStream?.getTracks().forEach((t) => t.stop())
-    setLocalStream(null); setLocalActiveId(null); setLocalCameraError(null)
+    setLocalStream(null)
+    setLocalActiveId(null)
+    setLocalCameraError(null)
+    // onLocalStreamはuseEffectで自動発火（localStream→null）
   }
 
   // ─── スタイル ────────────────────────────────────────────────────────

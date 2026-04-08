@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp, Monitor } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp, Monitor, Globe } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -240,6 +240,22 @@ export function AnnotatorPage() {
   // P2: 映像ソースモード + 手動タイマー
   const [videoSourceMode, setVideoSourceMode] = useState<VideoSourceMode>('local')
   const timer = useMatchTimer()
+  // 中継ブラウザモード: DeviceManagerからのWebRTCストリームを受け取る
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
+  const remoteStreamVideoRef = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    if (remoteStreamVideoRef.current) {
+      remoteStreamVideoRef.current.srcObject = remoteStream
+    }
+  }, [remoteStream])
+  // ローカルPCカメラストリーム（DeviceManagerから）
+  const [localCamStream, setLocalCamStream] = useState<MediaStream | null>(null)
+  const localCamVideoRef = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    if (localCamVideoRef.current) {
+      localCamVideoRef.current.srcObject = localCamStream
+    }
+  }, [localCamStream])
 
   // P4: デュアルモニター
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
@@ -316,10 +332,16 @@ export function AnnotatorPage() {
   })
 
   // トンネル起動中はURLをトンネルベースに置換するため状態を取得
-  const { data: tunnelStatus } = useQuery({
+  const { data: tunnelStatus, refetch: refetchTunnel } = useQuery({
     queryKey: ['tunnel-status'],
     queryFn: () => apiGet<{ success: boolean; data: { available: boolean; running: boolean; url: string | null } }>('/tunnel/status'),
     refetchInterval: 5000,
+  })
+  const tunnelToggle = useMutation({
+    mutationFn: () => tunnelStatus?.data?.running
+      ? apiPost('/tunnel/stop', {})
+      : apiPost('/tunnel/start', {}),
+    onSuccess: () => { refetchTunnel() },
   })
   const tunnelBase = tunnelStatus?.data?.running && tunnelStatus.data.url ? tunnelStatus.data.url : null
   // LANベースURL（http://192.x.x.x:8765）をトンネルURLに置換するヘルパー
@@ -1296,14 +1318,32 @@ export function AnnotatorPage() {
           )}
           {/* R-001/R-002: セッション共有ボタン */}
           {activeSession ? (
-            <button
-              onClick={() => setShowSessionModal(true)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-900/40 text-blue-300 hover:bg-blue-800/60 transition-colors"
-              title="クリックしてQRコード・URLを表示"
-            >
-              <Share2 size={12} />
-              <span className="font-mono font-bold">{activeSession.session_code}</span>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowSessionModal(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-900/40 text-blue-300 hover:bg-blue-800/60 transition-colors"
+                title="クリックしてQRコード・URLを表示"
+              >
+                <Share2 size={12} />
+                <span className="font-mono font-bold">{activeSession.session_code}</span>
+              </button>
+              {/* トンネル起動/停止ボタン */}
+              {tunnelStatus?.data?.available !== false && (
+                <button
+                  onClick={() => tunnelToggle.mutate()}
+                  disabled={tunnelToggle.isPending}
+                  title={tunnelStatus?.data?.running ? 'トンネル停止' : 'トンネル起動（HTTPS外部公開）'}
+                  className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors disabled:opacity-50 ${
+                    tunnelStatus?.data?.running
+                      ? 'bg-green-800/60 text-green-300 hover:bg-red-900/50 hover:text-red-300'
+                      : 'bg-gray-700 text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  <Globe size={12} className={tunnelStatus?.data?.running ? 'animate-pulse' : ''} />
+                  {tunnelStatus?.data?.running ? 'ON' : ''}
+                </button>
+              )}
+            </div>
           ) : (
             <button
               onClick={handleCreateOrGetSession}
@@ -1480,6 +1520,50 @@ export function AnnotatorPage() {
             const rawSrc = match?.video_local_path || match?.video_url || ''
             const videoSrc = normalizeVideoPath(rawSrc)
             const streamingSiteName = videoSrc ? detectStreamingSite(videoSrc) : null
+
+            // 中継ブラウザモード: DeviceManagerのWebRTCストリームまたはローカルカメラを表示
+            if (videoSourceMode === 'webview') {
+              if (localCamStream) {
+                return (
+                  <div className="relative w-full rounded overflow-hidden bg-black aspect-video">
+                    <video
+                      ref={localCamVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-contain"
+                    />
+                    <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-green-700 text-white text-xs px-2 py-0.5 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                      PCカメラ使用中
+                    </div>
+                  </div>
+                )
+              }
+              if (remoteStream) {
+                return (
+                  <div className="relative w-full rounded overflow-hidden bg-black aspect-video">
+                    <video
+                      ref={remoteStreamVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-contain"
+                    />
+                    <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                      iOSカメラ受信中
+                    </div>
+                  </div>
+                )
+              }
+              return (
+                <div className="flex items-center justify-center bg-gray-800 rounded text-gray-400 text-sm border-2 border-dashed border-gray-600 py-6 px-4 text-center gap-2 flex-col">
+                  <span>カメラ映像待機中...</span>
+                  <span className="text-xs text-gray-600">デバイス管理でカメラを起動してください</span>
+                </div>
+              )
+            }
 
             if (!videoSrc) {
               return (
@@ -2879,6 +2963,14 @@ export function AnnotatorPage() {
             <DeviceManagerPanel
               sessionCode={activeSession.session_code}
               onClose={() => setShowDeviceManager(false)}
+              onRemoteStream={(stream) => {
+                setRemoteStream(stream)
+                if (stream) setVideoSourceMode('webview')
+              }}
+              onLocalStream={(stream) => {
+                setLocalCamStream(stream)
+                if (stream) setVideoSourceMode('webview')
+              }}
             />
           </div>
         </div>
