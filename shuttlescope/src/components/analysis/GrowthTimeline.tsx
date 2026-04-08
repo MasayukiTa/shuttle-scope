@@ -22,6 +22,9 @@ interface TimelinePoint {
   date: string
   value: number
   moving_avg: number | null
+  weighted_moving_avg?: number | null
+  strength_weight?: number
+  opponent_id?: number
 }
 
 interface GrowthTimelineResponse {
@@ -30,6 +33,8 @@ interface GrowthTimelineResponse {
     points: TimelinePoint[]
     trend: 'improving' | 'stable' | 'declining' | 'pending'
     trend_delta: number
+    weighted_trend?: 'improving' | 'stable' | 'declining' | 'pending'
+    weighted_trend_delta?: number
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }

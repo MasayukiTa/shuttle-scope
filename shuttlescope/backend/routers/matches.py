@@ -283,6 +283,8 @@ def get_match_rallies(match_id: int, db: Session = Depends(get_db)):
                 "winner": r.winner,
                 "end_type": r.end_type,
                 "rally_length": r.rally_length,
+                "score_a_before": r.score_a_before,
+                "score_b_before": r.score_b_before,
                 "score_a_after": r.score_a_after,
                 "score_b_after": r.score_b_after,
             })

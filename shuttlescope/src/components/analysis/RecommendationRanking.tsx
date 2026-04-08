@@ -13,17 +13,20 @@ interface RecommendationRankingProps {
 interface RankItem {
   rank: number
   category: string
+  key?: string
   title: string
   body: string
   priority_score: number
   sample_size: number
   confidence_level: string
   win_rate: number
+  baseline?: number
+  delta_from_baseline?: number
 }
 
 interface Response {
   success: boolean
-  data: { items: RankItem[] }
+  data: { items: RankItem[]; baseline?: number }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 

@@ -527,10 +527,10 @@ def main():
             _, sa, sb = create_set(mid, s_num, s_rallies)
 
         # 試合終了
-        put(f"/matches/{mid}/end", {
+        put(f"/matches/{mid}", {
             "result": m_def["result"],
-            "final_score": m_def["final_score"],
-            "annotation_status": "completed",
+            "final_score": m_def.get("final_score"),
+            "annotation_status": "complete",
             "annotation_progress": 1.0,
         })
 

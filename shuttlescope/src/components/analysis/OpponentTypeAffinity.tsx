@@ -26,11 +26,19 @@ interface SummaryEntry {
   wins: number
 }
 
+interface AxisEntry {
+  label: string
+  win_rate: number
+  match_count: number
+  wins: number
+}
+
 interface OpponentTypeAffinityResponse {
   success: boolean
   data: {
     affinity: Record<string, AffinityEntry>
     summary: SummaryEntry[]
+    axes?: Record<string, AxisEntry[]>
   }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }

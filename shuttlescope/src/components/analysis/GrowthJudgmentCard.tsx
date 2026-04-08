@@ -13,6 +13,8 @@ interface GrowthJudgmentCardProps {
 interface MetricResult {
   trend: 'improving' | 'stable' | 'declining' | 'pending'
   delta: number
+  weighted_trend?: 'improving' | 'stable' | 'declining' | 'pending'
+  weighted_delta?: number
 }
 
 interface GrowthJudgmentResponse {
@@ -25,6 +27,7 @@ interface GrowthJudgmentResponse {
     annotated_match_count?: number
     min_matches_required: number
   }
+  meta?: { sample_size: number }
 }
 
 const JUDGMENT_STYLE = {
