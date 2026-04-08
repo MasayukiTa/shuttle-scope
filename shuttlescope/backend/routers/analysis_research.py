@@ -30,6 +30,17 @@ from backend.analysis.opponent_classifier import (
     classify_all_opponents,
     aggregate_affinity_by_axis,
 )
+from backend.analysis.counterfactual_engine import (
+    collect_context_stats,
+    build_comparisons,
+    summarize_by_dimension,
+)
+from backend.analysis.epv_engine import (
+    compute_state_epv,
+    compute_state_influence,
+    classify_score_state,
+    classify_momentum,
+)
 
 router = APIRouter()
 
@@ -125,6 +136,11 @@ def get_epv(
     top_patterns = [p for p in all_patterns if p["epv"] >= 0][:10]
     bottom_patterns = sorted(all_patterns, key=lambda x: x["epv"])[:10]
 
+    # S3-B: State-based EPV を追加
+    state_epv_result = compute_state_epv(
+        rallies, strokes_by_rally, role_by_match, set_to_match,
+    )
+
     confidence = check_confidence("shot_transition", total_strokes)
 
     return {
@@ -132,6 +148,9 @@ def get_epv(
         "data": {
             "top_patterns": top_patterns,
             "bottom_patterns": bottom_patterns,
+            "state_epv": state_epv_result.get("state_epv", {}),
+            "global_epv": state_epv_result.get("global_epv", {}),
+            "state_summary": state_epv_result.get("state_summary", {}),
         },
         "meta": {"sample_size": total_strokes, "confidence": confidence},
     }
@@ -173,13 +192,30 @@ def get_shot_influence(match_id: int, db: Session = Depends(get_db)):
         strokes_by_rally[stroke.rally_id].append(stroke)
 
     # player_a 基準でショット影響度を計算
+    # S3-B: state-based influence を追加
     analyzer = ShotInfluenceAnalyzer()
     all_rally_data = []
+
+    # セット内のラリー結果を時系列で追跡（モメンタム計算用）
+    set_results: dict[int, list[bool]] = defaultdict(list)
+    sorted_rallies = sorted(rallies, key=lambda r: (r.set_id, r.rally_num))
+    rally_order = {r.id: i for i, r in enumerate(sorted_rallies)}
+    # 先にモメンタムを計算するためラリーを一巡
+    rally_momentum: dict[int, str] = {}
+    for rally in sorted_rallies:
+        won = rally.winner == "player_a"
+        rally_momentum[rally.id] = classify_momentum(set_results[rally.set_id])
+        set_results[rally.set_id].append(won)
 
     for rally in rallies:
         stks = strokes_by_rally.get(rally.id, [])
         player_a_strokes = [s for s in stks if s.player == "player_a"]
         won = rally.winner == "player_a"
+
+        score_state = classify_score_state(
+            rally.score_a_before, rally.score_b_before, True,
+        )
+        momentum = rally_momentum.get(rally.id, "neutral")
 
         stroke_dicts = [
             {
@@ -192,23 +228,49 @@ def get_shot_influence(match_id: int, db: Session = Depends(get_db)):
             for s in player_a_strokes
         ]
 
+        # 従来互換: ヒューリスティック影響度
         influences = analyzer.compute_heuristic_influence(stroke_dicts, won)
+
+        # S3-B: state-aware 影響度
+        state_influences = compute_state_influence(
+            stroke_dicts, won,
+            score_state=score_state,
+            momentum=momentum,
+        )
+
+        # 従来データに state_factors を追加
+        state_by_id = {si["stroke_id"]: si for si in state_influences}
+        for inf in influences:
+            si = state_by_id.get(inf.get("stroke_id"))
+            if si:
+                inf["influence_state"] = si["influence_score"]
+                inf["state_factors"] = si["state_factors"]
+
         all_rally_data.append({
             "rally_id": rally.id,
             "rally_num": rally.rally_num,
             "won": won,
+            "score_state": score_state,
+            "momentum": momentum,
             "strokes": influences,
         })
 
-    # ショット種別ごとの平均影響度
+    # ショット種別ごとの平均影響度（従来 + state）
     shot_scores: dict[str, list[float]] = defaultdict(list)
+    shot_state_scores: dict[str, list[float]] = defaultdict(list)
     for rally_data in all_rally_data:
         for s in rally_data["strokes"]:
             shot_scores[s["shot_type"]].append(s["influence_score"])
+            if "influence_state" in s:
+                shot_state_scores[s["shot_type"]].append(s["influence_state"])
 
     shot_type_summary = {
         st: round(sum(scores) / len(scores), 4) if scores else 0.0
         for st, scores in sorted(shot_scores.items())
+    }
+    shot_type_state_summary = {
+        st: round(sum(scores) / len(scores), 4) if scores else 0.0
+        for st, scores in sorted(shot_state_scores.items())
     }
 
     total_strokes = sum(len(rd["strokes"]) for rd in all_rally_data)
@@ -219,6 +281,7 @@ def get_shot_influence(match_id: int, db: Session = Depends(get_db)):
         "data": {
             "rallies": all_rally_data,
             "shot_type_summary": shot_type_summary,
+            "shot_type_state_summary": shot_type_state_summary,
         },
         "meta": {"sample_size": total_strokes, "confidence": confidence},
     }
@@ -528,14 +591,13 @@ def get_counterfactual_shots(
     player_id: int,
     db: Session = Depends(get_db),
 ):
-    """反事実的ショット比較 — 同じ文脈で異なる返球選択の勝率比較"""
+    """反事実的ショット比較 — 同じ文脈で異なる返球選択の勝率比較（S3-A: 多次元文脈対応）"""
     matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
     if not rallies:
-        return {"success": True, "data": {"comparisons": []},
+        return {"success": True, "data": {"comparisons": [], "extended_comparisons": [], "context_summary": {}},
                 "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
 
     rally_ids = [r.id for r in rallies]
-    rally_by_id = {r.id: r for r in rallies}
 
     strokes = (
         db.query(Stroke)
@@ -547,92 +609,47 @@ def get_counterfactual_shots(
     for s in strokes:
         strokes_by_rally[s.rally_id].append(s)
 
-    # context = 直前の相手ショット種別
-    # key=(prev_shot, response_shot) -> {"count":N,"wins":N}
-    ctx_stats: dict[tuple, dict] = defaultdict(lambda: {"count": 0, "wins": 0})
+    # S3-A: エンジンに委譲して多次元文脈 + 従来互換の両方を取得
+    extended_stats, simple_stats = collect_context_stats(
+        rallies, strokes_by_rally, role_by_match, set_to_match,
+        use_extended_context=True,
+    )
 
-    for rally in rallies:
-        mid = set_to_match.get(rally.set_id)
-        if not mid:
-            continue
-        role = role_by_match.get(mid)
-        if not role:
-            continue
-        opponent_role = "player_b" if role == "player_a" else "player_a"
-        is_win = rally.winner == role
-        rally_strokes = sorted(strokes_by_rally[rally.id], key=lambda x: x.stroke_num)
+    # 従来互換: simple context (prev_shot のみ) → comparisons
+    comparisons = build_comparisons(
+        simple_stats,
+        shot_labels=SHOT_TYPE_JA,
+        min_obs=AnalysisConfig.MIN_OBS_SPATIAL,
+        min_lift=0.05,
+        top_n=5,
+        include_context_features=False,
+    )
 
-        for i, s in enumerate(rally_strokes):
-            if s.player != role or not s.shot_type:
-                continue
-            # 直前の相手ショット
-            prev = None
-            for j in range(i - 1, -1, -1):
-                if rally_strokes[j].player == opponent_role and rally_strokes[j].shot_type:
-                    prev = rally_strokes[j].shot_type
-                    break
-            if not prev:
-                continue
-            key = (prev, s.shot_type)
-            ctx_stats[key]["count"] += 1
-            if is_win:
-                ctx_stats[key]["wins"] += 1
+    # S3-A 拡張: 多次元文脈 → extended_comparisons
+    extended_comparisons = build_comparisons(
+        extended_stats,
+        shot_labels=SHOT_TYPE_JA,
+        min_obs=AnalysisConfig.MIN_OBS_SPATIAL,
+        min_lift=0.05,
+        top_n=5,
+        include_context_features=True,
+    )
 
-    # 文脈ごとに集計: context -> {response_shot: stats}
-    context_map: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"count": 0, "wins": 0}))
-    for (prev, resp), vals in ctx_stats.items():
-        context_map[prev][resp]["count"] += vals["count"]
-        context_map[prev][resp]["wins"] += vals["wins"]
+    # 次元別サマリ
+    context_summary = summarize_by_dimension(extended_stats)
 
-    MIN_OBS = AnalysisConfig.MIN_OBS_SPATIAL
-    comparisons = []
-    for prev_shot, resp_map in context_map.items():
-        choices = []
-        for resp_shot, v in resp_map.items():
-            if v["count"] < MIN_OBS:
-                continue
-            wr = round(v["wins"] / v["count"], 3)
-            choices.append({
-                "shot_type": resp_shot,
-                "label": SHOT_TYPE_JA.get(resp_shot, resp_shot),
-                "count": v["count"],
-                "win_rate": wr,
-            })
-        if len(choices) < 2:
-            continue
-        choices.sort(key=lambda x: -x["win_rate"])
-        best_wr = choices[0]["win_rate"]
-        second_wr = choices[1]["win_rate"]
-        lift = round(best_wr - second_wr, 3)
-        if lift < 0.05:
-            continue
-        context_label_ja = {
-            "smash": "スマッシュへの返球",
-            "clear": "クリアへの返球",
-            "drop": "ドロップへの返球",
-            "net_shot": "ネットショットへの返球",
-            "drive": "ドライブへの返球",
-            "defensive": "ディフェンスへの返球",
-            "lob": "ロブへの返球",
-            "push_rush": "プッシュ/ラッシュへの返球",
-        }
-        ctx_label = context_label_ja.get(prev_shot, f"{SHOT_TYPE_JA.get(prev_shot, prev_shot)}への返球")
-        comparisons.append({
-            "context_label": ctx_label,
-            "prev_shot": prev_shot,
-            "choices": choices,
-            "recommended": choices[0]["shot_type"],
-            "lift": lift,
-            "interpretation": f"{ctx_label}では{choices[0]['label']}が{choices[1]['label']}より{round(lift*100)}%高い勝率",
-        })
-
-    comparisons.sort(key=lambda x: -x["lift"])
-    comparisons = comparisons[:5]
-
-    total = sum(v["count"] for v in ctx_stats.values())
+    total = sum(
+        v["count"]
+        for resp_map in simple_stats.values()
+        for v in resp_map.values()
+    )
     return {
         "success": True,
-        "data": {"comparisons": comparisons},
+        "data": {
+            "comparisons": comparisons,
+            "extended_comparisons": extended_comparisons,
+            "context_summary": context_summary,
+        },
         "meta": {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
     }
 
