@@ -180,3 +180,67 @@ def _backfill_sync_metadata(eng) -> None:
                 conn.commit()
             except Exception:
                 pass
+
+
+def _ensure_unique_indexes(eng) -> None:
+    """既存 SQLite DB の uuid カラムに UNIQUE INDEX を追加する（冪等）。
+    重複 uuid があるテーブルはスキップして警告を出す。
+    """
+    uuid_tables = [
+        "players", "matches", "sets", "rallies", "strokes",
+        "pre_match_observations", "human_forecasts", "comments", "event_bookmarks",
+    ]
+    with eng.connect() as conn:
+        for table in uuid_tables:
+            # 重複チェック
+            try:
+                dup = conn.execute(
+                    text(f"SELECT uuid, COUNT(*) AS c FROM {table} WHERE uuid IS NOT NULL GROUP BY uuid HAVING c > 1")
+                ).fetchall()
+                if dup:
+                    print(f"[sync] WARNING: {table}.uuid に重複あり — unique index をスキップ ({len(dup)} 件)")
+                    continue
+            except Exception:
+                continue
+            # UNIQUE INDEX 作成（既存の場合は無視）
+            idx_name = f"uix_{table}_uuid"
+            try:
+                conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} ON {table}(uuid)"))
+                conn.commit()
+            except Exception:
+                pass
+
+
+def _ensure_analytics_indexes(eng) -> None:
+    """解析・予測クエリ向け複合インデックスを追加する（冪等）。"""
+    indexes = [
+        # matches
+        ("ix_matches_player_a_id",          "matches",               "player_a_id"),
+        ("ix_matches_player_b_id",          "matches",               "player_b_id"),
+        ("ix_matches_date",                 "matches",               "date"),
+        ("ix_matches_tournament_level",     "matches",               "tournament_level"),
+        # sets
+        ("ix_sets_match_id_set_num",        "sets",                  "match_id, set_num"),
+        # rallies
+        ("ix_rallies_set_id_rally_num",     "rallies",               "set_id, rally_num"),
+        # strokes
+        ("ix_strokes_rally_id_stroke_num",  "strokes",               "rally_id, stroke_num"),
+        ("ix_strokes_player",               "strokes",               "player"),
+        ("ix_strokes_shot_type",            "strokes",               "shot_type"),
+        ("ix_strokes_hit_zone",             "strokes",               "hit_zone"),
+        ("ix_strokes_land_zone",            "strokes",               "land_zone"),
+        # pre_match_observations
+        ("ix_pmo_match_player_type",        "pre_match_observations","match_id, player_id, observation_type"),
+        # human_forecasts
+        ("ix_hf_match_player",              "human_forecasts",       "match_id, player_id"),
+        # sync_conflicts
+        ("ix_sc_record_uuid",               "sync_conflicts",        "record_uuid"),
+        ("ix_sc_resolution",                "sync_conflicts",        "resolution"),
+    ]
+    with eng.connect() as conn:
+        for idx_name, table, cols in indexes:
+            try:
+                conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({cols})"))
+                conn.commit()
+            except Exception:
+                pass

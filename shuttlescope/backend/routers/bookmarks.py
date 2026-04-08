@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import EventBookmark, Match
+from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 
 router = APIRouter()
 
@@ -41,6 +42,8 @@ def create_bookmark(body: BookmarkCreate, db: Session = Depends(get_db)):
 
     bm = EventBookmark(**body.model_dump())
     db.add(bm)
+    payload = {"match_id": body.match_id, "bookmark_type": body.bookmark_type, "rally_id": body.rally_id}
+    touch_sync_metadata(bm, payload_like=payload, device_id=get_device_id(db))
     db.commit()
     db.refresh(bm)
 
@@ -76,7 +79,7 @@ def list_bookmarks(
     db: Session = Depends(get_db),
 ):
     """ブックマーク一覧（レビューキューとして使用）"""
-    q = db.query(EventBookmark).filter(EventBookmark.match_id == match_id)
+    q = db.query(EventBookmark).filter(EventBookmark.match_id == match_id, EventBookmark.deleted_at.is_(None))
     if bookmark_type:
         q = q.filter(EventBookmark.bookmark_type == bookmark_type)
     if reviewed_only:
@@ -94,6 +97,7 @@ def mark_reviewed(bookmark_id: int, db: Session = Depends(get_db)):
     if not bm:
         raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
     bm.is_reviewed = True
+    touch_sync_metadata(bm, device_id=get_device_id(db))
     db.commit()
     return {"success": True}
 
@@ -101,9 +105,11 @@ def mark_reviewed(bookmark_id: int, db: Session = Depends(get_db)):
 @router.delete("/bookmarks/{bookmark_id}")
 def delete_bookmark(bookmark_id: int, db: Session = Depends(get_db)):
     bm = db.get(EventBookmark, bookmark_id)
-    if not bm:
+    if not bm or bm.deleted_at is not None:
         raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
-    db.delete(bm)
+    from datetime import datetime
+    bm.deleted_at = datetime.utcnow()
+    touch_sync_metadata(bm, device_id=get_device_id(db))
     db.commit()
     return {"success": True}
 

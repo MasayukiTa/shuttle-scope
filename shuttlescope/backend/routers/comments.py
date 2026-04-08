@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Comment, Match
+from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 
 router = APIRouter()
 
@@ -34,6 +35,8 @@ def create_comment(body: CommentCreate, db: Session = Depends(get_db)):
 
     comment = Comment(**body.model_dump())
     db.add(comment)
+    payload = {"match_id": body.match_id, "text": body.text, "author_role": body.author_role}
+    touch_sync_metadata(comment, payload_like=payload, device_id=get_device_id(db))
     db.commit()
     db.refresh(comment)
 
@@ -70,7 +73,7 @@ def list_comments(
     db: Session = Depends(get_db),
 ):
     """コメント一覧（match_id 必須）"""
-    q = db.query(Comment).filter(Comment.match_id == match_id)
+    q = db.query(Comment).filter(Comment.match_id == match_id, Comment.deleted_at.is_(None))
     if rally_id is not None:
         q = q.filter(Comment.rally_id == rally_id)
     if flagged_only:
@@ -86,6 +89,7 @@ def toggle_flag(comment_id: int, db: Session = Depends(get_db)):
     if not comment:
         raise HTTPException(status_code=404, detail="コメントが見つかりません")
     comment.is_flagged = not comment.is_flagged
+    touch_sync_metadata(comment, device_id=get_device_id(db))
     db.commit()
     return {"success": True, "data": _comment_to_dict(comment)}
 
@@ -93,9 +97,11 @@ def toggle_flag(comment_id: int, db: Session = Depends(get_db)):
 @router.delete("/comments/{comment_id}")
 def delete_comment(comment_id: int, db: Session = Depends(get_db)):
     comment = db.get(Comment, comment_id)
-    if not comment:
+    if not comment or comment.deleted_at is not None:
         raise HTTPException(status_code=404, detail="コメントが見つかりません")
-    db.delete(comment)
+    from datetime import datetime
+    comment.deleted_at = datetime.utcnow()
+    touch_sync_metadata(comment, device_id=get_device_id(db))
     db.commit()
     return {"success": True}
 

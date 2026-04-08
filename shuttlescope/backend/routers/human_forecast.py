@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import HumanForecast, Match, Player
+from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 from backend.analysis.prediction_engine import (
     get_matches_for_player,
     compute_win_probability,
@@ -70,6 +71,13 @@ def create_human_forecast(
         notes=body.notes,
     )
     db.add(forecast)
+    payload = {
+        "match_id": body.match_id,
+        "player_id": body.player_id,
+        "predicted_outcome": body.predicted_outcome,
+        "predicted_win_probability": body.predicted_win_probability,
+    }
+    touch_sync_metadata(forecast, payload_like=payload, device_id=get_device_id(db))
     db.commit()
     db.refresh(forecast)
 
@@ -86,7 +94,7 @@ def get_human_forecasts(
     db: Session = Depends(get_db),
 ):
     """特定試合の人間予測一覧を返す"""
-    q = db.query(HumanForecast).filter(HumanForecast.match_id == match_id)
+    q = db.query(HumanForecast).filter(HumanForecast.match_id == match_id, HumanForecast.deleted_at.is_(None))
     if player_id is not None:
         q = q.filter(HumanForecast.player_id == player_id)
     forecasts = q.order_by(HumanForecast.created_at.desc()).all()
@@ -102,11 +110,13 @@ def delete_human_forecast(
     forecast_id: int,
     db: Session = Depends(get_db),
 ):
-    """人間予測を削除する"""
+    """人間予測を論理削除する（tombstone）"""
     f = db.get(HumanForecast, forecast_id)
-    if not f:
+    if not f or f.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Forecast not found")
-    db.delete(f)
+    from datetime import datetime
+    f.deleted_at = datetime.utcnow()
+    touch_sync_metadata(f, device_id=get_device_id(db))
     db.commit()
     return {"success": True}
 
@@ -124,7 +134,7 @@ def get_prediction_benchmark(
     # このプレイヤーについての全人間予測を取得
     forecasts = (
         db.query(HumanForecast)
-        .filter(HumanForecast.player_id == player_id)
+        .filter(HumanForecast.player_id == player_id, HumanForecast.deleted_at.is_(None))
         .all()
     )
     if not forecasts:

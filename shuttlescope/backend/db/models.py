@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import uuid4
 from sqlalchemy import (
     Integer, String, Float, Boolean, DateTime, Date,
-    ForeignKey, Text, UniqueConstraint
+    ForeignKey, Text, UniqueConstraint, Index
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -29,7 +29,7 @@ class Player(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 同期メタデータ
-    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
@@ -66,10 +66,16 @@ class Player(Base):
 
 class Match(Base):
     __tablename__ = "matches"
+    __table_args__ = (
+        Index("ix_matches_player_a_id",      "player_a_id"),
+        Index("ix_matches_player_b_id",      "player_b_id"),
+        Index("ix_matches_date",             "date"),
+        Index("ix_matches_tournament_level", "tournament_level"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 同期メタデータ
-    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
     source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -113,10 +119,13 @@ class Match(Base):
 
 class GameSet(Base):
     __tablename__ = "sets"
+    __table_args__ = (
+        Index("ix_sets_match_id_set_num", "match_id", "set_num"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 同期メタデータ
-    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -138,10 +147,13 @@ class GameSet(Base):
 
 class Rally(Base):
     __tablename__ = "rallies"
+    __table_args__ = (
+        Index("ix_rallies_set_id_rally_num", "set_id", "rally_num"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 同期メタデータ
-    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -172,10 +184,17 @@ class Rally(Base):
 
 class Stroke(Base):
     __tablename__ = "strokes"
+    __table_args__ = (
+        Index("ix_strokes_rally_id_stroke_num", "rally_id", "stroke_num"),
+        Index("ix_strokes_player",              "player"),
+        Index("ix_strokes_shot_type",           "shot_type"),
+        Index("ix_strokes_hit_zone",            "hit_zone"),
+        Index("ix_strokes_land_zone",           "land_zone"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 同期メタデータ
-    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -299,7 +318,7 @@ class Comment(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 同期メタデータ
-    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
@@ -326,7 +345,7 @@ class EventBookmark(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 同期メタデータ
-    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
@@ -350,10 +369,13 @@ class PreMatchObservation(Base):
     ラリーアノテーションとは独立して保存し、stroke-level モデルの汚染を防ぐ。
     """
     __tablename__ = "pre_match_observations"
+    __table_args__ = (
+        Index("ix_pmo_match_player_type", "match_id", "player_id", "observation_type"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 同期メタデータ
-    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
@@ -377,10 +399,13 @@ class HumanForecast(Base):
     モデル予測との比較ベンチマークに使用する。
     """
     __tablename__ = "human_forecasts"
+    __table_args__ = (
+        Index("ix_hf_match_player", "match_id", "player_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 同期メタデータ
-    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
@@ -409,6 +434,10 @@ class SyncConflict(Base):
     Phase 2 以降の競合 UI で per-record 採用選択に使用する。
     """
     __tablename__ = "sync_conflicts"
+    __table_args__ = (
+        Index("ix_sc_record_uuid", "record_uuid"),
+        Index("ix_sc_resolution",  "resolution"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     record_table: Mapped[str] = mapped_column(String(50), nullable=False)

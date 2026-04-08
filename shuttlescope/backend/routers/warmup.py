@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import PreMatchObservation, Match, Player
+from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 
 router = APIRouter()
 
@@ -95,6 +96,7 @@ def save_warmup_observations(
                 detail=f"無効な信頼度: {item.confidence_level}",
             )
 
+        device_id = get_device_id(db)
         # 既存エントリを上書き
         existing = (
             db.query(PreMatchObservation)
@@ -105,11 +107,19 @@ def save_warmup_observations(
             )
             .first()
         )
+        payload = {
+            "match_id": match_id,
+            "player_id": item.player_id,
+            "observation_type": item.observation_type,
+            "observation_value": item.observation_value,
+            "confidence_level": item.confidence_level,
+        }
         if existing:
             existing.observation_value = item.observation_value
             existing.confidence_level = item.confidence_level
             existing.note = item.note
             existing.created_by = item.created_by
+            touch_sync_metadata(existing, payload_like=payload, device_id=device_id)
             saved.append(existing)
         else:
             obs = PreMatchObservation(
@@ -123,6 +133,7 @@ def save_warmup_observations(
                 created_by=item.created_by,
             )
             db.add(obs)
+            touch_sync_metadata(obs, payload_like=payload, device_id=device_id)
             saved.append(obs)
 
     db.commit()
