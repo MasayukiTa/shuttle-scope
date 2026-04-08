@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import Match, SharedSession, SessionParticipant, LiveSource
+from backend.utils.source_quality import compute_suitability
 
 router = APIRouter()
 
@@ -496,16 +497,10 @@ def register_source(code: str, body: RegisterSourceBody, db: Session = Depends(g
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
 
-    # ソース種別からデフォルト優先度と suitability を決定
-    priority_map = {
-        "usb_camera": (1, "high"),
-        "iphone_webrtc": (2, "high"),
-        "ipad_webrtc": (2, "high"),
-        "pc_webcam": (3, "usable"),
-        "builtin_camera": (4, "fallback"),
-        "pc_local": (3, "usable"),
-    }
-    priority, suitability = priority_map.get(body.source_kind, (4, "fallback"))
+    # ソース種別・解像度・fps からデフォルト優先度と suitability を計算
+    priority, suitability = compute_suitability(
+        body.source_kind, body.source_resolution, body.source_fps
+    )
 
     source = LiveSource(
         session_id=session.id,
