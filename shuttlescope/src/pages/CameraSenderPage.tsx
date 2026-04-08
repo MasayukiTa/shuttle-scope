@@ -13,10 +13,10 @@
  *   - 非技術ユーザー向け丁寧な状態テキスト
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
 import {
   Camera, WifiOff, Loader2, CheckCircle2, XCircle, VideoOff,
-  BatteryFull, BatteryMedium, BatteryLow, Wifi, WifiZero,
+  BatteryFull, BatteryMedium, BatteryLow, Wifi, WifiZero, Pencil, Check,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
@@ -43,6 +43,13 @@ function getDeviceType(): string {
   if (/iPad/.test(ua)) return 'ipad'
   if (/iPhone/.test(ua)) return 'iphone'
   return 'pc'
+}
+
+function getDeviceTypeLabel(): string {
+  const ua = navigator.userAgent
+  if (/iPad/.test(ua)) return 'iPad'
+  if (/iPhone/.test(ua)) return 'iPhone'
+  return 'このPC'
 }
 
 // ─── バッテリー表示 ──────────────────────────────────────────────────────────
@@ -92,18 +99,25 @@ function SessionBadge({ sessionCode, role }: { sessionCode: string; role: string
 
 const MAX_RECONNECT = 3
 const RECONNECT_DELAY_MS = 5_000
+const DEVICE_NAME_KEY = 'ss_device_name'
 
 export function CameraSenderPage() {
   const { sessionCode: paramCode } = useParams<{ sessionCode: string }>()
+  const { search } = useLocation()
+  // QR URL に埋め込まれたパスワード（?pwd=...）を読み取る
+  const pwdParam = new URLSearchParams(search).get('pwd') ?? ''
   const { t } = useTranslation()
 
   const [senderState, setSenderState] = useState<SenderState>(paramCode ? 'connecting' : 'join')
   const [form, setForm] = useState<JoinForm>({
     sessionCode: paramCode ?? '',
     password: '',
-    deviceName: '',
+    deviceName: localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel(),
   })
   const [errorMsg, setErrorMsg] = useState('')
+  // 端末名インライン編集用
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState('')
   const [participantId, setParticipantId] = useState<number | null>(null)
   const [activeSessionCode, setActiveSessionCode] = useState<string>(paramCode ?? '')
   const [reconnectCount, setReconnectCount] = useState(0)
@@ -255,16 +269,19 @@ export function CameraSenderPage() {
   const joinSession = useCallback(async (code: string, password: string, deviceName: string) => {
     setSenderState('connecting')
     setErrorMsg('')
+    const resolvedName = deviceName || localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel()
+    // 使用した名前をlocalStorageに保存
+    localStorage.setItem(DEVICE_NAME_KEY, resolvedName)
     savedCodeRef.current = code
     savedPasswordRef.current = password
-    savedDeviceNameRef.current = deviceName
+    savedDeviceNameRef.current = resolvedName
     try {
       const res = await apiPost<{
         success: boolean
         data: { participant_id: number; session_code: string; role: string; connection_role: string }
       }>(`/sessions/${code}/join`, {
         role: 'viewer',
-        device_name: deviceName || `${getDeviceType()}-camera`,
+        device_name: resolvedName,
         device_type: getDeviceType(),
         session_password: password || undefined,
       })
@@ -276,9 +293,11 @@ export function CameraSenderPage() {
       reconnectCountRef.current = 0
       connectWs(code, pid)
     } catch (err: any) {
-      const status = err?.response?.status
+      const status = err?.status
       if (status === 401) {
         setErrorMsg(t('camera_sender.join_error_invalid'))
+      } else if (status === 404) {
+        setErrorMsg('セッションが見つかりません。コードを確認してください。')
       } else {
         setErrorMsg(t('camera_sender.join_error_network'))
       }
@@ -289,12 +308,24 @@ export function CameraSenderPage() {
   // URL からセッションコードが渡された場合は直接参加試行
   useEffect(() => {
     if (paramCode && senderState === 'connecting') {
-      joinSession(paramCode, '', '')
+      if (pwdParam) {
+        // ?pwd= パラメータがあれば自動入力してパスワードフォームをスキップ（保存済み端末名を使用）
+        joinSession(paramCode, pwdParam, localStorage.getItem(DEVICE_NAME_KEY) || getDeviceTypeLabel())
+      } else {
+        // 旧 QR コード（パスワードなし URL）→ フォームに誘導
+        setErrorMsg('QRコードを再生成するか、下のフォームにパスワードを入力してください。')
+        setSenderState('join')
+      }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── カメラ起動 & WebRTC offer ────────────────────────────────────────────
   const startCamera = useCallback(async () => {
+    // iOS Safari は HTTP（非セキュアコンテキスト）では mediaDevices が undefined になる
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setErrorMsg('カメラにアクセスできません。HTTPSまたはlocalhostで開いてください（iOSはHTTPではカメラ使用不可）。')
+      return
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -372,7 +403,10 @@ export function CameraSenderPage() {
   const StatusBar = () => (
     <div className="flex items-center justify-between w-full max-w-sm mb-3 px-1">
       {activeSessionCode && (
-        <SessionBadge sessionCode={activeSessionCode} role={getDeviceType()} />
+        <SessionBadge
+          sessionCode={activeSessionCode}
+          role={savedDeviceNameRef.current || getDeviceTypeLabel()}
+        />
       )}
       <div className="flex items-center gap-2 ml-auto">
         {battery && <BatteryIndicator level={battery.level} charging={battery.charging} />}
@@ -470,6 +504,49 @@ export function CameraSenderPage() {
               <CheckCircle2 size={14} />
               {t('camera_sender.status_connected')}
             </div>
+            {/* 端末名表示・編集 */}
+            <div className="mt-4 border-t border-gray-700 pt-4">
+              {editingName ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const n = nameInput.trim() || getDeviceTypeLabel()
+                        localStorage.setItem(DEVICE_NAME_KEY, n)
+                        savedDeviceNameRef.current = n
+                        setEditingName(false)
+                      }
+                      if (e.key === 'Escape') setEditingName(false)
+                    }}
+                    className="flex-1 bg-gray-700 rounded px-2 py-1 text-sm text-white text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder={getDeviceTypeLabel()}
+                    maxLength={32}
+                  />
+                  <button
+                    onClick={() => {
+                      const n = nameInput.trim() || getDeviceTypeLabel()
+                      localStorage.setItem(DEVICE_NAME_KEY, n)
+                      savedDeviceNameRef.current = n
+                      setEditingName(false)
+                    }}
+                    className="p-1 text-green-400 hover:text-green-300"
+                  >
+                    <Check size={16} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setNameInput(savedDeviceNameRef.current || getDeviceTypeLabel()); setEditingName(true) }}
+                  className="flex items-center justify-center gap-1.5 mx-auto text-xs text-gray-400 hover:text-gray-200"
+                >
+                  <Pencil size={12} />
+                  端末名: <span className="text-gray-200 font-medium">{savedDeviceNameRef.current || getDeviceTypeLabel()}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -486,6 +563,12 @@ export function CameraSenderPage() {
             <p className="text-center text-xs text-gray-400 mb-5">
               コートを映せる場所に端末を固定してから起動してください。
             </p>
+            {errorMsg && (
+              <div className="flex items-start gap-1.5 text-red-400 text-xs mb-3 bg-red-900/30 rounded-lg p-2">
+                <XCircle size={14} className="shrink-0 mt-0.5" />
+                {errorMsg}
+              </div>
+            )}
             <div className="space-y-2">
               <button
                 onClick={startCamera}
@@ -495,7 +578,7 @@ export function CameraSenderPage() {
                 {t('camera_sender.state_b_start')}
               </button>
               <button
-                onClick={() => setSenderState('state_a')}
+                onClick={() => { setSenderState('state_a'); setErrorMsg('') }}
                 className="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm"
               >
                 {t('camera_sender.state_b_cancel')}

@@ -854,7 +854,7 @@
     "reconnect_attempt": "回目の再接続試行",
     "network_quality": "ネットワーク品質",
     "battery_level": "バッテリー残量",
-    "role_display": "ロール"
+    "role_display": "端末名"
   },
   "live_source": {
     "title": "ライブソース",

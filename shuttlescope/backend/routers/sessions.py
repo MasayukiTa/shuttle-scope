@@ -336,7 +336,10 @@ def list_devices(code: str, db: Session = Depends(get_db)):
 
     participants = (
         db.query(SessionParticipant)
-        .filter(SessionParticipant.session_id == session.id)
+        .filter(
+            SessionParticipant.session_id == session.id,
+            SessionParticipant.is_connected.is_(True),
+        )
         .order_by(SessionParticipant.joined_at)
         .all()
     )
@@ -429,9 +432,42 @@ def reject_device(code: str, participant_id: int, db: Session = Depends(get_db))
     """デバイスを拒否（approval_status → rejected）"""
     participant = _get_participant(code, participant_id, db)
     participant.approval_status = "rejected"
-    participant.is_connected = False
     db.commit()
     return {"success": True, "data": _participant_to_dict(participant)}
+
+
+@router.delete("/sessions/{code}/devices/{participant_id}")
+def delete_participant(code: str, participant_id: int, db: Session = Depends(get_db)):
+    """参加者レコードを削除（切断済みデバイスのゴーストを除去）"""
+    participant = _get_participant(code, participant_id, db)
+    db.delete(participant)
+    db.commit()
+    return {"success": True}
+
+
+@router.delete("/sessions/{code}/devices")
+def purge_disconnected(code: str, db: Session = Depends(get_db)):
+    """切断済み（is_connected=False）参加者を一括削除"""
+    session = (
+        db.query(SharedSession)
+        .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    deleted = (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session.id,
+            SessionParticipant.is_connected.is_(False),
+        )
+        .all()
+    )
+    count = len(deleted)
+    for p in deleted:
+        db.delete(p)
+    db.commit()
+    return {"success": True, "data": {"deleted": count}}
 
 
 @router.post("/sessions/{code}/devices/{participant_id}/heartbeat")
@@ -645,7 +681,7 @@ def _session_to_dict(session: SharedSession, db: Session) -> dict:
     camera_sender_urls = []
     if lan_mode and lan_ips:
         for ip in lan_ips:
-            coach_urls.append(f"http://{ip}:{port}/coach/{session.session_code}")
+            coach_urls.append(f"http://{ip}:{port}/#/annotator/{session.match_id}")
             camera_sender_urls.append(f"http://{ip}:{port}/#/camera/{session.session_code}")
 
     return {

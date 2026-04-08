@@ -1,5 +1,5 @@
 import electron from 'electron'
-import { spawn, ChildProcess } from 'child_process'
+import { spawn, execSync, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as http from 'http'
 import { existsSync, statSync, createReadStream } from 'fs'
@@ -105,6 +105,8 @@ function startPythonBackend(): ChildProcess {
     env: {
       ...process.env,
       API_PORT: '8765',
+      // LAN_MODE=true で 0.0.0.0 バインド → iOS / 同一 LAN デバイスからアクセス可能
+      LAN_MODE: 'true',
       DATABASE_URL: `sqlite:///${path.join(appPath, 'backend', 'db', 'shuttlescope.db')}`,
       // watchfiles の自動リロードを無効化（起動時間を 10s → 1s に短縮）
       ENVIRONMENT: 'production',
@@ -393,7 +395,31 @@ async function startApp(): Promise<void> {
     // スプラッシュを最初に表示（~100ms で表示される）
     createSplashWindow()
 
-    pythonProcess = startPythonBackend()
+    // Windows Firewall に port 8765 の受信許可ルールを追加（LAN デバイスから接続できるようにする）
+  // ルールが存在しない場合のみ UAC 昇格して追加する
+  if (process.platform === 'win32') {
+    // ルール存在確認: 存在しない場合は netsh が非ゼロ終了コードで throw する
+    let ruleExists = false
+    try {
+      execSync(
+        'netsh advfirewall firewall show rule name="ShuttleScope LAN"',
+        { timeout: 3000, stdio: 'ignore' }
+      )
+      ruleExists = true
+    } catch { /* ルールなし or 確認失敗 */ }
+
+    if (!ruleExists) {
+      // UAC 昇格ダイアログを表示してルール追加（ユーザーがキャンセルした場合は無視）
+      try {
+        execSync(
+          `powershell -Command "Start-Process netsh -ArgumentList 'advfirewall firewall add rule name=\\"ShuttleScope LAN\\" protocol=TCP dir=in localport=8765 action=allow profile=private' -Verb RunAs -Wait"`,
+          { timeout: 30000, stdio: 'ignore' }
+        )
+      } catch { /* UAC キャンセル等は無視 */ }
+    }
+  }
+
+  pythonProcess = startPythonBackend()
 
     // localfile:// プロトコルハンドラーを登録（ウィンドウ作成前に必要）
     registerLocalFileProtocol()

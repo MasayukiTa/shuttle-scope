@@ -1230,7 +1230,7 @@ export function AnnotatorPage() {
             )}
             title={isBasicMode ? t('annotation_mode.basic_helper') : t('annotation_mode.detailed_helper')}
           >
-            <span className="opacity-70">{t('annotation_mode.label')}</span>
+            <span>{t('annotation_mode.label')}</span>
             {isBasicMode ? t('annotation_mode.basic') : t('annotation_mode.detailed')}
           </button>
           {/* T6: Review queue バッジ */}

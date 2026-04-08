@@ -13,6 +13,13 @@ const BASE_URL = (() => {
   return 'http://localhost:8765/api'
 })()
 
+// HTTP エラーに status プロパティを付与するヘルパー
+function httpError(status: number, text: string): Error {
+  const err = new Error(text) as Error & { status: number }
+  err.status = status
+  return err
+}
+
 export async function apiGet<T>(
   path: string,
   params?: Record<string, string | number | boolean>
@@ -24,7 +31,7 @@ export async function apiGet<T>(
   const res = await fetch(url.toString())
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text)
+    throw httpError(res.status, text)
   }
   return res.json()
 }
@@ -37,7 +44,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text)
+    throw httpError(res.status, text)
   }
   return res.json()
 }
@@ -50,7 +57,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text)
+    throw httpError(res.status, text)
   }
   return res.json()
 }
@@ -61,7 +68,7 @@ export async function apiDelete<T>(path: string): Promise<T> {
   })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text)
+    throw httpError(res.status, text)
   }
   return res.json()
 }

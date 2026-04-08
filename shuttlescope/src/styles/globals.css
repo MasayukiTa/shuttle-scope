@@ -338,6 +338,7 @@ html[data-theme="light"] .hover\:text-white:hover {
  *   bg-green-{600-700}   lum 0.08–0.12 → 白文字 ✓
  *   bg-emerald-{600-700} lum 0.08–0.12 → 白文字 ✓
  *   bg-violet-{600-700}  lum 0.05–0.08 → 白文字 ✓
+ *   bg-purple-{600-700}  lum 0.05–0.08 → 白文字 ✓
  *   bg-indigo-{600-700}  lum 0.06–0.09 → 白文字 ✓
  *   bg-yellow-700        lum 0.18      → 白文字 ✓ (コントラスト比 4.5:1)
  *
@@ -372,6 +373,10 @@ html[data-theme="light"] .bg-emerald-600 .text-white,
 html[data-theme="light"] .bg-emerald-700 .text-white,
 html[data-theme="light"] .bg-violet-600.text-white,
 html[data-theme="light"] .bg-violet-700.text-white,
+html[data-theme="light"] .bg-purple-600.text-white,
+html[data-theme="light"] .bg-purple-700.text-white,
+html[data-theme="light"] .bg-purple-600 .text-white,
+html[data-theme="light"] .bg-purple-700 .text-white,
 html[data-theme="light"] .bg-indigo-600.text-white,
 html[data-theme="light"] .bg-indigo-700.text-white,
 html[data-theme="light"] .bg-yellow-600.text-white,

@@ -16,11 +16,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Monitor, Smartphone, Tablet, Camera, Usb,
   X, RefreshCw, Video, VideoOff, Shield, ShieldOff,
-  CheckCircle2, XCircle, AlertTriangle,
+  CheckCircle2, XCircle, AlertTriangle, Trash2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
-import { apiGet, apiPost } from '@/api/client'
+import { apiGet, apiPost, apiDelete } from '@/api/client'
 import { LiveSourceSelector } from './LiveSourceSelector'
 import { LiveInferenceOverlay } from './LiveInferenceOverlay'
 import type { SessionParticipant, LocalCameraSource, DeviceType } from '@/types'
@@ -101,14 +101,23 @@ function useWebRTCReceiver(sessionCode: string) {
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
+  // stale closure 対策: stream の最新値を ref で保持
+  const streamRef = useRef<MediaStream | null>(null)
   const [activeParticipantId, setActiveParticipantId] = useState<string | null>(null)
   // viewer id → pc map (PC → viewers relay)
   const viewerPCsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
 
+  useEffect(() => { streamRef.current = stream }, [stream])
+
   const connect = useCallback(() => {
     if (wsRef.current) return
-    const wsUrl = `ws://${window.location.hostname}:8765/ws/camera/${sessionCode}?role=operator`
-    const ws = new WebSocket(wsUrl)
+    // Electron (file: プロトコル) では hostname が空になるため localhost を使う
+    const hostname = window.location.protocol === 'file:' ? 'localhost' : (window.location.hostname || 'localhost')
+    const wsUrl = `ws://${hostname}:8765/ws/camera/${sessionCode}?role=operator`
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(wsUrl)
+    } catch { return }
     wsRef.current = ws
 
     ws.onmessage = async (event) => {
@@ -150,11 +159,13 @@ function useWebRTCReceiver(sessionCode: string) {
           }).catch(() => {})
 
         // ─ viewer joined → PC sends offer to viewer ─
-        } else if (msg.type === 'viewer_joined' && pcRef.current && stream) {
+        // streamRef.current を使うことで stale closure を回避
+        } else if (msg.type === 'viewer_joined' && pcRef.current && streamRef.current) {
           const viewerId = String(msg.viewer_id)
+          const currentStream = streamRef.current
           const vpc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
           viewerPCsRef.current.set(viewerId, vpc)
-          stream.getTracks().forEach((t) => vpc.addTrack(t, stream))
+          currentStream.getTracks().forEach((t) => vpc.addTrack(t, currentStream))
           vpc.onicecandidate = (e) => {
             if (e.candidate && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({
@@ -207,7 +218,7 @@ function useWebRTCReceiver(sessionCode: string) {
       } catch { /* ignore */ }
     }
     ws.onclose = () => { wsRef.current = null }
-  }, [sessionCode, stream])
+  }, [sessionCode])  // stream を deps から除去: streamRef で最新値を参照
 
   const requestCamera = useCallback((participantId: number) => {
     wsRef.current?.send(JSON.stringify({ type: 'camera_request', target_participant_id: participantId }))
@@ -250,6 +261,7 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
   const [localSources, setLocalSources] = useState<LocalCameraSource[]>([])
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [localActiveId, setLocalActiveId] = useState<string | null>(null)
+  const [localCameraError, setLocalCameraError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'devices' | 'sources'>('devices')
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -288,6 +300,20 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
     fetchDevices()
   }
 
+  const handlePurgeDisconnected = async () => {
+    try {
+      await apiDelete(`/sessions/${sessionCode}/devices`)
+    } catch { /* 失敗は無視 */ }
+    fetchDevices()
+  }
+
+  const handleDeleteDevice = async (p: SessionParticipant) => {
+    try {
+      await apiDelete(`/sessions/${sessionCode}/devices/${p.id}`)
+    } catch { /* 失敗は無視 */ }
+    fetchDevices()
+  }
+
   const handleApprove = (p: SessionParticipant) => post(`/devices/${p.id}/approve`)
   const handleReject  = (p: SessionParticipant) => post(`/devices/${p.id}/reject`)
   const handleActivateCamera = async (p: SessionParticipant) => {
@@ -301,14 +327,24 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
 
   const handleSelectLocalSource = async (src: LocalCameraSource) => {
     localStream?.getTracks().forEach((t) => t.stop())
+    setLocalCameraError(null)
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: src.deviceId } }, audio: false })
-      setLocalStream(s); setLocalActiveId(src.deviceId)
-    } catch { }
+      // deviceId が空の場合（権限未取得）は制約なしで要求し、権限取得後に再列挙
+      const videoConstraint: MediaTrackConstraints | boolean = src.deviceId
+        ? { deviceId: { exact: src.deviceId } }
+        : true
+      const s = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false })
+      setLocalStream(s)
+      setLocalActiveId(src.deviceId)
+      // 権限取得後にデバイス一覧を再取得してラベル・ID を正確にする
+      enumerateLocalCameras().then(setLocalSources)
+    } catch {
+      setLocalCameraError('カメラを起動できませんでした。OS設定でカメラへのアクセスを許可してください。')
+    }
   }
   const handleStopLocal = () => {
     localStream?.getTracks().forEach((t) => t.stop())
-    setLocalStream(null); setLocalActiveId(null)
+    setLocalStream(null); setLocalActiveId(null); setLocalCameraError(null)
   }
 
   // ─── スタイル ────────────────────────────────────────────────────────
@@ -327,6 +363,13 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
       <div className="flex items-center justify-between mb-3">
         <p className={`text-sm font-semibold ${titleColor}`}>{t('lan_session.device_manager_title')}</p>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handlePurgeDisconnected}
+            title="切断済みデバイスを一括削除"
+            className={`${subColor} hover:text-red-400`}
+          >
+            <Trash2 size={14} />
+          </button>
           <button onClick={fetchDevices} className={`${subColor}`}>
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
@@ -437,21 +480,30 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
                         </span>
                         <RoleBadge role={p.connection_role} />
                         <ApprovalBadge status={p.approval_status} />
-                        {p.connection_state === 'sending_video' && (
-                          <span className="text-[10px] text-red-400 flex items-center gap-0.5">
-                            <Video size={10} />送信中
-                          </span>
-                        )}
                       </div>
-                      <div className={`flex items-center gap-2 mt-0.5 text-[10px] ${subColor}`}>
-                        {p.device_class && <span>{p.device_class}</span>}
-                        <HeartbeatBadge lastHeartbeat={p.last_heartbeat} />
-                        {p.viewer_permission !== 'default' && (
-                          <span className={p.viewer_permission === 'allowed' ? 'text-green-400' : 'text-red-400'}>
-                            {p.viewer_permission === 'allowed' ? '映像受信許可' : '映像受信停止'}
-                          </span>
-                        )}
-                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteDevice(p)}
+                      title="このデバイスを削除"
+                      className="shrink-0 text-gray-600 hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  <div className="ml-6 mt-0.5">
+                    <div className={`flex items-center gap-2 text-[10px] ${subColor}`}>
+                      {p.connection_state === 'sending_video' && (
+                        <span className="text-red-400 flex items-center gap-0.5">
+                          <Video size={10} />送信中
+                        </span>
+                      )}
+                      {p.device_class && <span>{p.device_class}</span>}
+                      <HeartbeatBadge lastHeartbeat={p.last_heartbeat} />
+                      {p.viewer_permission !== 'default' && (
+                        <span className={p.viewer_permission === 'allowed' ? 'text-green-400' : 'text-red-400'}>
+                          {p.viewer_permission === 'allowed' ? '映像受信許可' : '映像受信停止'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -471,10 +523,16 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
                         </button>
                       )}
                       {p.connection_role === 'active_camera' && (
-                        <button onClick={() => handleDeactivate(p)}
-                          className="text-[10px] px-2 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white">
-                          {t('lan_session.action_deactivate')}
-                        </button>
+                        <>
+                          <button onClick={() => requestCamera(p.id)}
+                            className="text-[10px] px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white flex items-center gap-0.5">
+                            <Video size={9} />カメラ再リクエスト
+                          </button>
+                          <button onClick={() => handleDeactivate(p)}
+                            className="text-[10px] px-2 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white">
+                            {t('lan_session.action_deactivate')}
+                          </button>
+                        </>
                       )}
                       {/* ビューワー映像許可 */}
                       {p.device_class !== 'phone' && (
@@ -504,6 +562,11 @@ export function DeviceManagerPanel({ sessionCode, onClose }: Props) {
           {localSources.length > 0 && (
             <div className={`border-t pt-3 mt-3 ${divider}`}>
               <p className={`text-xs font-medium mb-2 ${titleColor}`}>{t('lan_session.local_sources_label')}</p>
+              {localCameraError && (
+                <p className="text-[10px] text-red-400 mb-2 flex items-center gap-1">
+                  <XCircle size={10} />{localCameraError}
+                </p>
+              )}
               <div className="space-y-1.5">
                 {localSources.map((src) => (
                   <div key={src.deviceId} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${rowBg}`}>

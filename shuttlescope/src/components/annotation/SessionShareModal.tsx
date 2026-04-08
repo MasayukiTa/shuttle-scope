@@ -36,6 +36,10 @@ export function SessionShareModal({
 
   const coachUrl = coachUrls[0] ?? ''
   const cameraUrl = cameraSenderUrls[0] ?? ''
+  // パスワードを URL に埋め込む — LAN QR スキャン時にフォーム入力不要にする
+  const cameraUrlWithPwd = cameraUrl && sessionPassword
+    ? `${cameraUrl}?pwd=${encodeURIComponent(sessionPassword)}`
+    : cameraUrl
 
   // コーチ URL の QR
   useEffect(() => {
@@ -47,20 +51,35 @@ export function SessionShareModal({
     }).catch(() => {})
   }, [coachUrl])
 
-  // カメラ送信 URL の QR
+  // カメラ送信 URL の QR（パスワード付き）
   useEffect(() => {
-    if (!cameraCanvasRef.current || !cameraUrl) return
-    QRCode.toCanvas(cameraCanvasRef.current, cameraUrl, {
+    if (!cameraCanvasRef.current || !cameraUrlWithPwd) return
+    QRCode.toCanvas(cameraCanvasRef.current, cameraUrlWithPwd, {
       width: 180,
       margin: 2,
       color: { dark: '#0f172a', light: '#f8fafc' },
     }).catch(() => {})
-  }, [cameraUrl])
+  }, [cameraUrlWithPwd])
 
   const handleCopy = (text: string, setter: (v: boolean) => void) => {
-    navigator.clipboard.writeText(text).catch(() => {})
-    setter(true)
-    setTimeout(() => setter(false), 2000)
+    const confirm = () => { setter(true); setTimeout(() => setter(false), 2000) }
+    const fallback = () => {
+      try {
+        const el = document.createElement('textarea')
+        el.value = text
+        el.style.cssText = 'position:fixed;top:0;left:0;opacity:0'
+        document.body.appendChild(el)
+        el.select()
+        document.execCommand('copy')
+        document.body.removeChild(el)
+        confirm()
+      } catch { /* コピー失敗は無視 */ }
+    }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(confirm).catch(fallback)
+    } else {
+      fallback()
+    }
   }
 
   const handleRegeneratePassword = async () => {
@@ -188,10 +207,10 @@ export function SessionShareModal({
             </div>
             <div className="flex items-center gap-1.5">
               <p className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} ${urlColor}`}>
-                {cameraUrl}
+                {cameraUrlWithPwd || cameraUrl}
               </p>
               <button
-                onClick={() => handleCopy(cameraUrl, setCameraUrlCopied)}
+                onClick={() => handleCopy(cameraUrlWithPwd || cameraUrl, setCameraUrlCopied)}
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
               >
                 {cameraUrlCopied ? <Check size={12} /> : <Copy size={12} />}
@@ -199,7 +218,7 @@ export function SessionShareModal({
               </button>
             </div>
             <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
-              iPhoneでQRを読み取るとカメラ送信ページが開きます
+              iPhoneでQRを読み取るとパスワード不要で参加できます
             </p>
           </div>
         )}
