@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -22,6 +22,7 @@ import { apiGet, apiPost, apiPut } from '@/api/client'
 import { Match, Zone9, LandZone, ShotType, GameSet, Player, VideoSourceMode, DisplayInfo } from '@/types'
 import { useMatchTimer } from '@/hooks/useMatchTimer'
 import { useSettings } from '@/hooks/useSettings'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -165,12 +166,16 @@ export function AnnotatorPage() {
   // Ref guard: prevent useEffect from re-running doInit on every Zustand state change
   const initStartedRef = useRef(false)
 
+  const isMobile = useIsMobile()
+
   // K-001: マッチデーモード（localStorage 永続化 + ?matchDayMode=true URL パラメータで自動有効化）
   const [isMatchDayMode, setIsMatchDayMode] = useState(
     () =>
       localStorage.getItem('shuttlescope.matchDayMode') === 'true' ||
       searchParams.get('matchDayMode') === 'true'
   )
+  // モバイル時はタッチ操作用に大きいボタンを使う（isMatchDayMode と同等）
+  const useLargeTouch = isMatchDayMode || isMobile
   // K-001: rally_end ステップでの選択中エンドタイプ
   const [pendingEndType, setPendingEndType] = useState<string | null>(null)
 
@@ -238,6 +243,9 @@ export function AnnotatorPage() {
   // R-001/R-002: セッション
   const [activeSession, setActiveSession] = useState<{ session_code: string; coach_urls: string[] } | null>(null)
   const [showSessionModal, setShowSessionModal] = useState(false)
+
+  // モバイル: ヘッダーオーバーフローメニュー
+  const [showMobileMenu, setShowMobileMenu] = useState(false)
 
   // G2: 直前確定ストロークへのエンリッチメント入力（return_quality / contact_height）
   // 落点確定後に表示し、次のショットキー押下で自動消滅
@@ -1049,15 +1057,18 @@ export function AnnotatorPage() {
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-white overflow-hidden">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
+      <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
         <button
           onClick={() => navigate('/matches')}
-          className="flex items-center gap-1 text-gray-400 hover:text-white text-sm"
+          className={clsx(
+            'flex items-center gap-1 text-gray-400 hover:text-white shrink-0',
+            isMobile ? 'text-xs p-1' : 'text-sm'
+          )}
         >
-          <ArrowLeft size={16} />
-          戻る
+          <ArrowLeft size={isMobile ? 18 : 16} />
+          {!isMobile && '戻る'}
         </button>
-        <div className="text-sm font-medium">
+        <div className={clsx('font-medium truncate mx-2 min-w-0', isMobile ? 'text-xs' : 'text-sm')}>
           {match ? (() => {
             const isDoubles = match.format !== 'singles'
             const sideA = isDoubles && match.partner_a
@@ -1066,10 +1077,12 @@ export function AnnotatorPage() {
             const sideB = isDoubles && match.partner_b
               ? `${match.player_b?.name ?? 'B'} / ${match.partner_b.name}`
               : (match.player_b?.name ?? 'B')
-            return `${match.tournament} — ${sideA} vs ${sideB}`
+            return isMobile ? `${sideA} vs ${sideB}` : `${match.tournament} — ${sideA} vs ${sideB}`
           })() : 'ShuttleScope'}
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-400">
+
+        {/* デスクトップ: 全ボタン表示 */}
+        <div className="hidden md:flex items-center gap-2 text-xs text-gray-400 shrink-0">
           {/* K-002: 保存中バッジ */}
           {store.pendingSaveCount > 0 && (
             <span className="text-yellow-400 font-medium">
@@ -1085,7 +1098,7 @@ export function AnnotatorPage() {
               {t('annotator.save_error_title')} {store.saveErrors.length}件 ✕
             </button>
           )}
-          {/* V4-U-001: 試合中補完パネル（暫定相手がいる場合に表示） */}
+          {/* V4-U-001: 試合中補完パネル */}
           {match?.player_b?.needs_review && (
             <button
               onClick={() => setShowInMatchPanel((v) => !v)}
@@ -1101,7 +1114,7 @@ export function AnnotatorPage() {
               {t('in_match_panel.opponent_info')}
             </button>
           )}
-          {/* P4: デュアルモニター（2画面以上のとき表示） */}
+          {/* P4: デュアルモニター */}
           {displays.length >= 2 && match && (match.video_local_path || match.video_url) && (
             videoWindowOpen ? (
               <button
@@ -1145,7 +1158,7 @@ export function AnnotatorPage() {
           >
             {isMatchDayMode ? 'MD' : t('annotator.match_day_mode')}
           </button>
-          {/* P3: TrackNet バッチ解析ボタン（TrackNet有効 & 動画あり時） */}
+          {/* P3: TrackNet バッチ解析ボタン */}
           {appSettings.tracknet_enabled && (match?.video_local_path || match?.video_url) && (
             tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') ? (
               <div className="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-purple-900/40 text-purple-300">
@@ -1194,14 +1207,100 @@ export function AnnotatorPage() {
           </div>
           <span>{Math.round((match?.annotation_progress ?? 0) * 100)}%</span>
         </div>
+
+        {/* モバイル: 進捗 + メニューボタン */}
+        <div className="flex md:hidden items-center gap-2 shrink-0">
+          {store.pendingSaveCount > 0 && (
+            <span className="text-yellow-400 font-medium text-[10px]">
+              {store.pendingSaveCount}
+            </span>
+          )}
+          <div className="w-12 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 transition-all"
+              style={{ width: `${(match?.annotation_progress ?? 0) * 100}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-gray-400">{Math.round((match?.annotation_progress ?? 0) * 100)}%</span>
+          <button
+            onClick={() => setShowMobileMenu((v) => !v)}
+            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+          >
+            <MoreVertical size={18} />
+          </button>
+        </div>
       </div>
+
+      {/* モバイル: オーバーフローメニュー */}
+      {isMobile && showMobileMenu && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50"
+          onClick={() => setShowMobileMenu(false)}
+        >
+          <div
+            className="absolute top-12 right-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 途中終了 */}
+            <button
+              onClick={() => { setShowExceptionDialog(true); setShowMobileMenu(false) }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-gray-700"
+            >
+              <OctagonX size={14} />
+              {t('exception.title')}
+            </button>
+            {/* マッチデーモード */}
+            <button
+              onClick={() => { toggleMatchDayMode(); setShowMobileMenu(false) }}
+              className={clsx(
+                'w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-700',
+                isMatchDayMode ? 'text-yellow-400' : 'text-gray-300'
+              )}
+            >
+              <Keyboard size={14} />
+              {isMatchDayMode ? 'MD ON' : t('annotator.match_day_mode')}
+            </button>
+            {/* セッション共有 */}
+            <button
+              onClick={() => {
+                if (activeSession) setShowSessionModal(true)
+                else handleCreateOrGetSession()
+                setShowMobileMenu(false)
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-300 hover:bg-gray-700"
+            >
+              <Share2 size={14} />
+              {activeSession ? activeSession.session_code : t('sharing.share')}
+            </button>
+            {/* 暫定相手情報 */}
+            {match?.player_b?.needs_review && (
+              <button
+                onClick={() => { setShowInMatchPanel((v) => !v); setShowMobileMenu(false) }}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-orange-300 hover:bg-gray-700"
+              >
+                <ClipboardEdit size={14} />
+                {t('in_match_panel.opponent_info')}
+              </button>
+            )}
+            {/* エラー表示 */}
+            {store.saveErrors.length > 0 && (
+              <button
+                onClick={() => { store.clearSaveErrors(); setShowMobileMenu(false) }}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-gray-700"
+              >
+                {t('annotator.save_error_title')} {store.saveErrors.length}件
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* メインレイアウト */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左: 動画エリア — マッチデーモード時のみ非表示。動画未設定時もファイルピッカーのために表示を維持 */}
+        {/* 左: 動画エリア — マッチデーモード時/モバイル時は非表示 */}
         <div
           ref={leftPanelRef}
-          className={clsx('flex flex-col p-3 gap-2 overflow-y-auto shrink-0')}
+          className={clsx('flex flex-col p-3 gap-2 overflow-y-auto shrink-0', isMobile && 'hidden')}
           style={
             isMatchDayMode
               ? { display: 'none' }
@@ -1412,8 +1511,8 @@ export function AnnotatorPage() {
           </div>
         </div>
 
-        {/* ドラッグリサイズハンドル */}
-        {!isMatchDayMode && (
+        {/* ドラッグリサイズハンドル（デスクトップ・非マッチデーモード時のみ） */}
+        {!isMatchDayMode && !isMobile && (
           <div
             onMouseDown={handleResizeDragStart}
             className="w-1 shrink-0 cursor-col-resize bg-gray-700 hover:bg-gray-500 transition-colors active:bg-gray-400"
@@ -1421,10 +1520,10 @@ export function AnnotatorPage() {
           />
         )}
 
-        {/* 右: 入力パネル — マッチデーモード時はフルスクリーン */}
+        {/* 右: 入力パネル — マッチデーモード時/モバイル時はフルスクリーン */}
         <div className={clsx(
-          'flex flex-col border-l border-gray-700 overflow-y-auto',
-          isMatchDayMode ? 'flex-1' : 'w-[40%]'
+          'flex flex-col overflow-y-auto',
+          (isMatchDayMode || isMobile) ? 'flex-1' : 'w-[40%] border-l border-gray-700'
         )}>
           {/* ステップインジケーター */}
           <div
@@ -1531,12 +1630,38 @@ export function AnnotatorPage() {
             </div>
           )}
 
+          {/* モバイル: スコアを sticky 固定 */}
+          {isMobile && (
+            <div className="sticky top-0 z-10 bg-gray-900 px-3 pt-2 pb-1 shrink-0">
+              <div className="bg-gray-800 rounded-lg p-3 flex items-center justify-between">
+                <div className="text-center min-w-[80px]">
+                  <div className="text-xs text-gray-400 truncate">{match?.player_a?.name ?? 'A'}</div>
+                  <div className="text-4xl font-bold">{store.scoreA}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-400">Set {store.currentSetNum}</div>
+                  <div className="text-xs text-gray-500">Rally {store.currentRallyNum}</div>
+                  {store.isRallyActive && store.currentStrokes.length > 0 && (
+                    <div className="text-[10px] text-blue-400 mt-0.5">
+                      {store.currentStrokes.length} shots
+                    </div>
+                  )}
+                </div>
+                <div className="text-center min-w-[80px]">
+                  <div className="text-xs text-gray-400 truncate">{match?.player_b?.name ?? 'B'}</div>
+                  <div className="text-4xl font-bold">{store.scoreB}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3 p-3">
-            {/* スコア表示 */}
-            <div className="bg-gray-800 rounded p-2 flex items-center justify-between shrink-0">
-              <div className="text-center min-w-[60px]">
-                <div className="text-[10px] text-gray-400 truncate">{match?.player_a?.name ?? 'A'}</div>
-                <div className="text-2xl font-bold">{store.scoreA}</div>
+            {/* スコア表示（デスクトップのみ — モバイルは上の sticky に移動） */}
+            {!isMobile && (
+            <div className={clsx('bg-gray-800 rounded flex items-center justify-between shrink-0', useLargeTouch ? 'p-3' : 'p-2')}>
+              <div className={clsx('text-center', useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]')}>
+                <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_a?.name ?? 'A'}</div>
+                <div className={clsx('font-bold', useLargeTouch ? 'text-4xl' : 'text-2xl')}>{store.scoreA}</div>
               </div>
               <div className="text-center text-xs text-gray-500">
                 <div>Set {store.currentSetNum}</div>
@@ -1567,14 +1692,15 @@ export function AnnotatorPage() {
                   </div>
                 )}
               </div>
-              <div className="text-center min-w-[60px]">
-                <div className="text-[10px] text-gray-400 truncate">{match?.player_b?.name ?? 'B'}</div>
-                <div className="text-2xl font-bold">{store.scoreB}</div>
+              <div className={clsx('text-center', useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]')}>
+                <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_b?.name ?? 'B'}</div>
+                <div className={clsx('font-bold', useLargeTouch ? 'text-4xl' : 'text-2xl')}>{store.scoreB}</div>
               </div>
             </div>
+            )}
 
-            {/* D-1: 自動保存ステータス */}
-            <div className="flex items-center justify-between text-[10px] shrink-0 px-0.5">
+            {/* D-1: 自動保存ステータス（デスクトップのみ） */}
+            <div className={clsx('flex items-center justify-between text-[10px] shrink-0 px-0.5', isMobile && 'hidden')}>
               {store.isRallyActive && store.currentStrokes.length > 0 ? (
                 lastAutoSaveTime ? (
                   <span className="text-green-500">
@@ -1624,7 +1750,8 @@ export function AnnotatorPage() {
                     onClick={() => !playerToggleDisabled && store.setPlayer('player_a')}
                     disabled={playerToggleDisabled}
                     className={clsx(
-                      'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
+                      'flex-1 rounded font-medium transition-colors',
+                      useLargeTouch ? 'py-3 text-sm' : 'py-1.5 text-xs',
                       store.currentPlayer === 'player_a'
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
@@ -1637,20 +1764,22 @@ export function AnnotatorPage() {
                     onClick={() => !playerToggleDisabled && store.togglePlayer()}
                     disabled={playerToggleDisabled}
                     className={clsx(
-                      'px-2 py-1.5 rounded text-xs transition-colors',
+                      'rounded transition-colors',
+                      useLargeTouch ? 'px-3 py-3' : 'px-2 py-1.5 text-xs',
                       playerToggleDisabled
                         ? 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-40 grayscale'
                         : 'bg-gray-700 hover:bg-gray-600 text-gray-300',
                     )}
                     title={playerToggleDisabled ? '落点入力中は切替できません' : 'プレイヤー切替'}
                   >
-                    <Users size={12} />
+                    <Users size={useLargeTouch ? 16 : 12} />
                   </button>
                   <button
                     onClick={() => !playerToggleDisabled && store.setPlayer('player_b')}
                     disabled={playerToggleDisabled}
                     className={clsx(
-                      'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
+                      'flex-1 rounded font-medium transition-colors',
+                      useLargeTouch ? 'py-3 text-sm' : 'py-1.5 text-xs',
                       store.currentPlayer === 'player_b'
                         ? 'bg-orange-600 text-white'
                         : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
@@ -1669,10 +1798,10 @@ export function AnnotatorPage() {
               const lastStriker = lastStroke?.player
               const suggestedWinner = getSuggestedWinner(pendingEndType, lastStriker)
               return (
-                <div className="border border-yellow-700/50 bg-yellow-900/20 rounded p-2 shrink-0">
-                  <div className="text-xs text-yellow-400 mb-2 font-medium">
+                <div className={clsx('border border-yellow-700/50 bg-yellow-900/20 rounded shrink-0', useLargeTouch ? 'p-3' : 'p-2')}>
+                  <div className={clsx('text-yellow-400 mb-2 font-medium', useLargeTouch ? 'text-sm' : 'text-xs')}>
                     ラリー終了 — エンドタイプ→勝者の順に選択
-                    {lastStriker && (
+                    {!isMobile && lastStriker && (
                       <span className="ml-1 text-gray-500">
                         （最終打者: {lastStriker === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B'}）
                       </span>
@@ -1682,21 +1811,21 @@ export function AnnotatorPage() {
                   {/* 統一2ステップモデル: エンドタイプ選択（1–6キー）→ 勝者確定（A/Bキー） */}
                   <div className="space-y-2">
                     {/* Step 1: エンドタイプ選択 */}
-                    <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-6' : 'grid-cols-3')}>
+                    <div className={clsx('grid gap-1', useLargeTouch ? 'grid-cols-3' : 'grid-cols-3')}>
                       {END_TYPES.map(({ value, label: endLabel }, idx) => (
                         <button
                           key={value}
                           onClick={() => setPendingEndType((prev) => prev === value ? null : value)}
                           className={clsx(
                             'px-1 rounded text-xs font-medium transition-colors text-center',
-                            isMatchDayMode ? 'py-2' : 'py-1.5',
+                            useLargeTouch ? 'py-3' : 'py-1.5',
                             pendingEndType === value
                               ? 'bg-yellow-600 text-white border border-yellow-400'
                               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                           )}
                           title={`${idx + 1}: ${endLabel}`}
                         >
-                          <span className="block text-[9px] opacity-60 font-mono">{idx + 1}</span>
+                          {!isMobile && <span className="block text-[9px] opacity-60 font-mono">{idx + 1}</span>}
                           <span className="block leading-tight">{endLabel}</span>
                         </button>
                       ))}
@@ -1720,7 +1849,7 @@ export function AnnotatorPage() {
                             disabled={!pendingEndType || blocked}
                             className={clsx(
                               'relative rounded text-sm font-bold transition-colors',
-                              isMatchDayMode ? 'py-4' : 'py-2.5',
+                              useLargeTouch ? 'py-5' : 'py-2.5',
                               !pendingEndType || blocked
                                 ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-40'
                                 : suggested
@@ -1736,7 +1865,7 @@ export function AnnotatorPage() {
                                       : 'bg-orange-600 hover:bg-orange-500 text-white'
                             )}
                           >
-                            <span className="absolute top-0.5 right-1.5 text-[9px] font-mono opacity-60">{key}</span>
+                            {!isMobile && <span className="absolute top-0.5 right-1.5 text-[9px] font-mono opacity-60">{key}</span>}
                             {label} 得点
                             {suggested && pendingEndType && (
                               <span className="block text-[9px] opacity-70">← 推定</span>
@@ -1747,20 +1876,25 @@ export function AnnotatorPage() {
                     </div>
 
                     {!pendingEndType && (
-                      <p className="text-[10px] text-gray-500 text-center">1–6キーまたはボタンでエンドタイプを選択</p>
+                      <p className={clsx('text-gray-500 text-center', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
+                        {isMobile ? 'エンドタイプを選択' : '1–6キーまたはボタンでエンドタイプを選択'}
+                      </p>
                     )}
                     {pendingEndType && suggestedWinner && (
-                      <p className="text-[10px] text-gray-300 text-center">
-                        推定: {suggestedWinner === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B'} 得点 — A/Bキーまたはボタンで確定
+                      <p className={clsx('text-gray-300 text-center', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
+                        推定: {suggestedWinner === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B'} 得点 — {isMobile ? 'タップで確定' : 'A/Bキーまたはボタンで確定'}
                       </p>
                     )}
                   </div>
 
                   <button
                     onClick={() => store.cancelRallyEnd()}
-                    className="w-full mt-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-xs"
+                    className={clsx(
+                      'w-full mt-2 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded',
+                      useLargeTouch ? 'py-2.5 text-sm' : 'py-1 text-xs'
+                    )}
                   >
-                    ← キャンセル (Esc)
+                    ← キャンセル {!isMobile && '(Esc)'}
                   </button>
                 </div>
               )
@@ -1815,22 +1949,22 @@ export function AnnotatorPage() {
                     ? store.currentStrokes[store.currentStrokes.length - 1].shot_type
                     : null
                 }
-                isMatchDayMode={isMatchDayMode}
+                isMatchDayMode={useLargeTouch}
               />
             )}
 
             {/* 落点選択（land_zone ステップ時） */}
             {store.inputStep === 'land_zone' && (
               <div className="flex flex-col gap-1 shrink-0">
-                <div className="text-xs text-center">
+                <div className={clsx('text-center', useLargeTouch ? 'text-sm' : 'text-xs')}>
                   {/* player_bの返球は自コートに着地 → 下半分をクリック可能にする */}
                   {store.currentPlayer === 'player_b' ? (
                     <span className="text-orange-400 font-medium">
-                      着地ゾーン（自コート↓） — テンキー1–9 or クリック
+                      着地ゾーン（自コート↓） — {isMobile ? 'タップで選択' : 'テンキー1–9 or クリック'}
                     </span>
                   ) : (
                     <span className="text-blue-400 font-medium">
-                      {t('annotator.land_zone')} — テンキー1–9 or クリック
+                      {t('annotator.land_zone')} — {isMobile ? 'タップで選択' : 'テンキー1–9 or クリック'}
                     </span>
                   )}
                 </div>
@@ -1842,6 +1976,7 @@ export function AnnotatorPage() {
                     interactive={true}
                     showOOB={true}
                     label={undefined}
+                    maxWidth={isMobile ? 340 : 200}
                     playerSides={(() => {
                       const aTop = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB) === 'top'
                       return { top: aTop ? 'a' : 'b', bottom: aTop ? 'b' : 'a' }
@@ -1851,7 +1986,10 @@ export function AnnotatorPage() {
                 </div>
                 <button
                   onClick={() => store.skipLandZone()}
-                  className="text-xs text-gray-500 hover:text-gray-300 text-center py-0.5"
+                  className={clsx(
+                    'text-gray-500 hover:text-gray-300 text-center',
+                    useLargeTouch ? 'py-2 text-sm' : 'py-0.5 text-xs'
+                  )}
                 >
                   {t('annotator.land_zone_skip')}
                 </button>
@@ -1887,54 +2025,62 @@ export function AnnotatorPage() {
 
             {/* ラリー開始ボタン + 見逃しラリーボタン（待機中かつラリー未開始） */}
             {initialized && !store.isRallyActive && store.inputStep === 'idle' && (
-              <div className="flex gap-1.5">
+              <div className={clsx('flex gap-1.5', isMobile && 'flex-wrap')}>
                 <button
                   onClick={() => store.startRally(getTimestamp())}
-                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium"
+                  className={clsx(
+                    'flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded font-medium',
+                    useLargeTouch ? 'py-4 text-base' : 'py-2.5 text-sm'
+                  )}
                 >
                   ▶ ラリー開始
                 </button>
-                <button
-                  onClick={() => setShowSkipRallyDialog(true)}
-                  className="px-3 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs flex items-center gap-1 whitespace-nowrap"
-                  title={t('skip_rally.hint')}
-                >
-                  <SkipForward size={12} />
-                  {t('skip_rally.button')}
-                </button>
-                {/* U-001: ブックマーク（現在タイムスタンプ） */}
-                <button
-                  onClick={() => handleBookmark(null, getTimestamp())}
-                  className={clsx(
-                    'px-2.5 py-2.5 rounded text-xs flex items-center transition-colors',
-                    lastBookmarked === null ? 'bg-gray-700 hover:bg-gray-600 text-gray-400' : 'bg-yellow-700/40 text-yellow-300'
-                  )}
-                  title={t('bookmark.add')}
-                >
-                  <Bookmark size={13} />
-                </button>
-                {/* S-003: コメント */}
-                <button
-                  onClick={() => { setShowCommentInput((v) => !v); setCommentRallyId(null) }}
-                  className="px-2.5 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-xs flex items-center transition-colors"
-                  title={t('comment.add')}
-                >
-                  <MessageSquare size={13} />
-                </button>
-                {/* G3: ウォームアップメモボタン（Set 1 Rally 1 前にのみ表示） */}
-                {store.currentSetNum === 1 && store.currentRallyNum === 1 && (
-                  <button
-                    onClick={() => setShowWarmupPanel((v) => !v)}
-                    className={clsx(
-                      'px-2.5 py-2.5 rounded text-xs flex items-center gap-1 transition-colors whitespace-nowrap',
-                      showWarmupPanel
-                        ? 'bg-blue-700 text-white'
-                        : 'bg-gray-700 hover:bg-gray-600 text-blue-300'
+                {/* モバイルでは見逃し・ブックマーク・コメント・ウォームアップを省略して画面を広く使う */}
+                {!isMobile && (
+                  <>
+                    <button
+                      onClick={() => setShowSkipRallyDialog(true)}
+                      className="px-3 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs flex items-center gap-1 whitespace-nowrap"
+                      title={t('skip_rally.hint')}
+                    >
+                      <SkipForward size={12} />
+                      {t('skip_rally.button')}
+                    </button>
+                    {/* U-001: ブックマーク */}
+                    <button
+                      onClick={() => handleBookmark(null, getTimestamp())}
+                      className={clsx(
+                        'px-2.5 py-2.5 rounded text-xs flex items-center transition-colors',
+                        lastBookmarked === null ? 'bg-gray-700 hover:bg-gray-600 text-gray-400' : 'bg-yellow-700/40 text-yellow-300'
+                      )}
+                      title={t('bookmark.add')}
+                    >
+                      <Bookmark size={13} />
+                    </button>
+                    {/* S-003: コメント */}
+                    <button
+                      onClick={() => { setShowCommentInput((v) => !v); setCommentRallyId(null) }}
+                      className="px-2.5 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-xs flex items-center transition-colors"
+                      title={t('comment.add')}
+                    >
+                      <MessageSquare size={13} />
+                    </button>
+                    {/* G3: ウォームアップメモ */}
+                    {store.currentSetNum === 1 && store.currentRallyNum === 1 && (
+                      <button
+                        onClick={() => setShowWarmupPanel((v) => !v)}
+                        className={clsx(
+                          'px-2.5 py-2.5 rounded text-xs flex items-center gap-1 transition-colors whitespace-nowrap',
+                          showWarmupPanel
+                            ? 'bg-blue-700 text-white'
+                            : 'bg-gray-700 hover:bg-gray-600 text-blue-300'
+                        )}
+                        title={t('warmup.button')}
+                      >
+                        {t('warmup.button')}
+                      </button>
                     )}
-                    title={t('warmup.button')}
-                  >
-                    {t('warmup.button')}
-                  </button>
+                  </>
                 )}
               </div>
             )}
@@ -1954,8 +2100,8 @@ export function AnnotatorPage() {
               />
             )}
 
-            {/* S-003: コメント入力フォーム */}
-            {showCommentInput && (
+            {/* S-003: コメント入力フォーム（デスクトップのみ） */}
+            {!isMobile && showCommentInput && (
               <div className="flex gap-1.5">
                 <input
                   type="text"
@@ -1982,17 +2128,34 @@ export function AnnotatorPage() {
               </div>
             )}
 
-            {/* ストローク履歴 */}
-            <StrokeHistory
-              strokes={store.currentStrokes}
-              playerAName={match?.player_a?.name ?? 'A'}
-              playerBName={match?.player_b?.name ?? 'B'}
-              partnerAName={match?.partner_a?.name}
-              partnerBName={match?.partner_b?.name}
-            />
+            {/* ストローク履歴（モバイルでは最終ショットのみ表示） */}
+            {isMobile ? (
+              store.currentStrokes.length > 0 && (
+                <div className="bg-gray-800 rounded px-3 py-2 text-xs text-gray-400 flex items-center justify-between shrink-0">
+                  <span>
+                    #{store.currentStrokes.length}{' '}
+                    {store.currentStrokes[store.currentStrokes.length - 1]?.shot_type ?? ''}
+                    {store.currentStrokes[store.currentStrokes.length - 1]?.land_zone
+                      ? ` → ${store.currentStrokes[store.currentStrokes.length - 1].land_zone}`
+                      : ''}
+                  </span>
+                  <span className="text-gray-600">
+                    {store.currentStrokes.length} shots
+                  </span>
+                </div>
+              )
+            ) : (
+              <StrokeHistory
+                strokes={store.currentStrokes}
+                playerAName={match?.player_a?.name ?? 'A'}
+                playerBName={match?.player_b?.name ?? 'B'}
+                partnerAName={match?.partner_a?.name}
+                partnerBName={match?.partner_b?.name}
+              />
+            )}
 
-            {/* G2+移動系: エンリッチメントストリップ（落点確定後、次ショット前にオプション表示） */}
-            {enrichmentActive && store.currentStrokes.length > 0 && (() => {
+            {/* G2+移動系: エンリッチメントストリップ（デスクトップのみ — モバイルでは省略） */}
+            {!isMobile && enrichmentActive && store.currentStrokes.length > 0 && (() => {
               const last = store.currentStrokes[store.currentStrokes.length - 1]
               const RETURN_QUALITY = [
                 { value: 'attack',    key: 'enrichment.return_quality_attack' },
@@ -2109,9 +2272,12 @@ export function AnnotatorPage() {
               {store.isRallyActive && store.currentStrokes.length > 0 && store.inputStep !== 'rally_end' && (
                 <button
                   onClick={() => store.endRallyRequest()}
-                  className="w-full py-2 bg-green-700 hover:bg-green-600 text-white rounded text-sm font-medium"
+                  className={clsx(
+                    'w-full bg-green-700 hover:bg-green-600 text-white rounded font-medium',
+                    useLargeTouch ? 'py-4 text-base' : 'py-2 text-sm'
+                  )}
                 >
-                  ラリー終了 (Enter)
+                  ラリー終了 {!isMobile && '(Enter)'}
                 </button>
               )}
 
@@ -2119,10 +2285,13 @@ export function AnnotatorPage() {
               {store.currentStrokes.length > 0 && (
                 <button
                   onClick={() => store.undoLastStroke()}
-                  className="flex items-center gap-1 justify-center py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
+                  className={clsx(
+                    'flex items-center gap-1 justify-center bg-gray-700 hover:bg-gray-600 text-gray-300 rounded',
+                    useLargeTouch ? 'py-3 text-base' : 'py-1.5 text-sm'
+                  )}
                 >
-                  <RotateCcw size={14} />
-                  戻す (Ctrl+Z)
+                  <RotateCcw size={useLargeTouch ? 16 : 14} />
+                  戻す {!isMobile && '(Ctrl+Z)'}
                 </button>
               )}
 
@@ -2130,16 +2299,19 @@ export function AnnotatorPage() {
               {store.isRallyActive && (
                 <button
                   onClick={() => store.resetRally()}
-                  className="w-full py-1.5 bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded text-xs"
+                  className={clsx(
+                    'w-full bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded',
+                    useLargeTouch ? 'py-2.5 text-sm' : 'py-1.5 text-xs'
+                  )}
                 >
                   ✕ ラリーキャンセル
                 </button>
               )}
             </div>
 
-            {/* セット管理（C-1: 確認ダイアログ付き） */}
+            {/* セット管理（C-1: 確認ダイアログ付き）— モバイルでは折りたたみ */}
             {/* G1: ラリー中は管理操作をグレースケールでロック表示（Step A のみ有効） */}
-            {initialized && (
+            {initialized && !isMobile && (
               <div className={clsx(
                 'border rounded p-2 text-xs shrink-0 transition-opacity',
                 store.isRallyActive

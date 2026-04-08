@@ -145,6 +145,15 @@ def create_match(body: MatchCreate, db: Session = Depends(get_db)):
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
 
+@router.get("/matches/needs_review")
+def list_needs_review_matches(db: Session = Depends(get_db)):
+    """要レビュー試合一覧（V4-U-003）— {match_id} より前に定義が必要"""
+    matches = db.query(Match).filter(
+        Match.metadata_status != "verified"
+    ).order_by(Match.created_at.desc()).all()
+    return {"success": True, "data": [match_to_dict(m, include_players=True, db=db) for m in matches]}
+
+
 @router.get("/matches/{match_id}")
 def get_match(match_id: int, db: Session = Depends(get_db)):
     """試合詳細"""
@@ -217,7 +226,7 @@ def quick_start_match(body: QuickStartBody, db: Session = Depends(get_db)):
             name_normalized=name_normalized,
             team=body.opponent_team or None,    # チーム名（同姓同名識別用）
             is_target=False,
-            dominant_hand=None,
+            dominant_hand="unknown",
             profile_status="provisional",
             needs_review=True,
             created_via_quick_start=True,
@@ -253,15 +262,6 @@ def quick_start_match(body: QuickStartBody, db: Session = Depends(get_db)):
             "opponent_created": body.opponent_id is None,
         },
     }
-
-
-@router.get("/matches/needs_review")
-def list_needs_review_matches(db: Session = Depends(get_db)):
-    """要レビュー試合一覧（V4-U-003）"""
-    matches = db.query(Match).filter(
-        Match.metadata_status != "verified"
-    ).order_by(Match.created_at.desc()).all()
-    return {"success": True, "data": [match_to_dict(m, include_players=True, db=db) for m in matches]}
 
 
 @router.get("/matches/{match_id}/rallies")

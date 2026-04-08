@@ -18,7 +18,7 @@ class PlayerCreate(BaseModel):
     name_en: Optional[str] = None
     team: Optional[str] = None
     nationality: Optional[str] = None
-    dominant_hand: Optional[str] = None        # R / L / null（未確認）
+    dominant_hand: Optional[str] = "unknown"    # R / L / unknown（未確認時はunknown）
     birth_year: Optional[int] = None
     world_ranking: Optional[int] = None
     is_target: bool = False

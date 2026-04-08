@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { X, Copy, Check } from 'lucide-react'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface Props {
   sessionCode: string
@@ -14,6 +15,7 @@ interface Props {
 export function SessionShareModal({ sessionCode, coachUrls, onClose }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [copied, setCopied] = useState(false)
+  const isLight = useIsLightMode()
   const url = coachUrls[0] ?? ''
 
   useEffect(() => {
@@ -31,22 +33,30 @@ export function SessionShareModal({ sessionCode, coachUrls, onClose }: Props) {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const panelBg = isLight ? 'bg-white border border-gray-200 shadow-xl' : 'bg-gray-800 border border-gray-700 shadow-2xl'
+  const titleColor = isLight ? 'text-gray-900' : 'text-white'
+  const subColor = isLight ? 'text-gray-500' : 'text-gray-400'
+  const codeColor = isLight ? 'text-blue-600' : 'text-blue-300'
+  const urlBg = isLight ? 'bg-gray-100' : 'bg-gray-900/60'
+  const urlColor = isLight ? 'text-gray-600' : 'text-gray-400'
+  const noteColor = isLight ? 'text-gray-400' : 'text-gray-600'
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-72 p-5"
+        className={`rounded-xl w-72 p-5 ${panelBg}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="text-sm font-semibold text-white">セッション共有</p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className={`text-sm font-semibold ${titleColor}`}>セッション共有</p>
+            <p className={`text-xs mt-0.5 ${subColor}`}>
               コード:{' '}
-              <span className="font-mono font-bold text-blue-300">{sessionCode}</span>
+              <span className={`font-mono font-bold ${codeColor}`}>{sessionCode}</span>
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
+          <button onClick={onClose} className={`${subColor} hover:${titleColor}`}>
             <X size={16} />
           </button>
         </div>
@@ -57,13 +67,13 @@ export function SessionShareModal({ sessionCode, coachUrls, onClose }: Props) {
             <canvas ref={canvasRef} />
           </div>
         ) : (
-          <p className="text-xs text-gray-500 text-center mb-4">URLなし</p>
+          <p className={`text-xs text-center mb-4 ${noteColor}`}>URLなし</p>
         )}
 
         {/* URL表示 + コピー */}
         {url && (
           <div className="flex items-center gap-1.5">
-            <p className="flex-1 text-[10px] text-gray-400 font-mono truncate bg-gray-900/60 rounded px-2 py-1">
+            <p className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} ${urlColor}`}>
               {url}
             </p>
             <button
@@ -76,7 +86,7 @@ export function SessionShareModal({ sessionCode, coachUrls, onClose }: Props) {
           </div>
         )}
 
-        <p className="text-[10px] text-gray-600 text-center mt-3">
+        <p className={`text-[10px] text-center mt-3 ${noteColor}`}>
           QRコードをスマホで読み取り、コーチ/共有ビューを開く
         </p>
       </div>

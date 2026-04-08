@@ -146,7 +146,7 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
       {groups.map((group) => (
         <div key={group.labelKey}>
           <div className="text-xs text-gray-500 mb-1 px-1">{t(group.labelKey)}</div>
-          <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-2' : 'grid-cols-3')}>
+          <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-3')}>
             {group.shots.map((type) => {
               const key = Object.entries(KEYBOARD_MAP).find(([, v]) => v === type)?.[0] ?? ''
               return (
@@ -155,8 +155,8 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
                   onClick={() => !disabled && onSelect(type)}
                   disabled={disabled}
                   className={clsx(
-                    'relative px-2 rounded text-xs font-medium transition-colors',
-                    isMatchDayMode ? 'py-3 text-sm' : 'py-1.5',
+                    'relative px-2 rounded font-medium transition-colors',
+                    isMatchDayMode ? 'py-3 text-sm' : 'py-3 text-sm md:py-1.5 md:text-xs',
                     selected === type
                       ? 'bg-blue-600 text-white border border-blue-400'
                       : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600',
@@ -164,7 +164,7 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
                   )}
                   title={`${t(`shot_types.${type}`)} (${key.toUpperCase()})`}
                 >
-                  <span className="absolute top-0.5 right-1 text-[9px] opacity-60 font-mono">{key.toUpperCase()}</span>
+                  <span className="absolute top-0.5 right-1 text-[9px] opacity-60 font-mono hidden md:inline">{key.toUpperCase()}</span>
                   <span className="block text-center leading-tight">{t(`shot_types.${type}`)}</span>
                 </button>
               )

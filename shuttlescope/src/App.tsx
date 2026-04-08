@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { List, BarChart2, Settings, Sun, Moon, TrendingUp } from 'lucide-react'
@@ -56,25 +56,31 @@ const queryClient = new QueryClient({
 // ロール選択画面（POCフェーズ）
 function RoleSelector({ onSelect }: { onSelect: (role: UserRole) => void }) {
   const { t } = useTranslation()
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-      <div className="bg-gray-800 rounded-lg p-8 w-80">
+    <div className={`min-h-screen flex items-center justify-center ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+      <div className={`rounded-lg p-8 w-80 ${isLight ? 'bg-white shadow-lg border border-gray-200' : 'bg-gray-800'}`}>
         <div className="text-center mb-6">
-          <div className="text-3xl font-bold text-white mb-1">ShuttleScope</div>
-          <div className="text-sm text-gray-400">ロールを選択してください</div>
+          <div className={`text-3xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>ShuttleScope</div>
+          <div className={`text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>ロールを選択してください</div>
         </div>
         <div className="flex flex-col gap-3">
           {(['analyst', 'coach', 'player'] as UserRole[]).map((role) => (
             <button
               key={role}
               onClick={() => onSelect(role)}
-              className="py-3 px-4 rounded bg-gray-700 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+              className={`py-3 px-4 rounded text-sm font-medium transition-colors ${
+                isLight
+                  ? 'bg-gray-100 hover:bg-blue-600 text-gray-800 hover:text-white'
+                  : 'bg-gray-700 hover:bg-blue-700 text-white'
+              }`}
             >
               {t(`roles.${role}`)}
             </button>
           ))}
         </div>
-        <p className="text-xs text-gray-500 mt-4 text-center">
+        <p className={`text-xs mt-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
           POCフェーズ: ロールはブラウザに保存されます
         </p>
       </div>
@@ -82,11 +88,15 @@ function RoleSelector({ onSelect }: { onSelect: (role: UserRole) => void }) {
   )
 }
 
-// サイドバーナビゲーション
+// サイドバー（デスクトップ: 左縦、モバイル: ボトムバー）
 function Sidebar() {
   const { t } = useTranslation()
   const { role } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const location = useLocation()
+  const isLight = theme === 'light'
+  // アノテーションページではモバイルボトムバーを非表示（AnnotatorPage が独自ヘッダーを持つ）
+  const isAnnotatorPage = location.pathname.startsWith('/annotator')
 
   const navItems = [
     { to: '/matches', label: t('nav.matches'), icon: List },
@@ -95,42 +105,82 @@ function Sidebar() {
     { to: '/settings', label: t('nav.settings'), icon: Settings },
   ]
 
-  return (
-    <div className="w-16 flex flex-col items-center py-4 bg-gray-800 border-r border-gray-700">
-      <div className="text-blue-400 text-xs font-bold mb-4">SS</div>
-      {navItems.map(({ to, label, icon: Icon }) => (
-        <NavLink
-          key={to}
-          to={to}
-          title={label}
-          className={({ isActive }) =>
-            clsx(
-              'flex flex-col items-center gap-1 p-2 rounded text-xs w-full',
-              isActive ? 'text-blue-400 bg-blue-900/30' : 'text-gray-400 hover:text-white hover:bg-gray-700'
-            )
-          }
-        >
-          <Icon size={20} />
-          <span className="text-[9px] leading-none">{label.slice(0, 4)}</span>
-        </NavLink>
-      ))}
+  const sidebarBg = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
 
-      {/* テーマ切替ボタン */}
-      <div className="mt-auto mb-2">
+  return (
+    <>
+      {/* デスクトップ: 左サイドバー */}
+      <div className={clsx('hidden md:flex w-16 flex-col items-center py-4 border-r', sidebarBg, isAnnotatorPage && 'md:hidden')}>
+        <div className="text-blue-500 text-xs font-bold mb-4">SS</div>
+        {navItems.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            title={label}
+            className={({ isActive }) =>
+              clsx(
+                'flex flex-col items-center gap-1 p-2 rounded text-xs w-full',
+                isActive
+                  ? (isLight ? 'text-blue-600 bg-blue-50' : 'text-blue-400 bg-blue-900/30')
+                  : (isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700')
+              )
+            }
+          >
+            <Icon size={20} />
+            <span className="text-[9px] leading-none">{label.slice(0, 4)}</span>
+          </NavLink>
+        ))}
+
+        {/* テーマ切替ボタン */}
+        <div className="mt-auto mb-2">
+          <button
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'ライトモードに切替' : 'ダークモードに切替'}
+            className={`flex flex-col items-center gap-1 p-2 rounded text-xs w-full transition-colors ${
+              isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700'
+            }`}
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            <span className="text-[9px] leading-none">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+          </button>
+        </div>
+
+        <div className={`text-[9px] pb-2 ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>
+          {role?.slice(0, 2).toUpperCase()}
+        </div>
+      </div>
+
+      {/* モバイル: ボトムナビ（アノテーションページでは非表示） */}
+      {!isAnnotatorPage && <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t safe-area-bottom ${sidebarBg}`}
+           style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        {navItems.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) =>
+              clsx(
+                'flex flex-col items-center gap-0.5 py-2 px-3 text-[10px] min-w-0',
+                isActive
+                  ? (isLight ? 'text-blue-600' : 'text-blue-400')
+                  : (isLight ? 'text-gray-500' : 'text-gray-400')
+              )
+            }
+          >
+            <Icon size={20} />
+            <span className="truncate">{label.slice(0, 4)}</span>
+          </NavLink>
+        ))}
         <button
           onClick={toggleTheme}
-          title={theme === 'dark' ? 'ライトモードに切替' : 'ダークモードに切替'}
-          className="flex flex-col items-center gap-1 p-2 rounded text-xs w-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+          className={`flex flex-col items-center gap-0.5 py-2 px-3 text-[10px] ${
+            isLight ? 'text-gray-500' : 'text-gray-400'
+          }`}
         >
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          <span className="text-[9px] leading-none">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+          <span className="truncate">{theme === 'dark' ? 'Light' : 'Dark'}</span>
         </button>
-      </div>
-
-      <div className="text-[9px] text-gray-600 pb-2">
-        {role?.slice(0, 2).toUpperCase()}
-      </div>
-    </div>
+      </div>}
+    </>
   )
 }
 
@@ -139,7 +189,7 @@ function MainLayout() {
   return (
     <div className="flex h-screen">
       <Sidebar />
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden pb-14 md:pb-0">
         <Routes>
           <Route path="/" element={<Navigate to="/matches" replace />} />
           <Route path="/matches" element={<MatchListPage />} />
@@ -174,15 +224,15 @@ function App() {
   // バックエンド接続中はローディング画面を表示
   if (!ready) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
         <div className="text-center space-y-4">
-          <div className="text-3xl font-bold text-white">ShuttleScope</div>
+          <div className="text-3xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>ShuttleScope</div>
           <div className="flex items-center justify-center gap-2">
             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
-          <p className="text-gray-400 text-sm">バックエンド起動中...</p>
+          <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>バックエンド起動中...</p>
           {elapsed >= 10 && (
             <p className="text-yellow-500 text-xs">
               起動に時間がかかっています ({elapsed}秒)

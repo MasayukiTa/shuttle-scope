@@ -93,7 +93,7 @@ export function PredictionPage() {
               {t('nav.prediction_title')}
             </h1>
             {role && (
-              <span className="text-xs px-2 py-0.5 rounded bg-gray-700 border border-gray-600 text-gray-300 ml-1">
+              <span className={`text-xs px-2 py-0.5 rounded ml-1 ${isLight ? 'bg-gray-100 border border-gray-300 text-gray-600' : 'bg-gray-700 border border-gray-600 text-gray-300'}`}>
                 {role === 'coach' ? 'コーチ' : 'アナリスト'}
               </span>
             )}
@@ -159,7 +159,7 @@ export function PredictionPage() {
               {t('prediction.select_player')}
             </div>
           ) : subTab === 'preview' ? (
-            <div className="max-w-2xl">
+            <div className="max-w-2xl mx-auto">
               <PredictionPanel
                 playerId={selectedPlayerId}
                 playerName={selectedPlayer?.name ?? ''}
@@ -167,12 +167,12 @@ export function PredictionPage() {
               />
             </div>
           ) : subTab === 'pair' ? (
-            <div className="max-w-2xl">
+            <div className="max-w-2xl mx-auto">
               <PairSimulationPanel players={sortedPlayers} />
             </div>
           ) : subTab === 'lineup' ? (
-            <div className="max-w-2xl">
-              <div className="bg-gray-800 rounded-lg p-4">
+            <div className="max-w-2xl mx-auto">
+              <div className={`rounded-lg p-4 ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800'}`}>
                 <p className="text-sm font-semibold mb-3" style={{ color: isLight ? '#1e293b' : '#d1d5db' }}>
                   {t('prediction.lineup_optimizer')}
                 </p>
@@ -181,9 +181,9 @@ export function PredictionPage() {
             </div>
           ) : (
             /* forecast タブ: 試合選択 + HumanForecastPanel */
-            <div className="max-w-2xl space-y-4">
+            <div className="max-w-2xl mx-auto space-y-4">
               {/* 試合セレクター */}
-              <div className="bg-gray-800 rounded-lg p-4">
+              <div className={`rounded-lg p-4 ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800'}`}>
                 <p className="text-xs font-semibold mb-2" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>
                   試合を選択
                 </p>
@@ -212,7 +212,7 @@ export function PredictionPage() {
 
               {/* 予測パネル */}
               {forecastMatchId && (
-                <div className="bg-gray-800 rounded-lg p-4">
+                <div className={`rounded-lg p-4 ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800'}`}>
                   <HumanForecastPanel matchId={forecastMatchId} playerId={selectedPlayerId} />
                 </div>
               )}
