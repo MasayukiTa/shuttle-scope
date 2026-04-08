@@ -17,10 +17,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings as app_settings
-from backend.db.database import (
-    create_tables, add_columns_if_missing, engine, get_db,
-    _ensure_unique_indexes, _ensure_analytics_indexes, run_db_migrations,
-)
+from backend.db.database import engine, get_db, bootstrap_database
 from backend.routers import matches, rallies, strokes, players, analysis, reports, sets, tracknet
 from backend.routers import settings as settings_router
 from backend.routers import sessions, comments, bookmarks, network_diag, warmup
@@ -36,11 +33,7 @@ _RENDERER_DIR = Path(__file__).resolve().parent.parent / "out" / "renderer"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """アプリ起動時にテーブル作成"""
-    create_tables()
-    add_columns_if_missing(engine)
-    _ensure_unique_indexes(engine)
-    _ensure_analytics_indexes(engine)
-    run_db_migrations()
+    bootstrap_database(engine, app_settings.DATABASE_URL)
     yield
 
 

@@ -335,7 +335,7 @@ export function DashboardPage() {
     if (heatmapLastN != null) {
       // matches は日付降順を前提にスライス
       const recent = [...matches]
-        .sort((a, b) => b.date.localeCompare(a.date))
+        .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
         .slice(0, heatmapLastN)
       const dateFrom = recent.length > 0 ? recent[recent.length - 1].date : undefined
       return dateFrom ? { date_from: dateFrom } : {}
@@ -1684,25 +1684,53 @@ export function DashboardPage() {
           }
         }
         return (
-          <ChartModal
-            title={CHART_TITLES[expandedChart] ?? expandedChart}
-            onClose={() => setExpandedChart(null)}
-          >
-            {renderContent()}
-          </ChartModal>
+          <ErrorBoundary fallback={
+            <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center">
+              <div className="bg-gray-800 rounded-lg p-8 max-w-sm text-center">
+                <p className="text-gray-300 mb-4">グラフの表示中にエラーが発生しました</p>
+                <button
+                  onClick={() => setExpandedChart(null)}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          }>
+            <ChartModal
+              title={CHART_TITLES[expandedChart] ?? expandedChart}
+              onClose={() => setExpandedChart(null)}
+            >
+              {renderContent()}
+            </ChartModal>
+          </ErrorBoundary>
         )
       })()}
 
       {/* コートヒートマップ全画面モーダル */}
       {courtHeatOpen && selectedPlayerId && (
-        <CourtHeatModal
-          playerId={selectedPlayerId}
-          matches={matches}
-          initialMatchId={heatmapMatchId}
-          initialLastN={heatmapLastN}
-          initialTab={heatmapTab}
-          onClose={() => setCourtHeatOpen(false)}
-        />
+        <ErrorBoundary fallback={
+          <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center">
+            <div className="bg-gray-800 rounded-lg p-8 max-w-sm text-center">
+              <p className="text-gray-300 mb-4">ヒートマップの表示中にエラーが発生しました</p>
+              <button
+                onClick={() => setCourtHeatOpen(false)}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        }>
+          <CourtHeatModal
+            playerId={selectedPlayerId}
+            matches={matches}
+            initialMatchId={heatmapMatchId}
+            initialLastN={heatmapLastN}
+            initialTab={heatmapTab}
+            onClose={() => setCourtHeatOpen(false)}
+          />
+        </ErrorBoundary>
       )}
     </div>
   )

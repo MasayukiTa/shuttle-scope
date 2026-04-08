@@ -1,5 +1,5 @@
 """SQLAlchemy データベース設定"""
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from backend.config import settings
 import uuid as _uuid_mod
@@ -28,10 +28,10 @@ def get_db():
         db.close()
 
 
-def create_tables():
+def create_tables(eng=None):
     """アプリ起動時にテーブルを作成"""
     from backend.db.models import Base as ModelsBase  # noqa: F401
-    ModelsBase.metadata.create_all(bind=engine)
+    ModelsBase.metadata.create_all(bind=eng or engine)
 
 
 def add_columns_if_missing(eng) -> None:
@@ -265,3 +265,77 @@ def run_db_migrations() -> None:
         command.upgrade(alembic_cfg, "head")
     except Exception as e:
         print(f"[migration] WARNING: Alembic migration failed: {e}")
+
+
+def _table_names(eng) -> set[str]:
+    """Return the current table names in the bound database."""
+    return set(inspect(eng).get_table_names())
+
+
+def stamp_db_head(db_url: str | None = None) -> None:
+    """Mark the current schema as Alembic head without replaying revisions."""
+    url = db_url or settings.DATABASE_URL
+    if ":memory:" in url:
+        return
+    try:
+        import pathlib
+        from alembic.config import Config
+        from alembic import command
+
+        alembic_ini = pathlib.Path(__file__).parent / "alembic.ini"
+        alembic_cfg = Config(str(alembic_ini))
+        alembic_cfg.set_main_option("sqlalchemy.url", url)
+        command.stamp(alembic_cfg, "head")
+    except Exception as e:
+        print(f"[migration] WARNING: Alembic stamp failed: {e}")
+
+
+def run_db_migrations(db_url: str | None = None) -> None:
+    """Apply Alembic revisions up to head for file-backed databases."""
+    url = db_url or settings.DATABASE_URL
+    if ":memory:" in url:
+        return
+    try:
+        import pathlib
+        from alembic.config import Config
+        from alembic import command
+
+        alembic_ini = pathlib.Path(__file__).parent / "alembic.ini"
+        alembic_cfg = Config(str(alembic_ini))
+        alembic_cfg.set_main_option("sqlalchemy.url", url)
+        command.upgrade(alembic_cfg, "head")
+    except Exception as e:
+        print(f"[migration] WARNING: Alembic migration failed: {e}")
+
+
+def bootstrap_database(eng=None, db_url: str | None = None) -> None:
+    """Initialize the database safely across fresh, legacy, and versioned states."""
+    bind = eng or engine
+    url = db_url or settings.DATABASE_URL
+
+    if ":memory:" in url:
+        create_tables(bind)
+        return
+
+    before_tables = _table_names(bind)
+    has_version_table = "alembic_version" in before_tables
+    has_app_tables = bool(before_tables - {"alembic_version"})
+
+    if not has_app_tables and not has_version_table:
+        create_tables(bind)
+        _ensure_unique_indexes(bind)
+        _ensure_analytics_indexes(bind)
+        stamp_db_head(url)
+        return
+
+    if has_version_table:
+        run_db_migrations(url)
+        _ensure_unique_indexes(bind)
+        _ensure_analytics_indexes(bind)
+        return
+
+    create_tables(bind)
+    add_columns_if_missing(bind)
+    run_db_migrations(url)
+    _ensure_unique_indexes(bind)
+    _ensure_analytics_indexes(bind)

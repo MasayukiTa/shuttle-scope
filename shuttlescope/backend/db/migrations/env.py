@@ -25,7 +25,8 @@ from backend.db.database import Base
 config = context.config
 
 # alembic.ini の sqlalchemy.url を settings の値で上書き（絶対パス対応）
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+configured_url = config.get_main_option("sqlalchemy.url") or settings.DATABASE_URL
+config.set_main_option("sqlalchemy.url", configured_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -33,7 +34,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # SQLite の場合は batch モードで ALTER TABLE を擬似サポート
-_use_batch = "sqlite" in settings.DATABASE_URL
+_use_batch = "sqlite" in configured_url
 
 
 def run_migrations_offline() -> None:

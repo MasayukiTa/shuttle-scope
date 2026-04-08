@@ -82,7 +82,7 @@ export function CourtHeatModal({
     if (matchId != null) return { match_id: matchId }
     if (lastN != null) {
       const recent = [...matches]
-        .sort((a, b) => b.date.localeCompare(a.date))
+        .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
         .slice(0, lastN)
       const dateFrom = recent.length > 0 ? recent[recent.length - 1].date : undefined
       return dateFrom ? { date_from: dateFrom } : {}
@@ -221,6 +221,11 @@ export function CourtHeatModal({
             {/* コート図（インタラクティブ） */}
             {loadingHeat ? (
               <div className="text-gray-500 text-sm py-8">読み込み中...</div>
+            ) : sampleSize === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <p className="text-gray-500 text-sm">対象期間にストロークデータがありません</p>
+                <p className="text-gray-600 text-xs mt-1">試合のアノテーションが完了するとヒートマップが表示されます</p>
+              </div>
             ) : (
               <CourtDiagram
                 mode={mode}
