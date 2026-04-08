@@ -23,6 +23,7 @@ from backend.routers import settings as settings_router
 from backend.routers import sessions, comments, bookmarks, network_diag, warmup
 from backend.routers import prediction, tunnel
 from backend.routers import human_forecast
+from backend.routers import sync as sync_router
 from backend.utils.video_downloader import video_downloader
 
 # React renderer ビルド出力パス（Electron / ブラウザ共用）
@@ -79,6 +80,8 @@ app.include_router(prediction.router, prefix="/api")
 app.include_router(tunnel.router, prefix="/api")
 # Phase S2: ヒューマンベンチマーク
 app.include_router(human_forecast.router, prefix="/api")
+# データ同期（Export / Import / Backup）
+app.include_router(sync_router.router, prefix="/api")
 
 
 

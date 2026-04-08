@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
@@ -81,10 +81,20 @@ export function SettingsPage() {
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
-  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'account'>('players')
+  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'account'>('players')
   const { settings: appSettings, updateSettings, loading: settingsLoading } = useSettings()
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const navigate = useNavigate()
+
+  // データ管理タブ用状態
+  const [exportMatchIds, setExportMatchIds] = useState<string>('')
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importPreview, setImportPreview] = useState<any>(null)
+  const [importPreviewLoading, setImportPreviewLoading] = useState(false)
+  const [importResult, setImportResult] = useState<any>(null)
+  const [importRunning, setImportRunning] = useState(false)
+  const [backupResult, setBackupResult] = useState<string | null>(null)
+  const [backupRunning, setBackupRunning] = useState(false)
 
   // 選手一覧取得
   const { data: playersData } = useQuery({
@@ -144,6 +154,77 @@ export function SettingsPage() {
     mutationFn: () => apiPost('/tunnel/stop', {}),
     onSuccess: () => { refetchTunnel() },
   })
+
+  // データ管理: バックアップ一覧
+  const { data: backupsData, refetch: refetchBackups } = useQuery({
+    queryKey: ['sync-backups'],
+    queryFn: () => apiGet<{ success: boolean; data: Array<{ filename: string; size_bytes: number; created_at: string }> }>('/sync/backups'),
+    enabled: activeTab === 'data',
+  })
+
+  // データ管理: 試合一覧（エクスポート用）
+  const { data: matchesForExport } = useQuery({
+    queryKey: ['matches-for-export'],
+    queryFn: () => apiGet<{ data: Array<{ id: number; date: string; tournament: string; result: string }> }>('/matches'),
+    enabled: activeTab === 'data',
+  })
+  const exportMatchList = (matchesForExport as any)?.data ?? []
+
+  async function handleExportMatch() {
+    if (!exportMatchIds.trim()) return
+    const url = `/api/sync/export/match?match_ids=${encodeURIComponent(exportMatchIds.trim())}`
+    window.open(url, '_blank')
+  }
+
+  async function handlePreviewImport() {
+    if (!importFile) return
+    setImportPreviewLoading(true)
+    setImportPreview(null)
+    try {
+      const form = new FormData()
+      form.append('file', importFile)
+      const resp = await fetch('/api/sync/preview', { method: 'POST', body: form })
+      const json = await resp.json()
+      setImportPreview(json)
+    } catch {
+      setImportPreview({ success: false, error: '通信エラー' })
+    } finally {
+      setImportPreviewLoading(false)
+    }
+  }
+
+  async function handleImport() {
+    if (!importFile) return
+    setImportRunning(true)
+    setImportResult(null)
+    try {
+      const form = new FormData()
+      form.append('file', importFile)
+      const resp = await fetch('/api/sync/import', { method: 'POST', body: form })
+      const json = await resp.json()
+      setImportResult(json)
+      queryClient.invalidateQueries()
+    } catch {
+      setImportResult({ success: false, error: '通信エラー' })
+    } finally {
+      setImportRunning(false)
+    }
+  }
+
+  async function handleBackup() {
+    setBackupRunning(true)
+    setBackupResult(null)
+    try {
+      const resp = await fetch('/api/sync/backup', { method: 'POST' })
+      const json = await resp.json()
+      setBackupResult(json.success ? json.data?.filename ?? '完了' : 'エラー')
+      refetchBackups()
+    } catch {
+      setBackupResult('通信エラー')
+    } finally {
+      setBackupRunning(false)
+    }
+  }
 
   // 選手作成
   const createPlayer = useMutation({
@@ -235,6 +316,7 @@ export function SettingsPage() {
           { key: 'review', label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
           { key: 'tracknet', label: t('tracknet.tab_label') },
           { key: 'sharing', label: t('sharing.tab_label') },
+          { key: 'data', label: 'データ管理' },
           { key: 'account', label: 'アカウント設定' },
         ] as const).map((tab) => (
           <button
@@ -722,6 +804,209 @@ export function SettingsPage() {
                 <p className="text-xs text-gray-500">{t('sharing.diag_not_run')}</p>
               )}
             </div>
+          </div>
+        )}
+
+        {/* データ管理タブ */}
+        {activeTab === 'data' && (
+          <div className="max-w-2xl space-y-6">
+
+            {/* ── エクスポート ──────────────────────────────── */}
+            <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Download size={16} className="text-blue-400" />
+                <h2 className="text-base font-semibold">エクスポート</h2>
+              </div>
+              <p className="text-xs text-gray-400">
+                試合データを <code className="bg-gray-700 px-1 rounded">.sspkg</code> 形式でダウンロード。別 PC へのデータ持ち運びや引き継ぎに使用します。
+              </p>
+
+              {/* 試合選択 */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">エクスポートする試合ID（カンマ区切り）</label>
+                <div className="flex gap-2 items-start">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={exportMatchIds}
+                      onChange={(e) => setExportMatchIds(e.target.value)}
+                      placeholder="例: 1, 3, 7"
+                      className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                    />
+                    {exportMatchList.length > 0 && (
+                      <div className="mt-2 max-h-40 overflow-y-auto rounded border border-gray-700 divide-y divide-gray-700">
+                        {exportMatchList.map((m: any) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              const ids = exportMatchIds ? exportMatchIds.split(',').map(s => s.trim()).filter(Boolean) : []
+                              const sid = String(m.id)
+                              if (ids.includes(sid)) {
+                                setExportMatchIds(ids.filter(x => x !== sid).join(', '))
+                              } else {
+                                setExportMatchIds([...ids, sid].join(', '))
+                              }
+                            }}
+                            className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
+                              exportMatchIds.split(',').map(s => s.trim()).includes(String(m.id))
+                                ? 'bg-blue-900/40 text-blue-300'
+                                : 'text-gray-300 hover:bg-gray-700'
+                            }`}
+                          >
+                            <span>{m.date} {m.tournament}</span>
+                            <span className={`text-[10px] ${m.result === 'win' ? 'text-green-400' : 'text-red-400'}`}>
+                              {m.result === 'win' ? '勝' : m.result === 'loss' ? '敗' : m.result}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleExportMatch}
+                    disabled={!exportMatchIds.trim()}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
+                  >
+                    <Download size={14} />
+                    ダウンロード
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* ── インポート ────────────────────────────────── */}
+            <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Upload size={16} className="text-emerald-400" />
+                <h2 className="text-base font-semibold">インポート</h2>
+              </div>
+              <p className="text-xs text-gray-400">
+                別 PC からエクスポートされた <code className="bg-gray-700 px-1 rounded">.sspkg</code> ファイルを取り込みます。既存データはレコード単位でマージされます。
+              </p>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">パッケージファイル（.sspkg）</label>
+                <input
+                  type="file"
+                  accept=".sspkg,.zip"
+                  onChange={(e) => {
+                    setImportFile(e.target.files?.[0] ?? null)
+                    setImportPreview(null)
+                    setImportResult(null)
+                  }}
+                  className="w-full text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:bg-gray-700 file:text-gray-300 hover:file:bg-gray-600"
+                />
+              </div>
+
+              {importFile && !importPreview && (
+                <button
+                  onClick={handlePreviewImport}
+                  disabled={importPreviewLoading}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 rounded text-sm transition-colors"
+                >
+                  <Eye size={14} />
+                  {importPreviewLoading ? '確認中...' : '内容を確認'}
+                </button>
+              )}
+
+              {/* プレビュー結果 */}
+              {importPreview && (
+                <div className="rounded-lg border border-gray-700 p-4 space-y-3">
+                  {!importPreview.success ? (
+                    <p className="text-sm text-red-400">{importPreview.data?.error ?? 'エラー'}</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {[
+                          { label: '追加', value: importPreview.data?.merge_preview?.added ?? 0, color: 'text-blue-400' },
+                          { label: '更新', value: importPreview.data?.merge_preview?.updated ?? 0, color: 'text-yellow-400' },
+                          { label: '保持', value: importPreview.data?.merge_preview?.kept ?? 0, color: 'text-gray-400' },
+                          { label: '競合', value: importPreview.data?.merge_preview?.conflicts ?? 0, color: 'text-orange-400' },
+                        ].map(({ label, value, color }) => (
+                          <div key={label} className="bg-gray-700/50 rounded p-2 text-center">
+                            <p className={`text-xl font-bold ${color}`}>{value}</p>
+                            <p className="text-gray-500">{label}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {(importPreview.data?.merge_preview?.conflicts ?? 0) > 0 && (
+                        <p className="text-xs text-orange-400">
+                          ⚠ 競合 {importPreview.data.merge_preview.conflicts} 件はローカルを優先して保持します（Phase 2 で個別解決予定）
+                        </p>
+                      )}
+                      {!importResult && (
+                        <button
+                          onClick={handleImport}
+                          disabled={importRunning}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded text-sm font-medium transition-colors"
+                        >
+                          <Upload size={14} />
+                          {importRunning ? 'インポート中...' : 'インポート実行'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* インポート結果 */}
+              {importResult && (
+                <div className={`rounded-lg p-3 text-sm ${importResult.success ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-red-900/30 border border-red-700'}`}>
+                  {importResult.success ? (
+                    <>
+                      <p className="font-medium text-emerald-300 mb-1">インポート完了</p>
+                      <p className="text-xs text-gray-300">
+                        追加 {importResult.data?.added} / 更新 {importResult.data?.updated} / 保持 {importResult.data?.kept} / 競合 {importResult.data?.conflicts}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-red-400">{importResult.error ?? 'インポートエラー'}</p>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* ── バックアップ ──────────────────────────────── */}
+            <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <HardDrive size={16} className="text-purple-400" />
+                <h2 className="text-base font-semibold">バックアップ</h2>
+              </div>
+              <p className="text-xs text-gray-400">
+                現行データベースをローカルにバックアップします。最大 10 世代を自動ローテーション保持します。
+              </p>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleBackup}
+                  disabled={backupRunning}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded text-sm font-medium transition-colors"
+                >
+                  <FileArchive size={14} />
+                  {backupRunning ? 'バックアップ中...' : '今すぐバックアップ'}
+                </button>
+                {backupResult && (
+                  <p className="text-xs text-gray-300 truncate max-w-xs">{backupResult}</p>
+                )}
+              </div>
+
+              {/* バックアップ一覧 */}
+              {(backupsData as any)?.data?.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500">保存済みバックアップ</p>
+                  <div className="rounded border border-gray-700 divide-y divide-gray-700 max-h-48 overflow-y-auto">
+                    {((backupsData as any).data as Array<{ filename: string; size_bytes: number; created_at: string }>).map((b) => (
+                      <div key={b.filename} className="flex items-center justify-between px-3 py-2 text-xs text-gray-300">
+                        <span className="truncate font-mono">{b.filename}</span>
+                        <span className="text-gray-500 shrink-0 ml-2">{(b.size_bytes / 1024).toFixed(0)} KB</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+
           </div>
         )}
 

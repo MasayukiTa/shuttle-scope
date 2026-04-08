@@ -2,6 +2,7 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from backend.config import settings
+import uuid as _uuid_mod
 
 
 class Base(DeclarativeBase):
@@ -73,6 +74,63 @@ def add_columns_if_missing(eng) -> None:
         # score_before/after 分離（局面判定精度向上）
         ("rallies", "score_a_before",            "INTEGER DEFAULT 0"),
         ("rallies", "score_b_before",            "INTEGER DEFAULT 0"),
+        # 同期メタデータ（全主要テーブル）
+        ("players",              "uuid",             "TEXT"),
+        ("players",              "updated_at",       "TEXT"),
+        ("players",              "deleted_at",       "TEXT"),
+        ("players",              "revision",         "INTEGER DEFAULT 1"),
+        ("players",              "source_device_id", "TEXT"),
+        ("players",              "content_hash",     "TEXT"),
+        ("matches",              "uuid",             "TEXT"),
+        ("matches",              "deleted_at",       "TEXT"),
+        ("matches",              "revision",         "INTEGER DEFAULT 1"),
+        ("matches",              "source_device_id", "TEXT"),
+        ("matches",              "content_hash",     "TEXT"),
+        ("sets",                 "uuid",             "TEXT"),
+        ("sets",                 "created_at",       "TEXT"),
+        ("sets",                 "updated_at",       "TEXT"),
+        ("sets",                 "deleted_at",       "TEXT"),
+        ("sets",                 "revision",         "INTEGER DEFAULT 1"),
+        ("sets",                 "source_device_id", "TEXT"),
+        ("sets",                 "content_hash",     "TEXT"),
+        ("rallies",              "uuid",             "TEXT"),
+        ("rallies",              "created_at",       "TEXT"),
+        ("rallies",              "updated_at",       "TEXT"),
+        ("rallies",              "deleted_at",       "TEXT"),
+        ("rallies",              "revision",         "INTEGER DEFAULT 1"),
+        ("rallies",              "source_device_id", "TEXT"),
+        ("rallies",              "content_hash",     "TEXT"),
+        ("strokes",              "uuid",             "TEXT"),
+        ("strokes",              "created_at",       "TEXT"),
+        ("strokes",              "updated_at",       "TEXT"),
+        ("strokes",              "deleted_at",       "TEXT"),
+        ("strokes",              "revision",         "INTEGER DEFAULT 1"),
+        ("strokes",              "source_device_id", "TEXT"),
+        ("strokes",              "content_hash",     "TEXT"),
+        ("pre_match_observations", "uuid",           "TEXT"),
+        ("pre_match_observations", "updated_at",     "TEXT"),
+        ("pre_match_observations", "deleted_at",     "TEXT"),
+        ("pre_match_observations", "revision",       "INTEGER DEFAULT 1"),
+        ("pre_match_observations", "source_device_id", "TEXT"),
+        ("pre_match_observations", "content_hash",   "TEXT"),
+        ("human_forecasts",      "uuid",             "TEXT"),
+        ("human_forecasts",      "updated_at",       "TEXT"),
+        ("human_forecasts",      "deleted_at",       "TEXT"),
+        ("human_forecasts",      "revision",         "INTEGER DEFAULT 1"),
+        ("human_forecasts",      "source_device_id", "TEXT"),
+        ("human_forecasts",      "content_hash",     "TEXT"),
+        ("comments",             "uuid",             "TEXT"),
+        ("comments",             "updated_at",       "TEXT"),
+        ("comments",             "deleted_at",       "TEXT"),
+        ("comments",             "revision",         "INTEGER DEFAULT 1"),
+        ("comments",             "source_device_id", "TEXT"),
+        ("comments",             "content_hash",     "TEXT"),
+        ("event_bookmarks",      "uuid",             "TEXT"),
+        ("event_bookmarks",      "updated_at",       "TEXT"),
+        ("event_bookmarks",      "deleted_at",       "TEXT"),
+        ("event_bookmarks",      "revision",         "INTEGER DEFAULT 1"),
+        ("event_bookmarks",      "source_device_id", "TEXT"),
+        ("event_bookmarks",      "content_hash",     "TEXT"),
     ]
     with eng.connect() as conn:
         for table, col, col_type in new_cols:
@@ -81,3 +139,44 @@ def add_columns_if_missing(eng) -> None:
                 conn.commit()
             except Exception:
                 pass  # カラム既存の場合は無視
+
+    _backfill_sync_metadata(eng)
+
+
+def _backfill_sync_metadata(eng) -> None:
+    """既存レコードに uuid / updated_at が未設定の場合にバックフィルする（冪等）"""
+    # uuid が NULL のレコードへ発行
+    uuid_tables = [
+        "players", "matches", "sets", "rallies", "strokes",
+        "pre_match_observations", "human_forecasts", "comments", "event_bookmarks",
+    ]
+    with eng.connect() as conn:
+        for table in uuid_tables:
+            try:
+                rows = conn.execute(text(f"SELECT id FROM {table} WHERE uuid IS NULL")).fetchall()
+                for (row_id,) in rows:
+                    new_uuid = str(_uuid_mod.uuid4())
+                    conn.execute(text(f"UPDATE {table} SET uuid = :u WHERE id = :id"), {"u": new_uuid, "id": row_id})
+                if rows:
+                    conn.commit()
+            except Exception:
+                pass
+
+        # updated_at / created_at が NULL のテーブルを現在時刻で埋める
+        ts_tables = [
+            ("sets",    "created_at"), ("sets",    "updated_at"),
+            ("rallies", "created_at"), ("rallies", "updated_at"),
+            ("strokes", "created_at"), ("strokes", "updated_at"),
+            ("players", "updated_at"),
+            ("pre_match_observations", "updated_at"),
+            ("human_forecasts",  "updated_at"),
+            ("comments",         "updated_at"),
+            ("event_bookmarks",  "updated_at"),
+        ]
+        now_iso = "2026-01-01T00:00:00"  # 既存データへの固定マーカー
+        for table, col in ts_tables:
+            try:
+                conn.execute(text(f"UPDATE {table} SET {col} = :ts WHERE {col} IS NULL"), {"ts": now_iso})
+                conn.commit()
+            except Exception:
+                pass

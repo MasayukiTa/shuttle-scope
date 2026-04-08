@@ -1,12 +1,17 @@
 """SQLAlchemy ORMモデル定義"""
 from datetime import datetime, date
 from typing import Optional
+from uuid import uuid4
 from sqlalchemy import (
     Integer, String, Float, Boolean, DateTime, Date,
     ForeignKey, Text, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
+
+
+def _new_uuid() -> str:
+    return str(uuid4())
 
 
 class User(Base):
@@ -23,6 +28,13 @@ class Player(Base):
     __tablename__ = "players"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 同期メタデータ
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)           # 選手名（日本語対応）
     name_en: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 英語名（BWF検索用）
     team: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -56,6 +68,12 @@ class Match(Base):
     __tablename__ = "matches"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 同期メタデータ
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     tournament: Mapped[str] = mapped_column(String(200), nullable=False)
     tournament_level: Mapped[str] = mapped_column(String(20), nullable=False)  # IC/IS/SJL/全日本/国内/その他
     tournament_grade: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # Super1000/500...
@@ -97,6 +115,14 @@ class GameSet(Base):
     __tablename__ = "sets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 同期メタデータ
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
     set_num: Mapped[int] = mapped_column(Integer, nullable=False)  # 1/2/3
     winner: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # player_a/player_b
@@ -114,6 +140,14 @@ class Rally(Base):
     __tablename__ = "rallies"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 同期メタデータ
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     set_id: Mapped[int] = mapped_column(Integer, ForeignKey("sets.id"), nullable=False)
     rally_num: Mapped[int] = mapped_column(Integer, nullable=False)  # セット内ラリー番号（1始まり）
     server: Mapped[str] = mapped_column(String(20), nullable=False)  # player_a/player_b
@@ -140,6 +174,14 @@ class Stroke(Base):
     __tablename__ = "strokes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 同期メタデータ
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     rally_id: Mapped[int] = mapped_column(Integer, ForeignKey("rallies.id"), nullable=False)
     stroke_num: Mapped[int] = mapped_column(Integer, nullable=False)  # ラリー内順番（1始まり）
     player: Mapped[str] = mapped_column(String(20), nullable=False)   # player_a/player_b/partner_a/partner_b
@@ -256,6 +298,13 @@ class Comment(Base):
     __tablename__ = "comments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 同期メタデータ
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     session_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("shared_sessions.id"), nullable=True)
     match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
     set_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("sets.id"), nullable=True)
@@ -276,6 +325,13 @@ class EventBookmark(Base):
     __tablename__ = "event_bookmarks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 同期メタデータ
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
     rally_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("rallies.id"), nullable=True)
     stroke_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("strokes.id"), nullable=True)
@@ -296,6 +352,13 @@ class PreMatchObservation(Base):
     __tablename__ = "pre_match_observations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 同期メタデータ
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
     player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
     # observation_type: handedness / physical_caution / tactical_style / court_preference
@@ -316,6 +379,13 @@ class HumanForecast(Base):
     __tablename__ = "human_forecasts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 同期メタデータ
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True, default=_new_uuid)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    source_device_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # 対象試合と対象選手（誰について予測しているか）
     match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
     player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
