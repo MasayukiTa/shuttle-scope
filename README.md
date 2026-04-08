@@ -1,18 +1,18 @@
 # ShuttleScope
 
-ShuttleScope is a local-first Windows desktop app for badminton annotation and match analysis.
-It is being built mainly for coach and analyst use, with player-safe presentation where needed.
+ShuttleScope is a local-first Windows desktop app for badminton annotation and review.
+It is currently aimed at coaches, analysts, and internal testing workflows rather than public release.
 
-At the current stage, the core value is:
+The current core is:
 
-- fast structured annotation
+- match annotation
 - post-match review
 - badminton-specific analysis
-- local sharing and testing workflows
+- local LAN sharing for nearby devices
 
-Prediction is included and growing, but the product is still best understood as an annotation + analytics PoC rather than a finished commercial platform.
+Prediction, live camera workflows, and tracking are already present in the codebase, but the product is still best understood as a practical internal PoC.
 
-## What It Does Today
+## What Works Today
 
 ### Annotation
 
@@ -20,71 +20,67 @@ Prediction is included and growing, but the product is still best understood as 
 - rally-by-rally stroke annotation
 - numpad-based landing input
 - skipped rally handling
-- score correction
-- forced set end / exception handling
-- match-day mode for faster operation
-- doubles hitter switching within the same side
-- set interval summary and mid-game summary
+- score correction and forced set end handling
+- doubles hitter switching
+- manual record / assisted record modes
+- review-later flow for incomplete rallies
 
-### Analysis / Review
+### Analysis
 
 - court heatmaps
 - score progression and set comparison
-- shot / rally / temporal analysis
+- shot, rally, and time-based analysis
 - pre-win and pre-loss pattern views
 - growth and trend views across matches
-- doubles / partner analysis
+- doubles and partner analysis
 - warm-up observation analysis
-- confidence-aware analytics display
+- confidence-aware displays
 
 ### Prediction
 
 - match preview
 - pair simulation
-- fatigue risk estimation
-- tactical notes and score distribution views
+- fatigue-related risk hints
+- score distribution and tactical note views
 
-This area is already usable, but still under active refinement.
+This area is usable, but still under active refinement.
 
-### Sharing / Access
+### Sharing and Access
 
 - live session sharing
 - comments and bookmarks
-- LAN access from browser clients on the same Wi-Fi
-- QR sharing for LAN URLs
-- optional temporary tunnel-based access
-- network diagnostics
+- LAN access from browser clients on the same network
+- QR-based join flow
+- password-protected LAN sessions
+- device manager and camera sender pages
 
-### Video / Tracking
+### Video and Tracking
 
 - local video workflow
-- WebView-based playback path
-- video-only second-screen workflow
-- TrackNet integration path and runtime selection
+- second-screen video-only view
+- LAN camera sender groundwork
+- TrackNet runtime selection
 
 ## Main Screens
 
-- `MatchListPage`
-  - match creation and entry point
-- `AnnotatorPage`
-  - live / post-match annotation workflow
-- `DashboardPage`
-  - review and analysis
-- `PredictionPage`
-  - prediction and pair simulation
-- `SettingsPage`
-  - player management, sharing, TrackNet, and role switching
-- `VideoOnlyPage`
-  - second-screen / video-only view
+- `Match List`
+- `Annotator`
+- `Dashboard`
+- `Prediction`
+- `Settings`
+- `Video Only`
 
-## Intended Users
+## Intended Use
 
-- `analyst`
-- `coach`
-- `player`
+ShuttleScope is currently strongest for:
 
-Coach and analyst views can expose deeper review and prediction features.
-Player-facing views are meant to stay more conservative.
+- structured post-match annotation
+- coach and analyst review
+- exploratory tactical analysis
+- doubles-aware review
+- internal LAN-based testing
+
+It should not be read as a finished commercial product yet.
 
 ## Tech Stack
 
@@ -94,9 +90,9 @@ Player-facing views are meant to stay more conservative.
 - TanStack Query
 - FastAPI
 - SQLite
+- Alembic
 - Recharts / D3
 - NumPy / SciPy / scikit-learn
-- ReportLab / matplotlib
 
 ## Repository Layout
 
@@ -104,29 +100,28 @@ Player-facing views are meant to stay more conservative.
 shuttle-scope/
 ├─ README.md
 ├─ LICENSE
-├─ CLAUDE.md
-├─ private_docs/                # local private notes, ignored
-├─ .github/workflows/           # CI / smoke workflows
+├─ private_docs/              # local private notes, ignored
+├─ .github/workflows/         # CI and smoke workflows
 └─ shuttlescope/
    ├─ electron/
    ├─ src/
    ├─ backend/
    ├─ docs/
    ├─ scripts/
-   └─ shuttlescope.db
+   └─ start.bat
 ```
 
 ## Setup
 
 ### Requirements
 
-- Windows as the primary target environment
+- Windows as the main target environment
 - Node.js 18+
 - Python 3.10+
 - optional: `ffmpeg`
 - optional: `cloudflared`
 
-### Dev run
+### Install and Run
 
 ```bash
 cd shuttlescope
@@ -134,14 +129,14 @@ npm install
 npm run dev
 ```
 
-### Production build
+### Build
 
 ```bash
 cd shuttlescope
 npm run build
 ```
 
-### Desktop startup
+### Desktop Start
 
 ```bash
 cd shuttlescope
@@ -154,7 +149,7 @@ or:
 shuttlescope\start.bat
 ```
 
-### Backend only
+### Backend Only
 
 ```bash
 cd shuttlescope/backend
@@ -182,7 +177,7 @@ cd shuttlescope
 .\backend\.venv\Scripts\python -m pytest backend/tests/ -q
 ```
 
-### Build check
+### Build Check
 
 ```bash
 cd shuttlescope
@@ -193,34 +188,28 @@ npm run build
 
 GitHub Actions workflows are included for:
 
-- main CI
+- CI
 - desktop package smoke
 - TrackNet smoke
 
-## Data and Local Files
+## Local Data
 
 - the current database is SQLite
-- the default DB file is `shuttlescope/shuttlescope.db`
+- the default database file is `shuttlescope/shuttlescope.db`
 - `private_docs/` is ignored
 - `shuttlescope/docs/validation/` is ignored
 - local DBs, videos, TrackNet weights, and generated artifacts are not committed
 
 ## Current Status
 
-ShuttleScope is already useful as an internal badminton analysis PoC, especially for:
+ShuttleScope is already useful as an internal badminton analysis tool and PoC.
+Its strongest areas today are annotation, review, and badminton-specific analysis.
 
-- structured annotation
-- post-match review
-- exploratory tactical analysis
-- growth tracking
-- doubles-aware review
+Some larger areas are still being actively shaped, especially:
 
-It is still evolving in:
-
-- operational polish
+- prediction quality
+- live camera workflows
+- realtime inference integration
 - broader field validation
-- prediction depth and quality
-- research-heavy analysis modules
-- long-term sharing and deployment hardening
 
-In short, ShuttleScope is already a serious internal tool, but it is still under active development and should be read as a practical PoC rather than a finished product.
+The repo should be read as an active internal project with working features, not as a finished product announcement.
