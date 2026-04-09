@@ -19,7 +19,7 @@ import {
   BatteryFull, BatteryMedium, BatteryLow, Wifi, WifiZero, Pencil, Check,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { apiPost } from '@/api/client'
+import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
@@ -353,6 +353,15 @@ export function CameraSenderPage() {
       return
     }
     try {
+      // ICE サーバー設定を取得（TURN が有効な場合はリレー経由）
+      let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+      try {
+        const iceCfg = await apiGet<{ success: boolean; data: { ice_servers: RTCIceServer[] } }>('/webrtc/ice-config')
+        if (iceCfg.success && iceCfg.data.ice_servers.length > 0) {
+          iceServers = iceCfg.data.ice_servers
+        }
+      } catch { /* バックエンド未起動時はデフォルト STUN を使用 */ }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
@@ -362,7 +371,7 @@ export function CameraSenderPage() {
         previewRef.current.srcObject = stream
       }
 
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+      const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
       startRttPolling(pc)
 

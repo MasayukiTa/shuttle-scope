@@ -24,6 +24,7 @@ import { Match, Zone9, LandZone, ShotType, GameSet, Player, VideoSourceMode, Dis
 import { useMatchTimer } from '@/hooks/useMatchTimer'
 import { useSettings } from '@/hooks/useSettings'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -159,6 +160,7 @@ export function AnnotatorPage() {
 
   const store = useAnnotationStore()
   const { settings: appSettings } = useSettings()
+  const isLight = useIsLightMode()
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
@@ -334,13 +336,22 @@ export function AnnotatorPage() {
   // トンネル起動中はURLをトンネルベースに置換するため状態を取得
   const { data: tunnelStatus, refetch: refetchTunnel } = useQuery({
     queryKey: ['tunnel-status'],
-    queryFn: () => apiGet<{ success: boolean; data: { available: boolean; running: boolean; url: string | null } }>('/tunnel/status'),
+    queryFn: () => apiGet<{
+      success: boolean
+      data: {
+        available: boolean
+        running: boolean
+        url: string | null
+        active_provider: 'cloudflare' | 'ngrok' | null
+        providers: { cloudflare: { available: boolean }; ngrok: { available: boolean } }
+      }
+    }>('/tunnel/status'),
     refetchInterval: 5000,
   })
   const tunnelToggle = useMutation({
     mutationFn: () => tunnelStatus?.data?.running
       ? apiPost('/tunnel/stop', {})
-      : apiPost('/tunnel/start', {}),
+      : apiPost(`/tunnel/start?provider=${appSettings.tunnel_provider}`, {}),
     onSuccess: () => { refetchTunnel() },
   })
   const tunnelBase = tunnelStatus?.data?.running && tunnelStatus.data.url ? tunnelStatus.data.url : null
@@ -1321,7 +1332,11 @@ export function AnnotatorPage() {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setShowSessionModal(true)}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-900/40 text-blue-300 hover:bg-blue-800/60 transition-colors"
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                  isLight
+                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                }`}
                 title="クリックしてQRコード・URLを表示"
               >
                 <Share2 size={12} />
@@ -1335,8 +1350,12 @@ export function AnnotatorPage() {
                   title={tunnelStatus?.data?.running ? 'トンネル停止' : 'トンネル起動（HTTPS外部公開）'}
                   className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors disabled:opacity-50 ${
                     tunnelStatus?.data?.running
-                      ? 'bg-green-800/60 text-green-300 hover:bg-red-900/50 hover:text-red-300'
-                      : 'bg-gray-700 text-gray-500 hover:text-gray-300'
+                      ? isLight
+                        ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-600'
+                        : 'bg-green-800/60 text-green-300 hover:bg-red-900/50 hover:text-red-300'
+                      : isLight
+                        ? 'bg-gray-200 text-gray-500 hover:text-gray-700'
+                        : 'bg-gray-700 text-gray-500 hover:text-gray-300'
                   }`}
                 >
                   <Globe size={12} className={tunnelStatus?.data?.running ? 'animate-pulse' : ''} />
@@ -1347,7 +1366,11 @@ export function AnnotatorPage() {
           ) : (
             <button
               onClick={handleCreateOrGetSession}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-400 hover:text-white transition-colors"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                isLight
+                  ? 'bg-gray-100 text-gray-500 hover:text-gray-800'
+                  : 'bg-gray-700 text-gray-400 hover:text-white'
+              }`}
               title={t('sharing.create_session')}
             >
               <Share2 size={12} />

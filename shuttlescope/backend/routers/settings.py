@@ -44,6 +44,14 @@ DEFAULT_SETTINGS: dict = {
     # データ同期設定
     "sync_device_id": "",              # 空のときは初回起動時に自動生成
     "sync_folder_path": "",            # クラウドフォルダパス（OneDrive 等）
+    # リモートトンネル設定
+    "tunnel_provider": "auto",         # auto | cloudflare | ngrok
+    # リモート映像（WebRTC）設定
+    "video_transport": "off",          # off | webrtc
+    "turn_enabled": False,             # TURN リレー有効化
+    "turn_url": "",                    # turn:your-server.example.com:3478
+    "turn_username": "",               # TURN ユーザー名
+    "turn_credential": "",             # TURN パスワード
 }
 
 

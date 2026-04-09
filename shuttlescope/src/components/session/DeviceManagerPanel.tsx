@@ -106,6 +106,9 @@ function useWebRTCReceiver(sessionCode: string) {
   // stale closure 対策: stream の最新値を ref で保持
   const streamRef = useRef<MediaStream | null>(null)
   const [activeParticipantId, setActiveParticipantId] = useState<string | null>(null)
+  const [connectionState, setConnectionState] = useState<RTCPeerConnectionState | null>(null)
+  // ICE サーバー設定（バックエンドから取得、TURN 含む）
+  const iceServersRef = useRef<RTCIceServer[]>([{ urls: 'stun:stun.l.google.com:19302' }])
   // viewer id → pc map (PC → viewers relay)
   const viewerPCsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
 
@@ -117,8 +120,17 @@ function useWebRTCReceiver(sessionCode: string) {
     }
   }, [])
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current) return
+
+    // ICE サーバー設定を取得（TURN が有効な場合はリレー経由）
+    try {
+      const iceCfg = await apiGet<{ success: boolean; data: { ice_servers: RTCIceServer[] } }>('/webrtc/ice-config')
+      if (iceCfg.success && iceCfg.data.ice_servers.length > 0) {
+        iceServersRef.current = iceCfg.data.ice_servers
+      }
+    } catch { /* バックエンド未起動時はデフォルト STUN を使用 */ }
+
     // Electron(file:) → ws://localhost:8765
     // LAN直接(http:)  → ws://192.168.x.x:8765
     // Cloudflareトンネル(https:) → wss://xxxx.trycloudflare.com (ポートなし)
@@ -139,9 +151,11 @@ function useWebRTCReceiver(sessionCode: string) {
 
         // ─ iOS → PC WebRTC ─
         if (msg.type === 'webrtc_offer') {
-          const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+          const pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
           pcRef.current = pc
           setActiveParticipantId(String(msg.participant_id))
+          setConnectionState(pc.connectionState)
+          pc.onconnectionstatechange = () => setConnectionState(pc.connectionState)
           pc.ontrack = (e) => {
             if (e.streams[0]) setStream(e.streams[0])
           }
@@ -176,7 +190,7 @@ function useWebRTCReceiver(sessionCode: string) {
         } else if (msg.type === 'viewer_joined' && pcRef.current && streamRef.current) {
           const viewerId = String(msg.viewer_id)
           const currentStream = streamRef.current
-          const vpc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+          const vpc = new RTCPeerConnection({ iceServers: iceServersRef.current })
           viewerPCsRef.current.set(viewerId, vpc)
           currentStream.getTracks().forEach((t) => vpc.addTrack(t, currentStream))
           vpc.onicecandidate = (e) => {
@@ -225,6 +239,7 @@ function useWebRTCReceiver(sessionCode: string) {
         } else if (msg.type === 'camera_stop') {
           setStream(null)
           setActiveParticipantId(null)
+          setConnectionState(null)
           pcRef.current?.close()
           pcRef.current = null
         }
@@ -242,11 +257,11 @@ function useWebRTCReceiver(sessionCode: string) {
     viewerPCsRef.current.forEach((vpc) => vpc.close())
     viewerPCsRef.current.clear()
     wsRef.current?.close(); wsRef.current = null
-    setStream(null); setActiveParticipantId(null)
+    setStream(null); setActiveParticipantId(null); setConnectionState(null)
   }, [])
 
   useEffect(() => () => { disconnect() }, [disconnect])
-  return { stream, activeParticipantId, connect, requestCamera, disconnect, sendMessage }
+  return { stream, activeParticipantId, connectionState, connect, requestCamera, disconnect, sendMessage }
 }
 
 // ─── ローカルカメラ列挙 ───────────────────────────────────────────────────────
@@ -280,7 +295,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
 
-  const { stream: remoteStream, activeParticipantId, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
+  const { stream: remoteStream, activeParticipantId, connectionState, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
 
   useEffect(() => { connect() }, [connect])
   useEffect(() => {
@@ -413,12 +428,35 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         ))}
       </div>
 
+      {/* ─── WebRTC 接続状態 ── */}
+      {connectionState && !remoteStream && (
+        <div className={`mb-3 px-3 py-2 rounded text-xs flex items-center gap-2 ${
+          connectionState === 'connected' ? 'bg-green-900/20 text-green-400'
+          : connectionState === 'failed' ? 'bg-red-900/20 text-red-400'
+          : connectionState === 'disconnected' ? 'bg-amber-900/20 text-amber-400'
+          : 'bg-gray-700/50 text-gray-400'
+        }`}>
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+            connectionState === 'connected' ? 'bg-green-400'
+            : connectionState === 'failed' ? 'bg-red-400'
+            : connectionState === 'disconnected' ? 'bg-amber-400 animate-pulse'
+            : 'bg-gray-500 animate-pulse'
+          }`} />
+          WebRTC: {connectionState}
+        </div>
+      )}
+
       {/* ─── リモートカメラ映像 ── */}
       {remoteStream && (
         <div className="mb-4 relative">
           <p className={`text-[10px] mb-1 ${subColor}`}>
             <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1 animate-pulse" />
             iOS カメラ受信中（参加者 #{activeParticipantId}）
+            {connectionState && (
+              <span className={`ml-2 ${connectionState === 'connected' ? 'text-green-400' : 'text-amber-400'}`}>
+                [{connectionState}]
+              </span>
+            )}
           </p>
           <div className="relative">
             <video

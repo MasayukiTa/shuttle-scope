@@ -155,16 +155,29 @@ export function SettingsPage() {
     onSuccess: () => { refetchServerInfo() },
   })
 
-  // Cloudflare Tunnel ステータス
+  // リモートトンネル ステータス
   const { data: tunnelStatus, refetch: refetchTunnel } = useQuery({
     queryKey: ['tunnel-status'],
-    queryFn: () => apiGet<{ success: boolean; data: { available: boolean; running: boolean; url: string | null; recent_log: string[] } }>('/tunnel/status'),
+    queryFn: () => apiGet<{
+      success: boolean
+      data: {
+        available: boolean
+        running: boolean
+        url: string | null
+        active_provider: 'cloudflare' | 'ngrok' | null
+        providers: {
+          cloudflare: { available: boolean }
+          ngrok: { available: boolean }
+        }
+        recent_log: string[]
+      }
+    }>('/tunnel/status'),
     enabled: activeTab === 'sharing',
     refetchInterval: activeTab === 'sharing' ? 3000 : false,
   })
 
   const tunnelStart = useMutation({
-    mutationFn: () => apiPost('/tunnel/start', {}),
+    mutationFn: () => apiPost(`/tunnel/start?provider=${appSettings.tunnel_provider}`, {}),
     onSuccess: () => { refetchTunnel() },
   })
 
@@ -717,29 +730,53 @@ export function SettingsPage() {
               )}
             </div>
 
-            {/* Cloudflare Tunnel */}
+            {/* リモート公開 */}
             <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <h3 className={`text-sm font-medium ${textSecondary} mb-1 flex items-center gap-2`}>
                 <Globe size={14} className="text-blue-400" />
-                {t('sharing.tunnel_section_title')}
+                {t('sharing.remote_exposure_title')}
               </h3>
-              <p className="text-xs text-gray-500 mb-3">{t('sharing.tunnel_description')}</p>
+              <p className={`text-xs mb-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('sharing.remote_exposure_description')}</p>
 
+              {/* プロバイダー選択（停止中のみ変更可） */}
+              {!tunnelStatus?.data?.running && (
+                <div className="mb-3">
+                  <p className={`text-xs font-medium mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('sharing.remote_provider_label')}</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {(['auto', 'ngrok', 'cloudflare'] as const).map(p => {
+                      const unavailable =
+                        (p === 'ngrok' && tunnelStatus?.data?.providers?.ngrok?.available === false) ||
+                        (p === 'cloudflare' && tunnelStatus?.data?.providers?.cloudflare?.available === false)
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => updateSettings({ tunnel_provider: p })}
+                          className={`flex items-center gap-1 px-3 py-1 rounded text-xs transition-colors ${
+                            appSettings.tunnel_provider === p
+                              ? 'bg-blue-600 text-white'
+                              : isLight ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                          }`}
+                        >
+                          {p === 'auto' ? '自動' : p}
+                          {unavailable && <span className="text-orange-400 ml-0.5">✕</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {appSettings.tunnel_provider === 'auto' && (
+                    <p className={`text-xs mt-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('sharing.auto_order_hint')}</p>
+                  )}
+                </div>
+              )}
+
+              {/* 利用可否なし */}
               {tunnelStatus?.data?.available === false ? (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <div className="flex items-center gap-2 text-xs text-orange-400">
                     <AlertCircle size={13} />
                     {t('sharing.tunnel_not_available')}
                   </div>
-                  <p className="text-xs text-gray-500">{t('sharing.tunnel_install_hint')}</p>
-                  <a
-                    href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 underline"
-                  >
-                    developers.cloudflare.com/downloads
-                  </a>
+                  <p className={`text-xs ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('sharing.tunnel_install_hint')}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -751,13 +788,18 @@ export function SettingsPage() {
                       <span className="text-sm">
                         {tunnelStatus?.data?.running ? t('sharing.tunnel_running') : t('sharing.tunnel_not_running')}
                       </span>
+                      {tunnelStatus?.data?.active_provider && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${isLight ? 'bg-gray-100 text-gray-500' : 'bg-gray-700 text-gray-400'}`}>
+                          {tunnelStatus.data.active_provider}
+                        </span>
+                      )}
                     </div>
                     <div className="ml-auto flex gap-2">
                       {!tunnelStatus?.data?.running ? (
                         <button
                           onClick={() => tunnelStart.mutate()}
                           disabled={tunnelStart.isPending}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-xs"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-xs text-white"
                         >
                           <Power size={12} />
                           {tunnelStart.isPending ? t('sharing.tunnel_starting') : t('sharing.tunnel_start')}
@@ -782,7 +824,93 @@ export function SettingsPage() {
                   )}
 
                   {tunnelStatus?.data?.running && !tunnelStatus.data.url && (
-                    <p className="text-xs text-gray-500 animate-pulse">URL取得中…（数秒かかります）</p>
+                    <p className={`text-xs animate-pulse ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>URL取得中…（数秒かかります）</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* リモート映像（WebRTC） */}
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+              <h3 className={`text-sm font-medium ${textSecondary} mb-1 flex items-center gap-2`}>
+                <Wifi size={14} className="text-purple-400" />
+                {t('sharing.remote_video_title')}
+              </h3>
+              <p className={`text-xs mb-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('sharing.remote_video_description')}</p>
+
+              {/* Off / WebRTC 選択 */}
+              <div className="flex gap-2 mb-3">
+                {(['off', 'webrtc'] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => updateSettings({ video_transport: v })}
+                    className={`px-3 py-1 rounded text-xs transition-colors ${
+                      appSettings.video_transport === v
+                        ? 'bg-blue-600 text-white'
+                        : isLight ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                    }`}
+                  >
+                    {v === 'off' ? t('sharing.video_transport_off') : t('sharing.video_transport_webrtc')}
+                  </button>
+                ))}
+              </div>
+
+              {appSettings.video_transport === 'webrtc' && (
+                <div className="space-y-3">
+                  {/* TURN トグル */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={`text-xs font-medium ${textSecondary}`}>{t('sharing.turn_enable_label')}</p>
+                      <p className={`text-xs mt-0.5 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('sharing.turn_description')}</p>
+                    </div>
+                    <button onClick={() => updateSettings({ turn_enabled: !appSettings.turn_enabled })}>
+                      {appSettings.turn_enabled
+                        ? <ToggleRight size={28} className="text-blue-400" />
+                        : <ToggleLeft size={28} className="text-gray-500" />}
+                    </button>
+                  </div>
+
+                  {/* TURN なし警告 */}
+                  {!appSettings.turn_enabled && (
+                    <div className={`flex items-start gap-2 text-xs rounded p-2 ${isLight ? 'bg-amber-50 text-amber-700' : 'bg-amber-900/20 text-amber-400'}`}>
+                      <AlertCircle size={12} className="flex-shrink-0 mt-0.5" />
+                      {t('sharing.webrtc_best_effort_warning')}
+                    </div>
+                  )}
+
+                  {/* TURN 設定フィールド */}
+                  {appSettings.turn_enabled && (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder={t('sharing.turn_url_placeholder')}
+                        value={appSettings.turn_url}
+                        onChange={e => updateSettings({ turn_url: e.target.value })}
+                        className={`w-full px-2 py-1.5 rounded text-xs border font-mono ${
+                          isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-800 border-gray-600 text-gray-200'
+                        }`}
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder={t('sharing.turn_username_placeholder')}
+                          value={appSettings.turn_username}
+                          onChange={e => updateSettings({ turn_username: e.target.value })}
+                          className={`flex-1 px-2 py-1.5 rounded text-xs border ${
+                            isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-800 border-gray-600 text-gray-200'
+                          }`}
+                        />
+                        <input
+                          type="password"
+                          placeholder={t('sharing.turn_credential_placeholder')}
+                          value={appSettings.turn_credential}
+                          onChange={e => updateSettings({ turn_credential: e.target.value })}
+                          className={`flex-1 px-2 py-1.5 rounded text-xs border ${
+                            isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-800 border-gray-600 text-gray-200'
+                          }`}
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

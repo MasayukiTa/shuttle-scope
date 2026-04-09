@@ -16,6 +16,14 @@ export interface AppSettings {
   // データ同期設定
   sync_device_id: string
   sync_folder_path: string
+  // リモートトンネル設定
+  tunnel_provider: 'auto' | 'cloudflare' | 'ngrok'
+  // リモート映像（WebRTC）設定
+  video_transport: 'off' | 'webrtc'
+  turn_enabled: boolean
+  turn_url: string
+  turn_username: string
+  turn_credential: string
 }
 
 const DEFAULTS: AppSettings = {
@@ -26,6 +34,12 @@ const DEFAULTS: AppSettings = {
   video_source_mode: 'local',
   sync_device_id: '',
   sync_folder_path: '',
+  tunnel_provider: 'auto',
+  video_transport: 'off',
+  turn_enabled: false,
+  turn_url: '',
+  turn_username: '',
+  turn_credential: '',
 }
 
 const LS_KEY = 'shuttlescope.settings'
