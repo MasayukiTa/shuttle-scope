@@ -1404,6 +1404,17 @@ export function AnnotatorPage() {
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                 remoteHealth.wsConnected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'
               }`} />
+              {/* トンネルプロバイダー名 */}
+              {tunnelStatus?.data?.running && tunnelStatus.data.active_provider && (
+                <span className={`font-medium ${
+                  tunnelStatus.data.active_provider === 'ngrok' ? 'text-orange-400' : 'text-cyan-400'
+                }`}>
+                  {tunnelStatus.data.active_provider === 'ngrok' ? 'ngrok' : 'CF'}
+                </span>
+              )}
+              {tunnelStatus?.data?.running === false && (
+                <span className="text-gray-500">LAN</span>
+              )}
               <span className={remoteHealth.wsConnected ? 'text-green-400' : 'text-amber-400'}>
                 {remoteHealth.wsConnected ? '接続' : '再接続中'}
               </span>
