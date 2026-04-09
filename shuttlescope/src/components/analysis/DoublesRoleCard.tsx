@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 
 interface PhaseBreakdown {
@@ -20,7 +21,7 @@ interface DoublesRoleData {
   back_ratio: number
   neutral_ratio: number
   total_shots: number
-  phase_breakdown: PhaseBreakdown[]
+  phase_breakdown: PhaseBreakdown[] | undefined
   note: string | null
 }
 
@@ -36,20 +37,27 @@ interface Props {
   filters: AnalysisFilters
 }
 
+const SCORE_PHASE_LABELS: Record<string, string> = {
+  early: '序盤', mid: '中盤', deuce: 'デュース', endgame: '終盤',
+}
+
+function getRoleColor(role: string, isLight: boolean): string {
+  const map: Record<string, [string, string]> = {
+    front: ['text-sky-600', 'text-sky-400'],
+    back: ['text-amber-600', 'text-amber-400'],
+    mixed: ['text-purple-600', 'text-purple-400'],
+    unknown: ['text-gray-500', 'text-gray-500'],
+  }
+  const pair = map[role]
+  if (!pair) return isLight ? 'text-gray-500' : 'text-gray-500'
+  return isLight ? pair[0] : pair[1]
+}
+
 const ROLE_LABELS: Record<string, string> = {
   front: 'フロント',
   back: 'バック',
   mixed: 'ミックス（不定）',
   unknown: '不明',
-}
-const ROLE_COLORS: Record<string, string> = {
-  front: 'text-sky-400',
-  back: 'text-amber-400',
-  mixed: 'text-purple-400',
-  unknown: 'text-gray-500',
-}
-const SCORE_PHASE_LABELS: Record<string, string> = {
-  early: '序盤', mid: '中盤', deuce: 'デュース', endgame: '終盤',
 }
 
 function pct(v: number) {
@@ -61,12 +69,13 @@ function RatioBar({ front, back, neutral }: { front: number; back: number; neutr
     <div className="flex h-2 w-full rounded-full overflow-hidden gap-px">
       <div className="bg-sky-600" style={{ width: `${front * 100}%` }} title={`フロント ${pct(front)}`} />
       <div className="bg-amber-600" style={{ width: `${back * 100}%` }} title={`バック ${pct(back)}`} />
-      <div className="bg-gray-600" style={{ width: `${neutral * 100}%` }} title={`ニュートラル ${pct(neutral)}`} />
+      <div className="bg-gray-500" style={{ width: `${neutral * 100}%` }} title={`ニュートラル ${pct(neutral)}`} />
     </div>
   )
 }
 
 export function DoublesRoleCard({ playerId, filters }: Props) {
+  const { card, cardInner, textHeading, textSecondary, textMuted, textFaint, loading, isLight } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
@@ -87,9 +96,9 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
   const roleData = data?.data
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+    <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-200">ダブルスロール推定（DB-1）</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>ダブルスロール推定（DB-1）</h3>
         <EvidenceBadge
           tier="research"
           evidenceLevel="exploratory"
@@ -105,23 +114,23 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
       />
 
       {isLoading ? (
-        <p className="text-gray-500 text-sm text-center py-4">計算中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>計算中...</p>
       ) : !roleData ? (
-        <p className="text-gray-500 text-sm text-center py-4">ダブルスデータが不足しています</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>ダブルスデータが不足しています</p>
       ) : (
         <div className="space-y-3">
           {/* メインロール表示 */}
-          <div className="bg-gray-700/40 rounded px-3 py-2 space-y-2">
+          <div className={`${cardInner} rounded px-3 py-2 space-y-2`}>
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs text-gray-400">推定ロール: </span>
-                <span className={`text-sm font-semibold ${ROLE_COLORS[roleData.inferred_role] ?? 'text-gray-400'}`}>
+                <span className={`text-xs ${textSecondary}`}>推定ロール: </span>
+                <span className={`text-sm font-semibold ${getRoleColor(roleData.inferred_role, isLight)}`}>
                   {ROLE_LABELS[roleData.inferred_role] ?? roleData.inferred_role}
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-[10px] text-gray-500">信頼スコア: </span>
-                <span className={`text-xs font-medium ${roleData.confidence_score >= 0.7 ? 'text-emerald-400' : roleData.confidence_score >= 0.5 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                <span className={`text-[10px] ${textMuted}`}>信頼スコア: </span>
+                <span className={`text-xs font-medium ${roleData.confidence_score >= 0.7 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : roleData.confidence_score >= 0.5 ? (isLight ? 'text-amber-600' : 'text-yellow-400') : (isLight ? 'text-orange-600' : 'text-orange-400')}`}>
                   {pct(roleData.confidence_score)}
                 </span>
               </div>
@@ -133,7 +142,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
               neutral={roleData.neutral_ratio}
             />
 
-            <div className="flex items-center gap-3 text-[10px] text-gray-500">
+            <div className={`flex items-center gap-3 text-[10px] ${textMuted}`}>
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm bg-sky-600 inline-block" />
                 フロント {pct(roleData.front_ratio)}
@@ -143,23 +152,23 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
                 バック {pct(roleData.back_ratio)}
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-sm bg-gray-600 inline-block" />
+                <span className="w-2 h-2 rounded-sm bg-gray-500 inline-block" />
                 ニュートラル {pct(roleData.neutral_ratio)}
               </span>
               <span className="ml-auto">N={roleData.total_shots}</span>
             </div>
           </div>
 
-          {/* フェーズ別内訳 */}
-          {roleData.phase_breakdown.length > 0 && (
+          {/* フェーズ別内訳 — phase_breakdown が undefined の場合は表示しない */}
+          {(roleData.phase_breakdown ?? []).length > 0 && (
             <div className="space-y-1">
-              <p className="text-[10px] text-gray-500">スコアフェーズ別ロール</p>
-              {roleData.phase_breakdown.map((ph, i) => (
+              <p className={`text-[10px] ${textMuted}`}>スコアフェーズ別ロール</p>
+              {(roleData.phase_breakdown ?? []).map((ph, i) => (
                 <div key={i} className="flex items-center gap-2 text-[10px]">
-                  <span className="text-gray-500 w-12 shrink-0">
+                  <span className={`w-12 shrink-0 ${textMuted}`}>
                     {SCORE_PHASE_LABELS[ph.score_phase] ?? ph.score_phase}
                   </span>
-                  <span className={`w-16 font-medium ${ROLE_COLORS[ph.inferred_role] ?? 'text-gray-400'}`}>
+                  <span className={`w-16 font-medium ${getRoleColor(ph.inferred_role, isLight)}`}>
                     {ROLE_LABELS[ph.inferred_role] ?? ph.inferred_role}
                   </span>
                   <div className="flex-1">
@@ -169,17 +178,17 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
                       neutral={ph.neutral_ratio}
                     />
                   </div>
-                  <span className="text-gray-600 shrink-0">N={ph.n_shots}</span>
+                  <span className={`shrink-0 ${textFaint}`}>N={ph.n_shots}</span>
                 </div>
               ))}
             </div>
           )}
 
           {roleData.note && (
-            <p className="text-[10px] text-yellow-600/80">{roleData.note}</p>
+            <p className={`text-[10px] ${isLight ? 'text-amber-700' : 'text-yellow-600/80'}`}>{roleData.note}</p>
           )}
 
-          <p className="text-[10px] text-gray-600">
+          <p className={`text-[10px] ${textFaint}`}>
             バー左（青）= フロント系ショット比率、中央（橙）= バック系、右（灰）= ニュートラル。
           </p>
         </div>

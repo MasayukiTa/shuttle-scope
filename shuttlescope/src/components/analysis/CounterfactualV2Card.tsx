@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 
 interface CFComparison {
@@ -54,6 +55,7 @@ function pct(v: number) {
 }
 
 export function CounterfactualV2Card({ playerId, filters }: Props) {
+  const { card, cardInner, textHeading, textSecondary, textMuted, textFaint, loading, isLight } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
@@ -73,11 +75,13 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
   const meta = data?.meta
   const comparisons = (data?.data?.comparisons ?? []).slice(0, 8)
   const usable = data?.data?.usable_contexts ?? 0
+  const liftColor = isLight ? 'text-amber-600' : 'text-amber-400'
+  const overlapWarnColor = isLight ? 'text-amber-600' : 'text-yellow-600'
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+    <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-200">反事実的ショット比較 v2 (Bootstrap CI)</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>反事実的ショット比較 v2 (Bootstrap CI)</h3>
         <EvidenceBadge
           tier="research"
           evidenceLevel="exploratory"
@@ -93,44 +97,44 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
       />
 
       {isLoading ? (
-        <p className="text-gray-500 text-sm text-center py-4">計算中（ブートストラップ推定中）...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>計算中（ブートストラップ推定中）...</p>
       ) : comparisons.length === 0 ? (
-        <p className="text-gray-500 text-sm text-center py-4">
+        <p className={`text-sm text-center py-4 ${loading}`}>
           十分なデータがありません（各コンテキストで最低10件以上が必要です）
         </p>
       ) : (
         <div className="space-y-2">
-          <p className="text-[10px] text-gray-500">有効コンテキスト: {usable}件（lift 降順上位表示）</p>
+          <p className={`text-[10px] ${textMuted}`}>有効コンテキスト: {usable}件（lift 降順上位表示）</p>
           {comparisons.map((comp, i) => (
-            <div key={i} className="bg-gray-700/40 rounded px-3 py-2 space-y-1">
+            <div key={i} className={`${cardInner} rounded px-3 py-2 space-y-1`}>
               <div className="flex items-center justify-between">
-                <div className="text-[11px] text-gray-400">
-                  <span className="text-white font-medium">{comp.actual_shot}</span>
-                  <span className="mx-1 text-gray-600">→</span>
-                  <span className={`font-medium ${comp.max_lift > 0 ? 'text-amber-400' : 'text-gray-400'}`}>
+                <div className={`text-[11px] ${textSecondary}`}>
+                  <span className={`font-medium ${textHeading}`}>{comp.actual_shot}</span>
+                  <span className={`mx-1 ${textFaint}`}>→</span>
+                  <span className={`font-medium ${comp.max_lift > 0 ? liftColor : textMuted}`}>
                     {comp.best_alternative ?? '—'}
                   </span>
                   {comp.max_lift !== 0 && (
-                    <span className={`ml-1 ${comp.max_lift > 0 ? 'text-amber-400' : 'text-gray-500'}`}>
+                    <span className={`ml-1 ${comp.max_lift > 0 ? liftColor : textMuted}`}>
                       ({comp.max_lift > 0 ? '+' : ''}{pct(comp.max_lift)} lift)
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] text-gray-600">N={comp.actual_n}</span>
+                <span className={`text-[10px] ${textFaint}`}>N={comp.actual_n}</span>
               </div>
-              <div className="text-[10px] text-gray-600">
+              <div className={`text-[10px] ${textFaint}`}>
                 コンテキスト: {SCORE_PHASE_LABELS[comp.context.score_phase] ?? comp.context.score_phase}
                 / {RALLY_BUCKET_LABELS[comp.context.rally_bucket] ?? comp.context.rally_bucket}ラリー
                 {comp.context.prev_shot && ` / 直前: ${comp.context.prev_shot}`}
               </div>
-              <div className="text-[10px] text-gray-500">
+              <div className={`text-[10px] ${textMuted}`}>
                 実際の勝率: {pct(comp.actual_win_rate)}
                 <span className="ml-1">[CI: {pct(comp.actual_ci_low)}–{pct(comp.actual_ci_high)}]</span>
               </div>
               {comp.alternatives.slice(0, 2).map((alt) => (
-                <div key={alt.shot_type} className="text-[10px] text-gray-500 ml-2">
+                <div key={alt.shot_type} className={`text-[10px] ${textMuted} ml-2`}>
                   代替 {alt.shot_type}: {pct(alt.win_rate)} [CI: {pct(alt.ci_low)}–{pct(alt.ci_high)}]
-                  <span className={`ml-1 ${alt.overlap_score > 0.5 ? 'text-yellow-600' : 'text-gray-600'}`}>
+                  <span className={`ml-1 ${alt.overlap_score > 0.5 ? overlapWarnColor : textFaint}`}>
                     {alt.overlap_score > 0.5 && '(CI重複大・不確実)'}
                   </span>
                 </div>

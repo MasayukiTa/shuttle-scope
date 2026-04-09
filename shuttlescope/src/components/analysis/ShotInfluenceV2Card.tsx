@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 
 interface ShotTypeStat {
@@ -48,22 +49,23 @@ interface Props {
   filters: AnalysisFilters
 }
 
-function InfluenceBar({ value, max = 1 }: { value: number; max?: number }) {
+function InfluenceBar({ value, max = 1, isLight }: { value: number; max?: number; isLight: boolean }) {
   const ratio = Math.min(value / max, 1)
   return (
     <div className="flex items-center gap-1.5">
-      <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+      <div className={`w-20 h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-gray-200' : 'bg-gray-700'}`}>
         <div
           className="h-full rounded-full bg-indigo-500"
           style={{ width: `${ratio * 100}%` }}
         />
       </div>
-      <span className="text-[10px] text-gray-500 tabular-nums">{value.toFixed(3)}</span>
+      <span className={`text-[10px] tabular-nums ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>{value.toFixed(3)}</span>
     </div>
   )
 }
 
 export function ShotInfluenceV2Card({ playerId, filters }: Props) {
+  const { card, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, loading, isLight } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
@@ -90,9 +92,9 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
   const stateBreakdown = (influenceData?.state_breakdown ?? []).slice(0, 6)
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+    <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-200">ショット影響度 v2（状態条件付き）</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>ショット影響度 v2（状態条件付き）</h3>
         <EvidenceBadge
           tier="research"
           evidenceLevel="exploratory"
@@ -108,26 +110,26 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
       />
 
       {isLoading ? (
-        <p className="text-gray-500 text-sm text-center py-4">計算中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>計算中...</p>
       ) : topShots.length === 0 ? (
-        <p className="text-gray-500 text-sm text-center py-4">データが不足しています</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>データが不足しています</p>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-center justify-between text-[10px] text-gray-500">
+          <div className={`flex items-center justify-between text-[10px] ${textMuted}`}>
             <span>総ラリー: {influenceData?.total_rallies ?? 0}</span>
             <span>有効: {influenceData?.usable_rallies ?? 0}</span>
           </div>
 
           {/* ショット種別ランキング */}
           <div>
-            <p className="text-[10px] text-gray-500 mb-1.5">ショット種別平均影響度（状態補正後）</p>
+            <p className={`text-[10px] ${textMuted} mb-1.5`}>ショット種別平均影響度（状態補正後）</p>
             <div className="space-y-1">
               {topShots.map(([shotType, stat], i) => (
                 <div key={shotType} className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-600 w-4 text-right">{i + 1}</span>
-                  <span className="text-xs text-white w-24 truncate">{shotType}</span>
-                  <InfluenceBar value={stat.avg} max={maxInfluence} />
-                  <span className="text-[10px] text-gray-600 shrink-0">
+                  <span className={`text-[10px] w-4 text-right ${textFaint}`}>{i + 1}</span>
+                  <span className={`text-xs w-24 truncate ${textSecondary}`}>{shotType}</span>
+                  <InfluenceBar value={stat.avg} max={maxInfluence} isLight={isLight} />
+                  <span className={`text-[10px] shrink-0 ${textFaint}`}>
                     [{stat.ci_low.toFixed(3)}–{stat.ci_high.toFixed(3)}]
                   </span>
                 </div>
@@ -138,21 +140,21 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
           {/* 状態別内訳 */}
           {stateBreakdown.length > 0 && (
             <div>
-              <p className="text-[10px] text-gray-500 mb-1.5">状態別トップショット</p>
+              <p className={`text-[10px] ${textMuted} mb-1.5`}>状態別トップショット</p>
               <div className="space-y-2">
                 {stateBreakdown.map((sb) => (
-                  <div key={sb.state_key} className="bg-gray-700/30 rounded px-2 py-1.5">
+                  <div key={sb.state_key} className={`${cardInnerAlt} rounded px-2 py-1.5`}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] text-gray-400 font-mono">{sb.state_key}</span>
-                      <span className="text-[10px] text-gray-600">
+                      <span className={`text-[10px] font-mono ${textSecondary}`}>{sb.state_key}</span>
+                      <span className={`text-[10px] ${textFaint}`}>
                         EPV={`${(sb.state_epv * 100).toFixed(1)}%`} N={sb.n_rallies}
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {sb.top_shots.slice(0, 3).map((ts) => (
                         <span key={ts.shot_type} className="text-[10px]">
-                          <span className="text-white">{ts.shot_type}</span>
-                          <span className="text-gray-600 ml-0.5">({ts.avg_influence.toFixed(3)})</span>
+                          <span className={textSecondary}>{ts.shot_type}</span>
+                          <span className={`ml-0.5 ${textFaint}`}>({ts.avg_influence.toFixed(3)})</span>
                         </span>
                       ))}
                     </div>
@@ -162,7 +164,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
             </div>
           )}
 
-          <p className="text-[10px] text-gray-600">
+          <p className={`text-[10px] ${textFaint}`}>
             影響度 = 状態EPV補正後のショット寄与スコア。スコアが大きいほど勝利への貢献度が高い（相関ベース）。
           </p>
         </div>

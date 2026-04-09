@@ -1,5 +1,7 @@
+import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 
 interface ChecklistItem {
@@ -46,37 +48,71 @@ interface Props {
   filters: AnalysisFilters
 }
 
-const STATUS_CONFIG = {
-  promotion_ready: { label: '昇格準備完了', color: 'text-emerald-400', dot: 'bg-emerald-400' },
-  requires_review: { label: 'レビュー待ち', color: 'text-yellow-400', dot: 'bg-yellow-400' },
-  insufficient_data: { label: 'データ不足', color: 'text-gray-500', dot: 'bg-gray-600' },
-} as const
-
 const TIER_LABELS: Record<string, string> = {
   research: 'Research',
   advanced: 'Advanced',
   stable: 'Stable',
 }
 
-const TIER_COLORS: Record<string, string> = {
-  research: 'text-purple-400 border-purple-700',
-  advanced: 'text-sky-400 border-sky-700',
-  stable: 'text-emerald-400 border-emerald-700',
+interface ThemeProps {
+  isLight: boolean
+  textHeading: string
+  textSecondary: string
+  textMuted: string
+  textFaint: string
+  cardInner: string
+  cardInnerAlt: string
+  border: string
 }
 
-function ChecklistBullet({ item }: { item: ChecklistItem }) {
+function getStatusConfig(isLight: boolean) {
+  return {
+    promotion_ready: {
+      label: '昇格準備完了',
+      color: isLight ? 'text-emerald-600' : 'text-emerald-400',
+      dot: isLight ? 'bg-emerald-500' : 'bg-emerald-400',
+    },
+    requires_review: {
+      label: 'レビュー待ち',
+      color: isLight ? 'text-amber-600' : 'text-yellow-400',
+      dot: isLight ? 'bg-amber-500' : 'bg-yellow-400',
+    },
+    insufficient_data: {
+      label: 'データ不足',
+      color: isLight ? 'text-gray-500' : 'text-gray-500',
+      dot: isLight ? 'bg-gray-400' : 'bg-gray-600',
+    },
+  } as const
+}
+
+function getTierColors(isLight: boolean): Record<string, string> {
+  return isLight ? {
+    research: 'text-purple-700 border-purple-400',
+    advanced: 'text-sky-700 border-sky-400',
+    stable: 'text-emerald-700 border-emerald-400',
+  } : {
+    research: 'text-purple-400 border-purple-700',
+    advanced: 'text-sky-400 border-sky-700',
+    stable: 'text-emerald-400 border-emerald-700',
+  }
+}
+
+function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: boolean }) {
   const icon =
     item.met === true ? '✓' :
     item.met === false ? '✗' : '○'
   const color =
-    item.met === true ? 'text-emerald-400' :
-    item.met === false ? 'text-red-400' : 'text-gray-500'
+    item.met === true ? (isLight ? 'text-emerald-600' : 'text-emerald-400') :
+    item.met === false ? (isLight ? 'text-red-600' : 'text-red-400') :
+    'text-gray-500'
+  const textColor = isLight ? 'text-gray-600' : 'text-gray-400'
+  const subColor = isLight ? 'text-gray-400' : 'text-gray-600'
   return (
     <li className="flex items-start gap-1.5 text-[10px]">
       <span className={`${color} shrink-0 font-bold mt-px`}>{icon}</span>
-      <span className="text-gray-400">{item.item}</span>
+      <span className={textColor}>{item.item}</span>
       {item.current !== null && (
-        <span className="text-gray-600 ml-auto shrink-0">
+        <span className={`${subColor} ml-auto shrink-0`}>
           {item.current} / {item.required}
         </span>
       )}
@@ -84,41 +120,46 @@ function ChecklistBullet({ item }: { item: ChecklistItem }) {
   )
 }
 
-function EvaluationRow({ entry }: { entry: EvaluationEntry }) {
-  const status = STATUS_CONFIG[entry.status]
-  const [expanded, setExpanded] = React.useState(false)
+function EvaluationRow({ entry, theme }: { entry: EvaluationEntry; theme: ThemeProps }) {
+  const { isLight, textHeading, textMuted, textFaint, border } = theme
+  const statusConfig = getStatusConfig(isLight)
+  const tierColors = getTierColors(isLight)
+  const status = statusConfig[entry.status]
+  const [expanded, setExpanded] = useState(false)
+  const hoverBg = isLight ? 'hover:bg-gray-50' : 'hover:bg-gray-700/30'
+  const expandedBg = isLight ? 'border-t border-gray-100' : 'border-t border-gray-700'
 
   return (
-    <div className="border border-gray-700 rounded-lg overflow-hidden">
+    <div className={`border ${border} rounded-lg overflow-hidden`}>
       <button
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-700/30 transition-colors"
+        className={`w-full flex items-center gap-2 px-3 py-2 text-left ${hoverBg} transition-colors`}
         onClick={() => setExpanded((v) => !v)}
       >
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${status.dot}`} />
-        <span className="text-xs text-white flex-1 text-left">{entry.analysis_type}</span>
-        <span className={`text-[9px] border rounded px-1 py-0.5 shrink-0 ${TIER_COLORS[entry.from_tier] ?? 'text-gray-500 border-gray-600'}`}>
+        <span className={`text-xs flex-1 text-left ${textHeading}`}>{entry.analysis_type}</span>
+        <span className={`text-[9px] border rounded px-1 py-0.5 shrink-0 ${tierColors[entry.from_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
           {TIER_LABELS[entry.from_tier] ?? entry.from_tier}
         </span>
-        <span className="text-gray-600 text-[10px]">→</span>
-        <span className={`text-[9px] border rounded px-1 py-0.5 shrink-0 ${TIER_COLORS[entry.to_tier] ?? 'text-gray-500 border-gray-600'}`}>
+        <span className={`text-[10px] ${textFaint}`}>→</span>
+        <span className={`text-[9px] border rounded px-1 py-0.5 shrink-0 ${tierColors[entry.to_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
           {TIER_LABELS[entry.to_tier] ?? entry.to_tier}
         </span>
         <span className={`text-[10px] font-medium shrink-0 ${status.color}`}>{status.label}</span>
-        <span className="text-gray-600 text-[10px] shrink-0">{expanded ? '▲' : '▼'}</span>
+        <span className={`text-[10px] shrink-0 ${textFaint}`}>{expanded ? '▲' : '▼'}</span>
       </button>
       {expanded && (
-        <div className="px-3 pb-3 pt-1 border-t border-gray-700 space-y-2">
-          <div className="flex items-center gap-2 text-[10px] text-gray-500">
+        <div className={`px-3 pb-3 pt-1 ${expandedBg} space-y-2`}>
+          <div className={`flex items-center gap-2 text-[10px] ${textMuted}`}>
             <span>サンプル: {entry.sample_count}</span>
             <span>チェック: {entry.met_count}/{entry.total_count}</span>
           </div>
           <ul className="space-y-0.5">
             {entry.checklist.map((item, i) => (
-              <ChecklistBullet key={i} item={item} />
+              <ChecklistBullet key={i} item={item} isLight={isLight} />
             ))}
           </ul>
           {entry.additional_notes && (
-            <p className="text-[10px] text-gray-600 italic">{entry.additional_notes}</p>
+            <p className={`text-[10px] italic ${textFaint}`}>{entry.additional_notes}</p>
           )}
         </div>
       )}
@@ -126,10 +167,8 @@ function EvaluationRow({ entry }: { entry: EvaluationEntry }) {
   )
 }
 
-// React をインポート (useQuery が require するため)
-import React, { useState } from 'react'
-
 export function PromotionStatusCard({ playerId, filters }: Props) {
+  const { card, cardInner, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, border, loading, badge, isLight } = useCardTheme()
   const [showDemotion, setShowDemotion] = useState(false)
 
   const filterApiParams = {
@@ -153,42 +192,44 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
   const summary = evalData?.summary
   const evaluations = evalData?.evaluations ?? []
   const demotionConditions = evalData?.demotion_conditions
+  const statusConfig = getStatusConfig(isLight)
+  const theme: ThemeProps = { isLight, textHeading, textSecondary, textMuted, textFaint, cardInner, cardInnerAlt, border }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+    <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-200">昇格ワークフロー（Promotion Workflow）</h3>
-        <span className="text-[9px] text-gray-500 border border-gray-600 rounded px-1.5 py-0.5">analyst/coach</span>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>昇格ワークフロー（Promotion Workflow）</h3>
+        <span className={`text-[9px] rounded px-1.5 py-0.5 ${badge}`}>analyst/coach</span>
       </div>
 
-      <p className="text-[10px] text-gray-500">
+      <p className={`text-[10px] ${textMuted}`}>
         各 research/advanced 指標の昇格基準に対する現在の達成状況を示します。
         サンプル数以外の条件（校正・コーチテスト）はアナリストが手動で確認してください。
       </p>
 
       {isLoading ? (
-        <p className="text-gray-500 text-sm text-center py-4">評価中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>評価中...</p>
       ) : (
         <div className="space-y-3">
           {/* サマリー */}
           {summary && (
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-gray-700/40 rounded px-2 py-1.5 text-center">
-                <div className="text-emerald-400 text-sm font-bold">{summary.promotion_ready_count}</div>
-                <div className="text-[10px] text-gray-500">昇格準備完了</div>
+              <div className={`${cardInner} rounded px-2 py-1.5 text-center`}>
+                <div className={`text-sm font-bold ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>{summary.promotion_ready_count}</div>
+                <div className={`text-[10px] ${textMuted}`}>昇格準備完了</div>
               </div>
-              <div className="bg-gray-700/40 rounded px-2 py-1.5 text-center">
-                <div className="text-yellow-400 text-sm font-bold">{summary.requires_review_count}</div>
-                <div className="text-[10px] text-gray-500">レビュー待ち</div>
+              <div className={`${cardInner} rounded px-2 py-1.5 text-center`}>
+                <div className={`text-sm font-bold ${isLight ? 'text-amber-600' : 'text-yellow-400'}`}>{summary.requires_review_count}</div>
+                <div className={`text-[10px] ${textMuted}`}>レビュー待ち</div>
               </div>
-              <div className="bg-gray-700/40 rounded px-2 py-1.5 text-center">
-                <div className="text-gray-400 text-sm font-bold">{summary.insufficient_data_count}</div>
-                <div className="text-[10px] text-gray-500">データ不足</div>
+              <div className={`${cardInner} rounded px-2 py-1.5 text-center`}>
+                <div className={`text-sm font-bold ${textSecondary}`}>{summary.insufficient_data_count}</div>
+                <div className={`text-[10px] ${textMuted}`}>データ不足</div>
               </div>
             </div>
           )}
 
-          <div className="text-[10px] text-gray-600">
+          <div className={`text-[10px] ${textFaint}`}>
             {summary && (
               <>ラリー: {summary.n_rallies} / 試合: {summary.n_matches} / 対戦相手: {summary.n_opponents}</>
             )}
@@ -197,7 +238,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
           {/* 評価リスト */}
           <div className="space-y-1.5">
             {evaluations.map((entry) => (
-              <EvaluationRow key={`${entry.analysis_type}-${entry.from_tier}`} entry={entry} />
+              <EvaluationRow key={`${entry.analysis_type}-${entry.from_tier}`} entry={entry} theme={theme} />
             ))}
           </div>
 
@@ -205,19 +246,19 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
           {demotionConditions && (
             <div>
               <button
-                className="text-[10px] text-gray-500 hover:text-gray-400 underline"
+                className={`text-[10px] underline ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-500 hover:text-gray-400'}`}
                 onClick={() => setShowDemotion((v) => !v)}
               >
                 {showDemotion ? '降格条件を隠す ▲' : '降格条件を表示 ▼'}
               </button>
               {showDemotion && (
                 <div className="mt-2 space-y-2">
-                  <div className="bg-gray-700/30 rounded px-2 py-2">
-                    <p className="text-[10px] text-gray-400 font-medium mb-1">共通降格条件</p>
+                  <div className={`${cardInner} rounded px-2 py-2`}>
+                    <p className={`text-[10px] font-medium mb-1 ${textSecondary}`}>共通降格条件</p>
                     <ul className="space-y-0.5">
                       {(demotionConditions.general ?? []).map((cond, i) => (
-                        <li key={i} className="text-[10px] text-gray-500 flex items-start gap-1">
-                          <span className="text-orange-400 shrink-0">•</span>
+                        <li key={i} className={`text-[10px] flex items-start gap-1 ${textMuted}`}>
+                          <span className={`shrink-0 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>•</span>
                           {cond}
                         </li>
                       ))}
@@ -226,11 +267,11 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
                   {Object.entries(demotionConditions)
                     .filter(([k]) => k !== 'general')
                     .map(([type, conds]) => (
-                      <div key={type} className="bg-gray-700/20 rounded px-2 py-1.5">
-                        <p className="text-[10px] text-gray-500 font-medium mb-0.5">{type}</p>
+                      <div key={type} className={`${cardInnerAlt} rounded px-2 py-1.5`}>
+                        <p className={`text-[10px] font-medium mb-0.5 ${textMuted}`}>{type}</p>
                         <ul>
                           {conds.map((c, i) => (
-                            <li key={i} className="text-[10px] text-gray-600">• {c}</li>
+                            <li key={i} className={`text-[10px] ${textFaint}`}>• {c}</li>
                           ))}
                         </ul>
                       </div>

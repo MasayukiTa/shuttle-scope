@@ -1,4 +1,6 @@
 // Tier / Evidence バッジコンポーネント
+import { useIsLightMode } from '@/hooks/useIsLightMode'
+
 export type Tier = 'stable' | 'advanced' | 'research'
 export type EvidenceLevel = 'exploratory' | 'directional' | 'practical_candidate' | 'practical_adopted'
 
@@ -17,10 +19,15 @@ const TIER_LABELS: Record<Tier, string> = {
   research: '研究',
 }
 
-const TIER_COLORS: Record<Tier, string> = {
+const TIER_COLORS_DARK: Record<Tier, string> = {
   stable: 'bg-emerald-900/50 border-emerald-600 text-emerald-300',
   advanced: 'bg-blue-900/50 border-blue-600 text-blue-300',
   research: 'bg-amber-900/50 border-amber-600 text-amber-300',
+}
+const TIER_COLORS_LIGHT: Record<Tier, string> = {
+  stable: 'bg-emerald-50 border-emerald-400 text-emerald-700',
+  advanced: 'bg-blue-50 border-blue-400 text-blue-700',
+  research: 'bg-amber-50 border-amber-400 text-amber-700',
 }
 
 const EVIDENCE_LABELS: Record<EvidenceLevel, string> = {
@@ -38,24 +45,30 @@ export function EvidenceBadge({
   recommendationAllowed,
   className = '',
 }: EvidenceBadgeProps) {
+  const isLight = useIsLightMode()
+  const tierColors = isLight ? TIER_COLORS_LIGHT : TIER_COLORS_DARK
+  const metaText = isLight ? 'text-gray-500 border border-gray-300' : 'text-gray-500 border border-gray-700'
+  const sampleText = isLight ? 'text-gray-500' : 'text-gray-600'
+  const warnText = isLight ? 'text-amber-600' : 'text-amber-500'
+
   return (
     <div className={`inline-flex flex-wrap items-center gap-1 ${className}`}>
-      <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${TIER_COLORS[tier]}`}>
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${tierColors[tier]}`}>
         {TIER_LABELS[tier]}
       </span>
       {evidenceLevel && (
-        <span className="text-[10px] text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">
+        <span className={`text-[10px] rounded px-1.5 py-0.5 ${metaText}`}>
           {EVIDENCE_LABELS[evidenceLevel]}
         </span>
       )}
       {sampleSize != null && (
-        <span className="text-[10px] text-gray-600">N={sampleSize.toLocaleString()}</span>
+        <span className={`text-[10px] ${sampleText}`}>N={sampleSize.toLocaleString()}</span>
       )}
       {confidenceLevel != null && (
-        <span className="text-[10px] text-gray-600">{(confidenceLevel * 100).toFixed(0)}%</span>
+        <span className={`text-[10px] ${sampleText}`}>{(confidenceLevel * 100).toFixed(0)}%</span>
       )}
       {recommendationAllowed === false && (
-        <span className="text-[10px] text-amber-500">推奨非対応</span>
+        <span className={`text-[10px] ${warnText}`}>推奨非対応</span>
       )}
     </div>
   )

@@ -4,6 +4,7 @@ import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
+import { useCardTheme } from '@/hooks/useCardTheme'
 import { MarkovEPV } from '@/components/analysis/MarkovEPV'
 import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
 import { SpatialDensityMap } from '@/components/analysis/SpatialDensityMap'
@@ -23,17 +24,21 @@ interface Props {
   filters: AnalysisFilters
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-sm font-semibold text-gray-300 mb-0">{children}</h2>
-}
-
 export function DashboardResearchPage({ playerId, filters }: Props) {
   const { t } = useTranslation()
   const { getMeta } = useAnalysisMeta()
+  const { card, textHeading, textMuted, textFaint, badge, isLight } = useCardTheme()
 
   const epvMeta = getMeta('epv')
   const cfMeta = getMeta('counterfactual')
   const spatialMeta = getMeta('spatial_density')
+
+  const restrictedFallback = (
+    <div className={`${card} rounded-lg p-6 text-center text-sm ${textMuted}`}>{t('analysis.restricted')}</div>
+  )
+  const analystFallback = (
+    <div className={`${card} rounded-lg p-6 text-center text-sm ${textMuted}`}>昇格ワークフローはアナリスト向けです</div>
+  )
 
   return (
     <div className="space-y-5">
@@ -46,13 +51,10 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
 
       {/* EPV分析（Markov） */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
-          <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
+          <div className={`${card} rounded-lg p-4 space-y-3`}>
             <div className="flex items-center justify-between">
-              <SectionTitle>{t('analysis.epv.title')}</SectionTitle>
+              <h2 className={`text-sm font-semibold ${textHeading}`}>{t('analysis.epv.title')}</h2>
               <EvidenceBadge
                 tier="research"
                 evidenceLevel={(epvMeta?.evidence_level as any) ?? 'directional'}
@@ -71,13 +73,10 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
 
       {/* 反事実的ショット比較 */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">反事実的ショット比較</h3>
+              <h3 className={`text-xs font-semibold uppercase tracking-wider ${textMuted}`}>反事実的ショット比較</h3>
               <EvidenceBadge
                 tier="research"
                 evidenceLevel={(cfMeta?.evidence_level as any) ?? 'exploratory'}
@@ -96,13 +95,10 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
 
       {/* コート密度マップ（研究段階） */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">コート空間密度マップ</h3>
+              <h3 className={`text-xs font-semibold uppercase tracking-wider ${textMuted}`}>コート空間密度マップ</h3>
               <EvidenceBadge
                 tier="research"
                 evidenceLevel={(spatialMeta?.evidence_level as any) ?? 'exploratory'}
@@ -120,90 +116,63 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
 
       {/* ── Research Spine RS-1: 状態ベース EPV ── */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <StateEPVCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── Research Spine RS-2: 状態-行動価値 ── */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <StateActionValueCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── Research Spine RS-3: ハザード・疲労モデル ── */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <HazardFatigueCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── Research Spine RS-3: 反事実的ショット v2 ── */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <CounterfactualV2Card playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── Research Spine RS-4: ベイズ対戦予測 ── */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <BayesMatchupCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── Research Spine RS-4: 対戦相手ポリシー ── */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <OpponentPolicyCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── Research Spine RS-5: ダブルスロール推定 ── */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <DoublesRoleCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── Spine 4: ショット影響度 v2（状態条件付き） ── */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst', 'coach']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
-        >
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <ShotInfluenceV2Card playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 
       {/* ── 昇格ワークフロー ── */}
       <ErrorBoundary>
-        <RoleGuard
-          allowedRoles={['analyst']}
-          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">昇格ワークフローはアナリスト向けです</div>}
-        >
+        <RoleGuard allowedRoles={['analyst']} fallback={analystFallback}>
           <PromotionStatusCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
