@@ -886,8 +886,27 @@ def set_promotion_override(body: PromotionOverrideBody):
 
 
 @router.delete("/analysis/meta/promotion_override/{analysis_type}")
-def delete_promotion_override(analysis_type: str):
-    """昇格 override を削除する。"""
+def delete_promotion_override(analysis_type: str, analyst: str = Query(default="analyst")):
+    """昇格 override を削除する。analyst パラメータで操作者を記録。"""
     from backend.analysis.promotion_override_store import delete_override
-    deleted = delete_override(analysis_type)
+    deleted = delete_override(analysis_type, analyst=analyst)
     return {"success": True, "deleted": deleted}
+
+
+@router.get("/analysis/meta/promotion_override/{analysis_type}/history")
+def get_override_history(analysis_type: str):
+    """
+    指定 analysis_type の override 操作履歴を返す（新しい順）。
+    エントリが削除済みでも audit_log.json から参照可能。
+    """
+    from backend.analysis.promotion_override_store import get_audit_log
+    history = get_audit_log(analysis_type=analysis_type)
+    return {"success": True, "data": history}
+
+
+@router.get("/analysis/meta/promotion_overrides/audit_log")
+def get_all_override_audit_log():
+    """全 override 操作の監査ログを返す（新しい順）。analyst/coach 向け。"""
+    from backend.analysis.promotion_override_store import get_audit_log
+    history = get_audit_log()
+    return {"success": True, "data": history}

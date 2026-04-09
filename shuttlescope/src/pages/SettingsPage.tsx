@@ -9,6 +9,7 @@ import { Player, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface PlayerFormData {
   name: string
@@ -36,6 +37,7 @@ const defaultPlayerForm = (): PlayerFormData => ({
 
 /** URL + QRコード + コピーボタンをまとめた小コンポーネント */
 function LanUrlCard({ url, hint }: { url: string; hint: string }) {
+  const isLight = useIsLightMode()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [copied, setCopied] = useState(false)
 
@@ -44,9 +46,12 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
     QRCode.toCanvas(canvasRef.current, url, {
       width: 140,
       margin: 1,
-      color: { dark: '#0f172a', light: '#f8fafc' },
+      color: {
+        dark: isLight ? '#1e293b' : '#0f172a',
+        light: isLight ? '#ffffff' : '#f8fafc',
+      },
     }).catch(() => {})
-  }, [url])
+  }, [url, isLight])
 
   const handleCopy = async () => {
     try {
@@ -66,17 +71,17 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
 
   return (
     <div className="flex items-start gap-3">
-      <canvas ref={canvasRef} className="rounded flex-shrink-0" />
+      <canvas ref={canvasRef} className={`rounded flex-shrink-0 ${isLight ? 'border border-gray-200' : ''}`} />
       <div className="min-w-0 space-y-1.5">
-        <p className="text-xs text-gray-400">{hint}</p>
+        <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{hint}</p>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-green-300 break-all">{url}</span>
+          <span className={`text-xs font-mono ${isLight ? 'text-green-700' : 'text-green-300'} break-all`}>{url}</span>
           <button
             onClick={handleCopy}
-            className="flex-shrink-0 p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+            className={`flex-shrink-0 p-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
             title="コピー"
           >
-            {copied ? <CheckCircle size={12} className="text-green-400" /> : <Copy size={12} />}
+            {copied ? <CheckCircle size={12} className="text-green-500" /> : <Copy size={12} />}
           </button>
         </div>
       </div>
@@ -807,7 +812,7 @@ export function SettingsPage() {
                 <button
                   onClick={() => runDiagnostics()}
                   disabled={netDiagFetching}
-                  className="px-3 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50"
+                  className={`px-3 py-1 text-xs rounded disabled:opacity-50 ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
                 >
                   {netDiagFetching ? '診断中...' : t('sharing.run_diagnostics')}
                 </button>
@@ -1042,7 +1047,7 @@ export function SettingsPage() {
                     setImportPreview(null)
                     setImportResult(null)
                   }}
-                  className="w-full text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:bg-gray-700 file:text-gray-300 hover:file:bg-gray-600"
+                  className={`w-full text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs ${isLight ? 'text-gray-700 file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200' : 'text-gray-300 file:bg-gray-700 file:text-gray-300 hover:file:bg-gray-600'}`}
                 />
               </div>
 
@@ -1050,7 +1055,7 @@ export function SettingsPage() {
                 <button
                   onClick={handlePreviewImport}
                   disabled={importPreviewLoading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 rounded text-sm transition-colors"
+                  className={`flex items-center gap-1.5 px-4 py-2 disabled:opacity-40 rounded text-sm transition-colors ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
                 >
                   <Eye size={14} />
                   {importPreviewLoading ? '確認中...' : '内容を確認'}
@@ -1162,7 +1167,7 @@ export function SettingsPage() {
                     <Share2 size={16} className="text-cyan-400" />
                     <h2 className="text-base font-semibold">同期フォルダ内パッケージ</h2>
                   </div>
-                  <button onClick={() => refetchCloudPackages()} className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-700">更新</button>
+                  <button onClick={() => refetchCloudPackages()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>更新</button>
                 </div>
                 <p className="text-xs text-gray-400 font-mono truncate">{(cloudPackagesData as any)?.folder}</p>
 
@@ -1206,7 +1211,7 @@ export function SettingsPage() {
                     <h2 className="text-base font-semibold">競合レビュー</h2>
                     <span className="text-xs bg-orange-500 text-white px-1.5 py-0.5 rounded-full">{conflicts.length}</span>
                   </div>
-                  <button onClick={() => refetchConflicts()} className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-700">更新</button>
+                  <button onClick={() => refetchConflicts()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>更新</button>
                 </div>
                 <p className="text-xs text-gray-400">
                   インポート時に検出された競合レコードです。ローカルを維持するか、取込データで上書きするかを選択してください。

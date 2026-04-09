@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { apiGet } from '@/api/client'
+import { useAuth } from '@/hooks/useAuth'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters, Player } from '@/types'
@@ -55,6 +58,19 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const [partnerPlayerId, setPartnerPlayerId] = useState<number | null>(null)
   const { getMeta } = useAnalysisMeta()
   const { card, cardInner, textHeading, textSecondary, textMuted, textFaint, badge, border, isLight } = useCardTheme()
+  const { role } = useAuth()
+
+  // Override summary: analyst/coach のみクエリ
+  const { data: overridesResp } = useQuery({
+    queryKey: ['promotion-overrides'],
+    queryFn: () => apiGet<{ success: boolean; data: Record<string, { status: string; note: string; analyst: string }> }>(
+      '/analysis/meta/promotion_overrides'
+    ),
+    staleTime: 30 * 1000,
+    enabled: role === 'analyst' || role === 'coach',
+  })
+  const activeOverrides = Object.values(overridesResp?.data ?? {})
+  const holdCount = activeOverrides.filter((o) => o.status === 'hold').length
 
   // セクション別 meta (backend meta 駆動)
   const transitionMeta = getMeta('transition')
@@ -82,6 +98,29 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
         <DashboardSectionNav active={section} onChange={setSection} />
         <EvidenceBadge tier="advanced" evidenceLevel="practical_candidate" className="shrink-0" />
       </div>
+
+      {/* Override summary バナー: analyst/coach のみ、active override がある場合に表示 */}
+      {activeOverrides.length > 0 && (role === 'analyst' || role === 'coach') && (
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border-l-4 text-xs ${
+          isLight
+            ? 'bg-amber-50 border-amber-400 text-amber-800'
+            : 'bg-amber-900/20 border-amber-600 text-amber-300'
+        }`}>
+          <span className="font-medium">
+            {activeOverrides.length}件の分析に手動 Override が設定されています
+          </span>
+          {holdCount > 0 && (
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+              isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-900/40 text-orange-300'
+            }`}>
+              保留 {holdCount}件
+            </span>
+          )}
+          <span className={`ml-auto text-[10px] ${isLight ? 'text-amber-600' : 'text-amber-500'}`}>
+            Research タブで詳細確認
+          </span>
+        </div>
+      )}
 
       {/* ── ショット分析 ── */}
       {section === 'shot' && (

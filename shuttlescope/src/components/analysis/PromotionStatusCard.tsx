@@ -44,12 +44,23 @@ interface EvaluationData {
   demotion_conditions: DemotionConditions
 }
 
+interface AuditLogEntry {
+  timestamp: string
+  analysis_type: string
+  analyst: string
+  action: 'create' | 'update' | 'delete'
+  old_status: string | null
+  new_status: string | null
+  note: string
+}
+
 interface OverrideEntry {
   analysis_type: string
   status: string
   note: string
   analyst: string
   updated_at: string
+  audit_log?: AuditLogEntry[]
 }
 
 interface Props {
@@ -118,6 +129,26 @@ function getTierColors(isLight: boolean): Record<string, string> {
   }
 }
 
+/** ISO タイムスタンプを日本語の簡略表記に変換 */
+function formatTs(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleString('ja-JP', {
+      month: 'numeric', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+      timeZone: 'Asia/Tokyo',
+    })
+  } catch {
+    return iso.slice(0, 16)
+  }
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  create: '作成',
+  update: '更新',
+  delete: '削除',
+}
+
 function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: boolean }) {
   const icon = item.met === true ? '✓' : item.met === false ? '✗' : '○'
   const color =
@@ -154,6 +185,7 @@ function OverrideForm({
   const [status, setStatus] = useState(currentOverride?.status ?? 'requires_review')
   const [note, setNote] = useState(currentOverride?.note ?? '')
   const [saving, setSaving] = useState(false)
+  const holdNoteRequired = status === 'hold' && note.trim() === ''
 
   const inputClass = isLight
     ? 'bg-white border border-gray-300 text-gray-700 focus:ring-1 focus:ring-blue-400'
@@ -194,7 +226,10 @@ function OverrideForm({
 
   return (
     <div className={`mt-2 p-2 rounded border ${border} ${cardInner} space-y-2`}>
-      <p className={`text-[10px] font-semibold ${textHeading}`}>アナリスト判断 Override</p>
+      <div className="flex items-center justify-between">
+        <p className={`text-[10px] font-semibold ${textHeading}`}>アナリスト判断 Override</p>
+        <span className={`text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>analyst のみ書込可</span>
+      </div>
       <select
         className={`w-full text-xs rounded px-2 py-1 ${inputClass}`}
         value={status}
@@ -204,13 +239,20 @@ function OverrideForm({
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
-      <textarea
-        className={`w-full text-xs rounded px-2 py-1 resize-none ${inputClass}`}
-        rows={2}
-        placeholder="判断の根拠・保留理由など（任意）"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-      />
+      <div>
+        <textarea
+          className={`w-full text-xs rounded px-2 py-1 resize-none ${inputClass} ${holdNoteRequired ? (isLight ? 'border-orange-400' : 'border-orange-600') : ''}`}
+          rows={2}
+          placeholder={status === 'hold' ? '保留理由を入力してください（必須）' : '判断の根拠・保留理由など（任意）'}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        {holdNoteRequired && (
+          <p className={`text-[9px] mt-0.5 ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>
+            hold ステータスには理由の入力が必要です
+          </p>
+        )}
+      </div>
       <div className="flex items-center gap-2 justify-end">
         {currentOverride && (
           <button
@@ -229,9 +271,10 @@ function OverrideForm({
           キャンセル
         </button>
         <button
-          className={`text-[10px] px-2 py-0.5 rounded ${btnPrimary} transition-colors`}
+          className={`text-[10px] px-2 py-0.5 rounded ${btnPrimary} transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || holdNoteRequired}
+          title={holdNoteRequired ? 'hold には理由の入力が必要です' : undefined}
         >
           {saving ? '保存中…' : '保存'}
         </button>
@@ -302,10 +345,28 @@ function EvaluationRow({
             <p className={`text-[10px] italic ${textFaint}`}>{entry.additional_notes}</p>
           )}
           {override && (
-            <div className={`text-[10px] space-y-0.5 ${isLight ? 'text-blue-700' : 'text-blue-400'}`}>
-              <p className="font-medium">Override 設定済み: {override.status}</p>
-              {override.note && <p className={textMuted}>{override.note}</p>}
-              <p className={textFaint}>{override.updated_at}</p>
+            <div className={`text-[10px] space-y-1`}>
+              <div className={`${isLight ? 'text-blue-700' : 'text-blue-400'}`}>
+                <p className="font-medium">Override 設定済み: {override.status}</p>
+                {override.note && <p className={textMuted}>{override.note}</p>}
+                <p className={textFaint}>{override.updated_at ? formatTs(override.updated_at) : ''} by {override.analyst}</p>
+              </div>
+              {/* 操作履歴（audit_log） */}
+              {override.audit_log && override.audit_log.length > 0 && (
+                <div className={`border-t pt-1 mt-1 space-y-0.5 ${isLight ? 'border-gray-100' : 'border-gray-700'}`}>
+                  <p className={`font-medium ${textFaint}`}>操作履歴</p>
+                  {[...override.audit_log].reverse().slice(0, 3).map((log, i) => (
+                    <div key={i} className={`${textFaint} leading-snug`}>
+                      {formatTs(log.timestamp)}&nbsp;
+                      <span className={textMuted}>[{log.analyst}]</span>&nbsp;
+                      {ACTION_LABEL[log.action] ?? log.action}&nbsp;
+                      {log.old_status && <span>{log.old_status} → </span>}
+                      {log.new_status && <span className={isLight ? 'text-blue-600' : 'text-blue-400'}>{log.new_status}</span>}
+                      {log.note && <span className={textMuted}> 「{log.note.slice(0, 30)}{log.note.length > 30 ? '…' : ''}」</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {isAnalyst && (
