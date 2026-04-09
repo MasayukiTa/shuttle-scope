@@ -17,7 +17,7 @@ import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
 import { LineupOptimizerPanel } from '@/components/analysis/LineupOptimizerPanel'
 import { HumanForecastPanel } from '@/components/analysis/HumanForecastPanel'
 import { useAuth } from '@/hooks/useAuth'
-import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useCardTheme } from '@/hooks/useCardTheme'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
 
@@ -34,7 +34,7 @@ type SubTab = 'preview' | 'pair' | 'lineup' | 'forecast'
 export function PredictionPage() {
   const { t } = useTranslation()
   const { role } = useAuth()
-  const isLight = useIsLightMode()
+  const { card, textHeading, textSecondary, textMuted, isLight } = useCardTheme()
   const [searchParams] = useSearchParams()
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(() => {
     const pid = searchParams.get('playerId')
@@ -71,7 +71,7 @@ export function PredictionPage() {
   })
   const selectedPlayer = players.find((p) => p.id === selectedPlayerId)
 
-  const headerBg = isLight ? 'bg-white border-gray-200' : 'bg-gray-900 border-gray-700'
+  const headerBg = isLight ? 'bg-white border-b border-gray-200' : 'bg-gray-900 border-b border-gray-700'
   const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
   const tabActive = isLight ? 'bg-gray-200 text-gray-900' : 'bg-gray-700 text-white'
   const tabInactive = isLight
@@ -91,17 +91,17 @@ export function PredictionPage() {
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']} fallback={
-      <div className="flex items-center justify-center h-screen text-gray-500">
+      <div className={`flex items-center justify-center h-screen ${isLight ? 'text-gray-500 bg-gray-50' : 'text-gray-500 bg-gray-900'}`}>
         予測機能はアナリスト・コーチのみ利用できます
       </div>
     }>
-      <div className={`flex flex-col h-screen ${bodyBg} text-white`}>
+      <div className={`flex flex-col h-screen ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
         {/* ヘッダー */}
-        <div className="px-6 pt-6 pb-4 border-b border-gray-800 shrink-0 bg-gray-900">
+        <div className={`px-6 pt-6 pb-4 shrink-0 ${headerBg}`}>
           {/* タイトル行 */}
           <div className="flex items-center gap-3 mb-4">
             <TrendingUp className="text-blue-400" size={20} />
-            <h1 className="text-xl font-semibold">{t('nav.prediction_title')}</h1>
+            <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.prediction_title')}</h1>
             {role && (
               <span
                 className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${
@@ -115,8 +115,8 @@ export function PredictionPage() {
 
           {/* 選手セレクター行 */}
           <div className="flex items-center gap-3">
-            <User size={16} className="text-gray-400 shrink-0" />
-            <label className="text-sm text-gray-400 shrink-0">選手：</label>
+            <User size={16} className={`${textMuted} shrink-0`} />
+            <label className={`text-sm ${textSecondary} shrink-0`}>選手：</label>
             <SearchableSelect
               options={sortedPlayers.map((p) => ({
                 value: p.id,
@@ -136,7 +136,7 @@ export function PredictionPage() {
         </div>
 
         {/* サブタブ — 常に表示してレイアウトシフトを防ぐ */}
-        <div className={`flex gap-1 px-6 py-2 border-b shrink-0 overflow-x-auto border-gray-800 bg-gray-900 ${!selectedPlayerId ? 'invisible' : ''}`}>
+        <div className={`flex gap-1 px-6 py-2 border-b shrink-0 overflow-x-auto ${isLight ? 'border-gray-200 bg-white' : 'border-gray-800 bg-gray-900'} ${!selectedPlayerId ? 'invisible' : ''}`}>
           {(
             [
               { key: 'preview' as const, label: t('prediction.title') },
@@ -161,7 +161,7 @@ export function PredictionPage() {
         {/* コンテンツ */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {!selectedPlayerId ? (
-            <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+            <div className={`flex items-center justify-center h-full ${textMuted} text-sm`}>
               {t('prediction.select_player')}
             </div>
           ) : subTab === 'preview' ? (
@@ -178,8 +178,8 @@ export function PredictionPage() {
             </div>
           ) : subTab === 'lineup' ? (
             <div className="max-w-2xl mx-auto">
-              <div className={`rounded-lg p-4 ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800'}`}>
-                <p className="text-sm font-semibold mb-3" style={{ color: isLight ? '#1e293b' : '#d1d5db' }}>
+              <div className={`${card} rounded-lg p-4`}>
+                <p className={`text-sm font-semibold mb-3 ${textHeading}`}>
                   {t('prediction.lineup_optimizer')}
                 </p>
                 <LineupOptimizerPanel players={sortedPlayers} />
@@ -189,8 +189,8 @@ export function PredictionPage() {
             /* forecast タブ: 試合選択 + HumanForecastPanel */
             <div className="max-w-2xl mx-auto space-y-4">
               {/* 試合セレクター */}
-              <div className={`rounded-lg p-4 ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800'}`}>
-                <p className="text-xs font-semibold mb-2" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>
+              <div className={`${card} rounded-lg p-4`}>
+                <p className={`text-xs font-semibold mb-2 ${textMuted}`}>
                   試合を選択
                 </p>
                 <SearchableSelect
@@ -210,7 +210,7 @@ export function PredictionPage() {
 
               {/* 予測パネル */}
               {forecastMatchId && (
-                <div className={`rounded-lg p-4 ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800'}`}>
+                <div className={`${card} rounded-lg p-4`}>
                   <HumanForecastPanel matchId={forecastMatchId} playerId={selectedPlayerId} />
                 </div>
               )}

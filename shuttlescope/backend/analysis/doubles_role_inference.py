@@ -272,6 +272,280 @@ def _viterbi_decode(
     return path
 
 
+# ── DB-2 HMM: Baum-Welch EM + Viterbi ───────────────────────────────────────
+
+def _forward_scaled(
+    obs_seq: list[str],
+    emission: dict,
+    transition: dict,
+    prior: dict,
+) -> tuple[list[dict], list[float]]:
+    """スケーリング版フォワードアルゴリズム。数値アンダーフローを防止する。"""
+    roles = list(prior.keys())
+    T = len(obs_seq)
+    alpha: list[dict] = [{} for _ in range(T)]
+    c: list[float] = [0.0] * T  # スケーリング係数
+
+    for r in roles:
+        e = emission[r].get(obs_seq[0], emission[r].get("neutral", 1e-6))
+        alpha[0][r] = prior.get(r, 1.0 / len(roles)) * e
+    c[0] = max(sum(alpha[0].values()), 1e-300)
+    for r in roles:
+        alpha[0][r] /= c[0]
+
+    for t in range(1, T):
+        obs = obs_seq[t]
+        for r in roles:
+            e = emission[r].get(obs, emission[r].get("neutral", 1e-6))
+            alpha[t][r] = sum(alpha[t - 1][r2] * transition[r2].get(r, 1e-6) for r2 in roles) * e
+        c[t] = max(sum(alpha[t].values()), 1e-300)
+        for r in roles:
+            alpha[t][r] /= c[t]
+
+    return alpha, c
+
+
+def _backward_scaled(
+    obs_seq: list[str],
+    emission: dict,
+    transition: dict,
+    c: list[float],
+) -> list[dict]:
+    """スケーリング版バックワードアルゴリズム。"""
+    roles = list(emission.keys())
+    T = len(obs_seq)
+    beta: list[dict] = [{} for _ in range(T)]
+
+    for r in roles:
+        beta[T - 1][r] = 1.0 / max(c[T - 1], 1e-300)
+
+    for t in range(T - 2, -1, -1):
+        obs_next = obs_seq[t + 1]
+        for r in roles:
+            beta[t][r] = sum(
+                transition[r].get(r2, 1e-6)
+                * emission[r2].get(obs_next, emission[r2].get("neutral", 1e-6))
+                * beta[t + 1][r2]
+                for r2 in roles
+            ) / max(c[t], 1e-300)
+
+    return beta
+
+
+def _baum_welch_update(
+    per_rally_obs: list[list[str]],
+    emission: dict,
+    transition: dict,
+    prior: dict,
+    n_iter: int = 5,
+) -> tuple[dict, dict]:
+    """
+    Baum-Welch EM 更新（スケーリング版）。
+
+    各ラリーのストロークシーケンスを使って HMM パラメータを更新する。
+    シーケンス数が少ない場合は更新せずに元のパラメータを返す。
+
+    Returns:
+        (updated_emission, updated_transition)
+    """
+    import copy
+
+    roles = list(prior.keys())
+    obs_symbols = ["front", "back", "neutral"]
+
+    em = copy.deepcopy(emission)
+    tr = copy.deepcopy(transition)
+
+    valid_seqs = [s for s in per_rally_obs if len(s) >= 2]
+    if len(valid_seqs) < 10:
+        # データ不足: 元のパラメータをそのまま返す
+        return em, tr
+
+    for _ in range(n_iter):
+        # 累積統計量
+        xi_sum = {r: {r2: 1e-9 for r2 in roles} for r in roles}
+        emit_num = {r: {o: 1e-9 for o in obs_symbols} for r in roles}
+        emit_den = {r: 1e-9 for r in roles}
+
+        for obs_seq in valid_seqs:
+            T = len(obs_seq)
+            alpha, c_arr = _forward_scaled(obs_seq, em, tr, prior)
+            beta = _backward_scaled(obs_seq, em, tr, c_arr)
+
+            # gamma: P(q_t=r | obs)
+            for t in range(T):
+                total_g = sum(alpha[t][r] * beta[t][r] for r in roles)
+                if total_g < 1e-300:
+                    continue
+                for r in roles:
+                    g = alpha[t][r] * beta[t][r] / total_g
+                    obs_sym = obs_seq[t] if obs_seq[t] in obs_symbols else "neutral"
+                    emit_num[r][obs_sym] += g
+                    emit_den[r] += g
+
+            # xi: P(q_t=r, q_{t+1}=r2 | obs)
+            for t in range(T - 1):
+                obs_next = obs_seq[t + 1] if obs_seq[t + 1] in obs_symbols else "neutral"
+                xi_t: dict[str, dict[str, float]] = {r: {} for r in roles}
+                total_xi = 0.0
+                for r in roles:
+                    for r2 in roles:
+                        v = (
+                            alpha[t][r]
+                            * tr[r].get(r2, 1e-6)
+                            * em[r2].get(obs_next, em[r2].get("neutral", 1e-6))
+                            * beta[t + 1][r2]
+                        )
+                        xi_t[r][r2] = v
+                        total_xi += v
+                if total_xi > 1e-300:
+                    for r in roles:
+                        for r2 in roles:
+                            xi_sum[r][r2] += xi_t[r][r2] / total_xi
+
+        # M-step: 遷移確率の更新
+        for r in roles:
+            denom = sum(xi_sum[r][r2] for r2 in roles)
+            if denom > 1e-9:
+                for r2 in roles:
+                    tr[r][r2] = xi_sum[r][r2] / denom
+
+        # M-step: 発射確率の更新
+        for r in roles:
+            if emit_den[r] > 1e-9:
+                for o in obs_symbols:
+                    em[r][o] = emit_num[r][o] / emit_den[r]
+
+    return em, tr
+
+
+# ── DB-3: ロール安定性スコア ──────────────────────────────────────────────────
+
+def compute_doubles_role_stability(
+    matches: list,
+    rallies: list,
+    strokes_by_rally: dict[int, list],
+    role_by_match: dict[int, str],
+    set_to_match: dict[int, int],
+) -> dict:
+    """
+    DB-3: 試合・シーズン単位のロール安定性スコアを計算する。
+
+    試合ごとに独立してロールを推定し、試合間の一貫性を測定する。
+
+    Returns:
+        {
+          "role_stability_score": float,       # 0-1, 高いほど一貫
+          "dominant_role": str,
+          "n_matches_analyzed": int,
+          "per_match_roles": list,
+          "season_variation": list,
+          "consistency_label": str,            # "consistent" | "moderate" | "volatile"
+          "note": str | None,
+        }
+    """
+    from collections import Counter
+
+    # set_id → match_id マップからラリーを試合ごとに分類
+    rally_by_match: dict[int, list] = {}
+    for rally in rallies:
+        mid = set_to_match.get(rally.set_id)
+        if mid is not None:
+            rally_by_match.setdefault(mid, []).append(rally)
+
+    per_match_roles = []
+    for match in matches:
+        mid = match.id
+        role = role_by_match.get(mid)
+        match_rallies = rally_by_match.get(mid, [])
+        if not role or not match_rallies:
+            continue
+
+        f, b, n, total = 0, 0, 0, 0
+        for r in match_rallies:
+            for s in strokes_by_rally.get(r.id, []):
+                if s.player != role or not s.shot_type:
+                    continue
+                if s.shot_type in FRONT_SHOTS:
+                    f += 1
+                elif s.shot_type in BACK_SHOTS:
+                    b += 1
+                else:
+                    n += 1
+                total += 1
+
+        if total < 5:
+            continue
+
+        inferred, conf = classify_role_from_shots(f, b, total)
+        match_date = getattr(match, "match_date", None) or getattr(match, "date", None)
+        season = str(match_date.year) if match_date else "unknown"
+
+        per_match_roles.append({
+            "match_id": mid,
+            "inferred_role": inferred,
+            "confidence": conf,
+            "n_shots": total,
+            "season": season,
+        })
+
+    if not per_match_roles:
+        return {
+            "role_stability_score": 0.0,
+            "dominant_role": "unknown",
+            "n_matches_analyzed": 0,
+            "per_match_roles": [],
+            "season_variation": [],
+            "consistency_label": "insufficient_data",
+            "note": "試合ごとのロール推定に十分なデータがありません（各試合5打以上必要）。",
+        }
+
+    role_counter = Counter(r["inferred_role"] for r in per_match_roles)
+    dominant_role = role_counter.most_common(1)[0][0]
+    n_consistent = role_counter[dominant_role]
+    n_total = len(per_match_roles)
+    stability_score = round(n_consistent / n_total, 4)
+
+    if stability_score >= 0.75:
+        consistency_label = "consistent"
+    elif stability_score >= 0.50:
+        consistency_label = "moderate"
+    else:
+        consistency_label = "volatile"
+
+    # シーズン別集計
+    season_data: dict[str, list] = {}
+    for r in per_match_roles:
+        season_data.setdefault(r["season"], []).append(r["inferred_role"])
+
+    season_variation = []
+    for season, role_list in sorted(season_data.items()):
+        sc = Counter(role_list)
+        dominant = sc.most_common(1)[0][0]
+        season_variation.append({
+            "season": season,
+            "dominant_role": dominant,
+            "n_matches": len(role_list),
+            "role_counts": dict(sc),
+        })
+
+    note = None
+    if consistency_label == "volatile":
+        note = "試合ごとにロールが大きく変動しています。ポジションが固定されていない可能性があります。"
+    elif n_total < 5:
+        note = f"試合数が少ないため（{n_total}試合）、安定性スコアの信頼性が低いです。"
+
+    return {
+        "role_stability_score": stability_score,
+        "dominant_role": dominant_role,
+        "n_matches_analyzed": n_total,
+        "per_match_roles": per_match_roles,
+        "season_variation": season_variation,
+        "consistency_label": consistency_label,
+        "note": note,
+    }
+
+
 def compute_doubles_role_db2(
     rallies: list,
     strokes_by_rally: dict[int, list],
@@ -337,12 +611,15 @@ def compute_doubles_role_db2(
             "db_phase": "db2",
         }
 
-    # ── ステップ2: Baum-Welch の代わりに観測データから発射確率を推定 ──
-    obs_counts: dict[str, dict[str, int]] = {r: defaultdict(int) for r in ROLES}
-    # DB-1 ロール結果を参照して観測→ロール割り当て
-    # （簡易: 発射確率はルールベース初期値をそのまま使用）
-    emission = _HMM_EMISSION_INIT
-    transition = _HMM_TRANSITION_INIT
+    # ── ステップ2: Baum-Welch EM でパラメータを学習 ──
+    # シーケンス数が十分な場合は Baum-Welch で更新、不足時はルールベース初期値を使用
+    if len(per_rally_obs) >= 10:
+        emission, transition = _baum_welch_update(
+            per_rally_obs, _HMM_EMISSION_INIT, _HMM_TRANSITION_INIT, _HMM_PRIOR, n_iter=5
+        )
+    else:
+        emission = _HMM_EMISSION_INIT
+        transition = _HMM_TRANSITION_INIT
 
     # ── ステップ3: ラリーごとに Viterbi デコーディング ──
     role_counts: dict[str, int] = defaultdict(int)
@@ -381,11 +658,14 @@ def compute_doubles_role_db2(
     raw_neutral = sum(1 for o in all_obs if o == "neutral")
     n = len(all_obs)
 
+    bw_used = len(per_rally_obs) >= 10
     note = None
     if n < MIN_SHOTS_ROLE:
         note = f"ショット数が少なすぎます（{n}打）。HMM推定の精度が低い可能性があります。"
     elif n_transitions > total_decoded * 0.4:
         note = "ロール切り替えが多いです。ポジションが流動的な選手の可能性があります。"
+    if bw_used:
+        note = (note or "") + "（Baum-Welch EM でパラメータ学習済み）"
 
     return {
         "inferred_role": final_role,

@@ -61,6 +61,12 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const temporalMeta = getMeta('temporal')
   const postLongRallyMeta = getMeta('post_long_rally')
   const pressureMeta = getMeta('pressure')
+  // 追加 meta
+  const preLossMeta = getMeta('pre_win_pre_loss')
+  const firstReturnMeta = getMeta('first_return')
+  const spatialMeta = getMeta('spatial_density')
+  const opponentAffinityMeta = getMeta('opponent_affinity')
+  const pairSynergyMeta = getMeta('pair_synergy')
 
   const restrictedFallback = (
     <div className={`${card} rounded-lg p-6 text-center text-sm ${textMuted}`}>{t('analysis.restricted')}</div>
@@ -163,17 +169,45 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       {section === 'spatial' && (
         <ErrorBoundary>
           <div className="space-y-5">
+            {(preLossMeta?.caution || firstReturnMeta?.caution) && (
+              <ResearchNotice
+                caution={preLossMeta?.caution ?? firstReturnMeta?.caution ?? ''}
+                assumptions={preLossMeta?.assumptions ?? undefined}
+                promotionCriteria={preLossMeta?.promotion_criteria ?? undefined}
+              />
+            )}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-              <div className={`${card} rounded-lg p-4`}>
-                <SectionTitle>{t('analysis.pre_loss.title')}</SectionTitle>
+              <div className={`${card} rounded-lg p-4 space-y-2`}>
+                <div className="flex items-center justify-between">
+                  <SectionTitle>{t('analysis.pre_loss.title')}</SectionTitle>
+                  <EvidenceBadge
+                    tier="advanced"
+                    evidenceLevel={(preLossMeta?.evidence_level as any) ?? 'practical_candidate'}
+                    recommendationAllowed={false}
+                  />
+                </div>
                 <PreLossPatterns playerId={playerId} filters={filters} />
               </div>
-              <div className={`${card} rounded-lg p-4`}>
-                <SectionTitle>{t('analysis.first_return.title')}</SectionTitle>
+              <div className={`${card} rounded-lg p-4 space-y-2`}>
+                <div className="flex items-center justify-between">
+                  <SectionTitle>{t('analysis.first_return.title')}</SectionTitle>
+                  <EvidenceBadge
+                    tier="advanced"
+                    evidenceLevel={(firstReturnMeta?.evidence_level as any) ?? 'practical_candidate'}
+                    recommendationAllowed={false}
+                  />
+                </div>
                 <FirstReturnAnalysis playerId={playerId} filters={filters} />
               </div>
             </div>
             <RoleGuard allowedRoles={['analyst', 'coach']}>
+              {spatialMeta?.caution && (
+                <ResearchNotice
+                  caution={spatialMeta.caution}
+                  assumptions={spatialMeta.assumptions ?? undefined}
+                  promotionCriteria={spatialMeta.promotion_criteria ?? undefined}
+                />
+              )}
               <SpatialDensityMap playerId={playerId} />
             </RoleGuard>
           </div>
@@ -224,13 +258,27 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
         <ErrorBoundary>
           <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
             <div className="space-y-5">
+              {opponentAffinityMeta?.caution && (
+                <ResearchNotice
+                  caution={opponentAffinityMeta.caution}
+                  assumptions={opponentAffinityMeta.assumptions ?? undefined}
+                  promotionCriteria={opponentAffinityMeta.promotion_criteria ?? undefined}
+                />
+              )}
               <div className={`${card} rounded-lg p-4`}>
                 <SectionTitle>{t('analysis.opponent_stats.title')}</SectionTitle>
                 <OpponentStats playerId={playerId} />
               </div>
-              <div className={`${card} rounded-lg p-4`}>
-                <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
-                <p className={`text-xs mb-3 ${textMuted}`}>{t('analysis.opponent_type_affinity.subtitle')}</p>
+              <div className={`${card} rounded-lg p-4 space-y-2`}>
+                <div className="flex items-center justify-between">
+                  <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
+                  <EvidenceBadge
+                    tier="research"
+                    evidenceLevel={(opponentAffinityMeta?.evidence_level as any) ?? 'exploratory'}
+                    recommendationAllowed={false}
+                  />
+                </div>
+                <p className={`text-xs ${textMuted}`}>{t('analysis.opponent_type_affinity.subtitle')}</p>
                 <OpponentTypeAffinity playerId={playerId} filters={filters} />
               </div>
               <OpponentAdaptiveShots playerId={playerId} />
@@ -288,6 +336,13 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   playerBName={sortedPlayers.find((p) => p.id === partnerPlayerId)?.name}
                 />
               </div>
+            )}
+            {pairSynergyMeta?.caution && (
+              <ResearchNotice
+                caution={pairSynergyMeta.caution}
+                assumptions={pairSynergyMeta.assumptions ?? undefined}
+                promotionCriteria={pairSynergyMeta.promotion_criteria ?? undefined}
+              />
             )}
             <PairSynergyCard playerId={playerId} />
           </div>

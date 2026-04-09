@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { apiGet } from '@/api/client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiGet, apiPost, apiDelete } from '@/api/client'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { useAuth } from '@/hooks/useAuth'
 import { AnalysisFilters } from '@/types'
 
 interface ChecklistItem {
@@ -43,6 +44,14 @@ interface EvaluationData {
   demotion_conditions: DemotionConditions
 }
 
+interface OverrideEntry {
+  analysis_type: string
+  status: string
+  note: string
+  analyst: string
+  updated_at: string
+}
+
 interface Props {
   playerId: number
   filters: AnalysisFilters
@@ -53,6 +62,13 @@ const TIER_LABELS: Record<string, string> = {
   advanced: 'Advanced',
   stable: 'Stable',
 }
+
+const OVERRIDE_STATUS_OPTIONS = [
+  { value: 'promotion_ready', label: '昇格準備完了' },
+  { value: 'requires_review', label: 'レビュー待ち' },
+  { value: 'insufficient_data', label: 'データ不足' },
+  { value: 'hold', label: '保留（note必須）' },
+]
 
 interface ThemeProps {
   isLight: boolean
@@ -82,6 +98,11 @@ function getStatusConfig(isLight: boolean) {
       color: isLight ? 'text-gray-500' : 'text-gray-500',
       dot: isLight ? 'bg-gray-400' : 'bg-gray-600',
     },
+    hold: {
+      label: '保留',
+      color: isLight ? 'text-orange-600' : 'text-orange-400',
+      dot: isLight ? 'bg-orange-500' : 'bg-orange-400',
+    },
   } as const
 }
 
@@ -98,9 +119,7 @@ function getTierColors(isLight: boolean): Record<string, string> {
 }
 
 function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: boolean }) {
-  const icon =
-    item.met === true ? '✓' :
-    item.met === false ? '✗' : '○'
+  const icon = item.met === true ? '✓' : item.met === false ? '✗' : '○'
   const color =
     item.met === true ? (isLight ? 'text-emerald-600' : 'text-emerald-400') :
     item.met === false ? (isLight ? 'text-red-600' : 'text-red-400') :
@@ -112,22 +131,137 @@ function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: bool
       <span className={`${color} shrink-0 font-bold mt-px`}>{icon}</span>
       <span className={textColor}>{item.item}</span>
       {item.current !== null && (
-        <span className={`${subColor} ml-auto shrink-0`}>
-          {item.current} / {item.required}
-        </span>
+        <span className={`${subColor} ml-auto shrink-0`}>{item.current} / {item.required}</span>
       )}
     </li>
   )
 }
 
-function EvaluationRow({ entry, theme }: { entry: EvaluationEntry; theme: ThemeProps }) {
+function OverrideForm({
+  analysisType,
+  currentOverride,
+  theme,
+  onClose,
+}: {
+  analysisType: string
+  currentOverride: OverrideEntry | undefined
+  theme: ThemeProps
+  onClose: () => void
+}) {
+  const { isLight, textHeading, textMuted, textFaint, cardInner, border } = theme
+  const { role } = useAuth()
+  const qc = useQueryClient()
+  const [status, setStatus] = useState(currentOverride?.status ?? 'requires_review')
+  const [note, setNote] = useState(currentOverride?.note ?? '')
+  const [saving, setSaving] = useState(false)
+
+  const inputClass = isLight
+    ? 'bg-white border border-gray-300 text-gray-700 focus:ring-1 focus:ring-blue-400'
+    : 'bg-gray-700 border border-gray-600 text-gray-200 focus:ring-1 focus:ring-blue-500'
+  const btnPrimary = isLight
+    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+    : 'bg-blue-500 hover:bg-blue-600 text-white'
+  const btnDanger = isLight
+    ? 'text-red-600 hover:text-red-700'
+    : 'text-red-400 hover:text-red-300'
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await apiPost('/analysis/meta/promotion_override', {
+        analysis_type: analysisType,
+        status,
+        note,
+        analyst: role ?? 'analyst',
+      })
+      await qc.invalidateQueries({ queryKey: ['promotion-overrides'] })
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setSaving(true)
+    try {
+      await apiDelete(`/analysis/meta/promotion_override/${analysisType}`)
+      await qc.invalidateQueries({ queryKey: ['promotion-overrides'] })
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className={`mt-2 p-2 rounded border ${border} ${cardInner} space-y-2`}>
+      <p className={`text-[10px] font-semibold ${textHeading}`}>アナリスト判断 Override</p>
+      <select
+        className={`w-full text-xs rounded px-2 py-1 ${inputClass}`}
+        value={status}
+        onChange={(e) => setStatus(e.target.value)}
+      >
+        {OVERRIDE_STATUS_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      <textarea
+        className={`w-full text-xs rounded px-2 py-1 resize-none ${inputClass}`}
+        rows={2}
+        placeholder="判断の根拠・保留理由など（任意）"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <div className="flex items-center gap-2 justify-end">
+        {currentOverride && (
+          <button
+            className={`text-[10px] ${btnDanger} transition-colors`}
+            onClick={handleDelete}
+            disabled={saving}
+          >
+            削除
+          </button>
+        )}
+        <button
+          className={`text-[10px] ${textMuted} hover:${textHeading}`}
+          onClick={onClose}
+          disabled={saving}
+        >
+          キャンセル
+        </button>
+        <button
+          className={`text-[10px] px-2 py-0.5 rounded ${btnPrimary} transition-colors`}
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? '保存中…' : '保存'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function EvaluationRow({
+  entry,
+  override,
+  isAnalyst,
+  theme,
+}: {
+  entry: EvaluationEntry
+  override: OverrideEntry | undefined
+  isAnalyst: boolean
+  theme: ThemeProps
+}) {
   const { isLight, textHeading, textMuted, textFaint, border } = theme
   const statusConfig = getStatusConfig(isLight)
   const tierColors = getTierColors(isLight)
-  const status = statusConfig[entry.status]
   const [expanded, setExpanded] = useState(false)
+  const [showOverride, setShowOverride] = useState(false)
   const hoverBg = isLight ? 'hover:bg-gray-50' : 'hover:bg-gray-700/30'
-  const expandedBg = isLight ? 'border-t border-gray-100' : 'border-t border-gray-700'
+  const expandedBorder = isLight ? 'border-t border-gray-100' : 'border-t border-gray-700'
+
+  // Override が存在する場合は override のステータスを優先表示
+  const effectiveStatus = override?.status ?? entry.status
+  const statusCfg = statusConfig[effectiveStatus as keyof typeof statusConfig] ?? statusConfig.requires_review
 
   return (
     <div className={`border ${border} rounded-lg overflow-hidden`}>
@@ -135,8 +269,13 @@ function EvaluationRow({ entry, theme }: { entry: EvaluationEntry; theme: ThemeP
         className={`w-full flex items-center gap-2 px-3 py-2 text-left ${hoverBg} transition-colors`}
         onClick={() => setExpanded((v) => !v)}
       >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${status.dot}`} />
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusCfg.dot}`} />
         <span className={`text-xs flex-1 text-left ${textHeading}`}>{entry.analysis_type}</span>
+        {override && (
+          <span className={`text-[9px] px-1 py-0.5 rounded ${isLight ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-blue-900/40 text-blue-400 border border-blue-700'}`}>
+            Override
+          </span>
+        )}
         <span className={`text-[9px] border rounded px-1 py-0.5 shrink-0 ${tierColors[entry.from_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
           {TIER_LABELS[entry.from_tier] ?? entry.from_tier}
         </span>
@@ -144,11 +283,12 @@ function EvaluationRow({ entry, theme }: { entry: EvaluationEntry; theme: ThemeP
         <span className={`text-[9px] border rounded px-1 py-0.5 shrink-0 ${tierColors[entry.to_tier] ?? (isLight ? 'text-gray-500 border-gray-300' : 'text-gray-500 border-gray-600')}`}>
           {TIER_LABELS[entry.to_tier] ?? entry.to_tier}
         </span>
-        <span className={`text-[10px] font-medium shrink-0 ${status.color}`}>{status.label}</span>
+        <span className={`text-[10px] font-medium shrink-0 ${statusCfg.color}`}>{statusCfg.label}</span>
         <span className={`text-[10px] shrink-0 ${textFaint}`}>{expanded ? '▲' : '▼'}</span>
       </button>
+
       {expanded && (
-        <div className={`px-3 pb-3 pt-1 ${expandedBg} space-y-2`}>
+        <div className={`px-3 pb-3 pt-1 ${expandedBorder} space-y-2`}>
           <div className={`flex items-center gap-2 text-[10px] ${textMuted}`}>
             <span>サンプル: {entry.sample_count}</span>
             <span>チェック: {entry.met_count}/{entry.total_count}</span>
@@ -161,6 +301,31 @@ function EvaluationRow({ entry, theme }: { entry: EvaluationEntry; theme: ThemeP
           {entry.additional_notes && (
             <p className={`text-[10px] italic ${textFaint}`}>{entry.additional_notes}</p>
           )}
+          {override && (
+            <div className={`text-[10px] space-y-0.5 ${isLight ? 'text-blue-700' : 'text-blue-400'}`}>
+              <p className="font-medium">Override 設定済み: {override.status}</p>
+              {override.note && <p className={textMuted}>{override.note}</p>}
+              <p className={textFaint}>{override.updated_at}</p>
+            </div>
+          )}
+          {isAnalyst && (
+            <>
+              <button
+                className={`text-[10px] underline ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
+                onClick={() => setShowOverride((v) => !v)}
+              >
+                {showOverride ? 'Override フォームを閉じる' : (override ? 'Override を編集' : '+ Override を追加')}
+              </button>
+              {showOverride && (
+                <OverrideForm
+                  analysisType={entry.analysis_type}
+                  currentOverride={override}
+                  theme={theme}
+                  onClose={() => setShowOverride(false)}
+                />
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -169,6 +334,8 @@ function EvaluationRow({ entry, theme }: { entry: EvaluationEntry; theme: ThemeP
 
 export function PromotionStatusCard({ playerId, filters }: Props) {
   const { card, cardInner, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, border, loading, badge, isLight } = useCardTheme()
+  const { role } = useAuth()
+  const isAnalyst = role === 'analyst'
   const [showDemotion, setShowDemotion] = useState(false)
 
   const filterApiParams = {
@@ -188,11 +355,17 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
+  const { data: overridesResp } = useQuery({
+    queryKey: ['promotion-overrides'],
+    queryFn: () => apiGet<{ success: boolean; data: Record<string, OverrideEntry> }>('/analysis/meta/promotion_overrides'),
+    staleTime: 30 * 1000,
+  })
+
   const evalData = data?.data
   const summary = evalData?.summary
   const evaluations = evalData?.evaluations ?? []
   const demotionConditions = evalData?.demotion_conditions
-  const statusConfig = getStatusConfig(isLight)
+  const overrides = overridesResp?.data ?? {}
   const theme: ThemeProps = { isLight, textHeading, textSecondary, textMuted, textFaint, cardInner, cardInnerAlt, border }
 
   return (
@@ -204,7 +377,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
 
       <p className={`text-[10px] ${textMuted}`}>
         各 research/advanced 指標の昇格基準に対する現在の達成状況を示します。
-        サンプル数以外の条件（校正・コーチテスト）はアナリストが手動で確認してください。
+        {isAnalyst && ' アナリストは Override で手動判断を記録できます。'}
       </p>
 
       {isLoading ? (
@@ -230,15 +403,19 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
           )}
 
           <div className={`text-[10px] ${textFaint}`}>
-            {summary && (
-              <>ラリー: {summary.n_rallies} / 試合: {summary.n_matches} / 対戦相手: {summary.n_opponents}</>
-            )}
+            {summary && <>ラリー: {summary.n_rallies} / 試合: {summary.n_matches} / 対戦相手: {summary.n_opponents}</>}
           </div>
 
           {/* 評価リスト */}
           <div className="space-y-1.5">
             {evaluations.map((entry) => (
-              <EvaluationRow key={`${entry.analysis_type}-${entry.from_tier}`} entry={entry} theme={theme} />
+              <EvaluationRow
+                key={`${entry.analysis_type}-${entry.from_tier}`}
+                entry={entry}
+                override={overrides[entry.analysis_type]}
+                isAnalyst={isAnalyst}
+                theme={theme}
+              />
             ))}
           </div>
 

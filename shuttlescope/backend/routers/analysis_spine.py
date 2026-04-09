@@ -16,7 +16,8 @@ Research Spine RS-1〜RS-5 の新規 API を提供する:
 from datetime import date as DateType
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -33,7 +34,11 @@ from backend.analysis.counterfactual_v2 import compute_counterfactual_v2, comput
 from backend.analysis.hazard_fatigue import compute_hazard_model
 from backend.analysis.bayes_matchup import compute_bayes_matchup
 from backend.analysis.opponent_policy_engine import compute_opponent_policy
-from backend.analysis.doubles_role_inference import compute_doubles_role_inference, compute_doubles_role_db2
+from backend.analysis.doubles_role_inference import (
+    compute_doubles_role_inference,
+    compute_doubles_role_db2,
+    compute_doubles_role_stability,
+)
 from backend.analysis.shot_influence_v2 import compute_shot_influence_v2
 
 router = APIRouter()
@@ -788,3 +793,101 @@ def get_promotion_evaluation(
             "demotion_conditions": DEMOTION_CONDITIONS,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# DB-3: ダブルスロール安定性（試合・シーズン単位）
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/doubles_role_stability")
+def get_doubles_role_stability(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """DB-3: 試合ごとのロール推定から安定性スコアを計算する。"""
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    doubles_matches = [m for m in matches if (
+        getattr(m, "format", None) == "doubles" or
+        getattr(m, "match_type", None) in ("doubles", "mixed_doubles")
+    )]
+    if not doubles_matches:
+        meta = build_response_meta("doubles_role", 0)
+        return {
+            "success": True,
+            "data": {
+                "role_stability_score": 0.0,
+                "dominant_role": "unknown",
+                "n_matches_analyzed": 0,
+                "per_match_roles": [],
+                "season_variation": [],
+                "consistency_label": "insufficient_data",
+                "note": "ダブルスデータが不足しています。",
+            },
+            "meta": meta,
+        }
+
+    match_ids = [m.id for m in doubles_matches]
+    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in doubles_matches}
+
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_ids = [s.id for s in sets]
+
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rally_ids = [r.id for r in rallies]
+    _, strokes_by_rally = _build_aux_maps(db, doubles_matches, [], rally_ids)
+
+    result_data = compute_doubles_role_stability(
+        matches=doubles_matches,
+        rallies=rallies,
+        strokes_by_rally=strokes_by_rally,
+        role_by_match=role_by_match,
+        set_to_match=set_to_match,
+    )
+    meta = build_response_meta("doubles_role", result_data.get("n_matches_analyzed", 0))
+    return {"success": True, "data": result_data, "meta": meta}
+
+
+# ---------------------------------------------------------------------------
+# 昇格 Override: アナリストによる手動判断記録
+# ---------------------------------------------------------------------------
+
+class PromotionOverrideBody(BaseModel):
+    analysis_type: str
+    status: str  # "promotion_ready" | "requires_review" | "insufficient_data" | "hold"
+    note: str = ""
+    analyst: str = "analyst"
+
+
+@router.get("/analysis/meta/promotion_overrides")
+def get_promotion_overrides():
+    """現在の昇格 override 一覧を返す。"""
+    from backend.analysis.promotion_override_store import load_all_overrides
+    return {"success": True, "data": load_all_overrides()}
+
+
+@router.post("/analysis/meta/promotion_override")
+def set_promotion_override(body: PromotionOverrideBody):
+    """昇格 override を保存する（既存は上書き）。"""
+    from backend.analysis.promotion_override_store import save_override, VALID_STATUSES
+    if body.status not in VALID_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status: {body.status}")
+    entry = save_override(
+        analysis_type=body.analysis_type,
+        status=body.status,
+        note=body.note,
+        analyst=body.analyst,
+    )
+    return {"success": True, "data": entry}
+
+
+@router.delete("/analysis/meta/promotion_override/{analysis_type}")
+def delete_promotion_override(analysis_type: str):
+    """昇格 override を削除する。"""
+    from backend.analysis.promotion_override_store import delete_override
+    deleted = delete_override(analysis_type)
+    return {"success": True, "deleted": deleted}

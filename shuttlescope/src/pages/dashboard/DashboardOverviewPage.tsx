@@ -11,7 +11,8 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { apiGet } from '@/api/client'
 import { AnalysisFilters } from '@/types'
 import { Maximize2 } from 'lucide-react'
-import { BAR, TOOLTIP_STYLE as CW_TOOLTIP } from '@/styles/colors'
+import { BAR, TOOLTIP_STYLE as CW_TOOLTIP, getTooltipStyle, AXIS_TICK_LIGHT } from '@/styles/colors'
+import { useCardTheme } from '@/hooks/useCardTheme'
 import { ScoreProgression } from '@/components/analysis/ScoreProgression'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
 import { ConfidenceCalibration } from '@/components/analysis/ConfidenceCalibration'
@@ -57,8 +58,6 @@ interface MatchSummary {
   set_scores: SetScore[]
 }
 
-const TOOLTIP_STYLE = CW_TOOLTIP
-
 const END_TYPE_LABELS: Record<string, string> = {
   ace: 'エース',
   forced_error: '強制エラー',
@@ -74,26 +73,6 @@ function pct(value: number) {
   return `${(value * 100).toFixed(1)}%`
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-sm font-semibold text-gray-300 mb-0">{children}</h2>
-}
-
-function ExpandBtn({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      title="全画面で表示"
-      className="shrink-0 text-gray-500 hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-700"
-    >
-      <Maximize2 size={13} />
-    </button>
-  )
-}
-
-function LoadingRow() {
-  return <div className="text-gray-500 text-sm py-4 text-center">読み込み中...</div>
-}
-
 type SortCol = 'date' | 'opponent' | 'tournament_level' | 'result' | 'rally_count'
 
 interface Props {
@@ -106,6 +85,26 @@ interface Props {
 
 export function DashboardOverviewPage({ playerId, filters, filterApiParams, matches, loadingMatches }: Props) {
   const { t } = useTranslation()
+  const { card, textHeading, textSecondary, textMuted, textFaint, loading: loadingClass, isLight } = useCardTheme()
+
+  const TOOLTIP_STYLE = getTooltipStyle(isLight)
+  const AXIS_TICK = isLight ? AXIS_TICK_LIGHT : '#9ca3af'
+
+  const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+    <h2 className={`text-sm font-semibold ${textHeading} mb-0`}>{children}</h2>
+  )
+  const ExpandBtn = ({ onClick }: { onClick: () => void }) => (
+    <button
+      onClick={onClick}
+      title="全画面で表示"
+      className={`shrink-0 ${textMuted} hover:${textHeading} transition-colors p-1 rounded ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+    >
+      <Maximize2 size={13} />
+    </button>
+  )
+  const LoadingRow = () => (
+    <div className={`${loadingClass} text-sm py-4 text-center`}>読み込み中...</div>
+  )
 
   // ローカル状態
   const [heatmapTab, setHeatmapTab] = useState<'hit' | 'land'>('hit')
@@ -215,7 +214,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {/* 左カラム */}
         <div className="xl:col-span-2 space-y-5">
           {/* ラリー終了タイプ */}
-          <div className="bg-gray-800 rounded-lg p-4">
+          <div className={`${card} rounded-lg p-4`}>
             <div className="flex items-center justify-between mb-3">
               <SectionTitle>ラリー終了タイプ</SectionTitle>
               <div className="flex items-center gap-2">
@@ -226,13 +225,13 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               </div>
             </div>
             {loadingDescriptive ? <LoadingRow /> : endTypeData.length === 0 ? (
-              <p className="text-gray-500 text-sm text-center py-4">データなし</p>
+              <p className={`${textMuted} text-sm text-center py-4`}>データなし</p>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={endTypeData} layout="vertical" margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
-                  <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                  <YAxis type="category" dataKey="name" width={80} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: '#f9fafb' }} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                  <XAxis type="number" tick={{ fill: AXIS_TICK, fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={80} tick={{ fill: AXIS_TICK, fontSize: 11 }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)' }} />
                   <Bar dataKey="count" fill={BAR} radius={[0, 3, 3, 0]} name="件数" />
                 </BarChart>
               </ResponsiveContainer>
@@ -240,7 +239,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           </div>
 
           {/* ラリー長分布 */}
-          <div className="bg-gray-800 rounded-lg p-4">
+          <div className={`${card} rounded-lg p-4`}>
             <div className="flex items-center justify-between mb-3">
               <SectionTitle>ラリー長分布（〜20打）</SectionTitle>
               <div className="flex items-center gap-2">
@@ -251,16 +250,16 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               </div>
             </div>
             {loadingDescriptive ? <LoadingRow /> : !descriptive ? (
-              <p className="text-gray-500 text-sm text-center py-4">データなし</p>
+              <p className={`${textMuted} text-sm text-center py-4`}>データなし</p>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart
                   data={descriptive.rally_length_histogram.filter((d) => d.length <= 20).map((d) => ({ name: String(d.length), count: d.count }))}
                   margin={{ top: 0, right: 8, left: 0, bottom: 0 }}
                 >
-                  <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 11 }} label={{ value: '打数', position: 'insideBottomRight', offset: -4, fill: '#6b7280', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: '#f9fafb' }} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                  <XAxis dataKey="name" tick={{ fill: AXIS_TICK, fontSize: 11 }} label={{ value: '打数', position: 'insideBottomRight', offset: -4, fill: AXIS_TICK, fontSize: 10 }} />
+                  <YAxis tick={{ fill: AXIS_TICK, fontSize: 11 }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)' }} />
                   <Bar dataKey="count" fill={BAR} radius={[3, 3, 0, 0]} name="件数" />
                 </BarChart>
               </ResponsiveContainer>
@@ -271,7 +270,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {/* 右カラム */}
         <div className="space-y-5">
           {/* コートヒートマップ */}
-          <div className="bg-gray-800 rounded-lg p-4">
+          <div className={`${card} rounded-lg p-4`}>
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <SectionTitle>コートヒートマップ</SectionTitle>
               <div className="flex items-center gap-1 ml-auto shrink-0">
@@ -287,7 +286,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 <button
                   key={tab}
                   onClick={() => setHeatmapTab(tab)}
-                  className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${heatmapTab === tab ? 'bg-gray-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
+                  className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${heatmapTab === tab ? (isLight ? 'bg-gray-400 text-white' : 'bg-gray-600 text-white') : (isLight ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}`}
                 >
                   {tab === 'hit' ? '打点' : '着地点'}
                 </button>
@@ -300,7 +299,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                     key={n ?? 'all'}
                     onClick={() => { setHeatmapLastN(n); setHeatmapMatchId(null) }}
                     disabled={heatmapMatchId != null}
-                    className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${heatmapMatchId == null && heatmapLastN === n ? 'bg-gray-500 border-gray-400 text-white' : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600 disabled:opacity-40'}`}
+                    className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${heatmapMatchId == null && heatmapLastN === n ? (isLight ? 'bg-gray-400 border-gray-300 text-white' : 'bg-gray-500 border-gray-400 text-white') : (isLight ? 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-40' : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600 disabled:opacity-40')}`}
                   >
                     {n == null ? '全期間' : `直近${n}試合`}
                   </button>
@@ -314,7 +313,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                     setHeatmapMatchId(v ? Number(v) : null)
                     if (v) setHeatmapLastN(null)
                   }}
-                  className="w-full text-[11px] bg-gray-700 border border-gray-600 text-gray-300 rounded px-2 py-1 focus:outline-none"
+                  className={`w-full text-[11px] rounded px-2 py-1 focus:outline-none ${isLight ? 'bg-white border border-gray-300 text-gray-700' : 'bg-gray-700 border border-gray-600 text-gray-300'}`}
                 >
                   <option value="">試合を選択（個別）</option>
                   {[...matches].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).map((m) => (
@@ -335,7 +334,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   onZoneSelect={() => setCourtHeatOpen(true)}
                   label={heatmapTab === 'hit' ? '打点分布' : '着地点分布'}
                 />
-                <p className="text-[10px] text-gray-600 mt-1">クリックで詳細分析を開く</p>
+                <p className={`text-[10px] ${textFaint} mt-1`}>クリックで詳細分析を開く</p>
               </div>
             )}
           </div>
@@ -344,12 +343,12 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           <RoleGuard
             allowedRoles={['analyst', 'coach']}
             fallback={
-              <div className="bg-gray-800 rounded-lg p-4">
-                <p className="text-xs text-gray-500 text-center py-2">※ このコンテンツはアナリスト・コーチ向けです</p>
+              <div className={`${card} rounded-lg p-4`}>
+                <p className={`text-xs ${textMuted} text-center py-2`}>※ このコンテンツはアナリスト・コーチ向けです</p>
               </div>
             }
           >
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className={`${card} rounded-lg p-4`}>
               <div className="flex items-center justify-between mb-3">
                 <SectionTitle>サーブ勝率</SectionTitle>
                 {descriptive && <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />}
@@ -357,17 +356,17 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               {loadingDescriptive || !descriptive?.server_win_rate ? <LoadingRow /> : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-400">サーバー時</span>
+                    <span className={`text-sm ${textSecondary}`}>サーバー時</span>
                     <span className="text-lg font-semibold text-blue-400">{pct(descriptive.server_win_rate.as_server)}</span>
                   </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
                     <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${(descriptive.server_win_rate.as_server * 100).toFixed(1)}%` }} />
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-400">レシーバー時</span>
+                    <span className={`text-sm ${textSecondary}`}>レシーバー時</span>
                     <span className="text-lg font-semibold text-emerald-400">{pct(descriptive.server_win_rate.as_receiver)}</span>
                   </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
                     <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${(descriptive.server_win_rate.as_receiver * 100).toFixed(1)}%` }} />
                   </div>
                 </div>
@@ -381,20 +380,20 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       <ConfidenceCalibration playerId={playerId} />
 
       {/* 試合一覧テーブル */}
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className={`${card} rounded-lg p-4`}>
         <div className="flex items-center justify-between mb-3">
           <SectionTitle>試合一覧</SectionTitle>
-          <span className="text-xs text-gray-500">{filteredMatches.length} / {matches.length} 試合</span>
+          <span className={`text-xs ${textMuted}`}>{filteredMatches.length} / {matches.length} 試合</span>
         </div>
         {loadingMatches ? <LoadingRow /> : filteredMatches.length === 0 ? (
-          <p className="text-gray-500 text-sm text-center py-4">
+          <p className={`${textMuted} text-sm text-center py-4`}>
             {matches.length > 0 ? 'フィルター条件に一致する試合がありません' : 'データなし'}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-gray-400 border-b border-gray-700">
+                <tr className={`${textSecondary} border-b ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
                   {([
                     { col: 'opponent' as const,        label: '対戦相手', align: 'left'   },
                     { col: null,                        label: '大会',     align: 'left'   },
@@ -405,7 +404,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   ] as const).map(({ col, label, align }) => (
                     <th
                       key={label}
-                      className={`py-2 pr-3 font-medium select-none ${col ? 'cursor-pointer hover:text-gray-200' : ''} text-${align}`}
+                      className={`py-2 pr-3 font-medium select-none ${col ? `cursor-pointer ${isLight ? 'hover:text-gray-900' : 'hover:text-gray-200'}` : ''} text-${align}`}
                       onClick={() => col && toggleSort(col)}
                     >
                       {label}
@@ -420,19 +419,19 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 {filteredMatches.map((m) => (
                   <tr
                     key={m.match_id}
-                    className="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors cursor-pointer"
+                    className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-700/50 hover:bg-gray-700/30'} transition-colors cursor-pointer`}
                     onClick={() => setSelectedMatchId(m.match_id)}
                   >
-                    <td className="py-2 pr-3 text-white">{m.opponent}</td>
-                    <td className="py-2 pr-3 text-gray-300 text-xs">{m.tournament}</td>
-                    <td className="py-2 pr-3 text-center"><span className="text-xs text-gray-400">{m.tournament_level ?? '—'}</span></td>
-                    <td className="py-2 pr-3 text-gray-300 whitespace-nowrap">{m.date}</td>
+                    <td className={`py-2 pr-3 ${textHeading}`}>{m.opponent}</td>
+                    <td className={`py-2 pr-3 ${textSecondary} text-xs`}>{m.tournament}</td>
+                    <td className="py-2 pr-3 text-center"><span className={`text-xs ${textMuted}`}>{m.tournament_level ?? '—'}</span></td>
+                    <td className={`py-2 pr-3 ${textSecondary} whitespace-nowrap`}>{m.date}</td>
                     <td className="py-2 pr-3 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-blue-900 text-blue-300' : 'bg-red-900 text-red-300'}`}>
                         {m.result === 'win' ? '勝' : '負'}
                       </span>
                     </td>
-                    <td className="py-2 text-right text-gray-300">{m.rally_count}</td>
+                    <td className={`py-2 text-right ${textSecondary}`}>{m.rally_count}</td>
                   </tr>
                 ))}
               </tbody>
@@ -442,7 +441,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       </div>
 
       {/* スコア推移 */}
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className={`${card} rounded-lg p-4`}>
         <div className="flex items-center justify-between mb-3">
           <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
           <SearchableSelect
@@ -457,12 +456,12 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {selectedMatchId ? (
           <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
         ) : (
-          <p className="text-gray-500 text-sm text-center py-6">試合を選択するとスコア推移が表示されます</p>
+          <p className={`${textMuted} text-sm text-center py-6`}>試合を選択するとスコア推移が表示されます</p>
         )}
       </div>
 
       {/* インターバルレポート */}
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className={`${card} rounded-lg p-4`}>
         <div className="flex items-center justify-between mb-3">
           <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
           <div className="flex gap-2 items-center flex-wrap">
@@ -476,14 +475,14 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             />
             {selectedMatchId && (
               <>
-                <label className="text-xs text-gray-400">完了セット:</label>
+                <label className={`text-xs ${textSecondary}`}>完了セット:</label>
                 <input
                   type="number"
                   min={1}
                   max={3}
                   value={intervalSet}
                   onChange={(e) => setIntervalSet(Number(e.target.value))}
-                  className="w-12 bg-gray-700 border border-gray-600 text-white text-xs rounded px-2 py-1"
+                  className={`w-12 text-xs rounded px-2 py-1 ${isLight ? 'bg-white border border-gray-300 text-gray-700' : 'bg-gray-700 border border-gray-600 text-white'}`}
                 />
               </>
             )}
@@ -492,7 +491,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {selectedMatchId ? (
           <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
         ) : (
-          <p className="text-gray-500 text-sm text-center py-6">試合を選択するとインターバルレポートが表示されます</p>
+          <p className={`${textMuted} text-sm text-center py-6`}>試合を選択するとインターバルレポートが表示されます</p>
         )}
       </div>
 
@@ -507,8 +506,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             return (
               <ResponsiveContainer width="100%" height={500}>
                 <BarChart data={endTypeData} layout="vertical" margin={{ top: 0, right: 24, left: 16, bottom: 0 }}>
-                  <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 13 }} />
-                  <YAxis type="category" dataKey="name" width={100} tick={{ fill: '#9ca3af', fontSize: 13 }} />
+                  <XAxis type="number" tick={{ fill: AXIS_TICK, fontSize: 13 }} />
+                  <YAxis type="category" dataKey="name" width={100} tick={{ fill: AXIS_TICK, fontSize: 13 }} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Bar dataKey="count" fill={BAR} radius={[0, 4, 4, 0]} name="件数" />
                 </BarChart>
@@ -520,8 +519,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             return (
               <ResponsiveContainer width="100%" height={400}>
                 <BarChart data={data} margin={{ top: 0, right: 24, left: 0, bottom: 0 }}>
-                  <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 13 }} />
-                  <YAxis tick={{ fill: '#9ca3af', fontSize: 13 }} />
+                  <XAxis dataKey="name" tick={{ fill: AXIS_TICK, fontSize: 13 }} />
+                  <YAxis tick={{ fill: AXIS_TICK, fontSize: 13 }} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Bar dataKey="count" fill={BAR} radius={[4, 4, 0, 0]} name="件数" />
                 </BarChart>
@@ -533,9 +532,9 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         return (
           <ErrorBoundary fallback={
             <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center">
-              <div className="bg-gray-800 rounded-lg p-8 max-w-sm text-center">
-                <p className="text-gray-300 mb-4">グラフの表示中にエラーが発生しました</p>
-                <button onClick={() => setExpandedChart(null)} className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm">閉じる</button>
+              <div className={`${card} rounded-lg p-8 max-w-sm text-center`}>
+                <p className={`${textSecondary} mb-4`}>グラフの表示中にエラーが発生しました</p>
+                <button onClick={() => setExpandedChart(null)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded text-sm`}>閉じる</button>
               </div>
             </div>
           }>
@@ -550,9 +549,9 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       {courtHeatOpen && (
         <ErrorBoundary fallback={
           <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center">
-            <div className="bg-gray-800 rounded-lg p-8 max-w-sm text-center">
-              <p className="text-gray-300 mb-4">ヒートマップの表示中にエラーが発生しました</p>
-              <button onClick={() => setCourtHeatOpen(false)} className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm">閉じる</button>
+            <div className={`${card} rounded-lg p-8 max-w-sm text-center`}>
+              <p className={`${textSecondary} mb-4`}>ヒートマップの表示中にエラーが発生しました</p>
+              <button onClick={() => setCourtHeatOpen(false)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded text-sm`}>閉じる</button>
             </div>
           </div>
         }>

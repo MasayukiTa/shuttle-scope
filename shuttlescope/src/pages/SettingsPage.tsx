@@ -8,6 +8,7 @@ import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
+import { useCardTheme } from '@/hooks/useCardTheme'
 
 interface PlayerFormData {
   name: string
@@ -346,16 +347,22 @@ export function SettingsPage() {
   }
 
   const players = playersData?.data ?? []
+  const { card, textHeading, textSecondary, textMuted, textFaint, isLight } = useCardTheme()
+  const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
+  const borderLine = isLight ? 'border-gray-200' : 'border-gray-700'
+  const inputClass = isLight
+    ? 'bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900'
+    : 'bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white'
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 text-white">
+    <div className={`flex flex-col h-full ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
       {/* ヘッダー */}
-      <div className="px-6 py-4 border-b border-gray-700">
-        <h1 className="text-xl font-semibold">{t('nav.settings')}</h1>
+      <div className={`px-6 py-4 border-b ${borderLine}`}>
+        <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.settings')}</h1>
       </div>
 
       {/* タブ */}
-      <div className="flex border-b border-gray-700">
+      <div className={`flex border-b ${borderLine}`}>
         {([
           { key: 'players', label: '選手管理' },
           { key: 'review', label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
@@ -370,7 +377,7 @@ export function SettingsPage() {
             className={`flex items-center gap-1.5 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.key
                 ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-gray-400 hover:text-white'
+                : `border-transparent ${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`
             }`}
           >
             {tab.label}
@@ -388,7 +395,7 @@ export function SettingsPage() {
         {activeTab === 'players' && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-medium">選手一覧</h2>
+              <h2 className={`text-lg font-medium ${textHeading}`}>選手一覧</h2>
               <button
                 onClick={() => { setEditingPlayer(null); setPlayerForm(defaultPlayerForm()); setShowPlayerForm(true) }}
                 className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm"
@@ -400,7 +407,7 @@ export function SettingsPage() {
 
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-gray-400 border-b border-gray-700">
+                <tr className={`${textSecondary} border-b ${borderLine}`}>
                   <th className="text-left py-2 pr-4">名前</th>
                   <th className="text-left py-2 pr-4">チーム</th>
                   <th className="text-left py-2 pr-4">国籍</th>
@@ -412,17 +419,17 @@ export function SettingsPage() {
               </thead>
               <tbody>
                 {players.map((p) => (
-                  <tr key={p.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                  <tr key={p.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
                     <td className="py-2 pr-4">
                       <div>{p.name}</div>
                       {p.name_en && <div className="text-xs text-gray-500">{p.name_en}</div>}
                     </td>
-                    <td className="py-2 pr-4 text-gray-300">{p.team ?? '-'}</td>
-                    <td className="py-2 pr-4 text-gray-300">{p.nationality ?? '-'}</td>
-                    <td className="py-2 pr-4 text-gray-300">
+                    <td className={`py-2 pr-4 ${textSecondary}`}>{p.team ?? '-'}</td>
+                    <td className={`py-2 pr-4 ${textSecondary}`}>{p.nationality ?? '-'}</td>
+                    <td className={`py-2 pr-4 ${textSecondary}`}>
                       {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : '-'}
                     </td>
-                    <td className="py-2 pr-4 text-gray-300">{p.world_ranking ? `#${p.world_ranking}` : '-'}</td>
+                    <td className={`py-2 pr-4 ${textSecondary}`}>{p.world_ranking ? `#${p.world_ranking}` : '-'}</td>
                     <td className="py-2 pr-4">
                       {p.is_target && <CheckCircle size={14} className="text-green-400" />}
                     </td>
@@ -430,7 +437,7 @@ export function SettingsPage() {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => openEdit(p)}
-                          className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                          className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
                         >
                           <Edit2 size={12} />
                         </button>
@@ -460,18 +467,18 @@ export function SettingsPage() {
         {/* 要レビュータブ（V4-U-003） */}
         {activeTab === 'review' && (
           <div>
-            <h2 className="text-lg font-medium mb-4">{t('review.title')}</h2>
+            <h2 className={`text-lg font-medium ${textHeading} mb-4`}>{t('review.title')}</h2>
             <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+              <h3 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
                 <AlertCircle size={14} className="text-orange-400" />
                 {t('review.provisional_players')}
               </h3>
               {!reviewPlayersData?.data?.length ? (
-                <div className="text-sm text-gray-500 py-4">{t('review.no_items')}</div>
+                <div className={`text-sm ${textMuted} py-4`}>{t('review.no_items')}</div>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-gray-400 border-b border-gray-700">
+                    <tr className={`${textSecondary} border-b ${borderLine}`}>
                       <th className="text-left py-2 pr-4">名前</th>
                       <th className="text-left py-2 pr-4">{t('review.profile_status')}</th>
                       <th className="text-left py-2 pr-4">利き手</th>
@@ -481,7 +488,7 @@ export function SettingsPage() {
                   </thead>
                   <tbody>
                     {reviewPlayersData.data.map((p) => (
-                      <tr key={p.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                      <tr key={p.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
                         <td className="py-2 pr-4">
                           <div className="flex items-center gap-2">
                             {p.name}
@@ -490,18 +497,18 @@ export function SettingsPage() {
                             )}
                           </div>
                         </td>
-                        <td className="py-2 pr-4 text-gray-300">
+                        <td className={`py-2 pr-4 ${textSecondary}`}>
                           {t(`player.profile_status_${p.profile_status ?? 'provisional'}`)}
                         </td>
-                        <td className="py-2 pr-4 text-gray-300">
+                        <td className={`py-2 pr-4 ${textSecondary}`}>
                           {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : t('player.unknown_hand')}
                         </td>
-                        <td className="py-2 pr-4 text-gray-300">{p.match_count ?? 0}</td>
+                        <td className={`py-2 pr-4 ${textSecondary}`}>{p.match_count ?? 0}</td>
                         <td className="py-2">
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => openEdit(p)}
-                              className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                              className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
                               title="編集"
                             >
                               <Edit2 size={12} />
@@ -528,16 +535,16 @@ export function SettingsPage() {
         {/* TrackNet設定タブ */}
         {activeTab === 'tracknet' && (
           <div className="max-w-xl space-y-6">
-            <h2 className="text-lg font-medium">{t('tracknet.tab_label')}</h2>
+            <h2 className={`text-lg font-medium ${textHeading}`}>{t('tracknet.tab_label')}</h2>
 
             {/* モデルステータス */}
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+              <h3 className={`text-sm font-medium ${textSecondary} mb-3 flex items-center gap-2`}>
                 <Zap size={14} className="text-yellow-400" />
                 {t('tracknet.model_status')}
               </h3>
               {!tracknetStatus ? (
-                <p className="text-sm text-gray-500">{t('tracknet.backend_offline')}</p>
+                <p className={`text-sm ${textMuted}`}>{t('tracknet.backend_offline')}</p>
               ) : tracknetStatus.data?.available ? (
                 <div className="flex items-center gap-2">
                   <CheckCircle size={14} className="text-green-400" />
@@ -551,7 +558,7 @@ export function SettingsPage() {
                     <AlertCircle size={14} className="text-orange-400" />
                     <span className="text-sm text-orange-300">{t('tracknet.model_not_found')}</span>
                   </div>
-                <div className="bg-gray-900 rounded p-3 text-xs text-gray-400 font-mono space-y-1">
+                <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3 text-xs font-mono space-y-1 ${textMuted}`}>
                     <p className="text-gray-300 font-sans font-medium text-xs mb-1">{t('tracknet.setup_instructions')}</p>
                     <p>python -m backend.tracknet.setup download</p>
                     <p>python -m backend.tracknet.setup export</p>
@@ -563,7 +570,7 @@ export function SettingsPage() {
             </div>
 
             {/* 有効/無効トグル */}
-            <div className="flex items-center justify-between bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className={`flex items-center justify-between ${card} rounded-lg p-4 border ${borderLine}`}>
               <div>
                 <p className="text-sm font-medium">{t('tracknet.enable_toggle')}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{t('tracknet.enable_description')}</p>
@@ -580,8 +587,8 @@ export function SettingsPage() {
             </div>
 
             {/* バックエンド選択 */}
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+              <h3 className={`text-sm font-medium ${textSecondary} mb-3 flex items-center gap-2`}>
                 <Cpu size={14} />
                 {t('tracknet.backend_label')}
               </h3>
@@ -608,8 +615,8 @@ export function SettingsPage() {
             </div>
 
             {/* 解析モード */}
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-medium text-gray-300 mb-1">{t('tracknet.mode_label')}</h3>
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+              <h3 className={`text-sm font-medium ${textSecondary} mb-1`}>{t('tracknet.mode_label')}</h3>
               <p className="text-xs text-gray-500 mb-3">{t('tracknet.mode_description')}</p>
               <div className="flex gap-2">
                 {([
@@ -632,9 +639,9 @@ export function SettingsPage() {
             </div>
 
             {/* CPU使用率上限 */}
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-gray-300">{t('tracknet.cpu_limit_label')}</h3>
+                <h3 className={`text-sm font-medium ${textSecondary}`}>{t('tracknet.cpu_limit_label')}</h3>
                 <span className="text-sm font-mono text-blue-300">{appSettings.tracknet_max_cpu_pct}%</span>
               </div>
               <input
@@ -657,7 +664,7 @@ export function SettingsPage() {
         {/* 共有設定タブ (R-001/R-002/Q-002/Q-008) */}
         {activeTab === 'sharing' && (
           <div className="max-w-xl space-y-6">
-            <h2 className="text-lg font-medium">{t('sharing.tab_label')}</h2>
+            <h2 className={`text-lg font-medium ${textHeading}`}>{t('sharing.tab_label')}</h2>
 
             {/* トンネル起動中バナー: URLをここで優先表示 */}
             {tunnelStatus?.data?.running && tunnelStatus.data.url && (
@@ -671,7 +678,7 @@ export function SettingsPage() {
             )}
 
             {/* LAN モード設定 */}
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-sm font-medium">{t('sharing.lan_mode_label')}</p>
@@ -687,7 +694,7 @@ export function SettingsPage() {
                 </button>
               </div>
               {serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
-                <div className="bg-gray-900 rounded p-3 space-y-3">
+                <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3 space-y-3`}>
                   {serverInfo.data.lan_ips.map((ip) => {
                     const appUrl = `http://${ip}:${serverInfo.data.port}/`
                     return (
@@ -706,8 +713,8 @@ export function SettingsPage() {
             </div>
 
             {/* Cloudflare Tunnel */}
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-medium text-gray-300 mb-1 flex items-center gap-2">
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+              <h3 className={`text-sm font-medium ${textSecondary} mb-1 flex items-center gap-2`}>
                 <Globe size={14} className="text-blue-400" />
                 {t('sharing.tunnel_section_title')}
               </h3>
@@ -764,7 +771,7 @@ export function SettingsPage() {
                   </div>
 
                   {tunnelStatus?.data?.running && tunnelStatus.data.url && (
-                    <div className="bg-gray-900 rounded p-3">
+                    <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3`}>
                       <LanUrlCard url={tunnelStatus.data.url} hint={t('sharing.tunnel_url_hint')} />
                     </div>
                   )}
@@ -777,8 +784,8 @@ export function SettingsPage() {
             </div>
 
             {/* セッション作成ヘルプ */}
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <h3 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+              <h3 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
                 <Share2 size={14} />
                 {t('sharing.session_guide_title')}
               </h3>
@@ -791,9 +798,9 @@ export function SettingsPage() {
             </div>
 
             {/* Q-002/Q-008: ネットワーク診断 */}
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
                   <Wifi size={14} />
                   {t('sharing.network_diag_title')}
                 </h3>
@@ -847,8 +854,8 @@ export function SettingsPage() {
                   )}
 
                   {/* transport ladder 推奨 */}
-                  <div className="bg-gray-900 rounded p-3 space-y-1">
-                    <p className="text-xs font-medium text-gray-300 mb-1">{t('sharing.transport_ladder')}</p>
+                  <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3 space-y-1`}>
+                    <p className={`text-xs font-medium ${textSecondary} mb-1`}>{t('sharing.transport_ladder')}</p>
                     {netDiag.data.transport_ladder.map((rec, i) => (
                       <p key={i} className="text-xs text-gray-400">{rec}</p>
                     ))}
@@ -868,14 +875,14 @@ export function SettingsPage() {
           <div className="max-w-2xl space-y-6">
 
             {/* ── デバイス・同期設定 ────────────────────────── */}
-            <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+            <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-gray-400" />
                 <h2 className="text-base font-semibold">同期設定</h2>
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">デバイス名（エクスポートパッケージに記録）</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>デバイス名（エクスポートパッケージに記録）</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -888,7 +895,7 @@ export function SettingsPage() {
                   <p className="text-[11px] text-gray-500 mt-0.5">PC ごとに一意な識別子。パッケージのどの端末由来かを記録します。</p>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">同期フォルダパス（OneDrive / SharePoint / Google Drive 等）</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>同期フォルダパス（OneDrive / SharePoint / Google Drive 等）</label>
                   <input
                     type="text"
                     value={appSettings.sync_folder_path}
@@ -902,7 +909,7 @@ export function SettingsPage() {
             </section>
 
             {/* ── エクスポート ──────────────────────────────── */}
-            <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+            <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <Download size={16} className="text-blue-400" />
                 <h2 className="text-base font-semibold">エクスポート</h2>
@@ -994,7 +1001,7 @@ export function SettingsPage() {
               ) : (
                 /* Change Set */
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">この日時以降に更新されたデータを全てエクスポート</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>この日時以降に更新されたデータを全てエクスポート</label>
                   <div className="flex gap-2">
                     <input
                       type="datetime-local"
@@ -1016,7 +1023,7 @@ export function SettingsPage() {
             </section>
 
             {/* ── インポート ────────────────────────────────── */}
-            <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+            <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <Upload size={16} className="text-emerald-400" />
                 <h2 className="text-base font-semibold">インポート</h2>
@@ -1026,7 +1033,7 @@ export function SettingsPage() {
               </p>
 
               <div>
-                <label className="block text-sm text-gray-400 mb-1">パッケージファイル（.sspkg）</label>
+                <label className={`block text-sm ${textSecondary} mb-1`}>パッケージファイル（.sspkg）</label>
                 <input
                   type="file"
                   accept=".sspkg,.zip"
@@ -1108,7 +1115,7 @@ export function SettingsPage() {
             </section>
 
             {/* ── バックアップ ──────────────────────────────── */}
-            <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+            <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-purple-400" />
                 <h2 className="text-base font-semibold">バックアップ</h2>
@@ -1149,7 +1156,7 @@ export function SettingsPage() {
 
             {/* ── クラウドフォルダ候補 ─────────────────────── */}
             {cloudFolderConfigured && (
-              <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+              <section className={`${card} rounded-lg p-5 space-y-4`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Share2 size={16} className="text-cyan-400" />
@@ -1192,7 +1199,7 @@ export function SettingsPage() {
 
             {/* ── 競合レビュー ─────────────────────────────── */}
             {conflicts.length > 0 && (
-              <section className="bg-gray-800 rounded-lg p-5 space-y-4">
+              <section className={`${card} rounded-lg p-5 space-y-4`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <AlertCircle size={16} className="text-orange-400" />
@@ -1243,7 +1250,7 @@ export function SettingsPage() {
         {/* アカウント設定タブ */}
         {activeTab === 'account' && (
           <div className="max-w-md">
-            <h2 className="text-lg font-medium mb-4">ロール設定（POCフェーズ）</h2>
+            <h2 className={`text-lg font-medium ${textHeading} mb-4`}>ロール設定（POCフェーズ）</h2>
             <div className="flex flex-col gap-2">
               {(['analyst', 'coach', 'player'] as UserRole[]).map((r) => (
                 <button
@@ -1271,77 +1278,77 @@ export function SettingsPage() {
       {/* 選手フォームモーダル */}
       {showPlayerForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg w-full max-w-lg">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-              <h2 className="text-lg font-semibold">{editingPlayer ? '選手編集' : '選手追加'}</h2>
-              <button onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className="text-gray-400 hover:text-white">✕</button>
+          <div className={`${card} rounded-lg w-full max-w-lg`}>
+            <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
+              <h2 className={`text-lg font-semibold ${textHeading}`}>{editingPlayer ? '選手編集' : '選手追加'}</h2>
+              <button onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}>✕</button>
             </div>
             <form onSubmit={handlePlayerSubmit} className="p-6 flex flex-col gap-3">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">{t('player.name')} *</label>
+                <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.name')} *</label>
                 <input
                   value={playerForm.name}
                   onChange={(e) => setPlayerForm({ ...playerForm, name: e.target.value })}
                   required
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                  className={`w-full ${inputClass}`}
                   placeholder="例: 山田 太郎"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('player.name_en')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.name_en')}</label>
                   <input
                     value={playerForm.name_en}
                     onChange={(e) => setPlayerForm({ ...playerForm, name_en: e.target.value })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                     placeholder="Yamada Taro"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('player.team')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.team')}</label>
                   <input
                     value={playerForm.team}
                     onChange={(e) => setPlayerForm({ ...playerForm, team: e.target.value })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('player.nationality')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.nationality')}</label>
                   <input
                     value={playerForm.nationality}
                     onChange={(e) => setPlayerForm({ ...playerForm, nationality: e.target.value })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                     placeholder="JPN"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('player.dominant_hand')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.dominant_hand')}</label>
                   <select
                     value={playerForm.dominant_hand}
                     onChange={(e) => setPlayerForm({ ...playerForm, dominant_hand: e.target.value as 'R' | 'L' })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                   >
                     <option value="R">右利き</option>
                     <option value="L">左利き</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('player.birth_year')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.birth_year')}</label>
                   <input
                     type="number"
                     value={playerForm.birth_year}
                     onChange={(e) => setPlayerForm({ ...playerForm, birth_year: e.target.value })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                     placeholder="2000"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('player.world_ranking')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.world_ranking')}</label>
                   <input
                     type="number"
                     value={playerForm.world_ranking}
                     onChange={(e) => setPlayerForm({ ...playerForm, world_ranking: e.target.value })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                     placeholder="100"
                   />
                 </div>
@@ -1353,15 +1360,15 @@ export function SettingsPage() {
                   onChange={(e) => setPlayerForm({ ...playerForm, is_target: e.target.checked })}
                   className="w-4 h-4"
                 />
-                <span className="text-sm text-gray-300">{t('player.is_target')}（解析メイン対象）</span>
+                <span className={`text-sm ${textSecondary}`}>{t('player.is_target')}（解析メイン対象）</span>
               </label>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">{t('player.notes')}</label>
+                <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.notes')}</label>
                 <textarea
                   value={playerForm.notes}
                   onChange={(e) => setPlayerForm({ ...playerForm, notes: e.target.value })}
                   rows={2}
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                  className={`w-full ${inputClass}`}
                 />
               </div>
               <div className="flex gap-3 pt-2">
@@ -1375,7 +1382,7 @@ export function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }}
-                  className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+                  className={`flex-1 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600'} rounded text-sm`}
                 >
                   {t('app.cancel')}
                 </button>

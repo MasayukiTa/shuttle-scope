@@ -9,6 +9,7 @@ import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS 
 import { QuickStartModal } from '@/components/annotation/QuickStartModal'
 import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
 import { DateRangeFilter } from '@/components/common/DateRangeFilter'
+import { useCardTheme } from '@/hooks/useCardTheme'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -49,6 +50,13 @@ export function MatchListPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { card, textHeading, textSecondary, textMuted, textFaint, isLight } = useCardTheme()
+
+  const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
+  const borderLine = isLight ? 'border-gray-200' : 'border-gray-700'
+  const inputClass = isLight
+    ? 'bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900'
+    : 'bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white'
 
   const [showForm, setShowForm] = useState(false)
   const [showQuickStart, setShowQuickStart] = useState(false)
@@ -216,10 +224,10 @@ export function MatchListPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 text-white">
+    <div className={`flex flex-col h-full ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
       {/* ヘッダー */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-        <h1 className="text-xl font-semibold">{t('nav.matches')}</h1>
+      <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
+        <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowQuickStart(true)}
@@ -238,7 +246,7 @@ export function MatchListPage() {
       </div>
 
       {/* フィルター */}
-      <div className="flex flex-col gap-2 px-6 py-3 bg-gray-800 border-b border-gray-700 text-sm">
+      <div className={`flex flex-col gap-2 px-6 py-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
         <div className="flex items-center gap-3 flex-wrap">
           <Filter size={14} className="text-gray-400 shrink-0" />
           <SearchableSelect
@@ -252,7 +260,7 @@ export function MatchListPage() {
           <select
             value={filterLevel}
             onChange={(e) => setFilterLevel(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm"
+            className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-800 border-gray-700'} border rounded px-2 py-1.5 text-sm`}
           >
             <option value="">全大会レベル</option>
             {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
@@ -265,15 +273,15 @@ export function MatchListPage() {
               checked={filterIncompleteOnly}
               onChange={(e) => setFilterIncompleteOnly(e.target.checked)}
             />
-            <span className="text-gray-300">未完了のみ</span>
+            <span className={textSecondary}>未完了のみ</span>
           </label>
-          <div className="ml-auto flex items-center gap-2 text-sm text-gray-400">
+          <div className={`ml-auto flex items-center gap-2 text-sm ${textMuted}`}>
             <Download size={13} />
             <span>画質:</span>
             <select
               value={downloadQuality}
               onChange={(e) => setDownloadQuality(e.target.value)}
-              className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+              className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded px-2 py-1 text-sm`}
             >
               <option value="360">360p</option>
               <option value="480">480p</option>
@@ -284,7 +292,7 @@ export function MatchListPage() {
             <select
               value={downloadCookieBrowser}
               onChange={(e) => setDownloadCookieBrowser(e.target.value)}
-              className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+              className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded px-2 py-1 text-sm`}
               title="ログイン必須サイトのCookieを取得するブラウザ"
             >
               <option value="">Cookie: なし</option>
@@ -309,15 +317,15 @@ export function MatchListPage() {
       {/* 試合一覧テーブル */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {isLoading ? (
-          <div className="text-center text-gray-400 py-8">{t('app.loading')}</div>
+          <div className={`text-center ${textMuted} py-8`}>{t('app.loading')}</div>
         ) : matches.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
+          <div className={`text-center ${textMuted} py-8`}>
             試合が登録されていません。「試合登録」ボタンで追加してください。
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-gray-400 border-b border-gray-700">
+              <tr className={`${textSecondary} border-b ${borderLine}`}>
                 <th className="text-left py-2 pr-4">日付</th>
                 <th className="text-left py-2 pr-4">大会名</th>
                 <th className="text-left py-2 pr-4">レベル</th>
@@ -330,13 +338,13 @@ export function MatchListPage() {
             </thead>
             <tbody>
               {matches.map((m) => (
-                <tr key={m.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                  <td className="py-2 pr-4 text-gray-300">{m.date}</td>
+                <tr key={m.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
+                  <td className={`py-2 pr-4 ${textSecondary}`}>{m.date}</td>
                   <td className="py-2 pr-4">{m.tournament}</td>
                   <td className="py-2 pr-4">
-                    <span className="px-1.5 py-0.5 rounded bg-gray-700 text-xs">{m.tournament_level}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-xs ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-700'}`}>{m.tournament_level}</span>
                   </td>
-                  <td className="py-2 pr-4 text-gray-300">{t(`match.formats.${m.format}`)}</td>
+                  <td className={`py-2 pr-4 ${textSecondary}`}>{t(`match.formats.${m.format}`)}</td>
                   <td className="py-2 pr-4">
                     <span>{m.player_b?.name ?? `#${m.player_b_id}`}</span>
                     {m.player_b?.needs_review && (
@@ -352,11 +360,11 @@ export function MatchListPage() {
                     )}>
                       {t(`match.results.${m.result}`)}
                     </span>
-                    {m.final_score && <span className="text-gray-500 ml-1 text-xs">{m.final_score}</span>}
+                    {m.final_score && <span className={`${textMuted} ml-1 text-xs`}>{m.final_score}</span>}
                   </td>
                   <td className="py-2 pr-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                      <div className={`w-20 h-1.5 ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
                         <div
                           className="h-full bg-blue-500"
                           style={{ width: `${m.annotation_progress * 100}%` }}
@@ -381,7 +389,7 @@ export function MatchListPage() {
                       {m.player_a_id && (
                         <button
                           onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
-                          className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                          className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
                           title="予測ページで確認"
                         >
                           <TrendingUp size={14} />
@@ -395,7 +403,7 @@ export function MatchListPage() {
                             quality: downloadQuality,
                             cookieBrowser: downloadCookieBrowser,
                           })}
-                          className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                          className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
                           title={`動画ダウンロード (${downloadQuality}p${downloadCookieBrowser ? ` / Cookie: ${downloadCookieBrowser}` : ''})`}
                           disabled={startDownload.isPending}
                         >
@@ -438,29 +446,29 @@ export function MatchListPage() {
       {/* 試合登録モーダル */}
       {showForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-              <h2 className="text-lg font-semibold">試合登録</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white">✕</button>
+          <div className={`${card} rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto`}>
+            <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
+              <h2 className={`text-lg font-semibold ${textHeading}`}>試合登録</h2>
+              <button onClick={() => setShowForm(false)} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}>✕</button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-sm text-gray-400 mb-1">{t('match.tournament')} *</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament')} *</label>
                   <input
                     value={form.tournament}
                     onChange={(e) => setForm({ ...form, tournament: e.target.value })}
                     required
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                     placeholder="例: 全日本総合選手権"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('match.tournament_level')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')}</label>
                   <select
                     value={form.tournament_level}
                     onChange={(e) => setForm({ ...form, tournament_level: e.target.value as TournamentLevel })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                   >
                     {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
                       <option key={l} value={l}>{l}</option>
@@ -468,11 +476,11 @@ export function MatchListPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('match.round')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.round')}</label>
                   <select
                     value={form.round}
                     onChange={(e) => setForm({ ...form, round: e.target.value })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                   >
                     {MATCH_ROUNDS.map((r) => (
                       <option key={r} value={r}>{r}</option>
@@ -480,21 +488,21 @@ export function MatchListPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('match.date')} *</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.date')} *</label>
                   <input
                     type="date"
                     value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
                     required
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('match.format')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.format')}</label>
                   <select
                     value={form.format}
                     onChange={(e) => setForm({ ...form, format: e.target.value as MatchFormat })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                   >
                     <option value="singles">シングルス</option>
                     <option value="womens_doubles">女子ダブルス</option>
@@ -502,7 +510,7 @@ export function MatchListPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">対象選手（A）*</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>対象選手（A）*</label>
                   <SearchableSelect
                     options={playerOptions}
                     value={form.player_a_id || null}
@@ -512,7 +520,7 @@ export function MatchListPage() {
                   />
                 </div>
                 <div className="relative" ref={playerBDropdownRef}>
-                  <label className="block text-sm text-gray-400 mb-1">対戦相手（B）*</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>対戦相手（B）*</label>
                   <div className="relative">
                     <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                     <input
@@ -526,7 +534,7 @@ export function MatchListPage() {
                       onFocus={() => { if (playerBQuery.trim().length >= 1) setShowPlayerBDropdown(true) }}
                       placeholder="名前を入力して検索..."
                       autoComplete="off"
-                      className="w-full bg-gray-700 border border-gray-600 rounded pl-8 pr-3 py-2 text-sm"
+                      className={`w-full ${isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'} border rounded pl-8 pr-3 py-2 text-sm`}
                     />
                     {form.player_b_id !== '' && (
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -537,7 +545,7 @@ export function MatchListPage() {
                   </div>
                   {/* 候補ドロップダウン */}
                   {showPlayerBDropdown && playerBQuery.trim().length >= 1 && (
-                    <div className="absolute z-20 top-full mt-1 w-full bg-gray-700 border border-gray-600 rounded shadow-lg max-h-40 overflow-y-auto">
+                    <div className={`absolute z-20 top-full mt-1 w-full ${isLight ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded shadow-lg max-h-40 overflow-y-auto`}>
                       {playerBCandidates.map((p) => (
                         <button
                           key={p.id}
@@ -548,7 +556,7 @@ export function MatchListPage() {
                             setPlayerBTeam(p.team ?? '')
                             setShowPlayerBDropdown(false)
                           }}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-600 text-sm flex items-center gap-2 min-w-0"
+                          className={`w-full text-left px-3 py-2 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-600'} text-sm flex items-center gap-2 min-w-0`}
                         >
                           <User size={12} className="text-gray-400 shrink-0" />
                           <span className="truncate">{p.name}</span>
@@ -564,7 +572,7 @@ export function MatchListPage() {
                           setForm((f) => ({ ...f, player_b_id: '' }))
                           setShowPlayerBDropdown(false)
                         }}
-                        className="w-full text-left px-3 py-2 hover:bg-blue-700/30 text-sm flex items-center gap-2 text-blue-300 border-t border-gray-600"
+                        className={`w-full text-left px-3 py-2 hover:bg-blue-500/10 text-sm flex items-center gap-2 text-blue-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}
                       >
                         <UserPlus size={12} className="shrink-0" />
                         <span>「{playerBQuery.trim()}」を暫定登録して作成</span>
@@ -576,16 +584,16 @@ export function MatchListPage() {
                 {/* チーム名（対戦相手B の名前入力後に表示） */}
                 {playerBQuery.trim().length >= 1 && (
                   <div>
-                    <label className="block text-sm text-gray-400 mb-1">
+                    <label className={`block text-sm ${textSecondary} mb-1`}>
                       相手チーム名
-                      <span className="ml-1 text-gray-600 text-xs">（同姓同名の識別に使用）</span>
+                      <span className={`ml-1 ${textFaint} text-xs`}>（同姓同名の識別に使用）</span>
                     </label>
                     <input
                       list="player-b-teams-list"
                       value={playerBTeam}
                       onChange={(e) => setPlayerBTeam(e.target.value)}
                       placeholder="例: ○○クラブ、△△大学"
-                      className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                      className={`w-full ${inputClass}`}
                       autoComplete="off"
                     />
                     <datalist id="player-b-teams-list">
@@ -601,7 +609,7 @@ export function MatchListPage() {
                 {form.format !== 'singles' && (
                   <>
                     <div>
-                      <label className="block text-sm text-gray-400 mb-1">自チーム相方</label>
+                      <label className={`block text-sm ${textSecondary} mb-1`}>自チーム相方</label>
                       <SearchableSelect
                         options={playerOptions}
                         value={form.partner_a_id || null}
@@ -611,7 +619,7 @@ export function MatchListPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm text-gray-400 mb-1">相手チーム相方</label>
+                      <label className={`block text-sm ${textSecondary} mb-1`}>相手チーム相方</label>
                       <SearchableSelect
                         options={playerOptions}
                         value={form.partner_b_id || null}
@@ -623,11 +631,11 @@ export function MatchListPage() {
                   </>
                 )}
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('match.result')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.result')}</label>
                   <select
                     value={form.result}
                     onChange={(e) => setForm({ ...form, result: e.target.value as MatchResult })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                   >
                     <option value="win">勝ち</option>
                     <option value="loss">負け</option>
@@ -636,22 +644,22 @@ export function MatchListPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">{t('match.score')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.score')}</label>
                   <input
                     value={form.final_score}
                     onChange={(e) => setForm({ ...form, final_score: e.target.value })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                     placeholder="例: 21-15, 18-21, 21-19"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm text-gray-400 mb-1">動画（任意）</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>動画（任意）</label>
                   <div className="flex gap-2 items-center">
                     {window.shuttlescope?.openVideoFile && (
                       <button
                         type="button"
                         onClick={handlePickVideoFile}
-                        className="flex items-center gap-1 px-2 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs whitespace-nowrap border border-gray-600"
+                        className={`flex items-center gap-1 px-2 py-2 ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300' : 'bg-gray-700 hover:bg-gray-600 text-gray-200 border-gray-600'} rounded text-xs whitespace-nowrap border`}
                       >
                         <FolderOpen size={13} />
                         ファイルを選択
@@ -661,29 +669,29 @@ export function MatchListPage() {
                       value={form.video_local_path ? form.video_local_path.split(/[/\\]/).pop() ?? '' : form.video_url}
                       onChange={(e) => setForm((f) => ({ ...f, video_url: e.target.value, video_local_path: '' }))}
                       readOnly={!!form.video_local_path}
-                      className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm min-w-0"
+                      className={`flex-1 ${inputClass} min-w-0`}
                       placeholder="YouTube URL または動画URL（任意）"
                     />
                     {form.video_local_path && (
                       <button
                         type="button"
                         onClick={() => setForm((f) => ({ ...f, video_local_path: '' }))}
-                        className="text-gray-500 hover:text-white text-xs px-1"
+                        className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'} text-xs px-1`}
                         title="クリア"
                       >✕</button>
                     )}
                   </div>
                   {form.video_local_path && (
-                    <div className="text-[10px] text-gray-500 mt-0.5 truncate">📁 {form.video_local_path}</div>
+                    <div className={`text-[10px] ${textMuted} mt-0.5 truncate`}>📁 {form.video_local_path}</div>
                   )}
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm text-gray-400 mb-1">{t('match.notes')}</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.notes')}</label>
                   <textarea
                     value={form.notes}
                     onChange={(e) => setForm({ ...form, notes: e.target.value })}
                     rows={2}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    className={`w-full ${inputClass}`}
                   />
                 </div>
               </div>
@@ -698,7 +706,7 @@ export function MatchListPage() {
                 <button
                   type="button"
                   onClick={() => { setShowForm(false); setForm(defaultForm()); setPlayerBQuery('') }}
-                  className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+                  className={`flex-1 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600'} rounded text-sm`}
                 >
                   {t('app.cancel')}
                 </button>
