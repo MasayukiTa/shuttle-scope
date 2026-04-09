@@ -7,6 +7,10 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { MarkovEPV } from '@/components/analysis/MarkovEPV'
 import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
 import { SpatialDensityMap } from '@/components/analysis/SpatialDensityMap'
+import { StateEPVCard } from '@/components/analysis/StateEPVCard'
+import { StateActionValueCard } from '@/components/analysis/StateActionValueCard'
+import { HazardFatigueCard } from '@/components/analysis/HazardFatigueCard'
+import { CounterfactualV2Card } from '@/components/analysis/CounterfactualV2Card'
 
 interface Props {
   playerId: number
@@ -86,6 +90,46 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
             />
             <SpatialDensityMap playerId={playerId} />
           </div>
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Research Spine RS-1: 状態ベース EPV ── */}
+      <ErrorBoundary>
+        <RoleGuard
+          allowedRoles={['analyst', 'coach']}
+          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
+        >
+          <StateEPVCard playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Research Spine RS-2: 状態-行動価値 ── */}
+      <ErrorBoundary>
+        <RoleGuard
+          allowedRoles={['analyst', 'coach']}
+          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
+        >
+          <StateActionValueCard playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Research Spine RS-3: ハザード・疲労モデル ── */}
+      <ErrorBoundary>
+        <RoleGuard
+          allowedRoles={['analyst', 'coach']}
+          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
+        >
+          <HazardFatigueCard playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Research Spine RS-3: 反事実的ショット v2 ── */}
+      <ErrorBoundary>
+        <RoleGuard
+          allowedRoles={['analyst', 'coach']}
+          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
+        >
+          <CounterfactualV2Card playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
     </div>
