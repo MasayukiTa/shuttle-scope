@@ -4,6 +4,7 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
+import { RefreshCw } from 'lucide-react'
 
 interface PolicyEntry {
   dominant_shot: string
@@ -65,12 +66,13 @@ function getPredictabilityColor(key: string, isLight: boolean): string {
   return isLight ? pair[0] : pair[1]
 }
 
-function pct(v: number) {
-  return `${(v * 100).toFixed(1)}%`
+function pct(v: number | undefined) {
+  return v != null ? `${(v * 100).toFixed(1)}%` : '—'
 }
 
-function EntropyBar({ entropy, maxEntropy = 2.5, isLight }: { entropy: number; maxEntropy?: number; isLight: boolean }) {
-  const ratio = Math.min(entropy / maxEntropy, 1)
+function EntropyBar({ entropy, maxEntropy = 2.5, isLight }: { entropy: number | undefined; maxEntropy?: number; isLight: boolean }) {
+  const safeEntropy = entropy ?? 0
+  const ratio = Math.min(safeEntropy / maxEntropy, 1)
   return (
     <div className="flex items-center gap-1">
       <div className={`w-16 h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-gray-200' : 'bg-gray-700'}`}>
@@ -79,7 +81,7 @@ function EntropyBar({ entropy, maxEntropy = 2.5, isLight }: { entropy: number; m
           style={{ width: `${ratio * 100}%` }}
         />
       </div>
-      <span className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>{entropy.toFixed(2)}</span>
+      <span className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>{safeEntropy.toFixed(2)}</span>
     </div>
   )
 }
@@ -93,7 +95,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['opponent-policy', playerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: OpponentPolicyData; meta: Meta }>(
@@ -112,13 +114,26 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
     <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
         <h3 className={`text-sm font-semibold ${textHeading}`}>対戦相手ポリシー分析</h3>
-        <EvidenceBadge
-          tier="research"
-          evidenceLevel="exploratory"
-          sampleSize={meta?.sample_size}
-          recommendationAllowed={false}
-        />
+        <div className="flex items-center gap-2">
+          <EvidenceBadge
+            tier="research"
+            evidenceLevel="exploratory"
+            sampleSize={meta?.sample_size}
+            recommendationAllowed={false}
+          />
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            title="再取得"
+            className={`p-1 rounded transition-colors disabled:opacity-40 ${isLight ? 'hover:bg-gray-100 text-gray-500' : 'hover:bg-gray-700 text-gray-500'}`}
+          >
+            <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
+      {isError && (
+        <p className="text-xs text-red-500">データ取得に失敗しました。再取得ボタンで再試行できます。</p>
+      )}
 
       <ResearchNotice
         caution={meta?.caution ?? '対戦相手ポリシーはショット分布の記述統計です。戦術的意図の推定は含みません。'}
