@@ -237,6 +237,7 @@ export function ViewerPage() {
           <span className="text-lg font-bold">ShuttleScope</span>
         </div>
         <p className="text-gray-400 text-sm">リモートビューワー</p>
+        <p className="text-gray-600 text-xs mt-1">タブレット・PC で最適な映像視聴が可能です</p>
       </div>
 
       {/* ─── State: join ── */}
@@ -319,6 +320,9 @@ export function ViewerPage() {
               <span className="text-gray-500 ml-1">(再接続 {reconnectCount} 回)</span>
             )}
           </div>
+          <p className="mt-4 text-gray-600 text-xs">
+            タブレット・PC で映像を受信できます。スマートフォンは要約表示専用です。
+          </p>
         </div>
       )}
 

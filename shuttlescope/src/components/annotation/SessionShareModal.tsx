@@ -3,7 +3,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { X, Copy, Check, Eye, EyeOff, RefreshCw, Camera } from 'lucide-react'
+import { X, Copy, Check, Eye, EyeOff, RefreshCw, Camera, Monitor } from 'lucide-react'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
@@ -12,6 +12,7 @@ interface Props {
   sessionCode: string
   coachUrls: string[]
   cameraSenderUrls?: string[]
+  viewerUrls?: string[]
   sessionPassword?: string
   onClose: () => void
 }
@@ -20,15 +21,18 @@ export function SessionShareModal({
   sessionCode,
   coachUrls,
   cameraSenderUrls = [],
+  viewerUrls = [],
   sessionPassword: initialPassword,
   onClose,
 }: Props) {
   const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const cameraCanvasRef = useRef<HTMLCanvasElement>(null)
+  const viewerCanvasRef = useRef<HTMLCanvasElement>(null)
   const [copied, setCopied] = useState(false)
   const [passwordCopied, setPasswordCopied] = useState(false)
   const [cameraUrlCopied, setCameraUrlCopied] = useState(false)
+  const [viewerUrlCopied, setViewerUrlCopied] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [sessionPassword, setSessionPassword] = useState(initialPassword ?? '')
   const [regenerating, setRegenerating] = useState(false)
@@ -36,10 +40,14 @@ export function SessionShareModal({
 
   const coachUrl = coachUrls[0] ?? ''
   const cameraUrl = cameraSenderUrls[0] ?? ''
+  const viewerUrl = viewerUrls[0] ?? ''
   // パスワードを URL に埋め込む — LAN QR スキャン時にフォーム入力不要にする
   const cameraUrlWithPwd = cameraUrl && sessionPassword
     ? `${cameraUrl}?pwd=${encodeURIComponent(sessionPassword)}`
     : cameraUrl
+  const viewerUrlWithPwd = viewerUrl && sessionPassword
+    ? `${viewerUrl}?pwd=${encodeURIComponent(sessionPassword)}`
+    : viewerUrl
 
   // コーチ URL の QR
   useEffect(() => {
@@ -60,6 +68,16 @@ export function SessionShareModal({
       color: { dark: '#0f172a', light: '#f8fafc' },
     }).catch(() => {})
   }, [cameraUrlWithPwd])
+
+  // ビューワー URL の QR（パスワード付き）
+  useEffect(() => {
+    if (!viewerCanvasRef.current || !viewerUrlWithPwd) return
+    QRCode.toCanvas(viewerCanvasRef.current, viewerUrlWithPwd, {
+      width: 180,
+      margin: 2,
+      color: { dark: '#0f172a', light: '#f8fafc' },
+    }).catch(() => {})
+  }, [viewerUrlWithPwd])
 
   const handleCopy = (text: string, setter: (v: boolean) => void) => {
     const confirm = () => { setter(true); setTimeout(() => setter(false), 2000) }
@@ -219,6 +237,34 @@ export function SessionShareModal({
             </div>
             <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
               iPhoneでQRを読み取るとパスワード不要で参加できます
+            </p>
+          </div>
+        )}
+
+        {/* ─── ビューワー URL / QR ──────────────── */}
+        {viewerUrl && (
+          <div className={`border-t pt-4 mt-4 ${dividerColor}`}>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Monitor size={12} className={subColor} />
+              <p className={`text-xs ${sectionTitle}`}>{t('sharing.viewer_url_label')}</p>
+            </div>
+            <div className="flex justify-center mb-3 bg-slate-100 rounded-lg p-2">
+              <canvas ref={viewerCanvasRef} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <p className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} ${urlColor}`}>
+                {viewerUrlWithPwd || viewerUrl}
+              </p>
+              <button
+                onClick={() => handleCopy(viewerUrlWithPwd || viewerUrl, setViewerUrlCopied)}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
+              >
+                {viewerUrlCopied ? <Check size={12} /> : <Copy size={12} />}
+                {viewerUrlCopied ? 'コピー済' : t('lan_session.password_copy')}
+              </button>
+            </div>
+            <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
+              PC・タブレットでQRを読み取ると映像受信できます
             </p>
           </div>
         )}

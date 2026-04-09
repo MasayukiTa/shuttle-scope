@@ -16,7 +16,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Monitor, Smartphone, Tablet, Camera, Usb,
   X, RefreshCw, Video, VideoOff, Shield, ShieldOff,
-  CheckCircle2, XCircle, AlertTriangle, Trash2,
+  CheckCircle2, XCircle, AlertTriangle, Trash2, Users, Eye,
+  type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -25,11 +26,18 @@ import { LiveSourceSelector } from './LiveSourceSelector'
 import { LiveInferenceOverlay } from './LiveInferenceOverlay'
 import type { SessionParticipant, LocalCameraSource, DeviceType } from '@/types'
 
+interface RemoteHealth {
+  wsConnected: boolean
+  connectionState: RTCPeerConnectionState | null
+  turnInUse: boolean | null
+}
+
 interface Props {
   sessionCode: string
   onClose: () => void
   onRemoteStream?: (stream: MediaStream | null) => void
   onLocalStream?: (stream: MediaStream | null) => void
+  onHealthChange?: (health: RemoteHealth) => void
 }
 
 // ─── ヘルパーコンポーネント ───────────────────────────────────────────────────
@@ -355,9 +363,213 @@ async function enumerateLocalCameras(): Promise<LocalCameraSource[]> {
   } catch { return [] }
 }
 
+// ─── デバイス行コンポーネント ─────────────────────────────────────────────────
+
+interface DeviceRowProps {
+  p: SessionParticipant
+  isLight: boolean
+  titleColor: string
+  subColor: string
+  rowBg: string
+  onApprove: (p: SessionParticipant) => void
+  onReject: (p: SessionParticipant) => void
+  onActivateCamera: (p: SessionParticipant) => void
+  onDeactivate: (p: SessionParticipant) => void
+  onRequestCamera: (p: SessionParticipant) => void
+  onMakeCandidate: (p: SessionParticipant) => void
+  onAllowVideo: (p: SessionParticipant) => void
+  onBlockVideo: (p: SessionParticipant) => void
+  onDeleteDevice: (p: SessionParticipant) => void
+  t: (key: string) => string
+}
+
+function DeviceRow({ p, isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, t }: DeviceRowProps) {
+  const isStaleCamera = p.connection_role === 'active_camera' && p.last_heartbeat
+    ? (Date.now() - new Date(p.last_heartbeat).getTime()) / 1000 > 60
+    : false
+
+  return (
+    <div className={`rounded-lg p-3 ${rowBg} ${isStaleCamera ? 'border border-amber-500/40' : ''}`}>
+      <div className="flex items-start gap-2">
+        <div className={`mt-0.5 ${subColor}`}><DeviceIcon type={p.device_type} /></div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={`text-xs font-medium truncate ${titleColor}`}>
+              {p.device_name ?? `デバイス #${p.id}`}
+            </span>
+            <ApprovalBadge status={p.approval_status} />
+            {(p.device_type === 'iphone' || p.device_type === 'ipad') && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-purple-900/40 text-purple-400">リモート</span>
+            )}
+            {p.device_type === 'pc' && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-gray-700/60 text-gray-500">ローカル</span>
+            )}
+            {isStaleCamera && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-amber-900/40 text-amber-400 flex items-center gap-0.5">
+                <AlertTriangle size={8} />{t('handoff.stale_warning')}
+              </span>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => onDeleteDevice(p)}
+          title="このデバイスを削除"
+          className="shrink-0 text-gray-600 hover:text-red-400 transition-colors"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+      <div className="ml-6 mt-0.5">
+        <div className={`flex items-center gap-2 text-[10px] ${subColor}`}>
+          <span className={`flex items-center gap-0.5 ${p.is_connected ? 'text-green-400' : 'text-gray-500'}`}>
+            <span className={`w-1 h-1 rounded-full ${p.is_connected ? 'bg-green-400' : 'bg-gray-600'}`} />
+            {p.is_connected ? '接続' : '切断'}
+          </span>
+          {p.connection_state === 'sending_video' && (
+            <span className="text-red-400 flex items-center gap-0.5">
+              <Video size={10} />送信中
+            </span>
+          )}
+          {p.connection_state === 'receiving_video' && (
+            <span className="text-blue-400 flex items-center gap-0.5">
+              <Video size={10} />受信中
+            </span>
+          )}
+          {p.device_class && <span>{p.device_class}</span>}
+          <HeartbeatBadge lastHeartbeat={p.last_heartbeat} />
+          {p.viewer_permission !== 'default' && (
+            <span className={p.viewer_permission === 'allowed' ? 'text-green-400' : 'text-red-400'}>
+              {p.viewer_permission === 'allowed' ? '映像受信許可' : '映像受信停止'}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* アクションボタン */}
+      {p.approval_status === 'approved' && (
+        <div className="flex gap-1.5 mt-2 flex-wrap">
+          {p.connection_role === 'viewer' && p.source_capability === 'camera' && (
+            <button onClick={() => onMakeCandidate(p)}
+              className="text-[10px] px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white">
+              {t('lan_session.action_make_candidate')}
+            </button>
+          )}
+          {p.connection_role === 'camera_candidate' && (
+            <button onClick={() => onActivateCamera(p)}
+              className="text-[10px] px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white">
+              {t('lan_session.action_activate_camera')}
+            </button>
+          )}
+          {p.connection_role === 'active_camera' && (
+            <>
+              <button onClick={() => onRequestCamera(p)}
+                className="text-[10px] px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white flex items-center gap-0.5">
+                <Video size={9} />{isStaleCamera ? t('handoff.stale_rerequest') : 'カメラ再リクエスト'}
+              </button>
+              <button onClick={() => onDeactivate(p)}
+                className="text-[10px] px-2 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white">
+                {t('lan_session.action_deactivate')}
+              </button>
+            </>
+          )}
+          {/* ビューワー映像許可 */}
+          {p.device_class !== 'phone' && (
+            p.viewer_permission !== 'allowed' ? (
+              <button onClick={() => onAllowVideo(p)}
+                className="text-[10px] px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white flex items-center gap-0.5">
+                <Shield size={9} />{t('lan_session.action_allow_receive')}
+              </button>
+            ) : (
+              <button onClick={() => onBlockVideo(p)}
+                className="text-[10px] px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white flex items-center gap-0.5">
+                <ShieldOff size={9} />{t('lan_session.action_stop_receive')}
+              </button>
+            )
+          )}
+          {p.device_class === 'phone' && (
+            <span className="text-[9px] text-gray-500">{t('viewer_relay.phone_blocked')}</span>
+          )}
+        </div>
+      )}
+      {p.approval_status === 'pending' && (
+        <div className="flex gap-1.5 mt-2">
+          <button onClick={() => onApprove(p)} className="text-[10px] px-2 py-0.5 rounded bg-green-600 hover:bg-green-500 text-white flex items-center gap-0.5">
+            <CheckCircle2 size={10} />{t('device_approval.approve')}
+          </button>
+          <button onClick={() => onReject(p)} className="text-[10px] px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white flex items-center gap-0.5">
+            <XCircle size={10} />{t('device_approval.reject')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── グループ別デバイス一覧 ───────────────────────────────────────────────────
+
+interface DeviceGroupedListProps extends Omit<DeviceRowProps, 'p'> {
+  participants: SessionParticipant[]
+  divider: string
+}
+
+function DeviceGroupedList({ participants, isLight, titleColor, subColor, rowBg, divider, ...rowProps }: DeviceGroupedListProps) {
+  const activeCamera = participants.filter((p) => p.connection_role === 'active_camera')
+  const candidates = participants.filter((p) => p.connection_role === 'camera_candidate')
+  const viewers = participants.filter((p) => p.connection_role === 'viewer')
+  const others = participants.filter((p) => !['active_camera', 'camera_candidate', 'viewer'].includes(p.connection_role))
+
+  const GroupHeader = ({ label, icon: Icon, count }: { label: string; icon: LucideIcon; count: number }) => (
+    <div className={`flex items-center gap-1.5 text-[10px] font-medium py-1.5 ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
+      <Icon size={11} />
+      <span className="uppercase tracking-wide">{label}</span>
+      <span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded-full ${isLight ? 'bg-gray-200 text-gray-500' : 'bg-gray-700 text-gray-400'}`}>{count}</span>
+    </div>
+  )
+
+  return (
+    <div className="space-y-1">
+      {activeCamera.length > 0 && (
+        <div>
+          <GroupHeader label="アクティブカメラ" icon={Camera} count={activeCamera.length} />
+          <div className="space-y-2">
+            {activeCamera.map((p) => <DeviceRow key={p.id} p={p} isLight={isLight} titleColor={titleColor} subColor={subColor} rowBg={rowBg} {...rowProps} />)}
+          </div>
+        </div>
+      )}
+
+      {candidates.length > 0 && (
+        <div className={activeCamera.length > 0 ? `pt-2 mt-1 border-t ${divider}` : ''}>
+          <GroupHeader label="カメラ候補" icon={Video} count={candidates.length} />
+          <div className="space-y-2">
+            {candidates.map((p) => <DeviceRow key={p.id} p={p} isLight={isLight} titleColor={titleColor} subColor={subColor} rowBg={rowBg} {...rowProps} />)}
+          </div>
+        </div>
+      )}
+
+      {viewers.length > 0 && (
+        <div className={activeCamera.length > 0 || candidates.length > 0 ? `pt-2 mt-1 border-t ${divider}` : ''}>
+          <GroupHeader label="リモートビューワー" icon={Eye} count={viewers.length} />
+          <div className="space-y-2">
+            {viewers.map((p) => <DeviceRow key={p.id} p={p} isLight={isLight} titleColor={titleColor} subColor={subColor} rowBg={rowBg} {...rowProps} />)}
+          </div>
+        </div>
+      )}
+
+      {others.length > 0 && (
+        <div className={activeCamera.length > 0 || candidates.length > 0 || viewers.length > 0 ? `pt-2 mt-1 border-t ${divider}` : ''}>
+          <GroupHeader label="その他" icon={Users} count={others.length} />
+          <div className="space-y-2">
+            {others.map((p) => <DeviceRow key={p.id} p={p} isLight={isLight} titleColor={titleColor} subColor={subColor} rowBg={rowBg} {...rowProps} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── メインコンポーネント ─────────────────────────────────────────────────────
 
-export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLocalStream }: Props) {
+export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLocalStream, onHealthChange }: Props) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const [participants, setParticipants] = useState<SessionParticipant[]>([])
@@ -367,12 +579,20 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const [localCameraError, setLocalCameraError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'devices' | 'sources'>('devices')
+  // handoff confirmation: participant waiting to be activated
+  const [handoffTarget, setHandoffTarget] = useState<SessionParticipant | null>(null)
+  // local-over-remote confirmation
+  const [localSwitchPending, setLocalSwitchPending] = useState<LocalCameraSource | null>(null)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
 
   const { stream: remoteStream, activeParticipantId, connectionState, iceGatheringState, wsConnected, wsReconnecting, wsReconnectCount, turnInUse, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
 
   useEffect(() => { connect() }, [connect])
+  // health callback へ変化を通知
+  useEffect(() => {
+    onHealthChange?.({ wsConnected, connectionState, turnInUse })
+  }, [wsConnected, connectionState, turnInUse, onHealthChange])
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) remoteVideoRef.current.srcObject = remoteStream
     onRemoteStream?.(remoteStream)
@@ -422,8 +642,26 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const handleApprove = (p: SessionParticipant) => post(`/devices/${p.id}/approve`)
   const handleReject  = (p: SessionParticipant) => post(`/devices/${p.id}/reject`)
   const handleActivateCamera = async (p: SessionParticipant) => {
+    // If another camera is already active, show handoff confirmation
+    const currentActive = participants.find((x) => x.connection_role === 'active_camera')
+    if (currentActive && currentActive.id !== p.id) {
+      setHandoffTarget(p)
+      return
+    }
     await post(`/devices/${p.id}/activate-camera`)
     requestCamera(p.id)
+  }
+
+  const confirmHandoff = async () => {
+    if (!handoffTarget) return
+    const currentActive = participants.find((x) => x.connection_role === 'active_camera')
+    if (currentActive) {
+      await post(`/devices/${currentActive.id}/deactivate-camera`)
+      sendMessage({ type: 'camera_deactivate', target_participant_id: currentActive.id })
+    }
+    await post(`/devices/${handoffTarget.id}/activate-camera`)
+    requestCamera(handoffTarget.id)
+    setHandoffTarget(null)
   }
   const handleDeactivate = async (p: SessionParticipant) => {
     await post(`/devices/${p.id}/deactivate-camera`)
@@ -433,7 +671,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const handleAllowVideo     = (p: SessionParticipant) => post(`/devices/${p.id}/set-viewer-permission`, { viewer_permission: 'allowed' })
   const handleBlockVideo     = (p: SessionParticipant) => post(`/devices/${p.id}/set-viewer-permission`, { viewer_permission: 'blocked' })
 
-  const handleSelectLocalSource = async (src: LocalCameraSource) => {
+  const doSelectLocalSource = async (src: LocalCameraSource) => {
     localStream?.getTracks().forEach((t) => t.stop())
     setLocalCameraError(null)
     try {
@@ -449,6 +687,27 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
     } catch {
       setLocalCameraError('カメラを起動できませんでした。OS設定でカメラへのアクセスを許可してください。')
     }
+  }
+
+  const handleSelectLocalSource = async (src: LocalCameraSource) => {
+    // If a remote camera is currently active, confirm switching to local
+    const activeRemote = participants.find((x) => x.connection_role === 'active_camera')
+    if (activeRemote && remoteStream) {
+      setLocalSwitchPending(src)
+      return
+    }
+    await doSelectLocalSource(src)
+  }
+
+  const confirmLocalSwitch = async () => {
+    if (!localSwitchPending) return
+    const activeRemote = participants.find((x) => x.connection_role === 'active_camera')
+    if (activeRemote) {
+      await post(`/devices/${activeRemote.id}/deactivate-camera`)
+      sendMessage({ type: 'camera_deactivate', target_participant_id: activeRemote.id })
+    }
+    await doSelectLocalSource(localSwitchPending)
+    setLocalSwitchPending(null)
   }
   const handleStopLocal = () => {
     localStream?.getTracks().forEach((t) => t.stop())
@@ -602,142 +861,38 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
       {activeTab === 'devices' && (
         <>
-          {/* 承認待ちデバイス（優先表示） */}
+          {/* 承認待ちバナー */}
           {participants.filter((p) => p.approval_status === 'pending').length > 0 && (
-            <div className="mb-3 p-3 rounded-lg border border-amber-500/40 bg-amber-500/10">
-              <p className="text-xs text-amber-400 font-medium mb-2">
-                <AlertTriangle size={12} className="inline mr-1" />
-                承認待ちのデバイス
+            <div className="mb-3 px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 flex items-center gap-2">
+              <AlertTriangle size={12} className="text-amber-400 flex-shrink-0" />
+              <p className="text-xs text-amber-400">
+                承認待ちのデバイスがあります
               </p>
-              {participants.filter((p) => p.approval_status === 'pending').map((p) => (
-                <div key={p.id} className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-2">
-                    <DeviceIcon type={p.device_type} />
-                    <span className="text-xs text-white">{p.device_name ?? `デバイス #${p.id}`}</span>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <button onClick={() => handleApprove(p)} className="text-[10px] px-2 py-0.5 rounded bg-green-600 hover:bg-green-500 text-white flex items-center gap-0.5">
-                      <CheckCircle2 size={10} />{t('device_approval.approve')}
-                    </button>
-                    <button onClick={() => handleReject(p)} className="text-[10px] px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white flex items-center gap-0.5">
-                      <XCircle size={10} />{t('device_approval.reject')}
-                    </button>
-                  </div>
-                </div>
-              ))}
             </div>
           )}
 
-          {/* 全デバイス一覧 */}
+          {/* グループ別デバイス一覧 */}
           {participants.length === 0 ? (
             <p className={`text-xs text-center py-4 ${subColor}`}>{t('lan_session.no_devices')}</p>
           ) : (
-            <div className="space-y-2">
-              {participants.map((p) => (
-                <div key={p.id} className={`rounded-lg p-3 ${rowBg}`}>
-                  <div className="flex items-start gap-2">
-                    <div className={`mt-0.5 ${subColor}`}><DeviceIcon type={p.device_type} /></div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className={`text-xs font-medium truncate ${titleColor}`}>
-                          {p.device_name ?? `デバイス #${p.id}`}
-                        </span>
-                        <RoleBadge role={p.connection_role} />
-                        <ApprovalBadge status={p.approval_status} />
-                        {/* リモート/ローカル判定 */}
-                        {(p.device_type === 'iphone' || p.device_type === 'ipad') && (
-                          <span className="text-[9px] px-1 py-0.5 rounded bg-purple-900/40 text-purple-400">リモート</span>
-                        )}
-                        {p.device_type === 'pc' && (
-                          <span className="text-[9px] px-1 py-0.5 rounded bg-gray-700/60 text-gray-500">ローカル</span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleDeleteDevice(p)}
-                      title="このデバイスを削除"
-                      className="shrink-0 text-gray-600 hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                  <div className="ml-6 mt-0.5">
-                    <div className={`flex items-center gap-2 text-[10px] ${subColor}`}>
-                      {/* シグナリング状態 */}
-                      <span className={`flex items-center gap-0.5 ${p.is_connected ? 'text-green-400' : 'text-gray-500'}`}>
-                        <span className={`w-1 h-1 rounded-full ${p.is_connected ? 'bg-green-400' : 'bg-gray-600'}`} />
-                        {p.is_connected ? '接続' : '切断'}
-                      </span>
-                      {/* メディア状態 */}
-                      {p.connection_state === 'sending_video' && (
-                        <span className="text-red-400 flex items-center gap-0.5">
-                          <Video size={10} />送信中
-                        </span>
-                      )}
-                      {p.connection_state === 'receiving_video' && (
-                        <span className="text-blue-400 flex items-center gap-0.5">
-                          <Video size={10} />受信中
-                        </span>
-                      )}
-                      {p.device_class && <span>{p.device_class}</span>}
-                      <HeartbeatBadge lastHeartbeat={p.last_heartbeat} />
-                      {p.viewer_permission !== 'default' && (
-                        <span className={p.viewer_permission === 'allowed' ? 'text-green-400' : 'text-red-400'}>
-                          {p.viewer_permission === 'allowed' ? '映像受信許可' : '映像受信停止'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* アクションボタン */}
-                  {p.approval_status === 'approved' && (
-                    <div className="flex gap-1.5 mt-2 flex-wrap">
-                      {p.connection_role === 'viewer' && p.source_capability === 'camera' && (
-                        <button onClick={() => handleMakeCandidate(p)}
-                          className="text-[10px] px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white">
-                          {t('lan_session.action_make_candidate')}
-                        </button>
-                      )}
-                      {p.connection_role === 'camera_candidate' && (
-                        <button onClick={() => handleActivateCamera(p)}
-                          className="text-[10px] px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white">
-                          {t('lan_session.action_activate_camera')}
-                        </button>
-                      )}
-                      {p.connection_role === 'active_camera' && (
-                        <>
-                          <button onClick={() => requestCamera(p.id)}
-                            className="text-[10px] px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white flex items-center gap-0.5">
-                            <Video size={9} />カメラ再リクエスト
-                          </button>
-                          <button onClick={() => handleDeactivate(p)}
-                            className="text-[10px] px-2 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white">
-                            {t('lan_session.action_deactivate')}
-                          </button>
-                        </>
-                      )}
-                      {/* ビューワー映像許可 */}
-                      {p.device_class !== 'phone' && (
-                        p.viewer_permission !== 'allowed' ? (
-                          <button onClick={() => handleAllowVideo(p)}
-                            className="text-[10px] px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white flex items-center gap-0.5">
-                            <Shield size={9} />{t('lan_session.action_allow_receive')}
-                          </button>
-                        ) : (
-                          <button onClick={() => handleBlockVideo(p)}
-                            className="text-[10px] px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white flex items-center gap-0.5">
-                            <ShieldOff size={9} />{t('lan_session.action_stop_receive')}
-                          </button>
-                        )
-                      )}
-                      {p.device_class === 'phone' && (
-                        <span className="text-[9px] text-gray-500">{t('viewer_relay.phone_blocked')}</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            <DeviceGroupedList
+              participants={participants}
+              isLight={isLight}
+              titleColor={titleColor}
+              subColor={subColor}
+              rowBg={rowBg}
+              divider={divider}
+              onApprove={handleApprove}
+              onReject={handleReject}
+              onActivateCamera={handleActivateCamera}
+              onDeactivate={handleDeactivate}
+              onRequestCamera={(p) => requestCamera(p.id)}
+              onMakeCandidate={handleMakeCandidate}
+              onAllowVideo={handleAllowVideo}
+              onBlockVideo={handleBlockVideo}
+              onDeleteDevice={handleDeleteDevice}
+              t={t}
+            />
           )}
 
           {/* ローカルカメラソース */}
@@ -768,6 +923,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
                         {t('lan_session.local_source_select')}
                       </button>
                     )}
+
                   </div>
                 ))}
               </div>
@@ -778,6 +934,51 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
       {activeTab === 'sources' && (
         <LiveSourceSelector sessionCode={sessionCode} />
+      )}
+
+      {/* ─── ハンドオフ確認ダイアログ ── */}
+      {handoffTarget && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60" onClick={() => setHandoffTarget(null)}>
+          <div
+            className={`rounded-xl p-5 w-72 shadow-2xl ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800 border border-gray-700'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className={`text-sm font-semibold mb-1 ${titleColor}`}>{t('handoff.confirm_title')}</p>
+            <p className={`text-xs mb-4 ${subColor}`}>
+              {t('handoff.confirm_body')}<br />
+              <span className="font-medium">{handoffTarget.device_name ?? `デバイス #${handoffTarget.id}`}</span>
+            </p>
+            <div className="flex gap-2">
+              <button onClick={confirmHandoff} className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm">
+                {t('handoff.confirm_ok')}
+              </button>
+              <button onClick={() => setHandoffTarget(null)} className={`flex-1 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>
+                {t('handoff.confirm_cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ローカル切替確認ダイアログ ── */}
+      {localSwitchPending && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60" onClick={() => setLocalSwitchPending(null)}>
+          <div
+            className={`rounded-xl p-5 w-72 shadow-2xl ${isLight ? 'bg-white border border-gray-200' : 'bg-gray-800 border border-gray-700'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className={`text-sm font-semibold mb-1 ${titleColor}`}>{t('handoff.local_switch_confirm')}</p>
+            <p className={`text-xs mb-4 ${subColor}`}>{localSwitchPending.label}</p>
+            <div className="flex gap-2">
+              <button onClick={confirmLocalSwitch} className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm">
+                {t('handoff.local_switch_ok')}
+              </button>
+              <button onClick={() => setLocalSwitchPending(null)} className={`flex-1 py-2 rounded-lg text-sm ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>
+                {t('handoff.local_switch_cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

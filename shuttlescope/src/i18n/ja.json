@@ -604,7 +604,8 @@
     "turn_test_running": "テスト中...",
     "turn_test_ok": "到達可能",
     "turn_test_fail": "到達不可",
-    "turn_when_required": "TURN が必要な場面: 企業ネット・VPN・モバイル回線など、直接P2Pが通らない環境"
+    "turn_when_required": "TURN が必要な場面: 企業ネット・VPN・モバイル回線など、直接P2Pが通らない環境",
+    "viewer_url_label": "リモートビューワー URL"
   },
   "bookmark": {
     "add": "ブックマーク追加",
@@ -855,7 +856,11 @@
     "source_type_usb": "USB",
     "source_type_builtin": "内蔵",
     "open_device_manager": "デバイス管理",
-    "close_device_manager": "閉じる"
+    "close_device_manager": "閉じる",
+    "group_active_camera": "アクティブカメラ",
+    "group_camera_candidates": "カメラ候補",
+    "group_remote_viewers": "リモートビューワー",
+    "group_other_devices": "その他"
   },
   "camera_sender": {
     "state_a_title": "PCから開始指示を待っています",
@@ -920,7 +925,34 @@
     "viewer_joined": "ビューワーが参加しました",
     "phone_blocked": "スマートフォンへの映像配信はオフです",
     "join_as_viewer": "ビューワーとして参加",
-    "receiving_video": "映像受信中"
+    "receiving_video": "映像受信中",
+    "tablet_hint": "タブレット・PCでフル映像視聴が可能です。スマートフォンは要約表示のみです。",
+    "tablet_viewing_note": "タブレット・PC で最適化されています"
+  },
+  "remote_health": {
+    "banner_title": "リモート",
+    "signaling_ok": "シグナリング接続中",
+    "signaling_reconnecting": "再接続中",
+    "signaling_off": "シグナリング未接続",
+    "media_ok": "映像受信中",
+    "media_waiting": "映像待機中",
+    "media_failed": "映像接続失敗",
+    "turn_relay": "TURN リレー",
+    "p2p_direct": "P2P 直接",
+    "tunnel_ngrok": "ngrok",
+    "tunnel_cloudflare": "Cloudflare",
+    "tunnel_local": "LAN"
+  },
+  "handoff": {
+    "confirm_title": "カメラ切り替え確認",
+    "confirm_body": "現在アクティブなカメラがあります。切り替えますか？",
+    "confirm_ok": "切り替える",
+    "confirm_cancel": "キャンセル",
+    "stale_rerequest": "再リクエスト",
+    "stale_warning": "カメラが応答していません",
+    "local_switch_confirm": "ローカルカメラに切り替えます。リモートカメラを停止しますか？",
+    "local_switch_ok": "停止して切り替え",
+    "local_switch_cancel": "リモートを継続"
   },
   "live_inference": {
     "title": "ライブ推論",

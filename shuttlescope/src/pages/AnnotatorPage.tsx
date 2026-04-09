@@ -258,6 +258,12 @@ export function AnnotatorPage() {
       localCamVideoRef.current.srcObject = localCamStream
     }
   }, [localCamStream])
+  // リモートヘルス状態（DeviceManagerPanelから通知）
+  const [remoteHealth, setRemoteHealth] = useState<{
+    wsConnected: boolean
+    connectionState: RTCPeerConnectionState | null
+    turnInUse: boolean | null
+  } | null>(null)
 
   // P4: デュアルモニター
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
@@ -1386,6 +1392,28 @@ export function AnnotatorPage() {
             >
               <Monitor size={12} />
             </button>
+          )}
+          {/* リモートヘルスバナー */}
+          {activeSession && remoteHealth && (
+            <div
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] cursor-pointer"
+              style={{ background: 'rgba(0,0,0,0.3)' }}
+              onClick={() => setShowDeviceManager(true)}
+              title="リモート接続状態（クリックでデバイス管理を開く）"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                remoteHealth.wsConnected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'
+              }`} />
+              <span className={remoteHealth.wsConnected ? 'text-green-400' : 'text-amber-400'}>
+                {remoteHealth.wsConnected ? '接続' : '再接続中'}
+              </span>
+              {remoteHealth.connectionState === 'connected' && (
+                <span className="text-red-400 ml-1">● LIVE</span>
+              )}
+              {remoteHealth.turnInUse === true && (
+                <span className="text-blue-400 ml-1">TURN</span>
+              )}
+            </div>
           )}
           <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
             <div
@@ -2974,6 +3002,7 @@ export function AnnotatorPage() {
           sessionCode={activeSession.session_code}
           coachUrls={(activeSession.coach_urls ?? []).map(rebaseUrl)}
           cameraSenderUrls={(activeSession.camera_sender_urls ?? []).map(rebaseUrl)}
+          viewerUrls={(activeSession.camera_sender_urls ?? []).map((u) => rebaseUrl(u.replace('/camera/', '/viewer/')))}
           sessionPassword={activeSession.session_password}
           onClose={() => setShowSessionModal(false)}
         />
@@ -2994,6 +3023,7 @@ export function AnnotatorPage() {
                 setLocalCamStream(stream)
                 if (stream) setVideoSourceMode('webview')
               }}
+              onHealthChange={setRemoteHealth}
             />
           </div>
         </div>
