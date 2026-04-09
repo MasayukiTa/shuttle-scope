@@ -97,7 +97,7 @@ function SessionBadge({ sessionCode, role }: { sessionCode: string; role: string
 
 // ─── メインコンポーネント ────────────────────────────────────────────────────
 
-const MAX_RECONNECT = 3
+const MAX_RECONNECT = 10
 const RECONNECT_DELAY_MS = 5_000
 const DEVICE_NAME_KEY = 'ss_device_name'
 
@@ -421,6 +421,28 @@ export function CameraSenderPage() {
     }))
     setSenderState('state_a')
   }, [participantId, stopRttPolling])
+
+  // ─── Page Visibility API（iOS バックグラウンド復帰対応） ────────────────────
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return
+      // フォアグラウンド復帰時に WS が切断されていたら再接続を試みる
+      const st = senderStateRef.current
+      if (
+        (st === 'state_a' || st === 'state_b' || st === 'state_c') &&
+        wsRef.current === null &&
+        savedCodeRef.current &&
+        savedPidRef.current !== null
+      ) {
+        reconnectCountRef.current = 0
+        setReconnectCount(0)
+        setSenderState('connecting')
+        connectWs(savedCodeRef.current, savedPidRef.current)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [connectWs])
 
   // アンマウント時クリーンアップ
   useEffect(() => {

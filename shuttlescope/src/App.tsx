@@ -13,6 +13,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
 import { CameraSenderPage } from '@/pages/CameraSenderPage'
+import { ViewerPage } from '@/pages/ViewerPage'
 import { PredictionPage } from '@/pages/PredictionPage'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -268,6 +269,9 @@ function App() {
             {/* LAN カメラ送信ページ（iOS/タブレット向け、サイドバーなし） */}
             <Route path="/camera/:sessionCode" element={<CameraSenderPage />} />
             <Route path="/camera" element={<CameraSenderPage />} />
+            {/* リモートビューワーページ（PC / タブレット向け、サイドバーなし） */}
+            <Route path="/viewer/:sessionCode" element={<ViewerPage />} />
+            <Route path="/viewer" element={<ViewerPage />} />
             {/* 通常レイアウト */}
             <Route path="/*" element={<MainLayout />} />
           </Routes>
