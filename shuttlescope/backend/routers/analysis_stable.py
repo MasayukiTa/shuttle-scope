@@ -1828,3 +1828,177 @@ def get_received_vulnerability(
         "data": {"zones": zones_data, "danger_zones": danger_zones},
         "meta": {"sample_size": sample_size, "confidence": confidence},
     }
+
+
+# ---------------------------------------------------------------------------
+# R-004b: 有効配球マップ ゾーン詳細
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/effective_distribution_map/zone_detail")
+def get_effective_distribution_map_zone_detail(
+    player_id: int,
+    zone: str,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """R-004b: 有効配球マップ — 指定ゾーンへ配球したストロークの詳細（ショット種別・打点分布）"""
+    empty = {
+        "success": True,
+        "data": {"zone": zone, "total_count": 0, "win_count": 0, "win_rate": None, "top_shot_types": [], "hit_zones": []},
+        "meta": {"sample_size": 0},
+    }
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    if not matches:
+        return empty
+
+    match_ids = [m.id for m in matches]
+    role_by_match: dict[int, str] = {m.id: _player_role_in_match(m, player_id) for m in matches}
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
+    set_ids = [s.id for s in sets]
+    if not set_ids:
+        return empty
+
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+    won_rally_ids: set[int] = set()
+    rally_to_role: dict[int, str] = {}
+    for rally in rallies:
+        mid = set_to_match[rally.set_id]
+        role = role_by_match[mid]
+        rally_to_role[rally.id] = role
+        if rally.winner == role:
+            won_rally_ids.add(rally.id)
+
+    all_rally_ids = [r.id for r in rallies]
+    strokes = db.query(Stroke).filter(
+        Stroke.rally_id.in_(all_rally_ids),
+        Stroke.land_zone == zone,
+    ).all()
+
+    # 対象プレイヤーのストロークのみ
+    player_strokes = [s for s in strokes if rally_to_role.get(s.rally_id) and s.player == rally_to_role[s.rally_id]]
+    total_count = len(player_strokes)
+    if total_count == 0:
+        return empty
+
+    win_count = sum(1 for s in player_strokes if s.rally_id in won_rally_ids)
+    win_rate = round(win_count / total_count, 3)
+
+    shot_type_counts: dict[str, int] = defaultdict(int)
+    hit_zone_counts: dict[str, int] = defaultdict(int)
+    for s in player_strokes:
+        shot_type_counts[s.shot_type] += 1
+        if s.hit_zone:
+            hit_zone_counts[s.hit_zone] += 1
+
+    top_shot_types = sorted(
+        [{"shot_type": k, "count": v} for k, v in shot_type_counts.items()],
+        key=lambda x: -x["count"],
+    )[:6]
+    hit_zones = sorted(
+        [{"zone": k, "count": v} for k, v in hit_zone_counts.items()],
+        key=lambda x: -x["count"],
+    )[:6]
+
+    return {
+        "success": True,
+        "data": {
+            "zone": zone,
+            "total_count": total_count,
+            "win_count": win_count,
+            "win_rate": win_rate,
+            "top_shot_types": top_shot_types,
+            "hit_zones": hit_zones,
+        },
+        "meta": {"sample_size": total_count},
+    }
+
+
+# ---------------------------------------------------------------------------
+# R-005b: 被打球弱点マップ ゾーン詳細
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/received_vulnerability/zone_detail")
+def get_received_vulnerability_zone_detail(
+    player_id: int,
+    zone: str,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """R-005b: 被打球弱点マップ — 指定ゾーンへの相手配球ストロークの詳細（ショット種別・打点分布）"""
+    empty = {
+        "success": True,
+        "data": {"zone": zone, "total_count": 0, "loss_count": 0, "loss_rate": None, "top_shot_types": [], "hit_zones": []},
+        "meta": {"sample_size": 0},
+    }
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    if not matches:
+        return empty
+
+    match_ids = [m.id for m in matches]
+    role_by_match: dict[int, str] = {m.id: _player_role_in_match(m, player_id) for m in matches}
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
+    set_ids = [s.id for s in sets]
+    if not set_ids:
+        return empty
+
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+    lost_rally_ids: set[int] = set()
+    rally_to_role: dict[int, str] = {}
+    for rally in rallies:
+        mid = set_to_match[rally.set_id]
+        role = role_by_match[mid]
+        rally_to_role[rally.id] = role
+        if rally.winner != role:
+            lost_rally_ids.add(rally.id)
+
+    all_rally_ids = [r.id for r in rallies]
+    strokes = db.query(Stroke).filter(
+        Stroke.rally_id.in_(all_rally_ids),
+        Stroke.land_zone == zone,
+    ).all()
+
+    # 相手（opponent）のストロークのみ
+    opp_strokes = [s for s in strokes if rally_to_role.get(s.rally_id) and s.player != rally_to_role[s.rally_id]]
+    total_count = len(opp_strokes)
+    if total_count == 0:
+        return empty
+
+    loss_count = sum(1 for s in opp_strokes if s.rally_id in lost_rally_ids)
+    loss_rate = round(loss_count / total_count, 3)
+
+    shot_type_counts: dict[str, int] = defaultdict(int)
+    hit_zone_counts: dict[str, int] = defaultdict(int)
+    for s in opp_strokes:
+        shot_type_counts[s.shot_type] += 1
+        if s.hit_zone:
+            hit_zone_counts[s.hit_zone] += 1
+
+    top_shot_types = sorted(
+        [{"shot_type": k, "count": v} for k, v in shot_type_counts.items()],
+        key=lambda x: -x["count"],
+    )[:6]
+    hit_zones = sorted(
+        [{"zone": k, "count": v} for k, v in hit_zone_counts.items()],
+        key=lambda x: -x["count"],
+    )[:6]
+
+    return {
+        "success": True,
+        "data": {
+            "zone": zone,
+            "total_count": total_count,
+            "loss_count": loss_count,
+            "loss_rate": loss_rate,
+            "top_shot_types": top_shot_types,
+            "hit_zones": hit_zones,
+        },
+        "meta": {"sample_size": total_count},
+    }

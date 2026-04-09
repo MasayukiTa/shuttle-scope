@@ -65,7 +65,13 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
       <ErrorBoundary>
         <div className={`${card} rounded-lg p-4`}>
           <p className={`text-xs font-semibold mb-2 ${textMuted}`}>{t('analysis.growth.win_rate_label')}</p>
-          <GrowthTimeline playerId={playerId} metric="win_rate" />
+          <GrowthTimeline
+            playerId={playerId}
+            playerName={sortedPlayers.find((p) => p.id === playerId)?.name}
+            metric="win_rate"
+            partnerPlayerId={pairMode ? partnerPlayerId : null}
+            partnerName={sortedPlayers.find((p) => p.id === partnerPlayerId)?.name}
+          />
         </div>
       </ErrorBoundary>
 
@@ -73,7 +79,13 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
       <ErrorBoundary>
         <div className={`${card} rounded-lg p-4`}>
           <p className={`text-xs font-semibold mb-2 ${textMuted}`}>{t('analysis.growth.serve_win_rate_label')}</p>
-          <GrowthTimeline playerId={playerId} metric="serve_win_rate" />
+          <GrowthTimeline
+            playerId={playerId}
+            playerName={sortedPlayers.find((p) => p.id === playerId)?.name}
+            metric="serve_win_rate"
+            partnerPlayerId={pairMode ? partnerPlayerId : null}
+            partnerName={sortedPlayers.find((p) => p.id === partnerPlayerId)?.name}
+          />
         </div>
       </ErrorBoundary>
 

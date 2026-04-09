@@ -17,6 +17,7 @@ import { DashboardGrowthPage } from './DashboardGrowthPage'
 import { DashboardAdvancedPage } from './DashboardAdvancedPage'
 import { DashboardResearchPage } from './DashboardResearchPage'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -277,6 +278,13 @@ export function DashboardShell() {
                 className={`border text-xs rounded px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
                 value={filterDateTo ?? ''}
                 onChange={(e) => setFilterDateTo(e.target.value || null)}
+              />
+              <DateRangeSlider
+                from={filterDateFrom}
+                to={filterDateTo}
+                densityDates={matches.map(m => m.date).filter(Boolean) as string[]}
+                onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t) }}
+                isLight={isLight}
               />
               {(filterResult !== 'all' || filterLevel || filterDateFrom || filterDateTo) && (
                 <button

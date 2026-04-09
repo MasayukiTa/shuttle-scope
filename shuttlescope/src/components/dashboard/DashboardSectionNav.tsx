@@ -1,5 +1,5 @@
 // Advanced ページ内セクション切替ナビ
-import { clsx } from 'clsx'
+import { useCardTheme } from '@/hooks/useCardTheme'
 
 export type AdvancedSection = 'shot' | 'rally' | 'transition' | 'spatial' | 'temporal' | 'opponent' | 'doubles'
 
@@ -19,18 +19,21 @@ interface DashboardSectionNavProps {
 }
 
 export function DashboardSectionNav({ active, onChange }: DashboardSectionNavProps) {
+  const { isLight } = useCardTheme()
   return (
     <div className="flex gap-1 flex-wrap">
       {SECTIONS.map(({ key, label }) => (
         <button
           key={key}
           onClick={() => onChange(key)}
-          className={clsx(
+          className={[
             'px-3 py-1 rounded text-xs font-medium transition-colors',
             active === key
               ? 'bg-gray-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-          )}
+              : isLight
+              ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700',
+          ].join(' ')}
         >
           {label}
         </button>

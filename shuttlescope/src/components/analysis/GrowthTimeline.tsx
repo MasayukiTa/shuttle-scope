@@ -1,4 +1,5 @@
 // Phase 2: 成長タイムライン（試合軸×指標のLineChart + 移動平均）
+// partnerPlayerId を指定するとペア比較モード（2ライン表示）
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -13,8 +14,12 @@ type Metric = 'win_rate' | 'avg_rally_length' | 'serve_win_rate'
 
 interface GrowthTimelineProps {
   playerId: number
+  playerName?: string
   metric?: Metric
   windowSize?: number
+  /** 指定するとペア比較モード（2ライン）になる */
+  partnerPlayerId?: number | null
+  partnerName?: string
 }
 
 interface TimelinePoint {
@@ -22,9 +27,6 @@ interface TimelinePoint {
   date: string
   value: number
   moving_avg: number | null
-  weighted_moving_avg?: number | null
-  strength_weight?: number
-  opponent_id?: number
 }
 
 interface GrowthTimelineResponse {
@@ -39,10 +41,10 @@ interface GrowthTimelineResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-const METRIC_CONFIG: Record<Metric, { label: string; color: string; unit: string; domain: [number | 'auto', number | 'auto'] }> = {
-  win_rate:         { label: '勝率',         color: '#3b82f6', unit: '%',  domain: [0, 1] },
-  serve_win_rate:   { label: 'サーブ勝率',   color: '#06b6d4', unit: '%',  domain: [0, 1] },
-  avg_rally_length: { label: '平均ラリー長', color: '#8b5cf6', unit: '球', domain: ['auto', 'auto'] },
+const METRIC_CONFIG: Record<Metric, { label: string; colorA: string; colorB: string; unit: string; domain: [number | 'auto', number | 'auto'] }> = {
+  win_rate:         { label: '勝率',         colorA: '#3b82f6', colorB: '#f97316', unit: '%',  domain: [0, 1] },
+  serve_win_rate:   { label: 'サーブ勝率',   colorA: '#06b6d4', colorB: '#a855f7', unit: '%',  domain: [0, 1] },
+  avg_rally_length: { label: '平均ラリー長', colorA: '#8b5cf6', colorB: '#10b981', unit: '球', domain: ['auto', 'auto'] },
 }
 
 const TREND_LABELS = {
@@ -51,7 +53,6 @@ const TREND_LABELS = {
   declining: '悪化傾向',
   pending:   '判定保留',
 }
-
 const TREND_COLORS = {
   improving: '#3b82f6',
   stable:    '#6b7280',
@@ -59,10 +60,30 @@ const TREND_COLORS = {
   pending:   '#eab308',
 }
 
-export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }: GrowthTimelineProps) {
+// ISO 日付を軸ラベル用に変換（年変わり目は '25 形式）
+function toChartName(date: string, prevDate: string | null): { name: string; isYearBoundary: boolean } {
+  const year = date.slice(0, 4)
+  const prevYear = prevDate ? prevDate.slice(0, 4) : year
+  const isYearBoundary = !!prevDate && year !== prevYear
+  return {
+    name: isYearBoundary ? `'${year.slice(2)}` : date.slice(5),
+    isYearBoundary,
+  }
+}
+
+export function GrowthTimeline({
+  playerId,
+  playerName,
+  metric = 'win_rate',
+  windowSize = 3,
+  partnerPlayerId,
+  partnerName,
+}: GrowthTimelineProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  const isPairMode = !!partnerPlayerId
 
+  // メインプレイヤーのクエリ
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-growth-timeline', playerId, metric, windowSize],
     queryFn: () =>
@@ -74,7 +95,19 @@ export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }
     enabled: !!playerId,
   })
 
-  if (isLoading) {
+  // 相方のクエリ（ペアモード時のみ）
+  const { data: partnerResp, isLoading: partnerLoading } = useQuery({
+    queryKey: ['analysis-growth-timeline', partnerPlayerId, metric, windowSize],
+    queryFn: () =>
+      apiGet<GrowthTimelineResponse>('/analysis/growth_timeline', {
+        player_id: partnerPlayerId!,
+        metric,
+        window_size: windowSize,
+      }),
+    enabled: isPairMode && !!partnerPlayerId,
+  })
+
+  if (isLoading || (isPairMode && partnerLoading)) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
@@ -90,24 +123,51 @@ export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }
   const cfg = METRIC_CONFIG[metric]
   const isRate = metric !== 'avg_rally_length'
 
-  // チャートデータ整形（年変わり目を検出してラベルに反映）
-  const chartData = points.map((p, i) => {
-    const year = p.date.slice(0, 4)
-    const prevYear = i > 0 ? points[i - 1].date.slice(0, 4) : year
-    const isYearBoundary = i > 0 && year !== prevYear
-    const displayName = isYearBoundary
-      ? `'${year.slice(2)}`   // 年変わり目: '25 形式
-      : p.date.slice(5)       // 通常: MM-DD
-    return {
-      name: displayName,
-      isYearBoundary,
-      value: isRate ? parseFloat((p.value * 100).toFixed(1)) : p.value,
-      moving_avg: p.moving_avg != null ? (isRate ? parseFloat((p.moving_avg * 100).toFixed(1)) : p.moving_avg) : null,
-    }
-  })
+  // ─── ペアモード: 日付をキーにして2プレイヤーのデータをマージ ─────────────
 
-  // 年境界の name 一覧（ReferenceLine 描画用）
-  const yearBoundaryNames = chartData.filter((d) => d.isYearBoundary).map((d) => d.name)
+  let chartData: Record<string, any>[]
+  let yearBoundaryNames: string[]
+
+  if (isPairMode && partnerResp) {
+    const partnerPoints = partnerResp.data?.points ?? []
+
+    // 全日付を union して時系列順にソート
+    const allDates = Array.from(
+      new Set([...points.map((p) => p.date), ...partnerPoints.map((p) => p.date)])
+    ).sort()
+
+    const mapA = new Map(points.map((p) => [p.date, p]))
+    const mapB = new Map(partnerPoints.map((p) => [p.date, p]))
+
+    chartData = allDates.map((date, i) => {
+      const prevDate = i > 0 ? allDates[i - 1] : null
+      const { name, isYearBoundary } = toChartName(date, prevDate)
+      const pA = mapA.get(date)
+      const pB = mapB.get(date)
+      return {
+        name,
+        isYearBoundary,
+        valueA: pA ? (isRate ? parseFloat((pA.value * 100).toFixed(1)) : pA.value) : null,
+        movingAvgA: pA?.moving_avg != null ? (isRate ? parseFloat((pA.moving_avg * 100).toFixed(1)) : pA.moving_avg) : null,
+        valueB: pB ? (isRate ? parseFloat((pB.value * 100).toFixed(1)) : pB.value) : null,
+        movingAvgB: pB?.moving_avg != null ? (isRate ? parseFloat((pB.moving_avg * 100).toFixed(1)) : pB.moving_avg) : null,
+      }
+    })
+    yearBoundaryNames = chartData.filter((d) => d.isYearBoundary).map((d) => d.name)
+  } else {
+    // 通常モード（従来通り）
+    chartData = points.map((p, i) => {
+      const prevDate = i > 0 ? points[i - 1].date : null
+      const { name, isYearBoundary } = toChartName(p.date, prevDate)
+      return {
+        name,
+        isYearBoundary,
+        value: isRate ? parseFloat((p.value * 100).toFixed(1)) : p.value,
+        moving_avg: p.moving_avg != null ? (isRate ? parseFloat((p.moving_avg * 100).toFixed(1)) : p.moving_avg) : null,
+      }
+    })
+    yearBoundaryNames = chartData.filter((d) => d.isYearBoundary).map((d) => d.name)
+  }
 
   const trendColor = TREND_COLORS[trend] ?? TREND_COLORS.pending
   const axisTick = isLight ? '#64748b' : '#9ca3af'
@@ -121,21 +181,38 @@ export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }
     fontSize: '11px',
   }
 
+  const labelA = playerName ?? 'A'
+  const labelB = partnerName ?? 'B'
+
   return (
     <div className="space-y-2">
       <ConfidenceBadge sampleSize={sampleSize} />
 
-      {/* トレンドラベル */}
+      {/* トレンドラベル（メインプレイヤー） */}
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-400">{cfg.label}</span>
-        <span className="text-xs font-semibold" style={{ color: trendColor }}>
-          {TREND_LABELS[trend]}
-          {trend !== 'pending' && (
-            <span className="ml-1 font-mono">
-              ({trendDelta >= 0 ? '+' : ''}{isRate ? (trendDelta * 100).toFixed(1) : trendDelta.toFixed(2)}{cfg.unit})
+        {!isPairMode && (
+          <span className="text-xs font-semibold" style={{ color: trendColor }}>
+            {TREND_LABELS[trend]}
+            {trend !== 'pending' && (
+              <span className="ml-1 font-mono">
+                ({trendDelta >= 0 ? '+' : ''}{isRate ? (trendDelta * 100).toFixed(1) : trendDelta.toFixed(2)}{cfg.unit})
+              </span>
+            )}
+          </span>
+        )}
+        {isPairMode && (
+          <div className="flex items-center gap-3 text-[10px]">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-0.5 rounded" style={{ backgroundColor: cfg.colorA }} />
+              {labelA}
             </span>
-          )}
-        </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-0.5 rounded" style={{ backgroundColor: cfg.colorB }} />
+              {labelB}
+            </span>
+          </div>
+        )}
       </div>
 
       <ResponsiveContainer width="100%" height={180}>
@@ -150,12 +227,15 @@ export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }
           />
           <Tooltip
             contentStyle={tooltipStyle}
-            formatter={(v: number, name: string) => [
-              `${v}${cfg.unit}`,
-              name === 'value' ? cfg.label : `移動平均(${windowSize}試合)`,
-            ]}
+            formatter={(v: number, name: string) => {
+              if (name === 'valueA') return [`${v}${cfg.unit}`, labelA]
+              if (name === 'movingAvgA') return [`${v}${cfg.unit}`, `${labelA} 移動平均`]
+              if (name === 'valueB') return [`${v}${cfg.unit}`, labelB]
+              if (name === 'movingAvgB') return [`${v}${cfg.unit}`, `${labelB} 移動平均`]
+              if (name === 'value') return [`${v}${cfg.unit}`, cfg.label]
+              return [`${v}${cfg.unit}`, `移動平均(${windowSize}試合)`]
+            }}
           />
-          {/* 年境界の縦線 */}
           {yearBoundaryNames.map((name) => (
             <ReferenceLine
               key={name}
@@ -166,24 +246,28 @@ export function GrowthTimeline({ playerId, metric = 'win_rate', windowSize = 3 }
               label={{ value: name, position: 'insideTopRight', fontSize: 8, fill: axisTick }}
             />
           ))}
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke={cfg.color}
-            strokeWidth={1.5}
-            dot={{ r: 3, fill: cfg.color }}
-            name="value"
-          />
-          <Line
-            type="monotone"
-            dataKey="moving_avg"
-            stroke={cfg.color}
-            strokeWidth={2.5}
-            strokeDasharray="4 2"
-            dot={false}
-            connectNulls
-            name="moving_avg"
-          />
+
+          {isPairMode ? (
+            <>
+              {/* プレイヤーA */}
+              <Line type="monotone" dataKey="valueA" stroke={cfg.colorA} strokeWidth={1.5}
+                dot={{ r: 3, fill: cfg.colorA }} connectNulls name="valueA" />
+              <Line type="monotone" dataKey="movingAvgA" stroke={cfg.colorA} strokeWidth={2.5}
+                strokeDasharray="4 2" dot={false} connectNulls name="movingAvgA" />
+              {/* プレイヤーB（相方） */}
+              <Line type="monotone" dataKey="valueB" stroke={cfg.colorB} strokeWidth={1.5}
+                dot={{ r: 3, fill: cfg.colorB }} connectNulls name="valueB" />
+              <Line type="monotone" dataKey="movingAvgB" stroke={cfg.colorB} strokeWidth={2.5}
+                strokeDasharray="4 2" dot={false} connectNulls name="movingAvgB" />
+            </>
+          ) : (
+            <>
+              <Line type="monotone" dataKey="value" stroke={cfg.colorA} strokeWidth={1.5}
+                dot={{ r: 3, fill: cfg.colorA }} name="value" />
+              <Line type="monotone" dataKey="moving_avg" stroke={cfg.colorA} strokeWidth={2.5}
+                strokeDasharray="4 2" dot={false} connectNulls name="moving_avg" />
+            </>
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>

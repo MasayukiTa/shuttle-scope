@@ -94,7 +94,10 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      {/* セクションナビ: スクロールしても追従するよう sticky */}
+      <div className={`sticky top-0 z-20 -mx-6 px-6 py-2 flex items-center justify-between ${
+        isLight ? 'bg-white/95 border-b border-gray-200' : 'bg-gray-900/95 border-b border-gray-700/60'
+      } backdrop-blur-sm`}>
         <DashboardSectionNav active={section} onChange={setSection} />
         <EvidenceBadge tier="advanced" evidenceLevel="practical_candidate" className="shrink-0" />
       </div>
