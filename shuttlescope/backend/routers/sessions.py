@@ -20,7 +20,7 @@ import random
 import secrets
 import socket
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -321,11 +321,38 @@ def end_session(code: str, db: Session = Depends(get_db)):
     return {"success": True}
 
 
+# ─── ステールカメラ自動解放 ───────────────────────────────────────────────────
+
+STALE_CAMERA_THRESHOLD_SECONDS = 90  # ハートビート 3 回分（30s × 3）
+
+
+def _release_stale_active_cameras(session_id: int, db: Session) -> int:
+    """last_heartbeat が閾値を超えた active_camera を camera_candidate に降格。
+    降格した件数を返す。"""
+    threshold = datetime.utcnow() - timedelta(seconds=STALE_CAMERA_THRESHOLD_SECONDS)
+    stale = (
+        db.query(SessionParticipant)
+        .filter(
+            SessionParticipant.session_id == session_id,
+            SessionParticipant.connection_role == "active_camera",
+            SessionParticipant.last_heartbeat < threshold,
+        )
+        .all()
+    )
+    for p in stale:
+        p.connection_role = "camera_candidate"
+        p.connection_state = "idle"
+    if stale:
+        db.commit()
+    return len(stale)
+
+
 # ─── デバイス管理エンドポイント ──────────────────────────────────────────────
 
 @router.get("/sessions/{code}/devices")
 def list_devices(code: str, db: Session = Depends(get_db)):
-    """接続デバイス（参加者）一覧を返す"""
+    """接続デバイス（参加者）一覧を返す。
+    取得前にステールな active_camera を自動降格する。"""
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
@@ -333,6 +360,8 @@ def list_devices(code: str, db: Session = Depends(get_db)):
     )
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
+
+    _release_stale_active_cameras(session.id, db)
 
     participants = (
         db.query(SessionParticipant)
@@ -472,11 +501,13 @@ def purge_disconnected(code: str, db: Session = Depends(get_db)):
 
 @router.post("/sessions/{code}/devices/{participant_id}/heartbeat")
 def device_heartbeat(code: str, participant_id: int, db: Session = Depends(get_db)):
-    """デバイスのハートビートを更新（30 秒ごとに呼ぶ）"""
+    """デバイスのハートビートを更新（30 秒ごとに呼ぶ）。
+    同時に同セッション内のステール active_camera を自動降格する。"""
     participant = _get_participant(code, participant_id, db)
     participant.last_heartbeat = datetime.utcnow()
     participant.is_connected = True
     db.commit()
+    _release_stale_active_cameras(participant.session_id, db)
     return {"success": True}
 
 

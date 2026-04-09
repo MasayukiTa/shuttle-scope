@@ -107,12 +107,45 @@ function useWebRTCReceiver(sessionCode: string) {
   const streamRef = useRef<MediaStream | null>(null)
   const [activeParticipantId, setActiveParticipantId] = useState<string | null>(null)
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState | null>(null)
+  const [iceGatheringState, setIceGatheringState] = useState<RTCIceGatheringState | null>(null)
+  const [wsConnected, setWsConnected] = useState(false)
+  const [turnInUse, setTurnInUse] = useState<boolean | null>(null)
+  const statsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // ICE サーバー設定（バックエンドから取得、TURN 含む）
   const iceServersRef = useRef<RTCIceServer[]>([{ urls: 'stun:stun.l.google.com:19302' }])
   // viewer id → pc map (PC → viewers relay)
   const viewerPCsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
 
   useEffect(() => { streamRef.current = stream }, [stream])
+
+  // TURN relay 検出: 選択済み candidate pair が relay 型かチェック
+  const startStatsPolling = useCallback((pc: RTCPeerConnection) => {
+    statsTimerRef.current = setInterval(async () => {
+      try {
+        const stats = await pc.getStats()
+        let relayInUse = false
+        stats.forEach((report) => {
+          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+            const localId = report.localCandidateId
+            stats.forEach((r) => {
+              if (r.id === localId && r.type === 'local-candidate' && r.candidateType === 'relay') {
+                relayInUse = true
+              }
+            })
+          }
+        })
+        setTurnInUse(relayInUse)
+      } catch { /* ignore */ }
+    }, 5000)
+  }, [])
+
+  const stopStatsPolling = useCallback(() => {
+    if (statsTimerRef.current) {
+      clearInterval(statsTimerRef.current)
+      statsTimerRef.current = null
+    }
+    setTurnInUse(null)
+  }, [])
 
   const sendMessage = useCallback((msg: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -145,17 +178,26 @@ function useWebRTCReceiver(sessionCode: string) {
     } catch { return }
     wsRef.current = ws
 
+    ws.onopen = () => setWsConnected(true)
+    ws.onclose = () => { wsRef.current = null; setWsConnected(false) }
+
     ws.onmessage = async (event) => {
       try {
         const msg = JSON.parse(event.data)
 
         // ─ iOS → PC WebRTC ─
         if (msg.type === 'webrtc_offer') {
+          stopStatsPolling()
           const pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
           pcRef.current = pc
           setActiveParticipantId(String(msg.participant_id))
           setConnectionState(pc.connectionState)
-          pc.onconnectionstatechange = () => setConnectionState(pc.connectionState)
+          setIceGatheringState(pc.iceGatheringState)
+          pc.onicegatheringstatechange = () => setIceGatheringState(pc.iceGatheringState)
+          pc.onconnectionstatechange = () => {
+            setConnectionState(pc.connectionState)
+            if (pc.connectionState === 'connected') startStatsPolling(pc)
+          }
           pc.ontrack = (e) => {
             if (e.streams[0]) setStream(e.streams[0])
           }
@@ -237,31 +279,34 @@ function useWebRTCReceiver(sessionCode: string) {
           viewerPCsRef.current.delete(viewerId)
 
         } else if (msg.type === 'camera_stop') {
+          stopStatsPolling()
           setStream(null)
           setActiveParticipantId(null)
           setConnectionState(null)
+          setIceGatheringState(null)
           pcRef.current?.close()
           pcRef.current = null
         }
       } catch { /* ignore */ }
     }
-    ws.onclose = () => { wsRef.current = null }
-  }, [sessionCode])  // stream を deps から除去: streamRef で最新値を参照
+  }, [sessionCode, startStatsPolling, stopStatsPolling])  // stream を deps から除去: streamRef で最新値を参照
 
   const requestCamera = useCallback((participantId: number) => {
     wsRef.current?.send(JSON.stringify({ type: 'camera_request', target_participant_id: participantId }))
   }, [])
 
   const disconnect = useCallback(() => {
+    stopStatsPolling()
     pcRef.current?.close(); pcRef.current = null
     viewerPCsRef.current.forEach((vpc) => vpc.close())
     viewerPCsRef.current.clear()
     wsRef.current?.close(); wsRef.current = null
     setStream(null); setActiveParticipantId(null); setConnectionState(null)
-  }, [])
+    setIceGatheringState(null); setWsConnected(false)
+  }, [stopStatsPolling])
 
   useEffect(() => () => { disconnect() }, [disconnect])
-  return { stream, activeParticipantId, connectionState, connect, requestCamera, disconnect, sendMessage }
+  return { stream, activeParticipantId, connectionState, iceGatheringState, wsConnected, turnInUse, connect, requestCamera, disconnect, sendMessage }
 }
 
 // ─── ローカルカメラ列挙 ───────────────────────────────────────────────────────
@@ -295,7 +340,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
 
-  const { stream: remoteStream, activeParticipantId, connectionState, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
+  const { stream: remoteStream, activeParticipantId, connectionState, iceGatheringState, wsConnected, turnInUse, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
 
   useEffect(() => { connect() }, [connect])
   useEffect(() => {
@@ -428,35 +473,63 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         ))}
       </div>
 
-      {/* ─── WebRTC 接続状態 ── */}
-      {connectionState && !remoteStream && (
-        <div className={`mb-3 px-3 py-2 rounded text-xs flex items-center gap-2 ${
-          connectionState === 'connected' ? 'bg-green-900/20 text-green-400'
-          : connectionState === 'failed' ? 'bg-red-900/20 text-red-400'
-          : connectionState === 'disconnected' ? 'bg-amber-900/20 text-amber-400'
-          : 'bg-gray-700/50 text-gray-400'
-        }`}>
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+      {/* ─── リモート診断パネル ── */}
+      <div className={`mb-3 rounded-lg px-3 py-2 space-y-1 text-[10px] ${isLight ? 'bg-gray-50 border border-gray-200' : 'bg-gray-900/60 border border-gray-700'}`}>
+        <p className={`text-[9px] font-semibold uppercase tracking-wider mb-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>リモート診断</p>
+
+        {/* シグナリング (WS) */}
+        <div className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${wsConnected ? 'bg-green-400' : 'bg-gray-500'}`} />
+          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>シグナリング:</span>
+          <span className={wsConnected ? 'text-green-400' : 'text-gray-500'}>{wsConnected ? '接続中' : '未接続'}</span>
+        </div>
+
+        {/* P2P (WebRTC) */}
+        <div className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
             connectionState === 'connected' ? 'bg-green-400'
             : connectionState === 'failed' ? 'bg-red-400'
-            : connectionState === 'disconnected' ? 'bg-amber-400 animate-pulse'
-            : 'bg-gray-500 animate-pulse'
+            : connectionState === 'connecting' ? 'bg-amber-400 animate-pulse'
+            : 'bg-gray-500'
           }`} />
-          WebRTC: {connectionState}
+          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>映像 (WebRTC):</span>
+          <span className={
+            connectionState === 'connected' ? 'text-green-400'
+            : connectionState === 'failed' ? 'text-red-400'
+            : 'text-gray-400'
+          }>{connectionState ?? '待機中'}</span>
         </div>
-      )}
+
+        {/* ICE 収集状態 */}
+        {iceGatheringState && (
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-gray-500" />
+            <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>ICE 収集:</span>
+            <span className="text-gray-400">{iceGatheringState}</span>
+          </div>
+        )}
+
+        {/* TURN 使用状況 */}
+        <div className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${turnInUse === true ? 'bg-blue-400' : 'bg-gray-500'}`} />
+          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>TURN リレー:</span>
+          {turnInUse === null
+            ? <span className="text-gray-500">未接続</span>
+            : turnInUse
+              ? <span className="text-blue-400">使用中</span>
+              : <span className="text-gray-400">不使用（P2P直接）</span>
+          }
+        </div>
+      </div>
 
       {/* ─── リモートカメラ映像 ── */}
       {remoteStream && (
         <div className="mb-4 relative">
           <p className={`text-[10px] mb-1 ${subColor}`}>
             <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1 animate-pulse" />
-            iOS カメラ受信中（参加者 #{activeParticipantId}）
-            {connectionState && (
-              <span className={`ml-2 ${connectionState === 'connected' ? 'text-green-400' : 'text-amber-400'}`}>
-                [{connectionState}]
-              </span>
-            )}
+            リモート受信中（参加者 #{activeParticipantId}）
+            {turnInUse === true && <span className="ml-2 text-blue-400">TURN</span>}
+            {turnInUse === false && <span className="ml-2 text-gray-500">P2P</span>}
           </p>
           <div className="relative">
             <video
@@ -539,6 +612,13 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
                         </span>
                         <RoleBadge role={p.connection_role} />
                         <ApprovalBadge status={p.approval_status} />
+                        {/* リモート/ローカル判定 */}
+                        {(p.device_type === 'iphone' || p.device_type === 'ipad') && (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-purple-900/40 text-purple-400">リモート</span>
+                        )}
+                        {p.device_type === 'pc' && (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-gray-700/60 text-gray-500">ローカル</span>
+                        )}
                       </div>
                     </div>
                     <button
@@ -551,9 +631,20 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
                   </div>
                   <div className="ml-6 mt-0.5">
                     <div className={`flex items-center gap-2 text-[10px] ${subColor}`}>
+                      {/* シグナリング状態 */}
+                      <span className={`flex items-center gap-0.5 ${p.is_connected ? 'text-green-400' : 'text-gray-500'}`}>
+                        <span className={`w-1 h-1 rounded-full ${p.is_connected ? 'bg-green-400' : 'bg-gray-600'}`} />
+                        {p.is_connected ? '接続' : '切断'}
+                      </span>
+                      {/* メディア状態 */}
                       {p.connection_state === 'sending_video' && (
                         <span className="text-red-400 flex items-center gap-0.5">
                           <Video size={10} />送信中
+                        </span>
+                      )}
+                      {p.connection_state === 'receiving_video' && (
+                        <span className="text-blue-400 flex items-center gap-0.5">
+                          <Video size={10} />受信中
                         </span>
                       )}
                       {p.device_class && <span>{p.device_class}</span>}
