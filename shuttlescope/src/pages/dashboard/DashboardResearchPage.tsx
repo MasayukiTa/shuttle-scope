@@ -15,6 +15,7 @@ import { BayesMatchupCard } from '@/components/analysis/BayesMatchupCard'
 import { OpponentPolicyCard } from '@/components/analysis/OpponentPolicyCard'
 import { DoublesRoleCard } from '@/components/analysis/DoublesRoleCard'
 import { ShotInfluenceV2Card } from '@/components/analysis/ShotInfluenceV2Card'
+import { PromotionStatusCard } from '@/components/analysis/PromotionStatusCard'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 
 interface Props {
@@ -194,6 +195,16 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
           fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
         >
           <ShotInfluenceV2Card playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── 昇格ワークフロー ── */}
+      <ErrorBoundary>
+        <RoleGuard
+          allowedRoles={['analyst']}
+          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">昇格ワークフローはアナリスト向けです</div>}
+        >
+          <PromotionStatusCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
     </div>

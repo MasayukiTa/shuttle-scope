@@ -29,7 +29,7 @@ from backend.analysis.analysis_meta import EVIDENCE_META
 from backend.analysis.promotion_rules import all_criteria_as_dict, DEMOTION_CONDITIONS
 from backend.analysis.epv_state_model import compute_rally_state_epv, compute_epv_state_map
 from backend.analysis.q_value_model import compute_q_values, summarize_best_actions
-from backend.analysis.counterfactual_v2 import compute_counterfactual_v2, compute_counterfactual_cf2
+from backend.analysis.counterfactual_v2 import compute_counterfactual_v2, compute_counterfactual_cf2, compute_counterfactual_cf3
 from backend.analysis.hazard_fatigue import compute_hazard_model
 from backend.analysis.bayes_matchup import compute_bayes_matchup
 from backend.analysis.opponent_policy_engine import compute_opponent_policy
@@ -483,6 +483,67 @@ def get_counterfactual_cf2(
 
 
 # ---------------------------------------------------------------------------
+# CF-3: 対戦相手タイプ条件付き反事実推定
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/counterfactual_cf3")
+def get_counterfactual_cf3(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    from backend.analysis.bayes_matchup import compute_bayes_matchup
+
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    if not matches:
+        return {"success": True, "data": {"comparisons": [], "total_contexts": 0, "usable_contexts": 0, "cf_phase": "cf3"}, "meta": build_response_meta("counterfactual_v2", 0)}
+
+    match_ids = [m.id for m in matches]
+    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
+
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_num_map = {s.id: s.set_num for s in sets}
+    set_ids = [s.id for s in sets]
+
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rally_ids = [r.id for r in rallies]
+    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
+
+    # 対戦相手タイプをベイズ推定から取得
+    bayes_result = compute_bayes_matchup(matches, player_id)
+    opponent_type_by_opponent: dict = {
+        est["opponent_id"]: est["opponent_type"]
+        for est in bayes_result.get("opponent_estimates", [])
+        if "opponent_id" in est
+    }
+    # match_id → opponent_type マッピング
+    opponent_type_by_match: dict[int, str] = {}
+    for m in matches:
+        opp_id = None
+        if hasattr(m, 'player_a_id') and m.player_a_id == player_id:
+            opp_id = getattr(m, 'player_b_id', None)
+        elif hasattr(m, 'player_b_id') and m.player_b_id == player_id:
+            opp_id = getattr(m, 'player_a_id', None)
+        if opp_id is not None:
+            opponent_type_by_match[m.id] = opponent_type_by_opponent.get(opp_id, "all")
+
+    result_data = compute_counterfactual_cf3(
+        rallies=rallies,
+        strokes_by_rally=strokes_by_rally,
+        role_by_match=role_by_match,
+        set_to_match=set_to_match,
+        set_num_by_set=set_num_map,
+        opponent_type_by_match=opponent_type_by_match,
+    )
+    meta = build_response_meta("counterfactual_v2", len(rallies))
+    return {"success": True, "data": result_data, "meta": meta}
+
+
+# ---------------------------------------------------------------------------
 # Spine 4: ショット影響度 v2（状態条件付き）
 # ---------------------------------------------------------------------------
 
@@ -585,6 +646,145 @@ def get_promotion_rules():
         "success": True,
         "data": {
             "promotion_criteria": all_criteria_as_dict(),
+            "demotion_conditions": DEMOTION_CONDITIONS,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# メタデータ: 昇格評価（player_id ごとの現在状況）
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/meta/promotion_evaluation")
+def get_promotion_evaluation(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    各 analysis_type の現在の昇格評価を返す。
+    実際のサンプルサイズ (rally/match 数) を基準値と比較し、
+    各昇格チェックリスト項目の達成状況を概算で示す。
+    """
+    from backend.analysis.promotion_rules import PROMOTION_CRITERIA, DEMOTION_CONDITIONS, get_criteria_for
+    from backend.analysis.analysis_tiers import get_tier
+
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    match_ids = [m.id for m in matches]
+    n_matches = len(matches)
+
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all() if match_ids else []
+    set_ids = [s.id for s in sets]
+
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    n_rallies = len(rallies)
+
+    # ダブルス試合数
+    doubles_matches = [m for m in matches if getattr(m, 'match_type', None) in ('doubles', 'mixed_doubles')]
+    n_doubles_matches = len(doubles_matches)
+
+    # 対戦相手数
+    opponents: set = set()
+    for m in matches:
+        if hasattr(m, 'player_a_id') and m.player_a_id != player_id:
+            opponents.add(m.player_a_id)
+        if hasattr(m, 'player_b_id') and m.player_b_id != player_id:
+            opponents.add(m.player_b_id)
+    n_opponents = len(opponents)
+
+    def _get_sample_count(analysis_type: str) -> int:
+        """analysis_type に適したサンプル数の代理値を返す。"""
+        match_based = {"bayes_matchup", "opponent_policy", "doubles_role"}
+        doubles_based = {"doubles_role"}
+        if analysis_type in doubles_based:
+            return n_doubles_matches
+        if analysis_type in match_based:
+            return n_matches
+        return n_rallies
+
+    evaluations = []
+    for crit in PROMOTION_CRITERIA:
+        sample_count = _get_sample_count(crit.analysis_type)
+        sample_met = sample_count >= crit.min_sample_size
+
+        # チェックリスト
+        checklist = [
+            {
+                "item": f"サンプル数 ≥ {crit.min_sample_size}",
+                "met": sample_met,
+                "current": sample_count,
+                "required": crit.min_sample_size,
+            },
+            {
+                "item": f"安定性要件: {crit.required_stability}",
+                "met": None,  # データなしでは判定不能
+                "current": None,
+                "required": crit.required_stability,
+            },
+        ]
+        if crit.ci_width_threshold is not None:
+            checklist.append({
+                "item": f"CI 幅 ≤ {crit.ci_width_threshold}",
+                "met": None,
+                "current": None,
+                "required": crit.ci_width_threshold,
+            })
+        if crit.calibration_required:
+            checklist.append({
+                "item": "校正品質確認済み",
+                "met": None,
+                "current": None,
+                "required": "required",
+            })
+        if crit.coach_usefulness_test_required:
+            checklist.append({
+                "item": "コーチ有用性テスト実施済み",
+                "met": None,
+                "current": None,
+                "required": "required",
+            })
+
+        met_count = sum(1 for c in checklist if c["met"] is True)
+        total_count = len(checklist)
+
+        # サンプル数が満たされていない場合は未準備
+        # その他は "requires_review" (手動確認が必要)
+        if not sample_met:
+            status = "insufficient_data"
+        elif met_count == total_count:
+            status = "promotion_ready"
+        else:
+            status = "requires_review"
+
+        evaluations.append({
+            "analysis_type": crit.analysis_type,
+            "from_tier": crit.from_tier,
+            "to_tier": crit.to_tier,
+            "current_tier": get_tier(crit.analysis_type),
+            "sample_count": sample_count,
+            "status": status,
+            "checklist": checklist,
+            "met_count": met_count,
+            "total_count": total_count,
+            "additional_notes": crit.additional_notes,
+        })
+
+    return {
+        "success": True,
+        "data": {
+            "evaluations": evaluations,
+            "summary": {
+                "n_rallies": n_rallies,
+                "n_matches": n_matches,
+                "n_opponents": n_opponents,
+                "n_doubles_matches": n_doubles_matches,
+                "promotion_ready_count": sum(1 for e in evaluations if e["status"] == "promotion_ready"),
+                "requires_review_count": sum(1 for e in evaluations if e["status"] == "requires_review"),
+                "insufficient_data_count": sum(1 for e in evaluations if e["status"] == "insufficient_data"),
+            },
             "demotion_conditions": DEMOTION_CONDITIONS,
         },
     }

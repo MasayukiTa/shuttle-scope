@@ -1,4 +1,4 @@
-"""shot_influence_v2.py — 状態条件付きショット影響度エンジン（Spine 4）
+"""shot_influence_v2.py — 状態条件付きショット影響度エンジン（Spine 4）+ Bootstrap CI
 
 Spine 4 の要件:
   - state_spec の RallyState を使って状態条件付きの影響度を計算する
@@ -15,8 +15,28 @@ Spine 4 の要件:
     influence_v2    = position_weight × attack_weight × quality_weight × state_credit_multiplier
 """
 from __future__ import annotations
+import random
 from dataclasses import dataclass, field
 from typing import Any
+
+BOOTSTRAP_N = 300  # CI 計算用リサンプル回数（速度とのトレードオフ）
+MIN_N_CI = 5       # CI を計算する最低サンプル数
+
+
+def _bootstrap_mean_ci(values: list[float], n_bootstrap: int = BOOTSTRAP_N) -> tuple[float, float]:
+    """list[float] のブートストラップ 95% CI を返す。"""
+    if len(values) < MIN_N_CI:
+        avg = sum(values) / len(values) if values else 0.0
+        return (round(avg * 0.8, 4), round(min(avg * 1.2, 1.0), 4))
+    n = len(values)
+    boot_means = []
+    for _ in range(n_bootstrap):
+        sample = random.choices(values, k=n)
+        boot_means.append(sum(sample) / n)
+    boot_means.sort()
+    lo = int(n_bootstrap * 0.025)
+    hi = int(n_bootstrap * 0.975)
+    return (round(boot_means[lo], 4), round(boot_means[hi], 4))
 
 from backend.analysis.state_spec import build_rally_state, RallyState
 from backend.analysis.epv_state_model import compute_rally_state_epv
@@ -189,10 +209,17 @@ def compute_shot_influence_v2(
             shot_type_scores[sr.shot_type].append(sr.influence_v2)
             state_shot_scores[rv.state_key][sr.shot_type].append(sr.influence_v2)
 
-    per_shot_type = {
-        st: round(sum(scores) / len(scores), 4)
-        for st, scores in sorted(shot_type_scores.items(), key=lambda x: -sum(x[1]) / len(x[1]))
-    }
+    # ショット種別ごとの平均影響度 + Bootstrap CI
+    per_shot_type = {}
+    for st, scores in sorted(shot_type_scores.items(), key=lambda x: -sum(x[1]) / len(x[1])):
+        avg = round(sum(scores) / len(scores), 4)
+        ci_low, ci_high = _bootstrap_mean_ci(scores)
+        per_shot_type[st] = {
+            "avg": avg,
+            "ci_low": ci_low,
+            "ci_high": ci_high,
+            "n": len(scores),
+        }
 
     # 状態別内訳
     state_breakdown = []
@@ -201,19 +228,28 @@ def compute_shot_influence_v2(
         state_rally_counts[rv.state_key] += 1
 
     for state_key, shot_map in state_shot_scores.items():
+        all_scores_for_state = [sc for scl in shot_map.values() for sc in scl]
+        avg_influence = round(sum(all_scores_for_state) / len(all_scores_for_state), 4) if all_scores_for_state else 0.0
+        ci_low, ci_high = _bootstrap_mean_ci(all_scores_for_state)
         top_shots = sorted(
             [
-                {"shot_type": st, "avg_influence": round(sum(sc) / len(sc), 4), "n": len(sc)}
+                {
+                    "shot_type": st,
+                    "avg_influence": round(sum(sc) / len(sc), 4),
+                    "ci_low": _bootstrap_mean_ci(sc)[0],
+                    "ci_high": _bootstrap_mean_ci(sc)[1],
+                    "n": len(sc),
+                }
                 for st, sc in shot_map.items()
             ],
             key=lambda x: -x["avg_influence"],
         )[:5]
-        all_scores_for_state = [sc for scl in shot_map.values() for sc in scl]
-        avg_influence = round(sum(all_scores_for_state) / len(all_scores_for_state), 4) if all_scores_for_state else 0.0
         state_breakdown.append({
             "state_key": state_key,
             "state_epv": epv_map.get(state_key, global_win_rate),
             "avg_influence": avg_influence,
+            "ci_low": ci_low,
+            "ci_high": ci_high,
             "n_rallies": state_rally_counts[state_key],
             "top_shots": top_shots,
         })

@@ -4,9 +4,18 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { AnalysisFilters } from '@/types'
 
+interface ShotTypeStat {
+  avg: number
+  ci_low: number
+  ci_high: number
+  n: number
+}
+
 interface TopShot {
   shot_type: string
   avg_influence: number
+  ci_low: number
+  ci_high: number
   n: number
 }
 
@@ -14,12 +23,14 @@ interface StateBreakdownEntry {
   state_key: string
   state_epv: number
   avg_influence: number
+  ci_low: number
+  ci_high: number
   n_rallies: number
   top_shots: TopShot[]
 }
 
 interface ShotInfluenceV2Data {
-  per_shot_type: Record<string, number>
+  per_shot_type: Record<string, ShotTypeStat>
   state_breakdown: StateBreakdownEntry[]
   total_rallies: number
   usable_rallies: number
@@ -73,9 +84,9 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
   const influenceData = data?.data
   const perShotType = influenceData?.per_shot_type ?? {}
   const topShots = Object.entries(perShotType)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => b[1].avg - a[1].avg)
     .slice(0, 10)
-  const maxInfluence = topShots.length > 0 ? topShots[0][1] : 1
+  const maxInfluence = topShots.length > 0 ? topShots[0][1].avg : 1
   const stateBreakdown = (influenceData?.state_breakdown ?? []).slice(0, 6)
 
   return (
@@ -111,11 +122,14 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
           <div>
             <p className="text-[10px] text-gray-500 mb-1.5">ショット種別平均影響度（状態補正後）</p>
             <div className="space-y-1">
-              {topShots.map(([shotType, value], i) => (
+              {topShots.map(([shotType, stat], i) => (
                 <div key={shotType} className="flex items-center gap-2">
                   <span className="text-[10px] text-gray-600 w-4 text-right">{i + 1}</span>
                   <span className="text-xs text-white w-24 truncate">{shotType}</span>
-                  <InfluenceBar value={value} max={maxInfluence} />
+                  <InfluenceBar value={stat.avg} max={maxInfluence} />
+                  <span className="text-[10px] text-gray-600 shrink-0">
+                    [{stat.ci_low.toFixed(3)}–{stat.ci_high.toFixed(3)}]
+                  </span>
                 </div>
               ))}
             </div>

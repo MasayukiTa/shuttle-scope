@@ -24,6 +24,8 @@ import { PairSynergyCard } from '@/components/analysis/PairSynergyCard'
 import { WinLossComparison } from '@/components/analysis/WinLossComparison'
 import { TournamentComparison } from '@/components/analysis/TournamentComparison'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
+import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 
 interface MatchSummary {
   match_id: number
@@ -54,6 +56,13 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const [section, setSection] = useState<AdvancedSection>('shot')
   const [pairMode, setPairMode] = useState(false)
   const [partnerPlayerId, setPartnerPlayerId] = useState<number | null>(null)
+  const { getMeta } = useAnalysisMeta()
+
+  // セクション別 meta (backend meta 駆動)
+  const transitionMeta = getMeta('transition')
+  const temporalMeta = getMeta('temporal')
+  const postLongRallyMeta = getMeta('post_long_rally')
+  const pressureMeta = getMeta('pressure')
 
   return (
     <div className="space-y-4">
@@ -92,14 +101,30 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       {/* ── ラリー分析 ── */}
       {section === 'rally' && (
         <ErrorBoundary>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-            <div className="bg-gray-800 rounded-lg p-4">
-              <SectionTitle>ラリー長別 勝率</SectionTitle>
-              <RallyLengthWinRate playerId={playerId} filters={filters} />
-            </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <SectionTitle>プレッシャー下のパフォーマンス</SectionTitle>
-              <PressurePerformance playerId={playerId} filters={filters} />
+          <div className="space-y-4">
+            {pressureMeta?.caution && (
+              <ResearchNotice
+                caution={pressureMeta.caution}
+                assumptions={pressureMeta.assumptions ?? undefined}
+                promotionCriteria={pressureMeta.promotion_criteria ?? undefined}
+              />
+            )}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <div className="bg-gray-800 rounded-lg p-4">
+                <SectionTitle>ラリー長別 勝率</SectionTitle>
+                <RallyLengthWinRate playerId={playerId} filters={filters} />
+              </div>
+              <div className="bg-gray-800 rounded-lg p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <SectionTitle>プレッシャー下のパフォーマンス</SectionTitle>
+                  <EvidenceBadge
+                    tier="advanced"
+                    evidenceLevel={(pressureMeta?.evidence_level as any) ?? 'practical_candidate'}
+                    recommendationAllowed={false}
+                  />
+                </div>
+                <PressurePerformance playerId={playerId} filters={filters} />
+              </div>
             </div>
           </div>
         </ErrorBoundary>
@@ -112,8 +137,22 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
             allowedRoles={['analyst', 'coach']}
             fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">遷移マトリクスはアナリスト・コーチ向けコンテンツです</div>}
           >
-            <div className="bg-gray-800 rounded-lg p-4">
-              <SectionTitle>ショット遷移マトリクス</SectionTitle>
+            <div className="bg-gray-800 rounded-lg p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <SectionTitle>ショット遷移マトリクス</SectionTitle>
+                <EvidenceBadge
+                  tier="advanced"
+                  evidenceLevel={(transitionMeta?.evidence_level as any) ?? 'practical_candidate'}
+                  recommendationAllowed={false}
+                />
+              </div>
+              {transitionMeta?.caution && (
+                <ResearchNotice
+                  caution={transitionMeta.caution}
+                  assumptions={transitionMeta.assumptions ?? undefined}
+                  promotionCriteria={transitionMeta.promotion_criteria ?? undefined}
+                />
+              )}
               <TransitionMatrix playerId={playerId} filters={filters} />
             </div>
           </RoleGuard>
@@ -144,14 +183,37 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       {/* ── 時間・体力 ── */}
       {section === 'temporal' && (
         <ErrorBoundary>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-            <div className="bg-gray-800 rounded-lg p-4">
-              <SectionTitle>{t('analysis.temporal.title')}</SectionTitle>
-              <TemporalPerformance playerId={playerId} filters={filters} />
-            </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <SectionTitle>{t('analysis.post_long_rally.title')}</SectionTitle>
-              <PostLongRallyStats playerId={playerId} filters={filters} />
+          <div className="space-y-4">
+            {(temporalMeta?.caution || postLongRallyMeta?.caution) && (
+              <ResearchNotice
+                caution={temporalMeta?.caution ?? postLongRallyMeta?.caution ?? ''}
+                assumptions={temporalMeta?.assumptions ?? undefined}
+                promotionCriteria={temporalMeta?.promotion_criteria ?? undefined}
+              />
+            )}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <div className="bg-gray-800 rounded-lg p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <SectionTitle>{t('analysis.temporal.title')}</SectionTitle>
+                  <EvidenceBadge
+                    tier="advanced"
+                    evidenceLevel={(temporalMeta?.evidence_level as any) ?? 'directional'}
+                    recommendationAllowed={false}
+                  />
+                </div>
+                <TemporalPerformance playerId={playerId} filters={filters} />
+              </div>
+              <div className="bg-gray-800 rounded-lg p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <SectionTitle>{t('analysis.post_long_rally.title')}</SectionTitle>
+                  <EvidenceBadge
+                    tier="advanced"
+                    evidenceLevel={(postLongRallyMeta?.evidence_level as any) ?? 'directional'}
+                    recommendationAllowed={false}
+                  />
+                </div>
+                <PostLongRallyStats playerId={playerId} filters={filters} />
+              </div>
             </div>
           </div>
         </ErrorBoundary>

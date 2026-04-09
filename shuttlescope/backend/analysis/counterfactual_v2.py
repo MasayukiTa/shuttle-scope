@@ -456,3 +456,189 @@ def compute_counterfactual_cf2(
         "usable_contexts": usable,
         "cf_phase": "cf2",
     }
+
+
+# ---------------------------------------------------------------------------
+# CF-3: 対戦相手タイプ条件付き反事実推定
+# ---------------------------------------------------------------------------
+
+CF3_MIN_SUPPORT = 10  # 相手タイプ別の最低サポート数
+
+_OPPONENT_TYPE_LABELS = {
+    "dominant": "強敵",
+    "beatable": "格下",
+    "competitive": "拮抗",
+    "unknown": "不明",
+}
+
+
+def _classify_match_opponent_type(
+    match,
+    player_id: int,
+) -> str:
+    """
+    試合オブジェクトから対戦相手タイプを分類する。
+    Returns: "dominant" / "beatable" / "competitive" / "unknown"
+    """
+    if not hasattr(match, 'player_a_id') or not hasattr(match, 'player_b_id'):
+        return "unknown"
+    if match.player_a_id == player_id:
+        player_won = match.winner == 'player_a'
+    elif match.player_b_id == player_id:
+        player_won = match.winner == 'player_b'
+    else:
+        return "unknown"
+
+    # 試合結果のみから単純分類（対戦履歴なしの単試合では "competitive" をデフォルト）
+    # 実際の CF-3 では bayes_matchup の opponent_type を外部から渡す
+    return "competitive"  # 単一試合ではデフォルト
+
+
+def compute_counterfactual_cf3(
+    rallies: list,
+    strokes_by_rally: dict[int, list],
+    role_by_match: dict[int, str],
+    set_to_match: dict[int, int],
+    set_num_by_set: dict[int, int],
+    opponent_type_by_match: Optional[dict[int, str]] = None,
+    min_support: int = CF3_MIN_SUPPORT,
+    n_bootstrap: int = BOOTSTRAP_N,
+) -> dict:
+    """CF-3: 対戦相手タイプ条件付き反事実的ショット比較。
+
+    opponent_type_by_match が提供された場合は相手タイプ別に比較を分割する。
+    未提供の場合は CF-1 と同一だが opponent_type フィールドを "all" として返す。
+
+    Returns: CF-1 構造 + opponent_type フィールド + per_opponent_type サマリー
+    """
+    opp_type_map = opponent_type_by_match or {}
+
+    # コンテキスト集計（opponent_type 次元を追加）
+    ctx_shot_wins: dict[tuple, list[bool]] = defaultdict(list)
+    ctx_obj: dict[tuple, dict] = {}
+
+    for rally in rallies:
+        mid = set_to_match.get(rally.set_id)
+        if mid is None:
+            continue
+        role = role_by_match.get(mid)
+        if not role:
+            continue
+        set_num = set_num_by_set.get(rally.set_id, 1)
+        player_is_a = role == "player_a"
+        opp_type = opp_type_map.get(mid, "all")
+
+        my_score = rally.score_a_before if player_is_a else rally.score_b_before
+        opp_score = rally.score_b_before if player_is_a else rally.score_a_before
+        is_win = rally.winner == role
+
+        rs = build_rally_state(
+            my_score=my_score,
+            opp_score=opp_score,
+            set_num=set_num,
+            rally_length=rally.rally_length,
+            server=rally.server,
+            player_role=role,
+        )
+
+        stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
+        player_stks = [s for s in stks if s.player == role and s.shot_type]
+        if not player_stks:
+            continue
+
+        prev_shot: Optional[str] = None
+        for stroke in player_stks:
+            base_ctx = _build_context_key_v2(rs.score_phase, rs.rally_bucket, rs.set_phase, prev_shot)
+            # CF-3: コンテキストキーに opponent_type を追加
+            cf3_ctx = (*base_ctx, opp_type)
+            ctx_shot_wins[(cf3_ctx, stroke.shot_type)].append(is_win)
+            ctx_obj[cf3_ctx] = {
+                "score_phase": rs.score_phase,
+                "rally_bucket": rs.rally_bucket,
+                "set_phase": rs.set_phase,
+                "prev_shot": prev_shot,
+                "opponent_type": opp_type,
+                "opponent_type_label": _OPPONENT_TYPE_LABELS.get(opp_type, opp_type),
+            }
+            prev_shot = stroke.shot_type
+
+    # コンテキストごとに集約・比較
+    ctx_shots: dict[tuple, dict[str, list[bool]]] = defaultdict(dict)
+    for (ctx_key, shot_type), wins_list in ctx_shot_wins.items():
+        ctx_shots[ctx_key][shot_type] = wins_list
+
+    comparisons: list[dict] = []
+    usable = 0
+    per_opponent_type_counts: dict[str, int] = defaultdict(int)
+
+    for ctx_key, shots in ctx_shots.items():
+        valid_shots = {st: wl for st, wl in shots.items() if len(wl) >= min_support}
+        if len(valid_shots) < 2:
+            continue
+        usable += 1
+
+        opp_type = ctx_obj.get(ctx_key, {}).get("opponent_type", "all")
+        per_opponent_type_counts[opp_type] += 1
+
+        shot_stats: dict[str, dict] = {}
+        for shot_type, wl in valid_shots.items():
+            n = len(wl)
+            wr = round(sum(wl) / n, 4)
+            ci_low, ci_high = _bootstrap_win_rate(wl, n_bootstrap)
+            shot_stats[shot_type] = {"win_rate": wr, "n": n, "ci_low": ci_low, "ci_high": ci_high}
+
+        actual_shot = max(valid_shots, key=lambda st: len(valid_shots[st]))
+        actual = shot_stats[actual_shot]
+
+        alternatives = []
+        for alt_shot, alt_stats in shot_stats.items():
+            if alt_shot == actual_shot:
+                continue
+            lift = round(alt_stats["win_rate"] - actual["win_rate"], 4)
+            overlap_lo = max(actual["ci_low"], alt_stats["ci_low"])
+            overlap_hi = min(actual["ci_high"], alt_stats["ci_high"])
+            ci_span = max(actual["ci_high"] - actual["ci_low"], 0.01)
+            overlap_score = round(max(0.0, (overlap_hi - overlap_lo) / ci_span), 3)
+            alternatives.append({
+                "shot_type": alt_shot,
+                "win_rate": alt_stats["win_rate"],
+                "n": alt_stats["n"],
+                "ci_low": alt_stats["ci_low"],
+                "ci_high": alt_stats["ci_high"],
+                "estimated_lift": lift,
+                "overlap_score": overlap_score,
+            })
+
+        if not alternatives:
+            continue
+
+        alternatives.sort(key=lambda x: x["estimated_lift"], reverse=True)
+        best_alt = alternatives[0]
+        ctx_info = ctx_obj.get(ctx_key, {})
+
+        comparisons.append({
+            "context_key": str(ctx_key),
+            "context": ctx_info,
+            "opponent_type": opp_type,
+            "opponent_type_label": _OPPONENT_TYPE_LABELS.get(opp_type, opp_type),
+            "actual_shot": actual_shot,
+            "actual_win_rate": actual["win_rate"],
+            "actual_n": actual["n"],
+            "actual_ci_low": actual["ci_low"],
+            "actual_ci_high": actual["ci_high"],
+            "alternatives": alternatives,
+            "best_alternative": best_alt["shot_type"],
+            "max_lift": best_alt["estimated_lift"],
+            "cf_phase": "cf3",
+        })
+
+    comparisons.sort(key=lambda x: (x["opponent_type"], -x["max_lift"]))
+
+    return {
+        "comparisons": comparisons,
+        "total_contexts": len(ctx_shots),
+        "usable_contexts": usable,
+        "per_opponent_type_counts": dict(per_opponent_type_counts),
+        "opponent_type_labels": _OPPONENT_TYPE_LABELS,
+        "cf_phase": "cf3",
+    }
