@@ -186,6 +186,10 @@ export function SettingsPage() {
     onSuccess: () => { refetchTunnel() },
   })
 
+  const turnTest = useMutation({
+    mutationFn: () => apiPost<{ success: boolean; data?: { host: string; port: number; reachable: boolean }; error?: string }>('/webrtc/test-turn', {}),
+  })
+
   // データ管理: バックアップ一覧
   const { data: backupsData, refetch: refetchBackups } = useQuery({
     queryKey: ['sync-backups'],
@@ -878,6 +882,13 @@ export function SettingsPage() {
                     </div>
                   )}
 
+                  {/* TURN 必要場面説明 */}
+                  {appSettings.turn_enabled && (
+                    <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {t('sharing.turn_when_required')}
+                    </p>
+                  )}
+
                   {/* TURN 設定フィールド */}
                   {appSettings.turn_enabled && (
                     <div className="space-y-2">
@@ -888,8 +899,14 @@ export function SettingsPage() {
                         onChange={e => updateSettings({ turn_url: e.target.value })}
                         className={`w-full px-2 py-1.5 rounded text-xs border font-mono ${
                           isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-800 border-gray-600 text-gray-200'
-                        }`}
+                        } ${appSettings.turn_url && !/^turns?:/i.test(appSettings.turn_url) ? 'border-red-500' : ''}`}
                       />
+                      {appSettings.turn_url && !/^turns?:/i.test(appSettings.turn_url) && (
+                        <p className="text-[10px] text-red-400 flex items-center gap-1">
+                          <AlertCircle size={10} />
+                          {t('sharing.turn_url_invalid')}
+                        </p>
+                      )}
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -909,6 +926,25 @@ export function SettingsPage() {
                             isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-800 border-gray-600 text-gray-200'
                           }`}
                         />
+                      </div>
+
+                      {/* 疎通テストボタン + 結果 */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => turnTest.mutate()}
+                          disabled={turnTest.isPending || !appSettings.turn_url}
+                          className={`px-3 py-1.5 text-xs rounded disabled:opacity-40 ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
+                        >
+                          {turnTest.isPending ? t('sharing.turn_test_running') : t('sharing.turn_test_button')}
+                        </button>
+                        {turnTest.data && (
+                          <span className={`text-xs flex items-center gap-1 ${turnTest.data.success ? 'text-green-400' : 'text-red-400'}`}>
+                            {turnTest.data.success
+                              ? <><CheckCircle size={11} />{t('sharing.turn_test_ok')} ({turnTest.data.data?.host}:{turnTest.data.data?.port})</>
+                              : <><AlertCircle size={11} />{t('sharing.turn_test_fail')}: {turnTest.data.error}</>
+                            }
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}

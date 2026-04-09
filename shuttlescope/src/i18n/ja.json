@@ -598,7 +598,13 @@
     "webrtc_best_effort_warning": "TURN なし: ベストエフォート接続。企業ネット・モバイルでは接続失敗の可能性があります",
     "turn_url_placeholder": "turn:your-server.example.com:3478",
     "turn_username_placeholder": "ユーザー名",
-    "turn_credential_placeholder": "パスワード"
+    "turn_credential_placeholder": "パスワード",
+    "turn_url_invalid": "TURN URL の形式が不正です（例: turn:your-server.example.com:3478）",
+    "turn_test_button": "疎通テスト",
+    "turn_test_running": "テスト中...",
+    "turn_test_ok": "到達可能",
+    "turn_test_fail": "到達不可",
+    "turn_when_required": "TURN が必要な場面: 企業ネット・VPN・モバイル回線など、直接P2Pが通らない環境"
   },
   "bookmark": {
     "add": "ブックマーク追加",

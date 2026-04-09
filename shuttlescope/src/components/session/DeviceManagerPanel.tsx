@@ -109,8 +109,13 @@ function useWebRTCReceiver(sessionCode: string) {
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState | null>(null)
   const [iceGatheringState, setIceGatheringState] = useState<RTCIceGatheringState | null>(null)
   const [wsConnected, setWsConnected] = useState(false)
+  const [wsReconnecting, setWsReconnecting] = useState(false)
+  const [wsReconnectCount, setWsReconnectCount] = useState(0)
   const [turnInUse, setTurnInUse] = useState<boolean | null>(null)
   const statsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reconnectCountRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const manualDisconnectRef = useRef(false)
   // ICE サーバー設定（バックエンドから取得、TURN 含む）
   const iceServersRef = useRef<RTCIceServer[]>([{ urls: 'stun:stun.l.google.com:19302' }])
   // viewer id → pc map (PC → viewers relay)
@@ -155,6 +160,7 @@ function useWebRTCReceiver(sessionCode: string) {
 
   const connect = useCallback(async () => {
     if (wsRef.current) return
+    manualDisconnectRef.current = false
 
     // ICE サーバー設定を取得（TURN が有効な場合はリレー経由）
     try {
@@ -178,8 +184,23 @@ function useWebRTCReceiver(sessionCode: string) {
     } catch { return }
     wsRef.current = ws
 
-    ws.onopen = () => setWsConnected(true)
-    ws.onclose = () => { wsRef.current = null; setWsConnected(false) }
+    ws.onopen = () => {
+      setWsConnected(true)
+      setWsReconnecting(false)
+      setWsReconnectCount(0)
+      reconnectCountRef.current = 0
+    }
+    ws.onclose = () => {
+      wsRef.current = null
+      setWsConnected(false)
+      if (manualDisconnectRef.current) return
+      const next = reconnectCountRef.current + 1
+      if (next > 5) { setWsReconnecting(false); return }
+      reconnectCountRef.current = next
+      setWsReconnectCount(next)
+      setWsReconnecting(true)
+      reconnectTimerRef.current = setTimeout(() => { connect() }, 5_000)
+    }
 
     ws.onmessage = async (event) => {
       try {
@@ -188,6 +209,12 @@ function useWebRTCReceiver(sessionCode: string) {
         // ─ iOS → PC WebRTC ─
         if (msg.type === 'webrtc_offer') {
           stopStatsPolling()
+          // ハンドオフ安全化: 既存 PC を先にクローズ（ダブルアクティブ防止）
+          if (pcRef.current) {
+            pcRef.current.close()
+            pcRef.current = null
+            setStream(null)
+          }
           const pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
           pcRef.current = pc
           setActiveParticipantId(String(msg.participant_id))
@@ -296,17 +323,20 @@ function useWebRTCReceiver(sessionCode: string) {
   }, [])
 
   const disconnect = useCallback(() => {
+    manualDisconnectRef.current = true
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null }
+    reconnectCountRef.current = 0
     stopStatsPolling()
     pcRef.current?.close(); pcRef.current = null
     viewerPCsRef.current.forEach((vpc) => vpc.close())
     viewerPCsRef.current.clear()
     wsRef.current?.close(); wsRef.current = null
     setStream(null); setActiveParticipantId(null); setConnectionState(null)
-    setIceGatheringState(null); setWsConnected(false)
+    setIceGatheringState(null); setWsConnected(false); setWsReconnecting(false); setWsReconnectCount(0)
   }, [stopStatsPolling])
 
   useEffect(() => () => { disconnect() }, [disconnect])
-  return { stream, activeParticipantId, connectionState, iceGatheringState, wsConnected, turnInUse, connect, requestCamera, disconnect, sendMessage }
+  return { stream, activeParticipantId, connectionState, iceGatheringState, wsConnected, wsReconnecting, wsReconnectCount, turnInUse, connect, requestCamera, disconnect, sendMessage }
 }
 
 // ─── ローカルカメラ列挙 ───────────────────────────────────────────────────────
@@ -340,7 +370,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
 
-  const { stream: remoteStream, activeParticipantId, connectionState, iceGatheringState, wsConnected, turnInUse, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
+  const { stream: remoteStream, activeParticipantId, connectionState, iceGatheringState, wsConnected, wsReconnecting, wsReconnectCount, turnInUse, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
 
   useEffect(() => { connect() }, [connect])
   useEffect(() => {
@@ -479,9 +509,11 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
         {/* シグナリング (WS) */}
         <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${wsConnected ? 'bg-green-400' : 'bg-gray-500'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${wsConnected ? 'bg-green-400' : wsReconnecting ? 'bg-amber-400 animate-pulse' : 'bg-gray-500'}`} />
           <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>シグナリング:</span>
-          <span className={wsConnected ? 'text-green-400' : 'text-gray-500'}>{wsConnected ? '接続中' : '未接続'}</span>
+          <span className={wsConnected ? 'text-green-400' : wsReconnecting ? 'text-amber-400' : 'text-gray-500'}>
+            {wsConnected ? '接続中' : wsReconnecting ? `再接続中 (${wsReconnectCount}/5)` : '未接続'}
+          </span>
         </div>
 
         {/* P2P (WebRTC) */}

@@ -10,10 +10,12 @@
   POST /api/tunnel/start?provider= — トンネル起動（auto|cloudflare|ngrok）
   POST /api/tunnel/stop            — トンネル停止
   GET  /api/webrtc/ice-config      — WebRTC ICE サーバー設定（STUN + TURN）
+  POST /api/webrtc/test-turn       — TURN サーバーへの TCP 疎通チェック
 """
 import json
 import re
 import shutil
+import socket as _socket
 import subprocess
 import sys
 import threading
@@ -269,3 +271,54 @@ def webrtc_ice_config(db: Session = Depends(get_db)):
             "turn_enabled": bool(cfg.get("turn_enabled")),
         },
     }
+
+
+# ─── TURN 疎通テスト ──────────────────────────────────────────────────────────
+
+_TURN_URL_RE = re.compile(r'^turns?:([^:?]+)(?::(\d+))?', re.IGNORECASE)
+
+
+@router.post("/webrtc/test-turn")
+def webrtc_test_turn(db: Session = Depends(get_db)):
+    """TURN サーバーへの TCP 疎通チェック。
+    設定された turn_url のホスト:ポートに TCP 接続を試み、到達可能かを返す。
+    """
+    from backend.routers.settings import _load_all
+    cfg = _load_all(db)
+
+    if not cfg.get("turn_enabled"):
+        return {"success": False, "error": "TURN が無効です。設定で TURN を有効にしてください。"}
+
+    turn_url = (cfg.get("turn_url") or "").strip()
+    if not turn_url:
+        return {"success": False, "error": "TURN URL が未設定です。"}
+
+    m = _TURN_URL_RE.match(turn_url)
+    if not m:
+        return {
+            "success": False,
+            "error": f"TURN URL の形式が不正です（例: turn:your-server.example.com:3478）",
+        }
+
+    host = m.group(1)
+    port = int(m.group(2)) if m.group(2) else 3478
+
+    try:
+        sock = _socket.create_connection((host, port), timeout=5)
+        sock.close()
+        return {
+            "success": True,
+            "data": {"host": host, "port": port, "reachable": True},
+        }
+    except _socket.timeout:
+        return {
+            "success": False,
+            "data": {"host": host, "port": port, "reachable": False},
+            "error": f"{host}:{port} への接続がタイムアウトしました（5秒）",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "data": {"host": host, "port": port, "reachable": False},
+            "error": str(e),
+        }
