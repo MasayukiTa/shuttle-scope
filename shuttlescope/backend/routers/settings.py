@@ -46,6 +46,7 @@ DEFAULT_SETTINGS: dict = {
     "sync_folder_path": "",            # クラウドフォルダパス（OneDrive 等）
     # リモートトンネル設定
     "tunnel_provider": "auto",         # auto | cloudflare | ngrok
+    "ngrok_authtoken": "",             # ngrok 認証トークン（3.x 以降必須）
     # リモート映像（WebRTC）設定
     "video_transport": "off",          # off | webrtc
     "turn_enabled": False,             # TURN リレー有効化

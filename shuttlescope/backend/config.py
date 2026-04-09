@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     # R-002: LAN共有モード（0.0.0.0バインドでLAN内アクセスを可能にする）
     LAN_MODE: bool = False
+    # ngrok 認証トークン（環境変数 NGROK_AUTHTOKEN から自動読み込み）
+    NGROK_AUTHTOKEN: str = ""
 
     class Config:
         # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）

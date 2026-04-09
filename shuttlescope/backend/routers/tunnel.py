@@ -12,7 +12,9 @@
   GET  /api/webrtc/ice-config      — WebRTC ICE サーバー設定（STUN + TURN）
   POST /api/webrtc/test-turn       — TURN サーバーへの TCP 疎通チェック
 """
+import glob
 import json
+import os
 import re
 import shutil
 import socket as _socket
@@ -49,8 +51,52 @@ def _cloudflare_available() -> bool:
     return shutil.which("cloudflared") is not None
 
 
+def _find_ngrok() -> Optional[str]:
+    """ngrok バイナリのパスを返す。見つからない場合は None。
+
+    検索順:
+      1. PATH に ngrok があればそのまま使用
+      2. WinGet インストールパス（Windows）
+      3. npm グローバルパス
+      4. プロジェクト node_modules/.bin
+    """
+    # 1. PATH
+    p = shutil.which("ngrok")
+    if p:
+        return p
+
+    # 2. WinGet (Windows)
+    local_app = os.environ.get("LOCALAPPDATA", "")
+    if local_app:
+        pattern = os.path.join(local_app, "Microsoft", "WinGet", "Packages",
+                               "Ngrok.Ngrok_*", "ngrok.exe")
+        matches = glob.glob(pattern)
+        if matches:
+            return matches[0]
+
+    # 3. npm グローバル bin（%APPDATA%\npm\ngrok.cmd など）
+    app_data = os.environ.get("APPDATA", "")
+    for candidate in [
+        os.path.join(app_data, "npm", "ngrok.cmd"),
+        os.path.join(app_data, "npm", "ngrok"),
+    ]:
+        if os.path.isfile(candidate):
+            return candidate
+
+    # 4. node_modules/.bin（プロジェクトルートからの相対パス）
+    here = os.path.dirname(os.path.abspath(__file__))
+    for up in range(5):  # 最大5階層上まで探す
+        candidate_win = os.path.join(here, *[".."] * up, "node_modules", ".bin", "ngrok.cmd")
+        candidate_unix = os.path.join(here, *[".."] * up, "node_modules", ".bin", "ngrok")
+        for c in [candidate_win, candidate_unix]:
+            if os.path.isfile(os.path.normpath(c)):
+                return os.path.normpath(c)
+
+    return None
+
+
 def _ngrok_available() -> bool:
-    return shutil.which("ngrok") is not None
+    return _find_ngrok() is not None
 
 
 def _resolve_provider(provider: str) -> Optional[TunnelProvider]:
@@ -119,14 +165,20 @@ def _start_cloudflare(port: int) -> subprocess.Popen:
     return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, shell=use_shell)
 
 
-def _start_ngrok(port: int) -> subprocess.Popen:
+def _start_ngrok(port: int, authtoken: str = "") -> subprocess.Popen:
+    ngrok_path = _find_ngrok()
+    if not ngrok_path:
+        raise FileNotFoundError("ngrok が見つかりません")
     use_shell = sys.platform == "win32"
-    ngrok_path = shutil.which("ngrok")
-    cmd = (
-        f'"{ngrok_path}" http {port}'
-        if use_shell
-        else [ngrok_path, "http", str(port)]
-    )
+    if use_shell:
+        token_part = f' --authtoken "{authtoken}"' if authtoken else ""
+        cmd = f'"{ngrok_path}" http{token_part} {port}'
+    else:
+        cmd_list = [ngrok_path, "http"]
+        if authtoken:
+            cmd_list += ["--authtoken", authtoken]
+        cmd_list.append(str(port))
+        cmd = cmd_list
     return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, shell=use_shell)
 
 
@@ -154,15 +206,17 @@ def tunnel_status():
             "active_provider": provider,
             "providers": {
                 "cloudflare": {"available": cf_avail},
-                "ngrok": {"available": ngrok_avail},
+                "ngrok": {"available": ngrok_avail, "path": _find_ngrok()},
             },
             "recent_log": recent_log,
+            # env にトークンが設定されているか（フロント側の表示切替用）
+            "ngrok_authtoken_from_env": bool((settings.NGROK_AUTHTOKEN or "").strip()),
         },
     }
 
 
 @router.post("/tunnel/start")
-def tunnel_start(provider: str = "auto"):
+def tunnel_start(provider: str = "auto", db: Session = Depends(get_db)):
     global _proc, _tunnel_url, _stderr_lines, _active_provider
 
     resolved = _resolve_provider(provider)
@@ -188,7 +242,19 @@ def tunnel_start(provider: str = "auto"):
     port = settings.API_PORT
 
     if resolved == 'ngrok':
-        proc = _start_ngrok(port)
+        # authtoken: 環境変数（.env）→ DB設定 の優先順で取得
+        authtoken = (settings.NGROK_AUTHTOKEN or "").strip()
+        if not authtoken:
+            try:
+                from backend.routers.settings import _load_all
+                cfg = _load_all(db)
+                authtoken = (cfg.get("ngrok_authtoken") or "").strip()
+            except Exception:
+                pass
+        try:
+            proc = _start_ngrok(port, authtoken)
+        except FileNotFoundError as e:
+            return {"success": False, "error": str(e)}
         with _lock:
             _proc = proc
             _active_provider = 'ngrok'

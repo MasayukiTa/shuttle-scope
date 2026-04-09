@@ -18,6 +18,7 @@ export interface AppSettings {
   sync_folder_path: string
   // リモートトンネル設定
   tunnel_provider: 'auto' | 'cloudflare' | 'ngrok'
+  ngrok_authtoken: string
   // リモート映像（WebRTC）設定
   video_transport: 'off' | 'webrtc'
   turn_enabled: boolean
@@ -35,6 +36,7 @@ const DEFAULTS: AppSettings = {
   sync_device_id: '',
   sync_folder_path: '',
   tunnel_provider: 'auto',
+  ngrok_authtoken: '',
   video_transport: 'off',
   turn_enabled: false,
   turn_url: '',

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
@@ -170,6 +170,7 @@ export function SettingsPage() {
           ngrok: { available: boolean }
         }
         recent_log: string[]
+        ngrok_authtoken_from_env: boolean
       }
     }>('/tunnel/status'),
     enabled: activeTab === 'sharing',
@@ -769,6 +770,44 @@ export function SettingsPage() {
                   </div>
                   {appSettings.tunnel_provider === 'auto' && (
                     <p className={`text-xs mt-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('sharing.auto_order_hint')}</p>
+                  )}
+                </div>
+              )}
+
+              {/* ngrok 認証トークン */}
+              {(appSettings.tunnel_provider === 'ngrok' || appSettings.tunnel_provider === 'auto') && (
+                <div className="space-y-1.5">
+                  <label className={`text-xs font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {t('sharing.ngrok_authtoken_label')}
+                  </label>
+                  {tunnelStatus?.data?.ngrok_authtoken_from_env ? (
+                    /* env から自動適用済み */
+                    <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${
+                      isLight ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-green-900/20 border border-green-700/40 text-green-400'
+                    }`}>
+                      <CheckCircle2 size={12} />
+                      {t('sharing.ngrok_authtoken_from_env')}
+                    </div>
+                  ) : (
+                    /* 未設定 → 入力を求める */
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="password"
+                          value={appSettings.ngrok_authtoken ?? ''}
+                          onChange={(e) => updateSettings({ ngrok_authtoken: e.target.value })}
+                          placeholder={t('sharing.ngrok_authtoken_placeholder')}
+                          className={`flex-1 rounded px-2 py-1 text-xs font-mono ${
+                            isLight
+                              ? 'bg-gray-100 text-gray-700 placeholder-gray-400 border border-gray-200'
+                              : 'bg-gray-900/60 text-gray-300 placeholder-gray-600 border border-gray-700'
+                          } focus:outline-none focus:ring-1 focus:ring-blue-500`}
+                        />
+                      </div>
+                      <p className={`text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {t('sharing.ngrok_authtoken_hint')}
+                      </p>
+                    </>
                   )}
                 </div>
               )}
