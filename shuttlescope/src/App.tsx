@@ -8,7 +8,7 @@ import { clsx } from 'clsx'
 import '@/i18n'
 import { MatchListPage } from '@/pages/MatchListPage'
 import { AnnotatorPage } from '@/pages/AnnotatorPage'
-import { DashboardPage } from '@/pages/DashboardPage'
+import { DashboardShell } from '@/pages/dashboard/DashboardShell'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
@@ -197,7 +197,7 @@ function MainLayout() {
             <Route path="/" element={<Navigate to="/matches" replace />} />
             <Route path="/matches" element={<MatchListPage />} />
             <Route path="/annotator/:matchId" element={<AnnotatorPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/dashboard/*" element={<DashboardShell />} />
             <Route path="/prediction" element={<PredictionPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

@@ -22,7 +22,15 @@
     "prediction": "予測",
     "prediction_title": "試合予測",
     "players": "選手管理",
-    "settings": "設定"
+    "settings": "設定",
+    "dashboard_pages": {
+      "overview": "概要",
+      "live": "速報",
+      "review": "振り返り",
+      "growth": "成長",
+      "advanced": "詳細分析",
+      "research": "研究"
+    }
   },
   "shot_types": {
     "short_service": "ショートサーブ",
