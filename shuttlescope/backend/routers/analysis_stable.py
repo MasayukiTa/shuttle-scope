@@ -135,12 +135,16 @@ def get_heatmap(
     date_from: Optional[DateType] = Query(None),
     date_to: Optional[DateType] = Query(None),
     match_id: Optional[int] = Query(None),
+    match_ids: Optional[str] = Query(None),  # カンマ区切り match ID リスト（直近N試合用）
     db: Session = Depends(get_db),
 ):
     ALL_ZONES = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
 
-    # match_id 指定時は単一試合のみ対象
-    if match_id is not None:
+    # match_ids（直近N試合など複数指定）優先 → match_id（単一）→ 全期間
+    if match_ids is not None:
+        id_list = [int(x) for x in match_ids.split(",") if x.strip().lstrip("-").isdigit()]
+        _matches = db.query(Match).filter(Match.id.in_(id_list)).all() if id_list else []
+    elif match_id is not None:
         m = db.query(Match).filter(Match.id == match_id).first()
         if m is None:
             _matches = []
@@ -211,11 +215,15 @@ def get_heatmap_zone_detail(
     date_from: Optional[DateType] = Query(None),
     date_to: Optional[DateType] = Query(None),
     match_id: Optional[int] = Query(None),
+    match_ids: Optional[str] = Query(None),  # カンマ区切り match ID リスト（直近N試合用）
     db: Session = Depends(get_db),
 ):
     """ゾーン別詳細: 特定ゾーンのショットタイプ分布・勝率・遷移先（type=hit時）を返す"""
-    # 試合絞り込み
-    if match_id is not None:
+    # 試合絞り込み: match_ids（複数）優先 → match_id（単一）→ 全期間
+    if match_ids is not None:
+        id_list = [int(x) for x in match_ids.split(",") if x.strip().lstrip("-").isdigit()]
+        _matches = db.query(Match).filter(Match.id.in_(id_list)).all() if id_list else []
+    elif match_id is not None:
         m = db.query(Match).filter(Match.id == match_id).first()
         _matches = [m] if m else []
     else:

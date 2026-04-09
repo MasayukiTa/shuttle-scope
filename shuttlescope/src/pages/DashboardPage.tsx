@@ -94,8 +94,8 @@ interface MatchSummary {
   opponent: string
   tournament: string
   tournament_level: string
-  date: string
-  result: 'win' | 'loss' | string
+  date: string | null
+  result: 'win' | 'loss' | string | null
   rally_count: number
   format: string
   set_count: number
@@ -326,19 +326,32 @@ export function DashboardPage() {
 
   const descriptive: DescriptiveData | null = descriptiveResp?.data ?? null
 
+  // ── Matches summary（heatmapApiParams より前に宣言が必要）──
+  const { data: matchesResp, isLoading: loadingMatches } = useQuery({
+    queryKey: ['analysis-matches-summary', selectedPlayerId],
+    queryFn: () =>
+      apiGet<{ success: boolean; data: MatchSummary[] }>(
+        '/analysis/matches_summary',
+        { player_id: selectedPlayerId! }
+      ),
+    enabled: !!selectedPlayerId,
+  })
+
+  const matches: MatchSummary[] = matchesResp?.data ?? []
+
   // ── Heatmap専用フィルターパラメータ ──
-  // match_id指定 > 直近N試合（日付絞り） > 全期間の優先順
+  // match_id指定 > 直近N試合（match_ids指定） > 全期間の優先順
   const heatmapApiParams = (() => {
     if (heatmapMatchId != null) {
       return { match_id: heatmapMatchId }
     }
     if (heatmapLastN != null) {
-      // matches は日付降順を前提にスライス
+      // 日付降順で直近N試合の match_id リストをそのまま渡す（日付範囲ではなくID指定）
       const recent = [...matches]
         .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
         .slice(0, heatmapLastN)
-      const dateFrom = recent.length > 0 ? recent[recent.length - 1].date : undefined
-      return dateFrom ? { date_from: dateFrom } : {}
+      const ids = recent.map((m) => m.match_id).join(',')
+      return ids ? { match_ids: ids } : {}
     }
     return {}
   })()
@@ -384,25 +397,12 @@ export function DashboardPage() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 10)
 
-  // ── Matches summary ──
-  const { data: matchesResp, isLoading: loadingMatches } = useQuery({
-    queryKey: ['analysis-matches-summary', selectedPlayerId],
-    queryFn: () =>
-      apiGet<{ success: boolean; data: MatchSummary[] }>(
-        '/analysis/matches_summary',
-        { player_id: selectedPlayerId! }
-      ),
-    enabled: !!selectedPlayerId,
-  })
-
-  const matches: MatchSummary[] = matchesResp?.data ?? []
-
   // 試合セレクター用オプション
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
-    label: `${m.date} vs ${m.opponent}`,
+    label: `${m.date ?? '日付不明'} vs ${m.opponent}`,
     suffix: m.result === 'win' ? '勝' : '負',
-    searchText: `${m.date} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
+    searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
 
   // M-001: スコア推移グラフ途中クリック → 途中解析モーダル表示
@@ -417,17 +417,17 @@ export function DashboardPage() {
     .filter((m) => {
       if (filterResult !== 'all' && m.result !== filterResult) return false
       if (filterLevel && m.tournament_level !== filterLevel) return false
-      if (filterDateFrom && m.date < filterDateFrom) return false
-      if (filterDateTo && m.date > filterDateTo) return false
+      if (filterDateFrom && (m.date ?? '') < filterDateFrom) return false
+      if (filterDateTo && (m.date ?? '') > filterDateTo) return false
       return true
     })
     .sort((a, b) => {
       const dir = matchSort.order === 'asc' ? 1 : -1
       switch (matchSort.col) {
-        case 'date':             return dir * a.date.localeCompare(b.date)
+        case 'date':             return dir * (a.date ?? '').localeCompare(b.date ?? '')
         case 'opponent':         return dir * a.opponent.localeCompare(b.opponent, 'ja')
         case 'tournament_level': return dir * (a.tournament_level ?? '').localeCompare(b.tournament_level ?? '')
-        case 'result':           return dir * a.result.localeCompare(b.result)
+        case 'result':           return dir * (a.result ?? '').localeCompare(b.result ?? '')
         case 'rally_count':      return dir * (a.rally_count - b.rally_count)
         default:                 return 0
       }
@@ -847,10 +847,10 @@ export function DashboardPage() {
                         >
                           <option value="">試合を選択（個別）</option>
                           {[...matches]
-                            .sort((a, b) => b.date.localeCompare(a.date))
+                            .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
                             .map((m) => (
                               <option key={m.match_id} value={m.match_id}>
-                                {m.date} {m.opponent} ({m.result === 'win' ? '勝' : '敗'})
+                                {m.date ?? '日付不明'} {m.opponent} ({m.result === 'win' ? '勝' : '敗'})
                               </option>
                             ))}
                         </select>

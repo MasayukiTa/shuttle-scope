@@ -13,7 +13,8 @@ class Base(DeclarativeBase):
 engine = create_engine(
     settings.DATABASE_URL,
     # SQLiteの場合のみ check_same_thread=False が必要
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
+    # timeout=15: ロック競合時に最大15秒待機してからエラー（デフォルトは無限待ち）
+    connect_args={"check_same_thread": False, "timeout": 15} if "sqlite" in settings.DATABASE_URL else {},
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

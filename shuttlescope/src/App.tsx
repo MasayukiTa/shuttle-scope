@@ -9,6 +9,7 @@ import '@/i18n'
 import { MatchListPage } from '@/pages/MatchListPage'
 import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { DashboardPage } from '@/pages/DashboardPage'
+import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
 import { CameraSenderPage } from '@/pages/CameraSenderPage'
@@ -191,14 +192,16 @@ function MainLayout() {
     <div className="flex h-screen">
       <Sidebar />
       <div className="flex-1 overflow-hidden pb-14 md:pb-0">
-        <Routes>
-          <Route path="/" element={<Navigate to="/matches" replace />} />
-          <Route path="/matches" element={<MatchListPage />} />
-          <Route path="/annotator/:matchId" element={<AnnotatorPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/prediction" element={<PredictionPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<Navigate to="/matches" replace />} />
+            <Route path="/matches" element={<MatchListPage />} />
+            <Route path="/annotator/:matchId" element={<AnnotatorPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/prediction" element={<PredictionPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </ErrorBoundary>
       </div>
     </div>
   )

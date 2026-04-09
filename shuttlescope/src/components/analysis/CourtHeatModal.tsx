@@ -77,15 +77,15 @@ export function CourtHeatModal({
   // ESCキーで閉じる
   // （ChartModal と同じパターン — useEffect は DashboardPage 側で済み）
 
-  // フィルターパラメータを計算
+  // フィルターパラメータを計算（直近N試合はmatch_ids指定で正確に絞り込む）
   const apiParams = (() => {
     if (matchId != null) return { match_id: matchId }
     if (lastN != null) {
       const recent = [...matches]
         .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
         .slice(0, lastN)
-      const dateFrom = recent.length > 0 ? recent[recent.length - 1].date : undefined
-      return dateFrom ? { date_from: dateFrom } : {}
+      const ids = recent.map((m) => m.match_id).join(',')
+      return ids ? { match_ids: ids } : {}
     }
     return {}
   })()
@@ -191,10 +191,10 @@ export function CourtHeatModal({
               {matches.length > 0 && (
                 <SearchableSelect
                   options={[...matches]
-                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
                     .map((m) => ({
                       value: m.match_id,
-                      label: `${m.date} ${m.opponent}`,
+                      label: `${m.date ?? '日付不明'} ${m.opponent}`,
                       suffix: m.result === 'win' ? '勝' : '敗',
                       searchText: `${m.date} ${m.opponent}`,
                     }))}

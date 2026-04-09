@@ -66,7 +66,16 @@ async def _stale_device_cleanup():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """アプリ起動時にテーブル作成 + stale cleanup タスク開始"""
-    bootstrap_database(engine, app_settings.DATABASE_URL)
+    try:
+        loop = asyncio.get_event_loop()
+        await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: bootstrap_database(engine, app_settings.DATABASE_URL)),
+            timeout=30.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("bootstrap_database がタイムアウト（30s）— 起動を続行します")
+    except Exception as exc:
+        logger.warning("bootstrap_database エラー: %s — 起動を続行します", exc)
     cleanup_task = asyncio.create_task(_stale_device_cleanup())
     yield
     cleanup_task.cancel()
