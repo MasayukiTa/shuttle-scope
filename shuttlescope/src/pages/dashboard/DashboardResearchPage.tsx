@@ -11,6 +11,11 @@ import { StateEPVCard } from '@/components/analysis/StateEPVCard'
 import { StateActionValueCard } from '@/components/analysis/StateActionValueCard'
 import { HazardFatigueCard } from '@/components/analysis/HazardFatigueCard'
 import { CounterfactualV2Card } from '@/components/analysis/CounterfactualV2Card'
+import { BayesMatchupCard } from '@/components/analysis/BayesMatchupCard'
+import { OpponentPolicyCard } from '@/components/analysis/OpponentPolicyCard'
+import { DoublesRoleCard } from '@/components/analysis/DoublesRoleCard'
+import { ShotInfluenceV2Card } from '@/components/analysis/ShotInfluenceV2Card'
+import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 
 interface Props {
   playerId: number
@@ -23,6 +28,11 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export function DashboardResearchPage({ playerId, filters }: Props) {
   const { t } = useTranslation()
+  const { getMeta } = useAnalysisMeta()
+
+  const epvMeta = getMeta('epv')
+  const cfMeta = getMeta('counterfactual')
+  const spatialMeta = getMeta('spatial_density')
 
   return (
     <div className="space-y-5">
@@ -42,12 +52,16 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
           <div className="bg-gray-800 rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
               <SectionTitle>{t('analysis.epv.title')}</SectionTitle>
-              <EvidenceBadge tier="research" evidenceLevel="directional" recommendationAllowed={false} />
+              <EvidenceBadge
+                tier="research"
+                evidenceLevel={(epvMeta?.evidence_level as any) ?? 'directional'}
+                recommendationAllowed={false}
+              />
             </div>
             <ResearchNotice
-              caution="EPVはMarkovモデルに基づく探索的指標です。スコア重み付けは近似値であり、実際の試合判断に直結するものではありません。"
-              assumptions="定常マルコフ過程・独立ラリー仮定"
-              promotionCriteria="校正品質・十分なサンプルサイズ・コーチ有用性テスト"
+              caution={epvMeta?.caution ?? 'EPVはMarkovモデルに基づく探索的指標です。'}
+              assumptions={epvMeta?.assumptions ?? '定常マルコフ過程・独立ラリー仮定'}
+              promotionCriteria={epvMeta?.promotion_criteria ?? undefined}
             />
             <MarkovEPV playerId={playerId} filters={filters} />
           </div>
@@ -63,11 +77,16 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">反事実的ショット比較</h3>
-              <EvidenceBadge tier="research" evidenceLevel="exploratory" recommendationAllowed={false} />
+              <EvidenceBadge
+                tier="research"
+                evidenceLevel={(cfMeta?.evidence_level as any) ?? 'exploratory'}
+                recommendationAllowed={false}
+              />
             </div>
             <ResearchNotice
-              caution="反事実的分析は仮説的シナリオの比較です。現実の選択と乖離した前提を含みます。"
-              reason="ショット選択の代替シナリオを探索的に評価するための参考指標です。"
+              caution={cfMeta?.caution ?? '反事実的分析は仮説的シナリオの比較です。'}
+              assumptions={cfMeta?.assumptions ?? undefined}
+              promotionCriteria={cfMeta?.promotion_criteria ?? undefined}
             />
             <CounterfactualShots playerId={playerId} />
           </div>
@@ -83,10 +102,15 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">コート空間密度マップ</h3>
-              <EvidenceBadge tier="research" evidenceLevel="exploratory" />
+              <EvidenceBadge
+                tier="research"
+                evidenceLevel={(spatialMeta?.evidence_level as any) ?? 'exploratory'}
+              />
             </div>
             <ResearchNotice
-              caution="空間密度マップはコート上の打点・着地点の密度分布を可視化したものです。統計的有意性の検定は行っていません。"
+              caution={spatialMeta?.caution ?? '空間密度マップはコート上の打点・着地点の密度分布を可視化したものです。'}
+              assumptions={spatialMeta?.assumptions ?? undefined}
+              promotionCriteria={spatialMeta?.promotion_criteria ?? undefined}
             />
             <SpatialDensityMap playerId={playerId} />
           </div>
@@ -130,6 +154,46 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
           fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
         >
           <CounterfactualV2Card playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Research Spine RS-4: ベイズ対戦予測 ── */}
+      <ErrorBoundary>
+        <RoleGuard
+          allowedRoles={['analyst', 'coach']}
+          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
+        >
+          <BayesMatchupCard playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Research Spine RS-4: 対戦相手ポリシー ── */}
+      <ErrorBoundary>
+        <RoleGuard
+          allowedRoles={['analyst', 'coach']}
+          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
+        >
+          <OpponentPolicyCard playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Research Spine RS-5: ダブルスロール推定 ── */}
+      <ErrorBoundary>
+        <RoleGuard
+          allowedRoles={['analyst', 'coach']}
+          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
+        >
+          <DoublesRoleCard playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── Spine 4: ショット影響度 v2（状態条件付き） ── */}
+      <ErrorBoundary>
+        <RoleGuard
+          allowedRoles={['analyst', 'coach']}
+          fallback={<div className="bg-gray-800 rounded-lg p-6 text-center text-gray-500 text-sm">{t('analysis.restricted')}</div>}
+        >
+          <ShotInfluenceV2Card playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
     </div>

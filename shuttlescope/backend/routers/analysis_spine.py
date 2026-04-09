@@ -29,11 +29,12 @@ from backend.analysis.analysis_meta import EVIDENCE_META
 from backend.analysis.promotion_rules import all_criteria_as_dict, DEMOTION_CONDITIONS
 from backend.analysis.epv_state_model import compute_rally_state_epv, compute_epv_state_map
 from backend.analysis.q_value_model import compute_q_values, summarize_best_actions
-from backend.analysis.counterfactual_v2 import compute_counterfactual_v2
+from backend.analysis.counterfactual_v2 import compute_counterfactual_v2, compute_counterfactual_cf2
 from backend.analysis.hazard_fatigue import compute_hazard_model
 from backend.analysis.bayes_matchup import compute_bayes_matchup
 from backend.analysis.opponent_policy_engine import compute_opponent_policy
-from backend.analysis.doubles_role_inference import compute_doubles_role_inference
+from backend.analysis.doubles_role_inference import compute_doubles_role_inference, compute_doubles_role_db2
+from backend.analysis.shot_influence_v2 import compute_shot_influence_v2
 
 router = APIRouter()
 
@@ -396,16 +397,181 @@ def get_doubles_role(
 
 
 # ---------------------------------------------------------------------------
+# RS-5 DB-2: HMM ロール推定
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/doubles_role_db2")
+def get_doubles_role_db2(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    from backend.db.models import Player
+    player = db.query(Player).filter(Player.id == player_id).first()
+    if not player:
+        return {"success": True, "data": {}, "meta": build_response_meta("doubles_role", 0)}
+
+    all_matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    doubles_matches = [m for m in all_matches if getattr(m, 'match_type', None) in ('doubles', 'mixed_doubles')]
+
+    if not doubles_matches:
+        meta = build_response_meta("doubles_role", 0)
+        return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0, "db_phase": "db2"}, "meta": meta}
+
+    match_ids = [m.id for m in doubles_matches]
+    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in doubles_matches}
+
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_ids = [s.id for s in sets]
+
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rally_ids = [r.id for r in rallies]
+    _, strokes_by_rally = _build_aux_maps(db, doubles_matches, [], rally_ids)
+
+    result_data = compute_doubles_role_db2(
+        rallies=rallies,
+        strokes_by_rally=strokes_by_rally,
+        role_by_match=role_by_match,
+        set_to_match=set_to_match,
+    )
+    meta = build_response_meta("doubles_role", result_data.get("total_shots", 0))
+    return {"success": True, "data": result_data, "meta": meta}
+
+
+# ---------------------------------------------------------------------------
+# CF-2: 傾向スコア重み付き反事実推定
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/counterfactual_cf2")
+def get_counterfactual_cf2(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    if not matches:
+        return {"success": True, "data": {"comparisons": [], "total_contexts": 0, "usable_contexts": 0, "cf_phase": "cf2"}, "meta": build_response_meta("counterfactual_v2", 0)}
+
+    match_ids = [m.id for m in matches]
+    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
+
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_num_map = {s.id: s.set_num for s in sets}
+    set_ids = [s.id for s in sets]
+
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rally_ids = [r.id for r in rallies]
+    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
+
+    result_data = compute_counterfactual_cf2(
+        rallies=rallies,
+        strokes_by_rally=strokes_by_rally,
+        role_by_match=role_by_match,
+        set_to_match=set_to_match,
+        set_num_by_set=set_num_map,
+    )
+    meta = build_response_meta("counterfactual_v2", len(rallies))
+    return {"success": True, "data": result_data, "meta": meta}
+
+
+# ---------------------------------------------------------------------------
+# Spine 4: ショット影響度 v2（状態条件付き）
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/shot_influence_v2")
+def get_shot_influence_v2(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    db: Session = Depends(get_db),
+):
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    if not matches:
+        meta = build_response_meta("shot_influence", 0)
+        return {"success": True, "data": {"per_shot_type": {}, "state_breakdown": [], "total_rallies": 0, "usable_rallies": 0}, "meta": meta}
+
+    match_ids = [m.id for m in matches]
+    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
+
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_num_map = {s.id: s.set_num for s in sets}
+    set_ids = [s.id for s in sets]
+
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rally_ids = [r.id for r in rallies]
+    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
+
+    result_data = compute_shot_influence_v2(
+        rallies=rallies,
+        strokes_by_rally=strokes_by_rally,
+        role_by_match=role_by_match,
+        set_to_match=set_to_match,
+        set_num_by_set=set_num_map,
+    )
+    # rally_details は dataclass のリストなので dict 変換
+    result_data["rally_details"] = [
+        {
+            "rally_id": rv.rally_id,
+            "state_key": rv.state_key,
+            "state_epv": rv.state_epv,
+            "outcome": rv.outcome,
+        }
+        for rv in result_data["rally_details"]
+    ]
+    meta = build_response_meta("shot_influence", len(rallies))
+    return {"success": True, "data": result_data, "meta": meta}
+
+
+# ---------------------------------------------------------------------------
 # メタデータ: evidence 一覧
 # ---------------------------------------------------------------------------
 
 @router.get("/analysis/meta/evidence")
 def get_evidence_meta():
-    """各 analysis_type の evidence メタデータ一覧を返す。"""
+    """各 analysis_type の evidence メタデータ一覧をリスト形式で返す。"""
+    from backend.analysis.analysis_tiers import get_min_samples
+    entries = []
+    for analysis_type, meta in EVIDENCE_META.items():
+        entries.append({
+            "analysis_type": analysis_type,
+            "tier": _infer_tier(analysis_type),
+            "evidence_level": meta.get("evidence_level", "exploratory"),
+            "min_recommended_sample": get_min_samples(analysis_type),
+            "caution": meta.get("caution"),
+            "assumptions": meta.get("assumptions"),
+            "promotion_criteria": meta.get("promotion_criteria"),
+        })
     return {
         "success": True,
-        "data": EVIDENCE_META,
+        "data": entries,
     }
+
+
+def _infer_tier(analysis_type: str) -> str:
+    """analysis_type から tier を推定する。"""
+    stable_types = {"descriptive", "heatmap", "score_progression", "first_return", "set_summary"}
+    research_types = {
+        "counterfactual", "opponent_affinity", "pair_synergy", "epv",
+        "shot_influence", "spatial_density",
+        "epv_state", "state_action", "hazard_fatigue", "counterfactual_v2",
+        "bayes_matchup", "opponent_policy", "doubles_role",
+    }
+    if analysis_type in stable_types:
+        return "stable"
+    if analysis_type in research_types:
+        return "research"
+    return "advanced"
 
 
 # ---------------------------------------------------------------------------
