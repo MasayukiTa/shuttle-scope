@@ -16,8 +16,6 @@ import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SessionShareModal } from '@/components/annotation/SessionShareModal'
 import { DeviceManagerPanel } from '@/components/session/DeviceManagerPanel'
 import { WarmupNotesPanel } from '@/components/annotation/WarmupNotesPanel'
-import { PlayerPositionOverlay } from '@/components/annotation/PlayerPositionOverlay'
-import { ShuttleTrackOverlay, ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
@@ -27,6 +25,9 @@ import { useMatchTimer } from '@/hooks/useMatchTimer'
 import { useSettings } from '@/hooks/useSettings'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useCVJobs } from '@/hooks/annotator/useCVJobs'
+import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
+import { AnnotatorVideoPane } from '@/components/annotator/AnnotatorVideoPane'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -244,28 +245,6 @@ export function AnnotatorPage() {
   // P2: 映像ソースモード + 手動タイマー
   const [videoSourceMode, setVideoSourceMode] = useState<VideoSourceMode>('local')
   const timer = useMatchTimer()
-  // 中継ブラウザモード: DeviceManagerからのWebRTCストリームを受け取る
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
-  const remoteStreamVideoRef = useRef<HTMLVideoElement>(null)
-  useEffect(() => {
-    if (remoteStreamVideoRef.current) {
-      remoteStreamVideoRef.current.srcObject = remoteStream
-    }
-  }, [remoteStream])
-  // ローカルPCカメラストリーム（DeviceManagerから）
-  const [localCamStream, setLocalCamStream] = useState<MediaStream | null>(null)
-  const localCamVideoRef = useRef<HTMLVideoElement>(null)
-  useEffect(() => {
-    if (localCamVideoRef.current) {
-      localCamVideoRef.current.srcObject = localCamStream
-    }
-  }, [localCamStream])
-  // リモートヘルス状態（DeviceManagerPanelから通知）
-  const [remoteHealth, setRemoteHealth] = useState<{
-    wsConnected: boolean
-    connectionState: RTCPeerConnectionState | null
-    turnInUse: boolean | null
-  } | null>(null)
 
   // P4: デュアルモニター
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
@@ -283,16 +262,6 @@ export function AnnotatorPage() {
   const [showCommentInput, setShowCommentInput] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [commentRallyId, setCommentRallyId] = useState<number | null>(null)
-
-  // R-001/R-002: セッション
-  const [activeSession, setActiveSession] = useState<{
-    session_code: string
-    coach_urls: string[]
-    camera_sender_urls?: string[]
-    session_password?: string
-  } | null>(null)
-  const [showSessionModal, setShowSessionModal] = useState(false)
-  const [showDeviceManager, setShowDeviceManager] = useState(false)
 
   // モバイル: ヘッダーオーバーフローメニュー
   const [showMobileMenu, setShowMobileMenu] = useState(false)
@@ -327,34 +296,8 @@ export function AnnotatorPage() {
     window.addEventListener('mouseup', onUp)
   }, [])
 
-  // P3: TrackNet バッチ解析
-  const [tracknetJobId, setTracknetJobId] = useState<string | null>(null)
-  const [tracknetJob, setTracknetJob] = useState<{
-    status: string; progress: number; processed_rallies: number;
-    total_rallies: number; updated_strokes: number; error: string | null
-  } | null>(null)
-
-  // P4: YOLO プレイヤー検出
-  const [yoloJobId, setYoloJobId] = useState<string | null>(null)
-  const [yoloJob, setYoloJob] = useState<{
-    status: string; progress: number; processed_frames: number;
-    total_frames: number; detected_players: number; error: string | null
-  } | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [yoloFrames, setYoloFrames] = useState<any[]>([])
-  const [yoloOverlayVisible, setYoloOverlayVisible] = useState(false)
-  const [currentVideoSec, setCurrentVideoSec] = useState(0)
-  const videoContainerRef = useRef<HTMLDivElement>(null)
-
-  // シャトル軌跡オーバーレイ
-  const [shuttleFrames, setShuttleFrames] = useState<ShuttleFrame[]>([])
-  const [shuttleOverlayVisible, setShuttleOverlayVisible] = useState(false)
-
-  // アーティファクト鮮度情報
-  const [yoloArtifactMeta, setYoloArtifactMeta] = useState<{
-    created_at: string; frame_count: number
-  } | null>(null)
-  const [tracknetArtifactAt, setTracknetArtifactAt] = useState<string | null>(null)
+  // P3/P4: CV ジョブ（TrackNet + YOLO）— useCVJobs に委譲
+  // match は後で解決されるため、後ほど useCVJobs を呼び出す（match データ取得後）
 
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
@@ -362,37 +305,6 @@ export function AnnotatorPage() {
     queryFn: () => apiGet<{ success: boolean; data: Match }>(`/matches/${matchId}`),
     enabled: !!matchId,
   })
-
-  // トンネル起動中はURLをトンネルベースに置換するため状態を取得
-  const { data: tunnelStatus, refetch: refetchTunnel } = useQuery({
-    queryKey: ['tunnel-status'],
-    queryFn: () => apiGet<{
-      success: boolean
-      data: {
-        available: boolean
-        running: boolean
-        url: string | null
-        active_provider: 'cloudflare' | 'ngrok' | null
-        providers: { cloudflare: { available: boolean }; ngrok: { available: boolean } }
-      }
-    }>('/tunnel/status'),
-    refetchInterval: 5000,
-  })
-  const tunnelToggle = useMutation({
-    mutationFn: () => tunnelStatus?.data?.running
-      ? apiPost('/tunnel/stop', {})
-      : apiPost(`/tunnel/start?provider=${appSettings.tunnel_provider}`, {}),
-    onSuccess: () => { refetchTunnel() },
-  })
-  const tunnelBase = tunnelStatus?.data?.running && tunnelStatus.data.url ? tunnelStatus.data.url : null
-  // LANベースURL（http://192.x.x.x:8765）をトンネルURLに置換するヘルパー
-  const rebaseUrl = (url: string) => {
-    if (!tunnelBase) return url
-    try {
-      const u = new URL(url)
-      return tunnelBase + u.hash
-    } catch { return url }
-  }
 
   const { data: annotationStateData } = useQuery({
     queryKey: ['annotation-state', matchId],
@@ -801,6 +713,41 @@ export function AnnotatorPage() {
 
   const match = matchData?.data
 
+  // P3/P4: CV ジョブフック（TrackNet + YOLO バッチ解析・オーバーレイ）
+  const {
+    tracknetJob, setTracknetJob, shuttleFrames, shuttleOverlayVisible,
+    setShuttleOverlayVisible, tracknetArtifactAt, handleTracknetBatch,
+    yoloJob, setYoloJob, yoloFrames, yoloOverlayVisible,
+    setYoloOverlayVisible, yoloArtifactMeta, handleYoloBatch,
+    currentVideoSec, videoContainerRef,
+  } = useCVJobs({
+    matchId,
+    match,
+    tracknetEnabled: appSettings.tracknet_enabled,
+    yoloEnabled: appSettings.yolo_enabled,
+    tracknetBackend: appSettings.tracknet_backend,
+    queryClient,
+    t,
+    videoRef,
+  })
+
+  // R-001/R-002: セッション共有フック
+  const {
+    activeSession,
+    showSessionModal, setShowSessionModal,
+    showDeviceManager, setShowDeviceManager,
+    handleCreateOrGetSession,
+    tunnelStatus, tunnelToggle, tunnelBase, rebaseUrl,
+    remoteStream, setRemoteStream,
+    remoteStreamVideoRef,
+    localCamStream, setLocalCamStream,
+    localCamVideoRef,
+    remoteHealth, setRemoteHealth,
+  } = useSessionSharing({
+    matchId,
+    tunnelProvider: appSettings.tunnel_provider,
+  })
+
   // V4-U-001: 試合中補完パネルの相手選手ミューテーション
   const updateOpponent = useMutation({
     mutationFn: (body: Partial<Player>) =>
@@ -1069,114 +1016,6 @@ export function AnnotatorPage() {
     return () => { cleanup?.() }
   }, [])
 
-  // P3: TrackNet バッチ解析開始
-  const handleTracknetBatch = useCallback(async () => {
-    if (!matchId) return
-    const hasVideo = !!(match?.video_local_path || match?.video_url)
-    if (!hasVideo) {
-      alert(t('tracknet.batch_no_video'))
-      return
-    }
-    try {
-      const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
-        `/tracknet/batch/${matchId}`,
-        { backend: appSettings.tracknet_backend, confidence_threshold: 0.5 }
-      )
-      if (res.success) {
-        setTracknetJobId(res.data.job_id)
-        setTracknetJob({ status: 'pending', progress: 0, processed_rallies: 0, total_rallies: 0, updated_strokes: 0, error: null })
-      }
-    } catch {
-      alert(t('tracknet.batch_error'))
-    }
-  }, [matchId, match, appSettings.tracknet_backend, t])
-
-  // P3: TrackNet ジョブポーリング
-  useEffect(() => {
-    if (!tracknetJobId || tracknetJob?.status === 'complete' || tracknetJob?.status === 'error') return
-    const id = setInterval(async () => {
-      try {
-        const res = await apiGet<{ success: boolean; data: typeof tracknetJob }>(`/tracknet/batch/${tracknetJobId}/status`)
-        if (res.success && res.data) {
-          setTracknetJob(res.data)
-          if (res.data?.status === 'complete') {
-            queryClient.invalidateQueries({ queryKey: ['strokes'] })
-            // TrackNet 完了後にシャトル軌跡アーティファクトを取得
-            try {
-              const trackRes = await apiGet<{ success: boolean; data: ShuttleFrame[] }>(
-                `/tracknet/shuttle_track/${matchId}`
-              )
-              if (trackRes.success && Array.isArray(trackRes.data) && trackRes.data.length > 0) {
-                setShuttleFrames(trackRes.data)
-                setTracknetArtifactAt(new Date().toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }))
-              }
-            } catch { /* shuttle track 取得失敗は無視 */ }
-          }
-        }
-      } catch { /* ポーリング失敗は無視 */ }
-    }, 2000)
-    return () => clearInterval(id)
-  }, [tracknetJobId, tracknetJob?.status, queryClient, matchId])
-
-  // P4: YOLO バッチ解析開始
-  const handleYoloBatch = useCallback(async () => {
-    if (!matchId) return
-    const hasVideo = !!(match?.video_local_path || match?.video_url)
-    if (!hasVideo) {
-      alert(t('yolo.batch_no_video'))
-      return
-    }
-    try {
-      const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
-        `/yolo/batch/${matchId}`,
-        {}
-      )
-      if (res.success) {
-        setYoloJobId(res.data.job_id)
-        setYoloJob({ status: 'pending', progress: 0, processed_frames: 0, total_frames: 0, detected_players: 0, error: null })
-      }
-    } catch {
-      alert(t('yolo.batch_error'))
-    }
-  }, [matchId, match, t])
-
-  // P4: YOLO ジョブポーリング
-  useEffect(() => {
-    if (!yoloJobId || yoloJob?.status === 'complete' || yoloJob?.status === 'error') return
-    const id = setInterval(async () => {
-      try {
-        const res = await apiGet<{ success: boolean; data: typeof yoloJob }>(`/yolo/batch/${yoloJobId}/status`)
-        if (res.success && res.data) {
-          setYoloJob(res.data)
-          if (res.data?.status === 'complete') {
-            // 検出完了後にフレームデータを取得
-            const framesRes = await apiGet<{ success: boolean; data: typeof yoloFrames }>(`/yolo/results/${matchId}/frames`)
-            if (framesRes.success && framesRes.data) {
-              setYoloFrames(framesRes.data)
-            }
-            // アーティファクトメタ（作成日時・フレーム数）
-            try {
-              const metaRes = await apiGet<{ success: boolean; data: { created_at: string; frame_count: number } | null }>(`/yolo/results/${matchId}`)
-              if (metaRes.success && metaRes.data) {
-                setYoloArtifactMeta({ created_at: metaRes.data.created_at, frame_count: metaRes.data.frame_count })
-              }
-            } catch { /* meta 取得失敗は無視 */ }
-          }
-        }
-      } catch { /* ポーリング失敗は無視 */ }
-    }, 2000)
-    return () => clearInterval(id)
-  }, [yoloJobId, yoloJob?.status, matchId])
-
-  // P4: 動画再生位置の追跡（オーバーレイ同期）
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-    const onTimeUpdate = () => setCurrentVideoSec(video.currentTime)
-    video.addEventListener('timeupdate', onTimeUpdate)
-    return () => video.removeEventListener('timeupdate', onTimeUpdate)
-  }, [videoRef])
-
   // U-001: ブックマーク追加
   const handleBookmark = useCallback(async (rallyId: number | null, ts?: number) => {
     if (!matchId) return
@@ -1234,24 +1073,6 @@ export function AnnotatorPage() {
       setCommentRallyId(null)
     } catch { /* ignore */ }
   }, [matchId, commentText, commentRallyId])
-
-  // R-001/R-002: セッション作成・取得
-  const handleCreateOrGetSession = useCallback(async () => {
-    if (!matchId) return
-    try {
-      const res = await apiPost<{ success: boolean; data: { session_code: string; coach_urls: string[]; camera_sender_urls?: string[]; session_password?: string } }>(
-        '/sessions', { match_id: Number(matchId) }
-      )
-      if (res.success) {
-        setActiveSession({
-          session_code: res.data.session_code,
-          coach_urls: res.data.coach_urls,
-          camera_sender_urls: res.data.camera_sender_urls,
-          session_password: res.data.session_password,
-        })
-      }
-    } catch { /* ignore */ }
-  }, [matchId])
 
   // ステップラベル
   const stepLabel = {
@@ -1885,32 +1706,18 @@ export function AnnotatorPage() {
             }
 
             return (
-              <div ref={videoContainerRef} className="relative w-full">
-                <VideoPlayer
-                  videoRefProp={videoRef}
-                  src={videoSrc}
-                  playbackRate={playbackRate}
-                  onPlaybackRateChange={setPlaybackRate}
-                />
-                {yoloFrames.length > 0 && videoContainerRef.current && (
-                  <PlayerPositionOverlay
-                    frames={yoloFrames}
-                    currentSec={currentVideoSec}
-                    videoWidth={videoContainerRef.current.clientWidth}
-                    videoHeight={videoContainerRef.current.clientHeight}
-                    visible={yoloOverlayVisible}
-                  />
-                )}
-                {shuttleFrames.length > 0 && videoContainerRef.current && (
-                  <ShuttleTrackOverlay
-                    frames={shuttleFrames}
-                    currentSec={currentVideoSec}
-                    videoWidth={videoContainerRef.current.clientWidth}
-                    videoHeight={videoContainerRef.current.clientHeight}
-                    visible={shuttleOverlayVisible}
-                  />
-                )}
-              </div>
+              <AnnotatorVideoPane
+                videoRef={videoRef}
+                videoContainerRef={videoContainerRef}
+                src={videoSrc}
+                playbackRate={playbackRate}
+                onPlaybackRateChange={setPlaybackRate}
+                yoloFrames={yoloFrames}
+                yoloOverlayVisible={yoloOverlayVisible}
+                currentVideoSec={currentVideoSec}
+                shuttleFrames={shuttleFrames}
+                shuttleOverlayVisible={shuttleOverlayVisible}
+              />
             )
           })()}
 

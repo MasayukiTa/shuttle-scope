@@ -26,6 +26,7 @@ from backend.analysis.router_helpers import (
     _player_role_in_match, _get_player_matches, _fetch_matches_sets_rallies,
 )
 from backend.analysis.response_meta import build_response_meta
+from backend.analysis.analysis_registry import list_registry_entries, get_tier as _registry_get_tier
 from backend.analysis.analysis_meta import EVIDENCE_META
 from backend.analysis.promotion_rules import all_criteria_as_dict, DEMOTION_CONDITIONS
 from backend.analysis.epv_state_model import compute_rally_state_epv, compute_epv_state_map
@@ -605,39 +606,29 @@ def get_shot_influence_v2(
 
 @router.get("/analysis/meta/evidence")
 def get_evidence_meta():
-    """各 analysis_type の evidence メタデータ一覧をリスト形式で返す。"""
-    from backend.analysis.analysis_tiers import get_min_samples
-    entries = []
-    for analysis_type, meta in EVIDENCE_META.items():
-        entries.append({
-            "analysis_type": analysis_type,
-            "tier": _infer_tier(analysis_type),
-            "evidence_level": meta.get("evidence_level", "exploratory"),
-            "min_recommended_sample": get_min_samples(analysis_type),
-            "caution": meta.get("caution"),
-            "assumptions": meta.get("assumptions"),
-            "promotion_criteria": meta.get("promotion_criteria"),
-        })
+    """各 analysis_type の evidence メタデータ一覧をリスト形式で返す。
+
+    レジストリが全 analysis_type の正規ソースとなっているため、
+    以前の EVIDENCE_META / _infer_tier() ベースの実装を置き換えた。
+    """
+    entries = [
+        {
+            "analysis_type": e["analysis_type"],
+            "tier": e["tier"],
+            "evidence_level": e["evidence_level"],
+            "min_recommended_sample": e["min_recommended_sample"],
+            "caution": e["caution"],
+            "assumptions": e["assumptions"],
+            "promotion_criteria": e["promotion_criteria"],
+            "page": e["page"],
+            "section": e["section"],
+        }
+        for e in list_registry_entries()
+    ]
     return {
         "success": True,
         "data": entries,
     }
-
-
-def _infer_tier(analysis_type: str) -> str:
-    """analysis_type から tier を推定する。"""
-    stable_types = {"descriptive", "heatmap", "score_progression", "first_return", "set_summary"}
-    research_types = {
-        "counterfactual", "opponent_affinity", "pair_synergy", "epv",
-        "shot_influence", "spatial_density",
-        "epv_state", "state_action", "hazard_fatigue", "counterfactual_v2",
-        "bayes_matchup", "opponent_policy", "doubles_role",
-    }
-    if analysis_type in stable_types:
-        return "stable"
-    if analysis_type in research_types:
-        return "research"
-    return "advanced"
 
 
 # ---------------------------------------------------------------------------

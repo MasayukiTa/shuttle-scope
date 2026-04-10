@@ -13,8 +13,10 @@ response_meta.py — API レスポンス共通 meta フィールドビルダー
 """
 from __future__ import annotations
 
-from backend.analysis.analysis_tiers import get_tier, get_min_samples, get_output_policy
-from backend.analysis.analysis_meta import get_evidence_meta
+from backend.analysis.analysis_registry import (
+    get_analysis_meta,
+    TIER_OUTPUT_POLICY,
+)
 
 
 def build_response_meta(analysis_type: str, sample_size: int) -> dict:
@@ -35,10 +37,10 @@ def build_response_meta(analysis_type: str, sample_size: int) -> dict:
           "promotion_criteria": str | None,
         }
     """
-    tier = get_tier(analysis_type)
-    min_samples = get_min_samples(analysis_type)
-    policy = get_output_policy(analysis_type)
-    evidence = get_evidence_meta(analysis_type)
+    entry = get_analysis_meta(analysis_type)
+    tier = entry["tier"]
+    min_samples = entry["min_recommended_sample"]
+    policy = TIER_OUTPUT_POLICY.get(tier, TIER_OUTPUT_POLICY["research"])
 
     # 信頼度スコア (0〜1): min_samples に対する実サンプルの達成率
     if min_samples > 0:
@@ -50,15 +52,15 @@ def build_response_meta(analysis_type: str, sample_size: int) -> dict:
 
     return {
         "tier": tier,
-        "evidence_level": evidence.get("evidence_level", "exploratory"),
+        "evidence_level": entry["evidence_level"],
         "sample_size": sample_size,
         "min_recommended_sample": min_samples,
         "confidence_level": confidence_level,
         "conclusion_allowed": policy["show_conclusion"] and sufficient,
         "recommendation_allowed": policy["show_suggestion"] and sufficient,
-        "caution": evidence.get("caution"),
-        "assumptions": evidence.get("assumptions"),
-        "promotion_criteria": evidence.get("promotion_criteria"),
+        "caution": entry["caution"],
+        "assumptions": entry["assumptions"],
+        "promotion_criteria": entry["promotion_criteria"],
     }
 
 
