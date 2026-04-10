@@ -1428,62 +1428,89 @@ export function AnnotatorPage() {
               </button>
             )
           )}
-          {/* P4: YOLO プレイヤー検出ボタン */}
+          {/* CV オーバーレイグループ（YOLO + TrackNet） */}
           {appSettings.yolo_enabled && (match?.video_local_path || match?.video_url) && (
-            yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running') ? (
-              <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
-                isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/40 text-blue-300'
-              }`}>
-                <span className="animate-pulse">●</span>
-                {t('yolo.batch_running')} {Math.round(yoloJob.progress * 100)}%
-              </div>
-            ) : yoloJob?.status === 'complete' ? (
-              <button
-                onClick={() => setYoloOverlayVisible((v) => !v)}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  yoloOverlayVisible
-                    ? isLight ? 'bg-blue-200 text-blue-800' : 'bg-blue-700/60 text-blue-200'
-                    : isLight ? 'bg-green-100 text-green-700 hover:bg-blue-100' : 'bg-green-900/40 text-green-300 hover:bg-blue-900/40'
-                }`}
-                title={yoloOverlayVisible ? t('yolo.overlay_off') : t('yolo.overlay_on')}
-              >
-                {yoloOverlayVisible ? '◉' : '○'} {t('yolo.overlay_toggle')}
-              </button>
-            ) : yoloJob?.status === 'error' ? (
-              <button
-                onClick={() => setYoloJob(null)}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  isLight ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
-                }`}
-                title={yoloJob.error ?? t('yolo.batch_error')}
-              >
-                ✗ {t('yolo.batch_error_retry')}
-              </button>
-            ) : (
-              <button
-                onClick={handleYoloBatch}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
-                }`}
-                title={t('yolo.batch_start')}
-              >
-                {t('yolo.batch_start')}
-              </button>
-            )
-          )}
-          {/* シャトル軌跡オーバーレイトグル（TrackNet 完了後に表示） */}
-          {shuttleFrames.length > 0 && (
-            <button
-              onClick={() => setShuttleOverlayVisible((v) => !v)}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                shuttleOverlayVisible
-                  ? isLight ? 'bg-yellow-200 text-yellow-800' : 'bg-yellow-700/60 text-yellow-200'
-                  : isLight ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-yellow-900/40 text-yellow-300 hover:bg-yellow-800/60'
-              }`}
-              title={shuttleOverlayVisible ? 'シャトル軌跡を非表示' : 'シャトル軌跡を表示'}
-            >
-              {shuttleOverlayVisible ? '◉' : '○'} 軌跡
-            </button>
+            <div className={`flex items-center gap-1 px-1.5 py-1 rounded border ${
+              isLight ? 'border-gray-300 bg-gray-50' : 'border-gray-700 bg-gray-800/60'
+            }`}>
+              <span className={`text-[9px] font-bold uppercase tracking-wider pr-1 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>CV</span>
+
+              {/* YOLO プレイヤー検出 */}
+              {yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running') ? (
+                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
+                  isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/40 text-blue-300'
+                }`}>
+                  <span className="animate-pulse">●</span>
+                  人物 {Math.round(yoloJob.progress * 100)}%
+                </div>
+              ) : yoloJob?.status === 'complete' ? (
+                <button
+                  onClick={() => setYoloOverlayVisible((v) => !v)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                    yoloOverlayVisible
+                      ? isLight ? 'bg-blue-200 text-blue-800' : 'bg-blue-700/60 text-blue-200'
+                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-blue-100' : 'bg-gray-700 text-gray-400 hover:bg-blue-900/40'
+                  }`}
+                  title={yoloOverlayVisible ? '人物オーバーレイを非表示' : '人物オーバーレイを表示'}
+                >
+                  {yoloOverlayVisible ? '◉' : '○'} 人物
+                </button>
+              ) : yoloJob?.status === 'error' ? (
+                <button
+                  onClick={() => setYoloJob(null)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                    isLight ? 'bg-red-100 text-red-600' : 'bg-red-900/40 text-red-300'
+                  }`}
+                  title={yoloJob.error ?? t('yolo.batch_error')}
+                >
+                  ✗ 人物
+                </button>
+              ) : (
+                <button
+                  onClick={handleYoloBatch}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                    isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                  }`}
+                  title={t('yolo.batch_start')}
+                >
+                  + 人物検出
+                </button>
+              )}
+
+              {/* シャトル軌跡トグル */}
+              {shuttleFrames.length > 0 && (
+                <button
+                  onClick={() => setShuttleOverlayVisible((v) => !v)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                    shuttleOverlayVisible
+                      ? isLight ? 'bg-yellow-200 text-yellow-800' : 'bg-yellow-700/60 text-yellow-200'
+                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-yellow-100' : 'bg-gray-700 text-gray-400 hover:bg-yellow-900/40'
+                  }`}
+                  title={shuttleOverlayVisible ? 'シャトル軌跡を非表示' : 'シャトル軌跡を表示'}
+                >
+                  {shuttleOverlayVisible ? '◉' : '○'} 軌跡
+                </button>
+              )}
+
+              {/* 両方同時表示プリセット（両アーティファクトが揃っている場合） */}
+              {yoloJob?.status === 'complete' && shuttleFrames.length > 0 && (
+                <button
+                  onClick={() => {
+                    const bothOn = yoloOverlayVisible && shuttleOverlayVisible
+                    setYoloOverlayVisible(!bothOn)
+                    setShuttleOverlayVisible(!bothOn)
+                  }}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                    yoloOverlayVisible && shuttleOverlayVisible
+                      ? isLight ? 'bg-green-200 text-green-800' : 'bg-green-700/60 text-green-200'
+                      : isLight ? 'bg-gray-200 text-gray-500 hover:bg-green-100' : 'bg-gray-700 text-gray-500 hover:bg-green-900/40'
+                  }`}
+                  title="人物・軌跡を両方同時に切り替え"
+                >
+                  {yoloOverlayVisible && shuttleOverlayVisible ? '◉' : '○'} 両方
+                </button>
+              )}
+            </div>
           )}
           {/* R-001/R-002: セッション共有ボタン */}
           {activeSession ? (

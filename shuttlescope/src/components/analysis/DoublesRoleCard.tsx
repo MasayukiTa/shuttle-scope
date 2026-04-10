@@ -5,6 +5,29 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 
+// ─── CV ロール照合型 ──────────────────────────────────────────────────────────
+
+interface CVRoleSignal {
+  cv_available: boolean
+  shot_role: string
+  cv_formation_style: string
+  agreement: 'consistent' | 'partial' | 'inconsistent' | 'unknown'
+  agreement_score: number
+  player_a_cv_role_hint: string | null
+  player_b_cv_role_hint: string | null
+  cv_adjusted_note: string
+}
+
+interface CVAnalysisResp {
+  available: boolean
+  cv_role_signal?: CVRoleSignal | null
+}
+
+interface MatchSummary {
+  id: number
+  match_date: string | null
+}
+
 interface PhaseBreakdown {
   score_phase: string
   inferred_role: string
@@ -145,6 +168,22 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
       ),
   })
 
+  // CV ロール照合: 最新試合の cv_role_signal を取得
+  const { data: matchesResp } = useQuery({
+    queryKey: ['player-matches-for-cv-role', playerId],
+    queryFn: () =>
+      apiGet<{ success: boolean; data: MatchSummary[] }>('/matches', { player_id: playerId }),
+    enabled: !!playerId,
+  })
+  const recentMatchId = matchesResp?.data?.[0]?.id ?? null
+  const { data: cvResp } = useQuery({
+    queryKey: ['yolo-doubles-analysis-for-role', recentMatchId],
+    queryFn: () =>
+      apiGet<{ success: boolean; data: CVAnalysisResp }>(`/yolo/doubles_analysis/${recentMatchId}`),
+    enabled: !!recentMatchId,
+  })
+  const cvRoleSignal: CVRoleSignal | null | undefined = cvResp?.data?.cv_role_signal
+
   const meta = data?.meta
   const roleData = data?.data
   const stability = stabilityResp?.data
@@ -240,6 +279,49 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
 
           {roleData.note && (
             <p className={`text-[10px] ${isLight ? 'text-amber-700' : 'text-yellow-600/80'}`}>{roleData.note}</p>
+          )}
+
+          {/* CV 位置照合セクション */}
+          {cvRoleSignal?.cv_available && (
+            <div className={`${cardInnerAlt} rounded px-3 py-2 space-y-1.5`}>
+              <div className="flex items-center justify-between">
+                <p className={`text-[10px] font-medium ${textSecondary}`}>
+                  CV 位置照合
+                  {recentMatchId && (
+                    <span className={`ml-1 font-normal ${textFaint}`}>試合 #{recentMatchId}</span>
+                  )}
+                </p>
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                  cvRoleSignal.agreement === 'consistent'
+                    ? isLight ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-900/40 text-emerald-300'
+                    : cvRoleSignal.agreement === 'inconsistent'
+                    ? isLight ? 'bg-red-100 text-red-700' : 'bg-red-900/40 text-red-300'
+                    : isLight ? 'bg-amber-100 text-amber-700' : 'bg-amber-900/40 text-amber-300'
+                }`}>
+                  {cvRoleSignal.agreement === 'consistent' ? '一致'
+                    : cvRoleSignal.agreement === 'inconsistent' ? '不一致'
+                    : cvRoleSignal.agreement === 'partial' ? '部分一致'
+                    : '不明'}
+                </span>
+              </div>
+              <div className={`flex items-center gap-3 text-[10px] ${textMuted}`}>
+                <span>CV陣形: <span className={textSecondary}>{cvRoleSignal.cv_formation_style}</span></span>
+                <span>照合スコア: <span className={textSecondary}>{Math.round(cvRoleSignal.agreement_score * 100)}%</span></span>
+              </div>
+              {(cvRoleSignal.player_a_cv_role_hint || cvRoleSignal.player_b_cv_role_hint) && (
+                <div className={`flex gap-3 text-[10px] ${textFaint}`}>
+                  {cvRoleSignal.player_a_cv_role_hint && (
+                    <span>A: <span className="text-blue-400">{cvRoleSignal.player_a_cv_role_hint}</span></span>
+                  )}
+                  {cvRoleSignal.player_b_cv_role_hint && (
+                    <span>B: <span className="text-amber-400">{cvRoleSignal.player_b_cv_role_hint}</span></span>
+                  )}
+                </div>
+              )}
+              {cvRoleSignal.cv_adjusted_note && (
+                <p className={`text-[9px] italic ${textFaint}`}>{cvRoleSignal.cv_adjusted_note}</p>
+              )}
+            </div>
           )}
 
           {/* DB-3 安定性セクション */}
