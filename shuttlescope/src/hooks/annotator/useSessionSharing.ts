@@ -39,6 +39,7 @@ interface TunnelData {
   url: string | null
   active_provider: TunnelProvider | null
   providers: { cloudflare: { available: boolean }; ngrok: { available: boolean } }
+  recent_log: string[]
 }
 
 interface Options {
@@ -60,6 +61,7 @@ export interface SessionSharingResult {
   tunnelToggle: ReturnType<typeof useMutation<unknown, Error, void, unknown>>
   tunnelBase: string | null
   tunnelPending: boolean
+  tunnelLastError: string | null
   rebaseUrl: (url: string) => string
   // リモートストリーム
   remoteStream: MediaStream | null
@@ -133,6 +135,26 @@ export function useSessionSharing({
     : null
   // trueのとき: トンネル起動中だがURLがまだ取得できていない（ポーリング待機中）
   const tunnelPending = tunnelRunning && !tunnelBase
+  // 直近のエラーログ（タイムアウト・認証失敗などのエラーメッセージ）
+  const tunnelLastError: string | null = (() => {
+    const log = tunnelStatus?.data?.recent_log ?? []
+    // エラー・失敗を示すログエントリを探す（最新から）
+    for (let i = log.length - 1; i >= 0; i--) {
+      const line = log[i]
+      if (
+        line.includes('取得できませんでした') ||
+        line.includes('終了しました') ||
+        line.includes('authtoken') ||
+        line.includes('ERR_NGROK') ||
+        line.includes('error') ||
+        line.includes('Error') ||
+        line.includes('failed')
+      ) {
+        return line
+      }
+    }
+    return null
+  })()
 
   const rebaseUrl = useCallback((url: string) => {
     if (!tunnelBase) return url
@@ -183,6 +205,7 @@ export function useSessionSharing({
     tunnelToggle,
     tunnelBase,
     tunnelPending,
+    tunnelLastError,
     rebaseUrl,
     // リモートストリーム
     remoteStream,

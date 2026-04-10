@@ -129,20 +129,41 @@ def _read_stderr_cloudflare(proc: subprocess.Popen) -> None:
                     _tunnel_url = m.group(0)
 
 
-# ─── ngrok local API ポーリングスレッド ──────────────────────────────────────
+# ─── ngrok stdout 読み取りスレッド ─────────────────────────────────────────
 
-def _read_stderr_ngrok(proc: subprocess.Popen) -> None:
-    """ngrok の stderr を読んでログに記録する（エラー検出用）"""
+# ngrok が --log=stdout --log-format=json で出力する tunnel 起動ログのパターン
+_NGROK_JSON_URL_RE = re.compile(r'"url"\s*:\s*"(https://[^"]+)"')
+# 万一 JSON でない出力からも拾えるようにする補助パターン
+_NGROK_FWD_URL_RE = re.compile(r'https://\S+\.ngrok[^\s"]+')
+
+def _read_stdout_ngrok(proc: subprocess.Popen) -> None:
+    """ngrok の stdout（JSON 構造化ログ）を読んでURLを取得する。
+    --log=stdout --log-format=json を前提とする。
+    """
     global _stderr_lines, _proc, _tunnel_url, _active_provider
-    for line in iter(proc.stderr.readline, b''):
+    for line in iter(proc.stdout.readline, b''):
         text = line.decode('utf-8', errors='replace').strip()
         if not text:
             continue
         with _lock:
-            _stderr_lines.append(f'[ngrok] {text}')
-            if len(_stderr_lines) > 50:
+            _stderr_lines.append(f'[ngrok] {text[:200]}')
+            if len(_stderr_lines) > 100:
                 _stderr_lines.pop(0)
-    # stderr が閉じた = プロセス終了。状態をリセット
+        # URL 抽出を試みる
+        if _tunnel_url is None:
+            url: Optional[str] = None
+            m_json = _NGROK_JSON_URL_RE.search(text)
+            if m_json:
+                url = m_json.group(1)  # キャプチャグループ1 = URL値
+            else:
+                m_fwd = _NGROK_FWD_URL_RE.search(text)
+                if m_fwd:
+                    url = m_fwd.group(0)
+            if url and url.startswith('https://'):
+                with _lock:
+                    _tunnel_url = url
+                    _stderr_lines.append(f'[ngrok] 公開URL取得: {url}')
+    # stdout が閉じた = プロセス終了。状態をリセット
     with _lock:
         if _proc is proc:
             _proc = None
@@ -151,25 +172,85 @@ def _read_stderr_ngrok(proc: subprocess.Popen) -> None:
             _stderr_lines.append('[ngrok] プロセスが終了しました')
 
 
+def _read_stderr_ngrok(proc: subprocess.Popen) -> None:
+    """ngrok の stderr を読んでログに記録する（エラー検出用）"""
+    for line in iter(proc.stderr.readline, b''):
+        text = line.decode('utf-8', errors='replace').strip()
+        if not text:
+            continue
+        with _lock:
+            _stderr_lines.append(f'[ngrok:err] {text[:200]}')
+            if len(_stderr_lines) > 100:
+                _stderr_lines.pop(0)
+
+
 def _poll_ngrok_url(proc: subprocess.Popen) -> None:
-    """ngrok local API (http://localhost:4040/api/tunnels) から HTTPS URL を取得する"""
-    global _tunnel_url
-    deadline = time.time() + 30  # 最大30秒待機
+    """ngrok local API (localhost:4040～4043) から HTTPS URL を取得する補助スレッド。
+    主な URL 取得は _read_stdout_ngrok が担う。このスレッドはバックアップ。
+    """
+    global _tunnel_url, _proc, _active_provider
+    deadline = time.time() + 40  # stdout 読み取りより少し長めに待機
+
     while time.time() < deadline:
+        # stdout 読み取り側が既に URL を取得済みなら終了
+        with _lock:
+            if _tunnel_url is not None:
+                return
+
         if proc.poll() is not None:
-            break  # プロセスが終了した
-        try:
-            req = urllib.request.urlopen('http://localhost:4040/api/tunnels', timeout=2)
-            data = json.loads(req.read())
-            for t in data.get('tunnels', []):
-                url = t.get('public_url', '')
-                if url.startswith('https://'):
+            return  # プロセス終了 — _read_stdout_ngrok がリセット済み
+
+        # ポート 4040〜4043 を順に試す（前回の ngrok が 4040 を占有している場合対応）
+        for api_port in range(4040, 4044):
+            try:
+                req = urllib.request.urlopen(
+                    f'http://localhost:{api_port}/api/tunnels', timeout=2
+                )
+                data = json.loads(req.read())
+                for t in data.get('tunnels', []):
+                    url = t.get('public_url', '')
+                    if url.startswith('https://'):
+                        with _lock:
+                            if _tunnel_url is None:
+                                _tunnel_url = url
+                                _stderr_lines.append(f'[ngrok:api] 公開URL取得 (port {api_port}): {url}')
+                        return
+            except Exception as e:
+                # 最初の5秒は黙認（起動中）、それ以降はログに記録
+                if time.time() - (deadline - 40) > 5:
                     with _lock:
-                        _tunnel_url = url
-                    return
-        except Exception:
-            pass
-        time.sleep(1)
+                        msg = f'[ngrok:api:{api_port}] {type(e).__name__}: {e}'
+                        if not _stderr_lines or _stderr_lines[-1] != msg:
+                            _stderr_lines.append(msg)
+
+        time.sleep(2)
+
+    # タイムアウト: stdout 読み取りも API も URL を取得できなかった
+    with _lock:
+        if _tunnel_url is not None:
+            return  # 既に取得済みなら何もしない
+        still_our_proc = (_proc is proc)
+        recent = list(_stderr_lines[-10:])
+
+    recent_text = ' '.join(recent).lower()
+    if 'authtoken' in recent_text or 'auth' in recent_text or 'err_ngrok' in recent_text:
+        hint = '（ngrok 認証エラー。authtoken を確認してください）'
+    elif 'url' in recent_text or 'forwarding' in recent_text:
+        hint = '（URL は出力されましたが取得できませんでした）'
+    else:
+        hint = '（ngrok プロセスの stdout を確認してください）'
+
+    err_msg = f'[ngrok] 40秒以内に公開URLを取得できませんでした{hint}'
+    with _lock:
+        _stderr_lines.append(err_msg)
+        if still_our_proc:
+            _proc = None
+            _active_provider = None
+
+    try:
+        proc.terminate()
+    except Exception:
+        pass
 
 
 # ─── プロセス起動ヘルパー ─────────────────────────────────────────────────────
@@ -189,17 +270,19 @@ def _start_ngrok(port: int, authtoken: str = "") -> subprocess.Popen:
     ngrok_path = _find_ngrok()
     if not ngrok_path:
         raise FileNotFoundError("ngrok が見つかりません")
-    use_shell = sys.platform == "win32"
-    if use_shell:
-        token_part = f' --authtoken "{authtoken}"' if authtoken else ""
-        cmd = f'"{ngrok_path}" http{token_part} {port}'
-    else:
-        cmd_list = [ngrok_path, "http"]
-        if authtoken:
-            cmd_list += ["--authtoken", authtoken]
-        cmd_list.append(str(port))
-        cmd = cmd_list
-    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, shell=use_shell)
+    # --log=stdout --log-format=json で構造化ログを stdout に出力させる。
+    # これにより port 4040 API に頼らず stdout から確実に URL を取得できる。
+    cmd_list = [ngrok_path, "http", "--log=stdout", "--log-format=json"]
+    if authtoken:
+        cmd_list += ["--authtoken", authtoken]
+    cmd_list.append(str(port))
+    # stdout=PIPE で読み取る（URL 取得のため）。shell=False で確実にプロセス管理。
+    return subprocess.Popen(
+        cmd_list,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+    )
 
 
 # ─── エンドポイント ──────────────────────────────────────────────────────────
@@ -289,10 +372,12 @@ def tunnel_start(provider: str = "auto", db: Session = Depends(get_db)):
         with _lock:
             _proc = proc
             _active_provider = 'ngrok'
-        # URL 取得スレッド
-        threading.Thread(target=_poll_ngrok_url, args=(proc,), daemon=True).start()
-        # stderr 監視スレッド（エラー記録 + プロセス死亡検出）
+        # stdout 読み取りスレッド（--log=stdout --log-format=json でURL取得）— 主経路
+        threading.Thread(target=_read_stdout_ngrok, args=(proc,), daemon=True).start()
+        # stderr 読み取りスレッド（エラーログ記録）
         threading.Thread(target=_read_stderr_ngrok, args=(proc,), daemon=True).start()
+        # API ポーリングスレッド（localhost:4040～4043）— 補助経路
+        threading.Thread(target=_poll_ngrok_url, args=(proc,), daemon=True).start()
         return {
             "success": True,
             "data": {

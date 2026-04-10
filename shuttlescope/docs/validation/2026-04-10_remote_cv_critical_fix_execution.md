@@ -4,7 +4,7 @@
 2026-04-10
 
 ## Status
-Code fixes applied. Build ✓. Tests (34) ✓. Execution validation pending real video run.
+Code fixes applied. Build ✓. Tests (34) ✓. Execution validation pending real environment run.
 
 ---
 
@@ -12,30 +12,33 @@ Code fixes applied. Build ✓. Tests (34) ✓. Execution validation pending real
 
 ### A. Tunnel share shows LAN URL instead of public URL
 
-**Root cause confirmed**: `rebaseUrl` in `useSessionSharing.ts` used `tunnelBase + u.hash` where `u.hash` is only the URL fragment (`#...`). The entire path was dropped.
+**Root cause confirmed**: `rebaseUrl` in `useSessionSharing.ts` used `tunnelBase + u.hash` where `u.hash` is only the URL fragment (`#...`). The entire pathname was dropped.
 
-Example of the bug:
-- Input URL: `http://192.168.1.50:8765/coach/ABC123`
-- tunnelBase: `https://xxx.ngrok.io`
-- Bug output: `https://xxx.ngrok.io` (path `/coach/ABC123` lost entirely)
-- Fixed output: `https://xxx.ngrok.io/coach/ABC123`
+- Input: `http://192.168.1.50:8765/coach/ABC123`
+- tunnelBase: `https://xxx.ngrok-free.app`
+- Bug output: `https://xxx.ngrok-free.app` (pathname lost)
+- Fixed output: `https://xxx.ngrok-free.app/coach/ABC123`
 
-The `SessionShareModal` renders whatever URLs it receives as props — it has no rebasing logic of its own. All three URL types (coach, camera_sender, viewer) are passed through `rebaseUrl` in AnnotatorPage JSX. With the bug, they all resolved to just the tunnel root.
+All three URL types (coach, camera_sender, viewer) were affected. `SessionShareModal` renders whatever it receives — no independent rebasing.
+
+### A2. ngrok URL never acquired (stdout was discarded)
+
+**Root cause confirmed**: `_start_ngrok` used `stdout=subprocess.DEVNULL` and `shell=True`. ngrok v3 outputs the public URL (`Forwarding https://...`) to **stdout**. By discarding stdout, the code was entirely dependent on `localhost:4040/api/tunnels`. If that API was unavailable (port conflict, timing, ngrok config), the URL could never be acquired. The 30-second poll would time out and leave `running=true, url=null` indefinitely — UI stuck at "取得中..." forever.
 
 ### B. localfile AbortError spam
 
-**Root cause confirmed**: `electron/main.ts` `registerLocalFileProtocol()` — when a video range request is cancelled by the browser (normal during seek, source swap, or unmount), the underlying Node.js `ReadableStream` fires an `error` event. The handler called `console.error('[localfile] Stream error:', err)` unconditionally. An `AbortError` from browser request cancellation is a normal part of video playback; it does not indicate a real failure.
+**Root cause confirmed**: `electron/main.ts` stream error handler fired unconditionally on any error including `AbortError`. An `AbortError` from the renderer cancelling a video range request (during seek, source swap, or unmount) is normal — not a real failure.
 
 ### C. TrackNet エラー（再試行）
 
-**Root cause**: Two failure modes:
-1. If weights are present but runtime dependencies (tensorflow, onnxruntime, openvino) are not installed, `inf.load()` returns False in the background job. The error stored was the generic string `"モデルロードに失敗しました"` without specifying which backend failed and why.
-2. The frontend error button showed the error message only as a `title` (tooltip requiring hover), not as visible text.
-3. When the HTTP POST for batch start itself returns 503 (weights missing), the `catch` block previously called `alert(t('tracknet.batch_error'))` discarding the actual server reason.
+**Root causes**:
+1. `inf.load()` records no specific reason for failure — only generic `"モデルロードに失敗しました"` was stored
+2. HTTP 503 from `POST /tracknet/batch` — catch block called `alert(t('tracknet.batch_error'))` discarding the server detail
+3. Error shown only as `title` tooltip (hover required), not as visible text
 
 ### D. YOLO immediate error
 
-**Root cause**: Same pattern as TrackNet. `is_available()` may pass (e.g., when ultralytics is importable), but actual `load()` in the background thread fails. Or the POST returns 503 when neither ultralytics nor ONNX weights are present. In both cases the user saw only a generic error with no actionable detail.
+Same pattern as C. `is_available()` can pass while `load()` fails in background. 503 error detail discarded in catch block. No visible error text.
 
 ---
 
@@ -43,68 +46,88 @@ The `SessionShareModal` renders whatever URLs it receives as props — it has no
 
 | File | Change |
 |------|--------|
-| `src/hooks/annotator/useSessionSharing.ts` | Fixed `rebaseUrl` to use `pathname + search + hash`; added `tunnelPending` state (tunnel running but URL not yet fetched) |
-| `src/pages/AnnotatorPage.tsx` | Added `tunnelPending` destructuring; tunnel button shows "取得中..." when pending; share button shows amber color + blocks modal open when pending; TrackNet + YOLO error buttons now show visible truncated error text below button |
-| `electron/main.ts` | `registerLocalFileProtocol()` — suppress benign abort errors (`ERR_STREAM_DESTROYED`, `AbortError`, message contains "abort") in stream error handlers; real errors still logged |
-| `backend/tracknet/inference.py` | Added `_load_error: Optional[str]` field; `get_load_error()` method; each backend attempt now records a specific failure reason; `load()` sets `_load_error` with tried-backend list on failure |
-| `backend/routers/tracknet.py` | `_run_batch` uses `inf.get_load_error()` instead of generic string |
-| `src/hooks/annotator/useCVJobs.ts` | Added `extractApiError()` helper; `handleTracknetBatch` and `handleYoloBatch` catch blocks now set error job state with the actual server detail, not generic alert |
+| `src/hooks/annotator/useSessionSharing.ts` | Fixed `rebaseUrl` to `pathname + search + hash`; added `tunnelPending` (running but no URL yet); added `tunnelLastError` (extracts failure line from `recent_log`); added `recent_log` to `TunnelData` type |
+| `src/pages/AnnotatorPage.tsx` | `tunnelPending` → share button amber + blocks modal; tunnel button shows "取得中..."; `tunnelLastError` shown as red text near tunnel button; TrackNet/YOLO error buttons show visible truncated error text below |
+| `electron/main.ts` | Suppress benign abort errors in `registerLocalFileProtocol` stream handlers (`ERR_STREAM_DESTROYED`, `AbortError`, message contains "abort") |
+| `backend/tracknet/inference.py` | Added `_load_error: Optional[str]`; `get_load_error()` method; each backend attempt records specific failure reason |
+| `backend/routers/tracknet.py` | `_run_batch` uses `inf.get_load_error()` for specific error message |
+| `src/hooks/annotator/useCVJobs.ts` | Added `extractApiError()` helper; catch blocks now set error job state with actual server detail instead of generic alert |
+| `backend/routers/tunnel.py` | **ngrok URL取得を全面的に再設計**: `stdout=subprocess.PIPE` + `--log=stdout --log-format=json` + `shell=False`; `_read_stdout_ngrok` スレッドで JSON 構造化ログから URL を抽出（主経路）; `_read_stderr_ngrok` でエラーログ記録; `_poll_ngrok_url` は補助経路として残しポート 4040〜4043 を試す; タイムアウト時に `_proc=None` にリセットしてUIを "取得中..." から解放; 全ログを `recent_log` に記録し UI から確認可能 |
 
 ---
 
-## Validation Steps Required (not yet executed — requires real environment)
+## Architecture: ngrok URL acquisition (after fix)
+
+```
+tunnel_start()
+  → _start_ngrok(): Popen([ngrok, http, --log=stdout, --log-format=json, --authtoken, TOKEN, PORT],
+                           stdout=PIPE, stderr=PIPE, shell=False)
+  → Thread: _read_stdout_ngrok()   ← 主経路: JSON から "url":"https://..." を抽出
+  → Thread: _read_stderr_ngrok()   ← エラーログ記録
+  → Thread: _poll_ngrok_url()      ← 補助経路: localhost:4040〜4043 API を試す
+
+_read_stdout_ngrok():
+  - 行ごとに読んで _stderr_lines に記録
+  - _NGROK_JSON_URL_RE で "url":"https://..." を抽出 → _tunnel_url にセット
+  - プロセス終了時に _proc=None にリセット
+
+_poll_ngrok_url():
+  - _tunnel_url が既にセットされていれば即終了
+  - 40秒タイムアウト、ポート 4040〜4043 を順に試す
+  - タイムアウト時: _proc=None にリセット + エラーログ記録
+```
+
+---
+
+## Validation Steps Required (not yet executed)
 
 ### A. Tunnel URL correctness
 ```
 1. Start ngrok from annotator tunnel button
-2. Wait for tunnelBase to resolve (button shows "ON" not "取得中...")
+2. Wait for button to show "ON" (not "取得中...")
 3. Open share modal
-4. Verify all displayed URLs start with https://xxx.ngrok.io/ (not 10.* or 192.168.*)
+4. Verify all URLs are https://xxx.ngrok-free.app/... (not 10.* / 192.168.*)
 5. Verify QR codes encode the public URLs
-6. Verify viewer URL is /viewer/... path (not /camera/...)
+6. Verify viewer URL path is /viewer/..., camera is /camera/...
+7. Open from a different network device → confirm join works
+```
+
+### A2. ngrok URL acquisition
+```
+1. Press tunnel button
+2. Confirm "取得中..." appears briefly (pending state)
+3. Confirm URL appears within ~5 seconds (from stdout parsing)
+4. Check recent_log in /api/tunnel/status for "[ngrok] 公開URL取得: https://..."
+5. If failure: confirm error message appears in UI near tunnel button (not stuck forever)
 ```
 
 ### B. localfile abort suppression
 ```
-1. Open a match with a local video
-2. Play and seek rapidly multiple times
-3. Switch to another match and back
+1. Open match with local video
+2. Play and seek rapidly
+3. Switch matches and back
 4. Confirm no "[localfile] Stream error: AbortError" in Electron console
-5. Confirm video still plays normally after seek
+5. Confirm video plays normally
 ```
 
 ### C. TrackNet error classification
 ```
-1. If weights missing: confirm POST /tracknet/batch returns 503 with detail text
-   → error button shows specific reason (not generic)
-2. If weights present but runtime missing: confirm job transitions to error
-   → error button shows which backend was tried and why it failed
-3. If everything installed: run on real local video
-   → confirm progress advances, completes, artifact is written
+1. Weights missing → POST 503 → error button shows server detail text visibly
+2. Weights present, runtime missing → job error → button shows which backend failed
+3. Full environment → run on real local video → artifact written, overlay renders
 ```
 
 ### D. YOLO error + readiness
 ```
-1. Without ultralytics and without ONNX: POST /yolo/batch returns 503
-   → error state shows the server reason text visibly below button
-2. With ultralytics installed but bad weights: load() fails
-   → error stored in job, shown visibly
-3. With ultralytics working: run on real local video
-   → confirm progress, completion, overlay visible
+1. No ultralytics + no ONNX → 503 → error text shown visibly below button
+2. With ultralytics → run on real local video → completion, overlay visible
 ```
 
 ---
 
-## What Remains Blocked
+## What Remains Blocked (requires real environment)
 
-- **TrackNet real completion**: Cannot validate without weights installed and a real local badminton video to test against. The code path is correct but the runtime environment requires: tensorflow OR onnxruntime OR openvino installed, AND weights present.
-
-- **YOLO real completion**: Cannot validate without ultralytics installed. With `pip install ultralytics`, `yolov8n.pt` downloads automatically on first run. The inference code is correct.
-
-- **End-to-end tunnel test**: Requires ngrok running and a remote device on a different network to verify the public URL is truly reachable.
-
----
-
-## Remaining Caveat
-
-The error display improvements (visible error text below buttons) only appear in the compact header toolbar. For a full failure investigation, the user must check the Electron dev console for Python backend logs. A dedicated CV status page or expanded error panel would provide better diagnostics — this is out of scope for this fix but noted for future work.
+- **TrackNet real completion**: needs tensorflow/onnxruntime/openvino AND weights installed AND real local badminton video
+- **YOLO real completion**: needs `pip install ultralytics` (auto-downloads yolov8n.pt on first run)
+- **End-to-end tunnel test**: needs ngrok running and remote device on different network
+- **localfile playback human pass**: suppress fix applied but manual seek/swap/reenter validation needed

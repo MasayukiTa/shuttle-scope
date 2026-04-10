@@ -30,6 +30,7 @@ from backend.routers import prediction, tunnel
 from backend.routers import human_forecast
 from backend.routers import sync as sync_router
 from backend.routers import yolo
+from backend.routers import cv_candidates
 from backend.utils.video_downloader import video_downloader
 
 # React renderer ビルド出力パス（Electron / ブラウザ共用）
@@ -113,6 +114,8 @@ app.include_router(reports.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
 app.include_router(tracknet.router, prefix="/api")
 app.include_router(yolo.router, prefix="/api")
+# CV補助アノテーション候補
+app.include_router(cv_candidates.router, prefix="/api")
 # R-001/R-002: 共有セッション
 app.include_router(sessions.router, prefix="/api")
 # S-003: コメント

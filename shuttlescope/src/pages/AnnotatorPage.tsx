@@ -27,7 +27,10 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCVJobs } from '@/hooks/annotator/useCVJobs'
 import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
+import { useCVCandidates } from '@/hooks/annotator/useCVCandidates'
 import { AnnotatorVideoPane } from '@/components/annotator/AnnotatorVideoPane'
+import { CVAssistPanel } from '@/components/annotation/CVAssistPanel'
+import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/ReviewQueuePanel'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -174,7 +177,7 @@ export function AnnotatorPage() {
 
   const isMobile = useIsMobile()
 
-  // K-001: マッチデーモード（localStorage 永続化 + ?matchDayMode=true URL パラメータで自動有効化）
+  // K-001: 試合中モード（localStorage 永続化 + ?matchDayMode=true URL パラメータで自動有効化）
   const [isMatchDayMode, setIsMatchDayMode] = useState(
     () =>
       localStorage.getItem('shuttlescope.matchDayMode') === 'true' ||
@@ -217,7 +220,7 @@ export function AnnotatorPage() {
   const [inMatchScoutingNotes, setInMatchScoutingNotes] = useState<string>('')
   const [inMatchSaved, setInMatchSaved] = useState(false)
 
-  // マッチデーモード: キーボード凡例オーバーレイ
+  // 試合中モード: キーボード凡例オーバーレイ
   const [showLegendOverlay, setShowLegendOverlay] = useState(false)
 
   // 途中終了ダイアログ
@@ -257,6 +260,10 @@ export function AnnotatorPage() {
   const [lastSavedRallyId, setLastSavedRallyId] = useState<number | null>(null)
   const [reviewLaterAdded, setReviewLaterAdded] = useState(false)
   const [reviewQueueOpen, setReviewQueueOpen] = useState(false)
+
+  // CV補助アノテーション
+  const [showCVAssistPanel, setShowCVAssistPanel] = useState(false)
+  const [cvReviewQueueOpen, setCVReviewQueueOpen] = useState(false)
 
   // S-003: コメント
   const [showCommentInput, setShowCommentInput] = useState(false)
@@ -582,7 +589,7 @@ export function AnnotatorPage() {
     }
   }, [matchId, urlInput, queryClient])
 
-  // K-001: マッチデーモード切替
+  // K-001: 試合中モード切替
   const toggleMatchDayMode = useCallback(() => {
     setIsMatchDayMode((prev) => {
       const next = !prev
@@ -737,7 +744,7 @@ export function AnnotatorPage() {
     showSessionModal, setShowSessionModal,
     showDeviceManager, setShowDeviceManager,
     handleCreateOrGetSession,
-    tunnelStatus, tunnelToggle, tunnelBase, tunnelPending, rebaseUrl,
+    tunnelStatus, tunnelToggle, tunnelBase, tunnelPending, tunnelLastError, rebaseUrl,
     remoteStream, setRemoteStream,
     remoteStreamVideoRef,
     localCamStream, setLocalCamStream,
@@ -747,6 +754,21 @@ export function AnnotatorPage() {
     matchId,
     tunnelProvider: appSettings.tunnel_provider,
   })
+
+  // CV補助アノテーション候補
+  const {
+    candidatesData,
+    buildLoading: cvBuildLoading,
+    buildError: cvBuildError,
+    buildCandidates,
+    applyCandidates,
+    applyResult: cvApplyResult,
+    reviewQueue: cvReviewQueue,
+    reviewQueueLoading: cvReviewQueueLoading,
+    markReviewCompleted,
+    getCandidateForRally,
+    clearBuildError: clearCVBuildError,
+  } = useCVCandidates({ matchId })
 
   // V4-U-001: 試合中補完パネルの相手選手ミューテーション
   const updateOpponent = useMutation({
@@ -1368,6 +1390,86 @@ export function AnnotatorPage() {
               )}
             </div>
           )}
+          {/* CV補助: 候補生成・適用ボタン（TrackNet or YOLO が完了済みのとき表示） */}
+          {(tracknetJob?.status === 'complete' || yoloJob?.status === 'complete') && (
+            <div className={`flex items-center gap-1 px-1.5 py-1 rounded border ${
+              isLight ? 'border-gray-300 bg-gray-50' : 'border-gray-700 bg-gray-800/60'
+            }`}>
+              <span className={`text-[9px] font-bold uppercase tracking-wider pr-1 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+                CV補助
+              </span>
+              {/* 候補生成 */}
+              <button
+                onClick={() => buildCandidates()}
+                disabled={cvBuildLoading}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                  candidatesData
+                    ? isLight ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/60'
+                    : isLight ? 'bg-gray-200 text-gray-600 hover:bg-emerald-100' : 'bg-gray-700 text-gray-400 hover:bg-emerald-900/40'
+                }`}
+                title={candidatesData ? `候補生成済み (${candidatesData.built_at?.slice(0, 10)}) — 再生成` : 'CV候補を生成する'}
+              >
+                {cvBuildLoading ? '生成中...' : candidatesData ? '✓ 候補' : '候補生成'}
+              </button>
+              {/* 自動適用（高確信度のみ） */}
+              {candidatesData && (
+                <button
+                  onClick={() => applyCandidates('auto_filled')}
+                  disabled={cvBuildLoading}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                    isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                  }`}
+                  title="高確信度の候補を自動でストロークに適用"
+                >
+                  自動適用
+                </button>
+              )}
+              {/* CV補助パネルトグル */}
+              {candidatesData && (
+                <button
+                  onClick={() => setShowCVAssistPanel((v) => !v)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    showCVAssistPanel
+                      ? isLight ? 'bg-purple-200 text-purple-800' : 'bg-purple-700/60 text-purple-200'
+                      : isLight ? 'bg-gray-200 text-gray-500 hover:bg-purple-100' : 'bg-gray-700 text-gray-500 hover:bg-purple-900/40'
+                  }`}
+                  title="CV補助パネルを表示"
+                >
+                  {showCVAssistPanel ? '◉' : '○'} 詳細
+                </button>
+              )}
+              {/* CV要確認キュー */}
+              {cvReviewQueue.length > 0 && (
+                <button
+                  onClick={() => setCVReviewQueueOpen((v) => !v)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    cvReviewQueueOpen
+                      ? isLight ? 'bg-amber-200 text-amber-800' : 'bg-amber-700/60 text-amber-200'
+                      : isLight ? 'bg-amber-100 text-amber-700' : 'bg-amber-900/40 text-amber-300'
+                  }`}
+                  title="CV要確認ラリーを表示"
+                >
+                  ⚠ {cvReviewQueue.filter(i => i.review_status !== 'completed').length}
+                </button>
+              )}
+              {/* 適用結果フィードバック */}
+              {cvApplyResult && (
+                <span className={`text-[9px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                  {cvApplyResult.updated_strokes}件適用
+                </span>
+              )}
+              {/* ビルドエラー */}
+              {cvBuildError && (
+                <span className={`text-[9px] max-w-[120px] truncate cursor-pointer ${isLight ? 'text-red-500' : 'text-red-400'}`}
+                  title={cvBuildError}
+                  onClick={clearCVBuildError}
+                >
+                  ⚠ {cvBuildError}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* R-001/R-002: セッション共有ボタン */}
           {activeSession ? (
             <div className="flex items-center gap-1">
@@ -1411,6 +1513,15 @@ export function AnnotatorPage() {
                   <Globe size={12} className={tunnelStatus?.data?.running ? 'animate-pulse' : ''} />
                   {tunnelPending ? '取得中...' : tunnelStatus?.data?.running ? 'ON' : ''}
                 </button>
+              )}
+              {/* トンネルエラー表示（タイムアウト・認証失敗など） */}
+              {tunnelLastError && !tunnelStatus?.data?.running && (
+                <span
+                  className={`text-[9px] max-w-[180px] truncate cursor-help ${isLight ? 'text-red-500' : 'text-red-400'}`}
+                  title={tunnelLastError}
+                >
+                  ⚠ {tunnelLastError.replace('[ngrok] ', '')}
+                </span>
               )}
             </div>
           ) : (
@@ -1613,6 +1724,22 @@ export function AnnotatorPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* CV要確認ラリーキュー */}
+      {cvReviewQueueOpen && (
+        <div className={`px-4 py-2 shrink-0 border-b ${
+          isLight ? 'bg-amber-50 border-amber-200' : 'bg-amber-900/20 border-amber-700/40'
+        }`}>
+          <CVReviewQueuePanel
+            items={cvReviewQueue}
+            loading={cvReviewQueueLoading}
+            onMarkCompleted={markReviewCompleted}
+            onJumpToRally={(_rallyId, _rallyNum) => {
+              // ラリーへのジャンプは動画タイムスタンプが必要 — 将来拡張
+            }}
+          />
         </div>
       )}
 
@@ -2559,6 +2686,33 @@ export function AnnotatorPage() {
                 partnerBName={match?.partner_b?.name}
                 showLandZoneWarning={true}
               />
+            )}
+
+            {/* CV補助アノテーションパネル（showCVAssistPanel=true かつ候補あり） */}
+            {!isMobile && showCVAssistPanel && candidatesData && (
+              <div className={`rounded border p-2 shrink-0 ${
+                isLight ? 'bg-purple-50 border-purple-200' : 'bg-purple-900/10 border-purple-700/30'
+              }`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className={`text-[10px] font-semibold ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
+                    CV補助候補
+                  </span>
+                  <button
+                    onClick={() => setShowCVAssistPanel(false)}
+                    className="text-gray-500 hover:text-gray-300 text-xs px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <CVAssistPanel
+                  rallyCandidates={
+                    lastSavedRallyId != null
+                      ? getCandidateForRally(lastSavedRallyId)
+                      : null
+                  }
+                  currentStrokeNum={store.currentStrokeNum}
+                />
+              </div>
             )}
 
             {/* T2: Basic モード用 エンリッチメント手動展開ボタン */}
