@@ -25,7 +25,7 @@ interface ShotTypePanelProps {
   strokeNum: number
   /** 直前に確定したショット種別（最初のストロークは null） */
   lastShotType: ShotType | null
-  /** K-001: マッチデーモード — 2カラム・大きめボタン */
+  /** K-001: 試合中モード — 2カラム・大きめボタン */
   isMatchDayMode?: boolean
 }
 

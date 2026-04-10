@@ -762,6 +762,7 @@ export function AnnotatorPage() {
     buildError: cvBuildError,
     buildCandidates,
     applyCandidates,
+    applyLoading: cvApplyLoading,
     applyResult: cvApplyResult,
     reviewQueue: cvReviewQueue,
     reviewQueueLoading: cvReviewQueueLoading,
@@ -1235,7 +1236,7 @@ export function AnnotatorPage() {
               {reviewBookmarksData!.length}{t('review_later.queue_badge')}
             </button>
           )}
-          {/* K-001: マッチデーモード切替 */}
+          {/* K-001: 試合中モード切替 */}
           <button
             onClick={toggleMatchDayMode}
             className={clsx(
@@ -1246,7 +1247,7 @@ export function AnnotatorPage() {
             )}
             title={isMatchDayMode ? t('annotator.match_day_mode_on') : t('annotator.match_day_mode_off')}
           >
-            {isMatchDayMode ? 'MD' : t('annotator.match_day_mode')}
+            {t('annotator.match_day_mode')}
           </button>
           {/* P3: TrackNet バッチ解析ボタン */}
           {appSettings.tracknet_enabled && (match?.video_local_path || match?.video_url) && (
@@ -1411,18 +1412,50 @@ export function AnnotatorPage() {
               >
                 {cvBuildLoading ? '生成中...' : candidatesData ? '✓ 候補' : '候補生成'}
               </button>
-              {/* 自動適用（高確信度のみ） */}
+              {/* 適用コントロール（高確信度・フィールド別・候補含む） */}
               {candidatesData && (
-                <button
-                  onClick={() => applyCandidates('auto_filled')}
-                  disabled={cvBuildLoading}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                    isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
-                  }`}
-                  title="高確信度の候補を自動でストロークに適用"
-                >
-                  自動適用
-                </button>
+                <>
+                  <button
+                    onClick={() => applyCandidates('auto_filled', ['land_zone', 'hitter'])}
+                    disabled={cvBuildLoading || cvApplyLoading}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                      isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                    }`}
+                    title="高確信度（auto_filled）のみ着地ゾーン・打者を適用"
+                  >
+                    高確信度適用
+                  </button>
+                  <button
+                    onClick={() => applyCandidates('auto_filled', ['land_zone'])}
+                    disabled={cvBuildLoading || cvApplyLoading}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                      isLight ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/60'
+                    }`}
+                    title="高確信度の着地ゾーンのみ適用"
+                  >
+                    着地のみ
+                  </button>
+                  <button
+                    onClick={() => applyCandidates('auto_filled', ['hitter'])}
+                    disabled={cvBuildLoading || cvApplyLoading}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                      isLight ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-indigo-900/40 text-indigo-300 hover:bg-indigo-800/60'
+                    }`}
+                    title="高確信度の打者のみ適用"
+                  >
+                    打者のみ
+                  </button>
+                  <button
+                    onClick={() => applyCandidates('suggested', ['land_zone', 'hitter'])}
+                    disabled={cvBuildLoading || cvApplyLoading}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                      isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
+                    }`}
+                    title="高確信度 + 候補（suggested）を適用"
+                  >
+                    候補も含む
+                  </button>
+                </>
               )}
               {/* CV補助パネルトグル */}
               {candidatesData && (
@@ -1435,7 +1468,7 @@ export function AnnotatorPage() {
                   }`}
                   title="CV補助パネルを表示"
                 >
-                  {showCVAssistPanel ? '◉' : '○'} 詳細
+                  {showCVAssistPanel ? '◉' : '○'} CV詳細
                 </button>
               )}
               {/* CV要確認キュー */}
@@ -1454,8 +1487,13 @@ export function AnnotatorPage() {
               )}
               {/* 適用結果フィードバック */}
               {cvApplyResult && (
-                <span className={`text-[9px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                <span
+                  className={`text-[9px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}
+                  title={`着地: ${cvApplyResult.land_zone_count}件 / 打者: ${cvApplyResult.hitter_count}件`}
+                >
                   {cvApplyResult.updated_strokes}件適用
+                  {cvApplyResult.land_zone_count > 0 && ` (着地${cvApplyResult.land_zone_count})`}
+                  {cvApplyResult.hitter_count > 0 && ` (打者${cvApplyResult.hitter_count})`}
                 </span>
               )}
               {/* ビルドエラー */}
@@ -1511,7 +1549,7 @@ export function AnnotatorPage() {
                   }`}
                 >
                   <Globe size={12} className={tunnelStatus?.data?.running ? 'animate-pulse' : ''} />
-                  {tunnelPending ? '取得中...' : tunnelStatus?.data?.running ? 'ON' : ''}
+                  {tunnelPending ? '取得中...' : tunnelStatus?.data?.running ? '稼働中' : ''}
                 </button>
               )}
               {/* トンネルエラー表示（タイムアウト・認証失敗など） */}
@@ -1640,7 +1678,7 @@ export function AnnotatorPage() {
               <OctagonX size={14} />
               {t('exception.title')}
             </button>
-            {/* マッチデーモード */}
+            {/* 試合中モード */}
             <button
               onClick={() => { toggleMatchDayMode(); setShowMobileMenu(false) }}
               className={clsx(
@@ -1649,7 +1687,7 @@ export function AnnotatorPage() {
               )}
             >
               <Keyboard size={14} />
-              {isMatchDayMode ? 'MD ON' : t('annotator.match_day_mode')}
+              {t('annotator.match_day_mode')}
             </button>
             {/* セッション共有 */}
             <button
@@ -1735,6 +1773,7 @@ export function AnnotatorPage() {
           <CVReviewQueuePanel
             items={cvReviewQueue}
             loading={cvReviewQueueLoading}
+            candidatesData={candidatesData}
             onMarkCompleted={markReviewCompleted}
             onJumpToRally={(_rallyId, _rallyNum) => {
               // ラリーへのジャンプは動画タイムスタンプが必要 — 将来拡張
@@ -1745,7 +1784,7 @@ export function AnnotatorPage() {
 
       {/* メインレイアウト */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左: 動画エリア — マッチデーモード時/モバイル時は非表示 */}
+        {/* 左: 動画エリア — 試合中モード時/モバイル時は非表示 */}
         <div
           ref={leftPanelRef}
           className={clsx('flex flex-col p-3 gap-2 overflow-y-auto shrink-0', isMobile && 'hidden')}
@@ -2009,7 +2048,7 @@ export function AnnotatorPage() {
           </div>
         </div>
 
-        {/* ドラッグリサイズハンドル（デスクトップ・非マッチデーモード時のみ） */}
+        {/* ドラッグリサイズハンドル（デスクトップ・非試合中モード時のみ） */}
         {!isMatchDayMode && !isMobile && (
           <div
             onMouseDown={handleResizeDragStart}
@@ -2018,7 +2057,7 @@ export function AnnotatorPage() {
           />
         )}
 
-        {/* 右: 入力パネル — マッチデーモード時/モバイル時はフルスクリーン */}
+        {/* 右: 入力パネル — 試合中モード時/モバイル時はフルスクリーン */}
         <div className={clsx(
           'flex flex-col overflow-y-auto',
           (isMatchDayMode || isMobile) ? 'flex-1' : 'w-[40%] border-l border-gray-700'
@@ -2042,7 +2081,7 @@ export function AnnotatorPage() {
             )}
           </div>
 
-          {/* マッチデーモード: キーボード凡例オーバーレイ */}
+          {/* 試合中モード: キーボード凡例オーバーレイ */}
           {isMatchDayMode && showLegendOverlay && (
             <div
               className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"

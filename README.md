@@ -121,6 +121,36 @@ shuttle-scope/
 - optional: `ffmpeg`
 - optional: `cloudflared`
 
+### Fastest New-Device Bootstrap
+
+For a fresh Windows machine, the easiest path is:
+
+```powershell
+cd shuttlescope
+.\bootstrap_windows.ps1 -RunDoctor
+```
+
+Optional extras:
+
+```powershell
+.\bootstrap_windows.ps1 -IncludeYolo
+.\bootstrap_windows.ps1 -SetupTrackNet
+```
+
+The doctor output can also be run directly:
+
+```powershell
+.\backend\.venv\Scripts\python -m backend.tools.setup_doctor
+```
+
+This reports:
+
+- missing Python / npm tools
+- TrackNet weights / backend readiness
+- YOLO runtime readiness
+- `ngrok` / `cloudflared` availability
+- key Python package versions
+
 ### Install and Run
 
 ```bash
@@ -160,6 +190,12 @@ python main.py
 ```
 
 The default backend URL is `http://127.0.0.1:8765`.
+
+### TrackNet / YOLO Notes
+
+- TrackNet needs weights and runtime support
+- YOLO needs `ultralytics` or a local ONNX/PT model
+- the bootstrap and doctor commands above are the quickest way to check readiness on a new device
 
 ## Tests
 

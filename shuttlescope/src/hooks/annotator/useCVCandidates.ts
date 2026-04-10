@@ -30,8 +30,17 @@ export interface CVCandidatesResult {
 
   // 適用
   applyLoading: boolean
-  applyResult: { updated_strokes: number } | null
-  applyCandidates: (mode?: 'auto_filled' | 'suggested' | 'all') => Promise<void>
+  applyResult: {
+    updated_strokes: number
+    land_zone_count: number
+    hitter_count: number
+    applied_by_mode: string
+    applied_fields: string[]
+  } | null
+  applyCandidates: (
+    mode?: 'auto_filled' | 'suggested' | 'all',
+    fields?: ('land_zone' | 'hitter')[]
+  ) => Promise<void>
 
   // レビューキュー
   reviewQueue: ReviewQueueItem[]
@@ -49,7 +58,13 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
   const queryClient = useQueryClient()
 
   const [buildError, setBuildError] = useState<string | null>(null)
-  const [applyResult, setApplyResult] = useState<{ updated_strokes: number } | null>(null)
+  const [applyResult, setApplyResult] = useState<{
+    updated_strokes: number
+    land_zone_count: number
+    hitter_count: number
+    applied_by_mode: string
+    applied_fields: string[]
+  } | null>(null)
 
   // ── 候補データ取得 ─────────────────────────────────────────────────────────
   const {
@@ -107,10 +122,19 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
 
   // ── 適用ミューテーション ──────────────────────────────────────────────────
   const applyMutation = useMutation({
-    mutationFn: (mode: 'auto_filled' | 'suggested' | 'all') =>
-      apiPost<{ success: boolean; data: { updated_strokes: number } }>(
+    mutationFn: ({ mode, fields }: { mode: 'auto_filled' | 'suggested' | 'all'; fields: string[] }) =>
+      apiPost<{
+        success: boolean
+        data: {
+          updated_strokes: number
+          land_zone_count: number
+          hitter_count: number
+          applied_by_mode: string
+          applied_fields: string[]
+        }
+      }>(
         `/cv-candidates/apply/${matchId}`,
-        { mode, fields: ['land_zone', 'hitter'] }
+        { mode, fields }
       ),
     onSuccess: (res) => {
       if (res.success) {
@@ -121,10 +145,11 @@ export function useCVCandidates({ matchId }: Options): CVCandidatesResult {
   })
 
   const applyCandidates = useCallback(async (
-    mode: 'auto_filled' | 'suggested' | 'all' = 'auto_filled'
+    mode: 'auto_filled' | 'suggested' | 'all' = 'auto_filled',
+    fields: ('land_zone' | 'hitter')[] = ['land_zone', 'hitter']
   ) => {
     if (!matchId) return
-    await applyMutation.mutateAsync(mode)
+    await applyMutation.mutateAsync({ mode, fields })
   }, [matchId, applyMutation])
 
   // ── レビュー完了マーク ────────────────────────────────────────────────────

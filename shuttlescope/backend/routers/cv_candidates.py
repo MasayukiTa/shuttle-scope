@@ -193,6 +193,9 @@ def apply_cv_candidates(
         apply_modes.add("review_required")
 
     updated_count = 0
+    land_zone_count = 0
+    hitter_count = 0
+
     for rally_cand in candidates.get("rallies", {}).values():
         for sc in rally_cand.get("strokes", []):
             stroke_id = sc.get("stroke_id")
@@ -211,6 +214,7 @@ def apply_cv_candidates(
                 if lz and lz.get("decision_mode") in apply_modes:
                     if stroke.land_zone != lz["value"]:
                         stroke.land_zone = lz["value"]
+                        land_zone_count += 1
                         changed = True
 
             # 打者書き戻し
@@ -220,6 +224,7 @@ def apply_cv_candidates(
                     # player フィールドに書き戻す
                     if stroke.player != ht["value"]:
                         stroke.player = ht["value"]
+                        hitter_count += 1
                         changed = True
 
             if changed:
@@ -230,7 +235,13 @@ def apply_cv_candidates(
 
     return {
         "success": True,
-        "data": {"updated_strokes": updated_count},
+        "data": {
+            "updated_strokes": updated_count,
+            "land_zone_count": land_zone_count,
+            "hitter_count":    hitter_count,
+            "applied_by_mode": body.mode,
+            "applied_fields":  list(body.fields),
+        },
     }
 
 

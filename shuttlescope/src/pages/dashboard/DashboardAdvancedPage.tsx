@@ -94,8 +94,8 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
 
   return (
     <div className="space-y-4">
-      {/* セクションナビ: スクロールしても追従するよう sticky */}
-      <div className={`sticky top-0 z-20 -mx-6 px-6 py-2 flex items-center justify-between ${
+      {/* セクションナビ: TopNav (z-10, ~40px) の直下に sticky */}
+      <div className={`sticky top-10 z-20 -mx-6 px-6 py-2 flex items-center justify-between ${
         isLight ? 'bg-white/95 border-b border-gray-200' : 'bg-gray-900/95 border-b border-gray-700/60'
       } backdrop-blur-sm`}>
         <DashboardSectionNav active={section} onChange={setSection} />

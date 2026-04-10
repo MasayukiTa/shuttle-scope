@@ -19,7 +19,7 @@ export function DashboardTopNav() {
 
   return (
     <div className={clsx(
-      'flex gap-1 flex-wrap px-2 py-2 border-b',
+      'sticky top-0 z-10 flex gap-1 flex-wrap px-2 py-2 border-b',
       isLight ? 'border-gray-200 bg-white' : 'border-gray-700 bg-gray-900'
     )}>
       {PAGES.map(({ path, key }) => (
