@@ -21,6 +21,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
+from backend.analysis.doubles_role_inference import adjust_role_with_cv_signals
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,16 @@ def compute_doubles_cv_analytics(match_id: int, db: Session) -> dict:
     if not is_doubles:
         notes.append("シングルス試合です。ダブルス専用指標（陣形・ローテーション）は参考値です。")
 
+    # Gap #7: CV シグナルとショットベース推論の整合性
+    cv_role_signal: dict | None = None
+    try:
+        from backend.analysis.analysis_spine import compute_doubles_role_db2  # type: ignore
+        role_result = compute_doubles_role_db2(match_id, db)
+        if role_result:
+            cv_role_signal = adjust_role_with_cv_signals(role_result, summary_json)
+    except Exception:
+        pass  # ロール推論が失敗しても analytics は返す
+
     return {
         "available": True,
         "yolo_frame_count": yolo_artifact.frame_count or len(frames),
@@ -122,6 +133,7 @@ def compute_doubles_cv_analytics(match_id: int, db: Session) -> dict:
         "rotation_transitions": rotation_transitions,
         "pressure_map": pressure_map,
         "hitter_distribution": hitter_dist,
+        "cv_role_signal": cv_role_signal,
         "notes": notes,
     }
 

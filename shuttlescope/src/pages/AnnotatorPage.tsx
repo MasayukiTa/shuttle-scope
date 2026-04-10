@@ -17,6 +17,7 @@ import { SessionShareModal } from '@/components/annotation/SessionShareModal'
 import { DeviceManagerPanel } from '@/components/session/DeviceManagerPanel'
 import { WarmupNotesPanel } from '@/components/annotation/WarmupNotesPanel'
 import { PlayerPositionOverlay } from '@/components/annotation/PlayerPositionOverlay'
+import { ShuttleTrackOverlay, ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
@@ -344,6 +345,10 @@ export function AnnotatorPage() {
   const [yoloOverlayVisible, setYoloOverlayVisible] = useState(false)
   const [currentVideoSec, setCurrentVideoSec] = useState(0)
   const videoContainerRef = useRef<HTMLDivElement>(null)
+
+  // シャトル軌跡オーバーレイ
+  const [shuttleFrames, setShuttleFrames] = useState<ShuttleFrame[]>([])
+  const [shuttleOverlayVisible, setShuttleOverlayVisible] = useState(false)
 
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
@@ -1090,12 +1095,21 @@ export function AnnotatorPage() {
           setTracknetJob(res.data)
           if (res.data?.status === 'complete') {
             queryClient.invalidateQueries({ queryKey: ['strokes'] })
+            // TrackNet 完了後にシャトル軌跡アーティファクトを取得
+            try {
+              const trackRes = await apiGet<{ success: boolean; data: ShuttleFrame[] }>(
+                `/tracknet/shuttle_track/${matchId}`
+              )
+              if (trackRes.success && Array.isArray(trackRes.data) && trackRes.data.length > 0) {
+                setShuttleFrames(trackRes.data)
+              }
+            } catch { /* shuttle track 取得失敗は無視 */ }
           }
         }
       } catch { /* ポーリング失敗は無視 */ }
     }, 2000)
     return () => clearInterval(id)
-  }, [tracknetJobId, tracknetJob?.status, queryClient])
+  }, [tracknetJobId, tracknetJob?.status, queryClient, matchId])
 
   // P4: YOLO バッチ解析開始
   const handleYoloBatch = useCallback(async () => {
@@ -1456,6 +1470,20 @@ export function AnnotatorPage() {
                 {t('yolo.batch_start')}
               </button>
             )
+          )}
+          {/* シャトル軌跡オーバーレイトグル（TrackNet 完了後に表示） */}
+          {shuttleFrames.length > 0 && (
+            <button
+              onClick={() => setShuttleOverlayVisible((v) => !v)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                shuttleOverlayVisible
+                  ? isLight ? 'bg-yellow-200 text-yellow-800' : 'bg-yellow-700/60 text-yellow-200'
+                  : isLight ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-yellow-900/40 text-yellow-300 hover:bg-yellow-800/60'
+              }`}
+              title={shuttleOverlayVisible ? 'シャトル軌跡を非表示' : 'シャトル軌跡を表示'}
+            >
+              {shuttleOverlayVisible ? '◉' : '○'} 軌跡
+            </button>
           )}
           {/* R-001/R-002: セッション共有ボタン */}
           {activeSession ? (
@@ -1823,6 +1851,15 @@ export function AnnotatorPage() {
                     videoWidth={videoContainerRef.current.clientWidth}
                     videoHeight={videoContainerRef.current.clientHeight}
                     visible={yoloOverlayVisible}
+                  />
+                )}
+                {shuttleFrames.length > 0 && videoContainerRef.current && (
+                  <ShuttleTrackOverlay
+                    frames={shuttleFrames}
+                    currentSec={currentVideoSec}
+                    videoWidth={videoContainerRef.current.clientWidth}
+                    videoHeight={videoContainerRef.current.clientHeight}
+                    visible={shuttleOverlayVisible}
                   />
                 )}
               </div>

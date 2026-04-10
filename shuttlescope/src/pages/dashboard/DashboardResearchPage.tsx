@@ -17,6 +17,7 @@ import { OpponentPolicyCard } from '@/components/analysis/OpponentPolicyCard'
 import { DoublesRoleCard } from '@/components/analysis/DoublesRoleCard'
 import { ShotInfluenceV2Card } from '@/components/analysis/ShotInfluenceV2Card'
 import { PromotionStatusCard } from '@/components/analysis/PromotionStatusCard'
+import { YoloCVPositionCard } from '@/components/analysis/YoloCVPositionCard'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 
 interface Props {
@@ -167,6 +168,13 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
       <ErrorBoundary>
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <ShotInfluenceV2Card playerId={playerId} filters={filters} />
+        </RoleGuard>
+      </ErrorBoundary>
+
+      {/* ── CV ポジション解析（YOLO / TrackNet assisted） ── */}
+      <ErrorBoundary>
+        <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
+          <YoloCVPositionCard playerId={playerId} filters={filters} />
         </RoleGuard>
       </ErrorBoundary>
 

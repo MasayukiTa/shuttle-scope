@@ -684,3 +684,109 @@ def compute_doubles_role_db2(
         "note": note,
         "db_phase": "db2",
     }
+
+
+# ── Gap #7: CV 統合シグナル ────────────────────────────────────────────────────
+
+def adjust_role_with_cv_signals(
+    shot_based_result: dict,
+    cv_summary: dict,
+) -> dict:
+    """YOLO CV ポジションサマリーをショットベース推定に重ね合わせ、
+    整合性スコアと調整済みシグナルを返す。annotation truth への書き込みは不可。
+
+    Args:
+        shot_based_result: compute_doubles_role_inference() または compute_doubles_role_db2() の出力
+        cv_summary: compute_doubles_cv_analytics() の "position_summary" キー以下の値
+            期待するキー: player_a_depth_band / player_b_depth_band / front_back_ratio / parallel_ratio
+
+    Returns:
+        {
+          "cv_available": bool,
+          "shot_role": str,          # ショットベースの推定ロール
+          "cv_formation_style": str, # CV 陣形ラベル
+          "agreement": str,          # "consistent" / "partial" / "inconsistent" / "unknown"
+          "agreement_score": float,  # 0-1, 1 = 完全一致
+          "cv_adjusted_note": str,
+          "player_a_cv_role_hint": str | None,  # "front" / "back" / "mixed" (CV 由来)
+          "player_b_cv_role_hint": str | None,
+        }
+    """
+    if not cv_summary:
+        return {"cv_available": False, "agreement": "unknown", "agreement_score": 0.0}
+
+    shot_role = shot_based_result.get("inferred_role", "mixed")
+    shot_conf = shot_based_result.get("confidence_score", 0.0)
+
+    # CV 陣形スタイル
+    fb_ratio = cv_summary.get("front_back_ratio", 0.0)
+    pa_ratio = cv_summary.get("parallel_ratio", 0.0)
+    if fb_ratio > 0.5:
+        cv_style = "前後陣傾向"
+    elif pa_ratio > 0.5:
+        cv_style = "平行陣傾向"
+    elif fb_ratio > 0.3 or pa_ratio > 0.3:
+        cv_style = "混合陣形"
+    else:
+        cv_style = "不明"
+
+    # プレイヤーごとの depth_band 傾向から CV ロールヒント
+    def _depth_hint(depth_band: dict) -> Optional[str]:
+        if not depth_band:
+            return None
+        total = max(sum(depth_band.values()), 1)
+        front_r = depth_band.get("front", 0) / total
+        back_r = depth_band.get("back", 0) / total
+        if front_r >= 0.50:
+            return "front"
+        if back_r >= 0.50:
+            return "back"
+        return "mixed"
+
+    hint_a = _depth_hint(cv_summary.get("player_a_depth_band", {}))
+    hint_b = _depth_hint(cv_summary.get("player_b_depth_band", {}))
+
+    # 整合性評価: CV 前後陣傾向 と shot_role が一致するか
+    # 「前後陣傾向 && shot_role=front or back」は consistent
+    agreement_score = 0.5  # デフォルト: 判定困難
+    agreement = "unknown"
+
+    if cv_style == "不明":
+        agreement = "unknown"
+        agreement_score = 0.0
+    elif fb_ratio > 0.5 and shot_role in ("front", "back"):
+        # CV が前後陣 & ショットが前衛/後衛 → 整合
+        agreement = "consistent"
+        agreement_score = round(min(fb_ratio, shot_conf) * 2, 3)
+        agreement_score = min(agreement_score, 1.0)
+    elif pa_ratio > 0.5 and shot_role == "mixed":
+        # CV が平行陣 & ショットが混合 → 整合
+        agreement = "consistent"
+        agreement_score = round(min(pa_ratio, 0.8), 3)
+    elif fb_ratio > 0.3 and shot_role in ("front", "back"):
+        agreement = "partial"
+        agreement_score = round(fb_ratio * shot_conf, 3)
+    else:
+        # CV と shot_role が矛盾
+        agreement = "inconsistent"
+        agreement_score = round(1.0 - abs(fb_ratio - (1.0 if shot_role != "mixed" else 0.5)), 3)
+        agreement_score = max(0.0, agreement_score)
+
+    note_parts = [f"CV 陣形: {cv_style}"]
+    if agreement == "inconsistent":
+        note_parts.append("CV 位置とショット種別ロールが矛盾しています。映像品質・カメラアングルを確認してください。")
+    elif agreement == "consistent":
+        note_parts.append("CV 位置とショット種別ロールが整合しています。")
+
+    return {
+        "cv_available": True,
+        "shot_role": shot_role,
+        "cv_formation_style": cv_style,
+        "front_back_ratio": fb_ratio,
+        "parallel_ratio": pa_ratio,
+        "agreement": agreement,
+        "agreement_score": agreement_score,
+        "cv_adjusted_note": " / ".join(note_parts),
+        "player_a_cv_role_hint": hint_a,
+        "player_b_cv_role_hint": hint_b,
+    }

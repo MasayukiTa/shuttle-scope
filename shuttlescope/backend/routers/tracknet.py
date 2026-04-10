@@ -34,6 +34,25 @@ class BatchJobStatus:
 # /api/tracknet/status — モデルステータス確認
 # ────────────────────────────────────────────────────────────────────
 
+@router.get("/tracknet/shuttle_track/{match_id}")
+def get_shuttle_track(match_id: int, db: Session = Depends(get_db)):
+    """TrackNet バッチで保存したシャトル軌跡アーティファクトを返す。
+    フロントエンドの ShuttleTrackOverlay が参照する。
+    """
+    artifact = (
+        db.query(MatchCVArtifact)
+        .filter(
+            MatchCVArtifact.match_id == match_id,
+            MatchCVArtifact.artifact_type == "tracknet_shuttle_track",
+        )
+        .order_by(MatchCVArtifact.created_at.desc())
+        .first()
+    )
+    if not artifact or not artifact.data:
+        return {"success": True, "data": []}
+    return {"success": True, "data": json.loads(artifact.data)}
+
+
 @router.get("/tracknet/status")
 def tracknet_status():
     """TrackNetモデルの導入状況・バックエンドを返す"""
