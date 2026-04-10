@@ -130,6 +130,13 @@ cd shuttlescope
 .\bootstrap_windows.ps1 -RunDoctor
 ```
 
+If PowerShell is inconvenient, a batch wrapper is also available:
+
+```bat
+cd shuttlescope
+bootstrap_windows.bat -RunDoctor
+```
+
 Optional extras:
 
 ```powershell
@@ -143,6 +150,13 @@ The doctor output can also be run directly:
 .\backend\.venv\Scripts\python -m backend.tools.setup_doctor
 ```
 
+JSON mode and strict mode are available too:
+
+```powershell
+.\backend\.venv\Scripts\python -m backend.tools.setup_doctor --format json
+.\backend\.venv\Scripts\python -m backend.tools.setup_doctor --strict
+```
+
 This reports:
 
 - missing Python / npm tools
@@ -150,6 +164,8 @@ This reports:
 - YOLO runtime readiness
 - `ngrok` / `cloudflared` availability
 - key Python package versions
+- recommended next steps for this machine
+- an exit code you can use in automation
 
 ### Install and Run
 
