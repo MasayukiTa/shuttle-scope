@@ -350,6 +350,12 @@ export function AnnotatorPage() {
   const [shuttleFrames, setShuttleFrames] = useState<ShuttleFrame[]>([])
   const [shuttleOverlayVisible, setShuttleOverlayVisible] = useState(false)
 
+  // アーティファクト鮮度情報
+  const [yoloArtifactMeta, setYoloArtifactMeta] = useState<{
+    created_at: string; frame_count: number
+  } | null>(null)
+  const [tracknetArtifactAt, setTracknetArtifactAt] = useState<string | null>(null)
+
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
     queryKey: ['match', matchId],
@@ -1102,6 +1108,7 @@ export function AnnotatorPage() {
               )
               if (trackRes.success && Array.isArray(trackRes.data) && trackRes.data.length > 0) {
                 setShuttleFrames(trackRes.data)
+                setTracknetArtifactAt(new Date().toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }))
               }
             } catch { /* shuttle track 取得失敗は無視 */ }
           }
@@ -1147,6 +1154,13 @@ export function AnnotatorPage() {
             if (framesRes.success && framesRes.data) {
               setYoloFrames(framesRes.data)
             }
+            // アーティファクトメタ（作成日時・フレーム数）
+            try {
+              const metaRes = await apiGet<{ success: boolean; data: { created_at: string; frame_count: number } | null }>(`/yolo/results/${matchId}`)
+              if (metaRes.success && metaRes.data) {
+                setYoloArtifactMeta({ created_at: metaRes.data.created_at, frame_count: metaRes.data.frame_count })
+              }
+            } catch { /* meta 取得失敗は無視 */ }
           }
         }
       } catch { /* ポーリング失敗は無視 */ }
@@ -1434,6 +1448,13 @@ export function AnnotatorPage() {
               isLight ? 'border-gray-300 bg-gray-50' : 'border-gray-700 bg-gray-800/60'
             }`}>
               <span className={`text-[9px] font-bold uppercase tracking-wider pr-1 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>CV</span>
+
+              {/* アーティファクト鮮度ヒント */}
+              {yoloArtifactMeta && (
+                <span className={`text-[8px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`} title={`最終解析: ${yoloArtifactMeta.created_at} / ${yoloArtifactMeta.frame_count}f`}>
+                  {new Date(yoloArtifactMeta.created_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
 
               {/* YOLO プレイヤー検出 */}
               {yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running') ? (

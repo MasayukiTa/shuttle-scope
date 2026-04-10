@@ -52,6 +52,8 @@ class YOLOInference:
         self._loaded = False
         self._model = None
         self._backend: str = "unloaded"
+        # 診断用: ロード失敗時のエラーメッセージ
+        self._load_error: Optional[str] = None
 
     # ─── 可用性確認 ─────────────────────────────────────────────────────
 
@@ -67,6 +69,59 @@ class YOLOInference:
     def backend_name(self) -> Optional[str]:
         return self._backend if self._loaded else None
 
+    def get_status_detail(self) -> dict:
+        """診断用ステータスを返す。
+
+        status_code:
+          "ready"          — ロード済み、推論可能
+          "weights_missing"— ultralytics あり、カスタム重みなし（auto-download で動作）
+          "package_missing" — ultralytics も ONNX も存在しない
+          "load_failed"    — ロード試行したが失敗
+        """
+        if self._loaded:
+            return {
+                "status_code": "ready",
+                "backend": self._backend,
+                "message": None,
+            }
+
+        # ultralytics パッケージ確認
+        ultralytics_ok = False
+        try:
+            import ultralytics  # noqa: F401
+            ultralytics_ok = True
+        except ImportError:
+            pass
+
+        has_local_weights = ONNX_MODEL.exists() or PT_MODEL.exists()
+
+        if self._load_error:
+            return {
+                "status_code": "load_failed",
+                "backend": None,
+                "message": self._load_error,
+            }
+
+        if not ultralytics_ok and not has_local_weights:
+            return {
+                "status_code": "package_missing",
+                "backend": None,
+                "message": "pip install ultralytics を実行してモデルを導入してください",
+            }
+
+        if ultralytics_ok and not has_local_weights:
+            return {
+                "status_code": "weights_missing",
+                "backend": "ultralytics (auto-download)",
+                "message": "初回バッチ実行時に yolov8n.pt が自動ダウンロードされます",
+            }
+
+        return {
+            "status_code": "weights_missing",
+            "backend": None,
+            "message": "ONNX 重みが見つかりません: " + str(ONNX_MODEL),
+        }
+
     # ─── モデルロード ────────────────────────────────────────────────────
 
     def load(self) -> bool:
@@ -80,12 +135,14 @@ class YOLOInference:
             self._model = YOLO(model_path)
             self._backend = "ultralytics"
             self._loaded = True
+            self._load_error = None
             logger.info("YOLO loaded via ultralytics (path=%s)", model_path)
             return True
         except ImportError:
             logger.info("ultralytics not installed — trying onnxruntime fallback")
         except Exception as exc:
             logger.warning("ultralytics load failed: %s", exc)
+            self._load_error = f"ultralytics load failed: {exc}"
 
         # 2. onnxruntime + カスタム ONNX
         if ONNX_MODEL.exists():
@@ -96,10 +153,12 @@ class YOLOInference:
                 )
                 self._backend = "onnx_cpu"
                 self._loaded = True
+                self._load_error = None
                 logger.info("YOLO loaded via ONNX Runtime CPU")
                 return True
             except Exception as exc:
                 logger.warning("YOLO ONNX load failed: %s", exc)
+                self._load_error = f"ONNX load failed: {exc}"
 
         logger.error(
             "YOLO: 使えるバックエンドがありません。"

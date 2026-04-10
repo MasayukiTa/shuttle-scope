@@ -23,7 +23,7 @@ interface CVAnalysisResp {
   cv_role_signal?: CVRoleSignal | null
 }
 
-interface MatchSummary {
+interface RecentMatchRef {
   id: number
   match_date: string | null
 }
@@ -172,7 +172,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
   const { data: matchesResp } = useQuery({
     queryKey: ['player-matches-for-cv-role', playerId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: MatchSummary[] }>('/matches', { player_id: playerId }),
+      apiGet<{ success: boolean; data: RecentMatchRef[] }>('/matches', { player_id: playerId }),
     enabled: !!playerId,
   })
   const recentMatchId = matchesResp?.data?.[0]?.id ?? null

@@ -138,7 +138,7 @@ export function SettingsPage() {
   // YOLO モデルステータス取得
   const { data: yoloStatus } = useQuery({
     queryKey: ['yolo-status'],
-    queryFn: () => apiGet<{ success: boolean; data: { available: boolean; backend: string | null; loaded: boolean; install_hint: string | null } }>('/yolo/status'),
+    queryFn: () => apiGet<{ success: boolean; data: { available: boolean; backend: string | null; loaded: boolean; status_code: string; status_message: string | null; install_hint: string | null } }>('/yolo/status'),
     enabled: activeTab === 'tracknet',
     refetchInterval: activeTab === 'tracknet' ? 10000 : false,
   })
@@ -709,33 +709,62 @@ export function SettingsPage() {
               </div>
 
               {/* YOLO モデルステータス */}
-              <div className={`rounded p-2.5 text-xs space-y-1 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
+              <div className={`rounded p-2.5 text-xs space-y-1.5 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
                 <p className={`font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>モデル状態</p>
                 {!yoloStatus ? (
                   <p className={isLight ? 'text-gray-500' : 'text-gray-500'}>バックエンド接続中...</p>
-                ) : yoloStatus.data?.available ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-emerald-400">●</span>
-                    <span className={isLight ? 'text-emerald-700' : 'text-emerald-300'}>
-                      検出可能 — {yoloStatus.data.backend ?? 'ultralytics'}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-orange-400">●</span>
-                      <span className={isLight ? 'text-orange-700' : 'text-orange-300'}>モデル未導入</span>
+                ) : (() => {
+                  const sc = yoloStatus.data?.status_code
+                  const msg = yoloStatus.data?.status_message
+                  if (sc === 'ready') {
+                    return (
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-emerald-400">●</span>
+                          <span className={isLight ? 'text-emerald-700' : 'text-emerald-300'}>
+                            推論可能 — {yoloStatus.data?.backend ?? 'ultralytics'}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  }
+                  if (sc === 'weights_missing') {
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-blue-400">●</span>
+                          <span className={isLight ? 'text-blue-700' : 'text-blue-300'}>
+                            パッケージ導入済み（初回実行時に自動DL）
+                          </span>
+                        </div>
+                        {msg && <p className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>{msg}</p>}
+                      </div>
+                    )
+                  }
+                  if (sc === 'load_failed') {
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-red-400">●</span>
+                          <span className={isLight ? 'text-red-700' : 'text-red-300'}>ロード失敗</span>
+                        </div>
+                        {msg && <p className={`text-[10px] font-mono break-all ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{msg}</p>}
+                      </div>
+                    )
+                  }
+                  // package_missing
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-orange-400">●</span>
+                        <span className={isLight ? 'text-orange-700' : 'text-orange-300'}>パッケージ未導入</span>
+                      </div>
+                      <code className={`block text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-800 text-gray-300'}`}>
+                        pip install ultralytics
+                      </code>
                     </div>
-                    {yoloStatus.data?.install_hint && (
-                      <p className={`font-mono text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
-                        {yoloStatus.data.install_hint}
-                      </p>
-                    )}
-                    <code className={`block text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-800 text-gray-300'}`}>
-                      pip install ultralytics
-                    </code>
-                  </div>
-                )}
+                  )
+                })()}
               </div>
             </div>
           </div>

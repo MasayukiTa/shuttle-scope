@@ -29,7 +29,7 @@ interface Props {
 
 // ─── API レスポンス型 ──────────────────────────────────────────────────────────
 
-interface MatchSummary {
+interface CVMatchRef {
   id: number
   match_date: string | null
   format: string | null
@@ -130,7 +130,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
   const { data: matchesResp, isLoading: matchesLoading } = useQuery({
     queryKey: ['player-matches-for-cv', playerId, filters],
     queryFn: () =>
-      apiGet<{ success: boolean; data: MatchSummary[] }>('/matches', filterParams),
+      apiGet<{ success: boolean; data: CVMatchRef[] }>('/matches', filterParams),
     enabled: !!playerId,
   })
 

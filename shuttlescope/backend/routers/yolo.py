@@ -48,15 +48,19 @@ class JobStatus:
 def yolo_status():
     """YOLO モデルの導入状況・バックエンドを返す"""
     inf = get_yolo_inference()
+    detail = inf.get_status_detail()
     return {
         "success": True,
         "data": {
             "available": inf.is_available(),
             "backend": inf.backend_name(),
             "loaded": inf._loaded,
+            "status_code": detail["status_code"],
+            "status_message": detail["message"],
+            # 後方互換
             "install_hint": (
                 None if inf.is_available()
-                else "pip install ultralytics を実行してモデルを導入してください"
+                else detail["message"] or "pip install ultralytics を実行してモデルを導入してください"
             ),
         },
     }
