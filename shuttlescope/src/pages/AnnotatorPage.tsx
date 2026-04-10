@@ -16,6 +16,7 @@ import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SessionShareModal } from '@/components/annotation/SessionShareModal'
 import { DeviceManagerPanel } from '@/components/session/DeviceManagerPanel'
 import { WarmupNotesPanel } from '@/components/annotation/WarmupNotesPanel'
+import { PlayerPositionOverlay } from '@/components/annotation/PlayerPositionOverlay'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useVideo } from '@/hooks/useVideo'
@@ -331,6 +332,18 @@ export function AnnotatorPage() {
     status: string; progress: number; processed_rallies: number;
     total_rallies: number; updated_strokes: number; error: string | null
   } | null>(null)
+
+  // P4: YOLO プレイヤー検出
+  const [yoloJobId, setYoloJobId] = useState<string | null>(null)
+  const [yoloJob, setYoloJob] = useState<{
+    status: string; progress: number; processed_frames: number;
+    total_frames: number; detected_players: number; error: string | null
+  } | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [yoloFrames, setYoloFrames] = useState<any[]>([])
+  const [yoloOverlayVisible, setYoloOverlayVisible] = useState(false)
+  const [currentVideoSec, setCurrentVideoSec] = useState(0)
+  const videoContainerRef = useRef<HTMLDivElement>(null)
 
   // --- データフェッチ ---
   const { data: matchData } = useQuery({
@@ -1084,6 +1097,58 @@ export function AnnotatorPage() {
     return () => clearInterval(id)
   }, [tracknetJobId, tracknetJob?.status, queryClient])
 
+  // P4: YOLO バッチ解析開始
+  const handleYoloBatch = useCallback(async () => {
+    if (!matchId) return
+    const hasVideo = !!(match?.video_local_path || match?.video_url)
+    if (!hasVideo) {
+      alert(t('yolo.batch_no_video'))
+      return
+    }
+    try {
+      const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
+        `/yolo/batch/${matchId}`,
+        {}
+      )
+      if (res.success) {
+        setYoloJobId(res.data.job_id)
+        setYoloJob({ status: 'pending', progress: 0, processed_frames: 0, total_frames: 0, detected_players: 0, error: null })
+      }
+    } catch {
+      alert(t('yolo.batch_error'))
+    }
+  }, [matchId, match, t])
+
+  // P4: YOLO ジョブポーリング
+  useEffect(() => {
+    if (!yoloJobId || yoloJob?.status === 'complete' || yoloJob?.status === 'error') return
+    const id = setInterval(async () => {
+      try {
+        const res = await apiGet<{ success: boolean; data: typeof yoloJob }>(`/yolo/batch/${yoloJobId}/status`)
+        if (res.success && res.data) {
+          setYoloJob(res.data)
+          if (res.data?.status === 'complete') {
+            // 検出完了後にフレームデータを取得
+            const framesRes = await apiGet<{ success: boolean; data: typeof yoloFrames }>(`/yolo/results/${matchId}/frames`)
+            if (framesRes.success && framesRes.data) {
+              setYoloFrames(framesRes.data)
+            }
+          }
+        }
+      } catch { /* ポーリング失敗は無視 */ }
+    }, 2000)
+    return () => clearInterval(id)
+  }, [yoloJobId, yoloJob?.status, matchId])
+
+  // P4: 動画再生位置の追跡（オーバーレイ同期）
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const onTimeUpdate = () => setCurrentVideoSec(video.currentTime)
+    video.addEventListener('timeupdate', onTimeUpdate)
+    return () => video.removeEventListener('timeupdate', onTimeUpdate)
+  }, [videoRef])
+
   // U-001: ブックマーク追加
   const handleBookmark = useCallback(async (rallyId: number | null, ts?: number) => {
     if (!matchId) return
@@ -1315,21 +1380,80 @@ export function AnnotatorPage() {
           {/* P3: TrackNet バッチ解析ボタン */}
           {appSettings.tracknet_enabled && (match?.video_local_path || match?.video_url) && (
             tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') ? (
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-purple-900/40 text-purple-300">
+              <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
+                isLight ? 'bg-purple-100 text-purple-700' : 'bg-purple-900/40 text-purple-300'
+              }`}>
                 <span className="animate-pulse">●</span>
                 {t('tracknet.batch_running')} {Math.round(tracknetJob.progress * 100)}%
               </div>
             ) : tracknetJob?.status === 'complete' ? (
-              <div className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-green-900/40 text-green-300">
+              <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                isLight ? 'bg-green-100 text-green-700' : 'bg-green-900/40 text-green-300'
+              }`}>
                 ✓ {t('tracknet.updated_strokes', { count: tracknetJob.updated_strokes })}
               </div>
+            ) : tracknetJob?.status === 'error' ? (
+              <button
+                onClick={() => setTracknetJob(null)}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  isLight ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
+                }`}
+                title={tracknetJob.error ?? t('tracknet.batch_error')}
+              >
+                ✗ {t('tracknet.batch_error_retry')}
+              </button>
             ) : (
               <button
                 onClick={handleTracknetBatch}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-purple-900/40 text-purple-300 hover:bg-purple-800/60 transition-colors"
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
+                }`}
                 title={t('tracknet.batch_start')}
               >
                 {t('tracknet.batch_start')}
+              </button>
+            )
+          )}
+          {/* P4: YOLO プレイヤー検出ボタン */}
+          {appSettings.yolo_enabled && (match?.video_local_path || match?.video_url) && (
+            yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running') ? (
+              <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
+                isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/40 text-blue-300'
+              }`}>
+                <span className="animate-pulse">●</span>
+                {t('yolo.batch_running')} {Math.round(yoloJob.progress * 100)}%
+              </div>
+            ) : yoloJob?.status === 'complete' ? (
+              <button
+                onClick={() => setYoloOverlayVisible((v) => !v)}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  yoloOverlayVisible
+                    ? isLight ? 'bg-blue-200 text-blue-800' : 'bg-blue-700/60 text-blue-200'
+                    : isLight ? 'bg-green-100 text-green-700 hover:bg-blue-100' : 'bg-green-900/40 text-green-300 hover:bg-blue-900/40'
+                }`}
+                title={yoloOverlayVisible ? t('yolo.overlay_off') : t('yolo.overlay_on')}
+              >
+                {yoloOverlayVisible ? '◉' : '○'} {t('yolo.overlay_toggle')}
+              </button>
+            ) : yoloJob?.status === 'error' ? (
+              <button
+                onClick={() => setYoloJob(null)}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  isLight ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
+                }`}
+                title={yoloJob.error ?? t('yolo.batch_error')}
+              >
+                ✗ {t('yolo.batch_error_retry')}
+              </button>
+            ) : (
+              <button
+                onClick={handleYoloBatch}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                }`}
+                title={t('yolo.batch_start')}
+              >
+                {t('yolo.batch_start')}
               </button>
             )
           )}
@@ -1387,7 +1511,9 @@ export function AnnotatorPage() {
           {activeSession && (
             <button
               onClick={() => setShowDeviceManager(true)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-gray-700 text-gray-400 hover:text-white transition-colors"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                isLight ? 'bg-gray-200 text-gray-500 hover:text-gray-800' : 'bg-gray-700 text-gray-400 hover:text-white'
+              }`}
               title={t('lan_session.open_device_manager')}
             >
               <Monitor size={12} />
@@ -1396,33 +1522,40 @@ export function AnnotatorPage() {
           {/* リモートヘルスバナー */}
           {activeSession && remoteHealth && (
             <div
-              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] cursor-pointer"
-              style={{ background: 'rgba(0,0,0,0.3)' }}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] cursor-pointer ${
+                isLight ? 'bg-gray-200 text-gray-700' : 'bg-black/30 text-gray-300'
+              }`}
               onClick={() => setShowDeviceManager(true)}
               title="リモート接続状態（クリックでデバイス管理を開く）"
             >
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                remoteHealth.wsConnected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'
+                remoteHealth.wsConnected ? 'bg-green-500' : 'bg-amber-400 animate-pulse'
               }`} />
               {/* トンネルプロバイダー名 */}
               {tunnelStatus?.data?.running && tunnelStatus.data.active_provider && (
                 <span className={`font-medium ${
-                  tunnelStatus.data.active_provider === 'ngrok' ? 'text-orange-400' : 'text-cyan-400'
+                  tunnelStatus.data.active_provider === 'ngrok'
+                    ? isLight ? 'text-orange-600' : 'text-orange-400'
+                    : isLight ? 'text-cyan-600' : 'text-cyan-400'
                 }`}>
                   {tunnelStatus.data.active_provider === 'ngrok' ? 'ngrok' : 'CF'}
                 </span>
               )}
               {tunnelStatus?.data?.running === false && (
-                <span className="text-gray-500">LAN</span>
+                <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>LAN</span>
               )}
-              <span className={remoteHealth.wsConnected ? 'text-green-400' : 'text-amber-400'}>
+              <span className={
+                remoteHealth.wsConnected
+                  ? isLight ? 'text-green-700' : 'text-green-400'
+                  : isLight ? 'text-amber-600' : 'text-amber-400'
+              }>
                 {remoteHealth.wsConnected ? '接続' : '再接続中'}
               </span>
               {remoteHealth.connectionState === 'connected' && (
-                <span className="text-red-400 ml-1">● LIVE</span>
+                <span className={`ml-1 ${isLight ? 'text-red-600' : 'text-red-400'}`}>● LIVE</span>
               )}
               {remoteHealth.turnInUse === true && (
-                <span className="text-blue-400 ml-1">TURN</span>
+                <span className={`ml-1 ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>TURN</span>
               )}
             </div>
           )}
@@ -1676,12 +1809,23 @@ export function AnnotatorPage() {
             }
 
             return (
-              <VideoPlayer
-                videoRefProp={videoRef}
-                src={videoSrc}
-                playbackRate={playbackRate}
-                onPlaybackRateChange={setPlaybackRate}
-              />
+              <div ref={videoContainerRef} className="relative w-full">
+                <VideoPlayer
+                  videoRefProp={videoRef}
+                  src={videoSrc}
+                  playbackRate={playbackRate}
+                  onPlaybackRateChange={setPlaybackRate}
+                />
+                {yoloFrames.length > 0 && videoContainerRef.current && (
+                  <PlayerPositionOverlay
+                    frames={yoloFrames}
+                    currentSec={currentVideoSec}
+                    videoWidth={videoContainerRef.current.clientWidth}
+                    videoHeight={videoContainerRef.current.clientHeight}
+                    visible={yoloOverlayVisible}
+                  />
+                )}
+              </div>
             )
           })()}
 

@@ -36,10 +36,11 @@ def _default_device_id() -> str:
 
 # デフォルト設定
 DEFAULT_SETTINGS: dict = {
-    "tracknet_enabled": False,
+    "tracknet_enabled": True,
     "tracknet_backend": "auto",       # auto | tensorflow_cpu | openvino | onnx_cpu
     "tracknet_mode": "batch",          # batch | assist
     "tracknet_max_cpu_pct": 50,
+    "yolo_enabled": True,               # YOLO プレイヤー検出
     "video_source_mode": "local",      # local | webview | none
     # データ同期設定
     "sync_device_id": "",              # 空のときは初回起動時に自動生成

@@ -12,6 +12,8 @@ export interface AppSettings {
   tracknet_backend: 'auto' | 'tensorflow_cpu' | 'openvino' | 'onnx_cpu'
   tracknet_mode: 'batch' | 'assist'
   tracknet_max_cpu_pct: number
+  // YOLO プレイヤー検出
+  yolo_enabled: boolean
   video_source_mode: VideoSourceMode
   // データ同期設定
   sync_device_id: string
@@ -28,10 +30,11 @@ export interface AppSettings {
 }
 
 const DEFAULTS: AppSettings = {
-  tracknet_enabled: false,
+  tracknet_enabled: true,
   tracknet_backend: 'auto',
   tracknet_mode: 'batch',
   tracknet_max_cpu_pct: 50,
+  yolo_enabled: true,
   video_source_mode: 'local',
   sync_device_id: '',
   sync_folder_path: '',

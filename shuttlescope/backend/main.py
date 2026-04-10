@@ -29,6 +29,7 @@ from backend.routers import sessions, comments, bookmarks, network_diag, warmup
 from backend.routers import prediction, tunnel
 from backend.routers import human_forecast
 from backend.routers import sync as sync_router
+from backend.routers import yolo
 from backend.utils.video_downloader import video_downloader
 
 # React renderer ビルド出力パス（Electron / ブラウザ共用）
@@ -111,6 +112,7 @@ app.include_router(analysis.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
 app.include_router(tracknet.router, prefix="/api")
+app.include_router(yolo.router, prefix="/api")
 # R-001/R-002: 共有セッション
 app.include_router(sessions.router, prefix="/api")
 # S-003: コメント
@@ -366,17 +368,52 @@ async def version():
 
 
 # ─── React SPA 配信（LAN / トンネルブラウザアクセス用）───────────────────────
-# out/renderer/ が存在するとき（npm run build 後）に有効化。
-# HashRouter 使用のため、/ のみ提供すれば全クライアントサイドルートが動作する。
-if _RENDERER_DIR.exists():
-    _assets_dir = _RENDERER_DIR / "assets"
-    if _assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="renderer-assets")
+# out/renderer/ が存在するとき（npm run build 後）に assets をマウント。
+# HashRouter 使用のため / を常に返せば全クライアントサイドルートが動作する。
+_assets_dir = _RENDERER_DIR / "assets"
+if _assets_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="renderer-assets")
 
-    @app.get("/")
-    async def spa_root():
-        """React SPA エントリポイント（ブラウザアクセス用）"""
-        return FileResponse(str(_RENDERER_DIR / "index.html"))
+_INDEX_HTML = _RENDERER_DIR / "index.html"
+
+_FALLBACK_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ShuttleScope</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#0f172a;color:#f1f5f9;
+       display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
+  .card{background:#1e293b;border-radius:12px;padding:32px 40px;text-align:center;max-width:400px;}
+  h1{font-size:1.4rem;margin-bottom:8px;}
+  p{color:#94a3b8;font-size:.9rem;line-height:1.6;}
+  code{background:#0f172a;padding:2px 6px;border-radius:4px;font-size:.85rem;color:#60a5fa;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>ShuttleScope</h1>
+  <p>バックエンドは起動しています。<br>
+  フロントエンドを配信するには一度ビルドが必要です。</p>
+  <p style="margin-top:12px;"><code>npm run build</code><br>
+  <span style="font-size:.8rem;color:#64748b;">実行後に再起動してください</span></p>
+</div>
+</body>
+</html>"""
+
+
+@app.get("/")
+async def spa_root():
+    """React SPA エントリポイント（ブラウザ / LAN / トンネルアクセス用）"""
+    if _INDEX_HTML.exists():
+        return FileResponse(str(_INDEX_HTML))
+    return HTMLResponse(content=_FALLBACK_HTML)
+
+
+@app.get("/index.html")
+async def spa_index():
+    if _INDEX_HTML.exists():
+        return FileResponse(str(_INDEX_HTML))
+    return HTMLResponse(content=_FALLBACK_HTML)
 
 
 if __name__ == "__main__":

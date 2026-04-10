@@ -25,3 +25,9 @@ httpx==0.26.0
 openvino>=2024.0; sys_platform != 'unsupported'
 onnxruntime>=1.17.0
 opencv-python>=4.9.0
+
+# P4: YOLO player detection runtime
+# Minimum: pip install ultralytics
+# ultralytics auto-downloads yolov8n.pt (~6MB) on first use.
+# Alternatively, place a custom ONNX at backend/yolo/weights/yolo_badminton.onnx
+ultralytics>=8.0

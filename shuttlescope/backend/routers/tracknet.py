@@ -10,8 +10,10 @@ from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+import json
+
 from backend.db.database import get_db
-from backend.db.models import Match, GameSet, Rally, Stroke
+from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
 from backend.tracknet.inference import get_inference
 
 logger = logging.getLogger(__name__)
@@ -309,12 +311,93 @@ def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float):
         _jobs[job_id]["status"] = BatchJobStatus.COMPLETE
         _jobs[job_id]["updated_strokes"] = updated
 
+        # MatchCVArtifact として tracknet_shuttle_track を保存
+        # YOLO アライメント（/api/yolo/align）が参照するフレーム別シャトル軌跡
+        shuttle_track = _build_shuttle_track(rallies, db, inf, threshold, video_path)
+        if shuttle_track:
+            track_json = json.dumps(shuttle_track, ensure_ascii=False)
+            existing_art = (
+                db.query(MatchCVArtifact)
+                .filter(
+                    MatchCVArtifact.match_id == match_id,
+                    MatchCVArtifact.artifact_type == "tracknet_shuttle_track",
+                )
+                .first()
+            )
+            if existing_art:
+                existing_art.data = track_json
+                existing_art.frame_count = len(shuttle_track)
+                import datetime as _dt
+                existing_art.updated_at = _dt.datetime.utcnow()
+            else:
+                db.add(MatchCVArtifact(
+                    match_id=match_id,
+                    artifact_type="tracknet_shuttle_track",
+                    frame_count=len(shuttle_track),
+                    backend_used=inf.backend_name(),
+                    data=track_json,
+                ))
+            db.commit()
+            logger.info("TrackNet shuttle_track saved: match=%d, points=%d", match_id, len(shuttle_track))
+
     except Exception as e:
         logger.error("Batch job %s failed: %s", job_id, e)
         _jobs[job_id]["status"] = BatchJobStatus.ERROR
         _jobs[job_id]["error"] = str(e)
     finally:
         db.close()
+
+
+def _build_shuttle_track(
+    rallies: list,
+    db,
+    inf,
+    threshold: float,
+    video_path: str,
+) -> list[dict]:
+    """ラリー別の TrackNet 推論結果を時系列フラットリストにまとめ返す。
+
+    Returns:
+        [{"timestamp_sec": float, "zone": str|None, "confidence": float,
+          "x_norm": float|None, "y_norm": float|None}, ...]
+    """
+    import cv2
+
+    path = video_path
+    if path.startswith("localfile:///"):
+        path = path[len("localfile:///"):]
+
+    cap = cv2.VideoCapture(path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    cap.release()
+
+    track: list[dict] = []
+
+    for rally in rallies:
+        if rally.video_timestamp_start is None:
+            continue
+        start_sec: float = rally.video_timestamp_start
+        end_sec: float = rally.video_timestamp_end or (start_sec + 15.0)
+
+        # ラリー区間を 3 フレームスライド窓で走査（1fps 相当）
+        step = 1.0  # 秒
+        t = start_sec
+        while t < end_sec:
+            frames = _extract_frames(video_path, t, n_frames=3)
+            if len(frames) >= 3:
+                results = inf.predict_frames(frames)
+                if results:
+                    r = results[0]
+                    track.append({
+                        "timestamp_sec": round(t, 3),
+                        "zone": r["zone"] if r["confidence"] >= threshold else None,
+                        "confidence": round(r["confidence"], 3),
+                        "x_norm": r.get("x_norm"),
+                        "y_norm": r.get("y_norm"),
+                    })
+            t += step
+
+    return track
 
 
 def _extract_frames(video_path: str, start_sec: float, n_frames: int = 5) -> list:

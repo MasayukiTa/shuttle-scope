@@ -131,6 +131,26 @@ def _read_stderr_cloudflare(proc: subprocess.Popen) -> None:
 
 # ─── ngrok local API ポーリングスレッド ──────────────────────────────────────
 
+def _read_stderr_ngrok(proc: subprocess.Popen) -> None:
+    """ngrok の stderr を読んでログに記録する（エラー検出用）"""
+    global _stderr_lines, _proc, _tunnel_url, _active_provider
+    for line in iter(proc.stderr.readline, b''):
+        text = line.decode('utf-8', errors='replace').strip()
+        if not text:
+            continue
+        with _lock:
+            _stderr_lines.append(f'[ngrok] {text}')
+            if len(_stderr_lines) > 50:
+                _stderr_lines.pop(0)
+    # stderr が閉じた = プロセス終了。状態をリセット
+    with _lock:
+        if _proc is proc:
+            _proc = None
+            _tunnel_url = None
+            _active_provider = None
+            _stderr_lines.append('[ngrok] プロセスが終了しました')
+
+
 def _poll_ngrok_url(proc: subprocess.Popen) -> None:
     """ngrok local API (http://localhost:4040/api/tunnels) から HTTPS URL を取得する"""
     global _tunnel_url
@@ -238,6 +258,17 @@ def tunnel_start(provider: str = "auto", db: Session = Depends(get_db)):
         _tunnel_url = None
         _stderr_lines = []
         _active_provider = None
+        old_proc = _proc
+        _proc = None
+
+    # 残存プロセスを確実に終了させてから新規起動
+    if old_proc is not None:
+        try:
+            old_proc.terminate()
+        except Exception:
+            pass
+    if resolved == 'ngrok':
+        _kill_ngrok_processes()
 
     port = settings.API_PORT
 
@@ -258,8 +289,10 @@ def tunnel_start(provider: str = "auto", db: Session = Depends(get_db)):
         with _lock:
             _proc = proc
             _active_provider = 'ngrok'
-        t = threading.Thread(target=_poll_ngrok_url, args=(proc,), daemon=True)
-        t.start()
+        # URL 取得スレッド
+        threading.Thread(target=_poll_ngrok_url, args=(proc,), daemon=True).start()
+        # stderr 監視スレッド（エラー記録 + プロセス死亡検出）
+        threading.Thread(target=_read_stderr_ngrok, args=(proc,), daemon=True).start()
         return {
             "success": True,
             "data": {
@@ -283,6 +316,31 @@ def tunnel_start(provider: str = "auto", db: Session = Depends(get_db)):
         }
 
 
+def _kill_ngrok_processes() -> None:
+    """実行中の ngrok プロセスをすべて強制終了する（Windows: taskkill, Unix: pkill）"""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "ngrok.exe"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        else:
+            subprocess.run(
+                ["pkill", "-f", "ngrok http"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+    except Exception:
+        pass
+    # ngrok local API (port 4040) が落ちるまで待機（最大 3 秒）
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen('http://localhost:4040/api/tunnels', timeout=0.5)
+            time.sleep(0.3)
+        except Exception:
+            break  # port 4040 が応答しなくなった = 完全終了
+
+
 @router.post("/tunnel/stop")
 def tunnel_stop():
     global _proc, _tunnel_url, _stderr_lines, _active_provider
@@ -297,12 +355,12 @@ def tunnel_stop():
     if proc is not None:
         try:
             proc.terminate()
-            proc.wait(timeout=5)
+            proc.wait(timeout=3)
         except Exception:
-            try:
-                proc.kill()
-            except Exception:
-                pass
+            pass
+
+    # Windows では terminate だけでは残ることがあるので強制 kill
+    _kill_ngrok_processes()
 
     return {"success": True, "data": {"message": "停止しました"}}
 

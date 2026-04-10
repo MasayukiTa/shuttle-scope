@@ -681,6 +681,25 @@ export function SettingsPage() {
                 <span>90%</span>
               </div>
             </div>
+
+            {/* YOLO プレイヤー検出 セクション */}
+            <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{t('yolo.enabled')}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t('yolo.enable_description')}</p>
+                </div>
+                <button
+                  onClick={() => updateSettings({ yolo_enabled: !appSettings.yolo_enabled })}
+                  disabled={settingsLoading}
+                  className="flex-shrink-0"
+                >
+                  {appSettings.yolo_enabled
+                    ? <ToggleRight size={32} className="text-blue-400" />
+                    : <ToggleLeft size={32} className="text-gray-500" />}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

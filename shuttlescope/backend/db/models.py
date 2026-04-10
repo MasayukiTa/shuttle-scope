@@ -115,6 +115,9 @@ class Match(Base):
     player_a: Mapped["Player"] = relationship("Player", foreign_keys=[player_a_id], back_populates="matches_as_a")
     player_b: Mapped["Player"] = relationship("Player", foreign_keys=[player_b_id], back_populates="matches_as_b")
     sets: Mapped[list["GameSet"]] = relationship("GameSet", back_populates="match", cascade="all, delete-orphan")
+    cv_artifacts: Mapped[list["MatchCVArtifact"]] = relationship(
+        "MatchCVArtifact", back_populates="match", cascade="all, delete-orphan"
+    )
 
 
 class GameSet(Base):
@@ -497,3 +500,39 @@ class SyncConflict(Base):
     resolution: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ─── CV 解析アーティファクト ──────────────────────────────────────────────────
+
+
+class MatchCVArtifact(Base):
+    """YOLO / TrackNet / アライメント解析の結果を試合単位で保存するアーティファクト。
+
+    annotation truth への直接書き込みは行わず、recoverable な JSON として保持する。
+    artifact_type:
+      'yolo_player_detections'   — YOLO バッチ検出結果（フレーム別）
+      'tracknet_shuttle_track'   — TrackNet バッチのシャトル軌跡（フレーム別）
+      'cv_alignment'             — YOLO + TrackNet 統合アライメント結果
+    """
+    __tablename__ = "match_cv_artifacts"
+    __table_args__ = (
+        Index("ix_cv_match_type", "match_id", "artifact_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    artifact_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    frame_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    backend_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    # summary: コート位置サマリーなど（軽量、常時読み込み）
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON
+    # data: フレーム別生データ（大容量、オンデマンド読み込み）
+    data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    match: Mapped["Match"] = relationship("Match", back_populates="cv_artifacts")
