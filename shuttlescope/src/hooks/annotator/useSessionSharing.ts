@@ -59,6 +59,7 @@ export interface SessionSharingResult {
   tunnelStatus: { success: boolean; data: TunnelData } | undefined
   tunnelToggle: ReturnType<typeof useMutation<unknown, Error, void, unknown>>
   tunnelBase: string | null
+  tunnelPending: boolean
   rebaseUrl: (url: string) => string
   // リモートストリーム
   remoteStream: MediaStream | null
@@ -126,15 +127,19 @@ export function useSessionSharing({
     onSuccess: () => { refetchTunnel() },
   })
 
-  const tunnelBase = tunnelStatus?.data?.running && tunnelStatus.data.url
+  const tunnelRunning = tunnelStatus?.data?.running ?? false
+  const tunnelBase = tunnelRunning && tunnelStatus?.data?.url
     ? tunnelStatus.data.url
     : null
+  // trueのとき: トンネル起動中だがURLがまだ取得できていない（ポーリング待機中）
+  const tunnelPending = tunnelRunning && !tunnelBase
 
   const rebaseUrl = useCallback((url: string) => {
     if (!tunnelBase) return url
     try {
       const u = new URL(url)
-      return tunnelBase + u.hash
+      // pathname + search + hash を保持してオリジンだけ tunnelBase に置換する
+      return tunnelBase + u.pathname + u.search + u.hash
     } catch { return url }
   }, [tunnelBase])
 
@@ -177,6 +182,7 @@ export function useSessionSharing({
     tunnelStatus,
     tunnelToggle,
     tunnelBase,
+    tunnelPending,
     rebaseUrl,
     // リモートストリーム
     remoteStream,

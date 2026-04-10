@@ -14,6 +14,16 @@ import { apiGet, apiPost } from '@/api/client'
 import type { ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import type { Match } from '@/types'
 
+/** FastAPI HTTPException の detail フィールドを取り出す。取れなければ元のメッセージ。 */
+function extractApiError(err: unknown): string {
+  if (!(err instanceof Error)) return '不明なエラー'
+  try {
+    const parsed = JSON.parse(err.message)
+    if (parsed?.detail) return String(parsed.detail)
+  } catch { /* not JSON */ }
+  return err.message
+}
+
 // ── 内部型 ───────────────────────────────────────────────────────────────────
 
 export type TracknetJob = {
@@ -130,8 +140,13 @@ export function useCVJobs({
           total_rallies: 0, updated_strokes: 0, error: null,
         })
       }
-    } catch {
-      alert(t('tracknet.batch_error'))
+    } catch (err: unknown) {
+      // HTTP エラー（503 など）の場合、サーバーの具体的な理由を表示する
+      const reason = extractApiError(err)
+      setTracknetJob({
+        status: 'error', progress: 0, processed_rallies: 0,
+        total_rallies: 0, updated_strokes: 0, error: reason,
+      })
     }
   }, [matchId, match, tracknetBackend, t])
 
@@ -190,8 +205,12 @@ export function useCVJobs({
           total_frames: 0, detected_players: 0, error: null,
         })
       }
-    } catch {
-      alert(t('yolo.batch_error'))
+    } catch (err: unknown) {
+      const reason = extractApiError(err)
+      setYoloJob({
+        status: 'error', progress: 0, processed_frames: 0,
+        total_frames: 0, detected_players: 0, error: reason,
+      })
     }
   }, [matchId, match, t])
 

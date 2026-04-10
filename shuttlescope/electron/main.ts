@@ -175,7 +175,16 @@ function registerLocalFileProtocol(): void {
         const chunkSize = end - start + 1
 
         const nodeStream = createReadStream(filePath, { start, end })
-        nodeStream.on('error', (err) => console.error('[localfile] Stream error:', err))
+        nodeStream.on('error', (err: NodeJS.ErrnoException) => {
+          // レンダラーがリクエストをキャンセルしたときに発生するベニーンエラーは無視する
+          // （シーク・ソース切替・アンマウント時の正常動作）
+          if (
+            err.code === 'ERR_STREAM_DESTROYED' ||
+            err.name === 'AbortError' ||
+            err.message?.toLowerCase().includes('abort')
+          ) return
+          console.error('[localfile] Stream error:', err)
+        })
         const webStream = Readable.toWeb(nodeStream) as ReadableStream
 
         return new Response(webStream, {
@@ -192,7 +201,14 @@ function registerLocalFileProtocol(): void {
 
     // Range なし: フルファイル送信
     const nodeStream = createReadStream(filePath)
-    nodeStream.on('error', (err) => console.error('[localfile] Stream error:', err))
+    nodeStream.on('error', (err: NodeJS.ErrnoException) => {
+      if (
+        err.code === 'ERR_STREAM_DESTROYED' ||
+        err.name === 'AbortError' ||
+        err.message?.toLowerCase().includes('abort')
+      ) return
+      console.error('[localfile] Stream error:', err)
+    })
     const webStream = Readable.toWeb(nodeStream) as ReadableStream
 
     return new Response(webStream, {

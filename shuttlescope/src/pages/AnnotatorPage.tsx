@@ -737,7 +737,7 @@ export function AnnotatorPage() {
     showSessionModal, setShowSessionModal,
     showDeviceManager, setShowDeviceManager,
     handleCreateOrGetSession,
-    tunnelStatus, tunnelToggle, tunnelBase, rebaseUrl,
+    tunnelStatus, tunnelToggle, tunnelBase, tunnelPending, rebaseUrl,
     remoteStream, setRemoteStream,
     remoteStreamVideoRef,
     localCamStream, setLocalCamStream,
@@ -1242,15 +1242,22 @@ export function AnnotatorPage() {
                 ✓ {t('tracknet.updated_strokes', { count: tracknetJob.updated_strokes })}
               </div>
             ) : tracknetJob?.status === 'error' ? (
-              <button
-                onClick={() => setTracknetJob(null)}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  isLight ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
-                }`}
-                title={tracknetJob.error ?? t('tracknet.batch_error')}
-              >
-                ✗ {t('tracknet.batch_error_retry')}
-              </button>
+              <div className="flex flex-col items-start gap-0.5">
+                <button
+                  onClick={() => setTracknetJob(null)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                    isLight ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
+                  }`}
+                  title={tracknetJob.error ?? t('tracknet.batch_error')}
+                >
+                  ✗ {t('tracknet.batch_error_retry')}
+                </button>
+                {tracknetJob.error && (
+                  <span className={`text-[9px] max-w-[160px] truncate ${isLight ? 'text-red-500' : 'text-red-400'}`} title={tracknetJob.error}>
+                    {tracknetJob.error}
+                  </span>
+                )}
+              </div>
             ) : (
               <button
                 onClick={handleTracknetBatch}
@@ -1298,15 +1305,22 @@ export function AnnotatorPage() {
                   {yoloOverlayVisible ? '◉' : '○'} 人物
                 </button>
               ) : yoloJob?.status === 'error' ? (
-                <button
-                  onClick={() => setYoloJob(null)}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${
-                    isLight ? 'bg-red-100 text-red-600' : 'bg-red-900/40 text-red-300'
-                  }`}
-                  title={yoloJob.error ?? t('yolo.batch_error')}
-                >
-                  ✗ 人物
-                </button>
+                <div className="flex flex-col items-start gap-0.5">
+                  <button
+                    onClick={() => setYoloJob(null)}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                      isLight ? 'bg-red-100 text-red-600' : 'bg-red-900/40 text-red-300'
+                    }`}
+                    title={yoloJob.error ?? t('yolo.batch_error')}
+                  >
+                    ✗ 人物
+                  </button>
+                  {yoloJob.error && (
+                    <span className={`text-[9px] max-w-[140px] truncate ${isLight ? 'text-red-500' : 'text-red-400'}`} title={yoloJob.error}>
+                      {yoloJob.error}
+                    </span>
+                  )}
+                </div>
               ) : (
                 <button
                   onClick={handleYoloBatch}
@@ -1358,16 +1372,25 @@ export function AnnotatorPage() {
           {activeSession ? (
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setShowSessionModal(true)}
+                onClick={() => {
+                  if (tunnelPending) return  // 公開URL取得中はモーダルを開かない
+                  setShowSessionModal(true)
+                }}
                 className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-                  isLight
-                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                    : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                  tunnelPending
+                    ? isLight
+                      ? 'bg-amber-100 text-amber-600 cursor-wait'
+                      : 'bg-amber-900/40 text-amber-400 cursor-wait'
+                    : isLight
+                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                      : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
                 }`}
-                title="クリックしてQRコード・URLを表示"
+                title={tunnelPending ? 'トンネルURL取得中... しばらくお待ちください' : 'クリックしてQRコード・URLを表示'}
               >
                 <Share2 size={12} />
-                <span className="font-mono font-bold">{activeSession.session_code}</span>
+                <span className="font-mono font-bold">
+                  {tunnelPending ? '...' : activeSession.session_code}
+                </span>
               </button>
               {/* トンネル起動/停止ボタン */}
               {tunnelStatus?.data?.available !== false && (
@@ -1386,7 +1409,7 @@ export function AnnotatorPage() {
                   }`}
                 >
                   <Globe size={12} className={tunnelStatus?.data?.running ? 'animate-pulse' : ''} />
-                  {tunnelStatus?.data?.running ? 'ON' : ''}
+                  {tunnelPending ? '取得中...' : tunnelStatus?.data?.running ? 'ON' : ''}
                 </button>
               )}
             </div>

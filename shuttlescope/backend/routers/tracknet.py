@@ -269,7 +269,7 @@ def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float):
         inf = get_inference()
         if not inf.load():
             _jobs[job_id]["status"] = BatchJobStatus.ERROR
-            _jobs[job_id]["error"] = "モデルロードに失敗しました"
+            _jobs[job_id]["error"] = inf.get_load_error() or "モデルロードに失敗しました"
             return
 
         # ラリー一覧取得（スキップラリーは除外）
