@@ -54,6 +54,8 @@ class Player(Base):
     aliases: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON文字列 ["alias1","alias2"]
     name_normalized: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # 正規化名（検索用）
     scouting_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 所属履歴: JSON文字列 [{"team":"ACT SAIKYO","until":"2025-03","note":""}]
+    team_history: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # リレーション
     matches_as_a: Mapped[list["Match"]] = relationship(

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
-import { Player, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
+import { Player, TeamHistoryEntry, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -467,7 +467,19 @@ export function SettingsPage() {
                       <div>{p.name}</div>
                       {p.name_en && <div className="text-xs text-gray-500">{p.name_en}</div>}
                     </td>
-                    <td className={`py-2 pr-4 ${textSecondary}`}>{p.team ?? '-'}</td>
+                    <td className={`py-2 pr-4 ${textSecondary}`}>
+                      <div className="flex items-center gap-1.5">
+                        <span>{p.team ?? '-'}</span>
+                        {p.team_history && p.team_history.length > 0 && (
+                          <span
+                            title={p.team_history.map(h => `${h.team}${h.until ? ` (〜${h.until})` : ''}`).join(' → ')}
+                            className="text-[10px] px-1 rounded bg-gray-600/50 text-gray-400 cursor-default"
+                          >
+                            履歴{p.team_history.length}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className={`py-2 pr-4 ${textSecondary}`}>{p.nationality ?? '-'}</td>
                     <td className={`py-2 pr-4 ${textSecondary}`}>
                       {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : '-'}
@@ -1617,6 +1629,20 @@ export function SettingsPage() {
                     onChange={(e) => setPlayerForm({ ...playerForm, team: e.target.value })}
                     className={`w-full ${inputClass}`}
                   />
+                  {editingPlayer?.team_history && editingPlayer.team_history.length > 0 && (
+                    <div className={`mt-1.5 text-xs ${textMuted} space-y-0.5`}>
+                      <div className="font-medium">所属履歴:</div>
+                      {editingPlayer.team_history.map((h: TeamHistoryEntry, i: number) => (
+                        <div key={i} className="flex items-center gap-1">
+                          <span className={`px-1.5 py-0.5 rounded ${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-700 text-gray-400'}`}>
+                            {h.team}
+                          </span>
+                          {h.until && <span className="text-gray-500">〜{h.until}</span>}
+                          {h.note && <span className="text-gray-500 italic">{h.note}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.nationality')}</label>

@@ -33,6 +33,12 @@ class PlayerCreate(BaseModel):
     scouting_notes: Optional[str] = None
 
 
+class TeamHistoryEntry(BaseModel):
+    team: str
+    until: Optional[str] = None   # "2025-03" など任意の文字列
+    note: Optional[str] = None
+
+
 class PlayerUpdate(BaseModel):
     name: Optional[str] = None
     name_en: Optional[str] = None
@@ -49,6 +55,8 @@ class PlayerUpdate(BaseModel):
     organization: Optional[str] = None
     aliases: Optional[list[str]] = None
     scouting_notes: Optional[str] = None
+    # 所属履歴（手動上書き用。通常は team 変更時に自動追記される）
+    team_history: Optional[list[TeamHistoryEntry]] = None
 
 
 def normalize_name(name: str) -> str:
@@ -62,13 +70,16 @@ def normalize_name(name: str) -> str:
     return normalized
 
 
+def _parse_json_list(raw: Optional[str]) -> list:
+    if not raw:
+        return []
+    try:
+        return json.loads(raw)
+    except Exception:
+        return []
+
+
 def player_to_dict(p: Player, match_count: int = 0) -> dict:
-    aliases_list: list[str] = []
-    if p.aliases:
-        try:
-            aliases_list = json.loads(p.aliases)
-        except Exception:
-            aliases_list = []
     return {
         "id": p.id,
         "name": p.name,
@@ -87,9 +98,11 @@ def player_to_dict(p: Player, match_count: int = 0) -> dict:
         "needs_review": bool(p.needs_review),
         "created_via_quick_start": bool(p.created_via_quick_start),
         "organization": p.organization,
-        "aliases": aliases_list,
+        "aliases": _parse_json_list(p.aliases),
         "name_normalized": p.name_normalized,
         "scouting_notes": p.scouting_notes,
+        # 所属履歴
+        "team_history": _parse_json_list(p.team_history),
     }
 
 
@@ -220,13 +233,33 @@ def get_player(player_id: int, db: Session = Depends(get_db)):
 @router.put("/players/{player_id}")
 def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_db)):
     """選手更新"""
+    from datetime import date as _date
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
     data = body.model_dump(exclude_none=True)
+
+    # team 変更時: 旧チームを team_history に自動追記
+    new_team = data.get("team")
+    old_team = player.team
+    if new_team is not None and old_team and old_team != new_team:
+        history = _parse_json_list(player.team_history)
+        until_str = _date.today().strftime("%Y-%m")
+        # 同じチーム・同じ until の重複追記を防ぐ
+        already = any(h.get("team") == old_team and h.get("until") == until_str for h in history)
+        if not already:
+            history.append({"team": old_team, "until": until_str, "note": ""})
+        player.team_history = json.dumps(history, ensure_ascii=False)
+
     # aliases をJSON化
     if "aliases" in data:
         data["aliases"] = json.dumps(data["aliases"], ensure_ascii=False)
+    # team_history を手動上書きする場合はJSON化
+    if "team_history" in data:
+        data["team_history"] = json.dumps(
+            [e.model_dump() for e in body.team_history],  # type: ignore[union-attr]
+            ensure_ascii=False,
+        )
     # name 変更時に name_normalized を更新
     if "name" in data:
         data["name_normalized"] = normalize_name(data["name"])

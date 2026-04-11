@@ -93,6 +93,12 @@ export type ShotType =
   | 'cross_net' | 'slice' | 'around_head' | 'cant_reach'
   | 'flick' | 'half_smash' | 'block' | 'other'
 
+export interface TeamHistoryEntry {
+  team: string
+  until?: string   // "2025-03" など任意文字列
+  note?: string
+}
+
 export interface Player {
   id: number
   name: string
@@ -114,6 +120,8 @@ export interface Player {
   aliases?: string[]
   name_normalized?: string
   scouting_notes?: string
+  // 所属履歴
+  team_history?: TeamHistoryEntry[]
 }
 
 export interface Match {
