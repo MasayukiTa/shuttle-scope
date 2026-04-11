@@ -172,6 +172,8 @@ export function AnnotatorPage() {
   const [urlInput, setUrlInput] = useState('')
   // DRM対応WebViewモード: yt-dlpでダウンロードできないDRM保護コンテンツに使用
   const [useWebView, setUseWebView] = useState(false)
+  // コートグリッドオーバーレイ
+  const [courtGridVisible, setCourtGridVisible] = useState(false)
   // Ref guard: prevent useEffect from re-running doInit on every Zustand state change
   const initStartedRef = useRef(false)
 
@@ -810,6 +812,23 @@ export function AnnotatorPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialized, match?.format])
 
+  // アノテーター離脱時: バックグラウンド解析をキックして遷移
+  const handleLeaveMatch = useCallback(() => {
+    const videoPath = match?.video_local_path || match?.video_url || ''
+    // localfile:/// プレフィックスを除去してファイルパスに変換
+    const resolvedPath = videoPath.startsWith('localfile:///')
+      ? videoPath.replace('localfile:///', '')
+      : videoPath
+    if (resolvedPath && matchId) {
+      // fire-and-forget: 失敗しても離脱は妨げない
+      apiPost('/video_import/path', {
+        video_path: resolvedPath,
+        match_id: Number(matchId),
+      }).catch(() => {})
+    }
+    navigate('/matches')
+  }, [match, matchId, navigate])
+
   // 途中終了: ダイアログ確定
   const handleException = useCallback(async () => {
     if (!exceptionReason) return
@@ -821,11 +840,11 @@ export function AnnotatorPage() {
         exception_reason: exceptionReason,
         metadata_status: 'partial',
       })
-      navigate('/matches')
+      handleLeaveMatch()
     } catch (err: any) {
       alert(`途中終了の保存に失敗しました: ${err?.message ?? '不明なエラー'}`)
     }
-  }, [exceptionReason, matchId, navigate])
+  }, [exceptionReason, matchId, handleLeaveMatch])
 
   // P1: 見逃しラリー保存
   const handleSkipRally = useCallback((winner: 'player_a' | 'player_b') => {
@@ -996,10 +1015,12 @@ export function AnnotatorPage() {
     if (!src || !window.shuttlescope?.openVideoWindow) return
     const secondary = displays.find((d) => !d.isPrimary) ?? displays[0]
     if (!secondary) return
-    window.shuttlescope.openVideoWindow(src, secondary.id)
+    const startTime = videoRef.current?.currentTime ?? 0  // 現在の再生位置を引き継ぐ
+    const isPaused = videoRef.current?.paused ?? true      // 停止状態も引き継ぐ
+    window.shuttlescope.openVideoWindow(src, secondary.id, startTime, isPaused)
     setVideoWindowOpen(true)
-    setVideoSourceMode('none')  // メイン側は映像なしモードに切替
-  }, [match, displays])
+    setVideoSourceMode('none')  // メイン側は映像なしモードに切替（video 要素を破棄して停止）
+  }, [match, displays, videoRef])
 
   const handleCloseVideoWindow = useCallback(() => {
     window.shuttlescope?.closeVideoWindow?.()
@@ -1015,8 +1036,9 @@ export function AnnotatorPage() {
     if (!rawSrc) {
       setVideoSourceMode('none')
     } else {
-      const site = detectStreamingSite(normalizeVideoPath(rawSrc))
-      setVideoSourceMode(site ? 'webview' : 'local')
+      // 'webview' モードはカメラ/WebRTC専用。YouTube等の配信URLは 'local' のまま維持し、
+    // レンダリング側の streamingSiteName チェックで StreamingDownloadPanel / WebViewPlayer を表示。
+    setVideoSourceMode('local')
     }
   }, [matchData?.data?.video_local_path, matchData?.data?.video_url])
 
@@ -1125,7 +1147,7 @@ export function AnnotatorPage() {
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
         <button
-          onClick={() => navigate('/matches')}
+          onClick={handleLeaveMatch}
           className={clsx(
             'flex items-center gap-1 text-gray-400 hover:text-white shrink-0',
             isMobile ? 'text-xs p-1' : 'text-sm'
@@ -1370,6 +1392,19 @@ export function AnnotatorPage() {
                   {shuttleOverlayVisible ? '◉' : '○'} 軌跡
                 </button>
               )}
+
+              {/* コートグリッドオーバーレイ */}
+              <button
+                onClick={() => setCourtGridVisible((v) => !v)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                  courtGridVisible
+                    ? isLight ? 'bg-cyan-200 text-cyan-800' : 'bg-cyan-800/60 text-cyan-200'
+                    : isLight ? 'bg-gray-200 text-gray-600 hover:bg-cyan-100' : 'bg-gray-700 text-gray-400 hover:bg-cyan-900/40'
+                }`}
+                title={courtGridVisible ? 'コートグリッドを非表示' : 'コートグリッドを表示'}
+              >
+                {courtGridVisible ? '◉' : '○'} グリッド
+              </button>
 
               {/* 両方同時表示プリセット（両アーティファクトが揃っている場合） */}
               {yoloJob?.status === 'complete' && shuttleFrames.length > 0 && (
@@ -1797,6 +1832,15 @@ export function AnnotatorPage() {
           }
         >
           {(() => {
+            // 別モニタ表示中はメイン側を非表示（video-only ウィンドウで再生中）
+            if (videoSourceMode === 'none') {
+              return (
+                <div className="flex items-center justify-center bg-gray-900 rounded text-gray-500 text-xs border border-dashed border-gray-700 py-6 text-center">
+                  別モニタで再生中
+                </div>
+              )
+            }
+
             // 動画ソース決定（旧形式の Windows パスを normalizeVideoPath で変換）
             const rawSrc = match?.video_local_path || match?.video_url || ''
             const videoSrc = normalizeVideoPath(rawSrc)
@@ -1906,6 +1950,8 @@ export function AnnotatorPage() {
                 currentVideoSec={currentVideoSec}
                 shuttleFrames={shuttleFrames}
                 shuttleOverlayVisible={shuttleOverlayVisible}
+                courtGridMatchId={matchId ?? undefined}
+                courtGridVisible={courtGridVisible}
               />
             )
           })()}
@@ -2444,37 +2490,56 @@ export function AnnotatorPage() {
               )
             })()}
 
-            {/* ダブルスヒッターセレクター */}
-            {store.isDoubles && store.isRallyActive && store.inputStep === 'idle' && (() => {
-              const isTeamA = store.currentPlayer === 'player_a'
-              const mainName = isTeamA ? (match?.player_a?.name ?? 'A') : (match?.player_b?.name ?? 'B')
-              const partnerName = isTeamA ? (match?.partner_a?.name ?? `${mainName}P`) : (match?.partner_b?.name ?? `${mainName}P`)
-              const mainKey = isTeamA ? 'player_a' : 'player_b'
-              const partnerKey = isTeamA ? 'partner_a' : 'partner_b'
+            {/* ダブルス打者パネル — 4選手を常時表示し直接選択できる */}
+            {store.isDoubles && store.inputStep !== 'rally_end' && match && (() => {
+              const nameA  = match.player_a?.name  ?? 'A'
+              const namePA = match.partner_a?.name ?? '—'
+              const nameB  = match.player_b?.name  ?? 'B'
+              const namePB = match.partner_b?.name ?? '—'
+
+              const isActiveA = store.currentPlayer === 'player_a'
+
+              const btnCls = (key: string) => {
+                const selected = store.currentHitter === key
+                const teamA = key === 'player_a' || key === 'partner_a'
+                const activeTeam = teamA ? isActiveA : !isActiveA
+                return clsx(
+                  'flex-1 rounded text-xs border transition-colors truncate',
+                  useLargeTouch ? 'py-2' : 'py-1',
+                  selected
+                    ? teamA
+                      ? isLight ? 'bg-blue-600 border-blue-400 text-white font-semibold' : 'bg-blue-600 border-blue-400 text-white font-semibold'
+                      : isLight ? 'bg-orange-500 border-orange-400 text-white font-semibold' : 'bg-orange-600 border-orange-400 text-white font-semibold'
+                    : activeTeam
+                      ? isLight ? 'bg-gray-200 border-gray-400 text-gray-800 hover:bg-gray-300' : 'bg-gray-700 border-gray-500 text-gray-200 hover:bg-gray-600'
+                      : isLight ? 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200' : 'bg-gray-800 border-gray-700 text-gray-500 hover:bg-gray-700'
+                )
+              }
+
               return (
-                <div className="flex items-center gap-1.5 px-1">
-                  <span className="text-[10px] text-gray-500 shrink-0">{t('annotation.hitter_select')}</span>
-                  <button
-                    onClick={() => store.setHitter(mainKey)}
-                    className={`flex-1 py-1 rounded text-xs border transition-colors ${
-                      store.currentHitter === mainKey
-                        ? 'bg-blue-700 border-blue-500 text-white font-medium'
-                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {mainName}
-                  </button>
-                  <button
-                    onClick={() => store.setHitter(partnerKey)}
-                    className={`flex-1 py-1 rounded text-xs border transition-colors ${
-                      store.currentHitter === partnerKey
-                        ? 'bg-blue-700 border-blue-500 text-white font-medium'
-                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {partnerName}
-                  </button>
-                  <span className="text-[9px] text-gray-600 shrink-0">{t('annotation.hitter_toggle_hint')}</span>
+                <div className="flex flex-col gap-0.5 px-1">
+                  {/* チームラベル */}
+                  <div className="flex items-center text-[9px]">
+                    <span className={clsx('flex-1 text-center', isActiveA
+                      ? isLight ? 'text-blue-600 font-semibold' : 'text-blue-400 font-semibold'
+                      : isLight ? 'text-gray-400' : 'text-gray-600')}>
+                      自チーム
+                    </span>
+                    <span className={clsx('mx-1', isLight ? 'text-gray-300' : 'text-gray-600')}>打者</span>
+                    <span className={clsx('flex-1 text-center', !isActiveA
+                      ? isLight ? 'text-orange-600 font-semibold' : 'text-orange-400 font-semibold'
+                      : isLight ? 'text-gray-400' : 'text-gray-600')}>
+                      相手チーム
+                    </span>
+                  </div>
+                  {/* 4選手ボタン行 */}
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => store.setHitter('player_a')}  className={btnCls('player_a')}>{nameA}</button>
+                    <button onClick={() => store.setHitter('partner_a')} className={btnCls('partner_a')}>{namePA}</button>
+                    <div className={clsx('w-px self-stretch mx-0.5', isLight ? 'bg-gray-300' : 'bg-gray-600')} />
+                    <button onClick={() => store.setHitter('partner_b')} className={btnCls('partner_b')}>{namePB}</button>
+                    <button onClick={() => store.setHitter('player_b')}  className={btnCls('player_b')}>{nameB}</button>
+                  </div>
                 </div>
               )
             })()}

@@ -55,14 +55,20 @@ def get_shuttle_track(match_id: int, db: Session = Depends(get_db)):
 
 @router.get("/tracknet/status")
 def tracknet_status():
-    """TrackNetモデルの導入状況・バックエンドを返す"""
+    """TrackNetモデルの導入状況・バックエンドを返す（ロード試行込み）"""
     inf = get_inference()
+    available = inf.is_available()
+    loaded = inf._infer_fn is not None
+    # ロード未試行の場合はここで試みる（ステータス確認時に初期化）
+    if available and not loaded:
+        loaded = inf.load()
     return {
         "success": True,
         "data": {
-            "available": inf.is_available(),
-            "backend": inf.backend_name() if inf.is_available() else None,
-            "loaded": inf._infer_fn is not None,
+            "available": available,
+            "backend": inf.backend_name() if loaded else None,
+            "loaded": loaded,
+            "load_error": inf.get_load_error() if not loaded else None,
         },
     }
 

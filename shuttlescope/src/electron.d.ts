@@ -6,6 +6,15 @@ declare global {
       version: string
       platform: string
       openVideoFile: () => Promise<string | null>
+      getDisplays?: () => Promise<Array<{
+        id: number; label: string; isPrimary: boolean
+        bounds: { x: number; y: number; width: number; height: number }
+      }>>
+      openVideoWindow?: (src: string, displayId: number, startTime?: number, paused?: boolean) => Promise<void>
+      closeVideoWindow?: () => Promise<void>
+      onVideoWindowClosed?: (cb: () => void) => () => void
+      captureWebviewFrame?: () => Promise<string | null>
+      [key: string]: unknown
     }
   }
 }

@@ -236,7 +236,7 @@ ipcMain.handle('get-displays', () => {
 
 // ─── IPC: 別ウィンドウで動画を表示 ──────────────────────────────────────────
 
-ipcMain.handle('open-video-window', (_event, src: string, displayId: number) => {
+ipcMain.handle('open-video-window', (_event, src: string, displayId: number, startTime: number = 0, paused: boolean = false) => {
   if (videoWindow && !videoWindow.isDestroyed()) {
     videoWindow.focus()
     return
@@ -266,15 +266,16 @@ ipcMain.handle('open-video-window', (_event, src: string, displayId: number) => 
   videoWindow.webContents.setUserAgent(BROWSER_UA)
 
   const encodedSrc = encodeURIComponent(src)
+  const query = `src=${encodedSrc}&t=${startTime}${paused ? '&paused=1' : ''}`
   if (process.env.NODE_ENV === 'development') {
-    videoWindow.loadURL(`http://localhost:5173/#/video-only?src=${encodedSrc}`)
+    videoWindow.loadURL(`http://localhost:5173/#/video-only?${query}`)
   } else if (app.isPackaged) {
     videoWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
-      hash: `/video-only?src=${encodedSrc}`,
+      hash: `/video-only?${query}`,
     })
   } else {
     const rendererFile = path.join(app.getAppPath(), 'out', 'renderer', 'index.html')
-    videoWindow.loadFile(rendererFile, { hash: `/video-only?src=${encodedSrc}` })
+    videoWindow.loadFile(rendererFile, { hash: `/video-only?${query}` })
   }
 
   videoWindow.on('closed', () => {

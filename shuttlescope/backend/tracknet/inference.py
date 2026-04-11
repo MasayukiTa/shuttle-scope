@@ -69,53 +69,78 @@ class TrackNetInference:
 
         if not self.is_available():
             logger.warning("TrackNet weights not found at %s", WEIGHTS_DIR)
+            self._load_error = "重みファイルが見つかりません"
             return False
 
         tried: list[str] = []
+        # 指定バックエンドのファイルが存在しない場合は auto にフォールバックして他を試みる
+        effective_backend = self._backend
 
         openvino_xml = _existing_path(OPENVINO_XML_CANDIDATES)
-        if self._backend in ("auto", "openvino") and openvino_xml is not None:
-            try:
-                from openvino.runtime import Core
+        if effective_backend in ("auto", "openvino"):
+            if openvino_xml is None:
+                if effective_backend == "openvino":
+                    tried.append("openvino: XMLファイルが見つかりません（自動フォールバック）")
+                    logger.info("openvino backend requested but no XML found, falling back to auto")
+                    effective_backend = "auto"
+            else:
+                try:
+                    import openvino as ov
 
-                ie = Core()
-                model = ie.read_model(str(openvino_xml))
-                for dev in [self._device, "CPU"]:
-                    try:
-                        compiled = ie.compile_model(model, dev)
-                        input_name = compiled.input(0).any_name
-                        req = compiled.create_infer_request()
-                        self._infer_fn = lambda frames: self._run_openvino(req, input_name, frames)
-                        self._backend_name = f"openvino:{dev}"
-                        self._load_error = None
-                        logger.info("TrackNet loaded via OpenVINO on %s", dev)
-                        return True
-                    except Exception as exc:
-                        tried.append(f"openvino:{dev}: {exc}")
-                        continue
-            except ImportError:
-                logger.info("openvino not installed, falling back")
-                tried.append("openvino: パッケージ未インストール")
+                    core = ov.Core()
+                    available = core.available_devices
+
+                    # GPU優先（CPUアノテーション作業への影響を避けるため）
+                    # GPU不在の場合のみ CPU にフォールバック
+                    device_candidates = []
+                    if "GPU" in available:
+                        device_candidates.append("GPU")
+                    device_candidates.append("CPU")
+
+                    ov_model = core.read_model(str(openvino_xml))
+
+                    for dev in device_candidates:
+                        try:
+                            config = {"PERFORMANCE_HINT": "THROUGHPUT"}
+                            compiled = core.compile_model(ov_model, dev, config)
+                            input_name = compiled.input(0).any_name
+                            req = compiled.create_infer_request()
+                            self._infer_fn = lambda frames, _req=req, _name=input_name: \
+                                self._run_openvino(_req, _name, frames)
+                            self._backend_name = f"openvino:{dev}"
+                            self._load_error = None
+                            logger.info("TrackNet loaded via OpenVINO on %s", dev)
+                            return True
+                        except Exception as exc:
+                            tried.append(f"openvino:{dev}: {exc}")
+                            continue
+                except ImportError:
+                    logger.info("openvino not installed, falling back")
+                    tried.append("openvino: パッケージ未インストール")
+                    effective_backend = "auto"
 
         onnx_model = _existing_path(ONNX_CANDIDATES)
-        if self._backend in ("auto", "onnx_cpu") and onnx_model is not None:
-            try:
-                import onnxruntime as ort
+        if effective_backend in ("auto", "onnx_cpu"):
+            if onnx_model is None:
+                tried.append("onnx_cpu: ONNXファイルが見つかりません")
+            else:
+                try:
+                    import onnxruntime as ort
 
-                sess = ort.InferenceSession(str(onnx_model), providers=["CPUExecutionProvider"])
-                input_name = sess.get_inputs()[0].name
-                self._infer_fn = lambda frames: self._run_onnx(sess, input_name, frames)
-                self._backend_name = "onnx_cpu"
-                self._load_error = None
-                logger.info("TrackNet loaded via ONNX Runtime CPU")
-                return True
-            except ImportError:
-                tried.append("onnxruntime: パッケージ未インストール")
-                logger.info("onnxruntime not installed, falling back")
-            except Exception as exc:
-                tried.append(f"onnxruntime: {exc}")
+                    sess = ort.InferenceSession(str(onnx_model), providers=["CPUExecutionProvider"])
+                    input_name = sess.get_inputs()[0].name
+                    self._infer_fn = lambda frames: self._run_onnx(sess, input_name, frames)
+                    self._backend_name = "onnx_cpu"
+                    self._load_error = None
+                    logger.info("TrackNet loaded via ONNX Runtime CPU")
+                    return True
+                except ImportError:
+                    tried.append("onnxruntime: パッケージ未インストール")
+                    logger.info("onnxruntime not installed, falling back")
+                except Exception as exc:
+                    tried.append(f"onnxruntime: {exc}")
 
-        if self._backend in ("auto", "tensorflow_cpu") and TF_CKPT_PREFIX.with_suffix(".index").exists():
+        if effective_backend in ("auto", "tensorflow_cpu") and TF_CKPT_PREFIX.with_suffix(".index").exists():
             try:
                 from backend.tracknet.model import build_tracknet_model
 

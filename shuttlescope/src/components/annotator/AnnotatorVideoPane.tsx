@@ -8,6 +8,7 @@ import type { RefObject } from 'react'
 import { VideoPlayer } from '@/components/video/VideoPlayer'
 import { PlayerPositionOverlay } from '@/components/annotation/PlayerPositionOverlay'
 import { ShuttleTrackOverlay } from '@/components/annotation/ShuttleTrackOverlay'
+import { CourtGridOverlay } from '@/components/video/CourtGridOverlay'
 import type { ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 
 interface Props {
@@ -22,6 +23,9 @@ interface Props {
   currentVideoSec: number
   shuttleFrames: ShuttleFrame[]
   shuttleOverlayVisible: boolean
+  /** コートグリッドオーバーレイ */
+  courtGridMatchId?: string
+  courtGridVisible?: boolean
 }
 
 export function AnnotatorVideoPane({
@@ -35,6 +39,8 @@ export function AnnotatorVideoPane({
   currentVideoSec,
   shuttleFrames,
   shuttleOverlayVisible,
+  courtGridMatchId,
+  courtGridVisible = false,
 }: Props) {
   return (
     <div ref={videoContainerRef} className="relative w-full">
@@ -60,6 +66,13 @@ export function AnnotatorVideoPane({
           videoWidth={videoContainerRef.current.clientWidth}
           videoHeight={videoContainerRef.current.clientHeight}
           visible={shuttleOverlayVisible}
+        />
+      )}
+      {courtGridMatchId && (
+        <CourtGridOverlay
+          matchId={courtGridMatchId}
+          containerRef={videoContainerRef}
+          visible={courtGridVisible}
         />
       )}
     </div>

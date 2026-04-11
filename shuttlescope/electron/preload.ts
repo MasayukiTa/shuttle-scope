@@ -15,8 +15,8 @@ contextBridge.exposeInMainWorld('shuttlescope', {
   }>> =>
     ipcRenderer.invoke('get-displays'),
 
-  openVideoWindow: (src: string, displayId: number): Promise<void> =>
-    ipcRenderer.invoke('open-video-window', src, displayId),
+  openVideoWindow: (src: string, displayId: number, startTime?: number, paused?: boolean): Promise<void> =>
+    ipcRenderer.invoke('open-video-window', src, displayId, startTime ?? 0, paused ?? false),
 
   closeVideoWindow: (): Promise<void> =>
     ipcRenderer.invoke('close-video-window'),

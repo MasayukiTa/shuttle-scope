@@ -1,13 +1,12 @@
 /**
  * VideoOnlyPage — 別モニタ用フルスクリーン動画表示
  * Electron の openVideoWindow IPC で開かれる独立ウィンドウ向けページ。
- * サイドバーなし・ナビなし・動画のみ。
+ * - サイドバー・ナビなし、動画のみ全画面
+ * - src + t（開始秒）を URL パラメータで受け取り、その位置から自動再生
  */
-import { useRef } from 'react'
+import { useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { VideoPlayer } from '@/components/video/VideoPlayer'
 import { WebViewPlayer } from '@/components/video/WebViewPlayer'
-import { useVideo } from '@/hooks/useVideo'
 
 const STREAMING_DOMAINS = [
   'youtube.com', 'youtu.be', 'twitter.com', 'x.com',
@@ -26,8 +25,30 @@ function isStreamingUrl(url: string): boolean {
 export function VideoOnlyPage() {
   const [searchParams] = useSearchParams()
   const src = searchParams.get('src') ?? ''
+  const startTime = parseFloat(searchParams.get('t') ?? '0')
+  // メインウィンドウで一時停止中だった場合は別モニタでも停止状態を維持
+  const startPaused = searchParams.get('paused') === '1'
   const videoRef = useRef<HTMLVideoElement>(null)
-  const { playbackRate, setPlaybackRate } = useVideo(videoRef)
+
+  // 動画ロード後に開始位置へシーク、停止中でなければ再生
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const onLoaded = () => {
+      if (startTime > 0) {
+        video.currentTime = startTime
+      }
+      if (!startPaused) {
+        video.play().catch(() => {
+          // autoplay 失敗は無視（Electron では通常許可される）
+        })
+      }
+    }
+
+    video.addEventListener('loadedmetadata', onLoaded)
+    return () => video.removeEventListener('loadedmetadata', onLoaded)
+  }, [src, startTime, startPaused])
 
   if (!src) {
     return (
@@ -37,18 +58,24 @@ export function VideoOnlyPage() {
     )
   }
 
-  return (
-    <div className="w-screen h-screen bg-black overflow-hidden">
-      {isStreamingUrl(src) ? (
+  if (isStreamingUrl(src)) {
+    return (
+      <div className="w-screen h-screen bg-black overflow-hidden">
         <WebViewPlayer url={src} siteName="動画" />
-      ) : (
-        <VideoPlayer
-          videoRefProp={videoRef}
-          src={src}
-          playbackRate={playbackRate}
-          onPlaybackRateChange={setPlaybackRate}
-        />
-      )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-screen h-screen bg-black overflow-hidden flex items-center justify-center">
+      <video
+        ref={videoRef}
+        src={src}
+        className="w-full h-full object-contain"
+        // controls を表示（別モニタでも操作できるように）
+        controls
+        playsInline
+      />
     </div>
   )
 }

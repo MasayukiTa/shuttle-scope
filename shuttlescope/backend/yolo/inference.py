@@ -1,8 +1,9 @@
 """YOLO プレイヤー検出推論ラッパー
 
 バックエンド優先順:
-  1. ultralytics YOLOv8n  — pip install ultralytics で自動ダウンロード
-  2. onnxruntime + カスタム ONNX  — backend/yolo/weights/yolo_badminton.onnx
+  1. OpenVINO IR (MULTI:GPU,CPU) — yolo/weights/yolov8n_openvino/yolov8n.xml
+  2. ultralytics YOLOv8n  — pip install ultralytics で自動ダウンロード
+  3. onnxruntime + カスタム ONNX  — backend/yolo/weights/yolo_badminton.onnx
 
 出力フォーマット（predict_frame）:
   [
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 WEIGHTS_DIR = Path(__file__).parent / "weights"
 ONNX_MODEL = WEIGHTS_DIR / "yolo_badminton.onnx"
 PT_MODEL = WEIGHTS_DIR / "yolo_badminton.pt"
+OV_MODEL_DIR = WEIGHTS_DIR / "yolov8n_openvino"  # OpenVINO IR ディレクトリ
 
 # コート座標分割しきい値（正規化 0-1）
 COURT_MID_X = 0.5
@@ -128,15 +130,41 @@ class YOLOInference:
         if self._loaded:
             return True
 
-        # 1. ultralytics（yolov8n.pt を自動ダウンロード）
+        # 1. OpenVINO 直接API (MULTI:GPU,CPU) — 最優先・最高速
+        ov_xml = OV_MODEL_DIR / "yolov8n.xml"
+        if ov_xml.exists():
+            try:
+                import openvino as ov
+                core = ov.Core()
+                available = core.available_devices
+                # GPU優先（CPUアノテーション作業への影響を避けるため）
+                device = "GPU" if "GPU" in available else "CPU"
+                ov_model = core.read_model(str(ov_xml))
+                compiled = core.compile_model(ov_model, device,
+                                              {"PERFORMANCE_HINT": "LATENCY"})
+                self._model = compiled
+                self._ov_device = device
+                self._backend = f"openvino:{device}"
+                self._loaded = True
+                self._load_error = None
+                logger.info("YOLO loaded via OpenVINO direct API (device=%s)", device)
+                return True
+            except ImportError:
+                logger.info("openvino not installed for YOLO, falling back")
+            except Exception as exc:
+                logger.warning("YOLO OpenVINO load failed: %s", exc)
+                self._load_error = f"OpenVINO load failed: {exc}"
+
+        # 2. ultralytics PT（yolov8n.pt を自動ダウンロード）
         try:
             from ultralytics import YOLO
             model_path = str(PT_MODEL) if PT_MODEL.exists() else "yolov8n.pt"
             self._model = YOLO(model_path)
+            self._ov_device = None
             self._backend = "ultralytics"
             self._loaded = True
             self._load_error = None
-            logger.info("YOLO loaded via ultralytics (path=%s)", model_path)
+            logger.info("YOLO loaded via ultralytics PT (path=%s)", model_path)
             return True
         except ImportError:
             logger.info("ultralytics not installed — trying onnxruntime fallback")
@@ -144,13 +172,14 @@ class YOLOInference:
             logger.warning("ultralytics load failed: %s", exc)
             self._load_error = f"ultralytics load failed: {exc}"
 
-        # 2. onnxruntime + カスタム ONNX
+        # 3. onnxruntime + カスタム ONNX
         if ONNX_MODEL.exists():
             try:
                 import onnxruntime as ort
                 self._model = ort.InferenceSession(
                     str(ONNX_MODEL), providers=["CPUExecutionProvider"]
                 )
+                self._ov_device = None
                 self._backend = "onnx_cpu"
                 self._loaded = True
                 self._load_error = None
@@ -173,7 +202,9 @@ class YOLOInference:
         if not self._loaded and not self.load():
             return []
         try:
-            if self._backend == "ultralytics":
+            if self._backend.startswith("openvino:"):
+                detections = self._predict_openvino(frame)
+            elif self._backend == "ultralytics":
                 detections = self._predict_ultralytics(frame)
             elif self._backend == "onnx_cpu":
                 detections = self._predict_onnx(frame)
@@ -183,6 +214,42 @@ class YOLOInference:
         except Exception as exc:
             logger.warning("YOLO inference error: %s", exc)
             return []
+
+    def _predict_openvino(self, frame) -> list[dict]:
+        """OpenVINO 直接API で YOLOv8n 推論（COCO person クラスのみ抽出）"""
+        import cv2
+        import numpy as np
+
+        h, w = frame.shape[:2]
+        img = cv2.resize(frame, (640, 640))
+        img = img[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
+        inp = img[np.newaxis]
+
+        # 推論: output shape = [1, 84, 8400]
+        # 84 = 4(box) + 80(classes), 8400 = anchors
+        result = self._model([inp])[self._model.output(0)]
+        raw = result[0]  # (84, 8400)
+
+        detections: list[dict] = []
+        # person クラス = index 0 → raw[4 + 0]
+        person_scores = raw[4]  # (8400,)
+        cx, cy, bw, bh = raw[0], raw[1], raw[2], raw[3]
+
+        for i in np.where(person_scores >= MIN_CONF)[0]:
+            conf = float(person_scores[i])
+            x1_n = max(0.0, float((cx[i] - bw[i] / 2) / 640))
+            y1_n = max(0.0, float((cy[i] - bh[i] / 2) / 640))
+            x2_n = min(1.0, float((cx[i] + bw[i] / 2) / 640))
+            y2_n = min(1.0, float((cy[i] + bh[i] / 2) / 640))
+            cx_n = (x1_n + x2_n) / 2
+            cy_n = (y1_n + y2_n) / 2
+            detections.append(self._make_entry(
+                "person", conf,
+                [x1_n, y1_n, x2_n, y2_n],
+                cx_n, cy_n, cx_n, y2_n,
+            ))
+
+        return detections
 
     def _predict_ultralytics(self, frame) -> list[dict]:
         """ultralytics YOLOv8 で person クラスのみ検出"""

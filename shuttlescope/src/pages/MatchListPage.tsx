@@ -46,6 +46,105 @@ const defaultForm = (): MatchFormData => ({
   notes: '',
 })
 
+// ─── 選手コンボボックス（名前検索 + 暫定登録対応）────────────────────────────
+
+interface PlayerComboboxProps {
+  label: string
+  required?: boolean
+  value: number | ''
+  query: string
+  setQuery: (q: string) => void
+  setValue: (id: number | '') => void
+  candidates: Player[]
+  isLight: boolean
+  textSecondary: string
+  placeholder?: string
+}
+
+function PlayerCombobox({
+  label, required = false, value, query, setQuery, setValue,
+  candidates, isLight, textSecondary, placeholder = '名前を入力して検索...',
+}: PlayerComboboxProps) {
+  const [showDropdown, setShowDropdown] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <label className={`block text-sm ${textSecondary} mb-1`}>
+        {label}{required && ' *'}
+      </label>
+      <div className="relative">
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setValue('')
+            setShowDropdown(true)
+          }}
+          onFocus={() => { if (query.trim().length >= 1) setShowDropdown(true) }}
+          placeholder={placeholder}
+          autoComplete="off"
+          className={`w-full ${isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'} border rounded pl-8 pr-3 py-2 text-sm`}
+        />
+        {value !== '' && (
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            <User size={12} className="text-green-400" />
+            <span className="text-[10px] text-green-400">登録済</span>
+          </div>
+        )}
+      </div>
+      {showDropdown && query.trim().length >= 1 && (
+        <div className={`absolute z-20 top-full mt-1 w-full ${isLight ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded shadow-lg max-h-40 overflow-y-auto`}>
+          {candidates.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => {
+                setValue(p.id)
+                setQuery(p.name)
+                setShowDropdown(false)
+              }}
+              className={`w-full text-left px-3 py-2 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-600'} text-sm flex items-center gap-2 min-w-0`}
+            >
+              <User size={12} className="text-gray-400 shrink-0" />
+              <span className="truncate">{p.name}</span>
+              {p.team && (
+                <span className="text-xs text-blue-300 bg-blue-900/30 px-1.5 rounded shrink-0">{p.team}</span>
+              )}
+              {p.needs_review && <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">暫定</span>}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setValue('')
+              setShowDropdown(false)
+            }}
+            className={`w-full text-left px-3 py-2 hover:bg-blue-500/10 text-sm flex items-center gap-2 text-blue-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}
+          >
+            <UserPlus size={12} className="shrink-0" />
+            <span>「{query.trim()}」を暫定登録して作成</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function MatchListPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
@@ -70,22 +169,20 @@ export function MatchListPage() {
   const [downloadQuality, setDownloadQuality] = useState<string>('720')
   const [downloadCookieBrowser, setDownloadCookieBrowser] = useState<string>('')
 
-  // 対戦相手B コンボボックス
+  // 選手コンボボックス用クエリ
+  const [playerAQuery, setPlayerAQuery] = useState('')
   const [playerBQuery, setPlayerBQuery] = useState('')
   const [playerBTeam, setPlayerBTeam] = useState('')
-  const [showPlayerBDropdown, setShowPlayerBDropdown] = useState(false)
-  const playerBDropdownRef = useRef<HTMLDivElement>(null)
+  const [partnerAQuery, setPartnerAQuery] = useState('')
+  const [partnerBQuery, setPartnerBQuery] = useState('')
 
-  // 外部クリックでドロップダウンを閉じる
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (playerBDropdownRef.current && !playerBDropdownRef.current.contains(e.target as Node)) {
-        setShowPlayerBDropdown(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  const resetPlayerFields = () => {
+    setPlayerAQuery('')
+    setPlayerBQuery('')
+    setPlayerBTeam('')
+    setPartnerAQuery('')
+    setPartnerBQuery('')
+  }
 
   // 試合一覧取得
   const { data: matchesData, isLoading } = useQuery({
@@ -105,7 +202,14 @@ export function MatchListPage() {
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
   })
 
-  // 対戦相手B 候補検索
+  // 選手検索（各フィールド）
+  const { data: playerASearchData } = useQuery({
+    queryKey: ['players-search-a', playerAQuery],
+    queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: playerAQuery }),
+    enabled: playerAQuery.trim().length >= 1 && form.player_a_id === '',
+  })
+  const playerACandidates = playerASearchData?.data ?? []
+
   const { data: playerBSearchData } = useQuery({
     queryKey: ['players-search-b', playerBQuery],
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: playerBQuery }),
@@ -113,8 +217,26 @@ export function MatchListPage() {
   })
   const playerBCandidates = playerBSearchData?.data ?? []
 
-  // チーム候補 = 現在の名前検索結果から抽出（名前に紐づくチームのみ提示）
-  const playerBTeamSuggestions = [...new Set(playerBCandidates.map((p) => p.team).filter(Boolean) as string[])]
+  const { data: partnerASearchData } = useQuery({
+    queryKey: ['players-search-partner-a', partnerAQuery],
+    queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: partnerAQuery }),
+    enabled: partnerAQuery.trim().length >= 1 && form.partner_a_id === '',
+  })
+  const partnerACandidates = partnerASearchData?.data ?? []
+
+  const { data: partnerBSearchData } = useQuery({
+    queryKey: ['players-search-partner-b', partnerBQuery],
+    queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players/search', { q: partnerBQuery }),
+    enabled: partnerBQuery.trim().length >= 1 && form.partner_b_id === '',
+  })
+  const partnerBCandidates = partnerBSearchData?.data ?? []
+
+  // チーム候補（B側の検索結果からチーム名を抽出）
+  const playerBTeamSuggestions = [
+    ...new Set(
+      [...playerBCandidates, ...partnerBCandidates].map((p) => p.team).filter(Boolean) as string[]
+    ),
+  ]
 
   // 試合作成
   const createMatch = useMutation({
@@ -123,8 +245,7 @@ export function MatchListPage() {
       queryClient.invalidateQueries({ queryKey: ['matches'] })
       setShowForm(false)
       setForm(defaultForm())
-      setPlayerBQuery('')
-      setPlayerBTeam('')
+      resetPlayerFields()
     },
   })
 
@@ -145,43 +266,76 @@ export function MatchListPage() {
     },
   })
 
+  // 選手の暫定作成ヘルパー
+  const createProvisionalPlayer = async (
+    name: string,
+    opts: { isTarget?: boolean; team?: string } = {}
+  ): Promise<number> => {
+    const resp: any = await apiPost('/players', {
+      name,
+      team: opts.team || undefined,
+      is_target: opts.isTarget ?? false,
+      profile_status: 'provisional',
+      needs_review: true,
+    })
+    const id = resp?.data?.id
+    if (!id) throw new Error('IDが取得できませんでした')
+    return id
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.player_a_id) {
-      alert('対象選手（A）を選択してください')
-      return
+
+    // ── player_a（必須）──
+    let finalPlayerAId = form.player_a_id
+    if (!finalPlayerAId) {
+      const name = playerAQuery.trim()
+      if (!name) { alert('対象選手（A）を入力または選択してください'); return }
+      try {
+        finalPlayerAId = await createProvisionalPlayer(name, { isTarget: true })
+      } catch (err: any) {
+        alert(`対象選手登録エラー: ${err?.message ?? '不明なエラー'}`); return
+      }
     }
 
-    // player_b: 既存選択またはテキスト入力から暫定作成
+    // ── player_b（必須）──
     let finalPlayerBId = form.player_b_id
     if (!finalPlayerBId) {
-      const newName = playerBQuery.trim()
-      if (!newName) {
-        alert('対戦相手（B）を入力または選択してください')
-        return
-      }
+      const name = playerBQuery.trim()
+      if (!name) { alert('対戦相手（B）を入力または選択してください'); return }
       try {
-        const resp: any = await apiPost('/players', {
-          name: newName,
-          team: playerBTeam.trim() || undefined,
-          is_target: false,
-          profile_status: 'provisional',
-          needs_review: true,
-        })
-        finalPlayerBId = resp?.data?.id
-        if (!finalPlayerBId) throw new Error('IDが取得できませんでした')
+        finalPlayerBId = await createProvisionalPlayer(name, { team: playerBTeam.trim() })
       } catch (err: any) {
-        alert(`選手登録エラー: ${err?.message ?? '不明なエラー'}`)
-        return
+        alert(`対戦相手登録エラー: ${err?.message ?? '不明なエラー'}`); return
+      }
+    }
+
+    // ── partner_a（任意）──
+    let finalPartnerAId: number | undefined = form.partner_a_id ? Number(form.partner_a_id) : undefined
+    if (!finalPartnerAId && partnerAQuery.trim()) {
+      try {
+        finalPartnerAId = await createProvisionalPlayer(partnerAQuery.trim())
+      } catch (err: any) {
+        alert(`自チーム相方登録エラー: ${err?.message ?? '不明なエラー'}`); return
+      }
+    }
+
+    // ── partner_b（任意）──
+    let finalPartnerBId: number | undefined = form.partner_b_id ? Number(form.partner_b_id) : undefined
+    if (!finalPartnerBId && partnerBQuery.trim()) {
+      try {
+        finalPartnerBId = await createProvisionalPlayer(partnerBQuery.trim(), { team: playerBTeam.trim() })
+      } catch (err: any) {
+        alert(`相手チーム相方登録エラー: ${err?.message ?? '不明なエラー'}`); return
       }
     }
 
     createMatch.mutate({
       ...form,
-      player_a_id: Number(form.player_a_id),
+      player_a_id: Number(finalPlayerAId),
       player_b_id: Number(finalPlayerBId),
-      partner_a_id: form.partner_a_id ? Number(form.partner_a_id) : undefined,
-      partner_b_id: form.partner_b_id ? Number(form.partner_b_id) : undefined,
+      partner_a_id: finalPartnerAId,
+      partner_b_id: finalPartnerBId,
       video_local_path: form.video_local_path || undefined,
       video_url: form.video_url || undefined,
     })
@@ -222,6 +376,9 @@ export function MatchListPage() {
       default: return 'text-gray-400'
     }
   }
+
+  const isDoubles = form.format !== 'singles'
+  const showBTeamField = playerBQuery.trim().length >= 1 || partnerBQuery.trim().length >= 1
 
   return (
     <div className={`flex flex-col h-full ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
@@ -453,6 +610,7 @@ export function MatchListPage() {
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
+                {/* 大会名 */}
                 <div className="col-span-2">
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament')} *</label>
                   <input
@@ -463,6 +621,8 @@ export function MatchListPage() {
                     placeholder="例: 全日本総合選手権"
                   />
                 </div>
+
+                {/* レベル / ラウンド */}
                 <div>
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.tournament_level')}</label>
                   <select
@@ -487,6 +647,8 @@ export function MatchListPage() {
                     ))}
                   </select>
                 </div>
+
+                {/* 日付 / 形式 */}
                 <div>
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.date')} *</label>
                   <input
@@ -505,85 +667,69 @@ export function MatchListPage() {
                     className={`w-full ${inputClass}`}
                   >
                     <option value="singles">シングルス</option>
+                    <option value="mens_doubles">男子ダブルス</option>
                     <option value="womens_doubles">女子ダブルス</option>
                     <option value="mixed_doubles">混合ダブルス</option>
                   </select>
                 </div>
-                <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>対象選手（A）*</label>
-                  <SearchableSelect
-                    options={playerOptions}
-                    value={form.player_a_id || null}
-                    onChange={(v) => setForm({ ...form, player_a_id: v != null ? Number(v) : '' })}
-                    emptyLabel="選択してください"
-                    placeholder="選手名で検索..."
-                  />
-                </div>
-                <div className="relative" ref={playerBDropdownRef}>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>対戦相手（B）*</label>
-                  <div className="relative">
-                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    <input
-                      type="text"
-                      value={playerBQuery}
-                      onChange={(e) => {
-                        setPlayerBQuery(e.target.value)
-                        setForm((f) => ({ ...f, player_b_id: '' }))
-                        setShowPlayerBDropdown(true)
-                      }}
-                      onFocus={() => { if (playerBQuery.trim().length >= 1) setShowPlayerBDropdown(true) }}
-                      placeholder="名前を入力して検索..."
-                      autoComplete="off"
-                      className={`w-full ${isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'} border rounded pl-8 pr-3 py-2 text-sm`}
-                    />
-                    {form.player_b_id !== '' && (
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        <User size={12} className="text-green-400" />
-                        <span className="text-[10px] text-green-400">登録済</span>
-                      </div>
-                    )}
-                  </div>
-                  {/* 候補ドロップダウン */}
-                  {showPlayerBDropdown && playerBQuery.trim().length >= 1 && (
-                    <div className={`absolute z-20 top-full mt-1 w-full ${isLight ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded shadow-lg max-h-40 overflow-y-auto`}>
-                      {playerBCandidates.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            setForm((f) => ({ ...f, player_b_id: p.id }))
-                            setPlayerBQuery(p.name)
-                            setPlayerBTeam(p.team ?? '')
-                            setShowPlayerBDropdown(false)
-                          }}
-                          className={`w-full text-left px-3 py-2 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-600'} text-sm flex items-center gap-2 min-w-0`}
-                        >
-                          <User size={12} className="text-gray-400 shrink-0" />
-                          <span className="truncate">{p.name}</span>
-                          {p.team && (
-                            <span className="text-xs text-blue-300 bg-blue-900/30 px-1.5 rounded shrink-0">{p.team}</span>
-                          )}
-                          {p.needs_review && <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">暫定</span>}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setForm((f) => ({ ...f, player_b_id: '' }))
-                          setShowPlayerBDropdown(false)
-                        }}
-                        className={`w-full text-left px-3 py-2 hover:bg-blue-500/10 text-sm flex items-center gap-2 text-blue-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}
-                      >
-                        <UserPlus size={12} className="shrink-0" />
-                        <span>「{playerBQuery.trim()}」を暫定登録して作成</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
 
-                {/* チーム名（対戦相手B の名前入力後に表示） */}
-                {playerBQuery.trim().length >= 1 && (
-                  <div>
+                {/* 選手欄: 自チーム（左） / 相手チーム（右） */}
+                <PlayerCombobox
+                  label="対象選手（A）"
+                  required
+                  value={form.player_a_id}
+                  query={playerAQuery}
+                  setQuery={setPlayerAQuery}
+                  setValue={(v) => setForm((f) => ({ ...f, player_a_id: v }))}
+                  candidates={playerACandidates}
+                  isLight={isLight}
+                  textSecondary={textSecondary}
+                  placeholder="名前を入力して検索..."
+                />
+                <PlayerCombobox
+                  label="対戦相手（B）"
+                  required
+                  value={form.player_b_id}
+                  query={playerBQuery}
+                  setQuery={(q) => { setPlayerBQuery(q); setForm((f) => ({ ...f, player_b_id: '' })) }}
+                  setValue={(v) => setForm((f) => ({ ...f, player_b_id: v }))}
+                  candidates={playerBCandidates}
+                  isLight={isLight}
+                  textSecondary={textSecondary}
+                  placeholder="名前を入力して検索..."
+                />
+
+                {/* ダブルス: 相方欄（自チーム左・相手チーム右） */}
+                {isDoubles && (
+                  <>
+                    <PlayerCombobox
+                      label="自チーム相方"
+                      value={form.partner_a_id}
+                      query={partnerAQuery}
+                      setQuery={setPartnerAQuery}
+                      setValue={(v) => setForm((f) => ({ ...f, partner_a_id: v }))}
+                      candidates={partnerACandidates}
+                      isLight={isLight}
+                      textSecondary={textSecondary}
+                      placeholder="名前を入力して検索..."
+                    />
+                    <PlayerCombobox
+                      label="相手チーム相方"
+                      value={form.partner_b_id}
+                      query={partnerBQuery}
+                      setQuery={(q) => { setPartnerBQuery(q); setForm((f) => ({ ...f, partner_b_id: '' })) }}
+                      setValue={(v) => setForm((f) => ({ ...f, partner_b_id: v }))}
+                      candidates={partnerBCandidates}
+                      isLight={isLight}
+                      textSecondary={textSecondary}
+                      placeholder="名前を入力して検索..."
+                    />
+                  </>
+                )}
+
+                {/* 相手チーム名（B側の名前が入力されたら表示） */}
+                {showBTeamField && (
+                  <div className="col-span-2">
                     <label className={`block text-sm ${textSecondary} mb-1`}>
                       相手チーム名
                       <span className={`ml-1 ${textFaint} text-xs`}>（同姓同名の識別に使用）</span>
@@ -601,35 +747,13 @@ export function MatchListPage() {
                         <option key={team} value={team} />
                       ))}
                     </datalist>
-                    {form.player_b_id !== '' && playerBTeam && (
+                    {(form.player_b_id !== '' || form.partner_b_id !== '') && playerBTeam && (
                       <p className="text-[11px] text-blue-400 mt-0.5">既存選手のチーム（変更可）</p>
                     )}
                   </div>
                 )}
-                {form.format !== 'singles' && (
-                  <>
-                    <div>
-                      <label className={`block text-sm ${textSecondary} mb-1`}>自チーム相方</label>
-                      <SearchableSelect
-                        options={playerOptions}
-                        value={form.partner_a_id || null}
-                        onChange={(v) => setForm({ ...form, partner_a_id: v != null ? Number(v) : '' })}
-                        emptyLabel="なし"
-                        placeholder="選手名で検索..."
-                      />
-                    </div>
-                    <div>
-                      <label className={`block text-sm ${textSecondary} mb-1`}>相手チーム相方</label>
-                      <SearchableSelect
-                        options={playerOptions}
-                        value={form.partner_b_id || null}
-                        onChange={(v) => setForm({ ...form, partner_b_id: v != null ? Number(v) : '' })}
-                        emptyLabel="なし"
-                        placeholder="選手名で検索..."
-                      />
-                    </div>
-                  </>
-                )}
+
+                {/* 結果 / スコア */}
                 <div>
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.result')}</label>
                   <select
@@ -652,6 +776,8 @@ export function MatchListPage() {
                     placeholder="例: 21-15, 18-21, 21-19"
                   />
                 </div>
+
+                {/* 動画 */}
                 <div className="col-span-2">
                   <label className={`block text-sm ${textSecondary} mb-1`}>動画（任意）</label>
                   <div className="flex gap-2 items-center">
@@ -685,6 +811,8 @@ export function MatchListPage() {
                     <div className={`text-[10px] ${textMuted} mt-0.5 truncate`}>📁 {form.video_local_path}</div>
                   )}
                 </div>
+
+                {/* メモ */}
                 <div className="col-span-2">
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.notes')}</label>
                   <textarea
@@ -705,7 +833,7 @@ export function MatchListPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowForm(false); setForm(defaultForm()); setPlayerBQuery('') }}
+                  onClick={() => { setShowForm(false); setForm(defaultForm()); resetPlayerFields() }}
                   className={`flex-1 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600'} rounded text-sm`}
                 >
                   {t('app.cancel')}

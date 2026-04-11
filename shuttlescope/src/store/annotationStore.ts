@@ -326,7 +326,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
 
   // ダブルス制御
   setIsDoubles: (v) => set({ isDoubles: v }),
-  setHitter: (h) => set({ currentHitter: h }),
+  // setHitter は currentPlayer も同期する（打者のチームが正しく反映されないバグ対策）
+  setHitter: (h) => set({
+    currentHitter: h,
+    currentPlayer: (h === 'player_b' || h === 'partner_b') ? 'player_b' : 'player_a',
+  }),
   toggleHitterWithinTeam: () =>
     set((s) => {
       if (!s.isDoubles) return {}
