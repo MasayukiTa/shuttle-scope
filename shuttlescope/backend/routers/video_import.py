@@ -27,6 +27,9 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+TRACKNET_ARTIFACT_TYPE = "tracknet_shuttle_track"
+LEGACY_TRACKNET_ARTIFACT_TYPES = ("tracknet_shuttle_track", "tracknet_track")
+
 # ─── ジョブ管理 ──────────────────────────────────────────────────────────────
 
 class Phase:
@@ -226,6 +229,74 @@ def _run_tracknet(job: dict, video_path: str) -> None:
     job["tracknet"]["track_points"] = len(track)
     job["_tracknet_track"] = track   # YOLO 統合用に保持
 
+    # DB 保存
+    if match_id and track:
+        _save_tracknet_artifact(match_id, track, inf.backend_name())
+
+
+def _save_tracknet_artifact(match_id: int, track: list[dict], backend: str) -> None:
+    """TrackNet シャトル軌跡を MatchCVArtifact に保存（再実行時は上書き）。
+
+    Canonical artifact_type は tracknet_shuttle_track。
+    旧実装で混在した tracknet_track も拾って上書きし、読み出し互換を保つ。
+    """
+    import json
+    import datetime
+    from backend.db.database import SessionLocal
+    from backend.db.models import MatchCVArtifact
+
+    db = SessionLocal()
+    try:
+        track_json   = json.dumps(track, ensure_ascii=False)
+        summary_json = json.dumps({"point_count": len(track), "backend": backend}, ensure_ascii=False)
+
+        existing = (
+            db.query(MatchCVArtifact)
+            .filter(
+                MatchCVArtifact.match_id == match_id,
+                MatchCVArtifact.artifact_type.in_(LEGACY_TRACKNET_ARTIFACT_TYPES),
+            )
+            .first()
+        )
+        if existing:
+            existing.artifact_type = TRACKNET_ARTIFACT_TYPE
+            existing.data         = track_json
+            existing.summary      = summary_json
+            existing.frame_count  = len(track)
+            existing.backend_used = backend
+            existing.updated_at   = datetime.datetime.utcnow()
+        else:
+            db.add(MatchCVArtifact(
+                match_id=match_id,
+                artifact_type=TRACKNET_ARTIFACT_TYPE,
+                frame_count=len(track),
+                backend_used=backend,
+                summary=summary_json,
+                data=track_json,
+            ))
+        db.commit()
+        logger.info("TrackNet artifact saved: match=%d, points=%d", match_id, len(track))
+    except Exception as exc:
+        logger.warning("TrackNet artifact save failed: %s", exc)
+    finally:
+        db.close()
+
+
+# ROI 拡張マージン（コート多角形を centroid から外側へ拡張する比率）
+# 奥側・サービスライン際に立つプレイヤーがライン上・ライン外に見えることへの対策。
+# 0.08 = コーナーと centroid の距離の 8% 外側まで許容。
+_ROI_EXPAND_MARGIN = 0.08
+
+
+def _expand_polygon(polygon: list[list[float]], margin: float = _ROI_EXPAND_MARGIN) -> list[list[float]]:
+    """コート多角形を centroid から外側へ拡張する（凸多角形前提）。"""
+    cx = sum(p[0] for p in polygon) / len(polygon)
+    cy = sum(p[1] for p in polygon) / len(polygon)
+    return [
+        [cx + (px - cx) * (1 + margin), cy + (py - cy) * (1 + margin)]
+        for px, py in polygon
+    ]
+
 
 def _run_yolo(job: dict, video_path: str) -> None:
     """YOLO でプレイヤー位置を解析（GPU優先）。コートキャリブレーションが設定済みなら ROI 外の検出を除外する。"""
@@ -242,13 +313,17 @@ def _run_yolo(job: dict, video_path: str) -> None:
     job["yolo"]["backend"] = inf.backend_name()
 
     # コートキャリブレーション（ROI フィルタ用）— 未設定なら全検出を使用
+    # ポリゴンは _ROI_EXPAND_MARGIN 分だけ外側に拡張する（奥側ベースライン際プレイヤー対策）
     match_id = job.get("match_id")
     roi_polygon: list[list[float]] | None = None
     if match_id:
         calib = load_calibration_standalone(match_id)
         if calib and "roi_polygon" in calib:
-            roi_polygon = calib["roi_polygon"]
-            logger.info("YOLO ROI filter: match=%d polygon=%s", match_id, roi_polygon)
+            roi_polygon = _expand_polygon(calib["roi_polygon"])
+            logger.info(
+                "YOLO ROI filter: match=%d margin=%.0f%% expanded_polygon=%s",
+                match_id, _ROI_EXPAND_MARGIN * 100, roi_polygon,
+            )
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():

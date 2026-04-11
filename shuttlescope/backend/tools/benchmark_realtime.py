@@ -163,6 +163,71 @@ def bench_yolo(frames: list[np.ndarray], sample_every: int = 1) -> dict:
     }
 
 
+# ─── 合格判定基準 ─────────────────────────────────────────────────────────────
+#
+# 「バックグラウンドバッチ処理で実用」を最低ラインとした合格基準。
+# リアルタイム要件は満たさなくても、試合後バッチが現実的な時間で完了すれば合格。
+#
+# TrackNet:
+#   - BATCH_MIN  : バッチ処理として許容できる最低速度（1fps = 1倍速処理）
+#   - P95_MAX_MS : 99%ile が この値を超えると熱スロットリング・メモリ不安定と判断
+# YOLO (1/6 間引き):
+#   - BATCH_MIN  : ダブルスポジション把握に必要な最低速度（3fps=20フレーム/秒映像対応）
+#   - P95_MAX_MS : 同上
+
+ACCEPTANCE = {
+    "tracknet": {
+        "batch_min_fps":  1.0,    # 最低: 1fps (1倍速バッチ)
+        "realtime_fps":  10.0,    # 理想: 10fps (ラリー内方向転換処理)
+        "p95_max_ms":   2000.0,   # p95 が 2秒超は不安定
+    },
+    "yolo_6": {
+        "batch_min_fps":  3.0,    # 最低: 3fps (6フレーム間引きで実用最低限)
+        "realtime_fps":  10.0,    # 理想: 10fps
+        "p95_max_ms":    500.0,   # p95 が 500ms超は遅すぎ
+    },
+}
+
+
+def evaluate_acceptance(tracknet: dict, yolo_6: dict) -> tuple[bool, list[str]]:
+    """合格基準に対して各結果を評価する。
+    Returns: (overall_pass, list_of_result_lines)
+    """
+    lines: list[str] = []
+    passed = True
+
+    def check(label: str, result: dict, criteria: dict) -> None:
+        nonlocal passed
+        if "error" in result:
+            lines.append(f"  ✗ {label}: モデルエラー → 不合格")
+            passed = False
+            return
+
+        fps = result.get("infer_per_sec", 0.0)
+        p95 = result.get("p95_ms", 9999.0)
+        batch_ok  = fps  >= criteria["batch_min_fps"]
+        p95_ok    = p95  <= criteria["p95_max_ms"]
+        realtime  = fps  >= criteria["realtime_fps"]
+
+        fps_mark  = "✅" if realtime else ("⚠" if batch_ok else "❌")
+        p95_mark  = "✅" if p95_ok else "❌"
+
+        lines.append(f"  {fps_mark} {label}: {fps:.2f} fps"
+                     f"  (batch_min={criteria['batch_min_fps']}fps, realtime={criteria['realtime_fps']}fps)")
+        lines.append(f"  {p95_mark} p95={p95:.1f}ms (max_ok={criteria['p95_max_ms']}ms)")
+
+        if not batch_ok:
+            lines.append(f"     → ❌ バッチ最低速度 {criteria['batch_min_fps']}fps を下回る")
+            passed = False
+        if not p95_ok:
+            lines.append(f"     → ❌ p95 レイテンシが上限 {criteria['p95_max_ms']}ms を超過")
+            passed = False
+
+    check("TrackNet",    tracknet, ACCEPTANCE["tracknet"])
+    check("YOLO (1/6)",  yolo_6,   ACCEPTANCE["yolo_6"])
+    return passed, lines
+
+
 # ─── 結果レポート ──────────────────────────────────────────────────────────────
 
 def judge(fps: float, label: str) -> str:
@@ -241,6 +306,17 @@ def print_report(tracknet: dict, yolo_1: dict, yolo_6: dict, yolo_30: dict):
     print(f"    スレッド分離で並列実行すれば max(TN, YO) で動作可能")
     print(sep)
 
+    # 合格判定
+    overall, acc_lines = evaluate_acceptance(tracknet, yolo_6)
+    print(f"\n{sep}")
+    print("  合格判定 (Acceptance Criteria)")
+    print(sep)
+    for line in acc_lines:
+        print(line)
+    verdict = "PASS ✅" if overall else "FAIL ❌"
+    print(f"\n  総合判定: {verdict}")
+    print(sep)
+
 
 if __name__ == "__main__":
     print(f"=== 60fps x {DURATION_SEC}s realtime benchmark ===")
@@ -253,3 +329,6 @@ if __name__ == "__main__":
     yolo_result_30   = bench_yolo(frames, sample_every=30)
 
     print_report(tracknet_result, yolo_result_all, yolo_result_6, yolo_result_30)
+    # 合格判定に基づいて exit code を設定
+    overall, _ = evaluate_acceptance(tracknet_result, yolo_result_6)
+    raise SystemExit(0 if overall else 1)

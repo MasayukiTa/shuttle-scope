@@ -22,6 +22,7 @@ interface MatchFormData {
   player_b_id: number | ''
   partner_a_id: number | ''
   partner_b_id: number | ''
+  initial_server: 'player_a' | 'player_b' | ''
   result: MatchResult
   final_score: string
   video_url: string
@@ -39,6 +40,7 @@ const defaultForm = (): MatchFormData => ({
   player_b_id: '',
   partner_a_id: '',
   partner_b_id: '',
+  initial_server: '',
   result: 'win',
   final_score: '',
   video_url: '',
@@ -160,6 +162,7 @@ export function MatchListPage() {
   const [showForm, setShowForm] = useState(false)
   const [showQuickStart, setShowQuickStart] = useState(false)
   const [form, setForm] = useState<MatchFormData>(defaultForm())
+  const [analystSide, setAnalystSide] = useState<'top' | 'bottom'>('bottom')
   const [filterPlayer, setFilterPlayer] = useState<string>('')
   const [filterLevel, setFilterLevel] = useState<string>('')
   const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false)
@@ -241,10 +244,15 @@ export function MatchListPage() {
   // 試合作成
   const createMatch = useMutation({
     mutationFn: (body: any) => apiPost('/matches', body),
-    onSuccess: () => {
+    onSuccess: (data: any) => {
+      const newMatchId = data?.data?.id ?? data?.data?.match?.id
+      if (newMatchId) {
+        localStorage.setItem(`shuttlescope.viewpoint.${newMatchId}`, analystSide)
+      }
       queryClient.invalidateQueries({ queryKey: ['matches'] })
       setShowForm(false)
       setForm(defaultForm())
+      setAnalystSide('bottom')
       resetPlayerFields()
     },
   })
@@ -336,6 +344,7 @@ export function MatchListPage() {
       player_b_id: Number(finalPlayerBId),
       partner_a_id: finalPartnerAId,
       partner_b_id: finalPartnerBId,
+      initial_server: form.initial_server || undefined,
       video_local_path: form.video_local_path || undefined,
       video_url: form.video_url || undefined,
     })
@@ -810,6 +819,56 @@ export function MatchListPage() {
                   {form.video_local_path && (
                     <div className={`text-[10px] ${textMuted} mt-0.5 truncate`}>📁 {form.video_local_path}</div>
                   )}
+                </div>
+
+                {/* 先サーブ / アナリスト視点 */}
+                <div>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>先サーブ</label>
+                  <div className="flex gap-2">
+                    {([
+                      { value: 'player_a', label: 'A側（自チーム）' },
+                      { value: 'player_b', label: 'B側（相手）' },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, initial_server: f.initial_server === opt.value ? '' : opt.value }))}
+                        className={`flex-1 py-1.5 rounded text-sm border ${
+                          form.initial_server === opt.value
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : isLight
+                              ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                              : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>アナリスト視点</label>
+                  <div className="flex gap-2">
+                    {([
+                      { value: 'bottom' as const, label: '⬇ 画面下（手前）' },
+                      { value: 'top'    as const, label: '⬆ 画面上（奥側）' },
+                    ]).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setAnalystSide(opt.value)}
+                        className={`flex-1 py-1.5 rounded text-sm border ${
+                          analystSide === opt.value
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : isLight
+                              ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                              : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* メモ */}

@@ -12,11 +12,14 @@ def _base_report():
         "frontend": {"node_modules": False},
         "tracknet": {
             "loaded": False,
+            "failure_class": "weight_missing",
+            "weights_dir": "backend/tracknet/weights",
             "files": {"onnx": False},
             "error": None,
         },
         "yolo": {
             "loaded": False,
+            "failure_class": "package_missing",
             "status_code": "weights_missing",
             "message": "weights missing",
         },

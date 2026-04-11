@@ -17,7 +17,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
-import { RotateCcw, MousePointer2, RefreshCw } from 'lucide-react'
+import { RotateCcw, MousePointer2 } from 'lucide-react'
 
 // ─── 型 ─────────────────────────────────────────────────────────────────────
 
@@ -43,11 +43,11 @@ const GRID_ROWS = 3   // 各サイド3行
 const GRID_COLS = 3   // 3列
 
 const COLORS = {
-  grid: '#ffffff',
-  net: '#ff9900',
-  point: '#ffff00',
+  grid:      '#ffffff',   // 白 — 黒アウトラインで明暗どちらの背景でも視認
+  net:       '#ff9900',   // オレンジ
+  point:     '#ffff00',
   nextPoint: '#00ff88',
-  text: '#ffffff',
+  text:      '#ffffff',
 }
 
 const STORAGE_KEY = (id: string) => `court-calib-${id}`
@@ -95,14 +95,18 @@ function halfGridLines(
 
 // ─── コンポーネント ────────────────────────────────────────────────────────
 
+type CalibSource = 'backend' | 'local' | 'none'
+
 export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOverlayProps) {
   const [points, setPoints] = useState<Pt[]>([])          // 設定済み点（最大6個）
   const [calibrating, setCalibrating] = useState(false)   // キャリブレーションモード
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null)
   const [containerSize, setContainerSize] = useState({ w: 1, h: 1 })
   const [savedNotice, setSavedNotice] = useState(false)   // 保存完了 & YOLO再実行案内
+  const [calibSource, setCalibSource] = useState<CalibSource>('none') // 取得元
   const svgRef = useRef<SVGSVGElement>(null)
   const postTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevPtsRef = useRef<Pt[]>([])   // 再キャリブレーション開始前のバックアップ
 
   const isCalibrated = points.length === TOTAL_POINTS
   const nextPointIdx = calibrating ? points.length : null  // 次に設定する点のインデックス
@@ -123,6 +127,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
 
   useEffect(() => {
     let cancelled = false
+    setCalibSource('none')
     fetch(`/api/matches/${matchId}/court_calibration`)
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((res) => {
@@ -131,6 +136,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         if (raw.length === TOTAL_POINTS) {
           const pts = raw.map(([x, y]) => ({ x, y }))
           setPoints(pts)
+          setCalibSource('backend')
           try { localStorage.setItem(STORAGE_KEY(matchId), JSON.stringify(pts)) } catch { /* ignore */ }
         }
       })
@@ -139,7 +145,10 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         if (cancelled) return
         try {
           const saved = localStorage.getItem(STORAGE_KEY(matchId))
-          if (saved) setPoints(JSON.parse(saved))
+          if (saved) {
+            setPoints(JSON.parse(saved))
+            setCalibSource('local')
+          }
         } catch { /* ignore */ }
       })
     return () => { cancelled = true }
@@ -155,7 +164,11 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         container_height: containerSize.h,
       }),
     })
-      .then(() => { setSavedNotice(true); setTimeout(() => setSavedNotice(false), 6000) })
+      .then(() => {
+        setCalibSource('backend')
+        setSavedNotice(true)
+        setTimeout(() => setSavedNotice(false), 6000)
+      })
       .catch((err) => console.warn('[CourtGrid] backend save failed:', err))
   }, [matchId, containerSize])
 
@@ -172,10 +185,12 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
   // ─── キャリブレーション操作 ────────────────────────────────────────────
 
   const startCalibration = useCallback(() => {
+    prevPtsRef.current = points   // キャンセル用バックアップ
     setPoints([])
+    setCalibSource('none')
     localStorage.removeItem(STORAGE_KEY(matchId))
     setCalibrating(true)
-  }, [matchId])
+  }, [matchId, points])
 
   const getSVGPoint = useCallback((e: React.PointerEvent<SVGSVGElement>): Pt => {
     const rect = svgRef.current!.getBoundingClientRect()
@@ -233,8 +248,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
     const topLines = halfGridLines(TL, TR, NR, NL, w, h)
     gridLines.push(...topLines)
 
-    // 下サイドの4隅: NL, NR, BR, BL (外周ラインは上サイドと共有のため省略)
-    const botLines = halfGridLines(NL, NR, BR, BL, w, h, false)
+    // 下サイドの4隅: NL, NR, BR, BL（外周含む。ネット上辺はオレンジで上書きされる）
+    const botLines = halfGridLines(NL, NR, BR, BL, w, h, true)
     gridLines.push(...botLines)
 
     // コート外周 (上サイドのtopライン + 下サイドのbottomライン + 左右)
@@ -268,15 +283,22 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         onPointerMove={handleSVGPointerMove}
         onPointerUp={handleSVGPointerUp}
       >
-        {/* ─── グリッドライン ───────────────────────────────────── */}
+        {/* ─── グリッドライン（黒アウトライン先に描画 → 白線を重ねる）────── */}
         {visible && isCalibrated && gridLines.map((l, i) => (
-          <line
-            key={i}
-            x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
-            stroke={l.isNet ? COLORS.net : COLORS.grid}
-            strokeWidth={l.isNet ? 2.5 : 1.5}
-            strokeOpacity={l.isNet ? 1.0 : 0.85}
-          />
+          <g key={i}>
+            <line
+              x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
+              stroke="#000"
+              strokeWidth={l.isNet ? 6 : 4}
+              strokeOpacity={0.75}
+            />
+            <line
+              x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
+              stroke={l.isNet ? COLORS.net : COLORS.grid}
+              strokeWidth={l.isNet ? 2.5 : 1.5}
+              strokeOpacity={1.0}
+            />
+          </g>
         ))}
 
         {/* ─── キャリブレーション点 ────────────────────────────── */}
@@ -314,14 +336,13 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         )}
       </svg>
 
-      {/* ─── YOLO 再実行案内（保存直後 6秒間表示） ────────────── */}
+      {/* ─── 保存完了トースト（6秒） ─────────────────────────── */}
       {savedNotice && (
         <div
-          className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-cyan-900/90 border border-cyan-600 text-cyan-200"
+          className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded text-xs bg-gray-900/90 border border-gray-600 text-gray-200"
           style={{ pointerEvents: 'none', zIndex: 30 }}
         >
-          <RefreshCw size={11} className="text-cyan-400" />
-          ROI 保存完了 — YOLO を再実行すると精度が上がります
+          ROI 保存完了 — YOLO 再実行で精度向上
         </div>
       )}
 
@@ -333,7 +354,14 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         >
           {calibrating ? (
             <button
-              onClick={() => { setCalibrating(false); setPoints([]) }}
+              onClick={() => {
+                setCalibrating(false)
+                if (prevPtsRef.current.length === TOTAL_POINTS) {
+                  savePts(prevPtsRef.current)  // 直前のキャリブレーションに戻す
+                } else {
+                  setPoints([])
+                }
+              }}
               className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-red-800/80 hover:bg-red-700 text-white border border-red-600"
             >
               キャンセル
@@ -342,10 +370,14 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
             <button
               onClick={startCalibration}
               className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-gray-900/80 hover:bg-gray-800 text-gray-200 border border-gray-600"
-              title="コート点を再設定（カメラ切替後など）"
+              title={
+                calibSource === 'local'
+                  ? 'ローカルキャッシュから復元中（バックエンド未保存）。再キャリブレーションで同期できます。'
+                  : 'コート点を再設定（カメラ切替後など）'
+              }
             >
               <RotateCcw size={11} />
-              再キャリブレーション
+              再キャリブレーション{calibSource === 'local' ? ' ⚠' : ''}
             </button>
           )}
         </div>

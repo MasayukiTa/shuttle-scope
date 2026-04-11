@@ -243,7 +243,7 @@ export function AnnotatorPage() {
   const [forceSetScoreB, setForceSetScoreB] = useState(0)
 
   // アナリスト視点（セット1開始時のplayer_aの位置）
-  const [playerAStart] = useState<'top' | 'bottom'>(
+  const [playerAStart, setPlayerAStart] = useState<'top' | 'bottom'>(
     () => (localStorage.getItem(`shuttlescope.viewpoint.${matchId}`) as 'top' | 'bottom') ?? 'bottom'
   )
 
@@ -803,6 +803,28 @@ export function AnnotatorPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialized, match?.initial_server])
+
+  // 先サーブ変更（DB 保存 + ストア反映）
+  const handleInitialServerChange = useCallback(async (server: 'player_a' | 'player_b') => {
+    if (!matchId) return
+    try {
+      await apiPut(`/matches/${matchId}`, { initial_server: server })
+      queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+      // ラリー未開始なら即座にストアにも反映
+      const s = useAnnotationStore.getState()
+      if (s.currentRallyNum === 1 && !s.isRallyActive) {
+        s.setPlayer(server)
+      }
+    } catch (err: any) {
+      alert(`先サーブ変更エラー: ${err?.message ?? '不明なエラー'}`)
+    }
+  }, [matchId, queryClient])
+
+  // アナリスト視点変更（localStorage 保存）
+  const handleViewpointChange = useCallback((side: 'top' | 'bottom') => {
+    setPlayerAStart(side)
+    if (matchId) localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, side)
+  }, [matchId])
 
   // ダブルスモード検出 — match 読み込み後にストアへ反映
   useEffect(() => {
@@ -2074,7 +2096,7 @@ export function AnnotatorPage() {
                   Shift+U/I/O=OB後 Shift+J/L=OB側 -/=/\=NET
                 </div>
               </div>
-              {/* コートチェンジ情報 */}
+              {/* コートチェンジ情報 + 先サーブ/視点変更 */}
               <div className="flex-1 border-l border-gray-700 pl-3 space-y-1.5">
                 <p className="text-xs text-gray-400 font-medium">コートチェンジ</p>
                 {[1, 2, 3].map((sn) => {
@@ -2089,6 +2111,50 @@ export function AnnotatorPage() {
                   )
                 })}
                 <p className="text-xs text-gray-500 mt-1"><span className="text-blue-400">■</span> 青=A　<span className="text-orange-400">■</span> 橙=B</p>
+
+                {/* 先サーブ変更 */}
+                <div className="pt-1.5 border-t border-gray-700 space-y-1">
+                  <p className="text-xs text-gray-400 font-medium">先サーブ</p>
+                  <div className="flex gap-1">
+                    {([
+                      { v: 'player_a' as const, label: 'A側' },
+                      { v: 'player_b' as const, label: 'B側' },
+                    ]).map(({ v, label }) => (
+                      <button
+                        key={v}
+                        onClick={() => handleInitialServerChange(v)}
+                        className={`flex-1 py-0.5 rounded text-xs border ${
+                          match?.initial_server === v
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 視点変更 */}
+                  <p className="text-xs text-gray-400 font-medium pt-0.5">アナリスト視点</p>
+                  <div className="flex gap-1">
+                    {([
+                      { v: 'bottom' as const, label: '⬇ 手前' },
+                      { v: 'top'    as const, label: '⬆ 奥側' },
+                    ]).map(({ v, label }) => (
+                      <button
+                        key={v}
+                        onClick={() => handleViewpointChange(v)}
+                        className={`flex-1 py-0.5 rounded text-xs border ${
+                          playerAStart === v
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2332,6 +2398,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => !playerToggleDisabled && store.setPlayer('player_a')}
                     disabled={playerToggleDisabled}
+                    title={match?.player_a?.team ? `所属: ${match.player_a.team}` : match?.player_a?.name ?? 'A'}
                     className={clsx(
                       'flex-1 rounded font-medium transition-colors',
                       useLargeTouch ? 'py-3 text-sm' : 'py-1.5 text-xs',
@@ -2360,6 +2427,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => !playerToggleDisabled && store.setPlayer('player_b')}
                     disabled={playerToggleDisabled}
+                    title={match?.player_b?.team ? `所属: ${match.player_b.team}` : match?.player_b?.name ?? 'B'}
                     className={clsx(
                       'flex-1 rounded font-medium transition-colors',
                       useLargeTouch ? 'py-3 text-sm' : 'py-1.5 text-xs',
@@ -2788,6 +2856,8 @@ export function AnnotatorPage() {
                 playerBName={match?.player_b?.name ?? 'B'}
                 partnerAName={match?.partner_a?.name}
                 partnerBName={match?.partner_b?.name}
+                playerATeam={match?.player_a?.team}
+                playerBTeam={match?.player_b?.team}
                 showLandZoneWarning={true}
               />
             )}

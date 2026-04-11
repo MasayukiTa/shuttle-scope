@@ -70,28 +70,37 @@ from collections import Counter
 from datetime import datetime
 from typing import Optional
 
+import os
+
 logger = logging.getLogger(__name__)
 
-# ── 信頼度しきい値 ────────────────────────────────────────────────────────────
-CONF_HIGH   = 0.72  # auto_filled
-CONF_MEDIUM = 0.48  # suggested
+# ── 信頼度しきい値（環境変数で上書き可能 — 実映像チューニング用）───────────────
+# 例: CV_CONF_HIGH=0.65 CV_CONF_MEDIUM=0.40 python -m backend.main
+CONF_HIGH   = float(os.environ.get("CV_CONF_HIGH",   "0.72"))  # auto_filled
+CONF_MEDIUM = float(os.environ.get("CV_CONF_MEDIUM", "0.48"))  # suggested
 # < CONF_MEDIUM → review_required
 
 # TrackNet: 着地候補として有効とする最低信頼度
-TRACKNET_MIN_CONF = 0.38
+TRACKNET_MIN_CONF = float(os.environ.get("CV_TRACKNET_MIN_CONF", "0.38"))
 
 # ヒッター推定: アライメントイベントとストロークタイムスタンプの許容誤差（秒）
-HITTER_MATCH_WINDOW_SEC = 0.6
+HITTER_MATCH_WINDOW_SEC = float(os.environ.get("CV_HITTER_WINDOW_SEC", "0.6"))
 
 # 着地ゾーン探索: ストロークタイムスタンプから何秒後まで見るか
-LAND_SEARCH_WINDOW_SEC = 3.0
+LAND_SEARCH_WINDOW_SEC = float(os.environ.get("CV_LAND_SEARCH_SEC", "3.0"))
 
 # ダブルスロール: Y座標でfront/back判定する境界（正規化0-1）
-FRONT_THRESHOLD_Y = 0.42  # y < この値 → front (ネット寄り)
-BACK_THRESHOLD_Y  = 0.60  # y > この値 → back (バック側)
+FRONT_THRESHOLD_Y = float(os.environ.get("CV_FRONT_Y", "0.42"))  # y < この値 → front
+BACK_THRESHOLD_Y  = float(os.environ.get("CV_BACK_Y",  "0.60"))  # y > この値 → back
 
 # ロール安定性判定: 各フレームでの割合がこれ以上なら "安定"
-ROLE_STABILITY_MIN = 0.65
+ROLE_STABILITY_MIN = float(os.environ.get("CV_ROLE_STABILITY", "0.65"))
+
+logger.debug(
+    "CV thresholds: CONF_HIGH=%.2f CONF_MEDIUM=%.2f TRACKNET_MIN=%.2f "
+    "HITTER_WIN=%.1fs LAND_SEARCH=%.1fs",
+    CONF_HIGH, CONF_MEDIUM, TRACKNET_MIN_CONF, HITTER_MATCH_WINDOW_SEC, LAND_SEARCH_WINDOW_SEC,
+)
 
 
 def build_candidates(

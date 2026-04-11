@@ -25,6 +25,18 @@ def _package_version(name: str) -> str | None:
         return None
 
 
+def _model_status_label(info: dict[str, Any]) -> str:
+    if info.get("loaded"):
+        return f"READY ({info.get('backend', '?')})"
+    fc = info.get("failure_class")
+    labels = {
+        "package_missing":    "PACKAGE MISSING",
+        "weight_missing":     "WEIGHT MISSING",
+        "backend_load_failed": "LOAD FAILED",
+    }
+    return labels.get(fc, "NOT READY")
+
+
 def _error_payload(stage: str, exc: Exception) -> dict[str, Any]:
     return {
         "available": False,
@@ -36,34 +48,45 @@ def _error_payload(stage: str, exc: Exception) -> dict[str, Any]:
 
 
 def _tracknet_status() -> dict[str, Any]:
+    # ① パッケージインポートチェック
     try:
         from backend.tracknet.inference import WEIGHTS_DIR, TrackNetInference
     except Exception as exc:
         return {
+            "failure_class": "package_missing",
             "weights_dir": None,
             "files": {},
             **_error_payload("import", exc),
         }
 
+    # ② 重みファイルチェック
     files = {
         "tf_index": (WEIGHTS_DIR / "TrackNet.index").exists(),
         "tf_data": (WEIGHTS_DIR / "TrackNet.data-00000-of-00001").exists(),
         "onnx": (WEIGHTS_DIR / "tracknet.onnx").exists(),
         "openvino": (WEIGHTS_DIR / "tracknet.xml").exists(),
     }
+    weights_present = files["onnx"] or files["openvino"] or (files["tf_index"] and files["tf_data"])
 
+    # ③ バックエンドロードチェック
     try:
         inf = TrackNetInference()
         available = inf.is_available()
         loaded = inf.load() if available else False
     except Exception as exc:
         return {
+            "failure_class": "backend_load_failed",
             "weights_dir": str(WEIGHTS_DIR),
             "files": files,
             **_error_payload("init", exc),
         }
 
+    failure_class: str | None = None
+    if not loaded:
+        failure_class = "weight_missing" if not weights_present else "backend_load_failed"
+
     return {
+        "failure_class": failure_class,
         "weights_dir": str(WEIGHTS_DIR),
         "files": files,
         "available": available,
@@ -74,29 +97,43 @@ def _tracknet_status() -> dict[str, Any]:
 
 
 def _yolo_status() -> dict[str, Any]:
+    # ① パッケージインポートチェック
     try:
         from backend.yolo.inference import get_yolo_inference
     except Exception as exc:
         return {
+            "failure_class": "package_missing",
             "status_code": "import_error",
             "backend": None,
             "message": str(exc),
             "loaded": False,
         }
 
+    # ② 初期化 + 詳細ステータス取得
     try:
         inf = get_yolo_inference()
         detail = inf.get_status_detail()
     except Exception as exc:
         return {
+            "failure_class": "backend_load_failed",
             "status_code": "init_error",
             "backend": None,
             "message": str(exc),
             "loaded": False,
         }
 
+    status_code = detail.get("status_code", "")
+    failure_class: str | None = None
+    if status_code == "weights_missing":
+        failure_class = "weight_missing"
+    elif status_code in {"import_error", "init_error"}:
+        failure_class = "package_missing"
+    elif status_code not in {"ready", ""}:
+        failure_class = "backend_load_failed"
+
     return {
-        "status_code": detail.get("status_code"),
+        "failure_class": failure_class,
+        "status_code": status_code,
         "backend": detail.get("backend"),
         "message": detail.get("message"),
         "loaded": inf.backend_name() is not None,
@@ -154,18 +191,34 @@ def build_recommendations(report: dict[str, Any]) -> list[str]:
     if not commands.get("ngrok"):
         recs.append("リモート共有を使うなら `ngrok` をインストールしてください。")
 
-    if not tracknet.get("loaded"):
-        if not tracknet.get("files", {}).get("onnx"):
-            recs.append("TrackNet は `./bootstrap_windows.ps1 -SetupTrackNet` で準備してください。")
-        elif tracknet.get("error"):
-            recs.append(f"TrackNet 読み込み失敗: {tracknet['error']}")
+    tn_fc = tracknet.get("failure_class")
+    if tn_fc == "package_missing":
+        recs.append(
+            "TrackNet: 依存パッケージが不足しています。"
+            " `./bootstrap_windows.ps1 -SetupTrackNet` を実行してください。"
+        )
+    elif tn_fc == "weight_missing":
+        recs.append(
+            "TrackNet: 重みファイルが見つかりません。"
+            " `./bootstrap_windows.ps1 -SetupTrackNet` で重みをダウンロードしてください。"
+            f" (weights_dir={tracknet.get('weights_dir')})"
+        )
+    elif tn_fc == "backend_load_failed":
+        recs.append(f"TrackNet: バックエンドのロードに失敗しました。{tracknet.get('error', '')}")
 
-    if not packages.get("ultralytics"):
-        recs.append("YOLO を使うなら `./bootstrap_windows.ps1 -IncludeYolo` を実行してください。")
-    elif yolo.get("status_code") == "weights_missing":
-        recs.append("YOLO は初回バッチ実行で重みを取得するか、ローカル重みを配置してください。")
-    elif yolo.get("status_code") in {"import_error", "init_error"}:
-        recs.append(f"YOLO 初期化失敗: {yolo.get('message')}")
+    yolo_fc = yolo.get("failure_class")
+    if yolo_fc == "package_missing":
+        recs.append(
+            "YOLO: ultralytics パッケージが見つかりません。"
+            " `./bootstrap_windows.ps1 -IncludeYolo` を実行してください。"
+        )
+    elif yolo_fc == "weight_missing":
+        recs.append(
+            "YOLO: 重みファイルが見つかりません。"
+            " 初回バッチ実行で自動ダウンロードされるか、重みをローカルに配置してください。"
+        )
+    elif yolo_fc == "backend_load_failed":
+        recs.append(f"YOLO: バックエンドのロードに失敗しました。{yolo.get('message', '')}")
 
     if packages.get("numpy") and packages.get("scipy"):
         recs.append(
@@ -219,17 +272,25 @@ def summarize_report(report: dict[str, Any]) -> str:
         f"ngrok:       {'OK' if commands.get('ngrok') else 'MISSING'}",
         f"cloudflared: {'OK' if commands.get('cloudflared') else 'MISSING'}",
         f"Frontend:    {'READY' if frontend.get('node_modules') else 'npm install required'}",
-        f"TrackNet:    {'READY' if tracknet.get('loaded') else 'NOT READY'}",
-        f"YOLO:        {'READY' if yolo.get('loaded') else 'NOT READY'}",
+        f"TrackNet:    {_model_status_label(tracknet)}",
+        f"YOLO:        {_model_status_label(yolo)}",
     ]
 
     if tracknet.get("loaded"):
         lines.append(f"TrackNet backend: {tracknet.get('backend')}")
-    elif tracknet.get("error"):
-        lines.append(f"TrackNet error: {tracknet.get('error')}")
+    else:
+        fc = tracknet.get("failure_class")
+        detail = tracknet.get("error") or ""
+        if fc:
+            lines.append(f"TrackNet issue: [{fc}] {detail}".rstrip())
 
-    if yolo.get("message"):
-        lines.append(f"YOLO status: {yolo.get('message')}")
+    if yolo.get("loaded"):
+        lines.append(f"YOLO backend: {yolo.get('backend')}")
+    else:
+        fc = yolo.get("failure_class")
+        detail = yolo.get("message") or ""
+        if fc:
+            lines.append(f"YOLO issue: [{fc}] {detail}".rstrip())
 
     recs = build_recommendations(report)
     if recs:
