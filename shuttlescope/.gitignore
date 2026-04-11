@@ -21,16 +21,16 @@ __pycache__/
 videos/
 reports/
 
-# YOLO / CV モデルウェイト
-# ultralytics が CWD に自動ダウンロードするファイル（コミット不要）
+# YOLO / CV model assets
 yolov8n.pt
 yolov8s.pt
 yolov8m.pt
 yolov8l.pt
 yolov8x.pt
 *.pt
-backend/yolo/weights/*.onnx
-backend/yolo/weights/*.pt
+backend/yolo/weights/
 backend/tracknet/weights/*.onnx
-# TrackNet 公式チェックポイントはリポジトリに含めない（setup スクリプトで取得）
-# backend/tracknet/weights/ 自体は .gitkeep で維持
+
+# Local-only runtime diagnostics
+kernel.errors.txt
+backend/kernel.errors.txt
