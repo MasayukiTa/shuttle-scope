@@ -17,7 +17,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
-import { RotateCcw, MousePointer2 } from 'lucide-react'
+import { RotateCcw, MousePointer2, RefreshCw } from 'lucide-react'
 
 // ─── 型 ─────────────────────────────────────────────────────────────────────
 
@@ -100,7 +100,9 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
   const [calibrating, setCalibrating] = useState(false)   // キャリブレーションモード
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null)
   const [containerSize, setContainerSize] = useState({ w: 1, h: 1 })
+  const [savedNotice, setSavedNotice] = useState(false)   // 保存完了 & YOLO再実行案内
   const svgRef = useRef<SVGSVGElement>(null)
+  const postTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isCalibrated = points.length === TOTAL_POINTS
   const nextPointIdx = calibrating ? points.length : null  // 次に設定する点のインデックス
@@ -143,22 +145,29 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
     return () => { cancelled = true }
   }, [matchId])
 
+  const postToBackend = useCallback((pts: Pt[]) => {
+    fetch(`/api/matches/${matchId}/court_calibration`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        points: pts.map((p) => ({ x: p.x, y: p.y })),
+        container_width:  containerSize.w,
+        container_height: containerSize.h,
+      }),
+    })
+      .then(() => { setSavedNotice(true); setTimeout(() => setSavedNotice(false), 6000) })
+      .catch((err) => console.warn('[CourtGrid] backend save failed:', err))
+  }, [matchId, containerSize])
+
   const savePts = useCallback((pts: Pt[]) => {
     setPoints(pts)
     try { localStorage.setItem(STORAGE_KEY(matchId), JSON.stringify(pts)) } catch { /* ignore */ }
-    // 6点揃ったらバックエンドへ保存
+    // 6点揃ったらバックエンドへ debounce 保存（ドラッグ中の連打を防ぐ）
     if (pts.length === TOTAL_POINTS) {
-      fetch(`/api/matches/${matchId}/court_calibration`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          points: pts.map((p) => ({ x: p.x, y: p.y })),
-          container_width:  containerSize.w,
-          container_height: containerSize.h,
-        }),
-      }).catch((err) => console.warn('[CourtGrid] backend save failed:', err))
+      if (postTimerRef.current) clearTimeout(postTimerRef.current)
+      postTimerRef.current = setTimeout(() => postToBackend(pts), 400)
     }
-  }, [matchId, containerSize])
+  }, [matchId, postToBackend])
 
   // ─── キャリブレーション操作 ────────────────────────────────────────────
 
@@ -304,6 +313,17 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
           </text>
         )}
       </svg>
+
+      {/* ─── YOLO 再実行案内（保存直後 6秒間表示） ────────────── */}
+      {savedNotice && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-cyan-900/90 border border-cyan-600 text-cyan-200"
+          style={{ pointerEvents: 'none', zIndex: 30 }}
+        >
+          <RefreshCw size={11} className="text-cyan-400" />
+          ROI 保存完了 — YOLO を再実行すると精度が上がります
+        </div>
+      )}
 
       {/* ─── キャリブレーション UI ボタン ──────────────────────── */}
       {visible && (

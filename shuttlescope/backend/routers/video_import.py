@@ -143,9 +143,10 @@ def _run_pipeline(job_id: str) -> None:
 
 
 def _run_tracknet(job: dict, video_path: str) -> None:
-    """TrackNet でシャトル軌跡を解析（GPU優先）。"""
+    """TrackNet でシャトル軌跡を解析（GPU優先）。コートキャリブレーションが設定済みなら homography でゾーンを精緻化する。"""
     import cv2
     from backend.tracknet.inference import get_inference
+    from backend.routers.court_calibration import load_calibration_standalone, pixel_to_court_zone
 
     inf = get_inference("openvino")   # GPU優先バックエンドを明示
     if not inf.load():
@@ -199,6 +200,27 @@ def _run_tracknet(job: dict, video_path: str) -> None:
         job["progress"] = job["tracknet"]["progress"] * 0.5  # 全体の 0-50%
 
     cap.release()
+
+    # コートキャリブレーションが設定済みなら homography でゾーンを精緻化
+    match_id = job.get("match_id")
+    if match_id and track:
+        calib = load_calibration_standalone(match_id)
+        if calib and "homography" in calib:
+            H = calib["homography"]
+            refined = 0
+            for pt in track:
+                xn = pt.get("x_norm")
+                yn = pt.get("y_norm")
+                if xn is not None and yn is not None:
+                    zone_info = pixel_to_court_zone(xn, yn, H)
+                    pt["zone"]      = zone_info["zone_name"]   # 既存 zone を上書き
+                    pt["court_x"]   = zone_info["court_x"]
+                    pt["court_y"]   = zone_info["court_y"]
+                    pt["zone_id"]   = zone_info["zone_id"]
+                    refined += 1
+            if refined:
+                logger.info("TrackNet zone refined by homography: match=%d points=%d", match_id, refined)
+
     job["tracknet"]["status"] = "done"
     job["tracknet"]["progress"] = 1.0
     job["tracknet"]["track_points"] = len(track)
