@@ -278,6 +278,11 @@ export function MatchListPage() {
       setAnalystSide('bottom')
       resetPlayerFields()
     },
+    onError: (err: any) => {
+      let detail = ''
+      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
+      alert(`保存に失敗しました: ${detail || '不明なエラー'}`)
+    },
   })
 
   // 試合削除
@@ -393,16 +398,24 @@ export function MatchListPage() {
       }
     }
 
-    const body = {
-      ...form,
+    // undefinedキーはJSON.stringifyで除去される。空文字も数値フィールドには送らない
+    const body: Record<string, any> = {
+      tournament: form.tournament,
+      tournament_level: form.tournament_level,
+      round: form.round,
+      date: form.date,
+      format: form.format,
+      result: form.result,
       player_a_id: Number(finalPlayerAId),
       player_b_id: Number(finalPlayerBId),
-      partner_a_id: finalPartnerAId,
-      partner_b_id: finalPartnerBId,
-      initial_server: form.initial_server || undefined,
-      video_local_path: form.video_local_path || undefined,
-      video_url: form.video_url || undefined,
     }
+    if (finalPartnerAId) body.partner_a_id = finalPartnerAId
+    if (finalPartnerBId) body.partner_b_id = finalPartnerBId
+    if (form.initial_server) body.initial_server = form.initial_server
+    if (form.final_score) body.final_score = form.final_score
+    if (form.video_url) body.video_url = form.video_url
+    if (form.video_local_path) body.video_local_path = form.video_local_path
+    if (form.notes) body.notes = form.notes
 
     if (editingMatchId !== null) {
       updateMatch.mutate({ id: editingMatchId, body })
