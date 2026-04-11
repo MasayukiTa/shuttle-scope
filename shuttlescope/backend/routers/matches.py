@@ -48,6 +48,10 @@ class MatchUpdate(BaseModel):
     date: Optional[date] = None
     venue: Optional[str] = None
     format: Optional[str] = None
+    player_a_id: Optional[int] = None
+    player_b_id: Optional[int] = None
+    partner_a_id: Optional[int] = None
+    partner_b_id: Optional[int] = None
     result: Optional[str] = None
     final_score: Optional[str] = None
     video_url: Optional[str] = None

@@ -244,6 +244,18 @@ def delete_player(player_id: int, db: Session = Depends(get_db)):
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # 試合に紐づいているか確認
+    ref_count = db.query(Match).filter(
+        (Match.player_a_id == player_id) |
+        (Match.player_b_id == player_id) |
+        (Match.partner_a_id == player_id) |
+        (Match.partner_b_id == player_id)
+    ).count()
+    if ref_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"この選手は {ref_count} 件の試合に紐づいているため削除できません。先に試合を削除してください。"
+        )
     db.delete(player)
     db.commit()
     return {"success": True, "data": {"id": player_id}}

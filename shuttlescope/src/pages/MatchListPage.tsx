@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Play, Trash2, Download, Filter, AlertCircle, Search, UserPlus, User, FolderOpen, TrendingUp } from 'lucide-react'
+import { Plus, Play, Trash2, Download, Filter, AlertCircle, Search, UserPlus, User, FolderOpen, TrendingUp, Pencil } from 'lucide-react'
 import { clsx } from 'clsx'
-import { apiGet, apiPost, apiDelete } from '@/api/client'
+import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS } from '@/types'
 import { QuickStartModal } from '@/components/annotation/QuickStartModal'
 import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
@@ -149,6 +149,7 @@ function PlayerCombobox({
 
 export function MatchListPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { card, textHeading, textSecondary, textMuted, textFaint, isLight } = useCardTheme()
@@ -161,9 +162,10 @@ export function MatchListPage() {
 
   const [showForm, setShowForm] = useState(false)
   const [showQuickStart, setShowQuickStart] = useState(false)
+  const [editingMatchId, setEditingMatchId] = useState<number | null>(null)
   const [form, setForm] = useState<MatchFormData>(defaultForm())
   const [analystSide, setAnalystSide] = useState<'top' | 'bottom'>('bottom')
-  const [filterPlayer, setFilterPlayer] = useState<string>('')
+  const [filterPlayer, setFilterPlayer] = useState<string>(() => searchParams.get('player_id') ?? '')
   const [filterLevel, setFilterLevel] = useState<string>('')
   const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false)
   const [filterDateFrom, setFilterDateFrom] = useState<string>('')
@@ -175,6 +177,7 @@ export function MatchListPage() {
   // 選手コンボボックス用クエリ
   const [playerAQuery, setPlayerAQuery] = useState('')
   const [playerBQuery, setPlayerBQuery] = useState('')
+  const [playerATeam, setPlayerATeam] = useState('')
   const [playerBTeam, setPlayerBTeam] = useState('')
   const [partnerAQuery, setPartnerAQuery] = useState('')
   const [partnerBQuery, setPartnerBQuery] = useState('')
@@ -182,6 +185,7 @@ export function MatchListPage() {
   const resetPlayerFields = () => {
     setPlayerAQuery('')
     setPlayerBQuery('')
+    setPlayerATeam('')
     setPlayerBTeam('')
     setPartnerAQuery('')
     setPartnerBQuery('')
@@ -234,7 +238,12 @@ export function MatchListPage() {
   })
   const partnerBCandidates = partnerBSearchData?.data ?? []
 
-  // チーム候補（B側の検索結果からチーム名を抽出）
+  // チーム候補（各側の検索結果からチーム名を抽出）
+  const playerATeamSuggestions = [
+    ...new Set(
+      [...playerACandidates, ...partnerACandidates].map((p) => p.team).filter(Boolean) as string[]
+    ),
+  ]
   const playerBTeamSuggestions = [
     ...new Set(
       [...playerBCandidates, ...partnerBCandidates].map((p) => p.team).filter(Boolean) as string[]
@@ -251,6 +260,20 @@ export function MatchListPage() {
       }
       queryClient.invalidateQueries({ queryKey: ['matches'] })
       setShowForm(false)
+      setEditingMatchId(null)
+      setForm(defaultForm())
+      setAnalystSide('bottom')
+      resetPlayerFields()
+    },
+  })
+
+  // 試合更新
+  const updateMatch = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: any }) => apiPut(`/matches/${id}`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['matches'] })
+      setShowForm(false)
+      setEditingMatchId(null)
       setForm(defaultForm())
       setAnalystSide('bottom')
       resetPlayerFields()
@@ -291,8 +314,40 @@ export function MatchListPage() {
     return id
   }
 
+  // 編集開始: フォームを既存試合データで初期化
+  const handleStartEdit = (m: Match) => {
+    setForm({
+      tournament: m.tournament,
+      tournament_level: m.tournament_level,
+      round: m.round,
+      date: m.date,
+      format: m.format,
+      player_a_id: m.player_a_id,
+      player_b_id: m.player_b_id,
+      partner_a_id: m.partner_a_id ?? '',
+      partner_b_id: m.partner_b_id ?? '',
+      initial_server: (m.initial_server as 'player_a' | 'player_b' | '') ?? '',
+      result: m.result,
+      final_score: m.final_score ?? '',
+      video_url: m.video_url ?? '',
+      video_local_path: m.video_local_path ?? '',
+      notes: m.notes ?? '',
+    })
+    setPlayerAQuery(m.player_a?.name ?? '')
+    setPlayerBQuery(m.player_b?.name ?? '')
+    setPlayerATeam(m.player_a?.team ?? '')
+    setPlayerBTeam(m.player_b?.team ?? '')
+    setPartnerAQuery(m.partner_a?.name ?? '')
+    setPartnerBQuery(m.partner_b?.name ?? '')
+    setEditingMatchId(m.id)
+    setShowForm(true)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    const aTeam = playerATeam.trim()
+    const bTeam = playerBTeam.trim()
 
     // ── player_a（必須）──
     let finalPlayerAId = form.player_a_id
@@ -300,7 +355,7 @@ export function MatchListPage() {
       const name = playerAQuery.trim()
       if (!name) { alert('対象選手（A）を入力または選択してください'); return }
       try {
-        finalPlayerAId = await createProvisionalPlayer(name, { isTarget: true })
+        finalPlayerAId = await createProvisionalPlayer(name, { isTarget: true, team: aTeam || undefined })
       } catch (err: any) {
         alert(`対象選手登録エラー: ${err?.message ?? '不明なエラー'}`); return
       }
@@ -312,7 +367,7 @@ export function MatchListPage() {
       const name = playerBQuery.trim()
       if (!name) { alert('対戦相手（B）を入力または選択してください'); return }
       try {
-        finalPlayerBId = await createProvisionalPlayer(name, { team: playerBTeam.trim() })
+        finalPlayerBId = await createProvisionalPlayer(name, { team: bTeam || undefined })
       } catch (err: any) {
         alert(`対戦相手登録エラー: ${err?.message ?? '不明なエラー'}`); return
       }
@@ -322,7 +377,7 @@ export function MatchListPage() {
     let finalPartnerAId: number | undefined = form.partner_a_id ? Number(form.partner_a_id) : undefined
     if (!finalPartnerAId && partnerAQuery.trim()) {
       try {
-        finalPartnerAId = await createProvisionalPlayer(partnerAQuery.trim())
+        finalPartnerAId = await createProvisionalPlayer(partnerAQuery.trim(), { team: aTeam || undefined })
       } catch (err: any) {
         alert(`自チーム相方登録エラー: ${err?.message ?? '不明なエラー'}`); return
       }
@@ -332,13 +387,13 @@ export function MatchListPage() {
     let finalPartnerBId: number | undefined = form.partner_b_id ? Number(form.partner_b_id) : undefined
     if (!finalPartnerBId && partnerBQuery.trim()) {
       try {
-        finalPartnerBId = await createProvisionalPlayer(partnerBQuery.trim(), { team: playerBTeam.trim() })
+        finalPartnerBId = await createProvisionalPlayer(partnerBQuery.trim(), { team: bTeam || undefined })
       } catch (err: any) {
         alert(`相手チーム相方登録エラー: ${err?.message ?? '不明なエラー'}`); return
       }
     }
 
-    createMatch.mutate({
+    const body = {
       ...form,
       player_a_id: Number(finalPlayerAId),
       player_b_id: Number(finalPlayerBId),
@@ -347,7 +402,13 @@ export function MatchListPage() {
       initial_server: form.initial_server || undefined,
       video_local_path: form.video_local_path || undefined,
       video_url: form.video_url || undefined,
-    })
+    }
+
+    if (editingMatchId !== null) {
+      updateMatch.mutate({ id: editingMatchId, body })
+    } else {
+      createMatch.mutate(body)
+    }
   }
 
   // ローカルファイル選択（Electron IPC）
@@ -387,6 +448,7 @@ export function MatchListPage() {
   }
 
   const isDoubles = form.format !== 'singles'
+  const showATeamField = playerAQuery.trim().length >= 1 || partnerAQuery.trim().length >= 1
   const showBTeamField = playerBQuery.trim().length >= 1 || partnerBQuery.trim().length >= 1
 
   return (
@@ -402,7 +464,7 @@ export function MatchListPage() {
             {t('quick_start.button')}
           </button>
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => { setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields(); setShowForm(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
           >
             <Plus size={16} />
@@ -576,6 +638,14 @@ export function MatchListPage() {
                           <Download size={14} />
                         </button>
                       )}
+                      {/* 編集 */}
+                      <button
+                        onClick={() => handleStartEdit(m)}
+                        className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                        title="試合情報を編集"
+                      >
+                        <Pencil size={14} />
+                      </button>
                       {/* 削除 */}
                       <button
                         onClick={() => {
@@ -614,8 +684,8 @@ export function MatchListPage() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className={`${card} rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
-              <h2 className={`text-lg font-semibold ${textHeading}`}>試合登録</h2>
-              <button onClick={() => setShowForm(false)} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}>✕</button>
+              <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? '試合編集' : '試合登録'}</h2>
+              <button onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}>✕</button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
@@ -736,9 +806,35 @@ export function MatchListPage() {
                   </>
                 )}
 
+                {/* 自チーム名（A側の名前が入力されたら表示） */}
+                {showATeamField && (
+                  <div>
+                    <label className={`block text-sm ${textSecondary} mb-1`}>
+                      自チーム名
+                      <span className={`ml-1 ${textFaint} text-xs`}>（同姓同名の識別に使用）</span>
+                    </label>
+                    <input
+                      list="player-a-teams-list"
+                      value={playerATeam}
+                      onChange={(e) => setPlayerATeam(e.target.value)}
+                      placeholder="例: ○○クラブ、△△大学"
+                      className={`w-full ${inputClass}`}
+                      autoComplete="off"
+                    />
+                    <datalist id="player-a-teams-list">
+                      {playerATeamSuggestions.map((team) => (
+                        <option key={team} value={team} />
+                      ))}
+                    </datalist>
+                    {(form.player_a_id !== '' || form.partner_a_id !== '') && playerATeam && (
+                      <p className="text-[11px] text-blue-400 mt-0.5">既存選手のチーム（変更可）</p>
+                    )}
+                  </div>
+                )}
+
                 {/* 相手チーム名（B側の名前が入力されたら表示） */}
                 {showBTeamField && (
-                  <div className="col-span-2">
+                  <div>
                     <label className={`block text-sm ${textSecondary} mb-1`}>
                       相手チーム名
                       <span className={`ml-1 ${textFaint} text-xs`}>（同姓同名の識別に使用）</span>
@@ -885,14 +981,16 @@ export function MatchListPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={createMatch.isPending}
+                  disabled={createMatch.isPending || updateMatch.isPending}
                   className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium disabled:opacity-50"
                 >
-                  {createMatch.isPending ? '登録中...' : '登録'}
+                  {editingMatchId !== null
+                    ? (updateMatch.isPending ? '保存中...' : '保存')
+                    : (createMatch.isPending ? '登録中...' : '登録')}
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowForm(false); setForm(defaultForm()); resetPlayerFields() }}
+                  onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }}
                   className={`flex-1 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600'} rounded text-sm`}
                 >
                   {t('app.cancel')}

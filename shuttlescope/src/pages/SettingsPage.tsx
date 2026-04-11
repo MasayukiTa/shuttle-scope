@@ -328,6 +328,18 @@ export function SettingsPage() {
   const deletePlayer = useMutation({
     mutationFn: (id: number) => apiDelete(`/players/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['players'] }),
+    onError: (err: any, playerId: number) => {
+      // err.message はサーバーが返したJSONテキスト ("{"detail":"..."}") or プレーンテキスト
+      let detail = ''
+      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
+      const isReferenced = (err as any).status === 409
+      if (isReferenced) {
+        const go = window.confirm(`${detail}\n\n試合一覧でこの選手の試合を確認しますか？`)
+        if (go) navigate(`/matches?player_id=${playerId}`)
+      } else {
+        alert(`削除できません: ${detail || '不明なエラー'}`)
+      }
+    },
   })
 
   // V4-U-003: 選手を「確認済み」にする
