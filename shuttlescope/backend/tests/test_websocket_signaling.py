@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from backend.db.database import SessionLocal
+from backend.db import database as db_module
 from backend.db.models import Match, Player, SharedSession, SessionParticipant
 from backend.ws.camera import camera_manager
 
@@ -40,7 +40,7 @@ def _fresh_code(prefix: str = "WS") -> str:
 
 def _ensure_active_session(code: str) -> None:
     """ws/camera 用に active session + 参加者 3 名を最小構成で用意する。"""
-    db = SessionLocal()
+    db = db_module.SessionLocal()
     try:
         existing = (
             db.query(SharedSession)
