@@ -271,6 +271,9 @@ export function AnnotatorPage() {
     }
   }, [roiStorageKey])
   const [roiEditing, setRoiEditing] = useState(false)
+  const [taggingMode, setTaggingMode] = useState(false)
+  const [taggingAssignments, setTaggingAssignments] = useState<Record<number, string>>({})
+  const [taggingSeedTs, setTaggingSeedTs] = useState<number>(0)
 
   // 録画（カメラ/WebRTCストリームをローカル保存）
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -828,6 +831,15 @@ export function AnnotatorPage() {
 
   const match = matchData?.data
 
+  // 選手識別オーバーレイ用の選手候補リスト
+  const playerOptions = match ? [
+    ...(match.player_a  ? [{ key: 'player_a',  name: match.player_a.name  }] : []),
+    ...(match.partner_a ? [{ key: 'partner_a', name: match.partner_a.name }] : []),
+    ...(match.player_b  ? [{ key: 'player_b',  name: match.player_b.name  }] : []),
+    ...(match.partner_b ? [{ key: 'partner_b', name: match.partner_b.name }] : []),
+    { key: 'other', name: 'その他' },
+  ] : []
+
   // P3/P4: CV ジョブフック（TrackNet + YOLO バッチ解析・オーバーレイ）
   const {
     tracknetJob, setTracknetJob, shuttleFrames, shuttleOverlayVisible,
@@ -836,6 +848,8 @@ export function AnnotatorPage() {
     yoloJob, setYoloJob, yoloFrames, yoloOverlayVisible,
     setYoloOverlayVisible, yoloArtifactMeta, handleYoloBatch,
     handleYoloBatchResume, handleYoloBatchDiff, yoloArtifactExists, yoloRoiExpanded,
+    frameDetections, trackFrames, trackingVisible, setTrackingVisible,
+    handleFrameDetect, handleAssignAndTrack, frameDetectLoading, trackingLoading,
     currentVideoSec, videoContainerRef,
   } = useCVJobs({
     matchId,
@@ -1546,6 +1560,71 @@ export function AnnotatorPage() {
                 </div>
               )}
 
+              {/* 選手識別タグ付け / 識別トラックトグル */}
+              {yoloArtifactExists && !taggingMode && trackFrames.length === 0 && (
+                <button
+                  onClick={() => {
+                    const ts = videoRef.current?.currentTime ?? 0
+                    setTaggingSeedTs(ts)
+                    setTaggingAssignments({})
+                    handleFrameDetect(ts)
+                    setTaggingMode(true)
+                  }}
+                  disabled={frameDetectLoading}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
+                    isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
+                  }`}
+                  title="静止画で選手を識別してトラッキング開始"
+                >
+                  {frameDetectLoading ? '検出中...' : '+ 識別'}
+                </button>
+              )}
+              {taggingMode && (
+                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs ${
+                  isLight ? 'border-purple-300 bg-purple-50' : 'border-purple-700 bg-purple-900/20'
+                }`}>
+                  <span className={`text-[10px] ${isLight ? 'text-purple-600' : 'text-purple-400'}`}>
+                    {Object.keys(taggingAssignments).length}/{frameDetections.length} 割当
+                  </span>
+                  <button
+                    onClick={async () => {
+                      await handleAssignAndTrack(
+                        taggingSeedTs,
+                        Object.entries(taggingAssignments).map(([i, k]) => ({ detection_index: +i, player_key: k }))
+                      )
+                      setTaggingMode(false)
+                    }}
+                    disabled={trackingLoading || Object.keys(taggingAssignments).length === 0}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium disabled:opacity-50 ${
+                      isLight ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-purple-600 text-white hover:bg-purple-500'
+                    }`}
+                  >
+                    {trackingLoading ? '追跡中...' : '追跡開始'}
+                  </button>
+                  <button
+                    onClick={() => setTaggingMode(false)}
+                    className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] ${
+                      isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              {trackFrames.length > 0 && !taggingMode && (
+                <button
+                  onClick={() => setTrackingVisible((v) => !v)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                    trackingVisible
+                      ? isLight ? 'bg-purple-200 text-purple-800' : 'bg-purple-700/60 text-purple-200'
+                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-purple-100' : 'bg-gray-700 text-gray-400 hover:bg-purple-900/40'
+                  }`}
+                  title={trackingVisible ? '識別トラックを非表示' : '識別トラックを表示'}
+                >
+                  {trackingVisible ? '◉' : '○'} 識別
+                </button>
+              )}
+
               {/* シャトル軌跡トグル */}
               {shuttleFrames.length > 0 && (
                 <button
@@ -2179,6 +2258,15 @@ export function AnnotatorPage() {
                   // 枠を描き終えたら編集モードを自動終了（再度ボタン押し不要）
                   if (rect !== null) setRoiEditing(false)
                 }}
+                trackFrames={trackFrames}
+                frameDetections={frameDetections}
+                trackingVisible={trackingVisible}
+                taggingMode={taggingMode}
+                playerOptions={playerOptions}
+                taggingAssignments={taggingAssignments}
+                onTagAssign={(i, k) => setTaggingAssignments(prev => ({ ...prev, [i]: k }))}
+                isPaused={videoRef.current?.paused ?? true}
+                isLight={isLight}
               />
             )
           })()}
@@ -2805,16 +2893,20 @@ export function AnnotatorPage() {
                 <div className="flex flex-col gap-0.5 px-1">
                   {/* チームラベル */}
                   <div className="flex items-center text-[9px]">
-                    <span className={clsx('flex-1 text-center', isActiveA
+                    <span className={clsx('flex-1 text-center truncate', isActiveA
                       ? isLight ? 'text-blue-600 font-semibold' : 'text-blue-400 font-semibold'
                       : isLight ? 'text-gray-400' : 'text-gray-600')}>
-                      自チーム
+                      {nameA}
+                      <span className="opacity-50 mx-0.5">/</span>
+                      {namePA}
                     </span>
-                    <span className={clsx('mx-1', isLight ? 'text-gray-300' : 'text-gray-600')}>打者</span>
-                    <span className={clsx('flex-1 text-center', !isActiveA
+                    <span className={clsx('mx-1 shrink-0', isLight ? 'text-gray-300' : 'text-gray-600')}>打者</span>
+                    <span className={clsx('flex-1 text-center truncate', !isActiveA
                       ? isLight ? 'text-orange-600 font-semibold' : 'text-orange-400 font-semibold'
                       : isLight ? 'text-gray-400' : 'text-gray-600')}>
-                      相手チーム
+                      {namePB}
+                      <span className="opacity-50 mx-0.5">/</span>
+                      {nameB}
                     </span>
                   </div>
                   {/* 4選手ボタン行 */}

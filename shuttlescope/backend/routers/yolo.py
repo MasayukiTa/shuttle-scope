@@ -567,6 +567,237 @@ def _run_batch(
         db.close()
 
 
+# ─── 1フレーム即時検出（タグ付け用） ────────────────────────────────────────
+
+class FrameDetectRequest(BaseModel):
+    timestamp_sec: float
+    roi_rect: Optional[RoiRectModel] = None
+
+
+@router.post("/yolo/frame_detect/{match_id}")
+def detect_single_frame(
+    match_id: int,
+    body: FrameDetectRequest,
+    db: Session = Depends(get_db),
+):
+    """指定タイムスタンプの 1 フレームを YOLO 検出して即時返す（選手タグ付け用）。"""
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+
+    path = match.video_local_path or match.video_url
+    if not path:
+        raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
+    if path.startswith("localfile:///"):
+        path = path[len("localfile:///"):]
+
+    inf = get_yolo_inference()
+    if not inf.is_available() or not inf.load():
+        raise HTTPException(status_code=503, detail="YOLO モデルが利用できません")
+
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        raise HTTPException(status_code=400, detail=f"動画を開けませんでした: {path}")
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    frame_idx = int(body.timestamp_sec * fps)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+    ret, frame = cap.read()
+    cap.release()
+
+    if not ret:
+        raise HTTPException(status_code=400, detail="フレームを読み込めませんでした")
+
+    roi = body.roi_rect.model_dump() if body.roi_rect else None
+    cropped = _crop_roi(frame, roi)
+    players = inf.predict_frame(cropped)
+    if roi:
+        players = _remap_player_coords(players, roi)
+
+    return {
+        "success": True,
+        "data": {
+            "frame_idx": frame_idx,
+            "timestamp_sec": body.timestamp_sec,
+            "players": players,
+        },
+    }
+
+
+# ─── 選手割り当て + IoU 追跡 ─────────────────────────────────────────────────
+
+class PlayerIdentityAssignment(BaseModel):
+    detection_index: int   # frame_detect の players[] インデックス
+    player_key: str        # 'player_a' | 'partner_a' | 'player_b' | 'partner_b' | 'other'
+
+
+class AssignAndTrackRequest(BaseModel):
+    seed_timestamp_sec: float
+    assignments: list[PlayerIdentityAssignment]
+
+
+@router.post("/yolo/assign_and_track/{match_id}")
+def assign_and_track(
+    match_id: int,
+    body: AssignAndTrackRequest,
+    db: Session = Depends(get_db),
+):
+    """シードフレームの選手割り当てを全バッチフレームに IoU 追跡で伝播し保存する。"""
+    art = (
+        db.query(MatchCVArtifact)
+        .filter(
+            MatchCVArtifact.match_id == match_id,
+            MatchCVArtifact.artifact_type == "yolo_player_detections",
+        )
+        .first()
+    )
+    if not art or not art.data:
+        raise HTTPException(
+            status_code=400,
+            detail="YOLO バッチ解析が完了していません。先にバッチ解析を実行してください。",
+        )
+
+    yolo_frames: list[dict] = json.loads(art.data)
+    assignments = [a.model_dump() for a in body.assignments]
+    tracked = _track_identities(yolo_frames, body.seed_timestamp_sec, assignments)
+
+    track_json = json.dumps(tracked, ensure_ascii=False)
+    existing = (
+        db.query(MatchCVArtifact)
+        .filter(
+            MatchCVArtifact.match_id == match_id,
+            MatchCVArtifact.artifact_type == "player_identity_track",
+        )
+        .first()
+    )
+    import datetime as _dt
+    if existing:
+        existing.data = track_json
+        existing.frame_count = len(tracked)
+        existing.updated_at = _dt.datetime.utcnow()
+    else:
+        db.add(MatchCVArtifact(
+            match_id=match_id,
+            artifact_type="player_identity_track",
+            frame_count=len(tracked),
+            data=track_json,
+        ))
+    db.commit()
+
+    return {"success": True, "data": {"tracked_frames": len(tracked)}}
+
+
+@router.get("/yolo/identity_track/{match_id}")
+def get_identity_track(match_id: int, db: Session = Depends(get_db)):
+    """保存済み選手識別トラックを返す。"""
+    art = (
+        db.query(MatchCVArtifact)
+        .filter(
+            MatchCVArtifact.match_id == match_id,
+            MatchCVArtifact.artifact_type == "player_identity_track",
+        )
+        .order_by(MatchCVArtifact.created_at.desc())
+        .first()
+    )
+    if not art or not art.data:
+        return {"success": True, "data": []}
+    return {"success": True, "data": json.loads(art.data)}
+
+
+# ─── IoU 追跡ヘルパー ────────────────────────────────────────────────────────
+
+def _match_identities(
+    curr_players: list[dict],
+    prev_identities: list[dict],
+    iou_thresh: float = 0.15,
+) -> list[dict]:
+    """前フレームの識別済み選手を現フレームに IoU でマッチング伝播する。"""
+    result: list[dict] = []
+    used: set[int] = set()
+
+    for prev in prev_identities:
+        best_iou = iou_thresh
+        best_i = -1
+        for i, p in enumerate(curr_players):
+            if i in used:
+                continue
+            iou = _bbox_iou(prev.get("bbox", []), p.get("bbox", []))
+            if iou > best_iou:
+                best_iou = iou
+                best_i = i
+
+        if best_i >= 0:
+            used.add(best_i)
+            p = curr_players[best_i]
+            result.append({
+                "player_key": prev["player_key"],
+                "bbox":  p.get("bbox", prev.get("bbox")),
+                "cx_n":  p.get("cx_n",  prev.get("cx_n")),
+                "cy_n":  p.get("cy_n",  prev.get("cy_n")),
+                "lost":  False,
+            })
+        else:
+            # トラッキングロスト — 前フレームの位置を保持
+            result.append({**prev, "lost": True})
+
+    return result
+
+
+def _track_identities(
+    yolo_frames: list[dict],
+    seed_ts: float,
+    assignments: list[dict],
+) -> list[dict]:
+    """シードフレームの割り当てをもとに全フレームへ前後双方向で IoU 伝播する。"""
+    if not yolo_frames:
+        return []
+
+    # シードフレームのインデックスを特定
+    seed_i = min(range(len(yolo_frames)), key=lambda i: abs(yolo_frames[i]["timestamp_sec"] - seed_ts))
+    seed_players = yolo_frames[seed_i]["players"]
+
+    # 初期識別リスト構築
+    init: list[dict] = []
+    for a in assignments:
+        idx = a["detection_index"]
+        if idx < len(seed_players):
+            p = seed_players[idx]
+            init.append({
+                "player_key": a["player_key"],
+                "bbox":  p.get("bbox", [0, 0, 0, 0]),
+                "cx_n":  p.get("cx_n"),
+                "cy_n":  p.get("cy_n"),
+                "lost":  False,
+            })
+
+    # 前方伝播（シード → 末尾）
+    forward: dict[int, dict] = {}
+    prev = init
+    for frame in yolo_frames[seed_i:]:
+        matched = _match_identities(frame["players"], prev)
+        forward[frame["frame_idx"]] = {
+            "frame_idx":    frame["frame_idx"],
+            "timestamp_sec": frame["timestamp_sec"],
+            "players":      matched,
+        }
+        prev = matched
+
+    # 後方伝播（シード → 先頭 / 逆順）
+    backward: dict[int, dict] = {}
+    prev = init
+    for frame in reversed(yolo_frames[:seed_i]):
+        matched = _match_identities(frame["players"], prev)
+        backward[frame["frame_idx"]] = {
+            "frame_idx":    frame["frame_idx"],
+            "timestamp_sec": frame["timestamp_sec"],
+            "players":      matched,
+        }
+        prev = matched
+
+    merged = {**backward, **forward}  # forward が seed フレームを優先
+    return sorted(merged.values(), key=lambda f: f["frame_idx"])
+
+
 # ─── ダブルス CV 解析 ─────────────────────────────────────────────────────────
 
 @router.get("/yolo/doubles_analysis/{match_id}")

@@ -14,6 +14,7 @@ import { apiGet, apiPost } from '@/api/client'
 import type { ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import type { Match } from '@/types'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
+import type { TrackFrame, RawDetection } from '@/components/annotation/PlayerTrackingOverlay'
 
 /** FastAPI HTTPException の detail フィールドを取り出す。取れなければ元のメッセージ。 */
 function extractApiError(err: unknown): string {
@@ -91,6 +92,15 @@ export interface CVJobsResult {
   yoloRoiExpanded: boolean
   /** 既存 TrackNet 解析結果が存在する（再開ボタン表示判定用） */
   tracknetArtifactExists: boolean
+  // 選手識別トラッキング
+  frameDetections: RawDetection[]
+  trackFrames: TrackFrame[]
+  trackingVisible: boolean
+  setTrackingVisible: React.Dispatch<React.SetStateAction<boolean>>
+  handleFrameDetect: (timestampSec: number) => Promise<void>
+  handleAssignAndTrack: (seedTs: number, assignments: { detection_index: number; player_key: string }[]) => Promise<void>
+  frameDetectLoading: boolean
+  trackingLoading: boolean
   // Video overlay
   currentVideoSec: number
   videoContainerRef: RefObject<HTMLDivElement>
@@ -152,6 +162,60 @@ export function useCVJobs({
   })
 
   const yoloRoiExpanded = roiHasExpanded(yoloLastRoi, roiRect ?? null)
+
+  // ── 選手識別トラッキング ──────────────────────────────────────────────────
+
+  const [frameDetections, setFrameDetections] = useState<RawDetection[]>([])
+  const [trackFrames, setTrackFrames] = useState<TrackFrame[]>([])
+  const [trackingVisible, setTrackingVisible] = useState(false)
+  const [frameDetectLoading, setFrameDetectLoading] = useState(false)
+  const [trackingLoading, setTrackingLoading] = useState(false)
+
+  const handleFrameDetect = useCallback(async (timestampSec: number) => {
+    if (!matchId) return
+    setFrameDetectLoading(true)
+    try {
+      const res = await apiPost<{ success: boolean; data: { players: RawDetection[] } }>(
+        `/yolo/frame_detect/${matchId}`,
+        { timestamp_sec: timestampSec, roi_rect: roiRect ?? null }
+      )
+      if (res.success) setFrameDetections(res.data.players)
+    } catch { /* 検出失敗は無視 */ } finally {
+      setFrameDetectLoading(false)
+    }
+  }, [matchId, roiRect])
+
+  const handleAssignAndTrack = useCallback(async (
+    seedTs: number,
+    assignments: { detection_index: number; player_key: string }[]
+  ) => {
+    if (!matchId) return
+    setTrackingLoading(true)
+    try {
+      await apiPost(`/yolo/assign_and_track/${matchId}`, {
+        seed_timestamp_sec: seedTs,
+        assignments,
+      })
+      // 保存後すぐ取得
+      const res = await apiGet<{ success: boolean; data: TrackFrame[] }>(
+        `/yolo/identity_track/${matchId}`
+      )
+      if (res.success && res.data.length > 0) {
+        setTrackFrames(res.data)
+        setTrackingVisible(true)
+      }
+    } catch { /* 追跡失敗は無視 */ } finally {
+      setTrackingLoading(false)
+    }
+  }, [matchId])
+
+  // マウント時: 保存済みトラックを取得
+  useEffect(() => {
+    if (!matchId) return
+    apiGet<{ success: boolean; data: TrackFrame[] }>(`/yolo/identity_track/${matchId}`)
+      .then(res => { if (res.success && res.data.length > 0) setTrackFrames(res.data) })
+      .catch(() => {})
+  }, [matchId])
 
   // ── ビデオオーバーレイ ────────────────────────────────────────────────────
 
@@ -387,6 +451,15 @@ export function useCVJobs({
     handleYoloBatchDiff,
     yoloArtifactExists,
     yoloRoiExpanded,
+    // 選手識別トラッキング
+    frameDetections,
+    trackFrames,
+    trackingVisible,
+    setTrackingVisible,
+    handleFrameDetect,
+    handleAssignAndTrack,
+    frameDetectLoading,
+    trackingLoading,
     // Video overlay
     currentVideoSec,
     videoContainerRef,

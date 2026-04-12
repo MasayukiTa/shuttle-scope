@@ -12,6 +12,8 @@ import { ShuttleTrackOverlay } from '@/components/annotation/ShuttleTrackOverlay
 import { CourtGridOverlay } from '@/components/video/CourtGridOverlay'
 import { RoiRectOverlay, type RoiRect } from '@/components/video/RoiRectOverlay'
 import type { ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
+import { PlayerTrackingOverlay } from '@/components/annotation/PlayerTrackingOverlay'
+import type { TrackFrame, RawDetection, PlayerOption } from '@/components/annotation/PlayerTrackingOverlay'
 
 interface Props {
   videoRef: RefObject<HTMLVideoElement>
@@ -32,6 +34,16 @@ interface Props {
   roiRect?: RoiRect | null
   roiEditing?: boolean
   onRoiChange?: (rect: RoiRect | null) => void
+  /** 選手識別トラッキングオーバーレイ */
+  trackFrames?: TrackFrame[]
+  frameDetections?: RawDetection[]
+  trackingVisible?: boolean
+  taggingMode?: boolean
+  playerOptions?: PlayerOption[]
+  taggingAssignments?: Record<number, string>
+  onTagAssign?: (detectionIndex: number, playerKey: string) => void
+  isPaused?: boolean
+  isLight?: boolean
 }
 
 /**
@@ -79,6 +91,15 @@ export function AnnotatorVideoPane({
   roiRect = null,
   roiEditing = false,
   onRoiChange,
+  trackFrames = [],
+  frameDetections = [],
+  trackingVisible = false,
+  taggingMode = false,
+  playerOptions = [],
+  taggingAssignments = {},
+  onTagAssign,
+  isPaused = false,
+  isLight = false,
 }: Props) {
   // videoAreaRef はビデオ本体 div（aspect-ratio ボックス）を指す。
   // オーバーレイはここに配置 — コントロール（シークバー・ボタン）は含まない。
@@ -155,6 +176,23 @@ export function AnnotatorVideoPane({
           editing={roiEditing}
           containerRef={videoAreaRef}
         />
+      )}
+      {/* 選手識別トラッキングオーバーレイ */}
+      {(taggingMode || trackingVisible) && rr && (
+        <div style={overlayStyle}>
+          <PlayerTrackingOverlay
+            trackFrames={trackFrames}
+            frameDetections={frameDetections}
+            currentSec={currentVideoSec}
+            isPaused={isPaused}
+            visible={taggingMode || trackingVisible}
+            tagging={taggingMode}
+            playerOptions={playerOptions}
+            onAssign={onTagAssign ?? (() => {})}
+            assignments={taggingAssignments}
+            isLight={isLight}
+          />
+        </div>
       )}
     </>
   )
