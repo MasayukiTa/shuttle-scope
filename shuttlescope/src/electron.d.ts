@@ -14,6 +14,8 @@ declare global {
       closeVideoWindow?: () => Promise<void>
       onVideoWindowClosed?: (cb: () => void) => () => void
       captureWebviewFrame?: () => Promise<string | null>
+      /** 録画した Uint8Array をファイル保存ダイアログで保存し、保存先パスを返す */
+      saveRecordedVideo?: (data: Uint8Array, defaultFilename: string) => Promise<string | null>
       [key: string]: unknown
     }
   }

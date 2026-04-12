@@ -1,7 +1,44 @@
 # ShuttleScope
 
-ShuttleScope is a local-first Windows desktop app for badminton annotation, review, and analysis.
-It is currently best understood as an internal product-grade prototype for coaches, analysts, and development testing, not a public consumer release.
+ShuttleScope is a local-first Windows desktop workbench for structured badminton match annotation, post-match review, and badminton-specific analysis.
+
+Right now, the fastest honest way to understand it is this:
+
+- it is already usable as an internal tool for rally-by-rally annotation and coach / analyst review
+- it is strong in local workflows: match creation, annotation, dashboard review, local video, and post-match analysis
+- it already contains CV, prediction, LAN sharing, and remote-camera groundwork
+- it is not yet a finished public product, and some of those advanced layers are still under active validation
+
+In other words, ShuttleScope is no longer just a loose PoC, but it is also not something we should describe as a finished commercial release.
+
+## What You Can Actually Do With It Today
+
+If someone opens ShuttleScope today, the parts they can realistically expect to use are:
+
+- create and edit matches, players, and doubles pairings
+- annotate rallies stroke by stroke
+- review rallies with comments, bookmarks, review-later markers, and warm-up notes
+- run badminton-specific dashboard analysis across matches
+- use local video with second-screen playback and court calibration support
+- test CV-assisted annotation workflows and TrackNet / YOLO readiness on prepared environments
+- share sessions on nearby devices over LAN with password-protected join flow
+
+The parts that still need more real-world proof are:
+
+- real-video CV quality and threshold tuning
+- remote camera and browser video transport
+- prediction quality under live or operational use
+- fully automatic annotation without human verification
+
+## Current Product Position
+
+ShuttleScope is currently best understood as:
+
+- an internal product-grade badminton analysis system
+- a practical annotation and review tool for coaches / analysts
+- a local-first experimentation platform for deeper analytics, prediction, and CV-assisted workflows
+
+It is strongest in the annotation / review core, with research and CV layers built on top of that core rather than replacing it.
 
 ## Current Focus
 

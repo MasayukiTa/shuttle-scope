@@ -30,4 +30,8 @@ contextBridge.exposeInMainWorld('shuttlescope', {
   // ─── P5: WebView フレームキャプチャ（実験的）────────────────────────────────
   captureWebviewFrame: (): Promise<string | null> =>
     ipcRenderer.invoke('capture-webview-frame'),
+
+  // ─── 録画データ保存ダイアログ ──────────────────────────────────────────────
+  saveRecordedVideo: (data: Uint8Array, defaultFilename: string): Promise<string | null> =>
+    ipcRenderer.invoke('save-recorded-video', data.buffer, defaultFilename),
 })

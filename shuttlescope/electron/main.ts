@@ -299,6 +299,25 @@ ipcMain.handle('close-video-window', () => {
   }
 })
 
+// ─── IPC: 録画データの保存ダイアログ ─────────────────────────────────────────
+// MediaRecorder で録画した Uint8Array を受け取り、保存先をユーザーに選ばせてファイル書き込みする。
+
+ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultFilename: string) => {
+  const result = await dialog.showSaveDialog({
+    defaultPath: defaultFilename,
+    filters: [
+      { name: 'Video', extensions: ['webm', 'mp4', 'mkv'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  })
+  if (result.canceled || !result.filePath) return null
+  const { writeFileSync } = require('fs') as typeof import('fs')
+  writeFileSync(result.filePath, Buffer.from(data))
+  // Windows パスを localfile:// URL に変換して返す（動画登録に使用）
+  const normalized = result.filePath.replace(/\\/g, '/')
+  return `localfile:///${normalized}`
+})
+
 // ─── IPC: P5 WebView フレームキャプチャ（実験的）─────────────────────────────
 // WebViewPlayer が表示している映像の現在フレームをキャプチャして Base64 で返す。
 // TrackNet frame_hint API に渡す3フレーム（前・中・後）を取得するために使用する。

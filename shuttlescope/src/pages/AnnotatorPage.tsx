@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp, Monitor, Globe } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp, Monitor, Globe, Video, Square, Crosshair } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
@@ -29,6 +29,7 @@ import { useCVJobs } from '@/hooks/annotator/useCVJobs'
 import { useSessionSharing } from '@/hooks/annotator/useSessionSharing'
 import { useCVCandidates } from '@/hooks/annotator/useCVCandidates'
 import { AnnotatorVideoPane } from '@/components/annotator/AnnotatorVideoPane'
+import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import { CVAssistPanel } from '@/components/annotation/CVAssistPanel'
 import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/ReviewQueuePanel'
 
@@ -250,6 +251,15 @@ export function AnnotatorPage() {
   // P2: 映像ソースモード + 手動タイマー
   const [videoSourceMode, setVideoSourceMode] = useState<VideoSourceMode>('local')
   const timer = useMatchTimer()
+
+  // TrackNet/YOLO 解析領域（ROI）
+  const [roiRect, setRoiRect] = useState<RoiRect | null>(null)
+  const [roiEditing, setRoiEditing] = useState(false)
+
+  // 録画（カメラ/WebRTCストリームをローカル保存）
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const recChunksRef = useRef<Blob[]>([])
+  const [isRecording, setIsRecording] = useState(false)
 
   // P4: デュアルモニター
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
@@ -561,6 +571,52 @@ export function AnnotatorPage() {
   useEffect(() => {
     if (matchData?.data?.video_url) setUrlInput(matchData.data.video_url)
   }, [matchData?.data?.video_url])
+
+  // --- 録画開始・停止（カメラ/WebRTCストリームをローカル保存） ---
+  const startRecording = useCallback((stream: MediaStream) => {
+    const mimeType = MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')
+      ? 'video/mp4;codecs=avc1'
+      : MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm'
+    recChunksRef.current = []
+    const rec = new MediaRecorder(stream, { mimeType })
+    rec.ondataavailable = (e) => { if (e.data.size > 0) recChunksRef.current.push(e.data) }
+    rec.onstop = async () => {
+      const blob = new Blob(recChunksRef.current, { type: mimeType })
+      const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm'
+      const filename = `recording_${matchId ?? 'match'}_${Date.now()}.${ext}`
+      // Electron 環境ではファイル保存ダイアログを使用、それ以外はブラウザダウンロード
+      if (window.shuttlescope?.saveRecordedVideo) {
+        const arr = new Uint8Array(await blob.arrayBuffer())
+        const savedPath = await window.shuttlescope.saveRecordedVideo(arr, filename)
+        if (savedPath && matchId) {
+          try {
+            await apiPut(`/matches/${matchId}`, { video_local_path: `localfile:///${savedPath}`, video_url: '' })
+            queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+          } catch {}
+        }
+      } else {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }
+    }
+    rec.start(1000)
+    recorderRef.current = rec
+    setIsRecording(true)
+  }, [matchId, queryClient])
+
+  const stopRecording = useCallback(() => {
+    recorderRef.current?.stop()
+    recorderRef.current = null
+    setIsRecording(false)
+  }, [])
 
   // --- ファイルピッカー（Electron IPC） ---
   const handleFileOpen = useCallback(async () => {
@@ -1429,6 +1485,28 @@ export function AnnotatorPage() {
                 {courtGridVisible ? '◉' : '○'} グリッド
               </button>
 
+              {/* TrackNet/YOLO 解析領域（ROI）指定 */}
+              <button
+                onClick={() => {
+                  if (roiEditing) {
+                    setRoiEditing(false)
+                  } else {
+                    setRoiEditing(true)
+                  }
+                }}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                  roiEditing
+                    ? isLight ? 'bg-amber-200 text-amber-800' : 'bg-amber-700/60 text-amber-200'
+                    : roiRect
+                      ? isLight ? 'bg-amber-100 text-amber-700' : 'bg-amber-900/40 text-amber-300'
+                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-amber-100' : 'bg-gray-700 text-gray-400 hover:bg-amber-900/40'
+                }`}
+                title={roiEditing ? '解析領域の指定を確定（クリックで終了）' : roiRect ? '解析領域を変更（ドラッグ）' : '解析領域を指定（TrackNet/YOLO）'}
+              >
+                <Crosshair size={11} />
+                {roiEditing ? '指定中...' : roiRect ? '領域▪' : '領域'}
+              </button>
+
               {/* 両方同時表示プリセット（両アーティファクトが揃っている場合） */}
               {yoloJob?.status === 'complete' && shuttleFrames.length > 0 && (
                 <button
@@ -1885,6 +1963,16 @@ export function AnnotatorPage() {
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                       PCカメラ使用中
                     </div>
+                    {/* 録画ボタン */}
+                    <button
+                      onClick={() => isRecording ? stopRecording() : startRecording(localCamStream)}
+                      className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                        isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
+                      }`}
+                      title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
+                    >
+                      {isRecording ? <><Square size={11} className="fill-current" /> 停止</> : <><Video size={11} /> 録画</>}
+                    </button>
                   </div>
                 )
               }
@@ -1902,11 +1990,21 @@ export function AnnotatorPage() {
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                       iOSカメラ受信中
                     </div>
+                    {/* 録画ボタン */}
+                    <button
+                      onClick={() => isRecording ? stopRecording() : startRecording(remoteStream)}
+                      className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                        isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
+                      }`}
+                      title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
+                    >
+                      {isRecording ? <><Square size={11} className="fill-current" /> 停止</> : <><Video size={11} /> 録画</>}
+                    </button>
                   </div>
                 )
               }
               return (
-                <div className="flex items-center justify-center bg-gray-800 rounded text-gray-400 text-sm border-2 border-dashed border-gray-600 py-6 px-4 text-center gap-2 flex-col">
+                <div className="w-full aspect-video flex items-center justify-center bg-gray-800 rounded text-gray-400 text-sm border-2 border-dashed border-gray-600 text-center gap-2 flex-col">
                   <span>カメラ映像待機中...</span>
                   <span className="text-xs text-gray-600">デバイス管理でカメラを起動してください</span>
                 </div>
@@ -1926,7 +2024,7 @@ export function AnnotatorPage() {
               // WebViewモード: DRM保護コンテンツをインブラウザで視聴
               if (useWebView) {
                 return (
-                  <div className="flex flex-col gap-1">
+                  <div className="w-full flex flex-col gap-1">
                     <WebViewPlayer url={videoSrc} siteName={streamingSiteName} />
                     <button
                       onClick={() => setUseWebView(false)}
@@ -1975,6 +2073,9 @@ export function AnnotatorPage() {
                 shuttleOverlayVisible={shuttleOverlayVisible}
                 courtGridMatchId={matchId ?? undefined}
                 courtGridVisible={courtGridVisible}
+                roiRect={roiRect}
+                roiEditing={roiEditing}
+                onRoiChange={setRoiRect}
               />
             )
           })()}

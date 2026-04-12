@@ -123,8 +123,8 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
 
   return (
     <div
-      className="flex flex-col bg-gray-900 rounded-lg overflow-hidden border border-gray-700"
-      style={{ aspectRatio: '16/9' }}
+      className="w-full flex flex-col bg-gray-900 rounded-lg overflow-hidden border border-gray-700"
+      style={{ aspectRatio: '16/9', minHeight: '200px' }}
     >
       {/* ── ナビゲーションバー ── */}
       <div className="flex items-center gap-1 px-2 py-1.5 bg-gray-800 border-b border-gray-700 shrink-0">
