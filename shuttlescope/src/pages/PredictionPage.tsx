@@ -182,7 +182,7 @@ export function PredictionPage() {
                 <p className={`text-sm font-semibold mb-3 ${textHeading}`}>
                   {t('prediction.lineup_optimizer')}
                 </p>
-                <LineupOptimizerPanel players={sortedPlayers} />
+                <LineupOptimizerPanel players={sortedPlayers} role={role} />
               </div>
             </div>
           ) : (

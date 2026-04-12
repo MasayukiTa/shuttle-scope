@@ -30,6 +30,7 @@ from backend.analysis.prediction_engine import (
     # Phase S3/S4
     compute_score_volatility,
     compute_lineup_scores,
+    compute_match_narrative,
 )
 
 router = APIRouter()
@@ -103,6 +104,22 @@ def get_match_preview(
     similar_count = len(h2h_matches)
     confidence = compute_confidence_score(sample_size, similar_count)
 
+    # 試合前サマリーナレーション（決め手・ぐだり局面・スコア予測を統合）
+    player_obj = db.get(Player, player_id)
+    match_narrative = compute_match_narrative(
+        player_name=player_obj.name if player_obj else '自分',
+        opponent_name=opponent_player.name if opponent_player else '相手',
+        win_prob=win_prob_v2,
+        sample_size=sample_size,
+        set_distribution=set_dist,
+        most_likely_scorelines=scorelines,
+        score_volatility=score_volatility,
+        recent_form=recent_form,
+        obs_context=obs_context,
+        h2h_count=len(h2h_matches),
+        tournament_level=tournament_level,
+    )
+
     return {
         "success": True,
         "data": {
@@ -124,6 +141,7 @@ def get_match_preview(
             "calibrated_scorelines": calibrated_scorelines,
             "prediction_drivers": prediction_drivers,
             "score_volatility": score_volatility,
+            "match_narrative": match_narrative,
         },
         "meta": {
             "sample_size": sample_size,
@@ -248,6 +266,55 @@ def get_fatigue_risk(
             "confidence": confidence_meta(result["confidence"], result["breakdown"]["total_rallies"]),
         },
     }
+
+@router.get("/prediction/pair_ranking")
+def get_pair_ranking(
+    anchor_player_id: int,
+    tournament_level: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    【アナリスト専用】anchor_player_id に対して最良パートナー候補をランキング形式で返す。
+    全選手を候補としてペア試合実績から勝率を計算し、降順でソートする。
+    コーチ・選手には返してはいけないエンドポイント（フロントエンド側で RoleGuard 必須）。
+    """
+    all_players = db.query(Player).order_by(Player.name).all()
+    anchor = db.get(Player, anchor_player_id)
+
+    results = []
+    for candidate in all_players:
+        if candidate.id == anchor_player_id:
+            continue
+        pair_matches = get_pair_matches(db, anchor_player_id, candidate.id, tournament_level)
+        win_prob, sample_size = compute_win_probability(pair_matches, anchor_player_id)
+        confidence = compute_confidence_score(sample_size, sample_size)
+        results.append({
+            "partner_id": candidate.id,
+            "partner_name": candidate.name,
+            "partner_team": getattr(candidate, "team", None),
+            "win_probability": win_prob,
+            "sample_size": sample_size,
+            "confidence": confidence,
+            "confidence_meta": confidence_meta(confidence, sample_size),
+        })
+
+    # 勝率降順 → サンプル数降順でソート
+    results.sort(key=lambda x: (-x["win_probability"], -x["sample_size"]))
+    for i, r in enumerate(results):
+        r["rank"] = i + 1
+
+    return {
+        "success": True,
+        "data": {
+            "anchor_player": {
+                "id": anchor_player_id,
+                "name": anchor.name if anchor else "?",
+            },
+            "ranked_partners": results,
+            "tournament_level": tournament_level,
+        },
+    }
+
 
 @router.get("/prediction/pair_simulation")
 def get_pair_simulation(

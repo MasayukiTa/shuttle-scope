@@ -366,6 +366,145 @@ def build_caution_flags(
     return flags[:2]
 
 
+def compute_match_narrative(
+    player_name: str,
+    opponent_name: str,
+    win_prob: float,
+    sample_size: int,
+    set_distribution: dict,
+    most_likely_scorelines: list,
+    score_volatility: dict,
+    recent_form: dict | None,
+    obs_context: dict,
+    h2h_count: int,
+    tournament_level: str | None,
+) -> dict:
+    """
+    試合前サマリーナレーション。
+    既存の計算済み値を合成し、人間が読める「決め手 / ぐだりやすい局面 / 試合前の既知情報」を返す。
+
+    Returns:
+      verdict         : "勝利有力" | "やや優勢" | "五分五分" | "やや不利" | "苦戦が予想"
+      verdict_level   : "win" | "neutral" | "loss"
+      likely_score    : "2-1（21-18 / 19-21 / 21-16）" — 最有力スコアライン文字列
+      deciding_factor : 決め手1〜2文
+      risk_zones      : ぐだりやすい局面のリスト
+      knowns          : 試合前に分かっていること（H2H・観察など）
+    """
+    # ── 判定 ───────────────────────────────────────────────────────────────
+    if win_prob >= 0.63:
+        verdict, verdict_level = '勝利有力', 'win'
+    elif win_prob >= 0.53:
+        verdict, verdict_level = 'やや優勢', 'win'
+    elif win_prob >= 0.45:
+        verdict, verdict_level = '五分五分', 'neutral'
+    elif win_prob >= 0.35:
+        verdict, verdict_level = 'やや不利', 'loss'
+    else:
+        verdict, verdict_level = '苦戦が予想', 'loss'
+
+    # ── 最有力スコアライン ─────────────────────────────────────────────────
+    likely_score = '—'
+    if most_likely_scorelines:
+        top = most_likely_scorelines[0]
+        sets_str = ' / '.join(
+            s for s in [top.get('set1_score'), top.get('set2_score'), top.get('set3_score')] if s
+        )
+        outcome_label = '勝利' if str(top.get('outcome', '')).startswith('2') else '敗北'
+        pct = round(top.get('probability', 0) * 100)
+        likely_score = f"{top.get('outcome', '?')} {outcome_label}（{sets_str}）— {pct}%"
+
+    # ── 決め手 ─────────────────────────────────────────────────────────────
+    deciding_parts: list[str] = []
+    if h2h_count >= 3:
+        h2h_wr = round(win_prob * 100)
+        deciding_parts.append(f'直接対戦での実績（{h2h_count}試合 / 推定勝率{h2h_wr}%）')
+    elif sample_size >= 5:
+        deciding_parts.append(f'過去の総合成績（{sample_size}試合ベース）')
+
+    rf = recent_form or {}
+    if rf.get('trend') == 'improving' and rf.get('sample', 0) >= 3:
+        deciding_parts.append('直近の調子が上向き')
+    elif rf.get('trend') == 'declining' and rf.get('sample', 0) >= 3:
+        deciding_parts.append('直近の調子が下降傾向（要注意）')
+
+    sv = score_volatility or {}
+    if sv.get('dominant_match_rate', 0) >= 0.5 and verdict_level == 'win':
+        deciding_parts.append('ストレート勝ちが多く圧倒しやすい相手')
+    elif sv.get('close_match_rate', 0) >= 0.5:
+        deciding_parts.append('接戦が多く終盤の集中力が鍵')
+
+    opp_obs = obs_context.get('opponent', {})
+    if opp_obs.get('handedness', {}).get('value') == 'L':
+        deciding_parts.append('相手が左利き（バック側への配球が有効）')
+    if opp_obs.get('tactical_style', {}).get('value') == 'attacker':
+        deciding_parts.append('相手の攻撃スタイルに対する守備安定が鍵')
+    elif opp_obs.get('tactical_style', {}).get('value') == 'defender':
+        deciding_parts.append('守備型の相手にネット前攻略で主導権を握れるか')
+
+    deciding_factor = '。'.join(deciding_parts[:2]) if deciding_parts else f'データ不足（{sample_size}試合）のため不確実性が高い'
+    if deciding_parts:
+        deciding_factor += '。'
+
+    # ── ぐだりやすい局面 ────────────────────────────────────────────────────
+    risk_zones: list[str] = []
+    if sv.get('close_match_rate', 0) >= 0.4:
+        risk_zones.append(f'ファイナルセットに縺れやすい（過去{round(sv["close_match_rate"]*100)}%）')
+    if sv.get('typical_margin') is not None and sv['typical_margin'] <= 4 and sv.get('sample', 0) >= 3:
+        risk_zones.append('点差が僅差になりやすい（平均得点差{:.1f}点）'.format(sv['typical_margin']))
+
+    # セット分布から第2セット接戦傾向を推定
+    dist_21 = set_distribution.get('2-1', 0) + set_distribution.get('1-2', 0)
+    if dist_21 >= 0.45:
+        risk_zones.append(f'3セット戦になる可能性が高い（{round(dist_21*100)}%）')
+
+    phys = opp_obs.get('physical_caution', {})
+    if phys.get('value') in ('moderate', 'heavy'):
+        risk_zones.append('相手の身体コンディション変動による展開の読みにくさ')
+
+    self_obs = obs_context.get('self', {})
+    if self_obs.get('self_condition', {}).get('value') in ('poor', 'heavy'):
+        risk_zones.append('自コンディション不良 — スロースタートのリスク')
+
+    if not risk_zones and sample_size >= 5:
+        risk_zones.append('特段の波乱要因なし（過去実績が比較的安定）')
+    elif not risk_zones:
+        risk_zones.append('データが少なく局面予測の精度が低い')
+
+    # ── 試合前の既知情報 ────────────────────────────────────────────────────
+    knowns: list[str] = []
+    if h2h_count > 0:
+        knowns.append(f'直接対戦データ: {h2h_count}試合')
+    if tournament_level:
+        knowns.append(f'大会レベル: {tournament_level}')
+    if opp_obs.get('handedness', {}).get('value') in ('L', 'R'):
+        hand_label = '左利き' if opp_obs['handedness']['value'] == 'L' else '右利き'
+        knowns.append(f'相手利き手: {hand_label}')
+    if opp_obs.get('tactical_style', {}).get('value'):
+        style_map = {'attacker': '攻撃型', 'defender': '守備型', 'balanced': 'バランス型'}
+        style_label = style_map.get(opp_obs['tactical_style']['value'], opp_obs['tactical_style']['value'])
+        knowns.append(f'相手戦術スタイル: {style_label}')
+    if opp_obs.get('physical_caution', {}).get('value') not in (None, 'none'):
+        phys_map = {'light': '軽度', 'moderate': '中程度', 'heavy': '重度'}
+        phys_label = phys_map.get(phys.get('value', ''), phys.get('value', ''))
+        knowns.append(f'相手身体的注意: {phys_label}')
+    self_cond = self_obs.get('self_condition', {}).get('value')
+    if self_cond and self_cond != 'normal':
+        cond_map = {'great': '絶好調', 'poor': '不調', 'heavy': '重大注意'}
+        knowns.append(f'自コンディション: {cond_map.get(self_cond, self_cond)}')
+    if not knowns:
+        knowns.append(f'事前観察なし — {sample_size}試合の統計データのみ')
+
+    return {
+        'verdict': verdict,
+        'verdict_level': verdict_level,
+        'likely_score': likely_score,
+        'deciding_factor': deciding_factor,
+        'risk_zones': risk_zones[:3],
+        'knowns': knowns[:5],
+    }
+
+
 def compute_confidence_score(sample_size: int, similar_matches: int) -> float:
     """信頼度スコア (0.0–1.0)"""
     base = 1.0 - math.exp(-sample_size / 20.0)
