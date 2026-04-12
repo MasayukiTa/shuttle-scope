@@ -160,6 +160,8 @@ export function useSessionSharing({
     if (!tunnelBase) return url
     try {
       const u = new URL(url)
+      // localhost / 127.0.0.1 は常にそのまま返す（トンネル経由は不要）
+      if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return url
       // pathname + search + hash を保持してオリジンだけ tunnelBase に置換する
       return tunnelBase + u.pathname + u.search + u.hash
     } catch { return url }

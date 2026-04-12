@@ -15,10 +15,10 @@ import uvicorn
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from fastapi import FastAPI, Query, WebSocket
+from fastapi import FastAPI, HTTPException, Query, WebSocket
 
-# Windows では .js の MIME タイプが登録されていない場合があり
-# type="module" スクリプトが読み込まれないため明示的に追加
+# Windows では .js の MIME タイプが未登録の場合があり type="module" が動作しないため追加
+# （StaticFiles の明示ルートによる直接指定と併用）
 mimetypes.add_type('application/javascript', '.js')
 mimetypes.add_type('application/javascript', '.mjs')
 mimetypes.add_type('text/css', '.css')
@@ -384,13 +384,28 @@ async def version():
 
 
 # ─── React SPA 配信（LAN / トンネルブラウザアクセス用）───────────────────────
-# out/renderer/ が存在するとき（npm run build 後）に assets をマウント。
 # HashRouter 使用のため / を常に返せば全クライアントサイドルートが動作する。
+# StaticFiles の条件マウントではなく明示ルートで配信（MIME タイプを直接指定）。
 _assets_dir = _RENDERER_DIR / "assets"
-if _assets_dir.exists():
-    app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="renderer-assets")
-
 _INDEX_HTML = _RENDERER_DIR / "index.html"
+
+# 拡張子 → Content-Type の明示マッピング（Windows mimetypes に依存しない）
+_MIME_MAP: dict[str, str] = {
+    ".js":    "application/javascript; charset=utf-8",
+    ".mjs":   "application/javascript; charset=utf-8",
+    ".css":   "text/css; charset=utf-8",
+    ".html":  "text/html; charset=utf-8",
+    ".json":  "application/json",
+    ".png":   "image/png",
+    ".jpg":   "image/jpeg",
+    ".jpeg":  "image/jpeg",
+    ".svg":   "image/svg+xml",
+    ".ico":   "image/x-icon",
+    ".woff":  "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf":   "font/ttf",
+    ".map":   "application/json",
+}
 
 _FALLBACK_HTML = """<!DOCTYPE html>
 <html lang="ja">
@@ -417,18 +432,34 @@ _FALLBACK_HTML = """<!DOCTYPE html>
 </html>"""
 
 
+@app.get("/assets/{asset_path:path}")
+async def serve_assets(asset_path: str):
+    """静的アセット配信（JS/CSS/Font 等）— Windows mimetypes に依存せず Content-Type を明示指定"""
+    file_path = _assets_dir / asset_path
+    # ディレクトリトラバーサル防止
+    try:
+        file_path.resolve().relative_to(_assets_dir.resolve())
+    except ValueError:
+        raise HTTPException(status_code=404)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404)
+    suffix = file_path.suffix.lower()
+    media_type = _MIME_MAP.get(suffix, "application/octet-stream")
+    return FileResponse(str(file_path), media_type=media_type)
+
+
 @app.get("/")
 async def spa_root():
     """React SPA エントリポイント（ブラウザ / LAN / トンネルアクセス用）"""
     if _INDEX_HTML.exists():
-        return FileResponse(str(_INDEX_HTML))
+        return FileResponse(str(_INDEX_HTML), media_type="text/html; charset=utf-8")
     return HTMLResponse(content=_FALLBACK_HTML)
 
 
 @app.get("/index.html")
 async def spa_index():
     if _INDEX_HTML.exists():
-        return FileResponse(str(_INDEX_HTML))
+        return FileResponse(str(_INDEX_HTML), media_type="text/html; charset=utf-8")
     return HTMLResponse(content=_FALLBACK_HTML)
 
 

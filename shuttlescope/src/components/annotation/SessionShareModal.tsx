@@ -38,9 +38,15 @@ export function SessionShareModal({
   const [regenerating, setRegenerating] = useState(false)
   const isLight = useIsLightMode()
 
-  const coachUrl = coachUrls[0] ?? ''
-  const cameraUrl = cameraSenderUrls[0] ?? ''
-  const viewerUrl = viewerUrls[0] ?? ''
+  // LAN IP URL（QRコード・他デバイス用）と localhost URL（同一PC用）を分離
+  const isLocalhost = (u: string) => /localhost|127\.0\.0\.1/.test(u)
+  const lanCoachUrls = coachUrls.filter(u => !isLocalhost(u))
+  const localCoachUrl = coachUrls.find(isLocalhost) ?? ''
+  const coachUrl = lanCoachUrls[0] ?? localCoachUrl  // LAN IP 優先、なければ localhost
+  const cameraUrl = cameraSenderUrls.filter(u => !isLocalhost(u))[0]
+    ?? cameraSenderUrls.find(isLocalhost) ?? ''
+  const viewerUrl = viewerUrls.filter(u => !isLocalhost(u))[0]
+    ?? viewerUrls.find(isLocalhost) ?? ''
   // パスワードを URL に埋め込む — LAN QR スキャン時にフォーム入力不要にする
   const cameraUrlWithPwd = cameraUrl && sessionPassword
     ? `${cameraUrl}?pwd=${encodeURIComponent(sessionPassword)}`
@@ -156,7 +162,7 @@ export function SessionShareModal({
           <p className={`text-xs text-center mb-3 ${noteColor}`}>URLなし</p>
         )}
         {coachUrl && (
-          <div className="flex items-center gap-1.5 mb-4">
+          <div className="flex items-center gap-1.5 mb-2">
             <p className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} ${urlColor}`}>
               {coachUrl}
             </p>
@@ -167,6 +173,20 @@ export function SessionShareModal({
               {copied ? <Check size={12} /> : <Copy size={12} />}
               {copied ? 'コピー済' : t('lan_session.password_copy')}
             </button>
+          </div>
+        )}
+        {/* 同一PC用 localhost URL（他デバイスへの QR とは別に常に表示） */}
+        {localCoachUrl && (
+          <div className="flex items-center gap-1.5 mb-4">
+            <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>同一PC用:</p>
+            <a
+              href={localCoachUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex-1 text-[10px] font-mono truncate rounded px-2 py-1 ${urlBg} text-blue-400 hover:text-blue-300`}
+            >
+              {localCoachUrl}
+            </a>
           </div>
         )}
 

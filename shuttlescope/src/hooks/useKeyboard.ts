@@ -14,6 +14,8 @@ interface UseKeyboardOptions {
   onSkipRallyOpen?: () => void
   /** ダブルスモードで Tab キーによりチーム内ヒッターを切替 */
   onToggleHitter?: () => void
+  /** ダブルスモードで 7/8/9/0 キーにより直接打者を選択 */
+  onHitterSelect?: (hitter: 'player_a' | 'partner_a' | 'partner_b' | 'player_b') => void
 }
 
 /**
@@ -32,6 +34,7 @@ interface UseKeyboardOptions {
  *
  * 【idle(true) = ショット選択中】
  *   ショットキー (N/C/P/S/D/V/L/O/X/Z/F/H/B/G, 1/2=サービス) : ショット入力
+ *   7/8/9/0     : ダブルス打者選択 (player_a/partner_a/partner_b/player_b)
  *   Q           : バックハンドトグル
  *   W           : ラウンドヘッドトグル
  *   E           : ネット上下サイクル
@@ -109,6 +112,10 @@ function isInInputContext(target: EventTarget | null): boolean {
   return false
 }
 
+const HITTER_KEYS: Record<string, 'player_a' | 'partner_a' | 'partner_b' | 'player_b'> = {
+  '7': 'player_a', '8': 'partner_a', '9': 'partner_b', '0': 'player_b',
+}
+
 export function useKeyboard({
   videoRef,
   enabled = true,
@@ -116,6 +123,7 @@ export function useKeyboard({
   onWinnerSelect,
   onSkipRallyOpen,
   onToggleHitter,
+  onHitterSelect,
 }: UseKeyboardOptions = {}) {
   const store = useAnnotationStore()
 
@@ -321,6 +329,16 @@ export function useKeyboard({
         return
       }
 
+      // 7/8/9/0: ダブルス打者直接選択（通常数字キーのみ、Numpadは除外）
+      if (!e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.code.startsWith('Numpad')) {
+        const hitter = HITTER_KEYS[e.key]
+        if (hitter) {
+          e.preventDefault()
+          onHitterSelect?.(hitter)
+          return
+        }
+      }
+
       // 属性キー（Q/W/E + Numpad）
       if (!e.shiftKey) {
         if (e.key === 'q' || e.key === 'Q') { e.preventDefault(); store.toggleAttribute('is_backhand'); return }
@@ -351,7 +369,7 @@ export function useKeyboard({
         }
       }
     },
-    [enabled, store, videoRef, onEndTypeSelect, onWinnerSelect, onSkipRallyOpen, onToggleHitter]
+    [enabled, store, videoRef, onEndTypeSelect, onWinnerSelect, onSkipRallyOpen, onToggleHitter, onHitterSelect]
   )
 
   useEffect(() => {

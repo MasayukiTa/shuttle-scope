@@ -626,6 +626,7 @@ export function AnnotatorPage() {
     },
     onSkipRallyOpen: () => setShowSkipRallyDialog(true),
     onToggleHitter: () => store.toggleHitterWithinTeam(),
+    onHitterSelect: (hitter) => store.setHitter(hitter),
   })
 
   // G2: ショット入力開始（land_zone へ遷移）でエンリッチメントストリップを自動消滅
@@ -2284,7 +2285,15 @@ export function AnnotatorPage() {
             <div className="sticky top-0 z-10 bg-gray-900 px-3 pt-2 pb-1 shrink-0">
               <div className="bg-gray-800 rounded-lg p-3 flex items-center justify-between">
                 <div className="text-center min-w-[80px]">
-                  <div className="text-xs text-gray-400 truncate">{match?.player_a?.name ?? 'A'}</div>
+                  {match?.format !== 'singles' ? (
+                    <div className="flex flex-wrap justify-center gap-x-1 text-[10px] text-gray-400 max-w-[110px]">
+                      <span className="whitespace-nowrap">{match?.player_a?.name ?? 'A'}</span>
+                      <span className="opacity-40">/</span>
+                      <span className="whitespace-nowrap">{match?.partner_a?.name ?? '—'}</span>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400 truncate">{match?.player_a?.name ?? 'A'}</div>
+                  )}
                   <div className="text-4xl font-bold">{store.scoreA}</div>
                 </div>
                 <div className="text-center">
@@ -2297,7 +2306,15 @@ export function AnnotatorPage() {
                   )}
                 </div>
                 <div className="text-center min-w-[80px]">
-                  <div className="text-xs text-gray-400 truncate">{match?.player_b?.name ?? 'B'}</div>
+                  {match?.format !== 'singles' ? (
+                    <div className="flex flex-wrap justify-center gap-x-1 text-[10px] text-gray-400 max-w-[110px]">
+                      <span className="whitespace-nowrap">{match?.player_b?.name ?? 'B'}</span>
+                      <span className="opacity-40">/</span>
+                      <span className="whitespace-nowrap">{match?.partner_b?.name ?? '—'}</span>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400 truncate">{match?.player_b?.name ?? 'B'}</div>
+                  )}
                   <div className="text-4xl font-bold">{store.scoreB}</div>
                 </div>
               </div>
@@ -2309,7 +2326,15 @@ export function AnnotatorPage() {
             {!isMobile && (
             <div className={clsx('bg-gray-800 rounded flex items-center justify-between shrink-0', useLargeTouch ? 'p-3' : 'p-2')}>
               <div className={clsx('text-center', useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]')}>
-                <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_a?.name ?? 'A'}</div>
+                {match?.format !== 'singles' ? (
+                  <div className="flex flex-wrap justify-center gap-x-1 text-[10px] text-gray-400 max-w-[120px]">
+                    <span className="whitespace-nowrap">{match?.player_a?.name ?? 'A'}</span>
+                    <span className="opacity-40">/</span>
+                    <span className="whitespace-nowrap">{match?.partner_a?.name ?? '—'}</span>
+                  </div>
+                ) : (
+                  <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_a?.name ?? 'A'}</div>
+                )}
                 <div className={clsx('font-bold', useLargeTouch ? 'text-4xl' : 'text-2xl')}>{store.scoreA}</div>
               </div>
               <div className="text-center text-xs text-gray-500">
@@ -2342,7 +2367,15 @@ export function AnnotatorPage() {
                 )}
               </div>
               <div className={clsx('text-center', useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]')}>
-                <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_b?.name ?? 'B'}</div>
+                {match?.format !== 'singles' ? (
+                  <div className="flex flex-wrap justify-center gap-x-1 text-[10px] text-gray-400 max-w-[120px]">
+                    <span className="whitespace-nowrap">{match?.player_b?.name ?? 'B'}</span>
+                    <span className="opacity-40">/</span>
+                    <span className="whitespace-nowrap">{match?.partner_b?.name ?? '—'}</span>
+                  </div>
+                ) : (
+                  <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_b?.name ?? 'B'}</div>
+                )}
                 <div className={clsx('font-bold', useLargeTouch ? 'text-4xl' : 'text-2xl')}>{store.scoreB}</div>
               </div>
             </div>
@@ -2602,11 +2635,19 @@ export function AnnotatorPage() {
                   </div>
                   {/* 4選手ボタン行 */}
                   <div className="flex items-center gap-1">
-                    <button onClick={() => store.setHitter('player_a')}  className={btnCls('player_a')}>{nameA}</button>
-                    <button onClick={() => store.setHitter('partner_a')} className={btnCls('partner_a')}>{namePA}</button>
+                    <button onClick={() => store.setHitter('player_a')}  className={btnCls('player_a')}  title={[match.player_a?.team, '[7]'].filter(Boolean).join(' ')}>
+                      <span className="opacity-40 text-[9px] mr-0.5">7</span>{nameA}
+                    </button>
+                    <button onClick={() => store.setHitter('partner_a')} className={btnCls('partner_a')} title={[match.partner_a?.team, '[8]'].filter(Boolean).join(' ')}>
+                      <span className="opacity-40 text-[9px] mr-0.5">8</span>{namePA}
+                    </button>
                     <div className={clsx('w-px self-stretch mx-0.5', isLight ? 'bg-gray-300' : 'bg-gray-600')} />
-                    <button onClick={() => store.setHitter('partner_b')} className={btnCls('partner_b')}>{namePB}</button>
-                    <button onClick={() => store.setHitter('player_b')}  className={btnCls('player_b')}>{nameB}</button>
+                    <button onClick={() => store.setHitter('partner_b')} className={btnCls('partner_b')} title={[match.partner_b?.team, '[9]'].filter(Boolean).join(' ')}>
+                      <span className="opacity-40 text-[9px] mr-0.5">9</span>{namePB}
+                    </button>
+                    <button onClick={() => store.setHitter('player_b')}  className={btnCls('player_b')}  title={[match.player_b?.team, '[0]'].filter(Boolean).join(' ')}>
+                      <span className="opacity-40 text-[9px] mr-0.5">0</span>{nameB}
+                    </button>
                   </div>
                 </div>
               )

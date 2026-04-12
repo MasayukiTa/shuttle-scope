@@ -714,6 +714,10 @@ def _session_to_dict(session: SharedSession, db: Session) -> dict:
         for ip in lan_ips:
             coach_urls.append(f"http://{ip}:{port}/#/annotator/{session.match_id}")
             camera_sender_urls.append(f"http://{ip}:{port}/#/camera/{session.session_code}")
+    # localhost URL を末尾に追加（同一デバイスでの確実なアクセス用）
+    # LAN_MODE 無効時でも同一PCからのアクセスは常に可能
+    coach_urls.append(f"http://localhost:{port}/#/annotator/{session.match_id}")
+    camera_sender_urls.append(f"http://localhost:{port}/#/camera/{session.session_code}")
 
     return {
         "id": session.id,

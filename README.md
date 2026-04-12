@@ -1,65 +1,97 @@
 # ShuttleScope
 
-ShuttleScope is a local-first Windows desktop app for badminton annotation and review.
-It is currently aimed at coaches, analysts, and internal testing workflows rather than public release.
+ShuttleScope is a local-first Windows desktop app for badminton annotation, review, and analysis.
+It is currently best understood as an internal product-grade prototype for coaches, analysts, and development testing, not a public consumer release.
 
-The current core is:
+## Current Focus
 
-- match annotation
+The strongest parts of ShuttleScope today are:
+
+- structured match annotation
 - post-match review
-- badminton-specific analysis
-- local LAN sharing for nearby devices
+- badminton-specific analytics
+- local video workflow
+- limited LAN sharing for nearby devices
 
-Prediction, live camera workflows, and tracking are already present in the codebase, but the product is still best understood as a practical internal PoC.
+Prediction, CV-assisted annotation, remote camera support, and research views are present in the codebase, but they are still uneven in real-world validation and should be treated as active development areas.
 
-## What Works Today
+## What Works Well Today
 
 ### Annotation
 
 - quick-start match creation
+- match create/edit flow
 - rally-by-rally stroke annotation
+- stroke history and rally-by-rally review
 - numpad-based landing input
 - skipped rally handling
 - score correction and forced set end handling
 - doubles hitter switching
+- initial server selection and analyst viewpoint persistence
 - manual record / assisted record modes
 - review-later flow for incomplete rallies
+- warm-up / pre-match observation capture
+- comments, bookmarks, and review markers around a match session
 
-### Analysis
+### Match and Player Management
+
+- searchable player selectors in match creation
+- provisional player creation during match setup
+- team-aware player registration flow
+- match editing after creation
+- player deletion guard when the player is still referenced by matches
+- player team history support at the data model and settings level
+
+### Review and Analysis
 
 - court heatmaps
 - score progression and set comparison
 - shot, rally, and time-based analysis
-- pre-win and pre-loss pattern views
+- zone maps and effective / vulnerable area views
+- date-range filtering and recent-match filtering
 - growth and trend views across matches
 - doubles and partner analysis
 - warm-up observation analysis
-- confidence-aware displays
+- recommendation and ranking style views
+- stable / advanced / research dashboard split
+- dashboard split into overview / live / review / growth / advanced / research
 
-### Prediction
+### Prediction and Research
 
-- match preview
-- pair simulation
-- fatigue-related risk hints
-- score distribution and tactical note views
+- match preview and pair-oriented prediction views
+- human forecast / analyst comparison groundwork
+- fatigue and hazard style research views
+- research cards for state/value/counterfactual-oriented analysis
+- promotion workflow and evidence metadata groundwork
 
-This area is usable, but still under active refinement.
+These areas are usable for internal exploration, but they are still a step behind the annotation/review core in real-world confidence.
+
+### Video and CV Workflow
+
+- local video import
+- second-screen `Video Only` view
+- court calibration overlay
+- backend-persisted calibration with local fallback
+- TrackNet and YOLO readiness checks
+- TrackNet shuttle-track persistence
+- YOLO player-position artifact flow
+- CV assist candidate flow, candidate badges, and review queue foundation
+- player / shuttle overlay groundwork in the annotator
+- benchmark and doctor scripts for CV environment validation
+
+These areas are useful for development and internal testing, but CV quality still depends heavily on real-video validation.
 
 ### Sharing and Access
 
-- live session sharing
-- comments and bookmarks
-- LAN access from browser clients on the same network
-- QR-based join flow
+- LAN session sharing
 - password-protected LAN sessions
+- comments and bookmarks
+- QR-based join flow
 - device manager and camera sender pages
+- viewer page and grouped device / handoff UX groundwork
+- tunnel-provider selection and remote health status groundwork
 
-### Video and Tracking
-
-- local video workflow
-- second-screen video-only view
-- LAN camera sender groundwork
-- TrackNet runtime selection
+Remote and browser-based video workflows exist, but they should still be treated as experimental compared with the core local workflow.
 
 ## Main Screens
 
@@ -70,15 +102,26 @@ This area is usable, but still under active refinement.
 - `Settings`
 - `Video Only`
 
-## Intended Use
+## Current Product Shape
+
+In practical terms, ShuttleScope currently behaves like a desktop badminton analysis workbench with several layers:
+
+- a core annotation workflow that is already useful
+- a growing post-match analysis stack
+- a research layer that is visible in the product but still being validated
+- a CV layer that assists annotation rather than fully replacing it
+- a LAN / remote collaboration layer that is promising but not yet the main operating mode
+
+## Intended Use Right Now
 
 ShuttleScope is currently strongest for:
 
 - structured post-match annotation
-- coach and analyst review
+- coach / analyst review
 - exploratory tactical analysis
 - doubles-aware review
-- internal LAN-based testing
+- small-team internal testing and iteration
+- internal testing with local or nearby devices
 
 It should not be read as a finished commercial product yet.
 
@@ -119,18 +162,19 @@ shuttle-scope/
 - Node.js 18+
 - Python 3.10+
 - optional: `ffmpeg`
+- optional: `ngrok`
 - optional: `cloudflared`
 
 ### Fastest New-Device Bootstrap
 
-For a fresh Windows machine, the easiest path is:
+For a fresh Windows machine:
 
 ```powershell
 cd shuttlescope
 .\bootstrap_windows.ps1 -RunDoctor
 ```
 
-If PowerShell is inconvenient, a batch wrapper is also available:
+If PowerShell is inconvenient:
 
 ```bat
 cd shuttlescope
@@ -144,28 +188,29 @@ Optional extras:
 .\bootstrap_windows.ps1 -SetupTrackNet
 ```
 
-The doctor output can also be run directly:
+The doctor can also be run directly:
 
 ```powershell
 .\backend\.venv\Scripts\python -m backend.tools.setup_doctor
 ```
 
-JSON mode and strict mode are available too:
+Useful variants:
 
 ```powershell
 .\backend\.venv\Scripts\python -m backend.tools.setup_doctor --format json
 .\backend\.venv\Scripts\python -m backend.tools.setup_doctor --strict
 ```
 
-This reports:
+The doctor reports:
 
 - missing Python / npm tools
-- TrackNet weights / backend readiness
-- YOLO runtime readiness
+- TrackNet readiness
+- YOLO readiness
 - `ngrok` / `cloudflared` availability
 - key Python package versions
-- recommended next steps for this machine
-- an exit code you can use in automation
+- recommended next steps for the current machine
+
+This setup path is already one of the stronger parts of the project: new-device bootstrap is much better than a typical research prototype, even though model/runtime setup still needs attention.
 
 ### Install and Run
 
@@ -207,11 +252,13 @@ python main.py
 
 The default backend URL is `http://127.0.0.1:8765`.
 
-### TrackNet / YOLO Notes
+## TrackNet / YOLO Notes
 
 - TrackNet needs weights and runtime support
 - YOLO needs `ultralytics` or a local ONNX/PT model
 - the bootstrap and doctor commands above are the quickest way to check readiness on a new device
+- current CV support should be read as assistive and development-stage, not fully automatic production annotation
+- real match videos are still the main requirement for confidence tuning, threshold adjustment, and practical validation
 
 ## Tests
 
@@ -250,18 +297,30 @@ GitHub Actions workflows are included for:
 - the default database file is `shuttlescope/shuttlescope.db`
 - `private_docs/` is ignored
 - `shuttlescope/docs/validation/` is ignored
-- local DBs, videos, TrackNet weights, and generated artifacts are not committed
+- local DBs, videos, CV weights, and generated artifacts are not committed
 
 ## Current Status
 
-ShuttleScope is already useful as an internal badminton analysis tool and PoC.
-Its strongest areas today are annotation, review, and badminton-specific analysis.
+ShuttleScope is already useful as an internal badminton analysis tool.
+Its strongest areas today are:
 
-Some larger areas are still being actively shaped, especially:
+- annotation flow
+- review and dashboard structure
+- badminton-specific analysis
+- local setup / bootstrap / doctor support
 
-- prediction quality
-- live camera workflows
-- realtime inference integration
-- broader field validation
+It is weaker, or still more conditional, in:
 
-The repo should be read as an active internal project with working features, not as a finished product announcement.
+- real-video CV quality
+- remote video transport and browser-camera reliability
+- prediction quality under live use
+- broad operator-facing polish and recovery behavior
+
+The biggest areas still under active validation are:
+
+- CV quality on real match video
+- remote camera and browser video workflows
+- prediction quality under real use
+- operator-facing polish and failure recovery
+
+This repository should be read as an active internal product prototype with many working features, not as a finished public release announcement.
