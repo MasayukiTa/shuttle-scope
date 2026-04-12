@@ -26,6 +26,9 @@ mimetypes.add_type('text/css', '.css')
 logger = logging.getLogger(__name__)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings as app_settings
@@ -103,13 +106,36 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS設定（ElectronのRenderer Processからのリクエストを許可）
+# ─── HTTP ボディサイズ上限ミドルウェア ────────────────────────────────────────
+# 動画は local path 参照のため HTTP upload なし。
+# sync .sspkg: アプリ層で 50 MB 制限済み。ここでは Content-Length ヘッダーによる
+# 早期拒否（100 MB）で多層防御とする。チャンク転送はアプリ層で catch する。
+_HTTP_UPLOAD_LIMIT = 100 * 1024 * 1024  # 100 MB
+
+
+class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        cl = request.headers.get("content-length")
+        if cl and int(cl) > _HTTP_UPLOAD_LIMIT:
+            return StarletteResponse(
+                "リクエストボディが上限（100 MB）を超えています",
+                status_code=413,
+            )
+        return await call_next(request)
+
+
+app.add_middleware(UploadSizeLimitMiddleware)
+
+# CORS設定
+# allow_credentials=True と allow_origins=["*"] の組み合わせはブラウザ仕様違反で
+# ブラウザが拒否する。credentials 不使用に統一し wildcard origin を維持する。
+# （Electron は CORS を適用しないため影響なし。LAN ブラウザ向けは wildcard で十分）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept", "Authorization", "X-Session-Token"],
 )
 
 # ルーター登録
@@ -265,6 +291,11 @@ const SESSION_CODE = location.pathname.split('/coach/')[1] || '';
 const API_BASE = location.origin;
 document.getElementById('sessionCodeLabel').textContent = 'セッション: ' + SESSION_CODE;
 
+// XSS防止: innerHTML に埋め込む値を必ずエスケープする
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 let scoreA = '-', scoreB = '-';
 
 function setDot(connected) {
@@ -280,7 +311,7 @@ function renderSnapshot(data) {
   }
   const badges = document.getElementById('setBadges');
   badges.innerHTML = sets.slice(0, -1).map(s =>
-    `<span class="set-badge ${s.winner ? 'win' : ''}">${s.set_num}セット ${s.score_a}-${s.score_b}</span>`
+    `<span class="set-badge ${s.winner ? 'win' : ''}">${escHtml(s.set_num)}セット ${escHtml(s.score_a)}-${escHtml(s.score_b)}</span>`
   ).join('');
   const progress = Math.round((data.annotation_progress || 0) * 100);
   document.getElementById('progressFill').style.width = progress + '%';
@@ -295,10 +326,10 @@ function renderRallies(rallies) {
   el.innerHTML = rallies.map(r => {
     const isA = r.winner === 'player_a';
     return `<div class="rally-item">
-      <span class="rally-num">#${r.rally_num}</span>
+      <span class="rally-num">#${escHtml(r.rally_num)}</span>
       <div class="rally-winner ${isA ? 'a' : 'b'}">${isA ? 'A' : 'B'}</div>
-      <span class="rally-score">${r.score_a} : ${r.score_b}</span>
-      <span class="rally-end">${r.end_type || ''} / ${r.rally_length}球</span>
+      <span class="rally-score">${escHtml(r.score_a)} : ${escHtml(r.score_b)}</span>
+      <span class="rally-end">${escHtml(r.end_type)} / ${escHtml(r.rally_length)}球</span>
     </div>`;
   }).join('');
 }
@@ -309,10 +340,10 @@ function appendRally(data) {
   const isA = data.winner === 'player_a';
   const div = document.createElement('div');
   div.className = 'rally-item';
-  div.innerHTML = `<span class="rally-num">#${data.rally_num}</span>
+  div.innerHTML = `<span class="rally-num">#${escHtml(data.rally_num)}</span>
     <div class="rally-winner ${isA ? 'a' : 'b'}">${isA ? 'A' : 'B'}</div>
-    <span class="rally-score">${data.score_a} : ${data.score_b}</span>
-    <span class="rally-end">${data.end_type || ''} / ${data.rally_length}球</span>`;
+    <span class="rally-score">${escHtml(data.score_a)} : ${escHtml(data.score_b)}</span>
+    <span class="rally-end">${escHtml(data.end_type)} / ${escHtml(data.rally_length)}球</span>`;
   el.insertBefore(div, el.firstChild);
   while (el.children.length > 8) el.removeChild(el.lastChild);
   document.getElementById('scoreA').textContent = data.score_a;

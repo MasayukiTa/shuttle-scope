@@ -123,6 +123,9 @@ def export_change_set_endpoint(
 
 # ─── インポート ────────────────────────────────────────────────────────────────
 
+_MAX_IMPORT_BYTES = 50 * 1024 * 1024   # 50 MB — ZIP 爆弾 / メモリ枯渇防止
+
+
 @router.post("/preview")
 async def preview_package(
     file: UploadFile = File(...),
@@ -132,7 +135,9 @@ async def preview_package(
     パッケージの内容をプレビュー（DB 変更なし）。
     追加件数・更新件数・競合件数を返す。
     """
-    raw = await file.read()
+    raw = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(raw) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail=f"ファイルサイズが上限（{_MAX_IMPORT_BYTES // 1024 // 1024} MB）を超えています")
 
     # 基本検証
     validation = validate_package(raw)
@@ -168,7 +173,9 @@ async def import_package_endpoint(
     """
     .sspkg パッケージをインポートして DB へマージ。
     """
-    raw = await file.read()
+    raw = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(raw) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail=f"ファイルサイズが上限（{_MAX_IMPORT_BYTES // 1024 // 1024} MB）を超えています")
 
     validation = validate_package(raw)
     if not validation["valid"]:
@@ -261,8 +268,14 @@ async def copy_to_cloud(file: UploadFile = File(...), db: Session = Depends(get_
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"フォルダ作成エラー: {e}")
 
-    dest = folder_path / file.filename
-    raw = await file.read()
+    # Path traversal 防止: ファイル名からディレクトリ成分を除去し .sspkg のみ許可
+    safe_name = Path(file.filename or "").name
+    if not safe_name.endswith(".sspkg"):
+        raise HTTPException(status_code=400, detail=".sspkg ファイルのみコピーできます")
+    dest = folder_path / safe_name
+    raw = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(raw) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail=f"ファイルサイズが上限（{_MAX_IMPORT_BYTES // 1024 // 1024} MB）を超えています")
     dest.write_bytes(raw)
 
     return {"success": True, "data": {"path": str(dest), "filename": file.filename}}
@@ -278,11 +291,27 @@ def import_from_cloud_path(
     sync_folder_path 内の指定 .sspkg ファイルを直接インポート。
     dry_run=True の場合はプレビューのみ。
     """
-    pkg_path = Path(path)
+    pkg_path = Path(path).resolve()
+
+    # 拡張子を .sspkg に限定
+    if pkg_path.suffix.lower() != ".sspkg":
+        raise HTTPException(status_code=400, detail=".sspkg ファイルのみ指定できます")
+
+    # パストラバーサル防止: sync_folder_path 配下であることを検証
+    settings_cfg = _load_settings(db)
+    sync_folder = settings_cfg.get("sync_folder_path", "")
+    if sync_folder:
+        try:
+            pkg_path.relative_to(Path(sync_folder).resolve())
+        except ValueError:
+            raise HTTPException(status_code=403, detail="指定パスは同期フォルダ外です")
+
     if not pkg_path.exists():
         raise HTTPException(status_code=404, detail="ファイルが見つかりません")
 
     raw = pkg_path.read_bytes()
+    if len(raw) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail=f"ファイルサイズが上限（{_MAX_IMPORT_BYTES // 1024 // 1024} MB）を超えています")
     validation = validate_package(raw)
     if not validation["valid"]:
         raise HTTPException(status_code=422, detail=validation["error"])
@@ -308,7 +337,9 @@ def import_from_cloud_path(
 @router.post("/validate")
 async def validate_only(file: UploadFile = File(...)):
     """DB を変更せずパッケージの整合性のみ検証"""
-    raw = await file.read()
+    raw = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(raw) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail=f"ファイルサイズが上限（{_MAX_IMPORT_BYTES // 1024 // 1024} MB）を超えています")
     result = validate_package(raw)
     return {"success": result["valid"], "data": result}
 

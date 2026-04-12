@@ -186,6 +186,25 @@ async def ws_camera_handler(
     is_operator = role == "operator"
     is_viewer = role == "viewer" and viewer_id
 
+    # 送信デバイスとして接続する場合: participant_id がこのセッションに属することを検証
+    if participant_id and not is_operator and not is_viewer:
+        from backend.db.database import SessionLocal
+        from backend.db.models import SessionParticipant as _SP
+        _db2 = SessionLocal()
+        try:
+            _pid_int = int(participant_id)
+            _p = _db2.query(_SP).filter(
+                _SP.id == _pid_int,
+                _SP.session_id == _session.id,
+            ).first()
+        except (ValueError, TypeError):
+            _p = None
+        finally:
+            _db2.close()
+        if not _p:
+            await websocket.close(code=4403, reason="この participant_id はセッションに登録されていません")
+            return
+
     if is_operator:
         await camera_manager.connect_operator(session_code, websocket)
     elif is_viewer:

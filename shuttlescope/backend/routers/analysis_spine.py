@@ -377,7 +377,7 @@ def get_doubles_role(
 ):
     # ダブルス試合のみに絞る
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
-    doubles_matches = [m for m in matches if getattr(m, 'format', None) == 'doubles']
+    doubles_matches = [m for m in matches if getattr(m, 'format', None) in ('womens_doubles', 'mixed_doubles')]
     if not doubles_matches:
         return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": build_response_meta("doubles_role", 0)}
 
@@ -421,7 +421,7 @@ def get_doubles_role_db2(
         return {"success": True, "data": {}, "meta": build_response_meta("doubles_role", 0)}
 
     all_matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
-    doubles_matches = [m for m in all_matches if getattr(m, 'match_type', None) in ('doubles', 'mixed_doubles')]
+    doubles_matches = [m for m in all_matches if getattr(m, 'format', None) in ('womens_doubles', 'mixed_doubles')]
 
     if not doubles_matches:
         meta = build_response_meta("doubles_role", 0)
@@ -679,7 +679,7 @@ def get_promotion_evaluation(
     n_rallies = len(rallies)
 
     # ダブルス試合数
-    doubles_matches = [m for m in matches if getattr(m, 'match_type', None) in ('doubles', 'mixed_doubles')]
+    doubles_matches = [m for m in matches if getattr(m, 'format', None) in ('womens_doubles', 'mixed_doubles')]
     n_doubles_matches = len(doubles_matches)
 
     # 対戦相手数
@@ -801,10 +801,7 @@ def get_doubles_role_stability(
 ):
     """DB-3: 試合ごとのロール推定から安定性スコアを計算する。"""
     matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
-    doubles_matches = [m for m in matches if (
-        getattr(m, "format", None) == "doubles" or
-        getattr(m, "match_type", None) in ("doubles", "mixed_doubles")
-    )]
+    doubles_matches = [m for m in matches if getattr(m, "format", None) in ("womens_doubles", "mixed_doubles")]
     if not doubles_matches:
         meta = build_response_meta("doubles_role", 0)
         return {

@@ -149,7 +149,11 @@ def compute_bayes_matchup(
         # フォーマットフィルター
         if format_filter:
             m_format = getattr(m, 'format', None)
-            if m_format and m_format != format_filter:
+            if format_filter == 'doubles':
+                # 'doubles' は womens_doubles / mixed_doubles の両方にマッチ
+                if m_format not in ('womens_doubles', 'mixed_doubles'):
+                    continue
+            elif m_format and m_format != format_filter:
                 continue
 
         if target_opponent_id and opp_id != target_opponent_id:

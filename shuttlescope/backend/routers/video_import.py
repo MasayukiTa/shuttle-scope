@@ -31,6 +31,9 @@ router = APIRouter()
 TRACKNET_ARTIFACT_TYPE = "tracknet_shuttle_track"
 LEGACY_TRACKNET_ARTIFACT_TYPES = ("tracknet_shuttle_track", "tracknet_track")
 
+# 動画ファイルのサイズ上限（10 GB）— これを超えると解析を拒否
+_MAX_VIDEO_BYTES = 10 * 1024 * 1024 * 1024
+
 # ─── ジョブ管理 ──────────────────────────────────────────────────────────────
 
 class Phase:
@@ -95,6 +98,13 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks)
     ALLOWED_VIDEO_EXTS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.m4v', '.webm', '.ts', '.mts'}
     if path.suffix.lower() not in ALLOWED_VIDEO_EXTS:
         raise HTTPException(status_code=400, detail=f"動画ファイル以外は処理できません: {path.suffix}")
+
+    file_size = path.stat().st_size
+    if file_size > _MAX_VIDEO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"動画ファイルサイズが上限（{_MAX_VIDEO_BYTES // 1024 // 1024 // 1024} GB）を超えています: {file_size / 1024**3:.1f} GB",
+        )
 
     job_id = uuid.uuid4().hex[:8]
     job = _new_job(str(path), body.match_id)

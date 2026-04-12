@@ -13,6 +13,8 @@ export function useAnnotation(matchId: number | null, setId: number | null) {
     async (winner: 'player_a' | 'player_b', endType: string) => {
       if (!setId) throw new Error('セットIDが未設定です')
 
+      // confirmRally 前に現在のサーバーを取得（確定後は winner に更新されるため）
+      const currentServer = store.currentPlayer
       const strokes = store.confirmRally(winner, endType)
       const { currentRallyNum: rallyNum, scoreA, scoreB } = store
 
@@ -23,7 +25,7 @@ export function useAnnotation(matchId: number | null, setId: number | null) {
         rally: {
           set_id: setId,
           rally_num: savedRallyNum,
-          server: 'player_a',  // TODO: サーバー管理
+          server: currentServer,
           winner,
           end_type: endType,
           rally_length: strokes.length,

@@ -16,14 +16,13 @@
 """
 import hashlib
 import os
-import random
 import secrets
 import socket
 import string
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -64,9 +63,40 @@ def _verify_password(plain: str, stored_hash: str) -> bool:
 # ─── セッションコードユーティリティ ─────────────────────────────────────────
 
 def _generate_code(length: int = 6) -> str:
-    """ランダムな英数字セッションコードを生成"""
+    """ランダムな英数字セッションコードを生成（CSPRNG使用）"""
     chars = string.ascii_uppercase + string.digits
-    return "".join(random.choices(chars, k=length))
+    return "".join(secrets.choice(chars) for _ in range(length))
+
+
+# ─── オペレータートークン管理（インメモリ） ───────────────────────────────────────
+# セッション作成者（アナリスト/ローカルPC）のみが持つ 32 文字トークン。
+# ローカルホスト (127.0.0.1 / ::1) からのリクエストはトークンなしで常に許可。
+# LAN/リモートからの権限操作にはこのトークンが必要。
+
+_operator_tokens: dict[str, str] = {}   # session_code → token
+
+
+def _generate_operator_token() -> str:
+    return secrets.token_hex(16)          # 32 文字の hex
+
+
+def _check_operator_access(request: Request, session_code: str) -> None:
+    """ローカルからのリクエストは無条件許可。LAN/リモートには operator_token を要求。
+
+    許可ホスト:
+      - 127.0.0.1 / ::1 / localhost: ローカルマシン（Electron 上のアナリスト）
+      - testclient: Starlette TestClient（pytest用。Uvicorn では絶対に設定されない）
+    """
+    client_host = request.client.host if request.client else "127.0.0.1"
+    if client_host in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return
+    token = request.headers.get("X-Session-Token", "")
+    stored = _operator_tokens.get(session_code, "")
+    if not stored or not secrets.compare_digest(token.encode(), stored.encode()):
+        raise HTTPException(
+            status_code=403,
+            detail="この操作にはオペレータートークンが必要です（X-Session-Token ヘッダー）",
+        )
 
 
 def _get_lan_ips() -> list[str]:
@@ -160,8 +190,13 @@ def create_session(body: SessionCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(session)
 
+    # オペレータートークン生成（セッション作成者にのみ返す。LAN権限操作に必要）
+    op_token = _generate_operator_token()
+    _operator_tokens[code] = op_token
+
     data = _session_to_dict(session, db)
     data["session_password"] = plain_password  # 初回のみ平文で返す
+    data["operator_token"] = op_token           # 初回のみ返す（ローカル保存を推奨）
     return {"success": True, "data": data}
 
 
@@ -311,13 +346,16 @@ def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)
 
 
 @router.post("/sessions/{code}/end")
-def end_session(code: str, db: Session = Depends(get_db)):
-    """セッション終了"""
+def end_session(code: str, request: Request, db: Session = Depends(get_db)):
+    """セッション終了（LAN/リモートからは operator_token が必要）"""
+    _check_operator_access(request, code)
     session = db.query(SharedSession).filter(SharedSession.session_code == code).first()
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
     session.is_active = False
     db.commit()
+    # トークンを削除（終了済みセッションを再利用できないようにする）
+    _operator_tokens.pop(code, None)
     return {"success": True}
 
 
@@ -380,11 +418,13 @@ def set_device_role(
     code: str,
     participant_id: int,
     body: SetRoleBody,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """参加者の connection_role を変更"""
     participant = _get_participant(code, participant_id, db)
 
+    _check_operator_access(request, code)
     valid_roles = {"viewer", "coach", "analyst", "camera_candidate", "active_camera"}
     if body.connection_role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"無効なロール: {body.connection_role}")
@@ -398,9 +438,11 @@ def set_device_role(
 def activate_camera(
     code: str,
     participant_id: int,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """指定デバイスをアクティブカメラに昇格。既存の active_camera は camera_candidate に降格。"""
+    _check_operator_access(request, code)
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
@@ -437,9 +479,11 @@ def activate_camera(
 def deactivate_camera(
     code: str,
     participant_id: int,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """アクティブカメラを camera_candidate に降格"""
+    _check_operator_access(request, code)
     participant = _get_participant(code, participant_id, db)
     participant.connection_role = "camera_candidate"
     participant.connection_state = "idle"
@@ -448,8 +492,9 @@ def deactivate_camera(
 
 
 @router.post("/sessions/{code}/devices/{participant_id}/approve")
-def approve_device(code: str, participant_id: int, db: Session = Depends(get_db)):
+def approve_device(code: str, participant_id: int, request: Request, db: Session = Depends(get_db)):
     """デバイスを承認（approval_status → approved）"""
+    _check_operator_access(request, code)
     participant = _get_participant(code, participant_id, db)
     participant.approval_status = "approved"
     db.commit()
@@ -457,8 +502,9 @@ def approve_device(code: str, participant_id: int, db: Session = Depends(get_db)
 
 
 @router.post("/sessions/{code}/devices/{participant_id}/reject")
-def reject_device(code: str, participant_id: int, db: Session = Depends(get_db)):
+def reject_device(code: str, participant_id: int, request: Request, db: Session = Depends(get_db)):
     """デバイスを拒否（approval_status → rejected）"""
+    _check_operator_access(request, code)
     participant = _get_participant(code, participant_id, db)
     participant.approval_status = "rejected"
     db.commit()
@@ -466,8 +512,9 @@ def reject_device(code: str, participant_id: int, db: Session = Depends(get_db))
 
 
 @router.delete("/sessions/{code}/devices/{participant_id}")
-def delete_participant(code: str, participant_id: int, db: Session = Depends(get_db)):
+def delete_participant(code: str, participant_id: int, request: Request, db: Session = Depends(get_db)):
     """参加者レコードを削除（切断済みデバイスのゴーストを除去）"""
+    _check_operator_access(request, code)
     participant = _get_participant(code, participant_id, db)
     db.delete(participant)
     db.commit()
@@ -475,7 +522,7 @@ def delete_participant(code: str, participant_id: int, db: Session = Depends(get
 
 
 @router.delete("/sessions/{code}/devices")
-def purge_disconnected(code: str, db: Session = Depends(get_db)):
+def purge_disconnected(code: str, request: Request, db: Session = Depends(get_db)):
     """切断済み（is_connected=False）参加者を一括削除"""
     session = (
         db.query(SharedSession)
@@ -484,6 +531,7 @@ def purge_disconnected(code: str, db: Session = Depends(get_db)):
     )
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    _check_operator_access(request, code)
     deleted = (
         db.query(SessionParticipant)
         .filter(
@@ -630,8 +678,9 @@ def deactivate_source(code: str, source_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/sessions/{code}/regenerate-password")
-def regenerate_password(code: str, db: Session = Depends(get_db)):
-    """セッションパスワードを再生成。新しい平文パスワードを返す。"""
+def regenerate_password(code: str, request: Request, db: Session = Depends(get_db)):
+    """セッションパスワードを再生成。新しい平文パスワードを返す。LAN/リモートはトークン要求。"""
+    _check_operator_access(request, code)
     session = db.query(SharedSession).filter(SharedSession.session_code == code).first()
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
