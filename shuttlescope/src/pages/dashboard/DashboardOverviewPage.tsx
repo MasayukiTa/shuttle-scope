@@ -10,7 +10,7 @@ import { RoleGuard } from '@/components/common/RoleGuard'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { apiGet } from '@/api/client'
 import { AnalysisFilters } from '@/types'
-import { Maximize2 } from 'lucide-react'
+import { Maximize2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { BAR, TOOLTIP_STYLE as CW_TOOLTIP, getTooltipStyle, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { ScoreProgression } from '@/components/analysis/ScoreProgression'
@@ -197,9 +197,13 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
     label: `${m.date ?? '日付不明'} vs ${m.opponent}`,
-    suffix: m.result === 'win' ? '勝' : '負',
+    suffix: [m.tournament_level, m.result === 'win' ? '勝' : '負'].filter(Boolean).join(' '),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
+
+  const matchNavIdx = matchOptions.findIndex((o) => o.value === selectedMatchId)
+  const canGoPrev = matchNavIdx > 0
+  const canGoNext = matchNavIdx >= 0 && matchNavIdx < matchOptions.length - 1
 
   const handleSetPointClick = useCallback((
     setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number
@@ -212,7 +216,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       {/* 2カラムレイアウト */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         {/* 左カラム */}
-        <div className="xl:col-span-2 space-y-5">
+        <div className="xl:col-span-2 space-y-5 min-w-0">
           {/* ラリー終了タイプ */}
           <div className={`${card} rounded-lg p-4`}>
             <div className="flex items-center justify-between mb-3">
@@ -268,7 +272,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         </div>
 
         {/* 右カラム */}
-        <div className="space-y-5">
+        <div className="space-y-5 min-w-0">
           {/* コートヒートマップ */}
           <div className={`${card} rounded-lg p-4`}>
             <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -440,19 +444,45 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         )}
       </div>
 
-      {/* スコア推移 */}
+      {/* スコア推移 / インターバルレポート 共通試合選択 */}
       <div className={`${card} rounded-lg p-4`}>
-        <div className="flex items-center justify-between mb-3">
+        {/* 試合セレクタ（前後ナビ付き） */}
+        <div className="flex items-center justify-between gap-2 mb-1">
           <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
-          <SearchableSelect
-            options={matchOptions}
-            value={selectedMatchId}
-            onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
-            emptyLabel="— 試合を選択 —"
-            placeholder="日付・対戦相手で検索..."
-            className="max-w-[260px]"
-          />
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => setSelectedMatchId(matchOptions[matchNavIdx - 1].value as number)}
+              disabled={!canGoPrev}
+              title="前の試合"
+              className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+            >
+              <ChevronLeft size={14} className={textMuted} />
+            </button>
+            <SearchableSelect
+              options={matchOptions}
+              value={selectedMatchId}
+              onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
+              emptyLabel="— 試合を選択 —"
+              placeholder="日付・対戦相手で検索..."
+              dropdownAlign="right"
+              className="w-[210px]"
+            />
+            <button
+              onClick={() => setSelectedMatchId(matchOptions[matchNavIdx + 1].value as number)}
+              disabled={!canGoNext}
+              title="次の試合"
+              className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+            >
+              <ChevronRight size={14} className={textMuted} />
+            </button>
+          </div>
         </div>
+        {/* 選択中の試合：大会名を補足表示 */}
+        {selectedMatchId && (() => {
+          const m = matches.find((mx) => mx.match_id === selectedMatchId)
+          const sub = [m?.tournament, m?.tournament_level].filter(Boolean).join(' · ')
+          return sub ? <p className={`text-xs ${textMuted} mb-3 truncate`}>{sub}</p> : <div className="mb-3" />
+        })()}
         {selectedMatchId ? (
           <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
         ) : (
@@ -462,20 +492,12 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
 
       {/* インターバルレポート */}
       <div className={`${card} rounded-lg p-4`}>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between gap-2 mb-3">
           <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
-          <div className="flex gap-2 items-center flex-wrap">
-            <SearchableSelect
-              options={matchOptions}
-              value={selectedMatchId}
-              onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
-              emptyLabel="— 試合を選択 —"
-              placeholder="日付・対戦相手で検索..."
-              className="max-w-[260px]"
-            />
+          <div className="flex items-center gap-2 shrink-0">
             {selectedMatchId && (
               <>
-                <label className={`text-xs ${textSecondary}`}>完了セット:</label>
+                <label className={`text-xs ${textSecondary} whitespace-nowrap`}>完了セット:</label>
                 <input
                   type="number"
                   min={1}

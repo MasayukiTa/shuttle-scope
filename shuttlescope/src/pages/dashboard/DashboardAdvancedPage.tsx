@@ -98,7 +98,9 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       <div className={`sticky top-10 z-20 -mx-6 px-6 py-2 flex items-center justify-between ${
         isLight ? 'bg-white/95 border-b border-gray-200' : 'bg-gray-900/95 border-b border-gray-700/60'
       } backdrop-blur-sm`}>
-        <DashboardSectionNav active={section} onChange={setSection} />
+        <div className="min-w-0 flex-1 overflow-hidden mr-2">
+          <DashboardSectionNav active={section} onChange={setSection} />
+        </div>
         <EvidenceBadge tier="advanced" evidenceLevel="practical_candidate" className="shrink-0" />
       </div>
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, TeamHistoryEntry, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useTheme } from '@/hooks/useTheme'
 
 interface PlayerFormData {
   name: string
@@ -391,6 +392,7 @@ export function SettingsPage() {
 
   const players = playersData?.data ?? []
   const { card, textHeading, textSecondary, textMuted, textFaint, isLight } = useCardTheme()
+  const { theme, setTheme } = useTheme()
   const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
   const borderLine = isLight ? 'border-gray-200' : 'border-gray-700'
   const inputClass = isLight
@@ -1575,28 +1577,64 @@ export function SettingsPage() {
 
         {/* アカウント設定タブ */}
         {activeTab === 'account' && (
-          <div className="max-w-md">
-            <h2 className={`text-lg font-medium ${textHeading} mb-4`}>ロール設定（POCフェーズ）</h2>
-            <div className="flex flex-col gap-2">
-              {(['analyst', 'coach', 'player'] as UserRole[]).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRole(r)}
-                  className={`flex items-center justify-between px-4 py-3 rounded border ${
-                    role === r
-                      ? 'border-blue-500 bg-blue-900/30 text-blue-300'
-                      : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500'
-                  }`}
-                >
-                  <span className="font-medium">{t(`roles.${r}`)}</span>
-                  {role === r && <CheckCircle size={16} className="text-blue-400" />}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-500 mt-4">
-              ※ POCフェーズでは簡易ロール管理（ローカルストレージ保存）。
-              本番展開時にJWT認証へ移行予定。
-            </p>
+          <div className="max-w-md space-y-8">
+
+            {/* テーマ */}
+            <section>
+              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>テーマ</h2>
+              <p className={`text-xs ${textMuted} mb-3`}>ライト / ダークモードを切り替えます</p>
+              <div className="flex gap-3">
+                {([
+                  { mode: 'dark' as const, label: 'ダーク', Icon: Moon },
+                  { mode: 'light' as const, label: 'ライト', Icon: Sun },
+                ]).map(({ mode, label, Icon }) => (
+                  <button
+                    key={mode}
+                    onClick={() => setTheme(mode)}
+                    className={`flex items-center gap-2 flex-1 justify-center px-4 py-3 rounded-lg border transition-colors ${
+                      theme === mode
+                        ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                        : isLight
+                          ? 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                          : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500'
+                    }`}
+                  >
+                    <Icon size={16} />
+                    <span className="font-medium text-sm">{label}</span>
+                    {theme === mode && <CheckCircle size={14} className="text-blue-400 ml-auto" />}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* ロール設定 */}
+            <section>
+              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>ロール設定（POCフェーズ）</h2>
+              <p className={`text-xs ${textMuted} mb-3`}>操作権限の種別を選択します</p>
+              <div className="flex flex-col gap-2">
+                {(['analyst', 'coach', 'player'] as UserRole[]).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setRole(r)}
+                    className={`flex items-center justify-between px-4 py-3 rounded border ${
+                      role === r
+                        ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                        : isLight
+                          ? 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                          : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500'
+                    }`}
+                  >
+                    <span className="font-medium">{t(`roles.${r}`)}</span>
+                    {role === r && <CheckCircle size={16} className="text-blue-400" />}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-3">
+                ※ POCフェーズでは簡易ロール管理（ローカルストレージ保存）。
+                本番展開時にJWT認証へ移行予定。
+              </p>
+            </section>
+
           </div>
         )}
       </div>

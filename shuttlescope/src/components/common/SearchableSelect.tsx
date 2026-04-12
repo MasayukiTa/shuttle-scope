@@ -31,6 +31,8 @@ interface SearchableSelectProps {
   /** ドロップダウンの最大高さ */
   maxHeight?: number
   loading?: boolean
+  /** ドロップダウンの開き方向（right = 右端基準で左に展開） */
+  dropdownAlign?: 'left' | 'right'
 }
 
 export function SearchableSelect({
@@ -43,6 +45,7 @@ export function SearchableSelect({
   className,
   maxHeight = 240,
   loading = false,
+  dropdownAlign = 'left',
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -159,7 +162,7 @@ export function SearchableSelect({
 
       {/* ドロップダウン */}
       {open && (
-        <div className="absolute z-50 mt-1 w-full bg-gray-800 border border-gray-600 rounded-lg shadow-xl overflow-hidden">
+        <div className={clsx('absolute z-50 mt-1 w-full bg-gray-800 border border-gray-600 rounded-lg shadow-xl overflow-hidden min-w-[200px]', dropdownAlign === 'right' ? 'right-0' : 'left-0')}>
           {/* 検索欄 */}
           <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
             <Search size={14} className="text-gray-500 shrink-0" />

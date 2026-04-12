@@ -220,7 +220,7 @@ export function DashboardShell() {
           選手を選択してください
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
           {/* StatCards（スクロールで上に消える） */}
           <div className={`px-6 pt-4 pb-3 border-b ${borderColor}`}>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
