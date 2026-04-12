@@ -3,8 +3,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+import json
 from backend.db.database import get_db
-from backend.db.models import Player
+from backend.db.models import Player, Match, PrematchPrediction
 from backend.analysis.prediction_engine import (
     get_matches_for_player,
     get_pair_matches,
@@ -266,6 +267,213 @@ def get_fatigue_risk(
             "confidence": confidence_meta(result["confidence"], result["breakdown"]["total_rallies"]),
         },
     }
+
+@router.get("/prediction/prematch_by_match")
+def get_prematch_by_match(
+    match_id: int,
+    player_id: int,
+    force: bool = False,
+    db: Session = Depends(get_db),
+):
+    """
+    試合前統計予測 — 特定の試合を基準に、その試合日より前のデータのみで予測を行う。
+    - 対戦相手は試合レコードから確定
+    - データカットオフ = 試合日（当日含まず）
+    - 一度算出した結果は DB に保存し、以降は再算出しない（スナップショット）
+    - force=true で強制再計算・上書き保存
+    """
+    match = db.get(Match, match_id)
+    if not match:
+        return {"success": False, "error": "Match not found"}
+
+    # 対戦相手を確定
+    if match.player_a_id == player_id:
+        opponent_id = match.player_b_id
+    elif match.player_b_id == player_id:
+        opponent_id = match.player_a_id
+    else:
+        return {"success": False, "error": "Player not in this match"}
+
+    # ── DB キャッシュ確認 ──────────────────────────────────────────────────────
+    if not force:
+        cached = (
+            db.query(PrematchPrediction)
+            .filter_by(match_id=match_id, player_id=player_id)
+            .first()
+        )
+        if cached:
+            opponent_obj = db.get(Player, cached.opponent_id)
+            return {
+                "success": True,
+                "cached": True,
+                "data": {
+                    "match_date": str(cached.cutoff_date),
+                    "opponent_id": cached.opponent_id,
+                    "opponent_name": opponent_obj.name if opponent_obj else "?",
+                    "tournament_level": cached.tournament_level,
+                    "cutoff_date": str(cached.cutoff_date),
+                    "sample_size": cached.sample_size,
+                    "h2h_count": cached.h2h_count,
+                    "win_probability": cached.win_probability,
+                    "set_distribution": json.loads(cached.set_distribution) if cached.set_distribution else None,
+                    "most_likely_scorelines": json.loads(cached.most_likely_scorelines) if cached.most_likely_scorelines else [],
+                    "score_volatility": json.loads(cached.score_volatility) if cached.score_volatility else None,
+                    "confidence": cached.confidence,
+                    "confidence_meta": confidence_meta(cached.confidence, cached.sample_size) if cached.confidence else None,
+                    "match_narrative": json.loads(cached.match_narrative) if cached.match_narrative else None,
+                    "computed_at": cached.computed_at.isoformat() if cached.computed_at else None,
+                }
+            }
+
+    # ── 新規算出 ──────────────────────────────────────────────────────────────
+    cutoff_date = match.date
+    tournament_level = match.tournament_level
+
+    all_matches = get_matches_for_player(db, player_id, before_date=cutoff_date)
+    h2h_matches = get_matches_for_player(db, player_id, opponent_id=opponent_id, before_date=cutoff_date)
+    level_matches = get_matches_for_player(db, player_id, tournament_level=tournament_level, before_date=cutoff_date)
+
+    obs_context = get_observation_context(db, player_id, opponent_id, match_id)
+
+    if len(h2h_matches) >= 3:
+        primary = h2h_matches
+    elif len(level_matches) >= 3:
+        primary = level_matches
+    else:
+        primary = all_matches
+
+    sample_size = len(primary)
+    h2h_count = len(h2h_matches)
+    player_obj = db.get(Player, player_id)
+    opponent_obj = db.get(Player, opponent_id)
+
+    if sample_size == 0:
+        # データなしでも保存しておく（毎回計算しないため）
+        _upsert_prematch_prediction(db, match_id, player_id, opponent_id, cutoff_date, tournament_level,
+                                    sample_size=0, h2h_count=0,
+                                    win_probability=None, set_dist=None,
+                                    scorelines=None, score_volatility=None,
+                                    confidence=None, match_narrative=None)
+        return {
+            "success": True,
+            "cached": False,
+            "data": {
+                "match_date": str(cutoff_date),
+                "opponent_id": opponent_id,
+                "opponent_name": opponent_obj.name if opponent_obj else "?",
+                "tournament_level": tournament_level,
+                "cutoff_date": str(cutoff_date),
+                "sample_size": 0,
+                "h2h_count": 0,
+                "win_probability": None,
+                "set_distribution": None,
+                "most_likely_scorelines": [],
+                "score_volatility": None,
+                "confidence": None,
+                "confidence_meta": None,
+                "match_narrative": None,
+            }
+        }
+
+    recent_form = compute_recent_form(all_matches, player_id)
+    win_prob_v2, _ = compute_feature_win_prob(all_matches, player_id, h2h_matches, recent_form, obs_context)
+
+    score_volatility = compute_score_volatility(primary, player_id)
+
+    observed_set_count = sum(1 for m in primary if len(m.sets or []) >= 2)
+    raw_set_dist = compute_set_distribution(primary, player_id, win_prob_v2)
+    set_model = compute_set_model_v2(
+        win_prob_v2,
+        raw_set_dist if observed_set_count >= 5 else None,
+    )
+    set_dist = set_model['dist']
+
+    score_bands = compute_score_bands(primary, player_id)
+    scorelines = compute_most_likely_scorelines(set_dist, score_bands)
+    confidence_val = compute_confidence_score(sample_size, h2h_count)
+
+    match_narrative = compute_match_narrative(
+        player_name=player_obj.name if player_obj else '自分',
+        opponent_name=opponent_obj.name if opponent_obj else '相手',
+        win_prob=win_prob_v2,
+        sample_size=sample_size,
+        set_distribution=set_dist,
+        most_likely_scorelines=scorelines,
+        score_volatility=score_volatility,
+        recent_form=recent_form,
+        obs_context=obs_context,
+        h2h_count=h2h_count,
+        tournament_level=tournament_level,
+    )
+
+    # ── DB に保存 ─────────────────────────────────────────────────────────────
+    _upsert_prematch_prediction(db, match_id, player_id, opponent_id, cutoff_date, tournament_level,
+                                sample_size=sample_size, h2h_count=h2h_count,
+                                win_probability=win_prob_v2, set_dist=set_dist,
+                                scorelines=scorelines, score_volatility=score_volatility,
+                                confidence=confidence_val, match_narrative=match_narrative)
+
+    return {
+        "success": True,
+        "cached": False,
+        "data": {
+            "match_date": str(cutoff_date),
+            "opponent_id": opponent_id,
+            "opponent_name": opponent_obj.name if opponent_obj else "?",
+            "tournament_level": tournament_level,
+            "cutoff_date": str(cutoff_date),
+            "sample_size": sample_size,
+            "h2h_count": h2h_count,
+            "win_probability": win_prob_v2,
+            "set_distribution": set_dist,
+            "most_likely_scorelines": scorelines,
+            "score_volatility": score_volatility,
+            "confidence": confidence_val,
+            "confidence_meta": confidence_meta(confidence_val, sample_size),
+            "match_narrative": match_narrative,
+        }
+    }
+
+
+def _upsert_prematch_prediction(
+    db: Session, match_id: int, player_id: int, opponent_id: int,
+    cutoff_date, tournament_level: str,
+    sample_size: int, h2h_count: int,
+    win_probability, set_dist, scorelines, score_volatility,
+    confidence, match_narrative,
+) -> None:
+    """prematch_predictions に upsert する（既存あれば上書き）"""
+    from datetime import datetime as _dt
+    existing = db.query(PrematchPrediction).filter_by(match_id=match_id, player_id=player_id).first()
+    if existing:
+        existing.opponent_id          = opponent_id
+        existing.cutoff_date          = cutoff_date
+        existing.tournament_level     = tournament_level
+        existing.sample_size          = sample_size
+        existing.h2h_count            = h2h_count
+        existing.win_probability      = win_probability
+        existing.set_distribution     = json.dumps(set_dist)     if set_dist     else None
+        existing.most_likely_scorelines = json.dumps(scorelines) if scorelines   else None
+        existing.score_volatility     = json.dumps(score_volatility) if score_volatility else None
+        existing.confidence           = confidence
+        existing.match_narrative      = json.dumps(match_narrative) if match_narrative else None
+        existing.computed_at          = _dt.utcnow()
+    else:
+        rec = PrematchPrediction(
+            match_id=match_id, player_id=player_id, opponent_id=opponent_id,
+            cutoff_date=cutoff_date, tournament_level=tournament_level,
+            sample_size=sample_size, h2h_count=h2h_count,
+            win_probability=win_probability,
+            set_distribution=json.dumps(set_dist)     if set_dist     else None,
+            most_likely_scorelines=json.dumps(scorelines) if scorelines else None,
+            score_volatility=json.dumps(score_volatility) if score_volatility else None,
+            confidence=confidence,
+            match_narrative=json.dumps(match_narrative) if match_narrative else None,
+            computed_at=_dt.utcnow(),
+        )
+        db.add(rec)
+    db.commit()
+
 
 @router.get("/prediction/pair_ranking")
 def get_pair_ranking(

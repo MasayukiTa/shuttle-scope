@@ -23,7 +23,6 @@ import { MatchScriptBlock } from '@/components/analysis/MatchScriptBlock'
 import { PredictionDriversBlock } from '@/components/analysis/PredictionDriversBlock'
 import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
 import { AnalystDepthPanel } from '@/components/analysis/AnalystDepthPanel'
-import { MatchNarrativeCard, type MatchNarrative } from '@/components/analysis/MatchNarrativeCard'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
@@ -87,7 +86,6 @@ interface PredictionData {
     has_observations: boolean
     drivers: Array<{ label: string; type: string; count: number; weight: string }>
   }
-  match_narrative?: MatchNarrative
 }
 
 interface PredictionResponse {
@@ -182,15 +180,6 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
 
   return (
     <div className="space-y-4">
-      {/* 試合前予測ナレーション */}
-      {d.match_narrative && (
-        <MatchNarrativeCard
-          narrative={d.match_narrative}
-          playerName={playerName}
-          opponentName={opponentId ? (players.find((p) => p.id === opponentId)?.name) : undefined}
-        />
-      )}
-
       {/* CoachSummaryStrip — 常時表示（折りたたみなし） */}
       <CoachSummaryStrip
         winProbability={d.win_probability_v2 ?? d.win_probability}

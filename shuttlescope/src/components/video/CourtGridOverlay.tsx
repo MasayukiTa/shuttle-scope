@@ -17,7 +17,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
-import { RotateCcw, MousePointer2 } from 'lucide-react'
+import { MousePointer2 } from 'lucide-react'
 
 // ─── 型 ─────────────────────────────────────────────────────────────────────
 
@@ -201,7 +201,14 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
   }, [])
 
   const handleSVGPointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (!calibrating) return
+    if (!calibrating) {
+      // キャリブレーション済みのグリッドをクリック → 再キャリブレーション開始
+      if (isCalibrated && visible) {
+        e.preventDefault()
+        startCalibration()
+      }
+      return
+    }
     if (points.length >= TOTAL_POINTS) return
     e.preventDefault()
     const pt = getSVGPoint(e)
@@ -212,7 +219,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
     } else {
       setPoints(next)
     }
-  }, [calibrating, points, getSVGPoint, savePts])
+  }, [calibrating, isCalibrated, visible, points, getSVGPoint, savePts, startCalibration])
 
   // ─── ドラッグで点を調整 ─────────────────────────────────────────────────
 
@@ -265,6 +272,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
   if (!visible && !calibrating) return null
 
   return (
+    <>
     <div
       className="absolute inset-0 pointer-events-none"
       style={{ zIndex: 20 }}
@@ -277,7 +285,11 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
           position: 'absolute',
           inset: 0,
           pointerEvents: (calibrating || (isCalibrated && visible)) ? 'all' : 'none',
-          cursor: calibrating ? 'crosshair' : (draggingIdx !== null ? 'grabbing' : 'default'),
+          cursor: calibrating
+            ? 'crosshair'
+            : draggingIdx !== null
+              ? 'grabbing'
+              : (isCalibrated && visible ? 'pointer' : 'default'),
         }}
         onPointerDown={handleSVGPointerDown}
         onPointerMove={handleSVGPointerMove}
@@ -346,40 +358,13 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         </div>
       )}
 
-      {/* ─── キャリブレーション UI ボタン ──────────────────────── */}
-      {visible && (
+      {/* ─── キャリブレーション済み: クリックで再設定ヒント ───────── */}
+      {visible && isCalibrated && !calibrating && (
         <div
-          className="absolute bottom-2 right-2 flex gap-1"
-          style={{ pointerEvents: 'all' }}
+          className="absolute bottom-2 left-2 text-[10px] select-none"
+          style={{ pointerEvents: 'none', color: 'rgba(255,255,255,0.5)' }}
         >
-          {calibrating ? (
-            <button
-              onClick={() => {
-                setCalibrating(false)
-                if (prevPtsRef.current.length === TOTAL_POINTS) {
-                  savePts(prevPtsRef.current)  // 直前のキャリブレーションに戻す
-                } else {
-                  setPoints([])
-                }
-              }}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-red-800/80 hover:bg-red-700 text-white border border-red-600"
-            >
-              キャンセル
-            </button>
-          ) : (
-            <button
-              onClick={startCalibration}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-gray-900/80 hover:bg-gray-800 text-gray-200 border border-gray-600"
-              title={
-                calibSource === 'local'
-                  ? 'ローカルキャッシュから復元中（バックエンド未保存）。再キャリブレーションで同期できます。'
-                  : 'コート点を再設定（カメラ切替後など）'
-              }
-            >
-              <RotateCcw size={11} />
-              再キャリブレーション{calibSource === 'local' ? ' ⚠' : ''}
-            </button>
-          )}
+          グリッドをクリックで再設定
         </div>
       )}
 
@@ -391,14 +376,45 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         >
           <button
             onClick={startCalibration}
-            className="flex flex-col items-center gap-2 px-6 py-4 rounded-lg bg-gray-900/80 border border-gray-600 text-gray-200 hover:bg-gray-800/90 text-sm"
+            className="flex flex-col items-center gap-2 px-6 py-4 rounded-lg bg-gray-900/80 border border-gray-600 hover:bg-gray-800/90 text-sm"
+            style={{ color: '#e5e7eb' }}
           >
             <MousePointer2 size={20} className="text-cyan-400" />
             <span>コートグリッドを設定</span>
-            <span className="text-xs text-gray-400">4コーナーとネット支柱2点をクリックして設定</span>
+            <span className="text-xs" style={{ color: '#9ca3af' }}>4コーナーとネット支柱2点をクリックして設定</span>
           </button>
         </div>
       )}
     </div>
+
+    {/* ─── キャンセルボタン ─────────────────────────────────────────
+        zIndex:20 コンテナの外に出して zIndex:40 に配置。
+        ROI オーバーレイ (zIndex:30) に隠れず常にクリック可能。
+        位置は上端中央 — コート点と重ならない安全エリア。
+    ───────────────────────────────────────────────────────────── */}
+    {calibrating && (
+      <div
+        className="absolute top-2 left-1/2 -translate-x-1/2"
+        style={{ zIndex: 40, pointerEvents: 'all' }}
+      >
+        <button
+          onClick={() => {
+            setCalibrating(false)
+            if (prevPtsRef.current.length === TOTAL_POINTS) {
+              savePts(prevPtsRef.current)
+            } else {
+              setPoints([])
+            }
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+                     bg-red-700 hover:bg-red-600 border border-red-500 shadow-lg"
+          style={{ color: '#ffffff' }}
+        >
+          <span style={{ color: '#ffffff', fontSize: 12, lineHeight: 1 }}>✕</span>
+          キャンセル
+        </button>
+      </div>
+    )}
+    </>
   )
 }

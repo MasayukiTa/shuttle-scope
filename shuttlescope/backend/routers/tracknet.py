@@ -88,7 +88,9 @@ class RoiRectModel(BaseModel):
 class BatchRequest(BaseModel):
     backend: str = "auto"  # auto | openvino | onnx_cpu
     confidence_threshold: float = 0.5
-    roi_rect: Optional[RoiRectModel] = None  # 解析対象エリア（未指定なら全体）
+    roi_rect: Optional[RoiRectModel] = None   # 解析対象エリア（未指定なら全体）
+    resume: bool = False                       # True: 解析済みラリーをスキップして途中再開
+    prev_roi: Optional[RoiRectModel] = None   # 直前の ROI（ROI 拡張時に再処理強制）
 
 @router.post("/tracknet/batch/{match_id}")
 def start_batch(
@@ -130,8 +132,9 @@ def start_batch(
     }
 
     roi = body.roi_rect.model_dump() if body.roi_rect else None
+    prev_roi = body.prev_roi.model_dump() if body.prev_roi else None
     background_tasks.add_task(
-        _run_batch, job_id, match_id, video_path, body.confidence_threshold, roi
+        _run_batch, job_id, match_id, video_path, body.confidence_threshold, roi, body.resume, prev_roi
     )
     return {"success": True, "data": {"job_id": job_id}}
 
@@ -302,9 +305,18 @@ def _remap_tracknet_result(result: dict, roi: dict | None) -> dict:
     return out
 
 
-def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float, roi: dict | None = None):
+def _run_batch(
+    job_id: str,
+    match_id: int,
+    video_path: str,
+    threshold: float,
+    roi: dict | None = None,
+    resume: bool = False,
+    prev_roi: dict | None = None,
+):
     """バッチ解析の本体。別スレッドで実行される。"""
     from backend.db.database import SessionLocal
+    from backend.routers.yolo import _compute_delta_rois
 
     _jobs[job_id]["status"] = BatchJobStatus.RUNNING
     db = SessionLocal()
@@ -315,6 +327,9 @@ def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float, ro
             _jobs[job_id]["status"] = BatchJobStatus.ERROR
             _jobs[job_id]["error"] = inf.get_load_error() or "モデルロードに失敗しました"
             return
+
+        # ROI拡張判定（拡張時は既存 land_zone を上書きして再解析）
+        roi_widened = bool(prev_roi and roi and _compute_delta_rois(prev_roi, roi))
 
         # ラリー一覧取得（スキップラリーは除外）
         sets = db.query(GameSet).filter(GameSet.match_id == match_id).all()
@@ -336,6 +351,18 @@ def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float, ro
                 _jobs[job_id]["progress"] = (i + 1) / max(len(rallies), 1)
                 continue
 
+            # resume かつ ROI 拡張なし: 全ストロークが解析済みならスキップ
+            if resume and not roi_widened:
+                strokes_check = (
+                    db.query(Stroke)
+                    .filter(Stroke.rally_id == rally.id)
+                    .all()
+                )
+                if strokes_check and all(s.land_zone for s in strokes_check):
+                    _jobs[job_id]["processed_rallies"] = i + 1
+                    _jobs[job_id]["progress"] = (i + 1) / max(len(rallies), 1)
+                    continue
+
             try:
                 frames = _extract_frames(video_path, rally.video_timestamp_start, n_frames=5)
                 if len(frames) < 3:
@@ -353,8 +380,6 @@ def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float, ro
                 if roi:
                     results = [_remap_tracknet_result(r, roi) for r in results]
 
-                # 最初の結果（ラリー開始付近）をhit_zoneとして使用
-                first = results[0]
                 # 最後の結果をland_zoneとして使用
                 last = results[-1]
 
@@ -367,7 +392,8 @@ def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float, ro
                 for j, stroke in enumerate(strokes):
                     res = results[j] if j < len(results) else last
                     if res["confidence"] >= threshold and res["zone"]:
-                        if not stroke.land_zone:  # 未入力のみ補完
+                        # ROI拡張時は既存 land_zone を上書き（より広い範囲で再解析）
+                        if not stroke.land_zone or roi_widened:
                             stroke.land_zone = res["zone"]
                             updated += 1
 

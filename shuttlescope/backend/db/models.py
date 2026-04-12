@@ -538,3 +538,36 @@ class MatchCVArtifact(Base):
     )
 
     match: Mapped["Match"] = relationship("Match", back_populates="cv_artifacts")
+
+
+# ─── 試合前統計予測スナップショット ──────────────────────────────────────────────
+
+class PrematchPrediction(Base):
+    """試合前統計予測のスナップショット。
+
+    対象試合の日付より前のデータのみで算出し保存する。
+    一度保存したら再計算しない（スナップショット）。
+    force=true パラメータで上書き再計算可能。
+
+    match_id + player_id の組み合わせはユニーク。
+    """
+    __tablename__ = "prematch_predictions"
+    __table_args__ = (
+        Index("ix_pp_match_player", "match_id", "player_id", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
+    opponent_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
+    cutoff_date: Mapped[date] = mapped_column(Date, nullable=False)
+    tournament_level: Mapped[str] = mapped_column(String(20), nullable=False)
+    sample_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    h2h_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    win_probability: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    set_distribution: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON
+    most_likely_scorelines: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
+    score_volatility: Mapped[Optional[str]] = mapped_column(Text, nullable=True)    # JSON
+    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    match_narrative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)     # JSON
+    computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

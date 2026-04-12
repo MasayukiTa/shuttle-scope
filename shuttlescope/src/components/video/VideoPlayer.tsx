@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, RefObject } from 'react'
+import { useRef, useState, useEffect, useCallback, RefObject, type ReactNode } from 'react'
 import {
   Play, Pause, SkipBack, SkipForward,
   ChevronLeft, ChevronRight,
@@ -11,6 +11,10 @@ interface VideoPlayerProps {
   onPlaybackRateChange: (rate: number) => void
   /** 親から渡す ref — useKeyboard でのシーク操作・再生制御に使用 */
   videoRefProp?: RefObject<HTMLVideoElement>
+  /** ビデオエリア div（aspect-ratio ボックス）への ref — オーバーレイ配置用 */
+  videoAreaRef?: RefObject<HTMLDivElement>
+  /** ビデオエリア内に描画するオーバーレイ群（absolute inset-0 想定） */
+  overlays?: ReactNode
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 1, 2] as const
@@ -26,6 +30,8 @@ export function VideoPlayer({
   playbackRate,
   onPlaybackRateChange,
   videoRefProp,
+  videoAreaRef,
+  overlays,
 }: VideoPlayerProps) {
   const internalRef = useRef<HTMLVideoElement>(null)
   const videoRef = videoRefProp ?? internalRef
@@ -87,8 +93,12 @@ export function VideoPlayer({
 
   return (
     <div className="flex flex-col gap-2">
-      {/* 動画本体 */}
-      <div className="relative w-full bg-black rounded overflow-hidden" style={{ aspectRatio: '16/9' }}>
+      {/* 動画本体 — オーバーレイはこの div 内に配置（コントロールに被らない） */}
+      <div
+        ref={videoAreaRef}
+        className="relative w-full bg-black rounded overflow-hidden"
+        style={{ aspectRatio: '16/9' }}
+      >
         <video
           ref={videoRef}
           src={src}
@@ -101,6 +111,7 @@ export function VideoPlayer({
           // Space のブラウザデフォルト再生/停止を無効化 — useKeyboard で一元管理
           onKeyDown={(e) => { if (e.key === ' ') e.preventDefault() }}
         />
+        {overlays}
       </div>
 
       {/* シークバー */}

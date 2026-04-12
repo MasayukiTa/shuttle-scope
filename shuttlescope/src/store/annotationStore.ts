@@ -99,8 +99,8 @@ interface AnnotationState {
   // スコア補正（スコア・ラリー番号を直接更新。API保存はページ側で行う）
   applyScoreCorrection: (scoreA: number, scoreB: number, rallyNum: number) => void
 
-  // アンドゥ
-  undoLastStroke: () => void
+  // アンドゥ（削除したストロークを返す。呼び出し元が動画シークに使用可能）
+  undoLastStroke: () => StrokeInput | null
 
   // ペンディング中のストロークをキャンセル（落点待ち中にEsc/Backspace/Ctrl+Z）
   cancelPendingStroke: () => void
@@ -381,7 +381,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   // アンドゥ（直前ストローク削除）
   undoLastStroke: () => {
     const { currentStrokes, currentStrokeNum } = get()
-    if (currentStrokes.length === 0) return
+    if (currentStrokes.length === 0) return null
     const removedStroke = currentStrokes[currentStrokes.length - 1]
     const newStrokes = currentStrokes.slice(0, -1)
     // 削除したストロークの player から前チーム・前ヒッターを復元
@@ -393,9 +393,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentStrokeNum: Math.max(1, currentStrokeNum - 1),
       currentPlayer: restoredPlayer,
       currentHitter: restoredHitter,
-      pendingStroke: emptyPending(),
+      // 直前のショット種別をヒントとして残す（ショットパネルでハイライト表示）
+      pendingStroke: { ...emptyPending(), shot_type: removedStroke.shot_type },
       inputStep: 'idle',
     })
+    return removedStroke
   },
 
   nextSet: (setId, setNum) =>

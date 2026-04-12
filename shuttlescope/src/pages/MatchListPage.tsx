@@ -9,6 +9,7 @@ import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS 
 import { QuickStartModal } from '@/components/annotation/QuickStartModal'
 import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
 import { DateRangeFilter } from '@/components/common/DateRangeFilter'
+import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 import { useCardTheme } from '@/hooks/useCardTheme'
 
 // 試合登録フォーム
@@ -168,8 +169,8 @@ export function MatchListPage() {
   const [filterPlayer, setFilterPlayer] = useState<string>(() => searchParams.get('player_id') ?? '')
   const [filterLevel, setFilterLevel] = useState<string>('')
   const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false)
-  const [filterDateFrom, setFilterDateFrom] = useState<string>('')
-  const [filterDateTo, setFilterDateTo] = useState<string>('')
+  const [filterDateFrom, setFilterDateFrom] = useState<string | null>(null)
+  const [filterDateTo, setFilterDateTo] = useState<string | null>(null)
   const [downloadJobIds, setDownloadJobIds] = useState<Record<number, string>>({})
   const [downloadQuality, setDownloadQuality] = useState<string>('720')
   const [downloadCookieBrowser, setDownloadCookieBrowser] = useState<string>('')
@@ -556,11 +557,28 @@ export function MatchListPage() {
           </div>
         </div>
         {/* 期間フィルター */}
-        <DateRangeFilter
-          from={filterDateFrom}
-          to={filterDateTo}
-          onChange={(from, to) => { setFilterDateFrom(from); setFilterDateTo(to) }}
-        />
+        <div className="flex items-center gap-3 flex-wrap">
+          <DateRangeFilter
+            from={filterDateFrom ?? ''}
+            to={filterDateTo ?? ''}
+            onChange={(from, to) => { setFilterDateFrom(from || null); setFilterDateTo(to || null) }}
+          />
+          <DateRangeSlider
+            from={filterDateFrom}
+            to={filterDateTo}
+            densityDates={allMatches.map((m) => m.date).filter(Boolean) as string[]}
+            onChange={(from, to) => { setFilterDateFrom(from); setFilterDateTo(to) }}
+            isLight={isLight}
+          />
+          {(filterDateFrom || filterDateTo) && (
+            <button
+              className="text-xs text-blue-400 hover:text-blue-300"
+              onClick={() => { setFilterDateFrom(null); setFilterDateTo(null) }}
+            >
+              リセット
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 試合一覧 */}

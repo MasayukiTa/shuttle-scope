@@ -31,6 +31,7 @@ def get_matches_for_player(
     player_id: int,
     opponent_id: Optional[int] = None,
     tournament_level: Optional[str] = None,
+    before_date=None,  # date | None — この日付より前のみ（試合前予測のデータカットオフ用）
 ) -> list[Match]:
     """フィルタ済み試合リスト取得（棄権・未完了除外）"""
     q = (
@@ -49,6 +50,8 @@ def get_matches_for_player(
         )
     if tournament_level:
         q = q.filter(Match.tournament_level == tournament_level)
+    if before_date is not None:
+        q = q.filter(Match.date < before_date)
     return q.order_by(Match.date.desc()).all()
 
 

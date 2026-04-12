@@ -5,7 +5,7 @@
  * - ROI 矩形オーバーレイ: roiRect / roiEditing / onRoiChange で制御
  * - BBox 描画: video.getBoundingClientRect() でレターボックスオフセットを補正
  */
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject, type ReactNode } from 'react'
 import { VideoPlayer } from '@/components/video/VideoPlayer'
 import { PlayerPositionOverlay } from '@/components/annotation/PlayerPositionOverlay'
 import { ShuttleTrackOverlay } from '@/components/annotation/ShuttleTrackOverlay'
@@ -80,12 +80,16 @@ export function AnnotatorVideoPane({
   roiEditing = false,
   onRoiChange,
 }: Props) {
-  // video の描画領域を追跡するための state
+  // videoAreaRef はビデオ本体 div（aspect-ratio ボックス）を指す。
+  // オーバーレイはここに配置 — コントロール（シークバー・ボタン）は含まない。
+  const videoAreaRef = useRef<HTMLDivElement>(null)
+
+  // video の描画領域を追跡（レターボックス補正用）
   const renderRectRef = useRef<{ left: number; top: number; width: number; height: number } | null>(null)
 
   useEffect(() => {
     const video = videoRef.current
-    const container = videoContainerRef.current
+    const container = videoAreaRef.current
     if (!video || !container) return
     const update = () => {
       renderRectRef.current = getVideoRenderRect(video, container)
@@ -100,21 +104,18 @@ export function AnnotatorVideoPane({
       video.removeEventListener('resize', update)
       ro.disconnect()
     }
-  }, [videoRef, videoContainerRef])
+  }, [videoRef])
 
   const rr = renderRectRef.current
   const overlayStyle = rr
     ? { position: 'absolute' as const, left: rr.left, top: rr.top, width: rr.width, height: rr.height }
     : { position: 'absolute' as const, inset: 0 }
 
-  return (
-    <div ref={videoContainerRef} className="relative w-full">
-      <VideoPlayer
-        videoRefProp={videoRef}
-        src={src}
-        playbackRate={playbackRate}
-        onPlaybackRateChange={onPlaybackRateChange}
-      />
+  // オーバーレイ群を ReactNode として構築し VideoPlayer に渡す。
+  // VideoPlayer の aspectRatio ボックス内に描画されるため、
+  // コントロール（シークバー・再生ボタン等）にはかからない。
+  const overlays: ReactNode = (
+    <>
       {/* BBox / シャトル軌跡オーバーレイ — レターボックス補正済み座標に配置 */}
       {yoloFrames.length > 0 && rr && (
         <div style={overlayStyle} className="pointer-events-none">
@@ -142,7 +143,7 @@ export function AnnotatorVideoPane({
       {courtGridMatchId && (
         <CourtGridOverlay
           matchId={courtGridMatchId}
-          containerRef={videoContainerRef}
+          containerRef={videoAreaRef}
           visible={courtGridVisible}
         />
       )}
@@ -152,9 +153,22 @@ export function AnnotatorVideoPane({
           value={roiRect ?? null}
           onChange={onRoiChange}
           editing={roiEditing}
-          containerRef={videoContainerRef}
+          containerRef={videoAreaRef}
         />
       )}
+    </>
+  )
+
+  return (
+    <div ref={videoContainerRef} className="w-full">
+      <VideoPlayer
+        videoRefProp={videoRef}
+        src={src}
+        playbackRate={playbackRate}
+        onPlaybackRateChange={onPlaybackRateChange}
+        videoAreaRef={videoAreaRef}
+        overlays={overlays}
+      />
     </div>
   )
 }

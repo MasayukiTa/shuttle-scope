@@ -16,6 +16,7 @@ import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
 import { LineupOptimizerPanel } from '@/components/analysis/LineupOptimizerPanel'
 import { HumanForecastPanel } from '@/components/analysis/HumanForecastPanel'
+import { PrematchStatCard } from '@/components/analysis/PrematchStatCard'
 import { useAuth } from '@/hooks/useAuth'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { RoleGuard } from '@/components/common/RoleGuard'
@@ -208,7 +209,16 @@ export function PredictionPage() {
                 />
               </div>
 
-              {/* 予測パネル */}
+              {/* 試合前統計予測 */}
+              {forecastMatchId && (
+                <PrematchStatCard
+                  matchId={forecastMatchId}
+                  playerId={selectedPlayerId}
+                  playerName={selectedPlayer?.name ?? ''}
+                />
+              )}
+
+              {/* 人間予測入力パネル */}
               {forecastMatchId && (
                 <div className={`${card} rounded-lg p-4`}>
                   <HumanForecastPanel matchId={forecastMatchId} playerId={selectedPlayerId} />

@@ -252,8 +252,24 @@ export function AnnotatorPage() {
   const [videoSourceMode, setVideoSourceMode] = useState<VideoSourceMode>('local')
   const timer = useMatchTimer()
 
-  // TrackNet/YOLO 解析領域（ROI）
-  const [roiRect, setRoiRect] = useState<RoiRect | null>(null)
+  // TrackNet/YOLO 解析領域（ROI）— matchId ごとに localStorage 永続化
+  const roiStorageKey = matchId ? `roi-rect-${matchId}` : null
+  const [roiRect, setRoiRectRaw] = useState<RoiRect | null>(() => {
+    if (!matchId) return null
+    try {
+      const saved = localStorage.getItem(`roi-rect-${matchId}`)
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  })
+  const setRoiRect = useCallback((rect: RoiRect | null) => {
+    setRoiRectRaw(rect)
+    if (!roiStorageKey) return
+    if (rect) {
+      try { localStorage.setItem(roiStorageKey, JSON.stringify(rect)) } catch { /* ignore */ }
+    } else {
+      try { localStorage.removeItem(roiStorageKey) } catch { /* ignore */ }
+    }
+  }, [roiStorageKey])
   const [roiEditing, setRoiEditing] = useState(false)
 
   // 録画（カメラ/WebRTCストリームをローカル保存）
@@ -728,19 +744,33 @@ export function AnnotatorPage() {
   }, [store.inputStep])
 
   // ─── 一時保存（Auto-save） ───────────────────────────────────────────────────
-  // ストローク確定のたびに localStorage へ書き込み
+  // すべての入力操作（ショット種入力・落点入力・属性変更）で保存する
   useEffect(() => {
-    if (!autoSaveKey || !store.isRallyActive || store.currentStrokes.length === 0) return
+    if (!autoSaveKey || !store.isRallyActive) return
+    // ストロークが1本もなく pendingStroke も空なら保存しない（ラリー開始直後の空振り防止）
+    const hasPending = !!store.pendingStroke.shot_type
+    if (store.currentStrokes.length === 0 && !hasPending) return
     const now = Date.now()
     const data = {
       setId: store.currentSetId,
       rallyNum: store.currentRallyNum,
       strokes: store.currentStrokes,
+      pendingStroke: store.pendingStroke,
+      inputStep: store.inputStep,
+      videoTimestamp: videoRef.current?.currentTime ?? null,
       savedAt: now,
     }
     localStorage.setItem(autoSaveKey, JSON.stringify(data))
     setLastAutoSaveTime(now)
-  }, [autoSaveKey, store.currentStrokes, store.isRallyActive, store.currentSetId, store.currentRallyNum])
+  }, [
+    autoSaveKey,
+    store.currentStrokes,
+    store.pendingStroke,
+    store.inputStep,
+    store.isRallyActive,
+    store.currentSetId,
+    store.currentRallyNum,
+  ])
 
   // 初期化完了後: 前回の未保存ストロークがあれば復元確認
   useEffect(() => {
@@ -748,15 +778,23 @@ export function AnnotatorPage() {
     try {
       const raw = localStorage.getItem(autoSaveKey)
       if (!raw) return
-      const saved = JSON.parse(raw) as { setId: number; rallyNum: number; strokes: any[]; savedAt: number }
+      const saved = JSON.parse(raw) as {
+        setId: number; rallyNum: number; strokes: any[]
+        pendingStroke?: any; inputStep?: string
+        savedAt: number; videoTimestamp?: number
+      }
+      const hasContent = saved.strokes.length > 0 || !!saved.pendingStroke?.shot_type
       if (
-        saved.strokes.length > 0 &&
+        hasContent &&
         saved.setId === store.currentSetId &&
         saved.rallyNum === store.currentRallyNum
       ) {
         const age = Math.round((Date.now() - saved.savedAt) / 60000)
+        const strokeDesc = saved.strokes.length > 0
+          ? `${saved.strokes.length}本確定`
+          : `ショット種別入力中`
         const ok = window.confirm(
-          `前回の未保存ストロークが見つかりました（${saved.strokes.length}本、約${age}分前）。\n復元しますか？`
+          `前回の未保存データが見つかりました（${strokeDesc}、約${age}分前）。\n復元しますか？`
         )
         if (ok) {
           // ストアに直接書き込み（store.startRally と同等の準備）
@@ -766,6 +804,17 @@ export function AnnotatorPage() {
               currentStrokes: [...s.currentStrokes, stroke],
               currentStrokeNum: s.currentStrokeNum + 1,
             }))
+          }
+          // ペンディングストローク（ショット種別まで入力済み）も復元
+          if (saved.pendingStroke?.shot_type) {
+            useAnnotationStore.setState({
+              pendingStroke: saved.pendingStroke,
+              inputStep: (saved.inputStep as any) ?? 'idle',
+            })
+          }
+          // 前回の動画再生位置に復元
+          if (saved.videoTimestamp != null && videoRef.current) {
+            videoRef.current.currentTime = saved.videoTimestamp
           }
         } else {
           localStorage.removeItem(autoSaveKey)
@@ -783,8 +832,10 @@ export function AnnotatorPage() {
   const {
     tracknetJob, setTracknetJob, shuttleFrames, shuttleOverlayVisible,
     setShuttleOverlayVisible, tracknetArtifactAt, handleTracknetBatch,
+    handleTracknetBatchResume, tracknetArtifactExists,
     yoloJob, setYoloJob, yoloFrames, yoloOverlayVisible,
     setYoloOverlayVisible, yoloArtifactMeta, handleYoloBatch,
+    handleYoloBatchResume, handleYoloBatchDiff, yoloArtifactExists, yoloRoiExpanded,
     currentVideoSec, videoContainerRef,
   } = useCVJobs({
     matchId,
@@ -1384,15 +1435,28 @@ export function AnnotatorPage() {
                 )}
               </div>
             ) : (
-              <button
-                onClick={handleTracknetBatch}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
-                }`}
-                title={t('tracknet.batch_start')}
-              >
-                {t('tracknet.batch_start')}
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleTracknetBatch}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                    isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
+                  }`}
+                  title={t('tracknet.batch_start')}
+                >
+                  {t('tracknet.batch_start')}
+                </button>
+                {tracknetArtifactExists && (
+                  <button
+                    onClick={handleTracknetBatchResume}
+                    className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
+                      isLight ? 'bg-purple-50 text-purple-500 hover:bg-purple-100 border border-purple-200' : 'bg-purple-900/20 text-purple-400 hover:bg-purple-900/40 border border-purple-800/50'
+                    }`}
+                    title="解析済みラリーをスキップして途中から再開"
+                  >
+                    再開
+                  </button>
+                )}
+              </div>
             )
           )}
           {/* CV オーバーレイグループ（YOLO + TrackNet） */}
@@ -1447,15 +1511,39 @@ export function AnnotatorPage() {
                   )}
                 </div>
               ) : (
-                <button
-                  onClick={handleYoloBatch}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
-                    isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
-                  }`}
-                  title={t('yolo.batch_start')}
-                >
-                  + 人物検出
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleYoloBatch}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                      isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                    }`}
+                    title={t('yolo.batch_start')}
+                  >
+                    + 人物検出
+                  </button>
+                  {yoloArtifactExists && (
+                    <button
+                      onClick={handleYoloBatchResume}
+                      className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        isLight ? 'bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200' : 'bg-blue-900/20 text-blue-400 hover:bg-blue-900/40 border border-blue-800/50'
+                      }`}
+                      title="既存フレームをスキップして途中から再開"
+                    >
+                      再開
+                    </button>
+                  )}
+                  {yoloArtifactExists && yoloRoiExpanded && (
+                    <button
+                      onClick={handleYoloBatchDiff}
+                      className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        isLight ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200' : 'bg-amber-900/20 text-amber-400 hover:bg-amber-900/40 border border-amber-700/50'
+                      }`}
+                      title="ROIが拡張された部分のみ追加検出してマージ"
+                    >
+                      差分更新
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* シャトル軌跡トグル */}
@@ -1954,62 +2042,70 @@ export function AnnotatorPage() {
             if (videoSourceMode === 'webview') {
               if (localCamStream) {
                 return (
-                  <div className="relative w-full rounded overflow-hidden bg-black aspect-video">
-                    <video
-                      ref={localCamVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-contain"
-                    />
-                    <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-green-700 text-white text-xs px-2 py-0.5 rounded-full">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                      PCカメラ使用中
+                  // w-full ブロックラッパー — VideoPlayer/AnnotatorVideoPane と同じ構造にして
+                  // flex-col 内での aspect-ratio 計算を安定させる
+                  <div className="w-full">
+                    <div className="relative w-full bg-black rounded overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                      <video
+                        ref={localCamVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-contain"
+                      />
+                      <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-green-700 text-white text-xs px-2 py-0.5 rounded-full">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                        PCカメラ使用中
+                      </div>
+                      {/* 録画ボタン */}
+                      <button
+                        onClick={() => isRecording ? stopRecording() : startRecording(localCamStream)}
+                        className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                          isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
+                        }`}
+                        title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
+                      >
+                        {isRecording ? <><Square size={11} className="fill-current" /> 停止</> : <><Video size={11} /> 録画</>}
+                      </button>
                     </div>
-                    {/* 録画ボタン */}
-                    <button
-                      onClick={() => isRecording ? stopRecording() : startRecording(localCamStream)}
-                      className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                        isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
-                      }`}
-                      title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
-                    >
-                      {isRecording ? <><Square size={11} className="fill-current" /> 停止</> : <><Video size={11} /> 録画</>}
-                    </button>
                   </div>
                 )
               }
               if (remoteStream) {
                 return (
-                  <div className="relative w-full rounded overflow-hidden bg-black aspect-video">
-                    <video
-                      ref={remoteStreamVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-contain"
-                    />
-                    <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                      iOSカメラ受信中
+                  <div className="w-full">
+                    <div className="relative w-full bg-black rounded overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                      <video
+                        ref={remoteStreamVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-contain"
+                      />
+                      <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                        iOSカメラ受信中
+                      </div>
+                      {/* 録画ボタン */}
+                      <button
+                        onClick={() => isRecording ? stopRecording() : startRecording(remoteStream)}
+                        className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                          isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
+                        }`}
+                        title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
+                      >
+                        {isRecording ? <><Square size={11} className="fill-current" /> 停止</> : <><Video size={11} /> 録画</>}
+                      </button>
                     </div>
-                    {/* 録画ボタン */}
-                    <button
-                      onClick={() => isRecording ? stopRecording() : startRecording(remoteStream)}
-                      className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                        isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
-                      }`}
-                      title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
-                    >
-                      {isRecording ? <><Square size={11} className="fill-current" /> 停止</> : <><Video size={11} /> 録画</>}
-                    </button>
                   </div>
                 )
               }
               return (
-                <div className="w-full aspect-video flex items-center justify-center bg-gray-800 rounded text-gray-400 text-sm border-2 border-dashed border-gray-600 text-center gap-2 flex-col">
+                <div className="w-full" style={{ aspectRatio: '16/9' }}>
+                <div className="w-full h-full flex items-center justify-center bg-gray-800 rounded text-gray-400 text-sm border-2 border-dashed border-gray-600 text-center gap-2 flex-col">
                   <span>カメラ映像待機中...</span>
                   <span className="text-xs text-gray-600">デバイス管理でカメラを起動してください</span>
+                </div>
                 </div>
               )
             }
@@ -2078,7 +2174,11 @@ export function AnnotatorPage() {
                 courtGridVisible={courtGridVisible}
                 roiRect={roiRect}
                 roiEditing={roiEditing}
-                onRoiChange={setRoiRect}
+                onRoiChange={(rect) => {
+                  setRoiRect(rect)
+                  // 枠を描き終えたら編集モードを自動終了（再度ボタン押し不要）
+                  if (rect !== null) setRoiEditing(false)
+                }}
               />
             )
           })()}
@@ -2486,7 +2586,7 @@ export function AnnotatorPage() {
             )}
 
             {/* D-1: 自動保存ステータス（デスクトップのみ） */}
-            <div className={clsx('flex items-center justify-between text-[10px] shrink-0 px-0.5', isMobile && 'hidden')}>
+            <div className={clsx('flex items-center text-[10px] shrink-0 px-0.5', isMobile && 'hidden')}>
               {store.isRallyActive && store.currentStrokes.length > 0 ? (
                 lastAutoSaveTime ? (
                   <span className="text-green-500">
@@ -2497,26 +2597,6 @@ export function AnnotatorPage() {
                 )
               ) : (
                 <span className="text-gray-600">—</span>
-              )}
-              {/* D-3: 手動保存ボタン */}
-              {store.isRallyActive && store.currentStrokes.length > 0 && autoSaveKey && (
-                <button
-                  onClick={() => {
-                    const now = Date.now()
-                    const data = {
-                      setId: store.currentSetId,
-                      rallyNum: store.currentRallyNum,
-                      strokes: store.currentStrokes,
-                      savedAt: now,
-                    }
-                    localStorage.setItem(autoSaveKey, JSON.stringify(data))
-                    setLastAutoSaveTime(now)
-                  }}
-                  className="text-gray-500 hover:text-green-400 px-1"
-                  title="今すぐ保存"
-                >
-                  💾 保存
-                </button>
               )}
             </div>
 
@@ -3182,7 +3262,12 @@ export function AnnotatorPage() {
               {/* アンドゥ */}
               {store.currentStrokes.length > 0 && (
                 <button
-                  onClick={() => store.undoLastStroke()}
+                  onClick={() => {
+                    const removed = store.undoLastStroke()
+                    if (removed?.timestamp_sec != null && videoRef.current) {
+                      videoRef.current.currentTime = removed.timestamp_sec
+                    }
+                  }}
                   className={clsx(
                     'flex items-center gap-1 justify-center bg-gray-700 hover:bg-gray-600 text-gray-300 rounded',
                     useLargeTouch ? 'py-3 text-base' : 'py-1.5 text-sm'
@@ -3203,6 +3288,39 @@ export function AnnotatorPage() {
                   )}
                 >
                   ✕ ラリーキャンセル
+                </button>
+              )}
+
+              {/* 手動保存 — ラリー中かつストロークがある場合に表示 */}
+              {store.isRallyActive && store.currentStrokes.length > 0 && autoSaveKey && (
+                <button
+                  onClick={() => {
+                    const now = Date.now()
+                    const data = {
+                      setId: store.currentSetId,
+                      rallyNum: store.currentRallyNum,
+                      strokes: store.currentStrokes,
+                      pendingStroke: store.pendingStroke,
+                      inputStep: store.inputStep,
+                      videoTimestamp: videoRef.current?.currentTime ?? null,
+                      savedAt: now,
+                    }
+                    localStorage.setItem(autoSaveKey!, JSON.stringify(data))
+                    setLastAutoSaveTime(now)
+                  }}
+                  className={clsx(
+                    'w-full flex items-center justify-center gap-1.5 rounded font-medium',
+                    'bg-gray-700 hover:bg-gray-600 border border-gray-600 text-gray-200',
+                    useLargeTouch ? 'py-2.5 text-sm' : 'py-1.5 text-xs'
+                  )}
+                  title="今すぐ一時保存（自動保存の補完）"
+                >
+                  💾 一時保存
+                  {lastAutoSaveTime && (
+                    <span className="text-gray-500 text-[10px]">
+                      {new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                  )}
                 </button>
               )}
             </div>

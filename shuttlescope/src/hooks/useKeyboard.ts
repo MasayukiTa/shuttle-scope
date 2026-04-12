@@ -105,7 +105,9 @@ const NET_KEY: Record<string, ZoneNet> = {
 function isInInputContext(target: EventTarget | null): boolean {
   if (!target || !(target instanceof Element)) return false
   const tag = (target as HTMLElement).tagName
-  if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(tag)) return true
+  // BUTTON は除外 — Space でボタンがクリックされる問題を防ぐため、
+  // ハンドラ側で e.preventDefault() + blur() を行う
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return true
   if ((target as HTMLElement).isContentEditable) return true
   // カスタムコンボボックス / リストボックス内
   if ((target as HTMLElement).closest('[role="combobox"],[role="listbox"],[role="option"]')) return true
@@ -114,6 +116,11 @@ function isInInputContext(target: EventTarget | null): boolean {
 
 const HITTER_KEYS: Record<string, 'player_a' | 'partner_a' | 'partner_b' | 'player_b'> = {
   '7': 'player_a', '8': 'partner_a', '9': 'partner_b', '0': 'player_b',
+}
+
+// テンキーでもサーバー/ヒッター選択（idle step のみ。land_zone での落点入力と競合しない）
+const NUMPAD_HITTER_KEYS: Record<string, 'player_a' | 'partner_a' | 'partner_b' | 'player_b'> = {
+  'Numpad7': 'player_a', 'Numpad8': 'partner_a', 'Numpad9': 'partner_b', 'Numpad0': 'player_b',
 }
 
 export function useKeyboard({
@@ -183,6 +190,11 @@ export function useKeyboard({
         }
         if (e.key === ' ') {
           e.preventDefault()
+          // フォーカスがボタンにある場合、Space でそのボタンがクリックされないよう blur する
+          const active = document.activeElement
+          if (active instanceof HTMLElement && active.tagName === 'BUTTON') {
+            active.blur()
+          }
           const v = videoRef?.current
           if (v) v.paused ? v.play() : v.pause()
           return
@@ -319,10 +331,13 @@ export function useKeyboard({
 
       // ─── idle(true): ラリー中・ショット選択 ────────────────────────────────
 
-      // Ctrl+Z: 直前ストロークをアンドゥ
+      // Ctrl+Z: 直前ストロークをアンドゥ（削除ストロークのタイムスタンプへシーク）
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault()
-        store.undoLastStroke()
+        const removed = store.undoLastStroke()
+        if (removed?.timestamp_sec != null && videoRef?.current) {
+          videoRef.current.currentTime = removed.timestamp_sec
+        }
         return
       }
 
@@ -344,9 +359,19 @@ export function useKeyboard({
         return
       }
 
-      // 7/8/9/0: ダブルス打者直接選択（通常数字キーのみ、Numpadは除外）
+      // 7/8/9/0: ダブルス打者直接選択（通常数字キー）
       if (!e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.code.startsWith('Numpad')) {
         const hitter = HITTER_KEYS[e.key]
+        if (hitter) {
+          e.preventDefault()
+          onHitterSelectRef.current?.(hitter)
+          return
+        }
+      }
+
+      // Numpad7/8/9/0: テンキーでもサーバー/打者選択（idle step のみ。land_zone の落点入力と競合しない）
+      if (!e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const hitter = NUMPAD_HITTER_KEYS[e.code]
         if (hitter) {
           e.preventDefault()
           onHitterSelectRef.current?.(hitter)

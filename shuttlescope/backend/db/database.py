@@ -254,6 +254,8 @@ def _ensure_analytics_indexes(eng) -> None:
         ("ix_pmo_match_player_type",        "pre_match_observations","match_id, player_id, observation_type"),
         # human_forecasts
         ("ix_hf_match_player",              "human_forecasts",       "match_id, player_id"),
+        # prematch_predictions
+        ("ix_pp_match_player",              "prematch_predictions",  "match_id, player_id"),
         # sync_conflicts
         ("ix_sc_record_uuid",               "sync_conflicts",        "record_uuid"),
         ("ix_sc_resolution",                "sync_conflicts",        "resolution"),

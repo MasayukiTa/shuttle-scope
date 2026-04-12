@@ -62,10 +62,12 @@ function buildDensity(dates: string[], baseTs: number, totalDays: number): Densi
     }
   }
 
-  const maxCount = Math.max(...counts, 1)
+  const CAP = 10  // 10件以上はすべて同じ高さ（突出バーで他が見えなくなるのを防ぐ）
+  const cappedCounts = counts.map((c) => Math.min(c, CAP))
+  const maxCount = Math.max(...cappedCounts, 1)
   return counts.map((count, i) => ({
     pct: ((i + 0.5) * bucketDays / totalDays) * 100,
-    height: count / maxCount,
+    height: Math.min(count, CAP) / maxCount,
     count,
   }))
 }

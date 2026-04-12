@@ -78,7 +78,9 @@ class RoiRectModel(BaseModel):
 
 
 class YoloBatchRequest(BaseModel):
-    roi_rect: Optional[RoiRectModel] = None  # 解析対象エリア（未指定なら全体）
+    roi_rect: Optional[RoiRectModel] = None   # 解析対象エリア（未指定なら全体）
+    resume: bool = False                       # True: 既存フレームをスキップして途中再開
+    prev_roi: Optional[RoiRectModel] = None   # 直前の ROI（ROI 拡張時の差分処理用）
 
 
 @router.post("/yolo/batch/{match_id}")
@@ -124,8 +126,9 @@ def start_yolo_batch(
     }
 
     roi = body.roi_rect.model_dump() if body.roi_rect else None
+    prev_roi = body.prev_roi.model_dump() if body.prev_roi else None
     background_tasks.add_task(
-        _run_batch, job_id, match_id, video_path, sample_every_n, roi
+        _run_batch, job_id, match_id, video_path, sample_every_n, roi, body.resume, prev_roi
     )
     return {"success": True, "data": {"job_id": job_id}}
 
@@ -309,6 +312,57 @@ def get_alignment(match_id: int, db: Session = Depends(get_db)):
 
 # ─── バックグラウンドジョブ本体 ──────────────────────────────────────────────
 
+def _compute_delta_rois(old_roi: dict, new_roi: dict) -> list[dict]:
+    """旧ROIより新ROIが拡張した差分エリアを最大4ストリップで返す。
+    新ROIが旧ROIより狭い方向がある場合は空リスト（差分処理なし）。"""
+    ox = old_roi.get("x", 0); oy = old_roi.get("y", 0)
+    ow = old_roi.get("w", 1); oh = old_roi.get("h", 1)
+    nx = new_roi.get("x", 0); ny = new_roi.get("y", 0)
+    nw = new_roi.get("w", 1); nh = new_roi.get("h", 1)
+    ox2, oy2 = ox + ow, oy + oh
+    nx2, ny2 = nx + nw, ny + nh
+    eps = 1e-4
+    # 新ROIが全方向で旧ROI以上でないと「純粋な拡張」とみなさない
+    if nx > ox + eps or ny > oy + eps or nx2 < ox2 - eps or ny2 < oy2 - eps:
+        return []
+    strips: list[dict] = []
+    if ny < oy - eps:  # 上方向拡張
+        strips.append({"x": nx, "y": ny, "w": nw, "h": oy - ny})
+    if ny2 > oy2 + eps:  # 下方向拡張
+        strips.append({"x": nx, "y": oy2, "w": nw, "h": ny2 - oy2})
+    mid_y = max(ny, oy); mid_y2 = min(ny2, oy2)
+    if mid_y2 > mid_y + eps:
+        if nx < ox - eps:  # 左方向拡張
+            strips.append({"x": nx, "y": mid_y, "w": ox - nx, "h": mid_y2 - mid_y})
+        if nx2 > ox2 + eps:  # 右方向拡張
+            strips.append({"x": ox2, "y": mid_y, "w": nx2 - ox2, "h": mid_y2 - mid_y})
+    return strips
+
+
+def _bbox_iou(b1: list, b2: list) -> float:
+    """正規化座標bboxのIoU"""
+    if len(b1) != 4 or len(b2) != 4:
+        return 0.0
+    ix1, iy1 = max(b1[0], b2[0]), max(b1[1], b2[1])
+    ix2, iy2 = min(b1[2], b2[2]), min(b1[3], b2[3])
+    if ix2 <= ix1 or iy2 <= iy1:
+        return 0.0
+    inter = (ix2 - ix1) * (iy2 - iy1)
+    a1 = (b1[2] - b1[0]) * (b1[3] - b1[1])
+    a2 = (b2[2] - b2[0]) * (b2[3] - b2[1])
+    union = a1 + a2 - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _merge_players(existing: list[dict], new_players: list[dict], iou_thresh: float = 0.3) -> list[dict]:
+    """既存と新規プレイヤー検出をマージ（IoU重複は既存を優先）。"""
+    merged = list(existing)
+    for p in new_players:
+        if not any(_bbox_iou(p.get("bbox", []), e.get("bbox", [])) >= iou_thresh for e in merged):
+            merged.append(p)
+    return merged
+
+
 def _crop_roi(frame, roi: dict | None):
     """ROI 指定がある場合、正規化座標でフレームをクロップする。"""
     if not roi:
@@ -357,6 +411,8 @@ def _run_batch(
     video_path: str,
     sample_every_n: int,
     roi: dict | None = None,
+    resume: bool = False,
+    prev_roi: dict | None = None,
 ) -> None:
     _jobs[job_id]["status"] = JobStatus.RUNNING
     db = SessionLocal()
@@ -367,6 +423,32 @@ def _run_batch(
             _jobs[job_id]["status"] = JobStatus.ERROR
             _jobs[job_id]["error"] = "モデルロードに失敗しました。pip install ultralytics を実行してください。"
             return
+
+        # 既存アーティファクト読み込み（再開・差分処理用）
+        existing_by_idx: dict[int, dict] = {}
+        if resume or prev_roi:
+            art = (
+                db.query(MatchCVArtifact)
+                .filter(
+                    MatchCVArtifact.match_id == match_id,
+                    MatchCVArtifact.artifact_type == "yolo_player_detections",
+                )
+                .first()
+            )
+            if art and art.data:
+                for f in json.loads(art.data):
+                    existing_by_idx[f["frame_idx"]] = f
+
+        # ROI拡張差分ストリップ計算
+        delta_rois: list[dict] = []
+        if prev_roi and roi:
+            delta_rois = _compute_delta_rois(prev_roi, roi)
+
+        if existing_by_idx:
+            logger.info(
+                "YOLO batch: resume=%s, delta_strips=%d, existing_frames=%d",
+                resume, len(delta_rois), len(existing_by_idx),
+            )
 
         # 動画オープン
         path = video_path
@@ -396,17 +478,37 @@ def _run_batch(
 
             if frame_idx % sample_every_n == 0:
                 ts_sec = frame_idx / fps
-                cropped = _crop_roi(frame, roi)
-                players = inf.predict_frame(cropped)
-                # ROI クロップ座標をフルフレーム座標に変換
-                if roi:
-                    players = _remap_player_coords(players, roi)
-                frames_data.append({
-                    "frame_idx": frame_idx,
-                    "timestamp_sec": round(ts_sec, 3),
-                    "players": players,
-                })
-                detected_total += len([p for p in players if "player" in p.get("label", "")])
+
+                if frame_idx in existing_by_idx:
+                    if delta_rois:
+                        # ROI拡張差分: 拡張エリアのみ追加検出してマージ
+                        new_players: list[dict] = []
+                        for droi in delta_rois:
+                            cropped = _crop_roi(frame, droi)
+                            detected = inf.predict_frame(cropped)
+                            new_players.extend(_remap_player_coords(detected, droi))
+                        merged = _merge_players(existing_by_idx[frame_idx]["players"], new_players)
+                        frames_data.append({
+                            "frame_idx": frame_idx,
+                            "timestamp_sec": round(ts_sec, 3),
+                            "players": merged,
+                        })
+                    else:
+                        # resume=True: 既存データをそのまま再利用（再処理なし）
+                        frames_data.append(existing_by_idx[frame_idx])
+                else:
+                    # 未処理フレーム: 通常検出
+                    cropped = _crop_roi(frame, roi)
+                    players = inf.predict_frame(cropped)
+                    if roi:
+                        players = _remap_player_coords(players, roi)
+                    frames_data.append({
+                        "frame_idx": frame_idx,
+                        "timestamp_sec": round(ts_sec, 3),
+                        "players": players,
+                    })
+
+                detected_total += len([p for p in frames_data[-1]["players"] if "player" in p.get("label", "")])
                 processed += 1
                 _jobs[job_id]["processed_frames"] = processed
                 _jobs[job_id]["progress"] = round(processed / max(sample_count, 1), 3)

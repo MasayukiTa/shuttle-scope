@@ -72,6 +72,7 @@ export interface CVJobsResult {
   setShuttleOverlayVisible: React.Dispatch<React.SetStateAction<boolean>>
   tracknetArtifactAt: string | null
   handleTracknetBatch: () => Promise<void>
+  handleTracknetBatchResume: () => Promise<void>
   // YOLO
   yoloJobId: string | null
   yoloJob: YoloJob | null
@@ -82,12 +83,32 @@ export interface CVJobsResult {
   setYoloOverlayVisible: React.Dispatch<React.SetStateAction<boolean>>
   yoloArtifactMeta: { created_at: string; frame_count: number } | null
   handleYoloBatch: () => Promise<void>
+  handleYoloBatchResume: () => Promise<void>
+  handleYoloBatchDiff: () => Promise<void>
+  /** 既存 YOLO アーティファクトが存在する（再開・差分更新ボタン表示判定用） */
+  yoloArtifactExists: boolean
+  /** 現在の ROI が前回 YOLO 実行時より拡張されている */
+  yoloRoiExpanded: boolean
+  /** 既存 TrackNet 解析結果が存在する（再開ボタン表示判定用） */
+  tracknetArtifactExists: boolean
   // Video overlay
   currentVideoSec: number
   videoContainerRef: RefObject<HTMLDivElement>
 }
 
 // ── フック本体 ────────────────────────────────────────────────────────────────
+
+/** 前回実行時の ROI より現在の ROI がいずれかの方向に拡張されているか判定 */
+function roiHasExpanded(old: RoiRect | null, cur: RoiRect | null): boolean {
+  if (!old || !cur) return false
+  const eps = 0.001
+  return (
+    cur.x < old.x - eps ||
+    cur.y < old.y - eps ||
+    cur.x + cur.w > old.x + old.w + eps ||
+    cur.y + cur.h > old.y + old.h + eps
+  )
+}
 
 export function useCVJobs({
   matchId,
@@ -106,6 +127,7 @@ export function useCVJobs({
   const [shuttleFrames, setShuttleFrames] = useState<ShuttleFrame[]>([])
   const [shuttleOverlayVisible, setShuttleOverlayVisible] = useState(false)
   const [tracknetArtifactAt, setTracknetArtifactAt] = useState<string | null>(null)
+  const [tracknetArtifactExists, setTracknetArtifactExists] = useState(false)
 
   // ── YOLO ──────────────────────────────────────────────────────────────────
 
@@ -117,15 +139,43 @@ export function useCVJobs({
   const [yoloArtifactMeta, setYoloArtifactMeta] = useState<{
     created_at: string; frame_count: number
   } | null>(null)
+  const [yoloArtifactExists, setYoloArtifactExists] = useState(false)
+
+  // 前回実行時の ROI（localStorage per matchId）
+  const [yoloLastRoi, setYoloLastRoi] = useState<RoiRect | null>(() => {
+    if (!matchId) return null
+    try { return JSON.parse(localStorage.getItem(`yolo-last-roi-${matchId}`) ?? 'null') } catch { return null }
+  })
+  const [tracknetLastRoi, setTracknetLastRoi] = useState<RoiRect | null>(() => {
+    if (!matchId) return null
+    try { return JSON.parse(localStorage.getItem(`tracknet-last-roi-${matchId}`) ?? 'null') } catch { return null }
+  })
+
+  const yoloRoiExpanded = roiHasExpanded(yoloLastRoi, roiRect ?? null)
 
   // ── ビデオオーバーレイ ────────────────────────────────────────────────────
 
   const [currentVideoSec, setCurrentVideoSec] = useState(0)
   const videoContainerRef = useRef<HTMLDivElement>(null)
 
-  // ── P3: TrackNet バッチ起動 ───────────────────────────────────────────────
+  // ── マウント時: 既存アーティファクト確認 ─────────────────────────────────
 
-  const handleTracknetBatch = useCallback(async () => {
+  useEffect(() => {
+    if (!matchId) return
+    apiGet<{ success: boolean; data: { frame_count: number } | null }>(`/yolo/results/${matchId}`)
+      .then(res => setYoloArtifactExists(!!(res.success && res.data)))
+      .catch(() => {})
+    apiGet<{ success: boolean; data: unknown[] }>(`/tracknet/shuttle_track/${matchId}`)
+      .then(res => setTracknetArtifactExists(!!(res.success && Array.isArray(res.data) && res.data.length > 0)))
+      .catch(() => {})
+  }, [matchId])
+
+  // ── P3: TrackNet バッチ起動（内部共通ハンドラ） ──────────────────────────
+
+  const _startTracknetBatch = useCallback(async (opts: {
+    resume?: boolean
+    prevRoi?: RoiRect | null
+  } = {}) => {
     if (!matchId) return
     const hasVideo = !!(match?.video_local_path || match?.video_url)
     if (!hasVideo) {
@@ -135,7 +185,13 @@ export function useCVJobs({
     try {
       const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
         `/tracknet/batch/${matchId}`,
-        { backend: tracknetBackend, confidence_threshold: 0.5, roi_rect: roiRect ?? null }
+        {
+          backend: tracknetBackend,
+          confidence_threshold: 0.5,
+          roi_rect: roiRect ?? null,
+          resume: opts.resume ?? false,
+          prev_roi: opts.prevRoi ?? null,
+        }
       )
       if (res.success) {
         setTracknetJobId(res.data.job_id)
@@ -143,9 +199,14 @@ export function useCVJobs({
           status: 'pending', progress: 0, processed_rallies: 0,
           total_rallies: 0, updated_strokes: 0, error: null,
         })
+        // 使用した ROI を記憶
+        if (matchId) {
+          const roi = roiRect ?? null
+          setTracknetLastRoi(roi)
+          try { localStorage.setItem(`tracknet-last-roi-${matchId}`, JSON.stringify(roi)) } catch { }
+        }
       }
     } catch (err: unknown) {
-      // HTTP エラー（503 など）の場合、サーバーの具体的な理由を表示する
       const reason = extractApiError(err)
       setTracknetJob({
         status: 'error', progress: 0, processed_rallies: 0,
@@ -153,6 +214,12 @@ export function useCVJobs({
       })
     }
   }, [matchId, match, tracknetBackend, t, roiRect])
+
+  const handleTracknetBatch = useCallback(() => _startTracknetBatch(), [_startTracknetBatch])
+  const handleTracknetBatchResume = useCallback(
+    () => _startTracknetBatch({ resume: true, prevRoi: tracknetLastRoi }),
+    [_startTracknetBatch, tracknetLastRoi]
+  )
 
   // ── P3: TrackNet ポーリング ───────────────────────────────────────────────
 
@@ -174,6 +241,7 @@ export function useCVJobs({
               )
               if (trackRes.success && Array.isArray(trackRes.data) && trackRes.data.length > 0) {
                 setShuttleFrames(trackRes.data)
+                setTracknetArtifactExists(true)
                 setTracknetArtifactAt(
                   new Date().toLocaleString('ja-JP', {
                     month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -188,9 +256,12 @@ export function useCVJobs({
     return () => clearInterval(id)
   }, [tracknetJobId, tracknetJob?.status, queryClient, matchId])
 
-  // ── P4: YOLO バッチ起動 ───────────────────────────────────────────────────
+  // ── P4: YOLO バッチ起動（内部共通ハンドラ） ──────────────────────────────
 
-  const handleYoloBatch = useCallback(async () => {
+  const _startYoloBatch = useCallback(async (opts: {
+    resume?: boolean
+    prevRoi?: RoiRect | null
+  } = {}) => {
     if (!matchId) return
     const hasVideo = !!(match?.video_local_path || match?.video_url)
     if (!hasVideo) {
@@ -200,7 +271,11 @@ export function useCVJobs({
     try {
       const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
         `/yolo/batch/${matchId}`,
-        { roi_rect: roiRect ?? null }
+        {
+          roi_rect: roiRect ?? null,
+          resume: opts.resume ?? false,
+          prev_roi: opts.prevRoi ?? null,
+        }
       )
       if (res.success) {
         setYoloJobId(res.data.job_id)
@@ -208,6 +283,12 @@ export function useCVJobs({
           status: 'pending', progress: 0, processed_frames: 0,
           total_frames: 0, detected_players: 0, error: null,
         })
+        // 使用した ROI を記憶
+        if (matchId) {
+          const roi = roiRect ?? null
+          setYoloLastRoi(roi)
+          try { localStorage.setItem(`yolo-last-roi-${matchId}`, JSON.stringify(roi)) } catch { }
+        }
       }
     } catch (err: unknown) {
       const reason = extractApiError(err)
@@ -217,6 +298,16 @@ export function useCVJobs({
       })
     }
   }, [matchId, match, t, roiRect])
+
+  const handleYoloBatch = useCallback(() => _startYoloBatch(), [_startYoloBatch])
+  const handleYoloBatchResume = useCallback(
+    () => _startYoloBatch({ resume: true }),
+    [_startYoloBatch]
+  )
+  const handleYoloBatchDiff = useCallback(
+    () => _startYoloBatch({ prevRoi: yoloLastRoi }),
+    [_startYoloBatch, yoloLastRoi]
+  )
 
   // ── P4: YOLO ポーリング ───────────────────────────────────────────────────
 
@@ -249,6 +340,7 @@ export function useCVJobs({
                   created_at: metaRes.data.created_at,
                   frame_count: metaRes.data.frame_count,
                 })
+                setYoloArtifactExists(true)
               }
             } catch { /* meta 取得失敗は無視 */ }
           }
@@ -280,6 +372,8 @@ export function useCVJobs({
     setShuttleOverlayVisible,
     tracknetArtifactAt,
     handleTracknetBatch,
+    handleTracknetBatchResume,
+    tracknetArtifactExists,
     // YOLO
     yoloJobId,
     yoloJob,
@@ -289,6 +383,10 @@ export function useCVJobs({
     setYoloOverlayVisible,
     yoloArtifactMeta,
     handleYoloBatch,
+    handleYoloBatchResume,
+    handleYoloBatchDiff,
+    yoloArtifactExists,
+    yoloRoiExpanded,
     // Video overlay
     currentVideoSec,
     videoContainerRef,
