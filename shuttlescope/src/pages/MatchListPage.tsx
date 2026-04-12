@@ -563,8 +563,8 @@ export function MatchListPage() {
         />
       </div>
 
-      {/* 試合一覧テーブル */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      {/* 試合一覧 */}
+      <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4">
         {isLoading ? (
           <div className={`text-center ${textMuted} py-8`}>{t('app.loading')}</div>
         ) : matches.length === 0 ? (
@@ -572,119 +572,235 @@ export function MatchListPage() {
             試合が登録されていません。「試合登録」ボタンで追加してください。
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className={`${textSecondary} border-b ${borderLine}`}>
-                <th className="text-left py-2 pr-4">日付</th>
-                <th className="text-left py-2 pr-4">大会名</th>
-                <th className="text-left py-2 pr-4">レベル</th>
-                <th className="text-left py-2 pr-4">形式</th>
-                <th className="text-left py-2 pr-4">対戦相手</th>
-                <th className="text-left py-2 pr-4">結果</th>
-                <th className="text-left py-2 pr-4">進捗</th>
-                <th className="text-left py-2">操作</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* ── モバイル: カードリスト ────────────────────────────── */}
+            <div className="md:hidden space-y-3">
               {matches.map((m) => (
-                <tr key={m.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
-                  <td className={`py-2 pr-4 ${textSecondary}`}>{m.date}</td>
-                  <td className="py-2 pr-4">{m.tournament}</td>
-                  <td className="py-2 pr-4">
-                    <span className={`px-1.5 py-0.5 rounded text-xs ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-700'}`}>{m.tournament_level}</span>
-                  </td>
-                  <td className={`py-2 pr-4 ${textSecondary}`}>{t(`match.formats.${m.format}`)}</td>
-                  <td className="py-2 pr-4">
-                    <span>{m.player_b?.name ?? `#${m.player_b_id}`}</span>
-                    {m.player_b?.needs_review && (
-                      <span className="ml-1 text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded" title={t('player.profile_status_provisional')}>
-                        暫定
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 pr-4">
-                    <span className={clsx(
-                      'font-medium',
-                      m.result === 'win' ? 'text-green-400' : m.result === 'loss' ? 'text-red-400' : 'text-gray-400'
-                    )}>
-                      {t(`match.results.${m.result}`)}
-                    </span>
-                    {m.final_score && <span className={`${textMuted} ml-1 text-xs`}>{m.final_score}</span>}
-                  </td>
-                  <td className="py-2 pr-4">
+                <div
+                  key={m.id}
+                  className={`rounded-xl border p-4 ${
+                    isLight ? 'bg-white border-gray-100 shadow-sm' : 'bg-gray-800 border-gray-700'
+                  }`}
+                >
+                  {/* ヘッダー行: 日付 + レベル + 結果 */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs ${textMuted}`}>{m.date}</span>
                     <div className="flex items-center gap-2">
-                      <div className={`w-20 h-1.5 ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-700 text-gray-300'}`}>
+                        {m.tournament_level}
+                      </span>
+                      <span className={clsx(
+                        'text-xs font-bold',
+                        m.result === 'win' ? 'text-green-400' : m.result === 'loss' ? 'text-red-400' : 'text-gray-400'
+                      )}>
+                        {t(`match.results.${m.result}`)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 対戦情報 */}
+                  <div className="mb-1">
+                    <span className="font-medium text-sm">{m.tournament}</span>
+                    <span className={`text-xs ${textMuted} ml-2`}>{t(`match.formats.${m.format}`)}</span>
+                  </div>
+                  <div className="flex items-center gap-1 mb-3">
+                    <span className={`text-sm ${textSecondary}`}>
+                      vs {m.player_b?.name ?? `#${m.player_b_id}`}
+                    </span>
+                    {m.player_b?.needs_review && (
+                      <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded">暫定</span>
+                    )}
+                    {m.final_score && (
+                      <span className={`text-xs ${textMuted} ml-1`}>{m.final_score}</span>
+                    )}
+                  </div>
+
+                  {/* 進捗バー */}
+                  {m.annotation_status !== 'complete' && (
+                    <div className="mb-3">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className={textMuted}>アノテーション進捗</span>
+                        <span className={clsx('text-xs', statusColor(m.annotation_status))}>
+                          {t(`match.statuses.${m.annotation_status}`)}
+                        </span>
+                      </div>
+                      <div className={`h-1.5 ${isLight ? 'bg-gray-100' : 'bg-gray-700'} rounded-full overflow-hidden`}>
                         <div
-                          className="h-full bg-blue-500"
+                          className="h-full bg-blue-500 rounded-full transition-all"
                           style={{ width: `${m.annotation_progress * 100}%` }}
                         />
                       </div>
+                    </div>
+                  )}
+                  {m.annotation_status === 'complete' && (
+                    <div className="mb-3">
                       <span className={clsx('text-xs', statusColor(m.annotation_status))}>
                         {t(`match.statuses.${m.annotation_status}`)}
                       </span>
                     </div>
-                  </td>
-                  <td className="py-2">
-                    <div className="flex items-center gap-1">
-                      {/* アノテーション開始 */}
+                  )}
+
+                  {/* 操作ボタン */}
+                  <div className="flex items-center gap-2 justify-end">
+                    <button
+                      onClick={() => navigate(`/annotator/${m.id}`)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium"
+                    >
+                      <Play size={14} />
+                      開く
+                    </button>
+                    {m.player_a_id && (
                       <button
-                        onClick={() => navigate(`/annotator/${m.id}`)}
-                        className="p-1.5 rounded bg-blue-700 hover:bg-blue-600 text-white"
-                        title={t('match.start_annotation')}
+                        onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
+                        className={`p-1.5 rounded-lg ${isLight ? 'text-gray-500 hover:text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700'}`}
+                        title="予測ページで確認"
                       >
-                        <Play size={14} />
+                        <TrendingUp size={18} />
                       </button>
-                      {/* 予測ページへ */}
-                      {m.player_a_id && (
-                        <button
-                          onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
-                          className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                          title="予測ページで確認"
-                        >
-                          <TrendingUp size={14} />
-                        </button>
-                      )}
-                      {/* 動画ダウンロード */}
-                      {m.video_url && !m.video_local_path && (
-                        <button
-                          onClick={() => startDownload.mutate({
-                            matchId: m.id,
-                            quality: downloadQuality,
-                            cookieBrowser: downloadCookieBrowser,
-                          })}
-                          className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                          title={`動画ダウンロード (${downloadQuality}p${downloadCookieBrowser ? ` / Cookie: ${downloadCookieBrowser}` : ''})`}
-                          disabled={startDownload.isPending}
-                        >
-                          <Download size={14} />
-                        </button>
-                      )}
-                      {/* 編集 */}
+                    )}
+                    {m.video_url && !m.video_local_path && (
                       <button
-                        onClick={() => handleStartEdit(m)}
-                        className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                        title="試合情報を編集"
+                        onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
+                        className={`p-1.5 rounded-lg ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
+                        title="動画ダウンロード"
+                        disabled={startDownload.isPending}
                       >
-                        <Pencil size={14} />
+                        <Download size={18} />
                       </button>
-                      {/* 削除 */}
-                      <button
-                        onClick={() => {
-                          if (confirm(`試合「${m.tournament}」を削除しますか？`)) {
-                            deleteMatch.mutate(m.id)
-                          }
-                        }}
-                        className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
-                        title="削除"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                    )}
+                    <button
+                      onClick={() => handleStartEdit(m)}
+                      className={`p-1.5 rounded-lg ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
+                      title="編集"
+                    >
+                      <Pencil size={18} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`試合「${m.tournament}」を削除しますか？`)) {
+                          deleteMatch.mutate(m.id)
+                        }
+                      }}
+                      className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                      title="削除"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+
+            {/* ── デスクトップ: テーブル ─────────────────────────────── */}
+            <table className="hidden md:table w-full text-sm">
+              <thead>
+                <tr className={`${textSecondary} border-b ${borderLine}`}>
+                  <th className="text-left py-2 pr-4">日付</th>
+                  <th className="text-left py-2 pr-4">大会名</th>
+                  <th className="text-left py-2 pr-4">レベル</th>
+                  <th className="text-left py-2 pr-4">形式</th>
+                  <th className="text-left py-2 pr-4">対戦相手</th>
+                  <th className="text-left py-2 pr-4">結果</th>
+                  <th className="text-left py-2 pr-4">進捗</th>
+                  <th className="text-left py-2">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matches.map((m) => (
+                  <tr key={m.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
+                    <td className={`py-2 pr-4 ${textSecondary}`}>{m.date}</td>
+                    <td className="py-2 pr-4">{m.tournament}</td>
+                    <td className="py-2 pr-4">
+                      <span className={`px-1.5 py-0.5 rounded text-xs ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-700'}`}>{m.tournament_level}</span>
+                    </td>
+                    <td className={`py-2 pr-4 ${textSecondary}`}>{t(`match.formats.${m.format}`)}</td>
+                    <td className="py-2 pr-4">
+                      <span>{m.player_b?.name ?? `#${m.player_b_id}`}</span>
+                      {m.player_b?.needs_review && (
+                        <span className="ml-1 text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded" title={t('player.profile_status_provisional')}>
+                          暫定
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <span className={clsx(
+                        'font-medium',
+                        m.result === 'win' ? 'text-green-400' : m.result === 'loss' ? 'text-red-400' : 'text-gray-400'
+                      )}>
+                        {t(`match.results.${m.result}`)}
+                      </span>
+                      {m.final_score && <span className={`${textMuted} ml-1 text-xs`}>{m.final_score}</span>}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-20 h-1.5 ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
+                          <div
+                            className="h-full bg-blue-500"
+                            style={{ width: `${m.annotation_progress * 100}%` }}
+                          />
+                        </div>
+                        <span className={clsx('text-xs', statusColor(m.annotation_status))}>
+                          {t(`match.statuses.${m.annotation_status}`)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-2">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => navigate(`/annotator/${m.id}`)}
+                          className="p-1.5 rounded bg-blue-700 hover:bg-blue-600 text-white"
+                          title={t('match.start_annotation')}
+                        >
+                          <Play size={14} />
+                        </button>
+                        {m.player_a_id && (
+                          <button
+                            onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
+                            className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                            title="予測ページで確認"
+                          >
+                            <TrendingUp size={14} />
+                          </button>
+                        )}
+                        {m.video_url && !m.video_local_path && (
+                          <button
+                            onClick={() => startDownload.mutate({
+                              matchId: m.id,
+                              quality: downloadQuality,
+                              cookieBrowser: downloadCookieBrowser,
+                            })}
+                            className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                            title={`動画ダウンロード (${downloadQuality}p${downloadCookieBrowser ? ` / Cookie: ${downloadCookieBrowser}` : ''})`}
+                            disabled={startDownload.isPending}
+                          >
+                            <Download size={14} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleStartEdit(m)}
+                          className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                          title="試合情報を編集"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`試合「${m.tournament}」を削除しますか？`)) {
+                              deleteMatch.mutate(m.id)
+                            }
+                          }}
+                          className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
+                          title="削除"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
 

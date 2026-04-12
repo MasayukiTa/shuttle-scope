@@ -10,6 +10,7 @@
  * - モーダルではなくインラインパネル（blocking しない）
  * - 保存後はパネルを閉じる
  * - 既存データをマウント時に読み込む
+ * - ダブルスは 4 選手分のタブを表示
  */
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -17,17 +18,16 @@ import { clsx } from 'clsx'
 import { apiPost, apiGet } from '@/api/client'
 import { WarmupConfidence, PreMatchObservation } from '@/types'
 
-// 信頼度ボタンスタイル（gray スケール、色ルール準拠）
+// 信頼度ボタンスタイル
 const CONFIDENCE_STYLE: Record<WarmupConfidence, string> = {
   unknown:   'bg-gray-700 text-gray-500 border-gray-600',
   tentative: 'bg-gray-600 text-gray-300 border-gray-500',
   likely:    'bg-gray-500 text-gray-200 border-gray-400',
-  confirmed: 'bg-gray-400 text-gray-900 border-gray-300',
+  confirmed: 'bg-blue-700 text-blue-100 border-blue-600',
 }
 
 const CONFIDENCE_LEVELS: WarmupConfidence[] = ['unknown', 'tentative', 'likely', 'confirmed']
 
-// 観察タイプ定義
 interface ObsTypeDef {
   key: string
   values: string[]
@@ -57,7 +57,6 @@ const OBS_TYPES: ObsTypeDef[] = [
   },
 ]
 
-// 自コンディション観察タイプ（player_a = self のみ）
 const SELF_OBS_TYPES: ObsTypeDef[] = [
   {
     key: 'self_condition',
@@ -78,6 +77,8 @@ interface PlayerObs {
   }
 }
 
+type PlayerKey = 'player_a' | 'partner_a' | 'partner_b' | 'player_b'
+
 interface WarmupNotesPanelProps {
   matchId: number
   playerAId: number
@@ -86,6 +87,11 @@ interface WarmupNotesPanelProps {
   playerBName: string
   playerAHand?: string
   playerBHand?: string
+  // doubles support
+  partnerAId?: number
+  partnerBId?: number
+  partnerAName?: string
+  partnerBName?: string
   locked: boolean
   onClose: () => void
 }
@@ -126,14 +132,22 @@ export function WarmupNotesPanel({
   playerBName,
   playerAHand,
   playerBHand,
+  partnerAId,
+  partnerBId,
+  partnerAName,
+  partnerBName,
   locked,
   onClose,
 }: WarmupNotesPanelProps) {
   const { t } = useTranslation()
 
-  const [activePlayer, setActivePlayer] = useState<'player_a' | 'player_b'>('player_a')
+  const isDoubles = !!(partnerAId && partnerBId)
+
+  const [activePlayer, setActivePlayer] = useState<PlayerKey>('player_a')
 
   const [obsA, setObsA] = useState<PlayerObs>(() => initObs(playerAHand))
+  const [obsPartnerA, setObsPartnerA] = useState<PlayerObs>(() => initObs())
+  const [obsPartnerB, setObsPartnerB] = useState<PlayerObs>(() => initObs())
   const [obsB, setObsB] = useState<PlayerObs>(() => initObs(playerBHand))
   const [selfObs, setSelfObs] = useState<PlayerObs>(initSelfObs)
 
@@ -153,6 +167,8 @@ export function WarmupNotesPanel({
         if (!resp?.data?.length) return
         const newObsA = initObs(playerAHand)
         const newObsB = initObs(playerBHand)
+        const newObsPartnerA = initObs()
+        const newObsPartnerB = initObs()
         const newSelfObs = initSelfObs()
         for (const o of resp.data) {
           const isObsType = OBS_TYPES.some((d) => d.key === o.observation_type)
@@ -163,6 +179,10 @@ export function WarmupNotesPanel({
               newObsA[o.observation_type] = { value: o.observation_value, confidence: conf }
             } else if (o.player_id === playerBId) {
               newObsB[o.observation_type] = { value: o.observation_value, confidence: conf }
+            } else if (partnerAId && o.player_id === partnerAId) {
+              newObsPartnerA[o.observation_type] = { value: o.observation_value, confidence: conf }
+            } else if (partnerBId && o.player_id === partnerBId) {
+              newObsPartnerB[o.observation_type] = { value: o.observation_value, confidence: conf }
             }
           } else if (isSelfType) {
             newSelfObs[o.observation_type] = { value: o.observation_value, confidence: conf }
@@ -170,17 +190,35 @@ export function WarmupNotesPanel({
         }
         setObsA(newObsA)
         setObsB(newObsB)
+        setObsPartnerA(newObsPartnerA)
+        setObsPartnerB(newObsPartnerB)
         setSelfObs(newSelfObs)
       })
-      .catch(() => {
-        // サイレント失敗（データなし扱い）
-      })
+      .catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId])
 
-  const currentObs = activePlayer === 'player_a' ? obsA : obsB
-  const setCurrentObs = activePlayer === 'player_a' ? setObsA : setObsB
-  const currentPlayerId = activePlayer === 'player_a' ? playerAId : playerBId
+  const obsMap: Record<PlayerKey, PlayerObs> = {
+    player_a: obsA,
+    partner_a: obsPartnerA,
+    partner_b: obsPartnerB,
+    player_b: obsB,
+  }
+  const setObsMap: Record<PlayerKey, React.Dispatch<React.SetStateAction<PlayerObs>>> = {
+    player_a: setObsA,
+    partner_a: setObsPartnerA,
+    partner_b: setObsPartnerB,
+    player_b: setObsB,
+  }
+  const idMap: Record<PlayerKey, number | undefined> = {
+    player_a: playerAId,
+    partner_a: partnerAId,
+    partner_b: partnerBId,
+    player_b: playerBId,
+  }
+
+  const currentObs = obsMap[activePlayer]
+  const setCurrentObs = setObsMap[activePlayer]
 
   const setField = (obsType: string, value: string) => {
     if (locked) return
@@ -205,8 +243,9 @@ export function WarmupNotesPanel({
     setSaving(true)
     setError(null)
     try {
-      const buildObs = (obs: PlayerObs, playerId: number): PreMatchObservation[] =>
-        OBS_TYPES
+      const buildObs = (obs: PlayerObs, playerId: number | undefined): PreMatchObservation[] => {
+        if (!playerId) return []
+        return OBS_TYPES
           .filter((def) => obs[def.key]?.value)
           .map((def) => ({
             match_id: matchId,
@@ -216,6 +255,7 @@ export function WarmupNotesPanel({
             confidence_level: obs[def.key].confidence,
             created_by: 'analyst',
           }))
+      }
 
       const buildSelfObs = (obs: PlayerObs, playerId: number): PreMatchObservation[] =>
         SELF_OBS_TYPES
@@ -232,6 +272,8 @@ export function WarmupNotesPanel({
       const allObs = [
         ...buildObs(obsA, playerAId),
         ...buildObs(obsB, playerBId),
+        ...(isDoubles ? buildObs(obsPartnerA, partnerAId) : []),
+        ...(isDoubles ? buildObs(obsPartnerB, partnerBId) : []),
         ...buildSelfObs(selfObs, playerAId),
       ]
 
@@ -245,6 +287,19 @@ export function WarmupNotesPanel({
       setSaving(false)
     }
   }
+
+  // タブ定義（シングルス: 2タブ、ダブルス: 4タブ）
+  const tabs: Array<{ key: PlayerKey; label: string; teamLabel?: string }> = isDoubles
+    ? [
+        { key: 'player_a',   label: playerAName,          teamLabel: 'A' },
+        { key: 'partner_a',  label: partnerAName ?? 'A2', teamLabel: 'A' },
+        { key: 'partner_b',  label: partnerBName ?? 'B2', teamLabel: 'B' },
+        { key: 'player_b',   label: playerBName,          teamLabel: 'B' },
+      ]
+    : [
+        { key: 'player_a', label: playerAName },
+        { key: 'player_b', label: playerBName },
+      ]
 
   return (
     <div className="border border-gray-700 bg-gray-800 rounded p-3 text-xs space-y-3">
@@ -263,35 +318,73 @@ export function WarmupNotesPanel({
         </button>
       </div>
 
-      {/* ロック警告（ラリー進行中のみ） */}
+      {/* ロック警告 */}
       {locked && (
         <div className="text-gray-400 text-[11px] bg-gray-700 border border-gray-600 rounded px-2 py-1">
           {t('warmup.locked_hint_rally', 'ラリー進行中は変更できません')}
         </div>
       )}
 
-      {/* 選手タブ */}
-      <div className="flex gap-1.5">
-        {(
-          [
-            { key: 'player_a' as const, name: playerAName },
-            { key: 'player_b' as const, name: playerBName },
-          ]
-        ).map(({ key, name }) => (
-          <button
-            key={key}
-            onClick={() => setActivePlayer(key)}
-            className={clsx(
-              'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
-              activePlayer === key
-                ? 'bg-gray-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
-            )}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
+      {/* 選手タブ（ダブルスは4タブ） */}
+      {isDoubles ? (
+        <div className="space-y-1">
+          <div className="flex gap-0.5">
+            {tabs.slice(0, 2).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setActivePlayer(key)}
+                className={clsx(
+                  'flex-1 py-1 rounded text-[11px] font-medium transition-colors truncate px-1',
+                  activePlayer === key
+                    ? 'bg-blue-700 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+                )}
+                title={label}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-0.5">
+            {tabs.slice(2, 4).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setActivePlayer(key)}
+                className={clsx(
+                  'flex-1 py-1 rounded text-[11px] font-medium transition-colors truncate px-1',
+                  activePlayer === key
+                    ? 'bg-orange-700 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+                )}
+                title={label}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-between text-[9px] text-gray-600 px-0.5">
+            <span>チームA</span>
+            <span>チームB</span>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-1.5">
+          {tabs.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setActivePlayer(key)}
+              className={clsx(
+                'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
+                activePlayer === key
+                  ? 'bg-gray-600 text-white'
+                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 観察フィールド */}
       <div className="space-y-3">
@@ -299,12 +392,10 @@ export function WarmupNotesPanel({
           const entry = currentObs[def.key]
           return (
             <div key={def.key} className="space-y-1">
-              {/* ラベル行 */}
               <div className="flex items-center justify-between">
                 <span className="text-gray-300 font-medium">
                   {t(`warmup.observation_${def.key}`)}
                 </span>
-                {/* 信頼度セレクター */}
                 <div className="flex gap-1">
                   {CONFIDENCE_LEVELS.map((lvl) => (
                     <button
@@ -325,7 +416,6 @@ export function WarmupNotesPanel({
                 </div>
               </div>
 
-              {/* 値チップ */}
               <div className="flex flex-wrap gap-1">
                 {def.values.map((val) => (
                   <button
@@ -349,7 +439,7 @@ export function WarmupNotesPanel({
         })}
       </div>
 
-      {/* 自コンディション（player_a タブのみ表示） */}
+      {/* 自コンディション（player_a タブのみ） */}
       {activePlayer === 'player_a' && (
         <div className="border-t border-gray-700/60 pt-3 space-y-3">
           <div className="text-[11px] text-gray-400 font-medium">
@@ -435,7 +525,7 @@ export function WarmupNotesPanel({
               'flex-1 py-1.5 rounded text-xs font-medium transition-colors',
               saved
                 ? 'bg-gray-600 text-gray-300 cursor-default'
-                : 'bg-gray-600 hover:bg-gray-500 text-white',
+                : 'bg-blue-700 hover:bg-blue-600 text-white',
               saving && 'opacity-60 cursor-not-allowed',
             )}
           >

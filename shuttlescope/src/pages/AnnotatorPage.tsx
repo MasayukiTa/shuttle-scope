@@ -2841,6 +2841,10 @@ export function AnnotatorPage() {
                 playerBName={match.player_b?.name ?? 'B'}
                 playerAHand={match.player_a?.dominant_hand ?? undefined}
                 playerBHand={match.player_b?.dominant_hand ?? undefined}
+                partnerAId={match.partner_a_id}
+                partnerBId={match.partner_b_id}
+                partnerAName={match.partner_a?.name}
+                partnerBName={match.partner_b?.name}
                 locked={store.isRallyActive}
                 onClose={() => setShowWarmupPanel(false)}
               />

@@ -154,34 +154,25 @@ function Sidebar() {
       </div>
 
       {/* モバイル: ボトムナビ（アノテーションページでは非表示） */}
-      {!isAnnotatorPage && <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t safe-area-bottom ${sidebarBg}`}
-           style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      {!isAnnotatorPage && <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t ${sidebarBg}`}
+           style={{ paddingBottom: 'env(safe-area-inset-bottom, 8px)', height: '56px' }}>
         {navItems.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
               clsx(
-                'flex flex-col items-center gap-0.5 py-2 px-3 text-[10px] min-w-0',
+                'flex flex-col items-center gap-0.5 py-2 px-4 text-[10px] min-w-0',
                 isActive
                   ? (isLight ? 'text-blue-600' : 'text-blue-400')
                   : (isLight ? 'text-gray-500' : 'text-gray-400')
               )
             }
           >
-            <Icon size={20} />
-            <span className="truncate">{label.slice(0, 4)}</span>
+            <Icon size={22} />
+            <span className="truncate font-medium">{label.slice(0, 4)}</span>
           </NavLink>
         ))}
-        <button
-          onClick={toggleTheme}
-          className={`flex flex-col items-center gap-0.5 py-2 px-3 text-[10px] ${
-            isLight ? 'text-gray-500' : 'text-gray-400'
-          }`}
-        >
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          <span className="truncate">{theme === 'dark' ? 'Light' : 'Dark'}</span>
-        </button>
       </div>}
     </>
   )

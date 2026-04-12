@@ -79,6 +79,15 @@
     "coach": "コーチ",
     "player": "選手"
   },
+  "research": {
+    "epv_state": "状態別EPV",
+    "state_action": "状態行動分析",
+    "hazard_fatigue": "疲労リスク",
+    "cf1": "CF-1 自助法",
+    "cf2": "CF-2 IPW補正",
+    "cf3": "CF-3 相手別",
+    "lift": "リフト（上昇率）"
+  },
   "confidence": {
     "low": "参考値",
     "medium": "中程度",

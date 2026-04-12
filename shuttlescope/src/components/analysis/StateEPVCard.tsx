@@ -54,44 +54,91 @@ export function StateEPVCard({ playerId, filters }: Props) {
       ) : reliableRows.length === 0 ? (
         <p className={`text-sm text-center py-4 ${loading}`}>十分なデータがありません（各状態で最低10ラリー以上が必要です）</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className={tableHeader}>
-                <th className="text-left py-1.5 pr-3">スコアフェーズ</th>
-                <th className="text-left py-1.5 pr-3">ラリー長</th>
-                <th className="text-left py-1.5 pr-3">サーブ側</th>
-                <th className="text-right py-1.5 pr-3">N</th>
-                <th className="text-right py-1.5 pr-3">勝率</th>
-                <th className="text-right py-1.5 pr-3">CI</th>
-                <th className="text-left py-1.5">上位EPVショット</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reliableRows.map((row) => (
-                <tr key={row.state_key} className={`${rowBorder} ${rowHover}`}>
-                  <td className={`py-1.5 pr-3 ${textSecondary}`}>{SCORE_PHASE_LABELS[row.state.score_phase] ?? row.state.score_phase}</td>
-                  <td className={`py-1.5 pr-3 ${textSecondary}`}>{RALLY_BUCKET_LABELS[row.state.rally_bucket] ?? row.state.rally_bucket}</td>
-                  <td className={`py-1.5 pr-3 ${textMuted}`}>{ROLE_LABELS[row.state.player_role] ?? row.state.player_role}</td>
-                  <td className={`py-1.5 pr-3 text-right ${textMuted}`}>{row.n}</td>
-                  <td className="py-1.5 pr-3 text-right">
-                    <span className={row.win_rate >= 0.5 ? 'text-blue-500' : 'text-red-500'}>
-                      {pct(row.win_rate)}
-                    </span>
-                  </td>
-                  <td className={`py-1.5 pr-3 text-right text-[10px] ${textFaint}`}>[{pct(row.ci_low)}–{pct(row.ci_high)}]</td>
-                  <td className={`py-1.5 ${textMuted}`}>
+        <>
+          {/* ── モバイル: カード形式 ──────────────────────── */}
+          <div className="md:hidden space-y-2">
+            {reliableRows.map((row) => (
+              <div key={row.state_key} className={`border rounded-xl p-3 text-xs ${rowBorder}`}>
+                {/* コンテキストバッジ群 */}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  <span className="px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 text-[10px]">
+                    {SCORE_PHASE_LABELS[row.state.score_phase] ?? row.state.score_phase}
+                  </span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${textFaint}`}
+                    style={{ background: 'rgba(107,114,128,0.15)' }}>
+                    {RALLY_BUCKET_LABELS[row.state.rally_bucket] ?? row.state.rally_bucket}
+                  </span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    row.state.player_role === 'server' ? 'bg-green-500/15 text-green-400' : 'bg-orange-500/15 text-orange-400'
+                  }`}>
+                    {ROLE_LABELS[row.state.player_role] ?? row.state.player_role}
+                  </span>
+                </div>
+                {/* 主要数値 */}
+                <div className="flex items-baseline gap-3 mb-1.5">
+                  <span className={`text-xl font-bold ${row.win_rate >= 0.5 ? 'text-blue-500' : 'text-red-500'}`}>
+                    {pct(row.win_rate)}
+                  </span>
+                  <span className={`text-[10px] ${textFaint}`}>
+                    [{pct(row.ci_low)}–{pct(row.ci_high)}]
+                  </span>
+                  <span className={`text-[10px] ${textFaint} ml-auto`}>N={row.n}</span>
+                </div>
+                {/* 推奨ショット */}
+                {row.top_epv_shots.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
                     {row.top_epv_shots.slice(0, 2).map((s) => (
-                      <span key={s.shot_type} className={`mr-1 text-[10px] ${s.epv > 0 ? 'text-emerald-500' : 'text-orange-500'}`}>
-                        {s.shot_type}({s.epv > 0 ? '+' : ''}{(s.epv * 100).toFixed(1)}pp)
+                      <span key={s.shot_type}
+                        className={`text-[10px] px-2 py-0.5 rounded ${s.epv > 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-orange-500/15 text-orange-400'}`}>
+                        {s.shot_type} ({s.epv > 0 ? '+' : ''}{(s.epv * 100).toFixed(1)}pp)
                       </span>
                     ))}
-                  </td>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* ── デスクトップ: テーブル ────────────────────── */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className={tableHeader}>
+                  <th className="text-left py-1.5 pr-3">スコアフェーズ</th>
+                  <th className="text-left py-1.5 pr-3">ラリー長</th>
+                  <th className="text-left py-1.5 pr-3">サーブ側</th>
+                  <th className="text-right py-1.5 pr-3">N</th>
+                  <th className="text-right py-1.5 pr-3">勝率</th>
+                  <th className="text-right py-1.5 pr-3">CI</th>
+                  <th className="text-left py-1.5">上位EPVショット</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {reliableRows.map((row) => (
+                  <tr key={row.state_key} className={`${rowBorder} ${rowHover}`}>
+                    <td className={`py-1.5 pr-3 ${textSecondary}`}>{SCORE_PHASE_LABELS[row.state.score_phase] ?? row.state.score_phase}</td>
+                    <td className={`py-1.5 pr-3 ${textSecondary}`}>{RALLY_BUCKET_LABELS[row.state.rally_bucket] ?? row.state.rally_bucket}</td>
+                    <td className={`py-1.5 pr-3 ${textMuted}`}>{ROLE_LABELS[row.state.player_role] ?? row.state.player_role}</td>
+                    <td className={`py-1.5 pr-3 text-right ${textMuted}`}>{row.n}</td>
+                    <td className="py-1.5 pr-3 text-right">
+                      <span className={row.win_rate >= 0.5 ? 'text-blue-500' : 'text-red-500'}>
+                        {pct(row.win_rate)}
+                      </span>
+                    </td>
+                    <td className={`py-1.5 pr-3 text-right text-[10px] ${textFaint}`}>[{pct(row.ci_low)}–{pct(row.ci_high)}]</td>
+                    <td className={`py-1.5 ${textMuted}`}>
+                      {row.top_epv_shots.slice(0, 2).map((s) => (
+                        <span key={s.shot_type} className={`mr-1 text-[10px] ${s.epv > 0 ? 'text-emerald-500' : 'text-orange-500'}`}>
+                          {s.shot_type}({s.epv > 0 ? '+' : ''}{(s.epv * 100).toFixed(1)}pp)
+                        </span>
+                      ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
       <p className={`text-[10px] ${textFaint}`}>信頼性 ≥ 50% の状態のみ表示。CI幅が広い行は解釈に注意してください。</p>
     </div>

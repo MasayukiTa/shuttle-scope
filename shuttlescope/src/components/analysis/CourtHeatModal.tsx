@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { X, LayoutDashboard } from 'lucide-react'
+import { X, LayoutDashboard, AlertTriangle } from 'lucide-react'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
@@ -29,13 +29,30 @@ interface CourtHeatModalProps {
   matches: MatchSummary[]
   initialMatchId: number | null
   initialLastN: number | null
-  initialTab: 'hit' | 'land'
+  initialTab: 'hit' | 'land' | 'composite'
   onClose: () => void
 }
 
 interface HeatmapResponse {
   success: boolean
   data: Record<string, number>
+  meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
+}
+
+interface CompositeZoneData {
+  count: number
+  rate: number
+  source?: string
+}
+
+interface CompositeHeatmapResponse {
+  success: boolean
+  data: {
+    hit: Record<string, CompositeZoneData>
+    land_rotated: Record<string, CompositeZoneData>
+    total_strokes: number
+    note: string
+  }
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
@@ -69,7 +86,7 @@ export function CourtHeatModal({
 }: CourtHeatModalProps) {
   const { t } = useTranslation()
 
-  const [mode, setMode] = useState<'hit' | 'land'>(initialTab)
+  const [mode, setMode] = useState<'hit' | 'land' | 'composite'>(initialTab)
   const [matchId, setMatchId] = useState<number | null>(initialMatchId)
   const [lastN, setLastN] = useState<number | null>(initialLastN)
   const [selectedZone, setSelectedZone] = useState<LandZone | null>(null)
@@ -90,20 +107,46 @@ export function CourtHeatModal({
     return {}
   })()
 
-  // ヒートマップデータ
+  // ヒートマップデータ（通常モード: hit / land）
+  // mode === 'composite' の場合はenabled=falseなので type に 'composite' が届かない
+  const heatmapType = (mode === 'composite' ? 'hit' : mode) as 'hit' | 'land'
   const { data: heatResp, isLoading: loadingHeat } = useQuery({
     queryKey: ['court-heat-modal', playerId, mode, matchId, lastN],
     queryFn: () =>
       apiGet<HeatmapResponse>('/analysis/heatmap', {
         player_id: playerId,
-        type: mode,
+        type: heatmapType,
         ...apiParams,
       }),
-    enabled: true,
+    enabled: mode !== 'composite',
+  })
+
+  // 合成モードデータ
+  const { data: compositeResp, isLoading: loadingComposite } = useQuery({
+    queryKey: ['court-heat-composite', playerId, matchId, lastN],
+    queryFn: () =>
+      apiGet<CompositeHeatmapResponse>('/analysis/heatmap/composite', {
+        player_id: playerId,
+        ...apiParams,
+      }),
+    enabled: mode === 'composite',
   })
 
   const heatmapData: Record<string, number> = heatResp?.data ?? {}
-  const sampleSize = heatResp?.meta?.sample_size ?? 0
+  const sampleSize = mode === 'composite'
+    ? (compositeResp?.data?.total_strokes ?? 0)
+    : (heatResp?.meta?.sample_size ?? 0)
+  const loadingCurrent = mode === 'composite' ? loadingComposite : loadingHeat
+
+  // 合成モード用データ
+  const compositeHitData = compositeResp?.data?.hit
+    ? Object.fromEntries(Object.entries(compositeResp.data.hit).map(([k, v]) => [k, v.count]))
+    : undefined
+  const compositeLandData = compositeResp?.data?.land_rotated
+    ? Object.fromEntries(Object.entries(compositeResp.data.land_rotated).map(([k, v]) => [k, v.count]))
+    : undefined
+  const compositeHitMax = compositeHitData ? Math.max(...Object.values(compositeHitData), 1) : 1
+  const compositeLandMax = compositeLandData ? Math.max(...Object.values(compositeLandData), 1) : 1
 
   // ゾーン詳細（クリック時のみ取得）
   const { data: detailResp, isLoading: loadingDetail } = useQuery({
@@ -111,11 +154,12 @@ export function CourtHeatModal({
     queryFn: () =>
       apiGet<ZoneDetailResponse>('/analysis/heatmap_zone_detail', {
         player_id: playerId,
-        type: mode,
+        type: heatmapType,
         zone: selectedZone!,
         ...apiParams,
       }),
-    enabled: selectedZone != null,
+    // 合成モードではゾーン詳細は非表示
+    enabled: selectedZone != null && mode !== 'composite',
   })
 
   const detail = detailResp?.data
@@ -157,22 +201,36 @@ export function CourtHeatModal({
 
           {/* 左：コート図 + フィルター */}
           <div className="flex flex-col items-center gap-4 lg:w-auto">
-            {/* 打点 / 着地点切替 */}
-            <div className="flex gap-1.5">
-              {(['hit', 'land'] as const).map((tab) => (
+            {/* 打点 / 着地点 / 合成切替 */}
+            <div className="flex gap-1.5 flex-wrap">
+              {([
+                { key: 'hit', label: '打点' },
+                { key: 'land', label: '着地点' },
+                { key: 'composite', label: '合成' },
+              ] as const).map((tab) => (
                 <button
-                  key={tab}
-                  onClick={() => { setMode(tab); setSelectedZone(null) }}
+                  key={tab.key}
+                  onClick={() => { setMode(tab.key); setSelectedZone(null) }}
                   className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
-                    mode === tab
+                    mode === tab.key
                       ? 'bg-gray-600 text-white'
                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                   }`}
                 >
-                  {tab === 'hit' ? '打点' : '着地点'}
+                  {tab.label}
                 </button>
               ))}
             </div>
+
+            {/* 合成モード注意書き */}
+            {mode === 'composite' && (
+              <div className="flex items-start gap-2 p-3 bg-amber-950/60 border border-amber-700/50 rounded-lg text-xs max-w-xs">
+                <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />
+                <div className="text-amber-300/80">
+                  着地点データは点対称変換（ネット中心）で自コート座標系に変換済みです。可視化補助専用です。
+                </div>
+              </div>
+            )}
 
             {/* 期間・試合フィルター */}
             <div className="space-y-2 w-full max-w-xs">
@@ -219,7 +277,7 @@ export function CourtHeatModal({
             </div>
 
             {/* コート図（インタラクティブ） */}
-            {loadingHeat ? (
+            {loadingCurrent ? (
               <div className="text-gray-500 text-sm py-8">読み込み中...</div>
             ) : sampleSize === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -229,17 +287,38 @@ export function CourtHeatModal({
             ) : (
               <CourtDiagram
                 mode={mode}
-                heatmapData={heatmapData}
+                heatmapData={mode !== 'composite' ? heatmapData : undefined}
+                compositeHitData={compositeHitData}
+                compositeHitMax={compositeHitMax}
+                compositeLandRotatedData={compositeLandData}
+                compositeLandMax={compositeLandMax}
                 selectedZone={selectedZone}
-                onZoneSelect={(z) => setSelectedZone(z === selectedZone ? null : z)}
-                interactive={true}
+                onZoneSelect={(z) => mode !== 'composite' ? setSelectedZone(z === selectedZone ? null : z) : undefined}
+                interactive={mode !== 'composite'}
                 showOOB={false}
                 maxHeight={Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 280)}
               />
             )}
-            <p className="text-[10px] text-gray-600">
-              ゾーンをクリックすると詳細を表示
-            </p>
+
+            {/* 合成モード凡例 */}
+            {mode === 'composite' && sampleSize > 0 && (
+              <div className="flex items-center gap-4 text-xs text-gray-400">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.85)' }} />
+                  打点
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(249,115,22,0.70)' }} />
+                  着地点（変換済み）
+                </div>
+              </div>
+            )}
+
+            {mode !== 'composite' && (
+              <p className="text-[10px] text-gray-600">
+                ゾーンをクリックすると詳細を表示
+              </p>
+            )}
           </div>
 
           {/* 右：ゾーン詳細パネル */}
@@ -255,7 +334,7 @@ export function CourtHeatModal({
                 <div className="text-gray-500 text-sm">読み込み中...</div>
               </div>
             ) : detail ? (
-              <ZoneDetailPanel detail={detail} mode={mode} t={t} isLight={isLight} />
+              <ZoneDetailPanel detail={detail} mode={heatmapType} t={t} isLight={isLight} />
             ) : null}
           </div>
         </div>

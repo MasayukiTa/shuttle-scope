@@ -168,6 +168,21 @@ async def ws_camera_handler(
     viewer_id: Optional[str] = None,
 ) -> None:
     """WebRTC シグナリング WebSocket ハンドラー"""
+    # セッション存在確認（存在しないまたは終了済みセッションへの接続を拒否）
+    from backend.db.database import SessionLocal
+    from backend.db.models import SharedSession
+    _db = SessionLocal()
+    try:
+        _session = _db.query(SharedSession).filter(
+            SharedSession.session_code == session_code,
+            SharedSession.is_active.is_(True)
+        ).first()
+    finally:
+        _db.close()
+    if not _session:
+        await websocket.close(code=4404, reason="セッションが存在しないか終了しています")
+        return
+
     is_operator = role == "operator"
     is_viewer = role == "viewer" and viewer_id
 

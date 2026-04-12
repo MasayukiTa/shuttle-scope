@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { useAnnotationStore } from '@/store/annotationStore'
 import { KEYBOARD_MAP, getValidShotTypes } from '@/components/annotation/ShotTypePanel'
 import { ShotType, Zone9, ZoneOOB, ZoneNet } from '@/types'
@@ -125,13 +125,28 @@ export function useKeyboard({
   onToggleHitter,
   onHitterSelect,
 }: UseKeyboardOptions = {}) {
-  const store = useAnnotationStore()
+  // Use refs for callbacks so handleKeyDown never needs to be recreated when they change
+  const onEndTypeSelectRef = useRef(onEndTypeSelect)
+  const onWinnerSelectRef = useRef(onWinnerSelect)
+  const onSkipRallyOpenRef = useRef(onSkipRallyOpen)
+  const onToggleHitterRef = useRef(onToggleHitter)
+  const onHitterSelectRef = useRef(onHitterSelect)
+  onEndTypeSelectRef.current = onEndTypeSelect
+  onWinnerSelectRef.current = onWinnerSelect
+  onSkipRallyOpenRef.current = onSkipRallyOpen
+  onToggleHitterRef.current = onToggleHitter
+  onHitterSelectRef.current = onHitterSelect
+
+  const enabledRef = useRef(enabled)
+  enabledRef.current = enabled
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (!enabled) return
+      if (!enabledRef.current) return
       if (isInInputContext(e.target)) return
 
+      // Access store state directly to avoid stale closure issues
+      const store = useAnnotationStore.getState()
       const { inputStep, isRallyActive, currentStrokes, currentStrokeNum, pendingStroke } = store
 
       // ─── グローバル: 動画シーク（常時有効） ────────────────────────────────
@@ -191,7 +206,7 @@ export function useKeyboard({
           const idx = parseInt(e.key) - 1
           if (idx >= 0 && idx < END_TYPE_KEYS.length) {
             e.preventDefault()
-            onEndTypeSelect?.(END_TYPE_KEYS[idx])
+            onEndTypeSelectRef.current?.(END_TYPE_KEYS[idx])
             return
           }
         }
@@ -199,12 +214,12 @@ export function useKeyboard({
         if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
           if (e.key === 'a' || e.key === 'A') {
             e.preventDefault()
-            onWinnerSelect?.('player_a')
+            onWinnerSelectRef.current?.('player_a')
             return
           }
           if (e.key === 'b' || e.key === 'B') {
             e.preventDefault()
-            onWinnerSelect?.('player_b')
+            onWinnerSelectRef.current?.('player_b')
             return
           }
         }
@@ -295,7 +310,7 @@ export function useKeyboard({
         }
         if ((e.key === 'k' || e.key === 'K') && !e.ctrlKey && !e.metaKey) {
           e.preventDefault()
-          onSkipRallyOpen?.()
+          onSkipRallyOpenRef.current?.()
           return
         }
         // プレラリー中はその他のショット/ランディングキーを無効化
@@ -325,7 +340,7 @@ export function useKeyboard({
       // Tab: ダブルスモードのみ — チーム内ヒッター切替
       if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault()
-        onToggleHitter?.()
+        onToggleHitterRef.current?.()
         return
       }
 
@@ -334,7 +349,7 @@ export function useKeyboard({
         const hitter = HITTER_KEYS[e.key]
         if (hitter) {
           e.preventDefault()
-          onHitterSelect?.(hitter)
+          onHitterSelectRef.current?.(hitter)
           return
         }
       }
@@ -369,7 +384,9 @@ export function useKeyboard({
         }
       }
     },
-    [enabled, store, videoRef, onEndTypeSelect, onWinnerSelect, onSkipRallyOpen, onToggleHitter, onHitterSelect]
+    // videoRef is a stable ref object. All other deps (enabled, callbacks) are accessed via refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [videoRef]
   )
 
   useEffect(() => {

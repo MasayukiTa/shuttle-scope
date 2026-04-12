@@ -112,7 +112,16 @@ function drawMatrix(
     .style('z-index', '9999')
     .style('white-space', 'nowrap')
 
-  // ── セル描画 ──
+  // ショット略称マッピング（モバイルサマリー用）
+const SHOT_ABBR: Record<string, string> = {
+  short_service: 'SS', long_service: 'LS', net_shot: 'NS',
+  clear: 'CL', push_rush: 'PR', smash: 'SM', defensive: 'DF',
+  drive: 'DV', lob: 'LB', drop: 'DP', cross_net: 'CN',
+  slice: 'SL', around_head: 'AH', cant_reach: 'CR',
+  flick: 'FL', half_smash: 'HS', block: 'BK', other: '他',
+}
+
+// ── セル描画 ──
   matrix.forEach((row, ri) => {
     row.forEach((prob, ci) => {
       const isDiag = ri === ci
@@ -260,59 +269,97 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
     )
   }
 
+  // 遷移パターンのラベル解決ヘルパー（matrixDataはこの時点でnon-null保証済み）
+  function resolveLabel(key: string): string {
+    const idx = matrixData!.shot_keys.indexOf(key)
+    return idx >= 0 ? matrixData!.shot_labels[idx] : key
+  }
+
+  // モバイル用略称解決（SHOT_ABBR → フォールバックは日本語ラベル）
+  function resolveAbbr(key: string): string {
+    return SHOT_ABBR[key] ?? resolveLabel(key)
+  }
+
   return (
     <div className="space-y-4">
       {/* ヘッダー行 */}
       <div className="flex flex-wrap items-center gap-3">
-        <ConfidenceBadge sampleSize={sampleSize} />
+        <ConfidenceBadge sampleSize={sampleSize} compact />
         <span className="text-xs text-gray-500">
           総遷移数: {matrixData.total_transitions.toLocaleString()} 回
         </span>
       </div>
 
-      {/* ヒートマップ SVG（スクロール対応） */}
-      <div className="overflow-x-auto">
-        <svg ref={svgRef} style={{ display: 'block' }} />
-      </div>
-
-      {/* 凡例: 白→深青（密度スケール） */}
-      <div className="flex items-center gap-2 text-xs text-gray-400">
-        <span>低頻度</span>
-        <div
-          className="h-3 w-32 rounded"
-          style={{
-            background: 'linear-gradient(to right, rgb(240,244,255), rgb(59,76,192))',
-          }}
-        />
-        <span>高頻度</span>
-        <span className="ml-2 text-gray-600">（対角線はグレーでマスク）</span>
-      </div>
-
-      {/* 主要遷移パターン Top 5 */}
+      {/* ── モバイル: 上位10サマリー ────────────────────────────────── */}
       {matrixData.top_sequences?.length > 0 && (
-        <div>
+        <div className="md:hidden">
+          <p className="text-xs text-gray-500 mb-2">主要遷移パターン（頻度順）</p>
+          <div className="space-y-0">
+            {matrixData.top_sequences.slice(0, 10).map((seq, i) => (
+              <div key={i} className="flex items-center gap-2 py-2 border-b border-gray-700/50">
+                <span className="text-xs w-4 text-gray-500 shrink-0">{i + 1}</span>
+                <div className="flex items-center gap-1 flex-1 min-w-0">
+                  <span className="text-xs text-gray-300 shrink-0" title={resolveLabel(seq.from)}>{resolveAbbr(seq.from)}</span>
+                  <span className="text-gray-600 shrink-0">→</span>
+                  <span className="text-xs text-gray-300 shrink-0" title={resolveLabel(seq.to)}>{resolveAbbr(seq.to)}</span>
+                </div>
+                <span className="text-xs font-medium text-gray-400 shrink-0">
+                  {(seq.probability * 100).toFixed(1)}%
+                </span>
+                <span className="text-xs text-gray-600 shrink-0">{seq.count}回</span>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => {
+              const el = document.getElementById('transition-matrix-full')
+              if (el) el.scrollIntoView({ behavior: 'smooth' })
+            }}
+            className="mt-3 w-full text-xs text-blue-500 py-2 border border-blue-800/40 rounded-lg"
+          >
+            全遷移マトリクスを表示（横スクロール）↓
+          </button>
+        </div>
+      )}
+
+      {/* ── フルマトリクス SVG ────────────────────────────────────── */}
+      <div id="transition-matrix-full">
+        {/* デスクトップ: 常に表示 / モバイル: スクロールで到達 */}
+        <div className="overflow-x-auto scroll-touch">
+          <svg ref={svgRef} style={{ display: 'block' }} />
+        </div>
+
+        {/* 凡例: 白→深青（密度スケール） */}
+        <div className="flex items-center gap-2 text-xs text-gray-400 mt-2">
+          <span>低頻度</span>
+          <div
+            className="h-3 w-32 rounded"
+            style={{
+              background: 'linear-gradient(to right, rgb(240,244,255), rgb(59,76,192))',
+            }}
+          />
+          <span>高頻度</span>
+          <span className="ml-2 text-gray-600 hidden md:inline">（対角線はグレーでマスク）</span>
+        </div>
+      </div>
+
+      {/* デスクトップ用: 主要遷移パターン Top 5 */}
+      {matrixData.top_sequences?.length > 0 && (
+        <div className="hidden md:block">
           <p className="text-xs font-semibold text-gray-400 mb-2">
             主要遷移パターン
           </p>
           <div className="space-y-1.5">
-            {matrixData.top_sequences.slice(0, 5).map((seq, i) => {
-              const fromIdx = matrixData.shot_keys.indexOf(seq.from)
-              const toIdx = matrixData.shot_keys.indexOf(seq.to)
-              const fromLabel =
-                fromIdx >= 0 ? matrixData.shot_labels[fromIdx] : seq.from
-              const toLabel =
-                toIdx >= 0 ? matrixData.shot_labels[toIdx] : seq.to
-              return (
-                <div key={i} className="flex items-center gap-1.5 text-xs">
-                  <span className="text-gray-600 shrink-0 w-4 text-right">{i + 1}.</span>
-                  <span className="text-gray-300">{fromLabel} → {toLabel}</span>
-                  <span className="text-gray-500 shrink-0">{seq.count}回</span>
-                  <span className="text-gray-600 shrink-0 font-mono">
-                    ({(seq.probability * 100).toFixed(1)}%)
-                  </span>
-                </div>
-              )
-            })}
+            {matrixData.top_sequences.slice(0, 5).map((seq, i) => (
+              <div key={i} className="flex items-center gap-1.5 text-xs">
+                <span className="text-gray-600 shrink-0 w-4 text-right">{i + 1}.</span>
+                <span className="text-gray-300">{resolveLabel(seq.from)} → {resolveLabel(seq.to)}</span>
+                <span className="text-gray-500 shrink-0">{seq.count}回</span>
+                <span className="text-gray-600 shrink-0 font-mono">
+                  ({(seq.probability * 100).toFixed(1)}%)
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}

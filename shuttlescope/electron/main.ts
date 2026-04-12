@@ -152,6 +152,14 @@ function registerLocalFileProtocol(): void {
     const rawPath = request.url.slice('localfile:///'.length)
     const filePath = decodeURIComponent(rawPath)
 
+    // 拡張子チェック（動画ファイル以外へのアクセスを拒否 — XSS 経由の任意ファイル読み取り防止）
+    const ALLOWED_VIDEO_EXTS = new Set(['mp4', 'webm', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'm4v', 'ts', 'mts'])
+    const ext = path.extname(filePath).slice(1).toLowerCase()
+    if (!ALLOWED_VIDEO_EXTS.has(ext)) {
+      console.warn('[localfile] Blocked non-video file access:', filePath)
+      return new Response(null, { status: 403, statusText: 'Forbidden: not a video file' })
+    }
+
     // ファイル存在確認
     let fileStat: ReturnType<typeof statSync>
     try {
@@ -162,7 +170,6 @@ function registerLocalFileProtocol(): void {
     }
 
     const fileSize = fileStat.size
-    const ext = path.extname(filePath).slice(1).toLowerCase()
     const contentType = VIDEO_MIME[ext] ?? 'application/octet-stream'
 
     // Range ヘッダー処理（ビデオシーク操作に必須）

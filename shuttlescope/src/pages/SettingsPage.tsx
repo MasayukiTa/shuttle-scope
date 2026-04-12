@@ -404,33 +404,39 @@ export function SettingsPage() {
         <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.settings')}</h1>
       </div>
 
-      {/* タブ */}
-      <div className={`flex border-b ${borderLine}`}>
-        {([
-          { key: 'players', label: '選手管理' },
-          { key: 'review', label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
-          { key: 'tracknet', label: t('tracknet.tab_label') },
-          { key: 'sharing', label: t('sharing.tab_label') },
-          { key: 'data', label: 'データ管理' },
-          { key: 'account', label: 'アカウント設定' },
-        ] as const).map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
-            className={`flex items-center gap-1.5 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab.key
-                ? 'border-blue-500 text-blue-400'
-                : `border-transparent ${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`
-            }`}
-          >
-            {tab.label}
-            {'badge' in tab && tab.badge > 0 && (
-              <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] bg-orange-500 text-white rounded-full">
-                {tab.badge}
-              </span>
-            )}
-          </button>
-        ))}
+      {/* タブ（horizontal scroll: モバイル対応） */}
+      <div className={`relative border-b ${borderLine}`}>
+        <div className="flex overflow-x-auto scrollbar-hide">
+          {([
+            { key: 'players', label: '選手管理' },
+            { key: 'review', label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
+            { key: 'tracknet', label: t('tracknet.tab_label') },
+            { key: 'sharing', label: t('sharing.tab_label') },
+            { key: 'data', label: 'データ管理' },
+            { key: 'account', label: 'アカウント設定' },
+          ] as const).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as any)}
+              className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === tab.key
+                  ? 'border-blue-500 text-blue-400'
+                  : `border-transparent ${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`
+              }`}
+            >
+              {tab.label}
+              {'badge' in tab && tab.badge > 0 && (
+                <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] bg-orange-500 text-white rounded-full">
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        {/* 右端フェードアウト */}
+        <div className={`absolute right-0 top-0 h-full w-8 pointer-events-none ${
+          isLight ? 'bg-gradient-to-l from-white to-transparent' : 'bg-gradient-to-l from-gray-900 to-transparent'
+        }`} />
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -448,16 +454,17 @@ export function SettingsPage() {
               </button>
             </div>
 
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className={`${textSecondary} border-b ${borderLine}`}>
-                  <th className="text-left py-2 pr-4">名前</th>
-                  <th className="text-left py-2 pr-4">チーム</th>
-                  <th className="text-left py-2 pr-4">国籍</th>
-                  <th className="text-left py-2 pr-4">利き手</th>
-                  <th className="text-left py-2 pr-4">世界ランク</th>
-                  <th className="text-left py-2 pr-4">解析対象</th>
-                  <th className="text-left py-2">操作</th>
+                  <th className="text-left py-2 pr-3 whitespace-nowrap">名前</th>
+                  <th className="text-left py-2 pr-3 whitespace-nowrap">チーム</th>
+                  <th className="text-left py-2 pr-3 whitespace-nowrap">国</th>
+                  <th className="text-left py-2 pr-3 whitespace-nowrap">手</th>
+                  <th className="text-left py-2 pr-3 whitespace-nowrap">Rk</th>
+                  <th className="text-left py-2 pr-3 whitespace-nowrap">対象</th>
+                  <th className="text-left py-2 whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -510,6 +517,7 @@ export function SettingsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
 
             {players.length === 0 && (
               <div className="text-center text-gray-500 py-8">

@@ -14,10 +14,13 @@
 import json
 import threading
 import time
+from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from backend.db.database import SessionLocal
+from backend.db.models import Match, Player, SharedSession
 from backend.ws.camera import camera_manager
 
 
@@ -26,7 +29,51 @@ from backend.ws.camera import camera_manager
 def _fresh_code(prefix: str = "WS") -> str:
     """競合しないようにユニークなセッションコードを生成（テスト名から）"""
     import uuid
-    return f"{prefix}{uuid.uuid4().hex[:6].upper()}"
+    code = f"{prefix}{uuid.uuid4().hex[:6].upper()}"
+    _ensure_active_session(code)
+    return code
+
+
+def _ensure_active_session(code: str) -> None:
+    """ws/camera 用に active session を最小構成で用意する。"""
+    db = SessionLocal()
+    try:
+        existing = (
+            db.query(SharedSession)
+            .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
+            .first()
+        )
+        if existing:
+            return
+
+        pa = Player(name=f"{code}_A")
+        pb = Player(name=f"{code}_B")
+        db.add_all([pa, pb])
+        db.flush()
+
+        match = Match(
+            tournament="WS Test",
+            tournament_level="IC",
+            round="R1",
+            date=date(2026, 4, 12),
+            format="singles",
+            player_a_id=pa.id,
+            player_b_id=pb.id,
+            result="win",
+        )
+        db.add(match)
+        db.flush()
+
+        session = SharedSession(
+            match_id=match.id,
+            session_code=code,
+            created_by_role="analyst",
+            is_active=True,
+        )
+        db.add(session)
+        db.commit()
+    finally:
+        db.close()
 
 
 @pytest.fixture(autouse=True)

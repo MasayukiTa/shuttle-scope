@@ -101,7 +101,7 @@ export function LineupOptimizerPanel({ players }: Props) {
         <p className="text-xs font-semibold mb-2" style={{ color: subText }}>
           {t('prediction.lineup_add_player')}（{selectedIds.size}名選択中）
         </p>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
           {players.map((p) => (
             <label
               key={p.id}
@@ -121,10 +121,10 @@ export function LineupOptimizerPanel({ players }: Props) {
                 onChange={() => togglePlayer(p.id)}
                 className="accent-blue-500"
               />
-              <span className="truncate">
-                {p.name}
-                {p.team && <span className="opacity-60 ml-1">({p.team})</span>}
-              </span>
+              <div className="min-w-0">
+                <div className="truncate font-medium">{p.name}</div>
+                {p.team && <div className="truncate opacity-60">{p.team}</div>}
+              </div>
             </label>
           ))}
         </div>

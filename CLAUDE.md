@@ -135,6 +135,35 @@
 - Preserve UTF-8 encoding when editing localization files.
 - If a file displays mojibake in a shell, verify encoding before assuming the source text is broken.
 
+## コートヒートマップ合成ビューの制約
+
+- 打点タブ・着地点タブで相手コート側が灰色なのは不具合ではない。
+  解析対象選手は相手コートに立たないため、意図した設計である。
+
+- 合成タブの点対称変換は「可視化専用」。
+  `backend/routers/analysis_stable.py` の `get_heatmap_composite()` が持つ変換は
+  UIの視覚補助のためのみに使用すること。
+  `backend/analysis/` 以下の空間分析コードはこの変換を呼び出してはならない。
+  空間分析は `hit_zone`/`land_zone` の生データのみを使用すること。
+
+- 合成ビューのデータソースは `/api/analysis/heatmap/composite` のみ。
+  空間分析のエンドポイント（`/api/analysis/spatial/*`）は独立して動作する。
+
+- テスト: `backend/tests/test_heatmap_composite.py` で点対称変換の正当性を検証済み。
+
+## レスポンシブUI制約
+
+- iOS 自動ズーム防止: `input, select, textarea` に `font-size: 16px !important` を適用済み
+  (`src/styles/globals.css`)。font-size を小さくするスタイルは padding/height で代替すること。
+
+- タブ横スクロール: `DashboardTopNav`, `DashboardSectionNav`, `SettingsPage` のタブは
+  `overflow-x-auto scrollbar-hide` で横スクロール実装済み。`flex-wrap` に戻さないこと。
+
+- モバイルカード形式: `MatchListPage` は `md:` 未満でカードリスト、`md:` 以上でテーブル。
+  テーブルを全画面に戻さないこと。
+
+- ボトムナビ: ダークモードトグルはモバイルボトムナビから除去済み。デスクトップサイドバーのみに表示。
+
 ## Local Environment Defaults
 - Renderer dev command:
   - `npm run dev`

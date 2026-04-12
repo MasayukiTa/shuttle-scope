@@ -179,6 +179,48 @@ html[data-theme="light"] {
   color-scheme: light;
 }
 
+/* ─── 2b. モバイル・iOS 修正 ────────────────────────────────────── */
+
+/*
+ * iOS 自動ズーム防止: font-size < 16px のフォーム要素をタップすると
+ * iOS Safari が画面を自動ズームする。font-size を 16px に強制して防止。
+ * 見た目は padding/height で調整する。
+ */
+input, select, textarea {
+  font-size: 16px !important;
+}
+
+/*
+ * タブ縦書き強制解除: 幅不足でwhite-spaceが縦展開するバグ対策。
+ * writing-mode を明示的に horizontal-tb に固定する。
+ */
+[role="tab"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  writing-mode: horizontal-tb !important;
+}
+
+/* scrollbar-hide ユーティリティ（横スクロールタブ用） */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* iOS スクロール慣性 */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+
+/* iOS ノッチ対応: 固定ヘッダーの上パディング */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
 /* ─── 3. ページ基底 ─────────────────────────────────────────────── */
 body {
   background-color: hsl(var(--background));

@@ -205,6 +205,130 @@ def get_heatmap(
     }
 
 
+@router.get("/analysis/heatmap/composite")
+def get_heatmap_composite(
+    player_id: int,
+    result: Optional[str] = Query(None),
+    tournament_level: Optional[str] = Query(None),
+    date_from: Optional[DateType] = Query(None),
+    date_to: Optional[DateType] = Query(None),
+    match_id: Optional[int] = Query(None),
+    match_ids: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    コートヒートマップ合成ビュー: 打点データ + 着地点の点対称変換を合成して返す。
+
+    ⚠️ 重要: この変換は可視化専用。
+    ⚠️ ゾーン集計・勝率計算・空間解析には絶対に使用しないこと。
+    ⚠️ 空間分析エンドポイント（/api/analysis/spatial/*）はこの関数を呼び出してはならない。
+
+    Returns:
+        hit: 打点データ（自コート座標系そのまま）
+        land_rotated: 着地点データ（点対称変換済み・自コート座標系）
+        total_strokes: 総ストローク数
+        note: 可視化専用である旨の注記
+    """
+    ALL_ZONES = ["BL", "BC", "BR", "ML", "MC", "MR", "NL", "NC", "NR"]
+
+    # 9ゾーン点対称変換マッピング（ネット中心）
+    # ⚠️ 可視化専用 — 空間分析には使用しないこと
+    ZONE_ROTATION_MAP: dict[str, str] = {
+        "BL": "NR", "BC": "NC", "BR": "NL",
+        "ML": "MR", "MC": "MC", "MR": "ML",
+        "NL": "BR", "NC": "BC", "NR": "BL",
+    }
+
+    # 試合絞り込み
+    if match_ids is not None:
+        id_list = [int(x) for x in match_ids.split(",") if x.strip().lstrip("-").isdigit()]
+        _matches = db.query(Match).filter(Match.id.in_(id_list)).all() if id_list else []
+    elif match_id is not None:
+        m = db.query(Match).filter(Match.id == match_id).first()
+        _matches = [m] if m else []
+    else:
+        _matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+
+    match_ids_as_a = [m.id for m in _matches if m.player_a_id == player_id]
+    match_ids_as_b = [m.id for m in _matches if m.player_b_id == player_id]
+
+    hit_counts: dict[str, int] = defaultdict(int, {z: 0 for z in ALL_ZONES})
+    land_counts: dict[str, int] = defaultdict(int, {z: 0 for z in ALL_ZONES})
+    total_strokes = 0
+
+    def _count_zones(mids: list[int], player_role: str) -> None:
+        nonlocal total_strokes
+        if not mids:
+            return
+        set_ids = [s.id for s in db.query(GameSet.id).filter(GameSet.match_id.in_(mids)).all()]
+        if not set_ids:
+            return
+        rally_ids = [r.id for r in db.query(Rally.id).filter(Rally.set_id.in_(set_ids)).all()]
+        if not rally_ids:
+            return
+
+        hit_rows = (
+            db.query(Stroke.hit_zone)
+            .filter(Stroke.rally_id.in_(rally_ids), Stroke.player == player_role, Stroke.hit_zone.isnot(None))
+            .all()
+        )
+        for (z,) in hit_rows:
+            if z in ALL_ZONES:
+                hit_counts[z] += 1
+                total_strokes += 1
+
+        land_rows = (
+            db.query(Stroke.land_zone)
+            .filter(Stroke.rally_id.in_(rally_ids), Stroke.player == player_role, Stroke.land_zone.isnot(None))
+            .all()
+        )
+        for (z,) in land_rows:
+            if z in ALL_ZONES:
+                land_counts[z] += 1
+
+    _count_zones(match_ids_as_a, "player_a")
+    _count_zones(match_ids_as_b, "player_b")
+
+    hit_total = max(sum(hit_counts.values()), 1)
+    land_total = max(sum(land_counts.values()), 1)
+
+    # 打点データ（自コート座標系そのまま）
+    hit_data = {
+        z: {"count": hit_counts[z], "rate": round(hit_counts[z] / hit_total, 4)}
+        for z in ALL_ZONES
+    }
+
+    # 着地点データを点対称変換（相手コート→自コート座標系）
+    # ⚠️ 可視化専用変換 — 空間分析には混入させないこと
+    land_rotated: dict[str, dict] = {}
+    for src_zone, dst_zone in ZONE_ROTATION_MAP.items():
+        land_rotated[dst_zone] = {
+            "count": land_counts.get(src_zone, 0),
+            "rate": round(land_counts.get(src_zone, 0) / land_total, 4),
+            "source": "land_rotated",
+        }
+
+    confidence = check_confidence("heatmap", total_strokes)
+
+    return {
+        "success": True,
+        "data": {
+            "hit": hit_data,
+            "land_rotated": land_rotated,
+            "total_strokes": total_strokes,
+            "note": (
+                "着地点データは点対称変換（ネット中心）により自コート座標系に"
+                "変換済みです。この合成表示は可視化補助のみを目的としており、"
+                "空間分析・ゾーン別勝率計算とは独立しています。"
+            ),
+        },
+        "meta": {
+            "sample_size": total_strokes,
+            "confidence": confidence,
+        },
+    }
+
+
 @router.get("/analysis/heatmap_zone_detail")
 def get_heatmap_zone_detail(
     player_id: int,

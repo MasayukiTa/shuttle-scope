@@ -3,6 +3,8 @@ import { clsx } from 'clsx'
 
 interface ConfidenceBadgeProps {
   sampleSize: number
+  /** コンパクト表示（モバイル用）: ★マークのみ、タイトルでフル情報 */
+  compact?: boolean
   className?: string
 }
 
@@ -11,8 +13,10 @@ interface ConfidenceBadgeProps {
  * 500球未満: 警告スタイル（赤枠）
  * 500-2000球: 中程度（黄枠）
  * 2000球以上: 高信頼（緑枠）
+ *
+ * compact=true: モバイル向けに★のみ表示（タップでツールチップ）
  */
-export function ConfidenceBadge({ sampleSize, className }: ConfidenceBadgeProps) {
+export function ConfidenceBadge({ sampleSize, compact = false, className }: ConfidenceBadgeProps) {
   const { t } = useTranslation()
 
   let stars: string
@@ -31,6 +35,18 @@ export function ConfidenceBadge({ sampleSize, className }: ConfidenceBadgeProps)
     stars = '★★★'
     label = t('confidence.high_label')
     colorClass = 'border-green-400 bg-green-900/30 text-green-300'
+  }
+
+  if (compact) {
+    return (
+      <button
+        className={clsx('inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono cursor-default', colorClass, className)}
+        title={`${label}（${t('confidence.sample_size')}: ${sampleSize.toLocaleString()}${t('confidence.strokes')}）`}
+        tabIndex={-1}
+      >
+        {stars}
+      </button>
+    )
   }
 
   return (

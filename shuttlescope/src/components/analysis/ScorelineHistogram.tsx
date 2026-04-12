@@ -32,13 +32,15 @@ export function ScorelineHistogram({ data }: ScorelineHistogramProps) {
         const pct = Math.round(entry.frequency * 100)
         const barWidth = maxFreq > 0 ? Math.round((entry.frequency / maxFreq) * 100) : 0
         return (
-          <div key={i} className="flex items-center gap-2 text-xs">
+          <div key={i} className="flex items-center gap-2 text-xs py-0.5">
+            {/* 結果バッジ（固定幅） */}
             <span
               className="font-bold w-8 shrink-0 text-right"
               style={{ color: isWin ? WIN : LOSS }}
             >
               {entry.outcome}
             </span>
+            {/* バー（スコアラベルなし） */}
             <div className="flex-1 bg-gray-700 rounded h-4 relative overflow-hidden">
               <div
                 className="h-full rounded"
@@ -48,12 +50,15 @@ export function ScorelineHistogram({ data }: ScorelineHistogramProps) {
                   opacity: 0.7,
                 }}
               />
-              <span className="absolute inset-0 flex items-center px-2 text-white text-xs font-mono">
-                {entry.scoreline}
-              </span>
             </div>
-            <span className="text-gray-500 text-xs w-8 text-right font-mono">{pct}%</span>
-            <span className="text-gray-600 text-xs w-6 text-right">{entry.count}</span>
+            {/* %と回数 */}
+            <span className="text-gray-500 w-8 text-right font-mono shrink-0">{pct}%</span>
+            <span className="text-gray-600 w-6 text-right shrink-0">{entry.count}</span>
+            {/* セットスコア: details で折り畳み */}
+            <details className="shrink-0">
+              <summary className="text-blue-500 cursor-pointer list-none text-[10px] leading-none">詳細</summary>
+              <div className="text-gray-500 text-[10px] mt-0.5 whitespace-nowrap">{entry.scoreline}</div>
+            </details>
           </div>
         )
       })}

@@ -124,10 +124,15 @@ function buildOOBZones(mode: 'land' | 'hit'): OOBRect[] {
 }
 
 interface CourtDiagramProps {
-  mode: 'hit' | 'land'
+  mode: 'hit' | 'land' | 'composite'
   selectedZone: LandZone | null
   onZoneSelect: (zone: LandZone) => void
   heatmapData?: Record<string, number>
+  /** 合成モード用: 点対称変換済み着地点データ（自コート座標系） */
+  compositeHitData?: Record<string, number>
+  compositeHitMax?: number
+  compositeLandRotatedData?: Record<string, number>
+  compositeLandMax?: number
   showLabels?: boolean
   interactive?: boolean
   label?: string
@@ -150,6 +155,10 @@ export function CourtDiagram({
   selectedZone,
   onZoneSelect,
   heatmapData,
+  compositeHitData,
+  compositeHitMax,
+  compositeLandRotatedData,
+  compositeLandMax,
   showLabels = true,
   interactive = true,
   label,
@@ -161,12 +170,18 @@ export function CourtDiagram({
 }: CourtDiagramProps) {
   const { t } = useTranslation()
 
+  const isComposite = mode === 'composite'
+  // composite: 自コート（下）がアクティブ（hit相当）
   const activeZones = mode === 'land' ? OPPONENT_ZONES : OWN_ZONES
   const inactiveZones = mode === 'land' ? OWN_ZONES : OPPONENT_ZONES
 
   const heatmapMax = heatmapData
     ? Math.max(...Object.values(heatmapData), 1)
     : 0
+
+  // 合成モード用の最大値（渡されない場合はデータから計算）
+  const hitMax = compositeHitMax ?? (compositeHitData ? Math.max(...Object.values(compositeHitData), 1) : 1)
+  const landMax = compositeLandMax ?? (compositeLandRotatedData ? Math.max(...Object.values(compositeLandRotatedData), 1) : 1)
 
   const PLAYER_A_COLOR = 'rgba(59,130,246,0.12)'
   const PLAYER_A_ACTIVE = 'rgba(59,130,246,0.22)'
@@ -185,6 +200,80 @@ export function CourtDiagram({
     const isSelected = selectedZone === z.zone && isActive
     const heatValue = heatmapData?.[z.zone] ?? 0
 
+    // ── 合成モード: 自コートのみ表示（相手コートは灰色）──
+    if (isComposite) {
+      // 相手コートゾーン（compositeでは非表示・灰色）
+      if (!isActive) {
+        return (
+          <g key={`${z.zone}-${z.y}-comp-inactive`}>
+            <rect
+              x={z.x + 1} y={z.y + 1} width={z.w - 2} height={z.h - 2}
+              fill="rgba(55,65,81,0.35)"
+              stroke="#2d3748" strokeWidth={1}
+            />
+          </g>
+        )
+      }
+
+      // 自コートゾーン: 打点(青)と着地点変換(橙)を左右半分に重ねる
+      const hitCount = compositeHitData?.[z.zone] ?? 0
+      const landCount = compositeLandRotatedData?.[z.zone] ?? 0
+      const hitIntensity = hitCount / hitMax
+      const landIntensity = landCount / landMax
+
+      return (
+        <g key={`${z.zone}-${z.y}-comp`}>
+          {/* 打点レイヤー（青・左半分） */}
+          <rect
+            x={z.x + 1} y={z.y + 1}
+            width={Math.floor(z.w / 2) - 1} height={z.h - 2}
+            fill={`rgba(59,130,246,${(hitIntensity * 0.85).toFixed(3)})`}
+          />
+          {/* 着地点変換レイヤー（橙・右半分） */}
+          <rect
+            x={z.x + Math.floor(z.w / 2)} y={z.y + 1}
+            width={z.w - Math.floor(z.w / 2) - 1} height={z.h - 2}
+            fill={`rgba(249,115,22,${(landIntensity * 0.70).toFixed(3)})`}
+          />
+          {/* セル枠 */}
+          <rect
+            x={z.x + 1} y={z.y + 1} width={z.w - 2} height={z.h - 2}
+            fill="none"
+            stroke="#4b5563" strokeWidth={1}
+          />
+          {/* ゾーン名（左上） */}
+          <text
+            x={z.x + 4} y={z.y + 10}
+            fontSize="8" fill="rgba(255,255,255,0.5)"
+            fontFamily="monospace" pointerEvents="none"
+          >
+            {z.zone}
+          </text>
+          {/* 打点カウント（青・左寄り） */}
+          {hitCount > 0 && (
+            <text
+              x={z.x + Math.floor(z.w / 4)} y={z.y + z.h / 2 + 4}
+              textAnchor="middle" fontSize="10" fontWeight="700"
+              fill="#bfdbfe" fontFamily="monospace" pointerEvents="none"
+            >
+              {hitCount}
+            </text>
+          )}
+          {/* 着地点カウント（橙・右寄り） */}
+          {landCount > 0 && (
+            <text
+              x={z.x + Math.floor(z.w * 3 / 4)} y={z.y + z.h / 2 + 4}
+              textAnchor="middle" fontSize="10" fontWeight="700"
+              fill="#fed7aa" fontFamily="monospace" pointerEvents="none"
+            >
+              {landCount}
+            </text>
+          )}
+        </g>
+      )
+    }
+
+    // ── 通常モード（hit / land）──
     let fillColor = 'rgba(255,255,255,0.03)'
     if (heatmapData) {
       // ヒートマップ表示時: アクティブ半面のみ密度色、非アクティブ半面は薄グレーで無効表示
@@ -319,7 +408,9 @@ export function CourtDiagram({
   }
 
   // OOB表示時はviewBoxを拡張（上下左右にマージンを追加）
-  const oobZones = showOOB ? buildOOBZones(mode) : []
+  // 合成モードはOOB非対応（hit/land のみ）
+  const effectiveMode = isComposite ? 'hit' : mode
+  const oobZones = showOOB ? buildOOBZones(effectiveMode) : []
   const vbLeft = showOOB ? -OOB_MARGIN_SIDE : 0
   const vbTop = showOOB ? -OOB_MARGIN_TOP : 0
   const vbWidth = showOOB ? SVG_WIDTH + OOB_MARGIN_SIDE * 2 : SVG_WIDTH
@@ -333,7 +424,8 @@ export function CourtDiagram({
       {label && (
         <span className="text-xs text-gray-400">{label}</span>
       )}
-      {!showOOB && <span className="text-[10px] text-gray-500">相手コート（着地点）</span>}
+      {!showOOB && !isComposite && <span className="text-[10px] text-gray-500">相手コート（着地点）</span>}
+      {isComposite && <span className="text-[10px] text-gray-500">合成表示（自コート視点）</span>}
       <svg
         viewBox={`${vbLeft} ${vbTop} ${vbWidth} ${vbHeight}`}
         style={
@@ -390,7 +482,7 @@ export function CourtDiagram({
           strokeWidth={2}
         />
       </svg>
-      {!showOOB && <span className="text-[10px] text-gray-500">自コート（打点）</span>}
+      {!showOOB && !isComposite && <span className="text-[10px] text-gray-500">自コート（打点）</span>}
     </div>
   )
 }
