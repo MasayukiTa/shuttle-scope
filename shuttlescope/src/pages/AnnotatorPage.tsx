@@ -795,6 +795,7 @@ export function AnnotatorPage() {
     queryClient,
     t,
     videoRef,
+    roiRect,
   })
 
   // R-001/R-002: セッション共有フック
@@ -1491,6 +1492,8 @@ export function AnnotatorPage() {
                   if (roiEditing) {
                     setRoiEditing(false)
                   } else {
+                    // 新規指定: 既存領域をクリアしてドラッグ開始
+                    setRoiRect(null)
                     setRoiEditing(true)
                   }
                 }}

@@ -77,9 +77,18 @@ def tracknet_status():
 # /api/tracknet/batch/{match_id} — バッチ解析
 # ────────────────────────────────────────────────────────────────────
 
+class RoiRectModel(BaseModel):
+    """正規化座標 (0-1) の解析対象矩形"""
+    x: float = 0.0
+    y: float = 0.0
+    w: float = 1.0
+    h: float = 1.0
+
+
 class BatchRequest(BaseModel):
     backend: str = "auto"  # auto | openvino | onnx_cpu
     confidence_threshold: float = 0.5
+    roi_rect: Optional[RoiRectModel] = None  # 解析対象エリア（未指定なら全体）
 
 @router.post("/tracknet/batch/{match_id}")
 def start_batch(
@@ -120,8 +129,9 @@ def start_batch(
         "error": None,
     }
 
+    roi = body.roi_rect.model_dump() if body.roi_rect else None
     background_tasks.add_task(
-        _run_batch, job_id, match_id, video_path, body.confidence_threshold
+        _run_batch, job_id, match_id, video_path, body.confidence_threshold, roi
     )
     return {"success": True, "data": {"job_id": job_id}}
 
@@ -264,7 +274,35 @@ def frame_hint(body: FrameHintRequest):
 # バックグラウンドジョブ実装
 # ────────────────────────────────────────────────────────────────────
 
-def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float):
+def _crop_roi(frame, roi: dict | None):
+    """ROI 指定がある場合、正規化座標でフレームをクロップする。"""
+    if not roi:
+        return frame
+    h, w = frame.shape[:2]
+    x1 = max(0, int(roi.get("x", 0) * w))
+    y1 = max(0, int(roi.get("y", 0) * h))
+    x2 = min(w, int((roi.get("x", 0) + roi.get("w", 1)) * w))
+    y2 = min(h, int((roi.get("y", 0) + roi.get("h", 1)) * h))
+    if x2 <= x1 or y2 <= y1:
+        return frame
+    return frame[y1:y2, x1:x2]
+
+
+def _remap_tracknet_result(result: dict, roi: dict | None) -> dict:
+    """TrackNet の x_norm / y_norm を ROI ローカル座標からフルフレーム座標に変換する。"""
+    if not roi or result.get("x_norm") is None:
+        return result
+    rx, ry = roi.get("x", 0.0), roi.get("y", 0.0)
+    rw, rh = roi.get("w", 1.0), roi.get("h", 1.0)
+    out = dict(result)
+    if out.get("x_norm") is not None:
+        out["x_norm"] = rx + out["x_norm"] * rw
+    if out.get("y_norm") is not None:
+        out["y_norm"] = ry + out["y_norm"] * rh
+    return out
+
+
+def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float, roi: dict | None = None):
     """バッチ解析の本体。別スレッドで実行される。"""
     from backend.db.database import SessionLocal
 
@@ -303,9 +341,17 @@ def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float):
                 if len(frames) < 3:
                     continue
 
+                # ROI クロップを適用（指定がある場合）
+                if roi:
+                    frames = [_crop_roi(f, roi) for f in frames]
+
                 results = inf.predict_frames(frames)
                 if not results:
                     continue
+
+                # ROI 座標をフルフレーム座標に変換
+                if roi:
+                    results = [_remap_tracknet_result(r, roi) for r in results]
 
                 # 最初の結果（ラリー開始付近）をhit_zoneとして使用
                 first = results[0]
@@ -338,7 +384,7 @@ def _run_batch(job_id: str, match_id: int, video_path: str, threshold: float):
 
         # MatchCVArtifact として tracknet_shuttle_track を保存
         # YOLO アライメント（/api/yolo/align）が参照するフレーム別シャトル軌跡
-        shuttle_track = _build_shuttle_track(rallies, db, inf, threshold, video_path)
+        shuttle_track = _build_shuttle_track(rallies, db, inf, threshold, video_path, roi)
         if shuttle_track:
             track_json = json.dumps(shuttle_track, ensure_ascii=False)
             existing_art = (
@@ -379,6 +425,7 @@ def _build_shuttle_track(
     inf,
     threshold: float,
     video_path: str,
+    roi: dict | None = None,
 ) -> list[dict]:
     """ラリー別の TrackNet 推論結果を時系列フラットリストにまとめ返す。
 
@@ -410,9 +457,11 @@ def _build_shuttle_track(
         while t < end_sec:
             frames = _extract_frames(video_path, t, n_frames=3)
             if len(frames) >= 3:
+                if roi:
+                    frames = [_crop_roi(f, roi) for f in frames]
                 results = inf.predict_frames(frames)
                 if results:
-                    r = results[0]
+                    r = _remap_tracknet_result(results[0], roi)
                     track.append({
                         "timestamp_sec": round(t, 3),
                         "zone": r["zone"] if r["confidence"] >= threshold else None,

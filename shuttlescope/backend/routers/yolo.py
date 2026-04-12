@@ -15,6 +15,7 @@ from typing import Optional
 import cv2
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db, SessionLocal
@@ -68,9 +69,22 @@ def yolo_status():
 
 # ─── バッチ検出 ──────────────────────────────────────────────────────────────
 
+class RoiRectModel(BaseModel):
+    """正規化座標 (0-1) の解析対象矩形"""
+    x: float = 0.0
+    y: float = 0.0
+    w: float = 1.0
+    h: float = 1.0
+
+
+class YoloBatchRequest(BaseModel):
+    roi_rect: Optional[RoiRectModel] = None  # 解析対象エリア（未指定なら全体）
+
+
 @router.post("/yolo/batch/{match_id}")
 def start_yolo_batch(
     match_id: int,
+    body: YoloBatchRequest,
     background_tasks: BackgroundTasks,
     sample_every_n: int = DEFAULT_SAMPLE_EVERY_N_FRAMES,
     db: Session = Depends(get_db),
@@ -109,8 +123,9 @@ def start_yolo_batch(
         "error": None,
     }
 
+    roi = body.roi_rect.model_dump() if body.roi_rect else None
     background_tasks.add_task(
-        _run_batch, job_id, match_id, video_path, sample_every_n
+        _run_batch, job_id, match_id, video_path, sample_every_n, roi
     )
     return {"success": True, "data": {"job_id": job_id}}
 
@@ -294,11 +309,54 @@ def get_alignment(match_id: int, db: Session = Depends(get_db)):
 
 # ─── バックグラウンドジョブ本体 ──────────────────────────────────────────────
 
+def _crop_roi(frame, roi: dict | None):
+    """ROI 指定がある場合、正規化座標でフレームをクロップする。"""
+    if not roi:
+        return frame
+    h, w = frame.shape[:2]
+    x1 = max(0, int(roi.get("x", 0) * w))
+    y1 = max(0, int(roi.get("y", 0) * h))
+    x2 = min(w, int((roi.get("x", 0) + roi.get("w", 1)) * w))
+    y2 = min(h, int((roi.get("y", 0) + roi.get("h", 1)) * h))
+    if x2 <= x1 or y2 <= y1:
+        return frame
+    return frame[y1:y2, x1:x2]
+
+
+def _remap_player_coords(players: list[dict], roi: dict | None) -> list[dict]:
+    """YOLO 検出結果の正規化座標を ROI ローカル座標からフルフレーム座標に変換する。"""
+    if not roi:
+        return players
+    rx, ry = roi.get("x", 0.0), roi.get("y", 0.0)
+    rw, rh = roi.get("w", 1.0), roi.get("h", 1.0)
+    out = []
+    for p in players:
+        p2 = dict(p)
+        if p2.get("bbox") and len(p2["bbox"]) == 4:
+            x1n, y1n, x2n, y2n = p2["bbox"]
+            p2["bbox"] = [
+                round(rx + x1n * rw, 4),
+                round(ry + y1n * rh, 4),
+                round(rx + x2n * rw, 4),
+                round(ry + y2n * rh, 4),
+            ]
+        if p2.get("foot_point") and len(p2["foot_point"]) == 2:
+            fx, fy = p2["foot_point"]
+            p2["foot_point"] = [round(rx + fx * rw, 4), round(ry + fy * rh, 4)]
+        if "cx_n" in p2:
+            p2["cx_n"] = round(rx + p2["cx_n"] * rw, 4)
+        if "cy_n" in p2:
+            p2["cy_n"] = round(ry + p2["cy_n"] * rh, 4)
+        out.append(p2)
+    return out
+
+
 def _run_batch(
     job_id: str,
     match_id: int,
     video_path: str,
     sample_every_n: int,
+    roi: dict | None = None,
 ) -> None:
     _jobs[job_id]["status"] = JobStatus.RUNNING
     db = SessionLocal()
@@ -338,7 +396,11 @@ def _run_batch(
 
             if frame_idx % sample_every_n == 0:
                 ts_sec = frame_idx / fps
-                players = inf.predict_frame(frame)
+                cropped = _crop_roi(frame, roi)
+                players = inf.predict_frame(cropped)
+                # ROI クロップ座標をフルフレーム座標に変換
+                if roi:
+                    players = _remap_player_coords(players, roi)
                 frames_data.append({
                     "frame_idx": frame_idx,
                     "timestamp_sec": round(ts_sec, 3),

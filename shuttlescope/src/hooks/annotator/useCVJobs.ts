@@ -13,6 +13,7 @@ import type { TFunction } from 'i18next'
 import { apiGet, apiPost } from '@/api/client'
 import type { ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import type { Match } from '@/types'
+import type { RoiRect } from '@/components/video/RoiRectOverlay'
 
 /** FastAPI HTTPException の detail フィールドを取り出す。取れなければ元のメッセージ。 */
 function extractApiError(err: unknown): string {
@@ -55,6 +56,8 @@ interface Options {
   queryClient: QueryClient
   t: TFunction
   videoRef: RefObject<HTMLVideoElement>
+  /** TrackNet / YOLO の解析対象エリア（正規化 0-1）。未設定なら動画全体 */
+  roiRect?: RoiRect | null
 }
 
 // ── 公開型 ───────────────────────────────────────────────────────────────────
@@ -93,6 +96,7 @@ export function useCVJobs({
   queryClient,
   t,
   videoRef,
+  roiRect,
 }: Options): CVJobsResult {
 
   // ── TrackNet ──────────────────────────────────────────────────────────────
@@ -131,7 +135,7 @@ export function useCVJobs({
     try {
       const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
         `/tracknet/batch/${matchId}`,
-        { backend: tracknetBackend, confidence_threshold: 0.5 }
+        { backend: tracknetBackend, confidence_threshold: 0.5, roi_rect: roiRect ?? null }
       )
       if (res.success) {
         setTracknetJobId(res.data.job_id)
@@ -148,7 +152,7 @@ export function useCVJobs({
         total_rallies: 0, updated_strokes: 0, error: reason,
       })
     }
-  }, [matchId, match, tracknetBackend, t])
+  }, [matchId, match, tracknetBackend, t, roiRect])
 
   // ── P3: TrackNet ポーリング ───────────────────────────────────────────────
 
@@ -196,7 +200,7 @@ export function useCVJobs({
     try {
       const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
         `/yolo/batch/${matchId}`,
-        {}
+        { roi_rect: roiRect ?? null }
       )
       if (res.success) {
         setYoloJobId(res.data.job_id)
@@ -212,7 +216,7 @@ export function useCVJobs({
         total_frames: 0, detected_players: 0, error: reason,
       })
     }
-  }, [matchId, match, t])
+  }, [matchId, match, t, roiRect])
 
   // ── P4: YOLO ポーリング ───────────────────────────────────────────────────
 

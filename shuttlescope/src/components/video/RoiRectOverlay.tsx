@@ -99,14 +99,14 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
         >
           {/* ラベル */}
           <span
-            className="absolute top-0 left-0 text-[10px] bg-amber-500 text-black px-1 py-0 leading-4 rounded-br select-none"
+            className="absolute top-0 left-0 text-[10px] bg-amber-500 text-white px-1 py-0 leading-4 rounded-br select-none"
           >
             解析領域
           </span>
           {/* 確定済みのときだけ × ボタン */}
           {!editing && value && (
             <button
-              className="absolute top-0 right-0 bg-amber-500 text-black p-0.5 rounded-bl hover:bg-amber-400"
+              className="absolute top-0 right-0 bg-amber-500 text-white p-0.5 rounded-bl hover:bg-amber-400"
               onClick={(e) => { e.stopPropagation(); onChange(null) }}
               title="解析領域をリセット"
             >
