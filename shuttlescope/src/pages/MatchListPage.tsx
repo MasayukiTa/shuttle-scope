@@ -280,8 +280,15 @@ export function MatchListPage() {
     },
     onError: (err: any) => {
       let detail = ''
-      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
-      alert(`保存に失敗しました: ${detail || '不明なエラー'}`)
+      try {
+        const parsed = JSON.parse(err.message)
+        if (Array.isArray(parsed?.detail)) {
+          detail = parsed.detail.map((d: any) => `${d.loc?.join('.')}: ${d.msg}`).join('\n')
+        } else {
+          detail = parsed?.detail ?? err.message ?? ''
+        }
+      } catch { detail = err.message ?? '' }
+      alert(`保存に失敗しました (HTTP ${err.status ?? '?'}):\n${detail || '不明なエラー'}`)
     },
   })
 
@@ -418,6 +425,7 @@ export function MatchListPage() {
     if (form.notes) body.notes = form.notes
 
     if (editingMatchId !== null) {
+      console.log('[updateMatch] body:', JSON.stringify(body, null, 2))
       updateMatch.mutate({ id: editingMatchId, body })
     } else {
       createMatch.mutate(body)
@@ -783,7 +791,7 @@ export function MatchListPage() {
                   required
                   value={form.player_b_id}
                   query={playerBQuery}
-                  setQuery={(q) => { setPlayerBQuery(q); setForm((f) => ({ ...f, player_b_id: '' })) }}
+                  setQuery={setPlayerBQuery}
                   setValue={(v) => setForm((f) => ({ ...f, player_b_id: v }))}
                   candidates={playerBCandidates}
                   isLight={isLight}
@@ -809,7 +817,7 @@ export function MatchListPage() {
                       label="相手チーム相方"
                       value={form.partner_b_id}
                       query={partnerBQuery}
-                      setQuery={(q) => { setPartnerBQuery(q); setForm((f) => ({ ...f, partner_b_id: '' })) }}
+                      setQuery={setPartnerBQuery}
                       setValue={(v) => setForm((f) => ({ ...f, partner_b_id: v }))}
                       candidates={partnerBCandidates}
                       isLight={isLight}

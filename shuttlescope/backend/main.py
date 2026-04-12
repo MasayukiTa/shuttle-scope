@@ -10,11 +10,18 @@ if _root not in sys.path:
 
 import asyncio
 import logging
+import mimetypes
 import uvicorn
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi import FastAPI, Query, WebSocket
+
+# Windows では .js の MIME タイプが登録されていない場合があり
+# type="module" スクリプトが読み込まれないため明示的に追加
+mimetypes.add_type('application/javascript', '.js')
+mimetypes.add_type('application/javascript', '.mjs')
+mimetypes.add_type('text/css', '.css')
 
 logger = logging.getLogger(__name__)
 from fastapi.middleware.cors import CORSMiddleware

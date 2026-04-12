@@ -3,7 +3,7 @@ import asyncio
 import json
 import re
 import unicodedata
-from datetime import date
+from datetime import date as _date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -22,7 +22,7 @@ class MatchCreate(BaseModel):
     tournament_level: str
     tournament_grade: Optional[str] = None
     round: str
-    date: date
+    date: _date
     venue: Optional[str] = None
     format: str
     player_a_id: int
@@ -45,7 +45,7 @@ class MatchUpdate(BaseModel):
     tournament_level: Optional[str] = None
     tournament_grade: Optional[str] = None
     round: Optional[str] = None
-    date: Optional[date] = None
+    date: Optional[_date] = None
     venue: Optional[str] = None
     format: Optional[str] = None
     player_a_id: Optional[int] = None
@@ -241,7 +241,7 @@ def quick_start_match(body: QuickStartBody, db: Session = Depends(get_db)):
         db.add(player_b)
         db.flush()  # IDを確定させる
 
-    today = date.today()
+    today = _date.today()
     match = Match(
         tournament=body.tournament or "未設定",
         tournament_level="その他",
