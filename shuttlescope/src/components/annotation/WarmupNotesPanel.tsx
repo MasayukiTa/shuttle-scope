@@ -18,12 +18,12 @@ import { clsx } from 'clsx'
 import { apiPost, apiGet } from '@/api/client'
 import { WarmupConfidence, PreMatchObservation } from '@/types'
 
-// 信頼度ボタンスタイル
+// 信頼度ボタンスタイル（選択時は常に text-white で視認性を確保）
 const CONFIDENCE_STYLE: Record<WarmupConfidence, string> = {
-  unknown:   'bg-gray-700 text-gray-500 border-gray-600',
-  tentative: 'bg-gray-600 text-gray-300 border-gray-500',
-  likely:    'bg-gray-500 text-gray-200 border-gray-400',
-  confirmed: 'bg-blue-700 text-blue-100 border-blue-600',
+  unknown:   'bg-gray-600 text-white border-gray-500',
+  tentative: 'bg-yellow-700 text-white border-yellow-600',
+  likely:    'bg-orange-600 text-white border-orange-500',
+  confirmed: 'bg-blue-700 text-white border-blue-600',
 }
 
 const CONFIDENCE_LEVELS: WarmupConfidence[] = ['unknown', 'tentative', 'likely', 'confirmed']
@@ -150,6 +150,7 @@ export function WarmupNotesPanel({
   const [obsPartnerB, setObsPartnerB] = useState<PlayerObs>(() => initObs())
   const [obsB, setObsB] = useState<PlayerObs>(() => initObs(playerBHand))
   const [selfObs, setSelfObs] = useState<PlayerObs>(initSelfObs)
+  const [selfObsPartnerA, setSelfObsPartnerA] = useState<PlayerObs>(initSelfObs)
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -170,6 +171,7 @@ export function WarmupNotesPanel({
         const newObsPartnerA = initObs()
         const newObsPartnerB = initObs()
         const newSelfObs = initSelfObs()
+        const newSelfObsPartnerA = initSelfObs()
         for (const o of resp.data) {
           const isObsType = OBS_TYPES.some((d) => d.key === o.observation_type)
           const isSelfType = SELF_OBS_TYPES.some((d) => d.key === o.observation_type)
@@ -185,7 +187,11 @@ export function WarmupNotesPanel({
               newObsPartnerB[o.observation_type] = { value: o.observation_value, confidence: conf }
             }
           } else if (isSelfType) {
-            newSelfObs[o.observation_type] = { value: o.observation_value, confidence: conf }
+            if (o.player_id === playerAId) {
+              newSelfObs[o.observation_type] = { value: o.observation_value, confidence: conf }
+            } else if (partnerAId && o.player_id === partnerAId) {
+              newSelfObsPartnerA[o.observation_type] = { value: o.observation_value, confidence: conf }
+            }
           }
         }
         setObsA(newObsA)
@@ -193,6 +199,7 @@ export function WarmupNotesPanel({
         setObsPartnerA(newObsPartnerA)
         setObsPartnerB(newObsPartnerB)
         setSelfObs(newSelfObs)
+        setSelfObsPartnerA(newSelfObsPartnerA)
       })
       .catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -275,6 +282,7 @@ export function WarmupNotesPanel({
         ...(isDoubles ? buildObs(obsPartnerA, partnerAId) : []),
         ...(isDoubles ? buildObs(obsPartnerB, partnerBId) : []),
         ...buildSelfObs(selfObs, playerAId),
+        ...(isDoubles && partnerAId ? buildSelfObs(selfObsPartnerA, partnerAId) : []),
       ]
 
       if (allObs.length > 0) {
@@ -387,110 +395,22 @@ export function WarmupNotesPanel({
       )}
 
       {/* 観察フィールド */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {OBS_TYPES.map((def) => {
           const entry = currentObs[def.key]
           return (
-            <div key={def.key} className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-300 font-medium">
-                  {t(`warmup.observation_${def.key}`)}
-                </span>
-                <div className="flex gap-1">
-                  {CONFIDENCE_LEVELS.map((lvl) => (
-                    <button
-                      key={lvl}
-                      onClick={() => setConfidence(def.key, lvl)}
-                      disabled={locked}
-                      className={clsx(
-                        'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
-                        entry.confidence === lvl
-                          ? CONFIDENCE_STYLE[lvl]
-                          : 'bg-gray-800 text-gray-600 border-gray-700 hover:text-gray-400',
-                        locked && 'cursor-not-allowed opacity-50',
-                      )}
-                    >
-                      {t(`warmup.confidence_${lvl}`)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-1">
-                {def.values.map((val) => (
-                  <button
-                    key={val}
-                    onClick={() => setField(def.key, entry.value === val ? '' : val)}
-                    disabled={locked}
-                    className={clsx(
-                      'px-2 py-1 rounded border text-[11px] transition-colors',
-                      entry.value === val
-                        ? 'bg-gray-500 border-gray-400 text-white'
-                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
-                      locked && 'cursor-not-allowed opacity-50',
-                    )}
-                  >
-                    {t(`warmup.value_${def.key}_${val}`)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* 自コンディション（player_a タブのみ） */}
-      {activePlayer === 'player_a' && (
-        <div className="border-t border-gray-700/60 pt-3 space-y-3">
-          <div className="text-[11px] text-gray-400 font-medium">
-            {t('warmup.self_condition_section', '自コンディション（任意）')}
-          </div>
-          {SELF_OBS_TYPES.map((def) => {
-            const entry = selfObs[def.key]
-            return (
-              <div key={def.key} className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-300 font-medium">
-                    {t(`warmup.observation_${def.key}`, def.key)}
-                  </span>
-                  <div className="flex gap-1">
-                    {CONFIDENCE_LEVELS.map((lvl) => (
-                      <button
-                        key={lvl}
-                        onClick={() => {
-                          if (locked) return
-                          setSelfObs((prev) => ({
-                            ...prev,
-                            [def.key]: { ...prev[def.key], confidence: lvl },
-                          }))
-                          setSaved(false)
-                        }}
-                        disabled={locked}
-                        className={clsx(
-                          'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
-                          entry.confidence === lvl
-                            ? CONFIDENCE_STYLE[lvl]
-                            : 'bg-gray-800 text-gray-600 border-gray-700 hover:text-gray-400',
-                          locked && 'cursor-not-allowed opacity-50',
-                        )}
-                      >
-                        {t(`warmup.confidence_${lvl}`)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1">
+            <div key={def.key} className="bg-gray-700/30 rounded p-2 space-y-1.5">
+              {/* 項目名（1行目） */}
+              <span className="text-gray-300 font-medium text-[11px] block">
+                {t(`warmup.observation_${def.key}`)}
+              </span>
+              {/* 選択値ボタン + 確からしさボタン（同じ行で高さ揃え） */}
+              <div className="flex items-center gap-2">
+                <div className="flex flex-wrap gap-1 flex-1">
                   {def.values.map((val) => (
                     <button
                       key={val}
-                      onClick={() => {
-                        if (locked) return
-                        setSelfObs((prev) => ({
-                          ...prev,
-                          [def.key]: { ...prev[def.key], value: prev[def.key].value === val ? '' : val },
-                        }))
-                        setSaved(false)
-                      }}
+                      onClick={() => setField(def.key, entry.value === val ? '' : val)}
                       disabled={locked}
                       className={clsx(
                         'px-2 py-1 rounded border text-[11px] transition-colors',
@@ -500,15 +420,111 @@ export function WarmupNotesPanel({
                         locked && 'cursor-not-allowed opacity-50',
                       )}
                     >
-                      {t(`warmup.value_self_${def.key.replace('self_', '')}_${val}`, val)}
+                      {t(`warmup.value_${def.key}_${val}`)}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-0.5 shrink-0">
+                  {CONFIDENCE_LEVELS.map((lvl) => (
+                    <button
+                      key={lvl}
+                      onClick={() => setConfidence(def.key, lvl)}
+                      disabled={locked}
+                      className={clsx(
+                        'px-1.5 py-1 rounded border text-[10px] transition-colors',
+                        entry.confidence === lvl
+                          ? CONFIDENCE_STYLE[lvl]
+                          : 'bg-gray-800 text-gray-600 border-gray-700 hover:text-gray-400',
+                        locked && 'cursor-not-allowed opacity-50',
+                      )}
+                      title={t(`warmup.confidence_${lvl}`)}
+                    >
+                      {t(`warmup.confidence_${lvl}`)}
                     </button>
                   ))}
                 </div>
               </div>
-            )
-          })}
-        </div>
-      )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* 自コンディション（player_a タブ + ダブルスは partner_a タブも表示） */}
+      {(activePlayer === 'player_a' || (isDoubles && activePlayer === 'partner_a')) && (() => {
+        const isPartnerA = activePlayer === 'partner_a'
+        const activeSelfObs = isPartnerA ? selfObsPartnerA : selfObs
+        const setActiveSelfObs = isPartnerA ? setSelfObsPartnerA : setSelfObs
+        return (
+          <div className="border-t border-gray-700/60 pt-3 space-y-2">
+            <div className="text-[11px] text-gray-400 font-medium">
+              {t('warmup.self_condition_section', '自コンディション（任意）')}
+            </div>
+            {SELF_OBS_TYPES.map((def) => {
+              const entry = activeSelfObs[def.key]
+              return (
+                <div key={def.key} className="bg-gray-700/30 rounded p-2 space-y-1.5">
+                  <span className="text-gray-300 font-medium text-[11px] block">
+                    {t(`warmup.observation_${def.key}`, def.key)}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap gap-1 flex-1">
+                      {def.values.map((val) => (
+                        <button
+                          key={val}
+                          onClick={() => {
+                            if (locked) return
+                            setActiveSelfObs((prev) => ({
+                              ...prev,
+                              [def.key]: { ...prev[def.key], value: prev[def.key].value === val ? '' : val },
+                            }))
+                            setSaved(false)
+                          }}
+                          disabled={locked}
+                          className={clsx(
+                            'px-2 py-1 rounded border text-[11px] transition-colors',
+                            entry.value === val
+                              ? 'bg-gray-500 border-gray-400 text-white'
+                              : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600',
+                            locked && 'cursor-not-allowed opacity-50',
+                          )}
+                        >
+                          {t(`warmup.value_self_${def.key.replace('self_', '')}_${val}`, val)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-0.5 shrink-0">
+                      {CONFIDENCE_LEVELS.map((lvl) => (
+                        <button
+                          key={lvl}
+                          onClick={() => {
+                            if (locked) return
+                            setActiveSelfObs((prev) => ({
+                              ...prev,
+                              [def.key]: { ...prev[def.key], confidence: lvl },
+                            }))
+                            setSaved(false)
+                          }}
+                          disabled={locked}
+                          className={clsx(
+                            'px-1.5 py-1 rounded border text-[10px] transition-colors',
+                            entry.confidence === lvl
+                              ? CONFIDENCE_STYLE[lvl]
+                              : 'bg-gray-800 text-gray-600 border-gray-700 hover:text-gray-400',
+                            locked && 'cursor-not-allowed opacity-50',
+                          )}
+                          title={t(`warmup.confidence_${lvl}`)}
+                        >
+                          {t(`warmup.confidence_${lvl}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* エラー */}
       {error && (

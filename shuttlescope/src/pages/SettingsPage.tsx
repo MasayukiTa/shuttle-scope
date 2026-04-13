@@ -13,6 +13,7 @@ import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
 
 type PlayerSortKey = 'name' | 'team' | 'nationality' | 'world_ranking' | 'is_target'
+type BenchmarkItem = { fps: number; avg_ms: number; p95_ms: number; backend: string; samples: number } | { error: string }
 
 interface PlayerFormData {
   name: string
@@ -133,6 +134,10 @@ export function SettingsPage() {
   const [backupResult, setBackupResult] = useState<string | null>(null)
   const [backupRunning, setBackupRunning] = useState(false)
 
+  // CV ベンチマーク
+  const [benchmarkRunning, setBenchmarkRunning] = useState(false)
+  const [benchmarkResult, setBenchmarkResult] = useState<{ yolo: BenchmarkItem; tracknet: BenchmarkItem } | null>(null)
+
   // 選手一覧取得
   const { data: playersData } = useQuery({
     queryKey: ['players'],
@@ -240,6 +245,19 @@ export function SettingsPage() {
     enabled: activeTab === 'data',
   })
   const conflicts = (conflictsData as any)?.data ?? []
+
+  async function runCvBenchmark() {
+    setBenchmarkRunning(true)
+    setBenchmarkResult(null)
+    try {
+      const res = await apiPost<{ success: boolean; data: { yolo: BenchmarkItem; tracknet: BenchmarkItem } }>('/cv/benchmark', {})
+      if (res.success) setBenchmarkResult(res.data)
+    } catch (_e) {
+      // ignore
+    } finally {
+      setBenchmarkRunning(false)
+    }
+  }
 
   async function resolveConflict(id: number, resolution: 'keep_local' | 'use_incoming') {
     await fetch(`/api/sync/conflicts/${id}/resolve`, {
@@ -1054,6 +1072,168 @@ export function SettingsPage() {
                   )
                 })()}
               </div>
+            </div>
+
+            {/* ─── CV 解析レート設定 ─── */}
+            <div className={`${card} rounded-lg p-4 border ${borderLine} space-y-4`}>
+              <div className="flex items-center justify-between">
+                <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
+                  <Zap size={14} className="text-yellow-400" />
+                  解析レート設定
+                </h3>
+                <button
+                  onClick={runCvBenchmark}
+                  disabled={benchmarkRunning}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-wait transition-colors"
+                >
+                  {benchmarkRunning ? (
+                    <><RotateCcw size={11} className="animate-spin" /> 計測中…（約10秒）</>
+                  ) : (
+                    <><Play size={11} /> ベンチマーク実行</>
+                  )}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">ハードウェアの実測値に基づいて最適なレートを選択できます。</p>
+
+              {/* ベンチマーク結果 */}
+              {benchmarkResult && (
+                <div className={`grid grid-cols-2 gap-3 text-xs rounded p-3 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
+                  {(['yolo', 'tracknet'] as const).map((key) => {
+                    const item = benchmarkResult[key]
+                    const label = key === 'yolo' ? 'YOLO' : 'TrackNet'
+                    return (
+                      <div key={key}>
+                        <p className={`font-medium mb-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{label}</p>
+                        {'error' in item ? (
+                          <p className="text-red-400">{item.error}</p>
+                        ) : (
+                          <>
+                            <p className="text-green-300 font-mono font-bold">{item.fps} fps</p>
+                            <p className={isLight ? 'text-gray-500' : 'text-gray-500'}>{item.avg_ms}ms avg / p95={item.p95_ms}ms</p>
+                            <p className={`text-[10px] mt-0.5 ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>{item.backend}</p>
+                          </>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* YOLO 解析レート */}
+              {(() => {
+                const yoloMeasured = benchmarkResult && !('error' in benchmarkResult.yolo)
+                  ? (benchmarkResult.yolo as { fps: number }).fps : null
+                const realtimeOpts = [1, 2, 5, 10, 15, 30]
+                const batchOpts    = [5, 10, 15, 30, 60]
+                return (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium">YOLO — プレイヤー位置解析</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>リアルタイム（fps）</p>
+                        <div className="flex flex-wrap gap-1">
+                          {realtimeOpts.map((v) => {
+                            const disabled = yoloMeasured !== null && v > yoloMeasured
+                            return (
+                              <button
+                                key={v}
+                                disabled={disabled}
+                                onClick={() => !disabled && updateSettings({ yolo_realtime_fps: v })}
+                                title={disabled ? `実測 ${yoloMeasured}fps のため選択不可` : undefined}
+                                className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                                  disabled
+                                    ? 'border-gray-700 text-gray-600 cursor-not-allowed'
+                                    : (appSettings as any).yolo_realtime_fps === v
+                                      ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                                      : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
+                                }`}
+                              >{v}</button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>バッチ（fps）</p>
+                        <div className="flex flex-wrap gap-1">
+                          {batchOpts.map((v) => (
+                            <button
+                              key={v}
+                              onClick={() => updateSettings({ yolo_batch_fps: v })}
+                              className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                                (appSettings as any).yolo_batch_fps === v
+                                  ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                                  : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
+                              }`}
+                            >{v}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* TrackNet 軌跡密度 */}
+              {(() => {
+                const tnMeasured = benchmarkResult && !('error' in benchmarkResult.tracknet)
+                  ? (benchmarkResult.tracknet as { fps: number }).fps : null
+                const realtimeOpts: number[] = [0.5, 1, 2, 5, 10]
+                const batchOpts: number[]    = [1, 2, 5, 10]
+                return (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium">TrackNet — シャトル軌跡密度</p>
+                    <p className="text-[11px] text-gray-500">数値 = 1秒あたりの推論点数。バッチは時間がかかるほど密になります。</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>リアルタイム（fps）<span className="ml-1 text-gray-600">高スペPC向け</span></p>
+                        <div className="flex flex-wrap gap-1">
+                          {realtimeOpts.map((v) => {
+                            const disabled = tnMeasured !== null && v > tnMeasured
+                            return (
+                              <button
+                                key={v}
+                                disabled={disabled}
+                                onClick={() => !disabled && updateSettings({ tracknet_realtime_fps: v })}
+                                title={disabled ? `実測 ${tnMeasured?.toFixed(1)}fps のため選択不可` : undefined}
+                                className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                                  disabled
+                                    ? 'border-gray-700 text-gray-600 cursor-not-allowed'
+                                    : (appSettings as any).tracknet_realtime_fps === v
+                                      ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                                      : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
+                                }`}
+                              >{v}</button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>バッチ（fps）</p>
+                        <div className="flex flex-wrap gap-1">
+                          {batchOpts.map((v) => {
+                            const disabled = tnMeasured !== null && v > tnMeasured
+                            return (
+                              <button
+                                key={v}
+                                disabled={disabled}
+                                onClick={() => !disabled && updateSettings({ tracknet_batch_fps: v })}
+                                title={disabled ? `実測 ${tnMeasured?.toFixed(1)}fps では処理が追いつかないため選択不可` : undefined}
+                                className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                                  disabled
+                                    ? 'border-gray-700 text-gray-600 cursor-not-allowed'
+                                    : (appSettings as any).tracknet_batch_fps === v
+                                      ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                                      : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
+                                }`}
+                              >{v}</button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         )}

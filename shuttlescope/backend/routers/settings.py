@@ -40,6 +40,13 @@ DEFAULT_SETTINGS: dict = {
     "tracknet_backend": "auto",       # auto | tensorflow_cpu | openvino | onnx_cpu
     "tracknet_mode": "batch",          # batch | assist
     "tracknet_max_cpu_pct": 50,
+    # ─── CV 解析レート設定 ────────────────────────────────────────────────────
+    # YOLO: リアルタイム・バッチそれぞれの解析フレームレート（60fps 動画想定）
+    "yolo_realtime_fps": 10,          # リアルタイム解析レート（fps）
+    "yolo_batch_fps": 30,             # バッチ解析レート（fps）
+    # TrackNet: シャトル軌跡密度（step = 1 / fps 秒）
+    "tracknet_realtime_fps": 2,       # リアルタイム軌跡密度（fps）
+    "tracknet_batch_fps": 10,         # バッチ軌跡密度（fps）
     "yolo_enabled": True,               # YOLO プレイヤー検出
     "video_source_mode": "local",      # local | webview | none
     # データ同期設定

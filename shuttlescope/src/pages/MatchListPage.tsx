@@ -736,6 +736,7 @@ export function MatchListPage() {
                   <div className="flex items-center gap-1 mb-3">
                     <span className={`text-sm ${textSecondary}`}>
                       vs {m.player_b?.name ?? `#${m.player_b_id}`}
+                      {m.partner_b?.name && ` / ${m.partner_b.name}`}
                     </span>
                     {m.player_b?.needs_review && (
                       <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded">暫定</span>
@@ -907,7 +908,10 @@ export function MatchListPage() {
                     </td>
                     <td className={`py-2 pr-4 ${textSecondary}`}>{t(`match.formats.${m.format}`)}</td>
                     <td className="py-2 pr-4">
-                      <span>{m.player_b?.name ?? `#${m.player_b_id}`}</span>
+                      <span>
+                        {m.player_b?.name ?? `#${m.player_b_id}`}
+                        {m.partner_b?.name && ` / ${m.partner_b.name}`}
+                      </span>
                       {m.player_b?.needs_review && (
                         <span className="ml-1 text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded" title={t('player.profile_status_provisional')}>
                           暫定

@@ -229,8 +229,22 @@ export function useCVJobs({
     apiGet<{ success: boolean; data: { frame_count: number } | null }>(`/yolo/results/${matchId}`)
       .then(res => setYoloArtifactExists(!!(res.success && res.data)))
       .catch(() => {})
+    // shuttle_track を優先確認。なければ tracknet_resume_check（ストロークに land_zone が
+    // 設定済みかどうか）で判定する。これにより旧バージョンで shuttle_track が保存されていない
+    // 場合でも「再開」ボタンを表示できる。
     apiGet<{ success: boolean; data: unknown[] }>(`/tracknet/shuttle_track/${matchId}`)
-      .then(res => setTracknetArtifactExists(!!(res.success && Array.isArray(res.data) && res.data.length > 0)))
+      .then(res => {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setTracknetArtifactExists(true)
+        } else {
+          // shuttle_track がない場合はストロークの land_zone をフォールバックで確認
+          return apiGet<{ success: boolean; data: { has_land_zone: boolean } }>(
+            `/tracknet/resume_check/${matchId}`
+          ).then(r => {
+            if (r.success && r.data?.has_land_zone) setTracknetArtifactExists(true)
+          }).catch(() => {})
+        }
+      })
       .catch(() => {})
   }, [matchId])
 
@@ -299,12 +313,22 @@ export function useCVJobs({
           if (res.data?.status === 'complete') {
             queryClient.invalidateQueries({ queryKey: ['strokes'] })
             // TrackNet 完了後にシャトル軌跡アーティファクトを取得
+            // status=COMPLETE はシャトル軌跡保存後に設定されるため、ここで取得すれば確実に存在する
             try {
               const trackRes = await apiGet<{ success: boolean; data: ShuttleFrame[] }>(
                 `/tracknet/shuttle_track/${matchId}`
               )
               if (trackRes.success && Array.isArray(trackRes.data) && trackRes.data.length > 0) {
                 setShuttleFrames(trackRes.data)
+                setTracknetArtifactExists(true)
+                setTracknetArtifactAt(
+                  new Date().toLocaleString('ja-JP', {
+                    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+                  })
+                )
+              } else {
+                // shuttle_track が空の場合でも「再開」ボタンは表示する
+                // （resume=True で skip_shuttle_build した場合など）
                 setTracknetArtifactExists(true)
                 setTracknetArtifactAt(
                   new Date().toLocaleString('ja-JP', {

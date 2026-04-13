@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 import json
 
-from backend.db.database import get_db
+from backend.db.database import get_db, SessionLocal
 from backend.db.models import Match, GameSet, Rally, Stroke, MatchCVArtifact
 from backend.tracknet.inference import get_inference
 
@@ -21,6 +21,19 @@ router = APIRouter()
 
 # バッチジョブ管理（インメモリ）
 _jobs: dict[str, dict] = {}
+
+
+def _load_setting_int(db, key: str, default: int) -> int:
+    """app_settings テーブルから整数設定値を読み込む"""
+    import json as _json
+    from sqlalchemy import text as _text
+    try:
+        row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
+        if row:
+            return int(_json.loads(row[0]))
+    except Exception:
+        pass
+    return default
 
 
 class BatchJobStatus:
@@ -51,6 +64,24 @@ def get_shuttle_track(match_id: int, db: Session = Depends(get_db)):
     if not artifact or not artifact.data:
         return {"success": True, "data": []}
     return {"success": True, "data": json.loads(artifact.data)}
+
+
+@router.get("/tracknet/resume_check/{match_id}")
+def tracknet_resume_check(match_id: int, db: Session = Depends(get_db)):
+    """TrackNet 再開ボタン表示用: ストロークに land_zone が 1 件以上あるか確認する。
+    shuttle_track アーティファクトが存在しない旧バージョンのデータに対してもフォールバックとして機能する。
+    """
+    sets = db.query(GameSet).filter(GameSet.match_id == match_id).all()
+    if not sets:
+        return {"success": True, "data": {"has_land_zone": False}}
+    set_ids = [s.id for s in sets]
+    has_land_zone = (
+        db.query(Stroke)
+        .join(Rally, Stroke.rally_id == Rally.id)
+        .filter(Rally.set_id.in_(set_ids), Stroke.land_zone.isnot(None))
+        .first()
+    ) is not None
+    return {"success": True, "data": {"has_land_zone": has_land_zone}}
 
 
 @router.get("/tracknet/status")
@@ -405,37 +436,50 @@ def _run_batch(
             _jobs[job_id]["progress"] = (i + 1) / max(len(rallies), 1)
             _jobs[job_id]["updated_strokes"] = updated
 
-        _jobs[job_id]["status"] = BatchJobStatus.COMPLETE
+        # メインループ完了: 進捗を 100% に設定（status はまだ running のまま）
+        _jobs[job_id]["progress"] = 1.0
         _jobs[job_id]["updated_strokes"] = updated
 
         # MatchCVArtifact として tracknet_shuttle_track を保存
         # YOLO アライメント（/api/yolo/align）が参照するフレーム別シャトル軌跡
-        shuttle_track = _build_shuttle_track(rallies, db, inf, threshold, video_path, roi)
-        if shuttle_track:
-            track_json = json.dumps(shuttle_track, ensure_ascii=False)
-            existing_art = (
-                db.query(MatchCVArtifact)
-                .filter(
-                    MatchCVArtifact.match_id == match_id,
-                    MatchCVArtifact.artifact_type == "tracknet_shuttle_track",
-                )
-                .first()
+        # 再開時 (resume=True) かつ既存アーティファクトがある場合は rebuild をスキップ
+        import datetime as _dt
+        existing_shuttle_art = (
+            db.query(MatchCVArtifact)
+            .filter(
+                MatchCVArtifact.match_id == match_id,
+                MatchCVArtifact.artifact_type == "tracknet_shuttle_track",
             )
-            if existing_art:
-                existing_art.data = track_json
-                existing_art.frame_count = len(shuttle_track)
-                import datetime as _dt
-                existing_art.updated_at = _dt.datetime.utcnow()
-            else:
-                db.add(MatchCVArtifact(
-                    match_id=match_id,
-                    artifact_type="tracknet_shuttle_track",
-                    frame_count=len(shuttle_track),
-                    backend_used=inf.backend_name(),
-                    data=track_json,
-                ))
-            db.commit()
-            logger.info("TrackNet shuttle_track saved: match=%d, points=%d", match_id, len(shuttle_track))
+            .first()
+        )
+        skip_shuttle_build = resume and existing_shuttle_art and existing_shuttle_art.data
+        if skip_shuttle_build:
+            logger.info("TrackNet resume: shuttle_track rebuild skipped (existing artifact reused)")
+        else:
+            batch_fps = _load_setting_int(db, "tracknet_batch_fps", 10)
+            shuttle_step = round(1.0 / max(1, batch_fps), 3)
+            logger.info("TrackNet shuttle_track: step=%.3fs (%.1ffps)", shuttle_step, batch_fps)
+            shuttle_track = _build_shuttle_track(rallies, db, inf, threshold, video_path, roi, step=shuttle_step)
+            if shuttle_track:
+                track_json = json.dumps(shuttle_track, ensure_ascii=False)
+                if existing_shuttle_art:
+                    existing_shuttle_art.data = track_json
+                    existing_shuttle_art.frame_count = len(shuttle_track)
+                    existing_shuttle_art.updated_at = _dt.datetime.utcnow()
+                else:
+                    db.add(MatchCVArtifact(
+                        match_id=match_id,
+                        artifact_type="tracknet_shuttle_track",
+                        frame_count=len(shuttle_track),
+                        backend_used=inf.backend_name(),
+                        data=track_json,
+                    ))
+                db.commit()
+                logger.info("TrackNet shuttle_track saved: match=%d, points=%d", match_id, len(shuttle_track))
+
+        # shuttle_track 保存完了後に status を COMPLETE に設定
+        # （フロントエンドが COMPLETE を見てから shuttle_track を取得するため、保存前に COMPLETE にしない）
+        _jobs[job_id]["status"] = BatchJobStatus.COMPLETE
 
     except Exception as e:
         logger.error("Batch job %s failed: %s", job_id, e)
@@ -452,6 +496,7 @@ def _build_shuttle_track(
     threshold: float,
     video_path: str,
     roi: dict | None = None,
+    step: float = 1.0,
 ) -> list[dict]:
     """ラリー別の TrackNet 推論結果を時系列フラットリストにまとめ返す。
 
@@ -477,8 +522,7 @@ def _build_shuttle_track(
         start_sec: float = rally.video_timestamp_start
         end_sec: float = rally.video_timestamp_end or (start_sec + 15.0)
 
-        # ラリー区間を 3 フレームスライド窓で走査（1fps 相当）
-        step = 1.0  # 秒
+        # ラリー区間を 3 フレームスライド窓で走査（step 秒ごと）
         t = start_sec
         while t < end_sec:
             frames = _extract_frames(video_path, t, n_frames=3)

@@ -33,7 +33,8 @@ router = APIRouter()
 _jobs: dict[str, dict] = {}
 
 # バッチ処理サンプリングレート: N フレームごとに 1 フレームを検出
-DEFAULT_SAMPLE_EVERY_N_FRAMES: int = 30  # 30fps なら 1fps 相当
+# デフォルト: 60fps 動画で 30fps 相当（SettingsPage の cv_batch_fps=30 に対応）
+DEFAULT_SAMPLE_EVERY_N_FRAMES: int = 2  # 60fps 動画 → 30fps 相当
 
 
 class JobStatus:
@@ -78,9 +79,23 @@ class RoiRectModel(BaseModel):
 
 
 class YoloBatchRequest(BaseModel):
-    roi_rect: Optional[RoiRectModel] = None   # 解析対象エリア（未指定なら全体）
-    resume: bool = False                       # True: 既存フレームをスキップして途中再開
-    prev_roi: Optional[RoiRectModel] = None   # 直前の ROI（ROI 拡張時の差分処理用）
+    roi_rect: Optional[RoiRectModel] = None       # 解析対象エリア（未指定なら全体）
+    resume: bool = False                           # True: 既存フレームをスキップして途中再開
+    prev_roi: Optional[RoiRectModel] = None       # 直前の ROI（ROI 拡張時の差分処理用）
+    mode: str = "batch"                            # "batch" | "realtime"（解析レート選択）
+
+
+def _load_setting_int(db: Session, key: str, default: int) -> int:
+    """app_settings テーブルから整数設定値を読み込む"""
+    import json as _json
+    from sqlalchemy import text as _text
+    try:
+        row = db.execute(_text("SELECT value FROM app_settings WHERE key = :k"), {"k": key}).fetchone()
+        if row:
+            return int(_json.loads(row[0]))
+    except Exception:
+        pass
+    return default
 
 
 @router.post("/yolo/batch/{match_id}")
@@ -88,12 +103,12 @@ def start_yolo_batch(
     match_id: int,
     body: YoloBatchRequest,
     background_tasks: BackgroundTasks,
-    sample_every_n: int = DEFAULT_SAMPLE_EVERY_N_FRAMES,
     db: Session = Depends(get_db),
 ):
     """試合動画全体を YOLO でバッチ検出開始（非同期）。
 
-    sample_every_n: 何フレームごとに検出するか（デフォルト30 = 1fps@30fps）
+    body.mode: "batch" → yolo_batch_fps 設定を使用
+              "realtime" → yolo_realtime_fps 設定を使用
     """
     match = db.get(Match, match_id)
     if not match:
@@ -125,12 +140,19 @@ def start_yolo_batch(
         "error": None,
     }
 
+    # mode に応じた設定値からサンプリングレートを計算（60fps 動画想定）
+    if body.mode == "realtime":
+        fps_setting = _load_setting_int(db, "yolo_realtime_fps", 10)
+    else:
+        fps_setting = _load_setting_int(db, "yolo_batch_fps", 30)
+    sample_every_n = max(1, 60 // fps_setting)
+
     roi = body.roi_rect.model_dump() if body.roi_rect else None
     prev_roi = body.prev_roi.model_dump() if body.prev_roi else None
     background_tasks.add_task(
         _run_batch, job_id, match_id, video_path, sample_every_n, roi, body.resume, prev_roi
     )
-    return {"success": True, "data": {"job_id": job_id}}
+    return {"success": True, "data": {"job_id": job_id, "sample_every_n": sample_every_n}}
 
 
 @router.get("/yolo/batch/{job_id}/status")
@@ -405,6 +427,47 @@ def _remap_player_coords(players: list[dict], roi: dict | None) -> list[dict]:
     return out
 
 
+# 中断耐性のため N フレーム処理するごとにアーティファクトを部分保存する
+_YOLO_PARTIAL_SAVE_EVERY = 500
+
+
+def _upsert_yolo_artifact(
+    db,
+    match_id: int,
+    frames_data: list[dict],
+    backend_name: str,
+    summary_json: str | None = None,
+) -> None:
+    """frames_data を yolo_player_detections アーティファクトへ upsert する。"""
+    import datetime as _dt
+    frames_json = json.dumps(frames_data, ensure_ascii=False)
+    existing = (
+        db.query(MatchCVArtifact)
+        .filter(
+            MatchCVArtifact.match_id == match_id,
+            MatchCVArtifact.artifact_type == "yolo_player_detections",
+        )
+        .first()
+    )
+    if existing:
+        existing.data = frames_json
+        existing.frame_count = len(frames_data)
+        existing.backend_used = backend_name
+        existing.updated_at = _dt.datetime.utcnow()
+        if summary_json is not None:
+            existing.summary = summary_json
+    else:
+        db.add(MatchCVArtifact(
+            match_id=match_id,
+            artifact_type="yolo_player_detections",
+            frame_count=len(frames_data),
+            backend_used=backend_name,
+            summary=summary_json,
+            data=frames_json,
+        ))
+    db.commit()
+
+
 def _run_batch(
     job_id: str,
     match_id: int,
@@ -425,6 +488,7 @@ def _run_batch(
             return
 
         # 既存アーティファクト読み込み（再開・差分処理用）
+        # 最新アーティファクトを取得するため created_at 降順
         existing_by_idx: dict[int, dict] = {}
         if resume or prev_roi:
             art = (
@@ -433,6 +497,7 @@ def _run_batch(
                     MatchCVArtifact.match_id == match_id,
                     MatchCVArtifact.artifact_type == "yolo_player_detections",
                 )
+                .order_by(MatchCVArtifact.created_at.desc())
                 .first()
             )
             if art and art.data:
@@ -469,6 +534,7 @@ def _run_batch(
         frames_data: list[dict] = []
         detected_total = 0
         processed = 0
+        new_frames_since_save = 0  # 前回の部分保存以降に新規処理したフレーム数
         frame_idx = 0
 
         while True:
@@ -493,6 +559,7 @@ def _run_batch(
                             "timestamp_sec": round(ts_sec, 3),
                             "players": merged,
                         })
+                        new_frames_since_save += 1
                     else:
                         # resume=True: 既存データをそのまま再利用（再処理なし）
                         frames_data.append(existing_by_idx[frame_idx])
@@ -507,6 +574,7 @@ def _run_batch(
                         "timestamp_sec": round(ts_sec, 3),
                         "players": players,
                     })
+                    new_frames_since_save += 1
 
                 detected_total += len([p for p in frames_data[-1]["players"] if "player" in p.get("label", "")])
                 processed += 1
@@ -514,41 +582,25 @@ def _run_batch(
                 _jobs[job_id]["progress"] = round(processed / max(sample_count, 1), 3)
                 _jobs[job_id]["detected_players"] = detected_total
 
+                # 中断耐性のため定期的に部分保存（新規処理フレームのみカウント）
+                if new_frames_since_save >= _YOLO_PARTIAL_SAVE_EVERY:
+                    try:
+                        _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name())
+                        new_frames_since_save = 0
+                        logger.debug("YOLO partial save: match=%d, frames=%d", match_id, len(frames_data))
+                    except Exception as save_err:
+                        logger.warning("YOLO partial save failed: %s", save_err)
+
             frame_idx += 1
 
         cap.release()
 
         # コート位置サマリー計算
         summary = summarize_frame_positions(frames_data)
-
-        # DB に保存
-        frames_json = json.dumps(frames_data, ensure_ascii=False)
         summary_json = json.dumps(summary, ensure_ascii=False)
 
-        existing = (
-            db.query(MatchCVArtifact)
-            .filter(
-                MatchCVArtifact.match_id == match_id,
-                MatchCVArtifact.artifact_type == "yolo_player_detections",
-            )
-            .first()
-        )
-        if existing:
-            existing.data = frames_json
-            existing.summary = summary_json
-            existing.frame_count = len(frames_data)
-            existing.backend_used = inf.backend_name()
-            existing.updated_at = __import__("datetime").datetime.utcnow()
-        else:
-            db.add(MatchCVArtifact(
-                match_id=match_id,
-                artifact_type="yolo_player_detections",
-                frame_count=len(frames_data),
-                backend_used=inf.backend_name(),
-                summary=summary_json,
-                data=frames_json,
-            ))
-        db.commit()
+        # 最終保存
+        _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name(), summary_json)
 
         _jobs[job_id]["status"] = JobStatus.COMPLETE
         _jobs[job_id]["progress"] = 1.0

@@ -12,6 +12,8 @@ interface UseKeyboardOptions {
   onWinnerSelect?: (winner: 'player_a' | 'player_b') => void
   /** プレラリー中に K キーで見逃しラリーダイアログを開く */
   onSkipRallyOpen?: () => void
+  /** プレラリー中に 1/2 キー（テンキー含む）でサーバーを選択 */
+  onServerSelect?: (player: 'player_a' | 'player_b') => void
   /** ダブルスモードで Tab キーによりチーム内ヒッターを切替 */
   onToggleHitter?: () => void
   /** ダブルスモードで 7/8/9/0 キーにより直接打者を選択 */
@@ -31,6 +33,8 @@ interface UseKeyboardOptions {
  * 【idle(false) = プレラリー】
  *   Enter : ラリー開始
  *   K     : 見逃しラリーダイアログを開く
+ *   1 / Numpad1 : player_a をサーバーに選択
+ *   2 / Numpad2 : player_b をサーバーに選択
  *
  * 【idle(true) = ショット選択中】
  *   ショットキー (N/C/P/S/D/V/L/O/X/Z/F/H/B/G, 1/2=サービス) : ショット入力
@@ -129,6 +133,7 @@ export function useKeyboard({
   onEndTypeSelect,
   onWinnerSelect,
   onSkipRallyOpen,
+  onServerSelect,
   onToggleHitter,
   onHitterSelect,
 }: UseKeyboardOptions = {}) {
@@ -136,11 +141,13 @@ export function useKeyboard({
   const onEndTypeSelectRef = useRef(onEndTypeSelect)
   const onWinnerSelectRef = useRef(onWinnerSelect)
   const onSkipRallyOpenRef = useRef(onSkipRallyOpen)
+  const onServerSelectRef = useRef(onServerSelect)
   const onToggleHitterRef = useRef(onToggleHitter)
   const onHitterSelectRef = useRef(onHitterSelect)
   onEndTypeSelectRef.current = onEndTypeSelect
   onWinnerSelectRef.current = onWinnerSelect
   onSkipRallyOpenRef.current = onSkipRallyOpen
+  onServerSelectRef.current = onServerSelect
   onToggleHitterRef.current = onToggleHitter
   onHitterSelectRef.current = onHitterSelect
 
@@ -323,6 +330,18 @@ export function useKeyboard({
         if ((e.key === 'k' || e.key === 'K') && !e.ctrlKey && !e.metaKey) {
           e.preventDefault()
           onSkipRallyOpenRef.current?.()
+          return
+        }
+        // 1 / Numpad1: player_a をサーバーに選択
+        if ((e.key === '1' && !e.code.startsWith('Numpad')) || e.code === 'Numpad1') {
+          e.preventDefault()
+          onServerSelectRef.current?.('player_a')
+          return
+        }
+        // 2 / Numpad2: player_b をサーバーに選択
+        if ((e.key === '2' && !e.code.startsWith('Numpad')) || e.code === 'Numpad2') {
+          e.preventDefault()
+          onServerSelectRef.current?.('player_b')
           return
         }
         // プレラリー中はその他のショット/ランディングキーを無効化

@@ -700,6 +700,7 @@ export function AnnotatorPage() {
       handleConfirmRally(winner, pendingEndType)
     },
     onSkipRallyOpen: () => setShowSkipRallyDialog(true),
+    onServerSelect: (player) => store.setPlayer(player),
     onToggleHitter: () => store.toggleHitterWithinTeam(),
     onHitterSelect: (hitter) => store.setHitter(hitter),
   })
