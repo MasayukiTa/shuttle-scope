@@ -2725,7 +2725,7 @@ export function AnnotatorPage() {
                       playerToggleDisabled && 'opacity-40 cursor-not-allowed grayscale',
                     )}
                   >
-                    <span className="opacity-60 mr-0.5">{posLabel('player_a')}</span>{match?.player_a?.name ?? 'A'}
+                    <span className="opacity-60 mr-0.5">{posLabel('player_a')}</span>{match?.player_a?.name ?? 'A'}{store.isDoubles && match?.partner_a && <><span className="opacity-40 mx-0.5">/</span><span className="text-[10px]">{match.partner_a.name}</span></>}
                   </button>
                   <button
                     onClick={() => !playerToggleDisabled && store.togglePlayer()}
@@ -2754,7 +2754,7 @@ export function AnnotatorPage() {
                       playerToggleDisabled && 'opacity-40 cursor-not-allowed grayscale',
                     )}
                   >
-                    <span className="opacity-60 mr-0.5">{posLabel('player_b')}</span>{match?.player_b?.name ?? 'B'}
+                    <span className="opacity-60 mr-0.5">{posLabel('player_b')}</span>{match?.player_b?.name ?? 'B'}{store.isDoubles && match?.partner_b && <><span className="opacity-40 mx-0.5">/</span><span className="text-[10px]">{match.partner_b.name}</span></>}
                   </button>
                 </div>
               )
@@ -2903,24 +2903,6 @@ export function AnnotatorPage() {
 
               return (
                 <div className="flex flex-col gap-0.5 px-1">
-                  {/* チームラベル */}
-                  <div className="flex items-center text-[9px]">
-                    <span className={clsx('flex-1 text-center truncate', isActiveA
-                      ? isLight ? 'text-blue-600 font-semibold' : 'text-blue-400 font-semibold'
-                      : isLight ? 'text-gray-400' : 'text-gray-600')}>
-                      {nameA}
-                      <span className="opacity-50 mx-0.5">/</span>
-                      {namePA}
-                    </span>
-                    <span className={clsx('mx-1 shrink-0', isLight ? 'text-gray-300' : 'text-gray-600')}>打者</span>
-                    <span className={clsx('flex-1 text-center truncate', !isActiveA
-                      ? isLight ? 'text-orange-600 font-semibold' : 'text-orange-400 font-semibold'
-                      : isLight ? 'text-gray-400' : 'text-gray-600')}>
-                      {namePB}
-                      <span className="opacity-50 mx-0.5">/</span>
-                      {nameB}
-                    </span>
-                  </div>
                   {/* 4選手ボタン行 */}
                   <div className="flex items-center gap-1">
                     <button onClick={() => store.setHitter('player_a')}  className={btnCls('player_a')}  title={[match.player_a?.team, '[7]'].filter(Boolean).join(' ')}>

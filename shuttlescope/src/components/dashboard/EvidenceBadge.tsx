@@ -20,9 +20,9 @@ const TIER_LABELS: Record<Tier, string> = {
 }
 
 const TIER_COLORS_DARK: Record<Tier, string> = {
-  stable: 'bg-emerald-900/50 border-emerald-600 text-emerald-300',
-  advanced: 'bg-blue-900/50 border-blue-600 text-blue-300',
-  research: 'bg-amber-900/50 border-amber-600 text-amber-300',
+  stable: 'bg-emerald-900/70 border-emerald-500 text-emerald-200',
+  advanced: 'bg-blue-900/70 border-blue-500 text-blue-200',
+  research: 'bg-amber-900/70 border-amber-500 text-amber-200',
 }
 const TIER_COLORS_LIGHT: Record<Tier, string> = {
   stable: 'bg-emerald-50 border-emerald-400 text-emerald-700',
@@ -47,8 +47,8 @@ export function EvidenceBadge({
 }: EvidenceBadgeProps) {
   const isLight = useIsLightMode()
   const tierColors = isLight ? TIER_COLORS_LIGHT : TIER_COLORS_DARK
-  const metaText = isLight ? 'text-gray-500 border border-gray-300' : 'text-gray-500 border border-gray-700'
-  const sampleText = isLight ? 'text-gray-500' : 'text-gray-600'
+  const metaText = isLight ? 'text-gray-500 border border-gray-300' : 'text-gray-300 border border-gray-600'
+  const sampleText = isLight ? 'text-gray-500' : 'text-gray-400'
   const warnText = isLight ? 'text-amber-600' : 'text-amber-500'
 
   return (

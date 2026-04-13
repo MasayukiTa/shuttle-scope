@@ -6,6 +6,7 @@ import { X, ChevronRight, AlertTriangle } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
+import { RallyDetailBanner, type RallyPoint } from '@/components/analysis/ScoreProgression'
 import { WIN, LOSS, BAR, LINE } from '@/styles/colors'
 
 interface SetIntervalSummaryProps {
@@ -25,6 +26,10 @@ interface SetIntervalSummaryProps {
   titleOverride?: string
   /** 閉じるボタンのテキスト上書き（解析画面用: "閉じる"、試合中: "試合に戻る"） */
   closeLabel?: string
+  /** チャートでクリックされたラリーの詳細（バナー内に表示） */
+  rally?: (RallyPoint & { set_num: number }) | null
+  /** 同セットのラリー一覧（←→ナビ用） */
+  setRallies?: RallyPoint[]
 }
 
 interface LossPattern {
@@ -86,9 +91,24 @@ export function SetIntervalSummary({
   maxRallyNum,
   titleOverride,
   closeLabel,
+  rally,
+  setRallies,
 }: SetIntervalSummaryProps) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
+
+  // ←→ナビ: 初期インデックスをrallyから算出
+  const initialIdx = rally && setRallies
+    ? Math.max(0, setRallies.findIndex(r => r.rally_num === rally.rally_num))
+    : 0
+  const [rallyIdx, setRallyIdx] = useState(initialIdx)
+
+  const setNum = rally?.set_num ?? 1
+  const currentRally: (RallyPoint & { set_num: number }) | null = setRallies && setRallies.length > 0
+    ? { ...setRallies[rallyIdx], set_num: setNum }
+    : rally ?? null
+  const hasPrev = rallyIdx > 0
+  const hasNext = setRallies ? rallyIdx < setRallies.length - 1 : false
 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['set-summary', setId, maxRallyNum],
@@ -167,6 +187,17 @@ export function SetIntervalSummary({
 
           {!isLoading && !data && (
             <p className="text-gray-500 text-sm text-center py-4">{t('analysis.no_data')}</p>
+          )}
+
+          {/* ラリー詳細バナー（チャートでクリックされたラリー） */}
+          {currentRally && (
+            <RallyDetailBanner
+              rally={currentRally}
+              hasPrev={hasPrev}
+              hasNext={hasNext}
+              onPrev={() => setRallyIdx(i => i - 1)}
+              onNext={() => setRallyIdx(i => i + 1)}
+            />
           )}
 
           {data && (

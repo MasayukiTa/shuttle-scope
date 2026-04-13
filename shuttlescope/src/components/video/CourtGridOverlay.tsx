@@ -201,14 +201,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
   }, [])
 
   const handleSVGPointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (!calibrating) {
-      // キャリブレーション済みのグリッドをクリック → 再キャリブレーション開始
-      if (isCalibrated && visible) {
-        e.preventDefault()
-        startCalibration()
-      }
-      return
-    }
+    // SVG クリックではキャリブレーションを開始しない（明示的なボタンで操作）
+    if (!calibrating) return
     if (points.length >= TOTAL_POINTS) return
     e.preventDefault()
     const pt = getSVGPoint(e)
@@ -219,7 +213,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
     } else {
       setPoints(next)
     }
-  }, [calibrating, isCalibrated, visible, points, getSVGPoint, savePts, startCalibration])
+  }, [calibrating, points, getSVGPoint, savePts])
 
   // ─── ドラッグで点を調整 ─────────────────────────────────────────────────
 
@@ -289,7 +283,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
             ? 'crosshair'
             : draggingIdx !== null
               ? 'grabbing'
-              : (isCalibrated && visible ? 'pointer' : 'default'),
+              : 'default',
         }}
         onPointerDown={handleSVGPointerDown}
         onPointerMove={handleSVGPointerMove}
@@ -348,6 +342,17 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         )}
       </svg>
 
+      {/* ─── グリッド線再作成ボタン（左上）────────────────────── */}
+      {visible && isCalibrated && !calibrating && (
+        <button
+          onClick={startCalibration}
+          className="absolute top-1 left-1 flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5 hover:bg-black/70 transition-colors"
+          style={{ pointerEvents: 'all', color: '#ffffff', fontSize: 9, fontWeight: 500, lineHeight: 1.4 }}
+        >
+          グリッド線再作成
+        </button>
+      )}
+
       {/* ─── 保存完了トースト（6秒） ─────────────────────────── */}
       {savedNotice && (
         <div
@@ -355,16 +360,6 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
           style={{ pointerEvents: 'none', zIndex: 30 }}
         >
           ROI 保存完了 — YOLO 再実行で精度向上
-        </div>
-      )}
-
-      {/* ─── キャリブレーション済み: クリックで再設定ヒント ───────── */}
-      {visible && isCalibrated && !calibrating && (
-        <div
-          className="absolute bottom-2 left-2 text-[10px] select-none"
-          style={{ pointerEvents: 'none', color: 'rgba(255,255,255,0.5)' }}
-        >
-          グリッドをクリックで再設定
         </div>
       )}
 

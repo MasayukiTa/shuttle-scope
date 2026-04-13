@@ -148,7 +148,7 @@ export function CourtHeatModal({
   const compositeHitMax = compositeHitData ? Math.max(...Object.values(compositeHitData), 1) : 1
   const compositeLandMax = compositeLandData ? Math.max(...Object.values(compositeLandData), 1) : 1
 
-  // ゾーン詳細（クリック時のみ取得）
+  // ゾーン詳細（クリック時のみ取得）— 打点 or 合成の打点側
   const { data: detailResp, isLoading: loadingDetail } = useQuery({
     queryKey: ['court-heat-zone-detail', playerId, mode, selectedZone, matchId, lastN],
     queryFn: () =>
@@ -158,11 +158,24 @@ export function CourtHeatModal({
         zone: selectedZone!,
         ...apiParams,
       }),
-    // 合成モードではゾーン詳細は非表示
-    enabled: selectedZone != null && mode !== 'composite',
+    enabled: selectedZone != null,
+  })
+
+  // 合成モード専用: 着地点ゾーン詳細
+  const { data: detailLandResp, isLoading: loadingDetailLand } = useQuery({
+    queryKey: ['court-heat-zone-detail-land', playerId, selectedZone, matchId, lastN],
+    queryFn: () =>
+      apiGet<ZoneDetailResponse>('/analysis/heatmap_zone_detail', {
+        player_id: playerId,
+        type: 'land',
+        zone: selectedZone!,
+        ...apiParams,
+      }),
+    enabled: selectedZone != null && mode === 'composite',
   })
 
   const detail = detailResp?.data
+  const detailLand = detailLandResp?.data
   const isLight = useIsLightMode()
 
   const filterBarClass = (active: boolean) =>
@@ -227,7 +240,7 @@ export function CourtHeatModal({
               <div className="flex items-start gap-2 p-3 bg-amber-950/60 border border-amber-700/50 rounded-lg text-xs max-w-xs">
                 <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />
                 <div className="text-amber-300/80">
-                  着地点データは点対称変換（ネット中心）で自コート座標系に変換済みです。可視化補助専用です。
+                  着地点はネット中心で点対称変換し、自コート座標に重ね合わせています。タイルをクリックして打点・着地点の詳細を確認できます。
                 </div>
               </div>
             )}
@@ -293,8 +306,8 @@ export function CourtHeatModal({
                 compositeLandRotatedData={compositeLandData}
                 compositeLandMax={compositeLandMax}
                 selectedZone={selectedZone}
-                onZoneSelect={(z) => mode !== 'composite' ? setSelectedZone(z === selectedZone ? null : z) : undefined}
-                interactive={mode !== 'composite'}
+                onZoneSelect={(z) => setSelectedZone(z === selectedZone ? null : z)}
+                interactive={true}
                 showOOB={false}
                 maxHeight={Math.max(300, (typeof window !== 'undefined' ? window.innerHeight : 600) - 280)}
               />
@@ -314,11 +327,9 @@ export function CourtHeatModal({
               </div>
             )}
 
-            {mode !== 'composite' && (
-              <p className="text-[10px] text-gray-600">
-                ゾーンをクリックすると詳細を表示
-              </p>
-            )}
+            <p className="text-[10px] text-gray-600">
+              ゾーンをクリックすると詳細を表示
+            </p>
           </div>
 
           {/* 右：ゾーン詳細パネル */}
@@ -329,9 +340,24 @@ export function CourtHeatModal({
                   左のコート図のゾーンをクリックすると<br />詳細な分析が表示されます
                 </p>
               </div>
-            ) : loadingDetail ? (
+            ) : (loadingDetail || (mode === 'composite' && loadingDetailLand)) ? (
               <div className="flex items-center justify-center h-full min-h-[200px]">
                 <div className="text-gray-500 text-sm">読み込み中...</div>
+              </div>
+            ) : mode === 'composite' ? (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {detail && (
+                  <div>
+                    <p className="text-[11px] font-semibold text-blue-400 mb-2 px-1">打点</p>
+                    <ZoneDetailPanel detail={detail} mode="hit" t={t} isLight={isLight} />
+                  </div>
+                )}
+                {detailLand && (
+                  <div>
+                    <p className="text-[11px] font-semibold text-orange-400 mb-2 px-1">着地点（変換済み）</p>
+                    <ZoneDetailPanel detail={detailLand} mode="land" t={t} isLight={isLight} />
+                  </div>
+                )}
               </div>
             ) : detail ? (
               <ZoneDetailPanel detail={detail} mode={heatmapType} t={t} isLight={isLight} />

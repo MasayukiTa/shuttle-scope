@@ -5,7 +5,7 @@ import { PreLossPatterns } from '@/components/analysis/PreLossPatterns'
 import { PreWinPatterns } from '@/components/analysis/PreWinPatterns'
 import { EffectiveDistributionMap } from '@/components/analysis/EffectiveDistributionMap'
 import { ReceivedVulnerabilityMap } from '@/components/analysis/ReceivedVulnerabilityMap'
-import { ScoreProgression } from '@/components/analysis/ScoreProgression'
+import { ScoreProgression, type RallyPoint } from '@/components/analysis/ScoreProgression'
 import { SetComparison } from '@/components/analysis/SetComparison'
 import { RallySequencePatterns } from '@/components/analysis/RallySequencePatterns'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
@@ -40,12 +40,14 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
   const [pointAnalysis, setPointAnalysis] = useState<{
     setId: number; setNum: number; rallyNum: number; scoreA: number; scoreB: number
+    rally: RallyPoint & { set_num: number }
+    setRallies: RallyPoint[]
   } | null>(null)
 
   const handleSetPointClick = useCallback((
-    setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number
+    setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number, rally: RallyPoint, setRallies: RallyPoint[]
   ) => {
-    setPointAnalysis({ setId, setNum, rallyNum, scoreA, scoreB })
+    setPointAnalysis({ setId, setNum, rallyNum, scoreA, scoreB, rally: { ...rally, set_num: setNum }, setRallies })
   }, [])
 
   const matchOptions = matches.map((m) => ({
@@ -179,6 +181,8 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
             maxRallyNum={pointAnalysis.rallyNum}
             titleOverride={`Set ${pointAnalysis.setNum} 途中解析（ラリー ${pointAnalysis.rallyNum}）`}
             closeLabel="閉じる"
+            rally={pointAnalysis.rally}
+            setRallies={pointAnalysis.setRallies}
           />
         </ErrorBoundary>
       )}

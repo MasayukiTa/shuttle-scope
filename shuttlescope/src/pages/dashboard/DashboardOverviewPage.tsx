@@ -13,7 +13,7 @@ import { AnalysisFilters } from '@/types'
 import { Maximize2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { BAR, TOOLTIP_STYLE as CW_TOOLTIP, getTooltipStyle, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { useCardTheme } from '@/hooks/useCardTheme'
-import { ScoreProgression } from '@/components/analysis/ScoreProgression'
+import { ScoreProgression, type RallyPoint } from '@/components/analysis/ScoreProgression'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
 import { ConfidenceCalibration } from '@/components/analysis/ConfidenceCalibration'
 import { ChartModal } from '@/components/common/ChartModal'
@@ -117,6 +117,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   const [matchSort, setMatchSort] = useState<{ col: SortCol; order: 'asc' | 'desc' }>({ col: 'date', order: 'desc' })
   const [pointAnalysis, setPointAnalysis] = useState<{
     setId: number; setNum: number; rallyNum: number; scoreA: number; scoreB: number
+    rally: RallyPoint & { set_num: number }
+    setRallies: RallyPoint[]
   } | null>(null)
 
   // ── Descriptive ──
@@ -206,9 +208,9 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   const canGoNext = matchNavIdx >= 0 && matchNavIdx < matchOptions.length - 1
 
   const handleSetPointClick = useCallback((
-    setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number
+    setId: number, setNum: number, rallyNum: number, scoreA: number, scoreB: number, rally: RallyPoint, setRallies: RallyPoint[]
   ) => {
-    setPointAnalysis({ setId, setNum, rallyNum, scoreA, scoreB })
+    setPointAnalysis({ setId, setNum, rallyNum, scoreA, scoreB, rally: { ...rally, set_num: setNum }, setRallies })
   }, [])
 
   return (
@@ -494,21 +496,23 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       <div className={`${card} rounded-lg p-4`}>
         <div className="flex items-center justify-between gap-2 mb-3">
           <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
-          <div className="flex items-center gap-2 shrink-0">
-            {selectedMatchId && (
-              <>
-                <label className={`text-xs ${textSecondary} whitespace-nowrap`}>完了セット:</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={3}
-                  value={intervalSet}
-                  onChange={(e) => setIntervalSet(Number(e.target.value))}
-                  className={`w-12 text-xs rounded px-2 py-1 ${isLight ? 'bg-white border border-gray-300 text-gray-700' : 'bg-gray-700 border border-gray-600 text-white'}`}
-                />
-              </>
-            )}
-          </div>
+          {selectedMatchId && (
+            <div className="flex gap-1 shrink-0">
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setIntervalSet(n)}
+                  className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+                    intervalSet === n
+                      ? 'bg-blue-600 text-white'
+                      : isLight ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  }`}
+                >
+                  Set {n}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {selectedMatchId ? (
           <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
@@ -603,6 +607,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             maxRallyNum={pointAnalysis.rallyNum}
             titleOverride={`Set ${pointAnalysis.setNum} 途中解析（ラリー ${pointAnalysis.rallyNum}）`}
             closeLabel="閉じる"
+            rally={pointAnalysis.rally}
+            setRallies={pointAnalysis.setRallies}
           />
         </ErrorBoundary>
       )}

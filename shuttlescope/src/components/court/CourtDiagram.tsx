@@ -222,7 +222,7 @@ export function CourtDiagram({
       const landIntensity = landCount / landMax
 
       return (
-        <g key={`${z.zone}-${z.y}-comp`}>
+        <g key={`${z.zone}-${z.y}-comp`} className={interactive ? 'cursor-pointer' : undefined} onClick={interactive ? () => onZoneSelect(z.zone) : undefined}>
           {/* 打点レイヤー（青・左半分） */}
           <rect
             x={z.x + 1} y={z.y + 1}
@@ -235,11 +235,11 @@ export function CourtDiagram({
             width={z.w - Math.floor(z.w / 2) - 1} height={z.h - 2}
             fill={`rgba(249,115,22,${(landIntensity * 0.70).toFixed(3)})`}
           />
-          {/* セル枠 */}
+          {/* セル枠（選択時は青ボーダー） */}
           <rect
             x={z.x + 1} y={z.y + 1} width={z.w - 2} height={z.h - 2}
             fill="none"
-            stroke="#4b5563" strokeWidth={1}
+            stroke={isSelected ? '#3b82f6' : '#4b5563'} strokeWidth={isSelected ? 2 : 1}
           />
           {/* ゾーン名（左上） */}
           <text
