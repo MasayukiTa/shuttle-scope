@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, TeamHistoryEntry, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
@@ -1887,6 +1887,31 @@ export function SettingsPage() {
                 ※ POCフェーズでは簡易ロール管理（ローカルストレージ保存）。
                 本番展開時にJWT認証へ移行予定。
               </p>
+            </section>
+
+            {/* アプリ再起動 */}
+            <section>
+              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>アプリ再起動</h2>
+              <p className={`text-xs ${textMuted} mb-3`}>
+                設定変更や不具合が発生した際にアプリを再起動します。未保存のアノテーションデータは失われます。
+              </p>
+              <button
+                onClick={() => {
+                  if (window.shuttlescope?.restartApp) {
+                    window.shuttlescope.restartApp()
+                  } else {
+                    window.location.reload()
+                  }
+                }}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded border transition-colors text-sm font-medium
+                  ${isLight
+                    ? 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50'
+                    : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500 hover:bg-gray-700'
+                  }`}
+              >
+                <RotateCcw size={15} />
+                アプリを再起動
+              </button>
             </section>
 
           </div>

@@ -351,6 +351,13 @@ ipcMain.handle('open-video-file', async () => {
   return `localfile:///${normalized}`
 })
 
+// ─── IPC: アプリ再起動 ────────────────────────────────────────────────────────
+
+ipcMain.handle('relaunch-app', () => {
+  app.relaunch()
+  app.exit(0)
+})
+
 // ─── スプラッシュウィンドウ作成（即時表示用） ─────────────────────────────────
 
 function createSplashWindow(): void {

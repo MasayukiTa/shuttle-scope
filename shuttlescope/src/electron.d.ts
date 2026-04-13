@@ -16,6 +16,8 @@ declare global {
       captureWebviewFrame?: () => Promise<string | null>
       /** 録画した Uint8Array をファイル保存ダイアログで保存し、保存先パスを返す */
       saveRecordedVideo?: (data: Uint8Array, defaultFilename: string) => Promise<string | null>
+      /** アプリを再起動する（app.relaunch + app.exit） */
+      restartApp?: () => Promise<void>
       [key: string]: unknown
     }
   }

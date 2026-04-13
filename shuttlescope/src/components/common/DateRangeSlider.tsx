@@ -193,15 +193,17 @@ export function DateRangeSlider({
         >
           {densityBars.map((bar, i) => {
             const inSel = bar.pct >= selMinPct && bar.pct <= selMaxPct
+            // トラックと同じ座標系: THUMB_R px オフセット + 有効幅 (TRACK_W - THUMB_R*2) にスケール
+            const innerW = TRACK_W - THUMB_R * 2
             return (
               <div
                 key={i}
                 style={{
                   position: 'absolute',
                   bottom: 0,
-                  left: `${bar.pct}%`,
+                  left: `calc(${bar.pct}% * (${innerW} / ${TRACK_W}) + ${THUMB_R}px)`,
                   transform: 'translateX(-50%)',
-                  width: Math.max(2, TRACK_W / densityBars.length - 1),
+                  width: Math.max(2, innerW / densityBars.length - 1),
                   height: `${Math.max(2, bar.height * DENSITY_H)}px`,
                   backgroundColor: inSel ? barFillSel : barFill,
                   borderRadius: 1,
@@ -336,7 +338,8 @@ export function DateRangeSlider({
                 key={label}
                 style={{
                   position: 'absolute',
-                  left: `${pct}%`,
+                  // バーと同じ補正: THUMB_R オフセット + 有効幅スケール
+                  left: `calc(${pct}% * (${TRACK_W - THUMB_R * 2} / ${TRACK_W}) + ${THUMB_R}px)`,
                   transform: 'translateX(-50%)',
                   pointerEvents: 'none',
                 }}

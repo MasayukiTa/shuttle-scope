@@ -34,4 +34,8 @@ contextBridge.exposeInMainWorld('shuttlescope', {
   // ─── 録画データ保存ダイアログ ──────────────────────────────────────────────
   saveRecordedVideo: (data: Uint8Array, defaultFilename: string): Promise<string | null> =>
     ipcRenderer.invoke('save-recorded-video', data.buffer, defaultFilename),
+
+  // ─── アプリ再起動 ────────────────────────────────────────────────────────────
+  restartApp: (): Promise<void> =>
+    ipcRenderer.invoke('relaunch-app'),
 })
