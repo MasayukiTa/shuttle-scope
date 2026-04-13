@@ -137,6 +137,11 @@ export function SettingsPage() {
   // CV ベンチマーク
   const [benchmarkRunning, setBenchmarkRunning] = useState(false)
   const [benchmarkResult, setBenchmarkResult] = useState<{ yolo: BenchmarkItem; tracknet: BenchmarkItem } | null>(null)
+  const [cvBatchConfirm, setCvBatchConfirm] = useState<{
+    label: string
+    estimatedHours: number
+    onConfirm: () => void
+  } | null>(null)
 
   // 選手一覧取得
   const { data: playersData } = useQuery({
@@ -256,6 +261,28 @@ export function SettingsPage() {
       // ignore
     } finally {
       setBenchmarkRunning(false)
+    }
+  }
+
+  // バッチ fps 選択時に処理時間を試算し、長い場合は確認ダイアログを出す
+  // measuredFps: ベンチマーク実測値（未計測なら保守的デフォルト）
+  function selectBatchFps(
+    label: string,
+    selectedFps: number,
+    measuredFps: number | null,
+    defaultMeasured: number,
+    onApply: (v: number) => void,
+  ) {
+    const m = measuredFps ?? defaultMeasured
+    const estimatedHours = selectedFps / m  // 動画1時間あたりの処理時間（時間）
+    if (estimatedHours > 0.5) {
+      setCvBatchConfirm({
+        label,
+        estimatedHours,
+        onConfirm: () => { onApply(selectedFps); setCvBatchConfirm(null) },
+      })
+    } else {
+      onApply(selectedFps)
     }
   }
 
@@ -539,6 +566,41 @@ export function SettingsPage() {
 
   return (
     <div className={`flex flex-col h-full ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
+      {/* CV バッチ fps 確認ダイアログ */}
+      {cvBatchConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className={`rounded-xl p-6 max-w-sm w-full mx-4 space-y-4 border ${isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-600'}`}>
+            <p className="text-sm font-medium">{cvBatchConfirm.label} — 処理時間の目安</p>
+            <p className={`text-sm ${isLight ? 'text-gray-700' : 'text-gray-300'}`}>
+              動画1時間あたり約{' '}
+              <span className="text-yellow-400 font-bold">
+                {cvBatchConfirm.estimatedHours >= 1
+                  ? `${cvBatchConfirm.estimatedHours.toFixed(1)} 時間`
+                  : `${Math.round(cvBatchConfirm.estimatedHours * 60)} 分`}
+              </span>{' '}
+              の処理が見込まれます。
+            </p>
+            <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
+              バックグラウンドで実行されるため、処理中もアノテーション作業は継続できます。
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={cvBatchConfirm.onConfirm}
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white"
+              >
+                OK（この設定で進める）
+              </button>
+              <button
+                onClick={() => setCvBatchConfirm(null)}
+                className={`flex-1 py-2 rounded text-sm ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ヘッダー */}
       <div className={`px-6 py-4 border-b ${borderLine}`}>
         <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.settings')}</h1>
@@ -1123,14 +1185,14 @@ export function SettingsPage() {
               {(() => {
                 const yoloMeasured = benchmarkResult && !('error' in benchmarkResult.yolo)
                   ? (benchmarkResult.yolo as { fps: number }).fps : null
-                const realtimeOpts = [1, 2, 5, 10, 15, 30]
+                const realtimeOpts = [10, 30, 60]
                 const batchOpts    = [5, 10, 15, 30, 60]
                 return (
                   <div className="space-y-2">
                     <p className="text-xs font-medium">YOLO — プレイヤー位置解析</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>リアルタイム（fps）</p>
+                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>リアルタイム（fps）<span className="ml-1 text-gray-600">高スペPC向け</span></p>
                         <div className="flex flex-wrap gap-1">
                           {realtimeOpts.map((v) => {
                             const disabled = yoloMeasured !== null && v > yoloMeasured
@@ -1158,7 +1220,7 @@ export function SettingsPage() {
                           {batchOpts.map((v) => (
                             <button
                               key={v}
-                              onClick={() => updateSettings({ yolo_batch_fps: v })}
+                              onClick={() => selectBatchFps('YOLO バッチ', v, yoloMeasured, 16, (val) => updateSettings({ yolo_batch_fps: val }))}
                               className={`px-2 py-0.5 rounded text-xs border transition-colors ${
                                 (appSettings as any).yolo_batch_fps === v
                                   ? 'border-blue-500 bg-blue-900/30 text-blue-300'
@@ -1177,8 +1239,8 @@ export function SettingsPage() {
               {(() => {
                 const tnMeasured = benchmarkResult && !('error' in benchmarkResult.tracknet)
                   ? (benchmarkResult.tracknet as { fps: number }).fps : null
-                const realtimeOpts: number[] = [0.5, 1, 2, 5, 10]
-                const batchOpts: number[]    = [1, 2, 5, 10]
+                const realtimeOpts: number[] = [10, 30, 60]
+                const batchOpts: number[]    = [1, 2, 5, 10, 30, 60]
                 return (
                   <div className="space-y-2">
                     <p className="text-xs font-medium">TrackNet — シャトル軌跡密度</p>
@@ -1210,24 +1272,17 @@ export function SettingsPage() {
                       <div>
                         <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>バッチ（fps）</p>
                         <div className="flex flex-wrap gap-1">
-                          {batchOpts.map((v) => {
-                            const disabled = tnMeasured !== null && v > tnMeasured
-                            return (
-                              <button
-                                key={v}
-                                disabled={disabled}
-                                onClick={() => !disabled && updateSettings({ tracknet_batch_fps: v })}
-                                title={disabled ? `実測 ${tnMeasured?.toFixed(1)}fps では処理が追いつかないため選択不可` : undefined}
-                                className={`px-2 py-0.5 rounded text-xs border transition-colors ${
-                                  disabled
-                                    ? 'border-gray-700 text-gray-600 cursor-not-allowed'
-                                    : (appSettings as any).tracknet_batch_fps === v
-                                      ? 'border-blue-500 bg-blue-900/30 text-blue-300'
-                                      : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
-                                }`}
-                              >{v}</button>
-                            )
-                          })}
+                          {batchOpts.map((v) => (
+                            <button
+                              key={v}
+                              onClick={() => selectBatchFps('TrackNet バッチ', v, tnMeasured, 3.7, (val) => updateSettings({ tracknet_batch_fps: val }))}
+                              className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                                (appSettings as any).tracknet_batch_fps === v
+                                  ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                                  : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
+                              }`}
+                            >{v}</button>
+                          ))}
                         </div>
                       </div>
                     </div>
