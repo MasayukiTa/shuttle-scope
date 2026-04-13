@@ -1084,7 +1084,7 @@ export function SettingsPage() {
                 <button
                   onClick={runCvBenchmark}
                   disabled={benchmarkRunning}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-wait transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-wait transition-colors"
                 >
                   {benchmarkRunning ? (
                     <><RotateCcw size={11} className="animate-spin" /> 計測中…（約10秒）</>
