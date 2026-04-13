@@ -805,17 +805,28 @@ export function MatchListPage() {
                     >
                       <Pencil size={18} />
                     </button>
-                    <button
-                      onClick={() => {
-                        if (confirm(`試合「${m.tournament}」を削除しますか？`)) {
-                          deleteMatch.mutate(m.id)
-                        }
-                      }}
-                      className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                      title="削除"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    {deleteConfirmMatchId === m.id ? (
+                      <div className={`flex items-center gap-1 px-2 py-1 rounded border border-white text-xs ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
+                        <button
+                          onClick={() => { deleteMatch.mutate(m.id); setDeleteConfirmMatchId(null) }}
+                          className="font-medium hover:opacity-80"
+                        >
+                          削除
+                        </button>
+                        <span className="opacity-50">|</span>
+                        <button onClick={() => setDeleteConfirmMatchId(null)} className="hover:opacity-80">
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirmMatchId(m.id)}
+                        className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                        title="削除"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

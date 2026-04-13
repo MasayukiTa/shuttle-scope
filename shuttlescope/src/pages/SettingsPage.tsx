@@ -683,26 +683,29 @@ export function SettingsPage() {
                 <tbody>
                   {filteredPlayers.map((p) => (
                     <tr key={p.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
-                      <td className="py-2 pr-4">
-                        {/* 名前クリックでクリップボードコピー */}
-                        <button
-                          type="button"
-                          onClick={() => copyPlayerName(p)}
-                          className="text-left group flex items-center gap-1.5"
-                          title="クリックでコピー"
-                        >
-                          <span>{p.name}</span>
-                          {copiedPlayerId === p.id ? (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500 text-white border border-white font-medium">
-                              コピー済
-                            </span>
-                          ) : (
-                            <span className={`text-[10px] opacity-0 group-hover:opacity-60 transition-opacity ${textMuted}`}>
-                              コピー
-                            </span>
-                          )}
-                        </button>
-                        {p.name_en && <div className="text-xs text-gray-500">{p.name_en}</div>}
+                      <td className="pr-4">
+                        {/* 行高さを name_en 有無に関わらず統一: min-h で2行分確保し中央寄せ */}
+                        <div className="flex flex-col justify-center min-h-[3.25rem] py-1">
+                          {/* 名前クリックでクリップボードコピー */}
+                          <button
+                            type="button"
+                            onClick={() => copyPlayerName(p)}
+                            className="text-left group flex items-center gap-1.5"
+                            title="クリックでコピー"
+                          >
+                            <span>{p.name}</span>
+                            {copiedPlayerId === p.id ? (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500 text-white border border-white font-medium">
+                                コピー済
+                              </span>
+                            ) : (
+                              <span className={`text-[10px] opacity-0 group-hover:opacity-60 transition-opacity ${textMuted}`}>
+                                コピー
+                              </span>
+                            )}
+                          </button>
+                          {p.name_en && <div className="text-xs text-gray-500 mt-0.5 leading-snug">{p.name_en}</div>}
+                        </div>
                       </td>
                       <td className={`py-2 pr-4 ${textSecondary}`}>
                         <div className="flex items-center gap-1.5">
