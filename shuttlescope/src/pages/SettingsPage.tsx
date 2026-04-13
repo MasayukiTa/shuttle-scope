@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, TeamHistoryEntry, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
@@ -11,6 +11,8 @@ import { useSettings } from '@/hooks/useSettings'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
+
+type PlayerSortKey = 'name' | 'team' | 'nationality' | 'world_ranking' | 'is_target'
 
 interface PlayerFormData {
   name: string
@@ -99,6 +101,12 @@ export function SettingsPage() {
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
   const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'account'>('players')
+
+  // 選手リスト: 検索・ソート（クライアントサイド、端末ごとに独立）
+  const [playerSearch, setPlayerSearch] = useState('')
+  const [targetOnly, setTargetOnly] = useState(false)
+  const [playerSortKey, setPlayerSortKey] = useState<PlayerSortKey>('name')
+  const [playerSortDir, setPlayerSortDir] = useState<'asc' | 'desc'>('asc')
   const { settings: appSettings, updateSettings, loading: settingsLoading } = useSettings()
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const navigate = useNavigate()
@@ -391,6 +399,53 @@ export function SettingsPage() {
   }
 
   const players = playersData?.data ?? []
+
+  // 選手リスト: クライアントサイドフィルタ＋ソート
+  // サーバはソート前の状態を保持し、各端末が独立してソートを行う
+  const filteredPlayers = useMemo(() => {
+    const q = playerSearch.trim().toLowerCase()
+    const filtered = players.filter((p) => {
+      if (targetOnly && !p.is_target) return false
+      if (!q) return true
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.name_en ?? '').toLowerCase().includes(q) ||
+        (p.team ?? '').toLowerCase().includes(q) ||
+        (p.nationality ?? '').toLowerCase().includes(q)
+      )
+    })
+
+    return [...filtered].sort((a, b) => {
+      let cmp = 0
+      if (playerSortKey === 'name') {
+        cmp = a.name.localeCompare(b.name, 'ja')
+      } else if (playerSortKey === 'team') {
+        cmp = (a.team ?? '').localeCompare(b.team ?? '', 'ja')
+      } else if (playerSortKey === 'nationality') {
+        cmp = (a.nationality ?? '').localeCompare(b.nationality ?? '', 'ja')
+      } else if (playerSortKey === 'world_ranking') {
+        // ランキングなし（null/undefined）は末尾
+        const ra = a.world_ranking ?? Infinity
+        const rb = b.world_ranking ?? Infinity
+        cmp = ra - rb
+      } else if (playerSortKey === 'is_target') {
+        // 解析対象(true)を先頭
+        cmp = (b.is_target ? 1 : 0) - (a.is_target ? 1 : 0)
+      }
+      return playerSortDir === 'asc' ? cmp : -cmp
+    })
+  }, [players, playerSearch, targetOnly, playerSortKey, playerSortDir])
+
+  // カラムヘッダークリックでソートキー切替（同じキーなら昇降反転）
+  function handlePlayerSort(key: PlayerSortKey) {
+    if (playerSortKey === key) {
+      setPlayerSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setPlayerSortKey(key)
+      setPlayerSortDir('asc')
+    }
+  }
+
   const { card, textHeading, textSecondary, textMuted, textFaint, isLight } = useCardTheme()
   const { theme, setTheme } = useTheme()
   const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
@@ -445,7 +500,8 @@ export function SettingsPage() {
         {/* 選手管理タブ */}
         {activeTab === 'players' && (
           <div>
-            <div className="flex items-center justify-between mb-4">
+            {/* ヘッダー行: タイトル＋追加ボタン */}
+            <div className="flex items-center justify-between mb-3">
               <h2 className={`text-lg font-medium ${textHeading}`}>選手一覧</h2>
               <button
                 onClick={() => { setEditingPlayer(null); setPlayerForm(defaultPlayerForm()); setShowPlayerForm(true) }}
@@ -456,74 +512,169 @@ export function SettingsPage() {
               </button>
             </div>
 
-            <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className={`${textSecondary} border-b ${borderLine}`}>
-                  <th className="text-left py-2 pr-3 whitespace-nowrap">名前</th>
-                  <th className="text-left py-2 pr-3 whitespace-nowrap">チーム</th>
-                  <th className="text-left py-2 pr-3 whitespace-nowrap">国</th>
-                  <th className="text-left py-2 pr-3 whitespace-nowrap">手</th>
-                  <th className="text-left py-2 pr-3 whitespace-nowrap">Rk</th>
-                  <th className="text-left py-2 pr-3 whitespace-nowrap">対象</th>
-                  <th className="text-left py-2 whitespace-nowrap">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {players.map((p) => (
-                  <tr key={p.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
-                    <td className="py-2 pr-4">
-                      <div>{p.name}</div>
-                      {p.name_en && <div className="text-xs text-gray-500">{p.name_en}</div>}
-                    </td>
-                    <td className={`py-2 pr-4 ${textSecondary}`}>
-                      <div className="flex items-center gap-1.5">
-                        <span>{p.team ?? '-'}</span>
-                        {p.team_history && p.team_history.length > 0 && (
-                          <span
-                            title={p.team_history.map(h => `${h.team}${h.until ? ` (〜${h.until})` : ''}`).join(' → ')}
-                            className="text-[10px] px-1 rounded bg-gray-600/50 text-gray-400 cursor-default"
-                          >
-                            履歴{p.team_history.length}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className={`py-2 pr-4 ${textSecondary}`}>{p.nationality ?? '-'}</td>
-                    <td className={`py-2 pr-4 ${textSecondary}`}>
-                      {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : '-'}
-                    </td>
-                    <td className={`py-2 pr-4 ${textSecondary}`}>{p.world_ranking ? `#${p.world_ranking}` : '-'}</td>
-                    <td className="py-2 pr-4">
-                      {p.is_target && <CheckCircle size={14} className="text-green-400" />}
-                    </td>
-                    <td className="py-2">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openEdit(p)}
-                          className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                        >
-                          <Edit2 size={12} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`「${p.name}」を削除しますか？`)) deletePlayer.mutate(p.id)
-                          }}
-                          className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* 検索・フィルタ行 */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              {/* テキスト検索 */}
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 ${textMuted} pointer-events-none`} />
+                <input
+                  type="text"
+                  value={playerSearch}
+                  onChange={(e) => setPlayerSearch(e.target.value)}
+                  placeholder={t('player.search_placeholder')}
+                  className={`w-full pl-8 pr-7 py-1.5 text-sm rounded ${inputClass}`}
+                />
+                {playerSearch && (
+                  <button
+                    onClick={() => setPlayerSearch('')}
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 ${textMuted} hover:opacity-80`}
+                    aria-label="クリア"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+
+              {/* 解析対象のみフィルタ */}
+              <label className={`flex items-center gap-1.5 text-sm cursor-pointer select-none ${textSecondary}`}>
+                <input
+                  type="checkbox"
+                  checked={targetOnly}
+                  onChange={(e) => setTargetOnly(e.target.checked)}
+                  className="accent-blue-500"
+                />
+                {t('player.target_only')}
+              </label>
+
+              {/* 件数表示 */}
+              <span className={`text-xs ${textMuted} ml-auto`}>
+                {filteredPlayers.length}{t('player.count_suffix')}
+                {filteredPlayers.length !== players.length && ` / ${players.length}${t('player.count_suffix')}`}
+              </span>
             </div>
 
+            {/* テーブル */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={`${textSecondary} border-b ${borderLine}`}>
+                    {/* ソート可能カラム共通ヘルパー */}
+                    {(
+                      [
+                        { key: 'name', label: '名前' },
+                        { key: 'team', label: 'チーム' },
+                        { key: 'nationality', label: '国' },
+                      ] as { key: PlayerSortKey; label: string }[]
+                    ).map(({ key, label }) => (
+                      <th
+                        key={key}
+                        className="text-left py-2 pr-3 whitespace-nowrap cursor-pointer select-none hover:opacity-80"
+                        onClick={() => handlePlayerSort(key)}
+                      >
+                        <span className="inline-flex items-center gap-0.5">
+                          {label}
+                          {playerSortKey === key ? (
+                            playerSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                          ) : (
+                            <ChevronsUpDown size={12} className="opacity-30" />
+                          )}
+                        </span>
+                      </th>
+                    ))}
+                    {/* 手（ソートなし） */}
+                    <th className="text-left py-2 pr-3 whitespace-nowrap">手</th>
+                    {/* Rk: ソート可能 */}
+                    <th
+                      className="text-left py-2 pr-3 whitespace-nowrap cursor-pointer select-none hover:opacity-80"
+                      onClick={() => handlePlayerSort('world_ranking')}
+                    >
+                      <span className="inline-flex items-center gap-0.5">
+                        Rk
+                        {playerSortKey === 'world_ranking' ? (
+                          playerSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                        ) : (
+                          <ChevronsUpDown size={12} className="opacity-30" />
+                        )}
+                      </span>
+                    </th>
+                    {/* 対象: ソート可能 */}
+                    <th
+                      className="text-left py-2 pr-3 whitespace-nowrap cursor-pointer select-none hover:opacity-80"
+                      onClick={() => handlePlayerSort('is_target')}
+                    >
+                      <span className="inline-flex items-center gap-0.5">
+                        対象
+                        {playerSortKey === 'is_target' ? (
+                          playerSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                        ) : (
+                          <ChevronsUpDown size={12} className="opacity-30" />
+                        )}
+                      </span>
+                    </th>
+                    <th className="text-left py-2 whitespace-nowrap">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPlayers.map((p) => (
+                    <tr key={p.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
+                      <td className="py-2 pr-4">
+                        <div>{p.name}</div>
+                        {p.name_en && <div className="text-xs text-gray-500">{p.name_en}</div>}
+                      </td>
+                      <td className={`py-2 pr-4 ${textSecondary}`}>
+                        <div className="flex items-center gap-1.5">
+                          <span>{p.team ?? '-'}</span>
+                          {p.team_history && p.team_history.length > 0 && (
+                            <span
+                              title={p.team_history.map(h => `${h.team}${h.until ? ` (〜${h.until})` : ''}`).join(' → ')}
+                              className="text-[10px] px-1 rounded bg-gray-600/50 text-gray-400 cursor-default"
+                            >
+                              履歴{p.team_history.length}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className={`py-2 pr-4 ${textSecondary}`}>{p.nationality ?? '-'}</td>
+                      <td className={`py-2 pr-4 ${textSecondary}`}>
+                        {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : '-'}
+                      </td>
+                      <td className={`py-2 pr-4 ${textSecondary}`}>{p.world_ranking ? `#${p.world_ranking}` : '-'}</td>
+                      <td className="py-2 pr-4">
+                        {p.is_target && <CheckCircle size={14} className="text-green-400" />}
+                      </td>
+                      <td className="py-2">
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEdit(p)}
+                            className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`「${p.name}」を削除しますか？`)) deletePlayer.mutate(p.id)
+                            }}
+                            className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 空状態メッセージ */}
             {players.length === 0 && (
               <div className="text-center text-gray-500 py-8">
                 選手が登録されていません。「選手追加」ボタンで追加してください。
+              </div>
+            )}
+            {players.length > 0 && filteredPlayers.length === 0 && (
+              <div className={`text-center ${textMuted} py-8 text-sm`}>
+                絞り込み条件に一致する選手がいません。
               </div>
             )}
           </div>

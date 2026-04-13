@@ -184,7 +184,12 @@
     "profile_status_partial": "一部確認済",
     "profile_status_verified": "確認済",
     "needs_review": "要レビュー",
-    "aliases": "別名・表記揺れ"
+    "aliases": "別名・表記揺れ",
+    "search_placeholder": "名前・チーム・国籍で絞り込み",
+    "target_only": "解析対象のみ",
+    "sort_asc": "昇順",
+    "sort_desc": "降順",
+    "count_suffix": "人"
   },
   "quick_start": {
     "title": "リアルタイム解析",
