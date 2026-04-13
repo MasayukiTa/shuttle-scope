@@ -467,8 +467,8 @@ export function CourtDiagram({
         />
         <text x={SVG_WIDTH / 2} y={197} textAnchor="middle" fontSize="9" fill="#6b7280" pointerEvents="none">ネット</text>
 
-        {/* 自コートゾーン（下半分） */}
-        {OWN_ZONES.map((z) => renderZone(z, mode === 'hit'))}
+        {/* 自コートゾーン（下半分）: composite は自コート視点なので hit 扱いでアクティブ */}
+        {OWN_ZONES.map((z) => renderZone(z, mode === 'hit' || mode === 'composite'))}
 
         {/* ネット接触ゾーン — OWN_ZONES の後に描画してクリックイベントが届くようにする */}
         {showOOB && interactive && NET_ZONE_RECTS.map(renderNetZone)}

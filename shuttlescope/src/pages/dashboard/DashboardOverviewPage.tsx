@@ -602,6 +602,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             midGameScoreB={pointAnalysis.scoreB}
             maxRallyNum={pointAnalysis.rallyNum}
             titleOverride={`Set ${pointAnalysis.setNum} 途中解析（ラリー ${pointAnalysis.rallyNum}）`}
+            closeLabel="閉じる"
           />
         </ErrorBoundary>
       )}

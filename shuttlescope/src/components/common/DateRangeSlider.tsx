@@ -135,18 +135,14 @@ export function DateRangeSlider({
         const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
         const day = Math.round(ratio * totalDays)
 
-        if (handle === 'a') {
-          // ハンドルA は from 位置として渡す（クロス許容: 親で min/max を計算）
-          onChange(
-            day === 0 ? null : fromDay(day, baseTs),
-            posB === totalDays ? null : fromDay(posB, baseTs),
-          )
-        } else {
-          onChange(
-            posA === 0 ? null : fromDay(posA, baseTs),
-            day === totalDays ? null : fromDay(day, baseTs),
-          )
-        }
+        // クロス時も常に lo=from, hi=to になるよう正規化して渡す
+        const other = handle === 'a' ? posB : posA
+        const lo = Math.min(day, other)
+        const hi = Math.max(day, other)
+        onChange(
+          lo === 0 ? null : fromDay(lo, baseTs),
+          hi === totalDays ? null : fromDay(hi, baseTs),
+        )
       }
       return (e: React.PointerEvent<HTMLDivElement>) => {
         e.currentTarget.setPointerCapture(e.pointerId)

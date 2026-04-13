@@ -178,6 +178,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
             midGameScoreB={pointAnalysis.scoreB}
             maxRallyNum={pointAnalysis.rallyNum}
             titleOverride={`Set ${pointAnalysis.setNum} 途中解析（ラリー ${pointAnalysis.rallyNum}）`}
+            closeLabel="閉じる"
           />
         </ErrorBoundary>
       )}

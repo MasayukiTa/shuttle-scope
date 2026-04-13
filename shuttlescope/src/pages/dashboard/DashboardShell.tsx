@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
@@ -173,6 +173,29 @@ export function DashboardShell() {
   })
   const matches: MatchSummary[] = matchesResp?.data ?? []
 
+  // スライダーの両端を実データの月に合わせる
+  const matchDates = useMemo(
+    () => (matches.map(m => m.date).filter(Boolean) as string[]).sort(),
+    [matches]
+  )
+  const sliderMin = useMemo(() => {
+    if (!matchDates.length) return undefined
+    return matchDates[0].slice(0, 7) + '-01'  // 最古の月の1日
+  }, [matchDates])
+  const sliderMax = useMemo(() => {
+    if (!matchDates.length) return undefined
+    const newest = matchDates[matchDates.length - 1]
+    const [y, mo] = newest.split('-').map(Number)
+    const lastDay = new Date(y, mo, 0).getDate()  // 翌月0日 = 当月末日
+    return `${newest.slice(0, 7)}-${String(lastDay).padStart(2, '0')}`
+  }, [matchDates])
+
+  // 選手切り替え時: 前の選手の日付範囲が残らないようリセット
+  useEffect(() => {
+    setFilterDateFrom(null)
+    setFilterDateTo(null)
+  }, [selectedPlayerId])
+
   const cardBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-800'
   const textPrimary = isLight ? 'text-gray-900' : 'text-white'
@@ -282,7 +305,9 @@ export function DashboardShell() {
               <DateRangeSlider
                 from={filterDateFrom}
                 to={filterDateTo}
-                densityDates={matches.map(m => m.date).filter(Boolean) as string[]}
+                minDate={sliderMin}
+                maxDate={sliderMax}
+                densityDates={matchDates}
                 onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t) }}
                 isLight={isLight}
               />

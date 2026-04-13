@@ -1,5 +1,5 @@
 // スコア推移グラフコンポーネント（ラリーごとの点差変化をラインチャートで表示）
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   LineChart,
@@ -32,8 +32,25 @@ interface RallyPoint {
   score_a: number
   score_b: number
   winner: string
+  server: string
+  end_type: string
+  rally_length: number
   point_diff: number
   video_timestamp_start?: number
+}
+
+interface StrokeDetail {
+  stroke_num: number
+  player: string   // player_a / player_b
+  shot_type: string
+  hit_zone: string | null
+  land_zone: string | null
+  shot_quality: string | null
+}
+
+interface RallyStrokesResponse {
+  success: boolean
+  data: { rally_id: number; strokes: StrokeDetail[] }
 }
 
 interface SetData {
@@ -71,9 +88,100 @@ function CustomTooltip({ active, payload }: any) {
   )
 }
 
+// ─── ラリー詳細バナー ────────────────────────────────────────────────────────
+
+function RallyDetailBanner({
+  rally,
+  onClose,
+  t,
+}: {
+  rally: RallyPoint & { set_num: number }
+  onClose: () => void
+  t: (key: string, fallback?: string) => string
+}) {
+  const { data: strokesResp, isLoading } = useQuery({
+    queryKey: ['rally-strokes', rally.rally_id],
+    queryFn: () => apiGet<RallyStrokesResponse>('/analysis/rally_strokes', { rally_id: rally.rally_id! }),
+    enabled: rally.rally_id != null,
+  })
+
+  const strokes = strokesResp?.data?.strokes ?? []
+  const winnerLabel = rally.winner === 'player_a' ? 'A' : 'B'
+  const serverLabel = rally.server === 'player_a' ? 'A' : 'B'
+  const endTypeLabel = t(`end_types.${rally.end_type}`, rally.end_type)
+
+  return (
+    <div
+      className="mt-2 rounded-lg border border-gray-700 bg-gray-800/80 p-3 text-xs relative"
+      style={{ backdropFilter: 'blur(4px)' }}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-2 right-2 text-gray-500 hover:text-gray-300 text-sm leading-none"
+        title="閉じる"
+      >✕</button>
+
+      {/* ヘッダー */}
+      <div className="flex items-center gap-2 mb-2 pr-4">
+        <span className="font-semibold text-gray-200">
+          Set {rally.set_num} Rally {rally.rally_num}
+        </span>
+        <span className="text-gray-500">|</span>
+        <span className="text-gray-400">{serverLabel} サーブ</span>
+        <span className="text-gray-500">|</span>
+        <span className="text-gray-400">{rally.rally_length} 打</span>
+        <span className="text-gray-500">|</span>
+        <span className="text-gray-400">{endTypeLabel}</span>
+        <span className="text-gray-500">|</span>
+        <span style={{ color: rally.winner === 'player_a' ? WIN : LOSS }} className="font-medium">
+          {winnerLabel} 得点
+        </span>
+        <span className="ml-auto text-gray-500 text-[10px]">
+          {rally.score_a} – {rally.score_b}
+        </span>
+      </div>
+
+      {/* ストローク列 */}
+      {rally.rally_id == null ? (
+        <p className="text-gray-600">ストロークデータなし（rally_id 未設定）</p>
+      ) : isLoading ? (
+        <p className="text-gray-600">読み込み中...</p>
+      ) : strokes.length === 0 ? (
+        <p className="text-gray-600">ストロークデータが記録されていません</p>
+      ) : (
+        <div className="flex flex-wrap gap-1 items-center">
+          {strokes.map((s, i) => {
+            const isA = s.player === 'player_a'
+            const shotLabel = t(`shot_types.${s.shot_type}`, s.shot_type)
+            const isLast = i === strokes.length - 1
+            return (
+              <span key={s.stroke_num} className="flex items-center gap-1">
+                <span
+                  className="px-1.5 py-0.5 rounded font-medium"
+                  style={{
+                    backgroundColor: isA ? 'rgba(59,130,246,0.18)' : 'rgba(239,68,68,0.18)',
+                    color: isA ? '#93c5fd' : '#fca5a5',
+                  }}
+                >
+                  {isA ? 'A' : 'B'} {shotLabel}
+                  {s.hit_zone && <span className="text-[10px] opacity-60 ml-0.5">{s.hit_zone}</span>}
+                </span>
+                {!isLast && <span className="text-gray-600">→</span>}
+              </span>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── メインコンポーネント ────────────────────────────────────────────────────
+
 export function ScoreProgression({ matchId, onSetPointClick }: ScoreProgressionProps) {
   const { t } = useTranslation()
   const [selectedSet, setSelectedSet] = useState<number>(1)
+  const [clickedRally, setClickedRally] = useState<(RallyPoint & { set_num: number }) | null>(null)
 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-score-progression', matchId],
@@ -108,7 +216,7 @@ export function ScoreProgression({ matchId, onSetPointClick }: ScoreProgressionP
           {sets.map((s) => (
             <button
               key={s.set_num}
-              onClick={() => setSelectedSet(s.set_num)}
+              onClick={() => { setSelectedSet(s.set_num); setClickedRally(null) }}
               className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
                 selectedSet === s.set_num
                   ? 'bg-blue-600 text-white'
@@ -129,18 +237,19 @@ export function ScoreProgression({ matchId, onSetPointClick }: ScoreProgressionP
           <LineChart
             data={chartData}
             margin={{ top: 10, right: 16, left: 0, bottom: 10 }}
-            style={onSetPointClick ? { cursor: 'pointer' } : undefined}
+            style={{ cursor: 'pointer' }}
             onClick={(chart) => {
-              if (!onSetPointClick || !chart?.activePayload?.[0]) return
+              if (!chart?.activePayload?.[0]) return
               const point = chart.activePayload[0].payload as RallyPoint
-              if (currentSet?.set_id != null) {
-                onSetPointClick(
-                  currentSet.set_id,
-                  currentSet.set_num,
-                  point.rally_num,
-                  point.score_a,
-                  point.score_b,
-                )
+              // ラリー詳細バナーをトグル（同じ点なら閉じる）
+              if (clickedRally?.rally_num === point.rally_num && clickedRally?.set_num === currentSet?.set_num) {
+                setClickedRally(null)
+              } else {
+                setClickedRally({ ...point, set_num: currentSet?.set_num ?? 1 })
+              }
+              // セット途中解析（onSetPointClick が渡された場合のみ）
+              if (onSetPointClick && currentSet?.set_id != null) {
+                onSetPointClick(currentSet.set_id, currentSet.set_num, point.rally_num, point.score_a, point.score_b)
               }
             }}
           >
@@ -183,6 +292,15 @@ export function ScoreProgression({ matchId, onSetPointClick }: ScoreProgressionP
         </ResponsiveContainer>
       )}
 
+      {/* ラリー詳細バナー */}
+      {clickedRally && (
+        <RallyDetailBanner
+          rally={clickedRally}
+          onClose={() => setClickedRally(null)}
+          t={t}
+        />
+      )}
+
       <div className="flex gap-4 text-xs text-gray-500">
         <span className="flex items-center gap-1">
           <span className="inline-block w-3 h-0.5 bg-blue-500" />
@@ -192,9 +310,7 @@ export function ScoreProgression({ matchId, onSetPointClick }: ScoreProgressionP
           <span className="inline-block w-3 h-0.5 bg-yellow-500" style={{ borderTop: '1px dashed' }} />
           流れの変化点
         </span>
-        {onSetPointClick && (
-          <span className="text-blue-400">クリックで途中解析</span>
-        )}
+        <span className="text-blue-400">クリックでラリー詳細</span>
       </div>
     </div>
   )

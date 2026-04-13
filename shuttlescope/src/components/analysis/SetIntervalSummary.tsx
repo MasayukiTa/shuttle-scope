@@ -23,6 +23,8 @@ interface SetIntervalSummaryProps {
   maxRallyNum?: number
   /** モーダルタイトル上書き（ダッシュボード途中解析用） */
   titleOverride?: string
+  /** 閉じるボタンのテキスト上書き（解析画面用: "閉じる"、試合中: "試合に戻る"） */
+  closeLabel?: string
 }
 
 interface LossPattern {
@@ -83,6 +85,7 @@ export function SetIntervalSummary({
   midGameScoreB,
   maxRallyNum,
   titleOverride,
+  closeLabel,
 }: SetIntervalSummaryProps) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
@@ -100,8 +103,14 @@ export function SetIntervalSummary({
   const data = resp?.data
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-700">
+    <div
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-800 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-700"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
           <div className="flex items-center gap-2">
@@ -305,7 +314,7 @@ export function SetIntervalSummary({
               onClick={onClose}
               className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
             >
-              {isMidGame ? t('analysis.set_summary.resume') : t('analysis.set_summary.skip')}
+              {closeLabel ?? (isMidGame ? t('analysis.set_summary.resume') : t('analysis.set_summary.skip'))}
             </button>
             {!isMidGame && (
               <button

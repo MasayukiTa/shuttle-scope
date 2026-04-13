@@ -885,6 +885,9 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
                 "score_a": rally.score_a_after,
                 "score_b": rally.score_b_after,
                 "winner": rally.winner,
+                "server": rally.server,
+                "end_type": rally.end_type,
+                "rally_length": rally.rally_length,
                 "point_diff": point_diff,
                 "video_timestamp_start": rally.video_timestamp_start,
             })
@@ -904,6 +907,43 @@ def get_score_progression(match_id: int, db: Session = Depends(get_db)):
         "success": True,
         "data": {"sets": sets_data},
         "meta": {"sample_size": total_rallies},
+    }
+
+
+# ---------------------------------------------------------------------------
+# B-001-detail: ラリー別ストローク列
+# ---------------------------------------------------------------------------
+
+@router.get("/analysis/rally_strokes")
+def get_rally_strokes(rally_id: int, db: Session = Depends(get_db)):
+    """指定ラリーのストローク列を返す（スコア推移クリック詳細用）"""
+    rally = db.get(Rally, rally_id)
+    if not rally:
+        return {"success": False, "error": "ラリーが見つかりません"}
+
+    strokes = (
+        db.query(Stroke)
+        .filter(Stroke.rally_id == rally_id)
+        .order_by(Stroke.stroke_num)
+        .all()
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "rally_id": rally_id,
+            "strokes": [
+                {
+                    "stroke_num": s.stroke_num,
+                    "player": s.player,
+                    "shot_type": s.shot_type,
+                    "hit_zone": s.hit_zone,
+                    "land_zone": s.land_zone,
+                    "shot_quality": s.shot_quality,
+                }
+                for s in strokes
+            ],
+        },
     }
 
 
