@@ -305,6 +305,11 @@ export function MatchListPage() {
   const deleteMatch = useMutation({
     mutationFn: (id: number) => apiDelete(`/matches/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches'] }),
+    onError: (err: any) => {
+      let detail = ''
+      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
+      alert(`削除に失敗しました (HTTP ${err.status ?? '?'}):\n${detail || '不明なエラー'}`)
+    },
   })
 
   // 動画ダウンロード開始

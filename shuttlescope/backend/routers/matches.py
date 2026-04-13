@@ -175,7 +175,7 @@ def update_match(match_id: int, body: MatchUpdate, db: Session = Depends(get_db)
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    for key, value in body.model_dump(exclude_none=True).items():
+    for key, value in body.model_dump(exclude_unset=True).items():
         setattr(match, key, value)
     touch(match)
     db.commit()

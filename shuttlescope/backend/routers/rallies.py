@@ -76,7 +76,7 @@ def update_rally(rally_id: int, body: RallyUpdate, db: Session = Depends(get_db)
     rally = db.get(Rally, rally_id)
     if not rally:
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
-    for key, value in body.model_dump(exclude_none=True).items():
+    for key, value in body.model_dump(exclude_unset=True).items():
         setattr(rally, key, value)
     touch(rally)
     db.commit()

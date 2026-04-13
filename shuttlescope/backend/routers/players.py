@@ -237,7 +237,9 @@ def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
-    data = body.model_dump(exclude_none=True)
+    # exclude_unset=True: クライアントが明示的に送ったフィールドのみ更新する
+    # （exclude_none=True だと null 送信時に「クリア」ができない）
+    data = body.model_dump(exclude_unset=True)
 
     # team 変更時: 旧チームを team_history に自動追記
     new_team = data.get("team")

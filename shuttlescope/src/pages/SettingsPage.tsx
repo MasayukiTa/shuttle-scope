@@ -341,6 +341,11 @@ export function SettingsPage() {
       setEditingPlayer(null)
       setPlayerForm(defaultPlayerForm())
     },
+    onError: (err: any) => {
+      let detail = ''
+      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
+      alert(`保存に失敗しました (HTTP ${err.status ?? '?'}):\n${detail || '不明なエラー'}`)
+    },
   })
 
   // 選手削除
@@ -369,20 +374,28 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['players'] })
       queryClient.invalidateQueries({ queryKey: ['players-needs-review'] })
     },
+    onError: (err: any) => {
+      let detail = ''
+      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
+      alert(`確認済み設定に失敗しました: ${detail || '不明なエラー'}`)
+    },
   })
 
   const handlePlayerSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    // 空文字フィールドは null として明示送信する（undefined にすると JSON から省略され
+    // バックエンドが exclude_none で無視してしまい、意図した上書きができない）
+    const strOrNull = (v: string) => v.trim() !== '' ? v.trim() : null
     const body = {
       name: playerForm.name,
-      name_en: playerForm.name_en || undefined,
-      team: playerForm.team || undefined,
-      nationality: playerForm.nationality || undefined,
+      name_en: strOrNull(playerForm.name_en),
+      team: strOrNull(playerForm.team),
+      nationality: strOrNull(playerForm.nationality),
       dominant_hand: playerForm.dominant_hand,
-      birth_year: playerForm.birth_year ? Number(playerForm.birth_year) : undefined,
-      world_ranking: playerForm.world_ranking ? Number(playerForm.world_ranking) : undefined,
+      birth_year: playerForm.birth_year ? Number(playerForm.birth_year) : null,
+      world_ranking: playerForm.world_ranking ? Number(playerForm.world_ranking) : null,
       is_target: playerForm.is_target,
-      notes: playerForm.notes || undefined,
+      notes: strOrNull(playerForm.notes),
     }
 
     if (editingPlayer) {
