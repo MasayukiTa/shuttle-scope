@@ -103,10 +103,20 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'account'>('players')
 
   // 選手リスト: 検索・ソート（クライアントサイド、端末ごとに独立）
+  const playerSearchRef = useRef<HTMLInputElement>(null)
   const [playerSearch, setPlayerSearch] = useState('')
   const [targetOnly, setTargetOnly] = useState(false)
-  const [playerSortKey, setPlayerSortKey] = useState<PlayerSortKey>('name')
-  const [playerSortDir, setPlayerSortDir] = useState<'asc' | 'desc'>('asc')
+  // ソート状態は端末ごとに localStorage に永続化
+  const [playerSortKey, setPlayerSortKey] = useState<PlayerSortKey>(
+    () => (localStorage.getItem('shuttlescope.playerSort.key') as PlayerSortKey) ?? 'name'
+  )
+  const [playerSortDir, setPlayerSortDir] = useState<'asc' | 'desc'>(
+    () => (localStorage.getItem('shuttlescope.playerSort.dir') as 'asc' | 'desc') ?? 'asc'
+  )
+  // インライン削除確認中の選手ID
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+  // クリップボードコピー済みの選手ID（一時表示用）
+  const [copiedPlayerId, setCopiedPlayerId] = useState<number | null>(null)
   const { settings: appSettings, updateSettings, loading: settingsLoading } = useSettings()
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const navigate = useNavigate()
@@ -436,15 +446,57 @@ export function SettingsPage() {
     })
   }, [players, playerSearch, targetOnly, playerSortKey, playerSortDir])
 
-  // カラムヘッダークリックでソートキー切替（同じキーなら昇降反転）
+  // カラムヘッダークリックでソートキー切替（同じキーなら昇降反転）端末ごとに localStorage に保存
   function handlePlayerSort(key: PlayerSortKey) {
     if (playerSortKey === key) {
-      setPlayerSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      const next = playerSortDir === 'asc' ? 'desc' : 'asc'
+      setPlayerSortDir(next)
+      localStorage.setItem('shuttlescope.playerSort.dir', next)
     } else {
       setPlayerSortKey(key)
       setPlayerSortDir('asc')
+      localStorage.setItem('shuttlescope.playerSort.key', key)
+      localStorage.setItem('shuttlescope.playerSort.dir', 'asc')
     }
   }
+
+  // 選手名クリップボードコピー
+  async function copyPlayerName(p: Player) {
+    try {
+      await navigator.clipboard.writeText(p.name)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = p.name
+      ta.style.cssText = 'position:fixed;opacity:0'
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    setCopiedPlayerId(p.id)
+    setTimeout(() => setCopiedPlayerId((prev) => (prev === p.id ? null : prev)), 1500)
+  }
+
+  // `/` キーで検索バーにフォーカス（選手タブのみ）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (activeTab !== 'players') return
+      if (e.key === '/' && document.activeElement === document.body) {
+        e.preventDefault()
+        playerSearchRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [activeTab])
+
+  // Esc で選手フォームモーダルを閉じる
+  useEffect(() => {
+    if (!showPlayerForm) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowPlayerForm(false); setEditingPlayer(null) }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [showPlayerForm])
 
   const { card, textHeading, textSecondary, textMuted, textFaint, isLight } = useCardTheme()
   const { theme, setTheme } = useTheme()
@@ -518,6 +570,7 @@ export function SettingsPage() {
               <div className="relative flex-1 min-w-[180px]">
                 <Search size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 ${textMuted} pointer-events-none`} />
                 <input
+                  ref={playerSearchRef}
                   type="text"
                   value={playerSearch}
                   onChange={(e) => setPlayerSearch(e.target.value)}
@@ -556,7 +609,7 @@ export function SettingsPage() {
             {/* テーブル */}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className={`sticky top-0 z-10 ${bodyBg}`}>
                   <tr className={`${textSecondary} border-b ${borderLine}`}>
                     {/* ソート可能カラム共通ヘルパー */}
                     {(
@@ -618,7 +671,24 @@ export function SettingsPage() {
                   {filteredPlayers.map((p) => (
                     <tr key={p.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
                       <td className="py-2 pr-4">
-                        <div>{p.name}</div>
+                        {/* 名前クリックでクリップボードコピー */}
+                        <button
+                          type="button"
+                          onClick={() => copyPlayerName(p)}
+                          className="text-left group flex items-center gap-1.5"
+                          title="クリックでコピー"
+                        >
+                          <span>{p.name}</span>
+                          {copiedPlayerId === p.id ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500 text-white border border-white font-medium">
+                              コピー済
+                            </span>
+                          ) : (
+                            <span className={`text-[10px] opacity-0 group-hover:opacity-60 transition-opacity ${textMuted}`}>
+                              コピー
+                            </span>
+                          )}
+                        </button>
                         {p.name_en && <div className="text-xs text-gray-500">{p.name_en}</div>}
                       </td>
                       <td className={`py-2 pr-4 ${textSecondary}`}>
@@ -643,22 +713,39 @@ export function SettingsPage() {
                         {p.is_target && <CheckCircle size={14} className="text-green-400" />}
                       </td>
                       <td className="py-2">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => openEdit(p)}
-                            className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`「${p.name}」を削除しますか？`)) deletePlayer.mutate(p.id)
-                            }}
-                            className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
+                        {deleteConfirmId === p.id ? (
+                          // インライン削除確認
+                          <div className={`flex items-center gap-1 px-2 py-1 rounded border border-white text-xs ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
+                            <button
+                              onClick={() => { deletePlayer.mutate(p.id); setDeleteConfirmId(null) }}
+                              className="font-medium hover:opacity-80"
+                            >
+                              削除
+                            </button>
+                            <span className="opacity-50">|</span>
+                            <button
+                              onClick={() => setDeleteConfirmId(null)}
+                              className="hover:opacity-80"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => openEdit(p)}
+                              className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirmId(p.id)}
+                              className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

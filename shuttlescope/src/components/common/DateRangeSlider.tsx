@@ -5,7 +5,7 @@
  * - クロス可能: 常に 2点の間が選択範囲
  * - densityDates を渡すと試合データ密度をバーで可視化
  */
-import { useRef, useCallback, useId, useMemo } from 'react'
+import { useRef, useCallback, useId, useMemo, useState } from 'react'
 
 interface DateRangeSliderProps {
   from: string | null        // YYYY-MM-DD
@@ -87,6 +87,8 @@ export function DateRangeSlider({
 }: DateRangeSliderProps) {
   const uid = useId()
   const trackRef = useRef<HTMLDivElement>(null)
+  // ドラッグ中のつまみ（null = 非表示）
+  const [activeHandle, setActiveHandle] = useState<'a' | 'b' | null>(null)
 
   const minStr   = minDate ?? defaultMin()
   const maxStr   = maxDate ?? defaultMax()
@@ -148,10 +150,14 @@ export function DateRangeSlider({
       }
       return (e: React.PointerEvent<HTMLDivElement>) => {
         e.currentTarget.setPointerCapture(e.pointerId)
+        setActiveHandle(handle)
         const el = e.currentTarget
         const listener = onPointerMove as EventListener
         el.addEventListener('pointermove', listener)
-        el.addEventListener('pointerup', () => el.removeEventListener('pointermove', listener), { once: true })
+        el.addEventListener('pointerup', () => {
+          el.removeEventListener('pointermove', listener)
+          setActiveHandle(null)
+        }, { once: true })
       }
     },
     [posA, posB, totalDays, baseTs, onChange]
@@ -261,8 +267,26 @@ export function DateRangeSlider({
               zIndex: pctA > 50 ? 3 : 2,
               touchAction: 'none',
             }}
-            title={fromDay(posA, baseTs)}
-          />
+          >
+            {activeHandle === 'a' && (
+              <div style={{
+                position: 'absolute',
+                bottom: THUMB_R * 2 + 4,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: isLight ? '#1e293b' : '#374151',
+                color: '#ffffff',
+                fontSize: 10,
+                padding: '2px 5px',
+                borderRadius: 3,
+                whiteSpace: 'nowrap',
+                pointerEvents: 'none',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+              }}>
+                {fromDay(posA, baseTs)}
+              </div>
+            )}
+          </div>
 
           {/* ハンドルB（to） */}
           <div
@@ -282,8 +306,26 @@ export function DateRangeSlider({
               zIndex: pctA > 50 ? 2 : 3,
               touchAction: 'none',
             }}
-            title={fromDay(posB, baseTs)}
-          />
+          >
+            {activeHandle === 'b' && (
+              <div style={{
+                position: 'absolute',
+                bottom: THUMB_R * 2 + 4,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: isLight ? '#1e293b' : '#374151',
+                color: '#ffffff',
+                fontSize: 10,
+                padding: '2px 5px',
+                borderRadius: 3,
+                whiteSpace: 'nowrap',
+                pointerEvents: 'none',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+              }}>
+                {fromDay(posB, baseTs)}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 年区切り目盛り */}

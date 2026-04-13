@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Play, Trash2, Download, Filter, AlertCircle, Search, UserPlus, User, FolderOpen, TrendingUp, Pencil } from 'lucide-react'
+import { Plus, Play, Trash2, Download, Filter, AlertCircle, Search, UserPlus, User, FolderOpen, TrendingUp, Pencil, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { clsx } from 'clsx'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS } from '@/types'
@@ -171,6 +171,14 @@ export function MatchListPage() {
   const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false)
   const [filterDateFrom, setFilterDateFrom] = useState<string | null>(null)
   const [filterDateTo, setFilterDateTo] = useState<string | null>(null)
+  // 試合一覧ソート（クライアントサイド）
+  type MatchSortKey = 'date' | 'tournament' | 'result'
+  const [matchSortKey, setMatchSortKey] = useState<MatchSortKey>('date')
+  const [matchSortDir, setMatchSortDir] = useState<'asc' | 'desc'>('desc')
+  // インライン削除確認
+  const [deleteConfirmMatchId, setDeleteConfirmMatchId] = useState<number | null>(null)
+  // 一括選択
+  const [selectedMatchIds, setSelectedMatchIds] = useState<Set<number>>(new Set())
   const [downloadJobIds, setDownloadJobIds] = useState<Record<number, string>>({})
   const [downloadQuality, setDownloadQuality] = useState<string>('720')
   const [downloadCookieBrowser, setDownloadCookieBrowser] = useState<string>('')
@@ -444,12 +452,64 @@ export function MatchListPage() {
   const allMatches = matchesData?.data ?? []
   const players = playersData?.data ?? []
 
-  // 期間フィルター（クライアント側）
-  const matches = allMatches.filter((m) => {
-    if (filterDateFrom && m.date < filterDateFrom) return false
-    if (filterDateTo && m.date > filterDateTo) return false
-    return true
-  })
+  // 期間フィルター + クライアントサイドソート
+  const matches = useMemo(() => {
+    const filtered = allMatches.filter((m) => {
+      if (filterDateFrom && m.date < filterDateFrom) return false
+      if (filterDateTo && m.date > filterDateTo) return false
+      return true
+    })
+    return [...filtered].sort((a, b) => {
+      let cmp = 0
+      if (matchSortKey === 'date') {
+        cmp = a.date.localeCompare(b.date)
+      } else if (matchSortKey === 'tournament') {
+        cmp = a.tournament.localeCompare(b.tournament, 'ja')
+      } else if (matchSortKey === 'result') {
+        // win > draw > loss の順
+        const order = { win: 0, draw: 1, loss: 2 }
+        cmp = (order[a.result] ?? 3) - (order[b.result] ?? 3)
+      }
+      return matchSortDir === 'asc' ? cmp : -cmp
+    })
+  }, [allMatches, filterDateFrom, filterDateTo, matchSortKey, matchSortDir])
+
+  function handleMatchSort(key: MatchSortKey) {
+    if (matchSortKey === key) {
+      setMatchSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setMatchSortKey(key)
+      setMatchSortDir(key === 'date' ? 'desc' : 'asc')
+    }
+  }
+
+  // 日付プリセット
+  function applyDatePreset(preset: 'week' | 'month' | 'month3') {
+    const today = new Date()
+    const to = today.toISOString().split('T')[0]
+    const d = new Date(today)
+    if (preset === 'week') d.setDate(d.getDate() - 7)
+    else if (preset === 'month') d.setMonth(d.getMonth() - 1)
+    else d.setMonth(d.getMonth() - 3)
+    setFilterDateFrom(d.toISOString().split('T')[0])
+    setFilterDateTo(to)
+  }
+
+  // 一括選択トグル
+  function toggleSelectMatch(id: number) {
+    setSelectedMatchIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+  function toggleSelectAll() {
+    if (selectedMatchIds.size === matches.length) {
+      setSelectedMatchIds(new Set())
+    } else {
+      setSelectedMatchIds(new Set(matches.map((m) => m.id)))
+    }
+  }
 
   // 選手セレクター用オプション
   const playerOptions: SearchableOption[] = players.map((p) => ({
@@ -468,6 +528,16 @@ export function MatchListPage() {
       default: return 'text-gray-400'
     }
   }
+
+  // Esc で試合フォームを閉じる
+  useEffect(() => {
+    if (!showForm) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowForm(false); setEditingMatchId(null) }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [showForm])
 
   const isDoubles = form.format !== 'singles'
   const showATeamField = playerAQuery.trim().length >= 1 || partnerAQuery.trim().length >= 1
@@ -570,6 +640,20 @@ export function MatchListPage() {
             onChange={(from, to) => { setFilterDateFrom(from); setFilterDateTo(to) }}
             isLight={isLight}
           />
+          {/* 日付プリセット */}
+          {(['week', 'month', 'month3'] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => applyDatePreset(p)}
+              className={`text-xs px-2 py-0.5 rounded border ${
+                isLight
+                  ? 'border-gray-300 text-gray-600 hover:bg-gray-200'
+                  : 'border-gray-600 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {p === 'week' ? '直近1週' : p === 'month' ? '直近1ヶ月' : '直近3ヶ月'}
+            </button>
+          ))}
           {(filterDateFrom || filterDateTo) && (
             <button
               className="text-xs text-blue-400 hover:text-blue-300"
@@ -580,6 +664,29 @@ export function MatchListPage() {
           )}
         </div>
       </div>
+
+      {/* 一括選択バー（選択時のみ表示） */}
+      {selectedMatchIds.size > 0 && (
+        <div className="flex items-center gap-3 px-6 py-2 bg-blue-600 text-white text-sm shrink-0">
+          <span className="font-medium">{selectedMatchIds.size}件選択中</span>
+          <button
+            onClick={() => {
+              const ids = [...selectedMatchIds].join(',')
+              window.open(`/api/sync/export/match?match_ids=${encodeURIComponent(ids)}`, '_blank')
+            }}
+            className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm"
+          >
+            <Download size={13} />
+            エクスポート
+          </button>
+          <button
+            onClick={() => setSelectedMatchIds(new Set())}
+            className="ml-auto text-white/70 hover:text-white text-xs"
+          >
+            選択解除
+          </button>
+        </div>
+      )}
 
       {/* 試合一覧 */}
       <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4">
@@ -713,12 +820,55 @@ export function MatchListPage() {
             <table className="hidden md:table w-full text-sm">
               <thead>
                 <tr className={`${textSecondary} border-b ${borderLine}`}>
-                  <th className="text-left py-2 pr-4">日付</th>
-                  <th className="text-left py-2 pr-4">大会名</th>
+                  {/* 一括選択チェックボックス */}
+                  <th className="py-2 pr-2 w-6">
+                    <input
+                      type="checkbox"
+                      checked={matches.length > 0 && selectedMatchIds.size === matches.length}
+                      onChange={toggleSelectAll}
+                      className="accent-blue-500"
+                      title="全選択"
+                    />
+                  </th>
+                  {/* ソート可能: 日付 */}
+                  <th
+                    className="text-left py-2 pr-4 cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
+                    onClick={() => handleMatchSort('date')}
+                  >
+                    <span className="inline-flex items-center gap-0.5">
+                      日付
+                      {matchSortKey === 'date'
+                        ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                        : <ChevronsUpDown size={12} className="opacity-30" />}
+                    </span>
+                  </th>
+                  {/* ソート可能: 大会名 */}
+                  <th
+                    className="text-left py-2 pr-4 cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
+                    onClick={() => handleMatchSort('tournament')}
+                  >
+                    <span className="inline-flex items-center gap-0.5">
+                      大会名
+                      {matchSortKey === 'tournament'
+                        ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                        : <ChevronsUpDown size={12} className="opacity-30" />}
+                    </span>
+                  </th>
                   <th className="text-left py-2 pr-4">レベル</th>
                   <th className="text-left py-2 pr-4">形式</th>
                   <th className="text-left py-2 pr-4">対戦相手</th>
-                  <th className="text-left py-2 pr-4">結果</th>
+                  {/* ソート可能: 結果 */}
+                  <th
+                    className="text-left py-2 pr-4 cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
+                    onClick={() => handleMatchSort('result')}
+                  >
+                    <span className="inline-flex items-center gap-0.5">
+                      結果
+                      {matchSortKey === 'result'
+                        ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                        : <ChevronsUpDown size={12} className="opacity-30" />}
+                    </span>
+                  </th>
                   <th className="text-left py-2 pr-4">進捗</th>
                   <th className="text-left py-2">操作</th>
                 </tr>
@@ -726,6 +876,14 @@ export function MatchListPage() {
               <tbody>
                 {matches.map((m) => (
                   <tr key={m.id} className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-800 hover:bg-gray-800/50'}`}>
+                    <td className="py-2 pr-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedMatchIds.has(m.id)}
+                        onChange={() => toggleSelectMatch(m.id)}
+                        className="accent-blue-500"
+                      />
+                    </td>
                     <td className={`py-2 pr-4 ${textSecondary}`}>{m.date}</td>
                     <td className="py-2 pr-4">{m.tournament}</td>
                     <td className="py-2 pr-4">
@@ -801,17 +959,28 @@ export function MatchListPage() {
                         >
                           <Pencil size={14} />
                         </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`試合「${m.tournament}」を削除しますか？`)) {
-                              deleteMatch.mutate(m.id)
-                            }
-                          }}
-                          className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
-                          title="削除"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {deleteConfirmMatchId === m.id ? (
+                          <div className={`flex items-center gap-1 px-2 py-1 rounded border border-white text-xs ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
+                            <button
+                              onClick={() => { deleteMatch.mutate(m.id); setDeleteConfirmMatchId(null) }}
+                              className="font-medium hover:opacity-80"
+                            >
+                              削除
+                            </button>
+                            <span className="opacity-50">|</span>
+                            <button onClick={() => setDeleteConfirmMatchId(null)} className="hover:opacity-80">
+                              取消
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setDeleteConfirmMatchId(m.id)}
+                            className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
+                            title="削除"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

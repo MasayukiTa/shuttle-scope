@@ -39,6 +39,8 @@ export function VideoPlayer({
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  // シークバーホバー時のツールチップ
+  const [seekHover, setSeekHover] = useState<{ x: number; pct: number } | null>(null)
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = playbackRate
@@ -114,15 +116,32 @@ export function VideoPlayer({
         {overlays}
       </div>
 
-      {/* シークバー */}
-      <div
-        className="h-2 bg-gray-700 rounded-full cursor-pointer hover:bg-gray-600 transition-colors"
-        onClick={handleSeek}
-      >
+      {/* シークバー（ホバーで時刻ツールチップ表示） */}
+      <div className="relative">
+        {seekHover && duration > 0 && (
+          <div
+            className="absolute bottom-full mb-1.5 -translate-x-1/2 bg-gray-800 text-white text-xs rounded px-1.5 py-0.5 pointer-events-none whitespace-nowrap shadow-lg z-10"
+            style={{ left: seekHover.x }}
+          >
+            {formatTime(seekHover.pct * duration)}
+          </div>
+        )}
         <div
-          className="h-full bg-blue-500 rounded-full transition-all"
-          style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-        />
+          className="h-2 bg-gray-700 rounded-full cursor-pointer hover:bg-gray-600 transition-colors"
+          onClick={handleSeek}
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const x = e.clientX - rect.left
+            const pct = Math.max(0, Math.min(1, x / rect.width))
+            setSeekHover({ x, pct })
+          }}
+          onMouseLeave={() => setSeekHover(null)}
+        >
+          <div
+            className="h-full bg-blue-500 rounded-full transition-all"
+            style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+          />
+        </div>
       </div>
 
       {/* タイム表示 */}

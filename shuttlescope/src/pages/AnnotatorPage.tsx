@@ -704,6 +704,17 @@ export function AnnotatorPage() {
     onHitterSelect: (hitter) => store.setHitter(hitter),
   })
 
+  // `?` キーでショートカット凡例モーダルを開閉（isMatchDayMode 問わず）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setShowLegendOverlay((v) => !v)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
+
   // G2: ショット入力開始（land_zone へ遷移）でエンリッチメントストリップを自動消滅
   useEffect(() => {
     if (store.inputStep === 'land_zone') {
@@ -1435,7 +1446,7 @@ export function AnnotatorPage() {
               <div className="flex flex-col items-start gap-0.5">
                 <button
                   onClick={() => setTracknetJob(null)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors border border-white/60 ${
                     isLight ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
                   }`}
                   title={tracknetJob.error ?? t('tracknet.batch_error')}
@@ -1511,7 +1522,7 @@ export function AnnotatorPage() {
                 <div className="flex flex-col items-start gap-0.5">
                   <button
                     onClick={() => setYoloJob(null)}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium border border-white/60 ${
                       isLight ? 'bg-red-100 text-red-600' : 'bg-red-900/40 text-red-300'
                     }`}
                     title={yoloJob.error ?? t('yolo.batch_error')}
@@ -2486,8 +2497,8 @@ export function AnnotatorPage() {
             )}
           </div>
 
-          {/* 試合中モード: キーボード凡例オーバーレイ */}
-          {isMatchDayMode && showLegendOverlay && (
+          {/* キーボード凡例オーバーレイ（? キーまたは試合中モードのボタンで表示） */}
+          {showLegendOverlay && (
             <div
               className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
               onClick={() => setShowLegendOverlay(false)}
@@ -3375,7 +3386,7 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => store.resetRally()}
                   className={clsx(
-                    'w-full bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded',
+                    'w-full bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded border border-white/60',
                     useLargeTouch ? 'py-2.5 text-sm' : 'py-1.5 text-xs'
                   )}
                 >
