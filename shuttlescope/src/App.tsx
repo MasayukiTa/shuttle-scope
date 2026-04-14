@@ -19,6 +19,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { checkHealth } from '@/api/client'
 import { UserRole } from '@/types'
+import { RolePicker } from '@/components/common/RolePicker'
 
 // バックエンド起動を待機するフック
 function useBackendReady() {
@@ -56,120 +57,10 @@ const queryClient = new QueryClient({
   },
 })
 
-// ロール選択画面（POCフェーズ）
-// player ロール選択時は、さらに「どの選手としてログインするか」を選ばせる。
-// 試合一覧や統計APIはこの player_id で絞り込むため、他選手データの横断閲覧を防ぐ。
-function RoleSelector({ onSelect }: { onSelect: (role: UserRole, playerId?: number | null) => void }) {
-  const { t } = useTranslation()
-  const { theme } = useTheme()
-  const isLight = theme === 'light'
-  const [pickingPlayer, setPickingPlayer] = useState(false)
-  const [players, setPlayers] = useState<Array<{ id: number; name: string }> | null>(null)
-  const [loadErr, setLoadErr] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-
-  useEffect(() => {
-    if (!pickingPlayer) return
-    let cancelled = false
-    setLoadErr(null)
-    fetch('/api/players')
-      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
-      .then((res) => {
-        if (cancelled) return
-        const arr = (res?.data ?? []) as Array<{ id: number; name: string }>
-        setPlayers(arr)
-      })
-      .catch((e) => { if (!cancelled) setLoadErr(`選手一覧の取得に失敗: ${e}`) })
-    return () => { cancelled = true }
-  }, [pickingPlayer])
-
-  const filtered = (players ?? []).filter((p) =>
-    !search.trim() || p.name.toLowerCase().includes(search.trim().toLowerCase())
-  )
-
-  if (pickingPlayer) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
-        <div className={`rounded-lg p-6 w-96 max-h-[80vh] flex flex-col ${isLight ? 'bg-white shadow-lg border border-gray-200' : 'bg-gray-800'}`}>
-          <div className="text-center mb-4">
-            <div className={`text-xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>どの選手としてログインしますか？</div>
-            <div className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>あなたが関与した試合のみが表示されます</div>
-          </div>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="選手名で検索"
-            className={`w-full mb-3 px-3 py-2 rounded text-sm border ${
-              isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'
-            }`}
-          />
-          <div className="flex-1 overflow-y-auto space-y-1">
-            {loadErr && <p className="text-red-400 text-xs">{loadErr}</p>}
-            {!loadErr && players === null && <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>読み込み中...</p>}
-            {players !== null && filtered.length === 0 && (
-              <p className={`text-xs text-center py-4 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
-                {players.length === 0 ? '登録選手がいません' : '該当する選手が見つかりません'}
-              </p>
-            )}
-            {filtered.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => onSelect('player', p.id)}
-                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                  isLight
-                    ? 'bg-gray-100 hover:bg-blue-600 text-gray-800 hover:text-white'
-                    : 'bg-gray-700 hover:bg-blue-700 text-white'
-                }`}
-              >
-                {p.name}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => setPickingPlayer(false)}
-            className={`mt-3 text-xs underline ${isLight ? 'text-gray-500' : 'text-gray-400'}`}
-          >
-            ← ロール選択に戻る
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className={`min-h-screen flex items-center justify-center ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
-      <div className={`rounded-lg p-8 w-80 ${isLight ? 'bg-white shadow-lg border border-gray-200' : 'bg-gray-800'}`}>
-        <div className="text-center mb-6">
-          <div className={`text-3xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>ShuttleScope</div>
-          <div className={`text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>ロールを選択してください</div>
-        </div>
-        <div className="flex flex-col gap-3">
-          {(['analyst', 'coach', 'player'] as UserRole[]).map((r) => (
-            <button
-              key={r}
-              onClick={() => {
-                if (r === 'player') {
-                  setPickingPlayer(true)
-                } else {
-                  onSelect(r, null)
-                }
-              }}
-              className={`py-3 px-4 rounded text-sm font-medium transition-colors ${
-                isLight
-                  ? 'bg-gray-100 hover:bg-blue-600 text-gray-800 hover:text-white'
-                  : 'bg-gray-700 hover:bg-blue-700 text-white'
-              }`}
-            >
-              {t(`roles.${r}`)}
-            </button>
-          ))}
-        </div>
-        <p className={`text-xs mt-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
-          POCフェーズ: ロールはブラウザに保存されます
-        </p>
-      </div>
-    </div>
-  )
+// ロール選択画面（POCフェーズ）— RolePicker へ委譲
+// player → player_id、coach → team_name を収集する
+function RoleSelector({ onSelect }: { onSelect: (role: UserRole, playerId?: number | null, teamName?: string | null) => void }) {
+  return <RolePicker mode="initial" onSelect={onSelect} />
 }
 
 // サイドバー（デスクトップ: 左縦、モバイル: ボトムバー）

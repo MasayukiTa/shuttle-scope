@@ -3,6 +3,7 @@ import { UserRole } from '@/types'
 
 const STORAGE_KEY           = 'shuttlescope_role'
 const STORAGE_KEY_PLAYER_ID = 'shuttlescope_player_id'
+const STORAGE_KEY_TEAM_NAME = 'shuttlescope_team_name'
 
 // POCフェーズ: ローカルストレージでロール管理（将来JWT認証に移行）
 // 注: role=player の場合は「どの選手としてログインしたか」を player_id として保持する。
@@ -23,11 +24,21 @@ function getStoredPlayerId(): number | null {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+function getStoredTeamName(): string | null {
+  const v = localStorage.getItem(STORAGE_KEY_TEAM_NAME)
+  return v && v.length > 0 ? v : null
+}
+
 export function useAuth() {
   const [role, setRoleState]         = useState<UserRole | null>(getStoredRole)
   const [playerId, setPlayerIdState] = useState<number | null>(getStoredPlayerId)
+  const [teamName, setTeamNameState] = useState<string | null>(getStoredTeamName)
 
-  const setRole = useCallback((newRole: UserRole, newPlayerId?: number | null) => {
+  const setRole = useCallback((
+    newRole: UserRole,
+    newPlayerId?: number | null,
+    newTeamName?: string | null,
+  ) => {
     localStorage.setItem(STORAGE_KEY, newRole)
     setRoleState(newRole)
     // player ロール時のみ player_id を保存。他ロールはクリアする。
@@ -38,13 +49,23 @@ export function useAuth() {
       localStorage.removeItem(STORAGE_KEY_PLAYER_ID)
       setPlayerIdState(null)
     }
+    // coach ロール時のみ team_name を保存。他ロールはクリアする。
+    if (newRole === 'coach' && typeof newTeamName === 'string' && newTeamName.length > 0) {
+      localStorage.setItem(STORAGE_KEY_TEAM_NAME, newTeamName)
+      setTeamNameState(newTeamName)
+    } else {
+      localStorage.removeItem(STORAGE_KEY_TEAM_NAME)
+      setTeamNameState(null)
+    }
   }, [])
 
   const clearRole = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY)
     localStorage.removeItem(STORAGE_KEY_PLAYER_ID)
+    localStorage.removeItem(STORAGE_KEY_TEAM_NAME)
     setRoleState(null)
     setPlayerIdState(null)
+    setTeamNameState(null)
   }, [])
 
   const hasRole = useCallback(
@@ -55,7 +76,7 @@ export function useAuth() {
     [role]
   )
 
-  return { role, playerId, setRole, clearRole, hasRole }
+  return { role, playerId, teamName, setRole, clearRole, hasRole }
 }
 
 export type { UserRole }
