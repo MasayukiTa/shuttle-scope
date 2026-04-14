@@ -10,6 +10,15 @@ if _root not in sys.path:
 
 import asyncio
 import logging
+
+# ── ロギング設定（Electron コンソールへ全ログを流す） ─────────────────────────
+# basicConfig は最初の呼び出しのみ有効。uvicorn が先に設定した場合は force=True で上書き。
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s [%(name)s] %(message)s",
+    stream=sys.stderr,
+    force=True,
+)
 import mimetypes
 import uvicorn
 from contextlib import asynccontextmanager

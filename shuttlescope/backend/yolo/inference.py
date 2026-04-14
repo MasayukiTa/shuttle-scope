@@ -44,7 +44,7 @@ DEPTH_FRONT_Y = 0.35   # これより小さい y = front（ネット側）
 DEPTH_BACK_Y = 0.65    # これより大きい y = back（ベースライン側）
 
 # 検出信頼度しきい値（バドミントン全景では選手が小さいため低めに設定）
-MIN_CONF = 0.20
+MIN_CONF = 0.15
 
 
 class YOLOInference:
@@ -56,6 +56,8 @@ class YOLOInference:
         self._backend: str = "unloaded"
         # 診断用: ロード失敗時のエラーメッセージ
         self._load_error: Optional[str] = None
+        # 直前の推論診断情報（APIレスポンスに埋め込んで UI に表示する）
+        self._last_debug: dict = {}
 
     # ─── 可用性確認 ─────────────────────────────────────────────────────
 
@@ -197,10 +199,31 @@ class YOLOInference:
 
     # ─── 推論 ────────────────────────────────────────────────────────────
 
+    def get_last_debug(self) -> dict:
+        """直前の推論診断情報を返す（APIレスポンスに埋め込んで UI に表示する）"""
+        return dict(self._last_debug)
+
     def predict_frame(self, frame) -> list[dict]:
         """1 フレームからプレイヤーを検出。失敗時は空リストを返す。"""
+        import numpy as _np
         if not self._loaded and not self.load():
+            self._last_debug = {"error": "モデルロード失敗"}
             return []
+
+        # フレーム基本情報
+        h, w = frame.shape[:2]
+        frame_mean = float(_np.mean(frame))
+        self._last_debug = {
+            "backend": self._backend,
+            "frame_shape": [h, w],
+            "frame_mean_brightness": round(frame_mean, 1),
+            "threshold": MIN_CONF,
+        }
+
+        if frame_mean < 3.0:
+            self._last_debug["warning"] = "フレームがほぼ黒（動画シーク失敗の可能性）"
+            logger.warning("YOLO: frame is nearly black (mean=%.1f), seek may have failed", frame_mean)
+
         try:
             if self._backend.startswith("openvino:"):
                 detections = self._predict_openvino(frame)
@@ -209,10 +232,14 @@ class YOLOInference:
             elif self._backend == "onnx_cpu":
                 detections = self._predict_onnx(frame)
             else:
+                self._last_debug["error"] = f"不明なバックエンド: {self._backend}"
                 return []
-            return self._assign_player_labels(detections)
+            result = self._assign_player_labels(detections)
+            self._last_debug["detected"] = len(result)
+            return result
         except Exception as exc:
-            logger.warning("YOLO inference error: %s", exc)
+            logger.exception("YOLO inference error (backend=%s): %s", self._backend, exc)
+            self._last_debug["error"] = str(exc)
             return []
 
     def _predict_openvino(self, frame) -> list[dict]:
@@ -228,7 +255,15 @@ class YOLOInference:
         # 推論: output shape は [1, 84, 8400] または [1, 8400, 84] の両方あり得る
         # 84 = 4(box) + 80(classes), 8400 = anchors
         result = self._model([inp])[self._model.output(0)]
-        raw = result[0]  # (84, 8400) or (8400, 84)
+
+        logger.info("YOLO OpenVINO raw result shape: %s dtype=%s", result.shape, result.dtype)
+
+        # バッチ次元を除去して [84, 8400] または [8400, 84] に統一
+        raw = result
+        while raw.ndim > 2:
+            raw = raw[0]  # [1, 84, 8400] → [84, 8400]
+
+        logger.info("YOLO OpenVINO after squeeze shape: %s", raw.shape)
 
         # shape が (8400, 84) の場合は転置して (84, 8400) に統一
         if raw.ndim == 2 and raw.shape[0] != 84 and raw.shape[1] == 84:
@@ -236,14 +271,33 @@ class YOLOInference:
         elif raw.ndim == 2 and raw.shape[0] == 8400:
             raw = raw.T  # → (84, 8400)
 
-        if raw.shape[0] < 5:
-            logger.warning("YOLO OpenVINO: unexpected output shape %s", raw.shape)
+        logger.info("YOLO OpenVINO normalized shape: %s", raw.shape)
+
+        if raw.ndim != 2 or raw.shape[0] < 5:
+            logger.warning("YOLO OpenVINO: unexpected output shape %s — skipping", raw.shape)
             return []
 
+        import numpy as _np
         detections: list[dict] = []
         # person クラス = COCO index 0 → row index 4 (4 box coords の次)
         person_scores = raw[4]  # (8400,)
         cx, cy, bw, bh = raw[0], raw[1], raw[2], raw[3]
+
+        top5 = sorted(person_scores.tolist(), reverse=True)[:5]
+        above = int(_np.sum(person_scores >= MIN_CONF))
+        logger.info(
+            "YOLO OpenVINO person_scores: max=%.3f top5=%s anchors_above_threshold=%d (thresh=%.2f)",
+            float(person_scores.max()),
+            [round(v, 3) for v in top5],
+            above,
+            MIN_CONF,
+        )
+        self._last_debug.update({
+            "output_shape": list(raw.shape),
+            "person_score_max": round(float(person_scores.max()), 3),
+            "person_score_top5": [round(v, 3) for v in top5],
+            "anchors_above_threshold": above,
+        })
 
         # NMS 省略版: 信頼度でフィルタ後、重複をシンプルな IoU で削除
         candidates = []
@@ -296,6 +350,20 @@ class YOLOInference:
         result = results[0]
         h, w = frame.shape[:2]
         detections: list[dict] = []
+
+        all_confs = [float(box.conf[0]) for box in result.boxes]
+        top5 = sorted(all_confs, reverse=True)[:5]
+        above = sum(1 for c in all_confs if c >= MIN_CONF)
+        logger.info(
+            "YOLO ultralytics: total_boxes=%d top5_conf=%s above_threshold=%d (thresh=%.2f)",
+            len(all_confs), top5, above, MIN_CONF,
+        )
+        self._last_debug.update({
+            "total_raw_boxes": len(all_confs),
+            "person_score_top5": [round(v, 3) for v in top5],
+            "person_score_max": round(top5[0], 3) if top5 else 0.0,
+            "anchors_above_threshold": above,
+        })
 
         for box in result.boxes:
             conf = float(box.conf[0])

@@ -38,4 +38,13 @@ contextBridge.exposeInMainWorld('shuttlescope', {
   // ─── アプリ再起動 ────────────────────────────────────────────────────────────
   restartApp: (): Promise<void> =>
     ipcRenderer.invoke('relaunch-app'),
+
+  // ─── バックエンドログ ─────────────────────────────────────────────────────────
+  getBackendLog: (): Promise<string[]> =>
+    ipcRenderer.invoke('get-backend-log'),
+  onBackendLog: (cb: (line: string) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, line: string) => cb(line)
+    ipcRenderer.on('backend-log', handler)
+    return () => ipcRenderer.removeListener('backend-log', handler)
+  },
 })

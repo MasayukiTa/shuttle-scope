@@ -32,6 +32,7 @@ import { AnnotatorVideoPane } from '@/components/annotator/AnnotatorVideoPane'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import { CVAssistPanel } from '@/components/annotation/CVAssistPanel'
 import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/ReviewQueuePanel'
+import { PlayerMovementCard } from '@/components/analysis/PlayerMovementCard'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -856,12 +857,13 @@ export function AnnotatorPage() {
   const {
     tracknetJob, setTracknetJob, shuttleFrames, shuttleOverlayVisible,
     setShuttleOverlayVisible, tracknetArtifactAt, handleTracknetBatch,
-    handleTracknetBatchResume, tracknetArtifactExists,
+    handleTracknetBatchResume, handleTracknetBatchStop, tracknetArtifactExists,
     yoloJob, setYoloJob, yoloFrames, yoloOverlayVisible,
     setYoloOverlayVisible, yoloArtifactMeta, handleYoloBatch,
-    handleYoloBatchResume, handleYoloBatchDiff, yoloArtifactExists, yoloRoiExpanded,
+    handleYoloBatchResume, handleYoloBatchStop, handleYoloBatchDiff, yoloArtifactExists, yoloRoiExpanded,
     frameDetections, trackFrames, trackingVisible, setTrackingVisible,
     handleFrameDetect, handleAssignAndTrack, frameDetectLoading, trackingLoading,
+    frameDetectError, frameDetectDebug,
     currentVideoSec, videoContainerRef,
   } = useCVJobs({
     matchId,
@@ -875,13 +877,16 @@ export function AnnotatorPage() {
     roiRect,
   })
 
-  // 検出0件→3秒後にタグ付けモード自動終了
+  // APIエラー時のみ3秒後にタグ付けモード自動終了
+  // 検出0件（人物なし）は正常応答なので auto-close しない → ユーザーが ✕ で閉じる
+  // これにより model warm-up 中の遅延応答でも誤閉鎖が発生しない
   useEffect(() => {
     if (!taggingMode) return
-    if (frameDetections.length > 0) return
+    if (frameDetectLoading) return
+    if (!frameDetectError) return   // エラーがない場合は自動クローズしない
     const timer = setTimeout(() => setTaggingMode(false), 3000)
     return () => clearTimeout(timer)
-  }, [taggingMode, frameDetections.length])
+  }, [taggingMode, frameDetectLoading, frameDetectError])
 
   // R-001/R-002: セッション共有フック
   const {
@@ -1444,6 +1449,21 @@ export function AnnotatorPage() {
               }`}>
                 <span className="animate-pulse">●</span>
                 {t('tracknet.batch_running')} {Math.round(tracknetJob.progress * 100)}%
+                <button
+                  onClick={handleTracknetBatchStop}
+                  className={`ml-1 px-1 py-0.5 rounded text-[9px] font-medium transition-colors ${
+                    isLight ? 'bg-red-200 text-red-700 hover:bg-red-300' : 'bg-red-900/60 text-red-300 hover:bg-red-800/80'
+                  }`}
+                  title="現在のラリー完了後に停止（再開可能）"
+                >
+                  停止
+                </button>
+              </div>
+            ) : tracknetJob?.status === 'stopped' ? (
+              <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
+              }`}>
+                ⏸ 停止済 {Math.round(tracknetJob.progress * 100)}%
               </div>
             ) : tracknetJob?.status === 'complete' ? (
               <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
@@ -1514,6 +1534,21 @@ export function AnnotatorPage() {
                 }`}>
                   <span className="animate-pulse">●</span>
                   人物 {Math.round(yoloJob.progress * 100)}%
+                  <button
+                    onClick={handleYoloBatchStop}
+                    className={`ml-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors ${
+                      isLight ? 'bg-red-200 text-red-700 hover:bg-red-300' : 'bg-red-900/60 text-red-300 hover:bg-red-800/80'
+                    }`}
+                    title="現在のフレームを保存して停止（再開可能）"
+                  >
+                    停止
+                  </button>
+                </div>
+              ) : yoloJob?.status === 'stopped' ? (
+                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
+                  isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
+                }`}>
+                  ⏸ {Math.round(yoloJob.progress * 100)}%
                 </div>
               ) : yoloJob?.status === 'complete' ? (
                 <button
@@ -1588,68 +1623,76 @@ export function AnnotatorPage() {
                 </div>
               )}
 
-              {/* 選手識別タグ付け / 識別トラックトグル */}
-              {!taggingMode && trackFrames.length === 0 && !!(match?.video_local_path || match?.video_url) && (
-                <button
-                  onClick={() => {
-                    const ts = videoRef.current?.currentTime ?? 0
-                    setTaggingSeedTs(ts)
-                    setTaggingAssignments({})
-                    handleFrameDetect(ts)
-                    setTaggingMode(true)
-                  }}
-                  disabled={frameDetectLoading}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
-                    isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
-                  }`}
-                  title="静止画で選手を識別してトラッキング開始"
-                >
-                  {frameDetectLoading ? '検出中...' : '+ 識別'}
-                </button>
-              )}
-              {taggingMode && (
-                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs ${
-                  isLight ? 'border-purple-300 bg-purple-50' : 'border-purple-700 bg-purple-900/20'
-                }`}>
-                  <span className={`text-[10px] ${isLight ? 'text-purple-600' : 'text-purple-400'}`}>
-                    {Object.keys(taggingAssignments).length}/{frameDetections.length} 割当
-                  </span>
+              {/* 選手識別: taggingMode 中は確定/キャンセルをインライン表示、それ以外は識別ボタン */}
+              {!!(match?.video_local_path || match?.video_url) && (
+                taggingMode ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={async () => {
+                        await handleAssignAndTrack(
+                          taggingSeedTs,
+                          Object.entries(taggingAssignments)
+                            .filter(([, k]) => k)
+                            .map(([i, k]) => ({
+                              detection_index: +i,
+                              player_key: k,
+                              bbox: frameDetections[+i]?.bbox ?? null,
+                            }))
+                        )
+                        setTaggingMode(false)
+                      }}
+                      disabled={trackingLoading || Object.values(taggingAssignments).filter(Boolean).length === 0}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium disabled:opacity-50 ${
+                        isLight ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-purple-600 text-white hover:bg-purple-500'
+                      }`}
+                    >
+                      {trackingLoading ? '...' : `識別確定（${Object.values(taggingAssignments).filter(Boolean).length}）`}
+                    </button>
+                    <button
+                      onClick={() => setTaggingMode(false)}
+                      className={`px-1 py-0.5 rounded text-xs ${
+                        isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-gray-700'
+                      }`}
+                    >✕</button>
+                  </div>
+                ) : (
                   <button
-                    onClick={async () => {
-                      await handleAssignAndTrack(
-                        taggingSeedTs,
-                        Object.entries(taggingAssignments).map(([i, k]) => ({ detection_index: +i, player_key: k }))
-                      )
-                      setTaggingMode(false)
+                    onClick={() => {
+                      const ts = videoRef.current?.currentTime ?? 0
+                      setTaggingSeedTs(ts)
+                      setTaggingAssignments({})
+                      handleFrameDetect(ts)
+                      setTaggingMode(true)
                     }}
-                    disabled={trackingLoading || Object.keys(taggingAssignments).length === 0}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium disabled:opacity-50 ${
-                      isLight ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-purple-600 text-white hover:bg-purple-500'
+                    disabled={frameDetectLoading}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
+                      isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
                     }`}
+                    title={trackFrames.length > 0
+                      ? 'コート離脱・衣装変更などで識別をやり直す（現フレームを新シードに）'
+                      : '静止画で選手を識別してトラッキング開始'}
                   >
-                    {trackingLoading ? '追跡中...' : '追跡開始'}
+                    {frameDetectLoading ? '検出中...' : trackFrames.length > 0 ? '再識別' : '+ 識別'}
                   </button>
-                  <button
-                    onClick={() => setTaggingMode(false)}
-                    className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] ${
-                      isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-gray-700'
-                    }`}
-                  >
-                    ✕
-                  </button>
-                </div>
+                )
               )}
-              {trackFrames.length > 0 && !taggingMode && (
+              {/* BBOX トグル: 常時表示。データなし時はグレーアウト */}
+              {!taggingMode && (
                 <button
-                  onClick={() => setTrackingVisible((v) => !v)}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
-                    trackingVisible
+                  onClick={() => trackFrames.length > 0 && setTrackingVisible((v) => !v)}
+                  disabled={trackFrames.length === 0}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    trackingVisible && trackFrames.length > 0
                       ? isLight ? 'bg-purple-200 text-purple-800' : 'bg-purple-700/60 text-purple-200'
-                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-purple-100' : 'bg-gray-700 text-gray-400 hover:bg-purple-900/40'
+                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-purple-100 disabled:hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-purple-900/40 disabled:hover:bg-gray-700'
                   }`}
-                  title={trackingVisible ? '識別トラックを非表示' : '識別トラックを表示'}
+                  title={
+                    trackFrames.length === 0
+                      ? '識別データなし（先に「+ 識別」を実行してください）'
+                      : trackingVisible ? 'BBOX を非表示' : 'BBOX を表示'
+                  }
                 >
-                  {trackingVisible ? '◉' : '○'} 識別
+                  {trackingVisible && trackFrames.length > 0 ? '◉' : '○'} BBOX
                 </button>
               )}
 
@@ -2279,6 +2322,9 @@ export function AnnotatorPage() {
                 shuttleOverlayVisible={shuttleOverlayVisible}
                 courtGridMatchId={matchId ?? undefined}
                 courtGridVisible={courtGridVisible}
+                onCalibrationSaved={() => {
+                  queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+                }}
                 roiRect={roiRect}
                 roiEditing={roiEditing}
                 onRoiChange={(rect) => {
@@ -2295,6 +2341,8 @@ export function AnnotatorPage() {
                 onTagAssign={(i, k) => setTaggingAssignments(prev => ({ ...prev, [i]: k }))}
                 isPaused={videoRef.current?.paused ?? true}
                 isLight={isLight}
+                frameDetectError={frameDetectError}
+                frameDetectDebug={frameDetectDebug}
               />
             )
           })()}
@@ -2737,7 +2785,7 @@ export function AnnotatorPage() {
                       playerToggleDisabled && 'opacity-40 cursor-not-allowed grayscale',
                     )}
                   >
-                    <span className="opacity-60 mr-0.5">{posLabel('player_a')}</span>{match?.player_a?.name ?? 'A'}{store.isDoubles && match?.partner_a && <><span className="opacity-40 mx-0.5">/</span><span className="text-[10px]">{match.partner_a.name}</span></>}
+                    <span className="opacity-60 mr-0.5">{posLabel('player_a')}</span>{match?.player_a?.name ?? 'A'}{store.isDoubles && match?.partner_a && <><span className="opacity-40 mx-0.5">/</span><span>{match.partner_a.name}</span></>}
                   </button>
                   <button
                     onClick={() => !playerToggleDisabled && store.togglePlayer()}
@@ -2766,7 +2814,7 @@ export function AnnotatorPage() {
                       playerToggleDisabled && 'opacity-40 cursor-not-allowed grayscale',
                     )}
                   >
-                    <span className="opacity-60 mr-0.5">{posLabel('player_b')}</span>{match?.player_b?.name ?? 'B'}{store.isDoubles && match?.partner_b && <><span className="opacity-40 mx-0.5">/</span><span className="text-[10px]">{match.partner_b.name}</span></>}
+                    <span className="opacity-60 mr-0.5">{posLabel('player_b')}</span>{match?.player_b?.name ?? 'B'}{store.isDoubles && match?.partner_b && <><span className="opacity-40 mx-0.5">/</span><span>{match.partner_b.name}</span></>}
                   </button>
                 </div>
               )
@@ -3205,15 +3253,36 @@ export function AnnotatorPage() {
                     ✕
                   </button>
                 </div>
-                <CVAssistPanel
-                  rallyCandidates={
-                    lastSavedRallyId != null
-                      ? getCandidateForRally(lastSavedRallyId)
-                      : null
-                  }
-                  currentStrokeNum={store.currentStrokeNum}
-                />
+                {lastSavedRallyId == null ? (
+                  <div className="text-slate-500 text-xs text-center py-3">
+                    ラリーを完了すると候補が表示されます
+                  </div>
+                ) : getCandidateForRally(lastSavedRallyId) == null ? (
+                  <div className="text-slate-500 text-xs text-center py-3">
+                    このラリーの候補がありません（「候補生成」を再実行してください）
+                  </div>
+                ) : (
+                  <CVAssistPanel
+                    rallyCandidates={getCandidateForRally(lastSavedRallyId)}
+                    currentStrokeNum={store.currentStrokeNum}
+                  />
+                )}
               </div>
+            )}
+
+            {/* 総移動距離・コートヒートマップカード（トラッキング済みの場合のみ表示） */}
+            {!isMobile && trackFrames.length > 0 && matchId && (
+              <PlayerMovementCard
+                matchId={matchId}
+                matchFormat={match?.format ?? 'singles'}
+                playerNames={{
+                  player_a: match?.player_a?.name ?? 'A',
+                  partner_a: match?.partner_a?.name ?? '',
+                  player_b: match?.player_b?.name ?? 'B',
+                  partner_b: match?.partner_b?.name ?? '',
+                }}
+                isLight={isLight}
+              />
             )}
 
             {/* T2: Basic モード用 エンリッチメント手動展開ボタン */}

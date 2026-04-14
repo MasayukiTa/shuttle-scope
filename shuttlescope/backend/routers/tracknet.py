@@ -179,6 +179,18 @@ def batch_status(job_id: str):
     return {"success": True, "data": job}
 
 
+@router.post("/tracknet/batch/{job_id}/stop")
+def stop_tracknet_batch(job_id: str):
+    """実行中のTrackNetバッチに停止リクエストを送る。現在のラリーが終わり次第停止する。"""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    if job.get("status") not in (BatchJobStatus.RUNNING, BatchJobStatus.PENDING):
+        return {"success": True, "data": {"message": "already stopped"}}
+    _jobs[job_id]["stop_requested"] = True
+    return {"success": True, "data": {"job_id": job_id}}
+
+
 # ────────────────────────────────────────────────────────────────────
 # /api/tracknet/live_frame_hint — ライブストリーム推論（LAN カメラ向け）
 # ────────────────────────────────────────────────────────────────────
@@ -389,6 +401,16 @@ def _run_batch(
             _jobs[job_id]["progress"] = pre_done / max(len(rallies), 1)
 
         for i, rally in enumerate(rallies):
+            # 停止リクエスト確認（ユーザーが「停止」ボタンを押した場合）
+            # TrackNet は各ラリー終了後に DB 保存済みなので、安全に停止できる
+            if _jobs[job_id].get("stop_requested"):
+                _jobs[job_id]["status"] = "stopped"
+                logger.info(
+                    "TrackNet batch stopped by user: match=%d, processed=%d/%d",
+                    match_id, i, len(rallies),
+                )
+                return
+
             # タイムスタンプが設定されているラリーのみ解析
             if rally.video_timestamp_start is None:
                 _jobs[job_id]["processed_rallies"] = i + 1

@@ -171,6 +171,7 @@ export function MatchListPage() {
   const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false)
   const [filterDateFrom, setFilterDateFrom] = useState<string | null>(null)
   const [filterDateTo, setFilterDateTo] = useState<string | null>(null)
+  const [filterText, setFilterText] = useState<string>('')
   // 試合一覧ソート（クライアントサイド）
   type MatchSortKey = 'date' | 'tournament' | 'result' | 'status'
   const [matchSortKey, setMatchSortKey] = useState<MatchSortKey>('date')
@@ -473,11 +474,27 @@ export function MatchListPage() {
   const allMatches = matchesData?.data ?? []
   const players = playersData?.data ?? []
 
-  // 期間フィルター + クライアントサイドソート
+  // 期間フィルター + テキスト部分検索 + クライアントサイドソート
   const matches = useMemo(() => {
+    const q = filterText.trim().toLowerCase()
     const filtered = allMatches.filter((m) => {
       if (filterDateFrom && m.date < filterDateFrom) return false
       if (filterDateTo && m.date > filterDateTo) return false
+      if (q) {
+        const haystack = [
+          m.tournament,
+          m.round,
+          m.venue ?? '',
+          m.notes ?? '',
+          m.player_a?.name ?? '',
+          m.player_b?.name ?? '',
+          m.partner_a?.name ?? '',
+          m.partner_b?.name ?? '',
+          m.player_a?.team ?? '',
+          m.player_b?.team ?? '',
+        ].join(' ').toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
       return true
     })
     return [...filtered].sort((a, b) => {
@@ -504,7 +521,7 @@ export function MatchListPage() {
       }
       return matchSortDir === 'asc' ? cmp : -cmp
     })
-  }, [allMatches, filterDateFrom, filterDateTo, matchSortKey, matchSortDir, statusSortTarget])
+  }, [allMatches, filterDateFrom, filterDateTo, filterText, matchSortKey, matchSortDir, statusSortTarget])
 
   function handleMatchSort(key: MatchSortKey) {
     if (matchSortKey === key) {
@@ -599,6 +616,29 @@ export function MatchListPage() {
 
       {/* フィルター */}
       <div className={`flex flex-col gap-2 px-6 py-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
+        {/* テキスト部分検索 */}
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder="大会名・選手名・会場・備考で検索..."
+            className={`w-full pl-8 pr-8 py-1.5 rounded border text-sm ${
+              isLight
+                ? 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'
+                : 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-500'
+            }`}
+          />
+          {filterText && (
+            <button
+              onClick={() => setFilterText('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Filter size={14} className="text-gray-400 shrink-0" />
           <SearchableSelect

@@ -74,6 +74,7 @@ export interface CVJobsResult {
   tracknetArtifactAt: string | null
   handleTracknetBatch: () => Promise<void>
   handleTracknetBatchResume: () => Promise<void>
+  handleTracknetBatchStop: () => Promise<void>
   // YOLO
   yoloJobId: string | null
   yoloJob: YoloJob | null
@@ -85,6 +86,7 @@ export interface CVJobsResult {
   yoloArtifactMeta: { created_at: string; frame_count: number } | null
   handleYoloBatch: () => Promise<void>
   handleYoloBatchResume: () => Promise<void>
+  handleYoloBatchStop: () => Promise<void>
   handleYoloBatchDiff: () => Promise<void>
   /** 既存 YOLO アーティファクトが存在する（再開・差分更新ボタン表示判定用） */
   yoloArtifactExists: boolean
@@ -98,9 +100,14 @@ export interface CVJobsResult {
   trackingVisible: boolean
   setTrackingVisible: React.Dispatch<React.SetStateAction<boolean>>
   handleFrameDetect: (timestampSec: number) => Promise<void>
-  handleAssignAndTrack: (seedTs: number, assignments: { detection_index: number; player_key: string }[]) => Promise<void>
+  handleAssignAndTrack: (seedTs: number, assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null }[]) => Promise<void>
   frameDetectLoading: boolean
   trackingLoading: boolean
+  /** フレーム検出エラー（APIエラー時の詳細メッセージ。nullなら正常） */
+  frameDetectError: string | null
+  /** フレーム検出デバッグ情報（検出ゼロ時の診断用） */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  frameDetectDebug: Record<string, any> | null
   // Video overlay
   currentVideoSec: number
   videoContainerRef: RefObject<HTMLDivElement>
@@ -170,24 +177,50 @@ export function useCVJobs({
   const [trackingVisible, setTrackingVisible] = useState(false)
   const [frameDetectLoading, setFrameDetectLoading] = useState(false)
   const [trackingLoading, setTrackingLoading] = useState(false)
+  const [frameDetectError, setFrameDetectError] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [frameDetectDebug, setFrameDetectDebug] = useState<Record<string, any> | null>(null)
 
   const handleFrameDetect = useCallback(async (timestampSec: number) => {
     if (!matchId) return
     setFrameDetectLoading(true)
+    setFrameDetectError(null)
+    setFrameDetectDebug(null)
     try {
-      const res = await apiPost<{ success: boolean; data: { players: RawDetection[] } }>(
+      const res = await apiPost<{
+        success: boolean
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data: { players: RawDetection[]; debug?: Record<string, any> }
+      }>(
         `/yolo/frame_detect/${matchId}`,
         { timestamp_sec: timestampSec, roi_rect: roiRect ?? null }
       )
-      if (res.success) setFrameDetections(res.data.players)
-    } catch { /* 検出失敗は無視 */ } finally {
+      if (res.success) {
+        setFrameDetections(res.data.players)
+        if (res.data.debug) setFrameDetectDebug(res.data.debug)
+      }
+    } catch (err: unknown) {
+      // APIエラー詳細を保存してユーザーに表示する
+      let reason = '検出APIエラー'
+      if (err instanceof Error) {
+        try {
+          const parsed = JSON.parse(err.message)
+          if (parsed?.detail) reason = String(parsed.detail)
+          else reason = err.message
+        } catch {
+          reason = err.message
+        }
+      }
+      setFrameDetectError(reason)
+      setFrameDetections([])
+    } finally {
       setFrameDetectLoading(false)
     }
   }, [matchId, roiRect])
 
   const handleAssignAndTrack = useCallback(async (
     seedTs: number,
-    assignments: { detection_index: number; player_key: string }[]
+    assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null }[]
   ) => {
     if (!matchId) return
     setTrackingLoading(true)
@@ -202,12 +235,15 @@ export function useCVJobs({
       )
       if (res.success && res.data.length > 0) {
         setTrackFrames(res.data)
-        setTrackingVisible(true)
       }
+      // 識別確定後は常にトラック表示ON（データがなくても表示状態にしておく）
+      setTrackingVisible(true)
+      // 移動距離カードのキャッシュを無効化して即時再取得
+      queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
     } catch { /* 追跡失敗は無視 */ } finally {
       setTrackingLoading(false)
     }
-  }, [matchId])
+  }, [matchId, queryClient])
 
   // マウント時: 保存済みトラックを取得
   useEffect(() => {
@@ -216,6 +252,11 @@ export function useCVJobs({
       .then(res => { if (res.success && res.data.length > 0) setTrackFrames(res.data) })
       .catch(() => {})
   }, [matchId])
+
+  // マウント時: YOLO モデルをバックグラウンドでウォームアップ（初回検出遅延の解消）
+  useEffect(() => {
+    apiPost('/yolo/warmup', {}).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── ビデオオーバーレイ ────────────────────────────────────────────────────
 
@@ -298,11 +339,18 @@ export function useCVJobs({
     () => _startTracknetBatch({ resume: true, prevRoi: tracknetLastRoi }),
     [_startTracknetBatch, tracknetLastRoi]
   )
+  const handleTracknetBatchStop = useCallback(async () => {
+    if (!tracknetJobId) return
+    try {
+      await apiPost(`/tracknet/batch/${tracknetJobId}/stop`, {})
+      setTracknetArtifactExists(true)  // 停止後すぐに「再開」ボタンを表示
+    } catch { /* 停止失敗は無視 */ }
+  }, [tracknetJobId])
 
   // ── P3: TrackNet ポーリング ───────────────────────────────────────────────
 
   useEffect(() => {
-    if (!tracknetJobId || tracknetJob?.status === 'complete' || tracknetJob?.status === 'error') return
+    if (!tracknetJobId || tracknetJob?.status === 'complete' || tracknetJob?.status === 'error' || tracknetJob?.status === 'stopped') return
     const id = setInterval(async () => {
       try {
         const res = await apiGet<{ success: boolean; data: TracknetJob | null }>(
@@ -310,33 +358,25 @@ export function useCVJobs({
         )
         if (res.success && res.data) {
           setTracknetJob(res.data)
-          if (res.data?.status === 'complete') {
-            queryClient.invalidateQueries({ queryKey: ['strokes'] })
-            // TrackNet 完了後にシャトル軌跡アーティファクトを取得
-            // status=COMPLETE はシャトル軌跡保存後に設定されるため、ここで取得すれば確実に存在する
-            try {
-              const trackRes = await apiGet<{ success: boolean; data: ShuttleFrame[] }>(
-                `/tracknet/shuttle_track/${matchId}`
-              )
-              if (trackRes.success && Array.isArray(trackRes.data) && trackRes.data.length > 0) {
-                setShuttleFrames(trackRes.data)
-                setTracknetArtifactExists(true)
-                setTracknetArtifactAt(
-                  new Date().toLocaleString('ja-JP', {
-                    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-                  })
+          if (res.data?.status === 'complete' || res.data?.status === 'stopped') {
+            setTracknetArtifactExists(true)  // 停止・完了いずれも「再開」ボタン表示
+            if (res.data?.status === 'complete') {
+              queryClient.invalidateQueries({ queryKey: ['strokes'] })
+              // TrackNet 完了後にシャトル軌跡アーティファクトを取得
+              try {
+                const trackRes = await apiGet<{ success: boolean; data: ShuttleFrame[] }>(
+                  `/tracknet/shuttle_track/${matchId}`
                 )
-              } else {
-                // shuttle_track が空の場合でも「再開」ボタンは表示する
-                // （resume=True で skip_shuttle_build した場合など）
-                setTracknetArtifactExists(true)
-                setTracknetArtifactAt(
-                  new Date().toLocaleString('ja-JP', {
-                    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-                  })
-                )
-              }
-            } catch { /* shuttle track 取得失敗は無視 */ }
+                if (trackRes.success && Array.isArray(trackRes.data) && trackRes.data.length > 0) {
+                  setShuttleFrames(trackRes.data)
+                  setTracknetArtifactAt(
+                    new Date().toLocaleString('ja-JP', {
+                      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+                    })
+                  )
+                }
+              } catch { /* shuttle track 取得失敗は無視 */ }
+            }
           }
         }
       } catch { /* ポーリング失敗は無視 */ }
@@ -392,6 +432,13 @@ export function useCVJobs({
     () => _startYoloBatch({ resume: true }),
     [_startYoloBatch]
   )
+  const handleYoloBatchStop = useCallback(async () => {
+    if (!yoloJobId) return
+    try {
+      await apiPost(`/yolo/batch/${yoloJobId}/stop`, {})
+      setYoloArtifactExists(true)  // 停止後すぐに「再開」ボタンを表示
+    } catch { /* 停止失敗は無視 */ }
+  }, [yoloJobId])
   const handleYoloBatchDiff = useCallback(
     () => _startYoloBatch({ prevRoi: yoloLastRoi }),
     [_startYoloBatch, yoloLastRoi]
@@ -400,7 +447,7 @@ export function useCVJobs({
   // ── P4: YOLO ポーリング ───────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!yoloJobId || yoloJob?.status === 'complete' || yoloJob?.status === 'error') return
+    if (!yoloJobId || yoloJob?.status === 'complete' || yoloJob?.status === 'error' || yoloJob?.status === 'stopped') return
     const id = setInterval(async () => {
       try {
         const res = await apiGet<{ success: boolean; data: YoloJob | null }>(
@@ -408,8 +455,9 @@ export function useCVJobs({
         )
         if (res.success && res.data) {
           setYoloJob(res.data)
-          if (res.data?.status === 'complete') {
-            // 検出完了後にフレームデータを取得
+          if (res.data?.status === 'complete' || res.data?.status === 'stopped') {
+            setYoloArtifactExists(true)  // 停止・完了いずれも「再開」ボタン表示
+            // フレームデータを取得（停止時も部分データを反映）
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const framesRes = await apiGet<{ success: boolean; data: any[] }>(
               `/yolo/results/${matchId}/frames`
@@ -428,9 +476,22 @@ export function useCVJobs({
                   created_at: metaRes.data.created_at,
                   frame_count: metaRes.data.frame_count,
                 })
-                setYoloArtifactExists(true)
               }
             } catch { /* meta 取得失敗は無視 */ }
+            if (res.data?.status === 'complete') {
+              // バッチ完了後、バックエンドが識別トラックを自動再適用するため
+              // 移動距離カードのキャッシュを無効化して最新データを反映する
+              queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+              // 識別トラックも再取得
+              try {
+                const trackRes = await apiGet<{ success: boolean; data: TrackFrame[] }>(
+                  `/yolo/identity_track/${matchId}`
+                )
+                if (trackRes.success && trackRes.data?.length) {
+                  setTrackFrames(trackRes.data)
+                }
+              } catch { /* トラック再取得失敗は無視 */ }
+            }
           }
         }
       } catch { /* ポーリング失敗は無視 */ }
@@ -461,6 +522,7 @@ export function useCVJobs({
     tracknetArtifactAt,
     handleTracknetBatch,
     handleTracknetBatchResume,
+    handleTracknetBatchStop,
     tracknetArtifactExists,
     // YOLO
     yoloJobId,
@@ -472,6 +534,7 @@ export function useCVJobs({
     yoloArtifactMeta,
     handleYoloBatch,
     handleYoloBatchResume,
+    handleYoloBatchStop,
     handleYoloBatchDiff,
     yoloArtifactExists,
     yoloRoiExpanded,
@@ -484,6 +547,8 @@ export function useCVJobs({
     handleAssignAndTrack,
     frameDetectLoading,
     trackingLoading,
+    frameDetectError,
+    frameDetectDebug,
     // Video overlay
     currentVideoSec,
     videoContainerRef,
