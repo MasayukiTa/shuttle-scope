@@ -375,6 +375,19 @@ def _run_batch(
         _jobs[job_id]["total_rallies"] = len(rallies)
         updated = 0
 
+        # resume モード: 解析済みラリー数を事前にカウントして進捗の初期値を設定
+        if resume and not roi_widened and rallies:
+            pre_done = 0
+            for rally in rallies:
+                if rally.video_timestamp_start is None:
+                    pre_done += 1
+                    continue
+                strokes_check = db.query(Stroke).filter(Stroke.rally_id == rally.id).all()
+                if strokes_check and all(s.land_zone for s in strokes_check):
+                    pre_done += 1
+            _jobs[job_id]["processed_rallies"] = pre_done
+            _jobs[job_id]["progress"] = pre_done / max(len(rallies), 1)
+
         for i, rally in enumerate(rallies):
             # タイムスタンプが設定されているラリーのみ解析
             if rally.video_timestamp_start is None:

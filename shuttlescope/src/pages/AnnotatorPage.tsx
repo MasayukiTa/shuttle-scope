@@ -1539,7 +1539,15 @@ export function AnnotatorPage() {
               ) : (
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={handleYoloBatch}
+                    onClick={() => {
+                      // バッチ開始と同時に現フレームで即時BBOX検出 → タグ付けUIを表示
+                      const ts = videoRef.current?.currentTime ?? 0
+                      setTaggingSeedTs(ts)
+                      setTaggingAssignments({})
+                      handleFrameDetect(ts)
+                      setTaggingMode(true)
+                      handleYoloBatch()
+                    }}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
                       isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
                     }`}
@@ -1573,7 +1581,7 @@ export function AnnotatorPage() {
               )}
 
               {/* 選手識別タグ付け / 識別トラックトグル */}
-              {yoloArtifactExists && !taggingMode && trackFrames.length === 0 && (
+              {!taggingMode && trackFrames.length === 0 && !!(match?.video_local_path || match?.video_url) && (
                 <button
                   onClick={() => {
                     const ts = videoRef.current?.currentTime ?? 0

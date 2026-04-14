@@ -172,7 +172,7 @@ export function MatchListPage() {
   const [filterDateFrom, setFilterDateFrom] = useState<string | null>(null)
   const [filterDateTo, setFilterDateTo] = useState<string | null>(null)
   // 試合一覧ソート（クライアントサイド）
-  type MatchSortKey = 'date' | 'tournament' | 'result'
+  type MatchSortKey = 'date' | 'tournament' | 'result' | 'status'
   const [matchSortKey, setMatchSortKey] = useState<MatchSortKey>('date')
   const [matchSortDir, setMatchSortDir] = useState<'asc' | 'desc'>('desc')
   // インライン削除確認
@@ -474,6 +474,10 @@ export function MatchListPage() {
         // win > draw > loss の順
         const order = { win: 0, draw: 1, loss: 2 }
         cmp = (order[a.result] ?? 3) - (order[b.result] ?? 3)
+      } else if (matchSortKey === 'status') {
+        // 未着手 → 作業中 → 完了/確認済み
+        const statusOrder: Record<string, number> = { pending: 0, in_progress: 1, complete: 2, reviewed: 3 }
+        cmp = (statusOrder[a.annotation_status] ?? 0) - (statusOrder[b.annotation_status] ?? 0)
       }
       return matchSortDir === 'asc' ? cmp : -cmp
     })
@@ -886,7 +890,17 @@ export function MatchListPage() {
                         : <ChevronsUpDown size={12} className="opacity-30" />}
                     </span>
                   </th>
-                  <th className="text-left py-2 pr-4">進捗</th>
+                  <th
+                    className="text-left py-2 pr-4 cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
+                    onClick={() => handleMatchSort('status')}
+                  >
+                    <span className="inline-flex items-center gap-0.5">
+                      進捗
+                      {matchSortKey === 'status'
+                        ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                        : <ChevronsUpDown size={12} className="opacity-30" />}
+                    </span>
+                  </th>
                   <th className="text-left py-2">操作</th>
                 </tr>
               </thead>
