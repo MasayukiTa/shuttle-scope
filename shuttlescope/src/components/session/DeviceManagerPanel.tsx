@@ -24,6 +24,8 @@ import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
 import { LiveSourceSelector } from './LiveSourceSelector'
 import { LiveInferenceOverlay } from './LiveInferenceOverlay'
+import { RealtimeYoloOverlay } from './RealtimeYoloOverlay'
+import { useRealtimeYolo } from '@/hooks/useRealtimeYolo'
 import type { SessionParticipant, LocalCameraSource, DeviceType } from '@/types'
 
 interface RemoteHealth {
@@ -588,6 +590,10 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
   const { stream: remoteStream, activeParticipantId, connectionState, iceGatheringState, wsConnected, wsReconnecting, wsReconnectCount, turnInUse, connect, requestCamera, sendMessage } = useWebRTCReceiver(sessionCode)
 
+  // リアルタイム YOLO トグル（オペレーター PC 側のみ。ViewerPage では使わない）
+  const [realtimeYoloOn, setRealtimeYoloOn] = useState(false)
+  const realtimeYolo = useRealtimeYolo(remoteStream, sessionCode, realtimeYoloOn)
+
   useEffect(() => { connect() }, [connect])
   // health callback へ変化を通知
   useEffect(() => {
@@ -816,12 +822,30 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
       {/* ─── リモートカメラ映像 ── */}
       {remoteStream && (
         <div className="mb-4 relative">
-          <p className={`text-[10px] mb-1 ${subColor}`}>
-            <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1 animate-pulse" />
-            リモート受信中（参加者 #{activeParticipantId}）
-            {turnInUse === true && <span className="ml-2 text-blue-400">TURN</span>}
-            {turnInUse === false && <span className="ml-2 text-gray-500">P2P</span>}
-          </p>
+          <div className="flex items-center justify-between mb-1">
+            <p className={`text-[10px] ${subColor}`}>
+              <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1 animate-pulse" />
+              リモート受信中（参加者 #{activeParticipantId}）
+              {turnInUse === true && <span className="ml-2 text-blue-400">TURN</span>}
+              {turnInUse === false && <span className="ml-2 text-gray-500">P2P</span>}
+            </p>
+            <button
+              onClick={() => setRealtimeYoloOn((v) => !v)}
+              className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                realtimeYoloOn
+                  ? 'border-green-500 bg-green-500/15 text-green-400'
+                  : isLight
+                    ? 'border-gray-300 text-gray-600 hover:border-gray-400'
+                    : 'border-gray-600 text-gray-400 hover:border-gray-500'
+              }`}
+              title="このPCのみで動作。タブレット等には影響しません"
+            >
+              リアルタイムYOLO {realtimeYoloOn ? 'ON' : 'OFF'}
+              {realtimeYoloOn && realtimeYolo.inferMs != null && (
+                <span className="ml-1 opacity-70">{realtimeYolo.inferMs}ms</span>
+              )}
+            </button>
+          </div>
           <div className="relative">
             <video
               ref={remoteVideoRef}
@@ -833,7 +857,16 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
               sessionCode={sessionCode}
               className="absolute inset-0"
             />
+            {realtimeYoloOn && (
+              <RealtimeYoloOverlay
+                videoRef={remoteVideoRef}
+                boxes={realtimeYolo.boxes}
+              />
+            )}
           </div>
+          {realtimeYoloOn && realtimeYolo.error && (
+            <p className="text-[10px] text-red-400 mt-1">{realtimeYolo.error}</p>
+          )}
         </div>
       )}
 
