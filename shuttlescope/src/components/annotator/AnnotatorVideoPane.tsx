@@ -30,6 +30,7 @@ interface Props {
   /** コートグリッドオーバーレイ */
   courtGridMatchId?: string
   courtGridVisible?: boolean
+  onCalibrationSaved?: () => void
   /** ROI 矩形 */
   roiRect?: RoiRect | null
   roiEditing?: boolean
@@ -44,6 +45,11 @@ interface Props {
   onTagAssign?: (detectionIndex: number, playerKey: string) => void
   isPaused?: boolean
   isLight?: boolean
+  /** フレーム検出APIエラー（nullなら正常） */
+  frameDetectError?: string | null
+  /** フレーム検出デバッグ情報 */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  frameDetectDebug?: Record<string, any> | null
 }
 
 /**
@@ -100,6 +106,9 @@ export function AnnotatorVideoPane({
   onTagAssign,
   isPaused = false,
   isLight = false,
+  frameDetectError,
+  frameDetectDebug,
+  onCalibrationSaved,
 }: Props) {
   // videoAreaRef はビデオ本体 div（aspect-ratio ボックス）を指す。
   // オーバーレイはここに配置 — コントロール（シークバー・ボタン）は含まない。
@@ -166,6 +175,7 @@ export function AnnotatorVideoPane({
           matchId={courtGridMatchId}
           containerRef={videoAreaRef}
           visible={courtGridVisible}
+          onCalibrationSaved={onCalibrationSaved}
         />
       )}
       {/* ROI 矩形オーバーレイ */}
@@ -191,6 +201,8 @@ export function AnnotatorVideoPane({
             onAssign={onTagAssign ?? (() => {})}
             assignments={taggingAssignments}
             isLight={isLight}
+            frameDetectError={frameDetectError}
+            frameDetectDebug={frameDetectDebug}
           />
         </div>
       )}

@@ -2149,6 +2149,9 @@ export function SettingsPage() {
               </button>
             </section>
 
+            {/* バックエンドコンソール */}
+            <BackendConsole isLight={isLight} textHeading={textHeading} textMuted={textMuted} />
+
           </div>
         )}
       </div>
@@ -2284,5 +2287,92 @@ export function SettingsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+// ─── バックエンドコンソールコンポーネント ─────────────────────────────────────
+
+function BackendConsole({
+  isLight,
+  textHeading,
+  textMuted,
+}: {
+  isLight: boolean
+  textHeading: string
+  textMuted: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [lines, setLines] = useState<string[]>([])
+  const endRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // 初回開いたときにバッファを取得
+  useEffect(() => {
+    if (!open) return
+    if (window.shuttlescope?.getBackendLog) {
+      window.shuttlescope.getBackendLog().then(setLines).catch(() => {})
+    }
+  }, [open])
+
+  // リアルタイム受信
+  useEffect(() => {
+    if (!open) return
+    const unsub = window.shuttlescope?.onBackendLog?.((line) => {
+      setLines(prev => {
+        const next = [...prev, line]
+        return next.length > 500 ? next.slice(-500) : next
+      })
+    })
+    return () => { unsub?.() }
+  }, [open])
+
+  // 末尾オートスクロール（textarea）
+  useEffect(() => {
+    if (open && endRef.current) {
+      endRef.current.scrollTop = endRef.current.scrollHeight
+    }
+  }, [lines, open])
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className={`text-lg font-medium ${textHeading}`}>バックエンドコンソール</h2>
+        <button
+          onClick={() => setOpen(v => !v)}
+          className={`text-xs px-2 py-1 rounded border transition-colors ${
+            isLight
+              ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+              : 'border-gray-600 text-gray-400 hover:bg-gray-700'
+          }`}
+        >
+          {open ? '非表示' : '表示'}
+        </button>
+      </div>
+      <p className={`text-xs ${textMuted} mb-2`}>
+        Pythonバックエンドのログ（YOLO検出エラーや推論スコアを確認できます）
+      </p>
+      {open && (
+        <textarea
+          readOnly
+          value={lines.length === 0 ? '(ログなし)' : lines.join('\n')}
+          ref={endRef}
+          className={`w-full rounded font-mono text-[10px] p-2 h-72 resize-none outline-none ${
+            isLight ? 'bg-gray-100 text-gray-800' : 'bg-gray-900 text-gray-300'
+          }`}
+          style={{ whiteSpace: 'pre', overflowX: 'auto' }}
+          spellCheck={false}
+        />
+      )}
+      {open && (
+        <div className="flex items-center gap-3 mt-1">
+          <button
+            onClick={() => setLines([])}
+            className={`text-[10px] ${textMuted} hover:underline`}
+          >
+            クリア
+          </button>
+          <span className={`text-[10px] ${textMuted}`}>{lines.length} 行 — Ctrl+A → Ctrl+C でコピー可</span>
+        </div>
+      )}
+    </section>
   )
 }

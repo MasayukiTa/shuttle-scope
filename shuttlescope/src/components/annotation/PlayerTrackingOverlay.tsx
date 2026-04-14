@@ -55,6 +55,11 @@ interface Props {
   /** 現在の割り当て状態（taggingモード用） */
   assignments: Record<number, string>  // detection_index → player_key
   isLight: boolean
+  /** フレーム検出APIエラー（nullなら正常） */
+  frameDetectError?: string | null
+  /** フレーム検出デバッグ情報 */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  frameDetectDebug?: Record<string, any> | null
 }
 
 // ── 定数 ─────────────────────────────────────────────────────────────────────
@@ -94,26 +99,46 @@ export function PlayerTrackingOverlay({
   onAssign,
   assignments,
   isLight,
+  frameDetectError,
+  frameDetectDebug,
 }: Props) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
-  const [openDropdown, setOpenDropdown] = useState<number | null>(null)
 
   const nearestFrame = tagging ? null : findNearest(trackFrames, currentSec)
-
-  const stopProp = useCallback((e: React.MouseEvent) => e.stopPropagation(), [])
 
   if (!visible) return null
 
   // ─── タグ付けモード ──────────────────────────────────────────────────────────
   if (tagging) {
     const hasDetections = frameDetections.length > 0
+
+    // bbox クリックで役割をサイクル切り替え（未割当 → A → B → ... → 未割当）
+    // 他の bbox に既に割り当て済みのキーはスキップする（重複禁止）
+    const cycleAssign = (i: number) => {
+      const keys = playerOptions.map(p => p.key)
+      // 他の bbox が使用中のキー（'other' は重複 OK）
+      const usedByOthers = new Set(
+        Object.entries(assignments)
+          .filter(([idx, k]) => Number(idx) !== i && k && k !== 'other')
+          .map(([, k]) => k)
+      )
+      const availableKeys = keys.filter(k => k === 'other' || !usedByOthers.has(k))
+      const cur = assignments[i] ?? null
+      const curIdx = cur ? availableKeys.indexOf(cur) : -1
+      // 現在値の次の利用可能キーへ進む
+      const nextKey = availableKeys[curIdx + 1] ?? null
+      if (nextKey) onAssign(i, nextKey)
+      else onAssign(i, '')  // 未割当に戻す
+    }
+
     return (
       <div className="absolute inset-0" style={{ zIndex: 25, pointerEvents: hasDetections ? 'auto' : 'none' }}>
         {frameDetections.map((det, i) => {
           const [x1n, y1n, x2n, y2n] = det.bbox
           const assignedKey = assignments[i] ?? null
-          const color = assignedKey ? (KEY_COLORS[assignedKey] ?? '#6b7280') : '#ffffff'
+          const color = assignedKey ? (KEY_COLORS[assignedKey] ?? '#6b7280') : '#e5e7eb'
           const assigned = playerOptions.find(p => p.key === assignedKey)
+          const isHovered = hoveredIdx === i
 
           return (
             <div
@@ -125,65 +150,72 @@ export function PlayerTrackingOverlay({
                 width:  `${(x2n - x1n) * 100}%`,
                 height: `${(y2n - y1n) * 100}%`,
                 border: `2px solid ${color}`,
-                backgroundColor: `${color}18`,
+                backgroundColor: isHovered ? `${color}30` : `${color}15`,
                 cursor: 'pointer',
+                transition: 'background-color 0.1s',
               }}
-              onClick={(e) => {
-                e.stopPropagation()
-                setOpenDropdown(openDropdown === i ? null : i)
-              }}
+              onClick={(e) => { e.stopPropagation(); cycleAssign(i) }}
+              onMouseEnter={() => setHoveredIdx(i)}
+              onMouseLeave={() => setHoveredIdx(null)}
+              title="クリックで役割切り替え"
             >
-              {/* ラベル */}
+              {/* 番号バッジ + 割当名 */}
               <div
-                className="absolute left-0 top-0 text-[10px] font-semibold px-1 leading-4 select-none truncate max-w-full"
-                style={{ backgroundColor: color, color: '#fff', transform: 'translateY(-100%)' }}
+                className="absolute left-0 top-0 flex items-center gap-0.5 text-[10px] font-bold px-1 leading-4 select-none"
+                style={{ backgroundColor: color, color: '#fff', transform: 'translateY(-100%)', whiteSpace: 'nowrap' }}
               >
-                {assigned?.name ?? `検出 ${i + 1}`}
+                <span>{i + 1}</span>
+                {assigned && <span className="font-normal opacity-90">: {assigned.name}</span>}
               </div>
-
-              {/* ドロップダウン */}
-              {openDropdown === i && (
-                <div
-                  className={clsx(
-                    'absolute z-50 rounded shadow-lg border min-w-[120px] text-xs py-0.5',
-                    isLight ? 'bg-white border-gray-200 text-gray-800' : 'bg-gray-900 border-gray-700 text-gray-100'
-                  )}
-                  style={{ top: '100%', left: 0 }}
-                  onClick={stopProp}
-                >
-                  {playerOptions.map(opt => (
-                    <button
-                      key={opt.key}
-                      className={clsx(
-                        'w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-opacity-10',
-                        assignments[i] === opt.key
-                          ? isLight ? 'bg-blue-50 font-semibold' : 'bg-blue-900/30 font-semibold'
-                          : isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-800'
-                      )}
-                      onClick={() => {
-                        onAssign(i, opt.key)
-                        setOpenDropdown(null)
-                      }}
-                    >
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: KEY_COLORS[opt.key] ?? '#6b7280' }}
-                      />
-                      {opt.name}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           )
         })}
 
-        {/* ヒント */}
+        {/* ヒント / エラー表示 */}
         {frameDetections.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="bg-black/80 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fff' }}>
-              人物が検出されませんでした（3秒後に閉じます）
-            </span>
+            <div className="flex flex-col items-center gap-1 max-w-sm text-center">
+              {frameDetectError ? (
+                <>
+                  <span className="bg-red-900/90 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fca5a5' }}>
+                    検出エラー（3秒後に閉じます）
+                  </span>
+                  <span className="bg-black/80 text-[10px] px-2 py-1 rounded" style={{ color: '#fca5a5' }}>
+                    {frameDetectError}
+                  </span>
+                </>
+              ) : (
+                <span className="bg-black/80 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fff' }}>
+                  人物が検出されませんでした（✕で閉じる / 別の場面で再試行）
+                </span>
+              )}
+              {/* 診断情報（検出ゼロ時のみ表示） */}
+              {frameDetectDebug && (
+                <div className="bg-black/85 text-[9px] px-2 py-1.5 rounded font-mono text-left" style={{ color: '#94a3b8' }}>
+                  <div>backend: {frameDetectDebug.backend ?? '—'}</div>
+                  {frameDetectDebug.frame_mean_brightness !== undefined && (
+                    <div>frame brightness: {frameDetectDebug.frame_mean_brightness}</div>
+                  )}
+                  {frameDetectDebug.person_score_max !== undefined && (
+                    <div>
+                      max person score: <span style={{ color: frameDetectDebug.person_score_max >= 0.10 ? '#fbbf24' : '#ef4444' }}>
+                        {frameDetectDebug.person_score_max}
+                      </span>
+                      {' '}(閾値: {frameDetectDebug.threshold})
+                    </div>
+                  )}
+                  {frameDetectDebug.person_score_top5 && (
+                    <div>top5: [{(frameDetectDebug.person_score_top5 as number[]).join(', ')}]</div>
+                  )}
+                  {frameDetectDebug.warning && (
+                    <div style={{ color: '#f87171' }}>⚠ {frameDetectDebug.warning}</div>
+                  )}
+                  {frameDetectDebug.error && (
+                    <div style={{ color: '#f87171' }}>error: {frameDetectDebug.error}</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

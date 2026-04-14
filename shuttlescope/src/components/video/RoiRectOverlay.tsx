@@ -200,10 +200,11 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
 
           {/* ラベル（TL コーナー基準・白文字） */}
           <div
-            className="absolute text-[10px] bg-amber-500 text-white px-1 leading-4 rounded-br select-none"
+            className="absolute text-[10px] bg-amber-500 px-1 leading-4 rounded-br select-none"
             style={{
               left: `${corners[0].x * 100}%`,
               top:  `${corners[0].y * 100}%`,
+              color: '#fff',
               pointerEvents: 'none',
               zIndex: 31,
             }}

@@ -18,6 +18,10 @@ declare global {
       saveRecordedVideo?: (data: Uint8Array, defaultFilename: string) => Promise<string | null>
       /** アプリを再起動する（app.relaunch + app.exit） */
       restartApp?: () => Promise<void>
+      /** バックエンドログ（起動からの全行）を取得する */
+      getBackendLog?: () => Promise<string[]>
+      /** バックエンドログのリアルタイム購読（返り値はアンサブスクライブ関数） */
+      onBackendLog?: (cb: (line: string) => void) => () => void
       [key: string]: unknown
     }
   }

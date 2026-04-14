@@ -31,6 +31,16 @@ let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null
 let videoWindow: BrowserWindow | null = null
 
+// バックエンドログバッファ（最新 500 行まで保持、レンダラーに push する）
+const BACKEND_LOG_MAX = 500
+const backendLogBuffer: string[] = []
+
+function pushBackendLog(line: string): void {
+  backendLogBuffer.push(line)
+  if (backendLogBuffer.length > BACKEND_LOG_MAX) backendLogBuffer.shift()
+  mainWindow?.webContents.send('backend-log', line)
+}
+
 // ─── スプラッシュ画面 HTML（ファイルなし・data URL で即時表示） ────────────────
 const SPLASH_HTML = `<!DOCTYPE html>
 <html>
@@ -110,18 +120,30 @@ function startPythonBackend(): ChildProcess {
       DATABASE_URL: `sqlite:///${path.join(appPath, 'backend', 'db', 'shuttlescope.db')}`,
       // watchfiles の自動リロードを無効化（起動時間を 10s → 1s に短縮）
       ENVIRONMENT: 'production',
+      // Python の stdout/stderr バッファリングを無効化 → ログが即時流れる
+      PYTHONUNBUFFERED: '1',
     },
     windowsHide: true,
   })
 
   proc.stdout?.on('data', (data) => {
-    console.log('[Python]', data.toString().trim())
+    const text = data.toString().trim()
+    console.log('[Python]', text)
+    for (const line of text.split('\n')) {
+      if (line.trim()) pushBackendLog(line.trim())
+    }
   })
   proc.stderr?.on('data', (data) => {
-    console.error('[Python ERROR]', data.toString().trim())
+    const text = data.toString().trim()
+    console.error('[Python ERROR]', text)
+    for (const line of text.split('\n')) {
+      if (line.trim()) pushBackendLog('[ERR] ' + line.trim())
+    }
   })
   proc.on('exit', (code) => {
-    console.log(`[Python] Process exited (code: ${code})`)
+    const msg = `[Python] Process exited (code: ${code})`
+    console.log(msg)
+    pushBackendLog(msg)
   })
 
   return proc
@@ -357,6 +379,9 @@ ipcMain.handle('relaunch-app', () => {
   app.relaunch()
   app.exit(0)
 })
+
+// バックエンドログ取得（初期ロード用）
+ipcMain.handle('get-backend-log', () => backendLogBuffer.slice())
 
 // ─── スプラッシュウィンドウ作成（即時表示用） ─────────────────────────────────
 

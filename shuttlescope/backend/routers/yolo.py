@@ -164,6 +164,18 @@ def yolo_batch_status(job_id: str):
     return {"success": True, "data": job}
 
 
+@router.post("/yolo/batch/{job_id}/stop")
+def yolo_batch_stop(job_id: str):
+    """実行中のバッチジョブに停止リクエストを送る。現在のフレームを保存して停止する。"""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    if job.get("status") not in (JobStatus.RUNNING, JobStatus.PENDING):
+        return {"success": True, "data": {"message": "already stopped"}}
+    _jobs[job_id]["stop_requested"] = True
+    return {"success": True, "data": {"job_id": job_id}}
+
+
 # ─── 結果取得 ────────────────────────────────────────────────────────────────
 
 @router.get("/yolo/results/{match_id}")
@@ -567,6 +579,22 @@ def _run_batch(
         _jobs[job_id]["progress"] = round(processed / max(sample_count, 1), 3)
 
         while True:
+            # 停止リクエスト確認（ユーザーが「停止」ボタンを押した場合）
+            if _jobs[job_id].get("stop_requested"):
+                cap.release()
+                # 現在の全フレームを保存して "stopped" 状態にする
+                if frames_data:
+                    try:
+                        _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name())
+                    except Exception as save_err:
+                        logger.warning("YOLO stop save failed: %s", save_err)
+                _jobs[job_id]["status"] = "stopped"
+                logger.info(
+                    "YOLO batch stopped by user: match=%d, frames_saved=%d",
+                    match_id, len(frames_data),
+                )
+                return
+
             ret, frame = cap.read()
             if not ret:
                 break
@@ -626,6 +654,54 @@ def _run_batch(
 
         # 最終保存
         _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name(), summary_json)
+
+        # シード割り当てが保存済みなら識別トラックを全フレームで自動再適用する
+        # （バッチ実行中に assign_and_track が呼ばれた場合、部分データしか処理されていない）
+        try:
+            seed_art = (
+                db.query(MatchCVArtifact)
+                .filter(
+                    MatchCVArtifact.match_id == match_id,
+                    MatchCVArtifact.artifact_type == "player_identity_seed",
+                )
+                .first()
+            )
+            if seed_art and seed_art.data:
+                seed_data = json.loads(seed_art.data)
+                re_tracked = _track_identities(
+                    frames_data,
+                    seed_data["seed_timestamp_sec"],
+                    seed_data["assignments"],
+                )
+                if re_tracked:
+                    import datetime as _dt2
+                    re_track_json = json.dumps(re_tracked, ensure_ascii=False)
+                    existing_track = (
+                        db.query(MatchCVArtifact)
+                        .filter(
+                            MatchCVArtifact.match_id == match_id,
+                            MatchCVArtifact.artifact_type == "player_identity_track",
+                        )
+                        .first()
+                    )
+                    if existing_track:
+                        existing_track.data = re_track_json
+                        existing_track.frame_count = len(re_tracked)
+                        existing_track.updated_at = _dt2.datetime.utcnow()
+                    else:
+                        db.add(MatchCVArtifact(
+                            match_id=match_id,
+                            artifact_type="player_identity_track",
+                            frame_count=len(re_tracked),
+                            data=re_track_json,
+                        ))
+                    db.commit()
+                    logger.info(
+                        "YOLO batch: identity track auto re-applied, match=%d frames=%d",
+                        match_id, len(re_tracked),
+                    )
+        except Exception as re_id_err:
+            logger.warning("YOLO batch: identity track re-apply failed: %s", re_id_err)
 
         _jobs[job_id]["status"] = JobStatus.COMPLETE
         _jobs[job_id]["progress"] = 1.0
@@ -692,10 +768,12 @@ def detect_single_frame(
     if roi:
         players = _remap_player_coords(players, roi)
 
+    debug_info = inf.get_last_debug()
+
     logger.info(
-        "frame_detect match=%d ts=%.2f frame_idx=%d fps=%.1f crop=%dx%d backend=%s players=%d",
+        "frame_detect match=%d ts=%.2f frame_idx=%d fps=%.1f crop=%dx%d backend=%s players=%d debug=%s",
         match_id, body.timestamp_sec, frame_idx, fps, w_crop, h_crop,
-        inf.backend_name(), len(players),
+        inf.backend_name(), len(players), debug_info,
     )
 
     return {
@@ -704,8 +782,30 @@ def detect_single_frame(
             "frame_idx": frame_idx,
             "timestamp_sec": body.timestamp_sec,
             "players": players,
+            "debug": debug_info,
         },
     }
+
+
+# ─── モデルウォームアップ ───────────────────────────────────────────────────
+import numpy as _np
+
+@router.post("/yolo/warmup")
+def yolo_warmup():
+    """YOLO モデルを事前ロードして最初の検出遅延をなくす。
+    アノテーターページロード時にバックグラウンドで呼び出す。
+    """
+    inf = get_yolo_inference()
+    if not inf.is_available():
+        return {"success": False, "data": {"message": "YOLO モデル未導入"}}
+    try:
+        # 64×64 の黒フレームでダミー推論（モデルをメモリにロードするだけ）
+        dummy = _np.zeros((64, 64, 3), dtype=_np.uint8)
+        inf.predict_frame(dummy)
+        return {"success": True, "data": {"message": "warmup ok", "backend": inf.backend_name()}}
+    except Exception as exc:
+        logger.warning("YOLO warmup failed: %s", exc)
+        return {"success": False, "data": {"message": str(exc)}}
 
 
 # ─── 選手割り当て + IoU 追跡 ─────────────────────────────────────────────────
@@ -713,6 +813,7 @@ def detect_single_frame(
 class PlayerIdentityAssignment(BaseModel):
     detection_index: int   # frame_detect の players[] インデックス
     player_key: str        # 'player_a' | 'partner_a' | 'player_b' | 'partner_b' | 'other'
+    bbox: Optional[list[float]] = None  # frame_detect で表示された bbox（IoU マッチング用）
 
 
 class AssignAndTrackRequest(BaseModel):
@@ -741,9 +842,41 @@ def assign_and_track(
             detail="YOLO バッチ解析が完了していません。先にバッチ解析を実行してください。",
         )
 
+    import datetime as _dt
+
     yolo_frames: list[dict] = json.loads(art.data)
     assignments = [a.model_dump() for a in body.assignments]
+
+    # シード割り当てを保存（バッチ完了後に全フレームへ自動再適用するため）
+    seed_payload = {
+        "seed_timestamp_sec": body.seed_timestamp_sec,
+        "assignments": assignments,
+    }
+    seed_json = json.dumps(seed_payload, ensure_ascii=False)
+    existing_seed = (
+        db.query(MatchCVArtifact)
+        .filter(
+            MatchCVArtifact.match_id == match_id,
+            MatchCVArtifact.artifact_type == "player_identity_seed",
+        )
+        .first()
+    )
+    if existing_seed:
+        existing_seed.data = seed_json
+        existing_seed.updated_at = _dt.datetime.utcnow()
+    else:
+        db.add(MatchCVArtifact(
+            match_id=match_id,
+            artifact_type="player_identity_seed",
+            data=seed_json,
+        ))
+    db.commit()
+
     tracked = _track_identities(yolo_frames, body.seed_timestamp_sec, assignments)
+    logger.info(
+        "assign_and_track: match=%d seed=%.2fs yolo_frames=%d tracked=%d",
+        match_id, body.seed_timestamp_sec, len(yolo_frames), len(tracked),
+    )
 
     track_json = json.dumps(tracked, ensure_ascii=False)
     existing = (
@@ -754,7 +887,6 @@ def assign_and_track(
         )
         .first()
     )
-    import datetime as _dt
     if existing:
         existing.data = track_json
         existing.frame_count = len(tracked)
@@ -788,18 +920,222 @@ def get_identity_track(match_id: int, db: Session = Depends(get_db)):
     return {"success": True, "data": json.loads(art.data)}
 
 
+# ─── 選手移動距離統計 ────────────────────────────────────────────────────────
+
+@router.get("/yolo/movement_stats/{match_id}")
+def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
+    """
+    選手識別トラックから各選手のコート上移動距離・方向・速度を計算する。
+
+    コートキャリブレーションが設定済みの場合は実メートル換算、
+    未設定の場合は画像正規化座標での相対値として返す。
+    """
+    import math
+    from backend.routers.court_calibration import load_calibration_from_db, apply_homography
+
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+
+    # ── identity_track artifact ──────────────────────────────────────────────
+    track_art = (
+        db.query(MatchCVArtifact)
+        .filter(
+            MatchCVArtifact.match_id == match_id,
+            MatchCVArtifact.artifact_type == "player_identity_track",
+        )
+        .order_by(MatchCVArtifact.created_at.desc())
+        .first()
+    )
+    if not track_art or not track_art.data:
+        return {"success": True, "data": {"available": False, "reason": "選手識別トラックがありません。先に「+ 識別」でトラッキングを実行してください。"}}
+
+    frames: list[dict] = json.loads(track_art.data)
+
+    # ── コートキャリブレーション ─────────────────────────────────────────────
+    calib = load_calibration_from_db(match_id, db)
+    has_calibration = calib is not None
+    H = calib["homography"] if calib else None
+
+    # ── コート寸法 ───────────────────────────────────────────────────────────
+    is_doubles = match.format in ("doubles", "mixed_doubles")
+    court_width_m  = 6.7 if is_doubles else 6.1   # 横幅
+    court_length_m = 13.4                          # 縦（両コート合計）
+
+    # ── プレイヤーごとに時系列ポイントを収集 ─────────────────────────────────
+    # player_frames: {player_key: [{ts, cx_img, cy_img}, ...]}
+    player_frames: dict[str, list[dict]] = {}
+    for frame in frames:
+        ts = frame.get("timestamp_sec", 0.0)
+        for p in frame.get("players", []):
+            key = p.get("player_key", "other")
+            if key == "other":
+                continue
+            if p.get("lost", False):
+                continue
+            bbox = p.get("bbox", [])
+            if len(bbox) != 4:
+                continue
+            cx_img = (bbox[0] + bbox[2]) / 2
+            cy_img = (bbox[1] + bbox[3]) / 2
+            if key not in player_frames:
+                player_frames[key] = []
+            player_frames[key].append({"ts": ts, "cx": cx_img, "cy": cy_img})
+
+    for key in player_frames:
+        player_frames[key].sort(key=lambda x: x["ts"])
+
+    # ── フレーム間ギャップの上限（ラリー間を跨がない） ───────────────────────
+    MAX_GAP_SEC = 3.0
+    # トラッキングエラー由来の非現実的な速度を除外するキャップ（12m/s = 43.2km/h）
+    # バドミントン選手のトップスピードは約 7-8m/s。12m/s は十分な余裕を持つ上限
+    MAX_STEP_SPEED_MPS = 12.0
+
+    # ── 各選手の統計計算 ─────────────────────────────────────────────────────
+    results: dict[str, dict] = {}
+    for player_key, pts in player_frames.items():
+        if len(pts) < 2:
+            continue
+
+        total_dist_m     = 0.0
+        total_lateral_m  = 0.0   # 横方向（ネット平行）
+        total_depth_m    = 0.0   # 奥行き方向（ネット垂直）
+        total_diagonal_m = 0.0   # 斜め方向
+        step_speeds: list[float] = []
+        zone_visits: dict[str, int] = {}
+        time_series: list[dict]    = []  # 5秒ごとに累積距離を記録
+        last_ts_recorded = -999.0
+
+        prev: dict | None = None
+        for p_pt in pts:
+            ts = p_pt["ts"]
+            cx_img, cy_img = p_pt["cx"], p_pt["cy"]
+
+            # 画像座標 → コート正規化座標
+            if H:
+                cx_c, cy_c = apply_homography(H, cx_img, cy_img)
+                cx_c = max(0.0, min(1.0, cx_c))
+                cy_c = max(0.0, min(1.0, cy_c))
+            else:
+                cx_c, cy_c = cx_img, cy_img   # キャリブなし: 画像座標をそのまま使用
+
+            # ゾーン集計（3列 × 6行 → 18ゾーン）
+            col_i  = min(int(cx_c * 3), 2)
+            row_i  = min(int(cy_c * 6), 5)
+            side   = "A" if row_i < 3 else "B"
+            depth  = ["front", "mid", "back"][row_i % 3]
+            col    = ["left", "center", "right"][col_i]
+            zone_name = f"{side}_{depth}_{col}"
+            zone_visits[zone_name] = zone_visits.get(zone_name, 0) + 1
+
+            if prev is not None:
+                dt = ts - prev["ts"]
+                if 0 < dt <= MAX_GAP_SEC:
+                    dx_m = (cx_c - prev["cx_c"]) * court_width_m
+                    dy_m = (cy_c - prev["cy_c"]) * court_length_m
+                    dist_m = math.sqrt(dx_m ** 2 + dy_m ** 2)
+
+                    step_speed = dist_m / dt
+                    if dist_m > 0.001 and step_speed <= MAX_STEP_SPEED_MPS:
+                        # ノイズカット（1mm 以下）＆ トラッキングエラー除外（12m/s 超）
+                        total_dist_m += dist_m
+
+                        # 方向分類（角度で判定）
+                        angle_deg = math.degrees(math.atan2(abs(dy_m), abs(dx_m)))
+                        if angle_deg < 22.5:
+                            total_lateral_m += dist_m    # ほぼ横
+                        elif angle_deg > 67.5:
+                            total_depth_m += dist_m      # ほぼ前後
+                        else:
+                            total_diagonal_m += dist_m   # 斜め
+
+                        # 速度
+                        step_speeds.append(step_speed)
+
+                # 5秒ごとに時系列ポイントを記録
+                if ts - last_ts_recorded >= 5.0:
+                    time_series.append({"t": round(ts, 1), "dist_m": round(total_dist_m, 2)})
+                    last_ts_recorded = ts
+
+            prev = {"ts": ts, "cx_c": cx_c, "cy_c": cy_c}
+
+        # 末尾ポイントを追加
+        if pts:
+            time_series.append({"t": round(pts[-1]["ts"], 1), "dist_m": round(total_dist_m, 2)})
+
+        avg_speed_mps = sum(step_speeds) / len(step_speeds) if step_speeds else 0.0
+        max_speed_mps = max(step_speeds) if step_speeds else 0.0
+        duration_sec  = pts[-1]["ts"] - pts[0]["ts"] if len(pts) > 1 else 0.0
+
+        results[player_key] = {
+            "total_distance_m":  round(total_dist_m, 2),
+            "frames_tracked":    len(pts),
+            "duration_sec":      round(duration_sec, 1),
+            "avg_speed_m_per_s": round(avg_speed_mps, 3),
+            "max_speed_m_per_s": round(max_speed_mps, 3),
+            "direction_breakdown": {
+                "lateral_m":    round(total_lateral_m, 2),
+                "depth_m":      round(total_depth_m, 2),
+                "diagonal_m":   round(total_diagonal_m, 2),
+                "lateral_pct":  round(total_lateral_m  / total_dist_m * 100, 1) if total_dist_m > 0 else 0.0,
+                "depth_pct":    round(total_depth_m    / total_dist_m * 100, 1) if total_dist_m > 0 else 0.0,
+                "diagonal_pct": round(total_diagonal_m / total_dist_m * 100, 1) if total_dist_m > 0 else 0.0,
+            },
+            "zone_visits": zone_visits,
+            "time_series": time_series,
+        }
+
+    # ── 信頼度メタデータ ─────────────────────────────────────────────────────
+    max_frames = max((v["frames_tracked"] for v in results.values()), default=0)
+    if not has_calibration:
+        conf_level  = "low"
+        conf_reason = "コートキャリブレーション未設定のため距離精度が低下しています。グリッド線ではなく「コートキャリブレーション」（6点指定）が必要です。"
+    elif max_frames < 100:
+        conf_level  = "low"
+        conf_reason = f"トラックフレーム数が少なめです（{max_frames}フレーム）。"
+    elif max_frames < 300:
+        conf_level  = "medium"
+        conf_reason = f"トラックフレーム数: {max_frames}フレーム。"
+    else:
+        conf_level  = "high"
+        conf_reason = f"トラックフレーム数: {max_frames}フレーム。"
+
+    return {
+        "success": True,
+        "data": {
+            "available":       len(results) > 0,
+            "has_calibration": has_calibration,
+            "court_width_m":   court_width_m,
+            "court_length_m":  court_length_m,
+            "players":         results,
+            "confidence": {
+                "level":           conf_level,
+                "reason":          conf_reason,
+                "has_calibration": has_calibration,
+            },
+        },
+    }
+
+
 # ─── IoU 追跡ヘルパー ────────────────────────────────────────────────────────
 
 def _match_identities(
     curr_players: list[dict],
     prev_identities: list[dict],
-    iou_thresh: float = 0.15,
+    iou_thresh: float = 0.05,
+    max_cent_dist: float = 0.30,
 ) -> list[dict]:
-    """前フレームの識別済み選手を現フレームに IoU でマッチング伝播する。"""
+    """前フレームの識別済み選手を現フレームに IoU → 重心距離フォールバックでマッチング伝播する。
+
+    IoU が iou_thresh を超えない場合、重心距離が max_cent_dist 以内の最近傍を使う。
+    これにより選手が大きく移動した場合でもトラッキングを維持できる。
+    """
+    import math as _math
     result: list[dict] = []
     used: set[int] = set()
 
     for prev in prev_identities:
+        # ── IoU マッチング ────────────────────────────────────────────────────
         best_iou = iou_thresh
         best_i = -1
         for i, p in enumerate(curr_players):
@@ -809,6 +1145,31 @@ def _match_identities(
             if iou > best_iou:
                 best_iou = iou
                 best_i = i
+
+        # ── IoU 失敗 → 重心距離フォールバック ─────────────────────────────────
+        if best_i < 0:
+            pb = prev.get("bbox", [])
+            if len(pb) == 4:
+                pcx = (pb[0] + pb[2]) / 2
+                pcy = (pb[1] + pb[3]) / 2
+            else:
+                pcx = prev.get("cx_n", 0.5)
+                pcy = prev.get("cy_n", 0.5)
+            best_dist = max_cent_dist
+            for i, p in enumerate(curr_players):
+                if i in used:
+                    continue
+                pb2 = p.get("bbox", [])
+                if len(pb2) == 4:
+                    cx = (pb2[0] + pb2[2]) / 2
+                    cy = (pb2[1] + pb2[3]) / 2
+                else:
+                    cx = p.get("cx_n", 0.5)
+                    cy = p.get("cy_n", 0.5)
+                dist = _math.sqrt((cx - pcx) ** 2 + (cy - pcy) ** 2)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_i = i
 
         if best_i >= 0:
             used.add(best_i)
@@ -841,16 +1202,34 @@ def _track_identities(
     seed_players = yolo_frames[seed_i]["players"]
 
     # 初期識別リスト構築
+    # bbox が渡された場合は IoU マッチングでシードプレイヤーを特定する。
+    # frame_detect と batch の検出順序が異なる場合でも正確に対応できる。
     init: list[dict] = []
     for a in assignments:
-        idx = a["detection_index"]
-        if idx < len(seed_players):
-            p = seed_players[idx]
+        bbox_from_ui = a.get("bbox")
+        matched_p: dict | None = None
+
+        if bbox_from_ui and len(bbox_from_ui) == 4:
+            # UIで選択した bbox に最も近いシードプレイヤーを IoU で探す
+            best_iou = 0.05  # 最低 IoU 閾値
+            for sp in seed_players:
+                iou = _bbox_iou(bbox_from_ui, sp.get("bbox", []))
+                if iou > best_iou:
+                    best_iou = iou
+                    matched_p = sp
+
+        if matched_p is None:
+            # フォールバック: インデックスベース（旧動作）
+            idx = a["detection_index"]
+            if idx < len(seed_players):
+                matched_p = seed_players[idx]
+
+        if matched_p is not None:
             init.append({
                 "player_key": a["player_key"],
-                "bbox":  p.get("bbox", [0, 0, 0, 0]),
-                "cx_n":  p.get("cx_n"),
-                "cy_n":  p.get("cy_n"),
+                "bbox":  matched_p.get("bbox", [0, 0, 0, 0]),
+                "cx_n":  matched_p.get("cx_n"),
+                "cy_n":  matched_p.get("cy_n"),
                 "lost":  False,
             })
 

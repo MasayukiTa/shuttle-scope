@@ -28,6 +28,8 @@ interface CourtGridOverlayProps {
   containerRef: RefObject<HTMLDivElement>
   /** グリッド全体の表示/非表示 */
   visible: boolean
+  /** バックエンドへのキャリブレーション保存成功時のコールバック */
+  onCalibrationSaved?: () => void
 }
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
@@ -97,7 +99,7 @@ function halfGridLines(
 
 type CalibSource = 'backend' | 'local' | 'none'
 
-export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOverlayProps) {
+export function CourtGridOverlay({ matchId, containerRef, visible, onCalibrationSaved }: CourtGridOverlayProps) {
   const [points, setPoints] = useState<Pt[]>([])          // 設定済み点（最大6個）
   const [calibrating, setCalibrating] = useState(false)   // キャリブレーションモード
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null)
@@ -168,9 +170,10 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         setCalibSource('backend')
         setSavedNotice(true)
         setTimeout(() => setSavedNotice(false), 6000)
+        onCalibrationSaved?.()
       })
       .catch((err) => console.warn('[CourtGrid] backend save failed:', err))
-  }, [matchId, containerSize])
+  }, [matchId, containerSize, onCalibrationSaved])
 
   const savePts = useCallback((pts: Pt[]) => {
     setPoints(pts)
@@ -342,15 +345,36 @@ export function CourtGridOverlay({ matchId, containerRef, visible }: CourtGridOv
         )}
       </svg>
 
-      {/* ─── グリッド線再作成ボタン（左上）────────────────────── */}
+      {/* ─── グリッド線再作成 + キャリブ保存状態（左上）────────── */}
       {visible && isCalibrated && !calibrating && (
-        <button
-          onClick={startCalibration}
-          className="absolute top-1 left-1 flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5 hover:bg-black/70 transition-colors"
-          style={{ pointerEvents: 'all', color: '#ffffff', fontSize: 9, fontWeight: 500, lineHeight: 1.4 }}
-        >
-          グリッド線再作成
-        </button>
+        <div className="absolute top-1 left-1 flex items-center gap-1" style={{ pointerEvents: 'all' }}>
+          <button
+            onClick={startCalibration}
+            className="flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5 hover:bg-black/70 transition-colors"
+            style={{ color: '#ffffff', fontSize: 9, fontWeight: 500, lineHeight: 1.4 }}
+          >
+            グリッド線再作成
+          </button>
+          {/* キャリブレーション保存状態インジケーター */}
+          {calibSource === 'backend' && (
+            <span
+              className="flex items-center gap-0.5 bg-green-900/70 rounded px-1 py-0.5"
+              style={{ color: '#86efac', fontSize: 8, lineHeight: 1.4, pointerEvents: 'none' }}
+            >
+              ✓ DB保存済
+            </span>
+          )}
+          {calibSource === 'local' && (
+            <button
+              onClick={() => postToBackend(points)}
+              className="flex items-center gap-0.5 bg-yellow-900/70 rounded px-1 py-0.5 hover:bg-yellow-800/80 transition-colors"
+              style={{ color: '#fde68a', fontSize: 8, lineHeight: 1.4 }}
+              title="ローカルのみ保存（バックエンド未保存）。クリックしてDBに同期"
+            >
+              ⚠ ローカルのみ → 同期
+            </button>
+          )}
+        </div>
       )}
 
       {/* ─── 保存完了トースト（6秒） ─────────────────────────── */}
