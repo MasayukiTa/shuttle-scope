@@ -501,17 +501,35 @@ export function useCVJobs({
         )
         if (res.success && res.data) {
           setYoloJob(res.data)
-          if (res.data?.status === 'complete' || res.data?.status === 'stopped') {
-            setYoloArtifactExists(true)  // 停止・完了いずれも「再開」ボタン表示
-            // フレームデータを取得（停止時も部分データを反映）
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const framesRes = await apiGet<{ success: boolean; data: any[] }>(
-              `/yolo/results/${matchId}/frames`
-            )
-            if (framesRes.success && framesRes.data) {
-              setYoloFrames(framesRes.data)
-            }
-            // アーティファクトメタ（作成日時・フレーム数）
+          const st = res.data?.status
+          // 進行中(running/pending) も部分保存データを取りにいき、逐次 BBOX / 移動距離を反映する
+          const shouldFetchPartials =
+            st === 'running' || st === 'pending' || st === 'complete' || st === 'stopped'
+          if (shouldFetchPartials) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const framesRes = await apiGet<{ success: boolean; data: any[] }>(
+                `/yolo/results/${matchId}/frames`
+              )
+              if (framesRes.success && framesRes.data && framesRes.data.length > 0) {
+                setYoloFrames(framesRes.data)
+                setYoloArtifactExists(true)  // 部分でもデータがあれば BBOX トグルを有効化
+              }
+            } catch { /* 部分フレーム取得失敗は無視 */ }
+            // 識別トラックは _reapply_identity_track が部分保存ごとに再生成する
+            try {
+              const trackRes = await apiGet<{ success: boolean; data: TrackFrame[] }>(
+                `/yolo/identity_track/${matchId}`
+              )
+              if (trackRes.success && trackRes.data?.length) {
+                setTrackFrames(trackRes.data)
+              }
+            } catch { /* 部分トラック取得失敗は無視 */ }
+            // 移動距離カードも逐次最新化
+            queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+          }
+          if (st === 'complete' || st === 'stopped') {
+            setYoloArtifactExists(true)
             try {
               const metaRes = await apiGet<{
                 success: boolean
@@ -524,20 +542,6 @@ export function useCVJobs({
                 })
               }
             } catch { /* meta 取得失敗は無視 */ }
-            if (res.data?.status === 'complete') {
-              // バッチ完了後、バックエンドが識別トラックを自動再適用するため
-              // 移動距離カードのキャッシュを無効化して最新データを反映する
-              queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
-              // 識別トラックも再取得
-              try {
-                const trackRes = await apiGet<{ success: boolean; data: TrackFrame[] }>(
-                  `/yolo/identity_track/${matchId}`
-                )
-                if (trackRes.success && trackRes.data?.length) {
-                  setTrackFrames(trackRes.data)
-                }
-              } catch { /* トラック再取得失敗は無視 */ }
-            }
           }
         }
       } catch { /* ポーリング失敗は無視 */ }

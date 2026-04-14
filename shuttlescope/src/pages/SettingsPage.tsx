@@ -11,6 +11,7 @@ import { useSettings } from '@/hooks/useSettings'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
+import { RolePicker } from '@/components/common/RolePicker'
 
 type PlayerSortKey = 'name' | 'team' | 'nationality' | 'world_ranking' | 'is_target'
 type BenchmarkItem = { fps: number; avg_ms: number; p95_ms: number; backend: string; samples: number } | { error: string }
@@ -101,7 +102,19 @@ export function SettingsPage() {
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
-  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'account'>('players')
+  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'account'>(() => (role === 'analyst' ? 'players' : 'account'))
+  // 選手/コーチロールは 選手管理・要レビュー タブを閲覧不可（個人情報保護）
+  const canManagePlayers = role === 'analyst'
+  // ロール切替用モーダル
+  const [roleSwitchOpen, setRoleSwitchOpen] = useState(false)
+  const [roleSwitchTarget, setRoleSwitchTarget] = useState<UserRole | null>(null)
+
+  // ロール変更で閲覧権限が失われた場合はタブを退避
+  useEffect(() => {
+    if (!canManagePlayers && (activeTab === 'players' || activeTab === 'review')) {
+      setActiveTab('account')
+    }
+  }, [canManagePlayers, activeTab])
 
   // 選手リスト: 検索・ソート（クライアントサイド、端末ごとに独立）
   const playerSearchRef = useRef<HTMLInputElement>(null)
@@ -610,13 +623,15 @@ export function SettingsPage() {
       <div className={`relative border-b ${borderLine}`}>
         <div className="flex overflow-x-auto scrollbar-hide">
           {([
-            { key: 'players', label: '選手管理' },
-            { key: 'review', label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
-            { key: 'tracknet', label: t('tracknet.tab_label') },
-            { key: 'sharing', label: t('sharing.tab_label') },
-            { key: 'data', label: 'データ管理' },
-            { key: 'account', label: 'アカウント設定' },
-          ] as const).map((tab) => (
+            ...(canManagePlayers ? [
+              { key: 'players' as const, label: '選手管理' },
+              { key: 'review' as const, label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
+            ] : []),
+            { key: 'tracknet' as const, label: t('tracknet.tab_label') },
+            { key: 'sharing' as const, label: t('sharing.tab_label') },
+            { key: 'data' as const, label: 'データ管理' },
+            { key: 'account' as const, label: 'アカウント設定' },
+          ]).map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
@@ -2107,7 +2122,16 @@ export function SettingsPage() {
                 {(['analyst', 'coach', 'player'] as UserRole[]).map((r) => (
                   <button
                     key={r}
-                    onClick={() => setRole(r)}
+                    onClick={() => {
+                      if (r === role) return
+                      if (r === 'analyst') {
+                        setRole(r, null, null)
+                      } else {
+                        // player / coach は選手/チーム選択が必要
+                        setRoleSwitchTarget(r)
+                        setRoleSwitchOpen(true)
+                      }
+                    }}
                     className={`flex items-center justify-between px-4 py-3 rounded border ${
                       role === r
                         ? 'border-blue-500 bg-blue-900/30 text-blue-300'
@@ -2288,6 +2312,20 @@ export function SettingsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* ロール切替モーダル（player → 選手選択 / coach → チーム選択） */}
+      {roleSwitchOpen && roleSwitchTarget && (
+        <RolePicker
+          mode="modal"
+          initialStage={{ kind: roleSwitchTarget === 'player' ? 'player' : 'team' }}
+          onSelect={(newRole, newPlayerId, newTeamName) => {
+            setRole(newRole, newPlayerId ?? null, newTeamName ?? null)
+            setRoleSwitchOpen(false)
+            setRoleSwitchTarget(null)
+          }}
+          onCancel={() => { setRoleSwitchOpen(false); setRoleSwitchTarget(null) }}
+        />
       )}
     </div>
   )

@@ -541,7 +541,7 @@ def _remap_player_coords(players: list[dict], roi: dict | None) -> list[dict]:
 
 
 # 中断耐性のため N フレーム処理するごとにアーティファクトを部分保存する
-_YOLO_PARTIAL_SAVE_EVERY = 500
+_YOLO_PARTIAL_SAVE_EVERY = 100  # 進捗 1% 単位で UI に反映させるため細かく刻む
 # 部分保存 N 回に 1 度、識別トラックを再適用する
 _YOLO_TRACK_REAPPLY_EVERY = 1
 
@@ -1495,119 +1495,161 @@ def _track_identities(
 
         result: dict[int, dict] = {}
 
+        # 定数（フレーム外に定数化）
+        VEL_MAX       = 0.03
+        VEL_DECAY     = 0.85
+        REACQ_THRESH  = 15
+        REACQ_MAX_R   = 0.45
+        REACQ_MIN_SIM = 0.70
+        PERM_LOST     = 60
+        GALLERY_MAX   = 25
+        UPDATE_SIM_TH = 0.75
+        INF_COST      = 1e6
+
+        try:
+            from scipy.optimize import linear_sum_assignment as _lsa  # type: ignore
+            _has_lsa = True
+        except Exception:
+            _lsa = None
+            _has_lsa = False
+
         for frame in frames_slice:
             curr = frame["players"]
-            used: set[int] = set()
             frame_players: list[dict] = []
+            track_keys = list(state.keys())
+            T = len(track_keys)
+            D = len(curr)
 
-            # 定数
-            VEL_MAX       = 0.03   # 1フレームあたり最大移動量（人間の速度上限）
-            VEL_DECAY     = 0.85   # ロスト中の速度減衰率
-            REACQ_THRESH  = 8      # このロスト回数を超えたら「再捕捉モード」(位置無視で最近傍)
-            PERM_LOST     = 60     # 完全ロスト: 速度をゼロクリアして再捕捉待ち
-
+            # ── Phase 1: 各トラックの予測位置計算 + 速度減衰 ──
+            preds: dict[str, tuple[float, float, float]] = {}  # pk -> (pred_cx, pred_cy, search_r)
             for pk, st in state.items():
-                # 速度キャップ（異常値スパイクで外挿暴走を防ぐ）
                 if abs(st["vel_cx"]) > VEL_MAX:
                     st["vel_cx"] = VEL_MAX if st["vel_cx"] > 0 else -VEL_MAX
                 if abs(st["vel_cy"]) > VEL_MAX:
                     st["vel_cy"] = VEL_MAX if st["vel_cy"] > 0 else -VEL_MAX
-
-                # ロスト中の速度減衰（長時間ロスト時の位置暴走を防ぐ）
                 if st["lost_count"] > 0:
                     st["vel_cx"] *= VEL_DECAY
                     st["vel_cy"] *= VEL_DECAY
                 if st["lost_count"] >= PERM_LOST:
                     st["vel_cx"] = 0.0
                     st["vel_cy"] = 0.0
-
                 pred_cx = max(0.0, min(1.0, st["cx_n"] + st["vel_cx"] * direction))
                 pred_cy = max(0.0, min(1.0, st["cy_n"] + st["vel_cy"] * direction))
-
-                # 探索半径: ロスト回数に応じて拡大し、再捕捉時は全画面まで許容
                 if st["lost_count"] >= REACQ_THRESH:
-                    search_r = 1.5   # 実質無制限（全画面から最近傍を取得）
+                    search_r = REACQ_MAX_R
                 else:
-                    search_r = 0.20 + 0.05 * st["lost_count"]
+                    search_r = 0.20 + 0.03 * st["lost_count"]
+                preds[pk] = (pred_cx, pred_cy, search_r)
 
-                # ── IoU マッチング（安定追跡は常に採用） ──
-                # 過去に「外観ベトーで IoU マッチを棄却 → 何も見つからず lost」が頻発したため
-                # IoU が取れる場合は常に採用する。外観・体格は IoU が無い場合の補助にのみ使う。
-                # コート ROI 外（観客席等）の候補は最初から除外する。
-                best_i = -1
-                best_iou = 0.05
-                for i, p in enumerate(curr):
-                    if i in used:
+            # ── Phase 2: コスト行列構築 (T × D) ──
+            # IoU マッチは低コスト（0〜0.25）で優先採用。
+            # IoU 無しは pos_dist + 0.6·(1-sim) + 0.25·size_diff、ただし ROI/sim/pos ゲート外は INF。
+            track_costs: list[list[float]] = [[INF_COST] * max(D, 1) for _ in range(max(T, 1))]
+            track_sims:  list[list[float]] = [[0.5] * max(D, 1) for _ in range(max(T, 1))]
+            track_ious:  list[list[float]] = [[0.0] * max(D, 1) for _ in range(max(T, 1))]
+
+            for ti, pk in enumerate(track_keys):
+                st = state[pk]
+                pred_cx, pred_cy, search_r = preds[pk]
+                min_sim_local = REACQ_MIN_SIM if st["lost_count"] >= REACQ_THRESH else _REID_MIN_SIM
+                for di, p in enumerate(curr):
+                    pb = p.get("bbox", [])
+                    if not _foot_in_roi(pb, court_roi):
                         continue
-                    if not _foot_in_roi(p.get("bbox", []), court_roi):
+                    iou = _bbox_iou(st["bbox"], pb)
+                    if len(pb) == 4:
+                        cx = (pb[0] + pb[2]) / 2
+                        cy = (pb[1] + pb[3]) / 2
+                        det_h = pb[3] - pb[1]
+                    else:
+                        cx = p.get("cx_n", 0.5)
+                        cy = p.get("cy_n", 0.5)
+                        det_h = 0.0
+                    pos_dist = _math_ti.sqrt((cx - pred_cx) ** 2 + (cy - pred_cy) ** 2)
+                    sim = _cos_sim_gallery(st["gallery"], p.get("hist") or []) if st["gallery"] else 0.5
+                    track_sims[ti][di] = sim
+                    track_ious[ti][di] = iou
+                    # IoU 強マッチ: 外観ゲート無しで低コスト（同一人物の空間連続性優先）
+                    if iou > 0.1:
+                        track_costs[ti][di] = max(0.0, 0.3 - iou)  # iou=1→0, iou=0.1→0.2
                         continue
-                    iou = _bbox_iou(st["bbox"], p.get("bbox", []))
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_i = i
+                    # IoU 弱: 厳格ゲート
+                    if pos_dist >= search_r:
+                        continue
+                    if st["gallery"] and sim < min_sim_local:
+                        continue
+                    if st["seed_h"] > 0.01 and det_h > 0:
+                        size_diff = min(abs(det_h - st["seed_h"]) / st["seed_h"], 1.0)
+                    else:
+                        size_diff = 0.0
+                    track_costs[ti][di] = pos_dist + 0.6 * (1.0 - sim) + 0.25 * size_diff
 
-                # ── 統合コスト検索（位置+外観+体格）──
-                # cost = pos_dist + 0.6·(1-cos_sim) + 0.25·|h_det - seed_h|/seed_h
-                # 外観 embedding が MIN_APP_SIM 未満の候補は観客扱いで棄却（= 別人）
-                if best_i < 0:
-                    best_cost = 9.9
-                    best_sim = 0.0
-                    for i, p in enumerate(curr):
-                        if i in used:
+            # ── Phase 3: Hungarian による全トラック同時最適割当 ──
+            # scipy 利用可能時は linear_sum_assignment、フォールバックは貪欲
+            track_to_det: dict[int, int] = {}
+            if T > 0 and D > 0:
+                if _has_lsa:
+                    import numpy as _np_ti
+                    cm = _np_ti.array(track_costs, dtype=_np_ti.float32)
+                    rows, cols = _lsa(cm)
+                    for ri, ci in zip(rows, cols):
+                        if cm[ri, ci] < INF_COST - 1:
+                            track_to_det[int(ri)] = int(ci)
+                else:
+                    # 貪欲フォールバック: 全 (t,d) をコスト昇順でペアリング
+                    pairs = [
+                        (track_costs[ti][di], ti, di)
+                        for ti in range(T) for di in range(D)
+                        if track_costs[ti][di] < INF_COST - 1
+                    ]
+                    pairs.sort(key=lambda x: x[0])
+                    used_t: set[int] = set()
+                    used_d: set[int] = set()
+                    for _c, ti, di in pairs:
+                        if ti in used_t or di in used_d:
                             continue
-                        if not _foot_in_roi(p.get("bbox", []), court_roi):
-                            continue
-                        pb = p.get("bbox", [])
-                        if len(pb) == 4:
-                            cx = (pb[0] + pb[2]) / 2
-                            cy = (pb[1] + pb[3]) / 2
-                            det_h = pb[3] - pb[1]
-                        else:
-                            cx = p.get("cx_n", 0.5)
-                            cy = p.get("cy_n", 0.5)
-                            det_h = 0.0
-                        pos_dist = _math_ti.sqrt((cx - pred_cx) ** 2 + (cy - pred_cy) ** 2)
-                        if pos_dist >= search_r:
-                            continue
-                        # 外観(ReID embedding) — ギャラリー未設定なら中立(0.5)
-                        sim = _cos_sim_gallery(st["gallery"], p.get("hist") or []) if st["gallery"] else 0.5
-                        # 外観下限でハード棄却（観客/審判対策）。ギャラリーがある場合のみ適用
-                        if st["gallery"] and sim < _REID_MIN_SIM:
-                            continue
-                        # 体格(bbox高さの相対差)
-                        if st["seed_h"] > 0.01 and det_h > 0:
-                            size_diff = min(abs(det_h - st["seed_h"]) / st["seed_h"], 1.0)
-                        else:
-                            size_diff = 0.0
-                        # 外観の重みを 0.4 → 0.6 に引き上げ（位置が近くても別人なら棄却方向）
-                        cost = pos_dist + 0.6 * (1.0 - sim) + 0.25 * size_diff
-                        if cost < best_cost:
-                            best_cost = cost
-                            best_sim = sim
-                            best_i = i
+                        track_to_det[ti] = di
+                        used_t.add(ti)
+                        used_d.add(di)
 
-                if best_i >= 0:
-                    # マッチ成功: 速度を更新（EMA α=0.5）+ キャップ
-                    used.add(best_i)
-                    p = curr[best_i]
+            # ── Phase 4: 割当の適用 ──
+            for ti, pk in enumerate(track_keys):
+                st = state[pk]
+                pred_cx, pred_cy, _ = preds[pk]
+                if ti in track_to_det:
+                    di = track_to_det[ti]
+                    p = curr[di]
                     pb = p.get("bbox", [])
                     new_cx = (pb[0] + pb[2]) / 2 if len(pb) == 4 else p.get("cx_n", pred_cx)
                     new_cy = (pb[1] + pb[3]) / 2 if len(pb) == 4 else p.get("cy_n", pred_cy)
-                    # 再捕捉モードの場合は位置ジャンプなので速度リセット
                     if st["lost_count"] >= REACQ_THRESH:
                         st["vel_cx"] = 0.0
                         st["vel_cy"] = 0.0
                     else:
                         alpha = 0.5
-                        new_vel_cx = alpha * (new_cx - st["cx_n"]) + (1 - alpha) * st["vel_cx"]
-                        new_vel_cy = alpha * (new_cy - st["cy_n"]) + (1 - alpha) * st["vel_cy"]
-                        # キャップ
-                        st["vel_cx"] = max(-VEL_MAX, min(VEL_MAX, new_vel_cx))
-                        st["vel_cy"] = max(-VEL_MAX, min(VEL_MAX, new_vel_cy))
+                        nvx = alpha * (new_cx - st["cx_n"]) + (1 - alpha) * st["vel_cx"]
+                        nvy = alpha * (new_cy - st["cy_n"]) + (1 - alpha) * st["vel_cy"]
+                        st["vel_cx"] = max(-VEL_MAX, min(VEL_MAX, nvx))
+                        st["vel_cy"] = max(-VEL_MAX, min(VEL_MAX, nvy))
                     st["cx_n"] = new_cx
                     st["cy_n"] = new_cy
                     st["bbox"] = list(pb) if len(pb) == 4 else st["bbox"]
                     st["lost_count"] = 0
+                    # オンラインギャラリー更新
+                    p_hist = p.get("hist") or []
+                    iou_mv = track_ious[ti][di]
+                    sim_mv = track_sims[ti][di]
+                    cost_mv = track_costs[ti][di]
+                    high_conf = (iou_mv > 0.3) or (cost_mv < 0.3 and sim_mv > UPDATE_SIM_TH)
+                    if p_hist and st["gallery"] and high_conf:
+                        if len(p_hist) == len(st["gallery"][0]):
+                            st["gallery"].append(list(p_hist))
+                            if len(st["gallery"]) > GALLERY_MAX:
+                                seed_count = min(11, len(st["gallery"]))
+                                st["gallery"] = (
+                                    st["gallery"][:seed_count]
+                                    + st["gallery"][-(GALLERY_MAX - seed_count):]
+                                )
                     frame_players.append({
                         "player_key": pk,
                         "bbox":  st["bbox"],
@@ -1616,7 +1658,7 @@ def _track_identities(
                         "lost":  False,
                     })
                 else:
-                    # ロスト: bbox を予測位置へ平行移動
+                    # lost: 予測位置に bbox を平行移動
                     bw = (st["bbox"][2] - st["bbox"][0]) if len(st["bbox"]) == 4 else 0.1
                     bh = (st["bbox"][3] - st["bbox"][1]) if len(st["bbox"]) == 4 else 0.2
                     pred_bbox = [

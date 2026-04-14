@@ -614,8 +614,8 @@ export function MatchListPage() {
         </div>
       </div>
 
-      {/* フィルター */}
-      <div className={`flex flex-col gap-2 px-6 py-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
+      {/* フィルター（モバイルではスクロール内へ移動するため hidden md:flex） */}
+      <div className={`hidden md:flex flex-col gap-2 px-6 py-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
         {/* テキスト部分検索 */}
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -762,6 +762,88 @@ export function MatchListPage() {
 
       {/* 試合一覧 */}
       <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4">
+        {/* モバイル用フィルター（スクロールで上に消える） */}
+        <div className={`md:hidden flex flex-col gap-2 -mx-3 px-3 py-3 mb-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="大会名・選手名・会場・備考で検索..."
+              className={`w-full pl-8 pr-8 py-1.5 rounded border text-sm ${
+                isLight
+                  ? 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'
+                  : 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-500'
+              }`}
+            />
+            {filterText && (
+              <button
+                onClick={() => setFilterText('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter size={14} className="text-gray-400 shrink-0" />
+            <SearchableSelect
+              options={playerOptions}
+              value={filterPlayer || null}
+              onChange={(v) => setFilterPlayer(v != null ? String(v) : '')}
+              emptyLabel="全選手"
+              placeholder="選手名で検索..."
+              className="min-w-[160px]"
+            />
+            <select
+              value={filterLevel}
+              onChange={(e) => setFilterLevel(e.target.value)}
+              className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-800 border-gray-700'} border rounded px-2 py-1.5 text-sm`}
+            >
+              <option value="">全大会レベル</option>
+              {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
+                <option key={l} value={l}>{l}</option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filterIncompleteOnly}
+                onChange={(e) => setFilterIncompleteOnly(e.target.checked)}
+              />
+              <span className={textSecondary}>未完了のみ</span>
+            </label>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <DateRangeFilter
+              from={filterDateFrom ?? ''}
+              to={filterDateTo ?? ''}
+              onChange={(from, to) => { setFilterDateFrom(from || null); setFilterDateTo(to || null) }}
+            />
+            {(['week', 'month', 'month3'] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => applyDatePreset(p)}
+                className={`text-xs px-2 py-0.5 rounded border ${
+                  isLight
+                    ? 'border-gray-300 text-gray-600 hover:bg-gray-200'
+                    : 'border-gray-600 text-gray-400 hover:bg-gray-700'
+                }`}
+              >
+                {p === 'week' ? '直近1週' : p === 'month' ? '直近1ヶ月' : '直近3ヶ月'}
+              </button>
+            ))}
+            {(filterDateFrom || filterDateTo) && (
+              <button
+                className="text-xs text-blue-400 hover:text-blue-300"
+                onClick={() => { setFilterDateFrom(null); setFilterDateTo(null) }}
+              >
+                リセット
+              </button>
+            )}
+          </div>
+        </div>
         {isLoading ? (
           <div className={`text-center ${textMuted} py-8`}>{t('app.loading')}</div>
         ) : matches.length === 0 ? (
@@ -771,110 +853,98 @@ export function MatchListPage() {
         ) : (
           <>
             {/* ── モバイル: カードリスト ────────────────────────────── */}
-            <div className="md:hidden space-y-3">
+            <div className="md:hidden space-y-2">
               {matches.map((m) => (
                 <div
                   key={m.id}
-                  className={`rounded-xl border p-4 ${
+                  className={`rounded-lg border px-3 py-2 ${
                     isLight ? 'bg-white border-gray-100 shadow-sm' : 'bg-gray-800 border-gray-700'
                   }`}
                 >
-                  {/* ヘッダー行: 日付 + レベル + 結果 */}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-xs ${textMuted}`}>{m.date}</span>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-700 text-gray-300'}`}>
-                        {m.tournament_level}
-                      </span>
-                      <span className={clsx(
-                        'text-xs font-bold',
-                        m.result === 'win' ? 'text-green-400' : m.result === 'loss' ? 'text-red-400' : 'text-gray-400'
-                      )}>
-                        {t(`match.results.${m.result}`)}
-                      </span>
-                    </div>
+                  {/* 1行目: 日付 + レベル + 大会名 + 結果 */}
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className={`text-xs ${textMuted} shrink-0`}>{m.date}</span>
+                    <span className={`text-[10px] px-1.5 py-0 rounded-full shrink-0 ${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-700 text-gray-300'}`}>
+                      {m.tournament_level}
+                    </span>
+                    <span className="font-medium text-sm truncate flex-1">{m.tournament}</span>
+                    <span className={clsx(
+                      'text-xs font-bold shrink-0',
+                      m.result === 'win' ? 'text-green-400' : m.result === 'loss' ? 'text-red-400' : 'text-gray-400'
+                    )}>
+                      {t(`match.results.${m.result}`)}
+                    </span>
                   </div>
 
-                  {/* 対戦情報 */}
-                  <div className="mb-1">
-                    <span className="font-medium text-sm">{m.tournament}</span>
-                    <span className={`text-xs ${textMuted} ml-2`}>{t(`match.formats.${m.format}`)}</span>
-                  </div>
-                  <div className="flex items-center gap-1 mb-3">
-                    <span className={`text-sm ${textSecondary}`}>
+                  {/* 2行目: 対戦情報 */}
+                  <div className="flex items-center gap-1 mb-1 text-sm">
+                    <span className={`text-[10px] ${textMuted} shrink-0`}>{t(`match.formats.${m.format}`)}</span>
+                    <span className={`${textSecondary} truncate`}>
                       vs {m.player_b?.name ?? `#${m.player_b_id}`}
                       {m.partner_b?.name && ` / ${m.partner_b.name}`}
                     </span>
                     {m.player_b?.needs_review && (
-                      <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded">暫定</span>
+                      <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">暫定</span>
                     )}
                     {m.final_score && (
-                      <span className={`text-xs ${textMuted} ml-1`}>{m.final_score}</span>
+                      <span className={`text-xs ${textMuted} ml-auto shrink-0`}>{m.final_score}</span>
                     )}
                   </div>
 
-                  {/* 進捗バー */}
-                  {m.annotation_status !== 'complete' && (
-                    <div className="mb-3">
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className={textMuted}>アノテーション進捗</span>
-                        <span className={clsx('text-xs', statusColor(m.annotation_status))}>
+                  {/* 3行目: 進捗 + 操作ボタン */}
+                  <div className="flex items-center gap-2">
+                    {m.annotation_status !== 'complete' ? (
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <div className={`h-1 flex-1 ${isLight ? 'bg-gray-100' : 'bg-gray-700'} rounded-full overflow-hidden`}>
+                          <div
+                            className="h-full bg-blue-500 rounded-full transition-all"
+                            style={{ width: `${m.annotation_progress * 100}%` }}
+                          />
+                        </div>
+                        <span className={clsx('text-[10px] shrink-0', statusColor(m.annotation_status))}>
                           {t(`match.statuses.${m.annotation_status}`)}
                         </span>
                       </div>
-                      <div className={`h-1.5 ${isLight ? 'bg-gray-100' : 'bg-gray-700'} rounded-full overflow-hidden`}>
-                        <div
-                          className="h-full bg-blue-500 rounded-full transition-all"
-                          style={{ width: `${m.annotation_progress * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {m.annotation_status === 'complete' && (
-                    <div className="mb-3">
-                      <span className={clsx('text-xs', statusColor(m.annotation_status))}>
+                    ) : (
+                      <span className={clsx('text-[10px] flex-1', statusColor(m.annotation_status))}>
                         {t(`match.statuses.${m.annotation_status}`)}
                       </span>
-                    </div>
-                  )}
-
-                  {/* 操作ボタン */}
-                  <div className="flex items-center gap-2 justify-end">
+                    )}
                     <button
                       onClick={() => navigate(`/annotator/${m.id}`)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium"
+                      className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium shrink-0"
                     >
-                      <Play size={14} />
+                      <Play size={12} />
                       開く
                     </button>
                     {m.player_a_id && (
                       <button
                         onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
-                        className={`p-1.5 rounded-lg ${isLight ? 'text-gray-500 hover:text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700'}`}
+                        className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700'}`}
                         title="予測ページで確認"
                       >
-                        <TrendingUp size={18} />
+                        <TrendingUp size={16} />
                       </button>
                     )}
                     {m.video_url && !m.video_local_path && (
                       <button
                         onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
-                        className={`p-1.5 rounded-lg ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
+                        className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
                         title="動画ダウンロード"
                         disabled={startDownload.isPending}
                       >
-                        <Download size={18} />
+                        <Download size={16} />
                       </button>
                     )}
                     <button
                       onClick={() => handleStartEdit(m)}
-                      className={`p-1.5 rounded-lg ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
+                      className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
                       title="編集"
                     >
-                      <Pencil size={18} />
+                      <Pencil size={16} />
                     </button>
                     {deleteConfirmMatchId === m.id ? (
-                      <div className={`flex items-center gap-1 px-2 py-1 rounded border border-white text-xs ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
+                      <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border border-white text-[10px] ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
                         <button
                           onClick={() => { deleteMatch.mutate(m.id); setDeleteConfirmMatchId(null) }}
                           className="font-medium hover:opacity-80"
@@ -889,10 +959,10 @@ export function MatchListPage() {
                     ) : (
                       <button
                         onClick={() => setDeleteConfirmMatchId(m.id)}
-                        className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                        className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-900/20"
                         title="削除"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} />
                       </button>
                     )}
                   </div>
