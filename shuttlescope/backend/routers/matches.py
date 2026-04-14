@@ -5,14 +5,16 @@ import re
 import unicodedata
 from datetime import date as _date
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Match, Player, GameSet, Rally, MatchCVArtifact
 from backend.utils.video_downloader import video_downloader
 from backend.utils.sync_meta import touch
+from backend.utils.auth import get_auth
 
 router = APIRouter()
 
@@ -136,15 +138,33 @@ def match_to_dict(m: Match, include_players: bool = True, db: Session = None) ->
 
 @router.get("/matches")
 def list_matches(
+    request: Request,
     player_id: Optional[int] = None,
     tournament_level: Optional[str] = None,
     year: Optional[int] = None,
     incomplete_only: bool = False,
     db: Session = Depends(get_db),
 ):
-    """試合一覧（フィルタ付き）"""
+    """試合一覧（フィルタ付き）
+
+    role=player 時は X-Player-Id に関与する試合のみを返す（ダブルスの partner も含む4役）。
+    ID 書き換えで他選手データを覗く攻撃に対する多層防御。
+    """
+    ctx = get_auth(request)
     query = db.query(Match)
-    if player_id:
+
+    # role=player → 自身が関与する試合のみに強制的に絞り込み
+    if ctx.is_player:
+        if not ctx.player_id:
+            return {"success": True, "data": []}
+        pid = ctx.player_id
+        query = query.filter(or_(
+            Match.player_a_id  == pid,
+            Match.partner_a_id == pid,
+            Match.player_b_id  == pid,
+            Match.partner_b_id == pid,
+        ))
+    elif player_id:
         query = query.filter(
             (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
         )
@@ -170,11 +190,21 @@ def create_match(body: MatchCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/matches/needs_review")
-def list_needs_review_matches(db: Session = Depends(get_db)):
+def list_needs_review_matches(request: Request, db: Session = Depends(get_db)):
     """要レビュー試合一覧（V4-U-003）— {match_id} より前に定義が必要"""
-    matches = db.query(Match).filter(
-        Match.metadata_status != "verified"
-    ).order_by(Match.created_at.desc()).all()
+    ctx = get_auth(request)
+    q = db.query(Match).filter(Match.metadata_status != "verified")
+    if ctx.is_player:
+        if not ctx.player_id:
+            return {"success": True, "data": []}
+        pid = ctx.player_id
+        q = q.filter(or_(
+            Match.player_a_id  == pid,
+            Match.partner_a_id == pid,
+            Match.player_b_id  == pid,
+            Match.partner_b_id == pid,
+        ))
+    matches = q.order_by(Match.created_at.desc()).all()
     return {"success": True, "data": [match_to_dict(m, include_players=True, db=db) for m in matches]}
 
 

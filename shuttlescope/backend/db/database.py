@@ -152,6 +152,9 @@ def add_columns_if_missing(eng) -> None:
         ("event_bookmarks",      "revision",         "INTEGER DEFAULT 1"),
         ("event_bookmarks",      "source_device_id", "TEXT"),
         ("event_bookmarks",      "content_hash",     "TEXT"),
+        # コートキャリブレーション（court_calibration artifact type が使用）
+        ("match_cv_artifacts",   "summary",          "TEXT"),
+        ("match_cv_artifacts",   "backend_used",     "TEXT"),
     ]
     with eng.connect() as conn:
         for table, col, col_type in new_cols:

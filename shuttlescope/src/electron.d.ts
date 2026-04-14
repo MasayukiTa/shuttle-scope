@@ -10,7 +10,7 @@ declare global {
         id: number; label: string; isPrimary: boolean
         bounds: { x: number; y: number; width: number; height: number }
       }>>
-      openVideoWindow?: (src: string, displayId: number, startTime?: number, paused?: boolean) => Promise<void>
+      openVideoWindow?: (src: string, displayId: number, startTime?: number, paused?: boolean, matchId?: string) => Promise<void>
       closeVideoWindow?: () => Promise<void>
       onVideoWindowClosed?: (cb: () => void) => () => void
       captureWebviewFrame?: () => Promise<string | null>

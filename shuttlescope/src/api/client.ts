@@ -13,6 +13,21 @@ const BASE_URL = (() => {
   return 'http://localhost:8765/api'
 })()
 
+// ─── 認証ヘッダ ──────────────────────────────────────────────────────────────
+// POCフェーズ: localStorage から現在のロール/選手IDを読んで全 HTTP リクエストに付与する。
+// バックエンドは X-Role='player' の場合 X-Player-Id を match.player_* と照合してアクセス制御する。
+// 将来 JWT に移行する際もここを差し替えるだけでよい。
+function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = {}
+  try {
+    const role = localStorage.getItem('shuttlescope_role')
+    const pid  = localStorage.getItem('shuttlescope_player_id')
+    if (role) h['X-Role'] = role
+    if (pid)  h['X-Player-Id'] = pid
+  } catch { /* SSR / storage 無効環境は無視 */ }
+  return h
+}
+
 // HTTP エラーに status プロパティを付与するヘルパー
 function httpError(status: number, text: string): Error {
   const err = new Error(text) as Error & { status: number }
@@ -28,7 +43,7 @@ export async function apiGet<T>(
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
   }
-  const res = await fetch(url.toString())
+  const res = await fetch(url.toString(), { headers: authHeaders() })
   if (!res.ok) {
     const text = await res.text()
     throw httpError(res.status, text)
@@ -39,7 +54,7 @@ export async function apiGet<T>(
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(BASE_URL + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
   })
   if (!res.ok) {
@@ -52,7 +67,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(BASE_URL + path, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
   })
   if (!res.ok) {
@@ -65,6 +80,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
 export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(BASE_URL + path, {
     method: 'DELETE',
+    headers: authHeaders(),
   })
   if (!res.ok) {
     const text = await res.text()

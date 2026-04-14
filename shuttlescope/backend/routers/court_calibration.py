@@ -30,7 +30,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.db.database import get_db
+from sqlalchemy import text
+from backend.db.database import engine, get_db
 from backend.db.models import MatchCVArtifact
 
 logger = logging.getLogger(__name__)
@@ -226,25 +227,52 @@ def save_court_calibration(
     }
     summary_json = json.dumps(summary_data, ensure_ascii=False)
 
-    # upsert
-    existing = (
-        db.query(MatchCVArtifact)
-        .filter(
-            MatchCVArtifact.match_id == match_id,
-            MatchCVArtifact.artifact_type == "court_calibration",
+    def _upsert(session: Session) -> None:
+        existing = (
+            session.query(MatchCVArtifact)
+            .filter(
+                MatchCVArtifact.match_id == match_id,
+                MatchCVArtifact.artifact_type == "court_calibration",
+            )
+            .first()
         )
-        .first()
-    )
-    if existing:
-        existing.summary    = summary_json
-        existing.updated_at = datetime.datetime.utcnow()
-    else:
-        db.add(MatchCVArtifact(
-            match_id=match_id,
-            artifact_type="court_calibration",
-            summary=summary_json,
-        ))
-    db.commit()
+        if existing:
+            existing.summary    = summary_json
+            existing.updated_at = datetime.datetime.utcnow()
+        else:
+            session.add(MatchCVArtifact(
+                match_id=match_id,
+                artifact_type="court_calibration",
+                summary=summary_json,
+            ))
+        session.commit()
+
+    # upsert — どんなカラム不足でも自己修復してリトライする
+    try:
+        _upsert(db)
+    except Exception as exc:
+        logger.warning("court_calibration save failed (%s) — running full migration and retrying", exc)
+        db.rollback()
+        # 全不足カラムを追加する（冪等）
+        try:
+            from backend.db.database import add_columns_if_missing
+            add_columns_if_missing(engine)
+        except Exception as mig_err:
+            logger.error("migration failed: %s", mig_err)
+        # リトライ（新しいセッションで）
+        from backend.db.database import SessionLocal
+        retry_db = SessionLocal()
+        try:
+            _upsert(retry_db)
+            logger.info("court_calibration save retry succeeded")
+        except Exception as retry_err:
+            retry_db.rollback()
+            retry_db.close()
+            raise HTTPException(
+                status_code=500,
+                detail=f"DB保存失敗: {retry_err}（初回: {exc}）"
+            )
+        retry_db.close()
 
     logger.info(
         "Court calibration saved: match=%d  net_y_avg=%.3f (ideal=0.500)",

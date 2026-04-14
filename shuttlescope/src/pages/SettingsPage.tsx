@@ -136,7 +136,7 @@ export function SettingsPage() {
 
   // CV ベンチマーク
   const [benchmarkRunning, setBenchmarkRunning] = useState(false)
-  const [benchmarkResult, setBenchmarkResult] = useState<{ yolo: BenchmarkItem; tracknet: BenchmarkItem } | null>(null)
+  const [benchmarkResult, setBenchmarkResult] = useState<{ yolo: BenchmarkItem; tracknet: BenchmarkItem; tracking?: BenchmarkItem } | null>(null)
   const [cvBatchConfirm, setCvBatchConfirm] = useState<{
     label: string
     estimatedHours: number
@@ -255,7 +255,7 @@ export function SettingsPage() {
     setBenchmarkRunning(true)
     setBenchmarkResult(null)
     try {
-      const res = await apiPost<{ success: boolean; data: { yolo: BenchmarkItem; tracknet: BenchmarkItem } }>('/cv/benchmark', {})
+      const res = await apiPost<{ success: boolean; data: { yolo: BenchmarkItem; tracknet: BenchmarkItem; tracking?: BenchmarkItem } }>('/cv/benchmark', {})
       if (res.success) setBenchmarkResult(res.data)
     } catch (_e) {
       // ignore
@@ -1159,10 +1159,13 @@ export function SettingsPage() {
 
               {/* ベンチマーク結果 */}
               {benchmarkResult && (
-                <div className={`grid grid-cols-2 gap-3 text-xs rounded p-3 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
-                  {(['yolo', 'tracknet'] as const).map((key) => {
+                <div className={`grid grid-cols-3 gap-3 text-xs rounded p-3 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
+                  {(['yolo', 'tracknet', 'tracking'] as const).map((key) => {
                     const item = benchmarkResult[key]
-                    const label = key === 'yolo' ? 'YOLO' : 'TrackNet'
+                    if (!item) return null
+                    const label = key === 'yolo' ? 'YOLO'
+                      : key === 'tracknet' ? 'TrackNet'
+                      : '外観追跡 (Hue+体格)'
                     return (
                       <div key={key}>
                         <p className={`font-medium mb-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{label}</p>

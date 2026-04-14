@@ -265,7 +265,7 @@ ipcMain.handle('get-displays', () => {
 
 // ─── IPC: 別ウィンドウで動画を表示 ──────────────────────────────────────────
 
-ipcMain.handle('open-video-window', (_event, src: string, displayId: number, startTime: number = 0, paused: boolean = false) => {
+ipcMain.handle('open-video-window', (_event, src: string, displayId: number, startTime: number = 0, paused: boolean = false, matchId?: string) => {
   if (videoWindow && !videoWindow.isDestroyed()) {
     videoWindow.focus()
     return
@@ -295,7 +295,8 @@ ipcMain.handle('open-video-window', (_event, src: string, displayId: number, sta
   videoWindow.webContents.setUserAgent(BROWSER_UA)
 
   const encodedSrc = encodeURIComponent(src)
-  const query = `src=${encodedSrc}&t=${startTime}${paused ? '&paused=1' : ''}`
+  const matchParam = matchId ? `&matchId=${encodeURIComponent(matchId)}` : ''
+  const query = `src=${encodedSrc}&t=${startTime}${paused ? '&paused=1' : ''}${matchParam}`
   if (process.env.NODE_ENV === 'development') {
     videoWindow.loadURL(`http://localhost:5173/#/video-only?${query}`)
   } else if (app.isPackaged) {

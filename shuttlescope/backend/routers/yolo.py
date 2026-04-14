@@ -411,6 +411,55 @@ def _crop_roi(frame, roi: dict | None):
     return frame[y1:y2, x1:x2]
 
 
+def _torso_hue_hist(frame_bgr, bbox_norm, fw: int, fh: int, bins: int = 12) -> list[float]:
+    """
+    bbox 上40%（= 胴体）から Hue ヒストグラム（L1正規化, 既定12次元）を計算。
+    彩度が低いピクセル(黒/白/灰)は除外しユニフォーム色のみを拾う。
+
+    観客/審判との識別に使用。同チーム(同ユニ)の区別には別途 bbox 高さを併用する。
+    コスト: 約 0.2ms/bbox（無視できる）
+    """
+    import numpy as _np
+    try:
+        x1 = max(0, int(bbox_norm[0] * fw))
+        y1 = max(0, int(bbox_norm[1] * fh))
+        x2 = min(fw, int(bbox_norm[2] * fw))
+        y2 = min(fh, int(bbox_norm[3] * fh))
+        if x2 - x1 < 4 or y2 - y1 < 8:
+            return []
+        # 胴体 ≒ bbox 高さの 15%–55% の帯（頭と脚を除外）
+        bh = y2 - y1
+        ty1 = y1 + int(bh * 0.15)
+        ty2 = y1 + int(bh * 0.55)
+        crop = frame_bgr[ty1:ty2, x1:x2]
+        if crop.size == 0:
+            return []
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        sat_mask = hsv[..., 1] > 40  # 低彩度(白黒灰)除外
+        hues = hsv[..., 0][sat_mask]
+        if hues.size < 20:
+            return []
+        hist, _ = _np.histogram(hues, bins=bins, range=(0, 180))
+        s = float(hist.sum())
+        if s <= 0:
+            return []
+        return [round(float(v) / s, 4) for v in hist]
+    except Exception:
+        return []
+
+
+def _cos_sim(a: list[float], b: list[float]) -> float:
+    """2本の L1 正規化ヒストの cos 類似度。片方が空なら 0.5（ニュートラル）。"""
+    if not a or not b or len(a) != len(b):
+        return 0.5
+    dot = sum(x * y for x, y in zip(a, b))
+    na  = sum(x * x for x in a) ** 0.5
+    nb  = sum(y * y for y in b) ** 0.5
+    if na <= 0 or nb <= 0:
+        return 0.5
+    return max(0.0, min(1.0, dot / (na * nb)))
+
+
 def _remap_player_coords(players: list[dict], roi: dict | None) -> list[dict]:
     """YOLO 検出結果の正規化座標を ROI ローカル座標からフルフレーム座標に変換する。"""
     if not roi:
@@ -441,6 +490,63 @@ def _remap_player_coords(players: list[dict], roi: dict | None) -> list[dict]:
 
 # 中断耐性のため N フレーム処理するごとにアーティファクトを部分保存する
 _YOLO_PARTIAL_SAVE_EVERY = 500
+# 部分保存 N 回に 1 度、識別トラックを再適用する
+_YOLO_TRACK_REAPPLY_EVERY = 1
+
+
+def _reapply_identity_track(db, match_id: int, frames_data: list[dict]) -> None:
+    """シード割り当てが保存済みなら識別トラックを現在のフレームセットで再生成する。
+
+    停止時・部分保存時・完了時の全パスで呼ぶことで、
+    トラックが古い部分データのまま残らないようにする。
+    """
+    import datetime as _dt
+    try:
+        seed_art = (
+            db.query(MatchCVArtifact)
+            .filter(
+                MatchCVArtifact.match_id == match_id,
+                MatchCVArtifact.artifact_type == "player_identity_seed",
+            )
+            .first()
+        )
+        if not (seed_art and seed_art.data):
+            return
+        seed_data = json.loads(seed_art.data)
+        re_tracked = _track_identities(
+            frames_data,
+            seed_data["seed_timestamp_sec"],
+            seed_data["assignments"],
+        )
+        if not re_tracked:
+            return
+        re_track_json = json.dumps(re_tracked, ensure_ascii=False)
+        existing_track = (
+            db.query(MatchCVArtifact)
+            .filter(
+                MatchCVArtifact.match_id == match_id,
+                MatchCVArtifact.artifact_type == "player_identity_track",
+            )
+            .first()
+        )
+        if existing_track:
+            existing_track.data        = re_track_json
+            existing_track.frame_count = len(re_tracked)
+            existing_track.updated_at  = _dt.datetime.utcnow()
+        else:
+            db.add(MatchCVArtifact(
+                match_id=match_id,
+                artifact_type="player_identity_track",
+                frame_count=len(re_tracked),
+                data=re_track_json,
+            ))
+        db.commit()
+        logger.info(
+            "identity track re-applied: match=%d, frames=%d",
+            match_id, len(re_tracked),
+        )
+    except Exception as err:
+        logger.warning("identity track re-apply failed: %s", err)
 
 
 def _upsert_yolo_artifact(
@@ -588,6 +694,8 @@ def _run_batch(
                         _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name())
                     except Exception as save_err:
                         logger.warning("YOLO stop save failed: %s", save_err)
+                    # 停止時も識別トラックを再適用（ユーザーが再識別しなくても最新化される）
+                    _reapply_identity_track(db, match_id, frames_data)
                 _jobs[job_id]["status"] = "stopped"
                 logger.info(
                     "YOLO batch stopped by user: match=%d, frames_saved=%d",
@@ -629,6 +737,15 @@ def _run_batch(
                     })
                     new_frames_since_save += 1
 
+                # ── 外観特徴量(Hueヒスト)を各検出に付与 ──
+                # 追跡時の観客/審判奪取を防ぐため同一選手の外観をギャラリーと照合する
+                fh_px, fw_px = frame.shape[:2]
+                for _p in frames_data[-1]["players"]:
+                    if "hist" not in _p:
+                        bb = _p.get("bbox")
+                        if bb and len(bb) == 4:
+                            _p["hist"] = _torso_hue_hist(frame, bb, fw_px, fh_px)
+
                 detected_total += len([p for p in frames_data[-1]["players"] if "player" in p.get("label", "")])
                 processed += 1
                 _jobs[job_id]["processed_frames"] = processed
@@ -641,6 +758,8 @@ def _run_batch(
                         _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name())
                         new_frames_since_save = 0
                         logger.debug("YOLO partial save: match=%d, frames=%d", match_id, len(frames_data))
+                        # 部分保存と同時に識別トラックも再適用（進捗とともに逐次最新化）
+                        _reapply_identity_track(db, match_id, frames_data)
                     except Exception as save_err:
                         logger.warning("YOLO partial save failed: %s", save_err)
 
@@ -655,53 +774,8 @@ def _run_batch(
         # 最終保存
         _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name(), summary_json)
 
-        # シード割り当てが保存済みなら識別トラックを全フレームで自動再適用する
-        # （バッチ実行中に assign_and_track が呼ばれた場合、部分データしか処理されていない）
-        try:
-            seed_art = (
-                db.query(MatchCVArtifact)
-                .filter(
-                    MatchCVArtifact.match_id == match_id,
-                    MatchCVArtifact.artifact_type == "player_identity_seed",
-                )
-                .first()
-            )
-            if seed_art and seed_art.data:
-                seed_data = json.loads(seed_art.data)
-                re_tracked = _track_identities(
-                    frames_data,
-                    seed_data["seed_timestamp_sec"],
-                    seed_data["assignments"],
-                )
-                if re_tracked:
-                    import datetime as _dt2
-                    re_track_json = json.dumps(re_tracked, ensure_ascii=False)
-                    existing_track = (
-                        db.query(MatchCVArtifact)
-                        .filter(
-                            MatchCVArtifact.match_id == match_id,
-                            MatchCVArtifact.artifact_type == "player_identity_track",
-                        )
-                        .first()
-                    )
-                    if existing_track:
-                        existing_track.data = re_track_json
-                        existing_track.frame_count = len(re_tracked)
-                        existing_track.updated_at = _dt2.datetime.utcnow()
-                    else:
-                        db.add(MatchCVArtifact(
-                            match_id=match_id,
-                            artifact_type="player_identity_track",
-                            frame_count=len(re_tracked),
-                            data=re_track_json,
-                        ))
-                    db.commit()
-                    logger.info(
-                        "YOLO batch: identity track auto re-applied, match=%d frames=%d",
-                        match_id, len(re_tracked),
-                    )
-        except Exception as re_id_err:
-            logger.warning("YOLO batch: identity track re-apply failed: %s", re_id_err)
+        # 完了時も識別トラックを再適用
+        _reapply_identity_track(db, match_id, frames_data)
 
         _jobs[job_id]["status"] = JobStatus.COMPLETE
         _jobs[job_id]["progress"] = 1.0
@@ -768,6 +842,13 @@ def detect_single_frame(
     if roi:
         players = _remap_player_coords(players, roi)
 
+    # 外観特徴量を付与（seed 指定時にギャラリー登録に使う）
+    _fh, _fw = frame.shape[:2]
+    for _p in players:
+        bb = _p.get("bbox")
+        if bb and len(bb) == 4 and "hist" not in _p:
+            _p["hist"] = _torso_hue_hist(frame, bb, _fw, _fh)
+
     debug_info = inf.get_last_debug()
 
     logger.info(
@@ -814,6 +895,7 @@ class PlayerIdentityAssignment(BaseModel):
     detection_index: int   # frame_detect の players[] インデックス
     player_key: str        # 'player_a' | 'partner_a' | 'player_b' | 'partner_b' | 'other'
     bbox: Optional[list[float]] = None  # frame_detect で表示された bbox（IoU マッチング用）
+    hist: Optional[list[float]] = None  # frame_detect が返した Hue ヒスト（外観ギャラリー）
 
 
 class AssignAndTrackRequest(BaseModel):
@@ -872,10 +954,21 @@ def assign_and_track(
         ))
     db.commit()
 
+    # シード近傍フレームの検出状況をログ出力（トラッキング失敗の診断用）
+    if yolo_frames:
+        seed_ts = body.seed_timestamp_sec
+        nearest = min(yolo_frames, key=lambda f: abs(f["timestamp_sec"] - seed_ts))
+        logger.info(
+            "assign_and_track: match=%d seed=%.2fs nearest_batch_ts=%.2fs "
+            "seed_players=%d assignments=%d yolo_frames=%d",
+            match_id, seed_ts, nearest["timestamp_sec"],
+            len(nearest.get("players", [])), len(assignments), len(yolo_frames),
+        )
+
     tracked = _track_identities(yolo_frames, body.seed_timestamp_sec, assignments)
     logger.info(
-        "assign_and_track: match=%d seed=%.2fs yolo_frames=%d tracked=%d",
-        match_id, body.seed_timestamp_sec, len(yolo_frames), len(tracked),
+        "assign_and_track: match=%d tracked=%d",
+        match_id, len(tracked),
     )
 
     track_json = json.dumps(tracked, ensure_ascii=False)
@@ -900,7 +993,22 @@ def assign_and_track(
         ))
     db.commit()
 
-    return {"success": True, "data": {"tracked_frames": len(tracked)}}
+    # トラッキング品質の診断情報を計算してログ出力
+    total_player_frames = sum(len(f.get("players", [])) for f in tracked)
+    lost_player_frames  = sum(
+        1 for f in tracked for p in f.get("players", []) if p.get("lost", False)
+    )
+    track_rate = round(1.0 - lost_player_frames / max(total_player_frames, 1), 3)
+    logger.info(
+        "assign_and_track done: match=%d frames=%d player-frames=%d lost=%d track_rate=%.1f%%",
+        match_id, len(tracked), total_player_frames, lost_player_frames, track_rate * 100,
+    )
+
+    return {"success": True, "data": {
+        "tracked_frames": len(tracked),
+        "track_rate": track_rate,           # 0.0〜1.0（1.0 = 全フレーム追跡成功）
+        "lost_frames": lost_player_frames,  # ロスト判定フレーム数（診断用）
+    }}
 
 
 @router.get("/yolo/identity_track/{match_id}")
@@ -1119,81 +1227,22 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
 
 # ─── IoU 追跡ヘルパー ────────────────────────────────────────────────────────
 
-def _match_identities(
-    curr_players: list[dict],
-    prev_identities: list[dict],
-    iou_thresh: float = 0.05,
-    max_cent_dist: float = 0.30,
-) -> list[dict]:
-    """前フレームの識別済み選手を現フレームに IoU → 重心距離フォールバックでマッチング伝播する。
-
-    IoU が iou_thresh を超えない場合、重心距離が max_cent_dist 以内の最近傍を使う。
-    これにより選手が大きく移動した場合でもトラッキングを維持できる。
-    """
-    import math as _math
-    result: list[dict] = []
-    used: set[int] = set()
-
-    for prev in prev_identities:
-        # ── IoU マッチング ────────────────────────────────────────────────────
-        best_iou = iou_thresh
-        best_i = -1
-        for i, p in enumerate(curr_players):
-            if i in used:
-                continue
-            iou = _bbox_iou(prev.get("bbox", []), p.get("bbox", []))
-            if iou > best_iou:
-                best_iou = iou
-                best_i = i
-
-        # ── IoU 失敗 → 重心距離フォールバック ─────────────────────────────────
-        if best_i < 0:
-            pb = prev.get("bbox", [])
-            if len(pb) == 4:
-                pcx = (pb[0] + pb[2]) / 2
-                pcy = (pb[1] + pb[3]) / 2
-            else:
-                pcx = prev.get("cx_n", 0.5)
-                pcy = prev.get("cy_n", 0.5)
-            best_dist = max_cent_dist
-            for i, p in enumerate(curr_players):
-                if i in used:
-                    continue
-                pb2 = p.get("bbox", [])
-                if len(pb2) == 4:
-                    cx = (pb2[0] + pb2[2]) / 2
-                    cy = (pb2[1] + pb2[3]) / 2
-                else:
-                    cx = p.get("cx_n", 0.5)
-                    cy = p.get("cy_n", 0.5)
-                dist = _math.sqrt((cx - pcx) ** 2 + (cy - pcy) ** 2)
-                if dist < best_dist:
-                    best_dist = dist
-                    best_i = i
-
-        if best_i >= 0:
-            used.add(best_i)
-            p = curr_players[best_i]
-            result.append({
-                "player_key": prev["player_key"],
-                "bbox":  p.get("bbox", prev.get("bbox")),
-                "cx_n":  p.get("cx_n",  prev.get("cx_n")),
-                "cy_n":  p.get("cy_n",  prev.get("cy_n")),
-                "lost":  False,
-            })
-        else:
-            # トラッキングロスト — 前フレームの位置を保持
-            result.append({**prev, "lost": True})
-
-    return result
-
-
 def _track_identities(
     yolo_frames: list[dict],
     seed_ts: float,
     assignments: list[dict],
 ) -> list[dict]:
-    """シードフレームの割り当てをもとに全フレームへ前後双方向で IoU 伝播する。"""
+    """シードフレームの割り当てをもとに全フレームへ速度予測付き双方向追跡を行う。
+
+    設計思想:
+    - 連続フレーム間の位置変化から速度(vel_cx, vel_cy)を推定する
+    - ロスト時は速度に基づいて予測位置へ bbox を移動させる（位置固定しない）
+    - 予測位置を中心に探索するため、ロスト後の再捕捉が容易になる
+    - ロストが続くほど探索半径を拡大し、再捕捉チャンスを高める
+    """
+    import math as _math_ti
+    import copy as _copy_ti
+
     if not yolo_frames:
         return []
 
@@ -1201,61 +1250,236 @@ def _track_identities(
     seed_i = min(range(len(yolo_frames)), key=lambda i: abs(yolo_frames[i]["timestamp_sec"] - seed_ts))
     seed_players = yolo_frames[seed_i]["players"]
 
-    # 初期識別リスト構築
-    # bbox が渡された場合は IoU マッチングでシードプレイヤーを特定する。
-    # frame_detect と batch の検出順序が異なる場合でも正確に対応できる。
+    # ── 初期識別リスト構築 ─────────────────────────────────────────────────────
+    # 優先順位:
+    #   1. UIの bbox_from_ui と batch seed_players を IoU でマッチング
+    #   2. IoU 失敗 → 重心距離フォールバック（batch と frame_detect の検出位置がズレている場合）
+    #   3. batch seed が空 → UIの bbox_from_ui をそのまま初期位置として使用
+    #   4. bbox なし → インデックスベース（旧動作）
     init: list[dict] = []
     for a in assignments:
         bbox_from_ui = a.get("bbox")
         matched_p: dict | None = None
 
         if bbox_from_ui and len(bbox_from_ui) == 4:
-            # UIで選択した bbox に最も近いシードプレイヤーを IoU で探す
-            best_iou = 0.05  # 最低 IoU 閾値
+            best_iou = 0.05
             for sp in seed_players:
                 iou = _bbox_iou(bbox_from_ui, sp.get("bbox", []))
                 if iou > best_iou:
                     best_iou = iou
                     matched_p = sp
 
+            if matched_p is None and seed_players:
+                ui_cx = (bbox_from_ui[0] + bbox_from_ui[2]) / 2
+                ui_cy = (bbox_from_ui[1] + bbox_from_ui[3]) / 2
+                best_dist = 0.30
+                for sp in seed_players:
+                    sb = sp.get("bbox", [])
+                    if len(sb) == 4:
+                        scx = (sb[0] + sb[2]) / 2
+                        scy = (sb[1] + sb[3]) / 2
+                        dist = _math_ti.sqrt((scx - ui_cx) ** 2 + (scy - ui_cy) ** 2)
+                        if dist < best_dist:
+                            best_dist = dist
+                            matched_p = sp
+
         if matched_p is None:
-            # フォールバック: インデックスベース（旧動作）
             idx = a["detection_index"]
             if idx < len(seed_players):
                 matched_p = seed_players[idx]
 
         if matched_p is not None:
+            bbox = matched_p.get("bbox", [0, 0, 0, 0])
             init.append({
                 "player_key": a["player_key"],
-                "bbox":  matched_p.get("bbox", [0, 0, 0, 0]),
-                "cx_n":  matched_p.get("cx_n"),
-                "cy_n":  matched_p.get("cy_n"),
+                "bbox":  bbox,
+                "cx_n":  matched_p.get("cx_n") or (bbox[0] + bbox[2]) / 2,
+                "cy_n":  matched_p.get("cy_n") or (bbox[1] + bbox[3]) / 2,
+                "hist":  matched_p.get("hist") or a.get("hist") or [],
+                "lost":  False,
+            })
+        elif bbox_from_ui and len(bbox_from_ui) == 4:
+            logger.warning(
+                "_track_identities: seed frame players=%d, using UI bbox directly for %s",
+                len(seed_players), a.get("player_key", "?"),
+            )
+            init.append({
+                "player_key": a["player_key"],
+                "bbox":  list(bbox_from_ui),
+                "cx_n":  (bbox_from_ui[0] + bbox_from_ui[2]) / 2,
+                "cy_n":  (bbox_from_ui[1] + bbox_from_ui[3]) / 2,
+                "hist":  a.get("hist") or [],
                 "lost":  False,
             })
 
-    # 前方伝播（シード → 末尾）
-    forward: dict[int, dict] = {}
-    prev = init
-    for frame in yolo_frames[seed_i:]:
-        matched = _match_identities(frame["players"], prev)
-        forward[frame["frame_idx"]] = {
-            "frame_idx":    frame["frame_idx"],
-            "timestamp_sec": frame["timestamp_sec"],
-            "players":      matched,
-        }
-        prev = matched
+    if not init:
+        return []
 
-    # 後方伝播（シード → 先頭 / 逆順）
-    backward: dict[int, dict] = {}
-    prev = init
-    for frame in reversed(yolo_frames[:seed_i]):
-        matched = _match_identities(frame["players"], prev)
-        backward[frame["frame_idx"]] = {
-            "frame_idx":    frame["frame_idx"],
-            "timestamp_sec": frame["timestamp_sec"],
-            "players":      matched,
-        }
-        prev = matched
+    # ── 速度予測付き伝播 ───────────────────────────────────────────────────────
+    def _propagate(frames_slice: list[dict], direction: int) -> dict[int, dict]:
+        """
+        direction: +1=前方, -1=後方（速度方向を反転）
+        状態(state)は各選手キーに対して速度を保持し、ロスト時に予測位置を使う。
+        """
+        # 初期状態: 速度0, ロスト回数0, 外観ギャラリー/基準体格
+        state: dict[str, dict] = {}
+        for e in init:
+            pk = e["player_key"]
+            bbox = list(e["bbox"])
+            cx = e["cx_n"] if e["cx_n"] is not None else (bbox[0] + bbox[2]) / 2
+            cy = e["cy_n"] if e["cy_n"] is not None else (bbox[1] + bbox[3]) / 2
+            seed_h = (bbox[3] - bbox[1]) if len(bbox) == 4 else 0.0
+            state[pk] = {
+                "bbox":       bbox,
+                "cx_n":       cx,
+                "cy_n":       cy,
+                "vel_cx":     0.0,   # 正規化座標での1フレームあたりの速度
+                "vel_cy":     0.0,
+                "lost_count": 0,
+                "gallery":    list(e.get("hist") or []),  # 外観特徴量（Hueヒスト）
+                "seed_h":     seed_h,                     # 基準 bbox 高さ（体格）
+            }
+
+        result: dict[int, dict] = {}
+
+        for frame in frames_slice:
+            curr = frame["players"]
+            used: set[int] = set()
+            frame_players: list[dict] = []
+
+            # 定数
+            VEL_MAX       = 0.03   # 1フレームあたり最大移動量（人間の速度上限）
+            VEL_DECAY     = 0.85   # ロスト中の速度減衰率
+            REACQ_THRESH  = 8      # このロスト回数を超えたら「再捕捉モード」(位置無視で最近傍)
+            PERM_LOST     = 60     # 完全ロスト: 速度をゼロクリアして再捕捉待ち
+
+            for pk, st in state.items():
+                # 速度キャップ（異常値スパイクで外挿暴走を防ぐ）
+                if abs(st["vel_cx"]) > VEL_MAX:
+                    st["vel_cx"] = VEL_MAX if st["vel_cx"] > 0 else -VEL_MAX
+                if abs(st["vel_cy"]) > VEL_MAX:
+                    st["vel_cy"] = VEL_MAX if st["vel_cy"] > 0 else -VEL_MAX
+
+                # ロスト中の速度減衰（長時間ロスト時の位置暴走を防ぐ）
+                if st["lost_count"] > 0:
+                    st["vel_cx"] *= VEL_DECAY
+                    st["vel_cy"] *= VEL_DECAY
+                if st["lost_count"] >= PERM_LOST:
+                    st["vel_cx"] = 0.0
+                    st["vel_cy"] = 0.0
+
+                pred_cx = max(0.0, min(1.0, st["cx_n"] + st["vel_cx"] * direction))
+                pred_cy = max(0.0, min(1.0, st["cy_n"] + st["vel_cy"] * direction))
+
+                # 探索半径: ロスト回数に応じて拡大し、再捕捉時は全画面まで許容
+                if st["lost_count"] >= REACQ_THRESH:
+                    search_r = 1.5   # 実質無制限（全画面から最近傍を取得）
+                else:
+                    search_r = 0.20 + 0.05 * st["lost_count"]
+
+                # ── IoU マッチング（安定追跡は常に採用） ──
+                # 過去に「外観ベトーで IoU マッチを棄却 → 何も見つからず lost」が頻発したため
+                # IoU が取れる場合は常に採用する。外観・体格は IoU が無い場合の補助にのみ使う。
+                best_i = -1
+                best_iou = 0.05
+                for i, p in enumerate(curr):
+                    if i in used:
+                        continue
+                    iou = _bbox_iou(st["bbox"], p.get("bbox", []))
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_i = i
+
+                # ── 統合コスト検索（位置+外観+体格）──
+                # cost = pos_dist + 0.4·(1-cos_sim) + 0.25·|h_det - seed_h|/seed_h
+                if best_i < 0:
+                    best_cost = 9.9
+                    for i, p in enumerate(curr):
+                        if i in used:
+                            continue
+                        pb = p.get("bbox", [])
+                        if len(pb) == 4:
+                            cx = (pb[0] + pb[2]) / 2
+                            cy = (pb[1] + pb[3]) / 2
+                            det_h = pb[3] - pb[1]
+                        else:
+                            cx = p.get("cx_n", 0.5)
+                            cy = p.get("cy_n", 0.5)
+                            det_h = 0.0
+                        pos_dist = _math_ti.sqrt((cx - pred_cx) ** 2 + (cy - pred_cy) ** 2)
+                        if pos_dist >= search_r:
+                            continue
+                        # 外観(Hueヒスト) — ギャラリー未設定なら中立(0.5)
+                        sim = _cos_sim(st["gallery"], p.get("hist") or []) if st["gallery"] else 0.5
+                        # 体格(bbox高さの相対差)
+                        if st["seed_h"] > 0.01 and det_h > 0:
+                            size_diff = min(abs(det_h - st["seed_h"]) / st["seed_h"], 1.0)
+                        else:
+                            size_diff = 0.0
+                        cost = pos_dist + 0.4 * (1.0 - sim) + 0.25 * size_diff
+                        if cost < best_cost:
+                            best_cost = cost
+                            best_i = i
+
+                if best_i >= 0:
+                    # マッチ成功: 速度を更新（EMA α=0.5）+ キャップ
+                    used.add(best_i)
+                    p = curr[best_i]
+                    pb = p.get("bbox", [])
+                    new_cx = (pb[0] + pb[2]) / 2 if len(pb) == 4 else p.get("cx_n", pred_cx)
+                    new_cy = (pb[1] + pb[3]) / 2 if len(pb) == 4 else p.get("cy_n", pred_cy)
+                    # 再捕捉モードの場合は位置ジャンプなので速度リセット
+                    if st["lost_count"] >= REACQ_THRESH:
+                        st["vel_cx"] = 0.0
+                        st["vel_cy"] = 0.0
+                    else:
+                        alpha = 0.5
+                        new_vel_cx = alpha * (new_cx - st["cx_n"]) + (1 - alpha) * st["vel_cx"]
+                        new_vel_cy = alpha * (new_cy - st["cy_n"]) + (1 - alpha) * st["vel_cy"]
+                        # キャップ
+                        st["vel_cx"] = max(-VEL_MAX, min(VEL_MAX, new_vel_cx))
+                        st["vel_cy"] = max(-VEL_MAX, min(VEL_MAX, new_vel_cy))
+                    st["cx_n"] = new_cx
+                    st["cy_n"] = new_cy
+                    st["bbox"] = list(pb) if len(pb) == 4 else st["bbox"]
+                    st["lost_count"] = 0
+                    frame_players.append({
+                        "player_key": pk,
+                        "bbox":  st["bbox"],
+                        "cx_n":  new_cx,
+                        "cy_n":  new_cy,
+                        "lost":  False,
+                    })
+                else:
+                    # ロスト: bbox を予測位置へ平行移動
+                    bw = (st["bbox"][2] - st["bbox"][0]) if len(st["bbox"]) == 4 else 0.1
+                    bh = (st["bbox"][3] - st["bbox"][1]) if len(st["bbox"]) == 4 else 0.2
+                    pred_bbox = [
+                        pred_cx - bw / 2, pred_cy - bh / 2,
+                        pred_cx + bw / 2, pred_cy + bh / 2,
+                    ]
+                    st["cx_n"] = pred_cx
+                    st["cy_n"] = pred_cy
+                    st["bbox"] = pred_bbox
+                    st["lost_count"] += 1
+                    frame_players.append({
+                        "player_key": pk,
+                        "bbox":  pred_bbox,
+                        "cx_n":  pred_cx,
+                        "cy_n":  pred_cy,
+                        "lost":  True,
+                    })
+
+            result[frame["frame_idx"]] = {
+                "frame_idx":     frame["frame_idx"],
+                "timestamp_sec": frame["timestamp_sec"],
+                "players":       frame_players,
+            }
+
+        return result
+
+    forward  = _propagate(yolo_frames[seed_i:],                      direction=1)
+    backward = _propagate(list(reversed(yolo_frames[:seed_i])),      direction=-1)
 
     merged = {**backward, **forward}  # forward が seed フレームを優先
     return sorted(merged.values(), key=lambda f: f["frame_idx"])

@@ -85,7 +85,45 @@ def _run_benchmark() -> dict:
         logger.warning("TrackNet benchmark failed: %s", e)
         tn_result = {"error": str(e)}
 
-    return {"yolo": yolo_result, "tracknet": tn_result}
+    # ─── Appearance Tracking (Hue hist + cost matching) ──────────────────────
+    # 追跡コスト計算の軽量性を確認: 4 検出 × 4 既存トラックの1フレーム分
+    track_result: dict = {"error": "未計測"}
+    try:
+        from backend.routers.yolo import _torso_hue_hist, _cos_sim
+        rng2 = np.random.default_rng(7)
+        # 4 つの仮想 bbox（正規化座標）
+        bboxes = []
+        for _ in range(4):
+            x1 = float(rng2.uniform(0.05, 0.75))
+            y1 = float(rng2.uniform(0.10, 0.65))
+            bboxes.append([x1, y1, x1 + 0.10, y1 + 0.25])
+        # 仮想ギャラリー 4 本
+        gallery = [_torso_hue_hist(pool[i], bboxes[i], _FRAME_W, _FRAME_H) for i in range(4)]
+
+        _TRACK_SAMPLES = 100
+        latencies = []
+        for i in range(_TRACK_SAMPLES):
+            frame = pool[i % len(pool)]
+            t0 = time.perf_counter()
+            hists = [_torso_hue_hist(frame, bb, _FRAME_W, _FRAME_H) for bb in bboxes]
+            # 4×4 の cos 類似度マトリクス計算（コスト関数の外観項）
+            for g in gallery:
+                for h in hists:
+                    _cos_sim(g, h)
+            latencies.append(time.perf_counter() - t0)
+        avg_ms = float(np.mean(latencies)) * 1000
+        track_result = {
+            "fps":     round(1000.0 / avg_ms, 1),
+            "avg_ms":  round(avg_ms, 2),
+            "p95_ms":  round(float(np.percentile(latencies, 95)) * 1000, 2),
+            "backend": "cv2+numpy",
+            "samples": _TRACK_SAMPLES,
+        }
+    except Exception as e:
+        logger.warning("Tracking benchmark failed: %s", e)
+        track_result = {"error": str(e)}
+
+    return {"yolo": yolo_result, "tracknet": tn_result, "tracking": track_result}
 
 
 @router.post("/cv/benchmark")
