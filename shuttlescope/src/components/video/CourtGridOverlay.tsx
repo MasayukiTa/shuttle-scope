@@ -18,6 +18,7 @@
 
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
 import { MousePointer2 } from 'lucide-react'
+import { apiGet, apiPost } from '@/api/client'
 
 // ─── 型 ─────────────────────────────────────────────────────────────────────
 
@@ -137,8 +138,10 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   useEffect(() => {
     let cancelled = false
     setCalibSource('none')
-    fetch(`/api/matches/${matchId}/court_calibration`)
-      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+    // 旧実装は相対 URL `/api/...` を fetch していたが、Electron の renderer は
+    // file:// or app:// origin で動くため相対 URL では backend に届かず "Failed
+    // to fetch" になっていた。apiGet 経由で http://localhost:8765/api を使う。
+    apiGet<{ data?: { points?: [number, number][] } }>(`/matches/${matchId}/court_calibration`)
       .then((res) => {
         if (cancelled) return
         const raw: [number, number][] = res?.data?.points ?? []
@@ -165,35 +168,30 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
 
   const postToBackend = useCallback((pts: Pt[]) => {
     setSaving(true)
-    fetch(`/api/matches/${matchId}/court_calibration`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        points: pts.map((p) => ({ x: p.x, y: p.y })),
-        container_width:  containerSize.w,
-        container_height: containerSize.h,
-      }),
+    // apiPost が http://localhost:8765/api を絶対 URL で叩く（Electron file:// 対応）
+    apiPost(`/matches/${matchId}/court_calibration`, {
+      points: pts.map((p) => ({ x: p.x, y: p.y })),
+      container_width:  containerSize.w,
+      container_height: containerSize.h,
     })
-      .then((r) => {
-        if (!r.ok) {
-          return r.text().then((body) => {
-            console.warn('[CourtGrid] backend save failed:', r.status, body)
-            const msg = r.status >= 500
-              ? `DB保存失敗 (${r.status}) — バックエンドを再起動後に再試行してください`
-              : `DB保存失敗 (${r.status})`
-            setSaveError(msg)
-            setTimeout(() => setSaveError(null), 8000)
-          })
-        }
+      .then(() => {
         setSaveError(null)
         setCalibSource('backend')
         setSavedNotice(true)
         setTimeout(() => setSavedNotice(false), 6000)
         onCalibrationSaved?.()
       })
-      .catch((err) => {
-        console.warn('[CourtGrid] backend save network error:', err)
-        setSaveError('ネットワークエラー — バックエンドが起動しているか確認してください')
+      .catch((err: unknown) => {
+        const status = (err as { status?: number })?.status
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn('[CourtGrid] backend save failed:', status, msg)
+        setSaveError(
+          status
+            ? (status >= 500
+                ? `DB保存失敗 (${status}) — バックエンドを再起動後に再試行してください`
+                : `DB保存失敗 (${status}): ${msg.slice(0, 200)}`)
+            : `ネットワークエラー: ${msg}`,
+        )
         setTimeout(() => setSaveError(null), 8000)
       })
       .finally(() => setSaving(false))

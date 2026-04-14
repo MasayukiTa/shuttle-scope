@@ -47,4 +47,14 @@ contextBridge.exposeInMainWorld('shuttlescope', {
     ipcRenderer.on('backend-log', handler)
     return () => ipcRenderer.removeListener('backend-log', handler)
   },
+
+  // ─── 別モニタミラー: ウィンドウ間メッセージブローカ ────────────────────────
+  // BroadcastChannel が Electron の別 BrowserWindow 間で確実に届かないため、
+  // main プロセスをハブに使った IPC で代替する。
+  sendMirror: (payload: unknown) => ipcRenderer.send('mirror-broadcast', payload),
+  onMirror: (cb: (payload: unknown) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: unknown) => cb(payload)
+    ipcRenderer.on('mirror-message', handler)
+    return () => ipcRenderer.removeListener('mirror-message', handler)
+  },
 })

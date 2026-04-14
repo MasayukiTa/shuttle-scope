@@ -22,6 +22,10 @@ declare global {
       getBackendLog?: () => Promise<string[]>
       /** バックエンドログのリアルタイム購読（返り値はアンサブスクライブ関数） */
       onBackendLog?: (cb: (line: string) => void) => () => void
+      /** 別モニタミラー: 他ウィンドウへ任意ペイロードをブロードキャスト */
+      sendMirror?: (payload: unknown) => void
+      /** 別モニタミラー: 他ウィンドウからのペイロードを購読（返り値はアンサブスクライブ） */
+      onMirror?: (cb: (payload: unknown) => void) => () => void
       [key: string]: unknown
     }
   }
