@@ -106,8 +106,9 @@ export function PlayerTrackingOverlay({
 
   // ─── タグ付けモード ──────────────────────────────────────────────────────────
   if (tagging) {
+    const hasDetections = frameDetections.length > 0
     return (
-      <div className="absolute inset-0" style={{ zIndex: 25, pointerEvents: 'auto' }}>
+      <div className="absolute inset-0" style={{ zIndex: 25, pointerEvents: hasDetections ? 'auto' : 'none' }}>
         {frameDetections.map((det, i) => {
           const [x1n, y1n, x2n, y2n] = det.bbox
           const assignedKey = assignments[i] ?? null
@@ -180,8 +181,8 @@ export function PlayerTrackingOverlay({
         {/* ヒント */}
         {frameDetections.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="bg-black/70 text-white text-xs px-3 py-1.5 rounded-full">
-              人物が検出されませんでした
+            <span className="bg-black/80 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fff' }}>
+              人物が検出されませんでした（3秒後に閉じます）
             </span>
           </div>
         )}
