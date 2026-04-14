@@ -279,6 +279,20 @@ export function AnnotatorPage() {
   const [taggingMode, setTaggingMode] = useState(false)
   const [taggingAssignments, setTaggingAssignments] = useState<Record<number, string>>({})
   const [taggingSeedTs, setTaggingSeedTs] = useState<number>(0)
+  // ── 10サンプル ギャラリータグ付け ───────────────────────────────────────────
+  // samples[0] = 識別ボタン押下時の現フレーム（primary seed）
+  // samples[1..10] = 動画を 11 等分した各サンプル（extra_seeds）
+  // 各 samples[i] は {ts, assignments (detection_index→player_key), bbox/hist は frameDetect 結果から動的に取得}
+  interface SamplerEntry {
+    ts: number
+    assignments: Record<number, string>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    detections: any[]  // 確定時に bbox/hist を取り出せるよう保持
+    skipped: boolean
+  }
+  const [samplerSamples, setSamplerSamples] = useState<SamplerEntry[]>([])
+  const [samplerIdx, setSamplerIdx] = useState(0)
+  const samplerActive = taggingMode && samplerSamples.length > 0
 
   // 録画（カメラ/WebRTCストリームをローカル保存）
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -883,13 +897,181 @@ export function AnnotatorPage() {
 
   // エラーまたは検出ゼロの場合は3秒後にタグ付けモード自動終了
   // frameDetectLoading が true の間は処理待ちなので起動しない
+  // サンプラー動作中は自動クローズしない（手動スキップで進める）
   useEffect(() => {
     if (!taggingMode) return
+    if (samplerActive) return
     if (frameDetectLoading) return
-    if (!frameDetectError && frameDetections.length > 0) return  // 正常検出時は自動クローズしない
+    if (!frameDetectError && frameDetections.length > 0) return
     const timer = setTimeout(() => setTaggingMode(false), 3000)
     return () => clearTimeout(timer)
-  }, [taggingMode, frameDetectLoading, frameDetectError, frameDetections.length])
+  }, [taggingMode, samplerActive, frameDetectLoading, frameDetectError, frameDetections.length])
+
+  // ── 10サンプル ギャラリータグ付けハンドラ ─────────────────────────
+  const startSampler = useCallback(() => {
+    const v = videoRef.current
+    if (!v) return
+    const duration = isFinite(v.duration) && v.duration > 0 ? v.duration : 0
+    const currentTs = v.currentTime ?? 0
+    const samples: SamplerEntry[] = [
+      { ts: currentTs, assignments: {}, detections: [], skipped: false },
+    ]
+    if (duration > 0) {
+      for (let i = 1; i <= 10; i++) {
+        samples.push({ ts: (duration / 11) * i, assignments: {}, detections: [], skipped: false })
+      }
+    }
+    setSamplerSamples(samples)
+    setSamplerIdx(0)
+    setTaggingSeedTs(currentTs)
+    setTaggingAssignments({})
+    setTaggingMode(true)
+    handleFrameDetect(currentTs)
+  }, [handleFrameDetect])
+
+  const saveCurrentSample = useCallback(() => {
+    setSamplerSamples((prev) => {
+      const next = [...prev]
+      if (next[samplerIdx]) {
+        next[samplerIdx] = {
+          ...next[samplerIdx],
+          ts: videoRef.current?.currentTime ?? next[samplerIdx].ts,
+          assignments: { ...taggingAssignments },
+          detections: [...frameDetections],
+        }
+      }
+      return next
+    })
+  }, [samplerIdx, taggingAssignments, frameDetections])
+
+  const gotoSample = useCallback((idx: number) => {
+    setSamplerSamples((prev) => {
+      const target = prev[idx]
+      if (!target) return prev
+      const v = videoRef.current
+      if (v) v.currentTime = target.ts
+      setSamplerIdx(idx)
+      setTaggingSeedTs(target.ts)
+      setTaggingAssignments({ ...target.assignments })
+      handleFrameDetect(target.ts)
+      return prev
+    })
+  }, [handleFrameDetect])
+
+  const finishSampler = useCallback(async () => {
+    // 現在のサンプルを保存してから集約
+    const finalSamples = samplerSamples.map((s, i) => {
+      if (i === samplerIdx) {
+        return {
+          ...s,
+          ts: videoRef.current?.currentTime ?? s.ts,
+          assignments: { ...taggingAssignments },
+          detections: [...frameDetections],
+        }
+      }
+      return s
+    })
+    const valid = finalSamples.filter((s) => !s.skipped && Object.values(s.assignments).some((k) => k))
+    if (valid.length === 0) {
+      setTaggingMode(false)
+      setSamplerSamples([])
+      setSamplerIdx(0)
+      return
+    }
+    const primary = valid[0]
+    const primaryAssignments = Object.entries(primary.assignments)
+      .filter(([, k]) => k)
+      .map(([i, k]) => ({
+        detection_index: +i,
+        player_key: k,
+        bbox: primary.detections[+i]?.bbox ?? null,
+        hist: primary.detections[+i]?.hist ?? null,
+      }))
+    const extraSeeds = valid.slice(1).map((s) => ({
+      timestamp_sec: s.ts,
+      assignments: Object.entries(s.assignments)
+        .filter(([, k]) => k)
+        .map(([i, k]) => ({
+          detection_index: +i,
+          player_key: k,
+          bbox: s.detections[+i]?.bbox ?? null,
+          hist: s.detections[+i]?.hist ?? null,
+        })),
+    })).filter((s) => s.assignments.length > 0)
+    await handleAssignAndTrack(primary.ts, primaryAssignments, extraSeeds)
+    setTaggingMode(false)
+    setSamplerSamples([])
+    setSamplerIdx(0)
+  }, [samplerSamples, samplerIdx, taggingAssignments, frameDetections, handleAssignAndTrack])
+
+  const nextSample = useCallback(() => {
+    saveCurrentSample()
+    if (samplerIdx >= samplerSamples.length - 1) {
+      finishSampler()
+    } else {
+      gotoSample(samplerIdx + 1)
+    }
+  }, [saveCurrentSample, samplerIdx, samplerSamples.length, finishSampler, gotoSample])
+
+  const prevSample = useCallback(() => {
+    if (samplerIdx <= 0) return
+    saveCurrentSample()
+    gotoSample(samplerIdx - 1)
+  }, [samplerIdx, saveCurrentSample, gotoSample])
+
+  const skipCurrentSample = useCallback(() => {
+    setSamplerSamples((prev) => {
+      const next = [...prev]
+      if (next[samplerIdx]) next[samplerIdx] = { ...next[samplerIdx], skipped: true, assignments: {} }
+      return next
+    })
+    if (samplerIdx >= samplerSamples.length - 1) {
+      // 最終サンプルでスキップ → 完了へ
+      setTimeout(() => finishSampler(), 0)
+    } else {
+      gotoSample(samplerIdx + 1)
+    }
+  }, [samplerIdx, samplerSamples.length, finishSampler, gotoSample])
+
+  const cancelSampler = useCallback(() => {
+    setSamplerSamples([])
+    setSamplerIdx(0)
+    setTaggingMode(false)
+  }, [])
+
+  const seekRel = useCallback((deltaSec: number) => {
+    const v = videoRef.current
+    if (!v) return
+    const ts = Math.max(0, Math.min((v.duration || 0) || v.currentTime + deltaSec, v.currentTime + deltaSec))
+    v.currentTime = ts
+    setTaggingSeedTs(ts)
+    handleFrameDetect(ts)
+  }, [handleFrameDetect])
+
+  const stepFrame = useCallback((dir: 1 | -1) => {
+    // 30fps 前提で 1/30s 刻み
+    seekRel(dir * (1 / 30))
+  }, [seekRel])
+
+  // サンプラー動作中の矢印キー: ←/→ で ±1 frame、Shift+←/→ で ±5s
+  useEffect(() => {
+    if (!samplerActive) return
+    const onKey = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement | null
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        if (e.shiftKey) seekRel(-5)
+        else stepFrame(-1)
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        if (e.shiftKey) seekRel(5)
+        else stepFrame(1)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [samplerActive, seekRel, stepFrame])
 
   // R-001/R-002: セッション共有フック
   const {
@@ -1726,9 +1908,66 @@ export function AnnotatorPage() {
                 </div>
               )}
 
-              {/* 選手識別: taggingMode 中は確定/キャンセルをインライン表示、それ以外は識別ボタン */}
+              {/* 選手識別: taggingMode 中はサンプラーフッター表示、それ以外は識別ボタン */}
               {!!(match?.video_local_path || match?.video_url) && (
-                taggingMode ? (
+                samplerActive ? (
+                  <div className={`flex items-center gap-1 flex-wrap px-1.5 py-0.5 rounded ${
+                    isLight ? 'bg-purple-50 border border-purple-200' : 'bg-purple-900/20 border border-purple-700/40'
+                  }`}>
+                    <span className={`text-xs font-medium ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
+                      {samplerIdx + 1}/{samplerSamples.length}
+                    </span>
+                    <button
+                      onClick={() => seekRel(-5)}
+                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
+                      title="5秒戻る"
+                    >⏮-5s</button>
+                    <button
+                      onClick={() => stepFrame(-1)}
+                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
+                      title="1フレーム戻る (←)"
+                    >-1f</button>
+                    <button
+                      onClick={() => stepFrame(1)}
+                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
+                      title="1フレーム進む (→)"
+                    >+1f</button>
+                    <button
+                      onClick={() => seekRel(5)}
+                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
+                      title="5秒進む"
+                    >+5s⏭</button>
+                    <span className={`mx-0.5 ${isLight ? 'text-gray-300' : 'text-gray-600'}`}>|</span>
+                    <button
+                      onClick={prevSample}
+                      disabled={samplerIdx <= 0}
+                      className={`px-1.5 py-0.5 rounded text-[10px] disabled:opacity-40 ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'}`}
+                    >戻る</button>
+                    <button
+                      onClick={skipCurrentSample}
+                      className={`px-1.5 py-0.5 rounded text-[10px] ${isLight ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60'}`}
+                      title="このサンプルをスキップ"
+                    >スキップ</button>
+                    {samplerIdx < samplerSamples.length - 1 ? (
+                      <button
+                        onClick={nextSample}
+                        disabled={trackingLoading}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium disabled:opacity-50 ${isLight ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-purple-600 text-white hover:bg-purple-500'}`}
+                      >次へ</button>
+                    ) : (
+                      <button
+                        onClick={finishSampler}
+                        disabled={trackingLoading}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium disabled:opacity-50 ${isLight ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-green-600 text-white hover:bg-green-500'}`}
+                      >{trackingLoading ? '...' : '完了'}</button>
+                    )}
+                    <button
+                      onClick={cancelSampler}
+                      className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-gray-700'}`}
+                      title="識別をキャンセル"
+                    >✕</button>
+                  </div>
+                ) : taggingMode ? (
                   <div className="flex items-center gap-1">
                     <button
                       onClick={async () => {
@@ -1761,22 +2000,16 @@ export function AnnotatorPage() {
                   </div>
                 ) : (
                   <button
-                    onClick={() => {
-                      const ts = videoRef.current?.currentTime ?? 0
-                      setTaggingSeedTs(ts)
-                      setTaggingAssignments({})
-                      handleFrameDetect(ts)
-                      setTaggingMode(true)
-                    }}
+                    onClick={startSampler}
                     disabled={frameDetectLoading}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
                       isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
                     }`}
                     title={trackFrames.length > 0
-                      ? 'コート離脱・衣装変更などで識別をやり直す（現フレームを新シードに）'
-                      : '静止画で選手を識別してトラッキング開始'}
+                      ? 'コート離脱・衣装変更などで識別をやり直す（10サンプル）'
+                      : '10サンプルでギャラリータグ付けしてトラッキング開始'}
                   >
-                    {frameDetectLoading ? '検出中...' : trackFrames.length > 0 ? '再識別' : '+ 識別'}
+                    {frameDetectLoading ? '検出中...' : trackFrames.length > 0 ? '再識別(10)' : '+ 識別(10)'}
                   </button>
                 )
               )}
