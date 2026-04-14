@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Match, Player, GameSet, Rally
+from backend.db.models import Match, Player, GameSet, Rally, MatchCVArtifact
 from backend.utils.video_downloader import video_downloader
 from backend.utils.sync_meta import touch
 
@@ -65,6 +65,24 @@ class MatchUpdate(BaseModel):
     exception_reason: Optional[str] = None
 
 
+def _effective_status(m: Match, db: Optional[Session]) -> str:
+    """作業中判定: 完了・確認済みはそのまま返す。
+    それ以外はセット/CV artifact の存在を確認し、痕跡があれば in_progress、なければ pending。
+    """
+    stored = m.annotation_status or "pending"
+    if stored in ("complete", "reviewed"):
+        return stored
+    if db is None:
+        return stored
+    has_sets = db.query(GameSet.id).filter(GameSet.match_id == m.id).first() is not None
+    if has_sets:
+        return "in_progress"
+    has_cv = db.query(MatchCVArtifact.id).filter(MatchCVArtifact.match_id == m.id).first() is not None
+    if has_cv:
+        return "in_progress"
+    return "pending"
+
+
 def match_to_dict(m: Match, include_players: bool = True, db: Session = None) -> dict:
     d = {
         "id": m.id,
@@ -86,7 +104,7 @@ def match_to_dict(m: Match, include_players: bool = True, db: Session = None) ->
         "video_quality": m.video_quality,
         "camera_angle": m.camera_angle,
         "annotator_id": m.annotator_id,
-        "annotation_status": m.annotation_status,
+        "annotation_status": _effective_status(m, db),
         "annotation_progress": m.annotation_progress,
         "notes": m.notes,
         "created_at": m.created_at.isoformat() if m.created_at else None,

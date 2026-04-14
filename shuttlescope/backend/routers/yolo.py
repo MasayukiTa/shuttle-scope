@@ -531,11 +531,40 @@ def _run_batch(
         sample_count = max(1, total_frames // sample_every_n)
         _jobs[job_id]["total_frames"] = sample_count
 
+        # resume モードかつ差分処理なし: 既存フレームをコピーしてから未処理部分にシーク
         frames_data: list[dict] = []
         detected_total = 0
-        processed = 0
-        new_frames_since_save = 0  # 前回の部分保存以降に新規処理したフレーム数
-        frame_idx = 0
+        new_frames_since_save = 0
+
+        if existing_by_idx and not delta_rois:
+            # 既存フレームをそのまま引き継ぐ
+            frames_data = sorted(existing_by_idx.values(), key=lambda f: f["frame_idx"])
+            detected_total = sum(
+                len([p for p in f["players"] if "player" in p.get("label", "")])
+                for f in frames_data
+            )
+            # 最大処理済みフレームの次の位置にシーク
+            max_existing = max(existing_by_idx.keys())
+            start_frame = max_existing + sample_every_n
+            if start_frame < total_frames:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            else:
+                # 全フレーム処理済み → そのまま完了
+                cap.release()
+                summary = summarize_frame_positions(frames_data)
+                _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name(), json.dumps(summary, ensure_ascii=False))
+                _jobs[job_id]["status"] = JobStatus.COMPLETE
+                _jobs[job_id]["progress"] = 1.0
+                _jobs[job_id]["processed_frames"] = len(frames_data)
+                return
+            frame_idx = start_frame
+        else:
+            start_frame = 0
+            frame_idx = 0
+
+        processed = len(frames_data)
+        _jobs[job_id]["processed_frames"] = processed
+        _jobs[job_id]["progress"] = round(processed / max(sample_count, 1), 3)
 
         while True:
             ret, frame = cap.read()
@@ -545,24 +574,20 @@ def _run_batch(
             if frame_idx % sample_every_n == 0:
                 ts_sec = frame_idx / fps
 
-                if frame_idx in existing_by_idx:
-                    if delta_rois:
-                        # ROI拡張差分: 拡張エリアのみ追加検出してマージ
-                        new_players: list[dict] = []
-                        for droi in delta_rois:
-                            cropped = _crop_roi(frame, droi)
-                            detected = inf.predict_frame(cropped)
-                            new_players.extend(_remap_player_coords(detected, droi))
-                        merged = _merge_players(existing_by_idx[frame_idx]["players"], new_players)
-                        frames_data.append({
-                            "frame_idx": frame_idx,
-                            "timestamp_sec": round(ts_sec, 3),
-                            "players": merged,
-                        })
-                        new_frames_since_save += 1
-                    else:
-                        # resume=True: 既存データをそのまま再利用（再処理なし）
-                        frames_data.append(existing_by_idx[frame_idx])
+                if frame_idx in existing_by_idx and delta_rois:
+                    # ROI拡張差分: 拡張エリアのみ追加検出してマージ
+                    new_players: list[dict] = []
+                    for droi in delta_rois:
+                        cropped = _crop_roi(frame, droi)
+                        detected = inf.predict_frame(cropped)
+                        new_players.extend(_remap_player_coords(detected, droi))
+                    merged = _merge_players(existing_by_idx[frame_idx]["players"], new_players)
+                    frames_data.append({
+                        "frame_idx": frame_idx,
+                        "timestamp_sec": round(ts_sec, 3),
+                        "players": merged,
+                    })
+                    new_frames_since_save += 1
                 else:
                     # 未処理フレーム: 通常検出
                     cropped = _crop_roi(frame, roi)
