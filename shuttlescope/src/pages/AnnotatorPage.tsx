@@ -1809,6 +1809,11 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => {
                       if (window.confirm('既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？')) {
+                        setSamplerSamples([])
+                        setSamplerIdx(0)
+                        setTaggingMode(false)
+                        setTaggingAssignments({})
+                        setTaggingSeedTs(0)
                         handleYoloReset()
                       }
                     }}
@@ -1853,12 +1858,8 @@ export function AnnotatorPage() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => {
-                      // バッチ開始と同時に現フレームで即時BBOX検出 → タグ付けUIを表示
-                      const ts = videoRef.current?.currentTime ?? 0
-                      setTaggingSeedTs(ts)
-                      setTaggingAssignments({})
-                      handleFrameDetect(ts)
-                      setTaggingMode(true)
+                      // バッチのみ起動。既存 seed があれば進行中に自動再適用される。
+                      // 明示的に再タグ付けしたい場合は + 識別(10) ボタンを使う。
                       handleYoloBatch()
                     }}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
@@ -1883,6 +1884,11 @@ export function AnnotatorPage() {
                     <button
                       onClick={() => {
                         if (window.confirm('既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？')) {
+                          setSamplerSamples([])
+                          setSamplerIdx(0)
+                          setTaggingMode(false)
+                          setTaggingAssignments({})
+                          setTaggingSeedTs(0)
                           handleYoloReset()
                         }
                       }}

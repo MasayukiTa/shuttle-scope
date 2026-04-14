@@ -235,6 +235,8 @@ export function useCVJobs({
         seed_timestamp_sec: seedTs,
         assignments,
         extra_seeds: extraSeeds ?? [],
+        // コート ROI を送って、追跡時にコート外候補（観客等）を reject する
+        court_roi: roiRect ?? null,
       })
       // 保存後すぐ取得
       const res = await apiGet<{ success: boolean; data: TrackFrame[] }>(
@@ -250,7 +252,7 @@ export function useCVJobs({
     } catch { /* 追跡失敗は無視 */ } finally {
       setTrackingLoading(false)
     }
-  }, [matchId, queryClient])
+  }, [matchId, queryClient, roiRect])
 
   // マウント時: 保存済みトラックを取得
   useEffect(() => {
@@ -467,6 +469,8 @@ export function useCVJobs({
       console.info('[YoloReset] delete response', res)
       setYoloJob(null)
       setYoloFrames([])
+      setTrackFrames([])
+      setFrameDetections([])
       setYoloArtifactExists(false)
       setYoloArtifactMeta(null)
       // 解析カード（選手移動距離・累計移動距離・ゾーン別滞在頻度等）を即時リセット
