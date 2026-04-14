@@ -1,5 +1,22 @@
-"""権限管理ユーティリティ（POCフェーズ：簡易実装）"""
+"""権限管理ユーティリティ（POCフェーズ：簡易実装）
+
+- X-Role / X-Player-Id リクエストヘッダからロール情報を取得
+- match / player リソースへのアクセスを role=player 時のみ player_id で制約
+- 将来的にチーム単位のスコープ制御を追加予定
+
+設計方針:
+  ロール自体は自己申告（X-Role を信用）だが、player ロールの場合は
+  X-Player-Id が実際にそのリソースに関連付けられているかを DB で検証する。
+  これにより「ロールは正直に選ぶが ID を書き換えて覗こうとする」攻撃を防ぐ。
+"""
 from enum import Enum
+from typing import Optional
+
+from fastapi import HTTPException, Request, Depends
+from sqlalchemy.orm import Session
+
+from backend.db.database import get_db
+from backend.db.models import Match, Player
 
 
 class UserRole(str, Enum):
@@ -23,3 +40,118 @@ def filter_by_role(data: dict, role: str) -> dict:
     if role == UserRole.PLAYER:
         return {k: v for k, v in data.items() if k not in PLAYER_SENSITIVE_KEYS}
     return data
+
+
+# ─── リクエストコンテキスト取得 ───────────────────────────────────────────────
+
+class AuthCtx:
+    """ヘッダから抽出した現在ユーザーのロール/ID。未指定なら role=None。"""
+    __slots__ = ("role", "player_id")
+
+    def __init__(self, role: Optional[str], player_id: Optional[int]):
+        self.role = role
+        self.player_id = player_id
+
+    @property
+    def is_player(self) -> bool:
+        return self.role == UserRole.PLAYER.value
+
+    @property
+    def is_coach(self) -> bool:
+        return self.role == UserRole.COACH.value
+
+    @property
+    def is_analyst(self) -> bool:
+        return self.role == UserRole.ANALYST.value
+
+
+def get_auth(request: Request) -> AuthCtx:
+    """X-Role / X-Player-Id ヘッダからコンテキストを組み立てる。
+
+    未指定または不正値でも例外にはせず、role=None として返す（一部の公開系
+    エンドポイントが未認証で動作するため）。制約の強制は
+    require_match_access / require_player_access で行う。
+    """
+    role = request.headers.get("X-Role")
+    if role not in {r.value for r in UserRole}:
+        role = None
+    pid_raw = request.headers.get("X-Player-Id")
+    pid: Optional[int] = None
+    if pid_raw:
+        try:
+            n = int(pid_raw)
+            if n > 0:
+                pid = n
+        except (ValueError, TypeError):
+            pid = None
+    return AuthCtx(role, pid)
+
+
+# ─── アクセス制御ヘルパー ────────────────────────────────────────────────────
+
+def _match_player_ids(m: Match) -> set[int]:
+    """試合に関連する選手 ID 集合（4 ロール分）。None は除く。"""
+    return {x for x in (m.player_a_id, m.partner_a_id, m.player_b_id, m.partner_b_id) if x}
+
+
+def user_can_access_match(ctx: AuthCtx, m: Match) -> bool:
+    """現在のユーザーがこの試合にアクセスしてよいか。"""
+    if ctx.is_player:
+        if not ctx.player_id:
+            return False
+        return ctx.player_id in _match_player_ids(m)
+    # analyst / coach / 未ロールは現時点で全試合可（将来チーム制約で絞る）
+    return True
+
+
+def user_can_access_player(ctx: AuthCtx, player_id: int) -> bool:
+    """選手個別データ（統計・履歴）にアクセスしてよいか。"""
+    if ctx.is_player:
+        return ctx.player_id is not None and ctx.player_id == player_id
+    return True
+
+
+def filter_matches_for_user(ctx: AuthCtx, matches: list[Match]) -> list[Match]:
+    """試合一覧をロールに応じて絞り込む。"""
+    if ctx.is_player:
+        if not ctx.player_id:
+            return []
+        pid = ctx.player_id
+        return [m for m in matches if pid in _match_player_ids(m)]
+    return matches
+
+
+def require_match_access(
+    match_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Match:
+    """試合アクセスを強制する FastAPI 依存性。
+    使用例: `m: Match = Depends(require_match_access)`
+    """
+    ctx = get_auth(request)
+    m = db.get(Match, match_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if not user_can_access_match(ctx, m):
+        raise HTTPException(
+            status_code=403,
+            detail="この試合へのアクセス権限がありません",
+        )
+    return m
+
+
+def require_player_self_or_privileged(
+    player_id: int,
+    request: Request,
+) -> AuthCtx:
+    """選手個別データへのアクセスを強制する依存性。
+    role=player は自分自身のみ。それ以外は常に許可。
+    """
+    ctx = get_auth(request)
+    if not user_can_access_player(ctx, player_id):
+        raise HTTPException(
+            status_code=403,
+            detail="この選手データへのアクセス権限がありません",
+        )
+    return ctx

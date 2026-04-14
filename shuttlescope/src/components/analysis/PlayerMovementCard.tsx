@@ -62,6 +62,10 @@ interface Props {
   /** player_key → 表示名 マップ */
   playerNames: Record<string, string>
   isLight: boolean
+  /** キャリブレーション保存状態（'backend'=DB保存済 / 'local'=ローカルのみ / 'none'=未設定） */
+  calibSource?: 'backend' | 'local' | 'none'
+  /** グリッドオーバーレイを開いて同期を促すコールバック */
+  onOpenGrid?: () => void
 }
 
 // ─── 定数 ─────────────────────────────────────────────────────────────────────
@@ -293,7 +297,7 @@ function CumulativeDistanceChart({
 
 // ─── メインコンポーネント ──────────────────────────────────────────────────────
 
-export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerNames, isLight }: Props) {
+export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerNames, isLight, calibSource, onOpenGrid }: Props) {
   const { card, cardInner, textHeading, textSecondary, textMuted, textFaint } = useCardTheme()
 
   const { data: resp, isLoading } = useQuery({
@@ -346,12 +350,34 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
       </div>
 
       {/* キャリブ未設定の警告 */}
-      {!stats.has_calibration && (
-        <p className={`text-[10px] ${textMuted} bg-yellow-500/10 border border-yellow-500/30 rounded px-2 py-1`}>
-          コートキャリブレーションが未設定のため、実メートル値ではなく画像座標の相対値です。
-          グリッドを設定するとメートル換算されます。
-        </p>
-      )}
+      {!stats.has_calibration && (() => {
+        const isLocal = calibSource === 'local'
+        const canClick = !!onOpenGrid
+        const Wrapper = canClick ? 'button' : 'div'
+        return (
+          <Wrapper
+            {...(canClick ? { onClick: onOpenGrid, type: 'button' } : {})}
+            className={[
+              'w-full text-left text-xs',
+              'bg-yellow-600/80 border border-yellow-400/60 rounded px-3 py-2',
+              canClick ? 'cursor-pointer hover:bg-yellow-500/80 active:bg-yellow-700/80 transition-colors' : '',
+            ].join(' ')}
+            style={{ color: '#fff' }}
+          >
+            {isLocal ? (
+              <span>
+                ⚠ グリッドはローカルに設定済みですが DB への保存が未完了です。
+                {canClick && <span className="underline ml-1">ここをクリックしてグリッドを開き同期してください。</span>}
+              </span>
+            ) : (
+              <span>
+                ⚠ コートキャリブレーションが未設定のため相対値表示です。
+                {canClick && <span className="underline ml-1">ここをクリックしてグリッドを設定してください。</span>}
+              </span>
+            )}
+          </Wrapper>
+        )
+      })()}
 
       {/* ── 選手ごとの統計 ───────────────────────────────────────────────── */}
       <div className="space-y-3">

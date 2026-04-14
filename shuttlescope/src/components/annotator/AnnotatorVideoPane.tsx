@@ -31,6 +31,7 @@ interface Props {
   courtGridMatchId?: string
   courtGridVisible?: boolean
   onCalibrationSaved?: () => void
+  onCalibSourceChange?: (source: 'backend' | 'local' | 'none') => void
   /** ROI 矩形 */
   roiRect?: RoiRect | null
   roiEditing?: boolean
@@ -109,6 +110,7 @@ export function AnnotatorVideoPane({
   frameDetectError,
   frameDetectDebug,
   onCalibrationSaved,
+  onCalibSourceChange,
 }: Props) {
   // videoAreaRef はビデオ本体 div（aspect-ratio ボックス）を指す。
   // オーバーレイはここに配置 — コントロール（シークバー・ボタン）は含まない。
@@ -176,6 +178,7 @@ export function AnnotatorVideoPane({
           containerRef={videoAreaRef}
           visible={courtGridVisible}
           onCalibrationSaved={onCalibrationSaved}
+          onCalibSourceChange={onCalibSourceChange}
         />
       )}
       {/* ROI 矩形オーバーレイ */}

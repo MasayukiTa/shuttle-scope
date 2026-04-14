@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -58,6 +59,8 @@ class YOLOInference:
         self._load_error: Optional[str] = None
         # 直前の推論診断情報（APIレスポンスに埋め込んで UI に表示する）
         self._last_debug: dict = {}
+        # OpenVINO はステートフルなため同時呼び出し不可 → バッチスレッドとHTTPスレッドの競合を防ぐ
+        self._lock = threading.Lock()
 
     # ─── 可用性確認 ─────────────────────────────────────────────────────
 
@@ -204,43 +207,48 @@ class YOLOInference:
         return dict(self._last_debug)
 
     def predict_frame(self, frame) -> list[dict]:
-        """1 フレームからプレイヤーを検出。失敗時は空リストを返す。"""
+        """1 フレームからプレイヤーを検出。失敗時は空リストを返す。
+
+        スレッドセーフ: バッチスレッドとHTTPスレッドが同時に呼び出しても安全。
+        OpenVINO は同期推論エンジンを共有するため _lock で排他制御する。
+        """
         import numpy as _np
         if not self._loaded and not self.load():
             self._last_debug = {"error": "モデルロード失敗"}
             return []
 
-        # フレーム基本情報
-        h, w = frame.shape[:2]
-        frame_mean = float(_np.mean(frame))
-        self._last_debug = {
-            "backend": self._backend,
-            "frame_shape": [h, w],
-            "frame_mean_brightness": round(frame_mean, 1),
-            "threshold": MIN_CONF,
-        }
+        with self._lock:
+            # フレーム基本情報
+            h, w = frame.shape[:2]
+            frame_mean = float(_np.mean(frame))
+            self._last_debug = {
+                "backend": self._backend,
+                "frame_shape": [h, w],
+                "frame_mean_brightness": round(frame_mean, 1),
+                "threshold": MIN_CONF,
+            }
 
-        if frame_mean < 3.0:
-            self._last_debug["warning"] = "フレームがほぼ黒（動画シーク失敗の可能性）"
-            logger.warning("YOLO: frame is nearly black (mean=%.1f), seek may have failed", frame_mean)
+            if frame_mean < 3.0:
+                self._last_debug["warning"] = "フレームがほぼ黒（動画シーク失敗の可能性）"
+                logger.warning("YOLO: frame is nearly black (mean=%.1f), seek may have failed", frame_mean)
 
-        try:
-            if self._backend.startswith("openvino:"):
-                detections = self._predict_openvino(frame)
-            elif self._backend == "ultralytics":
-                detections = self._predict_ultralytics(frame)
-            elif self._backend == "onnx_cpu":
-                detections = self._predict_onnx(frame)
-            else:
-                self._last_debug["error"] = f"不明なバックエンド: {self._backend}"
+            try:
+                if self._backend.startswith("openvino:"):
+                    detections = self._predict_openvino(frame)
+                elif self._backend == "ultralytics":
+                    detections = self._predict_ultralytics(frame)
+                elif self._backend == "onnx_cpu":
+                    detections = self._predict_onnx(frame)
+                else:
+                    self._last_debug["error"] = f"不明なバックエンド: {self._backend}"
+                    return []
+                result = self._assign_player_labels(detections)
+                self._last_debug["detected"] = len(result)
+                return result
+            except Exception as exc:
+                logger.exception("YOLO inference error (backend=%s): %s", self._backend, exc)
+                self._last_debug["error"] = str(exc)
                 return []
-            result = self._assign_player_labels(detections)
-            self._last_debug["detected"] = len(result)
-            return result
-        except Exception as exc:
-            logger.exception("YOLO inference error (backend=%s): %s", self._backend, exc)
-            self._last_debug["error"] = str(exc)
-            return []
 
     def _predict_openvino(self, frame) -> list[dict]:
         """OpenVINO 直接API で YOLOv8n 推論（COCO person クラスのみ抽出）"""

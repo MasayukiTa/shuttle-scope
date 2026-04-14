@@ -15,10 +15,12 @@ import logging
 # basicConfig は最初の呼び出しのみ有効。uvicorn が先に設定した場合は force=True で上書き。
 logging.basicConfig(
     level=logging.INFO,
-    format="%(levelname)s [%(name)s] %(message)s",
-    stream=sys.stderr,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
     force=True,
 )
+# uvicorn のアクセスログはノイズが多いので WARNING に落とす
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 import mimetypes
 import uvicorn
 from contextlib import asynccontextmanager
@@ -135,6 +137,109 @@ class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(UploadSizeLimitMiddleware)
+
+
+# ─── アクセス制御ミドルウェア（role=player のみ強制） ────────────────────────
+# POCフェーズの簡易実装:
+#   ロール自体は自己申告(X-Role)だが、role=player の場合は X-Player-Id が
+#   リクエスト対象リソース(試合/選手)に関連付けられているかを DB 照合する。
+#   これにより ID 書き換えによる他選手データ覗き見を塞ぐ。
+#   将来 JWT + チーム区分へ拡張する際はここを差し替える。
+import re as _re_acl
+
+# パスからリソース種別と ID を抽出する正規表現。/api/ プレフィックスは付く場合/付かない場合両対応。
+# match_id: 試合に紐づく全エンドポイント。
+_MATCH_ID_PATTERNS = [
+    _re_acl.compile(r"^/api/matches/(\d+)(?:/.*)?$"),
+    _re_acl.compile(r"^/api/sets/match/(\d+)$"),
+    _re_acl.compile(r"^/api/sessions/match/(\d+)$"),
+    _re_acl.compile(r"^/api/warmup/observations/(\d+)$"),
+    _re_acl.compile(r"^/api/annotation/(\d+)(?:/.*)?$"),
+    _re_acl.compile(r"^/api/cv-candidates/(?:build|apply|review-queue)/(\d+)$"),
+    _re_acl.compile(r"^/api/cv-candidates/(\d+)$"),
+    _re_acl.compile(r"^/api/yolo/(?:batch|results|align|alignment|frame_detect|assign_and_track|identity_track|movement_stats|doubles_analysis)/(\d+)(?:/.*)?$"),
+    _re_acl.compile(r"^/api/tracknet/(?:shuttle_track|resume_check|batch)/(\d+)$"),
+    _re_acl.compile(r"^/api/prediction/human_forecast/(\d+)$"),
+    _re_acl.compile(r"^/api/analysis/[A-Za-z_/-]+/(\d+)(?:/.*)?$"),
+    _re_acl.compile(r"^/api/reports/[A-Za-z_/-]+/(\d+)(?:/.*)?$"),
+    _re_acl.compile(r"^/api/rallies/match/(\d+)(?:/.*)?$"),
+    _re_acl.compile(r"^/api/strokes/match/(\d+)(?:/.*)?$"),
+]
+# player_id: 選手個別データ。
+_PLAYER_ID_PATTERNS = [
+    _re_acl.compile(r"^/api/players/(\d+)(?:/.*)?$"),
+    _re_acl.compile(r"^/api/prediction/benchmark/(\d+)$"),
+    _re_acl.compile(r"^/api/export/player/(\d+)$"),
+]
+
+
+def _extract_id(path: str, patterns) -> int | None:
+    for pat in patterns:
+        m = pat.match(path)
+        if m:
+            try:
+                return int(m.group(1))
+            except (ValueError, TypeError):
+                return None
+    return None
+
+
+class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
+    """role=player のリクエストに対し、対象リソースへのアクセス可否を DB 検証する。"""
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        role = request.headers.get("X-Role")
+        # player 以外は素通し（analyst/coach は現時点で制約なし）
+        if role != "player":
+            return await call_next(request)
+
+        pid_raw = request.headers.get("X-Player-Id")
+        try:
+            pid = int(pid_raw) if pid_raw else None
+        except (ValueError, TypeError):
+            pid = None
+
+        if not pid or pid <= 0:
+            # player ロールを名乗るが player_id を持たない → 常に拒否
+            # （再ログインして選手を選ばせる）
+            return StarletteResponse(
+                "選手 ID が指定されていません。再ログインしてください。",
+                status_code=401,
+            )
+
+        path = request.url.path
+
+        # ── match スコープ ──
+        mid = _extract_id(path, _MATCH_ID_PATTERNS)
+        if mid is not None:
+            from backend.db.database import SessionLocal
+            from backend.db.models import Match
+            db = SessionLocal()
+            try:
+                m = db.get(Match, mid)
+                if m is None:
+                    return StarletteResponse("試合が見つかりません", status_code=404)
+                player_ids = {m.player_a_id, m.partner_a_id, m.player_b_id, m.partner_b_id}
+                if pid not in player_ids:
+                    return StarletteResponse(
+                        "この試合へのアクセス権限がありません",
+                        status_code=403,
+                    )
+            finally:
+                db.close()
+
+        # ── player スコープ ──
+        tgt_pid = _extract_id(path, _PLAYER_ID_PATTERNS)
+        if tgt_pid is not None and tgt_pid != pid:
+            return StarletteResponse(
+                "この選手データへのアクセス権限がありません",
+                status_code=403,
+            )
+
+        return await call_next(request)
+
+
+app.add_middleware(PlayerAccessControlMiddleware)
 
 # CORS設定
 # allow_credentials=True と allow_origins=["*"] の組み合わせはブラウザ仕様違反で
@@ -515,4 +620,7 @@ if __name__ == "__main__":
         port=app_settings.API_PORT,
         reload=app_settings.ENVIRONMENT == "development",
         log_level="info",
+        # uvicorn の dictConfig による basicConfig 上書きを防ぐ
+        # （これがないとアプリ側 logger.info/warning が全て黙殺される）
+        log_config=None,
     )

@@ -30,6 +30,8 @@ interface CourtGridOverlayProps {
   visible: boolean
   /** バックエンドへのキャリブレーション保存成功時のコールバック */
   onCalibrationSaved?: () => void
+  /** キャリブレーション保存状態変更通知（'backend'=DB保存済 / 'local'=ローカルのみ / 'none'） */
+  onCalibSourceChange?: (source: 'backend' | 'local' | 'none') => void
 }
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
@@ -99,13 +101,18 @@ function halfGridLines(
 
 type CalibSource = 'backend' | 'local' | 'none'
 
-export function CourtGridOverlay({ matchId, containerRef, visible, onCalibrationSaved }: CourtGridOverlayProps) {
+export function CourtGridOverlay({ matchId, containerRef, visible, onCalibrationSaved, onCalibSourceChange }: CourtGridOverlayProps) {
   const [points, setPoints] = useState<Pt[]>([])          // 設定済み点（最大6個）
   const [calibrating, setCalibrating] = useState(false)   // キャリブレーションモード
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null)
   const [containerSize, setContainerSize] = useState({ w: 1, h: 1 })
   const [savedNotice, setSavedNotice] = useState(false)   // 保存完了 & YOLO再実行案内
+  const [saveError, setSaveError] = useState<string | null>(null)  // 保存エラーメッセージ
+  const [saving, setSaving] = useState(false)             // 保存中スピナー
   const [calibSource, setCalibSource] = useState<CalibSource>('none') // 取得元
+
+  // calibSource が変わるたびに親へ通知
+  useEffect(() => { onCalibSourceChange?.(calibSource) }, [calibSource, onCalibSourceChange])
   const svgRef = useRef<SVGSVGElement>(null)
   const postTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevPtsRef = useRef<Pt[]>([])   // 再キャリブレーション開始前のバックアップ
@@ -157,6 +164,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
   }, [matchId])
 
   const postToBackend = useCallback((pts: Pt[]) => {
+    setSaving(true)
     fetch(`/api/matches/${matchId}/court_calibration`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -166,13 +174,29 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
         container_height: containerSize.h,
       }),
     })
-      .then(() => {
+      .then((r) => {
+        if (!r.ok) {
+          return r.text().then((body) => {
+            console.warn('[CourtGrid] backend save failed:', r.status, body)
+            const msg = r.status >= 500
+              ? `DB保存失敗 (${r.status}) — バックエンドを再起動後に再試行してください`
+              : `DB保存失敗 (${r.status})`
+            setSaveError(msg)
+            setTimeout(() => setSaveError(null), 8000)
+          })
+        }
+        setSaveError(null)
         setCalibSource('backend')
         setSavedNotice(true)
         setTimeout(() => setSavedNotice(false), 6000)
         onCalibrationSaved?.()
       })
-      .catch((err) => console.warn('[CourtGrid] backend save failed:', err))
+      .catch((err) => {
+        console.warn('[CourtGrid] backend save network error:', err)
+        setSaveError('ネットワークエラー — バックエンドが起動しているか確認してください')
+        setTimeout(() => setSaveError(null), 8000)
+      })
+      .finally(() => setSaving(false))
   }, [matchId, containerSize, onCalibrationSaved])
 
   const savePts = useCallback((pts: Pt[]) => {
@@ -377,13 +401,33 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
         </div>
       )}
 
+      {/* ─── 保存中トースト ─────────────────────────── */}
+      {saving && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded text-xs bg-blue-900/90 border border-blue-500 text-blue-100"
+          style={{ pointerEvents: 'none', zIndex: 30 }}
+        >
+          💾 DBへ保存中...
+        </div>
+      )}
+
       {/* ─── 保存完了トースト（6秒） ─────────────────────────── */}
       {savedNotice && (
         <div
           className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded text-xs bg-gray-900/90 border border-gray-600 text-gray-200"
           style={{ pointerEvents: 'none', zIndex: 30 }}
         >
-          ROI 保存完了 — YOLO 再実行で精度向上
+          ✓ DB保存完了
+        </div>
+      )}
+
+      {/* ─── 保存エラートースト（8秒） ─────────────────────────── */}
+      {saveError && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded text-xs bg-red-900/90 border border-red-500 text-red-200 max-w-xs text-center"
+          style={{ pointerEvents: 'none', zIndex: 30 }}
+        >
+          ✗ {saveError}
         </div>
       )}
 

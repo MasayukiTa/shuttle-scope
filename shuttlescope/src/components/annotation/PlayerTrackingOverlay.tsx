@@ -28,6 +28,7 @@ export interface RawDetection {
   bbox: [number, number, number, number]
   label?: string
   confidence?: number
+  hist?: number[]   // 胴体 Hue ヒスト（外観ギャラリー用、backend が付与）
 }
 
 export interface PlayerOption {
@@ -186,7 +187,7 @@ export function PlayerTrackingOverlay({
                 </>
               ) : (
                 <span className="bg-black/80 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fff' }}>
-                  人物が検出されませんでした（✕で閉じる / 別の場面で再試行）
+                  人物が検出されませんでした（3秒後に自動で閉じます）
                 </span>
               )}
               {/* 診断情報（検出ゼロ時のみ表示） */}

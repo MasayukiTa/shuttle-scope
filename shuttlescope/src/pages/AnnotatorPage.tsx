@@ -176,6 +176,8 @@ export function AnnotatorPage() {
   const [useWebView, setUseWebView] = useState(false)
   // コートグリッドオーバーレイ
   const [courtGridVisible, setCourtGridVisible] = useState(false)
+  // キャリブレーション保存状態（グリッドが非表示でも同期ボタン表示に使用）
+  const [calibSource, setCalibSource] = useState<'backend' | 'local' | 'none'>('none')
   // Ref guard: prevent useEffect from re-running doInit on every Zustand state change
   const initStartedRef = useRef(false)
 
@@ -877,16 +879,15 @@ export function AnnotatorPage() {
     roiRect,
   })
 
-  // APIエラー時のみ3秒後にタグ付けモード自動終了
-  // 検出0件（人物なし）は正常応答なので auto-close しない → ユーザーが ✕ で閉じる
-  // これにより model warm-up 中の遅延応答でも誤閉鎖が発生しない
+  // エラーまたは検出ゼロの場合は3秒後にタグ付けモード自動終了
+  // frameDetectLoading が true の間は処理待ちなので起動しない
   useEffect(() => {
     if (!taggingMode) return
     if (frameDetectLoading) return
-    if (!frameDetectError) return   // エラーがない場合は自動クローズしない
+    if (!frameDetectError && frameDetections.length > 0) return  // 正常検出時は自動クローズしない
     const timer = setTimeout(() => setTaggingMode(false), 3000)
     return () => clearTimeout(timer)
-  }, [taggingMode, frameDetectLoading, frameDetectError])
+  }, [taggingMode, frameDetectLoading, frameDetectError, frameDetections.length])
 
   // R-001/R-002: セッション共有フック
   const {
@@ -1187,16 +1188,60 @@ export function AnnotatorPage() {
     if (!secondary) return
     const startTime = videoRef.current?.currentTime ?? 0  // 現在の再生位置を引き継ぐ
     const isPaused = videoRef.current?.paused ?? true      // 停止状態も引き継ぐ
-    window.shuttlescope.openVideoWindow(src, secondary.id, startTime, isPaused)
+    window.shuttlescope.openVideoWindow(src, secondary.id, startTime, isPaused, matchId ? String(matchId) : undefined)
     setVideoWindowOpen(true)
-    setVideoSourceMode('none')  // メイン側は映像なしモードに切替（video 要素を破棄して停止）
+    // メイン側は video を保持したまま継続。別モニタは BroadcastChannel で
+    // 時刻・再生状態・解析データをミラーするだけの「画面拡張」として動かす。
   }, [match, displays, videoRef])
 
   const handleCloseVideoWindow = useCallback(() => {
     window.shuttlescope?.closeVideoWindow?.()
     setVideoWindowOpen(false)
-    setVideoSourceMode('local')
   }, [])
+
+  // 別モニタへ状態をミラーする BroadcastChannel パブリッシャ。
+  // メインが「真の状態」を持ち、別モニタは受信して描画するだけ。
+  useEffect(() => {
+    if (!videoWindowOpen) return
+    const ch = new BroadcastChannel('shuttlescope-video-mirror')
+
+    // メインの video から time / play 状態を流す
+    const v = videoRef.current
+    const pushState = () => {
+      if (!v) return
+      ch.postMessage({ type: 'state', sec: v.currentTime, paused: v.paused })
+    }
+    if (v) {
+      v.addEventListener('timeupdate', pushState)
+      v.addEventListener('play', pushState)
+      v.addEventListener('pause', pushState)
+      v.addEventListener('seeked', pushState)
+      pushState()
+    }
+
+    // データを流す（変化時のみ）
+    ch.postMessage({ type: 'data', yoloFrames, trackFrames, roiRect })
+
+    // 受信側からの初期同期リクエストに応える
+    const onMsg = (ev: MessageEvent) => {
+      if (ev.data?.type === 'request-sync') {
+        pushState()
+        ch.postMessage({ type: 'data', yoloFrames, trackFrames, roiRect })
+      }
+    }
+    ch.addEventListener('message', onMsg)
+
+    return () => {
+      if (v) {
+        v.removeEventListener('timeupdate', pushState)
+        v.removeEventListener('play', pushState)
+        v.removeEventListener('pause', pushState)
+        v.removeEventListener('seeked', pushState)
+      }
+      ch.removeEventListener('message', onMsg)
+      ch.close()
+    }
+  }, [videoWindowOpen, videoRef, yoloFrames, trackFrames, roiRect])
 
   // P2: 映像モード自動検出（match データが揃ったとき）
   useEffect(() => {
@@ -1460,10 +1505,21 @@ export function AnnotatorPage() {
                 </button>
               </div>
             ) : tracknetJob?.status === 'stopped' ? (
-              <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
-                isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
-              }`}>
-                ⏸ 停止済 {Math.round(tracknetJob.progress * 100)}%
+              <div className="flex items-center gap-1">
+                <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                  isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
+                }`}>
+                  ⏸ 停止済 {Math.round(tracknetJob.progress * 100)}%
+                </div>
+                <button
+                  onClick={handleTracknetBatchResume}
+                  className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
+                    isLight ? 'bg-purple-50 text-purple-500 hover:bg-purple-100 border border-purple-200' : 'bg-purple-900/20 text-purple-400 hover:bg-purple-900/40 border border-purple-800/50'
+                  }`}
+                  title="解析済みラリーをスキップして途中から再開"
+                >
+                  再開
+                </button>
               </div>
             ) : tracknetJob?.status === 'complete' ? (
               <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
@@ -1545,10 +1601,21 @@ export function AnnotatorPage() {
                   </button>
                 </div>
               ) : yoloJob?.status === 'stopped' ? (
-                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
-                  isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
-                }`}>
-                  ⏸ {Math.round(yoloJob.progress * 100)}%
+                <div className="flex items-center gap-1">
+                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
+                    isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
+                  }`}>
+                    ⏸ {Math.round(yoloJob.progress * 100)}%
+                  </div>
+                  <button
+                    onClick={handleYoloBatchResume}
+                    className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      isLight ? 'bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200' : 'bg-blue-900/20 text-blue-400 hover:bg-blue-900/40 border border-blue-800/50'
+                    }`}
+                    title="既存フレームをスキップして途中から再開"
+                  >
+                    再開
+                  </button>
                 </div>
               ) : yoloJob?.status === 'complete' ? (
                 <button
@@ -1637,6 +1704,7 @@ export function AnnotatorPage() {
                               detection_index: +i,
                               player_key: k,
                               bbox: frameDetections[+i]?.bbox ?? null,
+                              hist: frameDetections[+i]?.hist ?? null,
                             }))
                         )
                         setTaggingMode(false)
@@ -2325,6 +2393,7 @@ export function AnnotatorPage() {
                 onCalibrationSaved={() => {
                   queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
                 }}
+                onCalibSourceChange={setCalibSource}
                 roiRect={roiRect}
                 roiEditing={roiEditing}
                 onRoiChange={(rect) => {
@@ -3282,6 +3351,8 @@ export function AnnotatorPage() {
                   partner_b: match?.partner_b?.name ?? '',
                 }}
                 isLight={isLight}
+                calibSource={calibSource}
+                onOpenGrid={() => setCourtGridVisible(true)}
               />
             )}
 

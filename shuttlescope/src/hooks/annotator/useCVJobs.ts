@@ -100,7 +100,7 @@ export interface CVJobsResult {
   trackingVisible: boolean
   setTrackingVisible: React.Dispatch<React.SetStateAction<boolean>>
   handleFrameDetect: (timestampSec: number) => Promise<void>
-  handleAssignAndTrack: (seedTs: number, assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null }[]) => Promise<void>
+  handleAssignAndTrack: (seedTs: number, assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[]) => Promise<void>
   frameDetectLoading: boolean
   trackingLoading: boolean
   /** フレーム検出エラー（APIエラー時の詳細メッセージ。nullなら正常） */
@@ -220,7 +220,7 @@ export function useCVJobs({
 
   const handleAssignAndTrack = useCallback(async (
     seedTs: number,
-    assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null }[]
+    assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[]
   ) => {
     if (!matchId) return
     setTrackingLoading(true)
@@ -407,10 +407,15 @@ export function useCVJobs({
       )
       if (res.success) {
         setYoloJobId(res.data.job_id)
-        setYoloJob({
-          status: 'pending', progress: 0, processed_frames: 0,
-          total_frames: 0, detected_players: 0, error: null,
-        })
+        // resume 時は既存の進捗を引き継ぎ、0% に戻さない
+        setYoloJob(prev => ({
+          status: 'pending',
+          progress:         opts.resume ? (prev?.progress         ?? 0) : 0,
+          processed_frames: opts.resume ? (prev?.processed_frames ?? 0) : 0,
+          total_frames:     opts.resume ? (prev?.total_frames     ?? 0) : 0,
+          detected_players: opts.resume ? (prev?.detected_players ?? 0) : 0,
+          error: null,
+        }))
         // 使用した ROI を記憶
         if (matchId) {
           const roi = roiRect ?? null
