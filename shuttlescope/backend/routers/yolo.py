@@ -24,6 +24,7 @@ from backend.yolo.inference import get_yolo_inference
 from backend.yolo.court_mapper import summarize_frame_positions, summarize_rally_positions
 from backend.yolo.cv_aligner import align_match
 from backend.analysis.doubles_cv_engine import compute_doubles_cv_analytics
+from backend.cv.reid import extract_embedding as _extract_reid_emb, MIN_APP_SIM as _REID_MIN_SIM
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -226,12 +227,15 @@ def delete_yolo_results(match_id: int, db: Session = Depends(get_db)):
             j["stop_requested"] = True
             j["status"] = "stopped"
 
-    # 2. DB 行削除
+    # 2. DB 行削除（検出結果と識別トラックのみ。seed は保持して再検出時に自動再適用）
     deleted = (
         db.query(MatchCVArtifact)
         .filter(
             MatchCVArtifact.match_id == match_id,
-            MatchCVArtifact.artifact_type == "yolo_player_detections",
+            MatchCVArtifact.artifact_type.in_([
+                "yolo_player_detections",
+                "player_identity_track",
+            ]),
         )
         .delete(synchronize_session=False)
     )
@@ -440,7 +444,7 @@ def _crop_roi(frame, roi: dict | None):
     return frame[y1:y2, x1:x2]
 
 
-def _torso_hue_hist(frame_bgr, bbox_norm, fw: int, fh: int, bins: int = 12) -> list[float]:
+def _torso_hue_hist_legacy(frame_bgr, bbox_norm, fw: int, fh: int, bins: int = 12) -> list[float]:
     """
     bbox 上40%（= 胴体）から Hue ヒストグラム（L1正規化, 既定12次元）を計算。
     彩度が低いピクセル(黒/白/灰)は除外しユニフォーム色のみを拾う。
@@ -573,6 +577,7 @@ def _reapply_identity_track(db, match_id: int, frames_data: list[dict]) -> None:
             seed_data["seed_timestamp_sec"],
             seed_data["assignments"],
             extra_galleries,
+            seed_data.get("court_roi"),
         )
         if not re_tracked:
             return
@@ -805,7 +810,7 @@ def _run_batch(
                     if "hist" not in _p:
                         bb = _p.get("bbox")
                         if bb and len(bb) == 4:
-                            _p["hist"] = _torso_hue_hist(frame, bb, fw_px, fh_px)
+                            _p["hist"] = _extract_reid_emb(frame, bb, fw_px, fh_px)
 
                 detected_total += len([p for p in frames_data[-1]["players"] if "player" in p.get("label", "")])
                 processed += 1
@@ -912,7 +917,7 @@ def detect_single_frame(
     for _p in players:
         bb = _p.get("bbox")
         if bb and len(bb) == 4 and "hist" not in _p:
-            _p["hist"] = _torso_hue_hist(frame, bb, _fw, _fh)
+            _p["hist"] = _extract_reid_emb(frame, bb, _fw, _fh)
 
     debug_info = inf.get_last_debug()
 
@@ -974,6 +979,8 @@ class AssignAndTrackRequest(BaseModel):
     assignments: list[PlayerIdentityAssignment]
     # 10サンプルタグ付け: メインシード以外の追加シード（任意、後方互換）
     extra_seeds: list[SeedFrame] = []
+    # コート ROI（正規化座標）: 候補の足元がこの範囲外なら観客等として reject
+    court_roi: Optional[RoiRectModel] = None
 
 
 @router.post("/yolo/assign_and_track/{match_id}")
@@ -1003,6 +1010,7 @@ def assign_and_track(
     assignments = [a.model_dump() for a in body.assignments]
 
     # シード割り当てを保存（バッチ完了後に全フレームへ自動再適用するため）
+    court_roi_dump = body.court_roi.model_dump() if body.court_roi else None
     seed_payload = {
         "seed_timestamp_sec": body.seed_timestamp_sec,
         "assignments": assignments,
@@ -1013,6 +1021,7 @@ def assign_and_track(
             }
             for es in (body.extra_seeds or [])
         ],
+        "court_roi": court_roi_dump,
     }
     seed_json = json.dumps(seed_payload, ensure_ascii=False)
     existing_seed = (
@@ -1056,7 +1065,7 @@ def assign_and_track(
         match_id, len(body.extra_seeds or []),
         {k: len(v) for k, v in extra_galleries.items()},
     )
-    tracked = _track_identities(yolo_frames, body.seed_timestamp_sec, assignments, extra_galleries)
+    tracked = _track_identities(yolo_frames, body.seed_timestamp_sec, assignments, extra_galleries, court_roi_dump)
     logger.info(
         "assign_and_track: match=%d tracked=%d",
         match_id, len(tracked),
@@ -1318,11 +1327,30 @@ def get_movement_stats(match_id: int, db: Session = Depends(get_db)):
 
 # ─── IoU 追跡ヘルパー ────────────────────────────────────────────────────────
 
+def _foot_in_roi(bbox: list[float], roi: dict | None, margin: float = 0.03) -> bool:
+    """bbox の足元（底辺中心）が ROI に含まれるか判定。
+    ROI 未指定なら常に True。margin は正規化座標での許容はみ出し幅。
+    """
+    if not roi or not bbox or len(bbox) != 4:
+        return True
+    rx = roi.get("x", 0.0)
+    ry = roi.get("y", 0.0)
+    rw = roi.get("w", 1.0)
+    rh = roi.get("h", 1.0)
+    foot_x = (bbox[0] + bbox[2]) / 2.0
+    foot_y = bbox[3]
+    return (
+        (rx - margin) <= foot_x <= (rx + rw + margin)
+        and (ry - margin) <= foot_y <= (ry + rh + margin)
+    )
+
+
 def _track_identities(
     yolo_frames: list[dict],
     seed_ts: float,
     assignments: list[dict],
     extra_galleries: dict[str, list[list[float]]] | None = None,
+    court_roi: dict | None = None,
 ) -> list[dict]:
     """シードフレームの割り当てをもとに全フレームへ速度予測付き双方向追跡を行う。
 
@@ -1432,6 +1460,28 @@ def _track_identities(
                 for g in extra_galleries[pk]:
                     if g:
                         gallery_list.append(list(g))
+            # ── 次元整合性チェック ──
+            # seed が旧形式(12-bin Hue)、検出が新形式(315-d)の場合、cos_sim は中立 0.5 を返し
+            # ハードゲートで全候補を棄却してしまうため、ギャラリー自体を無効化して IoU 主体にする。
+            # ユーザには + 識別(10) の再取得を促す（ログ）。
+            if gallery_list and yolo_frames:
+                # 先頭フレームで hist が付いている最初の detection を探す
+                sample_hist_len = 0
+                for f in yolo_frames[:10]:
+                    for p in f.get("players", []):
+                        h = p.get("hist")
+                        if h:
+                            sample_hist_len = len(h)
+                            break
+                    if sample_hist_len:
+                        break
+                gallery_len = len(gallery_list[0]) if gallery_list[0] else 0
+                if sample_hist_len and gallery_len and sample_hist_len != gallery_len:
+                    logger.warning(
+                        "_track_identities: feature dim mismatch seed=%d det=%d → gallery disabled (please re-run + 識別(10))",
+                        gallery_len, sample_hist_len,
+                    )
+                    gallery_list = []
             state[pk] = {
                 "bbox":       bbox,
                 "cx_n":       cx,
@@ -1483,10 +1533,13 @@ def _track_identities(
                 # ── IoU マッチング（安定追跡は常に採用） ──
                 # 過去に「外観ベトーで IoU マッチを棄却 → 何も見つからず lost」が頻発したため
                 # IoU が取れる場合は常に採用する。外観・体格は IoU が無い場合の補助にのみ使う。
+                # コート ROI 外（観客席等）の候補は最初から除外する。
                 best_i = -1
                 best_iou = 0.05
                 for i, p in enumerate(curr):
                     if i in used:
+                        continue
+                    if not _foot_in_roi(p.get("bbox", []), court_roi):
                         continue
                     iou = _bbox_iou(st["bbox"], p.get("bbox", []))
                     if iou > best_iou:
@@ -1494,11 +1547,15 @@ def _track_identities(
                         best_i = i
 
                 # ── 統合コスト検索（位置+外観+体格）──
-                # cost = pos_dist + 0.4·(1-cos_sim) + 0.25·|h_det - seed_h|/seed_h
+                # cost = pos_dist + 0.6·(1-cos_sim) + 0.25·|h_det - seed_h|/seed_h
+                # 外観 embedding が MIN_APP_SIM 未満の候補は観客扱いで棄却（= 別人）
                 if best_i < 0:
                     best_cost = 9.9
+                    best_sim = 0.0
                     for i, p in enumerate(curr):
                         if i in used:
+                            continue
+                        if not _foot_in_roi(p.get("bbox", []), court_roi):
                             continue
                         pb = p.get("bbox", [])
                         if len(pb) == 4:
@@ -1512,16 +1569,21 @@ def _track_identities(
                         pos_dist = _math_ti.sqrt((cx - pred_cx) ** 2 + (cy - pred_cy) ** 2)
                         if pos_dist >= search_r:
                             continue
-                        # 外観(Hueヒスト) — ギャラリー未設定なら中立(0.5)
+                        # 外観(ReID embedding) — ギャラリー未設定なら中立(0.5)
                         sim = _cos_sim_gallery(st["gallery"], p.get("hist") or []) if st["gallery"] else 0.5
+                        # 外観下限でハード棄却（観客/審判対策）。ギャラリーがある場合のみ適用
+                        if st["gallery"] and sim < _REID_MIN_SIM:
+                            continue
                         # 体格(bbox高さの相対差)
                         if st["seed_h"] > 0.01 and det_h > 0:
                             size_diff = min(abs(det_h - st["seed_h"]) / st["seed_h"], 1.0)
                         else:
                             size_diff = 0.0
-                        cost = pos_dist + 0.4 * (1.0 - sim) + 0.25 * size_diff
+                        # 外観の重みを 0.4 → 0.6 に引き上げ（位置が近くても別人なら棄却方向）
+                        cost = pos_dist + 0.6 * (1.0 - sim) + 0.25 * size_diff
                         if cost < best_cost:
                             best_cost = cost
+                            best_sim = sim
                             best_i = i
 
                 if best_i >= 0:
