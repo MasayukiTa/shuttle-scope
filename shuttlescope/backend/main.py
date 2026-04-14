@@ -314,6 +314,19 @@ async def ws_live(session_code: str, websocket: WebSocket):
 
 # ─── LAN カメラ: WebRTC シグナリング WS ──────────────────────────────────────
 
+# ─── ブラウザ中継リアルタイム YOLO WS ───────────────────────────────────────
+
+@app.websocket("/ws/yolo/realtime/{session_code}")
+async def ws_yolo_realtime(session_code: str, websocket: WebSocket):
+    """オペレーター PC から送られる JPEG を yolov8n で推論し bbox を返す WS。
+
+    セッションごとに独立、接続ごとに独立タスクで動作するため、複数 PC からの
+    並列接続が自然にサポートされる（共有状態なし）。
+    """
+    from backend.routers.yolo_realtime import ws_realtime_yolo_handler
+    await ws_realtime_yolo_handler(session_code, websocket)
+
+
 @app.websocket("/ws/camera/{session_code}")
 async def ws_camera(
     session_code: str,
