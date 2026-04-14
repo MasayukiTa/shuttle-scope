@@ -175,6 +175,22 @@ export function MatchListPage() {
   type MatchSortKey = 'date' | 'tournament' | 'result' | 'status'
   const [matchSortKey, setMatchSortKey] = useState<MatchSortKey>('date')
   const [matchSortDir, setMatchSortDir] = useState<'asc' | 'desc'>('desc')
+  // 進捗列：優先表示するステータス（null = デフォルト順）
+  const [statusSortTarget, setStatusSortTarget] = useState<string | null>(null)
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false)
+  const statusDropdownRef = useRef<HTMLDivElement>(null)
+
+  // 進捗ドロップダウン外クリック閉じ
+  useEffect(() => {
+    if (!showStatusDropdown) return
+    const handler = (e: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+        setShowStatusDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showStatusDropdown])
   // インライン削除確認
   const [deleteConfirmMatchId, setDeleteConfirmMatchId] = useState<number | null>(null)
   // 一括選択
@@ -475,13 +491,20 @@ export function MatchListPage() {
         const order = { win: 0, draw: 1, loss: 2 }
         cmp = (order[a.result] ?? 3) - (order[b.result] ?? 3)
       } else if (matchSortKey === 'status') {
-        // 未着手 → 作業中 → 完了/確認済み
-        const statusOrder: Record<string, number> = { pending: 0, in_progress: 1, complete: 2, reviewed: 3 }
-        cmp = (statusOrder[a.annotation_status] ?? 0) - (statusOrder[b.annotation_status] ?? 0)
+        if (statusSortTarget) {
+          // 選択ステータスを先頭に、それ以外はデフォルト順
+          const statusOrder: Record<string, number> = { pending: 0, in_progress: 1, complete: 2, reviewed: 3 }
+          const aScore = a.annotation_status === statusSortTarget ? -1 : (statusOrder[a.annotation_status] ?? 0)
+          const bScore = b.annotation_status === statusSortTarget ? -1 : (statusOrder[b.annotation_status] ?? 0)
+          cmp = aScore - bScore
+        } else {
+          const statusOrder: Record<string, number> = { pending: 0, in_progress: 1, complete: 2, reviewed: 3 }
+          cmp = (statusOrder[a.annotation_status] ?? 0) - (statusOrder[b.annotation_status] ?? 0)
+        }
       }
       return matchSortDir === 'asc' ? cmp : -cmp
     })
-  }, [allMatches, filterDateFrom, filterDateTo, matchSortKey, matchSortDir])
+  }, [allMatches, filterDateFrom, filterDateTo, matchSortKey, matchSortDir, statusSortTarget])
 
   function handleMatchSort(key: MatchSortKey) {
     if (matchSortKey === key) {
@@ -890,16 +913,49 @@ export function MatchListPage() {
                         : <ChevronsUpDown size={12} className="opacity-30" />}
                     </span>
                   </th>
-                  <th
-                    className="text-left py-2 pr-4 cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
-                    onClick={() => handleMatchSort('status')}
-                  >
-                    <span className="inline-flex items-center gap-0.5">
-                      進捗
-                      {matchSortKey === 'status'
-                        ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
-                        : <ChevronsUpDown size={12} className="opacity-30" />}
-                    </span>
+                  <th className="text-left py-2 pr-4 whitespace-nowrap">
+                    <div className="relative inline-block" ref={statusDropdownRef}>
+                      <button
+                        className="inline-flex items-center gap-0.5 cursor-pointer select-none hover:opacity-80"
+                        onClick={() => {
+                          setMatchSortKey('status')
+                          setShowStatusDropdown((v) => !v)
+                        }}
+                      >
+                        進捗
+                        {statusSortTarget ? (
+                          <span className="text-blue-400 text-[9px] ml-0.5 font-bold">●</span>
+                        ) : (
+                          <ChevronDown size={12} className="opacity-30" />
+                        )}
+                      </button>
+                      {showStatusDropdown && (
+                        <div className={`absolute top-full left-0 mt-1 z-50 rounded shadow-lg border min-w-[90px] text-xs py-0.5 ${
+                          isLight ? 'bg-white border-gray-200 text-gray-800' : 'bg-gray-900 border-gray-700 text-gray-100'
+                        }`}>
+                          {([
+                            { key: 'pending',    label: '未着手' },
+                            { key: 'in_progress', label: '作業中' },
+                            { key: 'complete',   label: '完了' },
+                          ] as const).map(({ key, label }) => (
+                            <button
+                              key={key}
+                              className={`w-full text-left px-3 py-1.5 flex items-center gap-1.5 ${
+                                statusSortTarget === key
+                                  ? isLight ? 'bg-blue-50 font-semibold text-blue-700' : 'bg-blue-900/30 font-semibold text-blue-300'
+                                  : isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-800'
+                              }`}
+                              onClick={() => {
+                                setStatusSortTarget(statusSortTarget === key ? null : key)
+                                setShowStatusDropdown(false)
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </th>
                   <th className="text-left py-2">操作</th>
                 </tr>
@@ -922,7 +978,7 @@ export function MatchListPage() {
                     </td>
                     <td className={`py-2 pr-4 ${textSecondary}`}>{t(`match.formats.${m.format}`)}</td>
                     <td className="py-2 pr-4">
-                      <span>
+                      <span className="text-sm">
                         {m.player_b?.name ?? `#${m.player_b_id}`}
                         {m.partner_b?.name && ` / ${m.partner_b.name}`}
                       </span>

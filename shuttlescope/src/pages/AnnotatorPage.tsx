@@ -875,6 +875,14 @@ export function AnnotatorPage() {
     roiRect,
   })
 
+  // 検出0件→3秒後にタグ付けモード自動終了
+  useEffect(() => {
+    if (!taggingMode) return
+    if (frameDetections.length > 0) return
+    const timer = setTimeout(() => setTaggingMode(false), 3000)
+    return () => clearTimeout(timer)
+  }, [taggingMode, frameDetections.length])
+
   // R-001/R-002: セッション共有フック
   const {
     activeSession,
@@ -2598,10 +2606,9 @@ export function AnnotatorPage() {
               <div className="bg-gray-800 rounded-lg p-3 flex items-center justify-between">
                 <div className="text-center min-w-[80px]">
                   {match?.format !== 'singles' ? (
-                    <div className="flex flex-wrap justify-center gap-x-1 text-[10px] text-gray-400 max-w-[110px]">
-                      <span className="whitespace-nowrap">{match?.player_a?.name ?? 'A'}</span>
-                      <span className="opacity-40">/</span>
-                      <span className="whitespace-nowrap">{match?.partner_a?.name ?? '—'}</span>
+                    <div className="text-[10px] text-gray-400 leading-tight">
+                      <div className="whitespace-nowrap truncate max-w-[110px]">{match?.player_a?.name ?? 'A'}</div>
+                      <div className="whitespace-nowrap truncate max-w-[110px]">{match?.partner_a?.name ?? '—'}</div>
                     </div>
                   ) : (
                     <div className="text-xs text-gray-400 truncate">{match?.player_a?.name ?? 'A'}</div>
@@ -2619,10 +2626,9 @@ export function AnnotatorPage() {
                 </div>
                 <div className="text-center min-w-[80px]">
                   {match?.format !== 'singles' ? (
-                    <div className="flex flex-wrap justify-center gap-x-1 text-[10px] text-gray-400 max-w-[110px]">
-                      <span className="whitespace-nowrap">{match?.player_b?.name ?? 'B'}</span>
-                      <span className="opacity-40">/</span>
-                      <span className="whitespace-nowrap">{match?.partner_b?.name ?? '—'}</span>
+                    <div className="text-[10px] text-gray-400 leading-tight">
+                      <div className="whitespace-nowrap truncate max-w-[110px]">{match?.player_b?.name ?? 'B'}</div>
+                      <div className="whitespace-nowrap truncate max-w-[110px]">{match?.partner_b?.name ?? '—'}</div>
                     </div>
                   ) : (
                     <div className="text-xs text-gray-400 truncate">{match?.player_b?.name ?? 'B'}</div>
@@ -2639,10 +2645,9 @@ export function AnnotatorPage() {
             <div className={clsx('bg-gray-800 rounded flex items-center justify-between shrink-0', useLargeTouch ? 'p-3' : 'p-2')}>
               <div className={clsx('text-center', useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]')}>
                 {match?.format !== 'singles' ? (
-                  <div className="flex flex-wrap justify-center gap-x-1 text-[10px] text-gray-400 max-w-[120px]">
-                    <span className="whitespace-nowrap">{match?.player_a?.name ?? 'A'}</span>
-                    <span className="opacity-40">/</span>
-                    <span className="whitespace-nowrap">{match?.partner_a?.name ?? '—'}</span>
+                  <div className={clsx('text-gray-400 leading-tight', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
+                    <div className="whitespace-nowrap truncate max-w-[120px]">{match?.player_a?.name ?? 'A'}</div>
+                    <div className="whitespace-nowrap truncate max-w-[120px]">{match?.partner_a?.name ?? '—'}</div>
                   </div>
                 ) : (
                   <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_a?.name ?? 'A'}</div>
@@ -2680,10 +2685,9 @@ export function AnnotatorPage() {
               </div>
               <div className={clsx('text-center', useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]')}>
                 {match?.format !== 'singles' ? (
-                  <div className="flex flex-wrap justify-center gap-x-1 text-[10px] text-gray-400 max-w-[120px]">
-                    <span className="whitespace-nowrap">{match?.player_b?.name ?? 'B'}</span>
-                    <span className="opacity-40">/</span>
-                    <span className="whitespace-nowrap">{match?.partner_b?.name ?? '—'}</span>
+                  <div className={clsx('text-gray-400 leading-tight', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
+                    <div className="whitespace-nowrap truncate max-w-[120px]">{match?.player_b?.name ?? 'B'}</div>
+                    <div className="whitespace-nowrap truncate max-w-[120px]">{match?.partner_b?.name ?? '—'}</div>
                   </div>
                 ) : (
                   <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_b?.name ?? 'B'}</div>

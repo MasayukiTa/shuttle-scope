@@ -43,8 +43,8 @@ COURT_MID_X = 0.5
 DEPTH_FRONT_Y = 0.35   # これより小さい y = front（ネット側）
 DEPTH_BACK_Y = 0.65    # これより大きい y = back（ベースライン側）
 
-# 検出信頼度しきい値
-MIN_CONF = 0.30
+# 検出信頼度しきい値（バドミントン全景では選手が小さいため低めに設定）
+MIN_CONF = 0.20
 
 
 class YOLOInference:
@@ -225,22 +225,58 @@ class YOLOInference:
         img = img[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255.0
         inp = img[np.newaxis]
 
-        # 推論: output shape = [1, 84, 8400]
+        # 推論: output shape は [1, 84, 8400] または [1, 8400, 84] の両方あり得る
         # 84 = 4(box) + 80(classes), 8400 = anchors
         result = self._model([inp])[self._model.output(0)]
-        raw = result[0]  # (84, 8400)
+        raw = result[0]  # (84, 8400) or (8400, 84)
+
+        # shape が (8400, 84) の場合は転置して (84, 8400) に統一
+        if raw.ndim == 2 and raw.shape[0] != 84 and raw.shape[1] == 84:
+            raw = raw.T  # → (84, 8400)
+        elif raw.ndim == 2 and raw.shape[0] == 8400:
+            raw = raw.T  # → (84, 8400)
+
+        if raw.shape[0] < 5:
+            logger.warning("YOLO OpenVINO: unexpected output shape %s", raw.shape)
+            return []
 
         detections: list[dict] = []
-        # person クラス = index 0 → raw[4 + 0]
+        # person クラス = COCO index 0 → row index 4 (4 box coords の次)
         person_scores = raw[4]  # (8400,)
         cx, cy, bw, bh = raw[0], raw[1], raw[2], raw[3]
 
+        # NMS 省略版: 信頼度でフィルタ後、重複をシンプルな IoU で削除
+        candidates = []
         for i in np.where(person_scores >= MIN_CONF)[0]:
             conf = float(person_scores[i])
             x1_n = max(0.0, float((cx[i] - bw[i] / 2) / 640))
             y1_n = max(0.0, float((cy[i] - bh[i] / 2) / 640))
             x2_n = min(1.0, float((cx[i] + bw[i] / 2) / 640))
             y2_n = min(1.0, float((cy[i] + bh[i] / 2) / 640))
+            if x2_n > x1_n and y2_n > y1_n:
+                candidates.append((conf, x1_n, y1_n, x2_n, y2_n))
+
+        # 信頼度降順でグリーディ NMS
+        candidates.sort(key=lambda c: c[0], reverse=True)
+        kept: list[tuple] = []
+        for cand in candidates:
+            conf, x1, y1, x2, y2 = cand
+            overlap = False
+            for kc, kx1, ky1, kx2, ky2 in kept:
+                ix1, iy1 = max(x1, kx1), max(y1, ky1)
+                ix2, iy2 = min(x2, kx2), min(y2, ky2)
+                if ix2 > ix1 and iy2 > iy1:
+                    inter = (ix2 - ix1) * (iy2 - iy1)
+                    a1 = (x2 - x1) * (y2 - y1)
+                    a2 = (kx2 - kx1) * (ky2 - ky1)
+                    iou = inter / (a1 + a2 - inter + 1e-6)
+                    if iou > 0.45:
+                        overlap = True
+                        break
+            if not overlap:
+                kept.append(cand)
+
+        for conf, x1_n, y1_n, x2_n, y2_n in kept:
             cx_n = (x1_n + x2_n) / 2
             cy_n = (y1_n + y2_n) / 2
             detections.append(self._make_entry(

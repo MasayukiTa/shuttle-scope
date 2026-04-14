@@ -687,9 +687,16 @@ def detect_single_frame(
 
     roi = body.roi_rect.model_dump() if body.roi_rect else None
     cropped = _crop_roi(frame, roi)
+    h_crop, w_crop = cropped.shape[:2]
     players = inf.predict_frame(cropped)
     if roi:
         players = _remap_player_coords(players, roi)
+
+    logger.info(
+        "frame_detect match=%d ts=%.2f frame_idx=%d fps=%.1f crop=%dx%d backend=%s players=%d",
+        match_id, body.timestamp_sec, frame_idx, fps, w_crop, h_crop,
+        inf.backend_name(), len(players),
+    )
 
     return {
         "success": True,
