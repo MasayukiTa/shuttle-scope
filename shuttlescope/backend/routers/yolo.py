@@ -489,6 +489,25 @@ def _cos_sim(a: list[float], b: list[float]) -> float:
     return max(0.0, min(1.0, dot / (na * nb)))
 
 
+def _cos_sim_gallery(gallery: list, b: list[float]) -> float:
+    """ギャラリー (hist のリスト or 単一 hist) との最大類似度。
+    10サンプル展開時は各サンプルとの類似度の max を取り、最も合致するサンプルで
+    判定する（向きや遮蔽の違いに頑健）。
+    """
+    if not gallery or not b:
+        return 0.5
+    # 単一 hist（後方互換）: 数値リスト
+    if gallery and isinstance(gallery[0], (int, float)):
+        return _cos_sim(gallery, b)  # type: ignore[arg-type]
+    # マルチ hist: list of list
+    best = 0.0
+    for g in gallery:
+        s = _cos_sim(g, b)
+        if s > best:
+            best = s
+    return best if best > 0 else 0.5
+
+
 def _remap_player_coords(players: list[dict], roi: dict | None) -> list[dict]:
     """YOLO 検出結果の正規化座標を ROI ローカル座標からフルフレーム座標に変換する。"""
     if not roi:
@@ -542,10 +561,18 @@ def _reapply_identity_track(db, match_id: int, frames_data: list[dict]) -> None:
         if not (seed_art and seed_art.data):
             return
         seed_data = json.loads(seed_art.data)
+        # extra_seeds から player_key ごとのマルチギャラリーを再構築
+        extra_galleries: dict[str, list[list[float]]] = {}
+        for es in seed_data.get("extra_seeds", []) or []:
+            for a in es.get("assignments", []):
+                hist = a.get("hist")
+                if hist:
+                    extra_galleries.setdefault(a["player_key"], []).append(list(hist))
         re_tracked = _track_identities(
             frames_data,
             seed_data["seed_timestamp_sec"],
             seed_data["assignments"],
+            extra_galleries,
         )
         if not re_tracked:
             return
@@ -936,9 +963,17 @@ class PlayerIdentityAssignment(BaseModel):
     hist: Optional[list[float]] = None  # frame_detect が返した Hue ヒスト（外観ギャラリー）
 
 
+class SeedFrame(BaseModel):
+    """追加シード: 10サンプルタグ付けフローで順次貯める外観ギャラリー源"""
+    timestamp_sec: float
+    assignments: list[PlayerIdentityAssignment]
+
+
 class AssignAndTrackRequest(BaseModel):
     seed_timestamp_sec: float
     assignments: list[PlayerIdentityAssignment]
+    # 10サンプルタグ付け: メインシード以外の追加シード（任意、後方互換）
+    extra_seeds: list[SeedFrame] = []
 
 
 @router.post("/yolo/assign_and_track/{match_id}")
@@ -971,6 +1006,13 @@ def assign_and_track(
     seed_payload = {
         "seed_timestamp_sec": body.seed_timestamp_sec,
         "assignments": assignments,
+        "extra_seeds": [
+            {
+                "timestamp_sec": es.timestamp_sec,
+                "assignments": [a.model_dump() for a in es.assignments],
+            }
+            for es in (body.extra_seeds or [])
+        ],
     }
     seed_json = json.dumps(seed_payload, ensure_ascii=False)
     existing_seed = (
@@ -1003,7 +1045,18 @@ def assign_and_track(
             len(nearest.get("players", [])), len(assignments), len(yolo_frames),
         )
 
-    tracked = _track_identities(yolo_frames, body.seed_timestamp_sec, assignments)
+    # extra_seeds の hist を player_key ごとに集約してマルチギャラリーを構築
+    extra_galleries: dict[str, list[list[float]]] = {}
+    for es in body.extra_seeds or []:
+        for a in es.assignments:
+            if a.hist:
+                extra_galleries.setdefault(a.player_key, []).append(list(a.hist))
+    logger.info(
+        "assign_and_track: match=%d extra_seeds=%d galleries=%s",
+        match_id, len(body.extra_seeds or []),
+        {k: len(v) for k, v in extra_galleries.items()},
+    )
+    tracked = _track_identities(yolo_frames, body.seed_timestamp_sec, assignments, extra_galleries)
     logger.info(
         "assign_and_track: match=%d tracked=%d",
         match_id, len(tracked),
@@ -1269,6 +1322,7 @@ def _track_identities(
     yolo_frames: list[dict],
     seed_ts: float,
     assignments: list[dict],
+    extra_galleries: dict[str, list[list[float]]] | None = None,
 ) -> list[dict]:
     """シードフレームの割り当てをもとに全フレームへ速度予測付き双方向追跡を行う。
 
@@ -1367,6 +1421,17 @@ def _track_identities(
             cx = e["cx_n"] if e["cx_n"] is not None else (bbox[0] + bbox[2]) / 2
             cy = e["cy_n"] if e["cy_n"] is not None else (bbox[1] + bbox[3]) / 2
             seed_h = (bbox[3] - bbox[1]) if len(bbox) == 4 else 0.0
+            # ギャラリー構築:
+            # - メインシードの hist を 1 本目として先頭に置く
+            # - extra_seeds からの同 player_key のヒストを追加（マルチサンプル）
+            primary_hist = list(e.get("hist") or [])
+            gallery_list: list[list[float]] = []
+            if primary_hist:
+                gallery_list.append(primary_hist)
+            if extra_galleries and pk in extra_galleries:
+                for g in extra_galleries[pk]:
+                    if g:
+                        gallery_list.append(list(g))
             state[pk] = {
                 "bbox":       bbox,
                 "cx_n":       cx,
@@ -1374,7 +1439,7 @@ def _track_identities(
                 "vel_cx":     0.0,   # 正規化座標での1フレームあたりの速度
                 "vel_cy":     0.0,
                 "lost_count": 0,
-                "gallery":    list(e.get("hist") or []),  # 外観特徴量（Hueヒスト）
+                "gallery":    gallery_list,  # マルチサンプル外観ギャラリー
                 "seed_h":     seed_h,                     # 基準 bbox 高さ（体格）
             }
 
@@ -1448,7 +1513,7 @@ def _track_identities(
                         if pos_dist >= search_r:
                             continue
                         # 外観(Hueヒスト) — ギャラリー未設定なら中立(0.5)
-                        sim = _cos_sim(st["gallery"], p.get("hist") or []) if st["gallery"] else 0.5
+                        sim = _cos_sim_gallery(st["gallery"], p.get("hist") or []) if st["gallery"] else 0.5
                         # 体格(bbox高さの相対差)
                         if st["seed_h"] > 0.01 and det_h > 0:
                             size_diff = min(abs(det_h - st["seed_h"]) / st["seed_h"], 1.0)

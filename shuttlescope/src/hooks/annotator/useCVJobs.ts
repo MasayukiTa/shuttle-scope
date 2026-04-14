@@ -101,7 +101,11 @@ export interface CVJobsResult {
   trackingVisible: boolean
   setTrackingVisible: React.Dispatch<React.SetStateAction<boolean>>
   handleFrameDetect: (timestampSec: number) => Promise<void>
-  handleAssignAndTrack: (seedTs: number, assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[]) => Promise<void>
+  handleAssignAndTrack: (
+    seedTs: number,
+    assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[],
+    extraSeeds?: { timestamp_sec: number; assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[] }[]
+  ) => Promise<void>
   frameDetectLoading: boolean
   trackingLoading: boolean
   /** フレーム検出エラー（APIエラー時の詳細メッセージ。nullなら正常） */
@@ -221,7 +225,8 @@ export function useCVJobs({
 
   const handleAssignAndTrack = useCallback(async (
     seedTs: number,
-    assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[]
+    assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[],
+    extraSeeds?: { timestamp_sec: number; assignments: { detection_index: number; player_key: string; bbox?: [number, number, number, number] | null; hist?: number[] | null }[] }[]
   ) => {
     if (!matchId) return
     setTrackingLoading(true)
@@ -229,6 +234,7 @@ export function useCVJobs({
       await apiPost(`/yolo/assign_and_track/${matchId}`, {
         seed_timestamp_sec: seedTs,
         assignments,
+        extra_seeds: extraSeeds ?? [],
       })
       // 保存後すぐ取得
       const res = await apiGet<{ success: boolean; data: TrackFrame[] }>(
@@ -450,21 +456,35 @@ export function useCVJobs({
     [_startYoloBatch, yoloLastRoi]
   )
   const handleYoloReset = useCallback(async () => {
-    if (!matchId) return
-    // 停止中ジョブがあれば先に停止要求（バックグラウンドの書き戻し防止）
+    if (!matchId) { console.warn('[YoloReset] no matchId'); return }
+    console.info('[YoloReset] start match=', matchId, 'jobId=', yoloJobId, 'status=', yoloJob?.status)
+    // 進行中ジョブがあれば abort 要求（バックグラウンドの書き戻し防止）
     if (yoloJobId && yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')) {
-      try { await apiPost(`/yolo/batch/${yoloJobId}/stop`, {}) } catch { /* noop */ }
+      try { await apiPost(`/yolo/batch/${yoloJobId}/stop`, {}) } catch (e) { console.warn('[YoloReset] stop failed', e) }
     }
     try {
-      await apiDelete(`/yolo/results/${matchId}`)
+      const res = await apiDelete<{ success: boolean; data: { deleted: number } }>(`/yolo/results/${matchId}`)
+      console.info('[YoloReset] delete response', res)
       setYoloJob(null)
       setYoloFrames([])
       setYoloArtifactExists(false)
       setYoloArtifactMeta(null)
+      // 解析カード（選手移動距離・累計移動距離・ゾーン別滞在頻度等）を即時リセット
+      queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+      queryClient.invalidateQueries({ queryKey: ['yolo-doubles-analysis', matchId] })
+      queryClient.invalidateQueries({ queryKey: ['cv-candidates', matchId] })
+      queryClient.invalidateQueries({ queryKey: ['cv-review-queue', matchId] })
     } catch (err) {
-      console.warn('[YoloReset] failed', err)
+      const status = (err as { status?: number })?.status
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[YoloReset] delete failed', status, msg)
+      alert(
+        `YOLO 結果の削除に失敗しました (status=${status ?? '?'}).\n` +
+        `バックエンドが新しい DELETE エンドポイントを認識していない可能性があります。\n` +
+        `アプリを再起動してください。\n\n詳細: ${msg}`
+      )
     }
-  }, [matchId, yoloJobId, yoloJob])
+  }, [matchId, yoloJobId, yoloJob, queryClient])
 
   // ── P4: YOLO ポーリング ───────────────────────────────────────────────────
 
