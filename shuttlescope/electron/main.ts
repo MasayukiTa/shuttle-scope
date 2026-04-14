@@ -322,6 +322,18 @@ ipcMain.handle('close-video-window', () => {
   }
 })
 
+// ─── IPC: メイン↔別モニタ間ミラー（main プロセスをハブにブロードキャスト） ──
+// BroadcastChannel は Electron 別ウィンドウ間で session/partition 都合により
+// 届かない場合があるため、main プロセス経由に統一する。
+ipcMain.on('mirror-broadcast', (event, payload: unknown) => {
+  // 送信元以外の全ウィンドウへ転送
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.webContents.id !== event.sender.id && !win.isDestroyed()) {
+      win.webContents.send('mirror-message', payload)
+    }
+  }
+})
+
 // ─── IPC: 録画データの保存ダイアログ ─────────────────────────────────────────
 // MediaRecorder で録画した Uint8Array を受け取り、保存先をユーザーに選ばせてファイル書き込みする。
 

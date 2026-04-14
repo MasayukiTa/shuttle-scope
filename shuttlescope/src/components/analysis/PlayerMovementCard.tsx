@@ -10,6 +10,7 @@
  *   - 累積距離の時系列 SVG チャート（全選手重ねて表示）
  *   - ミニコートヒートマップ（ゾーン別滞在頻度）
  */
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -66,6 +67,8 @@ interface Props {
   calibSource?: 'backend' | 'local' | 'none'
   /** グリッドオーバーレイを開いて同期を促すコールバック */
   onOpenGrid?: () => void
+  /** ローカルキャリブを直接 DB へ POST するコールバック（成否は async で返す） */
+  onSyncGridFromLocal?: () => Promise<{ ok: boolean; status?: number; message?: string }>
 }
 
 // ─── 定数 ─────────────────────────────────────────────────────────────────────
@@ -297,7 +300,9 @@ function CumulativeDistanceChart({
 
 // ─── メインコンポーネント ──────────────────────────────────────────────────────
 
-export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerNames, isLight, calibSource, onOpenGrid }: Props) {
+export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerNames, isLight, calibSource, onOpenGrid, onSyncGridFromLocal }: Props) {
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<string | null>(null)
   const { card, cardInner, textHeading, textSecondary, textMuted, textFaint } = useCardTheme()
 
   const { data: resp, isLoading } = useQuery({
@@ -367,7 +372,40 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
             {isLocal ? (
               <span>
                 ⚠ グリッドはローカルに設定済みですが DB への保存が未完了です。
-                {canClick && <span className="underline ml-1">ここをクリックしてグリッドを開き同期してください。</span>}
+                {onSyncGridFromLocal ? (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      if (syncing) return
+                      setSyncing(true)
+                      setSyncResult('💾 DB へ同期中...')
+                      console.info('[GridSync] start')
+                      try {
+                        const r = await onSyncGridFromLocal()
+                        console.info('[GridSync] result', r)
+                        if (r.ok) setSyncResult('✓ DB 同期完了')
+                        else setSyncResult(`✗ 失敗 (${r.status ?? '?'}): ${r.message ?? ''}`)
+                      } catch (err) {
+                        console.warn('[GridSync] error', err)
+                        setSyncResult(`✗ ネットワークエラー: ${err instanceof Error ? err.message : String(err)}`)
+                      } finally {
+                        setSyncing(false)
+                        setTimeout(() => setSyncResult(null), 6000)
+                      }
+                    }}
+                    className="ml-2 underline font-semibold disabled:opacity-50"
+                    disabled={syncing}
+                    style={{ color: '#fff' }}
+                  >
+                    {syncing ? '同期中...' : 'クリックして DB へ同期'}
+                  </button>
+                ) : canClick ? (
+                  <span className="underline ml-1">ここをクリックしてグリッドを開き同期してください。</span>
+                ) : null}
+                {syncResult && (
+                  <div className="mt-1 text-[11px]" style={{ color: '#fff' }}>{syncResult}</div>
+                )}
               </span>
             ) : (
               <span>

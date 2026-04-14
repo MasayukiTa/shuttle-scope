@@ -10,7 +10,7 @@
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
-import { apiGet, apiPost } from '@/api/client'
+import { apiGet, apiPost, apiDelete } from '@/api/client'
 import type { ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import type { Match } from '@/types'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
@@ -88,6 +88,7 @@ export interface CVJobsResult {
   handleYoloBatchResume: () => Promise<void>
   handleYoloBatchStop: () => Promise<void>
   handleYoloBatchDiff: () => Promise<void>
+  handleYoloReset: () => Promise<void>
   /** 既存 YOLO アーティファクトが存在する（再開・差分更新ボタン表示判定用） */
   yoloArtifactExists: boolean
   /** 現在の ROI が前回 YOLO 実行時より拡張されている */
@@ -448,6 +449,22 @@ export function useCVJobs({
     () => _startYoloBatch({ prevRoi: yoloLastRoi }),
     [_startYoloBatch, yoloLastRoi]
   )
+  const handleYoloReset = useCallback(async () => {
+    if (!matchId) return
+    // 停止中ジョブがあれば先に停止要求（バックグラウンドの書き戻し防止）
+    if (yoloJobId && yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')) {
+      try { await apiPost(`/yolo/batch/${yoloJobId}/stop`, {}) } catch { /* noop */ }
+    }
+    try {
+      await apiDelete(`/yolo/results/${matchId}`)
+      setYoloJob(null)
+      setYoloFrames([])
+      setYoloArtifactExists(false)
+      setYoloArtifactMeta(null)
+    } catch (err) {
+      console.warn('[YoloReset] failed', err)
+    }
+  }, [matchId, yoloJobId, yoloJob])
 
   // ── P4: YOLO ポーリング ───────────────────────────────────────────────────
 
@@ -505,13 +522,33 @@ export function useCVJobs({
   }, [yoloJobId, yoloJob?.status, matchId])
 
   // ── P4: 動画再生位置の追跡（オーバーレイ同期） ───────────────────────────
-
+  //
+  // 旧実装は `useEffect(()=>{...}, [videoRef])` で video.addEventListener していたが、
+  // videoRef.current は AnnotatorVideoPane が条件付きでマウントされたり src が
+  // 後から差し替わるタイミングで null だったり再生成されたりするため、
+  // 「ロード時には null だったので listener が付かず、後で video が出てきても
+  //  effect が再走しないので永久に無音」という致命的状態に陥っていた。
+  // BBOX が「最初の静止画から動かない」現象の真因。
+  //
+  // requestAnimationFrame で毎フレーム videoRef.current?.currentTime を読みに行く
+  // 方式に変更。video 要素の有無・差し替えに関係なく現在時刻が確実に取れる。
+  // 50ms 以上の差分でのみ state 更新（無駄な再レンダー抑制）。
   useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-    const onTimeUpdate = () => setCurrentVideoSec(video.currentTime)
-    video.addEventListener('timeupdate', onTimeUpdate)
-    return () => video.removeEventListener('timeupdate', onTimeUpdate)
+    let raf = 0
+    let last = -1
+    const tick = () => {
+      const v = videoRef.current
+      if (v && !Number.isNaN(v.currentTime)) {
+        const t = v.currentTime
+        if (Math.abs(t - last) > 0.05) {
+          last = t
+          setCurrentVideoSec(t)
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
   }, [videoRef])
 
   // ── 公開 ──────────────────────────────────────────────────────────────────
@@ -541,6 +578,7 @@ export function useCVJobs({
     handleYoloBatchResume,
     handleYoloBatchStop,
     handleYoloBatchDiff,
+    handleYoloReset,
     yoloArtifactExists,
     yoloRoiExpanded,
     // 選手識別トラッキング

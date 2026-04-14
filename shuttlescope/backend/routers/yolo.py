@@ -211,6 +211,35 @@ def get_yolo_results(match_id: int, include_raw: bool = False, db: Session = Dep
     return {"success": True, "data": result}
 
 
+@router.delete("/yolo/results/{match_id}")
+def delete_yolo_results(match_id: int, db: Session = Depends(get_db)):
+    """試合の YOLO 検出結果（全アーティファクト）を削除する。
+    途中まで保存された認識データを完全リセットし、0% から再実行できるようにする。
+
+    進行中ジョブがあれば abort フラグを立て、バックグラウンドタスクの
+    書き戻しを抑止してから DB 行を削除する（競合防止）。
+    """
+    # 1. この match_id に紐付く進行中ジョブを abort マーク
+    for jid, j in list(_jobs.items()):
+        if j.get("match_id") == match_id:
+            j["aborted"] = True
+            j["stop_requested"] = True
+            j["status"] = "stopped"
+
+    # 2. DB 行削除
+    deleted = (
+        db.query(MatchCVArtifact)
+        .filter(
+            MatchCVArtifact.match_id == match_id,
+            MatchCVArtifact.artifact_type == "yolo_player_detections",
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    logger.info("YOLO results deleted: match=%d, artifacts=%d", match_id, deleted)
+    return {"success": True, "data": {"deleted": deleted}}
+
+
 @router.get("/yolo/results/{match_id}/frames")
 def get_yolo_frames(match_id: int, db: Session = Depends(get_db)):
     """フレーム別生データのみを返す（オーバーレイ表示用）"""
@@ -685,11 +714,16 @@ def _run_batch(
         _jobs[job_id]["progress"] = round(processed / max(sample_count, 1), 3)
 
         while True:
+            # 削除リクエスト（リセット）— 書き戻しせずに即終了
+            if _jobs[job_id].get("aborted"):
+                cap.release()
+                logger.info("YOLO batch aborted by delete: match=%d", match_id)
+                return
             # 停止リクエスト確認（ユーザーが「停止」ボタンを押した場合）
             if _jobs[job_id].get("stop_requested"):
                 cap.release()
                 # 現在の全フレームを保存して "stopped" 状態にする
-                if frames_data:
+                if frames_data and not _jobs[job_id].get("aborted"):
                     try:
                         _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name())
                     except Exception as save_err:
@@ -753,7 +787,7 @@ def _run_batch(
                 _jobs[job_id]["detected_players"] = detected_total
 
                 # 中断耐性のため定期的に部分保存（新規処理フレームのみカウント）
-                if new_frames_since_save >= _YOLO_PARTIAL_SAVE_EVERY:
+                if new_frames_since_save >= _YOLO_PARTIAL_SAVE_EVERY and not _jobs[job_id].get("aborted"):
                     try:
                         _upsert_yolo_artifact(db, match_id, frames_data, inf.backend_name())
                         new_frames_since_save = 0
@@ -766,6 +800,10 @@ def _run_batch(
             frame_idx += 1
 
         cap.release()
+
+        if _jobs[job_id].get("aborted"):
+            logger.info("YOLO batch aborted before final save: match=%d", match_id)
+            return
 
         # コート位置サマリー計算
         summary = summarize_frame_positions(frames_data)

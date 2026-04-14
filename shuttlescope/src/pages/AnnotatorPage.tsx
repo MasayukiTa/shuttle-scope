@@ -164,6 +164,8 @@ export function AnnotatorPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const videoRef = useRef<HTMLVideoElement>(null)
+  // 動画＋オーバーレイの aspect-ratio 箱（別モニタ拡張のクロップ対象）
+  const videoAreaRef = useRef<HTMLDivElement>(null)
   const { playbackRate, setPlaybackRate } = useVideo(videoRef)
 
   const store = useAnnotationStore()
@@ -862,7 +864,7 @@ export function AnnotatorPage() {
     handleTracknetBatchResume, handleTracknetBatchStop, tracknetArtifactExists,
     yoloJob, setYoloJob, yoloFrames, yoloOverlayVisible,
     setYoloOverlayVisible, yoloArtifactMeta, handleYoloBatch,
-    handleYoloBatchResume, handleYoloBatchStop, handleYoloBatchDiff, yoloArtifactExists, yoloRoiExpanded,
+    handleYoloBatchResume, handleYoloBatchStop, handleYoloBatchDiff, handleYoloReset, yoloArtifactExists, yoloRoiExpanded,
     frameDetections, trackFrames, trackingVisible, setTrackingVisible,
     handleFrameDetect, handleAssignAndTrack, frameDetectLoading, trackingLoading,
     frameDetectError, frameDetectDebug,
@@ -1199,49 +1201,55 @@ export function AnnotatorPage() {
     setVideoWindowOpen(false)
   }, [])
 
-  // 別モニタへ状態をミラーする BroadcastChannel パブリッシャ。
-  // メインが「真の状態」を持ち、別モニタは受信して描画するだけ。
+  // 別モニタ: ネイティブ描画ミラー。動画 src + オーバーレイデータを IPC で送り、
+  // 別モニタは同一 URL の <video> を再生しつつオーバーレイを再描画する。
+  // screen-capture ではないので高解像度モニタでも画質劣化しない。
   useEffect(() => {
     if (!videoWindowOpen) return
-    const ch = new BroadcastChannel('shuttlescope-video-mirror')
-
-    // メインの video から time / play 状態を流す
-    const v = videoRef.current
-    const pushState = () => {
-      if (!v) return
-      ch.postMessage({ type: 'state', sec: v.currentTime, paused: v.paused })
+    const send = window.shuttlescope?.sendMirror
+    const subscribe = window.shuttlescope?.onMirror
+    if (!send || !subscribe) return
+    const rawSrc = match?.video_local_path || match?.video_url || ''
+    const pushData = () => {
+      send({
+        type: 'data',
+        src: rawSrc,
+        yoloFrames,
+        shuttleFrames,
+        trackFrames,
+        frameDetections,
+        roiRect: roiRect ?? null,
+        courtGridMatchId: matchId ? String(matchId) : null,
+        yoloOverlayVisible,
+        shuttleOverlayVisible,
+        courtGridVisible,
+        trackingVisible,
+      })
     }
-    if (v) {
-      v.addEventListener('timeupdate', pushState)
-      v.addEventListener('play', pushState)
-      v.addEventListener('pause', pushState)
-      v.addEventListener('seeked', pushState)
-      pushState()
+    const pushTick = () => {
+      const v = videoRef.current
+      send({
+        type: 'tick',
+        currentSec: v?.currentTime ?? currentVideoSec ?? 0,
+        isPaused: v ? v.paused : true,
+        playbackRate: v?.playbackRate ?? playbackRate ?? 1,
+      })
     }
-
-    // データを流す（変化時のみ）
-    ch.postMessage({ type: 'data', yoloFrames, trackFrames, roiRect })
-
-    // 受信側からの初期同期リクエストに応える
-    const onMsg = (ev: MessageEvent) => {
-      if (ev.data?.type === 'request-sync') {
-        pushState()
-        ch.postMessage({ type: 'data', yoloFrames, trackFrames, roiRect })
-      }
-    }
-    ch.addEventListener('message', onMsg)
-
-    return () => {
-      if (v) {
-        v.removeEventListener('timeupdate', pushState)
-        v.removeEventListener('play', pushState)
-        v.removeEventListener('pause', pushState)
-        v.removeEventListener('seeked', pushState)
-      }
-      ch.removeEventListener('message', onMsg)
-      ch.close()
-    }
-  }, [videoWindowOpen, videoRef, yoloFrames, trackFrames, roiRect])
+    pushData()
+    pushTick()
+    // tick は rAF で（60fps 上限）、data は依存変更 effect で別途送る
+    let raf = 0
+    const tickLoop = () => { pushTick(); raf = requestAnimationFrame(tickLoop) }
+    raf = requestAnimationFrame(tickLoop)
+    const unsub = subscribe((p) => {
+      if ((p as { type?: string })?.type === 'request-state') { pushData(); pushTick() }
+    })
+    return () => { cancelAnimationFrame(raf); unsub() }
+  }, [
+    videoWindowOpen, match, matchId, videoRef, currentVideoSec, playbackRate,
+    yoloFrames, shuttleFrames, trackFrames, frameDetections, roiRect,
+    yoloOverlayVisible, shuttleOverlayVisible, courtGridVisible, trackingVisible,
+  ])
 
   // P2: 映像モード自動検出（match データが揃ったとき）
   useEffect(() => {
@@ -1616,6 +1624,19 @@ export function AnnotatorPage() {
                   >
                     再開
                   </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm('既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？')) {
+                        handleYoloReset()
+                      }
+                    }}
+                    className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      isLight ? 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/50'
+                    }`}
+                    title="既存の人物検出結果を削除してリセット"
+                  >
+                    🗑
+                  </button>
                 </div>
               ) : yoloJob?.status === 'complete' ? (
                 <button
@@ -1674,6 +1695,21 @@ export function AnnotatorPage() {
                       title="既存フレームをスキップして途中から再開"
                     >
                       再開
+                    </button>
+                  )}
+                  {yoloArtifactExists && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm('既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？')) {
+                          handleYoloReset()
+                        }
+                      }}
+                      className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        isLight ? 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/50'
+                      }`}
+                      title="既存の人物検出結果を削除してリセット"
+                    >
+                      🗑
                     </button>
                   )}
                   {yoloArtifactExists && yoloRoiExpanded && (
@@ -2378,6 +2414,7 @@ export function AnnotatorPage() {
 
             return (
               <AnnotatorVideoPane
+                externalVideoAreaRef={videoAreaRef}
                 videoRef={videoRef}
                 videoContainerRef={videoContainerRef}
                 src={videoSrc}
@@ -3353,6 +3390,41 @@ export function AnnotatorPage() {
                 isLight={isLight}
                 calibSource={calibSource}
                 onOpenGrid={() => setCourtGridVisible(true)}
+                onSyncGridFromLocal={async () => {
+                  try {
+                    const key = `court-calib-${matchId}`
+                    const raw = localStorage.getItem(key)
+                    console.info('[GridSync] localStorage key:', key, 'raw:', raw)
+                    if (!raw) return { ok: false, message: 'localStorage にキャリブが見つかりません' }
+                    const pts = JSON.parse(raw) as Array<{ x: number; y: number }>
+                    if (!Array.isArray(pts) || pts.length !== 6) {
+                      return { ok: false, message: `点数不正 (${pts?.length ?? 0}/6)` }
+                    }
+                    const body = {
+                      points: pts.map((p) => ({ x: p.x, y: p.y })),
+                      container_width: window.innerWidth,
+                      container_height: window.innerHeight,
+                    }
+                    console.info('[GridSync] POST /matches/' + matchId + '/court_calibration', body)
+                    // apiPost を経由して http://localhost:8765/api を絶対 URL で叩く。
+                    // 旧実装は相対 URL の fetch だったため Electron(file://) では
+                    // "Failed to fetch" になっていた。
+                    try {
+                      const res = await apiPost(`/matches/${matchId}/court_calibration`, body)
+                      console.info('[GridSync] response OK', res)
+                      setCalibSource('backend')
+                      queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
+                      return { ok: true, status: 200 }
+                    } catch (err) {
+                      const status = (err as { status?: number })?.status
+                      const msg = err instanceof Error ? err.message : String(err)
+                      console.warn('[GridSync] response error', status, msg)
+                      return { ok: false, status, message: msg.slice(0, 200) }
+                    }
+                  } catch (e) {
+                    return { ok: false, message: e instanceof Error ? e.message : String(e) }
+                  }
+                }}
               />
             )}
 

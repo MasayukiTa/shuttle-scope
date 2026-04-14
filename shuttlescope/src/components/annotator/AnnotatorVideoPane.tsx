@@ -5,7 +5,7 @@
  * - ROI 矩形オーバーレイ: roiRect / roiEditing / onRoiChange で制御
  * - BBox 描画: video.getBoundingClientRect() でレターボックスオフセットを補正
  */
-import { useEffect, useRef, type RefObject, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type RefObject, type ReactNode } from 'react'
 import { VideoPlayer } from '@/components/video/VideoPlayer'
 import { PlayerPositionOverlay } from '@/components/annotation/PlayerPositionOverlay'
 import { ShuttleTrackOverlay } from '@/components/annotation/ShuttleTrackOverlay'
@@ -18,6 +18,8 @@ import type { TrackFrame, RawDetection, PlayerOption } from '@/components/annota
 interface Props {
   videoRef: RefObject<HTMLVideoElement>
   videoContainerRef: RefObject<HTMLDivElement>
+  /** 動画＋オーバーレイの aspect-ratio 箱を親に公開するための ref */
+  externalVideoAreaRef?: RefObject<HTMLDivElement>
   src: string
   playbackRate: number
   onPlaybackRateChange: (rate: number) => void
@@ -85,6 +87,7 @@ function getVideoRenderRect(videoEl: HTMLVideoElement, containerEl: HTMLElement)
 export function AnnotatorVideoPane({
   videoRef,
   videoContainerRef,
+  externalVideoAreaRef,
   src,
   playbackRate,
   onPlaybackRateChange,
@@ -114,17 +117,34 @@ export function AnnotatorVideoPane({
 }: Props) {
   // videoAreaRef はビデオ本体 div（aspect-ratio ボックス）を指す。
   // オーバーレイはここに配置 — コントロール（シークバー・ボタン）は含まない。
-  const videoAreaRef = useRef<HTMLDivElement>(null)
+  // 親が externalVideoAreaRef を渡してきた場合はそれを共有する（別モニタ
+  // クロップ用）。渡されなかった場合は内部 ref を使う。
+  const internalVideoAreaRef = useRef<HTMLDivElement>(null)
+  const videoAreaRef = externalVideoAreaRef ?? internalVideoAreaRef
 
-  // video の描画領域を追跡（レターボックス補正用）
-  const renderRectRef = useRef<{ left: number; top: number; width: number; height: number } | null>(null)
+  // video の描画領域を追跡（レターボックス補正用）。
+  // useState にして変化時に必ず再レンダリング → BBOX/グリッド/ROI など
+  // rr に依存するオーバーレイがマウント直後・一時停止中でも確実に出る。
+  // （旧実装は useRef だったため、video の loadedmetadata 後に親の再
+  //  レンダリングが起きるまで rr=null のままで overlays が消えていた）
+  const [rr, setRr] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
 
   useEffect(() => {
     const video = videoRef.current
     const container = videoAreaRef.current
     if (!video || !container) return
     const update = () => {
-      renderRectRef.current = getVideoRenderRect(video, container)
+      const next = getVideoRenderRect(video, container)
+      setRr((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.left - next.left) < 0.5 &&
+          Math.abs(prev.top - next.top) < 0.5 &&
+          Math.abs(prev.width - next.width) < 0.5 &&
+          Math.abs(prev.height - next.height) < 0.5
+        ) return prev
+        return next
+      })
     }
     video.addEventListener('loadedmetadata', update)
     video.addEventListener('resize', update)
@@ -137,8 +157,6 @@ export function AnnotatorVideoPane({
       ro.disconnect()
     }
   }, [videoRef])
-
-  const rr = renderRectRef.current
   const overlayStyle = rr
     ? { position: 'absolute' as const, left: rr.left, top: rr.top, width: rr.width, height: rr.height }
     : { position: 'absolute' as const, inset: 0 }
