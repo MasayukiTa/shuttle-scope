@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
@@ -97,11 +98,14 @@ function ComparisonAccordion({ comp }: { comp: Comparison }) {
 }
 
 function Inner({ playerId }: { playerId: number }) {
-  const { data: resp, isLoading } = useQuery({
+  const { slice: bundled, loading: bundleLoading, provided } = useResearchBundleSlice<Response>('counterfactual_shots')
+  const indiv = useQuery({
     queryKey: ['analysis-counterfactual-shots', playerId],
     queryFn: () => apiGet<Response>('/analysis/counterfactual_shots', { player_id: playerId }),
-    enabled: !!playerId,
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const resp = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">読み込み中...</div>

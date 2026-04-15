@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
@@ -69,12 +70,16 @@ function PreLossContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: num
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  // bundle 提供時はスライスを使い、個別リクエストはスキップする
+  const { slice: bundled, loading: bundleLoading, provided } = useReviewBundleSlice<PreLossResponse>('pre_loss_patterns')
+  const indiv = useQuery({
     queryKey: ['analysis-pre-loss-patterns', playerId, filters],
     queryFn: () =>
       apiGet<PreLossResponse>('/analysis/pre_loss_patterns', { player_id: playerId, ...fp }),
-    enabled: !!playerId,
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const resp = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>

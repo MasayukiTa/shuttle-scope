@@ -8,7 +8,7 @@ import math
 from collections import Counter
 from typing import Optional
 import numpy as np
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_, and_
 
 from backend.db.models import Match, GameSet, Rally, Player, PreMatchObservation
@@ -34,8 +34,10 @@ def get_matches_for_player(
     before_date=None,  # date | None — この日付より前のみ（試合前予測のデータカットオフ用）
 ) -> list[Match]:
     """フィルタ済み試合リスト取得（棄権・未完了除外）"""
+    # N+1 解消: m.sets を後続ループで参照するため selectinload で一括取得
     q = (
         db.query(Match)
+        .options(selectinload(Match.sets))
         .filter(
             or_(Match.player_a_id == player_id, Match.player_b_id == player_id)
         )
@@ -62,8 +64,10 @@ def get_pair_matches(
     tournament_level: Optional[str] = None,
 ) -> list[Match]:
     """ペアとして出場した試合を取得"""
+    # N+1 解消: 呼び出し側で m.sets を参照するので selectinload で一括取得
     q = (
         db.query(Match)
+        .options(selectinload(Match.sets))
         .filter(Match.result.in_(['win', 'loss']))
         .filter(
             or_(
@@ -520,20 +524,29 @@ def compute_prediction_drivers(
     player_id: int,
     opponent_id: Optional[int] = None,
     tournament_level: Optional[str] = None,
+    # Perf: 呼び出し側で既に取得済みのリスト / 観察コンテキストを渡せば
+    # DB クエリを再発行せずに済む（response shape は完全互換）。
+    all_matches: Optional[list[Match]] = None,
+    h2h_matches: Optional[list[Match]] = None,
+    level_matches: Optional[list[Match]] = None,
+    obs_context: Optional[dict] = None,
 ) -> dict:
     """
     予測に使ったデータソースの内訳と根拠を返す (Spec §3.5 / §3.6)
     """
-    all_matches = get_matches_for_player(db, player_id)
-    h2h_matches = (
-        get_matches_for_player(db, player_id, opponent_id=opponent_id)
-        if opponent_id else []
-    )
-    level_matches = (
-        get_matches_for_player(db, player_id, tournament_level=tournament_level)
-        if tournament_level else []
-    )
-    obs = get_observation_context(db, player_id, opponent_id)
+    if all_matches is None:
+        all_matches = get_matches_for_player(db, player_id)
+    if h2h_matches is None:
+        h2h_matches = (
+            get_matches_for_player(db, player_id, opponent_id=opponent_id)
+            if opponent_id else []
+        )
+    if level_matches is None:
+        level_matches = (
+            get_matches_for_player(db, player_id, tournament_level=tournament_level)
+            if tournament_level else []
+        )
+    obs = obs_context if obs_context is not None else get_observation_context(db, player_id, opponent_id)
 
     if len(h2h_matches) >= 3:
         primary_type = 'h2h'

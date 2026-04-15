@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -54,14 +55,19 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data, isLoading } = useQuery({
+  type Resp = { success: boolean; data: BayesMatchupData; meta: Meta }
+  const { slice: bundled, loading: bundleLoading, provided } = useResearchBundleSlice<Resp>('bayes_matchup')
+  const indiv = useQuery({
     queryKey: ['bayes-matchup', playerId, filters],
     queryFn: () =>
-      apiGet<{ success: boolean; data: BayesMatchupData; meta: Meta }>(
+      apiGet<Resp>(
         '/analysis/bayes_matchup',
         { player_id: playerId, ...filterApiParams }
       ),
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const data = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   const meta = data?.meta
   const matchupData = data?.data

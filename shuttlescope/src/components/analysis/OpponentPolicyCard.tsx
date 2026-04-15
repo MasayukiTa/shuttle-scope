@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -149,14 +150,20 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data, isLoading, isError, error, refetch, isFetching, dataUpdatedAt } = useQuery({
+  type Resp = { success: boolean; data: OpponentPolicyData; meta: Meta }
+  const { slice: bundled, loading: bundleLoading, provided } = useResearchBundleSlice<Resp>('opponent_policy')
+  const indivQuery = useQuery({
     queryKey: ['opponent-policy', playerId, filters],
     queryFn: () =>
-      apiGet<{ success: boolean; data: OpponentPolicyData; meta: Meta }>(
+      apiGet<Resp>(
         '/analysis/opponent_policy',
         { player_id: playerId, ...filterApiParams }
       ),
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const { isError, error, refetch, isFetching, dataUpdatedAt } = indivQuery
+  const data = bundled ?? indivQuery.data
+  const isLoading = provided ? bundleLoading : indivQuery.isLoading
 
   const meta = data?.meta
   const policyData = data?.data

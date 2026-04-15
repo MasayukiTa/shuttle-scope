@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -150,14 +151,20 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data, isLoading } = useQuery({
+  // doubles_role のみ bundle 対象。stability / cv は従来通り個別 fetch。
+  type RoleResp = { success: boolean; data: DoublesRoleData; meta: Meta }
+  const { slice: bundled, loading: bundleLoading, provided } = useResearchBundleSlice<RoleResp>('doubles_role')
+  const indiv = useQuery({
     queryKey: ['doubles-role', playerId, filters],
     queryFn: () =>
-      apiGet<{ success: boolean; data: DoublesRoleData; meta: Meta }>(
+      apiGet<RoleResp>(
         '/analysis/doubles_role',
         { player_id: playerId, ...filterApiParams }
       ),
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const data = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   const { data: stabilityResp } = useQuery({
     queryKey: ['doubles-role-stability', playerId, filters],

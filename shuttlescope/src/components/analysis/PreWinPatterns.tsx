@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN } from '@/styles/colors'
@@ -67,12 +68,16 @@ export function PreWinPatterns({ playerId, filters = DEFAULT_FILTERS }: PreWinPa
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data: resp, isLoading } = useQuery({
+  // bundle 提供時はそれを優先し、個別リクエストは発火しない
+  const { slice: bundled, loading: bundleLoading, provided } = useReviewBundleSlice<PreWinResponse>('pre_win_patterns')
+  const indiv = useQuery({
     queryKey: ['analysis-pre-win-patterns', playerId, filters],
     queryFn: () =>
       apiGet<PreWinResponse>('/analysis/pre_win_patterns', { player_id: playerId, ...fp }),
-    enabled: !!playerId,
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const resp = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>

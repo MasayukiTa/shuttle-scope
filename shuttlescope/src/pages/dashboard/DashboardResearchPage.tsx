@@ -19,6 +19,8 @@ import { ShotInfluenceV2Card } from '@/components/analysis/ShotInfluenceV2Card'
 import { PromotionStatusCard } from '@/components/analysis/PromotionStatusCard'
 import { YoloCVPositionCard } from '@/components/analysis/YoloCVPositionCard'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
+import { useResearchBundle } from '@/hooks/useResearchBundle'
+import { ResearchBundleProvider } from '@/contexts/ResearchBundleContext'
 
 interface Props {
   playerId: number
@@ -29,6 +31,10 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
   const { t } = useTranslation()
   const { getMeta } = useAnalysisMeta()
   const { card, textHeading, textMuted, textFaint, badge, isLight } = useCardTheme()
+
+  // 研究タブ bundle（optional）: backend 未実装でも silent fail で undefined
+  // → 各カードは provided=false で個別 fetch にフォールバックする
+  const bundleQuery = useResearchBundle(playerId, filters)
 
   const epvMeta = getMeta('epv')
   const cfMeta = getMeta('counterfactual')
@@ -42,6 +48,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
   )
 
   return (
+    <ResearchBundleProvider value={{ data: bundleQuery.data, isLoading: bundleQuery.isLoading }}>
     <div className="space-y-5">
       {/* ページレベルの注意 */}
       <ResearchNotice
@@ -185,5 +192,6 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
         </RoleGuard>
       </ErrorBoundary>
     </div>
+    </ResearchBundleProvider>
   )
 }

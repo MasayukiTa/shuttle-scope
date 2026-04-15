@@ -3,6 +3,8 @@ out/
 dist/
 .venv/
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.db.bak-*
 players.db

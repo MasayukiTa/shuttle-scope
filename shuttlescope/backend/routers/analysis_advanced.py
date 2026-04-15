@@ -1794,13 +1794,22 @@ def get_growth_judgment(
         judgment_ja = "横ばい"
 
     # アノテーション済み試合数（ラリーデータが存在する試合）
-    annotated_match_count = sum(
-        1 for m in matches
-        if db.query(GameSet).filter(GameSet.match_id == m.id).first() is not None
-        and db.query(Rally).filter(
-            Rally.set_id.in_([s.id for s in db.query(GameSet).filter(GameSet.match_id == m.id).all()])
-        ).first() is not None
-    )
+    _match_ids_all = [m.id for m in matches]
+    if _match_ids_all:
+        _sets_by_match: dict[int, list[int]] = {}
+        for sid, mid in db.query(GameSet.id, GameSet.match_id).filter(GameSet.match_id.in_(_match_ids_all)).all():
+            _sets_by_match.setdefault(mid, []).append(sid)
+        _all_set_ids = [sid for sids in _sets_by_match.values() for sid in sids]
+        _sets_with_rally: set[int] = set()
+        if _all_set_ids:
+            for (sid,) in db.query(Rally.set_id).filter(Rally.set_id.in_(_all_set_ids)).distinct().all():
+                _sets_with_rally.add(sid)
+        annotated_match_count = sum(
+            1 for mid, sids in _sets_by_match.items()
+            if any(sid in _sets_with_rally for sid in sids)
+        )
+    else:
+        annotated_match_count = 0
 
     return {
         "success": True,
@@ -1852,22 +1861,27 @@ def get_observation_analytics(
     # ─── 自コンディションスプリット ──────────────────────────────────
     self_splits: dict[tuple[str, str], dict] = {}
 
+    # N+1 解消: 試合ごとのループ内クエリではなく観察レコードを一括取得して match_id で仕分け
+    all_match_ids = [m.id for m in matches]
+    all_obs = (
+        db.query(PreMatchObservation)
+        .filter(PreMatchObservation.match_id.in_(all_match_ids))
+        .all()
+    ) if all_match_ids else []
+    obs_by_match: dict[int, list] = defaultdict(list)
+    for obs in all_obs:
+        obs_by_match[obs.match_id].append(obs)
+
     for m in matches:
         is_player_a = m.player_a_id == player_id
         opponent_id = m.player_b_id if is_player_a else m.player_a_id
         won = (is_player_a and m.result == "win") or (not is_player_a and m.result == "loss")
 
+        match_obs = obs_by_match.get(m.id, [])
         # 相手への観察（opponent_id でフィルタ、自コンディション除外）
-        opp_obs = (
-            db.query(PreMatchObservation)
-            .filter(
-                PreMatchObservation.match_id == m.id,
-                PreMatchObservation.player_id == opponent_id,
-                PreMatchObservation.observation_type.notin_(SELF_CONDITION_TYPES),
-            )
-            .all()
-        )
-        for obs in opp_obs:
+        for obs in match_obs:
+            if obs.player_id != opponent_id or obs.observation_type in SELF_CONDITION_TYPES:
+                continue
             key = (obs.observation_type, obs.observation_value)
             if key not in splits:
                 splits[key] = {"wins": 0, "total": 0, "confidence_levels": [], "match_ids": []}
@@ -1878,16 +1892,9 @@ def get_observation_analytics(
             splits[key]["match_ids"].append(m.id)
 
         # 自コンディション観察（player_id = self, observation_type in SELF_CONDITION_TYPES）
-        self_obs = (
-            db.query(PreMatchObservation)
-            .filter(
-                PreMatchObservation.match_id == m.id,
-                PreMatchObservation.player_id == player_id,
-                PreMatchObservation.observation_type.in_(SELF_CONDITION_TYPES),
-            )
-            .all()
-        )
-        for obs in self_obs:
+        for obs in match_obs:
+            if obs.player_id != player_id or obs.observation_type not in SELF_CONDITION_TYPES:
+                continue
             key = (obs.observation_type, obs.observation_value)
             if key not in self_splits:
                 self_splits[key] = {"wins": 0, "total": 0, "confidence_levels": [], "match_ids": []}

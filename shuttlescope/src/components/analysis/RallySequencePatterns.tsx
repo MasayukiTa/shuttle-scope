@@ -1,6 +1,7 @@
 // ラリー3連ショットパターン — 勝ちパターン/負けパターン表示
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { WIN, LOSS, perfColor } from '@/styles/colors'
@@ -73,11 +74,15 @@ function SequenceList({ sequences, accent, title }: { sequences: SequenceEntry[]
 }
 
 export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) {
-  const { data: resp, isLoading } = useQuery({
+  // bundle 提供時はスライスを使用
+  const { slice: bundled, loading: bundleLoading, provided } = useReviewBundleSlice<Response>('rally_sequence_patterns')
+  const indiv = useQuery({
     queryKey: ['analysis-rally-sequence-patterns', playerId],
     queryFn: () => apiGet<Response>('/analysis/rally_sequence_patterns', { player_id: playerId }),
-    enabled: !!playerId,
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const resp = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">読み込み中...</div>

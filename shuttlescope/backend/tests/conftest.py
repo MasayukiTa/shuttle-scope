@@ -1,32 +1,28 @@
-"""pytest 共通フィクスチャ"""
+"""Shared pytest fixtures for backend tests."""
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.db import database as db_module
+from backend.db import models as _models  # noqa: F401  # ensure metadata registration
 from backend.db.database import Base
-from backend.db import models as _models  # noqa: F401  # Base.metadata 登録を確実化
+from backend.utils import response_cache
 
 
 @pytest.fixture(scope="session")
 def test_engine():
-    """インメモリ SQLite エンジン（テストセッション全体で共有）
-
-    StaticPool を使用: インメモリ SQLite では接続ごとに別 DB になるため、
-    全接続が同一の DB を共有するよう強制する。これにより POST → commit 後も
-    同じテーブルが見える。
-    """
+    """Create one shared in-memory SQLite engine for the backend test session."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    # CI のクリーン環境でも全モデルのテーブルが必ず作られるようにする。
     Base.metadata.create_all(engine)
 
-    # テスト中に backend.db.database.SessionLocal を直接参照するコード
-    # （WebSocket / background task / helper など）も同じ in-memory DB を使うように差し替える。
+    # Force the app/database module to use the same in-memory DB everywhere,
+    # including websocket helpers and short-lived SessionLocal lookups.
     original_engine = db_module.engine
     original_session_local = db_module.SessionLocal
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -40,9 +36,41 @@ def test_engine():
 
 @pytest.fixture()
 def db_session(test_engine):
-    """各テストごとにロールバックするデータベースセッション"""
+    """Provide a rollback-isolated DB session for each test."""
     TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
     session = TestingSession()
     yield session
     session.rollback()
     session.close()
+
+
+@pytest.fixture(autouse=True)
+def reset_response_cache(db_session, monkeypatch, request):
+    """Clear response cache state for every test to avoid order-dependent failures."""
+    response_cache.MEMORY_CACHE.clear()
+    response_cache.PLAYER_VERSION.clear()
+    response_cache.DATA_VERSION = 0
+
+    # Most integration tests seed data with flush() only. Disable the cache's DB
+    # persistence layer there so a short-lived SessionLocal does not interfere with
+    # the uncommitted test transaction. Keep the real DB behavior for dedicated
+    # response_cache unit tests.
+    if request.node.fspath.basename != "test_response_cache.py":
+        monkeypatch.setattr(response_cache, "_db_lookup", lambda *a, **k: None)
+        monkeypatch.setattr(response_cache, "_db_upsert", lambda *a, **k: None)
+        monkeypatch.setattr(response_cache, "_db_delete_all", lambda *a, **k: None)
+        monkeypatch.setattr(response_cache, "_db_delete_players", lambda *a, **k: None)
+    else:
+        try:
+            from backend.db.models import AnalysisCache
+
+            db_session.query(AnalysisCache).delete()
+            db_session.commit()
+        except Exception:
+            db_session.rollback()
+
+    yield
+
+    response_cache.MEMORY_CACHE.clear()
+    response_cache.PLAYER_VERSION.clear()
+    response_cache.DATA_VERSION = 0

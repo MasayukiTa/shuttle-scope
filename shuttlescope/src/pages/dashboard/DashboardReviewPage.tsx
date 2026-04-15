@@ -11,6 +11,8 @@ import { RallySequencePatterns } from '@/components/analysis/RallySequencePatter
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { useState, useCallback } from 'react'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
+import { useReviewBundle } from '@/hooks/useReviewBundle'
+import { ReviewBundleProvider } from '@/contexts/ReviewBundleContext'
 
 interface MatchSummary {
   match_id: number
@@ -37,6 +39,8 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export function DashboardReviewPage({ playerId, filters, matches }: Props) {
   const { t } = useTranslation()
+  // 振り返りタブ一括取得: 1 リクエストで 6 カード分のデータを先読みする
+  const bundleQuery = useReviewBundle(playerId, filters)
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
   const [pointAnalysis, setPointAnalysis] = useState<{
     setId: number; setNum: number; rallyNum: number; scoreA: number; scoreB: number
@@ -58,6 +62,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
   }))
 
   return (
+    <ReviewBundleProvider value={{ data: bundleQuery.data, isLoading: bundleQuery.isLoading }}>
     <div className="space-y-5">
       {/* 推奨レビュー順序ガイド */}
       <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3">
@@ -187,5 +192,6 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
         </ErrorBoundary>
       )}
     </div>
+    </ReviewBundleProvider>
   )
 }

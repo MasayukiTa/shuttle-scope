@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { apiGet } from '@/api/client'
+import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { perfColor, lightSafe, WIN, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -63,15 +64,19 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  // bundle 提供時はスライスを利用
+  const { slice: bundled, loading: bundleLoading, provided } = useReviewBundleSlice<SetComparisonResponse>('set_comparison')
+  const indiv = useQuery({
     queryKey: ['analysis-set-comparison', playerId, filters],
     queryFn: () =>
       apiGet<SetComparisonResponse>('/analysis/set_comparison', {
         player_id: playerId,
         ...fp,
       }),
-    enabled: !!playerId,
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const resp = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
     return (

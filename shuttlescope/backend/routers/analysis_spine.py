@@ -61,6 +61,28 @@ def _build_aux_maps(db: Session, matches: list, set_ids: list, rally_ids: list) 
 # RS-1: 状態ベース EPV テーブル
 # ---------------------------------------------------------------------------
 
+def _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to):
+    """ctx が渡されれば共有データを返し、なければ個別 endpoint と同じ形で取得する。"""
+    if ctx is not None:
+        return (
+            ctx.matches, ctx.role_by_match, ctx.set_to_match,
+            ctx.set_num_map, ctx.rallies, ctx.strokes_by_rally,
+        )
+    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    if not matches:
+        return matches, {}, {}, {}, [], {}
+    match_ids = [m.id for m in matches]
+    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+    set_ids = [s.id for s in sets]
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_num_map = {s.id: s.set_num for s in sets}
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    rally_ids = [r.id for r in rallies]
+    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
+    return matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally
+
+
 @router.get("/analysis/epv_state_table")
 def get_epv_state_table(
     player_id: int,
@@ -70,23 +92,19 @@ def get_epv_state_table(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _epv_state_table_impl(db, player_id, ctx=None,
+                                 result=result, tournament_level=tournament_level,
+                                 date_from=date_from, date_to=date_to)
+
+
+def _epv_state_table_impl(db: Session, player_id: int, ctx=None,
+                          result=None, tournament_level=None,
+                          date_from=None, date_to=None):
+    matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         meta = build_response_meta("epv_state", 0)
         return {"success": True, "data": {"state_table": [], "global_win_rate": 0.5, "total_rallies": 0}, "meta": meta}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_ids = [s.id for s in sets]
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-
-    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
 
     result_data = compute_rally_state_epv(
         rallies=rallies,
@@ -154,21 +172,18 @@ def get_state_action_values(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _state_action_values_impl(db, player_id, ctx=None,
+                                     result=result, tournament_level=tournament_level,
+                                     date_from=date_from, date_to=date_to)
+
+
+def _state_action_values_impl(db: Session, player_id: int, ctx=None,
+                              result=None, tournament_level=None,
+                              date_from=None, date_to=None):
+    matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": {"q_table": [], "best_actions": {}, "total_states": 0, "total_reliable_cells": 0}, "meta": build_response_meta("state_action", 0)}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
 
     result_data = compute_q_values(
         rallies=rallies,
@@ -235,21 +250,18 @@ def get_counterfactual_v2(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _counterfactual_v2_impl(db, player_id, ctx=None,
+                                   result=result, tournament_level=tournament_level,
+                                   date_from=date_from, date_to=date_to)
+
+
+def _counterfactual_v2_impl(db: Session, player_id: int, ctx=None,
+                            result=None, tournament_level=None,
+                            date_from=None, date_to=None):
+    matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": {"comparisons": [], "total_contexts": 0, "usable_contexts": 0}, "meta": build_response_meta("counterfactual_v2", 0)}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
 
     result_data = compute_counterfactual_v2(
         rallies=rallies,
@@ -275,19 +287,18 @@ def get_hazard_fatigue(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _hazard_fatigue_impl(db, player_id, ctx=None,
+                                result=result, tournament_level=tournament_level,
+                                date_from=date_from, date_to=date_to)
+
+
+def _hazard_fatigue_impl(db: Session, player_id: int, ctx=None,
+                         result=None, tournament_level=None,
+                         date_from=None, date_to=None):
+    matches, role_by_match, set_to_match, set_num_map, rallies, _sbr = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": {}, "meta": build_response_meta("hazard_fatigue", 0)}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
 
     result_data = compute_hazard_model(
         rallies=rallies,
@@ -309,14 +320,24 @@ def get_bayes_matchup(
     format: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id)
+    return _bayes_matchup_impl(db, player_id, ctx=None, format_filter=format)
+
+
+def _bayes_matchup_impl(db: Session, player_id: int, ctx=None, format_filter=None):
+    # bayes_matchup は filters を使わず全試合を参照する。
+    # ctx 経由の場合でも、_fetch_matches_sets_rallies 相当 (無フィルタ) の
+    # rs_matches を使うことで個別呼び出しと同一結果になる。
+    if ctx is not None:
+        matches = ctx.rs_matches
+    else:
+        matches = _get_player_matches(db, player_id)
     if not matches:
         return {"success": True, "data": {}, "meta": build_response_meta("bayes_matchup", 0)}
 
     result_data = compute_bayes_matchup(
         matches=matches,
         player_id=player_id,
-        format_filter=format,
+        format_filter=format_filter,
     )
     meta = build_response_meta("bayes_matchup", result_data.get("total_matches", 0))
     return {"success": True, "data": result_data, "meta": meta}
@@ -335,21 +356,18 @@ def get_opponent_policy(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _opponent_policy_impl(db, player_id, ctx=None,
+                                 result=result, tournament_level=tournament_level,
+                                 date_from=date_from, date_to=date_to)
+
+
+def _opponent_policy_impl(db: Session, player_id: int, ctx=None,
+                          result=None, tournament_level=None,
+                          date_from=None, date_to=None):
+    matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         return {"success": True, "data": {"global_policy": {}, "context_policies": [], "total_opponent_shots": 0, "usable_contexts": 0}, "meta": build_response_meta("opponent_policy", 0)}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
 
     result_data = compute_opponent_policy(
         rallies=rallies,
@@ -375,22 +393,45 @@ def get_doubles_role(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
+    return _doubles_role_impl(db, player_id, ctx=None,
+                              result=result, tournament_level=tournament_level,
+                              date_from=date_from, date_to=date_to)
+
+
+def _doubles_role_impl(db: Session, player_id: int, ctx=None,
+                       result=None, tournament_level=None,
+                       date_from=None, date_to=None):
     # ダブルス試合のみに絞る
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
-    doubles_matches = [m for m in matches if getattr(m, 'format', None) in ('womens_doubles', 'mixed_doubles')]
+    if ctx is not None:
+        doubles_matches = ctx.doubles_matches
+        role_by_match = {m.id: ctx.role_by_match[m.id] for m in doubles_matches}
+        match_id_set = {m.id for m in doubles_matches}
+        # ctx.sets は全 matches 分含むのでダブルス分のみに絞り込む
+        sets = [s for s in ctx.sets if s.match_id in match_id_set]
+        set_to_match = {s.id: s.match_id for s in sets}
+        set_id_set = {s.id for s in sets}
+        rallies = [r for r in ctx.rallies if r.set_id in set_id_set]
+        rally_id_set = {r.id for r in rallies}
+        strokes_by_rally = {
+            rid: lst for rid, lst in ctx.strokes_by_rally.items()
+            if rid in rally_id_set
+        }
+    else:
+        matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+        doubles_matches = [m for m in matches if getattr(m, 'format', None) in ('womens_doubles', 'mixed_doubles')]
+        if not doubles_matches:
+            return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": build_response_meta("doubles_role", 0)}
+        match_ids = [m.id for m in doubles_matches]
+        role_by_match = {m.id: _player_role_in_match(m, player_id) for m in doubles_matches}
+        sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+        set_to_match = {s.id: s.match_id for s in sets}
+        set_ids = [s.id for s in sets]
+        rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+        rally_ids = [r.id for r in rallies]
+        _, strokes_by_rally = _build_aux_maps(db, doubles_matches, [], rally_ids)
+
     if not doubles_matches:
         return {"success": True, "data": {"inferred_role": "unknown", "confidence_score": 0.0, "total_shots": 0}, "meta": build_response_meta("doubles_role", 0)}
-
-    match_ids = [m.id for m in doubles_matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in doubles_matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    _, strokes_by_rally = _build_aux_maps(db, doubles_matches, [], rally_ids)
 
     result_data = compute_doubles_role_inference(
         rallies=rallies,
@@ -562,22 +603,19 @@ def get_shot_influence_v2(
     date_to: Optional[DateType] = Query(None),
     db: Session = Depends(get_db),
 ):
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _shot_influence_v2_impl(db, player_id, ctx=None,
+                                   result=result, tournament_level=tournament_level,
+                                   date_from=date_from, date_to=date_to)
+
+
+def _shot_influence_v2_impl(db: Session, player_id: int, ctx=None,
+                            result=None, tournament_level=None,
+                            date_from=None, date_to=None):
+    matches, role_by_match, set_to_match, set_num_map, rallies, strokes_by_rally = \
+        _load_ctx_or_query(db, player_id, ctx, result, tournament_level, date_from, date_to)
     if not matches:
         meta = build_response_meta("shot_influence", 0)
         return {"success": True, "data": {"per_shot_type": {}, "state_breakdown": [], "total_rallies": 0, "usable_rallies": 0}, "meta": meta}
-
-    match_ids = [m.id for m in matches]
-    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match = {s.id: s.match_id for s in sets}
-    set_num_map = {s.id: s.set_num for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
-    _, strokes_by_rally = _build_aux_maps(db, matches, [], rally_ids)
 
     result_data = compute_shot_influence_v2(
         rallies=rallies,
