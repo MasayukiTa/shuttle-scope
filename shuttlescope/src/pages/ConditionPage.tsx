@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@tanstack/react-query'
-import { Heart, User } from 'lucide-react'
-import { apiGet } from '@/api/client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Heart, User, Trash2 } from 'lucide-react'
+import { apiGet, apiDelete } from '@/api/client'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -17,6 +17,18 @@ import { GrowthInsights } from '@/components/condition/GrowthInsights'
 import { BestProfileCard } from '@/components/condition/BestProfileCard'
 import { CorrelationScatter } from '@/components/condition/CorrelationScatter'
 import { DiscrepancyAlertList } from '@/components/condition/DiscrepancyAlertList'
+import { ConditionTrendChart } from '@/components/condition/ConditionTrendChart'
+import { ConditionCorrelationHeatmap } from '@/components/condition/ConditionCorrelationHeatmap'
+import { ConditionLagCorrelation } from '@/components/condition/ConditionLagCorrelation'
+import { ConditionOutlierWeeks } from '@/components/condition/ConditionOutlierWeeks'
+import { ConditionVolatilityRanking } from '@/components/condition/ConditionVolatilityRanking'
+import { ConditionPCAScatter } from '@/components/condition/ConditionPCAScatter'
+import { ConditionSeasonality } from '@/components/condition/ConditionSeasonality'
+import { ConditionGenericScatter } from '@/components/condition/ConditionGenericScatter'
+import { ConditionPostMatchChange } from '@/components/condition/ConditionPostMatchChange'
+import { ConditionTagManager } from '@/components/condition/ConditionTagManager'
+import { ConditionTagCompare } from '@/components/condition/ConditionTagCompare'
+import { HistoryDetailModal } from '@/components/condition/HistoryDetailModal'
 import {
   useCreateCondition,
   useConditions,
@@ -73,6 +85,7 @@ export function ConditionPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [latestResult, setLatestResult] = useState<ConditionResultType | null>(null)
+  const [detailRecord, setDetailRecord] = useState<Record<string, unknown> | null>(null)
 
   const patch = (p: Partial<ConditionPayload>) => {
     setFormState((prev) => ({ ...prev, ...p }))
@@ -200,16 +213,34 @@ export function ConditionPage() {
           <HistoryView
             list={historyList}
             isLight={isLight}
-            onSelect={(r) => setLatestResult(r as unknown as ConditionResultType)}
+            canDelete={role !== 'player'}
+            onSelect={(r) => {
+              // 下位互換のため latestResult も更新しつつ、詳細モーダルを開く
+              setLatestResult(r as unknown as ConditionResultType)
+              setDetailRecord(r)
+            }}
           />
         ) : subtab === 'analytics' ? (
           <div className="space-y-4 max-w-5xl">
             {/* 全ロール: 伸びしろインサイトを最上段 */}
             <GrowthInsights playerId={effectivePlayerId} isLight={isLight} />
 
+            {/* 全ロール: 試合データ不要のトレンド可視化 */}
+            <ConditionTrendChart playerId={effectivePlayerId} isLight={isLight} />
+
             {/* coach/analyst: 追加解析 */}
             {role !== 'player' && (
               <>
+                <ConditionCorrelationHeatmap playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionLagCorrelation playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionOutlierWeeks playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionVolatilityRanking playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionPCAScatter playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionSeasonality playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionGenericScatter playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionPostMatchChange playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionTagManager playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionTagCompare playerId={effectivePlayerId} isLight={isLight} />
                 <BestProfileCard playerId={effectivePlayerId} isLight={isLight} />
                 <CorrelationScatter playerId={effectivePlayerId} isLight={isLight} />
                 <DiscrepancyAlertList playerId={effectivePlayerId} isLight={isLight} />
@@ -324,46 +355,181 @@ export function ConditionPage() {
           </div>
         )}
       </div>
+
+      {detailRecord && (
+        <HistoryDetailModal
+          record={detailRecord}
+          isLight={isLight}
+          onClose={() => setDetailRecord(null)}
+        />
+      )}
     </div>
   )
 }
 
-// 履歴タブ: 時系列の簡易表示。詳細はモーダル代わりに onSelect で上位に渡して表示。
+// 履歴タブ: フィルタ + 指標サマリー + 行クリックで詳細、coach/analyst は削除可
+type HistoryFilter = 'all' | 'weekly' | 'pre_match' | 'body'
+interface HistoryRow {
+  id?: number
+  measured_at?: string
+  condition_type?: string
+  ccs?: number | null
+  f1?: number | null
+  f2?: number | null
+  f3?: number | null
+  f4?: number | null
+  f5?: number | null
+  hooper_index?: number | null
+  session_rpe?: number | null
+  sleep_hours?: number | null
+  weight_kg?: number | null
+}
 interface HistoryViewProps {
   list: Array<Record<string, unknown>>
   isLight: boolean
+  canDelete: boolean
   onSelect: (r: Record<string, unknown>) => void
 }
 
-function HistoryView({ list, isLight, onSelect }: HistoryViewProps) {
+function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
   const { t } = useTranslation()
+  const qc = useQueryClient()
+  const [filter, setFilter] = useState<HistoryFilter>('all')
+  const [deletingId, setDeletingId] = useState<number | null>(null)
   const muted = isLight ? 'text-gray-500' : 'text-gray-400'
-  if (!list || list.length === 0) {
+  const panelCls = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
+  const filterBtnBase = 'px-3 py-1 rounded text-xs font-medium transition-colors'
+  const filterBtnOff = isLight ? 'text-gray-700 hover:bg-gray-100 border border-gray-200' : 'text-gray-300 hover:bg-gray-800 border border-gray-700'
+
+  const rows: HistoryRow[] = (list as unknown as HistoryRow[]) ?? []
+  const filtered = rows
+    .filter((r) => {
+      if (filter === 'all') return true
+      if (filter === 'body') {
+        // 身体データ主体: F1-F5/ccs 無しかつ weight/muscle 等ある
+        return r.ccs == null && (r.weight_kg != null || r.session_rpe != null || r.hooper_index != null)
+      }
+      return r.condition_type === filter
+    })
+    .sort((a, b) => (b.measured_at ?? '').localeCompare(a.measured_at ?? ''))
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm(t('condition.history.delete_confirm') as string)) return
+    setDeletingId(id)
+    try {
+      await apiDelete(`/conditions/${id}`)
+      qc.invalidateQueries({ queryKey: ['conditions'] })
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const filterOpts: Array<{ key: HistoryFilter; label: string }> = [
+    { key: 'all', label: t('condition.history.filter_all') },
+    { key: 'weekly', label: t('condition.history.filter_weekly') },
+    { key: 'pre_match', label: t('condition.history.filter_prematch') },
+    { key: 'body', label: t('condition.history.filter_body') },
+  ]
+
+  if (!rows || rows.length === 0) {
     return <div className={`${muted} text-sm`}>{t('condition.history_placeholder')}</div>
   }
-  const panelCls = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
+
+  const typeLabel = (ctype?: string): string => {
+    if (ctype === 'weekly') return t('condition.history.type_weekly')
+    if (ctype === 'pre_match') return t('condition.history.type_pre_match')
+    return t('condition.history.type_body')
+  }
+
+  const fmt = (v: number | null | undefined, digits = 1): string =>
+    v == null ? '—' : Number(v).toFixed(digits)
+
   return (
-    <div className="space-y-2 max-w-3xl">
-      {list.map((r, idx) => {
-        const ccs = (r as { ccs?: number | null }).ccs ?? null
-        const date = (r as { measured_at?: string }).measured_at ?? ''
-        const ctype = (r as { condition_type?: string }).condition_type ?? ''
-        return (
-          <button
-            key={(r as { id?: number }).id ?? idx}
-            onClick={() => onSelect(r)}
-            className={`w-full text-left border rounded-lg px-3 py-2 ${panelCls} hover:opacity-80 transition-opacity`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium">{date}</div>
-              <div className="text-xs">
-                <span className={`mr-2 ${muted}`}>{ctype}</span>
-                <span className="font-mono">CCS: {ccs != null ? (ccs as number).toFixed(1) : '—'}</span>
-              </div>
+    <div className="space-y-3 max-w-4xl">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-1">
+          {filterOpts.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setFilter(opt.key)}
+              className={`${filterBtnBase} ${filter === opt.key ? 'bg-blue-600 text-white' : filterBtnOff}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <span className={`text-xs ${muted}`}>
+          {t('condition.history.count', { n: filtered.length })}
+        </span>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className={`${muted} text-sm`}>{t('condition.history.no_match')}</div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((r, idx) => (
+            <div
+              key={r.id ?? idx}
+              className={`border rounded-lg ${panelCls} hover:opacity-90 transition-opacity`}
+            >
+              <button
+                onClick={() => onSelect(r as unknown as Record<string, unknown>)}
+                className="w-full text-left px-3 py-2"
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{r.measured_at ?? ''}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isLight ? 'border-gray-300 text-gray-600' : 'border-gray-600 text-gray-300'}`}>
+                      {typeLabel(r.condition_type)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
+                    {r.ccs != null && (
+                      <span>{t('condition.history.ccs')}: <span className="text-blue-500">{fmt(r.ccs)}</span></span>
+                    )}
+                    {r.hooper_index != null && (
+                      <span>{t('condition.history.hooper')}: {fmt(r.hooper_index, 0)}</span>
+                    )}
+                    {r.session_rpe != null && (
+                      <span>{t('condition.history.rpe')}: {fmt(r.session_rpe, 0)}</span>
+                    )}
+                    {r.sleep_hours != null && (
+                      <span>{t('condition.history.sleep_h')}: {fmt(r.sleep_hours)}</span>
+                    )}
+                    {r.weight_kg != null && (
+                      <span>{t('condition.history.weight')}: {fmt(r.weight_kg)}</span>
+                    )}
+                  </div>
+                </div>
+                {(r.f1 != null || r.f2 != null || r.f3 != null || r.f4 != null || r.f5 != null) && (
+                  <div className={`mt-1 flex gap-3 text-[11px] font-mono ${muted}`}>
+                    {(['f1', 'f2', 'f3', 'f4', 'f5'] as const).map((k) => {
+                      const v = r[k] as number | null | undefined
+                      return (
+                        <span key={k}>
+                          {k.toUpperCase()}: <span className={isLight ? 'text-gray-800' : 'text-gray-200'}>{fmt(v)}</span>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+              </button>
+              {canDelete && r.id != null && (
+                <div className="px-3 pb-2 flex justify-end">
+                  <button
+                    onClick={() => handleDelete(r.id!)}
+                    disabled={deletingId === r.id}
+                    className="flex items-center gap-1 text-[11px] text-red-500 hover:text-red-400 disabled:opacity-50"
+                  >
+                    <Trash2 size={12} />
+                    {t('condition.history.delete')}
+                  </button>
+                </div>
+              )}
             </div>
-          </button>
-        )
-      })}
+          ))}
+        </div>
+      )}
     </div>
   )
 }

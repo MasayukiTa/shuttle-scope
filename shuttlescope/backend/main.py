@@ -56,6 +56,7 @@ from backend.routers import cv_benchmark
 from backend.routers import video_import
 from backend.routers import court_calibration
 from backend.routers import conditions as conditions_router
+from backend.routers import condition_tags as condition_tags_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -381,6 +382,7 @@ app.include_router(video_import.router, prefix="/api")
 app.include_router(court_calibration.router, prefix="/api")
 # コンディション（体調）Phase 1
 app.include_router(conditions_router.router)
+app.include_router(condition_tags_router.router)
 
 
 

@@ -67,6 +67,9 @@ class Player(Base):
     conditions: Mapped[list["Condition"]] = relationship(
         "Condition", back_populates="player", cascade="all, delete-orphan"
     )
+    condition_tags: Mapped[list["ConditionTag"]] = relationship(
+        "ConditionTag", back_populates="player", cascade="all, delete-orphan"
+    )
 
 
 class Match(Base):
@@ -651,3 +654,28 @@ class Condition(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     player: Mapped["Player"] = relationship("Player", back_populates="conditions")
+
+
+# ─── コンディション期間タグ ──────────────────────────────────────────────────
+
+class ConditionTag(Base):
+    """選手ごとの任意期間ラベル（合宿 / 大会前 / ストレス期など）。
+
+    end_date=NULL の場合は単発イベント（当日のみ）扱い。
+    期間内外でコンディション指標の差分比較を行うためのメタデータ。
+    """
+    __tablename__ = "condition_tags"
+    __table_args__ = (
+        Index("ix_condition_tags_player_id", "player_id"),
+        Index("ix_condition_tags_start_date", "start_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    color: Mapped[str] = mapped_column(String(7), nullable=False, default="#3b82f6")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    player: Mapped["Player"] = relationship("Player", back_populates="condition_tags")
