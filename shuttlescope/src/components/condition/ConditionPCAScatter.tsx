@@ -246,6 +246,15 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
+            <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${textMuted}`}>
+              <span>{t('condition.pca.legend_month')}:</span>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
+                <span key={m} className="inline-flex items-center gap-1">
+                  <span style={{ width: 10, height: 10, background: monthColor(m), display: 'inline-block', borderRadius: 9999 }} />
+                  {m}
+                </span>
+              ))}
+            </div>
             <div className={`mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs ${textMuted}`}>
               <div>
                 <span className="font-semibold">

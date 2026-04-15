@@ -18,10 +18,11 @@ from sqlalchemy.orm import Session
 from backend.db.models import (
     Match, GameSet, Rally, Stroke, Player,
     PreMatchObservation, HumanForecast, Comment, EventBookmark,
+    Condition, ConditionTag,
 )
 
-PACKAGE_VERSION = "1.0"
-SCHEMA_VERSION = 8  # 同期メタデータ導入後
+PACKAGE_VERSION = "1.1"
+SCHEMA_VERSION = 9  # conditions / condition_tags 追加
 
 from sqlalchemy import text as _text
 
@@ -58,13 +59,22 @@ def _json_bytes(obj: Any) -> bytes:
 
 # ─── エクスポート: 試合単位 ────────────────────────────────────────────────────
 
-def export_match(db: Session, match_ids: list[int], device_id: Optional[str] = None) -> bytes:
+def export_match(
+    db: Session,
+    match_ids: list[int],
+    device_id: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+) -> bytes:
     """
     指定した試合（複数可）と関連レコードを .sspkg バイト列として返す。
 
     含むもの:
       Match, GameSet, Rally, Stroke, 関連 Player（最小メタ）
       PreMatchObservation, HumanForecast, Comment, EventBookmark
+      Condition (参加選手の since〜until 期間), ConditionTag (同期間)
+
+    since/until は "YYYY-MM-DD" で Condition.measured_at / ConditionTag.start_date に適用。
     """
     matches = db.query(Match).filter(Match.id.in_(match_ids)).all()
     if not matches:
@@ -96,6 +106,24 @@ def export_match(db: Session, match_ids: list[int], device_id: Optional[str] = N
     comments = db.query(Comment).filter(Comment.match_id.in_(match_ids)).all()
     bookmarks = db.query(EventBookmark).filter(EventBookmark.match_id.in_(match_ids)).all()
 
+    # Condition / ConditionTag — 参加選手 × 期間で絞り込み
+    conditions_all: list[Condition] = []
+    condition_tags_all: list[ConditionTag] = []
+    if player_ids:
+        cq = db.query(Condition).filter(Condition.player_id.in_(player_ids))
+        tq = db.query(ConditionTag).filter(ConditionTag.player_id.in_(player_ids))
+        if since:
+            cq = cq.filter(Condition.measured_at >= since)
+            tq = tq.filter(
+                (ConditionTag.end_date.is_(None) & (ConditionTag.start_date >= since))
+                | (ConditionTag.end_date >= since)
+            )
+        if until:
+            cq = cq.filter(Condition.measured_at <= until)
+            tq = tq.filter(ConditionTag.start_date <= until)
+        conditions_all = cq.all()
+        condition_tags_all = tq.all()
+
     # dict 変換
     payload: dict[str, Any] = {
         "players":       [_model_to_dict(p) for p in players],
@@ -107,6 +135,8 @@ def export_match(db: Session, match_ids: list[int], device_id: Optional[str] = N
         "human_forecasts": [_model_to_dict(f) for f in forecasts],
         "comments":      [_model_to_dict(c) for c in comments],
         "bookmarks":     [_model_to_dict(b) for b in bookmarks],
+        "conditions":    [_model_to_dict(c) for c in conditions_all],
+        "condition_tags": [_model_to_dict(t) for t in condition_tags_all],
     }
 
     manifest = {
@@ -153,20 +183,103 @@ def export_match(db: Session, match_ids: list[int], device_id: Optional[str] = N
 
 # ─── エクスポート: 選手単位 ────────────────────────────────────────────────────
 
-def export_player(db: Session, player_id: int, device_id: Optional[str] = None) -> bytes:
-    """対象選手に紐づく全試合を Match Export として生成"""
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id) |
-            (Match.partner_a_id == player_id) | (Match.partner_b_id == player_id)
-        )
-        .all()
+def export_player(
+    db: Session,
+    player_id: int,
+    device_id: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+) -> bytes:
+    """対象選手に紐づく試合 + 期間内コンディションを .sspkg として生成。
+
+    since/until が無ければ全期間。試合 0 件でも条件レコードが期間内にあれば
+    選手単体エクスポートとして成立させる。
+    """
+    mq = db.query(Match).filter(
+        (Match.player_a_id == player_id) | (Match.player_b_id == player_id) |
+        (Match.partner_a_id == player_id) | (Match.partner_b_id == player_id)
     )
+    if since:
+        mq = mq.filter(Match.date >= since)
+    if until:
+        mq = mq.filter(Match.date <= until)
+    matches = mq.all()
     match_ids = [m.id for m in matches]
-    if not match_ids:
-        raise ValueError("指定された選手の試合が見つかりません")
-    return export_match(db, match_ids, device_id=device_id)
+
+    # 試合が期間内に 1 件もなくても conditions/tags があれば許可
+    if match_ids:
+        return export_match(db, match_ids, device_id=device_id, since=since, until=until)
+
+    return export_conditions_only(
+        db, [player_id], device_id=device_id, since=since, until=until
+    )
+
+
+def export_conditions_only(
+    db: Session,
+    player_ids: list[int],
+    device_id: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+) -> bytes:
+    """選手群 × 期間の Condition/ConditionTag のみをパッケージ化 (試合無し)。"""
+    if not player_ids:
+        raise ValueError("player_ids が空です")
+
+    players = db.query(Player).filter(Player.id.in_(player_ids)).all()
+    cq = db.query(Condition).filter(Condition.player_id.in_(player_ids))
+    tq = db.query(ConditionTag).filter(ConditionTag.player_id.in_(player_ids))
+    if since:
+        cq = cq.filter(Condition.measured_at >= since)
+        tq = tq.filter(
+            (ConditionTag.end_date.is_(None) & (ConditionTag.start_date >= since))
+            | (ConditionTag.end_date >= since)
+        )
+    if until:
+        cq = cq.filter(Condition.measured_at <= until)
+        tq = tq.filter(ConditionTag.start_date <= until)
+    conditions_all = cq.all()
+    condition_tags_all = tq.all()
+
+    if not conditions_all and not condition_tags_all:
+        raise ValueError("指定期間にコンディション記録が見つかりません")
+
+    payload: dict[str, Any] = {
+        "players":       [_model_to_dict(p) for p in players],
+        "matches":       [],
+        "sets":          [],
+        "rallies":       [],
+        "strokes":       [],
+        "observations":  [],
+        "human_forecasts": [],
+        "comments":      [],
+        "bookmarks":     [],
+        "conditions":    [_model_to_dict(c) for c in conditions_all],
+        "condition_tags": [_model_to_dict(t) for t in condition_tags_all],
+    }
+    manifest = {
+        "package_version": PACKAGE_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        "exported_at": datetime.utcnow().isoformat(),
+        "exported_by_device": device_id or "unknown",
+        "export_mode": "conditions_only",
+        "period": {"since": since, "until": until},
+        "record_counts": {k: len(v) for k, v in payload.items()},
+    }
+
+    buf = io.BytesIO()
+    checksums: dict[str, str] = {}
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in payload.items():
+            raw = _json_bytes(data)
+            checksums[f"{name}.json"] = _checksum(raw)
+            zf.writestr(f"{name}.json", raw)
+        manifest_raw = _json_bytes(manifest)
+        checksums["manifest.json"] = _checksum(manifest_raw)
+        zf.writestr("manifest.json", manifest_raw)
+        zf.writestr("assets_manifest.json", _json_bytes([]))
+        zf.writestr("checksums.json", _json_bytes(checksums))
+    return buf.getvalue()
 
 
 # ─── エクスポート: Change Set ──────────────────────────────────────────────────
@@ -200,6 +313,12 @@ def export_change_set(db: Session, since: str, device_id: Optional[str] = None) 
     forecast_list   = _changed(HumanForecast)
     comment_list    = _changed(Comment)
     bookmark_list   = _changed(EventBookmark)
+    conditions_list = _changed(Condition)
+    # ConditionTag は updated_at を持たないため created_at で代替
+    try:
+        tags_list = db.query(ConditionTag).filter(ConditionTag.created_at >= since).all()
+    except Exception:
+        tags_list = []
 
     payload = {
         "players":         [_model_to_dict(p) for p in players_list],
@@ -211,6 +330,8 @@ def export_change_set(db: Session, since: str, device_id: Optional[str] = None) 
         "human_forecasts": [_model_to_dict(f) for f in forecast_list],
         "comments":        [_model_to_dict(c) for c in comment_list],
         "bookmarks":       [_model_to_dict(b) for b in bookmark_list],
+        "conditions":      [_model_to_dict(c) for c in conditions_list],
+        "condition_tags":  [_model_to_dict(t) for t in tags_list],
     }
 
     manifest = {
@@ -273,7 +394,8 @@ def validate_package(raw: bytes) -> dict:
 
             counts = {}
             for key in ("players", "matches", "sets", "rallies", "strokes",
-                        "observations", "human_forecasts", "comments", "bookmarks"):
+                        "observations", "human_forecasts", "comments", "bookmarks",
+                        "conditions", "condition_tags"):
                 fname = f"{key}.json"
                 if fname in names:
                     counts[key] = len(json.loads(zf.read(fname)))

@@ -60,6 +60,15 @@ export interface InsightsResponse {
   validity_summary?: { valid_ratio?: number | null; flags?: string[] | null } | null
 }
 
+// backend は {success, data} ラッパで返すケースと裸で返すケースがあるため正規化
+function unwrap<T>(resp: unknown): T {
+  if (resp && typeof resp === 'object' && 'data' in (resp as Record<string, unknown>)) {
+    const r = resp as { success?: boolean; data?: T }
+    if (r.data !== undefined) return r.data as T
+  }
+  return resp as T
+}
+
 export function useCorrelation(
   playerId: number | null,
   x: string | null,
@@ -69,23 +78,73 @@ export function useCorrelation(
   const { role } = useAuth()
   return useQuery({
     queryKey: ['condition-correlation', playerId, x, y, since],
-    queryFn: () => {
+    queryFn: async () => {
       const params: Record<string, string | number> = { player_id: playerId! }
       if (x) params.x = x
       if (y) params.y = y
       if (since) params.since = since
-      return apiGet<CorrelationResponse>('/conditions/correlation', params)
+      const resp = await apiGet<CorrelationResponse | { data: CorrelationResponse }>(
+        '/conditions/correlation',
+        params,
+      )
+      return unwrap<CorrelationResponse>(resp)
     },
     enabled: !!playerId && !!x && !!y && role !== 'player',
     retry: 0,
   })
 }
 
+// backend 実体: { key_factors:[{key, effect_size, direction}], top_profile:{[k]:{mean,std,min,max}}, rest_profile, n_top, n_rest, confidence, note }
+interface BestProfileRaw {
+  key_factors?: Array<{ key: string; effect_size?: number; direction?: string }>
+  top_profile?: Record<string, { mean?: number | null; min?: number | null; max?: number | null }>
+  rest_profile?: Record<string, { mean?: number | null; min?: number | null; max?: number | null }>
+  n_top?: number
+  n_rest?: number
+  confidence?: string
+  note?: string | null
+  // 旧形式との互換
+  win_rate_in_profile?: number | null
+  win_rate_outside?: number | null
+  n_matches?: number
+  profile?: BestProfileResponse['profile']
+}
+
 export function useBestProfile(playerId: number | null) {
   return useQuery({
     queryKey: ['condition-best-profile', playerId],
-    queryFn: () =>
-      apiGet<BestProfileResponse>('/conditions/best_profile', { player_id: playerId! }),
+    queryFn: async (): Promise<BestProfileResponse> => {
+      const resp = await apiGet<BestProfileRaw | { data: BestProfileRaw }>(
+        '/conditions/best_profile',
+        { player_id: playerId! },
+      )
+      const raw = unwrap<BestProfileRaw>(resp)
+      // backend の top_profile レンジを key_factors に合流させて UI 期待形状に正規化
+      const top = raw.top_profile ?? {}
+      const keyFactors: BestProfileKeyFactor[] = (raw.key_factors ?? []).map((f) => {
+        const p = top[f.key] ?? {}
+        return {
+          key: f.key,
+          mean: p.mean ?? null,
+          min: p.min ?? null,
+          max: p.max ?? null,
+          importance: f.effect_size ?? null,
+        }
+      })
+      const profile: BestProfileResponse['profile'] = {}
+      for (const [k, v] of Object.entries(top)) {
+        profile[k] = { mean: v.mean ?? null, min: v.min ?? null, max: v.max ?? null }
+      }
+      const nMatches = raw.n_matches ?? (raw.n_top ?? 0) + (raw.n_rest ?? 0)
+      return {
+        profile: raw.profile ?? profile,
+        win_rate_in_profile: raw.win_rate_in_profile ?? null,
+        win_rate_outside: raw.win_rate_outside ?? null,
+        n_matches: nMatches,
+        confidence: raw.confidence ?? null,
+        key_factors: keyFactors,
+      }
+    },
     enabled: !!playerId,
     retry: 0,
   })
@@ -114,8 +173,13 @@ export function useDiscrepancy(playerId: number | null, limit = 50) {
 export function useInsights(playerId: number | null) {
   return useQuery({
     queryKey: ['condition-insights', playerId],
-    queryFn: () =>
-      apiGet<InsightsResponse>('/conditions/insights', { player_id: playerId! }),
+    queryFn: async () => {
+      const resp = await apiGet<InsightsResponse | { data: InsightsResponse }>(
+        '/conditions/insights',
+        { player_id: playerId! },
+      )
+      return unwrap<InsightsResponse>(resp)
+    },
     enabled: !!playerId,
     retry: 0,
   })

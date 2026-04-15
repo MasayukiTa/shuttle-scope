@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart } from 'lucide-react'
+import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart, ClipboardCheck } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import '@/i18n'
@@ -16,6 +16,8 @@ import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
 import { CameraSenderPage } from '@/pages/CameraSenderPage'
 import { ViewerPage } from '@/pages/ViewerPage'
 import { PredictionPage } from '@/pages/PredictionPage'
+import { ExpertLabelerPage } from '@/pages/ExpertLabelerPage'
+import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { checkHealth } from '@/api/client'
@@ -79,6 +81,7 @@ function Sidebar() {
     { to: '/condition', label: t('nav.condition'), icon: Heart },
     { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
     { to: '/prediction', label: t('nav.prediction'), icon: TrendingUp },
+    { to: '/expert-labeler', label: t('nav.expert'), icon: ClipboardCheck },
     { to: '/settings', label: t('nav.settings'), icon: Settings },
   ]
 
@@ -166,6 +169,8 @@ function MainLayout() {
             <Route path="/condition" element={<ConditionPage />} />
             <Route path="/dashboard/*" element={<DashboardShell />} />
             <Route path="/prediction" element={<PredictionPage />} />
+            <Route path="/expert-labeler" element={<ExpertLabelerPage />} />
+            <Route path="/expert-labeler/:matchId" element={<ExpertLabelerAnnotatePage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </ErrorBoundary>

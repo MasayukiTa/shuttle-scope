@@ -331,7 +331,38 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
-            <div className={`mt-3 flex flex-wrap gap-4 text-xs ${textMuted}`}>
+            <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${textMuted}`}>
+              {colorMode === 'month' && (
+                <>
+                  <span>{t('condition.generic_scatter.legend_month')}:</span>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
+                    <span key={m} className="inline-flex items-center gap-1">
+                      <span style={{ width: 10, height: 10, background: hslFromIndex(m - 1, 12), display: 'inline-block', borderRadius: 9999 }} />
+                      {m}
+                    </span>
+                  ))}
+                </>
+              )}
+              {colorMode === 'weekday' && (
+                <>
+                  <span>{t('condition.generic_scatter.legend_weekday')}:</span>
+                  {['月', '火', '水', '木', '金', '土', '日'].map((w, i) => (
+                    <span key={w} className="inline-flex items-center gap-1">
+                      <span style={{ width: 10, height: 10, background: hslFromIndex(i, 7), display: 'inline-block', borderRadius: 9999 }} />
+                      {w}
+                    </span>
+                  ))}
+                </>
+              )}
+              {colorMode === 'value' && (
+                <span className="inline-flex items-center gap-2">
+                  <span>{t('condition.generic_scatter.legend_value')}:</span>
+                  <span style={{ width: 120, height: 10, background: 'linear-gradient(to right, hsl(210,70%,50%), hsl(0,70%,50%))', border: `1px solid ${isLight ? '#e5e7eb' : '#4b5563'}` }} />
+                  <span>低 → 高</span>
+                </span>
+              )}
+            </div>
+            <div className={`mt-2 flex flex-wrap gap-4 text-xs ${textMuted}`}>
               <span>
                 {t('condition.generic_scatter.pearson_r')}:{' '}
                 <span className="font-mono">
