@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -102,14 +103,21 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data, isLoading } = useQuery({
+  // bundle は cf1（デフォルト phase）のみ対象。cf2/cf3 は従来通り個別 fetch。
+  type Resp = { success: boolean; data: { comparisons: CFComparison[]; total_contexts: number; usable_contexts: number; cf_phase?: string }; meta: Meta }
+  const bundleSlice = useResearchBundleSlice<Resp>('counterfactual_v2')
+  const useBundle = cfPhase === 'cf1' && bundleSlice.provided
+  const indiv = useQuery({
     queryKey: ['counterfactual-v2', cfPhase, playerId, filters],
     queryFn: () =>
-      apiGet<{ success: boolean; data: { comparisons: CFComparison[]; total_contexts: number; usable_contexts: number; cf_phase?: string }; meta: Meta }>(
+      apiGet<Resp>(
         phaseConfig.endpoint,
         { player_id: playerId, ...filterApiParams }
       ),
+    enabled: !!playerId && !(useBundle && !bundleSlice.loading && bundleSlice.slice != null),
   })
+  const data = (useBundle ? bundleSlice.slice : undefined) ?? indiv.data
+  const isLoading = useBundle && bundleSlice.loading ? true : indiv.isLoading
 
   const meta = data?.meta
   const comparisons = (data?.data?.comparisons ?? []).slice(0, 8)

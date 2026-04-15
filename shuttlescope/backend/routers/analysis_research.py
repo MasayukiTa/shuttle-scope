@@ -59,7 +59,22 @@ def get_epv(
     db: Session = Depends(get_db),
 ):
     """G-001: マルコフ連鎖に基づくショットパターンのEPVを計算する（アナリスト・コーチ向け）"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _epv_impl(db, player_id, ctx=None,
+                     result=result, tournament_level=tournament_level,
+                     date_from=date_from, date_to=date_to)
+
+
+def _epv_impl(db: Session, player_id: int, ctx=None,
+              result=None, tournament_level=None,
+              date_from=None, date_to=None):
+    """G-001 EPV impl — ctx が渡されれば共有データを使う。"""
+    if ctx is not None:
+        matches = ctx.matches
+        role_by_match = ctx.role_by_match
+        set_to_match = ctx.set_to_match
+        rallies = ctx.rallies
+    else:
+        matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
 
     empty_confidence = check_confidence("shot_transition", 0)
     if not matches:
@@ -69,16 +84,16 @@ def get_epv(
             "meta": {"sample_size": 0, "confidence": empty_confidence},
         }
 
-    match_ids = [m.id for m in matches]
-    role_by_match: dict[int, str] = {
-        m.id: _player_role_in_match(m, player_id) for m in matches
-    }
+    if ctx is None:
+        match_ids = [m.id for m in matches]
+        role_by_match = {
+            m.id: _player_role_in_match(m, player_id) for m in matches
+        }
+        sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
+        set_to_match = {s.id: s.match_id for s in sets}
+        set_ids = [s.id for s in sets]
+        rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
 
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
     rally_ids = [r.id for r in rallies]
 
     rally_player_won: dict[int, bool] = {}
@@ -96,17 +111,25 @@ def get_epv(
             "meta": {"sample_size": 0, "confidence": empty_confidence},
         }
 
-    all_strokes = (
-        db.query(Stroke)
-        .filter(Stroke.rally_id.in_(rally_ids))
-        .order_by(Stroke.rally_id, Stroke.stroke_num)
-        .all()
-    )
+    if ctx is not None:
+        # ctx.strokes は順序未保証なので rally_id, stroke_num で整列してから利用する
+        strokes_by_rally: dict[int, list] = defaultdict(list)
+        for stroke in ctx.strokes:
+            strokes_by_rally[stroke.rally_id].append(stroke)
+        for rid in strokes_by_rally:
+            strokes_by_rally[rid].sort(key=lambda s: s.stroke_num)
+    else:
+        all_strokes = (
+            db.query(Stroke)
+            .filter(Stroke.rally_id.in_(rally_ids))
+            .order_by(Stroke.rally_id, Stroke.stroke_num)
+            .all()
+        )
 
-    # ラリーごとにストロークをグループ化してMarkovAnalyzer向けリストを構築
-    strokes_by_rally: dict[int, list] = defaultdict(list)
-    for stroke in all_strokes:
-        strokes_by_rally[stroke.rally_id].append(stroke)
+        # ラリーごとにストロークをグループ化してMarkovAnalyzer向けリストを構築
+        strokes_by_rally = defaultdict(list)
+        for stroke in all_strokes:
+            strokes_by_rally[stroke.rally_id].append(stroke)
 
     strokes_list = []
     total_strokes = 0
@@ -331,7 +354,18 @@ def get_rally_sequence_patterns(
     db: Session = Depends(get_db),
 ):
     """ラリー3連ショットパターン — 勝ち/負けに関連する3ショット連続パターン"""
-    matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
+    return _rally_sequence_patterns_impl(db, player_id, None)
+
+
+def _rally_sequence_patterns_impl(db: Session, player_id: int, ctx=None):
+    if ctx is not None:
+        matches = ctx.rs_matches
+        role_by_match = ctx.rs_role_by_match
+        sets = ctx.rs_sets
+        set_to_match = ctx.rs_set_to_match
+        rallies = ctx.rs_rallies
+    else:
+        matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
     if not rallies:
         return {"success": True, "data": {"win_sequences": [], "loss_sequences": [], "total_rallies": 0},
                 "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
@@ -339,12 +373,15 @@ def get_rally_sequence_patterns(
     rally_ids = [r.id for r in rallies]
     rally_by_id = {r.id: r for r in rallies}
 
-    strokes = (
-        db.query(Stroke)
-        .filter(Stroke.rally_id.in_(rally_ids))
-        .order_by(Stroke.rally_id, Stroke.stroke_num)
-        .all()
-    )
+    if ctx is not None:
+        strokes = sorted(ctx.rs_strokes, key=lambda s: (s.rally_id, s.stroke_num))
+    else:
+        strokes = (
+            db.query(Stroke)
+            .filter(Stroke.rally_id.in_(rally_ids))
+            .order_by(Stroke.rally_id, Stroke.stroke_num)
+            .all()
+        )
     strokes_by_rally: dict[int, list] = defaultdict(list)
     for s in strokes:
         strokes_by_rally[s.rally_id].append(s)
@@ -521,12 +558,12 @@ def get_recommendation_ranking(
     shot_win: dict[str, dict] = defaultdict(lambda: {"count": 0, "wins": 0})
     zone_win: dict[str, dict] = defaultdict(lambda: {"count": 0, "wins": 0})
 
+    rally_to_set = {r.id: r.set_id for r in rallies}
     for s in strokes:
         if not s.shot_type:
             continue
-        mid = set_to_match.get(
-            next((r.set_id for r in rallies if r.id == s.rally_id), None) or -1
-        )
+        set_id = rally_to_set.get(s.rally_id)
+        mid = set_to_match.get(set_id) if set_id is not None else None
         role = role_by_match.get(mid) if mid else None
         if not role or s.player != role:
             continue
@@ -596,22 +633,37 @@ def get_counterfactual_shots(
     db: Session = Depends(get_db),
 ):
     """反事実的ショット比較 — 同じ文脈で異なる返球選択の勝率比較（S3-A: 多次元文脈対応）"""
-    matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
+    return _counterfactual_shots_impl(db, player_id, ctx=None)
+
+
+def _counterfactual_shots_impl(db: Session, player_id: int, ctx=None):
+    """R6 counterfactual_shots impl — ctx があれば rs_* ビューを共有。"""
+    if ctx is not None:
+        role_by_match = ctx.rs_role_by_match
+        set_to_match = ctx.rs_set_to_match
+        rallies = ctx.rs_rallies
+    else:
+        matches, role_by_match, sets, set_to_match, rallies, _ = _fetch_matches_sets_rallies(player_id, db)
     if not rallies:
         return {"success": True, "data": {"comparisons": [], "extended_comparisons": [], "context_summary": {}},
                 "meta": {"sample_size": 0, "confidence": check_confidence("descriptive_basic", 0)}}
 
-    rally_ids = [r.id for r in rallies]
-
-    strokes = (
-        db.query(Stroke)
-        .filter(Stroke.rally_id.in_(rally_ids))
-        .order_by(Stroke.rally_id, Stroke.stroke_num)
-        .all()
-    )
-    strokes_by_rally: dict[int, list] = defaultdict(list)
-    for s in strokes:
-        strokes_by_rally[s.rally_id].append(s)
+    if ctx is not None:
+        # ctx.rs_strokes_by_rally は順序未保証 → stroke_num で整列して使う
+        strokes_by_rally: dict[int, list] = defaultdict(list)
+        for rid, lst in ctx.rs_strokes_by_rally.items():
+            strokes_by_rally[rid] = sorted(lst, key=lambda s: s.stroke_num)
+    else:
+        rally_ids = [r.id for r in rallies]
+        strokes = (
+            db.query(Stroke)
+            .filter(Stroke.rally_id.in_(rally_ids))
+            .order_by(Stroke.rally_id, Stroke.stroke_num)
+            .all()
+        )
+        strokes_by_rally = defaultdict(list)
+        for s in strokes:
+            strokes_by_rally[s.rally_id].append(s)
 
     # S3-A: エンジンに委譲して多次元文脈 + 従来互換の両方を取得
     extended_stats, simple_stats = collect_context_stats(
@@ -679,20 +731,15 @@ def get_spatial_density(
         }
 
     rally_ids = [r.id for r in rallies]
-    strokes = (
-        db.query(Stroke)
+    # カラムを絞って取得（不要な BLOB/JSON を読まない）
+    stroke_rows = (
+        db.query(Stroke.rally_id, Stroke.player, Stroke.hit_zone, Stroke.land_zone)
         .filter(Stroke.rally_id.in_(rally_ids))
         .all()
     )
 
-    # プレイヤーのストロークのみ
-    player_strokes = []
+    # プレイヤーのストロークのみ（辞書化で O(N) 参照）
     rally_set_map = {r.id: r.set_id for r in rallies}
-    for s in strokes:
-        mid = set_to_match.get(rally_set_map.get(s.rally_id, -1), -1)
-        role = role_by_match.get(mid)
-        if role and s.player == role:
-            player_strokes.append(s)
 
     GRID_W, GRID_H = 30, 60
     SIGMA = 4.0
@@ -707,27 +754,54 @@ def get_spatial_density(
 
     # ゾーンカウント
     zone_counts: dict[str, int] = defaultdict(int)
-    # グリッド初期化
-    grid = [[0.0] * GRID_W for _ in range(GRID_H)]
+    player_stroke_total = 0
 
-    for s in player_strokes:
-        zone = s.hit_zone or s.land_zone
+    for rally_id, s_player, hit_zone, land_zone in stroke_rows:
+        mid = set_to_match.get(rally_set_map.get(rally_id, -1), -1)
+        role = role_by_match.get(mid)
+        if not role or s_player != role:
+            continue
+        player_stroke_total += 1
+        zone = hit_zone or land_zone
         if not zone or zone not in ZONE_CENTROIDS:
             continue
         zone_counts[zone] += 1
-        cx, cy = ZONE_CENTROIDS[zone]
-        # ガウシアンカーネル展開
-        for row in range(GRID_H):
-            for col in range(GRID_W):
-                dist2 = (col - cx) ** 2 + (row - cy) ** 2
-                grid[row][col] += math.exp(-dist2 / (2 * SIGMA * SIGMA))
 
-    # 0–1正規化
-    max_val = max(max(row) for row in grid) if any(any(row) for row in grid) else 1.0
-    if max_val > 0:
-        grid = [[round(v / max_val, 4) for v in row] for row in grid]
+    # numpy でガウシアンカーネル計算 (ゾーン単位でまとめて加算)
+    try:
+        import numpy as _np
 
-    total = len(player_strokes)
+        cols = _np.arange(GRID_W, dtype=_np.float32)
+        rows = _np.arange(GRID_H, dtype=_np.float32)
+        col_grid, row_grid = _np.meshgrid(cols, rows)
+        grid_np = _np.zeros((GRID_H, GRID_W), dtype=_np.float32)
+        two_sigma2 = 2.0 * SIGMA * SIGMA
+        for zone_name, count in zone_counts.items():
+            if count <= 0:
+                continue
+            cx, cy = ZONE_CENTROIDS[zone_name]
+            dist2 = (col_grid - cx) ** 2 + (row_grid - cy) ** 2
+            grid_np += count * _np.exp(-dist2 / two_sigma2)
+        max_val = float(grid_np.max()) if grid_np.size else 0.0
+        if max_val > 0:
+            grid_np = _np.round(grid_np / max_val, 4)
+        grid = grid_np.tolist()
+    except Exception:
+        # フォールバック: 既存の純 Python 実装
+        grid = [[0.0] * GRID_W for _ in range(GRID_H)]
+        for zone_name, count in zone_counts.items():
+            if count <= 0:
+                continue
+            cx, cy = ZONE_CENTROIDS[zone_name]
+            for row in range(GRID_H):
+                for col in range(GRID_W):
+                    dist2 = (col - cx) ** 2 + (row - cy) ** 2
+                    grid[row][col] += count * math.exp(-dist2 / (2 * SIGMA * SIGMA))
+        max_val = max(max(row) for row in grid) if any(any(row) for row in grid) else 1.0
+        if max_val > 0:
+            grid = [[round(v / max_val, 4) for v in row] for row in grid]
+
+    total = player_stroke_total
     return {
         "success": True,
         "data": {
@@ -830,12 +904,15 @@ def get_pair_combined(
 
     # 共通の失点前ショット
     rally_id_set = {r.id for r in rallies}
+    # N+1 解消: set_id → match_id のマップを一度だけ構築し、matches も辞書化
+    matches_by_id = {m.id: m for m in matches}
+    sets_for_lookup = db.query(GameSet).filter(GameSet.match_id.in_(shared_match_ids)).all() if shared_match_ids else []
+    set_to_match_id = {s.id: s.match_id for s in sets_for_lookup}
     win_rally_ids: set[int] = set()
     loss_rally_ids: set[int] = set()
     for r in rallies:
-        m = next((m for m in matches if any(
-            s.id == r.set_id for s in db.query(GameSet).filter(GameSet.match_id == m.id).all()
-        )), None)
+        mid = set_to_match_id.get(r.set_id)
+        m = matches_by_id.get(mid) if mid is not None else None
         if m is None:
             continue
         player_role = "player_a" if (m.player_a_id == player_a_id or m.partner_a_id == player_a_id) else "player_b"
@@ -1132,6 +1209,8 @@ def get_opponent_adaptive_shots(
     # ラリーIDとロールのマッピング
     match_ids = [m.id for m in matches]
     role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
+    # O(N*M) 解消: ストロークループ内の線形検索を潰すため matches を辞書化
+    matches_by_id = {m.id: m for m in matches}
 
     sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
     set_to_match = {s.id: s.match_id for s in sets}
@@ -1171,7 +1250,7 @@ def get_opponent_adaptive_shots(
         if s.player != role:
             continue
 
-        match = next((m for m in matches if m.id == mid), None)
+        match = matches_by_id.get(mid)  # O(1) 辞書引き
         if not match:
             continue
 

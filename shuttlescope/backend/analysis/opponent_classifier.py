@@ -182,13 +182,24 @@ def classify_opponent(
     }
     used = 0
 
+    # バルクロード: 全試合ぶんの GameSet/Rally を1クエリずつで取得
+    match_ids = [m.id for m in matches_with_opponent]
+    sets_by_match: dict[int, list[int]] = {}
+    if match_ids:
+        for s in db.query(GameSet.id, GameSet.match_id).filter(GameSet.match_id.in_(match_ids)).all():
+            sets_by_match.setdefault(s.match_id, []).append(s.id)
+    all_set_ids = [sid for sids in sets_by_match.values() for sid in sids]
+    rallies_by_set: dict[int, list] = {}
+    if all_set_ids:
+        for r in db.query(Rally).filter(Rally.set_id.in_(all_set_ids)).all():
+            rallies_by_set.setdefault(r.set_id, []).append(r)
+
     for m in matches_with_opponent:
         opp_role = "player_b" if m.player_a_id == player_id else "player_a"
-        sets = db.query(GameSet).filter(GameSet.match_id == m.id).all()
-        set_ids = [s.id for s in sets]
+        set_ids = sets_by_match.get(m.id, [])
         if not set_ids:
             continue
-        rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
+        rallies = [r for sid in set_ids for r in rallies_by_set.get(sid, [])]
         metrics = _extract_opponent_metrics(rallies, opp_role, db)
         if metrics is None:
             continue

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Maximize2 } from 'lucide-react'
 import { apiGet } from '@/api/client'
+import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN } from '@/styles/colors'
@@ -49,12 +50,16 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data: resp, isLoading } = useQuery({
+  // 振り返りタブ bundle 提供時はスライスを利用する
+  const { slice: bundled, loading: bundleLoading, provided } = useReviewBundleSlice<EffectiveMapResponse>('effective_distribution_map')
+  const indiv = useQuery({
     queryKey: ['analysis-effective-distribution-map', playerId, filters],
     queryFn: () =>
       apiGet<EffectiveMapResponse>('/analysis/effective_distribution_map', { player_id: playerId, ...fp }),
-    enabled: !!playerId,
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const resp = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>

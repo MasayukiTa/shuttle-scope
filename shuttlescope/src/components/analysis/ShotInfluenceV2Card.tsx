@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -73,14 +74,19 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data, isLoading } = useQuery({
+  type Resp = { success: boolean; data: ShotInfluenceV2Data; meta: Meta }
+  const { slice: bundled, loading: bundleLoading, provided } = useResearchBundleSlice<Resp>('shot_influence_v2')
+  const indiv = useQuery({
     queryKey: ['shot-influence-v2', playerId, filters],
     queryFn: () =>
-      apiGet<{ success: boolean; data: ShotInfluenceV2Data; meta: Meta }>(
+      apiGet<Resp>(
         '/analysis/shot_influence_v2',
         { player_id: playerId, ...filterApiParams }
       ),
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const data = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   const meta = data?.meta
   const influenceData = data?.data

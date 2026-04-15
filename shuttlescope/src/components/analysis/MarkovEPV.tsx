@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
@@ -77,12 +78,16 @@ export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProp
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  // bundle 提供時はスライスを使い、個別リクエストはスキップする
+  const { slice: bundled, loading: bundleLoading, provided } = useResearchBundleSlice<EPVResponse>('epv')
+  const indiv = useQuery({
     queryKey: ['analysis-epv', playerId, filters],
     queryFn: () =>
       apiGet<EPVResponse>('/analysis/epv', { player_id: playerId, ...fp }),
-    enabled: !!playerId,
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const resp = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>

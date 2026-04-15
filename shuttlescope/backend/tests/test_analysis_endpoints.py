@@ -164,6 +164,28 @@ class TestNewAnalysisEndpoints:
         assert "pre_loss_2" in data["data"]
         assert "pre_loss_3" in data["data"]
 
+    def test_bundle_review_returns_all_cards(self, client_with_data):
+        """振り返りタブ bundle が 6 カード分のデータを返すこと"""
+        client, player_id, _ = client_with_data
+        resp = client.get(f"/api/analysis/bundle/review?player_id={player_id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        data = body["data"]
+        for key in [
+            "pre_loss_patterns",
+            "pre_win_patterns",
+            "effective_distribution_map",
+            "received_vulnerability",
+            "set_comparison",
+            "rally_sequence_patterns",
+        ]:
+            assert key in data
+        plp = data["pre_loss_patterns"]
+        assert plp is not None
+        assert plp["success"] is True
+        assert "pre_loss_1" in plp["data"]
+
     def test_first_return_analysis_returns_200(self, client_with_data):
         """first_return_analysis が200を返すこと"""
         client, player_id, _ = client_with_data

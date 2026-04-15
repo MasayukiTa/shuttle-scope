@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Rally, GameSet, Match, Stroke
 from backend.utils.sync_meta import touch
+from backend.utils import response_cache
+from backend.utils.match_players import players_for_set, players_for_rally
 
 router = APIRouter()
 
@@ -66,6 +68,8 @@ def create_rally(body: RallyCreate, db: Session = Depends(get_db)):
     touch(rally)
     db.add(rally)
     db.commit()
+    # set_id から辿って試合の関与選手のみ無効化
+    response_cache.bump_players(players_for_set(db, body.set_id))
     db.refresh(rally)
     return {"success": True, "data": rally_to_dict(rally)}
 
@@ -80,6 +84,8 @@ def update_rally(rally_id: int, body: RallyUpdate, db: Session = Depends(get_db)
         setattr(rally, key, value)
     touch(rally)
     db.commit()
+    # 対象 rally の試合の関与選手のみ無効化
+    response_cache.bump_players(players_for_set(db, rally.set_id))
     db.refresh(rally)
     return {"success": True, "data": rally_to_dict(rally)}
 
@@ -90,8 +96,11 @@ def delete_rally(rally_id: int, db: Session = Depends(get_db)):
     rally = db.get(Rally, rally_id)
     if not rally:
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
+    # 削除前に関与選手を控える
+    affected_players = players_for_set(db, rally.set_id)
     db.delete(rally)
     db.commit()
+    response_cache.bump_players(affected_players)
     return {"success": True, "data": {"id": rally_id}}
 
 
@@ -175,6 +184,9 @@ def undo_last_stroke(match_id: int, db: Session = Depends(get_db)):
     if last_stroke:
         db.delete(last_stroke)
         db.commit()
+        # match_id は既に確定しているので、そこから関与選手のみ無効化
+        from backend.utils.match_players import players_for_match
+        response_cache.bump_players(players_for_match(db, match_id))
         return {"success": True, "data": {"deleted_stroke_id": last_stroke.id}}
 
     raise HTTPException(status_code=400, detail="アンドゥするストロークがありません")

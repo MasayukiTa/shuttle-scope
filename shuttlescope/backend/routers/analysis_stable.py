@@ -746,7 +746,28 @@ def get_set_comparison(
     db: Session = Depends(get_db),
 ):
     """B-005: 1・2・3セット目別のパフォーマンス比較"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _set_comparison_impl(
+        db, player_id, None,
+        result=result, tournament_level=tournament_level,
+        date_from=date_from, date_to=date_to,
+    )
+
+
+def _set_comparison_impl(
+    db: Session, player_id: int, ctx=None,
+    result=None, tournament_level=None, date_from=None, date_to=None,
+):
+    if ctx is None:
+        from backend.analysis.bundle_context import load_context
+        ctx = load_context(db, player_id, {
+            "result": result, "tournament_level": tournament_level,
+            "date_from": date_from, "date_to": date_to,
+        })
+    matches = ctx.matches
+    role_by_match = ctx.role_by_match
+    sets = ctx.sets
+    set_to_match = ctx.set_to_match
+    rallies = ctx.rallies
 
     if not matches:
         confidence = check_confidence("descriptive_basic", 0)
@@ -756,12 +777,6 @@ def get_set_comparison(
             "meta": {"sample_size": 0, "confidence": confidence},
         }
 
-    match_ids = [m.id for m in matches]
-    role_by_match: dict[int, str] = {
-        m.id: _player_role_in_match(m, player_id) for m in matches
-    }
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
     if not sets:
         confidence = check_confidence("descriptive_basic", 0)
         return {
@@ -770,11 +785,7 @@ def get_set_comparison(
             "meta": {"sample_size": 0, "confidence": confidence},
         }
 
-    set_ids = [s.id for s in sets]
-    set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
     set_num_map: dict[int, int] = {s.id: s.set_num for s in sets}
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
 
     # セット番号ごとに集計
     set_stats: dict[int, dict] = defaultdict(lambda: {
@@ -996,22 +1007,18 @@ def get_win_loss_comparison(
         if not match_ids:
             return None
 
-        set_ids = [
-            s.id for s in db.query(GameSet.id).filter(GameSet.match_id.in_(match_ids)).all()
-        ]
-        if not set_ids:
+        # セット→試合 マッピングを1クエリで構築（以前の二重クエリを統合）
+        set_rows = db.query(GameSet.id, GameSet.match_id).filter(GameSet.match_id.in_(match_ids)).all()
+        if not set_rows:
             return None
+        set_ids = [row[0] for row in set_rows]
+        set_to_match: dict[int, int] = {row[0]: row[1] for row in set_rows}
 
         rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
         if not rallies:
             return None
 
         rally_ids = [r.id for r in rallies]
-        # セット→試合 マッピング
-        set_to_match: dict[int, int] = {
-            s.id: s.match_id
-            for s in db.query(GameSet).filter(GameSet.id.in_(set_ids)).all()
-        }
 
         total_length = 0
         total_rallies = len(rallies)
@@ -1035,10 +1042,12 @@ def get_win_loss_comparison(
         )
 
         shot_counter: dict[str, int] = defaultdict(int)
+        rally_to_set: dict[int, int] = {r.id: r.set_id for r in rallies}
         for stroke in strokes:
-            match_id = set_to_match.get(
-                next((r.set_id for r in rallies if r.id == stroke.rally_id), None), None
-            )
+            set_id = rally_to_set.get(stroke.rally_id)
+            if set_id is None:
+                continue
+            match_id = set_to_match.get(set_id)
             if match_id is None:
                 continue
             player_role = role_by_match.get(match_id)
@@ -1191,7 +1200,28 @@ def get_pre_loss_patterns(
     db: Session = Depends(get_db),
 ):
     """C-002: 失点ラリーで失点の1・2・3球前のショットを集計する"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _pre_loss_patterns_impl(
+        db, player_id, None,
+        result=result, tournament_level=tournament_level,
+        date_from=date_from, date_to=date_to,
+    )
+
+
+def _pre_loss_patterns_impl(
+    db: Session, player_id: int, ctx=None,
+    result=None, tournament_level=None, date_from=None, date_to=None,
+):
+    if ctx is None:
+        from backend.analysis.bundle_context import load_context
+        ctx = load_context(db, player_id, {
+            "result": result, "tournament_level": tournament_level,
+            "date_from": date_from, "date_to": date_to,
+        })
+    matches = ctx.matches
+    role_by_match = ctx.role_by_match
+    set_to_match = ctx.set_to_match
+    rallies = ctx.rallies
+    rally_ids = ctx.rally_ids
 
     empty_confidence = check_confidence("win_loss_comparison", 0)
     if not matches:
@@ -1200,18 +1230,6 @@ def get_pre_loss_patterns(
             "data": {"pre_loss_1": [], "pre_loss_2": [], "pre_loss_3": []},
             "meta": {"sample_size": 0, "confidence": empty_confidence},
         }
-
-    match_ids = [m.id for m in matches]
-    role_by_match: dict[int, str] = {
-        m.id: _player_role_in_match(m, player_id) for m in matches
-    }
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
-    rally_ids = [r.id for r in rallies]
 
     # 失点ラリーを抽出
     lost_rally_ids: set[int] = set()
@@ -1230,12 +1248,10 @@ def get_pre_loss_patterns(
             "meta": {"sample_size": 0, "confidence": empty_confidence},
         }
 
-    # ストロークを取得してラリーごとにグループ化
-    all_strokes = (
-        db.query(Stroke)
-        .filter(Stroke.rally_id.in_(list(lost_rally_ids)))
-        .order_by(Stroke.rally_id, Stroke.stroke_num)
-        .all()
+    # ストロークを ctx から取得し、失点ラリー分のみに絞り stroke_num 昇順にソート
+    all_strokes = sorted(
+        [s for s in ctx.strokes if s.rally_id in lost_rally_ids],
+        key=lambda s: (s.rally_id, s.stroke_num),
     )
 
     strokes_by_rally: dict[int, list[Stroke]] = defaultdict(list)
@@ -1671,7 +1687,27 @@ def get_pre_win_patterns(
     db: Session = Depends(get_db),
 ):
     """R-003: 得点ラリーで得点の1・2・3球前のショットを集計する（pre_loss_patterns の勝ち版）"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _pre_win_patterns_impl(
+        db, player_id, None,
+        result=result, tournament_level=tournament_level,
+        date_from=date_from, date_to=date_to,
+    )
+
+
+def _pre_win_patterns_impl(
+    db: Session, player_id: int, ctx=None,
+    result=None, tournament_level=None, date_from=None, date_to=None,
+):
+    if ctx is None:
+        from backend.analysis.bundle_context import load_context
+        ctx = load_context(db, player_id, {
+            "result": result, "tournament_level": tournament_level,
+            "date_from": date_from, "date_to": date_to,
+        })
+    matches = ctx.matches
+    role_by_match = ctx.role_by_match
+    set_to_match = ctx.set_to_match
+    rallies = ctx.rallies
 
     empty_confidence = check_confidence("win_loss_comparison", 0)
     if not matches:
@@ -1680,17 +1716,6 @@ def get_pre_win_patterns(
             "data": {"pre_win_1": [], "pre_win_2": [], "pre_win_3": []},
             "meta": {"sample_size": 0, "confidence": empty_confidence},
         }
-
-    match_ids = [m.id for m in matches]
-    role_by_match: dict[int, str] = {
-        m.id: _player_role_in_match(m, player_id) for m in matches
-    }
-
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
-    set_ids = [s.id for s in sets]
-
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
 
     won_rally_ids: set[int] = set()
     rally_to_role: dict[int, str] = {}
@@ -1708,11 +1733,9 @@ def get_pre_win_patterns(
             "meta": {"sample_size": 0, "confidence": empty_confidence},
         }
 
-    all_strokes = (
-        db.query(Stroke)
-        .filter(Stroke.rally_id.in_(list(won_rally_ids)))
-        .order_by(Stroke.rally_id, Stroke.stroke_num)
-        .all()
+    all_strokes = sorted(
+        [s for s in ctx.strokes if s.rally_id in won_rally_ids],
+        key=lambda s: (s.rally_id, s.stroke_num),
     )
     strokes_by_rally: dict[int, list] = defaultdict(list)
     for stroke in all_strokes:
@@ -1781,7 +1804,29 @@ def get_effective_distribution_map(
     db: Session = Depends(get_db),
 ):
     """R-004: 得点ラリーの最終ストローク着地ゾーン分布から有効配球マップを生成する"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _effective_distribution_map_impl(
+        db, player_id, None,
+        result=result, tournament_level=tournament_level,
+        date_from=date_from, date_to=date_to, shot_type=shot_type,
+    )
+
+
+def _effective_distribution_map_impl(
+    db: Session, player_id: int, ctx=None,
+    result=None, tournament_level=None, date_from=None, date_to=None,
+    shot_type=None,
+):
+    if ctx is None:
+        from backend.analysis.bundle_context import load_context
+        ctx = load_context(db, player_id, {
+            "result": result, "tournament_level": tournament_level,
+            "date_from": date_from, "date_to": date_to,
+        })
+    matches = ctx.matches
+    role_by_match = ctx.role_by_match
+    set_to_match = ctx.set_to_match
+    set_ids = ctx.set_ids
+    rallies = ctx.rallies
 
     empty_conf = check_confidence("descriptive_basic", 0)
     empty = {
@@ -1791,18 +1836,9 @@ def get_effective_distribution_map(
     }
     if not matches:
         return empty
-
-    match_ids = [m.id for m in matches]
-    role_by_match: dict[int, str] = {
-        m.id: _player_role_in_match(m, player_id) for m in matches
-    }
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
-    set_ids = [s.id for s in sets]
     if not set_ids:
         return empty
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
     won_rally_ids: set[int] = set()
     rally_to_role: dict[int, str] = {}
     for rally in rallies:
@@ -1816,10 +1852,11 @@ def get_effective_distribution_map(
         return empty
 
     # 得点ラリーの最終プレイヤーストロークの着地ゾーン集計
-    q = db.query(Stroke).filter(Stroke.rally_id.in_(list(won_rally_ids)))
-    if shot_type:
-        q = q.filter(Stroke.shot_type == shot_type)
-    win_strokes = q.order_by(Stroke.rally_id, Stroke.stroke_num).all()
+    win_strokes_filtered = [
+        s for s in ctx.strokes
+        if s.rally_id in won_rally_ids and (not shot_type or s.shot_type == shot_type)
+    ]
+    win_strokes = sorted(win_strokes_filtered, key=lambda s: (s.rally_id, s.stroke_num))
 
     strokes_by_rally: dict[int, list] = defaultdict(list)
     for stroke in win_strokes:
@@ -1842,12 +1879,10 @@ def get_effective_distribution_map(
         sample_size += 1
 
     # 全ラリーでのプレイヤーストローク着地ゾーン集計（分母）
-    all_rally_ids = [r.id for r in rallies]
-    q_all = db.query(Stroke).filter(Stroke.rally_id.in_(all_rally_ids))
-    if shot_type:
-        q_all = q_all.filter(Stroke.shot_type == shot_type)
     zone_total: dict[str, int] = defaultdict(int)
-    for s in q_all.all():
+    for s in ctx.strokes:
+        if shot_type and s.shot_type != shot_type:
+            continue
         player_role = rally_to_role.get(s.rally_id)
         if player_role and s.player == player_role and s.land_zone:
             zone_total[s.land_zone] += 1
@@ -1895,7 +1930,28 @@ def get_received_vulnerability(
     db: Session = Depends(get_db),
 ):
     """R-005: 失点ラリーで相手が打った最終ストロークの着地ゾーン別失点率（被打球弱点マップ）"""
-    matches = _get_player_matches(db, player_id, result, tournament_level, date_from, date_to)
+    return _received_vulnerability_impl(
+        db, player_id, None,
+        result=result, tournament_level=tournament_level,
+        date_from=date_from, date_to=date_to,
+    )
+
+
+def _received_vulnerability_impl(
+    db: Session, player_id: int, ctx=None,
+    result=None, tournament_level=None, date_from=None, date_to=None,
+):
+    if ctx is None:
+        from backend.analysis.bundle_context import load_context
+        ctx = load_context(db, player_id, {
+            "result": result, "tournament_level": tournament_level,
+            "date_from": date_from, "date_to": date_to,
+        })
+    matches = ctx.matches
+    role_by_match = ctx.role_by_match
+    set_to_match = ctx.set_to_match
+    set_ids = ctx.set_ids
+    rallies = ctx.rallies
 
     empty_conf = check_confidence("descriptive_basic", 0)
     empty = {
@@ -1905,18 +1961,9 @@ def get_received_vulnerability(
     }
     if not matches:
         return empty
-
-    match_ids = [m.id for m in matches]
-    role_by_match: dict[int, str] = {
-        m.id: _player_role_in_match(m, player_id) for m in matches
-    }
-    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all()
-    set_to_match: dict[int, int] = {s.id: s.match_id for s in sets}
-    set_ids = [s.id for s in sets]
     if not set_ids:
         return empty
 
-    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all()
     lost_rally_ids: set[int] = set()
     rally_to_role: dict[int, str] = {}
     for rally in rallies:
@@ -1930,20 +1977,16 @@ def get_received_vulnerability(
         return empty
 
     # 全ラリーで相手ストロークの着地ゾーン集計（分母）
-    all_rally_ids = [r.id for r in rallies]
-    all_strokes_q = db.query(Stroke).filter(Stroke.rally_id.in_(all_rally_ids)).all()
     zone_total_opp: dict[str, int] = defaultdict(int)
-    for s in all_strokes_q:
+    for s in ctx.strokes:
         player_role = rally_to_role.get(s.rally_id)
         if player_role and s.player != player_role and s.land_zone:
             zone_total_opp[s.land_zone] += 1
 
     # 失点ラリーで相手最終ストロークの着地ゾーン集計（分子）
-    loss_strokes = (
-        db.query(Stroke)
-        .filter(Stroke.rally_id.in_(list(lost_rally_ids)))
-        .order_by(Stroke.rally_id, Stroke.stroke_num)
-        .all()
+    loss_strokes = sorted(
+        [s for s in ctx.strokes if s.rally_id in lost_rally_ids],
+        key=lambda s: (s.rally_id, s.stroke_num),
     )
     strokes_by_rally: dict[int, list] = defaultdict(list)
     for s in loss_strokes:

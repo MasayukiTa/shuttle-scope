@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -31,10 +32,16 @@ export function StateEPVCard({ playerId, filters }: Props) {
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data, isLoading } = useQuery({
+  // bundle 提供時はスライスを使い、個別リクエストはスキップする
+  type Resp = { success: boolean; data: StateRow[]; meta: Meta }
+  const { slice: bundled, loading: bundleLoading, provided } = useResearchBundleSlice<Resp>('epv_state_table')
+  const indiv = useQuery({
     queryKey: ['epv-state-map', playerId, filters],
-    queryFn: () => apiGet<{ success: boolean; data: StateRow[]; meta: Meta }>('/analysis/epv_state_map', { player_id: playerId, ...filterApiParams }),
+    queryFn: () => apiGet<Resp>('/analysis/epv_state_map', { player_id: playerId, ...filterApiParams }),
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const data = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
   const meta = data?.meta
   const reliableRows = (data?.data ?? []).filter((r) => r.reliability >= 0.5).slice(0, 12)
 

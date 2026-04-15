@@ -9,6 +9,8 @@ from backend.db.models import Stroke, Rally, GameSet, Match
 from backend.utils.validators import validate_stroke, validate_rally
 from backend.utils.sync_meta import touch
 from backend.analysis.shot_taxonomy import canonicalize as canonicalize_shot
+from backend.utils import response_cache
+from backend.utils.match_players import players_for_match, players_for_rally
 
 router = APIRouter()
 
@@ -168,6 +170,8 @@ def batch_save_rally(body: BatchSaveRequest, db: Session = Depends(get_db)):
     _update_annotation_progress(game_set.match_id, db)
 
     db.commit()
+    # 試合の関与選手のみキャッシュ無効化（他選手の解析結果は保持）
+    response_cache.bump_players(players_for_match(db, game_set.match_id))
     db.refresh(rally)
 
     # S-001: アクティブセッションへスコア更新をブロードキャスト（非同期）
@@ -227,6 +231,8 @@ def create_stroke(rally_id: int, body: StrokeData, db: Session = Depends(get_db)
     touch(stroke)
     db.add(stroke)
     db.commit()
+    # rally → set → match 経由で関与選手のみ無効化
+    response_cache.bump_players(players_for_rally(db, rally_id))
     db.refresh(stroke)
     return {"success": True, "data": stroke_to_dict(stroke)}
 
@@ -241,6 +247,8 @@ def update_stroke(stroke_id: int, body: StrokeData, db: Session = Depends(get_db
         setattr(stroke, key, value)
     touch(stroke)
     db.commit()
+    # 対象 stroke の rally 経由で関与選手のみ無効化
+    response_cache.bump_players(players_for_rally(db, stroke.rally_id))
     db.refresh(stroke)
     return {"success": True, "data": stroke_to_dict(stroke)}
 
@@ -251,8 +259,11 @@ def delete_stroke(stroke_id: int, db: Session = Depends(get_db)):
     stroke = db.get(Stroke, stroke_id)
     if not stroke:
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
+    # 削除前に関与選手を控える
+    affected_players = players_for_rally(db, stroke.rally_id)
     db.delete(stroke)
     db.commit()
+    response_cache.bump_players(affected_players)
     return {"success": True, "data": {"id": stroke_id}}
 
 

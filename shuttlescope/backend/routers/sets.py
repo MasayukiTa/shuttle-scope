@@ -8,6 +8,8 @@ from sqlalchemy import func
 from backend.db.database import get_db
 from backend.db.models import GameSet, Match, Rally
 from backend.utils.sync_meta import touch
+from backend.utils import response_cache
+from backend.utils.match_players import players_for_match
 
 router = APIRouter()
 
@@ -63,6 +65,8 @@ def create_set(body: SetCreate, db: Session = Depends(get_db)):
     touch(game_set)
     db.add(game_set)
     db.commit()
+    # 試合の関与選手のみキャッシュ無効化
+    response_cache.bump_players(players_for_match(db, body.match_id))
     db.refresh(game_set)
     return {"success": True, "data": set_to_dict(game_set)}
 
@@ -80,6 +84,8 @@ def end_set(set_id: int, body: SetEnd, db: Session = Depends(get_db)):
     game_set.is_deuce = body.score_a >= 20 and body.score_b >= 20
     touch(game_set)
     db.commit()
+    # 終了したセットの試合の関与選手のみ無効化
+    response_cache.bump_players(players_for_match(db, game_set.match_id))
     db.refresh(game_set)
     return {"success": True, "data": set_to_dict(game_set)}
 

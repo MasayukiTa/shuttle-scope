@@ -56,6 +56,8 @@ from backend.routers import cv_benchmark
 from backend.routers import video_import
 from backend.routers import court_calibration
 from backend.utils.video_downloader import video_downloader
+from backend.utils import response_cache
+import json as _json_cache
 
 # React renderer ビルド出力パス（Electron / ブラウザ共用）
 _RENDERER_DIR = Path(__file__).resolve().parent.parent / "out" / "renderer"
@@ -102,6 +104,17 @@ async def lifespan(app: FastAPI):
         logger.warning("bootstrap_database がタイムアウト（30s）— 起動を続行します")
     except Exception as exc:
         logger.warning("bootstrap_database エラー: %s — 起動を続行します", exc)
+
+    # 期限切れ AnalysisCache 行をクリーンアップ（起動時のみ）
+    try:
+        from backend.db.database import SessionLocal
+        from backend.db.models import AnalysisCache
+        with SessionLocal() as _s:
+            _s.query(AnalysisCache).filter(AnalysisCache.expires_at < datetime.utcnow()).delete()
+            _s.commit()
+    except Exception as exc:
+        logger.debug("AnalysisCache cleanup skipped: %s", exc)
+
     cleanup_task = asyncio.create_task(_stale_device_cleanup())
     yield
     cleanup_task.cancel()
@@ -241,6 +254,81 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(PlayerAccessControlMiddleware)
 
+
+# ─── /api/analysis/* GET レスポンスキャッシュミドルウェア ────────────────────
+# 読み専用エンドポイントをプロセス内メモリにキャッシュし、解析タブの
+# 再描画を高速化する。認証ヘッダ（X-Role / X-Player-Id / X-Team-Name）を
+# キーに含めることで、role=player 絞り込み結果の漏洩を防ぐ。
+# mutation 系ルーターで `response_cache.bump_version()` を呼ぶことで
+# 一括無効化される。
+
+class AnalysisCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if request.method != "GET" or not request.url.path.startswith("/api/analysis/"):
+            return await call_next(request)
+        path = request.url.path
+        query = str(request.url.query)
+        params = {
+            "q": query,
+            "role": request.headers.get("X-Role", ""),
+            "pid": request.headers.get("X-Player-Id", ""),
+            "team": request.headers.get("X-Team-Name", ""),
+        }
+        key = response_cache.build_key(path, params)
+        cached = response_cache.get(key)
+        if cached is not None:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(content=cached, headers={"X-Cache": "HIT"})
+        response = await call_next(request)
+        # 200 かつ JSON のみキャッシュ対象
+        if (
+            response.status_code == 200
+            and response.headers.get("content-type", "").startswith("application/json")
+        ):
+            body = b""
+            async for chunk in response.body_iterator:
+                body += chunk
+            try:
+                payload = _json_cache.loads(body)
+                # DB 永続化用メタデータを組み立てる
+                pid_header = request.headers.get("X-Player-Id", "")
+                pid: int | None
+                if pid_header.isdigit():
+                    pid = int(pid_header)
+                else:
+                    import re as _re
+                    m = _re.search(r"player_id=(\d+)", query)
+                    pid = int(m.group(1)) if m else None
+                analysis_type = path.replace("/api/analysis/", "", 1).split("/")[0] or "unknown"
+                try:
+                    filters_json = _json_cache.dumps(params)
+                except Exception:
+                    filters_json = "{}"
+                response_cache.set(
+                    key,
+                    payload,
+                    ttl=300,
+                    player_id=pid,
+                    analysis_type=analysis_type,
+                    filters_json=filters_json,
+                )
+            except Exception:
+                pass
+            new_headers = dict(response.headers)
+            new_headers["X-Cache"] = "MISS"
+            # content-length を body で作り直すため既存ヘッダは削除
+            new_headers.pop("content-length", None)
+            return StarletteResponse(
+                content=body,
+                status_code=200,
+                headers=new_headers,
+                media_type="application/json",
+            )
+        return response
+
+
+app.add_middleware(AnalysisCacheMiddleware)
+
 # CORS設定
 # allow_credentials=True と allow_origins=["*"] の組み合わせはブラウザ仕様違反で
 # ブラウザが拒否する。credentials 不使用に統一し wildcard origin を維持する。
@@ -297,6 +385,19 @@ app.include_router(court_calibration.router, prefix="/api")
 async def health():
     """ヘルスチェック（Electron起動確認用）"""
     return {"status": "ok", "version": "1.0.0"}
+
+
+@app.post("/api/cache/invalidate")
+async def cache_invalidate():
+    """解析レスポンスキャッシュを手動で全無効化する（POC用、無認証）"""
+    version = response_cache.bump_version()
+    return {"success": True, "data_version": version, "stats": response_cache.stats()}
+
+
+@app.get("/api/cache/stats")
+async def cache_stats():
+    """キャッシュ統計（デバッグ用）"""
+    return {"success": True, "stats": response_cache.stats()}
 
 
 # ─── S-001: WebSocket ライブフィード ─────────────────────────────────────────

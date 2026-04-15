@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Player, Match
 from backend.utils.sync_meta import touch
+from backend.utils import response_cache
 
 router = APIRouter()
 
@@ -217,6 +218,9 @@ def create_player(body: PlayerCreate, db: Session = Depends(get_db)):
     touch(player)
     db.add(player)
     db.commit()
+    # 新規選手の登録はチーム可視範囲に影響し得るためグローバル無効化も実施
+    response_cache.bump_players([player.id])
+    response_cache.bump_version()
     db.refresh(player)
     return {"success": True, "data": player_to_dict(player)}
 
@@ -269,6 +273,9 @@ def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_
         setattr(player, key, value)
     touch(player)
     db.commit()
+    # 選手単位で無効化 + team 変更はコーチ可視範囲に影響するためグローバルも無効化
+    response_cache.bump_players([player_id])
+    response_cache.bump_version()
     db.refresh(player)
     return {"success": True, "data": player_to_dict(player)}
 
@@ -293,6 +300,9 @@ def delete_player(player_id: int, db: Session = Depends(get_db)):
         )
     db.delete(player)
     db.commit()
+    # 削除は全選手への可視範囲影響もあるためグローバル + 自身の両方無効化
+    response_cache.bump_players([player_id])
+    response_cache.bump_version()
     return {"success": True, "data": {"id": player_id}}
 
 

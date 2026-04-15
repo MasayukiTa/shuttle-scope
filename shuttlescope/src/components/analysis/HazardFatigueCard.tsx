@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
+import { useResearchBundleSlice } from '@/contexts/ResearchBundleContext'
 import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -37,10 +38,15 @@ export function HazardFatigueCard({ playerId, filters }: Props) {
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data, isLoading } = useQuery({
+  type Resp = { success: boolean; data: HazardData; meta: Meta }
+  const { slice: bundled, loading: bundleLoading, provided } = useResearchBundleSlice<Resp>('hazard_fatigue')
+  const indiv = useQuery({
     queryKey: ['hazard-fatigue', playerId, filters],
-    queryFn: () => apiGet<{ success: boolean; data: HazardData; meta: Meta }>('/analysis/hazard_fatigue', { player_id: playerId, ...filterApiParams }),
+    queryFn: () => apiGet<Resp>('/analysis/hazard_fatigue', { player_id: playerId, ...filterApiParams }),
+    enabled: !!playerId && !provided && !bundleLoading,
   })
+  const data = bundled ?? indiv.data
+  const isLoading = provided ? bundleLoading : indiv.isLoading
   const meta = data?.meta
   const d = data?.data
 

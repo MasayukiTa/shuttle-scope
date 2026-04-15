@@ -96,7 +96,14 @@ def get_match_preview(
     score_bands = compute_score_bands(primary, player_id)
     scorelines = compute_most_likely_scorelines(set_dist, score_bands)
     calibrated_scorelines = compute_calibrated_scorelines(primary, player_id)
-    prediction_drivers = compute_prediction_drivers(db, player_id, opponent_id, tournament_level)
+    # Perf: 既に取得済みの matches/obs を渡して再クエリを回避
+    prediction_drivers = compute_prediction_drivers(
+        db, player_id, opponent_id, tournament_level,
+        all_matches=all_matches,
+        h2h_matches=h2h_matches,
+        level_matches=level_matches if tournament_level else [],
+        obs_context=obs_context,
+    )
 
     opponent_player = db.get(Player, opponent_id) if opponent_id else None
     tactical_notes = build_tactical_notes(win_prob_v2, sample_size, obs_context, opponent_player)
@@ -489,11 +496,48 @@ def get_pair_ranking(
     all_players = db.query(Player).order_by(Player.name).all()
     anchor = db.get(Player, anchor_player_id)
 
+    # Perf: anchor を含むペア試合を一括取得し、候補 partner_id でグルーピング。
+    # 旧実装は候補選手ごとに `get_pair_matches` を発行していたため N+1。
+    from sqlalchemy.orm import selectinload as _selectinload
+    from sqlalchemy import or_ as _or_, and_ as _and_
+    _pair_q = (
+        db.query(Match)
+        .options(_selectinload(Match.sets))
+        .filter(Match.result.in_(['win', 'loss']))
+        .filter(
+            _or_(
+                _and_(Match.player_a_id == anchor_player_id, Match.partner_a_id.isnot(None)),
+                _and_(Match.player_b_id == anchor_player_id, Match.partner_b_id.isnot(None)),
+                Match.partner_a_id == anchor_player_id,
+                Match.partner_b_id == anchor_player_id,
+            )
+        )
+    )
+    if tournament_level:
+        _pair_q = _pair_q.filter(Match.tournament_level == tournament_level)
+    _all_pair_matches = _pair_q.all()
+    _pair_by_partner: dict[int, list[Match]] = {}
+    for _m in _all_pair_matches:
+        # anchor のパートナー ID を特定
+        if _m.player_a_id == anchor_player_id:
+            _partner = _m.partner_a_id
+        elif _m.partner_a_id == anchor_player_id:
+            _partner = _m.player_a_id
+        elif _m.player_b_id == anchor_player_id:
+            _partner = _m.partner_b_id
+        elif _m.partner_b_id == anchor_player_id:
+            _partner = _m.player_b_id
+        else:
+            continue
+        if _partner is None:
+            continue
+        _pair_by_partner.setdefault(_partner, []).append(_m)
+
     results = []
     for candidate in all_players:
         if candidate.id == anchor_player_id:
             continue
-        pair_matches = get_pair_matches(db, anchor_player_id, candidate.id, tournament_level)
+        pair_matches = _pair_by_partner.get(candidate.id, [])
         win_prob, sample_size = compute_win_probability(pair_matches, anchor_player_id)
         confidence = compute_confidence_score(sample_size, sample_size)
         results.append({

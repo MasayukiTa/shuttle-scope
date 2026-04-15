@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Match, Player, GameSet, Rally, MatchCVArtifact
 from backend.utils.video_downloader import video_downloader
+from backend.utils import response_cache
 from backend.utils.sync_meta import touch
 from backend.utils.auth import get_auth
 
@@ -67,13 +68,27 @@ class MatchUpdate(BaseModel):
     exception_reason: Optional[str] = None
 
 
-def _effective_status(m: Match, db: Optional[Session]) -> str:
+def _effective_status(
+    m: Match,
+    db: Optional[Session],
+    *,
+    has_sets_ids: Optional[set] = None,
+    has_cv_ids: Optional[set] = None,
+) -> str:
     """作業中判定: 完了・確認済みはそのまま返す。
     それ以外はセット/CV artifact の存在を確認し、痕跡があれば in_progress、なければ pending。
+    list_matches など大量マッチを返すエンドポイントでは has_sets_ids/has_cv_ids を事前集計して
+    per-match の N+1 クエリを回避する。
     """
     stored = m.annotation_status or "pending"
     if stored in ("complete", "reviewed"):
         return stored
+    if has_sets_ids is not None or has_cv_ids is not None:
+        if has_sets_ids and m.id in has_sets_ids:
+            return "in_progress"
+        if has_cv_ids and m.id in has_cv_ids:
+            return "in_progress"
+        return "pending"
     if db is None:
         return stored
     has_sets = db.query(GameSet.id).filter(GameSet.match_id == m.id).first() is not None
@@ -85,7 +100,15 @@ def _effective_status(m: Match, db: Optional[Session]) -> str:
     return "pending"
 
 
-def match_to_dict(m: Match, include_players: bool = True, db: Session = None) -> dict:
+def match_to_dict(
+    m: Match,
+    include_players: bool = True,
+    db: Session = None,
+    *,
+    player_map: Optional[dict] = None,
+    has_sets_ids: Optional[set] = None,
+    has_cv_ids: Optional[set] = None,
+) -> dict:
     d = {
         "id": m.id,
         "tournament": m.tournament,
@@ -106,7 +129,7 @@ def match_to_dict(m: Match, include_players: bool = True, db: Session = None) ->
         "video_quality": m.video_quality,
         "camera_angle": m.camera_angle,
         "annotator_id": m.annotator_id,
-        "annotation_status": _effective_status(m, db),
+        "annotation_status": _effective_status(m, db, has_sets_ids=has_sets_ids, has_cv_ids=has_cv_ids),
         "annotation_progress": m.annotation_progress,
         "notes": m.notes,
         "created_at": m.created_at.isoformat() if m.created_at else None,
@@ -118,22 +141,42 @@ def match_to_dict(m: Match, include_players: bool = True, db: Session = None) ->
         "metadata_status": m.metadata_status or "minimal",
         "exception_reason": m.exception_reason,
     }
-    if include_players and db:
-        pa = db.get(Player, m.player_a_id)
-        pb = db.get(Player, m.player_b_id)
+    if include_players and (db or player_map is not None):
+        def _lookup(pid):
+            if pid is None:
+                return None
+            if player_map is not None:
+                return player_map.get(pid)
+            return db.get(Player, pid)
+        pa = _lookup(m.player_a_id)
+        pb = _lookup(m.player_b_id)
         d["player_a"] = {"id": pa.id, "name": pa.name, "team": pa.team} if pa else None
         d["player_b"] = {"id": pb.id, "name": pb.name, "team": pb.team} if pb else None
-        if m.partner_a_id:
-            ppa = db.get(Player, m.partner_a_id)
-            d["partner_a"] = {"id": ppa.id, "name": ppa.name, "team": ppa.team} if ppa else None
-        else:
-            d["partner_a"] = None
-        if m.partner_b_id:
-            ppb = db.get(Player, m.partner_b_id)
-            d["partner_b"] = {"id": ppb.id, "name": ppb.name, "team": ppb.team} if ppb else None
-        else:
-            d["partner_b"] = None
+        ppa = _lookup(m.partner_a_id) if m.partner_a_id else None
+        d["partner_a"] = {"id": ppa.id, "name": ppa.name, "team": ppa.team} if ppa else None
+        ppb = _lookup(m.partner_b_id) if m.partner_b_id else None
+        d["partner_b"] = {"id": ppb.id, "name": ppb.name, "team": ppb.team} if ppb else None
     return d
+
+
+def _bulk_match_context(matches: list, db: Session) -> dict:
+    """list_matches/list_needs_review_matches 用: 全マッチぶんの Player / status 情報を
+    バルクロードして per-match N+1 を排除する。"""
+    if not matches:
+        return {"player_map": {}, "has_sets_ids": set(), "has_cv_ids": set()}
+    pids = set()
+    mids = [m.id for m in matches]
+    for m in matches:
+        for pid in (m.player_a_id, m.player_b_id, m.partner_a_id, m.partner_b_id):
+            if pid:
+                pids.add(pid)
+    player_rows = db.query(Player).filter(Player.id.in_(pids)).all() if pids else []
+    player_map = {p.id: p for p in player_rows}
+    sets_rows = db.query(GameSet.match_id).filter(GameSet.match_id.in_(mids)).distinct().all()
+    has_sets_ids = {r[0] for r in sets_rows}
+    cv_rows = db.query(MatchCVArtifact.match_id).filter(MatchCVArtifact.match_id.in_(mids)).distinct().all()
+    has_cv_ids = {r[0] for r in cv_rows}
+    return {"player_map": player_map, "has_sets_ids": has_sets_ids, "has_cv_ids": has_cv_ids}
 
 
 @router.get("/matches")
@@ -188,7 +231,10 @@ def list_matches(
     if incomplete_only:
         query = query.filter(Match.annotation_status != "complete")
     matches = query.order_by(Match.date.desc()).all()
-    return {"success": True, "data": [match_to_dict(m, include_players=True, db=db) for m in matches]}
+    ctx_bulk = _bulk_match_context(matches, db)
+    return {"success": True, "data": [
+        match_to_dict(m, include_players=True, db=db, **ctx_bulk) for m in matches
+    ]}
 
 
 @router.post("/matches", status_code=201)
@@ -198,6 +244,11 @@ def create_match(body: MatchCreate, db: Session = Depends(get_db)):
     touch(match)
     db.add(match)
     db.commit()
+    # 関与選手4枠のキャッシュのみ無効化（他選手の解析キャッシュは生かす）
+    response_cache.bump_players([
+        body.player_a_id, body.player_b_id,
+        getattr(body, "partner_a_id", None), getattr(body, "partner_b_id", None),
+    ])
     db.refresh(match)
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
@@ -218,7 +269,10 @@ def list_needs_review_matches(request: Request, db: Session = Depends(get_db)):
             Match.partner_b_id == pid,
         ))
     matches = q.order_by(Match.created_at.desc()).all()
-    return {"success": True, "data": [match_to_dict(m, include_players=True, db=db) for m in matches]}
+    ctx_bulk = _bulk_match_context(matches, db)
+    return {"success": True, "data": [
+        match_to_dict(m, include_players=True, db=db, **ctx_bulk) for m in matches
+    ]}
 
 
 @router.get("/matches/{match_id}")
@@ -236,10 +290,14 @@ def update_match(match_id: int, body: MatchUpdate, db: Session = Depends(get_db)
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # 更新前の関与選手を退避（選手差し替えの場合、旧選手のキャッシュも無効化が必要）
+    pre_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(match, key, value)
     touch(match)
     db.commit()
+    post_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
+    response_cache.bump_players(pre_players + post_players)
     db.refresh(match)
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
@@ -250,8 +308,11 @@ def delete_match(match_id: int, db: Session = Depends(get_db)):
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # 削除前に関与選手を控えておく（削除後は辿れないため）
+    affected_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     db.delete(match)
     db.commit()
+    response_cache.bump_players(affected_players)
     return {"success": True, "data": {"id": match_id}}
 
 
@@ -320,6 +381,8 @@ def quick_start_match(body: QuickStartBody, db: Session = Depends(get_db)):
     )
     db.add(match)
     db.commit()
+    # クイックスタートで関与する2選手だけ無効化
+    response_cache.bump_players([body.player_a_id, player_b.id])
     db.refresh(match)
     db.refresh(player_b)
 
@@ -401,4 +464,5 @@ def get_download_status(match_id: int, job_id: str, db: Session = Depends(get_db
         if match:
             match.video_local_path = progress["filepath"]
             db.commit()
+            # 動画ローカルパスは解析結果に影響しないためキャッシュ無効化は行わない
     return {"success": True, "data": progress}
