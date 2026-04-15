@@ -4,6 +4,7 @@ dist/
 .venv/
 *.db
 *.sqlite
+*.db.bak-*
 players.db
 matches.db
 results.db

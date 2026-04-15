@@ -113,7 +113,7 @@ export const TOOLTIP_STYLE = {
 /** モード対応ツールチップスタイルを返す */
 export function getTooltipStyle(isLight: boolean) {
   return isLight
-    ? { backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', fontSize: 12 }
+    ? { backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', fontSize: 12 }
     : TOOLTIP_STYLE
 }
 

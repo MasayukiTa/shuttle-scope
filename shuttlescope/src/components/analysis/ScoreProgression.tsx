@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { WIN, LOSS } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface ScoreProgressionProps {
   matchId: number
@@ -68,24 +69,22 @@ interface ScoreProgressionResponse {
   meta: { sample_size: number }
 }
 
-const TOOLTIP_STYLE = {
-  backgroundColor: '#1f2937',
-  border: '1px solid #374151',
-  borderRadius: '6px',
-  color: '#f9fafb',
-  fontSize: 12,
-}
-
 function CustomTooltip({ active, payload }: any) {
+  const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload as RallyPoint
   if (!d) return null
+  const style = isLight
+    ? { backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a', fontSize: 12 }
+    : { backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#f9fafb', fontSize: 12 }
+  const headingColor = isLight ? '#0f172a' : '#f9fafb'
+  const subColor = isLight ? '#475569' : '#d1d5db'
   return (
-    <div style={TOOLTIP_STYLE} className="px-3 py-2">
-      <p className="font-semibold mb-1" style={{ color: '#f9fafb' }}>ラリー {d.rally_num}</p>
+    <div style={style} className="px-3 py-2">
+      <p className="font-semibold mb-1" style={{ color: headingColor }}>ラリー {d.rally_num}</p>
       <p style={{ color: WIN }}>A: {d.score_a}</p>
       <p style={{ color: LOSS }}>B: {d.score_b}</p>
-      <p style={{ color: '#d1d5db' }}>点差: {d.point_diff > 0 ? '+' : ''}{d.point_diff}</p>
+      <p style={{ color: subColor }}>点差: {d.point_diff > 0 ? '+' : ''}{d.point_diff}</p>
     </div>
   )
 }
