@@ -22,8 +22,10 @@ function authHeaders(): Record<string, string> {
   try {
     const role = localStorage.getItem('shuttlescope_role')
     const pid  = localStorage.getItem('shuttlescope_player_id')
+    const team = localStorage.getItem('shuttlescope_team_name')
     if (role) h['X-Role'] = role
     if (pid)  h['X-Player-Id'] = pid
+    if (team) h['X-Team-Name'] = encodeURIComponent(team)
   } catch { /* SSR / storage 無効環境は無視 */ }
   return h
 }

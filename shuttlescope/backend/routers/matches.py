@@ -164,6 +164,19 @@ def list_matches(
             Match.player_b_id  == pid,
             Match.partner_b_id == pid,
         ))
+    # role=coach → 自チーム選手がどちらかのサイドに登録されている試合のみ
+    elif ctx.is_coach:
+        if not ctx.team_name:
+            return {"success": True, "data": []}
+        team_player_ids = [p.id for p in db.query(Player.id).filter(Player.team == ctx.team_name).all()]
+        if not team_player_ids:
+            return {"success": True, "data": []}
+        query = query.filter(or_(
+            Match.player_a_id.in_(team_player_ids),
+            Match.partner_a_id.in_(team_player_ids),
+            Match.player_b_id.in_(team_player_ids),
+            Match.partner_b_id.in_(team_player_ids),
+        ))
     elif player_id:
         query = query.filter(
             (Match.player_a_id == player_id) | (Match.player_b_id == player_id)

@@ -97,14 +97,16 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
 export function SettingsPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const { role, setRole } = useAuth()
+  const { role, setRole, teamName } = useAuth()
 
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
-  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'account'>(() => (role === 'analyst' ? 'players' : 'account'))
-  // 選手/コーチロールは 選手管理・要レビュー タブを閲覧不可（個人情報保護）
-  const canManagePlayers = role === 'analyst'
+  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'account'>(() => ((role === 'analyst' || role === 'coach') ? 'players' : 'account'))
+  // 選手ロールは 選手管理・要レビュー タブを閲覧不可（個人情報保護）
+  // コーチロールは自チーム選手のみ管理可能
+  const canManagePlayers = role === 'analyst' || role === 'coach'
+  const coachTeamFilter = role === 'coach' ? (teamName ?? '') : null
   // ロール切替用モーダル
   const [roleSwitchOpen, setRoleSwitchOpen] = useState(false)
   const [roleSwitchTarget, setRoleSwitchTarget] = useState<UserRole | null>(null)
@@ -486,6 +488,7 @@ export function SettingsPage() {
   const filteredPlayers = useMemo(() => {
     const q = playerSearch.trim().toLowerCase()
     const filtered = players.filter((p) => {
+      if (coachTeamFilter !== null && (p.team ?? '') !== coachTeamFilter) return false
       if (targetOnly && !p.is_target) return false
       if (!q) return true
       return (
@@ -515,7 +518,7 @@ export function SettingsPage() {
       }
       return playerSortDir === 'asc' ? cmp : -cmp
     })
-  }, [players, playerSearch, targetOnly, playerSortKey, playerSortDir])
+  }, [players, playerSearch, targetOnly, playerSortKey, playerSortDir, coachTeamFilter])
 
   // カラムヘッダークリックでソートキー切替（同じキーなら昇降反転）端末ごとに localStorage に保存
   function handlePlayerSort(key: PlayerSortKey) {

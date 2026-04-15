@@ -59,6 +59,7 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
 
   const chartData = points.map((p) => ({
     name: p.date.slice(5),
+    fullDate: p.date.slice(2),
     cumulative: parseFloat((p.cumulative_win_rate * 100).toFixed(1)),
     result: p.result,
   }))
@@ -99,6 +100,7 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
           />
           <Tooltip
             contentStyle={tooltipStyle}
+            labelFormatter={(label, payload: any) => payload?.[0]?.payload?.fullDate ?? label}
             formatter={(v: number) => [`${v}%`, '累積勝率']}
           />
           <Line

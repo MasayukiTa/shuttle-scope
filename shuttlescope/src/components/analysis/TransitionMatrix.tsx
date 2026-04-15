@@ -8,6 +8,15 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
+// ショット略称マッピング（モバイルサマリー用）
+const SHOT_ABBR: Record<string, string> = {
+  short_service: 'SS', long_service: 'LS', net_shot: 'NS',
+  clear: 'CL', push_rush: 'PR', smash: 'SM', defensive: 'DF',
+  drive: 'DV', lob: 'LB', drop: 'DP', cross_net: 'CN',
+  slice: 'SL', around_head: 'AH', cant_reach: 'CR',
+  flick: 'FL', half_smash: 'HS', block: 'BK', other: '他',
+}
+
 interface TransitionMatrixProps {
   playerId: number
   filters?: AnalysisFilters
@@ -111,15 +120,6 @@ function drawMatrix(
     .style('pointer-events', 'none')
     .style('z-index', '9999')
     .style('white-space', 'nowrap')
-
-  // ショット略称マッピング（モバイルサマリー用）
-const SHOT_ABBR: Record<string, string> = {
-  short_service: 'SS', long_service: 'LS', net_shot: 'NS',
-  clear: 'CL', push_rush: 'PR', smash: 'SM', defensive: 'DF',
-  drive: 'DV', lob: 'LB', drop: 'DP', cross_net: 'CN',
-  slice: 'SL', around_head: 'AH', cant_reach: 'CR',
-  flick: 'FL', half_smash: 'HS', block: 'BK', other: '他',
-}
 
 // ── セル描画 ──
   matrix.forEach((row, ri) => {

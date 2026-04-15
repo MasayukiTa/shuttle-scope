@@ -1,5 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { UserRole } from '@/types'
+
+const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
 const STORAGE_KEY           = 'shuttlescope_role'
 const STORAGE_KEY_PLAYER_ID = 'shuttlescope_player_id'
@@ -34,6 +36,20 @@ export function useAuth() {
   const [playerId, setPlayerIdState] = useState<number | null>(getStoredPlayerId)
   const [teamName, setTeamNameState] = useState<string | null>(getStoredTeamName)
 
+  useEffect(() => {
+    const handler = () => {
+      setRoleState(getStoredRole())
+      setPlayerIdState(getStoredPlayerId())
+      setTeamNameState(getStoredTeamName())
+    }
+    window.addEventListener(AUTH_CHANGED_EVENT, handler)
+    window.addEventListener('storage', handler)
+    return () => {
+      window.removeEventListener(AUTH_CHANGED_EVENT, handler)
+      window.removeEventListener('storage', handler)
+    }
+  }, [])
+
   const setRole = useCallback((
     newRole: UserRole,
     newPlayerId?: number | null,
@@ -57,6 +73,7 @@ export function useAuth() {
       localStorage.removeItem(STORAGE_KEY_TEAM_NAME)
       setTeamNameState(null)
     }
+    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
   }, [])
 
   const clearRole = useCallback(() => {
@@ -66,6 +83,7 @@ export function useAuth() {
     setRoleState(null)
     setPlayerIdState(null)
     setTeamNameState(null)
+    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
   }, [])
 
   const hasRole = useCallback(

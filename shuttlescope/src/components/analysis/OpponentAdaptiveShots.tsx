@@ -97,7 +97,7 @@ function Inner({ playerId }: { playerId: number }) {
             }`}
           >
             {o.opponent_name}
-            <span className="ml-1 text-gray-400">({o.match_count}試合)</span>
+            <span className="ml-1" style={{ color: (selected === null ? opponents[0].opponent_id : selected) === o.opponent_id ? '#ffffff' : '#9ca3af' }}>({o.match_count}試合)</span>
           </button>
         ))}
       </div>

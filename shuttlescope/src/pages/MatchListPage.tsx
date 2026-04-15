@@ -11,6 +11,7 @@ import { SearchableSelect, SearchableOption } from '@/components/common/Searchab
 import { DateRangeFilter } from '@/components/common/DateRangeFilter'
 import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { useAuth } from '@/hooks/useAuth'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -154,6 +155,7 @@ export function MatchListPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { card, textHeading, textSecondary, textMuted, textFaint, isLight } = useCardTheme()
+  const { role, playerId, teamName } = useAuth()
 
   const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
   const borderLine = isLight ? 'border-gray-200' : 'border-gray-700'
@@ -219,7 +221,7 @@ export function MatchListPage() {
 
   // 試合一覧取得
   const { data: matchesData, isLoading } = useQuery({
-    queryKey: ['matches', filterPlayer, filterLevel, filterIncompleteOnly],
+    queryKey: ['matches', filterPlayer, filterLevel, filterIncompleteOnly, role, playerId, teamName],
     queryFn: () => {
       const params: Record<string, string | boolean> = {}
       if (filterPlayer) params.player_id = filterPlayer

@@ -46,11 +46,12 @@ def filter_by_role(data: dict, role: str) -> dict:
 
 class AuthCtx:
     """ヘッダから抽出した現在ユーザーのロール/ID。未指定なら role=None。"""
-    __slots__ = ("role", "player_id")
+    __slots__ = ("role", "player_id", "team_name")
 
-    def __init__(self, role: Optional[str], player_id: Optional[int]):
+    def __init__(self, role: Optional[str], player_id: Optional[int], team_name: Optional[str] = None):
         self.role = role
         self.player_id = player_id
+        self.team_name = team_name
 
     @property
     def is_player(self) -> bool:
@@ -84,7 +85,15 @@ def get_auth(request: Request) -> AuthCtx:
                 pid = n
         except (ValueError, TypeError):
             pid = None
-    return AuthCtx(role, pid)
+    team_raw = request.headers.get("X-Team-Name")
+    team_name: Optional[str] = None
+    if team_raw:
+        try:
+            from urllib.parse import unquote
+            team_name = unquote(team_raw).strip() or None
+        except Exception:
+            team_name = None
+    return AuthCtx(role, pid, team_name)
 
 
 # ─── アクセス制御ヘルパー ────────────────────────────────────────────────────
