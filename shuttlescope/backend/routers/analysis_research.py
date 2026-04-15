@@ -131,10 +131,14 @@ def get_epv(
             strokes_list.append(rally_data)
 
     analyzer = MarkovAnalyzer()
-    all_patterns = analyzer.get_top_patterns(strokes_list, top_k=20)
+    # 全パターンを取得（min_count + ベイズ縮小済み）し、上位/下位を分離
+    all_patterns = analyzer.get_top_patterns(strokes_list, top_k=None)
 
-    top_patterns = [p for p in all_patterns if p["epv"] >= 0][:10]
-    bottom_patterns = sorted(all_patterns, key=lambda x: x["epv"])[:10]
+    top_patterns = [p for p in all_patterns if p["epv"] > 0][:10]
+    bottom_patterns = sorted(
+        [p for p in all_patterns if p["epv"] < 0],
+        key=lambda x: x["epv"],
+    )[:10]
 
     # S3-B: State-based EPV を追加
     state_epv_result = compute_state_epv(

@@ -11,7 +11,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { perfColor, lightSafe, WIN, TOOLTIP_STYLE } from '@/styles/colors'
+import { perfColor, lightSafe, WIN, getTooltipStyle } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
@@ -38,14 +38,17 @@ interface SetComparisonResponse {
 }
 
 function CustomTooltip({ active, payload, label }: any) {
+  const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const winRate = payload.find((p: any) => p.dataKey === 'win_rate_pct')?.value ?? 0
   const avgRally = payload.find((p: any) => p.dataKey === 'avg_rally_length')?.value ?? 0
+  const headingColor = isLight ? '#0f172a' : '#f9fafb'
+  const subColor = isLight ? '#475569' : '#d1d5db'
   return (
-    <div style={TOOLTIP_STYLE} className="px-3 py-2">
-      <p className="font-semibold mb-1" style={{ color: '#f9fafb' }}>{label}</p>
+    <div style={getTooltipStyle(isLight)} className="px-3 py-2">
+      <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
       <p style={{ color: WIN }}>勝率: {typeof winRate === 'number' ? winRate.toFixed(1) : winRate}%</p>
-      <p style={{ color: '#d1d5db' }}>平均ラリー長: {typeof avgRally === 'number' ? avgRally.toFixed(1) : avgRally}</p>
+      <p style={{ color: subColor }}>平均ラリー長: {typeof avgRally === 'number' ? avgRally.toFixed(1) : avgRally}</p>
     </div>
   )
 }

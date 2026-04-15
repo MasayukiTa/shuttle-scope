@@ -164,6 +164,8 @@ class MarkovAnalyzer:
         self,
         strokes_list: list[list[dict]],
         top_k: int = 10,
+        min_count: int = 3,
+        prior_weight: float = 10.0,
     ) -> list[dict[str, Any]]:
         """EPV上位パターン（ショット→ショット）を返す"""
         if not strokes_list:
@@ -195,8 +197,14 @@ class MarkovAnalyzer:
 
         patterns = []
         for (s1, s2), total in pair_total.items():
+            # 最小サンプル数未満のパターンは除外（1〜2回の100%勝率が同値で並ぶ問題を回避）
+            if total < min_count:
+                continue
             wins = pair_wins.get((s1, s2), 0)
-            epv = round((wins / total if total else baseline) - baseline, 4)
+            # ベイズ縮小: 事前重み prior_weight でベースライン勝率方向に引き寄せ
+            # 少数サンプルでの過大評価を抑え、上位/下位パターンを実質的に識別可能にする
+            smoothed_rate = (wins + prior_weight * baseline) / (total + prior_weight)
+            epv = round(smoothed_rate - baseline, 4)
             s1_ja = SHOT_LABELS_JA.get(s1, s1)
             s2_ja = SHOT_LABELS_JA.get(s2, s2)
             # 単発EPVから概算CI
@@ -211,4 +219,6 @@ class MarkovAnalyzer:
             })
 
         patterns.sort(key=lambda x: x["epv"], reverse=True)
+        if top_k is None:
+            return patterns
         return patterns[:top_k]

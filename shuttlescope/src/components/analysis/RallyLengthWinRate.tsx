@@ -12,7 +12,8 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { BAR, LINE, TOOLTIP_STYLE, AXIS_TICK } from '@/styles/colors'
+import { BAR, LINE, getTooltipStyle, AXIS_TICK } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface RallyLengthWinRateProps {
@@ -61,12 +62,14 @@ function playerTypeBadgeClass(typeKey: string): string {
 
 // カスタムツールチップ
 function CustomTooltip({ active, payload, label }: any) {
+  const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const count = payload.find((p: any) => p.dataKey === 'count')?.value ?? 0
   const winRate = payload.find((p: any) => p.dataKey === 'win_rate_pct')?.value ?? 0
+  const headingColor = isLight ? '#0f172a' : '#f9fafb'
   return (
-    <div style={TOOLTIP_STYLE} className="px-3 py-2">
-      <p className="font-semibold mb-1" style={{ color: '#f9fafb' }}>{label}</p>
+    <div style={getTooltipStyle(isLight)} className="px-3 py-2">
+      <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
       <p style={{ color: BAR }}>件数: {count}</p>
       <p style={{ color: LINE }}>勝率: {typeof winRate === 'number' ? winRate.toFixed(1) : winRate}%</p>
     </div>

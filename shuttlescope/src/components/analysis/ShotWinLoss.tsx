@@ -11,7 +11,8 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { WIN, LOSS, TOOLTIP_STYLE } from '@/styles/colors'
+import { WIN, LOSS, getTooltipStyle } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
 interface ShotWinLossProps {
@@ -45,17 +46,20 @@ interface ShotWinLossResponse {
 
 // カスタムツールチップ
 function CustomTooltip({ active, payload, label }: any) {
+  const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const win = payload.find((p: any) => p.dataKey === 'win_count')?.value ?? 0
   const lose = payload.find((p: any) => p.dataKey === 'lose_count')?.value ?? 0
   const total = win + lose
   const rate = total > 0 ? ((win / total) * 100).toFixed(1) : '0.0'
+  const headingColor = isLight ? '#0f172a' : '#f9fafb'
+  const subColor = isLight ? '#475569' : '#d1d5db'
   return (
-    <div style={TOOLTIP_STYLE} className="px-3 py-2">
-      <p className="font-semibold mb-1" style={{ color: '#f9fafb' }}>{label}</p>
+    <div style={getTooltipStyle(isLight)} className="px-3 py-2">
+      <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
       <p style={{ color: WIN }}>得点: {win}</p>
       <p style={{ color: LOSS }}>失点: {lose}</p>
-      <p style={{ color: '#d1d5db' }}>勝率: {rate}%</p>
+      <p style={{ color: subColor }}>勝率: {rate}%</p>
     </div>
   )
 }

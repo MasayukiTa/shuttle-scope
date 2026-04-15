@@ -13,7 +13,8 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { perfColor, lightSafe, TOOLTIP_STYLE, AXIS_TICK } from '@/styles/colors'
+import { perfColor, lightSafe, getTooltipStyle, AXIS_TICK } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 
@@ -91,7 +92,7 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
             tickFormatter={(v) => `${v}%`}
           />
           <Tooltip
-            contentStyle={TOOLTIP_STYLE}
+            contentStyle={getTooltipStyle(isLight)}
             formatter={(value: number, name: string) => [
               name === 'win_rate_pct' ? `${value}%` : value,
               name === 'win_rate_pct' ? t('analysis.temporal.win_rate') : t('analysis.temporal.rally_count'),

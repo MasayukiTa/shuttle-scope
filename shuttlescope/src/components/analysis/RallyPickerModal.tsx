@@ -39,14 +39,19 @@ interface Props {
 }
 
 function CustomTooltip({ active, payload }: any) {
+  const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload as RallyPoint
   if (!d) return null
+  const bg = isLight ? '#ffffff' : '#1f2937'
+  const border = isLight ? '#cbd5e1' : '#374151'
+  const color = isLight ? '#0f172a' : '#f9fafb'
+  const hintColor = isLight ? '#2563eb' : '#93c5fd'
   return (
-    <div style={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 6, color: '#f9fafb', fontSize: 12, padding: '6px 10px' }}>
+    <div style={{ backgroundColor: bg, border: `1px solid ${border}`, borderRadius: 6, color, fontSize: 12, padding: '6px 10px' }}>
       <p className="font-semibold mb-0.5">ラリー {d.rally_num}</p>
       <p style={{ color: WIN }}>A: {d.score_a} &nbsp; <span style={{ color: LOSS }}>B: {d.score_b}</span></p>
-      <p className="text-blue-300 text-[10px] mt-0.5">クリックで選択</p>
+      <p className="text-[10px] mt-0.5" style={{ color: hintColor }}>クリックで選択</p>
     </div>
   )
 }

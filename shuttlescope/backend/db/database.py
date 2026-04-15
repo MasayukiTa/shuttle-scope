@@ -1,5 +1,5 @@
 """SQLAlchemy データベース設定"""
-from sqlalchemy import create_engine, text, inspect
+from sqlalchemy import create_engine, event, text, inspect
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from backend.config import settings
 import uuid as _uuid_mod
@@ -16,6 +16,29 @@ engine = create_engine(
     # timeout=15: ロック競合時に最大15秒待機してからエラー（デフォルトは無限待ち）
     connect_args={"check_same_thread": False, "timeout": 15} if "sqlite" in settings.DATABASE_URL else {},
 )
+
+
+# SQLite PRAGMA 最適化（ファイルDBのみ、:memory: は対象外）
+# - journal_mode=WAL: 書き込みと読み込みの並列性を向上、読み込み遅延の主因を緩和
+# - synchronous=NORMAL: WAL と組み合わせて安全性を大きく損なわず書き込み高速化
+# - temp_store=MEMORY: 一時テーブル/インデックスをメモリ配置で集計クエリ高速化
+# - cache_size=-20000: ページキャッシュ ≒ 20MB
+# - mmap_size=268435456: 256MB を memory-map して read 負荷を軽減
+# 失敗時は無視して通常動作を継続（信頼性に影響しない）
+if "sqlite" in settings.DATABASE_URL and ":memory:" not in settings.DATABASE_URL:
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragma_on_connect(dbapi_connection, _connection_record):
+        try:
+            cur = dbapi_connection.cursor()
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA synchronous=NORMAL")
+            cur.execute("PRAGMA temp_store=MEMORY")
+            cur.execute("PRAGMA cache_size=-20000")
+            cur.execute("PRAGMA mmap_size=268435456")
+            cur.close()
+        except Exception:
+            pass
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
