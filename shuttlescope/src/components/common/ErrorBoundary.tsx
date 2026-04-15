@@ -36,16 +36,42 @@ export class ErrorBoundary extends Component<Props, State> {
     }))
   }
 
-  private copyReport = () => {
+  private copyReport = async () => {
     const text = [
       `Error: ${this.state.message}`,
       '',
       this.state.stack,
     ].join('\n')
-    navigator.clipboard?.writeText(text).then(() => {
+    // Electron の file:// / 非 secure context では navigator.clipboard が未定義/失敗することがあるため
+    // textarea + execCommand('copy') フォールバックを用意する。
+    let ok = false
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        ok = true
+      }
+    } catch {
+      // fall through to legacy path
+    }
+    if (!ok) {
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.setAttribute('readonly', '')
+        ta.style.position = 'fixed'
+        ta.style.left = '-9999px'
+        document.body.appendChild(ta)
+        ta.select()
+        ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+      } catch {
+        ok = false
+      }
+    }
+    if (ok) {
       this.setState({ copied: true })
       setTimeout(() => this.setState({ copied: false }), 2000)
-    })
+    }
   }
 
   render() {
