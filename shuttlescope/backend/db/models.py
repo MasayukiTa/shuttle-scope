@@ -679,3 +679,47 @@ class ConditionTag(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     player: Mapped["Player"] = relationship("Player", back_populates="condition_tags")
+
+
+# ─── Expert Labeler Phase 1 ─────────────────────────────────────────────────
+
+class ExpertLabel(Base):
+    """コーチ・アナリスト向け専門家アノテーション（体勢/重心/タイミング）。
+
+    同一ストローク × 同一ロールで 1 件のみ（UPSERT 対象）。
+    """
+    __tablename__ = "expert_labels"
+    __table_args__ = (
+        UniqueConstraint("stroke_id", "annotator_role", name="uq_expert_labels_stroke_role"),
+        Index("ix_expert_labels_match_id", "match_id"),
+        Index("ix_expert_labels_stroke_id", "stroke_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    stroke_id: Mapped[int] = mapped_column(Integer, ForeignKey("strokes.id"), nullable=False)
+    annotator_role: Mapped[str] = mapped_column(String(20), nullable=False)  # coach/analyst
+    posture_collapse: Mapped[str] = mapped_column(String(20), nullable=False)  # none/minor/major
+    weight_distribution: Mapped[str] = mapped_column(String(20), nullable=False)  # left/right/center/floating
+    shot_timing: Mapped[str] = mapped_column(String(20), nullable=False)  # early/optimal/late
+    confidence: Mapped[int] = mapped_column(Integer, default=2)  # 1-3
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ClipCache(Base):
+    """ミスストロークのクリップ切り出しキャッシュ。"""
+    __tablename__ = "clip_cache"
+    __table_args__ = (
+        UniqueConstraint("stroke_id", name="uq_clip_cache_stroke"),
+        Index("ix_clip_cache_match_id", "match_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    stroke_id: Mapped[int] = mapped_column(Integer, ForeignKey("strokes.id"), nullable=False)
+    clip_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    start_frame: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_frame: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

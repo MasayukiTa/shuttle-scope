@@ -1,0 +1,363 @@
+"""Expert Labeler Phase 1 API（コーチ・アナリスト向け専門家アノテーション）。
+
+エンドポイント:
+    GET  /api/v1/expert/videos           試合一覧（ミス件数・クリップ準備済み件数）
+    GET  /api/v1/expert/clips            指定試合のミスストローク一覧
+    POST /api/v1/expert/labels           ラベル UPSERT
+    GET  /api/v1/expert/labels           既存ラベル取得
+    GET  /api/v1/expert/progress         自分の進捗
+    GET  /api/v1/expert/export           CSV / JSON エクスポート
+
+ロール制約: analyst または coach のみアクセス可。
+"""
+from __future__ import annotations
+
+import csv
+import io
+from datetime import datetime
+from typing import Literal, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from backend.db.database import get_db
+from backend.db.models import (
+    ClipCache,
+    ExpertLabel,
+    GameSet,
+    Match,
+    Player,
+    Rally,
+    Stroke,
+)
+from backend.services.clip_generator import (
+    DEFAULT_FPS,
+    compute_frame_index,
+    iter_miss_strokes,
+)
+from backend.utils.auth import AuthCtx, get_auth
+
+router = APIRouter(prefix="/v1/expert", tags=["expert-labeler"])
+
+
+# ─── ロールガード ───────────────────────────────────────────────────────────
+
+ALLOWED_ROLES = {"analyst", "coach"}
+
+
+def require_labeler_role(request: Request) -> AuthCtx:
+    """analyst / coach のみ許可する依存性。"""
+    ctx = get_auth(request)
+    if ctx.role not in ALLOWED_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="この操作は analyst または coach ロールでのみ実行できます",
+        )
+    return ctx
+
+
+# ─── スキーマ ───────────────────────────────────────────────────────────────
+
+VALID_POSTURE = {"none", "minor", "major"}
+VALID_WEIGHT = {"left", "right", "center", "floating"}
+VALID_TIMING = {"early", "optimal", "late"}
+
+
+class LabelPayload(BaseModel):
+    match_id: int
+    stroke_id: int
+    annotator_role: Literal["coach", "analyst"]
+    posture_collapse: str
+    weight_distribution: str
+    shot_timing: str
+    confidence: int = Field(default=2, ge=1, le=3)
+    comment: str = ""
+
+
+class VideoSummary(BaseModel):
+    match_id: int
+    title: str
+    miss_count: int
+    clip_ready_count: int
+    labeled_count: int
+
+
+class ClipInfo(BaseModel):
+    stroke_id: int
+    rally_id: int
+    timestamp_sec: Optional[float]
+    frame_index: int
+    clip_url: Optional[str]
+    rally_context: dict
+
+
+class LabelOut(BaseModel):
+    id: int
+    match_id: int
+    stroke_id: int
+    annotator_role: str
+    posture_collapse: str
+    weight_distribution: str
+    shot_timing: str
+    confidence: int
+    comment: Optional[str]
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ─── ヘルパー ───────────────────────────────────────────────────────────────
+
+def _match_title(db: Session, m: Match) -> str:
+    """試合表示名（日付 vs 相手名）を構築。"""
+    a = db.get(Player, m.player_a_id)
+    b = db.get(Player, m.player_b_id)
+    a_name = a.name if a else "?"
+    b_name = b.name if b else "?"
+    return f"{m.date.isoformat()} {a_name} vs {b_name}"
+
+
+def _fps_for_match(m: Match) -> int:
+    fps = getattr(m, "source_fps", None)
+    try:
+        if fps and int(fps) > 0:
+            return int(fps)
+    except (TypeError, ValueError):
+        pass
+    return DEFAULT_FPS
+
+
+# ─── エンドポイント ─────────────────────────────────────────────────────────
+
+@router.get("/videos", response_model=list[VideoSummary])
+def list_videos(
+    db: Session = Depends(get_db),
+    _ctx: AuthCtx = Depends(require_labeler_role),
+):
+    """アノテーション対象試合一覧（ミスプロキシ件数 + クリップ準備済み件数）。"""
+    matches = db.query(Match).filter(Match.deleted_at.is_(None)).all()
+    out: list[VideoSummary] = []
+    for m in matches:
+        miss_rows = iter_miss_strokes(db, m.id)
+        miss_count = len(miss_rows)
+        clip_ready = (
+            db.query(func.count(ClipCache.id))
+            .filter(ClipCache.match_id == m.id)
+            .scalar()
+            or 0
+        )
+        labeled = (
+            db.query(func.count(ExpertLabel.id))
+            .filter(ExpertLabel.match_id == m.id)
+            .scalar()
+            or 0
+        )
+        out.append(VideoSummary(
+            match_id=m.id,
+            title=_match_title(db, m),
+            miss_count=miss_count,
+            clip_ready_count=int(clip_ready),
+            labeled_count=int(labeled),
+        ))
+    return out
+
+
+@router.get("/clips", response_model=list[ClipInfo])
+def list_clips(
+    match_id: int = Query(...),
+    db: Session = Depends(get_db),
+    _ctx: AuthCtx = Depends(require_labeler_role),
+):
+    """ミスストローク一覧（クリップ URL 付き）。"""
+    m = db.get(Match, match_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    fps = _fps_for_match(m)
+    miss_rows = iter_miss_strokes(db, match_id)
+
+    cache_map = {
+        c.stroke_id: c
+        for c in db.query(ClipCache).filter(ClipCache.match_id == match_id).all()
+    }
+    out: list[ClipInfo] = []
+    for rally, stroke in miss_rows:
+        cache = cache_map.get(stroke.id)
+        clip_url = f"/api/v1/expert/clip_file?stroke_id={stroke.id}" if cache else None
+        out.append(ClipInfo(
+            stroke_id=stroke.id,
+            rally_id=rally.id,
+            timestamp_sec=stroke.timestamp_sec,
+            frame_index=compute_frame_index(stroke.timestamp_sec, fps),
+            clip_url=clip_url,
+            rally_context={
+                "end_type": rally.end_type,
+                "rally_length": rally.rally_length,
+                "winner": rally.winner,
+                "shot_type": stroke.shot_type,
+                "player": stroke.player,
+            },
+        ))
+    return out
+
+
+@router.post("/labels", response_model=LabelOut)
+def upsert_label(
+    body: LabelPayload,
+    db: Session = Depends(get_db),
+    _ctx: AuthCtx = Depends(require_labeler_role),
+):
+    """ExpertLabel UPSERT（UNIQUE(stroke_id, annotator_role)）。"""
+    if body.posture_collapse not in VALID_POSTURE:
+        raise HTTPException(status_code=422, detail="posture_collapse invalid")
+    if body.weight_distribution not in VALID_WEIGHT:
+        raise HTTPException(status_code=422, detail="weight_distribution invalid")
+    if body.shot_timing not in VALID_TIMING:
+        raise HTTPException(status_code=422, detail="shot_timing invalid")
+
+    if not db.get(Match, body.match_id):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if not db.get(Stroke, body.stroke_id):
+        raise HTTPException(status_code=404, detail="ストロークが見つかりません")
+
+    existing = (
+        db.query(ExpertLabel)
+        .filter(
+            ExpertLabel.stroke_id == body.stroke_id,
+            ExpertLabel.annotator_role == body.annotator_role,
+        )
+        .one_or_none()
+    )
+    if existing:
+        existing.posture_collapse = body.posture_collapse
+        existing.weight_distribution = body.weight_distribution
+        existing.shot_timing = body.shot_timing
+        existing.confidence = body.confidence
+        existing.comment = body.comment
+        existing.updated_at = datetime.utcnow()
+        label = existing
+    else:
+        label = ExpertLabel(
+            match_id=body.match_id,
+            stroke_id=body.stroke_id,
+            annotator_role=body.annotator_role,
+            posture_collapse=body.posture_collapse,
+            weight_distribution=body.weight_distribution,
+            shot_timing=body.shot_timing,
+            confidence=body.confidence,
+            comment=body.comment,
+        )
+        db.add(label)
+    db.commit()
+    db.refresh(label)
+    return label
+
+
+@router.get("/labels", response_model=list[LabelOut])
+def list_labels(
+    match_id: int = Query(...),
+    annotator_role: Optional[Literal["coach", "analyst"]] = Query(None),
+    db: Session = Depends(get_db),
+    _ctx: AuthCtx = Depends(require_labeler_role),
+):
+    """指定試合（任意で role 絞り込み）のラベル一覧。"""
+    q = db.query(ExpertLabel).filter(ExpertLabel.match_id == match_id)
+    if annotator_role:
+        q = q.filter(ExpertLabel.annotator_role == annotator_role)
+    return q.all()
+
+
+@router.get("/progress")
+def get_progress(
+    annotator_role: Literal["coach", "analyst"] = Query(...),
+    db: Session = Depends(get_db),
+    _ctx: AuthCtx = Depends(require_labeler_role),
+):
+    """自分（指定ロール）の進捗: 全ミス件数 / ラベル済み件数。"""
+    matches = db.query(Match).filter(Match.deleted_at.is_(None)).all()
+    total = 0
+    per_match: list[dict] = []
+    for m in matches:
+        miss_rows = iter_miss_strokes(db, m.id)
+        miss_count = len(miss_rows)
+        total += miss_count
+        labeled = (
+            db.query(func.count(ExpertLabel.id))
+            .filter(
+                ExpertLabel.match_id == m.id,
+                ExpertLabel.annotator_role == annotator_role,
+            )
+            .scalar()
+            or 0
+        )
+        per_match.append({
+            "match_id": m.id,
+            "miss_count": miss_count,
+            "labeled_count": int(labeled),
+        })
+    labeled_total = (
+        db.query(func.count(ExpertLabel.id))
+        .filter(ExpertLabel.annotator_role == annotator_role)
+        .scalar()
+        or 0
+    )
+    return {
+        "annotator_role": annotator_role,
+        "total": total,
+        "labeled": int(labeled_total),
+        "per_match": per_match,
+    }
+
+
+@router.get("/export")
+def export_labels(
+    match_id: int = Query(...),
+    fmt: Literal["csv", "json"] = Query("json"),
+    db: Session = Depends(get_db),
+    _ctx: AuthCtx = Depends(require_labeler_role),
+):
+    """CSV / JSON エクスポート。"""
+    if not db.get(Match, match_id):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    rows = (
+        db.query(ExpertLabel)
+        .filter(ExpertLabel.match_id == match_id)
+        .order_by(ExpertLabel.stroke_id.asc())
+        .all()
+    )
+    records = [
+        {
+            "id": r.id,
+            "match_id": r.match_id,
+            "stroke_id": r.stroke_id,
+            "annotator_role": r.annotator_role,
+            "posture_collapse": r.posture_collapse,
+            "weight_distribution": r.weight_distribution,
+            "shot_timing": r.shot_timing,
+            "confidence": r.confidence,
+            "comment": r.comment or "",
+            "updated_at": r.updated_at.isoformat() if r.updated_at else "",
+        }
+        for r in rows
+    ]
+    if fmt == "json":
+        return {"match_id": match_id, "labels": records}
+    # CSV
+    buf = io.StringIO()
+    fieldnames = list(records[0].keys()) if records else [
+        "id", "match_id", "stroke_id", "annotator_role",
+        "posture_collapse", "weight_distribution", "shot_timing",
+        "confidence", "comment", "updated_at",
+    ]
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    for rec in records:
+        writer.writerow(rec)
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="expert_labels_match{match_id}.csv"'},
+    )

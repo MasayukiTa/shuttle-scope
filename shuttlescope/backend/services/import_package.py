@@ -20,8 +20,9 @@ from backend.services.merge_resolver import decide_merge, MergeDecision
 from backend.db.models import (
     Match, GameSet, Rally, Stroke, Player,
     PreMatchObservation, HumanForecast, Comment, EventBookmark,
-    SyncConflict,
+    SyncConflict, Condition, ConditionTag,
 )
+from datetime import date as _date
 
 # ─── インポートサマリー ────────────────────────────────────────────────────────
 
@@ -248,9 +249,132 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False) -> ImportSumm
                         db.rollback()
                         summary.errors.append(f"{table_key}[{uuid}]: {e}")
 
+            # Conditions / ConditionTags — uuid なしの自然キーマージ
+            _import_conditions(db, zf, names, id_remap, summary, dry_run)
+            _import_condition_tags(db, zf, names, id_remap, summary, dry_run)
+
     except zipfile.BadZipFile:
         summary.errors.append("不正な ZIP ファイルです")
     except Exception as e:
         summary.errors.append(f"インポートエラー: {e}")
 
     return summary
+
+
+def _parse_date(v: Any) -> Optional[_date]:
+    if v is None:
+        return None
+    if isinstance(v, _date):
+        return v
+    try:
+        return _date.fromisoformat(str(v)[:10])
+    except Exception:
+        return None
+
+
+def _import_conditions(
+    db: Session, zf: zipfile.ZipFile, names: set, id_remap: dict,
+    summary: ImportSummary, dry_run: bool,
+) -> None:
+    """Condition を (player_id, measured_at, condition_type) 自然キーでマージ。"""
+    if "conditions.json" not in names:
+        return
+    recs: list[dict] = json.loads(zf.read("conditions.json"))
+    valid_cols = _get_columns(Condition)
+    for rec in recs:
+        try:
+            data = {k: v for k, v in rec.items() if k in valid_cols and k != "id"}
+            _remap_fks(data, id_remap)
+            pid = data.get("player_id")
+            measured_at = _parse_date(data.get("measured_at"))
+            ctype = data.get("condition_type") or "weekly"
+            if not pid or not measured_at:
+                summary.errors.append("conditions: player_id/measured_at 不正でスキップ")
+                continue
+            # FK 整合: player が存在しなければスキップ
+            if not db.get(Player, pid):
+                summary.errors.append(f"conditions: player_id={pid} が存在せずスキップ")
+                continue
+            data["measured_at"] = measured_at
+            existing = (
+                db.query(Condition)
+                .filter(
+                    Condition.player_id == pid,
+                    Condition.measured_at == measured_at,
+                    Condition.condition_type == ctype,
+                )
+                .first()
+            )
+            if existing:
+                if dry_run:
+                    summary.updated += 1
+                    continue
+                for k, v in data.items():
+                    if k in ("created_at",):
+                        continue
+                    setattr(existing, k, v)
+                db.commit()
+                summary.updated += 1
+            else:
+                if dry_run:
+                    summary.added += 1
+                    continue
+                obj = Condition(**data)
+                db.add(obj)
+                db.commit()
+                summary.added += 1
+        except Exception as e:
+            db.rollback()
+            summary.errors.append(f"conditions: {e}")
+
+
+def _import_condition_tags(
+    db: Session, zf: zipfile.ZipFile, names: set, id_remap: dict,
+    summary: ImportSummary, dry_run: bool,
+) -> None:
+    """ConditionTag を (player_id, label, start_date) 自然キーでマージ。"""
+    if "condition_tags.json" not in names:
+        return
+    recs: list[dict] = json.loads(zf.read("condition_tags.json"))
+    valid_cols = _get_columns(ConditionTag)
+    for rec in recs:
+        try:
+            data = {k: v for k, v in rec.items() if k in valid_cols and k != "id"}
+            _remap_fks(data, id_remap)
+            pid = data.get("player_id")
+            start_date = _parse_date(data.get("start_date"))
+            label = data.get("label")
+            if not pid or not start_date or not label:
+                summary.errors.append("condition_tags: 必須項目不足でスキップ")
+                continue
+            if not db.get(Player, pid):
+                summary.errors.append(f"condition_tags: player_id={pid} が存在せずスキップ")
+                continue
+            data["start_date"] = start_date
+            data["end_date"] = _parse_date(data.get("end_date"))
+            existing = (
+                db.query(ConditionTag)
+                .filter(
+                    ConditionTag.player_id == pid,
+                    ConditionTag.label == label,
+                    ConditionTag.start_date == start_date,
+                )
+                .first()
+            )
+            if existing:
+                if dry_run:
+                    summary.kept += 1
+                    continue
+                # 既存は保持（冪等）
+                summary.kept += 1
+            else:
+                if dry_run:
+                    summary.added += 1
+                    continue
+                obj = ConditionTag(**data)
+                db.add(obj)
+                db.commit()
+                summary.added += 1
+        except Exception as e:
+            db.rollback()
+            summary.errors.append(f"condition_tags: {e}")

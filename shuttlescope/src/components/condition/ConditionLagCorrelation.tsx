@@ -280,7 +280,21 @@ export function ConditionLagCorrelation({ playerId, isLight }: Props) {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className={`mt-3 flex flex-wrap gap-4 text-xs ${textMuted}`}>
+            <div className={`mt-2 flex flex-wrap items-center gap-3 text-[11px] ${textMuted}`}>
+              <span className="inline-flex items-center gap-1">
+                <span style={{ width: 10, height: 10, background: posColor, display: 'inline-block', borderRadius: 2 }} />
+                {t('condition.lag_corr.legend_pos')}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span style={{ width: 10, height: 10, background: negColor, display: 'inline-block', borderRadius: 2 }} />
+                {t('condition.lag_corr.legend_neg')}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span style={{ width: 10, height: 10, background: highlightColor, display: 'inline-block', borderRadius: 2 }} />
+                {t('condition.lag_corr.legend_best')}
+              </span>
+            </div>
+            <div className={`mt-2 flex flex-wrap gap-4 text-xs ${textMuted}`}>
               <span>
                 {t('condition.lag_corr.best_lag')}:{' '}
                 <span className="font-mono">

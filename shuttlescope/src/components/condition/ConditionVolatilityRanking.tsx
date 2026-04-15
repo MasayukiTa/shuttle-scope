@@ -140,6 +140,16 @@ export function ConditionVolatilityRanking({ playerId, isLight }: Props) {
           </span>
         </div>
 
+        <div className={`mb-3 flex flex-wrap items-center gap-3 text-[11px] ${textMuted}`}>
+          <span className="inline-flex items-center gap-1">
+            <span style={{ width: 10, height: 10, background: cvColor, display: 'inline-block', borderRadius: 2 }} />
+            {t('condition.volatility.legend_cv')}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span style={{ width: 10, height: 10, background: diffColor, display: 'inline-block', borderRadius: 2 }} />
+            {t('condition.volatility.legend_diff')}
+          </span>
+        </div>
         {isLoading ? (
           <div className={`${textMuted} text-xs`}>
             {t('condition.volatility.loading')}

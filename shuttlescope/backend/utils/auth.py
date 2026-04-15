@@ -150,6 +150,99 @@ def require_match_access(
     return m
 
 
+# ─── エクスポート権限 ─────────────────────────────────────────────────────────
+
+def require_analyst(request: Request) -> AuthCtx:
+    """analyst 限定操作（change_set / backup など）。"""
+    ctx = get_auth(request)
+    if not ctx.is_analyst:
+        raise HTTPException(
+            status_code=403,
+            detail="この操作は analyst ロールでのみ実行できます",
+        )
+    return ctx
+
+
+def _team_of(player: Optional[Player]) -> Optional[str]:
+    if not player:
+        return None
+    t = (player.team or "").strip()
+    return t or None
+
+
+def check_export_match_scope(
+    ctx: AuthCtx, matches: list[Match], db: Session
+) -> None:
+    """試合エクスポートの権限チェック。
+
+    - analyst: 無制限
+    - player:  対象試合すべてに自分の player_id が含まれる必要あり
+    - coach:   対象試合に参加する全選手のうち 1 人以上が自チーム所属であれば可
+               (対戦相手はチーム外でも許可する — コーチは自チームの試合を抜く)
+    - role未設定: 拒否
+    """
+    if ctx.is_analyst:
+        return
+    if ctx.is_player:
+        if not ctx.player_id:
+            raise HTTPException(status_code=403, detail="player_id 未設定")
+        for m in matches:
+            if ctx.player_id not in _match_player_ids(m):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"試合 id={m.id} はあなたの試合ではありません",
+                )
+        return
+    if ctx.is_coach:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            raise HTTPException(status_code=403, detail="team_name 未設定")
+        for m in matches:
+            pids = _match_player_ids(m)
+            if not pids:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"試合 id={m.id} に選手情報がありません",
+                )
+            players = db.query(Player).filter(Player.id.in_(pids)).all()
+            if not any(_team_of(p) == team for p in players):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"試合 id={m.id} はあなたのチームの試合ではありません",
+                )
+        return
+    raise HTTPException(status_code=403, detail="ロール未設定です")
+
+
+def check_export_player_scope(
+    ctx: AuthCtx, player_id: int, db: Session
+) -> None:
+    """選手エクスポートの権限チェック。"""
+    if ctx.is_analyst:
+        return
+    if ctx.is_player:
+        if ctx.player_id != player_id:
+            raise HTTPException(
+                status_code=403,
+                detail="他の選手データはエクスポートできません",
+            )
+        return
+    if ctx.is_coach:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            raise HTTPException(status_code=403, detail="team_name 未設定")
+        p = db.get(Player, player_id)
+        if not p:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+        if _team_of(p) != team:
+            raise HTTPException(
+                status_code=403,
+                detail="この選手はあなたのチームに所属していません",
+            )
+        return
+    raise HTTPException(status_code=403, detail="ロール未設定です")
+
+
 def require_player_self_or_privileged(
     player_id: int,
     request: Request,
