@@ -1,7 +1,7 @@
 # Changelog
 
 This changelog records ShuttleScope's evolution from repository creation onward.
-It is intentionally more detailed than a typical release changelog because this project is still being shaped rapidly, and the history itself is useful context and motivation.
+It is intentionally more detailed than a typical release changelog because the project is still moving quickly, and the history itself is useful context and motivation.
 
 Read it together with:
 
@@ -14,12 +14,90 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-15
+
+### CV, Tracking, and Desktop Workflow
+- Added realtime YOLO overlay groundwork so CV output can start surfacing during active desktop workflows rather than only after offline batch runs.
+- Added ReID groundwork for player tracking, which begins to separate simple detection from actual player identity continuity.
+- Improved player tracking overlays, movement-oriented analysis, CV result messaging, and fallback behavior around YOLO-driven flows.
+- Added ROI-aware and desktop-oriented polish around capture / annotation workflows so CV work is more usable on real operator desktops.
+
+### Auth and Settings
+- Added local auth hardening and role-aware settings flow so local security and role behavior are less implicit.
+- Added a role picker and auth-aware controls that connect settings behavior more clearly to the operator's current role.
+- Refined auth-aware analysis panels and match/settings behavior so role differences start affecting more of the product in a visible way.
+
+### Product Shape
+- At this point ShuttleScope moved further toward a product with a real operator workflow: desktop capture, ROI setup, CV overlays, role-aware settings, and player-tracking foundations now connect more visibly.
+
+### Detailed Progress
+- Refined match linking and CV result messaging.
+- Improved player tracking overlays and YOLO fallback flow.
+- Added player movement analytics and ROI desktop polish.
+- Hardened local auth and CV desktop workflows.
+- Improved desktop capture overlays and YOLO controls.
+- Polished CV job controls and YOLO annotator flow.
+- Added ReID foundation for player tracking.
+- Added role picker and auth-aware settings flow.
+- Refined auth-aware analysis panels and match settings flow.
+
+## 2026-04-14
+
+### Prediction and Tactical Surfaces
+- Improved prediction output so it reads more like an analyst-facing narrative and less like a raw probability panel.
+- Added role-specific panels around prediction and pair-oriented analysis so the prediction area is easier to use for coach / analyst workflows.
+- Expanded partner and lineup-related views to make pre-match and planning work more readable.
+
+### CV Throughput and Analysis UX
+- Extended CV analysis-rate options up to 60fps and added warnings around batch-processing cost so high-fidelity processing is possible without hiding the runtime tradeoff.
+- Improved benchmark controls, resume behavior, ROI diff handling, and multiple dashboard / chart interaction details.
+- Polished composite heatmaps, rally-detail modals, doubles display, and chart bugs that made detailed review surfaces harder to trust.
+
+### Annotation and Match UX
+- Improved inline confirmations, player-row consistency, silent-save handling, and match / player editing reliability.
+- Continued reducing small-but-costly operator friction around lists, selectors, and save flows.
+
+### Detailed Progress
+- Fix chart bugs and add rally detail to score progression.
+- Add CV analysis rate settings with benchmark UI, fix YOLO/TrackNet resume bug, add keyboard server select, and extend doubles support for warm-up notes and match list.
+- Fix benchmark button text color for readability.
+- Extend CV rate options to 60fps with batch processing time warning dialog.
+- Improve composite heatmap interactivity, rally detail modal UX, and doubles annotation display.
+- Polish UI with tooltips, sort, bulk select, and inline confirmations.
+- Fix silent player update failure and apply `exclude_unset` to PUT handlers.
+- Unify player row height and convert mobile delete behavior to inline confirmation.
+
+## 2026-04-13
+
+### Prematch, Resume, and ROI
+- Added prematch prediction snapshots so prediction outputs can be stored in a more time-aware way instead of always behaving like a live recomputation.
+- Added ROI-aware CV batch processing so selected regions actually flow through TrackNet / YOLO processing rather than staying as UI-only overlays.
+- Added CV resume and ROI-diff workflows so interrupted or changed CV analysis runs can be resumed more intentionally.
+- Improved court-grid / ROI editing and restoration behavior around annotator video workflows.
+
+### Desktop Capture and Annotation Support
+- Added ROI rectangle overlays and desktop-capture support that better match real operator use on Windows.
+- Strengthened video-pane and annotator integration so video-region capture and CV analysis can sit inside the normal annotation flow more naturally.
+
+### Test and CI Guardrails
+- Fixed CI failures around websocket signaling by ensuring the test harness consistently creates the newer session-related tables and uses the patched test session factory.
+- Added dedicated guardrail tests so similar signaling / SessionLocal regressions are more likely to fail fast in CI.
+
+### Detailed Progress
+- Add prematch snapshots and CV resume ROI workflows.
+- Add player tracking overlay controls.
+- Improve match edit validation feedback and static MIME mapping.
+- Add ROI-aware CV batch processing.
+- Improve prediction narrative and role-specific panels.
+- Stabilize websocket signaling tests in CI.
+- Add CI guardrails for websocket test harness.
+
 ## 2026-04-12
 
 ### Product and UX
 - Expanded the top-level product documentation so the repository now explains ShuttleScope in a more grounded, current-state way.
 - Added a proper root `CHANGELOG.md` so progress is visible from the repository top level.
-- Polished dashboard selectors and theme controls, including better mobile-safe selectors, same-page navigation, and overview/advanced page usability.
+- Polished dashboard selectors and theme controls, including better mobile-safe selectors, same-page navigation, and overview / advanced page usability.
 - Improved responsive behavior across dashboard surfaces and heatmap-related views.
 
 ### Annotation and Match Workflow
@@ -28,22 +106,22 @@ Read it together with:
 - Improved LAN same-device access flow so sharing links behave more reliably when the same machine is both operator and consumer.
 
 ### Heatmaps and Responsive UI
-- Added heatmap composite support and corresponding backend/frontend integration.
+- Added heatmap composite support and corresponding backend / frontend integration.
 - Tightened responsive UI behavior across overview, advanced, settings, top navigation, section navigation, and several analysis cards.
 - Added dedicated backend heatmap composite tests and updated UI behaviors so complex analysis views survive narrower layouts better.
 
 ### Security and Hardening
 - Responded to a dedicated security review pass with concrete backend hardening.
 - Restricted `localfile://` handling more aggressively.
-- Added upload/body-size limits and safer request handling around file-oriented endpoints.
-- Hardened sync import/copy paths against oversized input and path traversal.
+- Added upload / body-size limits and safer request handling around file-oriented endpoints.
+- Hardened sync import / copy paths against oversized input and path traversal.
 - Added active-session and participant validation in camera WebSocket signaling.
 - Added operator-token protection for sensitive remote session management flows.
 - Switched session code generation from non-cryptographic random generation to a CSPRNG-based approach.
 
 ### Validation and Test Health
 - Updated websocket signaling tests so they reflect the newer active-session requirements instead of silently depending on older assumptions.
-- Kept the full test suite green while expanding responsive/security coverage.
+- Kept the full test suite green while expanding responsive / security coverage.
 
 ### Detailed Progress
 - Improved match edit validation feedback and static MIME mapping.
@@ -86,17 +164,17 @@ Read it together with:
 - Added YOLO player detection and CV alignment foundation.
 - Added shuttle overlay and a dashboard CV position card so computer vision results start to surface in both annotation and dashboard flows.
 - Polished YOLO-driven role signals and annotator-side CV controls.
-- Improved YOLO diagnostics and artifact-status visibility so missing setup/problems are easier to diagnose.
+- Improved YOLO diagnostics and artifact-status visibility so missing setup / problems are easier to diagnose.
 - Added CV-assisted annotation candidates, candidate badges, and review queue groundwork.
 - Started moving from "CV exists" to "CV suggests actual annotation actions" by introducing candidate application flows and review handling.
 
 ### Remote and CV Failure Handling
-- Recorded and responded to critical remote/CV failures as validation findings rather than hiding them behind optimistic assumptions.
+- Recorded and responded to critical remote / CV failures as validation findings rather than hiding them behind optimistic assumptions.
 - Fixed remote share rebasing problems and made CV errors much more visible.
-- Improved tunnel/ngrok hardening so remote sharing state is more explicit.
+- Improved tunnel / ngrok hardening so remote sharing state is more explicit.
 
 ### Bootstrap and No-Video Work
-- Used the no-video window productively by strengthening CV assist UX, review queue flow, and environment/bootstrap tooling.
+- Used the no-video window productively by strengthening CV assist UX, review queue flow, and environment / bootstrap tooling.
 - Added and improved bootstrap helpers and setup doctor output so the project is easier to bring up on additional devices without guesswork.
 
 ### Detailed Progress
@@ -118,20 +196,20 @@ Read it together with:
 - Added evidence and research status presentation patterns so more experimental modules are visibly different from mature ones.
 
 ### Research Spine and Advanced Analysis
-- Added the dashboard research spine and metadata/evidence groundwork.
-- Added research cards and meta integration so state-value, counterfactual, hazard/fatigue, and related work has a stable home.
+- Added the dashboard research spine and metadata / evidence groundwork.
+- Added research cards and meta integration so state-value, counterfactual, hazard / fatigue, and related work has a stable home.
 - Added promotion workflow and advanced-meta rollout so research outputs can be tracked as candidates for broader adoption.
-- Completed promotion gaps and extended the color/theming system across more dashboard surfaces.
+- Completed promotion gaps and extended the color / theming system across more dashboard surfaces.
 - Added audit log and theme fixes around promotion overrides.
 - Hardened opponent policy refresh and error-state handling.
 
 ### Dashboard and Analysis UX
 - Added date slider v2 and zone-map modal workflows.
-- Fixed heatmap filtering and crash handling issues.
-- Applied theme/card rules consistently across advanced and research surfaces.
+- Fixed heatmap filtering and crash-handling issues.
+- Applied theme / card rules consistently across advanced and research surfaces.
 
 ### Remote Camera and Live Collaboration
-- Added remote tunnel providers and initial WebRTC/TURN settings support.
+- Added remote tunnel providers and initial WebRTC / TURN settings support.
 - Hardened remote diagnostics and stale camera cleanup behavior.
 - Added TURN diagnostics and reconnect hardening.
 - Added a remote viewer page and improved sender reconnect behavior.
@@ -139,7 +217,7 @@ Read it together with:
 - Added tunnel-provider visibility to the annotator remote health banner.
 
 ### Documentation and Positioning
-- Rewrote the README around the practical PoC/current product scope rather than over-claiming future work.
+- Rewrote the README around the practical PoC / current product scope rather than over-claiming future work.
 
 ### Detailed Progress
 - Improved LAN access troubleshooting and sharing UX.
@@ -166,10 +244,10 @@ Read it together with:
 ## 2026-04-08
 
 ### Analysis Architecture and Search UX
-- Unified analysis foundations and player context so the later advanced/research stack had a cleaner base.
+- Unified analysis foundations and player context so the later advanced / research stack had a cleaner base.
 - Split analysis routers into stable, advanced, and research layers.
 - Added stage 2 engines, then stage 3 research engines for counterfactual and EPV-oriented work.
-- Added searchable selects and date range filtering across important UI paths.
+- Added searchable selects and date-range filtering across important UI paths.
 
 ### Sync, DB, and Migration Foundation
 - Added sync architecture phase 1 data-management support.
@@ -193,7 +271,7 @@ Read it together with:
 - Split analysis routers and added stage 2 engines.
 - Added stage 3 research engines for counterfactual and EPV.
 - Polished mobile UX and fixed quick-start route issues.
-- Added searchable selects and date range filters.
+- Added searchable selects and date-range filters.
 - Added sync architecture phase 1 data management.
 - Strengthened sync metadata and data management flows.
 - Closed remaining DB sync gaps and added analytics indexes.
@@ -210,37 +288,37 @@ Read it together with:
 ### Annotation Workflow
 - Refined the annotation keymap and rally-end flow so basic annotation became faster and less error-prone.
 - Added a dedicated doubles hitter flow.
-- Improved end-state handling and match setup ergonomics.
+- Improved end-state handling and match-setup ergonomics.
 
 ### Analytics and Research
 - Implemented research roadmap analytics modules.
-- Added warmup observations and related analytics context.
+- Added warm-up observations and related analytics context.
 - Closed major remaining gaps with tests, seed data, and CI.
-- Added heatmap modal and warmup analytics fixes.
+- Added heatmap modal and warm-up analytics fixes.
 
 ### Prediction
-- Added the first prediction tab and pair simulation foundation.
-- Refined the prediction tab toward coach/analyst workflows.
+- Added the first prediction tab and pair-simulation foundation.
+- Refined the prediction tab toward coach / analyst workflows.
 - Added analyst-depth and human-benchmark oriented prediction features.
 
 ### Sharing and Access
-- Added LAN and tunnel web access support.
+- Added LAN and tunnel web-access support.
 
 ### Documentation
 - Refreshed the README multiple times to keep it closer to reality as scope expanded.
 
 ### Detailed Progress
-- Refined annotation keymap and rally end flow.
+- Refined annotation keymap and rally-end flow.
 - Refreshed the top-level README.
 - Polished annotation flow end-state handling.
 - Implemented research roadmap analytics modules.
-- Added warmup observations and detail analytics context.
+- Added warm-up observations and detail analytics context.
 - Closed remaining gaps with tests, seed data, and CI.
-- Added heatmap modal and warmup analytics fixes.
-- Added prediction tab and pair simulation foundation.
+- Added heatmap modal and warm-up analytics fixes.
+- Added prediction tab and pair-simulation foundation.
 - Refined prediction tab for coach and analyst workflows.
 - Added doubles annotation hitter flow.
-- Added LAN and tunnel web access support.
+- Added LAN and tunnel web-access support.
 - Refreshed README for current product scope.
 - Clarified README for PoC scope.
 - Upgraded prediction with analyst depth and human benchmarks.
@@ -255,10 +333,10 @@ Read it together with:
 ### Annotation and Match-Day Flow
 - Adapted the shot panel to rally context.
 - Refined shot-key pause behavior.
-- Added a match-day workflow and set summary behavior.
+- Added a match-day workflow and set-summary behavior.
 - Improved desktop startup and quick-start flows.
 - Improved annotation flow and interval handling.
-- Completed a broad annotation/desktop workflow phase.
+- Completed a broad annotation / desktop workflow phase.
 - Added TrackNet automation and settings sync.
 - Implemented stage 1 sharing and live collaboration.
 
@@ -305,7 +383,7 @@ Read it together with:
 ### Repository Setup
 - Created the repository and initial ShuttleScope codebase.
 - Added the repository-level Claude guidance file.
-- Ignored local player/match database artifacts so local work would not pollute version control.
+- Ignored local player / match database artifacts so local work would not pollute version control.
 
 ### First Substantial Feature Foundation
 - Added an advanced analysis dashboard and support scripts very early in the repository lifetime, which set the tone for ShuttleScope as more than a minimal tagger.
