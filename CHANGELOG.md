@@ -14,6 +14,36 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-16
+
+### Analysis Bundles and Shared Data Flow
+- Added analysis bundle foundations so review- and research-oriented screens can share a coordinated backend data layer instead of repeatedly pulling many small endpoints independently.
+- Added response-cache groundwork, bundle parity verification scripts, and profiling scripts so performance work is now supported by explicit tooling rather than guesswork alone.
+- Added shared review / research bundle contexts on the frontend so larger dashboard and review surfaces can be composed from a more stable data contract.
+- Hardened Markov and research analytics persistence / interaction behavior while keeping the larger backend test suite green.
+
+### Condition Tracking Platform
+- Added a full condition tracking and analytics workflow, moving condition data from a side concept into a first-class product area.
+- Added questionnaire handling, scoring, condition-specific analytics, and condition seeding utilities so the feature can be exercised on realistic internal data.
+- Expanded the condition area with tagging, trend charts, volatility ranking, seasonality, PCA scatter, generic scatter, lag correlation, outlier week detection, tag comparison, post-match change views, and history detail flows.
+- Added condition tag APIs and frontend tag-management views so condition analysis can now be organized and compared rather than treated as a flat list of entries.
+
+### Expert Labeler and Secure Sync
+- Added an expert labeler workflow with dedicated pages and backend routing so specialist labeling can sit alongside the main annotation workflow instead of living only in planning notes.
+- Added clip-generation service groundwork to support the expert labeler flow.
+- Strengthened package export / import and sync flows with more explicit auth-aware handling, moving cross-device package movement toward a safer internal workflow.
+
+### Validation and Stability
+- Continued the pattern of running build and full backend verification before large commits, keeping the codebase in a shippable internal state even while major features were landing.
+- Preserved green backend coverage while introducing large new surfaces in conditions, expert labeling, bundles, and secure sync.
+
+### Detailed Progress
+- Refined research analytics interactions and Markov persistence.
+- Added analysis bundles and response-cache foundation.
+- Added condition tracking and analytics workflow.
+- Expanded condition analysis and tagging workflows.
+- Added expert labeler and secure package sync flow.
+
 ## 2026-04-15
 
 ### CV, Tracking, and Desktop Workflow
