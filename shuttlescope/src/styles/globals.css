@@ -671,7 +671,11 @@ html[data-theme="light"] input[type="radio"] {
 /* primary ボタン: ダーク背景上のテキストは白を維持 */
 html[data-theme="light"] .btn-primary,
 html[data-theme="light"] button.bg-blue-600,
-html[data-theme="light"] button.bg-blue-500 {
+html[data-theme="light"] button.bg-blue-500,
+html[data-theme="light"] button.bg-pink-600,
+html[data-theme="light"] button.bg-pink-500,
+html[data-theme="light"] button.bg-red-600,
+html[data-theme="light"] button.bg-green-600 {
   color: #ffffff !important;
 }
 

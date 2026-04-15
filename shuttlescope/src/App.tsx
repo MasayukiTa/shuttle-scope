@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { List, BarChart2, Settings, Sun, Moon, TrendingUp } from 'lucide-react'
+import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import '@/i18n'
@@ -11,6 +11,7 @@ import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { DashboardShell } from '@/pages/dashboard/DashboardShell'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { ConditionPage } from '@/pages/ConditionPage'
 import { VideoOnlyPage } from '@/pages/VideoOnlyPage'
 import { CameraSenderPage } from '@/pages/CameraSenderPage'
 import { ViewerPage } from '@/pages/ViewerPage'
@@ -75,6 +76,7 @@ function Sidebar() {
 
   const navItems = [
     { to: '/matches', label: t('nav.matches'), icon: List },
+    { to: '/condition', label: t('nav.condition'), icon: Heart },
     { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
     { to: '/prediction', label: t('nav.prediction'), icon: TrendingUp },
     { to: '/settings', label: t('nav.settings'), icon: Settings },
@@ -161,6 +163,7 @@ function MainLayout() {
             <Route path="/" element={<Navigate to="/matches" replace />} />
             <Route path="/matches" element={<MatchListPage />} />
             <Route path="/annotator/:matchId" element={<AnnotatorPage />} />
+            <Route path="/condition" element={<ConditionPage />} />
             <Route path="/dashboard/*" element={<DashboardShell />} />
             <Route path="/prediction" element={<PredictionPage />} />
             <Route path="/settings" element={<SettingsPage />} />

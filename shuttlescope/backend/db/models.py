@@ -64,6 +64,9 @@ class Player(Base):
     matches_as_b: Mapped[list["Match"]] = relationship(
         "Match", foreign_keys="Match.player_b_id", back_populates="player_b"
     )
+    conditions: Mapped[list["Condition"]] = relationship(
+        "Condition", back_populates="player", cascade="all, delete-orphan"
+    )
 
 
 class Match(Base):
@@ -571,3 +574,80 @@ class PrematchPrediction(Base):
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     match_narrative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)     # JSON
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ─── コンディション（体調）Phase 1 ──────────────────────────────────────────────
+
+class Condition(Base):
+    """選手のコンディション記録（InBody / Hooper / RPE / 自由記述）。
+
+    Phase 1: InBody, Hooper Index, RPE, 自由記述のみ運用。
+    質問票・採点・妥当性・本人内変動関連カラムは Phase 2 用プレースホルダ（全 NULL 許容）。
+    """
+    __tablename__ = "conditions"
+    __table_args__ = (
+        Index("ix_conditions_player_id", "player_id"),
+        Index("ix_conditions_measured_at", "measured_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    player_id: Mapped[int] = mapped_column(Integer, ForeignKey("players.id"), nullable=False)
+    measured_at: Mapped[date] = mapped_column(Date, nullable=False)
+    condition_type: Mapped[str] = mapped_column(String(20), nullable=False, default="weekly")  # weekly / pre_match
+    # pre_match 時に紐付く試合（weekly は NULL）
+    match_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("matches.id"), nullable=True, index=True
+    )
+
+    # InBody
+    weight_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    muscle_mass_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    body_fat_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    body_fat_mass_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    lean_mass_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ecw_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    arm_l_muscle_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    arm_r_muscle_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    leg_l_muscle_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    leg_r_muscle_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    trunk_muscle_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    bmr_kcal: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Hooper Index（1〜7 のスケール想定、nullable）
+    hooper_sleep: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    hooper_soreness: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    hooper_stress: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    hooper_fatigue: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    hooper_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # RPE（session-RPE 法）
+    session_rpe: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    session_duration_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    session_load: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # 質問票 / 採点 / 妥当性 / 本人内変動（Phase 2 用プレースホルダ）
+    questionnaire_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    f1_physical: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    f2_stress: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    f3_mood: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    f4_motivation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    f5_sleep_life: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ccs_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    delta_prev: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    delta_3ma: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    delta_28ma: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    z_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    validity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    validity_flag: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    validity_flags_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # 補助
+    sleep_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    injury_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    general_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    player: Mapped["Player"] = relationship("Player", back_populates="conditions")
