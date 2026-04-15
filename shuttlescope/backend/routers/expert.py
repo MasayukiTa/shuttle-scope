@@ -92,6 +92,9 @@ class ClipInfo(BaseModel):
     frame_index: int
     clip_url: Optional[str]
     rally_context: dict
+    # INFRA Phase B: ミスストロークのソース種別
+    # "manual" = iter_miss_strokes 由来、"auto" = 自動検出器由来、両方なら "manual+auto"
+    source: str = "manual"
 
 
 class LabelOut(BaseModel):
@@ -183,10 +186,22 @@ def list_clips(
         c.stroke_id: c
         for c in db.query(ClipCache).filter(ClipCache.match_id == match_id).all()
     }
+    # INFRA Phase B: 自動ミス検出器の結果を合流させ source を付与する
+    auto_stroke_ids: set[int] = set()
+    try:
+        from backend.cv.miss_detector import iter_auto_miss_candidates
+        auto_stroke_ids = {c["stroke_id"] for c in iter_auto_miss_candidates(db, match_id)}
+    except Exception:
+        auto_stroke_ids = set()
+
     out: list[ClipInfo] = []
+    manual_stroke_ids: set[int] = set()
     for rally, stroke in miss_rows:
+        manual_stroke_ids.add(stroke.id)
         cache = cache_map.get(stroke.id)
         clip_url = f"/api/v1/expert/clip_file?stroke_id={stroke.id}" if cache else None
+        is_auto = stroke.id in auto_stroke_ids
+        source = "manual+auto" if is_auto else "manual"
         out.append(ClipInfo(
             stroke_id=stroke.id,
             rally_id=rally.id,
@@ -200,6 +215,7 @@ def list_clips(
                 "shot_type": stroke.shot_type,
                 "player": stroke.player,
             },
+            source=source,
         ))
     return out
 

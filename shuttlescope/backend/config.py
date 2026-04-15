@@ -16,6 +16,19 @@ class Settings(BaseSettings):
     # ngrok 認証トークン（環境変数 NGROK_AUTHTOKEN から自動読み込み）
     NGROK_AUTHTOKEN: str = ""
 
+    # ── INFRA Phase A: GPU / クラスタ関連設定 ─────────────────────────
+    # デフォルトはすべて無効。非 CUDA / 未インストール環境で既存動作を壊さない。
+    ss_use_gpu: int = 0                       # 1 で CUDA 経路を試みる
+    ss_cuda_device: int = 0                   # 複数 GPU 時のデバイス index
+    ss_cluster_mode: str = "off"              # "off" | "ray" （Phase D）
+    ss_ray_address: str = "auto"              # Ray head アドレス
+    ss_video_root: str = str(_ROOT / "videos")
+    ss_cache_root: str = str(_ROOT / "backend" / "cache")
+    ss_cv_mock: int = 0                       # 1 でテスト用 mock inferencer を優先使用
+    # Phase C 用。Phase A では宣言のみ（参照はされない）。
+    ss_line_notify_token: str = ""
+    ss_notify_webhook_url: str = ""
+
     class Config:
         # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）
         env_file = (str(_ROOT / ".env.development"), str(_ROOT / ".env"))

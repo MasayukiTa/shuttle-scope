@@ -134,6 +134,60 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ─── INFRA Phase A: GPU ヘルスプローブ + Phase B/D 拡張ポイント ───────────────
+# これらはすべて try/except で囲み、依存 (torch/ray/pynvml/pipeline ルーター) が
+# 未インストール / 未実装でも既存の起動を壊さないこと。
+@app.on_event("startup")
+async def _ss_gpu_health_log() -> None:
+    """起動時に GPU 健康状態を 1 度ログ出力する (失敗しても起動は続行)。"""
+    try:
+        from backend.services import gpu_health
+
+        status = gpu_health.probe()
+        logger.info("[INFRA] gpu_health.probe: %s", status)
+    except Exception as exc:  # pragma: no cover - 保険
+        logger.debug("[INFRA] gpu_health.probe skipped: %s", exc)
+
+
+# Phase B で実装される pipeline ルーター。未実装なら何もしない。
+try:
+    from backend.routers import pipeline as _pipeline_router  # type: ignore
+
+    app.include_router(_pipeline_router.router, prefix="/api")
+except ImportError:
+    pass
+
+
+@app.on_event("startup")
+async def _ss_start_job_runner() -> None:
+    """Phase B JobRunner 起動ポイント。未実装 (ImportError) なら no-op。"""
+    try:
+        from backend.pipeline.jobs import start_job_runner  # type: ignore
+
+        start_job_runner()
+    except ImportError:
+        pass
+    except Exception as exc:  # pragma: no cover - 保険
+        logger.debug("[INFRA] start_job_runner skipped: %s", exc)
+
+
+@app.on_event("startup")
+async def _ss_init_cluster() -> None:
+    """Phase D Ray クラスタ初期化。SS_CLUSTER_MODE=ray かつ実装あり時のみ有効。"""
+    try:
+        from backend.config import settings as _ss_settings
+
+        if getattr(_ss_settings, "ss_cluster_mode", "off") == "ray":
+            try:
+                from backend.cluster.bootstrap import init_ray  # type: ignore
+
+                init_ray()
+            except ImportError:
+                pass
+    except Exception as exc:  # pragma: no cover - 保険
+        logger.debug("[INFRA] init_cluster skipped: %s", exc)
+
+
 # ─── HTTP ボディサイズ上限ミドルウェア ────────────────────────────────────────
 # 動画は local path 参照のため HTTP upload なし。
 # sync .sspkg: アプリ層で 50 MB 制限済み。ここでは Content-Length ヘッダーによる
