@@ -81,10 +81,41 @@
     "player": "選手"
   },
   "condition": {
-    "title": "体調",
+    "title": "コンディション",
     "subtab_input": "入力",
     "subtab_history": "履歴",
-    "history_placeholder": "履歴表示は開発中です",
+    "history_placeholder": "履歴がありません",
+    "history": {
+      "filter_all": "すべて",
+      "filter_weekly": "週次のみ",
+      "filter_prematch": "試合前のみ",
+      "filter_body": "身体データのみ",
+      "count": "{{n}} 件",
+      "type_weekly": "週次",
+      "type_pre_match": "試合前",
+      "type_body": "身体",
+      "ccs": "CCS",
+      "hooper": "Hooper",
+      "rpe": "RPE",
+      "sleep_h": "睡眠h",
+      "weight": "体重",
+      "delete": "削除",
+      "delete_confirm": "このレコードを削除しますか？",
+      "no_match": "条件に合う履歴がありません"
+    },
+    "history_detail": {
+      "title": "回答内容の確認",
+      "close": "閉じる",
+      "save": "保存",
+      "saving": "保存中...",
+      "saved": "保存しました",
+      "save_failed": "保存に失敗しました",
+      "questionnaire_section": "質問票回答",
+      "no_responses": "質問票回答がありません",
+      "edit_hint": "アナリストは各回答を編集して再スコアリングできます",
+      "metrics_section": "指標",
+      "body_section": "身体指標"
+    },
     "player_select": "選手",
     "measured_at": "測定日",
     "section_inbody": "InBody 測定",
@@ -118,6 +149,47 @@
       "sleep_hours": "睡眠時間 (時間)",
       "injury_notes": "けが・テーピングメモ",
       "general_comment": "自由記述"
+    },
+    "tags": {
+      "title": "期間タグ",
+      "description": "合宿・大会前・ストレス期など任意の期間を登録し、期間内外のコンディション差分を比較します。",
+      "label": "ラベル",
+      "label_placeholder": "例: 合宿 / 大会前 / ストレス期",
+      "color": "色",
+      "start_date": "開始日",
+      "end_date": "終了日",
+      "optional": "任意",
+      "single_day": "単発",
+      "add": "追加",
+      "delete": "削除",
+      "confirm_delete": "「{{label}}」を削除しますか？",
+      "empty": "まだタグはありません",
+      "error_required": "ラベルと開始日は必須です",
+      "error_end_before_start": "終了日は開始日以降にしてください",
+      "compare_title": "期間内外の差分比較",
+      "compare_description": "選択したタグ期間内の平均と期間外の平均の差（内 − 外）を表示します。サンプル数が少ない指標は差分を計算しません。",
+      "select_tag": "タグ",
+      "none_selected": "(選択なし)",
+      "no_tag_hint": "比較するタグを選択してください",
+      "insufficient_sample": "期間内または期間外のサンプルが不足しているため、差分を表示できません。",
+      "insufficient_short": "サンプル不足",
+      "sample_note": "信頼できる比較には期間内外それぞれ 2 件以上の測定が必要です。N 値を確認してください。",
+      "metric": "指標",
+      "in_mean": "期間内平均",
+      "out_mean": "期間外平均",
+      "diff_label": "差分 (内 − 外)",
+      "metrics": {
+        "ccs_score": "CCS スコア",
+        "hooper_sleep": "Hooper 睡眠",
+        "hooper_soreness": "Hooper 筋肉痛",
+        "hooper_stress": "Hooper ストレス",
+        "hooper_fatigue": "Hooper 疲労",
+        "session_rpe": "RPE",
+        "sleep_hours": "睡眠時間",
+        "weight_kg": "体重 (kg)",
+        "muscle_mass_kg": "筋肉量 (kg)",
+        "body_fat_pct": "体脂肪率 (%)"
+      }
     },
     "save": "保存",
     "saved": "保存しました",
@@ -281,6 +353,104 @@
     "analytics": {
       "tab": "解析"
     },
+    "volatility": {
+      "title": "変動係数ランキング",
+      "description": "各指標の変動係数 (CV=SD/Mean) と週次差分 SD を比較し、変動の大きい指標を抽出します (N<5 は除外)",
+      "loading": "読み込み中...",
+      "no_data": "集計に十分なデータがありません",
+      "cv_axis": "変動係数 (CV)",
+      "diff_axis": "週次差分 SD",
+      "cv_label": "CV",
+      "diff_label": "週次差分 SD",
+      "n_label": "N",
+      "tooltip_cv": "CV",
+      "tooltip_diff": "週次差分 SD",
+      "tooltip_n": "N",
+      "metric": {
+        "hooper_sleep": "Hooper睡眠",
+        "hooper_soreness": "Hooper筋肉痛",
+        "hooper_stress": "Hooperストレス",
+        "hooper_fatigue": "Hooper疲労",
+        "session_rpe": "RPE",
+        "sleep_hours": "睡眠時間",
+        "weight_kg": "体重",
+        "muscle_mass_kg": "筋肉量",
+        "body_fat_pct": "体脂肪率"
+      }
+    },
+    "lag_corr": {
+      "title": "ラグ相関（Lead/Lag）",
+      "x_label": "変数 X(t)",
+      "y_label": "変数 Y(t+k)",
+      "lag_axis": "ラグ（週）",
+      "r_axis": "ピアソン r",
+      "no_data": "十分なデータがありません",
+      "insufficient": "—",
+      "best_lag": "最大相関ラグ",
+      "weeks": "週",
+      "tooltip_n": "N",
+      "tooltip_r": "r",
+      "description": "X(t) と Y(t+k) の相関。k が正なら Y が X より遅れる。",
+      "metric": {
+        "hooper_sleep": "Hooper睡眠",
+        "hooper_soreness": "Hooper筋肉痛",
+        "hooper_stress": "Hooperストレス",
+        "hooper_fatigue": "Hooper疲労",
+        "session_rpe": "RPE",
+        "sleep_hours": "睡眠時間",
+        "weight_kg": "体重",
+        "muscle_mass_kg": "筋肉量",
+        "body_fat_pct": "体脂肪率"
+      }
+    },
+    "post_match": {
+      "title": "試合前後の体調変化",
+      "description": "各試合日の前後7日の平均を比較。プラスは改善、マイナスは悪化を示す。",
+      "no_matches": "試合登録なし",
+      "no_data": "十分なデータがありません",
+      "before": "前",
+      "after": "後",
+      "delta": "差分 (後 − 前)",
+      "sample_note": "N={{before}} / {{after}}",
+      "match_label": "{{date}} {{tournament}}",
+      "expand": "展開する",
+      "collapse": "閉じる",
+      "select_match": "試合:",
+      "not_selected": "— 選択してください —",
+      "all_matches": "すべての試合を表示",
+      "hint_select": "試合を選択すると前後の体調変化が表示されます",
+      "metric": {
+        "ccs": "CCS",
+        "f1": "F1",
+        "f2": "F2",
+        "f3": "F3",
+        "f4": "F4",
+        "f5": "F5",
+        "hooper_index": "Hooper Index"
+      }
+    },
+    "pca": {
+      "title": "主成分分析（PCA 2D）",
+      "description": "数値指標を標準化し、上位2主成分の散布を表示。色は月（1〜12）。",
+      "no_data": "サンプル不足（有効行 ≥10 かつ 列 ≥3 が必要）",
+      "variance_explained": "寄与率",
+      "pc1": "第1主成分",
+      "pc2": "第2主成分",
+      "top_loadings": "主な寄与因子",
+      "tooltip_date": "日付",
+      "tooltip_top": "主な寄与",
+      "metric": {
+        "hooper_sleep": "Hooper睡眠",
+        "hooper_soreness": "Hooper筋肉痛",
+        "hooper_stress": "Hooperストレス",
+        "hooper_fatigue": "Hooper疲労",
+        "session_rpe": "RPE",
+        "sleep_hours": "睡眠時間",
+        "weight_kg": "体重",
+        "muscle_mass_kg": "筋肉量",
+        "body_fat_pct": "体脂肪率"
+      }
+    },
     "correlation": {
       "title": "指標間の相関",
       "x_axis": "X軸",
@@ -298,6 +468,66 @@
         "sleep": "睡眠時間",
         "win_rate": "試合勝率",
         "performance": "試合パフォーマンス"
+      }
+    },
+    "generic_scatter": {
+      "title": "汎用散布図 (X/Y/色 自由選択)",
+      "x_axis": "X軸",
+      "y_axis": "Y軸",
+      "color_axis": "色",
+      "pearson_r": "ピアソン r",
+      "sample_size": "N",
+      "no_data": "有効データが不足しています",
+      "intro": "記録済みの体調データから任意の2指標と色分けを選んで傾向を確認できます。N が小さい場合の相関は参考値です。",
+      "tooltip_date": "日付",
+      "color_mode": {
+        "month": "月 (1-12)",
+        "weekday": "曜日 (0=月)",
+        "value": "Z軸指標値"
+      },
+      "z_axis": "Z軸指標",
+      "metric": {
+        "hooper_sleep": "Hooper 睡眠",
+        "hooper_soreness": "Hooper 筋肉痛",
+        "hooper_stress": "Hooper ストレス",
+        "hooper_fatigue": "Hooper 疲労",
+        "hooper_index": "Hooper指数",
+        "session_rpe": "RPE",
+        "session_load": "セッション負荷",
+        "sleep_hours": "睡眠時間",
+        "weight_kg": "体重",
+        "muscle_mass_kg": "筋肉量",
+        "body_fat_pct": "体脂肪率"
+      }
+    },
+    "corr_heatmap": {
+      "title": "因子相関ヒートマップ",
+      "note_no_factors": "注: list API は f1〜f5 / ccs を返さないため、本表の対象は Hooper/RPE/睡眠/InBody などの生データに限定されます。",
+      "records": "{{n}} 件の記録",
+      "loading": "読み込み中...",
+      "no_data": "データが不足しています",
+      "insufficient": "相関計算に必要な列 (>=5 件) が 2 つ以上ありません",
+      "insufficient_pair": "このペアはサンプル不足です",
+      "pearson_r": "ピアソン r",
+      "na": "—",
+      "legend_negative": "負の相関 (-1)",
+      "legend_positive": "正の相関 (+1)",
+      "var": {
+        "f1": "F1",
+        "f2": "F2",
+        "f3": "F3",
+        "f4": "F4",
+        "f5": "F5",
+        "ccs": "CCS",
+        "hooper_sleep": "Hooper 睡眠",
+        "hooper_soreness": "Hooper 筋肉痛",
+        "hooper_stress": "Hooper ストレス",
+        "hooper_fatigue": "Hooper 疲労",
+        "session_rpe": "RPE",
+        "sleep_hours": "睡眠時間",
+        "weight_kg": "体重",
+        "muscle_mass_kg": "筋肉量",
+        "body_fat_pct": "体脂肪率"
       }
     },
     "best_profile": {
@@ -338,6 +568,67 @@
         "rpe_load_mismatch": "RPEと練習負荷の乖離"
       }
     },
+    "outlier": {
+      "title": "外れ週検出",
+      "description": "過去28日を基準とした Z スコアで逸脱した週を抽出します",
+      "no_data": "外れ週は検出されていません",
+      "loading": "読み込み中...",
+      "insufficient": "比較に必要な履歴がまだ足りません (有効サンプル < 5)",
+      "col_date": "日付",
+      "col_metric_z": "主指標 Z",
+      "col_co_break": "同時崩れ指標",
+      "severity": {
+        "high": "高",
+        "medium": "中"
+      },
+      "metric": {
+        "ccs": "CCS",
+        "hooper_sleep": "睡眠 (Hooper)",
+        "hooper_soreness": "筋肉痛",
+        "hooper_stress": "ストレス",
+        "hooper_fatigue": "疲労",
+        "session_rpe": "RPE",
+        "sleep_hours": "睡眠時間"
+      },
+      "detail_title": "週の全指標 Z スコア",
+      "close": "閉じる",
+      "no_value": "—"
+    },
+    "seasonality": {
+      "title": "季節性・曜日効果",
+      "description": "月次 / 四半期 / 曜日別に各指標の平均を比較します",
+      "loading": "読み込み中...",
+      "no_data": "集計に十分なデータがありません",
+      "col_bucket": "区分",
+      "col_mean": "平均",
+      "no_value": "—",
+      "min_n_note": "各セルに N を併記。N<{{n}} の場合は — を表示します。",
+      "month_label": "{{n}}月",
+      "mode": {
+        "month": "月次",
+        "quarter": "四半期",
+        "dow": "曜日"
+      },
+      "dow": {
+        "0": "月",
+        "1": "火",
+        "2": "水",
+        "3": "木",
+        "4": "金",
+        "5": "土",
+        "6": "日"
+      },
+      "metric": {
+        "ccs": "CCS",
+        "f1": "F1",
+        "f2": "F2",
+        "f3": "F3",
+        "f4": "F4",
+        "f5": "F5",
+        "hooper_index": "Hooper指数",
+        "sleep_hours": "睡眠時間"
+      }
+    },
     "insights": {
       "title_coach": "伸びしろインサイト",
       "title_player": "あなたの伸びしろ",
@@ -368,6 +659,24 @@
       "n_small": "サンプル少",
       "n_medium": "参考値",
       "n_large": "信頼可"
+    },
+    "trend": {
+      "title": "時系列トレンド",
+      "ccs_section": "CCS 推移",
+      "ccs_line": "CCS",
+      "ccs_ma28": "28日移動平均",
+      "factors_section": "因子別トレンド (F1〜F5)",
+      "factors_note": "各因子の週次スコアの推移",
+      "aux_section": "補助指標の推移",
+      "aux_note": "体重・筋肉量・体脂肪率（記録のあるもののみ）",
+      "loading": "読み込み中...",
+      "no_data": "データが不足しています",
+      "player_growth_note": "CCS と 28日移動平均で日々の取り組みを振り返りましょう",
+      "metric": {
+        "weight_kg": "体重 (kg)",
+        "muscle_mass_kg": "筋肉量 (kg)",
+        "body_fat_pct": "体脂肪率 (%)"
+      }
     }
   },
   "research": {
