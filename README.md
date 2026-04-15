@@ -1,15 +1,15 @@
 # ShuttleScope
 
-ShuttleScope is a local-first Windows desktop workbench for structured badminton match annotation, post-match review, and badminton-specific analysis.
+ShuttleScope is a local-first Windows desktop workbench for badminton match annotation, review, and analysis.
 
-Right now, the fastest honest way to understand it is this:
+The quickest honest summary is:
 
 - it is already usable as an internal tool for rally-by-rally annotation and coach / analyst review
-- it is strong in local workflows: match creation, annotation, dashboard review, local video, and post-match analysis
-- it already contains CV, prediction, LAN sharing, and remote-camera groundwork
-- it is not yet a finished public product, and some of those advanced layers are still under active validation
+- it is strongest in local workflows: match setup, annotation, dashboard review, local video, desktop capture, and post-match analysis
+- it already includes CV, prediction, LAN sharing, and remote-camera groundwork, but those layers are still less proven than the annotation core
+- it is not yet a finished public product, and advanced CV / remote / prediction areas are still under active validation
 
-In other words, ShuttleScope is no longer just a loose PoC, but it is also not something we should describe as a finished commercial release.
+In short, ShuttleScope is well past a loose PoC, but it should still be described as an internal product-grade system rather than a finished commercial release.
 
 ## What You Can Actually Do With It Today
 
@@ -19,8 +19,9 @@ If someone opens ShuttleScope today, the parts they can realistically expect to 
 - annotate rallies stroke by stroke
 - review rallies with comments, bookmarks, review-later markers, and warm-up notes
 - run badminton-specific dashboard analysis across matches
-- use local video with second-screen playback and court calibration support
-- test CV-assisted annotation workflows and TrackNet / YOLO readiness on prepared environments
+- use local video, second-screen playback, and court calibration support
+- capture desktop video regions, define ROI, and run ROI-aware CV batch analysis on prepared environments
+- test CV-assisted annotation flows, candidate review, and TrackNet / YOLO readiness on prepared environments
 - share sessions on nearby devices over LAN with password-protected join flow
 
 The parts that still need more real-world proof are:
@@ -29,6 +30,7 @@ The parts that still need more real-world proof are:
 - remote camera and browser video transport
 - prediction quality under live or operational use
 - fully automatic annotation without human verification
+- long-running operator recovery and failure handling under heavy live use
 
 ## Current Product Position
 
@@ -36,7 +38,7 @@ ShuttleScope is currently best understood as:
 
 - an internal product-grade badminton analysis system
 - a practical annotation and review tool for coaches / analysts
-- a local-first experimentation platform for deeper analytics, prediction, and CV-assisted workflows
+- a local-first experimentation platform for deeper analytics, prediction, CV assistance, and sharing workflows
 
 It is strongest in the annotation / review core, with research and CV layers built on top of that core rather than replacing it.
 
@@ -48,6 +50,7 @@ The strongest parts of ShuttleScope today are:
 - post-match review
 - badminton-specific analytics
 - local video workflow
+- desktop capture and ROI-based CV workflow
 - limited LAN sharing for nearby devices
 
 Prediction, CV-assisted annotation, remote camera support, and research views are present in the codebase, but they are still uneven in real-world validation and should be treated as active development areas.
@@ -57,7 +60,7 @@ Prediction, CV-assisted annotation, remote camera support, and research views ar
 ### Annotation
 
 - quick-start match creation
-- match create/edit flow
+- match create / edit flow
 - rally-by-rally stroke annotation
 - stroke history and rally-by-rally review
 - numpad-based landing input
@@ -96,24 +99,29 @@ Prediction, CV-assisted annotation, remote camera support, and research views ar
 ### Prediction and Research
 
 - match preview and pair-oriented prediction views
+- pre-match snapshot groundwork
 - human forecast / analyst comparison groundwork
 - fatigue and hazard style research views
-- research cards for state/value/counterfactual-oriented analysis
+- research cards for state / value / counterfactual-oriented analysis
 - promotion workflow and evidence metadata groundwork
 
-These areas are usable for internal exploration, but they are still a step behind the annotation/review core in real-world confidence.
+These areas are usable for internal exploration, but they are still a step behind the annotation / review core in real-world confidence.
 
 ### Video and CV Workflow
 
 - local video import
+- desktop capture with ROI selection
 - second-screen `Video Only` view
 - court calibration overlay
 - backend-persisted calibration with local fallback
+- ROI-aware TrackNet / YOLO batch processing
+- CV resume / diff workflow foundation
 - TrackNet and YOLO readiness checks
 - TrackNet shuttle-track persistence
 - YOLO player-position artifact flow
 - CV assist candidate flow, candidate badges, and review queue foundation
 - player / shuttle overlay groundwork in the annotator
+- realtime YOLO overlay and player-tracking foundation
 - benchmark and doctor scripts for CV environment validation
 
 These areas are useful for development and internal testing, but CV quality still depends heavily on real-video validation.
@@ -122,6 +130,7 @@ These areas are useful for development and internal testing, but CV quality stil
 
 - LAN session sharing
 - password-protected LAN sessions
+- local auth and role-aware settings flow
 - comments and bookmarks
 - QR-based join flow
 - device manager and camera sender pages
@@ -179,6 +188,7 @@ It should not be read as a finished commercial product yet.
 ```text
 shuttle-scope/
 ├─ README.md
+├─ CHANGELOG.md
 ├─ LICENSE
 ├─ private_docs/              # local private notes, ignored
 ├─ .github/workflows/         # CI and smoke workflows
@@ -333,8 +343,8 @@ GitHub Actions workflows are included for:
 - the current database is SQLite
 - the default database file is `shuttlescope/shuttlescope.db`
 - `private_docs/` is ignored
-- `shuttlescope/docs/validation/` is ignored
-- local DBs, videos, CV weights, and generated artifacts are not committed
+- `shuttlescope/docs/validation/` is committed and used as implementation / verification history
+- local DBs, DB backups, videos, CV weights, and generated artifacts are not committed
 
 ## Current Status
 
@@ -345,6 +355,7 @@ Its strongest areas today are:
 - review and dashboard structure
 - badminton-specific analysis
 - local setup / bootstrap / doctor support
+- local video and ROI-based CV batch workflow
 
 It is weaker, or still more conditional, in:
 
