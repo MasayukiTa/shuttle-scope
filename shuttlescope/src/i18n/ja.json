@@ -911,6 +911,16 @@
     "toggle": "テーマ切替"
   },
   "analysis": {
+    "shuttle_track": {
+      "title": "シャトル軌跡",
+      "empty": "未解析（シャトル軌跡データがありません）",
+      "sample_size": "サンプル数: {{count}}"
+    },
+    "cog": {
+      "title": "重心バランス",
+      "empty": "未解析（重心データがありません）",
+      "axis_hint": "縦軸: 左荷重比（上=左寄り / 下=右寄り）"
+    },
     "overview": "概要",
     "shots": "ショット分析",
     "rally": "ラリー分析",
@@ -1701,5 +1711,22 @@
     "no_clips": "クリップがありません",
     "required_fields": "必須項目を選択してください",
     "shortcut_hint": "ショートカット: ←→ 前後 / K 再生停止 / 1-3 確信度 / S スキップ / Enter 保存"
-  }
+  },
+  "pipeline": {
+    "status": {
+      "queued": "解析待ち",
+      "running": "解析中",
+      "done": "解析済",
+      "failed": "解析失敗",
+      "none": "未解析"
+    },
+    "run": "解析を実行",
+    "badge_title": "解析ジョブ状態",
+    "source": {
+      "manual": "手動",
+      "auto": "自動検出",
+      "manual_auto": "手動+自動"
+    }
+  },
+  "pipeline_meta": {}
 }

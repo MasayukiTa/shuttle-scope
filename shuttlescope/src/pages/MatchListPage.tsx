@@ -12,6 +12,7 @@ import { DateRangeFilter } from '@/components/common/DateRangeFilter'
 import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useAuth } from '@/hooks/useAuth'
+import { PipelineJobBadge } from '@/components/analysis/PipelineJobBadge'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -906,6 +907,8 @@ export function MatchListPage() {
                         <span className={clsx('text-[10px] shrink-0', statusColor(m.annotation_status))}>
                           {t(`match.statuses.${m.annotation_status}`)}
                         </span>
+                        {/* INFRA Phase B: 解析ジョブ状態バッジ */}
+                        <PipelineJobBadge matchId={m.id} className="shrink-0" />
                       </div>
                     ) : (
                       <span className={clsx('text-[10px] flex-1', statusColor(m.annotation_status))}>
@@ -1120,6 +1123,8 @@ export function MatchListPage() {
                         <span className={clsx('text-xs', statusColor(m.annotation_status))}>
                           {t(`match.statuses.${m.annotation_status}`)}
                         </span>
+                        {/* INFRA Phase B: 解析ジョブ状態バッジ */}
+                        <PipelineJobBadge matchId={m.id} />
                       </div>
                     </td>
                     <td className="py-2">

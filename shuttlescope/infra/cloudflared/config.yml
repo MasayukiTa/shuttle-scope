@@ -1,0 +1,30 @@
+# ShuttleScope Cloudflare Tunnel 設定 (INFRA Phase C)
+# 注意: ここに置いているのはテンプレート。実運用時は <UUID> と credentials-file を
+# 自環境の値に差し替えてから cloudflared を起動すること。
+
+# 1. `cloudflared tunnel login` で Cloudflare にログイン
+# 2. `cloudflared tunnel create shuttlescope` で UUID と credentials json を生成
+#    -> ~/.cloudflared/<UUID>.json が作られる
+# 3. 下記 <UUID> と credentials-file をそのパスに書き換える
+# 4. Cloudflare DNS に CNAME: app.example.com -> <UUID>.cfargotunnel.com を追加
+# 5. `cloudflared tunnel run shuttlescope` で起動 (サービス化は README 参照)
+
+tunnel: <UUID>
+credentials-file: C:\Users\<USER>\.cloudflared\<UUID>.json
+# Ubuntu の場合: /home/<USER>/.cloudflared/<UUID>.json
+
+# ingress: 上から順に評価、最後は必ず catch-all の 404 を置く
+ingress:
+  # Web アプリ (FastAPI)
+  - hostname: app.example.com
+    service: http://localhost:8765
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: true
+
+  # SSH (Cloudflare Access で保護推奨、README 参照)
+  - hostname: ssh.example.com
+    service: ssh://localhost:22
+
+  # catch-all
+  - service: http_status:404

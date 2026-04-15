@@ -104,6 +104,37 @@ export async function apiDelete<T>(path: string): Promise<T> {
   return res.json()
 }
 
+// ─── INFRA Phase B: 解析パイプライン ─────────────────────────────────────────
+// AnalysisJob のライフサイクル: queued → running → done / failed
+export interface AnalysisJobDTO {
+  id: number
+  match_id: number
+  job_type: string
+  status: 'queued' | 'running' | 'done' | 'failed'
+  progress: number
+  error?: string | null
+  enqueued_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  worker_host?: string | null
+}
+
+export function pipelineRun(match_id: number, job_type = 'full_pipeline'): Promise<AnalysisJobDTO> {
+  return apiPost<AnalysisJobDTO>('/v1/pipeline/run', { match_id, job_type })
+}
+
+export function pipelineJobs(params?: { match_id?: number; status?: string; limit?: number }): Promise<AnalysisJobDTO[]> {
+  const p: Record<string, string | number> = {}
+  if (params?.match_id != null) p.match_id = params.match_id
+  if (params?.status) p.status = params.status
+  if (params?.limit) p.limit = params.limit
+  return apiGet<AnalysisJobDTO[]>('/v1/pipeline/jobs', p)
+}
+
+export function pipelineJob(job_id: number): Promise<AnalysisJobDTO> {
+  return apiGet<AnalysisJobDTO>(`/v1/pipeline/jobs/${job_id}`)
+}
+
 // ヘルスチェック
 export async function checkHealth(): Promise<boolean> {
   try {

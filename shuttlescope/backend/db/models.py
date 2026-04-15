@@ -723,3 +723,88 @@ class ClipCache(Base):
     start_frame: Mapped[int] = mapped_column(Integer, nullable=False)
     end_frame: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ─── INFRA Phase B: 解析パイプライン ────────────────────────────────────────
+
+class AnalysisJob(Base):
+    """解析ジョブ（パイプライン実行単位）。GPU 競合回避のためシリアル実行。"""
+    __tablename__ = "analysis_jobs"
+    __table_args__ = (
+        Index("ix_analysis_jobs_match_id", "match_id"),
+        Index("ix_analysis_jobs_status",   "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    job_type: Mapped[str] = mapped_column(String(40), nullable=False, default="full_pipeline")
+    # queued / running / done / failed
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    progress: Mapped[float] = mapped_column(Float, default=0.0)  # 0.0-1.0
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    enqueued_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    worker_host: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
+
+class ShuttleTrack(Base):
+    """TrackNet 由来のシャトル軌跡（フレーム単位）。"""
+    __tablename__ = "shuttle_tracks"
+    __table_args__ = (
+        Index("ix_shuttle_tracks_match_frame", "match_id", "frame_index"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    frame_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    ts_sec: Mapped[float] = mapped_column(Float, nullable=False)
+    x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class PoseFrame(Base):
+    """Pose 推定結果（side: player_a/player_b）。landmarks_json は JSON 文字列。"""
+    __tablename__ = "pose_frames"
+    __table_args__ = (
+        Index("ix_pose_frames_match_frame", "match_id", "frame_index"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    frame_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    ts_sec: Mapped[float] = mapped_column(Float, nullable=False)
+    side: Mapped[str] = mapped_column(String(20), nullable=False)  # player_a/player_b
+    landmarks_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class CenterOfGravity(Base):
+    """重心・バランス指標（Pose 由来の派生値）。"""
+    __tablename__ = "center_of_gravity"
+    __table_args__ = (
+        Index("ix_cog_match_frame", "match_id", "frame_index"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    frame_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    side: Mapped[str] = mapped_column(String(20), nullable=False)
+    left_pct: Mapped[float] = mapped_column(Float, default=0.5)
+    right_pct: Mapped[float] = mapped_column(Float, default=0.5)
+    forward_lean: Mapped[float] = mapped_column(Float, default=0.0)
+    stability_score: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class ShotInference(Base):
+    """ショット分類器の推論結果（stroke 単位）。"""
+    __tablename__ = "shot_inferences"
+    __table_args__ = (
+        Index("ix_shot_inferences_stroke", "stroke_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stroke_id: Mapped[int] = mapped_column(Integer, ForeignKey("strokes.id"), nullable=False)
+    shot_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    model_version: Mapped[str] = mapped_column(String(40), default="mock-v0")
