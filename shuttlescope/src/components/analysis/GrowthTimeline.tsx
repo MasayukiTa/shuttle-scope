@@ -147,6 +147,7 @@ export function GrowthTimeline({
       return {
         name,
         isYearBoundary,
+        fullDate: date.slice(2),
         valueA: pA ? (isRate ? parseFloat((pA.value * 100).toFixed(1)) : pA.value) : null,
         movingAvgA: pA?.moving_avg != null ? (isRate ? parseFloat((pA.moving_avg * 100).toFixed(1)) : pA.moving_avg) : null,
         valueB: pB ? (isRate ? parseFloat((pB.value * 100).toFixed(1)) : pB.value) : null,
@@ -162,6 +163,7 @@ export function GrowthTimeline({
       return {
         name,
         isYearBoundary,
+        fullDate: p.date.slice(2),
         value: isRate ? parseFloat((p.value * 100).toFixed(1)) : p.value,
         moving_avg: p.moving_avg != null ? (isRate ? parseFloat((p.moving_avg * 100).toFixed(1)) : p.moving_avg) : null,
       }
@@ -227,6 +229,7 @@ export function GrowthTimeline({
           />
           <Tooltip
             contentStyle={tooltipStyle}
+            labelFormatter={(label, payload: any) => payload?.[0]?.payload?.fullDate ?? label}
             formatter={(v: number, name: string) => {
               if (name === 'valueA') return [`${v}${cfg.unit}`, labelA]
               if (name === 'movingAvgA') return [`${v}${cfg.unit}`, `${labelA} 移動平均`]

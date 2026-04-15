@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from '@/hooks/useTheme'
+import { apiGet } from '@/api/client'
 import { UserRole } from '@/types'
 
 // 選手ロール選択時に player_id、コーチロール選択時に team_name を収集する共通ピッカー
@@ -36,8 +37,7 @@ export function RolePicker({
     if (!needsPlayers) return
     let cancelled = false
     setLoadErr(null)
-    fetch('/api/players')
-      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+    apiGet<{ data: Array<{ id: number; name: string; team: string | null }> }>('/players')
       .then((res) => {
         if (cancelled) return
         setPlayers((res?.data ?? []) as Array<{ id: number; name: string; team: string | null }>)

@@ -33,8 +33,8 @@ function SequencePill({ labels, winRate }: { labels: string[]; winRate: number }
       {labels.map((label, i) => (
         <span key={i} className="flex items-center gap-1">
           <span
-            className="px-2 py-0.5 rounded text-xs font-medium text-white"
-            style={{ backgroundColor: perfColor(winRate, 0.85) }}
+            className="px-2 py-0.5 rounded text-xs font-medium"
+            style={{ backgroundColor: perfColor(winRate, 0.85), color: '#ffffff' }}
           >
             {label}
           </span>
