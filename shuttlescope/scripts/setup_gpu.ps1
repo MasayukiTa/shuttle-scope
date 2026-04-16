@@ -31,5 +31,24 @@ Write-Host "[setup_gpu] MediaPipe / pynvml インストール"
 Write-Host "[setup_gpu] (任意) onnxruntime-gpu"
 & $venvPy -m pip install onnxruntime-gpu
 
+# MediaPipe Pose モデルファイルの自動ダウンロード
+$modelDir = Join-Path $repoRoot "backend\cv\models"
+$modelPath = Join-Path $modelDir "pose_landmarker_lite.task"
+if (-not (Test-Path $modelPath)) {
+    Write-Host "[setup_gpu] MediaPipe Pose モデルをダウンロード中..."
+    New-Item -ItemType Directory -Force -Path $modelDir | Out-Null
+    $modelUrl = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+    try {
+        Invoke-WebRequest -Uri $modelUrl -OutFile $modelPath -UseBasicParsing
+        Write-Host "[setup_gpu] モデルダウンロード完了: $modelPath"
+    } catch {
+        Write-Warning "[setup_gpu] モデルダウンロード失敗: $_"
+        Write-Warning "  手動でダウンロードしてください: $modelUrl"
+    }
+} else {
+    Write-Host "[setup_gpu] MediaPipe モデル既存: $modelPath"
+}
+
 Write-Host "[setup_gpu] 完了。以下で動作確認:"
 Write-Host "  `$env:SS_USE_GPU=1; & '$venvPy' -c 'import torch; print(torch.cuda.is_available())'"
+Write-Host "  `$env:SS_USE_GPU=1; & '$venvPy' -c 'from backend.cv.factory import get_tracknet; print(type(get_tracknet()).__name__)'"

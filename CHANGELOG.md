@@ -14,6 +14,60 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-17
+
+### Video Window Rendering Quality (Secondary Monitor)
+
+- Fixed canvas overlay blur on high-DPI secondary monitors in the video extension window.
+  `PlayerPositionOverlay` and `ShuttleTrackOverlay` were setting `canvas.width` / `canvas.height` to CSS logical pixels, causing the browser to upscale the canvas by `devicePixelRatio` and producing visibly blurred YOLO bounding boxes, shuttle trail dots, and label text.
+  Both components now set canvas physical dimensions to `videoWidth × dpr` / `videoHeight × dpr`, apply `ctx.scale(dpr, dpr)` to keep drawing coordinates in logical pixels, and remove the `width` / `height` JSX attributes so sizing is managed entirely in the effect.
+  On a 4K external monitor (`dpr = 2.0`), canvas resolution doubles from 1920 × 1080 to 3840 × 2160 physical pixels, utilizing the display's full native resolution while the main 1080p window remains unaffected.
+
+### Multi-Monitor Selection UI
+
+- Added monitor selection support for the secondary video window when three or more displays are connected.
+  Previously `handleOpenVideoWindow` always picked the first non-primary display automatically, making it impossible to choose the target on a desktop with multiple external monitors.
+  The fix adds a `selectedDisplayId` state (initialized from `getDisplays()` to the first non-primary monitor) and a `<select>` dropdown that appears only when two or more non-primary displays are detected.
+  Single-monitor laptop setups (one external display) see no UI change; the dropdown only surfaces when a choice is meaningful.
+  The `openVideoWindow` call now routes to the user-selected display ID, with a fallback to the first non-primary if the state is uninitialised.
+
+### GPU Inference Backend — Missing Pieces Completed (RTX 5060 Ti Preparation)
+
+- Added `backend/cv/tracknet_openvino.py`: OpenVINO backend wrapper that adapts `tracknet/inference.py`'s `TrackNetInference` to the `TrackNetInferencer` Protocol.
+  Implements chunked frame processing (300-frame chunks with a 2-frame overlap) so 30-minute match videos are not loaded entirely into RAM before inference starts.
+  Frame indices are accumulated with a global offset to produce correct absolute timestamps across chunk boundaries.
+- Extended `backend/cv/factory.py` with an OpenVINO intermediate tier.
+  The new priority order is: Mock → CUDA (torch + RTX) → OpenVINO (iGPU / CPU, also works on K10) → CPU (classical CV) → Mock.
+  Previously the OpenVINO inference path in `tracknet/inference.py` was entirely disconnected from the factory used by the pipeline.
+- Added `backend/cv/tracknet_runner.py` and `backend/cv/mediapipe_runner.py`: thin runner modules that `cluster/tasks.py` was already referencing via `_safe_call` but which did not exist.
+  Each module calls `factory.get_tracknet()` / `factory.get_pose()`, runs inference, and returns a status dict; the factory handles backend selection transparently so the same runner works on X1 AI (CUDA path) and K10 (CPU / OpenVINO path).
+- Added `backend/pipeline/clips.py`: ffmpeg-based rally clip extractor.
+  Detects `h264_nvenc` availability at first call and caches the result; uses NVENC when `SS_USE_GPU=1` and NVENC is present, falls back to `libx264` otherwise.
+  K10 workers receive the CPU encode path automatically since `SS_USE_GPU=0` on that node.
+- Added `backend/pipeline/statistics.py`, `backend/pipeline/cog.py`, and `backend/pipeline/shot_classifier.py`: lightweight K10-targeted entry points for statistics aggregation, centre-of-gravity calculation, and shot classification.
+  Each delegates to the relevant `backend/cv/` implementation and returns `{"status": "skipped"}` gracefully when the underlying API is not yet implemented, preventing Ray task failures from aborting the full pipeline.
+- Updated `backend/requirements.txt`: added `mediapipe>=0.10.14` and `pynvml>=11.4` as explicit entries so they are present in all environments rather than only after running the GPU setup script manually.
+- Updated `scripts/setup_gpu.ps1` and `scripts/setup_gpu.sh`: both scripts now auto-download `pose_landmarker_lite.task` to `backend/cv/models/` after the pip installs, removing the manual download step that was previously required before `CudaPose` could initialise.
+  The shell script uses `curl` with a `wget` fallback and prints a clear warning rather than failing hard if neither tool is available.
+
+### Test Coverage Additions
+
+- Added six test cases to `backend/tests/test_cv_factory.py` covering: `OpenVINOTrackNet` raising `ImportError` without openvino installed; the factory falling through to CPU / Mock when OpenVINO weights are absent; `tracknet_runner` / `mediapipe_runner` importability and callability; `pipeline/clips`, `statistics`, `cog`, `shot_classifier` importability; `extract_clips` returning `skipped` on `rally_bounds=None`; and `run_tracknet` not raising on a non-existent video path.
+  All 11 active tests pass; 2 are correctly skipped when the relevant package (torch / openvino) is already installed.
+
+### Detailed Progress
+
+- Fixed Canvas DPI scaling in PlayerPositionOverlay and ShuttleTrackOverlay for high-DPI secondary monitors.
+- Added multi-monitor selection dropdown to video extension UI (shown only with 2+ non-primary displays).
+- Added tracknet_openvino.py with chunked frame processing and connected it to factory.py.
+- Extended factory.py with CUDA → OpenVINO → CPU → Mock priority chain.
+- Added tracknet_runner.py and mediapipe_runner.py to complete the cluster/tasks.py call chain.
+- Added pipeline/clips.py with automatic NVENC / libx264 selection.
+- Added pipeline/statistics.py, cog.py, and shot_classifier.py as K10-targeted pipeline stubs.
+- Updated requirements.txt with mediapipe and pynvml.
+- Added MediaPipe model auto-download to setup_gpu.ps1 and setup_gpu.sh.
+- Added six test cases to test_cv_factory.py covering new factory paths and module importability.
+
 ## 2026-04-16
 
 ### Analysis Bundles and Shared Data Flow
@@ -111,13 +165,39 @@ Read it together with:
 - Updated `.env.development` to point `DATABASE_URL` at the PostgreSQL instance, with the previous SQLite URL commented out as a rollback reference.
 - Updated `backend/requirements.txt` with organized sections covering core FastAPI / SQLAlchemy dependencies, PostgreSQL driver (`psycopg2-binary`), cluster utilities (`psutil`, `pyyaml`), and optional AI/reporting packages.
 
+### CV Inference Architecture Foundation
+
+- Added the CV inference factory (`backend/cv/factory.py`) as the single entry point for all CV backend selection.
+  Priority chain: `SS_CV_MOCK=1` → Mock, `SS_USE_GPU=1` → CUDA, fallback → CPU, final fallback → Mock.
+  All routers and pipeline code use only `get_tracknet()` / `get_pose()` so backend selection stays in one place.
+- Added `CpuTrackNet` (`cv/tracknet_cpu.py`): classical CV shuttle detection using HSV color filter, MOG2 background subtraction, contour matching, and HoughCircles fallback.
+  Missing frames are filled with linear interpolation so downstream consumers always receive a full-length sample list.
+- Added `CudaTrackNet` (`cv/tracknet_cuda.py`): PyTorch / cv2.cuda structure ready for real TrackNet weights.
+  Phase A delegates to `CpuTrackNet`; when actual `.pt` weights are placed and the TODO stub is completed, the GPU path activates automatically without touching the factory.
+- Added `CudaPose` (`cv/pose_cuda.py`) and `CpuPose` (`cv/pose_cpu.py`): MediaPipe Pose inferencer pair.
+  The CUDA variant uses MediaPipe Tasks GPU delegate; the CPU variant is the plain MediaPipe CPU path.
+  Both satisfy the `PoseInferencer` Protocol so the factory can swap them without caller changes.
+- Added `backend/tracknet/inference.py`: TrackNet inference wrapper with OpenVINO (GPU-preferred) → ONNX Runtime CPU → TensorFlow CPU priority chain.
+  Loads real badminton-tuned TrackNet checkpoint weights and exposes `predict_frames(frames)` returning per-frame zone / coordinate / confidence dicts.
+- Added `backend/yolo/inference.py`: YOLOv8 player detection wrapper with OpenVINO IR → ultralytics PT → custom ONNX CPU priority chain, per-frame court-side and depth-band assignment, and thread-safe locking for OpenVINO's stateful compiled model.
+- Added Ray remote task structure (`backend/cluster/tasks.py`) with `_maybe_remote` decorator: GPU-intensive tasks (`run_tracknet`, `run_mediapipe`, `num_gpus=1`) target the X1 AI GPU node; CPU tasks (`extract_clips`, `run_statistics`, `calc_center_of_gravity`, `classify_shots`, `num_cpus=1`) target K10 worker nodes.
+  Tasks degrade to synchronous execution when Ray is not initialized.
+- Added `backend/cluster/pipeline.py`: orchestration layer that calls tasks in parallel stages (TrackNet + MediaPipe concurrently, then clips, then statistics / CoG / shots concurrently) using Ray when live or sequential fallback otherwise.
+- Added `backend/pipeline/video_pipeline.py` and `backend/pipeline/jobs.py`: `run_pipeline()` and `execute_job()` coordinate full per-match analysis runs (TrackNet → ShuttleTrack DB, Pose → PoseFrame + CenterOfGravity DB, shot classification → ShotInference DB), with `AnalysisJob` status tracking (running → done / failed), error recording, and idempotent delete-before-insert.
+- Added `backend/benchmark/devices.py`: compute device probe layer (`probe_all()`) covering CPU (psutil), NVIDIA GPU (pynvml), OpenVINO devices (iGPU / dGPU), ONNX Runtime CUDA EP, and Ray worker nodes.
+  Results are cached for 60 seconds to avoid repeated probe overhead during dashboard polling.
+- Added `scripts/setup_gpu.ps1` and `scripts/setup_gpu.sh`: GPU environment setup scripts that install PyTorch (CUDA 12.4 index), MediaPipe, and pynvml into the backend venv.
+
 ### Detailed Progress
 - Refined research analytics interactions and Markov persistence.
 - Added analysis bundles and response-cache foundation.
 - Added condition tracking and analytics workflow.
 - Expanded condition analysis and tagging workflows.
 - Added expert labeler and secure package sync flow.
-- Added pipeline cluster and CV execution foundation.
+- Added CV inference factory, CpuTrackNet / CudaTrackNet, CpuPose / CudaPose, TrackNet inference wrapper, YOLO inference wrapper.
+- Added Ray remote task definitions and cluster pipeline orchestrator.
+- Added video pipeline, job tracking, and benchmark device probe layer.
+- Added GPU setup scripts (Windows PowerShell and Linux shell).
 - Added benchmark and DB maintenance workflows.
 - Added RallyClipNavigator for timestamp-based video segment navigation.
 - Added QuickSummaryCard with five rule-based between-set coaching signals.

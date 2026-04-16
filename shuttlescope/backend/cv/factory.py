@@ -2,9 +2,10 @@
 
 選択優先順位:
     SS_CV_MOCK=1      → 常に Mock を返す (テスト / 非 CUDA 開発機)
-    SS_USE_GPU=1      → CUDA 実装を試行 → ImportError/RuntimeError で CPU → 最終 Mock
-    SS_USE_GPU=0      → CPU 実装を試行 → ImportError/RuntimeError で Mock
+    SS_USE_GPU=1      → CUDA を試行 → 失敗時 OpenVINO → 失敗時 CPU → 最終 Mock
+    SS_USE_GPU=0      → OpenVINO を試行 → 失敗時 CPU → 最終 Mock
 
+OpenVINO は CUDA 不在の K10 ワーカーでも動作する（CPU モードにフォールバック）。
 routers / pipeline は必ず get_tracknet() / get_pose() のみを使うこと。
 """
 from __future__ import annotations
@@ -24,7 +25,10 @@ def _settings():
 
 
 def get_tracknet() -> TrackNetInferencer:
-    """TrackNet 実装を返す。失敗時は順次フォールバック。"""
+    """TrackNet 実装を返す。失敗時は順次フォールバック。
+
+    優先順: Mock > CUDA(torch) > OpenVINO > CPU(classical CV) > Mock
+    """
     s = _settings()
 
     # 最優先: Mock
@@ -34,7 +38,7 @@ def get_tracknet() -> TrackNetInferencer:
         logger.info("[cv.factory] TrackNet: Mock を使用 (SS_CV_MOCK=1)")
         return MockTrackNet()
 
-    # GPU 経路
+    # CUDA 経路（SS_USE_GPU=1 かつ torch + CUDA 利用可能時）
     if int(s.ss_use_gpu) == 1:
         try:
             from backend.cv.tracknet_cuda import CudaTrackNet
@@ -43,9 +47,23 @@ def get_tracknet() -> TrackNetInferencer:
             logger.info("[cv.factory] TrackNet: CUDA 実装を使用")
             return impl
         except (ImportError, RuntimeError) as exc:
-            logger.warning("[cv.factory] CUDA TrackNet 使用不可: %s — CPU にフォールバック", exc)
+            logger.warning(
+                "[cv.factory] CUDA TrackNet 使用不可: %s — OpenVINO にフォールバック", exc
+            )
 
-    # CPU 経路
+    # OpenVINO 経路（CUDA 不在でも動作。K10 CPU でもフォールバックあり）
+    try:
+        from backend.cv.tracknet_openvino import OpenVINOTrackNet
+
+        impl = OpenVINOTrackNet()
+        logger.info("[cv.factory] TrackNet: OpenVINO 実装を使用")
+        return impl
+    except (ImportError, RuntimeError) as exc:
+        logger.warning(
+            "[cv.factory] OpenVINO TrackNet 使用不可: %s — CPU にフォールバック", exc
+        )
+
+    # CPU 経路（classical CV、どの環境でも動作）
     try:
         from backend.cv.tracknet_cpu import CpuTrackNet
 
@@ -63,7 +81,10 @@ def get_tracknet() -> TrackNetInferencer:
 
 
 def get_pose() -> PoseInferencer:
-    """Pose 実装を返す。失敗時は順次フォールバック。"""
+    """Pose 実装を返す。失敗時は順次フォールバック。
+
+    優先順: Mock > CUDA(MediaPipe GPU) > CPU(MediaPipe CPU) > Mock
+    """
     s = _settings()
 
     if int(s.ss_cv_mock) == 1:
