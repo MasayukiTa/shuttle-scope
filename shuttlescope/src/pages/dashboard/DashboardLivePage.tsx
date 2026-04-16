@@ -7,6 +7,7 @@ import { IntervalReport } from '@/components/analysis/IntervalReport'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { RallyPickerModal } from '@/components/analysis/RallyPickerModal'
 import { RecommendationRanking } from '@/components/analysis/RecommendationRanking'
+import { QuickSummaryCard } from '@/components/analysis/QuickSummaryCard'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -132,6 +133,15 @@ export function DashboardLivePage({ playerId, matches }: Props) {
               </div>
             </div>
           </div>
+
+          {/* コーチ向け一言カード（試合選択後に常時表示） */}
+          {flashMatchId && (
+            <QuickSummaryCard
+              matchId={flashMatchId}
+              asOfSet={flashSet}
+              asOfRally={flashRallyNum ? Number(flashRallyNum) : undefined}
+            />
+          )}
 
           {flashMatchId ? (
             <div className={`${card} rounded-lg p-4`}>

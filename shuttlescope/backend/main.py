@@ -59,6 +59,8 @@ from backend.routers import conditions as conditions_router
 from backend.routers import condition_tags as condition_tags_router
 from backend.routers import expert as expert_router
 from backend.routers import db_maintenance as db_maintenance_router
+from backend.routers import review as review_router
+from backend.routers import data_package as data_package_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -432,6 +434,10 @@ app.include_router(condition_tags_router.router)
 # Expert Labeler Phase 1（コーチ・アナリスト専用アノテーション）
 app.include_router(expert_router.router, prefix="/api")
 app.include_router(db_maintenance_router.router, prefix="/api")
+# B: 高速レビュー導線 / D: セット間支援
+app.include_router(review_router.router, prefix="/api")
+# E: データ資産化 JSON パッケージ
+app.include_router(data_package_router.router, prefix="/api")
 
 
 

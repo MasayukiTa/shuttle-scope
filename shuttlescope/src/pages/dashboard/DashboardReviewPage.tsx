@@ -11,6 +11,7 @@ import { RallySequencePatterns } from '@/components/analysis/RallySequencePatter
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { useState, useCallback } from 'react'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
+import { RallyClipNavigator } from '@/components/analysis/RallyClipNavigator'
 import { useReviewBundle } from '@/hooks/useReviewBundle'
 import { ReviewBundleProvider } from '@/contexts/ReviewBundleContext'
 
@@ -145,6 +146,26 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
               <p className="text-gray-500 text-sm text-center py-4">試合を選択するとスコア推移が表示されます</p>
             )}
           </div>
+        </div>
+      </ErrorBoundary>
+
+      {/* STEP 3.5: ラリークリップナビゲーター */}
+      <ErrorBoundary>
+        <div>
+          <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
+            STEP 3.5 — ラリークリップ動画ジャンプ
+          </p>
+          {selectedMatchId ? (
+            <RallyClipNavigator
+              matchId={selectedMatchId}
+              playerAName="選手"
+              playerBName={matches.find((m) => m.match_id === selectedMatchId)?.opponent ?? 'B'}
+            />
+          ) : (
+            <div className="bg-gray-800 rounded-lg p-4">
+              <p className="text-gray-500 text-sm text-center py-2">試合を選択するとラリー動画ジャンプが使えます</p>
+            </div>
+          )}
         </div>
       </ErrorBoundary>
 
