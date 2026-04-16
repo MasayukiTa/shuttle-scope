@@ -61,6 +61,7 @@ from backend.routers import expert as expert_router
 from backend.routers import db_maintenance as db_maintenance_router
 from backend.routers import review as review_router
 from backend.routers import data_package as data_package_router
+from backend.routers import cluster as cluster_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -438,6 +439,8 @@ app.include_router(db_maintenance_router.router, prefix="/api")
 app.include_router(review_router.router, prefix="/api")
 # E: データ資産化 JSON パッケージ
 app.include_router(data_package_router.router, prefix="/api")
+# クラスタ管理 API
+app.include_router(cluster_router.router, prefix="/api")
 
 
 

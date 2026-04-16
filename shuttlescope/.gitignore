@@ -24,6 +24,7 @@ __pycache__/
 .env.*.local
 videos/
 reports/
+migrate_log.txt
 
 # YOLO / CV model assets
 yolov8n.pt
