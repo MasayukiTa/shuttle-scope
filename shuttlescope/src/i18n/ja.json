@@ -1728,5 +1728,28 @@
       "manual_auto": "手動+自動"
     }
   },
-  "pipeline_meta": {}
+  "pipeline_meta": {},
+  "benchmark": {
+    "title": "ベンチマーク",
+    "detect_devices": "デバイスを検出",
+    "select_targets": "計測ターゲットを選択",
+    "run": "ベンチマーク実行",
+    "running": "計測中...",
+    "result": "計測結果",
+    "unavailable": "利用不可",
+    "no_result": "結果なし",
+    "device_types": {
+      "cpu": "CPU",
+      "igpu": "内蔵GPU",
+      "dgpu": "外部GPU",
+      "ray_worker": "Rayワーカー"
+    },
+    "targets": {
+      "tracknet": "TrackNet",
+      "pose": "姿勢推定",
+      "pipeline_full": "パイプライン全体",
+      "clip_extract": "クリップ抽出",
+      "statistics": "統計解析"
+    }
+  }
 }

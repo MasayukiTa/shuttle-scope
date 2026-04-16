@@ -12,6 +12,19 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
 import { RolePicker } from '@/components/common/RolePicker'
+import { DeviceSelector } from '@/components/benchmark/DeviceSelector'
+import { TargetSelector } from '@/components/benchmark/TargetSelector'
+import { ResultMatrix } from '@/components/benchmark/ResultMatrix'
+import { BenchmarkProgress } from '@/components/benchmark/BenchmarkProgress'
+import {
+  getDevices,
+  runBenchmark,
+  getJob,
+  ComputeDevice,
+  BenchmarkJob,
+  BenchmarkTarget,
+} from '@/api/benchmark'
+import { getDbStats, runDbMaintenance, setAutoVacuum, DbStats } from '@/api/db'
 
 type PlayerSortKey = 'name' | 'team' | 'nationality' | 'world_ranking' | 'is_target'
 type BenchmarkItem = { fps: number; avg_ms: number; p95_ms: number; backend: string; samples: number } | { error: string }
@@ -149,9 +162,19 @@ export function SettingsPage() {
   const [backupResult, setBackupResult] = useState<string | null>(null)
   const [backupRunning, setBackupRunning] = useState(false)
 
-  // CV ベンチマーク
+  // CV ベンチマーク（旧）
   const [benchmarkRunning, setBenchmarkRunning] = useState(false)
   const [benchmarkResult, setBenchmarkResult] = useState<{ yolo: BenchmarkItem; tracknet: BenchmarkItem; tracking?: BenchmarkItem } | null>(null)
+
+  // 新ベンチマーク UI 用ステート
+  const [bmDevices, setBmDevices] = useState<ComputeDevice[]>([])
+  const [bmSelectedDevices, setBmSelectedDevices] = useState<string[]>([])
+  const [bmTargets, setBmTargets] = useState<BenchmarkTarget[]>(['tracknet'])
+  const [bmNFrames, setBmNFrames] = useState(30)
+  const [bmJobId, setBmJobId] = useState<string | null>(null)
+  const [bmJob, setBmJob] = useState<BenchmarkJob | null>(null)
+  const [bmRunning, setBmRunning] = useState(false)
+  const [bmError, setBmError] = useState<string | null>(null)
   const [cvBatchConfirm, setCvBatchConfirm] = useState<{
     label: string
     estimatedHours: number
@@ -279,6 +302,50 @@ export function SettingsPage() {
     }
   }
 
+  // ─── 新ベンチマーク関数 ───────────────────────────────────────────────────────
+
+  /** デバイス一覧を取得してステートに反映する */
+  async function fetchBmDevices() {
+    try {
+      const devs = await getDevices()
+      setBmDevices(devs)
+      // available なデバイスをデフォルト選択
+      setBmSelectedDevices(devs.filter((d) => d.available).map((d) => d.device_id))
+    } catch (_e) {
+      setBmError('デバイス取得に失敗しました')
+    }
+  }
+
+  /** ベンチマークジョブを開始する */
+  async function startBenchmark() {
+    if (bmSelectedDevices.length === 0 || bmTargets.length === 0) return
+    setBmRunning(true)
+    setBmJob(null)
+    setBmJobId(null)
+    setBmError(null)
+    try {
+      const jobId = await runBenchmark(bmSelectedDevices, bmTargets, bmNFrames)
+      setBmJobId(jobId)
+    } catch (_e) {
+      setBmError('ベンチマーク開始に失敗しました')
+      setBmRunning(false)
+    }
+  }
+
+  /** ポーリング時にジョブ状態を取得する */
+  async function pollBmJob() {
+    if (!bmJobId) return
+    try {
+      const job = await getJob(bmJobId)
+      setBmJob(job)
+      if (job.status === 'done' || job.status === 'failed') {
+        setBmRunning(false)
+      }
+    } catch (_e) {
+      // ポーリングエラーは無視して次のポーリングに任せる
+    }
+  }
+
   // バッチ fps 選択時に処理時間を試算し、長い場合は確認ダイアログを出す
   // measuredFps: ベンチマーク実測値（未計測なら保守的デフォルト）
   function selectBatchFps(
@@ -311,6 +378,18 @@ export function SettingsPage() {
     queryClient.invalidateQueries()
   }
 
+  // DB ステータス
+  const { data: dbStats, refetch: refetchDbStats } = useQuery<DbStats>({
+    queryKey: ['db-stats'],
+    queryFn: () => getDbStats() as Promise<DbStats>,
+    enabled: activeTab === 'data',
+    refetchInterval: activeTab === 'data' ? 30000 : false,
+  })
+  const [dbMaintRunning, setDbMaintRunning] = useState(false)
+  const [dbMaintResult, setDbMaintResult] = useState<{ freed_mb: number; freed_pages: number } | null>(null)
+  const [dbAvRunning, setDbAvRunning] = useState(false)
+  const [dbAvMessage, setDbAvMessage] = useState<string | null>(null)
+
   // クラウドフォルダ内パッケージ一覧
   const { data: cloudPackagesData, refetch: refetchCloudPackages } = useQuery({
     queryKey: ['sync-cloud-packages'],
@@ -319,6 +398,34 @@ export function SettingsPage() {
   })
   const cloudPackages = (cloudPackagesData as any)?.data ?? []
   const cloudFolderConfigured = (cloudPackagesData as any)?.configured ?? false
+
+  async function handleSetAutoVacuum(mode: 'incremental' | 'off') {
+    setDbAvRunning(true)
+    setDbAvMessage(null)
+    try {
+      const res = await setAutoVacuum(mode) as any
+      setDbAvMessage(res.message ?? (res.error ? `エラー: ${res.error}` : '完了'))
+      refetchDbStats()
+    } catch (e) {
+      setDbAvMessage('設定に失敗しました')
+    } finally {
+      setDbAvRunning(false)
+    }
+  }
+
+  async function handleDbMaintenance() {
+    setDbMaintRunning(true)
+    setDbMaintResult(null)
+    try {
+      const res = await runDbMaintenance()
+      setDbMaintResult({ freed_mb: (res as any).freed_mb ?? 0, freed_pages: (res as any).freed_pages ?? 0 })
+      refetchDbStats()
+    } catch (e) {
+      setDbMaintResult({ freed_mb: 0, freed_pages: 0 })
+    } finally {
+      setDbMaintRunning(false)
+    }
+  }
 
   async function handleExportMatch() {
     if (exportMode === 'change_set') {
@@ -1011,17 +1118,19 @@ export function SettingsPage() {
               </h3>
               <div className="flex gap-2">
                 {([
-                  { value: 'auto', label: 'Auto (OpenVINO → ONNX → TensorFlow)' },
-                  { value: 'tensorflow_cpu', label: 'TensorFlow CPU / Intel' },
-                  { value: 'openvino', label: 'OpenVINO (Intel GPU / CPU)' },
-                  { value: 'onnx_cpu', label: 'ONNX CPU' },
+                  { value: 'auto',           label: 'Auto (CUDA → OpenVINO → ONNX → TF)' },
+                  { value: 'cuda',           label: 'CUDA (NVIDIA GPU)' },
+                  { value: 'openvino',       label: 'OpenVINO (Intel GPU / CPU)' },
+                  { value: 'onnx_cpu',       label: 'ONNX Runtime CPU' },
+                  { value: 'onnx_cuda',      label: 'ONNX Runtime CUDA' },
+                  { value: 'tensorflow_cpu', label: 'TensorFlow CPU' },
                 ] as const).map((opt) => (
                   <button
                     key={opt.value}
                     onClick={() => updateSettings({ tracknet_backend: opt.value })}
-                    className={`flex-1 py-2 px-3 rounded text-sm border transition-colors ${
+                    className={`py-1.5 px-3 rounded text-xs border transition-colors ${
                       appSettings.tracknet_backend === opt.value
-                        ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                        ? 'border-blue-500 bg-blue-600 text-white'
                         : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
                     }`}
                   >
@@ -1154,162 +1263,73 @@ export function SettingsPage() {
               </div>
             </div>
 
-            {/* ─── CV 解析レート設定 ─── */}
+            {/* ─── ベンチマーク（新 UI） ─── */}
             <div className={`${card} rounded-lg p-4 border ${borderLine} space-y-4`}>
               <div className="flex items-center justify-between">
                 <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
                   <Zap size={14} className="text-yellow-400" />
-                  解析レート設定
+                  {t('benchmark.title')}
                 </h3>
+                {/* デバイス検出ボタン */}
                 <button
-                  onClick={runCvBenchmark}
-                  disabled={benchmarkRunning}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-wait transition-colors"
+                  onClick={fetchBmDevices}
+                  disabled={bmRunning}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
                 >
-                  {benchmarkRunning ? (
-                    <><RotateCcw size={11} className="animate-spin" /> 計測中…（約10秒）</>
-                  ) : (
-                    <><Play size={11} /> ベンチマーク実行</>
-                  )}
+                  {t('benchmark.detect_devices')}
                 </button>
               </div>
-              <p className="text-xs text-gray-500">ハードウェアの実測値に基づいて最適なレートを選択できます。</p>
 
-              {/* ベンチマーク結果 */}
-              {benchmarkResult && (
-                <div className={`grid grid-cols-3 gap-3 text-xs rounded p-3 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
-                  {(['yolo', 'tracknet', 'tracking'] as const).map((key) => {
-                    const item = benchmarkResult[key]
-                    if (!item) return null
-                    const label = key === 'yolo' ? 'YOLO'
-                      : key === 'tracknet' ? 'TrackNet'
-                      : '外観追跡 (Hue+体格)'
-                    return (
-                      <div key={key}>
-                        <p className={`font-medium mb-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{label}</p>
-                        {'error' in item ? (
-                          <p className="text-red-400">{item.error}</p>
-                        ) : (
-                          <>
-                            <p className="text-green-300 font-mono font-bold">{item.fps} fps</p>
-                            <p className={isLight ? 'text-gray-500' : 'text-gray-500'}>{item.avg_ms}ms avg / p95={item.p95_ms}ms</p>
-                            <p className={`text-[10px] mt-0.5 ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>{item.backend}</p>
-                          </>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
+              {/* エラー表示 */}
+              {bmError && (
+                <p className="text-xs text-red-400">{bmError}</p>
               )}
 
-              {/* YOLO 解析レート */}
-              {(() => {
-                const yoloMeasured = benchmarkResult && !('error' in benchmarkResult.yolo)
-                  ? (benchmarkResult.yolo as { fps: number }).fps : null
-                const realtimeOpts = [10, 30, 60]
-                const batchOpts    = [5, 10, 15, 30, 60]
-                return (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium">YOLO — プレイヤー位置解析</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>リアルタイム（fps）<span className="ml-1 text-gray-600">高スペPC向け</span></p>
-                        <div className="flex flex-wrap gap-1">
-                          {realtimeOpts.map((v) => {
-                            const disabled = yoloMeasured !== null && v > yoloMeasured
-                            return (
-                              <button
-                                key={v}
-                                disabled={disabled}
-                                onClick={() => !disabled && updateSettings({ yolo_realtime_fps: v })}
-                                title={disabled ? `実測 ${yoloMeasured}fps のため選択不可` : undefined}
-                                className={`px-2 py-0.5 rounded text-xs border transition-colors ${
-                                  disabled
-                                    ? 'border-gray-700 text-gray-600 cursor-not-allowed'
-                                    : (appSettings as any).yolo_realtime_fps === v
-                                      ? 'border-blue-500 bg-blue-900/30 text-blue-300'
-                                      : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
-                                }`}
-                              >{v}</button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                      <div>
-                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>バッチ（fps）</p>
-                        <div className="flex flex-wrap gap-1">
-                          {batchOpts.map((v) => (
-                            <button
-                              key={v}
-                              onClick={() => selectBatchFps('YOLO バッチ', v, yoloMeasured, 16, (val) => updateSettings({ yolo_batch_fps: val }))}
-                              className={`px-2 py-0.5 rounded text-xs border transition-colors ${
-                                (appSettings as any).yolo_batch_fps === v
-                                  ? 'border-blue-500 bg-blue-900/30 text-blue-300'
-                                  : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
-                              }`}
-                            >{v}</button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })()}
+              {/* デバイス選択 */}
+              {bmDevices.length > 0 && (
+                <DeviceSelector
+                  devices={bmDevices}
+                  selected={bmSelectedDevices}
+                  onChange={setBmSelectedDevices}
+                />
+              )}
 
-              {/* TrackNet 軌跡密度 */}
-              {(() => {
-                const tnMeasured = benchmarkResult && !('error' in benchmarkResult.tracknet)
-                  ? (benchmarkResult.tracknet as { fps: number }).fps : null
-                const realtimeOpts: number[] = [10, 30, 60]
-                const batchOpts: number[]    = [1, 2, 5, 10, 30, 60]
-                return (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium">TrackNet — シャトル軌跡密度</p>
-                    <p className="text-[11px] text-gray-500">数値 = 1秒あたりの推論点数。バッチは時間がかかるほど密になります。</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>リアルタイム（fps）<span className="ml-1 text-gray-600">高スペPC向け</span></p>
-                        <div className="flex flex-wrap gap-1">
-                          {realtimeOpts.map((v) => {
-                            const disabled = tnMeasured !== null && v > tnMeasured
-                            return (
-                              <button
-                                key={v}
-                                disabled={disabled}
-                                onClick={() => !disabled && updateSettings({ tracknet_realtime_fps: v })}
-                                title={disabled ? `実測 ${tnMeasured?.toFixed(1)}fps のため選択不可` : undefined}
-                                className={`px-2 py-0.5 rounded text-xs border transition-colors ${
-                                  disabled
-                                    ? 'border-gray-700 text-gray-600 cursor-not-allowed'
-                                    : (appSettings as any).tracknet_realtime_fps === v
-                                      ? 'border-blue-500 bg-blue-900/30 text-blue-300'
-                                      : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
-                                }`}
-                              >{v}</button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                      <div>
-                        <p className={`text-[11px] mb-1.5 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>バッチ（fps）</p>
-                        <div className="flex flex-wrap gap-1">
-                          {batchOpts.map((v) => (
-                            <button
-                              key={v}
-                              onClick={() => selectBatchFps('TrackNet バッチ', v, tnMeasured, 3.7, (val) => updateSettings({ tracknet_batch_fps: val }))}
-                              className={`px-2 py-0.5 rounded text-xs border transition-colors ${
-                                (appSettings as any).tracknet_batch_fps === v
-                                  ? 'border-blue-500 bg-blue-900/30 text-blue-300'
-                                  : `border-gray-600 ${isLight ? 'bg-gray-200 text-gray-600' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
-                              }`}
-                            >{v}</button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })()}
+              {/* ターゲット選択 */}
+              <TargetSelector
+                selected={bmTargets}
+                onTargetsChange={setBmTargets}
+                nFrames={bmNFrames}
+                onNFramesChange={setBmNFrames}
+              />
+
+              {/* 実行ボタン */}
+              <button
+                onClick={startBenchmark}
+                disabled={bmRunning || bmSelectedDevices.length === 0 || bmTargets.length === 0}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs text-white rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-wait transition-colors"
+              >
+                {bmRunning ? (
+                  <><RotateCcw size={11} className="animate-spin" /> {t('benchmark.running')}</>
+                ) : (
+                  <><Play size={11} /> {t('benchmark.run')}</>
+                )}
+              </button>
+
+              {/* プログレスバー（実行中のみ表示） */}
+              <BenchmarkProgress
+                running={bmRunning}
+                job={bmJob}
+                onPoll={pollBmJob}
+              />
+
+              {/* 結果マトリクス */}
+              {bmJob && (bmJob.status === 'done' || bmJob.status === 'failed') && (
+                <ResultMatrix
+                  job={bmJob}
+                  devices={bmDevices.filter((d) => bmSelectedDevices.includes(d.device_id))}
+                  targets={bmTargets}
+                />
+              )}
             </div>
           </div>
         )}
@@ -2081,6 +2101,101 @@ export function SettingsPage() {
                 </div>
               </section>
             )}
+
+            {/* ── DB メンテナンス ──────────────────────────────────── */}
+            <section className={`${card} rounded-lg p-5 space-y-4`}>
+              <div className="flex items-center gap-2">
+                <HardDrive size={16} className="text-purple-400" />
+                <h2 className="text-base font-semibold">DB メンテナンス</h2>
+              </div>
+
+              {/* DB 状態 */}
+              {dbStats?.supported && (
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className={textSecondary}>DB サイズ</span>
+                    <span className="font-mono">{dbStats.file_size_mb} MB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className={textSecondary}>WAL サイズ</span>
+                    <span className="font-mono">{dbStats.wal_size_mb} MB</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className={textSecondary}>空きページ</span>
+                    <span className={`font-mono ${dbStats.freelist_ratio > 0.1 ? 'text-orange-400' : ''}`}>
+                      {dbStats.freelist_count} ({(dbStats.freelist_ratio * 100).toFixed(1)}%)
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className={textSecondary}>auto_vacuum</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-mono text-xs ${dbStats.auto_vacuum === 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {dbStats.auto_vacuum === 0 ? 'OFF' : dbStats.auto_vacuum === 1 ? 'FULL' : 'INCREMENTAL'}
+                      </span>
+                      {/* トグルボタン */}
+                      {dbStats.auto_vacuum !== 2 ? (
+                        <button
+                          onClick={() => handleSetAutoVacuum('incremental')}
+                          disabled={dbAvRunning}
+                          title="INCREMENTAL に変更（VACUUM を実行・数秒かかります）"
+                          className="text-[10px] px-2 py-0.5 rounded bg-yellow-600 hover:bg-yellow-500 text-white disabled:opacity-40 transition-colors"
+                        >
+                          {dbAvRunning ? <RotateCcw size={10} className="animate-spin inline" /> : 'INCREMENTAL に変更'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleSetAutoVacuum('off')}
+                          disabled={dbAvRunning}
+                          title="OFF に戻す"
+                          className="text-[10px] px-2 py-0.5 rounded bg-gray-600 hover:bg-gray-500 text-white disabled:opacity-40 transition-colors"
+                        >
+                          {dbAvRunning ? <RotateCcw size={10} className="animate-spin inline" /> : 'OFF に戻す'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {dbAvMessage && (
+                <div className="text-xs rounded px-3 py-2 bg-blue-900/40 text-blue-300">
+                  {dbAvMessage}
+                </div>
+              )}
+
+              <p className="text-xs text-gray-400 leading-relaxed">
+                <span className="font-medium text-gray-300">DB 最適化：</span>
+                WAL チェックポイントと incremental vacuum を実行します（auto_vacuum=INCREMENTAL 時に空きページを回収）。
+                大量削除後や定期メンテとして実行してください。
+              </p>
+
+              {dbMaintResult && (
+                <div className={`text-xs rounded px-3 py-2 ${
+                  dbMaintResult.freed_mb > 0
+                    ? 'bg-green-900/40 text-green-300'
+                    : 'bg-gray-700 text-gray-300'
+                }`}>
+                  {dbMaintResult.freed_mb > 0
+                    ? `${dbMaintResult.freed_pages} ページ（${dbMaintResult.freed_mb} MB）を回収しました`
+                    : '回収可能な空きページはありませんでした'}
+                </div>
+              )}
+
+              <button
+                onClick={handleDbMaintenance}
+                disabled={dbMaintRunning || dbAvRunning}
+                className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors ${
+                  dbMaintRunning || dbAvRunning
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    : 'bg-purple-700 hover:bg-purple-600 text-white'
+                }`}
+              >
+                {dbMaintRunning
+                  ? <><RotateCcw size={13} className="animate-spin" /> 実行中…</>
+                  : <><Zap size={13} /> DB 最適化を実行</>
+                }
+              </button>
+            </section>
 
           </div>
         )}

@@ -3,6 +3,7 @@ out/
 dist/
 .venv/
 *.db
+*.db.compact
 *.db-wal
 *.db-shm
 *.sqlite

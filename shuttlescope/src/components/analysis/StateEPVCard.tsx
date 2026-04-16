@@ -43,7 +43,9 @@ export function StateEPVCard({ playerId, filters }: Props) {
   const data = bundled ?? indiv.data
   const isLoading = provided ? bundleLoading : indiv.isLoading
   const meta = data?.meta
-  const reliableRows = (data?.data ?? []).filter((r) => r.reliability >= 0.5).slice(0, 12)
+  // バンドル経由は data.data が dict 形式の場合があるため Array.isArray でガード
+  const rawRows = Array.isArray(data?.data) ? data.data : []
+  const reliableRows = rawRows.filter((r) => r.reliability >= 0.5).slice(0, 12)
 
   return (
     <div className={`${card} rounded-lg p-4 space-y-3`}>

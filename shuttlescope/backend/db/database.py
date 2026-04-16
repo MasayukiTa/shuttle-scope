@@ -1,8 +1,12 @@
 """SQLAlchemy データベース設定"""
+import logging
+import os
 from sqlalchemy import create_engine, event, text, inspect
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from backend.config import settings
 import uuid as _uuid_mod
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -35,6 +39,8 @@ if "sqlite" in settings.DATABASE_URL and ":memory:" not in settings.DATABASE_URL
             cur.execute("PRAGMA temp_store=MEMORY")
             cur.execute("PRAGMA cache_size=-20000")
             cur.execute("PRAGMA mmap_size=268435456")
+            # auto_vacuum=INCREMENTAL: 削除後の空きページを定期的に回収できるようにする
+            cur.execute("PRAGMA auto_vacuum=INCREMENTAL")
             cur.close()
         except Exception:
             pass
@@ -357,6 +363,186 @@ def run_db_migrations(db_url: str | None = None) -> None:
         print(f"[migration] WARNING: Alembic migration failed: {e}")
 
 
+def get_db_stats(eng=None) -> dict:
+    """DB ファイルの状態を返す（SQLite のみ）。
+
+    返却フィールド:
+      file_size_mb  : DBファイルのサイズ（MB）。ファイルが存在しない場合は 0。
+      page_count    : 総ページ数
+      freelist_count: 未使用（削除済み）ページ数
+      auto_vacuum   : 0=OFF / 1=FULL / 2=INCREMENTAL
+      wal_frames    : WAL ファイルの未チェックポイントフレーム数（概算）
+    """
+    bind = eng or engine
+    if "sqlite" not in str(bind.url):
+        return {"supported": False}
+
+    # DB ファイルパスの取得（:memory: でなければ URL から）
+    url_str = str(bind.url)
+    db_path = url_str.replace("sqlite:///", "").replace("sqlite://", "")
+    file_size_mb = round(os.path.getsize(db_path) / 1_048_576, 2) if os.path.isfile(db_path) else 0.0
+    wal_path = db_path + "-wal"
+    wal_size_mb = round(os.path.getsize(wal_path) / 1_048_576, 2) if os.path.isfile(wal_path) else 0.0
+
+    with bind.connect() as conn:
+        page_count    = conn.execute(text("PRAGMA page_count")).scalar() or 0
+        freelist_count = conn.execute(text("PRAGMA freelist_count")).scalar() or 0
+        auto_vacuum   = conn.execute(text("PRAGMA auto_vacuum")).scalar() or 0
+        page_size     = conn.execute(text("PRAGMA page_size")).scalar() or 4096
+
+    return {
+        "supported": True,
+        "file_size_mb": file_size_mb,
+        "wal_size_mb": wal_size_mb,
+        "page_count": page_count,
+        "freelist_count": freelist_count,
+        "freelist_ratio": round(freelist_count / max(page_count, 1), 4),
+        "auto_vacuum": int(auto_vacuum),
+        "page_size": int(page_size),
+    }
+
+
+def run_maintenance(eng=None) -> dict:
+    """WAL チェックポイント + incremental_vacuum を実行する（軽量メンテ）。
+
+    - wal_checkpoint(TRUNCATE): WAL フレームをメイン DB に書き込み WAL を切り詰める
+    - incremental_vacuum: auto_vacuum=INCREMENTAL 設定時に空きページを回収する
+    - auto_vacuum が OFF (0) の場合は incremental_vacuum をスキップし WARN のみ
+
+    戻り値: 実行前後の freelist_count 等の統計情報
+    """
+    bind = eng or engine
+    if "sqlite" not in str(bind.url):
+        return {"supported": False, "message": "SQLite 以外は対象外"}
+
+    before = get_db_stats(bind)
+
+    with bind.connect() as conn:
+        # WAL チェックポイント（未コミットフレームをメイン DB に書き込む）
+        conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+
+        av_mode = conn.execute(text("PRAGMA auto_vacuum")).scalar() or 0
+        if int(av_mode) == 0:
+            logger.warning(
+                "run_maintenance: auto_vacuum=OFF のため incremental_vacuum をスキップします。"
+                " bootstrap_database() を再実行して INCREMENTAL に切り替えてください。"
+            )
+        else:
+            conn.execute(text("PRAGMA incremental_vacuum"))
+
+        conn.commit()
+
+    after = get_db_stats(bind)
+
+    freed_pages = before.get("freelist_count", 0) - after.get("freelist_count", 0)
+    page_size = after.get("page_size", 4096)
+    freed_mb = round(freed_pages * page_size / 1_048_576, 3)
+
+    return {
+        "supported": True,
+        "auto_vacuum_mode": int(av_mode),
+        "freed_pages": freed_pages,
+        "freed_mb": freed_mb,
+        "before": before,
+        "after": after,
+    }
+
+
+def set_auto_vacuum_mode(target_mode: int, eng=None) -> dict:
+    """auto_vacuum モードを変更して VACUUM を実行する。
+
+    target_mode: 0=OFF / 1=FULL / 2=INCREMENTAL
+
+    SQLite の auto_vacuum 変更は VACUUM 後に有効になる。
+    SQLAlchemy のプールを一時解放してから sqlite3 直接接続で VACUUM を実行する。
+    """
+    bind = eng or engine
+    if "sqlite" not in str(bind.url):
+        return {"supported": False, "message": "SQLite 以外は対象外"}
+
+    url_str = str(bind.url)
+    db_path = url_str.replace("sqlite:///", "").replace("sqlite://", "")
+
+    mode_labels = {0: "OFF", 1: "FULL", 2: "INCREMENTAL"}
+    before = get_db_stats(bind)
+    current_mode = before.get("auto_vacuum", -1)
+
+    if current_mode == target_mode:
+        return {
+            "supported": True,
+            "changed": False,
+            "auto_vacuum": target_mode,
+            "message": f"既に {mode_labels.get(target_mode, target_mode)} です",
+            "stats": before,
+        }
+
+    try:
+        # 1. WAL を先にチェックポイントして全コミット済みデータをメインファイルへ
+        with bind.connect() as conn:
+            conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+            conn.commit()
+
+        # 2. SQLAlchemy プールを完全解放（VACUUM が排他ロックを取れるようにする）
+        bind.dispose()
+
+        # 3. sqlite3 直接接続で auto_vacuum を設定してから VACUUM
+        #    PRAGMA auto_vacuum の変更は VACUUM 実行時に有効になる
+        import sqlite3 as _sqlite3
+        con = _sqlite3.connect(db_path, timeout=60)
+        con.execute(f"PRAGMA auto_vacuum={target_mode}")
+        con.commit()
+        con.execute("VACUUM")
+        con.commit()
+        con.close()
+
+        logger.info("set_auto_vacuum_mode: %s → %s (VACUUM 完了)", mode_labels.get(current_mode), mode_labels.get(target_mode))
+        after = get_db_stats(bind)
+        return {
+            "supported": True,
+            "changed": True,
+            "auto_vacuum": target_mode,
+            "message": f"{mode_labels.get(current_mode, current_mode)} → {mode_labels.get(target_mode, target_mode)} に変更しました",
+            "stats": after,
+        }
+    except Exception as exc:
+        logger.warning("set_auto_vacuum_mode: 失敗: %s", exc)
+        return {
+            "supported": True,
+            "changed": False,
+            "error": str(exc),
+            "stats": before,
+        }
+
+
+def _ensure_auto_vacuum_incremental(eng) -> None:
+    """auto_vacuum を INCREMENTAL に設定する（既に設定済みなら no-op）。
+
+    SQLite の auto_vacuum モード変更は VACUUM 実行後にしか有効にならないため、
+    モードが 0 (OFF) のときのみ PRAGMA + VACUUM を実行する。
+    FULL (1) → INCREMENTAL (2) の切替は VACUUM なしでは不可のため同様に実行。
+    """
+    if ":memory:" in str(eng.url):
+        return
+    try:
+        with eng.connect() as conn:
+            current = conn.execute(text("PRAGMA auto_vacuum")).scalar()
+            if int(current or 0) == 2:
+                return  # 既に INCREMENTAL
+            logger.info("_ensure_auto_vacuum_incremental: auto_vacuum=%s → INCREMENTAL に変更します（VACUUM 実行）", current)
+            conn.execute(text("PRAGMA auto_vacuum=INCREMENTAL"))
+            conn.commit()
+        # VACUUM はトランザクション外で実行する必要がある
+        import sqlite3
+        url_str = str(eng.url)
+        db_path = url_str.replace("sqlite:///", "").replace("sqlite://", "")
+        con = sqlite3.connect(db_path)
+        con.execute("VACUUM")
+        con.close()
+        logger.info("_ensure_auto_vacuum_incremental: 完了")
+    except Exception as exc:
+        logger.warning("_ensure_auto_vacuum_incremental: 失敗（無視）: %s", exc)
+
+
 def bootstrap_database(eng=None, db_url: str | None = None) -> None:
     """Initialize the database safely across fresh, legacy, and versioned states."""
     bind = eng or engine
@@ -375,12 +561,14 @@ def bootstrap_database(eng=None, db_url: str | None = None) -> None:
         _ensure_unique_indexes(bind)
         _ensure_analytics_indexes(bind)
         stamp_db_head(url)
+        _ensure_auto_vacuum_incremental(bind)
         return
 
     if has_version_table:
         run_db_migrations(url)
         _ensure_unique_indexes(bind)
         _ensure_analytics_indexes(bind)
+        _ensure_auto_vacuum_incremental(bind)
         return
 
     create_tables(bind)
@@ -388,3 +576,4 @@ def bootstrap_database(eng=None, db_url: str | None = None) -> None:
     run_db_migrations(url)
     _ensure_unique_indexes(bind)
     _ensure_analytics_indexes(bind)
+    _ensure_auto_vacuum_incremental(bind)
