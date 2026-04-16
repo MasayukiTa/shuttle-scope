@@ -100,6 +100,16 @@ def _migrate(args: argparse.Namespace) -> int:
         print(f"ERROR: PostgreSQL 接続失敗: {e}")
         return 1
 
+    # ── PostgreSQL の boolean カラムを事前収集 ────────────────────────
+    from sqlalchemy import Boolean
+    pg_inspector = inspect(pg_engine)
+    bool_cols: Dict[str, set] = {}  # table -> set of boolean column names
+    for tname in pg_inspector.get_table_names():
+        cols = pg_inspector.get_columns(tname)
+        bools = {c["name"] for c in cols if isinstance(c["type"], Boolean)}
+        if bools:
+            bool_cols[tname] = bools
+
     # ── テーブル一覧取得 ──────────────────────────────────────────────
     sqlite_tables = set(inspect(sqlite_engine).get_table_names())
     pg_tables = set(inspect(pg_engine).get_table_names())
@@ -151,14 +161,16 @@ def _migrate(args: argparse.Namespace) -> int:
 
                 # バッチ挿入
                 cols = list(rows[0].keys()) if rows else []
+                table_bools = bool_cols.get(table, set())
                 inserted = 0
                 for i in range(0, count, args.batch_size):
                     batch = [dict(r) for r in rows[i : i + args.batch_size]]
-                    # None → NULL 変換（SQLite の "" を NULL に変換しない）
-                    for row in batch:
-                        for k, v in row.items():
-                            # SQLite の Boolean (0/1) → PostgreSQL は自動変換
-                            pass
+                    # SQLite の boolean (0/1 integer) → PostgreSQL の bool に変換
+                    if table_bools:
+                        for row in batch:
+                            for col in table_bools:
+                                if col in row and row[col] is not None:
+                                    row[col] = bool(row[col])
                     pg_conn.execute(
                         text(f"INSERT INTO {table} ({','.join(cols)}) "
                              f"VALUES ({','.join(':' + c for c in cols)}) "
