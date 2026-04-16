@@ -12,6 +12,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
 import { RolePicker } from '@/components/common/RolePicker'
+import { ClusterSettingsPanel } from '@/components/cluster/ClusterSettingsPanel'
 import { DeviceSelector } from '@/components/benchmark/DeviceSelector'
 import { TargetSelector } from '@/components/benchmark/TargetSelector'
 import { ResultMatrix } from '@/components/benchmark/ResultMatrix'
@@ -115,7 +116,7 @@ export function SettingsPage() {
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
-  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'account'>(() => ((role === 'analyst' || role === 'coach') ? 'players' : 'account'))
+  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'cluster' | 'account'>(() => ((role === 'analyst' || role === 'coach') ? 'players' : 'account'))
   // 選手ロールは 選手管理・要レビュー タブを閲覧不可（個人情報保護）
   // コーチロールは自チーム選手のみ管理可能
   const canManagePlayers = role === 'analyst' || role === 'coach'
@@ -772,6 +773,7 @@ export function SettingsPage() {
             { key: 'tracknet' as const, label: t('tracknet.tab_label') },
             { key: 'sharing' as const, label: t('sharing.tab_label') },
             { key: 'data' as const, label: 'データ管理' },
+            { key: 'cluster' as const, label: t('cluster.tab') },
             { key: 'account' as const, label: 'アカウント設定' },
           ]).map((tab) => (
             <button
@@ -2278,6 +2280,11 @@ export function SettingsPage() {
             </section>
 
           </div>
+        )}
+
+        {/* クラスタタブ */}
+        {activeTab === 'cluster' && (
+          <ClusterSettingsPanel />
         )}
 
         {/* アカウント設定タブ */}
