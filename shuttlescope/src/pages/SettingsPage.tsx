@@ -413,6 +413,38 @@ export function SettingsPage() {
     }
   }
 
+  // JSON パッケージ インポート
+  const [pkgImportFile, setPkgImportFile] = useState<File | null>(null)
+  const [pkgImportRunning, setPkgImportRunning] = useState(false)
+  const [pkgImportResult, setPkgImportResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  async function handlePkgImport(force = false) {
+    if (!pkgImportFile) return
+    setPkgImportRunning(true)
+    setPkgImportResult(null)
+    try {
+      const text = await pkgImportFile.text()
+      const res = await fetch(`/api/import/package${force ? '?force=true' : ''}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: text,
+      })
+      const data = await res.json()
+      if (data.conflict) {
+        setPkgImportResult({ success: false, message: `既存試合と競合: force=true で上書きできます。` })
+      } else if (data.success) {
+        setPkgImportResult({ success: true, message: `インポート完了: ラリー ${data.rallies_imported} 件、ストローク ${data.strokes_imported} 件` })
+        setPkgImportFile(null)
+      } else {
+        setPkgImportResult({ success: false, message: data.detail ?? 'インポートに失敗しました' })
+      }
+    } catch (e) {
+      setPkgImportResult({ success: false, message: 'ネットワークエラーが発生しました' })
+    } finally {
+      setPkgImportRunning(false)
+    }
+  }
+
   async function handleDbMaintenance() {
     setDbMaintRunning(true)
     setDbMaintResult(null)
@@ -2101,6 +2133,54 @@ export function SettingsPage() {
                 </div>
               </section>
             )}
+
+            {/* ── JSON パッケージ インポート ──────────────────────── */}
+            <section>
+              <h2 className="text-base font-semibold">JSON パッケージ インポート</h2>
+              <p className={`text-xs ${textMuted} mt-1 mb-3`}>
+                試合一覧ページからエクスポートした JSON ファイルをインポートします。
+              </p>
+              <div className={`space-y-3 p-3 rounded border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-gray-900/40 border-gray-700'}`}>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={(e) => {
+                    setPkgImportFile(e.target.files?.[0] ?? null)
+                    setPkgImportResult(null)
+                  }}
+                  className={`block w-full text-xs ${textMuted} file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium ${
+                    isLight ? 'file:bg-gray-200 file:text-gray-700' : 'file:bg-gray-700 file:text-gray-300'
+                  }`}
+                />
+                {pkgImportFile && (
+                  <p className={`text-xs ${textSecondary}`}>選択: {pkgImportFile.name}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handlePkgImport(false)}
+                    disabled={!pkgImportFile || pkgImportRunning}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    <Upload size={12} />
+                    {pkgImportRunning ? 'インポート中...' : 'インポート'}
+                  </button>
+                  {pkgImportResult && !pkgImportResult.success && pkgImportResult.message.includes('競合') && (
+                    <button
+                      onClick={() => handlePkgImport(true)}
+                      disabled={pkgImportRunning}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-orange-600 hover:bg-orange-500 disabled:opacity-40"
+                    >
+                      上書きで再インポート
+                    </button>
+                  )}
+                </div>
+                {pkgImportResult && (
+                  <p className={`text-xs font-medium ${pkgImportResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                    {pkgImportResult.message}
+                  </p>
+                )}
+              </div>
+            </section>
 
             {/* ── DB メンテナンス ──────────────────────────────────── */}
             <section className={`${card} rounded-lg p-5 space-y-4`}>

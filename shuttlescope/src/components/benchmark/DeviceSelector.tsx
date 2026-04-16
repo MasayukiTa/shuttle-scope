@@ -59,7 +59,7 @@ export function DeviceSelector({ devices, selected, onChange }: Props) {
               disabled
                 ? 'border-gray-700 text-gray-600 cursor-not-allowed bg-gray-900/30'
                 : isChecked
-                ? 'border-blue-500 bg-blue-900/20 text-blue-200'
+                ? 'border-blue-500 bg-blue-600 text-white'
                 : 'border-gray-600 bg-gray-800/40 text-gray-300 hover:border-gray-500'
             }`}
           >
@@ -72,7 +72,7 @@ export function DeviceSelector({ devices, selected, onChange }: Props) {
             />
             <DeviceIcon type={dev.device_type} />
             <span className="flex-1">{dev.label}</span>
-            <span className="text-[11px] text-gray-500">{t(`benchmark.device_types.${dev.device_type}`)}</span>
+            <span className={`text-[11px] ${isChecked ? 'text-blue-100' : 'text-gray-500'}`}>{t(`benchmark.device_types.${dev.device_type}`)}</span>
             {disabled && (
               <span className="text-[10px] text-gray-600 ml-1">{t('benchmark.unavailable')}</span>
             )}

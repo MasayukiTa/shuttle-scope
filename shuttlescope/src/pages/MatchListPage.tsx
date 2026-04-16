@@ -941,6 +941,14 @@ export function MatchListPage() {
                         <Download size={16} />
                       </button>
                     )}
+                    <a
+                      href={`/api/export/package?match_id=${m.id}`}
+                      download
+                      title="JSONパッケージ出力"
+                      className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-green-600 hover:bg-green-50' : 'text-gray-400 hover:text-green-400 hover:bg-gray-700'}`}
+                    >
+                      <Download size={16} />
+                    </a>
                     <button
                       onClick={() => handleStartEdit(m)}
                       className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}

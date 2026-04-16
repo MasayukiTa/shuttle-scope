@@ -10,7 +10,7 @@
   GET  /api/sessions/my-info                      → LAN IP / ポート情報
   GET  /api/sessions/{code}/devices               → 接続デバイス一覧
   POST /api/sessions/{code}/devices/{pid}/set-role         → connection_role 変更
-  POST /api/sessions/{code}/devices/{pid}/activate-camera  → カメラ有効化（1台制限）
+  POST /api/sessions/{code}/devices/{pid}/activate-camera  → カメラ有効化（最大4台）
   POST /api/sessions/{code}/devices/{pid}/deactivate-camera→ カメラ降格
   POST /api/sessions/{code}/regenerate-password            → パスワード再生成
 """
@@ -434,6 +434,9 @@ def set_device_role(
     return {"success": True, "data": _participant_to_dict(participant)}
 
 
+_MAX_ACTIVE_CAMERAS = 4  # サブモニタ使用時に全方向カバー可能な上限
+
+
 @router.post("/sessions/{code}/devices/{participant_id}/activate-camera")
 def activate_camera(
     code: str,
@@ -441,7 +444,11 @@ def activate_camera(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """指定デバイスをアクティブカメラに昇格。既存の active_camera は camera_candidate に降格。"""
+    """指定デバイスをアクティブカメラに昇格（最大 4 台同時）。
+
+    既存のアクティブカメラは降格しない。昇格済み台数が上限 (_MAX_ACTIVE_CAMERAS) に
+    達している場合は 409 を返す。降格は /deactivate-camera で手動で行う。
+    """
     _check_operator_access(request, code)
     session = (
         db.query(SharedSession)
@@ -451,23 +458,28 @@ def activate_camera(
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
 
-    # 既存の active_camera を降格（1台制限）
-    existing_active = (
+    # 上限チェック
+    active_count = (
         db.query(SessionParticipant)
         .filter(
             SessionParticipant.session_id == session.id,
             SessionParticipant.connection_role == "active_camera",
         )
-        .all()
+        .count()
     )
-    for p in existing_active:
-        p.connection_role = "camera_candidate"
-        p.connection_state = "idle"
+    if active_count >= _MAX_ACTIVE_CAMERAS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"アクティブカメラが上限（{_MAX_ACTIVE_CAMERAS} 台）に達しています。先に別のカメラを降格してください。",
+        )
 
     # 対象デバイスを昇格
     target = db.get(SessionParticipant, participant_id)
     if not target or target.session_id != session.id:
         raise HTTPException(status_code=404, detail="参加者が見つかりません")
+    if target.connection_role == "active_camera":
+        # 既に active の場合は冪等に成功を返す
+        return {"success": True, "data": _participant_to_dict(target)}
 
     target.connection_role = "active_camera"
     target.connection_state = "sending_video"
