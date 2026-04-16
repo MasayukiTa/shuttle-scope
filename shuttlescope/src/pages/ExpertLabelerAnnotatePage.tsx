@@ -339,7 +339,7 @@ function AnnotateContent() {
     <div className={`h-full w-full overflow-y-auto ${bgBase}`}>
       <div className="max-w-6xl mx-auto p-3 md:p-5">
         {/* ヘッダ: 進捗 */}
-        <header className="flex items-center justify-between mb-3 gap-3">
+        <header className="flex items-center justify-between mb-3 gap-3 flex-wrap">
           <button
             className={`${btnLarge} ${btnSecondary}`}
             onClick={() => navigate('/expert-labeler')}
@@ -349,6 +349,33 @@ function AnnotateContent() {
           </button>
           <div className="text-sm md:text-base font-semibold">
             {t('expert_labeler.clip_progress', { current: index + 1, total: clips.length })}
+          </div>
+          {/* エクスポート */}
+          <div className="flex gap-2 ml-auto">
+            <a
+              href={`/api/v1/expert/export?match_id=${matchId}&fmt=json`}
+              target="_blank"
+              rel="noreferrer"
+              className={`text-xs px-3 py-2 rounded border transition-colors ${
+                isLight
+                  ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                  : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              JSON
+            </a>
+            <a
+              href={`/api/v1/expert/export?match_id=${matchId}&fmt=csv`}
+              target="_blank"
+              rel="noreferrer"
+              className={`text-xs px-3 py-2 rounded border transition-colors ${
+                isLight
+                  ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                  : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              CSV
+            </a>
           </div>
         </header>
 
