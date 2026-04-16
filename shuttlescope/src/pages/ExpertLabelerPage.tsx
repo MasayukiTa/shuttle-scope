@@ -122,12 +122,12 @@ function ExpertLabelerContent() {
               const done = v.miss_count > 0 && v.labeled_count >= v.miss_count
               const label = v.title || v.opponent || v.date || `Match ${v.match_id}`
               return (
-                <li key={String(v.match_id)}>
+                <li key={String(v.match_id)} className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => navigate(`/expert-labeler/${v.match_id}`)}
                     // iPad 向け最小タップ領域 48px 以上
-                    className={`w-full text-left p-4 rounded-lg border transition-colors hover:shadow ${cardBg}`}
+                    className={`flex-1 text-left p-4 rounded-lg border transition-colors hover:shadow ${cardBg}`}
                     style={{ minHeight: '72px' }}
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -153,6 +153,35 @@ function ExpertLabelerContent() {
                       →
                     </div>
                   </button>
+                  {/* エクスポートボタン（ラベルが 1 件以上のとき表示） */}
+                  {v.labeled_count > 0 && (
+                    <div className="flex flex-col gap-1 justify-center">
+                      <a
+                        href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=json`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`text-[10px] px-2 py-1 rounded border text-center transition-colors ${
+                          isLight
+                            ? 'border-gray-300 text-gray-500 hover:bg-gray-100'
+                            : 'border-gray-600 text-gray-400 hover:bg-gray-700'
+                        }`}
+                      >
+                        JSON
+                      </a>
+                      <a
+                        href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=csv`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`text-[10px] px-2 py-1 rounded border text-center transition-colors ${
+                          isLight
+                            ? 'border-gray-300 text-gray-500 hover:bg-gray-100'
+                            : 'border-gray-600 text-gray-400 hover:bg-gray-700'
+                        }`}
+                      >
+                        CSV
+                      </a>
+                    </div>
+                  )}
                 </li>
               )
             })}

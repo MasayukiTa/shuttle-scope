@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart2, User, Award, Activity, TrendingUp, Target } from 'lucide-react'
+import { BarChart2, User, Award, Activity, TrendingUp, Target, FileDown } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { Player, AnalysisFilters } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -215,8 +215,8 @@ export function DashboardShell() {
           )}
         </div>
 
-        {/* 選手セレクター */}
-        <div className="flex items-center gap-3">
+        {/* 選手セレクター + エクスポートボタン */}
+        <div className="flex flex-wrap items-center gap-3">
           <User size={16} className={`${textMuted} shrink-0`} />
           <label className={`text-sm ${textMuted} shrink-0`}>選手：</label>
           <SearchableSelect
@@ -234,6 +234,40 @@ export function DashboardShell() {
             loading={loadingPlayers}
             className="min-w-[280px]"
           />
+          {/* エクスポートボタン（選手選択後のみ表示） */}
+          {selectedPlayerId && (
+            <div className="flex items-center gap-1.5 ml-auto">
+              <FileDown size={13} className={textMuted} />
+              {/* スカウティングPDF — アナリスト・コーチのみ */}
+              {(role === 'analyst' || role === 'coach') && (
+                <a
+                  href={`/api/reports/scouting?player_id=${selectedPlayerId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                    isLight
+                      ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                      : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  スカウティング PDF
+                </a>
+              )}
+              {/* 成長レポート — 全ロール */}
+              <a
+                href={`/api/reports/player_growth?player_id=${selectedPlayerId}`}
+                target="_blank"
+                rel="noreferrer"
+                className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                  isLight
+                    ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                    : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                成長レポート JSON
+              </a>
+            </div>
+          )}
         </div>
       </div>
 
