@@ -193,23 +193,38 @@ class TestDeviceManagement:
         assert data["connection_role"] == "active_camera"
         assert data["connection_state"] == "sending_video"
 
-    def test_only_one_active_camera(self, lan_client_with_session):
-        """2台目有効化で1台目が降格される"""
+    def test_up_to_four_active_cameras_allowed(self, lan_client_with_session):
+        """active_camera は最大4台まで同時許可される"""
         client, code, password, _ = lan_client_with_session
         pid1 = self._join(client, code, password, "端末1")
         pid2 = self._join(client, code, password, "端末2")
+        pid3 = self._join(client, code, password, "端末3")
+        pid4 = self._join(client, code, password, "端末4")
 
-        # 1台目をアクティブ化
         client.post(f"/api/sessions/{code}/devices/{pid1}/activate-camera")
-
-        # 2台目をアクティブ化（1台目は降格されるはず）
         client.post(f"/api/sessions/{code}/devices/{pid2}/activate-camera")
+        client.post(f"/api/sessions/{code}/devices/{pid3}/activate-camera")
+        client.post(f"/api/sessions/{code}/devices/{pid4}/activate-camera")
 
         devices_resp = client.get(f"/api/sessions/{code}/devices")
         devices = {d["id"]: d for d in devices_resp.json()["data"]}
 
-        assert devices[pid1]["connection_role"] == "camera_candidate"  # 降格
-        assert devices[pid2]["connection_role"] == "active_camera"     # 有効化
+        assert devices[pid1]["connection_role"] == "active_camera"
+        assert devices[pid2]["connection_role"] == "active_camera"
+        assert devices[pid3]["connection_role"] == "active_camera"
+        assert devices[pid4]["connection_role"] == "active_camera"
+
+    def test_fifth_active_camera_rejected(self, lan_client_with_session):
+        """5台目の active_camera は 409 で拒否される"""
+        client, code, password, _ = lan_client_with_session
+        pids = [self._join(client, code, password, f"端末{i}") for i in range(1, 6)]
+
+        for pid in pids[:4]:
+            resp = client.post(f"/api/sessions/{code}/devices/{pid}/activate-camera")
+            assert resp.status_code == 200
+
+        resp = client.post(f"/api/sessions/{code}/devices/{pids[4]}/activate-camera")
+        assert resp.status_code == 409
 
     def test_deactivate_camera(self, lan_client_with_session):
         """カメラを camera_candidate に降格できる"""

@@ -808,3 +808,51 @@ class ShotInference(Base):
     shot_type: Mapped[str] = mapped_column(String(30), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     model_version: Mapped[str] = mapped_column(String(40), default="mock-v0")
+
+
+# ─── A Phase 1: ダブルス4人+シャトル時系列位置データ ─────────────────────────
+
+class PlayerPositionFrame(Base):
+    """ダブルス4人+シャトルの時系列位置データ (A Phase 1)。
+
+    frame_num はマッチ内の通し連番（カメラ fps × 経過秒）。
+    player_a/b はメインの2プレイヤー（シングルス・ダブルス共通）。
+    partner_a/b はダブルスのみ使用（シングルスは NULL）。
+    source: yolo_tracked / manual / interpolated
+    """
+    __tablename__ = "player_position_frames"
+    __table_args__ = (
+        Index("ix_ppf_match_frame", "match_id", "frame_num"),
+        Index("ix_ppf_rally", "rally_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    set_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("sets.id"), nullable=True)
+    rally_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("rallies.id"), nullable=True)
+    frame_num: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # プレイヤーA（サイドA）の正規化コート座標 (0.0〜1.0)
+    player_a_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    player_a_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # プレイヤーB（サイドB）の正規化コート座標
+    player_b_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    player_b_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # ダブルスパートナーA（シングルスは NULL）
+    partner_a_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    partner_a_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # ダブルスパートナーB（シングルスは NULL）
+    partner_b_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    partner_b_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # シャトル座標（検出できない場合は NULL）
+    shuttle_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    shuttle_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # データソース種別
+    source: Mapped[str] = mapped_column(String(20), default="yolo_tracked")  # yolo_tracked/manual/interpolated
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

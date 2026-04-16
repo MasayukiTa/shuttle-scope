@@ -647,11 +647,13 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
   const handleApprove = (p: SessionParticipant) => post(`/devices/${p.id}/approve`)
   const handleReject  = (p: SessionParticipant) => post(`/devices/${p.id}/reject`)
+  const MAX_ACTIVE_CAMERAS = 4
+
   const handleActivateCamera = async (p: SessionParticipant) => {
-    // If another camera is already active, show handoff confirmation
-    const currentActive = participants.find((x) => x.connection_role === 'active_camera')
-    if (currentActive && currentActive.id !== p.id) {
-      setHandoffTarget(p)
+    // 最大4台まで同時 active_camera を許可。上限到達時は手動で降格を促す。
+    const activeCount = participants.filter((x) => x.connection_role === 'active_camera').length
+    if (activeCount >= MAX_ACTIVE_CAMERAS && p.connection_role !== 'active_camera') {
+      setHandoffTarget(p)  // 上限超過時のみ確認ダイアログ（降格先を選ぶ）
       return
     }
     await post(`/devices/${p.id}/activate-camera`)
@@ -659,11 +661,14 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
   }
 
   const confirmHandoff = async () => {
+    // 上限超過時: 既存の active_camera を 1 台降格してから昇格する
     if (!handoffTarget) return
-    const currentActive = participants.find((x) => x.connection_role === 'active_camera')
-    if (currentActive) {
-      await post(`/devices/${currentActive.id}/deactivate-camera`)
-      sendMessage({ type: 'camera_deactivate', target_participant_id: currentActive.id })
+    const actives = participants.filter((x) => x.connection_role === 'active_camera')
+    if (actives.length >= MAX_ACTIVE_CAMERAS) {
+      // 最初の active を降格
+      const oldest = actives[0]
+      await post(`/devices/${oldest.id}/deactivate-camera`)
+      sendMessage({ type: 'camera_deactivate', target_participant_id: oldest.id })
     }
     await post(`/devices/${handoffTarget.id}/activate-camera`)
     requestCamera(handoffTarget.id)
