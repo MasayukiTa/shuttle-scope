@@ -451,14 +451,20 @@ def player_growth_insights(
         if eff is None or eff < 0.03:
             # growth-oriented ルール: 正方向効果のみ表示
             return
+        n_in, n_out = len(win_in), len(win_out)
+        wr_high = round(sum(win_in) / n_in, 3)
         cards.append({
-            "key": key,
+            # フロントエンド GrowthCard インターフェースに合わせたキー
+            "when_key": key,
+            "effect": f"+{round(eff * 100, 0):.0f}pp 勝率",
+            "sample_n": n_in + n_out,
+            # 詳細フィールド（デバッグ・将来拡張用）
             "i18n_key": i18n_key,
             "feature": feature_key,
-            "n_high": len(win_in),
-            "n_other": len(win_out),
-            "win_rate_high": round(sum(win_in) / len(win_in), 3),
-            "win_rate_other": round(sum(win_out) / len(win_out), 3),
+            "n_high": n_in,
+            "n_other": n_out,
+            "win_rate_high": wr_high,
+            "win_rate_other": round(sum(win_out) / n_out, 3),
             "lift": round(eff, 3),
             "frame": "growth_positive",
         })

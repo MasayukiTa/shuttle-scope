@@ -40,7 +40,8 @@ export function StateActionValueCard({ playerId, filters }: Props) {
   const data = bundled ?? indiv.data
   const isLoading = provided ? bundleLoading : indiv.isLoading
   const meta = data?.meta
-  const rows = (data?.data ?? []).slice(0, 10)
+  // バンドル経由は data.data が dict 形式の場合があるため Array.isArray でガード
+  const rows = (Array.isArray(data?.data) ? data.data : []).slice(0, 10)
 
   return (
     <div className={`${card} rounded-lg p-4 space-y-3`}>

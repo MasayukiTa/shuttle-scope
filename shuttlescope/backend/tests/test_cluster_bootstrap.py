@@ -30,27 +30,30 @@ def test_init_ray_noop_when_cluster_mode_off(monkeypatch, caplog):
     assert bootstrap.init_ray() is False
 
 
-def test_init_ray_handles_missing_ray(monkeypatch, caplog):
-    """ray 未インストール時に init_ray は WARN ログのみで例外を投げない"""
+def test_init_ray_handles_missing_ray(monkeypatch):
+    """ray 未インストール時に init_ray は WARN ログのみで例外を投げない。
+
+    bootstrap._import_ray() を monkeypatch して ImportError を確実に再現する。
+    caplog はスイート実行時に伝播が壊れるケースがあるため、
+    logger.warning を直接 monkeypatch して呼び出しを確認する。
+    """
     monkeypatch.setattr(bootstrap.settings, "ss_cluster_mode", "ray", raising=False)
-    # 多重 init ガードをリセット
     monkeypatch.setattr(bootstrap, "_ray_initialized", False, raising=False)
 
-    real_import = builtins.__import__
+    def _raise_import_error():
+        raise ImportError("simulated: ray not installed")
 
-    def _fake_import(name, *args, **kwargs):
-        if name == "ray" or name.startswith("ray."):
-            raise ImportError("simulated: ray not installed")
-        return real_import(name, *args, **kwargs)
+    monkeypatch.setattr(bootstrap, "_import_ray", _raise_import_error)
 
-    monkeypatch.setattr(builtins, "__import__", _fake_import)
+    # caplog に依存せず、logger.warning の呼び出し自体を記録する
+    warned: list[str] = []
+    monkeypatch.setattr(bootstrap.logger, "warning", lambda msg, *a, **kw: warned.append(msg % a if a else msg))
 
-    with caplog.at_level(logging.WARNING, logger=bootstrap.logger.name):
-        result = bootstrap.init_ray()
+    result = bootstrap.init_ray()
 
     assert result is False
-    # 何らかの WARN が出ていること
-    assert any(rec.levelno >= logging.WARNING for rec in caplog.records)
+    # WARN ログが 1 件以上出ていること (例外なしの証拠)
+    assert any("ray" in w.lower() for w in warned), f"期待する WARNING が記録されなかった: {warned}"
 
 
 def test_shutdown_ray_noop_when_not_initialized(monkeypatch):

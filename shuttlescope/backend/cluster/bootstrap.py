@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 _ray_initialized: bool = False
 
 
+def _import_ray():
+    """ray モジュールをインポートして返す（テストで monkeypatch 可能な単一ポイント）。"""
+    import ray  # noqa: F401
+    return ray
+
+
 def is_ray_available() -> bool:
     """ray パッケージが import 可能かを安全に判定する"""
     try:
@@ -47,9 +53,9 @@ def init_ray(address: Optional[str] = None) -> bool:
         logger.debug("init_ray: 既に初期化済み")
         return True
 
-    # ray を関数スコープで try-import
+    # ray を _import_ray() 経由で取得（テストで差し替え可能）
     try:
-        import ray  # type: ignore
+        ray = _import_ray()
     except Exception as exc:  # ImportError 以外もキャッチ
         logger.warning("init_ray: ray を import できません (%s)。同期フォールバックに切替。", exc)
         return False

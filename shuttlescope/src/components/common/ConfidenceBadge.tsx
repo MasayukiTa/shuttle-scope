@@ -19,15 +19,18 @@ interface ConfidenceBadgeProps {
 export function ConfidenceBadge({ sampleSize, compact = false, className }: ConfidenceBadgeProps) {
   const { t } = useTranslation()
 
+  // undefined / null / NaN を 0 に正規化（バックエンドが sample_n を省略した場合の保険）
+  const size = typeof sampleSize === 'number' && isFinite(sampleSize) ? sampleSize : 0
+
   let stars: string
   let label: string
   let colorClass: string
 
-  if (sampleSize < 500) {
+  if (size < 500) {
     stars = '★☆☆'
     label = t('confidence.low_label')
     colorClass = 'border-red-400 bg-red-900/30 text-red-300'
-  } else if (sampleSize < 2000) {
+  } else if (size < 2000) {
     stars = '★★☆'
     label = t('confidence.medium_label')
     colorClass = 'border-yellow-400 bg-yellow-900/30 text-yellow-300'
@@ -41,7 +44,7 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
     return (
       <button
         className={clsx('inline-flex items-center px-2 py-0.5 rounded border text-xs font-mono cursor-default', colorClass, className)}
-        title={`${label}（${t('confidence.sample_size')}: ${sampleSize.toLocaleString()}${t('confidence.strokes')}）`}
+        title={`${label}（${t('confidence.sample_size')}: ${size.toLocaleString()}${t('confidence.strokes')}）`}
         tabIndex={-1}
       >
         {stars}
@@ -54,7 +57,7 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
       <span className="font-mono">{stars}</span>
       <span>{label}</span>
       <span className="opacity-70">
-        ({t('confidence.sample_size')}: {sampleSize.toLocaleString()}{t('confidence.strokes')})
+        ({t('confidence.sample_size')}: {size.toLocaleString()}{t('confidence.strokes')})
       </span>
     </div>
   )

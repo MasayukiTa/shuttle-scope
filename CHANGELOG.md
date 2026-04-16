@@ -36,6 +36,19 @@ Read it together with:
 ### Validation and Stability
 - Continued the pattern of running build and full backend verification before large commits, keeping the codebase in a shippable internal state even while major features were landing.
 - Preserved green backend coverage while introducing large new surfaces in conditions, expert labeling, bundles, and secure sync.
+- Added benchmark-device and benchmark-runner test coverage so the new infrastructure-facing surfaces are not landing without backend guardrails.
+
+### Device Benchmarking and DB Maintenance
+- Added a benchmark execution foundation with device probing, synthetic benchmark targets, async job tracking, and a dedicated backend API for measuring available compute backends.
+- Added a benchmark UI in Settings with device selection, target selection, progress polling, and result matrices so operator machines can be characterized inside ShuttleScope rather than only through ad hoc scripts.
+- Added SQLite maintenance APIs and Settings controls for DB status, WAL / freelist visibility, incremental vacuum execution, and auto-vacuum mode changes.
+- Moved the SQLite bootstrap path toward `auto_vacuum=INCREMENTAL` and added maintenance-aware database utilities, which addresses the real file-bloat pattern caused by repeated write/delete cycles.
+
+### Analysis Reliability and Presentation
+- Fixed condition growth insight payloads so growth-oriented cards now match the frontend contract more closely instead of relying on partially mismatched field names.
+- Hardened bundled research-card rendering by guarding against non-array payload shapes in EPV and state-action views.
+- Improved confidence-badge handling so missing or malformed sample counts degrade safely instead of producing misleading or broken UI states.
+- Tightened cluster bootstrap test coverage so missing-Ray behavior and other bootstrap edge cases fail more explicitly during test runs.
 
 ### Detailed Progress
 - Refined research analytics interactions and Markov persistence.
@@ -43,6 +56,8 @@ Read it together with:
 - Added condition tracking and analytics workflow.
 - Expanded condition analysis and tagging workflows.
 - Added expert labeler and secure package sync flow.
+- Added pipeline cluster and CV execution foundation.
+- Added benchmark and DB maintenance workflows.
 
 ## 2026-04-15
 
