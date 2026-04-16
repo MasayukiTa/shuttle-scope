@@ -302,6 +302,8 @@ export function AnnotatorPage() {
   // P4: デュアルモニター
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
   const [videoWindowOpen, setVideoWindowOpen] = useState(false)
+  // 複数の非プライマリモニタがある場合にユーザーが選択した表示先ID
+  const [selectedDisplayId, setSelectedDisplayId] = useState<number | null>(null)
 
   // U-001: ブックマーク
   const [lastBookmarked, setLastBookmarked] = useState<number | null>(null)  // rally_id
@@ -1368,15 +1370,16 @@ export function AnnotatorPage() {
     const rawSrc = match?.video_local_path || match?.video_url || ''
     const src = normalizeVideoPath(rawSrc)
     if (!src || !window.shuttlescope?.openVideoWindow) return
-    const secondary = displays.find((d) => !d.isPrimary) ?? displays[0]
-    if (!secondary) return
+    // selectedDisplayId が未設定の場合は非プライマリの先頭にフォールバック
+    const targetId = selectedDisplayId ?? displays.find((d) => !d.isPrimary)?.id ?? displays[0]?.id
+    if (targetId == null) return
     const startTime = videoRef.current?.currentTime ?? 0  // 現在の再生位置を引き継ぐ
     const isPaused = videoRef.current?.paused ?? true      // 停止状態も引き継ぐ
-    window.shuttlescope.openVideoWindow(src, secondary.id, startTime, isPaused, matchId ? String(matchId) : undefined)
+    window.shuttlescope.openVideoWindow(src, targetId, startTime, isPaused, matchId ? String(matchId) : undefined)
     setVideoWindowOpen(true)
     // メイン側は video を保持したまま継続。別モニタは BroadcastChannel で
     // 時刻・再生状態・解析データをミラーするだけの「画面拡張」として動かす。
-  }, [match, displays, videoRef])
+  }, [match, displays, selectedDisplayId, videoRef])
 
   const handleCloseVideoWindow = useCallback(() => {
     window.shuttlescope?.closeVideoWindow?.()
@@ -1457,7 +1460,12 @@ export function AnnotatorPage() {
 
   // P4: ディスプレイ一覧取得
   useEffect(() => {
-    window.shuttlescope?.getDisplays?.()?.then?.((d: DisplayInfo[]) => setDisplays(d ?? []))
+    window.shuttlescope?.getDisplays?.()?.then?.((d: DisplayInfo[]) => {
+      setDisplays(d ?? [])
+      // 初期選択: 非プライマリの最初のモニタ（なければプライマリ）
+      const initial = d?.find((x) => !x.isPrimary) ?? d?.[0]
+      if (initial) setSelectedDisplayId(initial.id)
+    })
   }, [])
 
   // P4: 別ウィンドウが閉じられたら状態をリセット
@@ -1619,14 +1627,29 @@ export function AnnotatorPage() {
                 {t('dual_monitor.close')}
               </button>
             ) : (
-              <button
-                onClick={handleOpenVideoWindow}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-                title={t('dual_monitor.open')}
-              >
-                <MonitorPlay size={12} />
-                {t('dual_monitor.open')}
-              </button>
+              <div className="flex items-center gap-1">
+                {/* 非プライマリモニタが2台以上のときのみ選択UIを表示 */}
+                {displays.filter((d) => !d.isPrimary).length >= 2 && (
+                  <select
+                    value={selectedDisplayId ?? ''}
+                    onChange={(e) => setSelectedDisplayId(Number(e.target.value))}
+                    className="px-1 py-1 rounded text-xs bg-gray-700 text-gray-300 border border-gray-600 focus:outline-none focus:border-indigo-500"
+                    title={t('dual_monitor.select_display')}
+                  >
+                    {displays.filter((d) => !d.isPrimary).map((d) => (
+                      <option key={d.id} value={d.id}>{d.label}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  onClick={handleOpenVideoWindow}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                  title={t('dual_monitor.open')}
+                >
+                  <MonitorPlay size={12} />
+                  {t('dual_monitor.open')}
+                </button>
+              </div>
             )
           )}
           {/* 途中終了ボタン */}

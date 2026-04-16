@@ -81,15 +81,22 @@ export function PlayerPositionOverlay({
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+
+    // 高DPIモニタ対応: 物理ピクセル解像度でCanvasを確保してからスケーリング
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = videoWidth * dpr
+    canvas.height = videoHeight * dpr
+
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.scale(dpr, dpr)
+    ctx.clearRect(0, 0, videoWidth, videoHeight)
 
     if (!visible || !nearestFrame) return
 
-    const w = canvas.width
-    const h = canvas.height
+    const w = videoWidth
+    const h = videoHeight
 
     for (const player of nearestFrame.players) {
       const color = PLAYER_COLORS[player.label] ?? '#6b7280'
@@ -156,8 +163,6 @@ export function PlayerPositionOverlay({
     >
       <canvas
         ref={canvasRef}
-        width={videoWidth}
-        height={videoHeight}
         className="absolute inset-0"
         style={{ width: videoWidth, height: videoHeight }}
       />
