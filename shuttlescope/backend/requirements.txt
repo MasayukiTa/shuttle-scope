@@ -42,11 +42,18 @@ pytest-asyncio>=0.23.0
 # ONNX 推論（必須）
 onnxruntime>=1.17.0
 opencv-python>=4.9.0
-# OpenVINO アクセラレーション（任意）
+# OpenVINO アクセラレーション（X1 AI iGPU / K10 CPU でも動作）
 openvino>=2024.0; sys_platform != 'unsupported'
 # TensorFlow / tf2onnx: TrackNet の ONNX エクスポート時のみ必要
 # pip install tensorflow==2.15.1 tf2onnx==1.16.1
 # ※ インストール済み環境では freeze に含まれるが新規環境では任意
+
+# ── GPU 推論（CUDA 環境で setup_gpu.ps1 / setup_gpu.sh を実行して追加）───────
+# 以下は CPU 環境でも requirements.txt に記載しておく（環境依存で無視される）
+# torch / torchvision: CUDA 版は setup_gpu.ps1 で https://download.pytorch.org/whl/cu124 から導入
+# pip install torch torchvision  ← CPU 版フォールバック（GPU 非搭載 K10 向け）
+mediapipe>=0.10.14               # MediaPipe Pose（GPU delegate 対応版）
+pynvml>=11.4                     # NVIDIA GPU 監視（CUDA 非搭載環境では import をスキップ）
 
 # ── P4: YOLO プレイヤー検出 ───────────────────────────────────────
 # ultralytics が torch / torchvision を自動インストールする

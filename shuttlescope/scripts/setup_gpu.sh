@@ -27,5 +27,30 @@ echo "[setup_gpu] MediaPipe / pynvml インストール"
 echo "[setup_gpu] (任意) onnxruntime-gpu"
 "${VENV_PY}" -m pip install onnxruntime-gpu || true
 
+# MediaPipe Pose モデルファイルの自動ダウンロード
+MODEL_DIR="${REPO_ROOT}/backend/cv/models"
+MODEL_PATH="${MODEL_DIR}/pose_landmarker_lite.task"
+MODEL_URL="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+if [[ ! -f "${MODEL_PATH}" ]]; then
+    echo "[setup_gpu] MediaPipe Pose モデルをダウンロード中..."
+    mkdir -p "${MODEL_DIR}"
+    if command -v curl &>/dev/null; then
+        curl -fL -o "${MODEL_PATH}" "${MODEL_URL}" || {
+            echo "[setup_gpu] WARNING: モデルダウンロード失敗。手動でダウンロードしてください:" >&2
+            echo "  ${MODEL_URL}" >&2
+        }
+    elif command -v wget &>/dev/null; then
+        wget -q -O "${MODEL_PATH}" "${MODEL_URL}" || {
+            echo "[setup_gpu] WARNING: モデルダウンロード失敗。手動でダウンロードしてください:" >&2
+            echo "  ${MODEL_URL}" >&2
+        }
+    else
+        echo "[setup_gpu] WARNING: curl / wget が見つかりません。モデルを手動配置してください: ${MODEL_PATH}" >&2
+    fi
+else
+    echo "[setup_gpu] MediaPipe モデル既存: ${MODEL_PATH}"
+fi
+
 echo "[setup_gpu] 完了。以下で動作確認:"
 echo "  SS_USE_GPU=1 ${VENV_PY} -c 'import torch; print(torch.cuda.is_available())'"
+echo "  SS_USE_GPU=1 ${VENV_PY} -c 'from backend.cv.factory import get_tracknet; print(type(get_tracknet()).__name__)'"
