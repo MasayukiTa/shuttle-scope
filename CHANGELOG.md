@@ -50,6 +50,67 @@ Read it together with:
 - Improved confidence-badge handling so missing or malformed sample counts degrade safely instead of producing misleading or broken UI states.
 - Tightened cluster bootstrap test coverage so missing-Ray behavior and other bootstrap edge cases fail more explicitly during test runs.
 
+### Fast Review and In-Game Coach Support
+- Added RallyClipNavigator so analysts can jump directly to rally segments by video timestamp rather than scrubbing through raw footage.
+  The navigator uses the `localfile://` protocol for desktop local video access and ties clip boundaries to annotated rally records, turning annotation data into a navigation layer over existing video.
+- Added QuickSummaryCard with five rule-based coaching signals (momentum shift, serve pattern, unforced error rate, return pressure, fatigue indicator) targeted at between-set intervals.
+  Cards are intentionally rule-based rather than model-driven so they surface reliably even when sample sizes are small enough to make statistical inference unreliable.
+  Growth-oriented framing is preserved throughout — no direct weakness labels appear in any card.
+
+### Data Asset Packaging
+- Added a JSON data package export / import workflow that bundles a match together with its linked players, sets, rallies, and strokes into a single portable file.
+  The workflow is auth-aware and handles cross-device package movement through the existing secure sync infrastructure, making it practical to carry a finished match dataset from an annotation PC to an analysis machine without a shared DB.
+
+### Multi-Camera Architecture (4-Camera Simultaneous)
+- Extended the camera management model from a single-active constraint to a four-camera simultaneous limit.
+  Removed the deactivate-all shortcut and replaced it with a handoff policy: when a fifth camera attempts to activate, the oldest active camera is handed off first, keeping at most four cameras live at any time.
+  This matches real multi-court or multi-angle deployment scenarios without requiring operator coordination for every camera switch.
+- Fixed a DeviceSelector text color regression where CPU usage text was rendering blue-on-blue (white text on white badge background), making CPU load invisible in the device panel.
+
+### Distributed Tracking Foundation (Player Position Frames)
+- Added the `PlayerPositionFrame` model (`player_position_frames` table) to the core schema.
+  Stores per-frame positional data for all four court players (player_a, partner_a, player_b, partner_b) and the shuttle as float coordinates, keyed to match / set / rally and a frame counter.
+  Indexed on (match_id, frame_num) for fast sequential playback reads and separately on rally_id for rally-scoped queries.
+  This is the foundation for time-series player movement analysis, court pressure visualization, and future Ray-distributed tracking pipelines.
+- Added Alembic migration `0007_player_position_frames` with an idempotent table-existence check, continuing the sequential migration chain at revision 0007.
+
+### Cluster Infrastructure and Distributed Processing
+- Designed and implemented a two-node cluster architecture targeting Minisforum X1 AI (primary) and GMKtec K10 (worker).
+  Network topology: 2.5GbE direct Ethernet as the primary cluster link (192.168.100.0/24), USB-C RNDIS as a fallback link (192.168.101.0/24), WiFi for client access.
+  USB-C is treated as fallback only — the K10 does not have Thunderbolt, so USB networking tops out around 300–500 Mbps via RNDIS rather than full Thunderbolt speeds.
+  Traffic budget analysis confirmed the 2.5GbE link is sufficient: ~50 Mbps for PostgreSQL WAL replication plus ~200 Mbps for four cameras at compressed JPEG frame rates leaves substantial headroom under the 2.5 Gbps physical limit.
+- Added `cluster.config.yaml` as the user-facing cluster configuration file at the app root.
+  Fields cover cluster mode (single / primary / worker), network interface assignment, Ray head address, PostgreSQL connection settings, camera inference limits, and per-node load thresholds.
+  Designed to be understandable and editable by other users without code changes.
+- Added `backend/cluster/topology.py`: cached YAML config loader with getters for mode, node identity, primary IP, workers list, Ray address, PG host, load limits, and inference config.
+  Includes `list_interfaces()` (psutil-based network interface enumeration) and `ping_node()` (HTTP health check with latency measurement) so the UI can discover and verify cluster nodes.
+- Added `backend/cluster/load_guard.py`: singleton `LoadGuard` with CPU (psutil), GPU (pynvml), and concurrent-task limits.
+  Provides `can_accept()`, a `task_slot()` context manager for safe active-task counting, and `wait_until_available()` with configurable timeout.
+  Limits are read from `cluster.config.yaml` so operators can tune thresholds without code changes.
+- Added `backend/routers/cluster.py` with endpoints for cluster status, config read/write, interface listing, node ping, and live node status across all workers.
+  Registered in `backend/main.py` under `/api`.
+- Added `ClusterSettingsPanel` to the Settings UI: mode selector, node ID, network interface dropdowns (populated from `/api/cluster/interfaces`), worker list with per-worker ping test, load threshold sliders, live CPU/GPU gauge bars, Ray status badge, and a save button.
+  Added the cluster tab to `SettingsPage` and wired all translation strings into `src/i18n/ja.json`.
+
+### Windows Cluster Startup Scripts
+- Added `scripts/cluster/start_primary.bat`: sequences PostgreSQL startup, Ray head node startup, a background health monitor, and the FastAPI server.
+  Accepts `SS_CLUSTER_MODE`, `SS_RAY_PORT`, `SS_RAY_CPUS`, `SS_RAY_GPUS`, and `API_PORT` environment variables for flexible deployment.
+- Added `scripts/cluster/start_worker.bat`: starts the PostgreSQL standby, connects the Ray worker to the head node at `SS_PRIMARY_IP`, and enters a 30-second reconnect loop to handle transient network interruptions during startup.
+- Added `scripts/cluster/setup_routes.bat`: configures Windows routing tables for cluster and fallback subnets and sets interface metrics (cluster interface priority 10, fallback 100) so traffic naturally prefers the direct Ethernet link.
+- Added `scripts/cluster/failover_promote.bat`: promotes the PostgreSQL standby to primary, starts a Ray head node on the worker machine, and updates `cluster.config.yaml` mode to `primary`, enabling the worker to operate as a fully autonomous primary if the original primary is lost.
+- Added `scripts/cluster/pg_setup_primary.bat`: creates the `ss_user` database role, the `shuttlescope` database, and the `replicator` replication role, and configures PostgreSQL `wal_level`, `max_wal_senders`, `wal_keep_size`, and `listen_addresses` for streaming replication.
+- Added `scripts/cluster/pg_setup_standby.bat`: runs `pg_basebackup` from the primary and starts the standby in hot-standby mode via `standby.signal`.
+
+### SQLite → PostgreSQL 18 Migration
+- Migrated the operational database from SQLite to PostgreSQL 18.
+  PostgreSQL 18 was installed via winget on the primary PC (`127.0.0.1:5432`, database `shuttlescope`, user `ss_user`).
+  41,204 rows across 13 populated tables were migrated successfully (players 22, matches 62, sets 129, rallies 4,467, strokes 35,750, and supporting tables).
+- Added `scripts/pg_migrate_sqlite.py` with dependency-ordered table migration, FK constraint bypass via `session_replication_role`, idempotent `ON CONFLICT DO NOTHING` inserts, post-migration sequence correction via `setval`, and Alembic head stamping.
+  Key fix applied during migration: SQLite stores boolean columns as 0/1 integers, while PostgreSQL requires Python `True`/`False`.
+  The script now pre-collects all boolean columns from the PostgreSQL schema via `pg_inspector` and converts values in each batch before insert, preventing the `DatatypeMismatch` error that would otherwise fail silently on partial rows.
+- Updated `.env.development` to point `DATABASE_URL` at the PostgreSQL instance, with the previous SQLite URL commented out as a rollback reference.
+- Updated `backend/requirements.txt` with organized sections covering core FastAPI / SQLAlchemy dependencies, PostgreSQL driver (`psycopg2-binary`), cluster utilities (`psutil`, `pyyaml`), and optional AI/reporting packages.
+
 ### Detailed Progress
 - Refined research analytics interactions and Markov persistence.
 - Added analysis bundles and response-cache foundation.
@@ -58,6 +119,18 @@ Read it together with:
 - Added expert labeler and secure package sync flow.
 - Added pipeline cluster and CV execution foundation.
 - Added benchmark and DB maintenance workflows.
+- Added RallyClipNavigator for timestamp-based video segment navigation.
+- Added QuickSummaryCard with five rule-based between-set coaching signals.
+- Added JSON match data package export and import workflow.
+- Extended camera model to four simultaneous cameras with oldest-handoff policy.
+- Fixed DeviceSelector CPU text color (blue-on-blue → white).
+- Added PlayerPositionFrame model and Alembic migration 0007.
+- Designed two-node cluster topology (2.5GbE primary, USB-C fallback, WiFi clients).
+- Added cluster.config.yaml, topology.py, load_guard.py, and cluster router.
+- Added ClusterSettingsPanel to Settings UI with live gauges and config save.
+- Added Windows cluster startup scripts (primary, worker, routes, failover, PG setup).
+- Migrated 41,204 rows from SQLite to PostgreSQL 18 with boolean type fix.
+- Updated .env.development and requirements.txt for PostgreSQL.
 
 ## 2026-04-15
 
