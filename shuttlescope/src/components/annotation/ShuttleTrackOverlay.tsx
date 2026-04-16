@@ -78,15 +78,22 @@ export function ShuttleTrackOverlay({
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+
+    // 高DPIモニタ対応: 物理ピクセル解像度でCanvasを確保してからスケーリング
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = videoWidth * dpr
+    canvas.height = videoHeight * dpr
+
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.scale(dpr, dpr)
+    ctx.clearRect(0, 0, videoWidth, videoHeight)
 
     if (!visible || trailFrames.length === 0) return
 
-    const w = canvas.width
-    const h = canvas.height
+    const w = videoWidth
+    const h = videoHeight
     const trailLen = trailFrames.length
 
     // 軌跡を古い順に描画（フェードアウト）
@@ -173,8 +180,6 @@ export function ShuttleTrackOverlay({
     >
       <canvas
         ref={canvasRef}
-        width={videoWidth}
-        height={videoHeight}
         className="absolute inset-0"
         style={{ width: videoWidth, height: videoHeight }}
       />

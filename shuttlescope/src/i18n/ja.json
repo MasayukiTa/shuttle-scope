@@ -1147,7 +1147,8 @@
   "dual_monitor": {
     "open": "別モニタで動画表示",
     "close": "別モニタを閉じる",
-    "unavailable": "別モニタが見つかりません"
+    "unavailable": "別モニタが見つかりません",
+    "select_display": "表示先モニタを選択"
   },
   "tracknet": {
     "title": "TrackNet 自動解析",
