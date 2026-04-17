@@ -543,22 +543,37 @@
     "best_profile": {
       "title_coach": "ベストプロフィール（勝ちパターン分析）",
       "title_player": "あなたが良い試合をする時の特徴",
-      "factors_label": "重要指標レンジ",
+      "factors_label": "重要指標と現状ギャップ",
       "player_intro": "以下のコンディションの時に良いプレーが出やすい傾向があります",
       "player_note": "これはあくまで傾向です。日々の取り組みを大切にしてください。",
       "win_rate_compare": "勝率比較",
+      "win_rate_improvement": "ベスト状態に近づくと勝率 +{{diff}}% 見込み",
       "in_profile": "レンジ内",
       "outside": "レンジ外",
+      "current_value": "現在値",
+      "target_range": "目標レンジ",
+      "gap_up": "+{{n}}{{unit}} 上げると良い",
+      "gap_down": "{{n}}{{unit}} 下げると良い",
+      "gap_in_range": "レンジ内",
+      "gap_no_data": "—",
       "loading": "読み込み中...",
       "no_data": "データ蓄積中です",
       "key": {
+        "ccs_score": "CCSスコア",
+        "f1_physical": "身体コンディション",
+        "f2_stress": "ストレス",
+        "f3_mood": "気分スコア",
+        "f4_motivation": "モチベーション",
+        "f5_sleep_life": "睡眠・生活スコア",
         "muscle_mass_kg": "筋肉量",
         "weight_kg": "体重",
         "body_fat_pct": "体脂肪率",
         "ccs": "CCS",
-        "hooper_index": "Hooper指数",
+        "hooper_index": "Hooper疲労指数",
         "sleep_hours": "睡眠時間",
-        "session_rpe": "RPE"
+        "session_rpe": "RPE",
+        "session_load": "セッション負荷",
+        "ecw_ratio": "水分バランス"
       }
     },
     "discrepancy": {
@@ -656,13 +671,43 @@
       "growth_card": {
         "when": {
           "default": "{{key}}",
+          "ccs_high": "CCSスコアが高い週",
+          "sleep_long": "睡眠・生活スコアが高い週",
           "muscle_high": "筋肉量が通常より多い週",
-          "sleep_long": "睡眠時間が長い週",
-          "hooper_low": "Hooper指数が低い週（よく休めた週）",
-          "ccs_high": "CCSが高い週",
+          "physical_high": "身体コンディションが高い週",
+          "mood_high": "気分スコアが高い週",
+          "motivation_high": "モチベーションが高い週",
+          "sleep_hours_long": "睡眠時間が長い週",
+          "stress_low": "ストレスが低い週",
+          "hooper_low": "疲労指数が低い週（よく休めた週）",
           "body_fat_low": "体脂肪率が低めの週",
           "rpe_moderate": "RPEを適度に保てた週"
-        }
+        },
+        "factor": {
+          "default": "{{key}}",
+          "ccs_score": "CCSスコア",
+          "f1_physical": "身体コンディション",
+          "f2_stress": "ストレス",
+          "f3_mood": "気分スコア",
+          "f4_motivation": "モチベーション",
+          "f5_sleep_life": "睡眠・生活スコア",
+          "muscle_mass_kg": "筋肉量",
+          "body_fat_pct": "体脂肪率",
+          "hooper_index": "Hooper疲労指数",
+          "sleep_hours": "睡眠時間"
+        },
+        "win_rate_high": "高い週の勝率",
+        "win_rate_other": "通常週の勝率",
+        "n_high_weeks": "高い週 {{n}}回",
+        "n_other_weeks": "通常 {{n}}回",
+        "basis_label": "根拠",
+        "basis_total": "合計 N={{n}}週のデータ",
+        "confidence_basis": "N<10: ★☆☆　N≥10: ★★☆　N≥30: ★★★",
+        "confidence_low":    "★☆☆ 参考値（データ少）",
+        "confidence_medium": "★★☆ 中程度",
+        "confidence_high":   "★★★ 信頼可",
+        "low_confidence_hidden": "N≥10 未満のカードは非表示（★★☆以上のみ表示）",
+        "mechanism": "この指標が通常より高い（または低い）週の翌3日以内の試合結果を集計し、通常週と比較した相関です。因果関係ではなく傾向値です。"
       }
     },
     "confidence_analytics": {

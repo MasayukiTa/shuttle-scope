@@ -166,7 +166,7 @@ export function PredictionPage() {
               {t('prediction.select_player')}
             </div>
           ) : subTab === 'preview' ? (
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-4xl">
               <PredictionPanel
                 playerId={selectedPlayerId}
                 playerName={selectedPlayer?.name ?? ''}
@@ -174,11 +174,11 @@ export function PredictionPage() {
               />
             </div>
           ) : subTab === 'pair' ? (
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-4xl">
               <PairSimulationPanel players={sortedPlayers} />
             </div>
           ) : subTab === 'lineup' ? (
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-4xl">
               <div className={`${card} rounded-lg p-4`}>
                 <p className={`text-sm font-semibold mb-3 ${textHeading}`}>
                   {t('prediction.lineup_optimizer')}
@@ -188,7 +188,7 @@ export function PredictionPage() {
             </div>
           ) : (
             /* forecast タブ: 試合選択 + HumanForecastPanel */
-            <div className="max-w-2xl mx-auto space-y-4">
+            <div className="max-w-4xl space-y-4">
               {/* 試合セレクター */}
               <div className={`${card} rounded-lg p-4`}>
                 <p className={`text-xs font-semibold mb-2 ${textMuted}`}>
