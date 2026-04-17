@@ -336,11 +336,15 @@ html[data-theme="light"] .bg-gray-600  { background-color: #cbd5e1 !important; }
 /* パネル系（透明度を上げて明示的なパネルとして見えるようにする） */
 html[data-theme="light"] .bg-gray-800\/50 { background-color: #eef3f9 !important; }
 html[data-theme="light"] .bg-gray-800\/30 { background-color: #f4f7fb !important; }
+html[data-theme="light"] .bg-gray-800\/60 { background-color: #f1f5f9 !important; }
+html[data-theme="light"] .bg-gray-800\/90 { background-color: #eef3f9 !important; }
 html[data-theme="light"] .bg-gray-700\/30 { background-color: #eef3f9 !important; }
 html[data-theme="light"] .bg-gray-700\/50 { background-color: #e8edf5 !important; }
 html[data-theme="light"] .bg-gray-700\/60 { background-color: #e2e8f0 !important; }
 html[data-theme="light"] .bg-gray-900\/50 { background-color: #f3f6fb !important; }
+html[data-theme="light"] .bg-gray-900\/60 { background-color: #f1f5f9 !important; }
 html[data-theme="light"] .bg-gray-900\/80 { background-color: #eef3f9 !important; }
+html[data-theme="light"] .bg-gray-900\/90 { background-color: #e8edf5 !important; }
 
 /* ─── 8. ライトモード: ホバー ───────────────────────────────────── */
 html[data-theme="light"] .hover\:bg-gray-700:hover { background-color: #e2e8f0 !important; }
@@ -478,6 +482,7 @@ html[data-theme="light"] .text-yellow-300    { color: #92400e !important; }
 html[data-theme="light"] .text-yellow-400    { color: #b45309 !important; }
 html[data-theme="light"] .border-yellow-400  { border-color: #eab308 !important; }
 html[data-theme="light"] .border-yellow-600\/50 { border-color: #ca8a04 !important; }
+html[data-theme="light"] .border-yellow-700\/40 { border-color: #d97706 !important; }
 html[data-theme="light"] .border-yellow-700\/50 { border-color: #a16207 !important; }
 
 /* 緑系（高信頼度・成功・Success） */
@@ -500,6 +505,7 @@ html[data-theme="light"] .text-emerald-400    { color: #059669 !important; }
 html[data-theme="light"] .border-emerald-500  { border-color: #10b981 !important; }
 
 /* 青系（アナリスト・情報・Info） */
+html[data-theme="light"] .bg-blue-900\/20    { background-color: #eff6ff !important; }
 html[data-theme="light"] .bg-blue-900\/30    { background-color: #dbeafe !important; }
 html[data-theme="light"] .bg-blue-900\/40    { background-color: #bfdbfe !important; }
 html[data-theme="light"] .bg-blue-900\/50    { background-color: #dbeafe !important; }
@@ -517,11 +523,13 @@ html[data-theme="light"] .text-purple-300    { color: #6b21a8 !important; }
 html[data-theme="light"] .text-purple-400    { color: #7e22ce !important; }
 html[data-theme="light"] .border-purple-500  { border-color: #a855f7 !important; }
 
-/* オレンジ系（短ラリー） */
+/* オレンジ系（短ラリー・警告） */
+html[data-theme="light"] .bg-orange-900\/20  { background-color: #fff7ed !important; }
 html[data-theme="light"] .bg-orange-900\/40  { background-color: #ffedd5 !important; }
 html[data-theme="light"] .text-orange-300    { color: #c2410c !important; }
 html[data-theme="light"] .text-orange-400    { color: #ea580c !important; }
 html[data-theme="light"] .border-orange-500  { border-color: #f97316 !important; }
+html[data-theme="light"] .border-orange-700\/40 { border-color: #fed7aa !important; }
 
 /* アンバー系（シナジー・警告） */
 html[data-theme="light"] .text-amber-300     { color: #92400e !important; }

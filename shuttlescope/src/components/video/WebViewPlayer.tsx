@@ -20,6 +20,7 @@
  */
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { Globe, ArrowLeft, ArrowRight, RotateCcw, ExternalLink, AlertCircle, MonitorPlay } from 'lucide-react'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
@@ -32,6 +33,7 @@ interface WebViewPlayerProps {
 }
 
 export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
+  const isLight = useIsLightMode()
   const webviewRef = useRef<HTMLElement>(null)
   const [currentUrl, setCurrentUrl] = useState(url)
   const [inputUrl, setInputUrl] = useState(url)
@@ -121,18 +123,30 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
     window.open(currentUrl, '_blank')
   }, [currentUrl])
 
+  // ── テーマ別スタイル定数 ──────────────────────────────────────────────────
+  const outerBg     = isLight ? 'bg-white border border-gray-200'      : 'bg-gray-900 border border-gray-700'
+  const navBarBg    = isLight ? 'bg-gray-100 border-b border-gray-200' : 'bg-gray-800 border-b border-gray-700'
+  const titleBarBg  = isLight ? 'bg-gray-50 border-b border-gray-200'  : 'bg-gray-800/60 border-b border-gray-700/50'
+  const btnHover    = isLight ? 'hover:bg-gray-200 text-gray-500 disabled:opacity-40' : 'hover:bg-gray-700 text-gray-400 disabled:opacity-30'
+  const urlInputBg  = isLight ? 'bg-white border border-gray-300'      : 'bg-gray-700'
+  const urlInputText = isLight ? 'text-gray-800'                        : 'text-gray-200'
+  const titleText   = isLight ? 'text-gray-500'                         : 'text-gray-400'
+  const errorBanner = isLight
+    ? 'bg-red-50 border-b border-red-200 text-red-700'
+    : 'bg-red-900/20 border-b border-red-700/40 text-red-300'
+
   return (
     <div
-      className="w-full flex flex-col bg-gray-900 rounded-lg overflow-hidden border border-gray-700"
+      className={`w-full flex flex-col rounded-lg overflow-hidden ${outerBg}`}
       style={{ aspectRatio: '16/9', minHeight: '200px' }}
     >
       {/* ── ナビゲーションバー ── */}
-      <div className="flex items-center gap-1 px-2 py-1.5 bg-gray-800 border-b border-gray-700 shrink-0">
+      <div className={`flex items-center gap-1 px-2 py-1.5 shrink-0 ${navBarBg}`}>
         {/* 戻る / 進む / 再読込 */}
         <button
           onClick={handleBack}
           disabled={!canGoBack}
-          className="p-1 rounded hover:bg-gray-700 text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed"
+          className={`p-1 rounded disabled:cursor-not-allowed ${btnHover}`}
           title="戻る"
         >
           <ArrowLeft size={14} />
@@ -140,28 +154,28 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
         <button
           onClick={handleForward}
           disabled={!canGoForward}
-          className="p-1 rounded hover:bg-gray-700 text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed"
+          className={`p-1 rounded disabled:cursor-not-allowed ${btnHover}`}
           title="進む"
         >
           <ArrowRight size={14} />
         </button>
         <button
           onClick={handleReload}
-          className="p-1 rounded hover:bg-gray-700 text-gray-400"
+          className={`p-1 rounded ${btnHover}`}
           title="再読込"
         >
           <RotateCcw size={14} className={isLoading ? 'animate-spin' : ''} />
         </button>
 
         {/* URL 入力バー */}
-        <div className="flex-1 flex items-center gap-1 bg-gray-700 rounded px-2 py-0.5 min-w-0">
-          <Globe size={11} className="text-gray-500 shrink-0" />
+        <div className={`flex-1 flex items-center gap-1 rounded px-2 py-0.5 min-w-0 ${urlInputBg}`}>
+          <Globe size={11} className={`shrink-0 ${titleText}`} />
           <input
             type="text"
             value={inputUrl}
             onChange={(e) => setInputUrl(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleNavigate() }}
-            className="flex-1 bg-transparent text-gray-200 text-xs outline-none min-w-0 truncate"
+            className={`flex-1 bg-transparent text-xs outline-none min-w-0 truncate ${urlInputText}`}
             aria-label="URL"
           />
         </div>
@@ -169,7 +183,7 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
         {/* 外部ブラウザで開く */}
         <button
           onClick={handleOpenExternal}
-          className="p-1 rounded hover:bg-gray-700 text-gray-400"
+          className={`p-1 rounded ${btnHover}`}
           title="システムブラウザで開く"
         >
           <ExternalLink size={14} />
@@ -177,9 +191,9 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
       </div>
 
       {/* ── ページタイトル（サービス名 + 読込インジケーター） ── */}
-      <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-800/60 border-b border-gray-700/50 shrink-0">
+      <div className={`flex items-center gap-1.5 px-2 py-1 shrink-0 ${titleBarBg}`}>
         <MonitorPlay size={11} className="text-blue-400 shrink-0" />
-        <span className="text-[10px] text-gray-400 truncate flex-1">{pageTitle}</span>
+        <span className={`text-[10px] truncate flex-1 ${titleText}`}>{pageTitle}</span>
         {isLoading && (
           <span className="text-[10px] text-blue-400 shrink-0 animate-pulse">読み込み中...</span>
         )}
@@ -187,9 +201,9 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
 
       {/* ── エラー表示 ── */}
       {loadError && (
-        <div className="flex items-start gap-2 px-3 py-2 bg-red-900/20 border-b border-red-700/40 shrink-0">
-          <AlertCircle size={13} className="text-red-400 shrink-0 mt-0.5" />
-          <span className="text-xs text-red-300">{loadError}</span>
+        <div className={`flex items-start gap-2 px-3 py-2 shrink-0 ${errorBanner}`}>
+          <AlertCircle size={13} className="shrink-0 mt-0.5" />
+          <span className="text-xs">{loadError}</span>
         </div>
       )}
 
