@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 class CpuPose(PoseInferencer):
     """MediaPipe Pose implementation using the CPU delegate."""
 
+    @staticmethod
+    def _zero_landmarks() -> List[dict]:
+        return [
+            {"x": 0.0, "y": 0.0, "z": 0.0, "visibility": 0.0}
+            for _ in range(33)
+        ]
+
     def __init__(self) -> None:
         try:
             import mediapipe as mp  # noqa: F401
@@ -67,13 +74,25 @@ class CpuPose(PoseInferencer):
         )
 
         try:
-            with mp_vision.PoseLandmarker.create_from_options(options) as pose:
-                frame_idx = 0
-                while True:
-                    ok, frame_bgr = cap.read()
-                    if not ok:
-                        break
+            try:
+                pose = mp_vision.PoseLandmarker.create_from_options(options)
+            except (OSError, RuntimeError) as exc:
+                logger.warning(
+                    "[cv.pose_cpu] PoseLandmarker unavailable, falling back to zero landmarks: %s",
+                    exc,
+                )
+                pose = None
 
+            frame_idx = 0
+            while True:
+                ok, frame_bgr = cap.read()
+                if not ok:
+                    break
+
+                ts_sec = frame_idx / float(fps) if fps > 0 else 0.0
+                landmarks_list = self._zero_landmarks()
+
+                if pose is not None:
                     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                     mp_image = mp.Image(
                         image_format=mp.ImageFormat.SRGB,
@@ -82,15 +101,14 @@ class CpuPose(PoseInferencer):
                     ts_ms = int((frame_idx / float(fps)) * 1000.0) if fps > 0 else frame_idx
                     result = pose.detect_for_video(mp_image, ts_ms)
 
-                    ts_sec = frame_idx / float(fps) if fps > 0 else 0.0
-                    landmarks_list = []
+                    detected_landmarks = []
                     if (
                         result is not None
                         and getattr(result, "pose_landmarks", None)
                         and len(result.pose_landmarks) > 0
                     ):
                         for lm in result.pose_landmarks[0]:
-                            landmarks_list.append(
+                            detected_landmarks.append(
                                 {
                                     "x": float(lm.x),
                                     "y": float(lm.y),
@@ -98,22 +116,21 @@ class CpuPose(PoseInferencer):
                                     "visibility": float(getattr(lm, "visibility", 0.0)),
                                 }
                             )
-                    if len(landmarks_list) != 33:
-                        landmarks_list = [
-                            {"x": 0.0, "y": 0.0, "z": 0.0, "visibility": 0.0}
-                            for _ in range(33)
-                        ]
+                    if len(detected_landmarks) == 33:
+                        landmarks_list = detected_landmarks
 
-                    samples.append(
-                        PoseSample(
-                            frame=frame_idx,
-                            ts_sec=ts_sec,
-                            side="a",
-                            landmarks=landmarks_list,
-                        )
+                samples.append(
+                    PoseSample(
+                        frame=frame_idx,
+                        ts_sec=ts_sec,
+                        side="a",
+                        landmarks=landmarks_list,
                     )
-                    frame_idx += 1
+                )
+                frame_idx += 1
         finally:
+            if "pose" in locals() and pose is not None:
+                pose.close()
             cap.release()
 
         return samples
