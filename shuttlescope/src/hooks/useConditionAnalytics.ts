@@ -26,6 +26,13 @@ export interface BestProfileKeyFactor {
   max?: number | null
   mean?: number | null
   importance?: number | null
+  target_min?: number | null
+  target_max?: number | null
+  target_mean?: number | null
+  rest_mean?: number | null
+  current?: number | null
+  gap?: number | null
+  direction?: 'higher_when_winning' | 'lower_when_winning' | null
 }
 
 export interface BestProfileResponse {
@@ -35,6 +42,7 @@ export interface BestProfileResponse {
   n_matches: number
   confidence?: string | null
   key_factors: BestProfileKeyFactor[]
+  current_values?: Record<string, number | null> | null
 }
 
 export interface DiscrepancyItem {
@@ -47,9 +55,14 @@ export interface DiscrepancyItem {
 
 export interface GrowthCard {
   when_key: string
+  factor_key?: string | null
   effect?: string | null
   sample_n: number
-  confidence_label?: string | null
+  n_high?: number | null
+  n_other?: number | null
+  win_rate_high?: number | null
+  win_rate_other?: number | null
+  lift?: number | null
 }
 
 export interface InsightsResponse {
@@ -129,6 +142,13 @@ export function useBestProfile(playerId: number | null) {
           min: p.min ?? null,
           max: p.max ?? null,
           importance: f.effect_size ?? null,
+          target_min: (f as any).target_min ?? p.min ?? null,
+          target_max: (f as any).target_max ?? p.max ?? null,
+          target_mean: (f as any).target_mean ?? p.mean ?? null,
+          rest_mean: (f as any).rest_mean ?? null,
+          current: (f as any).current ?? null,
+          gap: (f as any).gap ?? null,
+          direction: (f as any).direction ?? null,
         }
       })
       const profile: BestProfileResponse['profile'] = {}
@@ -143,6 +163,7 @@ export function useBestProfile(playerId: number | null) {
         n_matches: nMatches,
         confidence: raw.confidence ?? null,
         key_factors: keyFactors,
+        current_values: (raw as any).current_values ?? null,
       }
     },
     enabled: !!playerId,

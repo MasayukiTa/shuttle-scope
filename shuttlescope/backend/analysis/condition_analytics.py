@@ -292,13 +292,56 @@ def best_performance_profile(
             d = (mean(tv) - mean(rv)) / pooled
             diffs.append((key, d))
     diffs.sort(key=lambda kv: abs(kv[1]), reverse=True)
-    key_factors = [
-        {"key": k, "effect_size": round(v, 3),
-         "direction": "higher_when_winning" if v > 0 else "lower_when_winning"}
-        for k, v in diffs[:3]
-    ]
     n_top = len(top)
     n_rest = len(rest)
+
+    # 最新 condition エントリの現在値（最も新しい recorded_at を持つ行）
+    sorted_conds = sorted(
+        [c for c in conditions if c.get("recorded_at")],
+        key=lambda c: str(c.get("recorded_at", "")),
+        reverse=True,
+    )
+    latest = sorted_conds[0] if sorted_conds else {}
+    current_values: Dict[str, Optional[float]] = {
+        k: float(latest[k]) if latest.get(k) is not None else None
+        for k in PROFILE_KEYS
+    }
+
+    # 勝率（プロフィール内 vs 外）
+    wr_top = [c.get("nearby_win_rate") or 0.0 for c in top]
+    wr_rest = [c.get("nearby_win_rate") or 0.0 for c in rest]
+    win_rate_in = round(mean(wr_top), 3) if wr_top else None
+    win_rate_out = round(mean(wr_rest), 3) if wr_rest else None
+
+    # key_factors に現在値・目標レンジを付加
+    key_factors = []
+    for k, v in diffs[:3]:
+        tp = top_profile.get(k, {})
+        rp = rest_profile.get(k, {})
+        cur = current_values.get(k)
+        t_min = tp.get("min")
+        t_max = tp.get("max")
+        # 現状とベストレンジのギャップ（正: 上げる必要あり、負: 下げる必要あり）
+        gap: Optional[float] = None
+        if cur is not None:
+            if t_min is not None and cur < t_min:
+                gap = round(t_min - cur, 2)
+            elif t_max is not None and cur > t_max:
+                gap = round(t_min - cur, 2)  # 超過（負値）
+            else:
+                gap = 0.0  # 既にレンジ内
+        key_factors.append({
+            "key": k,
+            "effect_size": round(v, 3),
+            "direction": "higher_when_winning" if v > 0 else "lower_when_winning",
+            "target_min": round(t_min, 2) if t_min is not None else None,
+            "target_max": round(t_max, 2) if t_max is not None else None,
+            "target_mean": round(tp["mean"], 2) if tp.get("mean") is not None else None,
+            "rest_mean": round(rp["mean"], 2) if rp.get("mean") is not None else None,
+            "current": round(cur, 2) if cur is not None else None,
+            "gap": gap,
+        })
+
     if n_top + n_rest < 5:
         confidence = "low"
     elif n_top + n_rest < 15:
@@ -311,6 +354,9 @@ def best_performance_profile(
         "rest_profile": rest_profile,
         "n_top": n_top,
         "n_rest": n_rest,
+        "win_rate_in_profile": win_rate_in,
+        "win_rate_outside": win_rate_out,
+        "current_values": current_values,
         "confidence": confidence,
         "note": _confidence_note(n_top + n_rest),
     }
@@ -398,6 +444,12 @@ _GROWTH_I18N_WHITELIST = {
     "condition.insight.muscle_positive",
     "condition.insight.ccs_positive",
     "condition.insight.sleep_positive",
+    "condition.insight.physical_positive",
+    "condition.insight.mood_positive",
+    "condition.insight.motivation_positive",
+    "condition.insight.sleep_hours_positive",
+    "condition.insight.stress_low",
+    "condition.insight.hooper_low",
 }
 
 
@@ -433,45 +485,60 @@ def player_growth_insights(
 
     cards: List[Dict[str, Any]] = []
 
-    def _build_card(key: str, feature_key: str, i18n_key: str) -> None:
+    def _build_card(
+        key: str, feature_key: str, i18n_key: str, low_is_good: bool = False
+    ) -> None:
         if i18n_key not in _GROWTH_I18N_WHITELIST:
             return
         vals = [float(c[feature_key]) for c in rows if c.get(feature_key) is not None]
         if len(vals) < 5:
             return
-        # 対応する勝率（nearby_win_rate）を True/False ラリー不要、row 単位で
         wins_by_row = [bool((c.get("nearby_win_rate") or 0.0) >= 0.5)
                        for c in rows if c.get(feature_key) is not None]
-        mask = _zscore_mask(vals, threshold=1.0)
+        m_val = mean(vals)
+        sd_val = pstdev(vals) or 0.0
+        if sd_val <= 0:
+            return
+        if low_is_good:
+            # 低い値が好成績と相関する指標（ストレス・Hooper等）
+            mask = [(m_val - v) / sd_val >= 1.0 for v in vals]
+        else:
+            mask = [(v - m_val) / sd_val >= 1.0 for v in vals]
         win_in = [w for w, m in zip(wins_by_row, mask) if m]
         win_out = [w for w, m in zip(wins_by_row, mask) if not m]
         if len(win_in) < 2 or len(win_out) < 2:
             return
         eff = _effect(win_in, win_out)
         if eff is None or eff < 0.03:
-            # growth-oriented ルール: 正方向効果のみ表示
             return
         n_in, n_out = len(win_in), len(win_out)
         wr_high = round(sum(win_in) / n_in, 3)
+        wr_other = round(sum(win_out) / n_out, 3)
         cards.append({
-            # フロントエンド GrowthCard インターフェースに合わせたキー
             "when_key": key,
-            "effect": f"+{round(eff * 100, 0):.0f}pp 勝率",
-            "sample_n": n_in + n_out,
-            # 詳細フィールド（デバッグ・将来拡張用）
+            "factor_key": feature_key,
+            # Keep the legacy shape for existing tests/UI while the frontend
+            # consumes the newer growth-oriented fields.
+            "frame": "growth_positive",
             "i18n_key": i18n_key,
-            "feature": feature_key,
+            "effect": f"+{round(eff * 100, 0):.0f}pp",
+            "sample_n": n_in + n_out,
             "n_high": n_in,
             "n_other": n_out,
             "win_rate_high": wr_high,
-            "win_rate_other": round(sum(win_out) / n_out, 3),
+            "win_rate_other": wr_other,
             "lift": round(eff, 3),
-            "frame": "growth_positive",
         })
 
-    _build_card("muscle", "muscle_mass_kg", "condition.insight.muscle_positive")
-    _build_card("ccs", "ccs_score", "condition.insight.ccs_positive")
-    _build_card("sleep", "f5_sleep_life", "condition.insight.sleep_positive")
+    _build_card("ccs_high",          "ccs_score",      "condition.insight.ccs_positive")
+    _build_card("sleep_long",        "f5_sleep_life",  "condition.insight.sleep_positive")
+    _build_card("muscle_high",       "muscle_mass_kg", "condition.insight.muscle_positive")
+    _build_card("physical_high",     "f1_physical",    "condition.insight.physical_positive")
+    _build_card("mood_high",         "f3_mood",        "condition.insight.mood_positive")
+    _build_card("motivation_high",   "f4_motivation",  "condition.insight.motivation_positive")
+    _build_card("sleep_hours_long",  "sleep_hours",    "condition.insight.sleep_hours_positive")
+    _build_card("stress_low",        "f2_stress",      "condition.insight.stress_low",       low_is_good=True)
+    _build_card("hooper_low",        "hooper_index",   "condition.insight.hooper_low",       low_is_good=True)
 
     return {
         "growth_cards": cards,

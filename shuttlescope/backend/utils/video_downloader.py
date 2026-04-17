@@ -20,6 +20,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -147,6 +148,10 @@ def _check_ffmpeg() -> bool:
 
 class VideoDownloader:
 
+    # 進捗フックの最小更新間隔（秒）。yt-dlp はチャンクごとに呼ぶため、
+    # これ未満の呼び出しは dict 書き換えをスキップしてCPU負荷を下げる。
+    _PROGRESS_THROTTLE_SEC = 0.5
+
     def __init__(self):
         # cwd は Electron が appPath を設定済みなので相対パスで解決できる
         self.download_dir = Path(os.path.abspath("./videos"))
@@ -154,6 +159,8 @@ class VideoDownloader:
         self.active_downloads: dict[str, dict] = {}
         # ffmpeg 可用性をインスタンス生成時に一度だけ確認する
         self.ffmpeg_available: bool = _check_ffmpeg()
+        # job_id → 最後に進捗を書き込んだ時刻
+        self._progress_last_update: dict[str, float] = {}
 
     def create_job_id(self) -> str:
         return str(uuid.uuid4())
@@ -302,8 +309,15 @@ class VideoDownloader:
             }
 
     def _update_progress(self, job_id: str, d: dict) -> None:
-        """yt-dlp 進捗フック"""
+        """yt-dlp 進捗フック（500ms スロットリング付き）"""
+        if not hasattr(self, "_progress_last_update"):
+            self._progress_last_update = {}
         if d["status"] == "downloading":
+            now = time.monotonic()
+            last = self._progress_last_update.get(job_id, 0.0)
+            if now - last < self._PROGRESS_THROTTLE_SEC:
+                return
+            self._progress_last_update[job_id] = now
             self.active_downloads[job_id] = {
                 "status": "downloading",
                 "percent": d.get("_percent_str", "0%").strip(),
