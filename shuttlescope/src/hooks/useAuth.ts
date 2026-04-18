@@ -136,6 +136,8 @@ export function useAuth() {
   const hasRole = useCallback(
     (allowedRoles: UserRole[]) => {
       if (!role) return false
+      // admin は全ロールの権限を持つ（player < coach < analyst <= admin）
+      if (role === 'admin') return true
       return allowedRoles.includes(role)
     },
     [role]

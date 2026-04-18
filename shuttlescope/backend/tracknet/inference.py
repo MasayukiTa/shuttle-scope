@@ -43,11 +43,14 @@ def _existing_path(paths: list[Path]) -> Optional[Path]:
 
 
 class TrackNetInference:
-    def __init__(self, backend: str = "auto", device: str = "GPU"):
+    def __init__(self, backend: str = "auto", device: str = "GPU",
+                 cuda_device_index: int = 0, openvino_device: str = "GPU"):
         self._infer_fn = None
         self._backend_name = "unloaded"
         self._device = device
         self._backend = backend
+        self._cuda_device_index = cuda_device_index
+        self._openvino_device = openvino_device  # "GPU" / "GPU.0" / "GPU.1" / "CPU"
         self._load_error: Optional[str] = None
 
     def get_load_error(self) -> Optional[str]:
@@ -76,29 +79,78 @@ class TrackNetInference:
         # 指定バックエンドのファイルが存在しない場合は auto にフォールバックして他を試みる
         effective_backend = self._backend
 
+        onnx_model = _existing_path(ONNX_CANDIDATES)
+
+        # ── CUDA / ONNX CUDA ──────────────────────────────────────────────────
+        if effective_backend in ("auto", "cuda", "onnx_cuda"):
+            if onnx_model is None:
+                if effective_backend in ("cuda", "onnx_cuda"):
+                    tried.append("onnx_cuda: ONNXファイルが見つかりません")
+                    effective_backend = "auto"
+            else:
+                try:
+                    import onnxruntime as ort
+                    available_providers = ort.get_available_providers()
+                    if "CUDAExecutionProvider" in available_providers:
+                        providers = [
+                            ("CUDAExecutionProvider", {"device_id": self._cuda_device_index}),
+                            "CPUExecutionProvider",
+                        ]
+                        sess = ort.InferenceSession(str(onnx_model), providers=providers)
+                        input_name = sess.get_inputs()[0].name
+                        self._infer_fn = lambda frames, _s=sess, _n=input_name: self._run_onnx(_s, _n, frames)
+                        self._backend_name = f"onnx_cuda:{self._cuda_device_index}"
+                        self._load_error = None
+                        logger.info("TrackNet loaded via ONNX CUDA (device=%d)", self._cuda_device_index)
+                        return True
+                    elif effective_backend in ("cuda", "onnx_cuda"):
+                        tried.append("onnx_cuda: CUDAExecutionProvider が利用不可（onnxruntime-gpu 未インストール）")
+                        effective_backend = "auto"
+                    # auto の場合は次の候補へ続行
+                except ImportError:
+                    tried.append("onnxruntime: パッケージ未インストール")
+                    if effective_backend in ("cuda", "onnx_cuda"):
+                        effective_backend = "auto"
+
+        # ── DirectML（AMD/NVIDIA Windows）──────────────────────────────────────
+        if effective_backend in ("auto", "directml"):
+            if onnx_model is not None:
+                try:
+                    import onnxruntime as ort
+                    if "DmlExecutionProvider" in ort.get_available_providers():
+                        providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+                        sess = ort.InferenceSession(str(onnx_model), providers=providers)
+                        input_name = sess.get_inputs()[0].name
+                        self._infer_fn = lambda frames, _s=sess, _n=input_name: self._run_onnx(_s, _n, frames)
+                        self._backend_name = "onnx_directml"
+                        self._load_error = None
+                        logger.info("TrackNet loaded via ONNX DirectML")
+                        return True
+                except Exception as exc:
+                    tried.append(f"directml: {exc}")
+
+        # ── OpenVINO ──────────────────────────────────────────────────────────
         openvino_xml = _existing_path(OPENVINO_XML_CANDIDATES)
         if effective_backend in ("auto", "openvino"):
             if openvino_xml is None:
                 if effective_backend == "openvino":
                     tried.append("openvino: XMLファイルが見つかりません（自動フォールバック）")
-                    logger.info("openvino backend requested but no XML found, falling back to auto")
                     effective_backend = "auto"
             else:
                 try:
                     import openvino as ov
-
                     core = ov.Core()
                     available = core.available_devices
-
-                    # GPU優先（CPUアノテーション作業への影響を避けるため）
-                    # GPU不在の場合のみ CPU にフォールバック
-                    device_candidates = []
-                    if "GPU" in available:
-                        device_candidates.append("GPU")
-                    device_candidates.append("CPU")
-
+                    # 設定値デバイス → GPU → CPU の順で試行
+                    device_candidates: list[str] = []
+                    if self._openvino_device and self._openvino_device in available:
+                        device_candidates.append(self._openvino_device)
+                    for fallback in ("GPU", "CPU"):
+                        if fallback in available and fallback not in device_candidates:
+                            device_candidates.append(fallback)
+                    if not device_candidates:
+                        device_candidates = ["CPU"]
                     ov_model = core.read_model(str(openvino_xml))
-
                     for dev in device_candidates:
                         try:
                             config = {"PERFORMANCE_HINT": "THROUGHPUT"}
@@ -119,17 +171,16 @@ class TrackNetInference:
                     tried.append("openvino: パッケージ未インストール")
                     effective_backend = "auto"
 
-        onnx_model = _existing_path(ONNX_CANDIDATES)
+        # ── ONNX CPU ──────────────────────────────────────────────────────────
         if effective_backend in ("auto", "onnx_cpu"):
             if onnx_model is None:
                 tried.append("onnx_cpu: ONNXファイルが見つかりません")
             else:
                 try:
                     import onnxruntime as ort
-
                     sess = ort.InferenceSession(str(onnx_model), providers=["CPUExecutionProvider"])
                     input_name = sess.get_inputs()[0].name
-                    self._infer_fn = lambda frames: self._run_onnx(sess, input_name, frames)
+                    self._infer_fn = lambda frames, _s=sess, _n=input_name: self._run_onnx(_s, _n, frames)
                     self._backend_name = "onnx_cpu"
                     self._load_error = None
                     logger.info("TrackNet loaded via ONNX Runtime CPU")
@@ -218,8 +269,19 @@ class TrackNetInference:
 _instance: Optional[TrackNetInference] = None
 
 
-def get_inference(backend: str = "auto") -> TrackNetInference:
+def get_inference(backend: str = "auto", cuda_device_index: int = 0,
+                  openvino_device: str = "GPU") -> TrackNetInference:
     global _instance
-    if _instance is None or (_instance._backend != backend and backend != "auto"):
-        _instance = TrackNetInference(backend=backend)
+    config_changed = (
+        _instance is None
+        or (_instance._backend != backend and backend != "auto")
+        or _instance._cuda_device_index != cuda_device_index
+        or _instance._openvino_device != openvino_device
+    )
+    if config_changed:
+        _instance = TrackNetInference(
+            backend=backend,
+            cuda_device_index=cuda_device_index,
+            openvino_device=openvino_device,
+        )
     return _instance

@@ -9,9 +9,13 @@ import type { VideoSourceMode } from '@/types'
 
 export interface AppSettings {
   tracknet_enabled: boolean
-  tracknet_backend: 'auto' | 'tensorflow_cpu' | 'openvino' | 'onnx_cpu'
+  tracknet_backend: 'auto' | 'cuda' | 'onnx_cuda' | 'directml' | 'tensorflow_cpu' | 'openvino' | 'onnx_cpu'
   tracknet_mode: 'batch' | 'assist'
   tracknet_max_cpu_pct: number
+  // GPU / デバイス設定
+  cuda_device_index: number
+  openvino_device: string
+  yolo_backend: 'auto' | 'openvino' | 'ultralytics' | 'onnx_cpu'
   // YOLO プレイヤー検出
   yolo_enabled: boolean
   video_source_mode: VideoSourceMode
@@ -34,6 +38,9 @@ const DEFAULTS: AppSettings = {
   tracknet_backend: 'auto',
   tracknet_mode: 'batch',
   tracknet_max_cpu_pct: 50,
+  cuda_device_index: 0,
+  openvino_device: 'GPU',
+  yolo_backend: 'auto',
   yolo_enabled: true,
   video_source_mode: 'local',
   sync_device_id: '',

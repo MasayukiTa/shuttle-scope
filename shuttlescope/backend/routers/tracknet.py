@@ -36,6 +36,27 @@ def _load_setting_int(db, key: str, default: int) -> int:
     return default
 
 
+def _load_device_settings(db) -> tuple[int, str]:
+    """DB から cuda_device_index / openvino_device を読み込む"""
+    import json as _json
+    from sqlalchemy import text as _text
+    cuda_idx = 0
+    ov_device = "GPU"
+    try:
+        rows = db.execute(
+            _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
+        ).fetchall()
+        for k, v in rows:
+            val = _json.loads(v)
+            if k == "cuda_device_index":
+                cuda_idx = int(val)
+            elif k == "openvino_device":
+                ov_device = str(val)
+    except Exception:
+        pass
+    return cuda_idx, ov_device
+
+
 class BatchJobStatus:
     PENDING  = "pending"
     RUNNING  = "running"
@@ -141,7 +162,8 @@ def start_batch(
     if not video_path:
         raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
 
-    inf = get_inference(body.backend)
+    cuda_idx, ov_device = _load_device_settings(db)
+    inf = get_inference(body.backend, cuda_device_index=cuda_idx, openvino_device=ov_device)
     if not inf.is_available():
         raise HTTPException(
             status_code=503,
@@ -165,7 +187,8 @@ def start_batch(
     roi = body.roi_rect.model_dump() if body.roi_rect else None
     prev_roi = body.prev_roi.model_dump() if body.prev_roi else None
     background_tasks.add_task(
-        _run_batch, job_id, match_id, video_path, body.confidence_threshold, roi, body.resume, prev_roi
+        _run_batch, job_id, match_id, video_path, body.confidence_threshold, roi, body.resume, prev_roi,
+        cuda_idx, ov_device,
     )
     return {"success": True, "data": {"job_id": job_id}}
 
@@ -356,6 +379,8 @@ def _run_batch(
     roi: dict | None = None,
     resume: bool = False,
     prev_roi: dict | None = None,
+    cuda_device_index: int = 0,
+    openvino_device: str = "GPU",
 ):
     """バッチ解析の本体。別スレッドで実行される。"""
     from backend.db.database import SessionLocal
@@ -365,7 +390,7 @@ def _run_batch(
     db = SessionLocal()
 
     try:
-        inf = get_inference()
+        inf = get_inference("auto", cuda_device_index=cuda_device_index, openvino_device=openvino_device)
         if not inf.load():
             _jobs[job_id]["status"] = BatchJobStatus.ERROR
             _jobs[job_id]["error"] = inf.get_load_error() or "モデルロードに失敗しました"

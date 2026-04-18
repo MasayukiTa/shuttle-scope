@@ -37,9 +37,13 @@ def _default_device_id() -> str:
 # デフォルト設定
 DEFAULT_SETTINGS: dict = {
     "tracknet_enabled": True,
-    "tracknet_backend": "auto",       # auto | tensorflow_cpu | openvino | onnx_cpu
+    "tracknet_backend": "auto",       # auto | cuda | onnx_cuda | directml | tensorflow_cpu | openvino | onnx_cpu
     "tracknet_mode": "batch",          # batch | assist
     "tracknet_max_cpu_pct": 50,
+    # ─── GPU / デバイス設定 ───────────────────────────────────────────────────
+    "cuda_device_index": 0,           # CUDA デバイス番号（0 = 最初の GPU）
+    "openvino_device": "GPU",          # OpenVINO ターゲットデバイス（GPU / GPU.1 / CPU）
+    "yolo_backend": "auto",            # auto | openvino | ultralytics | onnx_cpu
     # ─── CV 解析レート設定 ────────────────────────────────────────────────────
     # YOLO: リアルタイム・バッチそれぞれの解析フレームレート（60fps 動画想定）
     "yolo_realtime_fps": 10,          # リアルタイム解析レート（fps）
@@ -105,3 +109,48 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db)):
         )
     db.commit()
     return {"success": True, "data": _load_all(db)}
+
+
+@router.get("/settings/devices")
+def get_devices():
+    """利用可能なコンピュートデバイス一覧を返す。
+
+    cuda_devices: CUDA GPU リスト（名前・VRAM）
+    openvino_devices: OpenVINO で利用可能なデバイス文字列リスト
+    onnx_providers: ONNX Runtime の利用可能プロバイダーリスト
+    """
+    cuda_devices = []
+    try:
+        import torch
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                props = torch.cuda.get_device_properties(i)
+                cuda_devices.append({
+                    "index": i,
+                    "name": props.name,
+                    "vram_mb": props.total_memory // (1024 * 1024),
+                })
+    except Exception:
+        pass
+
+    openvino_devices: list[str] = []
+    try:
+        import openvino as ov
+        core = ov.Core()
+        openvino_devices = list(core.available_devices)
+    except Exception:
+        pass
+
+    onnx_providers: list[str] = []
+    try:
+        import onnxruntime as ort
+        onnx_providers = list(ort.get_available_providers())
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "cuda_devices": cuda_devices,
+        "openvino_devices": openvino_devices,
+        "onnx_providers": onnx_providers,
+    }

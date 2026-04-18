@@ -211,6 +211,19 @@ export function SettingsPage() {
     refetchInterval: activeTab === 'tracknet' ? 10000 : false,
   })
 
+  // GPU / コンピュートデバイス検出
+  const { data: computeDevices, refetch: refetchDevices, isFetching: devicesFetching } = useQuery({
+    queryKey: ['compute-devices'],
+    queryFn: () => apiGet<{
+      success: boolean
+      cuda_devices: { index: number; name: string; vram_mb: number }[]
+      openvino_devices: string[]
+      onnx_providers: string[]
+    }>('/settings/devices'),
+    enabled: activeTab === 'tracknet',
+    staleTime: 60_000,
+  })
+
   // R-002: サーバー情報（LAN IP）
   const { data: serverInfo, refetch: refetchServerInfo } = useQuery({
     queryKey: ['server-my-info'],
@@ -1152,11 +1165,12 @@ export function SettingsPage() {
               </h3>
               <div className="flex gap-2">
                 {([
-                  { value: 'auto',           label: 'Auto (CUDA → OpenVINO → ONNX → TF)' },
-                  { value: 'cuda',           label: 'CUDA (NVIDIA GPU)' },
-                  { value: 'openvino',       label: 'OpenVINO (Intel GPU / CPU)' },
-                  { value: 'onnx_cpu',       label: 'ONNX Runtime CPU' },
-                  { value: 'onnx_cuda',      label: 'ONNX Runtime CUDA' },
+                  { value: 'auto',           label: 'Auto (CUDA → DML → OpenVINO → ONNX → TF)' },
+                  { value: 'cuda',           label: 'CUDA (NVIDIA)' },
+                  { value: 'directml',       label: 'DirectML (AMD/NVIDIA)' },
+                  { value: 'openvino',       label: 'OpenVINO (Intel)' },
+                  { value: 'onnx_cuda',      label: 'ONNX CUDA' },
+                  { value: 'onnx_cpu',       label: 'ONNX CPU' },
                   { value: 'tensorflow_cpu', label: 'TensorFlow CPU' },
                 ] as const).map((opt) => (
                   <button
@@ -1295,6 +1309,105 @@ export function SettingsPage() {
                   )
                 })()}
               </div>
+            </div>
+
+            {/* ─── GPU / デバイス設定 ─── */}
+            <div className={`${card} rounded-lg p-4 border ${borderLine} space-y-4`}>
+              <div className="flex items-center justify-between">
+                <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
+                  <Cpu size={14} className="text-purple-400" />
+                  GPU / コンピュートデバイス設定
+                </h3>
+                <button
+                  onClick={() => refetchDevices()}
+                  disabled={devicesFetching}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
+                >
+                  {devicesFetching ? <RotateCcw size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                  再検出
+                </button>
+              </div>
+
+              {/* CUDA デバイス選択 */}
+              {computeDevices && (computeDevices.cuda_devices?.length ?? 0) > 0 && (
+                <div>
+                  <p className={`text-xs font-medium mb-2 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>CUDA デバイス（NVIDIA GPU）</p>
+                  <div className="space-y-1.5">
+                    {computeDevices.cuda_devices.map((dev) => (
+                      <button
+                        key={dev.index}
+                        onClick={() => updateSettings({ cuda_device_index: dev.index })}
+                        className={`w-full text-left px-3 py-2 rounded text-xs border transition-colors ${
+                          appSettings.cuda_device_index === dev.index
+                            ? 'border-blue-500 bg-blue-600/20 text-blue-300'
+                            : `border-gray-600 ${isLight ? 'bg-white text-gray-700' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
+                        }`}
+                      >
+                        <span className="font-medium">GPU {dev.index}</span>
+                        <span className="ml-2">{dev.name}</span>
+                        <span className={`ml-auto float-right ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{dev.vram_mb >= 1024 ? `${(dev.vram_mb / 1024).toFixed(1)} GB` : `${dev.vram_mb} MB`}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* OpenVINO デバイス選択 */}
+              {computeDevices && (computeDevices.openvino_devices?.length ?? 0) > 0 && (
+                <div>
+                  <p className={`text-xs font-medium mb-2 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>OpenVINO デバイス（Intel GPU / CPU）</p>
+                  <div className="flex flex-wrap gap-2">
+                    {computeDevices.openvino_devices.map((dev) => (
+                      <button
+                        key={dev}
+                        onClick={() => updateSettings({ openvino_device: dev })}
+                        className={`py-1.5 px-3 rounded text-xs border transition-colors ${
+                          appSettings.openvino_device === dev
+                            ? 'border-blue-500 bg-blue-600 text-white'
+                            : `border-gray-600 ${isLight ? 'bg-white text-gray-700' : 'bg-gray-700 text-gray-300'} hover:border-gray-500`
+                        }`}
+                      >
+                        {dev}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ONNX プロバイダー状態表示 */}
+              {computeDevices && (
+                <div>
+                  <p className={`text-xs font-medium mb-1.5 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>ONNX Runtime プロバイダー</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(computeDevices.onnx_providers ?? []).map((p) => (
+                      <span
+                        key={p}
+                        className={`text-[10px] px-2 py-0.5 rounded ${
+                          p === 'CUDAExecutionProvider'
+                            ? 'bg-green-900/40 text-green-300 border border-green-700'
+                            : p === 'DmlExecutionProvider'
+                            ? 'bg-blue-900/40 text-blue-300 border border-blue-700'
+                            : `${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-800 text-gray-400'} border border-gray-600`
+                        }`}
+                      >
+                        {p.replace('ExecutionProvider', '')}
+                      </span>
+                    ))}
+                    {(computeDevices.onnx_providers ?? []).length === 0 && (
+                      <span className="text-xs text-gray-500">onnxruntime 未インストール</span>
+                    )}
+                  </div>
+                  {!(computeDevices.onnx_providers ?? []).includes('CUDAExecutionProvider') && (
+                    <p className="text-[10px] text-amber-400 mt-1.5">
+                      CUDA推論を有効にするには <code className="bg-gray-800 px-1 rounded">onnxruntime-gpu</code> をインストールしてください
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!computeDevices && !devicesFetching && (
+                <p className="text-xs text-gray-500">「再検出」を押してデバイスを確認</p>
+              )}
             </div>
 
             {/* ─── ベンチマーク（新 UI） ─── */}
