@@ -7,14 +7,42 @@
 
 OpenVINO は CUDA 不在の K10 ワーカーでも動作する（CPU モードにフォールバック）。
 routers / pipeline は必ず get_tracknet() / get_pose() のみを使うこと。
+
+キャッシュ方針:
+    環境変数 (SS_CV_MOCK / SS_USE_GPU / SS_CUDA_DEVICE) の組み合わせをキーにして
+    解決済みインスタンスをキャッシュする。同一環境での二重初期化と重複警告を防ぐ。
+    環境変数が変化した場合（ベンチマークの _env_override 等）は再解決する。
 """
 from __future__ import annotations
 
 import logging
+import os
+from typing import Optional
 
 from backend.cv.base import PoseInferencer, TrackNetInferencer
 
 logger = logging.getLogger(__name__)
+
+# ─── キャッシュ ────────────────────────────────────────────────────────────────
+
+_tracknet_cache: Optional[dict] = None  # {"key": tuple, "impl": TrackNetInferencer}
+_pose_cache: Optional[dict] = None      # {"key": tuple, "impl": PoseInferencer}
+
+
+def _env_key() -> tuple:
+    """現在の環境変数からキャッシュキーを生成する。"""
+    return (
+        os.environ.get("SS_CV_MOCK", "0"),
+        os.environ.get("SS_USE_GPU", "0"),
+        os.environ.get("SS_CUDA_DEVICE", "0"),
+    )
+
+
+def clear_cache() -> None:
+    """キャッシュを破棄する（テスト用・環境変更後の強制再解決用）。"""
+    global _tracknet_cache, _pose_cache
+    _tracknet_cache = None
+    _pose_cache = None
 
 
 def _settings():
@@ -28,7 +56,20 @@ def get_tracknet() -> TrackNetInferencer:
     """TrackNet 実装を返す。失敗時は順次フォールバック。
 
     優先順: Mock > CUDA(torch) > OpenVINO > CPU(classical CV) > Mock
+    同一環境下での二重呼び出しはキャッシュを返すため警告は初回のみ出力される。
     """
+    global _tracknet_cache
+
+    key = _env_key()
+    if _tracknet_cache is not None and _tracknet_cache["key"] == key:
+        return _tracknet_cache["impl"]
+
+    impl = _resolve_tracknet(key)
+    _tracknet_cache = {"key": key, "impl": impl}
+    return impl
+
+
+def _resolve_tracknet(key: tuple) -> TrackNetInferencer:
     s = _settings()
 
     # 最優先: Mock
@@ -84,7 +125,20 @@ def get_pose() -> PoseInferencer:
     """Pose 実装を返す。失敗時は順次フォールバック。
 
     優先順: Mock > CUDA(MediaPipe GPU) > CPU(MediaPipe CPU) > Mock
+    同一環境下での二重呼び出しはキャッシュを返すため警告は初回のみ出力される。
     """
+    global _pose_cache
+
+    key = _env_key()
+    if _pose_cache is not None and _pose_cache["key"] == key:
+        return _pose_cache["impl"]
+
+    impl = _resolve_pose(key)
+    _pose_cache = {"key": key, "impl": impl}
+    return impl
+
+
+def _resolve_pose(key: tuple) -> PoseInferencer:
     s = _settings()
 
     if int(s.ss_cv_mock) == 1:

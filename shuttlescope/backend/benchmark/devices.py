@@ -206,6 +206,182 @@ def _probe_onnx() -> list[ComputeDevice]:
     return devices
 
 
+def _probe_windows_igpu() -> list[ComputeDevice]:
+    """Windows WMI 経由で NVIDIA 以外の GPU アダプタ（AMD/Intel iGPU 等）を列挙する。
+
+    pynvml で既に検出した NVIDIA dGPU はスキップする。
+    Windows 10/11 上の DirectX 12 対応アダプタは DirectML が利用可能なため
+    available=True とする（onnxruntime-directml は別途必要だが表示上は有効）。
+    """
+    if platform.system() != "Windows":
+        return []
+
+    devices: list[ComputeDevice] = []
+    try:
+        import json
+        import subprocess
+
+        result = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                (
+                    "Get-WmiObject Win32_VideoController"
+                    " | Select-Object Name,AdapterCompatibility,AdapterRAM"
+                    " | ConvertTo-Json -Compress"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return devices
+
+        data = json.loads(result.stdout)
+        if isinstance(data, dict):
+            data = [data]
+
+        for adapter in data:
+            name: str = str(adapter.get("Name") or "").strip()
+            compat: str = str(adapter.get("AdapterCompatibility") or "").lower()
+            vram_bytes: int = int(adapter.get("AdapterRAM") or 0)
+            vram_mb = vram_bytes // (1024 * 1024) if vram_bytes > 0 else 0
+            name_lower = name.lower()
+
+            # NVIDIA は pynvml で既に検出済みのためスキップ
+            if "nvidia" in name_lower or "nvidia" in compat:
+                continue
+
+            if "intel" in name_lower or "intel" in compat:
+                # Intel Arc は dGPU、それ以外（UHD/Iris等）は iGPU
+                dtype = "dgpu" if "arc" in name_lower else "igpu"
+            elif "amd" in name_lower or "radeon" in name_lower or "amd" in compat:
+                # 外付け相当の型番（RX, Pro）は dGPU、統合グラフィックスは iGPU
+                is_discrete = any(k in name_lower for k in ["rx ", " pro ", "vega frontier"])
+                dtype = "dgpu" if is_discrete else "igpu"
+            else:
+                # 不明なアダプタは除外
+                continue
+
+            prefix = "igpu" if dtype == "igpu" else "dgpu"
+            dev_id = f"{prefix}_{_sanitize(name)}"
+            label_prefix = "iGPU" if dtype == "igpu" else "GPU"
+            devices.append(
+                ComputeDevice(
+                    device_id=dev_id,
+                    label=f"{label_prefix}: {name}",
+                    device_type=dtype,
+                    backend="directml",
+                    available=True,  # Win10/11 の DX12 対応 GPU は DirectML 利用可能
+                    specs={"name": name, "vram_mb": vram_mb},
+                )
+            )
+    except Exception:
+        pass
+    return devices
+
+
+# AMD XDNA NPU の既知 PCI VendorID:DeviceID（Phoenix/HawkPoint/StrixPoint）
+_AMD_NPU_PCI_IDS = {
+    "1022:1502",  # Phoenix (Ryzen 7040 / 8040 series)
+    "1022:17f0",  # Strix Point (Ryzen AI 300 series)
+    "1022:1505",  # Phoenix variant
+    "1022:150c",  # Hawk Point variant
+}
+
+
+def _probe_npu() -> list[ComputeDevice]:
+    """NPU デバイスを検出する。
+
+    Intel NPU: OpenVINO Runtime の "NPU" デバイス。
+    AMD XDNA NPU: PCI ハードウェア ID で正確に特定する（名前マッチは誤検知が多い）。
+    """
+    devices: list[ComputeDevice] = []
+
+    # Intel NPU (OpenVINO)
+    try:
+        from openvino.runtime import Core  # type: ignore
+
+        core = Core()
+        for ov_dev in core.available_devices:
+            if "NPU" not in ov_dev.upper():
+                continue
+            try:
+                name = core.get_property(ov_dev, "FULL_DEVICE_NAME")
+            except Exception:
+                name = ov_dev
+            dev_id = f"npu_{_sanitize(str(name))}"
+            devices.append(
+                ComputeDevice(
+                    device_id=dev_id,
+                    label=f"NPU: {name}",
+                    device_type="npu",
+                    backend="openvino",
+                    available=True,
+                    specs={"name": str(name)},
+                )
+            )
+    except Exception:
+        pass
+
+    # AMD XDNA NPU (Windows — PCI ハードウェア ID で特定)
+    if platform.system() == "Windows":
+        try:
+            import json
+            import subprocess
+
+            # HardwareID で VEN_1022 (AMD) かつ既知の NPU DeviceID を持つエントリを検索
+            ps_cmd = (
+                "$ids = @('1022:1502','1022:17f0','1022:1505','1022:150c');"
+                "$found = Get-WmiObject Win32_PnPEntity | Where-Object {"
+                "  $hw = $_.HardwareID;"
+                "  if (-not $hw) { return $false };"
+                "  $hwStr = ($hw -join ',').ToLower();"
+                "  foreach ($id in $ids) {"
+                "    $ven = 'ven_' + $id.Split(':')[0];"
+                "    $dev = 'dev_' + $id.Split(':')[1];"
+                "    if ($hwStr -match $ven -and $hwStr -match $dev) { return $true }"
+                "  };"
+                "  return $false"
+                "};"
+                "if ($found) { $found | Select-Object Name,DeviceID | ConvertTo-Json -Compress }"
+                " else { '[]' }"
+            )
+
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                raw = result.stdout.strip()
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    data = [data]
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    npu_name: str = str(item.get("Name") or "AMD NPU Device").strip()
+                    dev_id = f"npu_{_sanitize(npu_name)}"
+                    if any(d.device_id == dev_id for d in devices):
+                        continue
+                    devices.append(
+                        ComputeDevice(
+                            device_id=dev_id,
+                            label=f"NPU: {npu_name}",
+                            device_type="npu",
+                            backend="directml",
+                            available=False,  # NPU 推論バックエンド未実装
+                            specs={"name": npu_name, "note": "NPU inference not yet implemented"},
+                        )
+                    )
+        except Exception:
+            pass
+
+    return devices
+
+
 def _probe_ray() -> list[ComputeDevice]:
     """SS_CLUSTER_MODE=ray のとき Ray クラスタのワーカーノードを列挙する"""
     devices: list[ComputeDevice] = []
@@ -264,15 +440,28 @@ def probe_all() -> list[ComputeDevice]:
     nvidia_devices = _probe_nvidia()
     result.extend(nvidia_devices)
 
-    # 3. OpenVINO GPU（iGPU/dGPU）
+    # 3. OpenVINO GPU（Intel iGPU/dGPU のみ検出）
     result.extend(_probe_openvino())
 
-    # 4. ONNX Runtime（CUDA EP、NVIDIA 未検出時のみ追加）
+    # 4. Windows iGPU（AMD/Intel — OpenVINO で未検出のものを DirectML で補完）
+    existing_ids = {d.device_id for d in result}
+    for dev in _probe_windows_igpu():
+        if dev.device_id not in existing_ids:
+            result.append(dev)
+            existing_ids.add(dev.device_id)
+
+    # 5. NPU（Intel via OpenVINO / AMD XDNA via WMI）
+    for dev in _probe_npu():
+        if dev.device_id not in existing_ids:
+            result.append(dev)
+            existing_ids.add(dev.device_id)
+
+    # 6. ONNX Runtime（CUDA EP、NVIDIA 未検出時のみ追加）
     has_cuda = any(d.backend == "pytorch-cuda" for d in result)
     if not has_cuda:
         result.extend(_probe_onnx())
 
-    # 5. Ray ワーカー（SS_CLUSTER_MODE=ray のとき）
+    # 7. Ray ワーカー（SS_CLUSTER_MODE=ray のとき）
     result.extend(_probe_ray())
 
     _cache_result = result

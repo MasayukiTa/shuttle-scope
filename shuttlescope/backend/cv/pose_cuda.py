@@ -34,6 +34,23 @@ class CudaPose(PoseInferencer):
         self._model_path = resolve_pose_landmarker_model(download_if_missing=True)
         self._cpu_fallback: Optional[PoseInferencer] = None
 
+        # init 時点で GPU delegate が動作するか確認。失敗なら RuntimeError を投げて
+        # factory が CpuPose に一度だけフォールバックできるようにする。
+        self._gpu_available = self._probe_gpu()
+        if not self._gpu_available:
+            raise RuntimeError(
+                "MediaPipe GPU delegate が利用不可です (build flags で GPU が無効)。"
+            )
+
+    def _probe_gpu(self) -> bool:
+        """GPU delegate で landmarker を生成できるか確認する。"""
+        try:
+            lm = self._make_landmarker()
+            lm.close()
+            return True
+        except Exception:
+            return False
+
     def _make_landmarker(self):
         from mediapipe.tasks import python as mp_tasks
         from mediapipe.tasks.python import vision as mp_vision

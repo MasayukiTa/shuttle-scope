@@ -6,7 +6,7 @@ import { apiGet, apiPost } from '@/api/client'
 // ─── 型定義 ──────────────────────────────────────────────────────────────────
 
 /** デバイス種別 */
-export type DeviceType = 'cpu' | 'igpu' | 'dgpu' | 'ray_worker'
+export type DeviceType = 'cpu' | 'igpu' | 'dgpu' | 'ray_worker' | 'npu'
 
 /** バックエンド計算デバイス情報 */
 export interface ComputeDevice {
