@@ -55,11 +55,13 @@ class CudaTrackNet(TrackNetInferencer):
         # -------------------------------------------------------------
         self._model = None
 
-        # cv2.cuda が使えるかを判定 (利用不可時は CPU 実装へ委譲)。
+        # cv2.cuda が使えるかを判定。モデル重みもなく cv2.cuda もなければ
+        # factory が CPU/OpenVINO にフォールバックできるよう RuntimeError を投げる。
         self._cv_cuda_available = self._probe_cv_cuda()
-        if not self._cv_cuda_available:
-            logger.warning(
-                "[CudaTrackNet] cv2.cuda が利用不可のため、CPU 実装 (CpuTrackNet) に委譲します。"
+        if not self._cv_cuda_available and self._model is None:
+            raise RuntimeError(
+                "cv2.cuda が利用不可かつ TrackNet モデル重みが未ロードです。"
+                " opencv-python-cuda または TrackNet 重みファイルが必要です。"
             )
 
     # ------------------------------------------------------------------

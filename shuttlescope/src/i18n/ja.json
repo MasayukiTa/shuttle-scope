@@ -1817,7 +1817,8 @@
       "cpu": "CPU",
       "igpu": "内蔵GPU",
       "dgpu": "外部GPU",
-      "ray_worker": "Rayワーカー"
+      "ray_worker": "Rayワーカー",
+      "npu": "NPU"
     },
     "targets": {
       "tracknet": "TrackNet",
