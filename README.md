@@ -16,9 +16,11 @@ In short, ShuttleScope is well past a loose PoC, but it should still be describe
 If someone opens ShuttleScope today, the parts they can realistically expect to use are:
 
 - create and edit matches, players, and doubles pairings
+- sign in with role-aware local auth flows for admin / analyst / coach / player
 - annotate rallies stroke by stroke
 - review rallies with comments, bookmarks, review-later markers, and warm-up notes
 - run badminton-specific dashboard analysis across matches
+- inspect condition data through role-aware filtered views rather than one unrestricted surface
 - use local video, second-screen playback, and court calibration support
 - capture desktop video regions, define ROI, and run ROI-aware CV batch analysis on prepared environments
 - test CV-assisted annotation flows, candidate review, and TrackNet / YOLO readiness on prepared environments
@@ -78,6 +80,7 @@ Prediction, CV-assisted annotation, remote camera support, and research views ar
 - searchable player selectors in match creation
 - provisional player creation during match setup
 - team-aware player registration flow
+- user management for role-aware local access control
 - match editing after creation
 - player deletion guard when the player is still referenced by matches
 - player team history support at the data model and settings level
@@ -130,7 +133,11 @@ These areas are useful for development and internal testing, but CV quality stil
 
 - LAN session sharing
 - password-protected LAN sessions
-- local auth and role-aware settings flow
+- role-aware local login flow for admin / analyst / coach / player
+- JWT-backed local auth session handling
+- user management page for creating and maintaining role-bound users
+- access logging groundwork for auth and sensitive data access
+- condition views filtered by audience and field sensitivity
 - comments and bookmarks
 - QR-based join flow
 - device manager and camera sender pages
@@ -141,11 +148,13 @@ Remote and browser-based video workflows exist, but they should still be treated
 
 ## Main Screens
 
+- `Login`
 - `Match List`
 - `Annotator`
 - `Dashboard`
 - `Prediction`
 - `Settings`
+- `User Management`
 - `Video Only`
 
 ## Current Product Shape
@@ -164,6 +173,7 @@ ShuttleScope is currently strongest for:
 
 - structured post-match annotation
 - coach / analyst review
+- role-aware internal access for coaches, analysts, admins, and players
 - exploratory tactical analysis
 - doubles-aware review
 - small-team internal testing and iteration
@@ -298,6 +308,13 @@ python main.py
 ```
 
 The default backend URL is `http://127.0.0.1:8765`.
+
+### Authentication Notes
+
+- ShuttleScope now includes a local role-aware login flow with separate paths for admin, analyst, coach, and player access.
+- Player access is designed around player-linked accounts and PIN-style entry, while admin access uses password login.
+- Coach and analyst views are intended for internal workflows and do not expose the same condition-detail surface as player self-view or privileged admin flows.
+- Sensitive access now depends on backend auth context rather than only frontend role selection.
 
 ## TrackNet / YOLO Notes
 

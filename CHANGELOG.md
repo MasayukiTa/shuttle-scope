@@ -14,6 +14,49 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-18
+
+### Role-Aware Local Authentication
+
+- Added a proper local authentication surface instead of relying primarily on frontend role selection.
+- Added backend auth routing for login, logout, current-user lookup, and role-specific login candidate lists.
+- Added JWT utility handling and updated frontend auth state so the app now carries a signed backend-issued auth context rather than only local role headers.
+- Added a dedicated `Login` page with role-specific flows for admin, analyst, coach, and player access.
+
+### User and Access Management
+
+- Added a `User Management` page so internal operators can manage role-bound local users instead of treating access as a purely implicit development concern.
+- Extended the backend user model to support stronger role-linked account handling, including player-linked users and hashed credentials.
+- Added access-log groundwork around auth actions so login and logout activity now has a backend audit trail.
+
+### Protected Condition Views
+
+- Tightened condition-data access so role-aware views expose different levels of detail instead of treating all readers as equivalent.
+- Added field-sensitivity helpers and updated condition routing so coach / analyst access can be constrained to safer summaries while player self-view and privileged access remain distinct.
+- Updated condition-related frontend screens and supporting hooks so the UI behaves correctly under the new protected-data responses rather than assuming unrestricted payloads.
+
+### Prediction and Condition UX Alignment
+
+- Updated prediction and condition pages, plus several analysis cards, so they degrade more safely when sensitive fields are unavailable under the current role.
+- Refined frontend copy and i18n strings to match the new auth and protected-condition behavior.
+
+### Validation
+
+- Verified the auth and protected-condition update with:
+  - backend tests: `624 passed, 4 skipped`
+  - frontend tests: `84 passed`
+  - production build: `npm run build` successful
+
+### Detailed Progress
+
+- Added backend auth router and JWT helpers.
+- Added access-log and field-sensitivity utilities.
+- Updated backend auth extraction and main app wiring.
+- Tightened condition endpoint filtering.
+- Added login and user-management pages.
+- Updated frontend auth hook and API client to use backend-issued auth state.
+- Refined prediction and condition views for role-aware payload differences.
+
 ## 2026-04-17
 
 ### Video Window Rendering Quality (Secondary Monitor)
