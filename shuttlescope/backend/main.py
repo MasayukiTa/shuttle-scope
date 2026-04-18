@@ -8,6 +8,15 @@ _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
+# PyTorch の CUDA DLL を PATH に追加（onnxruntime-gpu が cublasLt64_12.dll 等を見つけられるようにする）
+try:
+    import torch as _torch
+    _torch_lib = os.path.join(os.path.dirname(_torch.__file__), "lib")
+    if os.path.isdir(_torch_lib) and _torch_lib not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _torch_lib + os.pathsep + os.environ.get("PATH", "")
+except Exception:
+    pass
+
 import asyncio
 import logging
 

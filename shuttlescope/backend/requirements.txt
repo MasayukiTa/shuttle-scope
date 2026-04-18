@@ -55,7 +55,8 @@ onnxruntime-gpu>=1.17.0          # GPU 環境（CUDA / DirectML 両対応）
 
 # ── GPU 推論 ─────────────────────────────────────────────────────
 # torch / torchvision CUDA 版は setup_gpu.ps1 で導入（数 GB のため requirements から除外）
-#   pip install --index-url https://download.pytorch.org/whl/cu124 torch==2.4.* torchvision
+#   RTX 50xx (Blackwell sm_120): pip install --index-url https://download.pytorch.org/whl/cu128 torch>=2.6 torchvision
+#   RTX 40xx 以前:               pip install --index-url https://download.pytorch.org/whl/cu124 torch>=2.4 torchvision
 mediapipe>=0.10.14               # MediaPipe Pose（姿勢推定）
 nvidia-ml-py>=12.0               # NVIDIA GPU 監視（旧 pynvml の後継）
 
