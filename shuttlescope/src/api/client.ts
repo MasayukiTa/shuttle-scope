@@ -20,12 +20,18 @@ const BASE_URL = (() => {
 function authHeaders(): Record<string, string> {
   const h: Record<string, string> = {}
   try {
-    const role = localStorage.getItem('shuttlescope_role')
-    const pid  = localStorage.getItem('shuttlescope_player_id')
-    const team = localStorage.getItem('shuttlescope_team_name')
-    if (role) h['X-Role'] = role
-    if (pid)  h['X-Player-Id'] = pid
-    if (team) h['X-Team-Name'] = encodeURIComponent(team)
+    const token = localStorage.getItem('shuttlescope_token')
+    if (token) {
+      h['Authorization'] = `Bearer ${token}`
+    } else {
+      // フォールバック: X-Role ヘッダ（JWT なし開発環境互換）
+      const role = localStorage.getItem('shuttlescope_role')
+      const pid  = localStorage.getItem('shuttlescope_player_id')
+      const team = localStorage.getItem('shuttlescope_team_name')
+      if (role) h['X-Role'] = role
+      if (pid)  h['X-Player-Id'] = pid
+      if (team) h['X-Team-Name'] = encodeURIComponent(team)
+    }
   } catch { /* SSR / storage 無効環境は無視 */ }
   return h
 }

@@ -22,6 +22,9 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="analyst")  # analyst/coach/player
     player_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("players.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    hashed_credential: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    team_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
 class Player(Base):
@@ -855,4 +858,24 @@ class PlayerPositionFrame(Base):
     # データソース種別
     source: Mapped[str] = mapped_column(String(20), default="yolo_tracked")  # yolo_tracked/manual/interpolated
 
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ─── Phase A: アクセスログ ────────────────────────────────────────────────────
+
+class AccessLog(Base):
+    """ログイン・エクスポート・アクセス拒否の記録。"""
+    __tablename__ = "access_logs"
+    __table_args__ = (
+        Index("ix_access_logs_user_id",    "user_id"),
+        Index("ix_access_logs_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)            # login/logout/export/deny
+    resource_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    resource_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)        # JSON
+    ip_addr: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

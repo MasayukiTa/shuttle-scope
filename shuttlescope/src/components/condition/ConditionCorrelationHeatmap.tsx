@@ -164,20 +164,6 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
         <>
           <div className="overflow-x-auto">
             <table className="border-collapse text-[11px]">
-              <thead>
-                <tr>
-                  <th className="p-1"></th>
-                  {keys.map((k) => (
-                    <th
-                      key={`h-${String(k)}`}
-                      className={`p-1 text-left font-normal ${labelColor}`}
-                      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-                    >
-                      {labelFor(k)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
               <tbody>
                 {keys.map((rk, i) => (
                   <tr key={`r-${String(rk)}`}>
@@ -221,6 +207,20 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td className="p-1"></td>
+                  {keys.map((k) => (
+                    <td
+                      key={`f-${String(k)}`}
+                      className={`p-1 font-normal ${labelColor}`}
+                      style={{ writingMode: 'vertical-lr', textAlign: 'left' }}
+                    >
+                      {labelFor(k)}
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
             </table>
           </div>
 

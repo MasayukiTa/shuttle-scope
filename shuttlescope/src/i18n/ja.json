@@ -24,6 +24,7 @@
     "prediction_title": "試合予測",
     "expert": "専門家",
     "players": "選手管理",
+    "users": "ユーザ管理",
     "settings": "設定",
     "dashboard_pages": {
       "overview": "概要",
@@ -80,6 +81,33 @@
     "analyst": "アナリスト",
     "coach": "コーチ",
     "player": "選手"
+  },
+  "auth": {
+    "subtitle": "ログインしてください",
+    "role": {
+      "admin": "管理者",
+      "analyst": "アナリスト",
+      "coach": "コーチ",
+      "player": "選手"
+    },
+    "username": "ユーザ名",
+    "password": "パスワード",
+    "pin": "PIN",
+    "pin_optional": "未設定の場合は空欄",
+    "select_player": "選手を選択",
+    "select_coach": "コーチを選択",
+    "select_analyst": "アナリストを選択",
+    "analyst_direct": "アナリストとしてログイン",
+    "no_player_registered": "登録済み選手ユーザがありません",
+    "no_coach_registered": "登録済みコーチユーザがありません",
+    "login_button": "ログイン",
+    "logging_in": "ログイン中...",
+    "logout": "ログアウト",
+    "error": {
+      "login_failed": "ログインに失敗しました",
+      "select_player": "選手を選択してください",
+      "select_coach": "コーチを選択してください"
+    }
   },
   "condition": {
     "title": "コンディション",
@@ -703,9 +731,9 @@
         "basis_label": "根拠",
         "basis_total": "合計 N={{n}}週のデータ",
         "confidence_basis": "N<10: ★☆☆　N≥10: ★★☆　N≥30: ★★★",
-        "confidence_low":    "★☆☆ 参考値（データ少）",
-        "confidence_medium": "★★☆ 中程度",
-        "confidence_high":   "★★★ 信頼可",
+        "confidence_low":    "参考値（データ少）",
+        "confidence_medium": "中程度",
+        "confidence_high":   "信頼可",
         "low_confidence_hidden": "N≥10 未満のカードは非表示（★★☆以上のみ表示）",
         "mechanism": "この指標が通常より高い（または低い）週の翌3日以内の試合結果を集計し、通常週と比較した相関です。因果関係ではなく傾向値です。"
       }

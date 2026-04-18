@@ -62,6 +62,7 @@ from backend.routers import db_maintenance as db_maintenance_router
 from backend.routers import review as review_router
 from backend.routers import data_package as data_package_router
 from backend.routers import cluster as cluster_router
+from backend.routers import auth as auth_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -252,12 +253,25 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
     """role=player のリクエストに対し、対象リソースへのアクセス可否を DB 検証する。"""
 
     async def dispatch(self, request: StarletteRequest, call_next):
-        role = request.headers.get("X-Role")
+        # JWT 優先、フォールバックは X-Role
+        role = None
+        pid_raw = ""
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            from backend.utils.jwt_utils import verify_token
+            payload = verify_token(token)
+            if payload:
+                role = payload.get("role")
+                pid_raw = str(payload.get("player_id", "")) if payload.get("player_id") else ""
+        if not role:
+            role = request.headers.get("X-Role")
         # player 以外は素通し（analyst/coach は現時点で制約なし）
         if role != "player":
             return await call_next(request)
 
-        pid_raw = request.headers.get("X-Player-Id")
+        if not pid_raw:
+            pid_raw = request.headers.get("X-Player-Id")
         try:
             pid = int(pid_raw) if pid_raw else None
         except (ValueError, TypeError):
@@ -285,6 +299,13 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
                     return StarletteResponse("試合が見つかりません", status_code=404)
                 player_ids = {m.player_a_id, m.partner_a_id, m.player_b_id, m.partner_b_id}
                 if pid not in player_ids:
+                    try:
+                        from backend.utils.access_log import log_access
+                        from backend.db.database import SessionLocal
+                        with SessionLocal() as _log_db:
+                            log_access(_log_db, "access_denied", details={"path": path, "match_id": mid})
+                    except Exception:
+                        pass
                     return StarletteResponse(
                         "この試合へのアクセス権限がありません",
                         status_code=403,
@@ -295,6 +316,13 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
         # ── player スコープ ──
         tgt_pid = _extract_id(path, _PLAYER_ID_PATTERNS)
         if tgt_pid is not None and tgt_pid != pid:
+            try:
+                from backend.utils.access_log import log_access
+                from backend.db.database import SessionLocal
+                with SessionLocal() as _log_db:
+                    log_access(_log_db, "access_denied", details={"path": path, "target_player_id": tgt_pid})
+            except Exception:
+                pass
             return StarletteResponse(
                 "この選手データへのアクセス権限がありません",
                 status_code=403,
@@ -389,7 +417,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "Authorization", "X-Session-Token"],
+    allow_headers=["Content-Type", "Accept", "Authorization", "X-Session-Token", "X-Role", "X-Player-Id", "X-Team-Name"],
 )
 
 # ルーター登録
@@ -441,6 +469,8 @@ app.include_router(review_router.router, prefix="/api")
 app.include_router(data_package_router.router, prefix="/api")
 # クラスタ管理 API
 app.include_router(cluster_router.router, prefix="/api")
+# Phase A: 認証
+app.include_router(auth_router.router, prefix="/api")
 
 
 

@@ -11,7 +11,7 @@ import json
 from datetime import date as _date, datetime
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -39,15 +39,29 @@ from backend.db.models import Condition, Match, Player
 router = APIRouter(prefix="/api/conditions", tags=["conditions"])
 
 
-ALLOWED_ROLES = {"player", "coach", "analyst"}
+ALLOWED_ROLES = {"player", "coach", "analyst", "admin"}
 
 
 def resolve_role(
+    request: Request,
     x_role: Optional[str] = Header(None, alias="X-Role"),
     role: Optional[str] = Query(None),
 ) -> str:
-    """X-Role ヘッダ優先、なければ ?role= クエリ、どちらも無ければ analyst 既定。"""
+    """JWT → X-Role ヘッダ → ?role= の優先順でロールを解決する。"""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        from backend.utils.jwt_utils import verify_token
+        payload = verify_token(token)
+        if payload:
+            r = (payload.get("role") or "").strip().lower()
+            if r == "admin":
+                r = "analyst"
+            if r in ALLOWED_ROLES:
+                return r
     r = (x_role or role or "analyst").strip().lower()
+    if r == "admin":
+        r = "analyst"
     if r not in ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail=f"invalid role: {r}")
     return r
@@ -264,8 +278,6 @@ def _coach_view(c: Condition) -> dict:
         "hooper_index": c.hooper_index,
         "session_load": c.session_load,
         "sleep_hours": c.sleep_hours,
-        "injury_notes": c.injury_notes,
-        "general_comment": c.general_comment,
         "match_id": c.match_id,
         "delta_prev": c.delta_prev,
         "delta_3ma": c.delta_3ma,
