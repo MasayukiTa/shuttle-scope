@@ -5,7 +5,7 @@ import * as http from 'http'
 import { existsSync, statSync, createReadStream } from 'fs'
 import { Readable } from 'stream'
 
-const { app, BrowserWindow, dialog, ipcMain, protocol, screen } = electron
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, screen } = electron
 
 // YouTube が Electron UA を検知してブロックするのを回避するための汎用ブラウザ UA
 const BROWSER_UA =
@@ -416,6 +416,7 @@ function createSplashWindow(): void {
 // ─── メインウィンドウ作成 ─────────────────────────────────────────────────────
 
 function createWindow(): void {
+  Menu.setApplicationMenu(null)
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,

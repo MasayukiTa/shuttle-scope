@@ -52,15 +52,14 @@ if not exist "%ROOT%node_modules" (
     echo.
 )
 
-rem Check ffmpeg (高画質ダウンロードに必要)
+rem Check ffmpeg
 where ffmpeg >nul 2>&1
 if errorlevel 1 (
-    echo [INFO] ffmpeg が見つかりません。高画質ダウンロードが制限されます。
+    echo [INFO] ffmpeg not found. Trying to install via winget...
     where winget >nul 2>&1
     if not errorlevel 1 (
-        echo [SETUP] ffmpeg をインストールしています...
         winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements >nul 2>&1
-        echo [SETUP] ffmpeg インストール完了（次回起動時から有効）
+        echo [SETUP] ffmpeg install attempted. Restart app to take effect.
     )
 )
 

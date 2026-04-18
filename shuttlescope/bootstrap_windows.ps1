@@ -1,6 +1,7 @@
 param(
     [switch]$IncludeYolo,
     [switch]$SetupTrackNet,
+    [switch]$SetupGpu,      # CUDA + onnxruntime-gpu + PyTorch をセットアップ
     [switch]$RunDoctor
 )
 
@@ -35,18 +36,31 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     Write-Host "ffmpeg が見つかりません。winget でインストールします..." -ForegroundColor Yellow
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
-        # PATH を現在のセッションに反映
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
         if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
-            Write-Host "ffmpeg のインストール完了。" -ForegroundColor Green
+            Write-Host "ffmpeg: インストール完了。" -ForegroundColor Green
         } else {
-            Write-Host "インストール後に一度ターミナルを再起動してください。" -ForegroundColor Yellow
+            Write-Host "ffmpeg: 次回ターミナル再起動後に有効になります。" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "winget が見つかりません。手動で ffmpeg をインストールしてください: winget install ffmpeg" -ForegroundColor Red
+        Write-Host "winget が見つかりません。手動で ffmpeg をインストールしてください。" -ForegroundColor Red
     }
 } else {
-    Write-Host "ffmpeg: OK ($(ffmpeg -version 2>&1 | Select-String 'ffmpeg version' | Select-Object -First 1))" -ForegroundColor Green
+    Write-Host "ffmpeg: OK" -ForegroundColor Green
+}
+
+Write-Step "Checking ngrok"
+if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
+    Write-Host "ngrok が見つかりません。winget でインストールします..." -ForegroundColor Yellow
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install Ngrok.Ngrok -e --accept-source-agreements --accept-package-agreements
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+        Write-Host "ngrok: インストール完了。" -ForegroundColor Green
+    } else {
+        Write-Host "winget が見つかりません。https://ngrok.com/download から手動でインストールしてください。" -ForegroundColor Red
+    }
+} else {
+    Write-Host "ngrok: OK" -ForegroundColor Green
 }
 
 if (-not (Test-Path $python)) {
@@ -70,6 +84,11 @@ Push-Location $root
 npm install
 Pop-Location
 
+if ($SetupGpu) {
+    Write-Step "Setting up GPU (CUDA + onnxruntime-gpu + PyTorch)"
+    & (Join-Path $root "scripts\setup_gpu.ps1")
+}
+
 if ($SetupTrackNet) {
     Write-Step "Setting up TrackNet weights and exports"
     Push-Location $root
@@ -86,7 +105,8 @@ if ($RunDoctor) {
 
 Write-Step "Done"
 Write-Host "Next steps:" -ForegroundColor Green
-Write-Host "  1. Optional YOLO install: .\bootstrap_windows.ps1 -IncludeYolo"
-Write-Host "  2. Optional TrackNet setup: .\bootstrap_windows.ps1 -SetupTrackNet"
-Write-Host "  3. Check environment:    .\backend\.venv\Scripts\python -m backend.tools.setup_doctor"
-Write-Host "  4. Start app:            .\start.bat"
+Write-Host "  GPU セットアップ (CUDA):  .\bootstrap_windows.ps1 -SetupGpu"
+Write-Host "  YOLO 追加インストール:    .\bootstrap_windows.ps1 -IncludeYolo"
+Write-Host "  TrackNet 重みDL:          .\bootstrap_windows.ps1 -SetupTrackNet"
+Write-Host "  環境確認:                 .\backend\.venv\Scripts\python -m backend.tools.setup_doctor"
+Write-Host "  アプリ起動:               .\start.bat"
