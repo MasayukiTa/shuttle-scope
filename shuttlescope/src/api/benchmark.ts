@@ -71,3 +71,8 @@ export async function runBenchmark(
 export function getJob(job_id: string): Promise<BenchmarkJob> {
   return apiGet<BenchmarkJob>(`/v1/benchmark/jobs/${job_id}`)
 }
+
+/** 実行中のジョブをキャンセルする */
+export async function cancelJob(job_id: string): Promise<void> {
+  await fetch(`/api/v1/benchmark/jobs/${job_id}`, { method: 'DELETE' })
+}

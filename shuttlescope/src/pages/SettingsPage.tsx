@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, TeamHistoryEntry, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
@@ -20,6 +20,7 @@ import { BenchmarkProgress } from '@/components/benchmark/BenchmarkProgress'
 import {
   getDevices,
   runBenchmark,
+  cancelJob,
   getJob,
   ComputeDevice,
   BenchmarkJob,
@@ -344,6 +345,19 @@ export function SettingsPage() {
       setBmError('ベンチマーク開始に失敗しました')
       setBmRunning(false)
     }
+  }
+
+  /** ベンチマークジョブを停止する */
+  async function stopBenchmark() {
+    if (bmJobId) {
+      try {
+        await cancelJob(bmJobId)
+      } catch (_e) {
+        // キャンセル失敗は無視
+      }
+    }
+    setBmRunning(false)
+    setBmJobId(null)
   }
 
   /** ポーリング時にジョブ状態を取得する */
@@ -1461,6 +1475,16 @@ export function SettingsPage() {
                   <><Play size={11} /> {t('benchmark.run')}</>
                 )}
               </button>
+
+              {/* 停止ボタン（実行中のみ表示） */}
+              {bmRunning && (
+                <button
+                  onClick={stopBenchmark}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs text-white rounded bg-red-700 hover:bg-red-600 transition-colors"
+                >
+                  <Square size={11} /> {t('benchmark.stop')}
+                </button>
+              )}
 
               {/* プログレスバー（実行中のみ表示） */}
               <BenchmarkProgress

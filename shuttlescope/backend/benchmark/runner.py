@@ -163,6 +163,7 @@ class BenchmarkRunner:
         targets: List[str],
         n_frames: int,
         devices: List[ComputeDevice],
+        job: "Any | None" = None,
     ) -> Dict[str, Any]:
         """全 device × target を計測して結果を返す。
 
@@ -172,13 +173,12 @@ class BenchmarkRunner:
             targets:    計測対象ターゲット名リスト
             n_frames:   1 ターゲットあたりの計測フレーム数
             devices:    ComputeDevice のリスト
+            job:        BenchmarkJob オブジェクト（キャンセル確認用、省略可）
 
         Returns:
             {device_id: {target: result_dict}} の形式
         """
-        # device_id → ComputeDevice のマップを構築
         dev_map: Dict[str, ComputeDevice] = {d.device_id: d for d in devices}
-        # 対象デバイスを絞り込む
         target_devices = [dev_map[did] for did in device_ids if did in dev_map]
 
         total_steps = len(target_devices) * len(targets)
@@ -187,13 +187,19 @@ class BenchmarkRunner:
         results: Dict[str, Any] = {}
 
         for device in target_devices:
+            if job is not None and job.cancelled:
+                logger.info("[runner] キャンセル検出: job=%s", job_id)
+                break
             results[device.device_id] = {}
             for target in targets:
+                if job is not None and job.cancelled:
+                    results[device.device_id][target] = {"error": "キャンセルされました"}
+                    break
                 logger.info(
                     "[runner] 計測開始: job=%s device=%s target=%s n=%d",
                     job_id, device.device_id, target, n_frames,
                 )
-                result = self._run_target(device, target, n_frames)
+                result = self._run_target(device, target, n_frames, job=job)
                 results[device.device_id][target] = result
                 completed += 1
                 self._progress[job_id] = completed / max(total_steps, 1)
@@ -215,10 +221,13 @@ class BenchmarkRunner:
 
     # ── 内部: ターゲット振り分け ───────────────────────────────────────────
 
-    def _run_target(self, device: ComputeDevice, target: str, n_frames: int) -> Dict[str, Any]:
+    def _run_target(self, device: ComputeDevice, target: str, n_frames: int,
+                    job: "Any | None" = None) -> Dict[str, Any]:
         """対象デバイスが unavailable なら即座にエラーを返す。それ以外は各計測を実行。"""
         if not device.available:
             return {"error": "device unavailable"}
+        if job is not None and job.cancelled:
+            return {"error": "キャンセルされました"}
 
         use_gpu = device.device_type in ("dgpu", "igpu")
 
@@ -244,42 +253,53 @@ class BenchmarkRunner:
 
     # ── 各ターゲット実装 ──────────────────────────────────────────────────
 
-    def _bench_tracknet(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
-        """TrackNet 推論速度計測。
-
-        factory.get_tracknet() で inferencer を取得し、
-        合成フレームを動画ファイル風のパスとして渡す（mock は video_path を無視する）。
-        """
+    def _bench_tracknet(self, device: ComputeDevice, n_frames: int,
+                        job: "Any | None" = None) -> Dict[str, Any]:
+        """TrackNet 推論速度計測。n_frames 回の run() レイテンシを計測する。"""
         from backend.cv import factory
+        from backend.benchmark.synthetic import make_video_file
 
         inferencer = factory.get_tracknet()
-
-        # 合成動画 (ダミーパス) を使って n_frames 回推論を計測
-        # MockTrackNet / CpuTrackNet はファイル存在に依存しない
-        dummy_path = "/dev/null/synthetic_bench.mp4"
+        video_path = make_video_file(n=10)
         latencies: List[float] = []
+        try:
+            for _ in range(n_frames):
+                if job is not None and job.cancelled:
+                    break
+                t0 = time.perf_counter()
+                inferencer.run(video_path)
+                latencies.append(time.perf_counter() - t0)
+        finally:
+            try:
+                os.remove(video_path)
+            except OSError:
+                pass
 
-        for _ in range(n_frames):
-            t0 = time.perf_counter()
-            inferencer.run(dummy_path)
-            latencies.append(time.perf_counter() - t0)
+        return _compute_metrics(latencies) if latencies else {"error": "キャンセルされました"}
 
-        return _compute_metrics(latencies)
-
-    def _bench_pose(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
-        """Pose 推論速度計測。factory.get_pose() を使用。"""
+    def _bench_pose(self, device: ComputeDevice, n_frames: int,
+                    job: "Any | None" = None) -> Dict[str, Any]:
+        """Pose 推論速度計測。n_frames 回の run() レイテンシを計測する。"""
         from backend.cv import factory
+        from backend.benchmark.synthetic import make_video_file
 
         inferencer = factory.get_pose()
-        dummy_path = "/dev/null/synthetic_bench.mp4"
+        video_path = make_video_file(n=10)
         latencies: List[float] = []
+        try:
+            for _ in range(n_frames):
+                if job is not None and job.cancelled:
+                    break
+                t0 = time.perf_counter()
+                inferencer.run(video_path)
+                latencies.append(time.perf_counter() - t0)
+        finally:
+            try:
+                os.remove(video_path)
+            except OSError:
+                pass
 
-        for _ in range(n_frames):
-            t0 = time.perf_counter()
-            inferencer.run(dummy_path)
-            latencies.append(time.perf_counter() - t0)
-
-        return _compute_metrics(latencies)
+        return _compute_metrics(latencies) if latencies else {"error": "キャンセルされました"}
 
     def _bench_pipeline_full(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
         """パイプライン全工程（TrackNet + Pose + Gravity）の計測。
@@ -289,19 +309,26 @@ class BenchmarkRunner:
         from backend.cv import factory
         from backend.cv.gravity import compute_cog_batch
 
+        from backend.benchmark.synthetic import make_video_file
+
         tracknet = factory.get_tracknet()
         pose = factory.get_pose()
-        dummy_path = "/dev/null/synthetic_bench.mp4"
+        video_path = make_video_file(n=10)  # 固定 10 フレーム
         latencies: List[float] = []
 
-        for _ in range(n_frames):
-            t0 = time.perf_counter()
-            shuttle_samples = tracknet.run(dummy_path)
-            pose_samples = pose.run(dummy_path)
-            # gravity: landmark を取り出してバッチ処理
-            landmarks_batch = [s.landmarks for s in pose_samples]
-            compute_cog_batch(landmarks_batch)
-            latencies.append(time.perf_counter() - t0)
+        try:
+            for _ in range(n_frames):
+                t0 = time.perf_counter()
+                shuttle_samples = tracknet.run(video_path)
+                pose_samples = pose.run(video_path)
+                landmarks_batch = [s.landmarks for s in pose_samples]
+                compute_cog_batch(landmarks_batch)
+                latencies.append(time.perf_counter() - t0)
+        finally:
+            try:
+                os.remove(video_path)
+            except OSError:
+                pass
 
         return _compute_metrics(latencies)
 

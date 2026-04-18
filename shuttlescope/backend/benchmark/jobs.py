@@ -32,6 +32,7 @@ class BenchmarkJob:
     progress: float = 0.0           # 0.0〜1.0
     results: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
+    cancelled: bool = False
 
 
 def create_job(device_ids: list[str], targets: list[str], n_frames: int) -> BenchmarkJob:
@@ -52,6 +53,19 @@ def create_job(device_ids: list[str], targets: list[str], n_frames: int) -> Benc
 def get_job(job_id: str) -> Optional[BenchmarkJob]:
     """job_id に対応するジョブを返す。存在しない場合は None。"""
     return _jobs.get(job_id)
+
+
+def cancel_job(job_id: str) -> bool:
+    """ジョブにキャンセルフラグを立てる。ジョブが存在すれば True を返す。"""
+    job = _jobs.get(job_id)
+    if job is None:
+        return False
+    job.cancelled = True
+    if job.status in ("pending", "running"):
+        job.status = "failed"
+        job.error = "キャンセルされました"
+    logger.info("[jobs] ジョブキャンセル: job_id=%s", job_id)
+    return True
 
 
 def _sync_runner(job: BenchmarkJob, runner_fn: Callable[..., Dict[str, Any]]) -> None:

@@ -1809,6 +1809,7 @@
     "select_targets": "計測ターゲットを選択",
     "run": "ベンチマーク実行",
     "running": "計測中...",
+    "stop": "停止",
     "result": "計測結果",
     "unavailable": "利用不可",
     "no_result": "結果なし",

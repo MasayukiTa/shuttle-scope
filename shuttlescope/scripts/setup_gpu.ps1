@@ -1,9 +1,9 @@
 ﻿# ShuttleScope GPU セットアップスクリプト (Windows PowerShell)
-# CUDA 12.4 + onnxruntime-gpu + ngrok を一括セットアップする。
+# CUDA 12.8 + onnxruntime-gpu + PyTorch (Blackwell 対応) + ngrok を一括セットアップする。
 #
 # 前提:
 #   - .\backend\.venv\ が存在すること（start.bat または bootstrap_windows.ps1 で作成済み）
-#   - NVIDIA ドライバ 550 以降 / CUDA 12.4 互換 GPU（RTX シリーズ等）
+#   - NVIDIA ドライバ 560 以降 / CUDA 12.8 互換 GPU（RTX 40/50 シリーズ等）
 #
 # 使い方:
 #   powershell -ExecutionPolicy Bypass -File .\scripts\setup_gpu.ps1
@@ -35,8 +35,8 @@ Write-Step "onnxruntime-gpu インストール（CPU 版と競合するため入
 Write-Host "onnxruntime-gpu: OK" -ForegroundColor Green
 
 # ────────────────────────────────────────────────────────────────
-Write-Step "PyTorch CUDA 12.4 インストール（約 2-3 GB）"
-& $pip install --index-url https://download.pytorch.org/whl/cu124 "torch==2.4.*" torchvision
+Write-Step "PyTorch 2.6+ CUDA 12.8 インストール（Blackwell RTX 50xx 対応、約 2-3 GB）"
+& $pip install --index-url https://download.pytorch.org/whl/cu128 "torch>=2.6" torchvision
 Write-Host "PyTorch CUDA: OK" -ForegroundColor Green
 
 # ────────────────────────────────────────────────────────────────
