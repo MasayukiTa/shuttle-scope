@@ -67,6 +67,10 @@ def create_tables(eng=None):
 def add_columns_if_missing(eng) -> None:
     """既存 SQLite DB に不足カラムを後付けする（冪等・N-001/N-002/V4）"""
     new_cols = [
+        # Phase A: 認証カラム（users テーブル）
+        ("users", "hashed_credential", "VARCHAR(128)"),
+        ("users", "display_name",      "VARCHAR(100)"),
+        ("users", "team_name",         "VARCHAR(100)"),
         # N-001/N-002: 空間座標拡張
         ("strokes", "opponent_contact_x", "REAL"),
         ("strokes", "opponent_contact_y", "REAL"),

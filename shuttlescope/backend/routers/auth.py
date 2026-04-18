@@ -11,9 +11,10 @@
 import logging
 from typing import Optional
 
+import bcrypt as _bcrypt_lib
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -24,7 +25,16 @@ from backend.utils.access_log import log_access
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def _hash_password(password: str) -> str:
+    return _bcrypt_lib.hashpw(password.encode("utf-8"), _bcrypt_lib.gensalt()).decode("utf-8")
+
+
+def _verify_password(password: str, hashed: str) -> bool:
+    try:
+        return _bcrypt_lib.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
 
 
 def _get_ip(request: Request) -> Optional[str]:
@@ -60,7 +70,7 @@ def _seed_admin_if_needed(db: Session) -> None:
     """admin ユーザが 0 件の場合、デフォルト admin をシードする。"""
     exists = db.query(User).filter(User.role == "admin").first()
     if not exists:
-        hashed = _pwd_ctx.hash("shuttlescope2026")
+        hashed = _hash_password("shuttlescope2026")
         admin = User(
             username="admin",
             role="admin",
@@ -91,7 +101,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         if not user or not user.hashed_credential:
             log_access(db, "login_failed", details={"reason": "user_not_found", "username": req.username}, ip_addr=ip)
             raise HTTPException(status_code=401, detail="認証に失敗しました")
-        if not _pwd_ctx.verify(req.password, user.hashed_credential):
+        if not _verify_password(req.password, user.hashed_credential):
             log_access(db, "login_failed", user_id=user.id, details={"reason": "wrong_password"}, ip_addr=ip)
             raise HTTPException(status_code=401, detail="認証に失敗しました")
         token = create_access_token(user.id, user.role, user.player_id)
@@ -112,7 +122,9 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=422, detail=f"select grant は {allowed} のみ有効です")
         if req.user_id:
             user = db.get(User, req.user_id)
-            if not user or user.role != role:
+            # analyst タブから admin ユーザを選択した場合も許可（admin は analyst の上位権限）
+            allowed_roles = {role, "admin"} if role == "analyst" else {role}
+            if not user or user.role not in allowed_roles:
                 raise HTTPException(status_code=404, detail="ユーザが見つかりません")
         else:
             # analyst は最初のアナリストユーザを使うか、専用ユーザなし → 仮ユーザ ID=0 扱い
@@ -140,7 +152,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         if not user or user.role != "player":
             log_access(db, "login_failed", details={"reason": "user_not_found", "user_id": req.user_id}, ip_addr=ip)
             raise HTTPException(status_code=401, detail="認証に失敗しました")
-        if user.hashed_credential and not _pwd_ctx.verify(req.pin or "", user.hashed_credential):
+        if user.hashed_credential and not _verify_password(req.pin or "", user.hashed_credential):
             log_access(db, "login_failed", user_id=user.id, details={"reason": "wrong_pin"}, ip_addr=ip)
             raise HTTPException(status_code=401, detail="PIN が正しくありません")
         token = create_access_token(user.id, user.role, user.player_id)
@@ -289,9 +301,9 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     # 認証情報ハッシュ
     hashed: Optional[str] = None
     if body.role in {"admin", "analyst"} and body.password:
-        hashed = _pwd_ctx.hash(body.password)
+        hashed = _hash_password(body.password)
     elif body.role == "player" and body.pin:
-        hashed = _pwd_ctx.hash(body.pin)
+        hashed = _hash_password(body.pin)
     user = User(
         username=body.username or body.display_name,
         role=body.role,
@@ -321,9 +333,9 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     if body.player_id is not None:
         user.player_id = body.player_id
     if body.password:
-        user.hashed_credential = _pwd_ctx.hash(body.password)
+        user.hashed_credential = _hash_password(body.password)
     elif body.pin:
-        user.hashed_credential = _pwd_ctx.hash(body.pin)
+        user.hashed_credential = _hash_password(body.pin)
     db.commit()
     log_access(db, "user_updated", user_id=user.id)
     return {"success": True}
