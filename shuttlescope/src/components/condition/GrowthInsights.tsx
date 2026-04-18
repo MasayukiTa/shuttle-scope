@@ -14,8 +14,8 @@ interface Props {
   isLight: boolean
 }
 
-// ── 体調分析用信頼度（週数ベース、球数ベースの ConfidenceBadge は使わない） ──
-function ConditionConfidenceBadge({ n }: { n: number }) {
+// ── 体調分析用信頼度バッジ（週数ベース）──────────────────────────────────
+function ConditionConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
   const { t } = useTranslation()
   let stars: string
   let key: string
@@ -24,15 +24,21 @@ function ConditionConfidenceBadge({ n }: { n: number }) {
   if (n < 10) {
     stars = '★☆☆'
     key = 'condition.insights.growth_card.confidence_low'
-    colorClass = 'border-red-400 bg-red-900/20 text-red-300'
+    colorClass = isLight
+      ? 'border-red-300 bg-red-50 text-red-600'
+      : 'border-red-400 bg-red-900/20 text-red-300'
   } else if (n < 30) {
     stars = '★★☆'
     key = 'condition.insights.growth_card.confidence_medium'
-    colorClass = 'border-yellow-400 bg-yellow-900/20 text-yellow-300'
+    colorClass = isLight
+      ? 'border-yellow-300 bg-yellow-50 text-yellow-600'
+      : 'border-yellow-400 bg-yellow-900/20 text-yellow-300'
   } else {
     stars = '★★★'
     key = 'condition.insights.growth_card.confidence_high'
-    colorClass = 'border-green-400 bg-green-900/20 text-green-300'
+    colorClass = isLight
+      ? 'border-green-300 bg-green-50 text-green-600'
+      : 'border-green-400 bg-green-900/20 text-green-300'
   }
 
   return (
@@ -45,21 +51,19 @@ function ConditionConfidenceBadge({ n }: { n: number }) {
   )
 }
 
-// ── 個別インサイトカード ────────────────────────────────────────────────────
-function GrowthCardItem({ c, isLight, borderColor }: {
+// ── 一行リスト表示のインサイト行 ──────────────────────────────────────────
+function GrowthCardRow({ c, isLight, sepColor }: {
   c: GrowthCard
   isLight: boolean
-  borderColor: string
+  sepColor: string
 }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
 
-  const cardBg      = isLight ? 'bg-gray-50'     : 'bg-gray-900'
   const labelMuted  = isLight ? 'text-gray-500'   : 'text-gray-400'
   const labelStrong = isLight ? 'text-gray-800'   : 'text-gray-100'
-  const sepColor    = isLight ? 'border-gray-200' : 'border-gray-700'
+  const expandBg    = isLight ? 'bg-gray-50'       : 'bg-gray-900/50'
 
-  // 指標名（factor_key → i18n）
   const factorLabel = c.factor_key
     ? t(`condition.insights.growth_card.factor.${c.factor_key}`, {
         defaultValue: t('condition.insights.growth_card.factor.default', { key: c.factor_key }),
@@ -68,7 +72,6 @@ function GrowthCardItem({ c, isLight, borderColor }: {
         defaultValue: t('condition.insights.growth_card.when.default', { key: c.when_key }),
       })
 
-  // 条件文（「〜が高い週」）
   const whenLabel = t(`condition.insights.growth_card.when.${c.when_key}`, {
     defaultValue: t('condition.insights.growth_card.when.default', { key: c.when_key }),
   })
@@ -80,48 +83,44 @@ function GrowthCardItem({ c, isLight, borderColor }: {
   const nTotal   = c.sample_n ?? (nHigh + nOther)
 
   return (
-    <div className={`rounded-lg border ${borderColor} ${cardBg} flex flex-col gap-0 overflow-hidden`}>
-      {/* ── ヘッダー: 指標名 ── */}
-      <div className={`px-3 pt-3 pb-1 text-xs font-semibold ${labelStrong}`}>
-        {factorLabel}
-      </div>
-
-      {/* ── メインメッセージ ── */}
-      <div className="px-3 pb-2 flex flex-col gap-1.5">
-        <p className={`text-xs ${labelMuted}`}>{whenLabel}は</p>
-
-        {/* 勝率変化 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-xs ${labelMuted}`}>
-            {t('condition.insights.growth_card.win_rate_other')}: <strong>{winOther}</strong>
+    <div className={`border-b last:border-0 ${sepColor}`}>
+      {/* ── メイン行 ── */}
+      <div className="flex items-center gap-4 py-3 px-1 flex-wrap">
+        {/* 左: 指標名 + 勝率変化 */}
+        <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+          <span className={`text-sm font-medium ${labelStrong} whitespace-nowrap`}>
+            {factorLabel}
           </span>
-          <span className="text-gray-400 text-xs">→</span>
-          <span className={`text-xs ${labelMuted}`}>
-            {t('condition.insights.growth_card.win_rate_high')}: <strong className="text-emerald-500">{winHigh}</strong>
+          <span className={`text-xs ${labelMuted} whitespace-nowrap`}>
+            {whenLabel}
           </span>
-          {c.effect && (
-            <span className="text-sm font-bold text-emerald-500">{c.effect} 勝率↑</span>
-          )}
+          <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
+            <span className={`font-mono ${labelMuted}`}>{winOther}</span>
+            <span className={labelMuted}>→</span>
+            <span className="font-mono font-semibold text-emerald-500">{winHigh}</span>
+            {c.effect && (
+              <span className="font-bold text-emerald-500 ml-0.5">({c.effect} 勝率↑)</span>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* ── 信頼性 + 詳細トグル ── */}
-      <div className={`px-3 py-2 border-t ${sepColor} flex items-center justify-between gap-2`}>
-        <ConditionConfidenceBadge n={nTotal} />
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className={`flex items-center gap-0.5 text-[11px] ${labelMuted} hover:text-blue-400`}
-        >
-          {t('condition.insights.growth_card.basis_label')}
-          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-        </button>
+        {/* 右: 信頼度 + 詳細ボタン */}
+        <div className="flex items-center gap-2 shrink-0">
+          <ConditionConfidenceBadge n={nTotal} isLight={isLight} />
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className={`flex items-center gap-0.5 text-[11px] ${labelMuted} hover:text-blue-400 whitespace-nowrap`}
+          >
+            {t('condition.insights.growth_card.basis_label')}
+            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
+        </div>
       </div>
 
       {/* ── 展開: 根拠の詳細 ── */}
       {expanded && (
-        <div className={`px-3 pb-3 pt-1 border-t ${sepColor} space-y-2`}>
-          {/* サンプル内訳 */}
-          <div className={`text-xs ${labelMuted} flex flex-wrap gap-3`}>
+        <div className={`px-4 pb-3 pt-1 ${expandBg} rounded-b space-y-1.5`}>
+          <div className={`text-xs ${labelMuted} flex flex-wrap gap-4`}>
             <span>
               {t('condition.insights.growth_card.n_high_weeks', { n: nHigh })}
               <span className="ml-1 text-emerald-500">(勝率 {winHigh})</span>
@@ -130,17 +129,10 @@ function GrowthCardItem({ c, isLight, borderColor }: {
               {t('condition.insights.growth_card.n_other_weeks', { n: nOther })}
               <span className="ml-1">(勝率 {winOther})</span>
             </span>
-          </div>
-
-          {/* 合計N + 信頼度基準 */}
-          <div className={`text-xs ${labelMuted}`}>
-            {t('condition.insights.growth_card.basis_total', { n: nTotal })}
-            <span className={`ml-2 font-mono text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
-              （{t('condition.insights.growth_card.confidence_basis')}）
+            <span className={`font-mono text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+              {t('condition.insights.growth_card.basis_total', { n: nTotal })}
             </span>
           </div>
-
-          {/* 注釈: 相関であり因果ではない */}
           <div className={`text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-start gap-1`}>
             <Info size={10} className="shrink-0 mt-0.5" />
             <span>{t('condition.insights.growth_card.mechanism')}</span>
@@ -157,9 +149,10 @@ export function GrowthInsights({ playerId, isLight }: Props) {
   const { role } = useAuth()
   const { data, isLoading, error } = useInsights(playerId)
 
-  const panelBg     = isLight ? 'bg-white'      : 'bg-gray-800'
-  const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
-  const textMuted   = isLight ? 'text-gray-500'   : 'text-gray-400'
+  const panelBg     = isLight ? 'bg-white'        : 'bg-gray-800'
+  const borderColor = isLight ? 'border-gray-200'  : 'border-gray-700'
+  const sepColor    = isLight ? 'border-gray-100'  : 'border-gray-700'
+  const textMuted   = isLight ? 'text-gray-500'    : 'text-gray-400'
   const isPlayer    = role === 'player'
 
   const allCards = data?.growth_cards ?? []
@@ -170,35 +163,45 @@ export function GrowthInsights({ playerId, isLight }: Props) {
 
   return (
     <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
-      <h2 className="text-sm font-semibold mb-3">
-        {isPlayer
-          ? t('condition.insights.title_player')
-          : t('condition.insights.title_coach')}
-      </h2>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="text-sm font-semibold">
+          {isPlayer
+            ? t('condition.insights.title_player')
+            : t('condition.insights.title_coach')}
+        </h2>
+        {trend && trend.ccs_28ma != null && (
+          <div className={`flex items-center gap-2 text-xs ${textMuted}`}>
+            <span>{t('condition.insights.ccs_28ma')}:</span>
+            <span className="font-mono">{trend.ccs_28ma.toFixed(1)}</span>
+            {trend.direction && (
+              <span>{t(`condition.insights.direction.${trend.direction}`)}</span>
+            )}
+          </div>
+        )}
+      </div>
 
       {isLoading ? (
         <div className={`${textMuted} text-xs`}>{t('condition.insights.loading')}</div>
       ) : error ? (
         <div className={`${textMuted} text-xs`}>{t('condition.insights.no_data')}</div>
       ) : (
-        <div className="space-y-4">
-          {/* ── growth cards ── */}
+        <div>
+          {/* ── growth cards（リスト形式） ── */}
           {cards.length > 0 ? (
             <>
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+              <div>
                 {cards.map((c, idx) => (
-                  <GrowthCardItem
+                  <GrowthCardRow
                     key={idx}
                     c={c}
                     isLight={isLight}
-                    borderColor={borderColor}
+                    sepColor={sepColor}
                   />
                 ))}
               </div>
               {hiddenCount > 0 && (
-                <div className={`text-[11px] ${textMuted}`}>
-                  {t('condition.insights.growth_card.low_confidence_hidden')}
-                  （{hiddenCount}件）
+                <div className={`mt-2 text-[11px] ${textMuted}`}>
+                  {t('condition.insights.growth_card.low_confidence_hidden')}（{hiddenCount}件）
                 </div>
               )}
             </>
@@ -212,20 +215,9 @@ export function GrowthInsights({ playerId, isLight }: Props) {
             </div>
           )}
 
-          {/* ── CCS 28日移動平均 ── */}
-          {trend && trend.ccs_28ma != null && (
-            <div className={`flex items-center gap-3 text-xs ${textMuted}`}>
-              <span>{t('condition.insights.ccs_28ma')}:</span>
-              <span className="font-mono">{trend.ccs_28ma.toFixed(1)}</span>
-              {trend.direction && (
-                <span>{t(`condition.insights.direction.${trend.direction}`)}</span>
-              )}
-            </div>
-          )}
-
           {/* ── coach/analyst 向け: raw factor trend + validity ── */}
           {!isPlayer && data?.raw_factor_trends && data.raw_factor_trends.length > 0 && (
-            <div className={`pt-3 border-t ${borderColor} space-y-3`}>
+            <div className={`mt-4 pt-3 border-t ${borderColor} space-y-3`}>
               <div className={`text-xs ${textMuted}`}>
                 {t('condition.insights.raw_factor_trends')}
               </div>
@@ -263,7 +255,7 @@ export function GrowthInsights({ playerId, isLight }: Props) {
           )}
 
           {!isPlayer && data?.validity_summary && (
-            <div className={`pt-3 border-t ${borderColor} text-xs ${textMuted}`}>
+            <div className={`mt-3 pt-3 border-t ${borderColor} text-xs ${textMuted}`}>
               <span className="mr-2">{t('condition.insights.validity_summary')}:</span>
               {data.validity_summary.valid_ratio != null && (
                 <span className="font-mono">

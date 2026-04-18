@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
-import { User, TrendingUp, BarChart2 } from 'lucide-react'
+import { User, TrendingUp, Swords } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
@@ -20,7 +20,7 @@ import { PrematchStatCard } from '@/components/analysis/PrematchStatCard'
 import { useAuth } from '@/hooks/useAuth'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { RoleGuard } from '@/components/common/RoleGuard'
-import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 
 interface PlayerSummary {
   id: number
@@ -43,6 +43,11 @@ export function PredictionPage() {
   })
   const [subTab, setSubTab] = useState<SubTab>('preview')
   const [forecastMatchId, setForecastMatchId] = useState<number | null>(null)
+  // preview サブタブ用: Page レベルで管理（PredictionPanel へ prop として渡す）
+  const [opponentId, setOpponentId] = useState<number | null>(null)
+  const [tournamentLevel, setTournamentLevel] = useState<string>('')
+
+  const LEVEL_OPTIONS = ['IC', 'IS', 'SJL', '全日本', '国内', 'その他']
 
   // URL パラメータ変化に追従
   useEffect(() => {
@@ -92,11 +97,11 @@ export function PredictionPage() {
 
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']} fallback={
-      <div className={`flex items-center justify-center h-screen ${isLight ? 'text-gray-500 bg-gray-50' : 'text-gray-500 bg-gray-900'}`}>
+      <div className={`flex items-center justify-center h-full ${isLight ? 'text-gray-500 bg-gray-50' : 'text-gray-500 bg-gray-900'}`}>
         予測機能はアナリスト・コーチのみ利用できます
       </div>
     }>
-      <div className={`flex flex-col h-screen ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
+      <div className={`flex flex-col h-full ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
         {/* ヘッダー */}
         <div className={`px-6 pt-6 pb-4 shrink-0 ${headerBg}`}>
           {/* タイトル行 */}
@@ -134,6 +139,48 @@ export function PredictionPage() {
               className="min-w-[280px]"
             />
           </div>
+
+          {/* 相手・大会レベルセレクター行（preview サブタブ + 選手選択済み時のみ） */}
+          {selectedPlayerId && subTab === 'preview' && (
+            <div className="flex items-center gap-4 mt-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Swords size={15} className={`${textMuted} shrink-0`} />
+                <label className={`text-sm ${textSecondary} shrink-0`}>相手：</label>
+                <SearchableSelect
+                  options={sortedPlayers
+                    .filter((p) => p.id !== selectedPlayerId)
+                    .map((p) => ({
+                      value: p.id,
+                      label: p.name,
+                      searchText: p.team ?? '',
+                      suffix: p.team ? `（${p.team}）` : undefined,
+                    }))}
+                  value={opponentId}
+                  onChange={(v) => setOpponentId(v != null ? Number(v) : null)}
+                  emptyLabel="— 相手を選択 —"
+                  placeholder="相手選手名で検索..."
+                  className="min-w-[240px]"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`text-sm ${textSecondary} shrink-0`}>大会レベル：</label>
+                <select
+                  value={tournamentLevel}
+                  onChange={(e) => setTournamentLevel(e.target.value)}
+                  className={`text-sm rounded px-2 py-1.5 focus:outline-none ${
+                    isLight
+                      ? 'bg-white border border-gray-300 text-gray-800'
+                      : 'bg-gray-700 border border-gray-600 text-gray-200'
+                  }`}
+                >
+                  <option value="">— 全レベル —</option>
+                  {LEVEL_OPTIONS.map((lv) => (
+                    <option key={lv} value={lv}>{lv}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* サブタブ — 常に表示してレイアウトシフトを防ぐ */}
@@ -166,19 +213,25 @@ export function PredictionPage() {
               {t('prediction.select_player')}
             </div>
           ) : subTab === 'preview' ? (
-            <div className="max-w-4xl">
-              <PredictionPanel
-                playerId={selectedPlayerId}
-                playerName={selectedPlayer?.name ?? ''}
-                players={sortedPlayers}
-              />
+            <div className="grid grid-cols-1 xl:grid-cols-[3fr_2fr] gap-6 items-start">
+              <div>
+                <PredictionPanel
+                  playerId={selectedPlayerId}
+                  playerName={selectedPlayer?.name ?? ''}
+                  players={sortedPlayers}
+                  opponentId={opponentId}
+                  tournamentLevel={tournamentLevel}
+                />
+              </div>
+              {/* 右パネル（将来的に PrematchStatCard 等を配置） */}
+              <div />
             </div>
           ) : subTab === 'pair' ? (
-            <div className="max-w-4xl">
+            <div>
               <PairSimulationPanel players={sortedPlayers} />
             </div>
           ) : subTab === 'lineup' ? (
-            <div className="max-w-4xl">
+            <div>
               <div className={`${card} rounded-lg p-4`}>
                 <p className={`text-sm font-semibold mb-3 ${textHeading}`}>
                   {t('prediction.lineup_optimizer')}
@@ -188,7 +241,7 @@ export function PredictionPage() {
             </div>
           ) : (
             /* forecast タブ: 試合選択 + HumanForecastPanel */
-            <div className="max-w-4xl space-y-4">
+            <div className="space-y-4">
               {/* 試合セレクター */}
               <div className={`${card} rounded-lg p-4`}>
                 <p className={`text-xs font-semibold mb-2 ${textMuted}`}>

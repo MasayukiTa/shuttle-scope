@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart, ClipboardCheck } from 'lucide-react'
+import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart, ClipboardCheck, Users } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import '@/i18n'
@@ -19,6 +19,8 @@ import { PredictionPage } from '@/pages/PredictionPage'
 import { ExpertLabelerPage } from '@/pages/ExpertLabelerPage'
 import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import { useAuth } from '@/hooks/useAuth'
+import { LoginPage } from '@/pages/LoginPage'
+import { UserManagementPage } from '@/pages/UserManagementPage'
 import { useTheme } from '@/hooks/useTheme'
 import { checkHealth } from '@/api/client'
 import { UserRole } from '@/types'
@@ -82,6 +84,7 @@ function Sidebar() {
     { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
     { to: '/prediction', label: t('nav.prediction'), icon: TrendingUp },
     { to: '/expert-labeler', label: t('nav.expert'), icon: ClipboardCheck },
+    ...(role === 'admin' ? [{ to: '/users', label: t('nav.users'), icon: Users }] : []),
     { to: '/settings', label: t('nav.settings'), icon: Settings },
   ]
 
@@ -171,6 +174,7 @@ function MainLayout() {
             <Route path="/prediction" element={<PredictionPage />} />
             <Route path="/expert-labeler" element={<ExpertLabelerPage />} />
             <Route path="/expert-labeler/:matchId" element={<ExpertLabelerAnnotatePage />} />
+            <Route path="/users" element={<UserManagementPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </ErrorBoundary>
@@ -194,7 +198,7 @@ function ThemeApplier({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const { role, setRole } = useAuth()
+  const { token, role, setRole } = useAuth()
   const { ready, elapsed } = useBackendReady()
 
   // バックエンド接続中はローディング画面を表示
@@ -220,6 +224,9 @@ function App() {
     )
   }
 
+  if (!token) {
+    return <LoginPage onLogin={() => {}} />
+  }
   if (!role) {
     return (
       <QueryClientProvider client={queryClient}>

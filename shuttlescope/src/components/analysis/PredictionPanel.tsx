@@ -10,7 +10,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, TrendingUp } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
@@ -101,6 +101,10 @@ interface PredictionPanelProps {
   playerId: number
   playerName: string
   players: PlayerSummary[]
+  /** Page ヘッダーから渡される対戦相手 ID（必須化） */
+  opponentId: number | null
+  /** Page ヘッダーから渡される大会レベル */
+  tournamentLevel: string
 }
 
 const LEVEL_OPTIONS = ['', 'IC', 'IS', 'SJL', '全日本', '国内', 'その他']
@@ -112,14 +116,12 @@ function winProbColor(p: number, isLight: boolean): string {
   return neutral
 }
 
-export function PredictionPanel({ playerId, playerName, players }: PredictionPanelProps) {
+export function PredictionPanel({ playerId, playerName, players, opponentId, tournamentLevel }: PredictionPanelProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const { role } = useAuth()
   const isCoach = role === 'coach'
 
-  const [opponentId, setOpponentId] = useState<number | null>(null)
-  const [tournamentLevel, setTournamentLevel] = useState<string>('')
   const [showLayerB, setShowLayerB] = useState(!isCoach)
   const [showLayerC, setShowLayerC] = useState(!isCoach)
 
@@ -131,7 +133,7 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
         ...(opponentId ? { opponent_id: opponentId } : {}),
         ...(tournamentLevel ? { tournament_level: tournamentLevel } : {}),
       }),
-    enabled: !!playerId,
+    enabled: !!playerId && !!opponentId,
   })
 
   // 疲労リスク（MatchScriptBlock / FatigueRiskCard 用）
@@ -150,6 +152,17 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
   const neutral = isLight ? '#334155' : '#d1d5db'
   const subText = isLight ? '#64748b' : '#9ca3af'
 
+  // 相手未選択時: フルUIを表示せずプレースホルダーを返す
+  if (!opponentId) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+        <TrendingUp size={32} className="text-gray-400" />
+        <p className="text-sm font-medium text-gray-300">相手チームを選択すると予測が表示されます</p>
+        <p className="text-xs text-gray-500">ヘッダーの「相手」セレクターから対戦相手を選んでください</p>
+      </div>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="text-gray-500 text-sm py-8 text-center">{t('prediction.loading')}</div>
@@ -159,16 +172,6 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
   if (!d || d.sample_size === 0) {
     return (
       <div className="space-y-4">
-        <FilterBar
-          players={players}
-          playerId={playerId}
-          opponentId={opponentId}
-          onOpponentChange={setOpponentId}
-          tournamentLevel={tournamentLevel}
-          onLevelChange={setTournamentLevel}
-          t={t}
-          isLight={isLight}
-        />
         <NoDataMessage sampleSize={0} minRequired={1} unit="試合" />
       </div>
     )
@@ -190,18 +193,6 @@ export function PredictionPanel({ playerId, playerName, players }: PredictionPan
         tacticalNotes={d.tactical_notes}
         sampleSize={d.sample_size}
         recentForm={d.recent_form}
-      />
-
-      {/* フィルターバー */}
-      <FilterBar
-        players={players}
-        playerId={playerId}
-        opponentId={opponentId}
-        onOpponentChange={setOpponentId}
-        tournamentLevel={tournamentLevel}
-        onLevelChange={setTournamentLevel}
-        t={t}
-        isLight={isLight}
       />
 
       {/* Layer A: コーチ向けサマリー */}
