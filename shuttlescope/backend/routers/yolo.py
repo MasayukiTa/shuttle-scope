@@ -99,6 +99,27 @@ def _load_setting_int(db: Session, key: str, default: int) -> int:
     return default
 
 
+def _load_device_settings(db: Session) -> tuple[int, str]:
+    """DB から cuda_device_index / openvino_device を読み込む"""
+    import json as _json
+    from sqlalchemy import text as _text
+    cuda_idx = 0
+    ov_device = "GPU"
+    try:
+        rows = db.execute(
+            _text("SELECT key, value FROM app_settings WHERE key IN ('cuda_device_index','openvino_device')")
+        ).fetchall()
+        for k, v in rows:
+            val = _json.loads(v)
+            if k == "cuda_device_index":
+                cuda_idx = int(val)
+            elif k == "openvino_device":
+                ov_device = str(val)
+    except Exception:
+        pass
+    return cuda_idx, ov_device
+
+
 @router.post("/yolo/batch/{match_id}")
 def start_yolo_batch(
     match_id: int,
@@ -119,7 +140,8 @@ def start_yolo_batch(
     if not video_path:
         raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
 
-    inf = get_yolo_inference()
+    cuda_idx, ov_device = _load_device_settings(db)
+    inf = get_yolo_inference(cuda_device_index=cuda_idx, openvino_device=ov_device)
     if not inf.is_available():
         raise HTTPException(
             status_code=503,

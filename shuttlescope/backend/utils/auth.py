@@ -223,7 +223,7 @@ def check_export_match_scope(
                (対戦相手はチーム外でも許可する — コーチは自チームの試合を抜く)
     - role未設定: 拒否
     """
-    if ctx.is_analyst:
+    if ctx.is_analyst or ctx.is_admin:
         return
     if ctx.is_player:
         if not ctx.player_id:
@@ -260,7 +260,7 @@ def check_export_player_scope(
     ctx: AuthCtx, player_id: int, db: Session
 ) -> None:
     """選手エクスポートの権限チェック。"""
-    if ctx.is_analyst:
+    if ctx.is_analyst or ctx.is_admin:
         return
     if ctx.is_player:
         if ctx.player_id != player_id:

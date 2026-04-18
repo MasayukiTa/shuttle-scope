@@ -30,6 +30,25 @@ Write-Step "Checking prerequisites"
 Assert-Command "python" "Python 3.10+ をインストールしてください。"
 Assert-Command "npm" "Node.js 18+ をインストールしてください。"
 
+Write-Step "Checking ffmpeg"
+if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    Write-Host "ffmpeg が見つかりません。winget でインストールします..." -ForegroundColor Yellow
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
+        # PATH を現在のセッションに反映
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+        if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
+            Write-Host "ffmpeg のインストール完了。" -ForegroundColor Green
+        } else {
+            Write-Host "インストール後に一度ターミナルを再起動してください。" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "winget が見つかりません。手動で ffmpeg をインストールしてください: winget install ffmpeg" -ForegroundColor Red
+    }
+} else {
+    Write-Host "ffmpeg: OK ($(ffmpeg -version 2>&1 | Select-String 'ffmpeg version' | Select-Object -First 1))" -ForegroundColor Green
+}
+
 if (-not (Test-Path $python)) {
     Write-Step "Creating Python venv"
     Push-Location $backend

@@ -51,15 +51,15 @@ MIN_CONF = 0.15
 class YOLOInference:
     """YOLO プレイヤー検出ラッパー"""
 
-    def __init__(self) -> None:
+    def __init__(self, cuda_device_index: int = 0, openvino_device: str = "GPU") -> None:
         self._loaded = False
         self._model = None
         self._backend: str = "unloaded"
-        # 診断用: ロード失敗時のエラーメッセージ
+        self._cuda_device_index = cuda_device_index
+        self._openvino_device = openvino_device
+        self._ul_device: str = "cpu"
         self._load_error: Optional[str] = None
-        # 直前の推論診断情報（APIレスポンスに埋め込んで UI に表示する）
         self._last_debug: dict = {}
-        # OpenVINO はステートフルなため同時呼び出し不可 → バッチスレッドとHTTPスレッドの競合を防ぐ
         self._lock = threading.Lock()
 
     # ─── 可用性確認 ─────────────────────────────────────────────────────
@@ -135,18 +135,23 @@ class YOLOInference:
         if self._loaded:
             return True
 
-        # 1. OpenVINO 直接API (MULTI:GPU,CPU) — 最優先・最高速
+        # 1. OpenVINO 直接API — 設定デバイス優先
         ov_xml = OV_MODEL_DIR / "yolov8n.xml"
         if ov_xml.exists():
             try:
                 import openvino as ov
                 core = ov.Core()
                 available = core.available_devices
-                # GPU優先（CPUアノテーション作業への影響を避けるため）
-                device = "GPU" if "GPU" in available else "CPU"
+                # 設定値 → GPU → CPU の順で試行
+                device_candidates: list[str] = []
+                if self._openvino_device and self._openvino_device in available:
+                    device_candidates.append(self._openvino_device)
+                for fb in ("GPU", "CPU"):
+                    if fb in available and fb not in device_candidates:
+                        device_candidates.append(fb)
+                device = device_candidates[0] if device_candidates else "CPU"
                 ov_model = core.read_model(str(ov_xml))
-                compiled = core.compile_model(ov_model, device,
-                                              {"PERFORMANCE_HINT": "LATENCY"})
+                compiled = core.compile_model(ov_model, device, {"PERFORMANCE_HINT": "LATENCY"})
                 self._model = compiled
                 self._ov_device = device
                 self._backend = f"openvino:{device}"
@@ -160,16 +165,22 @@ class YOLOInference:
                 logger.warning("YOLO OpenVINO load failed: %s", exc)
                 self._load_error = f"OpenVINO load failed: {exc}"
 
-        # 2. ultralytics PT（yolov8n.pt を自動ダウンロード）
+        # 2. ultralytics PT（CUDA 優先 → CPU フォールバック）
         try:
             from ultralytics import YOLO
+            import torch
             model_path = str(PT_MODEL) if PT_MODEL.exists() else "yolov8n.pt"
             self._model = YOLO(model_path)
+            if torch.cuda.is_available():
+                self._ul_device = f"cuda:{self._cuda_device_index}"
+                self._backend = f"ultralytics:cuda:{self._cuda_device_index}"
+            else:
+                self._ul_device = "cpu"
+                self._backend = "ultralytics:cpu"
             self._ov_device = None
-            self._backend = "ultralytics"
             self._loaded = True
             self._load_error = None
-            logger.info("YOLO loaded via ultralytics PT (path=%s)", model_path)
+            logger.info("YOLO loaded via ultralytics PT (device=%s)", self._ul_device)
             return True
         except ImportError:
             logger.info("ultralytics not installed — trying onnxruntime fallback")
@@ -177,18 +188,29 @@ class YOLOInference:
             logger.warning("ultralytics load failed: %s", exc)
             self._load_error = f"ultralytics load failed: {exc}"
 
-        # 3. onnxruntime + カスタム ONNX
+        # 3. onnxruntime — CUDA → DirectML → CPU の順で試行
         if ONNX_MODEL.exists():
             try:
                 import onnxruntime as ort
-                self._model = ort.InferenceSession(
-                    str(ONNX_MODEL), providers=["CPUExecutionProvider"]
-                )
+                avail = ort.get_available_providers()
+                if "CUDAExecutionProvider" in avail:
+                    providers = [
+                        ("CUDAExecutionProvider", {"device_id": self._cuda_device_index}),
+                        "CPUExecutionProvider",
+                    ]
+                    ep_name = f"onnx_cuda:{self._cuda_device_index}"
+                elif "DmlExecutionProvider" in avail:
+                    providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+                    ep_name = "onnx_directml"
+                else:
+                    providers = ["CPUExecutionProvider"]
+                    ep_name = "onnx_cpu"
+                self._model = ort.InferenceSession(str(ONNX_MODEL), providers=providers)
                 self._ov_device = None
-                self._backend = "onnx_cpu"
+                self._backend = ep_name
                 self._loaded = True
                 self._load_error = None
-                logger.info("YOLO loaded via ONNX Runtime CPU")
+                logger.info("YOLO loaded via ONNX Runtime (%s)", ep_name)
                 return True
             except Exception as exc:
                 logger.warning("YOLO ONNX load failed: %s", exc)
@@ -235,9 +257,9 @@ class YOLOInference:
             try:
                 if self._backend.startswith("openvino:"):
                     detections = self._predict_openvino(frame)
-                elif self._backend == "ultralytics":
+                elif self._backend.startswith("ultralytics"):
                     detections = self._predict_ultralytics(frame)
-                elif self._backend == "onnx_cpu":
+                elif self._backend.startswith("onnx"):
                     detections = self._predict_onnx(frame)
                 else:
                     self._last_debug["error"] = f"不明なバックエンド: {self._backend}"
@@ -351,7 +373,7 @@ class YOLOInference:
 
     def _predict_ultralytics(self, frame) -> list[dict]:
         """ultralytics YOLOv8 で person クラスのみ検出"""
-        results = self._model(frame, verbose=False, classes=[0])  # 0 = person
+        results = self._model(frame, verbose=False, classes=[0], device=self._ul_device)  # 0 = person
         if not results:
             return []
 
@@ -478,8 +500,17 @@ class YOLOInference:
 _instance: Optional[YOLOInference] = None
 
 
-def get_yolo_inference() -> YOLOInference:
+def get_yolo_inference(cuda_device_index: int = 0,
+                       openvino_device: str = "GPU") -> YOLOInference:
     global _instance
-    if _instance is None:
-        _instance = YOLOInference()
+    config_changed = (
+        _instance is None
+        or _instance._cuda_device_index != cuda_device_index
+        or _instance._openvino_device != openvino_device
+    )
+    if config_changed:
+        _instance = YOLOInference(
+            cuda_device_index=cuda_device_index,
+            openvino_device=openvino_device,
+        )
     return _instance

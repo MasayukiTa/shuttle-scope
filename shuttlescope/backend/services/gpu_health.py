@@ -14,9 +14,9 @@ def probe() -> Dict[str, Any]:
     失敗時は {"available": False, "reason": "..."} を返す。例外は投げない。
     """
     try:
-        import pynvml  # type: ignore
+        import pynvml  # type: ignore  # nvidia-ml-py パッケージが提供する
     except ImportError:
-        return {"available": False, "reason": "pynvml not installed"}
+        return {"available": False, "reason": "nvidia-ml-py not installed"}
 
     try:
         pynvml.nvmlInit()

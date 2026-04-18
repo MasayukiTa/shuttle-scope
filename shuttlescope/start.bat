@@ -52,6 +52,18 @@ if not exist "%ROOT%node_modules" (
     echo.
 )
 
+rem Check ffmpeg (高画質ダウンロードに必要)
+where ffmpeg >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] ffmpeg が見つかりません。高画質ダウンロードが制限されます。
+    where winget >nul 2>&1
+    if not errorlevel 1 (
+        echo [SETUP] ffmpeg をインストールしています...
+        winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements >nul 2>&1
+        echo [SETUP] ffmpeg インストール完了（次回起動時から有効）
+    )
+)
+
 rem Kill old Python backend
 powershell -NoProfile -Command "Stop-Process -Name python -Force -ErrorAction SilentlyContinue" >nul 2>&1
 timeout /t 1 /nobreak >nul
