@@ -39,21 +39,25 @@ pytest>=8.0.0
 pytest-asyncio>=0.23.0
 
 # ── P3: TrackNet / 推論ランタイム ────────────────────────────────
-# ONNX 推論（必須）
-onnxruntime>=1.17.0
 opencv-python>=4.9.0
-# OpenVINO アクセラレーション（X1 AI iGPU / K10 CPU でも動作）
+# OpenVINO アクセラレーション（Intel GPU / iGPU 対応）
 openvino>=2024.0; sys_platform != 'unsupported'
 # TensorFlow / tf2onnx: TrackNet の ONNX エクスポート時のみ必要
 # pip install tensorflow==2.15.1 tf2onnx==1.16.1
-# ※ インストール済み環境では freeze に含まれるが新規環境では任意
 
-# ── GPU 推論（CUDA 環境で setup_gpu.ps1 / setup_gpu.sh を実行して追加）───────
-# 以下は CPU 環境でも requirements.txt に記載しておく（環境依存で無視される）
-# torch / torchvision: CUDA 版は setup_gpu.ps1 で https://download.pytorch.org/whl/cu124 から導入
-# pip install torch torchvision  ← CPU 版フォールバック（GPU 非搭載 K10 向け）
-mediapipe>=0.10.14               # MediaPipe Pose（GPU delegate 対応版）
-nvidia-ml-py>=12.0               # NVIDIA GPU 監視（pynvml の後継パッケージ）
+# ── ONNX Runtime ─────────────────────────────────────────────────
+# GPU 環境（NVIDIA CUDA / AMD DirectML）: onnxruntime-gpu を使用
+#   → setup_gpu.ps1 が onnxruntime を uninstall して onnxruntime-gpu を install する
+# CPU のみ環境: onnxruntime でフォールバック
+# ※ 両方同時インストール不可（競合パッケージ）
+onnxruntime-gpu>=1.17.0          # GPU 環境（CUDA / DirectML 両対応）
+# onnxruntime>=1.17.0            # CPU のみ環境はこちらに切り替え
+
+# ── GPU 推論 ─────────────────────────────────────────────────────
+# torch / torchvision CUDA 版は setup_gpu.ps1 で導入（数 GB のため requirements から除外）
+#   pip install --index-url https://download.pytorch.org/whl/cu124 torch==2.4.* torchvision
+mediapipe>=0.10.14               # MediaPipe Pose（姿勢推定）
+nvidia-ml-py>=12.0               # NVIDIA GPU 監視（旧 pynvml の後継）
 
 # ── P4: YOLO プレイヤー検出 ───────────────────────────────────────
 # ultralytics が torch / torchvision を自動インストールする
