@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
 import type { AuthSession } from '@/hooks/useAuth'
+import { useTheme } from '@/hooks/useTheme'
 import { UserRole } from '@/types'
 
 const BASE_URL = (() => {
@@ -57,6 +58,8 @@ interface Props {
 export function LoginPage({ onLogin }: Props) {
   const { t } = useTranslation()
   const { setSession } = useAuth()
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const [tab, setTab] = useState<RoleTab>('player')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -122,23 +125,34 @@ export function LoginPage({ onLogin }: Props) {
     onLogin()
   }
 
-  const tabClass = (t: RoleTab) =>
+  const inputCls = isLight
+    ? 'border-gray-300 bg-white text-gray-900'
+    : 'border-gray-600 bg-gray-700 text-white'
+  const labelCls = isLight ? 'text-gray-700' : 'text-gray-300'
+  const mutedCls = isLight ? 'text-gray-500' : 'text-gray-400'
+  const fieldCls = `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputCls}`
+
+  const tabClass = (r: RoleTab) =>
     `px-4 py-2 text-sm font-medium rounded-t border-b-2 transition-colors ${
-      tab === t
-        ? 'border-blue-500 text-blue-600 bg-white'
-        : 'border-transparent text-gray-500 hover:text-gray-700 bg-gray-50'
+      tab === r
+        ? isLight
+          ? 'border-blue-500 text-blue-600 bg-white'
+          : 'border-blue-400 text-blue-400 bg-gray-800'
+        : isLight
+          ? 'border-transparent text-gray-500 hover:text-gray-700 bg-gray-50'
+          : 'border-transparent text-gray-400 hover:text-gray-300 bg-gray-900'
     }`
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-8">
+    <div className={`min-h-screen flex items-center justify-center p-4 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
+      <div className={`rounded-xl shadow-lg w-full max-w-md p-8 ${isLight ? 'bg-white' : 'bg-gray-800'}`}>
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">ShuttleScope</h1>
-          <p className="text-sm text-gray-500 mt-1">{t('auth.subtitle')}</p>
+          <h1 className={`text-2xl font-bold ${isLight ? 'text-gray-800' : 'text-white'}`}>ShuttleScope</h1>
+          <p className={`text-sm mt-1 ${mutedCls}`}>{t('auth.subtitle')}</p>
         </div>
 
         {/* ロール選択タブ */}
-        <div className="flex border-b border-gray-200 mb-6 gap-1">
+        <div className={`flex border-b mb-6 gap-1 ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
           {(['player', 'coach', 'analyst', 'admin'] as RoleTab[]).map(r => (
             <button key={r} className={tabClass(r)} onClick={() => { setTab(r); setError(null) }}>
               {t(`auth.role.${r}`)}
@@ -150,23 +164,23 @@ export function LoginPage({ onLogin }: Props) {
           {tab === 'admin' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.username')}</label>
+                <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auth.username')}</label>
                 <input
                   type="text"
                   value={adminUser}
                   onChange={e => setAdminUser(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={fieldCls}
                   placeholder="admin"
                   autoComplete="username"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.password')}</label>
+                <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auth.password')}</label>
                 <input
                   type="password"
                   value={adminPass}
                   onChange={e => setAdminPass(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={fieldCls}
                   onKeyDown={e => e.key === 'Enter' && handleLogin()}
                   autoComplete="current-password"
                 />
@@ -176,38 +190,38 @@ export function LoginPage({ onLogin }: Props) {
 
           {tab === 'analyst' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.select_analyst')}</label>
+              <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auth.select_analyst')}</label>
               {analystList.length > 0 ? (
                 <select
                   value={analystId ?? ''}
                   onChange={e => setAnalystId(Number(e.target.value))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={fieldCls}
                 >
                   {analystList.map(a => (
                     <option key={a.user_id} value={a.user_id}>{a.display_name}</option>
                   ))}
                 </select>
               ) : (
-                <p className="text-sm text-gray-500">{t('auth.analyst_direct')}</p>
+                <p className={`text-sm ${mutedCls}`}>{t('auth.analyst_direct')}</p>
               )}
             </div>
           )}
 
           {tab === 'coach' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.select_coach')}</label>
+              <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auth.select_coach')}</label>
               {coachList.length > 0 ? (
                 <select
                   value={coachId ?? ''}
                   onChange={e => setCoachId(Number(e.target.value))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={fieldCls}
                 >
                   {coachList.map(c => (
                     <option key={c.user_id} value={c.user_id}>{c.display_name}</option>
                   ))}
                 </select>
               ) : (
-                <p className="text-sm text-gray-500">{t('auth.no_coach_registered')}</p>
+                <p className={`text-sm ${mutedCls}`}>{t('auth.no_coach_registered')}</p>
               )}
             </div>
           )}
@@ -215,31 +229,31 @@ export function LoginPage({ onLogin }: Props) {
           {tab === 'player' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.select_player')}</label>
+                <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auth.select_player')}</label>
                 {playerList.length > 0 ? (
                   <select
                     value={playerId ?? ''}
                     onChange={e => setPlayerId(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={fieldCls}
                   >
                     {playerList.map(p => (
                       <option key={p.user_id} value={p.user_id}>{p.display_name}</option>
                     ))}
                   </select>
                 ) : (
-                  <p className="text-sm text-gray-500">{t('auth.no_player_registered')}</p>
+                  <p className={`text-sm ${mutedCls}`}>{t('auth.no_player_registered')}</p>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className={`block text-sm font-medium mb-1 ${labelCls}`}>
                   {t('auth.pin')}
-                  <span className="text-gray-400 font-normal ml-1">({t('auth.pin_optional')})</span>
+                  <span className={`font-normal ml-1 ${mutedCls}`}>({t('auth.pin_optional')})</span>
                 </label>
                 <input
                   type="password"
                   value={pin}
                   onChange={e => setPin(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={fieldCls}
                   placeholder="••••"
                   onKeyDown={e => e.key === 'Enter' && handleLogin()}
                   autoComplete="current-password"
@@ -250,7 +264,7 @@ export function LoginPage({ onLogin }: Props) {
           )}
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2">
+            <div className={`border text-sm rounded-lg px-3 py-2 ${isLight ? 'bg-red-50 border-red-200 text-red-600' : 'bg-red-900/30 border-red-700 text-red-400'}`}>
               {error}
             </div>
           )}
