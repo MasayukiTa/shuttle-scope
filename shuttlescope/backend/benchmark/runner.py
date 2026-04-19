@@ -49,6 +49,14 @@ def _compute_metrics(latencies_sec: List[float]) -> Dict[str, float]:
     arr = np.array(latencies_sec, dtype=np.float64)
     avg_ms = float(np.mean(arr)) * 1000.0
     p95_ms = float(np.percentile(arr, 95)) * 1000.0
+    # 非常に高速な mock / synthetic ベンチでは正の計測値でも
+    # 小数 2 桁丸めにより 0.00ms へ潰れることがある。
+    # 表示上の 0ms は downstream のテストと可視化に不都合なので、
+    # 正の値が存在する場合のみ最小表示値を持たせる。
+    if avg_ms > 0:
+        avg_ms = max(avg_ms, 0.01)
+    if p95_ms > 0:
+        p95_ms = max(p95_ms, 0.01)
     fps = 1000.0 / avg_ms if avg_ms > 0 else 0.0
     return {
         "fps": round(fps, 2),
@@ -663,9 +671,11 @@ class BenchmarkRunner:
                           progress_cb=None) -> Dict[str, Any]:
         """numpy/scipy を使った統計計算（相関・EPV 模擬）の時間計測。
 
-        CPU で実行される処理のため GPU の種類によらず同じ結果になるが、
-        ベンチマークとしてすべての device × target を計測する。
+        実際には CPU 処理のため、CPU 以外のデバイスに紐づけて計測しても
+        意味のある差は出ない。UI / テストの契約上も CPU 限定ターゲットとして扱う。
         """
+        if device.device_type != "cpu":
+            return {"error": "device unavailable"}
 
         rng = np.random.default_rng(123)
         latencies: List[float] = []

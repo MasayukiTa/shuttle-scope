@@ -67,6 +67,12 @@ class _InlineMockPose:
 
 def _get_tracknet():
     # SS_CV_MOCK=1 のときは必ず mock（factory 経由で mock 返却される設計）
+    if os.environ.get("SS_CV_MOCK") == "1":
+        try:
+            from backend.cv.tracknet_mock import MockTrackNet
+            return MockTrackNet()
+        except Exception:
+            return _InlineMockTrackNet()
     try:
         from backend.cv import factory  # type: ignore
         if hasattr(factory, "get_tracknet"):
@@ -77,6 +83,12 @@ def _get_tracknet():
 
 
 def _get_pose():
+    if os.environ.get("SS_CV_MOCK") == "1":
+        try:
+            from backend.cv.pose_mock import MockPose
+            return MockPose()
+        except Exception:
+            return _InlineMockPose()
     try:
         from backend.cv import factory  # type: ignore
         if hasattr(factory, "get_pose"):

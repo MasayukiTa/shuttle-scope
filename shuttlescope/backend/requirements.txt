@@ -46,12 +46,12 @@ openvino>=2024.0; sys_platform != 'unsupported'
 # pip install tensorflow==2.15.1 tf2onnx==1.16.1
 
 # ── ONNX Runtime ─────────────────────────────────────────────────
-# torch cu128 の CUDA DLL（cublasLt64_12 等）を先にインポートすることで
-# onnxruntime-gpu の CUDAExecutionProvider が解決される（RTX 5060 Ti sm_120 確認済み）
-# ※ onnxruntime-directml と競合するため同時インストール不可
-onnxruntime-gpu>=1.24.4          # CUDA EP（NVIDIA、torch cu128 DLL 経由）
+# GPU / DirectML 版は環境依存が強いため base requirements には含めない。
+# 必要な環境で scripts/setup_gpu.ps1 または個別 pip install により導入する。
+# ※ onnxruntime-gpu と onnxruntime-directml は競合するため同時インストール不可
+# onnxruntime-gpu>=1.17.0       # CUDA EP（NVIDIA、setup_gpu.ps1 で導入）
 # onnxruntime-directml>=1.17.0  # DirectML EP（AMD iGPU / Intel、CUDA 未使用環境）
-# onnxruntime>=1.17.0            # CPU のみ環境
+# onnxruntime>=1.17.0           # CPU のみ環境
 
 # ── GPU 推論 ─────────────────────────────────────────────────────
 # torch / torchvision CUDA 版は setup_gpu.ps1 で導入（数 GB のため requirements から除外）
