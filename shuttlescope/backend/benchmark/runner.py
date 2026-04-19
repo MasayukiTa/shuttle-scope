@@ -306,16 +306,54 @@ class BenchmarkRunner:
         inferencer = factory.get_tracknet()
 
         # バックエンド名をログ（どのエンジンで計測しているか確認用）
+        impl = getattr(inferencer, '_impl', None)  # OpenVINOTrackNet._impl = TrackNetInference
         try:
             bname = inferencer.backend_name() if hasattr(inferencer, 'backend_name') else \
-                    (inferencer._impl.backend_name() if hasattr(inferencer, '_impl') else '?')
+                    (impl.backend_name() if impl is not None else '?')
         except Exception:
             bname = '?'
         logger.info("[bench/tracknet] device=%s backend=%s n_iters=%d",
                     device.device_id, bname, _MEASURE_ITERS)
 
-        # 1 トリプレット分のフレームをモデル解像度で事前生成（lru_cache で再利用）
-        frames = make_frames(FRAME_STACK, 512, 288)
+        # GPU バックエンドでは _max_batch を使って大きなバッチで計測する（VRAM 活用）
+        # CPU バックエンドでは 1 トリプレット（batch=1）のレイテンシを計測する
+        use_gpu = device.device_type in ("dgpu", "igpu")
+
+        # dGPU/iGPU デバイスなのに CPU バックエンドしかロードできていない場合は
+        # 計測しても意味がないため、ロード失敗の詳細をエラーとして返す
+        if use_gpu and impl is not None:
+            actual_backend = ''
+            try:
+                actual_backend = impl.backend_name().lower()
+            except Exception:
+                pass
+            is_gpu_backend = any(k in actual_backend for k in ('cuda', 'directml', 'openvino'))
+            if actual_backend and not is_gpu_backend:
+                # GPU ロード失敗理由を取得（TrackNetInference._gpu_load_error に保存済み）
+                reason = (
+                    getattr(impl, '_gpu_load_error', None)
+                    or f"バックエンド: {actual_backend}"
+                )
+                logger.warning(
+                    "[bench/tracknet] dGPU/iGPU デバイスで CPU バックエンドしか使えません: %s",
+                    reason,
+                )
+                return {"error": f"GPU推論不可 — {reason}"}
+
+        if use_gpu and impl is not None and hasattr(impl, '_max_batch'):
+            bench_batch = impl._max_batch  # VRAM から自動計算されたバッチサイズ
+        else:
+            bench_batch = 1  # CPU: 1トリプレットのレイテンシ計測
+
+        # bench_batch トリプレット分のフレームを生成
+        # make_frames(FRAME_STACK + bench_batch - 1) → bench_batch 個のトリプレット
+        n_bench_frames = FRAME_STACK + bench_batch - 1
+        frames = make_frames(n_bench_frames, 512, 288)
+
+        logger.info(
+            "[bench/tracknet] device=%s backend=%s bench_batch=%d n_frames_per_run=%d",
+            device.device_id, bname, bench_batch, n_bench_frames,
+        )
 
         video_path: str | None = None
         if hasattr(inferencer, 'run_frames'):
@@ -324,13 +362,13 @@ class BenchmarkRunner:
                 inferencer.run_frames(list(frames))
         else:
             # CpuTrackNet 等: 最小サイズの動画ファイル経由
-            video_path = make_video_file(n=FRAME_STACK + 1)
+            video_path = make_video_file(n=n_bench_frames)
             def run_one(_vp: str = video_path) -> None:
                 inferencer.run(_vp)
 
         latencies: List[float] = []
         try:
-            # ウォームアップ 1 回（CUDA JIT / ONNX グラフ最適化を計測から除外）
+            # ウォームアップ 1 回（CUDA JIT / cuDNN アルゴ検索を計測から除外）
             try:
                 run_one()
             except Exception:
@@ -343,7 +381,6 @@ class BenchmarkRunner:
                 run_one()
                 latencies.append(time.perf_counter() - t0)
                 if progress_cb is not None:
-                    # _MEASURE_ITERS → n_frames にスケールして progress が 100% まで達するようにする
                     progress_cb(round((i + 1) * n_frames / _MEASURE_ITERS))
         finally:
             if video_path is not None:
@@ -355,8 +392,11 @@ class BenchmarkRunner:
         if not latencies:
             return {"error": "キャンセルされました"}
 
-        # 1 call = 1 出力フレーム相当のレイテンシ: fps = 1000 / avg_ms の補正不要
-        return _compute_metrics(latencies)
+        metrics = _compute_metrics(latencies)
+        # fps = bench_batch トリプレット / avg_sec（GPU は大バッチのスループット計測）
+        if bench_batch > 1:
+            metrics["fps"] = round(bench_batch * 1000.0 / metrics["avg_ms"], 2) if metrics["avg_ms"] > 0 else 0.0
+        return metrics
 
     def _bench_pose(self, device: ComputeDevice, n_frames: int,
                     job: "Any | None" = None,

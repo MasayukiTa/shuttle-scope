@@ -1806,6 +1806,7 @@
   "benchmark": {
     "title": "ベンチマーク",
     "detect_devices": "デバイスを検出",
+    "detecting": "検出中...",
     "select_targets": "計測ターゲットを選択",
     "run": "ベンチマーク実行",
     "running": "計測中...",
@@ -1867,9 +1868,21 @@
     "save": "設定を保存",
     "save_ok": "保存しました",
     "save_error": "保存に失敗しました",
+    "worker_cpus": "CPU数",
+    "worker_gpus": "GPU数",
     "test": "接続テスト",
     "test_running": "テスト中...",
     "refresh": "更新",
-    "latency_ms": "{{ms}}ms"
+    "latency_ms": "{{ms}}ms",
+    "ray_start": "Ray起動",
+    "ray_stop": "Ray停止",
+    "ray_starting": "接続中...",
+    "ray_stopping": "停止中...",
+    "ray_connecting": "Ray確認中...",
+    "resources_section": "リソース上限",
+    "gpu_vram_limit": "GPU VRAM上限 (GB)",
+    "system_ram_limit": "システムRAM上限 (GB)",
+    "worker_ram_limit": "K10 RAM上限 (GB)",
+    "limit_auto_hint": "0 = 自動"
   }
 }

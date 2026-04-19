@@ -383,37 +383,60 @@ def _probe_npu() -> list[ComputeDevice]:
 
 
 def _probe_ray() -> list[ComputeDevice]:
-    """SS_CLUSTER_MODE=ray のとき Ray クラスタのワーカーノードを列挙する"""
+    """Ray 接続済み（UI で Ray起動ボタンを押した後）のときワーカーノードを列挙する。
+
+    ray.init() は Windows Firewall でブロックされる場合があるため使わない。
+    bootstrap.is_ray_connected() と cluster.config.yaml のワーカー設定を使用する。
+    """
     devices: list[ComputeDevice] = []
-    cluster_mode = os.environ.get("SS_CLUSTER_MODE", "off")
-    if cluster_mode != "ray":
-        return devices
-
     try:
-        import ray  # type: ignore
+        from backend.cluster.bootstrap import is_ray_connected, subprocess_ray_status
+        from backend.cluster.topology import get_workers
 
-        if not ray.is_initialized():
-            ray.init(ignore_reinit_error=True)
+        if not is_ray_connected():
+            return devices
 
-        nodes = ray.nodes()
-        for node in nodes:
-            if not node.get("Alive", False):
-                continue
-            node_id = node.get("NodeID", "unknown")[:8]
-            resources = node.get("Resources", {})
-            addr = node.get("NodeManagerAddress", node_id)
-            label = f"Ray worker: {addr}"
-            dev_id = f"ray_worker_{_sanitize(node_id)}"
+        status = subprocess_ray_status()
+        if not status.get("running"):
+            return devices
+
+        # head(1台) を除いた参加済みワーカー数
+        active_workers = max(0, status.get("active_count", 0) - 1)
+        workers = get_workers()
+
+        for i, worker in enumerate(workers):
+            if i >= active_workers:
+                break
+            ip = worker.get("ip", "")
+            label = worker.get("label", f"Worker {i + 1}")
+            node_id = worker.get("id", f"worker_{i}")
+            num_gpus = int(worker.get("num_gpus", 0))
+            gpu_label = worker.get("gpu_label", "iGPU")
+
+            # CPU デバイス
             devices.append(
                 ComputeDevice(
-                    device_id=dev_id,
-                    label=label,
-                    device_type="ray_worker",
+                    device_id=f"ray_cpu_{_sanitize(ip or node_id)}",
+                    label=f"Ray CPU: {label} ({ip})",
+                    device_type="cpu",
                     backend="ray",
                     available=True,
-                    specs={"name": label, "resources": resources},
+                    specs={"name": label, "ip": ip, "node_id": node_id},
                 )
             )
+
+            # GPU デバイス（cluster.config.yaml で num_gpus > 0 の場合）
+            if num_gpus > 0:
+                devices.append(
+                    ComputeDevice(
+                        device_id=f"ray_igpu_{_sanitize(ip or node_id)}",
+                        label=f"Ray iGPU: {gpu_label} ({label})",
+                        device_type="igpu",
+                        backend="ray",
+                        available=True,
+                        specs={"name": gpu_label, "ip": ip, "node_id": node_id},
+                    )
+                )
     except Exception:
         pass
     return devices

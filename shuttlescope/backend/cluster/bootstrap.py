@@ -5,18 +5,27 @@
 - ray の import は関数スコープに閉じる
 - SS_CLUSTER_MODE=off のとき一切 Ray を触らない
 - 失敗は WARN ログのみ、例外は投げない
+- Windows Firewall 環境では ray.init() TCP接続がブロックされるため
+  subprocess 経由の ray status/list で状態確認する
 """
 from __future__ import annotations
 
+import json
 import logging
-from typing import Optional
+import os
+import re
+import subprocess
+import sys
+from typing import Any, Dict, List, Optional
 
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Ray 初期化済みフラグ (多重 init 防止)
+# ray.init() による接続済みフラグ
 _ray_initialized: bool = False
+# subprocess (ray status) 経由での確認済みフラグ
+_ray_subprocess_connected: bool = False
 
 
 def _import_ray():
@@ -34,18 +43,126 @@ def is_ray_available() -> bool:
         return False
 
 
-def init_ray(address: Optional[str] = None) -> bool:
+# ────────────────────────────────────────────────────────────────────────────
+# subprocess ベース Ray 状態確認 (Windows Firewall 回避用)
+# ────────────────────────────────────────────────────────────────────────────
+
+def _find_ray_cmd() -> str:
+    """ray 実行ファイルのパスを返す。現在の venv 内を優先する。"""
+    scripts_dir = os.path.dirname(sys.executable)
+    candidate = os.path.join(scripts_dir, "ray.exe" if sys.platform == "win32" else "ray")
+    if os.path.exists(candidate):
+        return candidate
+    return "ray"
+
+
+def _subprocess_kwargs() -> dict:
+    """subprocess.run に渡す共通キーワード引数。"""
+    kw: dict = {"capture_output": True, "text": True, "timeout": 15}
+    if sys.platform == "win32":
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+    return kw
+
+
+def subprocess_ray_status() -> Dict[str, Any]:
+    """ray status をサブプロセスで実行してクラスタ状態を返す。
+
+    ray.init() の TCP 接続を使わずローカルソケット経由で状態を確認する。
+    戻り値: {"running": bool, "nodes": [{"node_ip": str, "state": "ALIVE"}], "output": str}
+    """
+    try:
+        result = subprocess.run(
+            [_find_ray_cmd(), "status"],
+            **_subprocess_kwargs(),
+        )
+        running = result.returncode == 0
+        active_count = _parse_ray_status_active_count(result.stdout) if running else 0
+        return {"running": running, "active_count": active_count, "output": result.stdout, "error": result.stderr}
+    except FileNotFoundError:
+        return {"running": False, "nodes": [], "output": "", "error": "ray コマンドが見つかりません"}
+    except subprocess.TimeoutExpired:
+        return {"running": False, "nodes": [], "output": "", "error": "ray status タイムアウト"}
+    except Exception as exc:
+        logger.debug("subprocess_ray_status 失敗: %s", exc)
+        return {"running": False, "nodes": [], "output": "", "error": str(exc)}
+
+
+def _parse_ray_status_active_count(output: str) -> int:
+    """ray status 出力から Active セクションのノード数を返す。
+
+    出力例:
+      Active:
+       1 node_c2f2006c...
+       1 node_b7ce000...
+    → 2 を返す
+    """
+    count = 0
+    in_active = False
+    for line in output.split("\n"):
+        stripped = line.strip()
+        if stripped == "Active:":
+            in_active = True
+            continue
+        if not in_active:
+            continue
+        if stripped.startswith("Pending:") or stripped.startswith("Recent"):
+            break
+        if stripped.startswith("(no"):
+            break
+        if stripped and not stripped.startswith("#"):
+            count += 1
+    return count
+
+
+def subprocess_ray_nodes() -> List[Dict[str, Any]]:
+    """ダッシュボードなし環境ではノード IP を取得できないため空リストを返す。
+
+    呼び出し元は active_count ベースの判定にフォールバックすること。
+    """
+    return []
+
+
+def is_ray_connected() -> bool:
+    """ray.init() または subprocess 確認のいずれかで接続済みかを返す。"""
+    if _ray_initialized:
+        try:
+            import ray  # type: ignore
+            return ray.is_initialized()
+        except Exception:
+            pass
+    return _ray_subprocess_connected
+
+
+def mark_ray_connected() -> None:
+    """subprocess 確認後に接続済みフラグを立てる。"""
+    global _ray_subprocess_connected
+    _ray_subprocess_connected = True
+    logger.info("mark_ray_connected: Ray クラスタ接続済みとしてマーク (subprocess)")
+    try:
+        from backend.benchmark.devices import invalidate_cache
+        invalidate_cache()
+    except Exception:
+        pass
+
+
+def unmark_ray_connected() -> None:
+    """subprocess 接続フラグをクリアする。"""
+    global _ray_subprocess_connected
+    _ray_subprocess_connected = False
+
+
+def init_ray(address: Optional[str] = None, force: bool = False) -> bool:
     """Ray クラスタに接続する。
 
-    SS_CLUSTER_MODE != "ray" のときは no-op。
+    force=True の場合は SS_CLUSTER_MODE に関わらず接続を試みる（UI からの手動起動用）。
     ray 未インストール / 接続失敗時は WARN ログのみで False を返す。
     成功時は True を返す。
     """
     global _ray_initialized
 
-    # クラスタモードが off の場合は一切何もしない
+    # クラスタモードが off かつ force でなければ何もしない
     mode = getattr(settings, "ss_cluster_mode", "off")
-    if mode != "ray":
+    if mode != "ray" and not force:
         logger.debug("init_ray: SS_CLUSTER_MODE=%s のためスキップ", mode)
         return False
 
@@ -74,18 +191,27 @@ def init_ray(address: Optional[str] = None) -> bool:
 
 
 def shutdown_ray() -> None:
-    """Ray クラスタを停止する。未起動なら no-op。"""
-    global _ray_initialized
+    """Ray クラスタから切断する。未接続なら no-op。"""
+    global _ray_initialized, _ray_subprocess_connected
 
-    if not _ray_initialized:
+    if not _ray_initialized and not _ray_subprocess_connected:
         return
 
+    if _ray_initialized:
+        try:
+            import ray  # type: ignore
+            if ray.is_initialized():
+                ray.shutdown()
+            logger.info("shutdown_ray: Ray クラスタを停止しました")
+        except Exception as exc:
+            logger.warning("shutdown_ray: 停止時に例外 (%s) — 無視", exc)
+        finally:
+            _ray_initialized = False
+
+    _ray_subprocess_connected = False
+    logger.info("shutdown_ray: Ray 接続フラグをクリアしました")
     try:
-        import ray  # type: ignore
-        if ray.is_initialized():
-            ray.shutdown()
-        logger.info("shutdown_ray: Ray クラスタを停止しました")
-    except Exception as exc:
-        logger.warning("shutdown_ray: 停止時に例外 (%s) — 無視", exc)
-    finally:
-        _ray_initialized = False
+        from backend.benchmark.devices import invalidate_cache
+        invalidate_cache()
+    except Exception:
+        pass
