@@ -2450,7 +2450,9 @@ export function SettingsPage() {
 
         {/* クラスタタブ */}
         {activeTab === 'cluster' && (
-          <ClusterSettingsPanel />
+          <div className="space-y-6">
+            <ClusterSettingsPanel />
+          </div>
         )}
 
         {/* アカウント設定タブ */}

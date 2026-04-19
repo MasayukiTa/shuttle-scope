@@ -84,7 +84,27 @@ export function ResultMatrix({ job, devices, targets }: Props) {
                 }
 
                 if ('error' in cell) {
-                  // エラーセル：赤背景
+                  // "device unavailable" = このデバイスでは対応外（CPU専用タスク等）→ 未計測扱い
+                  if (cell.error === 'device unavailable') {
+                    return (
+                      <td key={target} className="px-2 py-2 text-center text-gray-600">
+                        —
+                      </td>
+                    )
+                  }
+                  // モデルファイル未配置
+                  if (cell.error.startsWith('モデル未配置')) {
+                    return (
+                      <td
+                        key={target}
+                        className="px-2 py-2 text-center bg-yellow-900/30 text-yellow-400 rounded text-[10px]"
+                        title={cell.error}
+                      >
+                        モデルなし
+                      </td>
+                    )
+                  }
+                  // その他エラー：赤背景
                   return (
                     <td
                       key={target}

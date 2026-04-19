@@ -290,6 +290,102 @@ def _infer_tracknet_frames(model_path: str, frames_npy: bytes) -> bytes:
         return json.dumps(err).encode("utf-8")
 
 
+def _detect_hardware() -> dict:
+    """ワーカーノードのハードウェア情報を収集して返す。
+
+    K10（Windows 11）上で実行される。psutil + PowerShell WMI で取得する。
+    戻り値:
+        {
+            "num_cpus": int,          # 論理 CPU 数
+            "cpu_name": str,          # CPU 製品名
+            "num_gpus": int,          # GPU 数
+            "gpu_label": str,         # プライマリ GPU 名
+            "gpu_vram_mb": int,       # プライマリ GPU VRAM MB（不明時 0）
+            "ram_gb": int,            # 搭載 RAM GB
+        }
+    """
+    import sys
+    import subprocess
+
+    result: dict = {
+        "num_cpus": 0,
+        "cpu_name": "",
+        "num_gpus": 0,
+        "gpu_label": "",
+        "gpu_vram_mb": 0,
+        "ram_gb": 0,
+    }
+
+    # ── CPU 数 ────────────────────────────────────────────────────────────────
+    try:
+        import psutil
+        result["num_cpus"] = psutil.cpu_count(logical=True) or 0
+        result["ram_gb"] = round(psutil.virtual_memory().total / (1024 ** 3))
+    except ImportError:
+        try:
+            import os
+            result["num_cpus"] = os.cpu_count() or 0
+        except Exception:
+            pass
+
+    # ── CPU 名 / GPU 情報 (Windows PowerShell WMI) ───────────────────────────
+    if sys.platform == "win32":
+        ps_flags: dict = {"capture_output": True, "text": True, "timeout": 15}
+        ps_flags["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+
+        # CPU 名
+        try:
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-WmiObject Win32_Processor | Select-Object -First 1 -ExpandProperty Name"],
+                **ps_flags,
+            )
+            name = r.stdout.strip()
+            if name:
+                result["cpu_name"] = name
+        except Exception:
+            pass
+
+        # GPU 情報（全ビデオコントローラ）
+        try:
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-WmiObject Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json -Compress"],
+                **ps_flags,
+            )
+            import json as _json
+            raw = r.stdout.strip()
+            if raw:
+                gpus = _json.loads(raw)
+                if isinstance(gpus, dict):
+                    gpus = [gpus]  # 1件だけの場合は配列でなくオブジェクト
+                # "Microsoft Basic Display Adapter" 等のソフトウェアアダプタを除外
+                real_gpus = [
+                    g for g in gpus
+                    if g.get("Name") and "basic display" not in g["Name"].lower()
+                ]
+                result["num_gpus"] = len(real_gpus)
+                if real_gpus:
+                    first = real_gpus[0]
+                    result["gpu_label"] = first.get("Name", "")
+                    vram = first.get("AdapterRAM") or 0
+                    result["gpu_vram_mb"] = int(vram) // (1024 * 1024) if vram > 0 else 0
+        except Exception:
+            pass
+    else:
+        # Linux: lspci / nvidia-smi など（将来拡張用）
+        try:
+            r = subprocess.run(["lspci"], capture_output=True, text=True, timeout=5)
+            gpu_lines = [l for l in r.stdout.splitlines() if "VGA" in l or "3D" in l or "Display" in l]
+            result["num_gpus"] = len(gpu_lines)
+            if gpu_lines:
+                result["gpu_label"] = gpu_lines[0].split(":", 2)[-1].strip()
+        except Exception:
+            pass
+
+    return result
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # ディスパッチ関数（ray は遅延インポート）
 # ────────────────────────────────────────────────────────────────────────────
@@ -308,24 +404,23 @@ def dispatch_benchmark(fn_name: str, **kwargs) -> Dict[str, Any]:
         {"worker_device_id": result_dict, ...} のマッピング
         Ray 未接続時は {"error": "Ray未接続"} を返す
     """
-    # bootstrap.is_ray_connected() で接続確認（subprocess 接続フラグも考慮）
+    # bootstrap.is_ray_connected() で接続確認し、必要なら ray.init() を同期実行
     try:
-        from backend.cluster.bootstrap import is_ray_connected
+        from backend.cluster.bootstrap import is_ray_connected, ensure_ray_initialized
         if not is_ray_connected():
             return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
-    except Exception:
-        pass
+        if not ensure_ray_initialized(timeout=10):
+            return {"error": "ray.init() 失敗 — PC1 で管理者PowerShellから scripts/fix_ray_firewall.ps1 を実行してください（TCP 6379 の Inbound 許可が必要）"}
+    except Exception as exc:
+        return {"error": f"Ray 初期化エラー: {exc}"}
 
     try:
         import ray  # type: ignore
     except ImportError:
         return {"error": "ray 未インストール"}
 
-    # ray.is_initialized() でなく ray.is_initialized OR subprocess フラグで判定済みだが
-    # ray.remote() を使うには ray.init() が完了している必要がある。
-    # 未 init の場合は ray.nodes() が NameError → except で捕捉される。
     if not ray.is_initialized():
-        return {"error": "Ray初期化未完了 — しばらく待ってから再試行してください（バックグラウンドでray.init()中）"}
+        return {"error": "Ray初期化未完了"}
 
     # 関数名からローカル関数を解決
     fn_map = {
@@ -385,6 +480,80 @@ def dispatch_benchmark(fn_name: str, **kwargs) -> Dict[str, Any]:
 
     except Exception as exc:
         logger.warning("dispatch_benchmark 失敗: %s", exc)
+        return {"error": str(exc)}
+
+
+def dispatch_hardware_detect(worker_ip: str) -> Dict[str, Any]:
+    """指定ワーカー IP のハードウェア情報を Ray 経由で取得する。
+
+    Args:
+        worker_ip: ワーカーノードの IP アドレス（NodeManagerAddress と一致する値）
+
+    Returns:
+        _detect_hardware() の戻り値、またはエラー dict
+    """
+    try:
+        from backend.cluster.bootstrap import is_ray_connected, ensure_ray_initialized
+        if not is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
+        if not ensure_ray_initialized(timeout=10):
+            return {"error": "ray.init() 失敗 — PC1 で管理者PowerShellから scripts/fix_ray_firewall.ps1 を実行してください（TCP 6379 の Inbound 許可が必要）"}
+    except Exception as exc:
+        return {"error": f"Ray 初期化エラー: {exc}"}
+
+    try:
+        import ray  # type: ignore
+    except ImportError:
+        return {"error": "ray 未インストール"}
+
+    if not ray.is_initialized():
+        return {"error": "Ray初期化未完了"}
+
+    try:
+        nodes = ray.nodes()
+        alive_nodes = [n for n in nodes if n.get("Alive")]
+
+        # NodeManagerAddress での完全一致
+        target_node = next(
+            (n for n in alive_nodes if n.get("NodeManagerAddress") == worker_ip),
+            None,
+        )
+        # 末尾一致フォールバック（IPv4-mapped IPv6 等の表記揺れ対応）
+        if target_node is None:
+            target_node = next(
+                (n for n in alive_nodes if n.get("NodeManagerAddress", "").endswith(worker_ip)),
+                None,
+            )
+
+        if target_node is None:
+            alive_ips = [n.get("NodeManagerAddress", "?") for n in alive_nodes]
+            logger.warning(
+                "dispatch_hardware_detect: %s が見つかりません。Alive ノード: %s",
+                worker_ip, alive_ips,
+            )
+            if not alive_ips:
+                return {"error": f"Alive なノードがありません。K10 で join コマンドを実行してください"}
+            return {"error": f"ワーカーノード {worker_ip} が見つかりません。現在のノード: {', '.join(alive_ips)}"}
+
+        # 特定ノードで実行するために NodeAffinitySchedulingStrategy を使用
+        node_id = target_node.get("NodeID", "")
+        try:
+            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # type: ignore
+            strategy = NodeAffinitySchedulingStrategy(node_id=node_id, soft=False)
+            remote_fn = ray.remote(
+                num_cpus=0.1,
+                scheduling_strategy=strategy,
+            )(_detect_hardware)
+        except ImportError:
+            # Ray 古バージョン: resources でノード指定（フォールバック）
+            remote_fn = ray.remote(_detect_hardware)
+
+        future = remote_fn.remote()
+        result = ray.get(future, timeout=30)
+        return result
+
+    except Exception as exc:
+        logger.warning("dispatch_hardware_detect 失敗: %s", exc)
         return {"error": str(exc)}
 
 

@@ -479,7 +479,30 @@ class BenchmarkRunner:
 
         _YOLO_MODEL = Path(__file__).parent.parent / "models" / "yolov8n.onnx"
         if not _YOLO_MODEL.exists():
-            return {"error": f"モデル未配置: {_YOLO_MODEL.name}"}
+            # ultralytics が使える場合は自動エクスポートを試みる
+            try:
+                logger.info("yolov8n.onnx 未配置 — ultralytics で自動エクスポートを開始します")
+                from ultralytics import YOLO as _YOLO
+                import tempfile as _tf, shutil as _sh
+                with _tf.TemporaryDirectory() as _tmp:
+                    _model = _YOLO("yolov8n.pt")
+                    _exported = _model.export(
+                        format="onnx",
+                        imgsz=(384, 640),
+                        opset=12,
+                        simplify=True,
+                        dynamic=False,
+                    )
+                    # export() は保存先パスを返す
+                    _exported_path = Path(str(_exported))
+                    if _exported_path.exists():
+                        _sh.move(str(_exported_path), str(_YOLO_MODEL))
+                        logger.info("yolov8n.onnx を %s に配置しました", _YOLO_MODEL)
+                    else:
+                        return {"error": "yolov8n.onnx エクスポート失敗: 出力ファイルが見つかりません"}
+            except Exception as _e:
+                logger.warning("yolov8n.onnx 自動エクスポート失敗: %s", _e)
+                return {"error": f"モデル未配置: {_YOLO_MODEL.name}"}
 
         _YOLO_W, _YOLO_H = 640, 384
         _MEASURE_ITERS = min(n_frames, 5)
@@ -589,13 +612,11 @@ class BenchmarkRunner:
     def _bench_clip_extract(self, device: ComputeDevice, n_frames: int,
                             job: "Any | None" = None,
                             progress_cb=None) -> Dict[str, Any]:
-        """ffmpeg による合成 mp4 → クリップ切り出し時間の計測（CPU のみ有効）。
+        """ffmpeg による合成 mp4 → クリップ切り出し時間の計測。
 
-        GPU デバイスでは計測対象外として {"error": "device unavailable"} を返す。
+        ffmpeg -c copy は CPU/ファイル I/O 処理のため GPU の種類によらず同じ結果になるが、
+        ベンチマークとしてすべての device × target を計測する。
         """
-        # clip_extract は CPU のみ有効
-        if device.device_type not in ("cpu",):
-            return {"error": "device unavailable"}
 
         # 合成 mp4 を生成（失敗したら計測不能）
         video_path, created = _make_video_path(n_frames)
@@ -640,13 +661,11 @@ class BenchmarkRunner:
     def _bench_statistics(self, device: ComputeDevice, n_frames: int,
                           job: "Any | None" = None,
                           progress_cb=None) -> Dict[str, Any]:
-        """numpy/scipy を使った統計計算（相関・EPV 模擬）の時間計測（CPU のみ）。
+        """numpy/scipy を使った統計計算（相関・EPV 模擬）の時間計測。
 
-        GPU デバイスでは計測対象外として {"error": "device unavailable"} を返す。
+        CPU で実行される処理のため GPU の種類によらず同じ結果になるが、
+        ベンチマークとしてすべての device × target を計測する。
         """
-        # statistics は CPU のみ有効
-        if device.device_type not in ("cpu",):
-            return {"error": "device unavailable"}
 
         rng = np.random.default_rng(123)
         latencies: List[float] = []

@@ -193,17 +193,46 @@ def get_worker_model_base(worker_ip: str) -> str:
     return "C:\\ss-models"
 
 
-def ping_node(ip: str, port: int = 8765, timeout: float = 2.0) -> Dict[str, Any]:
-    """指定ノードの FastAPI ヘルスエンドポイントに TCP 接続を試みる。"""
-    import time
-    import urllib.request
-    import urllib.error
-    url = f"http://{ip}:{port}/api/health"
+def ping_icmp(ip: str, timeout: float = 2.0) -> Dict[str, Any]:
+    """ICMP ping で疎通確認する（subprocess 経由）。
+
+    HTTP ではなく ICMP を使うため、ShuttleScope 未搭載の K10 等でも機能する。
+    """
+    import subprocess, sys, time
+
     started = time.time()
+    kw: dict = {"capture_output": True, "text": True}
+    if sys.platform == "win32":
+        cmd = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), ip]
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+    else:
+        cmd = ["ping", "-c", "1", "-W", str(int(timeout)), ip]
+
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            latency_ms = int((time.time() - started) * 1000)
-            return {"reachable": True, "latency_ms": latency_ms, "status": resp.status}
+        result = subprocess.run(cmd, timeout=timeout + 1, **kw)
+        latency_ms = int((time.time() - started) * 1000)
+        return {"reachable": result.returncode == 0, "latency_ms": latency_ms, "via": "icmp"}
     except Exception as exc:
         latency_ms = int((time.time() - started) * 1000)
-        return {"reachable": False, "latency_ms": latency_ms, "error": str(exc)}
+        return {"reachable": False, "latency_ms": latency_ms, "via": "icmp", "error": str(exc)}
+
+
+def ping_node(ip: str, port: int = 8765, timeout: float = 2.0) -> Dict[str, Any]:
+    """指定ノードへの疎通確認。ICMP ping を優先し、失敗時は HTTP にフォールバック。
+
+    K10 は ShuttleScope を動かしていないため HTTP ではなく ICMP で確認する。
+    """
+    result = ping_icmp(ip, timeout=timeout)
+    if result["reachable"]:
+        return result
+    # ICMP が通らない場合（ファイアウォール等）は HTTP も試みる
+    import time, urllib.request
+    started = time.time()
+    try:
+        url = f"http://{ip}:{port}/api/health"
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            latency_ms = int((time.time() - started) * 1000)
+            return {"reachable": True, "latency_ms": latency_ms, "via": "http"}
+    except Exception:
+        pass
+    return result  # ICMP の結果を返す

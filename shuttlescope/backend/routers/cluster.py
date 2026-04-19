@@ -1,19 +1,22 @@
 """クラスタ管理 API (INFRA Phase D)
 
 エンドポイント:
-  GET  /api/cluster/status        — 現在ノードの負荷・Ray・DB 状態
-  GET  /api/cluster/config        — cluster.config.yaml の内容
-  POST /api/cluster/config        — cluster.config.yaml を更新
-  GET  /api/cluster/interfaces    — 利用可能なネットワークインターフェース一覧
-  POST /api/cluster/ping          — 指定ノードへの疎通確認
-  GET  /api/cluster/nodes         — ワーカーノード一覧と疎通状態
+  GET  /api/cluster/status               — 現在ノードの負荷・Ray・DB 状態
+  GET  /api/cluster/config               — cluster.config.yaml の内容
+  POST /api/cluster/config               — cluster.config.yaml を更新
+  GET  /api/cluster/interfaces           — 利用可能なネットワークインターフェース一覧
+  POST /api/cluster/ping                 — 指定ノードへの疎通確認
+  GET  /api/cluster/nodes                — ワーカーノード一覧と疎通状態
+  GET  /api/cluster/ray/join-script      — K10 で irm <url> | iex する PowerShell スクリプト
+  POST /api/cluster/nodes/{ip}/ray-join  — SSH 経由でワーカーに ray start を送信
 """
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from backend.cluster import bootstrap as _bootstrap
@@ -168,14 +171,11 @@ def start_ray() -> Dict[str, Any]:
         return {"ok": True, "message": "Ray は既に接続済みです", "status": "running"}
 
     def _connect():
-        # まず subprocess で ray status を確認する（Firewall 回避）
         status = _bootstrap.subprocess_ray_status()
         if status["running"]:
             _bootstrap.mark_ray_connected()
             logger.info("Ray クラスタ確認済み (subprocess): active_nodes=%d", status.get("active_count", 0))
             return
-
-        # subprocess でも確認できなかった場合は ray.init() を試みる（TCP 接続）
         logger.warning("ray status で確認できず。ray.init() を試みます: %s", status["error"])
         try:
             _bootstrap.init_ray(address="auto", force=True)
@@ -184,6 +184,80 @@ def start_ray() -> Dict[str, Any]:
 
     threading.Thread(target=_connect, daemon=True).start()
     return {"ok": True, "message": "Ray クラスタ確認中 (ray status)...", "status": "connecting"}
+
+
+class StartHeadRequest(BaseModel):
+    node_ip: str
+    port: int = 6379
+    num_cpus: Optional[int] = None
+    num_gpus: Optional[int] = None
+
+
+@router.post("/cluster/ray/start-head")
+def start_ray_head(body: StartHeadRequest) -> Dict[str, Any]:
+    """このノードで Ray ヘッドとして起動する（ray start --head を実行）。
+
+    既存の Ray プロセスは先に停止してから起動する。
+    """
+    import subprocess, sys, os
+
+    ray_cmd = _bootstrap._find_ray_cmd()
+    kw: dict = {"capture_output": True, "text": True, "timeout": 30}
+    if sys.platform == "win32":
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+
+    # 既存プロセスをクリーンアップ
+    try:
+        subprocess.run([ray_cmd, "stop", "--force"], **kw)
+        _bootstrap.unmark_ray_connected()
+    except Exception:
+        pass
+
+    # ray start --head
+    cmd = [
+        ray_cmd, "start", "--head",
+        f"--node-ip-address={body.node_ip}",
+        f"--port={body.port}",
+        "--dashboard-host=0.0.0.0",
+    ]
+    if body.num_cpus is not None:
+        cmd.append(f"--num-cpus={body.num_cpus}")
+    if body.num_gpus is not None:
+        cmd.append(f"--num-gpus={body.num_gpus}")
+
+    import os as _os
+    env = _os.environ.copy()
+    env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
+    kw["env"] = env
+
+    try:
+        result = subprocess.run(cmd, **kw)
+        if result.returncode != 0:
+            return {"ok": False, "message": result.stderr or result.stdout}
+        # 起動確認
+        import time; time.sleep(2)
+        status = _bootstrap.subprocess_ray_status()
+        if status["running"]:
+            _bootstrap.mark_ray_connected()
+        # workers config から join コマンドを生成（ワーカーごと）
+        workers = topology.get_workers()
+        worker_cmds = []
+        for w in workers:
+            wip = w.get("ip", "<WORKER_IP>")
+            wcpus = w.get("num_cpus", 16)
+            wgpus = w.get("num_gpus", 0)
+            cmd_str = f"ray start --address={body.node_ip}:{body.port} --node-ip-address={wip} --num-cpus={wcpus}"
+            if wgpus:
+                cmd_str += f" --num-gpus={wgpus}"
+            worker_cmds.append({"label": w.get("label", wip), "ip": wip, "cmd": cmd_str})
+        # 後方互換: 最初のワーカーコマンドを worker_cmd として返す
+        first_cmd = worker_cmds[0]["cmd"] if worker_cmds else f"ray start --address={body.node_ip}:{body.port} --node-ip-address=<WORKER_IP> --num-cpus=16 --num-gpus=1"
+        return {"ok": True, "message": "Ray head started", "status": "running",
+                "worker_cmd": first_cmd, "worker_cmds": worker_cmds}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": "ray start タイムアウト"}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
 
 
 @router.post("/cluster/ray/stop")
@@ -197,11 +271,116 @@ def stop_ray() -> Dict[str, Any]:
         raise HTTPException(500, str(exc))
 
 
+@router.post("/cluster/nodes/{worker_ip}/detect")
+def detect_worker_hardware(worker_ip: str) -> Dict[str, Any]:
+    """Ray 経由で指定ワーカーのハードウェア情報を取得する。
+
+    取得成功後は cluster.config.yaml のワーカー設定を自動更新する。
+    worker_ip はパスパラメータ（ドット → アンダースコア変換不要、そのまま渡す）。
+    """
+    # URL パスでは "." がそのまま使えないためクライアント側でアンダースコアに変換している場合に対応
+    actual_ip = worker_ip.replace("_", ".")
+    # ただし実際の IP（例 169.254.140.146）はそのまま来ることも多いので両方試みる
+    # ここでは受け取った値をそのまま渡し、dispatch 側でノードを検索させる
+
+    from backend.cluster.remote_tasks import dispatch_hardware_detect
+
+    hw = dispatch_hardware_detect(actual_ip)
+    if "error" in hw:
+        raise HTTPException(400, hw["error"])
+
+    # cluster.config.yaml のワーカー設定を更新
+    cfg = topology.load_config(force=True)
+    workers = cfg.get("network", {}).get("workers", [])
+    updated = False
+    for w in workers:
+        if w.get("ip") == actual_ip:
+            if hw.get("num_cpus"):
+                w["num_cpus"] = hw["num_cpus"]
+            if hw.get("num_gpus") is not None:
+                w["num_gpus"] = hw["num_gpus"]
+            if hw.get("gpu_label"):
+                w["gpu_label"] = hw["gpu_label"]
+            updated = True
+            break
+
+    if updated:
+        topology.save_config(cfg)
+        logger.info("detect_worker_hardware: %s の設定を更新しました: %s", actual_ip, hw)
+
+    return {**hw, "config_updated": updated}
+
+
+@router.get("/cluster/network/arp")
+def get_arp_devices() -> List[Dict[str, Any]]:
+    """ARP テーブルから近隣デバイス一覧を返す。
+
+    Windows: arp -a、Linux/Mac: arp -a で解析する。
+    このノード自身の全インターフェース IP は除外する。
+    """
+    import subprocess, sys, re
+
+    kw: dict = {"capture_output": True, "text": True, "timeout": 10}
+    if sys.platform == "win32":
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+
+    # 自分自身の IP セット
+    own_ips: set = set()
+    try:
+        import psutil, socket
+        for addrs in psutil.net_if_addrs().values():
+            for a in addrs:
+                if a.family == socket.AF_INET:
+                    own_ips.add(a.address)
+    except Exception:
+        pass
+
+    try:
+        result = subprocess.run(["arp", "-a"], **kw)
+        lines = result.stdout.splitlines()
+    except Exception as exc:
+        return [{"error": str(exc)}]
+
+    devices: List[Dict[str, Any]] = []
+    seen: set = set()
+
+    for line in lines:
+        # Windows: "  169.254.140.146      xx-xx-xx-xx-xx-xx     動的"
+        # または "  192.168.1.5          xx-xx-xx-xx-xx-xx     static"
+        m = re.search(r'(\d{1,3}(?:\.\d{1,3}){3})', line)
+        if not m:
+            continue
+        ip = m.group(1)
+        if ip in seen or ip in own_ips:
+            continue
+        # マルチキャスト・ブロードキャストを除外
+        parts = ip.split(".")
+        last = int(parts[-1])
+        if last in (0, 255) or ip.startswith("224.") or ip.startswith("239."):
+            continue
+        seen.add(ip)
+        devices.append({"ip": ip})
+
+    # 既存ワーカー設定の IP にラベルを付ける
+    try:
+        workers = topology.get_workers()
+        worker_map = {w.get("ip", ""): w.get("label", "") for w in workers}
+        for d in devices:
+            d["known_label"] = worker_map.get(d["ip"], "")
+    except Exception:
+        pass
+
+    return devices
+
+
 @router.post("/cluster/ping")
 def ping_node(body: PingRequest) -> Dict[str, Any]:
-    """指定ノードへの疎通確認を行う。"""
+    """指定ノードへの疎通確認（ICMP → HTTP フォールバック）。
+
+    K10 は ShuttleScope を動かしていないため HTTP ping ではなく ICMP を優先する。
+    """
     result = topology.ping_node(body.ip, body.port, body.timeout)
-    return {"ip": body.ip, "port": body.port, **result}
+    return {"ip": body.ip, **result}
 
 
 @router.get("/cluster/nodes")
@@ -252,3 +431,102 @@ def get_nodes() -> List[Dict[str, Any]]:
             ping = {"reachable": False, "via": "none"}
         results.append({**w, "ping": ping})
     return results
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# K10 参加スクリプト / SSH リモート起動
+# ────────────────────────────────────────────────────────────────────────────
+
+@router.get("/cluster/ray/join-script", response_class=PlainTextResponse)
+def get_ray_join_script(request: Request) -> str:
+    """K10 で実行する PowerShell join スクリプトを返す。
+
+    呼び出し元 IP が workers 設定と一致すればそのコマンドのみ返す。
+    一致しない場合は全ワーカーのコマンドを列挙する。
+
+    K10 側での実行例:
+        irm http://169.254.96.137:8765/api/cluster/ray/join-script | iex
+    """
+    caller_ip = request.client.host if request.client else ""
+    cfg = topology.load_config()
+    primary_ip = cfg.get("network", {}).get("primary_ip", "127.0.0.1")
+    workers = cfg.get("network", {}).get("workers", [])
+
+    targets = [w for w in workers if w.get("ip") == caller_ip] or workers
+
+    lines = [
+        "# ShuttleScope Ray Worker Join Script",
+        f"# Head: {primary_ip}:6379",
+        "$env:RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER = '1'",
+    ]
+    for w in targets:
+        wip = w.get("ip", caller_ip or "<WORKER_IP>")
+        wcpus = w.get("num_cpus", 16)
+        wgpus = w.get("num_gpus", 0)
+        label = w.get("label", wip)
+        cmd = f"ray start --address={primary_ip}:6379 --node-ip-address={wip} --num-cpus={wcpus}"
+        if wgpus:
+            cmd += f" --num-gpus={wgpus}"
+        lines.append(f"Write-Host 'Joining Ray cluster as: {label} ({wip})'")
+        lines.append(cmd)
+        lines.append("Write-Host 'Done.'")
+
+    return "\r\n".join(lines)
+
+
+class RemoteRayJoinRequest(BaseModel):
+    username: str
+    password: str
+    head_ip: str
+    port: int = 6379
+    num_cpus: Optional[int] = None
+    num_gpus: Optional[int] = None
+
+
+@router.post("/cluster/nodes/{worker_ip}/ray-join")
+def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest) -> Dict[str, Any]:
+    """SSH 経由でワーカーノードに ray start コマンドを送信する。
+
+    paramiko が必要: pip install paramiko
+    K10 側で OpenSSH Server が有効になっている必要がある。
+    """
+    try:
+        import paramiko  # type: ignore
+    except ImportError:
+        raise HTTPException(500, "paramiko が必要です: pip install paramiko")
+
+    actual_ip = worker_ip.replace("_", ".")
+
+    # ワーカー設定から num_cpus / num_gpus を補完
+    num_cpus = body.num_cpus
+    num_gpus = body.num_gpus
+    if num_cpus is None or num_gpus is None:
+        cfg = topology.load_config()
+        for w in cfg.get("network", {}).get("workers", []):
+            if w.get("ip") == actual_ip:
+                if num_cpus is None:
+                    num_cpus = w.get("num_cpus", 16)
+                if num_gpus is None:
+                    num_gpus = w.get("num_gpus", 0)
+                break
+
+    cmd = f"ray start --address={body.head_ip}:{body.port} --node-ip-address={actual_ip}"
+    if num_cpus is not None:
+        cmd += f" --num-cpus={num_cpus}"
+    if num_gpus:
+        cmd += f" --num-gpus={num_gpus}"
+
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(actual_ip, username=body.username, password=body.password, timeout=10)
+        _, stdout, stderr = client.exec_command(cmd, timeout=30)
+        out = stdout.read().decode(errors="replace")
+        err = stderr.read().decode(errors="replace")
+        exit_code = stdout.channel.recv_exit_status()
+        client.close()
+        ok = exit_code == 0
+        return {"ok": ok, "message": out.strip() if ok else (err.strip() or out.strip()), "cmd": cmd}
+    except Exception as exc:
+        logger.error("remote_ray_join %s failed: %s", actual_ip, exc)
+        return {"ok": False, "message": str(exc)}
