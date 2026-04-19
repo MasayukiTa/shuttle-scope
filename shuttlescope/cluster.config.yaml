@@ -34,5 +34,5 @@ inference:
 load_limits:
   max_gpu_percent: 90
   max_cpu_percent: 90
-  max_concurrent_inference: 14
+  max_concurrent_inference: 16
   throttle_interval_sec: 1
