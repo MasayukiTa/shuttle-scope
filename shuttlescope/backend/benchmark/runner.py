@@ -94,11 +94,8 @@ def _env_override(device: ComputeDevice) -> Generator[None, None, None]:
         # specs に device_index があれば使う、なければ 0
         dev_idx = str(device.specs.get("device_index", 0))
         os.environ["SS_CUDA_DEVICE"] = dev_idx
-    # ベンチマーク時は Mock を使わない（実測値が必要）
-    # ただし GPU 系がなければ factory が自動で CPU / Mock にフォールバックする
-    if os.environ.get("SS_CV_MOCK") == "1":
-        # モック環境でも計測はできるが上書きはしない（テスト互換維持）
-        pass
+    # ベンチマーク時は常に実モデルを使用する（Mock では計測値が無意味になる）
+    os.environ["SS_CV_MOCK"] = "0"
 
     try:
         # pydantic_settings の singleton を更新するために settings を再生成する
@@ -199,10 +196,15 @@ class BenchmarkRunner:
                     "[runner] 計測開始: job=%s device=%s target=%s n=%d",
                     job_id, device.device_id, target, n_frames,
                 )
-                result = self._run_target(device, target, n_frames, job=job)
+                result = self._run_target(
+                    device, target, n_frames, job=job,
+                    completed_steps=completed, total_steps=total_steps,
+                )
                 results[device.device_id][target] = result
                 completed += 1
                 self._progress[job_id] = completed / max(total_steps, 1)
+                if job is not None:
+                    job.progress = self._progress[job_id]
                 logger.info(
                     "[runner] 計測完了: device=%s target=%s result=%s",
                     device.device_id, target, result,
@@ -222,7 +224,8 @@ class BenchmarkRunner:
     # ── 内部: ターゲット振り分け ───────────────────────────────────────────
 
     def _run_target(self, device: ComputeDevice, target: str, n_frames: int,
-                    job: "Any | None" = None) -> Dict[str, Any]:
+                    job: "Any | None" = None,
+                    completed_steps: int = 0, total_steps: int = 1) -> Dict[str, Any]:
         """対象デバイスが unavailable なら即座にエラーを返す。それ以外は各計測を実行。"""
         if not device.available:
             return {"error": "device unavailable"}
@@ -230,6 +233,11 @@ class BenchmarkRunner:
             return {"error": "キャンセルされました"}
 
         use_gpu = device.device_type in ("dgpu", "igpu")
+
+        def _progress_cb(frame_i: int) -> None:
+            """フレーム単位のサブ進捗を job に反映する。"""
+            if job is not None:
+                job.progress = (completed_steps + frame_i / max(n_frames, 1)) / max(total_steps, 1)
 
         dispatch = {
             TARGET_TRACKNET: self._bench_tracknet,
@@ -246,7 +254,7 @@ class BenchmarkRunner:
         try:
             with _gpu_cleanup(use_gpu):
                 with _env_override(device):
-                    return bench_fn(device, n_frames)
+                    return bench_fn(device, n_frames, job=job, progress_cb=_progress_cb)
         except Exception as exc:
             logger.exception("[runner] 計測例外: device=%s target=%s", device.device_id, target)
             return {"error": str(exc)}
@@ -254,85 +262,184 @@ class BenchmarkRunner:
     # ── 各ターゲット実装 ──────────────────────────────────────────────────
 
     def _bench_tracknet(self, device: ComputeDevice, n_frames: int,
-                        job: "Any | None" = None) -> Dict[str, Any]:
-        """TrackNet 推論速度計測。n_frames 回の run() レイテンシを計測する。"""
+                        job: "Any | None" = None,
+                        progress_cb=None) -> Dict[str, Any]:
+        """TrackNet 推論速度計測。
+
+        1トリプレット（3フレーム→1推論）単位でレイテンシを直接計測する。
+        _MEASURE_ITERS 回繰り返して統計を取り、fps = 1000 / avg_ms で報告する。
+
+        反復数を最大 5 に制限することで、ONNX CPU など低速バックエンドでも
+        数分以内に完了する。progress は n_frames まで到達するようスケールする。
+        """
         from backend.cv import factory
-        from backend.benchmark.synthetic import make_video_file
+        from backend.tracknet.inference import FRAME_STACK
+
+        # 最大5回の計測（低速CPUでも数分以内に完了）
+        _MEASURE_ITERS = min(n_frames, 5)
 
         inferencer = factory.get_tracknet()
-        video_path = make_video_file(n=10)
+
+        # バックエンド名をログ（どのエンジンで計測しているか確認用）
+        try:
+            bname = inferencer.backend_name() if hasattr(inferencer, 'backend_name') else \
+                    (inferencer._impl.backend_name() if hasattr(inferencer, '_impl') else '?')
+        except Exception:
+            bname = '?'
+        logger.info("[bench/tracknet] device=%s backend=%s n_iters=%d",
+                    device.device_id, bname, _MEASURE_ITERS)
+
+        # 1 トリプレット分のフレームをモデル解像度で事前生成（lru_cache で再利用）
+        frames = make_frames(FRAME_STACK, 512, 288)
+
+        video_path: str | None = None
+        if hasattr(inferencer, 'run_frames'):
+            # run_frames 対応実装（OpenVINOTrackNet / MockTrackNet 等）
+            def run_one() -> None:
+                inferencer.run_frames(list(frames))
+        else:
+            # CpuTrackNet 等: 最小サイズの動画ファイル経由
+            video_path = make_video_file(n=FRAME_STACK + 1)
+            def run_one(_vp: str = video_path) -> None:
+                inferencer.run(_vp)
+
         latencies: List[float] = []
         try:
-            for _ in range(n_frames):
+            # ウォームアップ 1 回（CUDA JIT / ONNX グラフ最適化を計測から除外）
+            try:
+                run_one()
+            except Exception:
+                pass
+
+            for i in range(_MEASURE_ITERS):
                 if job is not None and job.cancelled:
                     break
                 t0 = time.perf_counter()
-                inferencer.run(video_path)
+                run_one()
                 latencies.append(time.perf_counter() - t0)
+                if progress_cb is not None:
+                    # _MEASURE_ITERS → n_frames にスケールして progress が 100% まで達するようにする
+                    progress_cb(round((i + 1) * n_frames / _MEASURE_ITERS))
         finally:
-            try:
-                os.remove(video_path)
-            except OSError:
-                pass
+            if video_path is not None:
+                try:
+                    os.remove(video_path)
+                except OSError:
+                    pass
 
-        return _compute_metrics(latencies) if latencies else {"error": "キャンセルされました"}
+        if not latencies:
+            return {"error": "キャンセルされました"}
+
+        # 1 call = 1 出力フレーム相当のレイテンシ: fps = 1000 / avg_ms の補正不要
+        return _compute_metrics(latencies)
 
     def _bench_pose(self, device: ComputeDevice, n_frames: int,
-                    job: "Any | None" = None) -> Dict[str, Any]:
-        """Pose 推論速度計測。n_frames 回の run() レイテンシを計測する。"""
+                    job: "Any | None" = None,
+                    progress_cb=None) -> Dict[str, Any]:
+        """Pose 推論速度計測。
+
+        MediaPipe はビデオ入力前提のため動画ファイル経由。
+        1 ファイルあたり _BATCH_SIZE フレームを計測し、最大 10 回繰り返す。
+        """
         from backend.cv import factory
         from backend.benchmark.synthetic import make_video_file
 
+        _BATCH_SIZE = 10
+        _MEASURE_ITERS = min(n_frames, 10)
+
         inferencer = factory.get_pose()
-        video_path = make_video_file(n=10)
+        video_path = make_video_file(n=_BATCH_SIZE)
         latencies: List[float] = []
         try:
-            for _ in range(n_frames):
+            # ウォームアップ 1 回
+            try:
+                inferencer.run(video_path)
+            except Exception:
+                pass
+
+            for i in range(_MEASURE_ITERS):
                 if job is not None and job.cancelled:
                     break
                 t0 = time.perf_counter()
                 inferencer.run(video_path)
                 latencies.append(time.perf_counter() - t0)
+                if progress_cb is not None:
+                    progress_cb(round((i + 1) * n_frames / _MEASURE_ITERS))
         finally:
             try:
                 os.remove(video_path)
             except OSError:
                 pass
 
-        return _compute_metrics(latencies) if latencies else {"error": "キャンセルされました"}
+        if not latencies:
+            return {"error": "キャンセルされました"}
 
-    def _bench_pipeline_full(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
+        metrics = _compute_metrics(latencies)
+        # fps = _BATCH_SIZE フレーム / avg_ms
+        metrics["fps"] = round(_BATCH_SIZE * 1000.0 / metrics["avg_ms"], 2) if metrics["avg_ms"] > 0 else 0.0
+        return metrics
+
+    def _bench_pipeline_full(self, device: ComputeDevice, n_frames: int,
+                             job: "Any | None" = None,
+                             progress_cb=None) -> Dict[str, Any]:
         """パイプライン全工程（TrackNet + Pose + Gravity）の計測。
 
         tracknet → pose → gravity の一気通貫時間を計測する。
+        最大 3 回の計測に制限して低速環境でも数分以内に完了させる。
         """
         from backend.cv import factory
         from backend.cv.gravity import compute_cog_batch
+        from backend.tracknet.inference import FRAME_STACK
 
-        from backend.benchmark.synthetic import make_video_file
+        _MEASURE_ITERS = min(n_frames, 3)
+        _POSE_FRAMES = 10
 
         tracknet = factory.get_tracknet()
         pose = factory.get_pose()
-        video_path = make_video_file(n=10)  # 固定 10 フレーム
+        video_path = make_video_file(n=_POSE_FRAMES)
         latencies: List[float] = []
 
         try:
-            for _ in range(n_frames):
+            # ウォームアップ
+            try:
+                if hasattr(tracknet, 'run_frames'):
+                    tracknet.run_frames(list(make_frames(FRAME_STACK, 512, 288)))
+                else:
+                    tracknet.run(video_path)
+                pose.run(video_path)
+            except Exception:
+                pass
+
+            for i in range(_MEASURE_ITERS):
+                if job is not None and job.cancelled:
+                    break
                 t0 = time.perf_counter()
-                shuttle_samples = tracknet.run(video_path)
+                if hasattr(tracknet, 'run_frames'):
+                    tracknet.run_frames(list(make_frames(FRAME_STACK, 512, 288)))
+                else:
+                    tracknet.run(video_path)
                 pose_samples = pose.run(video_path)
                 landmarks_batch = [s.landmarks for s in pose_samples]
                 compute_cog_batch(landmarks_batch)
                 latencies.append(time.perf_counter() - t0)
+                if progress_cb is not None:
+                    progress_cb(round((i + 1) * n_frames / _MEASURE_ITERS))
         finally:
             try:
                 os.remove(video_path)
             except OSError:
                 pass
 
-        return _compute_metrics(latencies)
+        if not latencies:
+            return {"error": "キャンセルされました"}
 
-    def _bench_clip_extract(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
+        metrics = _compute_metrics(latencies)
+        metrics["fps"] = round(_POSE_FRAMES * 1000.0 / metrics["avg_ms"], 2) if metrics["avg_ms"] > 0 else 0.0
+        return metrics
+
+    def _bench_clip_extract(self, device: ComputeDevice, n_frames: int,
+                            job: "Any | None" = None,
+                            progress_cb=None) -> Dict[str, Any]:
         """ffmpeg による合成 mp4 → クリップ切り出し時間の計測（CPU のみ有効）。
 
         GPU デバイスでは計測対象外として {"error": "device unavailable"} を返す。
@@ -361,6 +468,8 @@ class BenchmarkRunner:
                 t0 = time.perf_counter()
                 result = subprocess.run(cmd, capture_output=True, timeout=30)
                 latencies.append(time.perf_counter() - t0)
+                if progress_cb is not None:
+                    progress_cb(round((i + 1) * n_frames / min(n_frames, 5)))
                 # 一時ファイルを削除
                 try:
                     os.remove(out_path)
@@ -377,7 +486,9 @@ class BenchmarkRunner:
 
         return _compute_metrics(latencies)
 
-    def _bench_statistics(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
+    def _bench_statistics(self, device: ComputeDevice, n_frames: int,
+                          job: "Any | None" = None,
+                          progress_cb=None) -> Dict[str, Any]:
         """numpy/scipy を使った統計計算（相関・EPV 模擬）の時間計測（CPU のみ）。
 
         GPU デバイスでは計測対象外として {"error": "device unavailable"} を返す。
@@ -389,7 +500,7 @@ class BenchmarkRunner:
         rng = np.random.default_rng(123)
         latencies: List[float] = []
 
-        for _ in range(n_frames):
+        for i in range(n_frames):
             # EPV 模擬: n=200 の多変量乱数に対して相関行列・期待値計算
             data = rng.standard_normal((200, 10))
 
@@ -413,6 +524,8 @@ class BenchmarkRunner:
                 pass
 
             latencies.append(time.perf_counter() - t0)
+            if progress_cb is not None:
+                progress_cb(i + 1)
 
             # 変数を明示的に削除して GC を促す
             del corr, weights, epv

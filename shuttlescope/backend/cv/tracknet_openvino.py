@@ -66,6 +66,21 @@ class OpenVINOTrackNet(TrackNetInferencer):
             self._impl.backend_name(),
         )
 
+    def backend_name(self) -> str:
+        """ロードされたバックエンド名を返す（ログ・デバッグ用）。"""
+        return self._impl.backend_name()
+
+    # ------------------------------------------------------------------
+    def run_frames(self, frames: List[np.ndarray], fps: float = 30.0) -> List[ShuttleSample]:
+        """numpy フレームリストから直接推論する（ビデオI/O不要）。
+
+        ベンチマーク等でビデオデコードのオーバーヘッドを除き
+        純粋な推論スループットを計測したい場合に使用する。
+        """
+        if len(frames) < 3:
+            return []
+        return self._process_chunk(list(frames), 0, fps)
+
     # ------------------------------------------------------------------
     def run(self, video_path: str) -> List[ShuttleSample]:
         """動画からシャトル軌跡を推定。

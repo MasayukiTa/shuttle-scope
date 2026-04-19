@@ -1,87 +1,38 @@
-# ShuttleScope クラスタ設定
-# ────────────────────────────────────────────────────────────────────────────
-# mode:
-#   single   : 1台構成（デフォルト）。クラスタ機能を一切使わない。
-#   primary  : マスターノード。DB + Ray head + FastAPI をホストする。
-#   worker   : ワーカーノード。Ray worker + PostgreSQL standby を実行する。
-#
-# このファイルを編集後、Settings → クラスタ タブで「設定を保存」してください。
-# または各起動スクリプト（scripts/cluster/start_*.bat）が自動で読み込みます。
-# ────────────────────────────────────────────────────────────────────────────
-
-mode: single    # single | primary | worker
-
+mode: single
 node:
-  role: primary         # primary | worker
-  id: "pc1"            # 任意の識別名（ログ・ダッシュボードで表示）
-
-# ────────────────────────────────────────────────────────────────────────────
-# ネットワーク設定
-# Windows デバイス名を使用（デバイスマネージャー → ネットワークアダプター の表示名）
-# 例: "イーサネット"  "Wi-Fi"  "USB-C Network"  "Bluetooth Network Connection"
-# ────────────────────────────────────────────────────────────────────────────
+  role: primary
+  id: pc1
 network:
-  # クラスタ内部通信（DB レプリケーション + Ray タスク配布）
-  cluster_interface: "イーサネット"
-  cluster_subnet:    "192.168.100.0/24"
-  primary_ip:        "192.168.100.1"
-
-  # フォールバックリンク（メインが切断時に自動切替）
-  # null にすると無効
-  fallback_interface: "USB-C Network"
-  fallback_subnet:    "192.168.101.0/24"
-
-  # クライアントデバイス（iOSカメラ・タブレット・外部PC）
-  client_interface: "Wi-Fi"
-  client_subnet:    "192.168.1.0/24"
-
-  # ワーカーノード一覧（primary ノードのみ記述）
+  cluster_interface: イーサネット
+  cluster_subnet: 192.168.100.0/24
+  primary_ip: 192.168.100.1
+  fallback_interface: USB-C Network
+  fallback_subnet: 192.168.101.0/24
+  client_interface: Wi-Fi
+  client_subnet: 192.168.1.0/24
   workers:
-    - id: "pc2"
-      ip: "192.168.100.2"
-      label: "GMKtec K10"
-    # 追加ノード例:
-    # - id: "pc3"
-    #   ip: "192.168.100.3"
-    #   label: "サブワーカー"
-
-# ────────────────────────────────────────────────────────────────────────────
-# Ray クラスタ設定
-# ────────────────────────────────────────────────────────────────────────────
+  - id: pc2
+    ip: 192.168.100.2
+    label: GMKtec K10
 ray:
-  head_address: "192.168.100.1:6379"
+  head_address: 192.168.100.1:6379
   dashboard_port: 8265
-  num_cpus: null      # null = 自動検出（全コアを使用）
-  num_gpus: null      # null = 自動検出
-  memory_limit_gb: null  # null = 制限なし
-
-# ────────────────────────────────────────────────────────────────────────────
-# PostgreSQL 設定
-# DATABASE_URL 環境変数が設定されている場合はそちらが優先されます。
-# ────────────────────────────────────────────────────────────────────────────
+  num_cpus: null
+  num_gpus: null
+  memory_limit_gb: null
 postgresql:
-  host: "192.168.100.1"
+  host: 192.168.100.1
   port: 5432
-  database: "shuttlescope"
-  user: "ss_user"
-  # パスワードは環境変数 SS_DB_PASSWORD で設定してください
+  database: shuttlescope
+  user: ss_user
   pool_size: 10
   max_overflow: 20
-
-# ────────────────────────────────────────────────────────────────────────────
-# 推論設定
-# ────────────────────────────────────────────────────────────────────────────
 inference:
-  frame_compression: "jpeg"   # jpeg | png | none（noneは帯域注意）
+  frame_compression: jpeg
   jpeg_quality: 80
   max_cameras: 4
-
-# ────────────────────────────────────────────────────────────────────────────
-# 負荷制限
-# いずれかの値を超えた場合、新規タスクをキューで待機させます。
-# ────────────────────────────────────────────────────────────────────────────
 load_limits:
-  max_gpu_percent: 80         # GPU使用率上限 (%)
-  max_cpu_percent: 70         # CPU使用率上限 (%)
-  max_concurrent_inference: 4 # 同時推論タスク数上限
-  throttle_interval_sec: 1.0  # 過負荷チェック間隔（秒）
+  max_gpu_percent: 90
+  max_cpu_percent: 90
+  max_concurrent_inference: 14
+  throttle_interval_sec: 1

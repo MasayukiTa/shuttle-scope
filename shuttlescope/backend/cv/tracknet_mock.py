@@ -9,6 +9,8 @@ import math
 import os
 from typing import List
 
+import numpy as np
+
 from backend.cv.base import ShuttleSample, TrackNetInferencer
 
 
@@ -22,6 +24,21 @@ class MockTrackNet(TrackNetInferencer):
     def __init__(self, fps: int = 30, duration_sec: float = 30.0) -> None:
         self._fps = fps
         self._duration_sec = duration_sec
+
+    def run_frames(self, frames: List[np.ndarray], fps: float = 30.0) -> List[ShuttleSample]:  # type: ignore[override]
+        """numpy フレームリストから直接推論（Mock: 固定フレーム数でダミーデータを返す）。"""
+        import math
+        n = max(len(frames) - 2, 0)
+        return [
+            ShuttleSample(
+                frame=i,
+                ts_sec=i / fps,
+                x=640.0 + 200.0 * math.sin(i * 0.2),
+                y=360.0 + 120.0 * math.sin(i * 0.3),
+                confidence=0.8,
+            )
+            for i in range(n)
+        ]
 
     def run(self, video_path: str) -> List[ShuttleSample]:
         # 動画パスのハッシュで位相をずらし、複数動画のダミーも区別できるようにする
