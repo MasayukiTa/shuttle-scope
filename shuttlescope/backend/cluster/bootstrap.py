@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 from typing import Any, Dict, List, Optional
 
 from backend.config import settings
@@ -143,12 +144,82 @@ def mark_ray_connected() -> None:
         invalidate_cache()
     except Exception:
         pass
+    # バックグラウンドで ray.init() を試みる（Windows Firewall 対応）
+    try_ray_init_background()
 
 
 def unmark_ray_connected() -> None:
     """subprocess 接続フラグをクリアする。"""
     global _ray_subprocess_connected
     _ray_subprocess_connected = False
+
+
+def try_ray_init_background() -> None:
+    """ray.init() をバックグラウンドスレッドで非同期実行する。
+
+    _ray_subprocess_connected が True のときのみ実行する。
+    ray.init() が 30 秒以内に成功すれば _ray_initialized = True を設定する。
+    失敗・タイムアウトしても subprocess 接続フラグには影響しない。
+    この関数は即座に返る（ノンブロッキング）。
+    """
+    if not _ray_subprocess_connected:
+        logger.debug("try_ray_init_background: subprocess 未接続のためスキップ")
+        return
+
+    if _ray_initialized:
+        logger.debug("try_ray_init_background: 既に ray.init() 済みのためスキップ")
+        return
+
+    def _worker() -> None:
+        global _ray_initialized
+        logger.info("try_ray_init_background: ray.init() を試みます (timeout=30s)")
+
+        # ray が利用可能か確認
+        try:
+            ray = _import_ray()
+        except Exception as exc:
+            logger.warning("try_ray_init_background: ray を import できません (%s)", exc)
+            return
+
+        # タイムアウト付きで ray.init() を実行する
+        # threading.Event + 内部スレッドで 30 秒タイムアウトを実装する
+        result_holder: Dict[str, Any] = {}
+        done_event = threading.Event()
+
+        def _init_ray_inner() -> None:
+            try:
+                if not ray.is_initialized():
+                    ray.init(address="auto", ignore_reinit_error=True)
+                result_holder["ok"] = True
+            except Exception as exc:
+                result_holder["error"] = str(exc)
+            finally:
+                done_event.set()
+
+        init_thread = threading.Thread(target=_init_ray_inner, daemon=True, name="ray-init-bg")
+        init_thread.start()
+
+        finished = done_event.wait(timeout=30)
+
+        if not finished:
+            logger.warning(
+                "try_ray_init_background: ray.init() が 30 秒以内に完了しませんでした。"
+                " subprocess 接続は有効なまま継続します。"
+            )
+            return
+
+        if result_holder.get("ok"):
+            _ray_initialized = True
+            logger.info("try_ray_init_background: ray.init() 成功 — _ray_initialized = True")
+        else:
+            logger.warning(
+                "try_ray_init_background: ray.init() 失敗 (%s) — subprocess 接続は有効なまま継続",
+                result_holder.get("error", "不明なエラー"),
+            )
+
+    bg_thread = threading.Thread(target=_worker, daemon=True, name="ray-init-bg-outer")
+    bg_thread.start()
+    logger.debug("try_ray_init_background: バックグラウンドスレッドを起動しました")
 
 
 def init_ray(address: Optional[str] = None, force: bool = False) -> bool:

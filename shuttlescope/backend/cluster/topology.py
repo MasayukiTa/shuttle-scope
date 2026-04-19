@@ -11,6 +11,13 @@ import socket
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+# タスク分散設定のデフォルト値
+_DEFAULT_TASK_ROUTING: Dict[str, str] = {
+    "tracknet": "auto",
+    "pose": "auto",
+    "yolo": "auto",
+}
+
 logger = logging.getLogger(__name__)
 
 # cluster.config.yaml の検索パス（shuttlescope/ ルート）
@@ -156,6 +163,35 @@ def list_interfaces() -> List[Dict[str, str]]:
 # ────────────────────────────────────────────────────────────────────────────
 # ノード疎通確認
 # ────────────────────────────────────────────────────────────────────────────
+
+def get_task_routing() -> Dict[str, str]:
+    """task_routing 設定を返す。未設定はすべて 'auto'。"""
+    cfg = load_config()
+    routing = cfg.get("task_routing", {})
+    result = dict(_DEFAULT_TASK_ROUTING)
+    if isinstance(routing, dict):
+        result.update({k: str(v) for k, v in routing.items()})
+    return result
+
+
+def save_task_routing(routing: Dict[str, str]) -> None:
+    """task_routing を cluster.config.yaml に保存する。"""
+    cfg = load_config(force=True)
+    cfg["task_routing"] = routing
+    save_config(cfg)
+    logger.info("save_task_routing: task_routing を保存しました: %s", routing)
+
+
+def get_worker_model_base(worker_ip: str) -> str:
+    """指定ワーカーの model_base パスを返す。デフォルト C:\\ss-models"""
+    workers = get_workers()
+    for w in workers:
+        if w.get("ip") == worker_ip:
+            base = w.get("model_base", "")
+            if base:
+                return str(base)
+    return "C:\\ss-models"
+
 
 def ping_node(ip: str, port: int = 8765, timeout: float = 2.0) -> Dict[str, Any]:
     """指定ノードの FastAPI ヘルスエンドポイントに TCP 接続を試みる。"""

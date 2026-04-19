@@ -17,6 +17,7 @@ network:
     num_cpus: 16
     num_gpus: 1
     gpu_label: AMD Radeon 780M Graphics
+    model_base: "C:\\ss-models"
 ray:
   head_address: 169.254.96.137:6379
   dashboard_port: 8265
@@ -37,7 +38,12 @@ inference:
 resources:
   gpu_vram_limit_gb: 0      # 0 = ORT自動管理、>0 = 上限GB
   system_ram_limit_gb: 0    # 0 = 自動
-  worker_ram_limit_gb: 0    # K10ワーカーのRAM上限GB
+  worker_ram_limit_gb: 0    # K10ワーカーのRAM上限GB（後方互換のため残す）
+  workers_ram_limits: {}    # ワーカーIP別 RAM上限GB
+task_routing:
+  tracknet: auto    # auto | laptop_cpu | laptop_gpu | k10_cpu | k10_igpu
+  pose: auto        # auto | laptop_cpu | k10_cpu
+  yolo: auto        # auto | laptop_cpu | laptop_gpu
 load_limits:
   max_gpu_percent: 90
   max_cpu_percent: 90

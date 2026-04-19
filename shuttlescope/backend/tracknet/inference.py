@@ -46,18 +46,20 @@ def _get_free_vram_bytes(device_index: int) -> int:
         return 0
 
 
-def _vram_based_max_batch(device_index: int, per_sample_mb: int = 250) -> int:
+def _vram_based_max_batch(device_index: int, per_sample_mb: int = 800) -> int:
     """空き VRAM から安全な最大バッチサイズを推定する。
 
-    per_sample_mb: 1 トリプレットあたりの VRAM 消費量の控えめな推定値（MB）。
-    残り VRAM の 75% をモデル/バッファ用途以外に使える前提で計算する。
-    下限 1、上限 128。
+    per_sample_mb: 1 トリプレットあたりの VRAM 消費量の実測値ベースの推定値（MB）。
+    実測では batch=49 で ~21GB の中間テンソルが生成されるため 1 サンプル≒430MB。
+    モデルバッファ等のオーバーヘッドを含め 800MB/sample で計算して余裕を持たせる。
+    残り VRAM の 60% を中間テンソル用途に確保する前提で計算する。
+    下限 1、上限 16（DirectML と同等の保守的な上限）。
     """
     free_mb = _get_free_vram_bytes(device_index) // (1024 * 1024)
     if free_mb <= 0:
-        return 16  # 取得失敗時のデフォルト
-    usable_mb = int(free_mb * 0.75)
-    batch = max(1, min(128, usable_mb // per_sample_mb))
+        return 8  # 取得失敗時のデフォルト
+    usable_mb = int(free_mb * 0.60)
+    batch = max(1, min(16, usable_mb // per_sample_mb))
     return batch
 
 INPUT_W, INPUT_H = 512, 288
