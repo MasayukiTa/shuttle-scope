@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, TeamHistoryEntry, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
@@ -176,6 +176,7 @@ export function SettingsPage() {
   const [bmJobId, setBmJobId] = useState<string | null>(null)
   const [bmJob, setBmJob] = useState<BenchmarkJob | null>(null)
   const [bmRunning, setBmRunning] = useState(false)
+  const [bmDetecting, setBmDetecting] = useState(false)
   const [bmError, setBmError] = useState<string | null>(null)
   const [cvBatchConfirm, setCvBatchConfirm] = useState<{
     label: string
@@ -321,13 +322,16 @@ export function SettingsPage() {
 
   /** デバイス一覧を取得してステートに反映する */
   async function fetchBmDevices() {
+    setBmDetecting(true)
+    setBmError(null)
     try {
       const devs = await getDevices()
       setBmDevices(devs)
-      // available なデバイスをデフォルト選択
       setBmSelectedDevices(devs.filter((d) => d.available).map((d) => d.device_id))
     } catch (_e) {
       setBmError('デバイス取得に失敗しました')
+    } finally {
+      setBmDetecting(false)
     }
   }
 
@@ -1447,10 +1451,13 @@ export function SettingsPage() {
                 {/* デバイス検出ボタン */}
                 <button
                   onClick={fetchBmDevices}
-                  disabled={bmRunning}
+                  disabled={bmRunning || bmDetecting}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
                 >
-                  {t('benchmark.detect_devices')}
+                  {bmDetecting
+                    ? <><Loader2 size={12} className="animate-spin" />{t('benchmark.detecting')}</>
+                    : t('benchmark.detect_devices')
+                  }
                 </button>
               </div>
 

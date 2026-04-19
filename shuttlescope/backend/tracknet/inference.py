@@ -13,12 +13,52 @@ Runtime priority (auto モード):
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+def _get_gpu_vram_limit_bytes() -> int:
+    """cluster.config.yaml の resources.gpu_vram_limit_gb をバイト単位で返す。
+    0 = ORT 自動管理（上限なし）。"""
+    try:
+        from backend.cluster.topology import load_config
+        gb = load_config().get("resources", {}).get("gpu_vram_limit_gb", 0) or 0
+        return int(float(gb) * 1024 ** 3) if gb > 0 else 0
+    except Exception:
+        return 0
+
+
+def _get_free_vram_bytes(device_index: int) -> int:
+    """指定デバイスの空き VRAM 量をバイト単位で返す。取得失敗時は 0。"""
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        pynvml.nvmlShutdown()
+        return int(info.free)
+    except Exception:
+        return 0
+
+
+def _vram_based_max_batch(device_index: int, per_sample_mb: int = 250) -> int:
+    """空き VRAM から安全な最大バッチサイズを推定する。
+
+    per_sample_mb: 1 トリプレットあたりの VRAM 消費量の控えめな推定値（MB）。
+    残り VRAM の 75% をモデル/バッファ用途以外に使える前提で計算する。
+    下限 1、上限 128。
+    """
+    free_mb = _get_free_vram_bytes(device_index) // (1024 * 1024)
+    if free_mb <= 0:
+        return 16  # 取得失敗時のデフォルト
+    usable_mb = int(free_mb * 0.75)
+    batch = max(1, min(128, usable_mb // per_sample_mb))
+    return batch
 
 INPUT_W, INPUT_H = 512, 288
 FRAME_STACK = 3
@@ -54,6 +94,10 @@ class TrackNetInference:
         self._cuda_device_index = cuda_device_index
         self._openvino_device = openvino_device  # "GPU" / "GPU.0" / "GPU.1" / "CPU"
         self._load_error: Optional[str] = None
+        # GPU バックエンドのロード失敗理由（CPU フォールバック後も残す）
+        self._gpu_load_error: Optional[str] = None
+        # バックエンド初期化後に設定される最大バッチサイズ
+        self._max_batch: int = 4
 
     def get_load_error(self) -> Optional[str]:
         """ロード失敗時の具体的な理由を返す。成功時または未試行時は None。"""
@@ -110,8 +154,35 @@ class TrackNetInference:
                     import onnxruntime as ort
                     available_providers = ort.get_available_providers()
                     if "CUDAExecutionProvider" in available_providers:
+                        # ── CUDA EP セッションオプション ─────────────────────────────
+                        # cluster.config.yaml の resources.gpu_vram_limit_gb を使用。
+                        # 0 = ORT 自動管理（推奨）。ユーザが明示的に上限を設定した場合のみ適用。
+                        gpu_mem_limit = _get_gpu_vram_limit_bytes()
+
+                        cuda_opts: dict = {
+                            "device_id": self._cuda_device_index,
+                            # HEURISTIC: cuDNN が速い候補から選択（EXHAUSTIVE は Blackwell で
+                            # 初回推論が非常に遅くなるためここでは使わない）
+                            "cudnn_conv_algo_search": "HEURISTIC",
+                            # アリーナを指数的に拡大して再確保コストを抑える
+                            "arena_extend_strategy": "kNextPowerOfTwo",
+                            # デフォルトストリームで D2H コピーを行い同期コストを削減する
+                            "do_copy_in_default_stream": "1",
+                        }
+                        if gpu_mem_limit > 0:
+                            cuda_opts["gpu_mem_limit"] = gpu_mem_limit
+
+                        sess_opts = ort.SessionOptions()
+                        # グラフ全最適化（定数畳み込み・不要 cast 除去等）
+                        sess_opts.graph_optimization_level = (
+                            ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+                        )
+                        # 固定入力形状ならメモリパターンを記憶してバッファを再利用する
+                        sess_opts.enable_mem_pattern = True
+                        sess_opts.enable_mem_reuse = True
+
                         providers = [
-                            ("CUDAExecutionProvider", {"device_id": self._cuda_device_index}),
+                            ("CUDAExecutionProvider", cuda_opts),
                             "CPUExecutionProvider",
                         ]
                         # 新世代 GPU（Blackwell sm_120 等）で CUDA カーネルコンパイルが
@@ -123,14 +194,16 @@ class TrackNetInference:
                         def _init_sess():
                             try:
                                 _sess_holder[0] = ort.InferenceSession(
-                                    str(onnx_model), providers=providers
+                                    str(onnx_model),
+                                    sess_options=sess_opts,
+                                    providers=providers,
                                 )
                             except Exception as _e:
                                 _err_holder[0] = _e
 
                         _t = threading.Thread(target=_init_sess, daemon=True)
                         _t.start()
-                        _t.join(timeout=120)  # 120 秒でタイムアウト（スレッドプール内での CUDA 初期化を考慮）
+                        _t.join(timeout=120)  # 120 秒でタイムアウト（Blackwell 初期化を考慮）
 
                         if _t.is_alive():
                             tried.append(
@@ -146,12 +219,58 @@ class TrackNetInference:
                         else:
                             sess = _sess_holder[0]
                             input_name = sess.get_inputs()[0].name
-                            self._infer_fn = lambda frames, _s=sess, _n=input_name: self._run_onnx(_s, _n, frames)
-                            self._batch_infer_fn = lambda batch, _s=sess, _n=input_name: self._run_onnx_batch(_s, _n, batch)
-                            self._backend_name = f"onnx_cuda:{self._cuda_device_index}"
-                            self._load_error = None
-                            logger.info("TrackNet loaded via ONNX CUDA (device=%d)", self._cuda_device_index)
-                            return True
+
+                            # セッション init 成功後、実際に sess.run() が動くか確認する。
+                            # Blackwell (sm_120) 等の新世代 GPU では init は通るが
+                            # 最初の sess.run() で CUDA カーネルエラーが出るケースがある。
+                            _run_ok = threading.Event()
+                            _run_err: list = [None]
+
+                            def _verify_run():
+                                try:
+                                    dummy = np.zeros(
+                                        (1, FRAME_STACK, INPUT_H, INPUT_W), dtype=np.float32
+                                    )
+                                    sess.run(None, {input_name: dummy})
+                                except Exception as _e:
+                                    _run_err[0] = _e
+                                finally:
+                                    _run_ok.set()
+
+                            threading.Thread(target=_verify_run, daemon=True).start()
+                            _run_ok.wait(timeout=60)  # 60s: cuDNN アルゴリズム初回選択を考慮
+
+                            if not _run_ok.is_set():
+                                _reason = (
+                                    "CUDA 初回推論タイムアウト（60s）— Blackwell 等の新 GPU は"
+                                    " onnxruntime のバージョンアップが必要な場合があります"
+                                )
+                                tried.append(_reason)
+                                self._gpu_load_error = _reason
+                                if effective_backend in ("cuda", "onnx_cuda"):
+                                    effective_backend = "auto"
+                            elif _run_err[0] is not None:
+                                _reason = (
+                                    f"CUDA 初回推論失敗: {_run_err[0]}"
+                                )
+                                tried.append(_reason)
+                                self._gpu_load_error = _reason
+                                if effective_backend in ("cuda", "onnx_cuda"):
+                                    effective_backend = "auto"
+                            else:
+                                # VRAM から最適バッチサイズを決定（下限 1、上限 128）
+                                self._max_batch = _vram_based_max_batch(self._cuda_device_index)
+                                self._infer_fn = lambda frames, _s=sess, _n=input_name: self._run_onnx(_s, _n, frames)
+                                self._batch_infer_fn = lambda batch, _s=sess, _n=input_name: self._run_onnx_batch(_s, _n, batch)
+                                self._backend_name = f"onnx_cuda:{self._cuda_device_index}"
+                                self._load_error = None
+                                logger.info(
+                                    "TrackNet loaded via ONNX CUDA (device=%d, max_batch=%d, "
+                                    "gpu_mem_limit=%.1fGB)",
+                                    self._cuda_device_index, self._max_batch,
+                                    gpu_mem_limit / (1024 ** 3) if gpu_mem_limit > 0 else 0,
+                                )
+                                return True
                     elif effective_backend in ("cuda", "onnx_cuda"):
                         tried.append("onnx_cuda: CUDAExecutionProvider が利用不可（onnxruntime-gpu 未インストール）")
                         effective_backend = "auto"
@@ -207,11 +326,13 @@ class TrackNetInference:
                             if effective_backend == "directml":
                                 effective_backend = "auto"
                         else:
+                            # DirectML: VRAM 量が不明なため控えめな固定値 16 を使う
+                            self._max_batch = 16
                             self._infer_fn = lambda frames, _s=sess, _n=input_name: self._run_onnx(_s, _n, frames)
                             self._batch_infer_fn = lambda batch, _s=sess, _n=input_name: self._run_onnx_batch(_s, _n, batch)
                             self._backend_name = "onnx_directml"
                             self._load_error = None
-                            logger.info("TrackNet loaded via ONNX DirectML (warmup OK)")
+                            logger.info("TrackNet loaded via ONNX DirectML (warmup OK, max_batch=%d)", self._max_batch)
                             return True
                 except Exception as exc:
                     tried.append(f"directml: {exc}")
@@ -343,22 +464,35 @@ class TrackNetInference:
             return self._predict_frames_batch(frames, n_triplets)
         return self._predict_frames_serial(frames, n_triplets)
 
-    # ONNX の ReduceMax/Softmax 中間バッファが batch 数に超線形で増大するため上限を設ける。
-    # batch=4 でも OCLink 往復は 28→7 回に削減できる（N=30フレーム時）。
-    _MAX_BATCH = 4
-
     def _predict_frames_batch(self, frames: list[np.ndarray], n_triplets: int) -> list[dict]:
-        """トリプレットを _MAX_BATCH 件ずつバッチ推論（OCLink 往復削減 + OOM 防止）。"""
+        """トリプレットを _max_batch 件ずつバッチ推論。
+
+        OOM が発生した場合はバッチサイズを半減して再試行する（最小 1）。
+        """
         from backend.tracknet.zone_mapper import heatmap_to_zone
 
+        chunk_size = max(1, self._max_batch)
         results = []
-        for chunk_start in range(0, n_triplets, self._MAX_BATCH):
-            chunk_end = min(chunk_start + self._MAX_BATCH, n_triplets)
+        chunk_start = 0
+        while chunk_start < n_triplets:
+            chunk_end = min(chunk_start + chunk_size, n_triplets)
             batch_inp = np.concatenate(
                 [self._preprocess(frames[i: i + FRAME_STACK]) for i in range(chunk_start, chunk_end)],
                 axis=0,
             )  # (chunk, 3, H, W)
-            heatmaps = self._batch_infer_fn(batch_inp)  # (chunk, H, W)
+            try:
+                heatmaps = self._batch_infer_fn(batch_inp)  # (chunk, H, W)
+            except Exception as exc:
+                err_msg = str(exc).lower()
+                if chunk_size > 1 and ("memory" in err_msg or "alloc" in err_msg or "oom" in err_msg):
+                    # VRAM 不足: バッチサイズを半減して同チャンクを再試行
+                    chunk_size = max(1, chunk_size // 2)
+                    self._max_batch = chunk_size
+                    logger.warning(
+                        "TrackNet batch OOM — バッチサイズを %d に削減して再試行", chunk_size
+                    )
+                    continue
+                raise
             for j, heatmap in enumerate(heatmaps):
                 zone, conf, coords = heatmap_to_zone(heatmap)
                 results.append({
@@ -368,6 +502,7 @@ class TrackNetInference:
                     "x_norm": round(coords[0], 4) if coords else None,
                     "y_norm": round(coords[1], 4) if coords else None,
                 })
+            chunk_start = chunk_end
         return results
 
     def _predict_frames_serial(self, frames: list[np.ndarray], n_triplets: int) -> list[dict]:

@@ -21,6 +21,9 @@ interface WorkerNode {
   id: string
   ip: string
   label: string
+  num_cpus?: number
+  num_gpus?: number
+  gpu_label?: string
 }
 
 interface ClusterConfig {
@@ -40,6 +43,11 @@ interface ClusterConfig {
     max_concurrent_inference?: number
   }
   inference?: { max_cameras?: number }
+  resources?: {
+    gpu_vram_limit_gb?: number
+    system_ram_limit_gb?: number
+    worker_ram_limit_gb?: number
+  }
 }
 
 interface NetworkInterface {
@@ -123,6 +131,7 @@ export function ClusterSettingsPanel() {
   const [cfg, setCfg] = useState<ClusterConfig>({ mode: 'single' })
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
   const [pingResults, setPingResults] = useState<Record<string, NodePingResult | 'loading'>>({})
+  const [rayConnecting, setRayConnecting] = useState(false)
 
   // ── リモートデータ ────────────────────────────────────────────────────────
   const { data: remoteCfg, isLoading: cfgLoading } = useQuery({
@@ -135,11 +144,21 @@ export function ClusterSettingsPanel() {
     queryFn: () => apiGet<NetworkInterface[]>('/cluster/interfaces'),
   })
 
+  const { data: hardware } = useQuery({
+    queryKey: ['cluster-hardware'],
+    queryFn: () => apiGet<{ system_ram_gb: number; vram_total_gb: number }>('/cluster/hardware'),
+  })
+
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ['cluster-status'],
     queryFn: () => apiGet<ClusterStatus>('/cluster/status'),
-    refetchInterval: 5000,
+    refetchInterval: rayConnecting ? 1000 : 5000,
   })
+
+  // Ray が running になったら connecting フラグを落とす
+  useEffect(() => {
+    if (status?.ray.status === 'running') setRayConnecting(false)
+  }, [status?.ray.status])
 
   // ── config 読み込み後にローカル状態を初期化 ───────────────────────────────
   useEffect(() => {
@@ -194,11 +213,29 @@ export function ClusterSettingsPanel() {
       },
     }))
 
+  const rayStartMutation = useMutation({
+    mutationFn: () => apiPost<{ ok: boolean; status: string }>('/cluster/ray/start', {}),
+    onSuccess: (data) => {
+      if (data.status === 'connecting') setRayConnecting(true)
+      refetchStatus()
+    },
+  })
+  const rayStopMutation = useMutation({
+    mutationFn: () => apiPost<{ ok: boolean; message: string }>('/cluster/ray/stop', {}),
+    onSuccess: () => { refetchStatus() },
+  })
+
   const pingWorker = async (ip: string, idx: number) => {
     setPingResults(r => ({ ...r, [idx]: 'loading' }))
     try {
-      const res = await apiPost<NodePingResult>('/cluster/ping', { ip, port: 8765, timeout: 2 })
-      setPingResults(r => ({ ...r, [idx]: res }))
+      // Ray クラスタのノードリストで IP を照合（K10 は ShuttleScope 未搭載のため HTTP 不可）
+      const nodes = await apiGet<Array<{ ip: string; ping: NodePingResult }>>('/cluster/nodes')
+      const found = nodes.find(n => n.ip === ip)
+      if (found) {
+        setPingResults(r => ({ ...r, [idx]: found.ping }))
+      } else {
+        setPingResults(r => ({ ...r, [idx]: { reachable: false, latency_ms: 0 } }))
+      }
     } catch {
       setPingResults(r => ({ ...r, [idx]: { reachable: false, latency_ms: 0 } }))
     }
@@ -314,41 +351,65 @@ export function ClusterSettingsPanel() {
           {workers.map((w, i) => {
             const pr = pingResults[i]
             return (
-              <div key={i} className={`flex items-center gap-2 p-2 rounded border ${border}`}>
-                <input
-                  className={`${inputCls} w-16`}
-                  placeholder="pc2"
-                  value={w.id}
-                  onChange={e => updateWorker(i, 'id', e.target.value)}
-                />
-                <input
-                  className={`${inputCls} w-32`}
-                  placeholder="192.168.100.2"
-                  value={w.ip}
-                  onChange={e => updateWorker(i, 'ip', e.target.value)}
-                />
-                <input
-                  className={inputCls}
-                  placeholder="GMKtec K10"
-                  value={w.label}
-                  onChange={e => updateWorker(i, 'label', e.target.value)}
-                />
-                <button
-                  onClick={() => pingWorker(w.ip, i)}
-                  disabled={!w.ip}
-                  className="text-xs text-blue-400 hover:text-blue-300 shrink-0"
-                  title={t('cluster.test')}
-                >
-                  {pr === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Network size={12} />}
-                </button>
-                {pr && pr !== 'loading' && (
-                  <span className={`text-[11px] shrink-0 ${pr.reachable ? 'text-green-400' : 'text-red-400'}`}>
-                    {pr.reachable ? `${pr.latency_ms}ms` : 'NG'}
-                  </span>
-                )}
-                <button onClick={() => removeWorker(i)} className="text-red-400 hover:text-red-300 shrink-0">
-                  <Trash2 size={12} />
-                </button>
+              <div key={i} className={`flex flex-col gap-1.5 p-2 rounded border ${border}`}>
+                <div className="flex items-center gap-2">
+                  <input
+                    className={`${inputCls} w-16`}
+                    placeholder="pc2"
+                    value={w.id}
+                    onChange={e => updateWorker(i, 'id', e.target.value)}
+                  />
+                  <input
+                    className={`${inputCls} w-32`}
+                    placeholder="192.168.100.2"
+                    value={w.ip}
+                    onChange={e => updateWorker(i, 'ip', e.target.value)}
+                  />
+                  <input
+                    className={inputCls}
+                    placeholder="GMKtec K10"
+                    value={w.label}
+                    onChange={e => updateWorker(i, 'label', e.target.value)}
+                  />
+                  <button
+                    onClick={() => pingWorker(w.ip, i)}
+                    disabled={!w.ip}
+                    className="text-xs text-blue-400 hover:text-blue-300 shrink-0"
+                    title={t('cluster.test')}
+                  >
+                    {pr === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Network size={12} />}
+                  </button>
+                  {pr && pr !== 'loading' && (
+                    <span className={`text-[11px] shrink-0 ${pr.reachable ? 'text-green-400' : 'text-red-400'}`}>
+                      {pr.reachable ? `OK` : 'NG'}
+                    </span>
+                  )}
+                  <button onClick={() => removeWorker(i)} className="text-red-400 hover:text-red-300 shrink-0">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_cpus')}</span>
+                  <input type="number" min={1} max={64}
+                    className={`${inputCls} w-16`}
+                    value={w.num_cpus ?? ''}
+                    placeholder="16"
+                    onChange={e => updateWorker(i, 'num_cpus', e.target.value as any)}
+                  />
+                  <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_gpus')}</span>
+                  <input type="number" min={0} max={8}
+                    className={`${inputCls} w-12`}
+                    value={w.num_gpus ?? ''}
+                    placeholder="0"
+                    onChange={e => updateWorker(i, 'num_gpus', e.target.value as any)}
+                  />
+                  <input
+                    className={inputCls}
+                    placeholder="AMD Radeon 780M Graphics"
+                    value={w.gpu_label ?? ''}
+                    onChange={e => updateWorker(i, 'gpu_label', e.target.value)}
+                  />
+                </div>
               </div>
             )
           })}
@@ -376,6 +437,39 @@ export function ClusterSettingsPanel() {
                   className="flex-1 accent-blue-500"
                 />
                 <span className="text-sm w-8 text-right">{val}</span>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* ── リソース上限 ─────────────────────────────────────────────────── */}
+      <section className={sectionCls}>
+        <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+          <Zap size={14} /> {t('cluster.resources_section')}
+        </h3>
+        <p className={`text-[11px] ${textMuted}`}>{t('cluster.limit_auto_hint')}</p>
+        <div className="space-y-3">
+          {[
+            { key: 'gpu_vram_limit_gb',    label: t('cluster.gpu_vram_limit'),    max: Math.max(hardware?.vram_total_gb ?? 16, 16) },
+            { key: 'system_ram_limit_gb',  label: t('cluster.system_ram_limit'),  max: Math.max(hardware?.system_ram_gb ?? 32, 16) },
+            { key: 'worker_ram_limit_gb',  label: t('cluster.worker_ram_limit'),  max: 64 },
+          ].map(({ key, label, max }) => {
+            const val = (cfg.resources as any)?.[key] ?? 0
+            return (
+              <div key={key} className="flex items-center gap-3">
+                <span className={`${labelCls} w-44 shrink-0`}>{label}</span>
+                <input
+                  type="range" min={0} max={max} step={1} value={val}
+                  onChange={e => setCfg(c => ({
+                    ...c,
+                    resources: { ...c.resources, [key]: Number(e.target.value) },
+                  }))}
+                  className="flex-1 accent-blue-500"
+                />
+                <span className="text-sm w-12 text-right">
+                  {val === 0 ? '自動' : `${val}GB`}
+                </span>
               </div>
             )
           })}
@@ -410,6 +504,30 @@ export function ClusterSettingsPanel() {
                                                     t('cluster.ray_stopped')
                 }
               />
+              {status.ray.status === 'running' ? (
+                <button
+                  onClick={() => rayStopMutation.mutate()}
+                  disabled={rayStopMutation.isPending}
+                  className="text-xs px-2 py-0.5 rounded border border-red-600 text-red-400 hover:bg-red-900/30 disabled:opacity-50 flex items-center gap-1"
+                >
+                  {rayStopMutation.isPending ? <Loader2 size={10} className="animate-spin" /> : null}
+                  {rayStopMutation.isPending ? t('cluster.ray_stopping') : t('cluster.ray_stop')}
+                </button>
+              ) : rayConnecting ? (
+                <span className="text-xs px-2 py-0.5 rounded border border-blue-600 text-blue-400 flex items-center gap-1">
+                  <Loader2 size={10} className="animate-spin" />
+                  {t('cluster.ray_connecting')}
+                </span>
+              ) : (
+                <button
+                  onClick={() => rayStartMutation.mutate()}
+                  disabled={rayStartMutation.isPending}
+                  className="text-xs px-2 py-0.5 rounded border border-blue-600 text-blue-400 hover:bg-blue-900/30 disabled:opacity-50 flex items-center gap-1"
+                >
+                  {rayStartMutation.isPending ? <Loader2 size={10} className="animate-spin" /> : null}
+                  {rayStartMutation.isPending ? t('cluster.ray_starting') : t('cluster.ray_start')}
+                </button>
+              )}
             </div>
             <GaugeBar
               value={status.load.cpu_percent}
