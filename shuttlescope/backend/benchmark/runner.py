@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 # ターゲット名定数
 TARGET_TRACKNET = "tracknet"
 TARGET_POSE = "pose"
+TARGET_YOLO = "yolo"
 TARGET_PIPELINE_FULL = "pipeline_full"
 TARGET_CLIP_EXTRACT = "clip_extract"
 TARGET_STATISTICS = "statistics"
@@ -36,6 +37,7 @@ TARGET_STATISTICS = "statistics"
 ALL_TARGETS = [
     TARGET_TRACKNET,
     TARGET_POSE,
+    TARGET_YOLO,
     TARGET_PIPELINE_FULL,
     TARGET_CLIP_EXTRACT,
     TARGET_STATISTICS,
@@ -97,18 +99,40 @@ def _env_override(device: ComputeDevice) -> Generator[None, None, None]:
     # ベンチマーク時は常に実モデルを使用する（Mock では計測値が無意味になる）
     os.environ["SS_CV_MOCK"] = "0"
 
+    # デバイスの backend に応じて推論バックエンドを明示指定する。
+    # dGPU(NVIDIA) → auto（ONNX CUDA を優先）
+    # iGPU(AMD DirectML) → directml（ONNX CUDA をスキップして DML を使う）
+    # iGPU(Intel OpenVINO) → openvino
+    # CPU → onnx_cpu
+    _BACKEND_MAP = {
+        "pytorch-cuda": "",      # auto: ONNX CUDA を優先選択
+        "directml":     "directml",
+        "openvino":     "openvino",
+        "pytorch-cpu":  "onnx_cpu",
+        "onnx":         "",      # auto
+    }
+    preferred_backend = _BACKEND_MAP.get(device.backend, "")
+    old_backend = os.environ.get("SS_BENCH_BACKEND")
+    os.environ["SS_BENCH_BACKEND"] = preferred_backend
+
     try:
         # pydantic_settings の singleton を更新するために settings を再生成する
         from backend import config as cfg_mod
         cfg_mod.settings = cfg_mod.Settings()
+        # デバイスが変わるたびにキャッシュを破棄して正しいバックエンドを再解決する
+        from backend.cv import factory as _factory
+        _factory.clear_cache()
         yield
     finally:
         # 元の環境変数を復元する
         _restore_env("SS_USE_GPU", old_use_gpu)
         _restore_env("SS_CUDA_DEVICE", old_cuda_dev)
         _restore_env("SS_CV_MOCK", old_cv_mock)
+        _restore_env("SS_BENCH_BACKEND", old_backend)
         from backend import config as cfg_mod
         cfg_mod.settings = cfg_mod.Settings()
+        from backend.cv import factory as _factory
+        _factory.clear_cache()
 
 
 def _restore_env(key: str, old_value: str | None) -> None:
@@ -242,6 +266,7 @@ class BenchmarkRunner:
         dispatch = {
             TARGET_TRACKNET: self._bench_tracknet,
             TARGET_POSE: self._bench_pose,
+            TARGET_YOLO: self._bench_yolo,
             TARGET_PIPELINE_FULL: self._bench_pipeline_full,
             TARGET_CLIP_EXTRACT: self._bench_clip_extract,
             TARGET_STATISTICS: self._bench_statistics,
@@ -378,6 +403,69 @@ class BenchmarkRunner:
         # fps = _BATCH_SIZE フレーム / avg_ms
         metrics["fps"] = round(_BATCH_SIZE * 1000.0 / metrics["avg_ms"], 2) if metrics["avg_ms"] > 0 else 0.0
         return metrics
+
+    def _bench_yolo(self, device: ComputeDevice, n_frames: int,
+                    job: "Any | None" = None,
+                    progress_cb=None) -> Dict[str, Any]:
+        """YOLOv8n 物体検出速度計測。
+
+        backend/models/yolov8n.onnx が存在する場合のみ計測する。
+        入力: (1, 3, 384, 640) float32 合成フレーム。
+        EP 選択: CUDA → DirectML → CPU の優先順（デバイスに応じて SS_BENCH_BACKEND で制御）。
+        """
+        import os as _os
+        from pathlib import Path
+
+        _YOLO_MODEL = Path(__file__).parent.parent / "models" / "yolov8n.onnx"
+        if not _YOLO_MODEL.exists():
+            return {"error": f"モデル未配置: {_YOLO_MODEL.name}"}
+
+        _YOLO_W, _YOLO_H = 640, 384
+        _MEASURE_ITERS = min(n_frames, 5)
+
+        try:
+            import onnxruntime as ort
+        except ImportError:
+            return {"error": "onnxruntime 未インストール"}
+
+        # デバイスに応じた EP 選択（SS_BENCH_BACKEND を参照）
+        bench_backend = _os.environ.get("SS_BENCH_BACKEND", "")
+        if bench_backend == "directml":
+            providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+        elif bench_backend in ("", "onnx_cuda") and "CUDAExecutionProvider" in ort.get_available_providers():
+            device_id = int(_os.environ.get("SS_CUDA_DEVICE", "0"))
+            providers = [("CUDAExecutionProvider", {"device_id": device_id}), "CPUExecutionProvider"]
+        else:
+            providers = ["CPUExecutionProvider"]
+
+        try:
+            sess = ort.InferenceSession(str(_YOLO_MODEL), providers=providers)
+        except Exception as exc:
+            return {"error": f"セッション初期化失敗: {exc}"}
+
+        input_name = sess.get_inputs()[0].name
+        dummy = np.zeros((1, 3, _YOLO_H, _YOLO_W), dtype=np.float32)
+
+        latencies: List[float] = []
+        # ウォームアップ
+        try:
+            sess.run(None, {input_name: dummy})
+        except Exception:
+            pass
+
+        for i in range(_MEASURE_ITERS):
+            if job is not None and job.cancelled:
+                break
+            t0 = time.perf_counter()
+            sess.run(None, {input_name: dummy})
+            latencies.append(time.perf_counter() - t0)
+            if progress_cb is not None:
+                progress_cb(round((i + 1) * n_frames / _MEASURE_ITERS))
+
+        if not latencies:
+            return {"error": "キャンセルされました"}
+
+        return _compute_metrics(latencies)
 
     def _bench_pipeline_full(self, device: ComputeDevice, n_frames: int,
                              job: "Any | None" = None,

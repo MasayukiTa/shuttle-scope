@@ -22,6 +22,7 @@ export interface ComputeDevice {
 export type BenchmarkTarget =
   | 'tracknet'
   | 'pose'
+  | 'yolo'
   | 'pipeline_full'
   | 'clip_extract'
   | 'statistics'

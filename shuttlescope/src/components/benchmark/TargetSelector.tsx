@@ -9,6 +9,7 @@ import { BenchmarkTarget } from '@/api/benchmark'
 const ALL_TARGETS: BenchmarkTarget[] = [
   'tracknet',
   'pose',
+  'yolo',
   'pipeline_full',
   'clip_extract',
   'statistics',
