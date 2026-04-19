@@ -92,12 +92,15 @@ def _resolve_tracknet(key: tuple) -> TrackNetInferencer:
                 "[cv.factory] CUDA TrackNet 使用不可: %s — OpenVINO にフォールバック", exc
             )
 
-    # OpenVINO 経路（CUDA 不在でも動作。K10 CPU でもフォールバックあり）
+    # ONNX/OpenVINO 経路（SS_USE_GPU=1 なら CUDA EP、SS_USE_GPU=0 なら ONNX CPU を選択）
+    # OpenVINOTrackNet は内部で TrackNetInference.load() を呼び、
+    # SS_USE_GPU の値に応じて CUDA EP / OpenVINO / ONNX CPU を自動選択する。
     try:
         from backend.cv.tracknet_openvino import OpenVINOTrackNet
 
         impl = OpenVINOTrackNet()
-        logger.info("[cv.factory] TrackNet: OpenVINO 実装を使用")
+        logger.info("[cv.factory] TrackNet: OpenVINOTrackNet (backend=%s) を使用",
+                    impl._impl.backend_name() if hasattr(impl, '_impl') else '?')
         return impl
     except (ImportError, RuntimeError) as exc:
         logger.warning(

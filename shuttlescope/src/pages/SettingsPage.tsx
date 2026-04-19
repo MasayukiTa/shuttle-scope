@@ -1119,9 +1119,11 @@ export function SettingsPage() {
 
         {/* TrackNet設定タブ */}
         {activeTab === 'tracknet' && (
-          <div className="max-w-xl space-y-6">
+          <div className="space-y-6">
             <h2 className={`text-lg font-medium ${textHeading}`}>{t('tracknet.tab_label')}</h2>
 
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-6">
             {/* モデルステータス */}
             <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <h3 className={`text-sm font-medium ${textSecondary} mb-3 flex items-center gap-2`}>
@@ -1325,6 +1327,9 @@ export function SettingsPage() {
               </div>
             </div>
 
+            </div>{/* end left col */}
+            <div className="space-y-6">{/* right col */}
+
             {/* ─── GPU / デバイス設定 ─── */}
             <div className={`${card} rounded-lg p-4 border ${borderLine} space-y-4`}>
               <div className="flex items-center justify-between">
@@ -1411,11 +1416,19 @@ export function SettingsPage() {
                       <span className="text-xs text-gray-500">onnxruntime 未インストール</span>
                     )}
                   </div>
-                  {!(computeDevices.onnx_providers ?? []).includes('CUDAExecutionProvider') && (
-                    <p className="text-[10px] text-amber-400 mt-1.5">
-                      CUDA推論を有効にするには <code className="bg-gray-800 px-1 rounded">onnxruntime-gpu</code> をインストールしてください
-                    </p>
-                  )}
+                  {(() => {
+                    const providers = computeDevices.onnx_providers ?? []
+                    const hasCuda = providers.includes('CUDAExecutionProvider')
+                    const hasDml = providers.includes('DmlExecutionProvider')
+                    if (hasCuda || hasDml) return null
+                    return (
+                      <p className="text-[10px] text-amber-400 mt-1.5">
+                        GPU推論を有効にするには{' '}
+                        <code className="bg-gray-800 px-1 rounded">onnxruntime-gpu</code>（CUDA）または{' '}
+                        <code className="bg-gray-800 px-1 rounded">onnxruntime-directml</code>（DirectML）をインストールしてください
+                      </p>
+                    )
+                  })()}
                 </div>
               )}
 
@@ -1502,12 +1515,15 @@ export function SettingsPage() {
                 />
               )}
             </div>
+
+            </div>{/* end right col */}
+            </div>{/* end grid */}
           </div>
         )}
 
         {/* 共有設定タブ (R-001/R-002/Q-002/Q-008) */}
         {activeTab === 'sharing' && (
-          <div className="max-w-xl space-y-6">
+          <div className="space-y-6">
             <h2 className={`text-lg font-medium ${textHeading}`}>{t('sharing.tab_label')}</h2>
 
             {/* トンネル起動中バナー: URLをここで優先表示 */}
@@ -1901,7 +1917,7 @@ export function SettingsPage() {
 
         {/* データ管理タブ */}
         {activeTab === 'data' && (
-          <div className="max-w-2xl space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
             {/* ── デバイス・同期設定 ────────────────────────── */}
             <section className={`${card} rounded-lg p-5 space-y-4`}>
@@ -2426,7 +2442,7 @@ export function SettingsPage() {
 
         {/* アカウント設定タブ */}
         {activeTab === 'account' && (
-          <div className="max-w-md space-y-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
 
             {/* テーマ */}
             <section>
