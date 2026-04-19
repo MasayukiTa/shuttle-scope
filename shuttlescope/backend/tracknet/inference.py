@@ -22,6 +22,32 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def _register_cuda_dll_dirs() -> None:
+    """PyTorch 同梱の CUDA/cuDNN DLL を ONNX Runtime GPU から参照可能にする。
+
+    Windows は Python 3.8+ の secure DLL search で PATH だけでは不足。
+    os.add_dll_directory() で明示登録する。idempotent。
+    """
+    try:
+        import torch  # type: ignore
+        lib_dir = os.path.join(os.path.dirname(torch.__file__), "lib")
+        if not os.path.isdir(lib_dir):
+            return
+        if lib_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = lib_dir + os.pathsep + os.environ.get("PATH", "")
+        if hasattr(os, "add_dll_directory"):
+            try:
+                os.add_dll_directory(lib_dir)
+            except (FileNotFoundError, OSError):
+                pass
+    except Exception:
+        pass
+
+
+# ONNX Runtime をロードする前に DLL 検索パスを整備する
+_register_cuda_dll_dirs()
+
+
 def _get_gpu_vram_limit_bytes() -> int:
     """cluster.config.yaml の resources.gpu_vram_limit_gb をバイト単位で返す。
     0 = ORT 自動管理（上限なし）。"""
@@ -49,17 +75,17 @@ def _get_free_vram_bytes(device_index: int) -> int:
 def _vram_based_max_batch(device_index: int, per_sample_mb: int = 800) -> int:
     """空き VRAM から安全な最大バッチサイズを推定する。
 
-    per_sample_mb: 1 トリプレットあたりの VRAM 消費量の実測値ベースの推定値（MB）。
-    実測では batch=49 で ~21GB の中間テンソルが生成されるため 1 サンプル≒430MB。
-    モデルバッファ等のオーバーヘッドを含め 800MB/sample で計算して余裕を持たせる。
-    残り VRAM の 60% を中間テンソル用途に確保する前提で計算する。
-    下限 1、上限 16（DirectML と同等の保守的な上限）。
+    per_sample_mb: 1 トリプレットあたりの VRAM 消費量（MB）。
+    TrackNet デコーダ最大層: (N, 1024, 288, 512) float32 = 576MB/sample。
+    cuDNN ワークスペース・モデルバッファ込みで 800MB/sample が安全上限。
+    残り VRAM の 65% を使用（OOM 発生時は _predict_frames_batch 内で半減再試行）。
+    下限 1、上限 20。
     """
     free_mb = _get_free_vram_bytes(device_index) // (1024 * 1024)
     if free_mb <= 0:
         return 8  # 取得失敗時のデフォルト
-    usable_mb = int(free_mb * 0.60)
-    batch = max(1, min(16, usable_mb // per_sample_mb))
+    usable_mb = int(free_mb * 0.65)
+    batch = max(1, min(20, usable_mb // per_sample_mb))
     return batch
 
 INPUT_W, INPUT_H = 512, 288
@@ -328,8 +354,8 @@ class TrackNetInference:
                             if effective_backend == "directml":
                                 effective_backend = "auto"
                         else:
-                            # DirectML: VRAM 量が不明なため控えめな固定値 16 を使う
-                            self._max_batch = 16
+                            # DirectML: VRAM 量が不明なため OOM 回復前提で 32 を初期値とする
+                            self._max_batch = 32
                             self._infer_fn = lambda frames, _s=sess, _n=input_name: self._run_onnx(_s, _n, frames)
                             self._batch_infer_fn = lambda batch, _s=sess, _n=input_name: self._run_onnx_batch(_s, _n, batch)
                             self._backend_name = "onnx_directml"
@@ -469,6 +495,8 @@ class TrackNetInference:
     def _predict_frames_batch(self, frames: list[np.ndarray], n_triplets: int) -> list[dict]:
         """トリプレットを _max_batch 件ずつバッチ推論。
 
+        隣接トリプレット間でフレームが重複するため各フレームは 1 回だけ前処理する
+        （例: batch=25 なら最大 75 回 → 27 回に削減）。
         OOM が発生した場合はバッチサイズを半減して再試行する（最小 1）。
         """
         from backend.tracknet.zone_mapper import heatmap_to_zone
@@ -476,18 +504,35 @@ class TrackNetInference:
         chunk_size = max(1, self._max_batch)
         results = []
         chunk_start = 0
+        # フレームキャッシュ: インデックス → 前処理済み (H, W) float32
+        frame_cache: dict[int, np.ndarray] = {}
+
         while chunk_start < n_triplets:
             chunk_end = min(chunk_start + chunk_size, n_triplets)
-            batch_inp = np.concatenate(
-                [self._preprocess(frames[i: i + FRAME_STACK]) for i in range(chunk_start, chunk_end)],
+
+            # このチャンクで必要なフレームを前処理（未キャッシュ分のみ）
+            needed_end = min(chunk_end + FRAME_STACK - 1, len(frames))
+            for fi in range(chunk_start, needed_end):
+                if fi not in frame_cache:
+                    frame_cache[fi] = self._preprocess_frame(frames[fi])
+            # 不要になった古いエントリを解放
+            for fi in list(frame_cache):
+                if fi < chunk_start:
+                    del frame_cache[fi]
+
+            batch_inp = np.stack(
+                [
+                    np.stack([frame_cache[i + j] for j in range(FRAME_STACK)], axis=0)
+                    for i in range(chunk_start, chunk_end)
+                ],
                 axis=0,
-            )  # (chunk, 3, H, W)
+            ).astype(np.float32)  # (chunk, 3, H, W)
+
             try:
                 heatmaps = self._batch_infer_fn(batch_inp)  # (chunk, H, W)
             except Exception as exc:
                 err_msg = str(exc).lower()
                 if chunk_size > 1 and ("memory" in err_msg or "alloc" in err_msg or "oom" in err_msg):
-                    # VRAM 不足: バッチサイズを半減して同チャンクを再試行
                     chunk_size = max(1, chunk_size // 2)
                     self._max_batch = chunk_size
                     logger.warning(
@@ -525,15 +570,14 @@ class TrackNetInference:
             })
         return results
 
-    def _preprocess(self, frames: list[np.ndarray]) -> np.ndarray:
+    def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
+        """1 フレームをリサイズ + グレースケール変換。(H, W) float32 を返す。"""
         import cv2
+        resized = cv2.resize(frame, (INPUT_W, INPUT_H))
+        return cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
-        channels = []
-        for frame in frames:
-            resized = cv2.resize(frame, (INPUT_W, INPUT_H))
-            gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
-            channels.append(gray)
-        stacked = np.stack(channels, axis=0)  # (3, H, W)
+    def _preprocess(self, frames: list[np.ndarray]) -> np.ndarray:
+        stacked = np.stack([self._preprocess_frame(f) for f in frames], axis=0)  # (3, H, W)
         return stacked[np.newaxis].astype(np.float32)  # (1, 3, H, W)
 
     def _run_openvino(self, req, input_name: str, inp: np.ndarray) -> np.ndarray:

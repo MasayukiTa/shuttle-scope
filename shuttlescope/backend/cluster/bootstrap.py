@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 _ray_initialized: bool = False
 # subprocess (ray status) 経由での確認済みフラグ
 _ray_subprocess_connected: bool = False
+# ray.init() の同時実行を防ぐロック
+_ray_init_lock: threading.Lock = threading.Lock()
 
 
 def _import_ray():
@@ -154,6 +156,117 @@ def unmark_ray_connected() -> None:
     _ray_subprocess_connected = False
 
 
+def _get_ray_head_address() -> str:
+    """cluster.config.yaml から Ray ヘッドアドレスを取得する。取得失敗時は空文字を返す。"""
+    try:
+        from backend.cluster.topology import get_ray_head_address
+        return get_ray_head_address()  # 例: "169.254.96.137:6379"
+    except Exception:
+        return ""
+
+
+def _try_ray_init_addresses(ray, timeout: int = 10) -> bool:
+    """複数のアドレスで ray.init() を試みる。成功すれば True を返す。
+
+    接続順:
+      1. cluster.config.yaml の ray.head_address（例: 169.254.96.137:6379）
+      2. auto — Ray が環境変数から自動検出
+
+    127.0.0.1:6379 は試みない。Ray GCS は node-ip-address として起動したアドレスに
+    バインドしており、127.0.0.1 経由では gRPC ハンドシェイクが完了しない。
+    """
+    global _ray_initialized
+
+    if ray.is_initialized():
+        _ray_initialized = True
+        return True
+
+    # 他スレッドが同時に ray.init() を呼ばないようにロック
+    if not _ray_init_lock.acquire(blocking=True, timeout=timeout + 5):
+        logger.warning("_try_ray_init_addresses: ロック取得タイムアウト")
+        return ray.is_initialized()
+
+    try:
+        # ロック取得後に再確認（先行スレッドが完了済みかもしれない）
+        if ray.is_initialized():
+            _ray_initialized = True
+            return True
+
+        head_addr = _get_ray_head_address()
+        candidates: List[str] = []
+        if head_addr and head_addr not in ("auto", ""):
+            candidates.append(head_addr)
+        candidates.append("auto")
+
+        for addr in candidates:
+            done = threading.Event()
+            result: Dict[str, Any] = {}
+
+            def _try(a=addr):
+                try:
+                    import os as _os
+                    _os.environ.setdefault("RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER", "1")
+                    if not ray.is_initialized():
+                        ray.init(address=a, ignore_reinit_error=True)
+                    result["ok"] = True
+                except Exception as exc:
+                    result["error"] = str(exc)
+                finally:
+                    done.set()
+
+            t = threading.Thread(target=_try, daemon=True)
+            t.start()
+            done.wait(timeout=timeout)
+
+            if result.get("ok") or ray.is_initialized():
+                _ray_initialized = True
+                logger.info("_try_ray_init_addresses: ray.init() 成功 address=%s", addr)
+                return True
+            logger.debug("_try_ray_init_addresses: address=%s 失敗/タイムアウト err=%s",
+                         addr, result.get("error", "timeout"))
+
+        return False
+    finally:
+        _ray_init_lock.release()
+
+
+def ensure_ray_initialized(timeout: int = 30) -> bool:
+    """ray.init() を同期的に確実に完了させる。
+
+    すでに初期化済みなら即座に True を返す。
+    subprocess 接続済みなら複数アドレスで ray.init() を試みる。
+    ブロッキング関数（最大 timeout 秒 × アドレス数）— UI からの明示的操作用。
+    """
+    global _ray_initialized
+
+    if _ray_initialized:
+        try:
+            ray = _import_ray()
+            if ray.is_initialized():
+                return True
+        except Exception:
+            pass
+
+    if not _ray_subprocess_connected:
+        logger.debug("ensure_ray_initialized: subprocess 未接続のためスキップ")
+        return False
+
+    try:
+        ray = _import_ray()
+    except Exception as exc:
+        logger.warning("ensure_ray_initialized: ray import 失敗 (%s)", exc)
+        return False
+
+    ok = _try_ray_init_addresses(ray, timeout=timeout)
+    if ok:
+        try:
+            from backend.benchmark.devices import invalidate_cache
+            invalidate_cache()
+        except Exception:
+            pass
+    return ok
+
+
 def try_ray_init_background() -> None:
     """ray.init() をバックグラウンドスレッドで非同期実行する。
 
@@ -171,51 +284,18 @@ def try_ray_init_background() -> None:
         return
 
     def _worker() -> None:
-        global _ray_initialized
-        logger.info("try_ray_init_background: ray.init() を試みます (timeout=30s)")
-
-        # ray が利用可能か確認
+        logger.info("try_ray_init_background: ray.init() を試みます (各アドレス最大 15s)")
         try:
             ray = _import_ray()
         except Exception as exc:
             logger.warning("try_ray_init_background: ray を import できません (%s)", exc)
             return
 
-        # タイムアウト付きで ray.init() を実行する
-        # threading.Event + 内部スレッドで 30 秒タイムアウトを実装する
-        result_holder: Dict[str, Any] = {}
-        done_event = threading.Event()
-
-        def _init_ray_inner() -> None:
-            try:
-                if not ray.is_initialized():
-                    ray.init(address="auto", ignore_reinit_error=True)
-                result_holder["ok"] = True
-            except Exception as exc:
-                result_holder["error"] = str(exc)
-            finally:
-                done_event.set()
-
-        init_thread = threading.Thread(target=_init_ray_inner, daemon=True, name="ray-init-bg")
-        init_thread.start()
-
-        finished = done_event.wait(timeout=30)
-
-        if not finished:
-            logger.warning(
-                "try_ray_init_background: ray.init() が 30 秒以内に完了しませんでした。"
-                " subprocess 接続は有効なまま継続します。"
-            )
-            return
-
-        if result_holder.get("ok"):
-            _ray_initialized = True
-            logger.info("try_ray_init_background: ray.init() 成功 — _ray_initialized = True")
+        ok = _try_ray_init_addresses(ray, timeout=15)
+        if ok:
+            logger.info("try_ray_init_background: ray.init() 成功")
         else:
-            logger.warning(
-                "try_ray_init_background: ray.init() 失敗 (%s) — subprocess 接続は有効なまま継続",
-                result_holder.get("error", "不明なエラー"),
-            )
+            logger.warning("try_ray_init_background: すべてのアドレスで ray.init() 失敗 — subprocess 接続は有効なまま継続")
 
     bg_thread = threading.Thread(target=_worker, daemon=True, name="ray-init-bg-outer")
     bg_thread.start()

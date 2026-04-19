@@ -7,7 +7,8 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   Network, Server, Cpu, Zap, Plus, Trash2,
-  RefreshCw, CheckCircle2, XCircle, Loader2, Save,
+  RefreshCw, CheckCircle2, XCircle, Loader2, Save, ScanSearch,
+  Play, Square, Copy, Check, Wifi,
 } from 'lucide-react'
 import { apiGet, apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -37,7 +38,7 @@ interface ClusterConfig {
     primary_ip?: string
     workers?: WorkerNode[]
   }
-  ray?: { head_address?: string; num_cpus?: number | null; num_gpus?: number | null }
+  ray?: { head_address?: string; num_cpus?: number | null; num_gpus?: number | null; auto_start?: boolean }
   load_limits?: {
     max_gpu_percent?: number
     max_cpu_percent?: number
@@ -79,6 +80,7 @@ interface ClusterStatus {
 interface NodePingResult {
   reachable: boolean
   latency_ms: number
+  via?: 'ray' | 'icmp' | 'http' | 'none'
   error?: string
 }
 
@@ -134,6 +136,20 @@ export function ClusterSettingsPanel() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
   const [pingResults, setPingResults] = useState<Record<string, NodePingResult | 'loading'>>({})
   const [rayConnecting, setRayConnecting] = useState(false)
+  const [detectingWorkers, setDetectingWorkers] = useState<Record<number, boolean>>({})
+  const [detectErrors, setDetectErrors] = useState<Record<number, string>>({})
+  const [arpDevices, setArpDevices] = useState<Array<{ ip: string; known_label?: string }>>([])
+  const [arpScanning, setArpScanning] = useState(false)
+  const [startHeadLoading, setStartHeadLoading] = useState(false)
+  const [startHeadMsg, setStartHeadMsg] = useState<string | null>(null)
+  const [workerCmds, setWorkerCmds] = useState<Array<{ label: string; ip: string; cmd: string }>>([])
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  const [sshUser, setSshUser] = useState('')
+  const [sshPass, setSshPass] = useState('')
+  const [remoteJoinLoading, setRemoteJoinLoading] = useState<Record<number, boolean>>({})
+  const [remoteJoinMsg, setRemoteJoinMsg] = useState<Record<number, string>>({})
+  // 詳細設定の開閉
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [taskRouting, setTaskRouting] = useState<Record<string, string>>({
     tracknet: 'auto',
     pose: 'auto',
@@ -257,23 +273,123 @@ export function ClusterSettingsPanel() {
   })
 
   const pingWorker = async (ip: string, idx: number) => {
+    if (!ip) return
     setPingResults(r => ({ ...r, [idx]: 'loading' }))
     try {
-      // Ray クラスタのノードリストで IP を照合（K10 は ShuttleScope 未搭載のため HTTP 不可）
+      // まず Ray ノードリストで確認（Ray 接続中なら via:"ray" で返る）
       const nodes = await apiGet<Array<{ ip: string; ping: NodePingResult }>>('/cluster/nodes')
       const found = nodes.find(n => n.ip === ip)
-      if (found) {
+      if (found?.ping) {
         setPingResults(r => ({ ...r, [idx]: found.ping }))
-      } else {
-        setPingResults(r => ({ ...r, [idx]: { reachable: false, latency_ms: 0 } }))
+        return
       }
+      // Ray 未接続 or ノードが見つからない → ICMP ping
+      const result = await apiPost<NodePingResult>('/cluster/ping', { ip, timeout: 2.0 })
+      setPingResults(r => ({ ...r, [idx]: result }))
     } catch {
-      setPingResults(r => ({ ...r, [idx]: { reachable: false, latency_ms: 0 } }))
+      setPingResults(r => ({ ...r, [idx]: { reachable: false, latency_ms: 0, via: 'icmp' } }))
+    }
+  }
+
+  const scanArp = async () => {
+    setArpScanning(true)
+    try {
+      const devices = await apiGet<Array<{ ip: string; known_label?: string }>>('/cluster/network/arp')
+      setArpDevices(devices.filter(d => !('error' in d)))
+    } catch { /* ignore */ } finally {
+      setArpScanning(false)
+    }
+  }
+
+  const addArpAsWorker = (ip: string) => {
+    setCfg(c => ({
+      ...c,
+      network: {
+        ...c.network,
+        workers: [...(c.network?.workers ?? []), { id: `pc${(c.network?.workers?.length ?? 0) + 2}`, ip, label: '' }],
+      },
+    }))
+  }
+
+  const startRayHead = async () => {
+    const nodeIp = cfg.network?.primary_ip ?? ''
+    if (!nodeIp) { setStartHeadMsg('primary_ip が未設定です'); return }
+    setStartHeadLoading(true)
+    setStartHeadMsg(null)
+    setWorkerCmds([])
+    try {
+      const res = await apiPost<{ ok: boolean; message: string; worker_cmds?: Array<{ label: string; ip: string; cmd: string }> }>(
+        '/cluster/ray/start-head',
+        { node_ip: nodeIp, port: 6379 }
+      )
+      setStartHeadMsg(res.ok ? 'Ray ヘッド起動完了' : res.message)
+      if (res.worker_cmds?.length) setWorkerCmds(res.worker_cmds)
+      if (res.ok) refetchStatus()
+    } catch (e: any) {
+      setStartHeadMsg(e?.message ?? 'エラー')
+    } finally {
+      setStartHeadLoading(false)
+    }
+  }
+
+  const copyCmd = (cmd: string, idx: number) => {
+    navigator.clipboard.writeText(cmd).then(() => { setCopiedIdx(idx); setTimeout(() => setCopiedIdx(null), 2000) })
+  }
+
+  const remoteRayJoin = async (workerIp: string, idx: number) => {
+    if (!sshUser) { setRemoteJoinMsg(m => ({ ...m, [idx]: 'SSHユーザー名を入力してください' })); return }
+    setRemoteJoinLoading(l => ({ ...l, [idx]: true }))
+    setRemoteJoinMsg(m => { const n = { ...m }; delete n[idx]; return n })
+    try {
+      const res = await apiPost<{ ok: boolean; message: string }>(
+        `/cluster/nodes/${workerIp}/ray-join`,
+        { username: sshUser, password: sshPass, head_ip: cfg.network?.primary_ip ?? '', port: 6379 }
+      )
+      setRemoteJoinMsg(m => ({ ...m, [idx]: res.ok ? '起動完了' : res.message }))
+      if (res.ok) refetchStatus()
+    } catch (e: any) {
+      setRemoteJoinMsg(m => ({ ...m, [idx]: e?.message ?? 'エラー' }))
+    } finally {
+      setRemoteJoinLoading(l => ({ ...l, [idx]: false }))
+    }
+  }
+
+  const detectWorkerHardware = async (ip: string, idx: number) => {
+    if (!ip) return
+    setDetectingWorkers(d => ({ ...d, [idx]: true }))
+    setDetectErrors(e => { const n = { ...e }; delete n[idx]; return n })
+    try {
+      const res = await apiPost<{
+        num_cpus?: number; cpu_name?: string
+        num_gpus?: number; gpu_label?: string; gpu_vram_mb?: number
+        ram_gb?: number; config_updated?: boolean
+      }>(`/cluster/nodes/${ip}/detect`, {})
+      // 取得結果でワーカー設定を上書き
+      setCfg(c => ({
+        ...c,
+        network: {
+          ...c.network,
+          workers: (c.network?.workers ?? []).map((w, i) => {
+            if (i !== idx) return w
+            return {
+              ...w,
+              ...(res.num_cpus != null ? { num_cpus: res.num_cpus } : {}),
+              ...(res.num_gpus != null ? { num_gpus: res.num_gpus } : {}),
+              ...(res.gpu_label ? { gpu_label: res.gpu_label } : {}),
+            }
+          }),
+        },
+      }))
+    } catch (e: any) {
+      const msg = e?.message ?? String(e)
+      setDetectErrors(d => ({ ...d, [idx]: msg }))
+    } finally {
+      setDetectingWorkers(d => ({ ...d, [idx]: false }))
     }
   }
 
   // ── インターフェース選択オプション ────────────────────────────────────────
-  const ifOptions = interfaces ?? []
+  const ifOptions = (interfaces ?? []).filter(i => i.ip && !i.ip.startsWith('127.'))
 
   // タスク分散設定の表示条件
   const showTaskRouting = cfg.mode === 'primary' && status?.ray.status === 'running'
@@ -318,8 +434,216 @@ export function ClusterSettingsPanel() {
     return <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-400" /></div>
   }
 
+  const rayRunning = status?.ray.status === 'running'
+  const needsIp = cfg.mode === 'primary' && !cfg.network?.primary_ip
+
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4">
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* HERO: Ray ステータス + 主要アクション                                  */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <section className={`${cardBg} border ${border} rounded-lg p-4 space-y-3`}>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full shrink-0 ${
+              rayConnecting ? 'bg-yellow-400 animate-pulse' :
+              rayRunning    ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.6)]' :
+                              'bg-gray-500'
+            }`} />
+            <div>
+              <p className={`text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'}`}>
+                Ray クラスタ
+                <span className={`ml-2 text-xs font-normal ${textMuted}`}>
+                  {cfg.mode === 'single' ? 'シングル' : cfg.mode === 'primary' ? 'プライマリ' : 'ワーカー'}
+                </span>
+              </p>
+              <p className={`text-xs ${textMuted}`}>
+                {rayConnecting ? '接続確認中...' :
+                 rayRunning    ? `稼働中 — ${status?.ray.nodes.length ?? 0} ノード接続` :
+                                 '停止中'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {rayRunning ? (
+              <button
+                onClick={() => rayStopMutation.mutate()}
+                disabled={rayStopMutation.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-red-800 hover:bg-red-700 text-white disabled:opacity-50"
+              >
+                {rayStopMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Square size={11} />}
+                停止
+              </button>
+            ) : (
+              <button
+                onClick={startRayHead}
+                disabled={startHeadLoading || needsIp}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded bg-green-700 hover:bg-green-600 text-white disabled:opacity-40"
+              >
+                {startHeadLoading ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                Ray 起動
+              </button>
+            )}
+            <button onClick={() => refetchStatus()} className={`${textMuted} hover:text-white`}>
+              <RefreshCw size={13} />
+            </button>
+          </div>
+        </div>
+
+        {/* IP未設定時のインライン選択 */}
+        {needsIp && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-yellow-400 flex items-center gap-1">
+              <Wifi size={11} /> このPCのIPを選んでからRayを起動してください
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {ifOptions.map(iface => (
+                <button
+                  key={iface.name}
+                  onClick={() => updateNetwork('primary_ip', iface.ip)}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs border ${border} hover:border-blue-400 font-mono`}
+                >
+                  {iface.ip} <span className={`opacity-60 font-sans`}>{iface.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {startHeadMsg && (
+          <p className={`text-xs ${startHeadMsg.includes('完了') ? 'text-green-400' : 'text-red-400'}`}>
+            {startHeadMsg}
+          </p>
+        )}
+
+        {/* ワーカー一覧 */}
+        {cfg.mode === 'primary' && workers.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {workers.map((w, i) => {
+              const pr = pingResults[i]
+              return (
+                <div key={i} className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs border ${border}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${
+                    pr && pr !== 'loading' && pr.reachable ? 'bg-green-400' : 'bg-gray-500'
+                  }`} />
+                  <span>{w.label || w.ip}</span>
+                  {pr === 'loading'
+                    ? <Loader2 size={10} className="animate-spin text-blue-400" />
+                    : pr && pr !== 'loading'
+                      ? <span className={pr.reachable ? 'text-green-400' : 'text-gray-500'}>
+                          {pr.reachable ? `${pr.via === 'ray' ? 'Ray' : 'ICMP'} ${pr.latency_ms}ms` : 'NG'}
+                        </span>
+                      : null
+                  }
+                  <button onClick={() => pingWorker(w.ip, i)} className={`${textMuted} hover:text-white`}>
+                    <Network size={10} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* 自動起動トグル */}
+        {cfg.mode === 'primary' && (
+          <label className={`flex items-center gap-2 text-xs cursor-pointer select-none ${textMuted}`}>
+            <input
+              type="checkbox"
+              checked={cfg.ray?.auto_start ?? false}
+              onChange={e => setCfg(c => ({ ...c, ray: { ...c.ray, auto_start: e.target.checked } }))}
+              className="accent-blue-500"
+            />
+            アプリ起動時にRayを自動起動する
+          </label>
+        )}
+      </section>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* K10 参加セクション (Ray起動後のみ表示)                                 */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {cfg.mode === 'primary' && (rayRunning || workerCmds.length > 0) && cfg.network?.primary_ip && (
+        <section className={`${cardBg} border ${border} rounded-lg p-4 space-y-3`}>
+          <h3 className={`text-sm font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+            ワーカーをクラスタに参加させる
+          </h3>
+
+          {/* irm ワンライナー */}
+          <div className={`p-3 rounded border ${border} ${isLight ? 'bg-blue-50' : 'bg-blue-950/30'}`}>
+            <p className={`text-[11px] font-medium mb-1.5 ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>
+              K10 の PowerShell でこれだけ打てばOK:
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="text-[11px] font-mono flex-1 break-all text-green-400">
+                {`irm http://${cfg.network.primary_ip}:8765/api/cluster/ray/join-script | iex`}
+              </code>
+              <button
+                onClick={() => copyCmd(`irm http://${cfg.network!.primary_ip}:8765/api/cluster/ray/join-script | iex`, -1)}
+                className={`shrink-0 ${textMuted} hover:text-white`}
+              >
+                {copiedIdx === -1 ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+              </button>
+            </div>
+          </div>
+
+          {/* SSH実行 (ワーカーコマンド生成後) */}
+          {workerCmds.length > 0 && (
+            <div className="space-y-2">
+              <div className={`flex items-center gap-2 p-2 rounded border ${border}`}>
+                <span className={`text-[11px] ${textMuted} shrink-0`}>SSH</span>
+                <input className={`${inputCls} w-28 text-[11px]`} placeholder="ユーザー名"
+                  value={sshUser} onChange={e => setSshUser(e.target.value)} />
+                <input type="password" className={`${inputCls} w-28 text-[11px]`} placeholder="パスワード"
+                  value={sshPass} onChange={e => setSshPass(e.target.value)} />
+              </div>
+              {workerCmds.map((w, idx) => (
+                <div key={w.ip}>
+                  <div className={`flex items-center gap-2 p-2 rounded border ${border} ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+                    <span className={`text-[11px] ${textMuted} shrink-0`}>{w.label}</span>
+                    <code className="text-[11px] font-mono flex-1 break-all text-green-400">{w.cmd}</code>
+                    <button onClick={() => copyCmd(w.cmd, idx)} className={`shrink-0 ${textMuted} hover:text-white`}>
+                      {copiedIdx === idx ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                    </button>
+                    <button
+                      onClick={() => remoteRayJoin(w.ip, idx)}
+                      disabled={remoteJoinLoading[idx]}
+                      className="shrink-0 flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-indigo-700 hover:bg-indigo-600 text-white disabled:opacity-50"
+                    >
+                      {remoteJoinLoading[idx] ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+                      SSH実行
+                    </button>
+                  </div>
+                  {remoteJoinMsg[idx] && (
+                    <p className={`text-[10px] mt-0.5 ${remoteJoinMsg[idx] === '起動完了' ? 'text-green-400' : 'text-red-400'}`}>
+                      {remoteJoinMsg[idx]}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* 詳細設定 (折りたたみ)                                                  */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className={`${cardBg} border ${border} rounded-lg overflow-hidden`}>
+        <button
+          onClick={() => setShowAdvanced(v => !v)}
+          className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium ${
+            isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-gray-800/50'
+          } transition-colors`}
+        >
+          <span className="flex items-center gap-2">
+            <Server size={13} />
+            詳細設定（ネットワーク・ワーカー・リソース）
+          </span>
+          <span className={`text-xs ${textMuted} transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>▼</span>
+        </button>
+
+        {showAdvanced && (
+          <div className="p-4 space-y-4 border-t border-gray-700/50">
 
       {/* ── 動作モード ──────────────────────────────────────────────────── */}
       <section className={sectionCls}>
@@ -413,6 +737,9 @@ export function ClusterSettingsPanel() {
 
           {workers.map((w, i) => {
             const pr = pingResults[i]
+            const detecting = detectingWorkers[i] ?? false
+            const detectErr = detectErrors[i]
+            const rayRunning = status?.ray.status === 'running'
             return (
               <div key={i} className={`flex flex-col gap-1.5 p-2 rounded border ${border}`}>
                 <div className="flex items-center gap-2">
@@ -438,20 +765,24 @@ export function ClusterSettingsPanel() {
                     onClick={() => pingWorker(w.ip, i)}
                     disabled={!w.ip}
                     className="text-xs text-blue-400 hover:text-blue-300 shrink-0"
-                    title={t('cluster.test')}
+                    title="疎通確認 (ICMP / Ray)"
                   >
                     {pr === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Network size={12} />}
                   </button>
                   {pr && pr !== 'loading' && (
-                    <span className={`text-[11px] shrink-0 ${pr.reachable ? 'text-green-400' : 'text-red-400'}`}>
-                      {pr.reachable ? `OK` : 'NG'}
+                    <span className={`text-[11px] shrink-0 flex items-center gap-0.5 ${pr.reachable ? 'text-green-400' : 'text-red-400'}`}>
+                      {pr.reachable ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+                      {pr.reachable
+                        ? `${pr.via === 'ray' ? 'Ray' : pr.via === 'icmp' ? 'ICMP' : 'HTTP'} OK${pr.latency_ms ? ` ${pr.latency_ms}ms` : ''}`
+                        : 'NG'
+                      }
                     </span>
                   )}
                   <button onClick={() => removeWorker(i)} className="text-red-400 hover:text-red-300 shrink-0">
                     <Trash2 size={12} />
                   </button>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_cpus')}</span>
                   <input type="number" min={1} max={64}
                     className={`${inputCls} w-16`}
@@ -472,12 +803,30 @@ export function ClusterSettingsPanel() {
                     value={w.gpu_label ?? ''}
                     onChange={e => updateWorker(i, 'gpu_label', e.target.value)}
                   />
+                  {/* Ray 接続中のみ自動検出ボタンを表示 */}
+                  {rayRunning && (
+                    <button
+                      onClick={() => detectWorkerHardware(w.ip, i)}
+                      disabled={detecting || !w.ip}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-purple-700 hover:bg-purple-600 text-white disabled:opacity-50 shrink-0"
+                      title={t('cluster.detect_hardware')}
+                    >
+                      {detecting
+                        ? <Loader2 size={11} className="animate-spin" />
+                        : <ScanSearch size={11} />}
+                      {t('cluster.detect_hardware')}
+                    </button>
+                  )}
                 </div>
+                {detectErr && (
+                  <p className="text-[11px] text-red-400">{detectErr}</p>
+                )}
               </div>
             )
           })}
         </section>
       )}
+
 
       {/* ── 負荷制限 ─────────────────────────────────────────────────────── */}
       <section className={sectionCls}>
@@ -682,6 +1031,9 @@ export function ClusterSettingsPanel() {
           <span className={`text-xs ${saveMsg.includes('失敗') ? 'text-red-400' : 'text-green-400'}`}>
             {saveMsg}
           </span>
+        )}
+      </div>
+          </div>
         )}
       </div>
 

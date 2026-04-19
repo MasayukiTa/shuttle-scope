@@ -2,18 +2,26 @@
 import sys
 import os
 
+# Windows マルチノード Ray クラスタを有効化
+os.environ.setdefault("RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER", "1")
+
 # `python backend/main.py` で直接実行された場合でも
 # shuttlescope/ をルートとしてimportできるようパスを追加
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-# PyTorch の CUDA DLL を PATH に追加（onnxruntime-gpu が cublasLt64_12.dll 等を見つけられるようにする）
+# PyTorch 同梱の CUDA/cuDNN DLL を ONNX Runtime GPU が見つけられるようにする。
+# Windows は Python 3.8+ で secure DLL search を導入したため、PATH だけでなく
+# os.add_dll_directory() 経由で登録する必要がある。
 try:
     import torch as _torch
     _torch_lib = os.path.join(os.path.dirname(_torch.__file__), "lib")
-    if os.path.isdir(_torch_lib) and _torch_lib not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = _torch_lib + os.pathsep + os.environ.get("PATH", "")
+    if os.path.isdir(_torch_lib):
+        if _torch_lib not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = _torch_lib + os.pathsep + os.environ.get("PATH", "")
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(_torch_lib)
 except Exception:
     pass
 
@@ -149,17 +157,70 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.debug("[INFRA] start_job_runner skipped: %s", exc)
 
-    # ── INFRA Phase D: Ray クラスタ初期化 ────────────────────────────────
+    # ── INFRA Phase D: Ray クラスタ自動検出 ──────────────────────────────
+    # クラスタモードが primary / ray のとき、起動済み Ray を自動検出して接続フラグを立てる
+    def _auto_detect_ray():
+        try:
+            from backend.cluster import topology as _topo
+            from backend.cluster.bootstrap import (
+                subprocess_ray_status, mark_ray_connected,
+                _find_ray_cmd, _subprocess_kwargs,
+            )
+            import subprocess as _sp, time as _time
+
+            mode = _topo.get_mode()
+            if mode not in ("primary", "ray"):
+                return
+
+            status = subprocess_ray_status()
+            if status.get("running"):
+                mark_ray_connected()
+                logger.info("[INFRA] Ray クラスタ自動検出: active_nodes=%d", status.get("active_count", 0))
+                return
+
+            # ray.auto_start: true の場合は ray start --head を自動実行
+            cfg = _topo.load_config()
+            if not cfg.get("ray", {}).get("auto_start"):
+                logger.debug("[INFRA] Ray 未起動・auto_start 無効のためスキップ")
+                return
+
+            primary_ip = cfg.get("network", {}).get("primary_ip", "")
+            if not primary_ip:
+                logger.warning("[INFRA] auto_start: primary_ip 未設定のため Ray 自動起動をスキップ")
+                return
+
+            logger.info("[INFRA] auto_start: ray start --head を実行 ip=%s", primary_ip)
+            import os as _os
+            env = _os.environ.copy()
+            env["RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"] = "1"
+            ray_cmd = _find_ray_cmd()
+            kw = _subprocess_kwargs()
+            kw["env"] = env
+            num_cpus = cfg.get("ray", {}).get("num_cpus")
+            num_gpus = cfg.get("ray", {}).get("num_gpus")
+            cmd = [ray_cmd, "start", "--head",
+                   f"--node-ip-address={primary_ip}", "--port=6379",
+                   "--dashboard-host=0.0.0.0"]
+            if num_cpus is not None:
+                cmd.append(f"--num-cpus={num_cpus}")
+            if num_gpus is not None:
+                cmd.append(f"--num-gpus={num_gpus}")
+            result = _sp.run(cmd, **kw)
+            if result.returncode == 0:
+                _time.sleep(2)
+                if subprocess_ray_status().get("running"):
+                    mark_ray_connected()
+                    logger.info("[INFRA] auto_start: Ray head 起動成功")
+            else:
+                logger.warning("[INFRA] auto_start: ray start 失敗: %s", result.stderr)
+        except Exception as exc:
+            logger.debug("[INFRA] Ray 自動検出スキップ: %s", exc)
+
     try:
-        from backend.config import settings as _ss_settings
-        if getattr(_ss_settings, "ss_cluster_mode", "off") == "ray":
-            try:
-                from backend.cluster.bootstrap import init_ray  # type: ignore
-                init_ray()
-            except ImportError:
-                pass
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _auto_detect_ray)
     except Exception as exc:
-        logger.debug("[INFRA] init_cluster skipped: %s", exc)
+        logger.debug("[INFRA] _auto_detect_ray skipped: %s", exc)
 
     cleanup_task = asyncio.create_task(_stale_device_cleanup())
     yield
