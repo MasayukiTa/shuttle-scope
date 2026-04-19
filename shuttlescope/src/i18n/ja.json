@@ -1882,7 +1882,15 @@
     "resources_section": "リソース上限",
     "gpu_vram_limit": "GPU VRAM上限 (GB)",
     "system_ram_limit": "システムRAM上限 (GB)",
-    "worker_ram_limit": "K10 RAM上限 (GB)",
-    "limit_auto_hint": "0 = 自動"
+    "worker_ram_limit": "{{label}} RAM上限 (GB)",
+    "limit_auto_hint": "0 = 自動",
+    "task_routing_section": "タスク分散設定",
+    "task_auto": "自動",
+    "task_laptop_cpu": "ノートPC CPU",
+    "task_laptop_gpu": "ノートPC GPU",
+    "task_tracknet": "TrackNet",
+    "task_pose": "Pose",
+    "task_yolo": "YOLO",
+    "ray_not_connected": "Ray未接続"
   }
 }

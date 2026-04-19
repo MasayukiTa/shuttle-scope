@@ -174,6 +174,7 @@ export function SettingsPage() {
   const [bmTargets, setBmTargets] = useState<BenchmarkTarget[]>(['tracknet'])
   const [bmNFrames, setBmNFrames] = useState(30)
   const [bmJobId, setBmJobId] = useState<string | null>(null)
+  const bmJobIdRef = useRef<string | null>(null)
   const [bmJob, setBmJob] = useState<BenchmarkJob | null>(null)
   const [bmRunning, setBmRunning] = useState(false)
   const [bmDetecting, setBmDetecting] = useState(false)
@@ -341,9 +342,11 @@ export function SettingsPage() {
     setBmRunning(true)
     setBmJob(null)
     setBmJobId(null)
+    bmJobIdRef.current = null
     setBmError(null)
     try {
       const jobId = await runBenchmark(bmSelectedDevices, bmTargets, bmNFrames)
+      bmJobIdRef.current = jobId
       setBmJobId(jobId)
     } catch (_e) {
       setBmError('ベンチマーク開始に失敗しました')
@@ -353,13 +356,16 @@ export function SettingsPage() {
 
   /** ベンチマークジョブを停止する */
   async function stopBenchmark() {
-    if (bmJobId) {
+    // ref を使って最新の jobId を確実に参照する（state の非同期更新による race condition を回避）
+    const jobId = bmJobIdRef.current ?? bmJobId
+    if (jobId) {
       try {
-        await cancelJob(bmJobId)
+        await cancelJob(jobId)
       } catch (_e) {
         // キャンセル失敗は無視
       }
     }
+    bmJobIdRef.current = null
     setBmRunning(false)
     setBmJobId(null)
   }

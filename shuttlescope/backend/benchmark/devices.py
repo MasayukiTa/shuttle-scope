@@ -47,6 +47,33 @@ def _sanitize(name: str) -> str:
 
 # ─── 個別プローブ関数 ──────────────────────────────────────────────────────────
 
+def _get_cpu_name_windows() -> str | None:
+    """Windows WMI 経由で CPU の正式名称を取得する。
+
+    platform.processor() は "AMD64 Family 25 Model 117..." のような
+    汎用文字列を返す場合があるため、PowerShell 経由で正式名称を取得する。
+    失敗時は None を返す。
+    """
+    try:
+        import subprocess
+        result = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                "Get-WmiObject Win32_Processor | Select-Object -First 1 -ExpandProperty Name",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            name = result.stdout.strip()
+            if name:
+                return name
+    except Exception:
+        pass
+    return None
+
+
 def _probe_cpu() -> list[ComputeDevice]:
     """CPU を常に 1 件検出して返す"""
     try:
@@ -57,7 +84,11 @@ def _probe_cpu() -> list[ComputeDevice]:
         cores = 1
         logical = 1
 
-    name = platform.processor() or platform.machine() or "CPU"
+    # Windows では PowerShell 経由で正式名称を取得する
+    if platform.system() == "Windows":
+        name = _get_cpu_name_windows() or platform.processor() or platform.machine() or "CPU"
+    else:
+        name = platform.processor() or platform.machine() or "CPU"
     # 長すぎる場合は先頭 40 文字に丸める
     name = name[:40].strip()
 

@@ -24,6 +24,7 @@ interface WorkerNode {
   num_cpus?: number
   num_gpus?: number
   gpu_label?: string
+  model_base?: string
 }
 
 interface ClusterConfig {
@@ -46,8 +47,9 @@ interface ClusterConfig {
   resources?: {
     gpu_vram_limit_gb?: number
     system_ram_limit_gb?: number
-    worker_ram_limit_gb?: number
+    workers_ram_limits?: Record<string, number>  // key: worker ip
   }
+  task_routing?: Record<string, string>
 }
 
 interface NetworkInterface {
@@ -132,6 +134,11 @@ export function ClusterSettingsPanel() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
   const [pingResults, setPingResults] = useState<Record<string, NodePingResult | 'loading'>>({})
   const [rayConnecting, setRayConnecting] = useState(false)
+  const [taskRouting, setTaskRouting] = useState<Record<string, string>>({
+    tracknet: 'auto',
+    pose: 'auto',
+    yolo: 'auto',
+  })
 
   // ── リモートデータ ────────────────────────────────────────────────────────
   const { data: remoteCfg, isLoading: cfgLoading } = useQuery({
@@ -165,9 +172,16 @@ export function ClusterSettingsPanel() {
     if (remoteCfg) setCfg(remoteCfg)
   }, [remoteCfg])
 
+  // ── task_routing の初期化 ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (remoteCfg?.task_routing) {
+      setTaskRouting(remoteCfg.task_routing as Record<string, string>)
+    }
+  }, [remoteCfg])
+
   // ── 保存ミューテーション ──────────────────────────────────────────────────
   const saveMutation = useMutation({
-    mutationFn: () => apiPost('/cluster/config', { config: cfg }),
+    mutationFn: () => apiPost('/cluster/config', { config: { ...cfg, task_routing: taskRouting } }),
     onSuccess: () => {
       setSaveMsg(t('cluster.save_ok'))
       setTimeout(() => setSaveMsg(null), 3000)
@@ -183,6 +197,11 @@ export function ClusterSettingsPanel() {
     setCfg(c => ({ ...c, load_limits: { ...c.load_limits, [key]: value } }))
 
   const workers = cfg.network?.workers ?? []
+
+  // dGPU があるか確認（laptop GPU ボタン表示判定用）
+  const hasDgpu = typeof window !== 'undefined'
+    ? true  // サーバーサイドは常に true として扱い、クライアントで判断
+    : false
 
   const addWorker = () =>
     setCfg(c => ({
@@ -210,6 +229,18 @@ export function ClusterSettingsPanel() {
         workers: (c.network?.workers ?? []).map((w, idx) =>
           idx === i ? { ...w, [key]: val } : w
         ),
+      },
+    }))
+
+  const updateWorkerRamLimit = (workerIp: string, value: number) =>
+    setCfg(c => ({
+      ...c,
+      resources: {
+        ...c.resources,
+        workers_ram_limits: {
+          ...(c.resources?.workers_ram_limits ?? {}),
+          [workerIp]: value,
+        },
       },
     }))
 
@@ -243,6 +274,38 @@ export function ClusterSettingsPanel() {
 
   // ── インターフェース選択オプション ────────────────────────────────────────
   const ifOptions = interfaces ?? []
+
+  // タスク分散設定の表示条件
+  const showTaskRouting = cfg.mode === 'primary' && status?.ray.status === 'running'
+
+  // ワーカー RAM 上限の表示条件
+  const showWorkerRam = cfg.mode === 'primary' && workers.length > 0 && status?.ray.status === 'running'
+
+  // タスク種別定義
+  const taskTypes = [
+    { key: 'tracknet', label: t('cluster.task_tracknet') },
+    { key: 'pose',     label: t('cluster.task_pose') },
+    { key: 'yolo',     label: t('cluster.task_yolo') },
+  ]
+
+  // タスクルーティングの選択肢を動的生成
+  const buildRoutingOptions = () => {
+    const opts: Array<{ value: string; label: string }> = [
+      { value: 'auto', label: t('cluster.task_auto') },
+      { value: 'laptop_cpu', label: t('cluster.task_laptop_cpu') },
+    ]
+    // dGPU オプション（laptop GPU）
+    opts.push({ value: 'laptop_gpu', label: t('cluster.task_laptop_gpu') })
+    // ワーカー毎のオプション
+    workers.forEach(w => {
+      const label = w.label || w.ip || w.id
+      opts.push({ value: `${w.id}_cpu`, label: `${label} CPU` })
+      if ((w.num_gpus ?? 0) > 0) {
+        opts.push({ value: `${w.id}_igpu`, label: `${label} GPU` })
+      }
+    })
+    return opts
+  }
 
   // ── レンダリング ──────────────────────────────────────────────────────────
   const sectionCls = `${cardBg} border ${border} rounded-lg p-4 space-y-3`
@@ -450,10 +513,10 @@ export function ClusterSettingsPanel() {
         </h3>
         <p className={`text-[11px] ${textMuted}`}>{t('cluster.limit_auto_hint')}</p>
         <div className="space-y-3">
+          {/* ノートPC 固有のスライダー（常時表示） */}
           {[
-            { key: 'gpu_vram_limit_gb',    label: t('cluster.gpu_vram_limit'),    max: Math.max(hardware?.vram_total_gb ?? 16, 16) },
-            { key: 'system_ram_limit_gb',  label: t('cluster.system_ram_limit'),  max: Math.max(hardware?.system_ram_gb ?? 32, 16) },
-            { key: 'worker_ram_limit_gb',  label: t('cluster.worker_ram_limit'),  max: 64 },
+            { key: 'gpu_vram_limit_gb',   label: t('cluster.gpu_vram_limit'),   max: Math.max(hardware?.vram_total_gb ?? 16, 16) },
+            { key: 'system_ram_limit_gb', label: t('cluster.system_ram_limit'), max: Math.max(hardware?.system_ram_gb ?? 32, 16) },
           ].map(({ key, label, max }) => {
             const val = (cfg.resources as any)?.[key] ?? 0
             return (
@@ -473,8 +536,65 @@ export function ClusterSettingsPanel() {
               </div>
             )
           })}
+
+          {/* ワーカー別 RAM 上限（Ray 接続中かつワーカーが存在する場合のみ） */}
+          {showWorkerRam && workers.map((w, i) => {
+            const workerIp = w.ip
+            const workerLabel = w.label || w.ip || `Worker ${i + 1}`
+            const val = cfg.resources?.workers_ram_limits?.[workerIp] ?? 0
+            return (
+              <div key={`worker_ram_${workerIp}`} className="flex items-center gap-3">
+                <span className={`${labelCls} w-44 shrink-0`}>
+                  {t('cluster.worker_ram_limit', { label: workerLabel })}
+                </span>
+                <input
+                  type="range" min={0} max={64} step={1} value={val}
+                  onChange={e => updateWorkerRamLimit(workerIp, Number(e.target.value))}
+                  className="flex-1 accent-blue-500"
+                />
+                <span className="text-sm w-12 text-right">
+                  {val === 0 ? '自動' : `${val}GB`}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </section>
+
+      {/* ── タスク分散設定（Ray 接続中かつ primary モードのみ） ──────────── */}
+      {showTaskRouting && (
+        <section className={sectionCls}>
+          <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+            <Zap size={14} /> {t('cluster.task_routing_section')}
+          </h3>
+          <div className="space-y-3">
+            {taskTypes.map(({ key, label }) => {
+              const routingOptions = buildRoutingOptions()
+              const currentValue = taskRouting[key] ?? 'auto'
+              return (
+                <div key={key} className="space-y-1">
+                  <span className={`${labelCls}`}>{label}</span>
+                  <div className="flex flex-wrap gap-1">
+                    {routingOptions.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setTaskRouting(r => ({ ...r, [key]: opt.value }))}
+                        className={`px-2 py-1 rounded text-xs border transition-colors ${
+                          currentValue === opt.value
+                            ? 'border-blue-500 bg-blue-600 text-white'
+                            : `border-gray-600 ${isLight ? 'text-gray-700 hover:border-gray-400' : 'text-gray-300 hover:border-gray-500'}`
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ── クラスタステータス ────────────────────────────────────────────── */}
       <section className={sectionCls}>

@@ -256,6 +256,27 @@ class BenchmarkRunner:
         if job is not None and job.cancelled:
             return {"error": "キャンセルされました"}
 
+        # Ray ワーカーデバイスは別経路で処理する
+        is_ray_device = (
+            device.device_type == "ray_worker"
+            or device.backend == "ray"
+            or device.device_id.startswith("ray_")
+        )
+        if is_ray_device:
+            ray_dispatch = {
+                TARGET_TRACKNET: self._bench_ray_tracknet,
+                TARGET_POSE: self._bench_ray_pose,
+                TARGET_YOLO: self._bench_ray_yolo,
+            }
+            bench_fn = ray_dispatch.get(target)
+            if bench_fn is None:
+                return {"error": f"Ray ワーカーでは未対応のターゲット: {target}"}
+            try:
+                return bench_fn(device, n_frames)
+            except Exception as exc:
+                logger.exception("[runner] Ray 計測例外: device=%s target=%s", device.device_id, target)
+                return {"error": str(exc)}
+
         use_gpu = device.device_type in ("dgpu", "igpu")
 
         def _progress_cb(frame_i: int) -> None:
@@ -584,6 +605,8 @@ class BenchmarkRunner:
         try:
             latencies: List[float] = []
             for i in range(min(n_frames, 5)):  # クリップ切り出しは重いので最大 5 回
+                if job is not None and job.cancelled:
+                    break
                 out_path = tempfile.mktemp(suffix=f"_clip_{i}.mp4")
                 cmd = [
                     "ffmpeg", "-y",
@@ -629,6 +652,8 @@ class BenchmarkRunner:
         latencies: List[float] = []
 
         for i in range(n_frames):
+            if job is not None and job.cancelled:
+                break
             # EPV 模擬: n=200 の多変量乱数に対して相関行列・期待値計算
             data = rng.standard_normal((200, 10))
 
@@ -658,4 +683,114 @@ class BenchmarkRunner:
             # 変数を明示的に削除して GC を促す
             del corr, weights, epv
 
+        if not latencies:
+            return {"error": "キャンセルされました"}
         return _compute_metrics(latencies)
+
+    # ── Ray ワーカーベンチマーク ──────────────────────────────────────────────
+
+    def _get_ray_worker_model_base(self, device: ComputeDevice) -> str:
+        """デバイス IP から cluster.config.yaml の model_base を取得する。"""
+        try:
+            from backend.cluster.topology import get_worker_model_base
+            # device_id の形式: ray_cpu_169_254_140_146 / ray_igpu_169_254_140_146
+            # specs.ip があればそちらを使う
+            ip = device.specs.get("ip", "")
+            if not ip:
+                # device_id から IP 復元を試みる (ray_cpu_ / ray_igpu_ プレフィックスを除去)
+                raw = device.device_id
+                for prefix in ("ray_igpu_", "ray_cpu_", "ray_"):
+                    if raw.startswith(prefix):
+                        raw = raw[len(prefix):]
+                        break
+                # アンダースコアをドットに変換して IP を復元
+                ip = raw.replace("_", ".")
+            return get_worker_model_base(ip)
+        except Exception:
+            return "C:\\ss-models"
+
+    def _bench_ray_tracknet(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
+        """Ray ワーカーで TrackNet ベンチマークを実行する。"""
+        from backend.cluster import bootstrap
+        from backend.cluster import remote_tasks
+
+        if not bootstrap.is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
+
+        model_base = self._get_ray_worker_model_base(device)
+        # TrackNet モデルパス（ワーカー側のパス）
+        import os
+        model_path = os.path.join(model_base, "tracknet.onnx")
+        use_gpu = device.device_id.startswith("ray_igpu")
+        n_iters = min(n_frames, 5)
+
+        logger.info(
+            "[runner/ray] TrackNet ベンチマーク: device=%s model=%s use_gpu=%s n_iters=%d",
+            device.device_id, model_path, use_gpu, n_iters,
+        )
+
+        results = remote_tasks.dispatch_benchmark(
+            "_run_benchmark_tracknet",
+            model_path=model_path,
+            n_iters=n_iters,
+            use_gpu=use_gpu,
+        )
+        # 最初のワーカー結果を返す（単一ワーカー構成を想定）
+        if isinstance(results, dict) and "error" not in results:
+            for v in results.values():
+                return v
+        return results if isinstance(results, dict) else {"error": str(results)}
+
+    def _bench_ray_pose(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
+        """Ray ワーカーで Pose ベンチマークを実行する。"""
+        from backend.cluster import bootstrap
+        from backend.cluster import remote_tasks
+
+        if not bootstrap.is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
+
+        n_iters = min(n_frames, 10)
+
+        logger.info(
+            "[runner/ray] Pose ベンチマーク: device=%s n_iters=%d",
+            device.device_id, n_iters,
+        )
+
+        results = remote_tasks.dispatch_benchmark(
+            "_run_benchmark_pose",
+            n_iters=n_iters,
+        )
+        if isinstance(results, dict) and "error" not in results:
+            for v in results.values():
+                return v
+        return results if isinstance(results, dict) else {"error": str(results)}
+
+    def _bench_ray_yolo(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
+        """Ray ワーカーで YOLO ベンチマークを実行する。"""
+        from backend.cluster import bootstrap
+        from backend.cluster import remote_tasks
+
+        if not bootstrap.is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
+
+        model_base = self._get_ray_worker_model_base(device)
+        import os
+        model_path = os.path.join(model_base, "yolov8n.onnx")
+        use_gpu = device.device_id.startswith("ray_igpu")
+        n_iters = min(n_frames, 5)
+
+        logger.info(
+            "[runner/ray] YOLO ベンチマーク: device=%s model=%s use_gpu=%s n_iters=%d",
+            device.device_id, model_path, use_gpu, n_iters,
+        )
+
+        results = remote_tasks.dispatch_benchmark(
+            "_run_benchmark_yolo",
+            model_path=model_path,
+            n_iters=n_iters,
+            use_gpu=use_gpu,
+        )
+        if isinstance(results, dict) and "error" not in results:
+            for v in results.values():
+                return v
+        return results if isinstance(results, dict) else {"error": str(results)}
