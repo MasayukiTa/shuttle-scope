@@ -1823,6 +1823,7 @@
     "targets": {
       "tracknet": "TrackNet",
       "pose": "姿勢推定",
+      "yolo": "YOLOv8n",
       "pipeline_full": "パイプライン全体",
       "clip_extract": "クリップ抽出",
       "statistics": "統計解析"

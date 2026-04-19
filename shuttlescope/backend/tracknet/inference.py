@@ -81,16 +81,21 @@ class TrackNetInference:
         # 指定バックエンドのファイルが存在しない場合は auto にフォールバックして他を試みる
         effective_backend = self._backend
 
-        # SS_USE_GPU=0 のとき auto モードでも CUDA/DirectML をスキップして CPU 系へ直行する。
-        # CPU デバイスのベンチマークが誤って CUDA EP で計測されることを防ぐ。
+        # SS_BENCH_BACKEND が設定されている場合はそれを優先する（ベンチマーク専用）。
+        # 未設定の場合は SS_USE_GPU=0 なら ONNX CPU へ直行する。
         if effective_backend == "auto":
-            try:
-                from backend import config as _cfg
-                if int(_cfg.settings.ss_use_gpu) == 0:
-                    effective_backend = "onnx_cpu"
-                    logger.info("TrackNet: SS_USE_GPU=0 のため ONNX CPU を直接選択")
-            except Exception:
-                pass
+            bench_override = os.environ.get("SS_BENCH_BACKEND", "")
+            if bench_override:
+                effective_backend = bench_override
+                logger.info("TrackNet: SS_BENCH_BACKEND=%s を使用", bench_override)
+            else:
+                try:
+                    from backend import config as _cfg
+                    if int(_cfg.settings.ss_use_gpu) == 0:
+                        effective_backend = "onnx_cpu"
+                        logger.info("TrackNet: SS_USE_GPU=0 のため ONNX CPU を直接選択")
+                except Exception:
+                    pass
 
         onnx_model = _existing_path(ONNX_CANDIDATES)
 
