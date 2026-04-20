@@ -49,6 +49,23 @@ async function fetchList(path: string): Promise<{ user_id: number; display_name:
   }
 }
 
+interface BootstrapStatus {
+  has_admin: boolean
+  bootstrap_configured: boolean
+  bootstrap_username: string | null
+  bootstrap_display_name: string | null
+}
+
+async function fetchBootstrapStatus(): Promise<BootstrapStatus | null> {
+  try {
+    const res = await fetch(`${BASE_URL}/auth/bootstrap-status`)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
 type RoleTab = 'admin' | 'analyst' | 'coach' | 'player'
 
 interface Props {
@@ -67,6 +84,7 @@ export function LoginPage({ onLogin }: Props) {
   // admin
   const [adminUser, setAdminUser] = useState('')
   const [adminPass, setAdminPass] = useState('')
+  const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus | null>(null)
 
   // coach
   const [coachList, setCoachList] = useState<{ user_id: number; display_name: string }[]>([])
@@ -82,6 +100,10 @@ export function LoginPage({ onLogin }: Props) {
   const [pin, setPin] = useState('')
 
   useEffect(() => {
+    fetchBootstrapStatus().then(status => {
+      setBootstrapStatus(status)
+      if (status?.bootstrap_username) setAdminUser(status.bootstrap_username)
+    })
     fetchList('/auth/coaches').then(list => {
       setCoachList(list)
       if (list.length > 0) setCoachId(list[0].user_id)
@@ -163,6 +185,17 @@ export function LoginPage({ onLogin }: Props) {
         <div className="space-y-4">
           {tab === 'admin' && (
             <>
+              {bootstrapStatus && !bootstrapStatus.has_admin && (
+                <div className={`border text-sm rounded-lg px-3 py-2 ${
+                  bootstrapStatus.bootstrap_configured
+                    ? (isLight ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-amber-900/30 border-amber-700 text-amber-300')
+                    : (isLight ? 'bg-red-50 border-red-200 text-red-600' : 'bg-red-900/30 border-red-700 text-red-400')
+                }`}>
+                  {bootstrapStatus.bootstrap_configured
+                    ? `Initial admin will be created on first login for user "${bootstrapStatus.bootstrap_username ?? 'admin'}".`
+                    : 'No admin user exists yet. Set BOOTSTRAP_ADMIN_PASSWORD in the backend environment before first admin login.'}
+                </div>
+              )}
               <div>
                 <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auth.username')}</label>
                 <input
@@ -170,7 +203,7 @@ export function LoginPage({ onLogin }: Props) {
                   value={adminUser}
                   onChange={e => setAdminUser(e.target.value)}
                   className={fieldCls}
-                  placeholder="admin"
+                  placeholder={bootstrapStatus?.bootstrap_username ?? 'admin'}
                   autoComplete="username"
                 />
               </div>
