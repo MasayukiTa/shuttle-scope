@@ -16,6 +16,14 @@ Read it together with:
 
 ## 2026-04-20
 
+### Auth Flow Hardening and Session Cleanup
+
+- Removed the lingering POC-era role switching path from the frontend so operators can no longer change analyst / coach / player context from Settings after login.
+- Switched auth state persistence from long-lived local storage to session-scoped storage, making the app return to the login screen after the app or browser is fully closed.
+- Added logout actions to the app shell and Settings so role changes now happen through explicit logout and re-login rather than client-side role mutation.
+- Added a protected startup revalidation step through `/auth/me` so the frontend re-syncs its displayed role, user identity, and team context with the server-issued JWT before entering the main app.
+- Extended auth responses to return `team_name`, which keeps coach-facing identity context aligned across login, startup restore, and account display.
+
 ### CI Stabilization and Benchmark Test Reliability
 
 - Fixed CI installation failures by removing the assumption that `onnxruntime-gpu` is available in the base backend requirements on generic GitHub Actions runners.
@@ -33,6 +41,11 @@ Read it together with:
 
 ### Detailed Progress
 
+- Removed frontend `setRole`-based role mutation and the Settings role picker path.
+- Moved token and auth-context persistence to session storage.
+- Added explicit logout controls in the sidebar and account section.
+- Added frontend auth revalidation using `/auth/me` before rendering protected routes.
+- Returned `team_name` from backend auth login / me responses.
 - Removed mandatory `onnxruntime-gpu` from generic backend dependency install flow.
 - Updated benchmark runner behavior around tiny latency metrics and unavailable non-CPU devices.
 - Preserved explicit `SS_CV_MOCK=1` behavior in benchmark execution.
