@@ -184,9 +184,6 @@ export function LoginPage({ onLogin }: Props) {
               placeholder="ログインIDを入力"
               autoComplete="username"
             />
-            <p className={`mt-1 text-xs ${mutedCls}`}>
-              role は不要です。設定済みのログインIDで入ってください。
-            </p>
           </div>
 
           <div>
