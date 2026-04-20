@@ -39,6 +39,7 @@ def _get_ip(request: Request) -> Optional[str]:
 class LoginRequest(BaseModel):
     grant_type: str
     username: Optional[str] = None
+    identifier: Optional[str] = None
     password: Optional[str] = None
     user_id: Optional[int] = None
     pin: Optional[str] = None
@@ -113,6 +114,43 @@ def _seed_admin_if_needed(db: Session) -> None:
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     ip = _get_ip(request)
     _seed_admin_if_needed(db)
+
+    if req.grant_type == "credential":
+        identifier = (req.identifier or req.username or "").strip()
+        secret = req.password if req.password is not None else req.pin
+        if not identifier or not secret:
+            raise HTTPException(status_code=422, detail="identifier and password are required")
+
+        user = None
+        if identifier.isdigit():
+            user = db.get(User, int(identifier))
+
+        if user is None:
+            user = db.query(User).filter(User.username == identifier).first()
+
+        if user is None:
+            exact_display_name = db.query(User).filter(User.display_name == identifier).all()
+            if len(exact_display_name) == 1:
+                user = exact_display_name[0]
+
+        if not user or not user.hashed_credential:
+            log_access(db, "login_failed", details={"reason": "user_not_found", "identifier": identifier}, ip_addr=ip)
+            raise HTTPException(status_code=401, detail="login failed")
+
+        if not _verify_password(secret, user.hashed_credential):
+            log_access(db, "login_failed", user_id=user.id, details={"reason": "wrong_password"}, ip_addr=ip)
+            raise HTTPException(status_code=401, detail="login failed")
+
+        token = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name)
+        log_access(db, "login", user_id=user.id, ip_addr=ip)
+        return LoginResponse(
+            access_token=token,
+            role=user.role,
+            user_id=user.id,
+            player_id=user.player_id,
+            team_name=user.team_name,
+            display_name=user.display_name or user.username,
+        )
 
     if req.grant_type == "password":
         if not req.username or not req.password:
