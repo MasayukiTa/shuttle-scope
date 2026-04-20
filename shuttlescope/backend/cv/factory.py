@@ -151,11 +151,31 @@ def _resolve_pose(key: tuple) -> PoseInferencer:
         return MockPose()
 
     if int(s.ss_use_gpu) == 1:
+        # ONNX Pose (YOLOv8n-pose CUDA/TRT EP) — MediaPipe より大幅に高速
+        try:
+            from backend.cv.pose_onnx import OnnxPose, _FP16_MODEL, _FP32_MODEL
+
+            model_path = _FP16_MODEL if _FP16_MODEL.exists() else (_FP32_MODEL if _FP32_MODEL.exists() else None)
+            if model_path is not None:
+                bench_backend = os.environ.get("SS_BENCH_BACKEND", "")
+                use_trt = bench_backend not in ("directml", "openvino", "onnx_cpu")
+                device_index = int(os.environ.get("SS_CUDA_DEVICE", "0"))
+                impl = OnnxPose(
+                    model_path=model_path,
+                    device_index=device_index,
+                    use_trt=use_trt,
+                )
+                logger.info("[cv.factory] Pose: OnnxPose (backend=%s, model=%s) を使用",
+                            impl.backend_name(), model_path.name)
+                return impl
+        except (ImportError, RuntimeError) as exc:
+            logger.warning("[cv.factory] OnnxPose 使用不可: %s — MediaPipe CUDA にフォールバック", exc)
+
         try:
             from backend.cv.pose_cuda import CudaPose
 
             impl = CudaPose()
-            logger.info("[cv.factory] Pose: CUDA 実装を使用")
+            logger.info("[cv.factory] Pose: MediaPipe CUDA 実装を使用")
             return impl
         except (ImportError, RuntimeError) as exc:
             logger.warning("[cv.factory] CUDA Pose 使用不可: %s — CPU にフォールバック", exc)
@@ -164,7 +184,7 @@ def _resolve_pose(key: tuple) -> PoseInferencer:
         from backend.cv.pose_cpu import CpuPose
 
         impl = CpuPose()
-        logger.info("[cv.factory] Pose: CPU 実装を使用")
+        logger.info("[cv.factory] Pose: CPU 実装 (MediaPipe) を使用")
         return impl
     except (ImportError, RuntimeError) as exc:
         logger.warning("[cv.factory] CPU Pose 使用不可: %s — Mock にフォールバック", exc)

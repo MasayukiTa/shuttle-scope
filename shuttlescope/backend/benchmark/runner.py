@@ -579,25 +579,58 @@ class BenchmarkRunner:
             return {"error": "onnxruntime 未インストール"}
 
         bench_backend = _os.environ.get("SS_BENCH_BACKEND", "")
+        avail = ort.get_available_providers()
+        device_id = int(_os.environ.get("SS_CUDA_DEVICE", "0"))
+        _trt_cache = str(Path(__file__).parent.parent / "models" / "trt_cache")
+        _os.makedirs(_trt_cache, exist_ok=True)
+
         if bench_backend == "directml":
             providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
         elif bench_backend == "openvino":
-            if "OpenVINOExecutionProvider" in ort.get_available_providers():
-                providers = ["OpenVINOExecutionProvider", "CPUExecutionProvider"]
-            else:
-                providers = ["CPUExecutionProvider"]
-        elif bench_backend in ("", "onnx_cuda") and use_gpu and \
-                "CUDAExecutionProvider" in ort.get_available_providers():
-            device_id = int(_os.environ.get("SS_CUDA_DEVICE", "0"))
-            providers = [
-                ("CUDAExecutionProvider", {
+            providers = (["OpenVINOExecutionProvider", "CPUExecutionProvider"]
+                         if "OpenVINOExecutionProvider" in avail else ["CPUExecutionProvider"])
+        elif bench_backend in ("", "onnx_cuda") and use_gpu and "CUDAExecutionProvider" in avail:
+            cuda_opts = {
+                "device_id": device_id,
+                "cudnn_conv_algo_search": "HEURISTIC",
+                "arena_extend_strategy": "kNextPowerOfTwo",
+                "do_copy_in_default_stream": "1",
+            }
+            # TRT EP: nvinfer_10.dll が存在する場合のみ有効化（DLL 未インストールなら CUDA にフォールバック）
+            _trt_dll_ok = False
+            try:
+                import ctypes as _ct
+                _ct.WinDLL("nvinfer_10.dll")
+                _trt_dll_ok = True
+            except OSError:
+                pass
+            use_trt = (
+                _trt_dll_ok
+                and "TensorrtExecutionProvider" in avail
+                and _os.environ.get("SS_DISABLE_TRT", "0") not in ("1", "true", "True")
+            )
+            if use_trt:
+                in_h, in_w = 384, 640
+                opt_b = 64 if _is_aggressive() else 32
+                # ultralytics YOLO ONNX の input tensor 名は常に "images"
+                _trt_in = "images"
+                trt_opts = {
                     "device_id": device_id,
-                    "cudnn_conv_algo_search": "HEURISTIC",
-                    "arena_extend_strategy": "kNextPowerOfTwo",
-                    "do_copy_in_default_stream": "1",
-                }),
-                "CPUExecutionProvider",
-            ]
+                    "trt_fp16_enable": True,
+                    "trt_engine_cache_enable": True,
+                    "trt_engine_cache_path": _trt_cache,
+                    "trt_max_workspace_size": 2 * 1024 ** 3,
+                    "trt_profile_min_shapes": f"{_trt_in}:1x3x{in_h}x{in_w}",
+                    "trt_profile_opt_shapes": f"{_trt_in}:{opt_b}x3x{in_h}x{in_w}",
+                    "trt_profile_max_shapes": f"{_trt_in}:128x3x{in_h}x{in_w}",
+                }
+                providers = [
+                    ("TensorrtExecutionProvider", trt_opts),
+                    ("CUDAExecutionProvider", cuda_opts),
+                    "CPUExecutionProvider",
+                ]
+            else:
+                providers = [("CUDAExecutionProvider", cuda_opts), "CPUExecutionProvider"]
         else:
             providers = ["CPUExecutionProvider"]
 

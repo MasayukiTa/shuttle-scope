@@ -48,6 +48,21 @@ def _register_cuda_dll_dirs() -> None:
 _register_cuda_dll_dirs()
 
 
+def _trt_available() -> bool:
+    """TensorRT ランタイム DLL (nvinfer_10.dll) が使用可能かチェック（1 回だけ実行）。"""
+    try:
+        import ctypes
+        ctypes.WinDLL("nvinfer_10.dll")
+        return True
+    except OSError:
+        return False
+    except Exception:
+        return False
+
+
+_TRT_AVAILABLE: bool = _trt_available()
+
+
 def _get_gpu_vram_limit_bytes() -> int:
     """cluster.config.yaml の resources.gpu_vram_limit_gb をバイト単位で返す。
     0 = ORT 自動管理（上限なし）。"""
@@ -179,7 +194,7 @@ class TrackNetInference:
         # GPU 実行時は FP16 版があればそちらを優先する
         onnx_model_gpu = _existing_path(ONNX_FP16_CANDIDATES) or onnx_model
 
-        # ── CUDA / ONNX CUDA ──────────────────────────────────────────────────
+        # ── TensorRT → CUDA → CPU の順で試みる ──────────────────────────────────
         if effective_backend in ("auto", "cuda", "onnx_cuda"):
             if onnx_model_gpu is None:
                 if effective_backend in ("cuda", "onnx_cuda"):
@@ -190,37 +205,53 @@ class TrackNetInference:
                     import onnxruntime as ort
                     available_providers = ort.get_available_providers()
                     if "CUDAExecutionProvider" in available_providers:
-                        # ── CUDA EP セッションオプション ─────────────────────────────
-                        # cluster.config.yaml の resources.gpu_vram_limit_gb を使用。
-                        # 0 = ORT 自動管理（推奨）。ユーザが明示的に上限を設定した場合のみ適用。
                         gpu_mem_limit = _get_gpu_vram_limit_bytes()
 
                         cuda_opts: dict = {
                             "device_id": self._cuda_device_index,
-                            # HEURISTIC: cuDNN が速い候補から選択（EXHAUSTIVE は Blackwell で
-                            # 初回推論が非常に遅くなるためここでは使わない）
                             "cudnn_conv_algo_search": "HEURISTIC",
-                            # アリーナを指数的に拡大して再確保コストを抑える
                             "arena_extend_strategy": "kNextPowerOfTwo",
-                            # デフォルトストリームで D2H コピーを行い同期コストを削減する
                             "do_copy_in_default_stream": "1",
                         }
                         if gpu_mem_limit > 0:
                             cuda_opts["gpu_mem_limit"] = gpu_mem_limit
 
                         sess_opts = ort.SessionOptions()
-                        # グラフ全最適化（定数畳み込み・不要 cast 除去等）
-                        sess_opts.graph_optimization_level = (
-                            ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-                        )
-                        # 固定入力形状ならメモリパターンを記憶してバッファを再利用する
+                        sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
                         sess_opts.enable_mem_pattern = True
                         sess_opts.enable_mem_reuse = True
 
-                        providers = [
-                            ("CUDAExecutionProvider", cuda_opts),
-                            "CPUExecutionProvider",
-                        ]
+                        # TensorRT EP を最優先で試みる（エンジンキャッシュがあれば高速ロード）。
+                        # 初回はエンジンコンパイルに数分かかるが 2 回目以降はキャッシュから即ロード。
+                        _trt_cache = str(WEIGHTS_DIR / "trt_cache")
+                        os.makedirs(_trt_cache, exist_ok=True)
+                        _use_trt = (
+                            _TRT_AVAILABLE
+                            and "TensorrtExecutionProvider" in available_providers
+                            and os.environ.get("SS_DISABLE_TRT", "0") not in ("1", "true", "True")
+                        )
+                        if _use_trt:
+                            trt_opts: dict = {
+                                "device_id": self._cuda_device_index,
+                                "trt_fp16_enable": True,
+                                "trt_engine_cache_enable": True,
+                                "trt_engine_cache_path": _trt_cache,
+                                "trt_max_workspace_size": 2 * 1024 ** 3,
+                                # バッチ範囲: 1〜16、最適化点=8 (実用スループット sweet spot)
+                                "trt_profile_min_shapes": f"input:1x{FRAME_STACK}x{INPUT_H}x{INPUT_W}",
+                                "trt_profile_opt_shapes": f"input:8x{FRAME_STACK}x{INPUT_H}x{INPUT_W}",
+                                "trt_profile_max_shapes": f"input:16x{FRAME_STACK}x{INPUT_H}x{INPUT_W}",
+                            }
+                            providers = [
+                                ("TensorrtExecutionProvider", trt_opts),
+                                ("CUDAExecutionProvider", cuda_opts),
+                                "CPUExecutionProvider",
+                            ]
+                        else:
+                            providers = [
+                                ("CUDAExecutionProvider", cuda_opts),
+                                "CPUExecutionProvider",
+                            ]
                         # 新世代 GPU（Blackwell sm_120 等）で CUDA カーネルコンパイルが
                         # 長時間化・ハングすることがあるためタイムアウト付きで初期化する。
                         import threading
@@ -303,13 +334,14 @@ class TrackNetInference:
                                     self._max_batch = min(8, _vram_based_max_batch(self._cuda_device_index))
                                 self._infer_fn = lambda frames, _s=sess, _n=input_name: self._run_onnx(_s, _n, frames)
                                 self._batch_infer_fn = lambda batch, _s=sess, _n=input_name: self._run_onnx_batch(_s, _n, batch)
-                                self._backend_name = f"onnx_cuda:{self._cuda_device_index}"
+                                actual_eps = sess.get_providers()
+                                _ep_short = "trt" if any("Tensorrt" in e for e in actual_eps) else "cuda"
+                                self._backend_name = f"onnx_{_ep_short}:{self._cuda_device_index}"
                                 self._load_error = None
                                 logger.info(
-                                    "TrackNet loaded via ONNX CUDA (device=%d, model=%s, max_batch=%d, "
-                                    "gpu_mem_limit=%.1fGB)",
-                                    self._cuda_device_index, onnx_model_gpu.name, self._max_batch,
-                                    gpu_mem_limit / (1024 ** 3) if gpu_mem_limit > 0 else 0,
+                                    "TrackNet loaded via %s (device=%d, model=%s, max_batch=%d, eps=%s)",
+                                    self._backend_name, self._cuda_device_index,
+                                    onnx_model_gpu.name, self._max_batch, actual_eps,
                                 )
                                 return True
                     elif effective_backend in ("cuda", "onnx_cuda"):
