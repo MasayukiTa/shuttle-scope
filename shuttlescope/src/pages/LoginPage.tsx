@@ -25,7 +25,20 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
       body: JSON.stringify(body),
     })
     if (!res.ok) {
-      const text = await res.text()
+      let errorMessage = 'ログインに失敗しました'
+      try {
+        const data = await res.json()
+        const detail = typeof data?.detail === 'string' ? data.detail : ''
+        if (res.status === 401) {
+          errorMessage = 'IDもしくはパスワードが違います'
+        } else if (detail) {
+          errorMessage = detail
+        }
+      } catch {
+        if (res.status === 401) {
+          errorMessage = 'IDもしくはパスワードが違います'
+        }
+      }
       return {
         token: '',
         role: 'player',
@@ -33,7 +46,7 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
         playerId: null,
         teamName: null,
         displayName: null,
-        error: text,
+        error: errorMessage,
       }
     }
     const data = await res.json()
