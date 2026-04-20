@@ -85,11 +85,13 @@ export function PredictionPage() {
     : 'text-gray-400 hover:text-white hover:bg-gray-700'
 
   const ROLE_LABELS: Record<string, string> = {
+    admin: '管理者',
     analyst: 'アナリスト',
     coach: 'コーチ',
     player: '選手',
   }
   const ROLE_BADGE_CLASS: Record<string, string> = {
+    admin: 'bg-red-900/50 border-red-500 text-red-300',
     analyst: 'bg-blue-900/50 border-blue-500 text-blue-300',
     coach: 'bg-emerald-900/50 border-emerald-500 text-emerald-300',
     player: 'bg-purple-900/50 border-purple-500 text-purple-300',

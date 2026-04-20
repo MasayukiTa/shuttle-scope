@@ -121,6 +121,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
   const isLight = useIsLightMode()
   const { role } = useAuth()
   const isCoach = role === 'coach'
+  const hasAnalystAccess = role === 'analyst' || role === 'admin'
 
   const [showLayerB, setShowLayerB] = useState(!isCoach)
   const [showLayerC, setShowLayerC] = useState(!isCoach)
@@ -492,14 +493,14 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
             )}
 
             {/* Phase E: 反事実的ショット比較（アナリストのみ） */}
-            {role === 'analyst' && (
+            {hasAnalystAccess && (
               <div className="border-t border-gray-700 pt-3">
                 <CounterfactualShots playerId={playerId} />
               </div>
             )}
 
             {/* Phase 1 Rebuild: アナリスト深掘りパネル */}
-            {role === 'analyst' && (
+            {hasAnalystAccess && (
               <div className="border-t border-gray-700 pt-3">
                 <AnalystDepthPanel
                   playerId={playerId}

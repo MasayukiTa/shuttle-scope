@@ -186,7 +186,7 @@ export function useDiscrepancy(playerId: number | null, limit = 50) {
       return Array.isArray(data) ? data : []
     },
     // player には絶対に取得させない（ボタンも非表示）
-    enabled: !!playerId && (role === 'coach' || role === 'analyst'),
+    enabled: !!playerId && (role === 'coach' || role === 'analyst' || role === 'admin'),
     retry: 0,
   })
 }

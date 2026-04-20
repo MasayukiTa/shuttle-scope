@@ -228,7 +228,7 @@ function OverrideForm({
     <div className={`mt-2 p-2 rounded border ${border} ${cardInner} space-y-2`}>
       <div className="flex items-center justify-between">
         <p className={`text-[10px] font-semibold ${textHeading}`}>アナリスト判断 Override</p>
-        <span className={`text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>analyst のみ書込可</span>
+        <span className={`text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>admin / analyst のみ書込可</span>
       </div>
       <select
         className={`w-full text-xs rounded px-2 py-1 ${inputClass}`}
@@ -396,7 +396,7 @@ function EvaluationRow({
 export function PromotionStatusCard({ playerId, filters }: Props) {
   const { card, cardInner, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, border, loading, badge, isLight } = useCardTheme()
   const { role } = useAuth()
-  const isAnalyst = role === 'analyst'
+  const isAnalyst = role === 'analyst' || role === 'admin'
   const [showDemotion, setShowDemotion] = useState(false)
 
   const filterApiParams = {

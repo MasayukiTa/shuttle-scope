@@ -123,7 +123,7 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
   const [metric, setMetric] = useState<MetricKey>('ccs')
 
   // 二重防御: player には何も描画しない
-  if (role !== 'coach' && role !== 'analyst') return null
+  if (role !== 'coach' && role !== 'analyst' && role !== 'admin') return null
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'

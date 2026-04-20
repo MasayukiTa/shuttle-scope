@@ -2,7 +2,7 @@
  * LineupOptimizerPanel — Phase S3: ラインナップ最適化
  *
  * ロール別に異なる表示を行う:
- * - analyst: 勝率ランキング（データあり先順・詳細比較用）
+ * - analyst/admin: 勝率ランキング（データあり先順・詳細比較用）
  * - coach:   候補セット表示（順位なし・レンジ表示・意思決定を誘導しない）
  *            ガイドライン: coach_lineup_optimization_guidance.txt 参照
  */
@@ -43,7 +43,7 @@ interface LineupResult {
 
 interface Props {
   players: PlayerSummary[]
-  role: 'analyst' | 'coach' | 'player' | null
+  role: 'admin' | 'analyst' | 'coach' | 'player' | null
 }
 
 const LEVEL_OPTIONS = ['', 'IC', 'IS', 'SJL', '全日本', '国内', 'その他']
@@ -293,7 +293,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
   const [nameFilter, setNameFilter] = useState('')
   const [teamFilter, setTeamFilter] = useState('')
 
-  const isAnalyst = role === 'analyst'
+  const isAnalyst = role === 'analyst' || role === 'admin'
   const canRun = selectedIds.size >= 2
 
   // チームリスト（重複除去・ソート）
