@@ -25,16 +25,18 @@ def main() -> None:
         print("DirectML は Windows 専用です。このスクリプトは Windows でのみ動作します。")
         sys.exit(1)
 
-    print(f"DirectML venv を作成中: {VENV_DIR}")
-    subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
-
-    pip = VENV_DIR / "Scripts" / "pip.exe"
-    print("pip をアップグレード中...")
-    subprocess.run([str(pip), "install", "--upgrade", "pip"], check=True)
-    print(f"パッケージをインストール中: {PACKAGES}")
-    subprocess.run([str(pip), "install"] + PACKAGES, check=True)
+    if not VENV_DIR.exists():
+        print(f"DirectML venv を作成中: {VENV_DIR}")
+        subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
+    else:
+        print(f"既存の venv を使用: {VENV_DIR}")
 
     python = VENV_DIR / "Scripts" / "python.exe"
+    print("pip をアップグレード中...")
+    subprocess.run([str(python), "-m", "pip", "install", "--upgrade", "pip"], check=True)
+    print(f"パッケージをインストール中: {PACKAGES}")
+    subprocess.run([str(python), "-m", "pip", "install"] + PACKAGES, check=True)
+
     print("\n検証中...")
     result = subprocess.run(
         [str(python), "-c",

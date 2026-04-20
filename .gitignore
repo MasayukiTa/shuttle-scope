@@ -16,6 +16,7 @@ shuttlescope/backend/models/trt_cache/
 shuttlescope/out/
 shuttlescope/node_modules/
 shuttlescope/backend/.venv/
+shuttlescope/backend/.venv-directml/
 shuttlescope/**/__pycache__/
 shuttlescope/**/*.pyc
 
@@ -24,3 +25,9 @@ kernel.errors.txt
 
 # Local duplicate model copies
 shuttlescope/yolov8n.onnx
+
+# Local-only cluster helper scripts
+shuttlescope/check_nodes.py
+shuttlescope/fix_k10_ray.py
+shuttlescope/fix_k10_taskscheduler.py
+shuttlescope/run_k10_tasks.py

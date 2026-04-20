@@ -128,7 +128,10 @@ export function SettingsPage() {
     if (!canManagePlayers && (activeTab === 'players' || activeTab === 'review')) {
       setActiveTab('account')
     }
-  }, [canManagePlayers, activeTab])
+    if (role !== 'admin' && (activeTab === 'tracknet' || activeTab === 'sharing' || activeTab === 'cluster')) {
+      setActiveTab('data')
+    }
+  }, [canManagePlayers, role, activeTab])
 
   // 選手リスト: 検索・ソート（クライアントサイド、端末ごとに独立）
   const playerSearchRef = useRef<HTMLInputElement>(null)
@@ -821,10 +824,14 @@ export function SettingsPage() {
               { key: 'players' as const, label: '選手管理' },
               { key: 'review' as const, label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
             ] : []),
-            { key: 'tracknet' as const, label: t('tracknet.tab_label') },
-            { key: 'sharing' as const, label: t('sharing.tab_label') },
+            ...(role === 'admin' ? [
+              { key: 'tracknet' as const, label: t('tracknet.tab_label') },
+              { key: 'sharing' as const, label: t('sharing.tab_label') },
+            ] : []),
             { key: 'data' as const, label: 'データ管理' },
-            { key: 'cluster' as const, label: t('cluster.tab') },
+            ...(role === 'admin' ? [
+              { key: 'cluster' as const, label: t('cluster.tab') },
+            ] : []),
             { key: 'account' as const, label: 'アカウント設定' },
           ]).map((tab) => (
             <button
@@ -1969,8 +1976,8 @@ export function SettingsPage() {
         {activeTab === 'data' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-            {/* ── デバイス・同期設定 ────────────────────────── */}
-            <section className={`${card} rounded-lg p-5 space-y-4`}>
+            {/* ── デバイス・同期設定 (admin only) ────────────────────────── */}
+            {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-gray-400" />
                 <h2 className="text-base font-semibold">同期設定</h2>
@@ -2001,7 +2008,7 @@ export function SettingsPage() {
                   <p className="text-[11px] text-gray-500 mt-0.5">設定するとフォルダ内の .sspkg ファイルを直接インポートできます。</p>
                 </div>
               </div>
-            </section>
+            </section>}
 
             {/* ── エクスポート ──────────────────────────────── */}
             <section className={`${card} rounded-lg p-5 space-y-4`}>
@@ -2209,8 +2216,8 @@ export function SettingsPage() {
               )}
             </section>
 
-            {/* ── バックアップ ──────────────────────────────── */}
-            <section className={`${card} rounded-lg p-5 space-y-4`}>
+            {/* ── バックアップ (admin only) ──────────────────────────────── */}
+            {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-purple-400" />
                 <h2 className="text-base font-semibold">バックアップ</h2>
@@ -2247,7 +2254,7 @@ export function SettingsPage() {
                   </div>
                 </div>
               )}
-            </section>
+            </section>}
 
             {/* ── クラウドフォルダ候補 ─────────────────────── */}
             {cloudFolderConfigured && (
@@ -2387,8 +2394,8 @@ export function SettingsPage() {
               </div>
             </section>
 
-            {/* ── DB メンテナンス ──────────────────────────────────── */}
-            <section className={`${card} rounded-lg p-5 space-y-4`}>
+            {/* ── DB メンテナンス (admin only) ──────────────────────────────────── */}
+            {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-purple-400" />
                 <h2 className="text-base font-semibold">DB メンテナンス</h2>
@@ -2480,7 +2487,7 @@ export function SettingsPage() {
                   : <><Zap size={13} /> DB 最適化を実行</>
                 }
               </button>
-            </section>
+            </section>}
 
           </div>
         )}
@@ -2533,7 +2540,7 @@ export function SettingsPage() {
               <div className={`rounded-lg border p-4 space-y-2 ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-800'}`}>
                 <div className={`text-sm ${textSecondary}`}>Display name: <span className={textHeading}>{displayName ?? 'Unset'}</span></div>
                 <div className={`text-sm ${textSecondary}`}>Role: <span className={textHeading}>{role ? t(`auth.role.${role}`) : 'Not logged in'}</span></div>
-                <div className={`text-sm ${textSecondary}`}>User ID: <span className={textHeading}>{userId ?? '-'}</span></div>
+                <div className={`text-sm ${textSecondary}`}>User ID: <span className={textHeading}>{displayName ?? '-'}</span></div>
                 <div className={`text-sm ${textSecondary}`}>Team: <span className={textHeading}>{teamName ?? '-'}</span></div>
               </div>
               <div className="mt-4 flex flex-col gap-3">
@@ -2552,33 +2559,37 @@ export function SettingsPage() {
               </div>
             </section>
 
-            {/* アプリ再起動 */}
-            <section>
-              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>アプリ再起動</h2>
-              <p className={`text-xs ${textMuted} mb-3`}>
-                設定変更や不具合が発生した際にアプリを再起動します。未保存のアノテーションデータは失われます。
-              </p>
-              <button
-                onClick={() => {
-                  if (window.shuttlescope?.restartApp) {
-                    window.shuttlescope.restartApp()
-                  } else {
-                    window.location.reload()
-                  }
-                }}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded border transition-colors text-sm font-medium
-                  ${isLight
-                    ? 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50'
-                    : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500 hover:bg-gray-700'
-                  }`}
-              >
-                <RotateCcw size={15} />
-                アプリを再起動
-              </button>
-            </section>
+            {/* アプリ再起動 (admin only) */}
+            {role === 'admin' && (
+              <section>
+                <h2 className={`text-lg font-medium ${textHeading} mb-1`}>アプリ再起動</h2>
+                <p className={`text-xs ${textMuted} mb-3`}>
+                  設定変更や不具合が発生した際にアプリを再起動します。未保存のアノテーションデータは失われます。
+                </p>
+                <button
+                  onClick={() => {
+                    if (window.shuttlescope?.restartApp) {
+                      window.shuttlescope.restartApp()
+                    } else {
+                      window.location.reload()
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded border transition-colors text-sm font-medium
+                    ${isLight
+                      ? 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50'
+                      : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500 hover:bg-gray-700'
+                    }`}
+                >
+                  <RotateCcw size={15} />
+                  アプリを再起動
+                </button>
+              </section>
+            )}
 
-            {/* バックエンドコンソール */}
-            <BackendConsole isLight={isLight} textHeading={textHeading} textMuted={textMuted} />
+            {/* バックエンドコンソール (admin only) */}
+            {role === 'admin' && (
+              <BackendConsole isLight={isLight} textHeading={textHeading} textMuted={textMuted} />
+            )}
 
           </div>
         )}

@@ -2,6 +2,16 @@
 import sys
 import os
 
+# Windows の CP932 デフォルトエンコーディングを UTF-8 に強制する。
+# Electron の Node.js 側が data.toString('utf8') で受け取るため、
+# stdout/stderr ともに UTF-8 で出力しなければ日本語が文字化けする。
+if sys.platform == "win32":
+    import io as _io
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout = _io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "buffer"):
+        sys.stderr = _io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 # Windows マルチノード Ray クラスタを有効化
 os.environ.setdefault("RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER", "1")
 

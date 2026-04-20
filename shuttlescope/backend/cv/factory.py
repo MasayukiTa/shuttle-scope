@@ -79,22 +79,10 @@ def _resolve_tracknet(key: tuple) -> TrackNetInferencer:
         logger.info("[cv.factory] TrackNet: Mock を使用 (SS_CV_MOCK=1)")
         return MockTrackNet()
 
-    # CUDA 経路（SS_USE_GPU=1 かつ torch + CUDA 利用可能時）
-    if int(s.ss_use_gpu) == 1:
-        try:
-            from backend.cv.tracknet_cuda import CudaTrackNet
-
-            impl = CudaTrackNet(device_index=int(s.ss_cuda_device))
-            logger.info("[cv.factory] TrackNet: CUDA 実装を使用")
-            return impl
-        except (ImportError, RuntimeError) as exc:
-            logger.warning(
-                "[cv.factory] CUDA TrackNet 使用不可: %s — OpenVINO にフォールバック", exc
-            )
-
-    # ONNX/OpenVINO 経路（SS_USE_GPU=1 なら CUDA EP、SS_USE_GPU=0 なら ONNX CPU を選択）
+    # ONNX/OpenVINO 経路（SS_USE_GPU=1 なら CUDA/TRT EP、SS_USE_GPU=0 なら ONNX CPU を選択）
     # OpenVINOTrackNet は内部で TrackNetInference.load() を呼び、
-    # SS_USE_GPU の値に応じて CUDA EP / OpenVINO / ONNX CPU を自動選択する。
+    # SS_USE_GPU の値に応じて TRT EP / CUDA EP / OpenVINO / ONNX CPU を自動選択する。
+    # CudaTrackNet (Phase A プレースホルダー) は torch モデルが未搭載のため使用しない。
     try:
         from backend.cv.tracknet_openvino import OpenVINOTrackNet
 

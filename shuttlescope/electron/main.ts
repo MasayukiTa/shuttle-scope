@@ -122,22 +122,35 @@ function startPythonBackend(): ChildProcess {
       ENVIRONMENT: 'production',
       // Python の stdout/stderr バッファリングを無効化 → ログが即時流れる
       PYTHONUNBUFFERED: '1',
+      // Windows の CP932 デフォルトエンコーディングを UTF-8 に強制する
+      PYTHONUTF8: '1',
+      PYTHONIOENCODING: 'utf-8',
     },
     windowsHide: true,
   })
 
-  proc.stdout?.on('data', (data) => {
-    const text = data.toString().trim()
+  proc.stdout?.on('data', (data: Buffer) => {
+    const text = data.toString('utf8').trim()
     console.log('[Python]', text)
     for (const line of text.split('\n')) {
       if (line.trim()) pushBackendLog(line.trim())
     }
   })
-  proc.stderr?.on('data', (data) => {
-    const text = data.toString().trim()
-    console.error('[Python ERROR]', text)
+  proc.stderr?.on('data', (data: Buffer) => {
+    const text = data.toString('utf8').trim()
     for (const line of text.split('\n')) {
-      if (line.trim()) pushBackendLog('[ERR] ' + line.trim())
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      // Python ロギングの実際のレベルで分類する。
+      // WARNING / INFO / DEBUG は console.warn、ERROR / CRITICAL / Traceback は console.error。
+      const isError = /\b(ERROR|CRITICAL)\b|\bTraceback\b|\bException\b/.test(trimmed)
+      if (isError) {
+        console.error('[Python ERROR]', trimmed)
+        pushBackendLog('[ERR] ' + trimmed)
+      } else {
+        console.warn('[Python]', trimmed)
+        pushBackendLog(trimmed)
+      }
     }
   })
   proc.on('exit', (code) => {

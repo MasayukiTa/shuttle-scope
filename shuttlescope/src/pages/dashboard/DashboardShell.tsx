@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
@@ -203,9 +203,49 @@ export function DashboardShell() {
   const textPrimary = isLight ? 'text-gray-900' : 'text-white'
   const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
 
+  // スクロール上戻し検知 → オーバーレイ表示
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const lastScrollTop = useRef(0)
+  const [showOverlay, setShowOverlay] = useState(false)
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => {
+      const st = el.scrollTop
+      if (st < 80) {
+        setShowOverlay(false)
+      } else if (st < lastScrollTop.current - 40) {
+        setShowOverlay(true)
+      } else if (st > lastScrollTop.current + 5) {
+        setShowOverlay(false)
+      }
+      lastScrollTop.current = st
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
   return (
-    <div className={`flex flex-col h-full ${cardBg} ${textPrimary}`}>
-      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+    <div className={`relative flex flex-col h-full ${cardBg} ${textPrimary}`}>
+      {/* スクロール上戻しオーバーレイ */}
+      {showOverlay && selectedPlayerId && (
+        <div className={`absolute top-0 left-0 right-0 z-40 shadow-lg border-b ${borderColor} ${cardBg}`}>
+          <div className={`flex items-center gap-2 px-4 py-2 border-b ${borderColor}`}>
+            <User size={14} className={textMuted} />
+            <span className={`text-sm font-medium ${textPrimary}`}>
+              {sortedPlayers.find((p) => p.id === selectedPlayerId)?.name ?? '—'}
+            </span>
+            {role && (
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${ROLE_BADGE_CLASS[role] ?? 'bg-gray-700 border-gray-500 text-gray-300'}`}>
+                {ROLE_LABELS[role] ?? role}
+              </span>
+            )}
+          </div>
+          <DashboardTopNav />
+        </div>
+      )}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
         <div className={`px-6 pt-6 pb-4 border-b ${borderColor}`}>
           <div className="flex items-center gap-3 mb-4">
             <BarChart2 className="text-blue-400" size={20} />
