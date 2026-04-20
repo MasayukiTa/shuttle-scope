@@ -178,6 +178,10 @@ export function UserManagementPage() {
       setError('表示名を入力してください')
       return
     }
+    if (!form.username.trim()) {
+      setError('ログインIDを入力してください')
+      return
+    }
 
     setSaving(true)
     setError(null)
@@ -186,6 +190,7 @@ export function UserManagementPage() {
       if (editId != null) {
         const body: Record<string, unknown> = {
           display_name: form.display_name || undefined,
+          username: form.username.trim(),
           team_name: form.team_name || undefined,
           player_id: form.player_id ? parseInt(form.player_id, 10) : undefined,
         }
@@ -195,7 +200,7 @@ export function UserManagementPage() {
         const body: Record<string, unknown> = {
           role: form.role,
           display_name: form.display_name.trim(),
-          username: form.username.trim() || undefined,
+          username: form.username.trim(),
           team_name: form.team_name.trim() || undefined,
           player_id: form.player_id ? parseInt(form.player_id, 10) : undefined,
         }
@@ -281,20 +286,18 @@ export function UserManagementPage() {
                 />
               </div>
 
-              {editId == null ? (
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>username</label>
-                  <input
-                    value={form.username}
-                    onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-                    className={inputCls}
-                    placeholder="yamada"
-                  />
-                  <p className={`mt-1 text-xs ${textMuted}`}>
-                    未入力なら表示名ベースで作成されます。ログインの安定性を考えると設定推奨です。
-                  </p>
-                </div>
-              ) : null}
+              <div>
+                <label className={`block text-xs font-medium mb-1 ${textMuted}`}>ログインID *</label>
+                <input
+                  value={form.username}
+                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                  className={inputCls}
+                  placeholder="admin001"
+                />
+                <p className={`mt-1 text-xs ${textMuted}`}>
+                  6文字以上20文字未満。英数字、`-`、`_` が使えます。
+                </p>
+              </div>
 
               <SecretField
                 label={credentialLabel}
@@ -375,7 +378,7 @@ export function UserManagementPage() {
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>ロール</th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>表示名</th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>
-                    username / チーム / 選手
+                    ログインID / チーム / 選手
                   </th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>認証</th>
                   <th className="px-4 py-2.5" />
@@ -391,9 +394,9 @@ export function UserManagementPage() {
                     </td>
                     <td className={`px-4 py-2.5 font-medium ${textMain}`}>{u.display_name ?? '—'}</td>
                     <td className={`px-4 py-2.5 ${textMuted} text-xs hidden sm:table-cell`}>
-                      {u.role === 'coach' ? u.team_name || '—' : null}
-                      {u.role === 'player' ? u.player_name || '—' : null}
-                      {u.role === 'admin' || u.role === 'analyst' ? u.username || '—' : null}
+                      <div>{u.username || '—'}</div>
+                      {u.role === 'coach' ? <div>Team: {u.team_name || '—'}</div> : null}
+                      {u.role === 'player' ? <div>Player: {u.player_name || '—'}</div> : null}
                     </td>
                     <td className={`px-4 py-2.5 text-xs ${textMuted} hidden sm:table-cell`}>
                       {u.has_credential ? '設定済み' : '未設定'}

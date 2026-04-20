@@ -96,14 +96,14 @@ export function LoginPage({ onLogin }: Props) {
     fetchBootstrapStatus().then((status) => {
       setBootstrapStatus(status)
       if (status?.bootstrap_username) {
-        setIdentifier((current) => current || status.bootstrap_username || '')
+      setIdentifier((current) => current || status.bootstrap_username || '')
       }
     })
   }, [])
 
   const handleLogin = async () => {
     if (!identifier.trim()) {
-      setError('ID / username を入力してください')
+      setError('ログインIDを入力してください')
       return
     }
     if (!password) {
@@ -165,7 +165,7 @@ export function LoginPage({ onLogin }: Props) {
 
         <div className="space-y-4">
           <div>
-            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>ID / Username</label>
+            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>ログインID</label>
             <input
               type="text"
               value={identifier}
@@ -175,7 +175,7 @@ export function LoginPage({ onLogin }: Props) {
               autoComplete="username"
             />
             <p className={`mt-1 text-xs ${mutedCls}`}>
-              role は不要です。ユーザー ID / username / 表示名のいずれかでログインできます。
+              role は不要です。設定済みのログインIDで入ってください。
             </p>
           </div>
 

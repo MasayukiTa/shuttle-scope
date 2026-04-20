@@ -17,6 +17,9 @@ from backend.utils.jwt_utils import create_access_token
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+LOGIN_ID_MIN_LENGTH = 6
+LOGIN_ID_MAX_LENGTH = 19
+
 
 def _hash_password(password: str) -> str:
     return _bcrypt_lib.hashpw(password.encode("utf-8"), _bcrypt_lib.gensalt()).decode("utf-8")
@@ -34,6 +37,26 @@ def _hash_user_credential(password: Optional[str], pin: Optional[str]) -> Option
     if not secret:
         return None
     return _hash_password(secret)
+
+
+def _normalize_login_id(value: Optional[str]) -> str:
+    return (value or "").strip()
+
+
+def _validate_login_id(login_id: str) -> str:
+    normalized = _normalize_login_id(login_id)
+    if not (LOGIN_ID_MIN_LENGTH <= len(normalized) <= LOGIN_ID_MAX_LENGTH):
+        raise HTTPException(
+            status_code=422,
+            detail=f"login_id must be between {LOGIN_ID_MIN_LENGTH} and {LOGIN_ID_MAX_LENGTH} characters",
+        )
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+    if any(ch not in allowed for ch in normalized):
+        raise HTTPException(
+            status_code=422,
+            detail="login_id may contain only letters, numbers, hyphen, and underscore",
+        )
+    return normalized
 
 
 def _get_ip(request: Request) -> Optional[str]:
@@ -76,7 +99,7 @@ def _bootstrap_admin_status(db: Session) -> BootstrapStatusResponse:
     return BootstrapStatusResponse(
         has_admin=exists is not None,
         bootstrap_configured=configured,
-        bootstrap_username=(settings.BOOTSTRAP_ADMIN_USERNAME or "admin").strip() or "admin",
+        bootstrap_username=(settings.BOOTSTRAP_ADMIN_USERNAME or "admin001").strip() or "admin001",
         bootstrap_display_name=(settings.BOOTSTRAP_ADMIN_DISPLAY_NAME or "Admin").strip() or "Admin",
     )
 
@@ -128,17 +151,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         if not identifier or not secret:
             raise HTTPException(status_code=422, detail="identifier and password are required")
 
-        user = None
-        if identifier.isdigit():
-            user = db.get(User, int(identifier))
-
-        if user is None:
-            user = db.query(User).filter(User.username == identifier).first()
-
-        if user is None:
-            exact_display_name = db.query(User).filter(User.display_name == identifier).all()
-            if len(exact_display_name) == 1:
-                user = exact_display_name[0]
+        user = db.query(User).filter(User.username == identifier).first()
 
         if not user or not user.hashed_credential:
             log_access(db, "login_failed", details={"reason": "user_not_found", "identifier": identifier}, ip_addr=ip)
@@ -313,7 +326,7 @@ def _require_admin(request: Request) -> None:
 class UserCreate(BaseModel):
     role: str
     display_name: str
-    username: Optional[str] = None
+    username: str
     password: Optional[str] = None
     pin: Optional[str] = None
     player_id: Optional[int] = None
@@ -322,6 +335,7 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     display_name: Optional[str] = None
+    username: Optional[str] = None
     password: Optional[str] = None
     pin: Optional[str] = None
     team_name: Optional[str] = None
@@ -357,15 +371,15 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     allowed_roles = {"admin", "analyst", "coach", "player"}
     if body.role not in allowed_roles:
         raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
-    if body.username:
-        existing = db.query(User).filter(User.username == body.username).first()
-        if existing:
-            raise HTTPException(status_code=409, detail="username is already in use")
+    login_id = _validate_login_id(body.username)
+    existing = db.query(User).filter(User.username == login_id).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="login_id is already in use")
 
     hashed = _hash_user_credential(body.password, body.pin)
 
     user = User(
-        username=body.username or body.display_name,
+        username=login_id,
         role=body.role,
         display_name=body.display_name,
         team_name=body.team_name,
@@ -387,6 +401,12 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         raise HTTPException(status_code=404, detail="user not found")
     if body.display_name is not None:
         user.display_name = body.display_name
+    if body.username is not None:
+        login_id = _validate_login_id(body.username)
+        existing = db.query(User).filter(User.username == login_id, User.id != target_id).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="login_id is already in use")
+        user.username = login_id
     if body.team_name is not None:
         user.team_name = body.team_name
     if body.player_id is not None:
