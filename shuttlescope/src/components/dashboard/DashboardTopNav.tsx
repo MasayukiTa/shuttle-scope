@@ -19,7 +19,7 @@ export function DashboardTopNav() {
 
   return (
     <div className={clsx(
-      'sticky top-0 z-10 border-b safe-area-top',
+      'border-b safe-area-top',
       isLight ? 'border-gray-200 bg-white' : 'border-gray-700 bg-gray-900'
     )}>
       <div className="relative">
