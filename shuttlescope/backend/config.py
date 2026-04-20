@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     LAN_MODE: bool = False
     # ngrok 認証トークン（環境変数 NGROK_AUTHTOKEN から自動読み込み）
     NGROK_AUTHTOKEN: str = ""
+    # Cloudflare Tunnel (named tunnel) 設定
+    CLOUDFLARE_TUNNEL_NAME: str = "shuttlescope"
+    CLOUDFLARE_TUNNEL_HOSTNAME: str = "app.shuttle-scope.com"
+    # 実運用 config は repo 外を推奨。未設定時は tunnel.py 側で
+    # ~/.cloudflared/config.yml -> ~/Desktop/cloudflare-shuttle-scope/config.yml
+    # の順に探索する。
+    CLOUDFLARE_TUNNEL_CONFIG: str = ""
 
     # ── INFRA Phase A: GPU / クラスタ関連設定 ─────────────────────────
     # デフォルトはすべて無効。非 CUDA / 未インストール環境で既存動作を壊さない。
