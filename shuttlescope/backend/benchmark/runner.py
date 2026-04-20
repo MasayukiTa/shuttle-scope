@@ -11,12 +11,14 @@ CV 推論は必ず backend.cv.factory 経由で呼ぶ。
 from __future__ import annotations
 
 import gc
+import json
 import logging
 import os
 import subprocess
 import tempfile
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Dict, Generator, List
 
 import numpy as np
@@ -76,6 +78,64 @@ def _time_budget_sec() -> float:
 def _is_aggressive() -> bool:
     """SS_BENCH_AGGRESSIVE=1 で攻めモード（batch を大きめ固定にして VRAM/GPU util を可視化）。"""
     return os.environ.get("SS_BENCH_AGGRESSIVE", "0") not in ("", "0", "false", "False")
+
+
+def _find_directml_python() -> str | None:
+    """DirectML 専用 venv の Python インタプリタパスを返す。存在しない場合は None。
+
+    優先順:
+    1. 環境変数 SS_DIRECTML_PYTHON（テスト・CI 用オーバーライド）
+    2. backend/.venv-directml/Scripts/python.exe (Windows)
+    """
+    override = os.environ.get("SS_DIRECTML_PYTHON", "")
+    if override and os.path.isfile(override):
+        return override
+    candidate = Path(__file__).parent.parent / ".venv-directml" / "Scripts" / "python.exe"
+    if candidate.exists():
+        return str(candidate)
+    return None
+
+
+def _run_directml_worker(params: dict) -> dict:
+    """DirectML ワーカースクリプトをサブプロセスで実行し、JSON 結果を返す。
+
+    params を stdin の JSON として渡し、stdout の JSON を解析して返す。
+    エラー時は {"error": "..."} を返す。
+    """
+    python = _find_directml_python()
+    if python is None:
+        return {
+            "error": (
+                "DirectML venv が未セットアップです。"
+                "`python backend/benchmark/setup_directml_venv.py` を実行してください。"
+            )
+        }
+
+    worker = Path(__file__).parent / "workers" / "directml_worker.py"
+    if not worker.exists():
+        return {"error": f"ワーカースクリプトが見つかりません: {worker}"}
+
+    try:
+        proc = subprocess.run(
+            [python, str(worker)],
+            input=json.dumps(params, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        if proc.returncode != 0:
+            stderr = (proc.stderr or "").strip()[-600:]
+            return {"error": f"ワーカー終了コード {proc.returncode}: {stderr}"}
+        out = (proc.stdout or "").strip()
+        if not out:
+            return {"error": "ワーカーが空の出力を返しました"}
+        return json.loads(out)
+    except subprocess.TimeoutExpired:
+        return {"error": "DirectML ワーカータイムアウト（180s）"}
+    except json.JSONDecodeError as exc:
+        return {"error": f"ワーカー出力 JSON パース失敗: {exc}"}
+    except Exception as exc:
+        return {"error": f"ワーカー起動失敗: {exc}"}
 
 
 def _measure_budget(
@@ -384,7 +444,23 @@ class BenchmarkRunner:
         GPU は warmup を十分に入れた上で SS_BENCH_TIME_BUDGET_SEC（既定 5 秒）だけ
         連続推論してスループットを採る。攻めモードでは batch を 16 に拡張して
         VRAM/GPU util を可視化する（レイテンシ崖が出てもスループット確認目的）。
+        DirectML デバイスで DmlExecutionProvider が現在の env に存在しない場合は
+        backend/.venv-directml を使ったサブプロセスで計測する。
         """
+        # DirectML サブプロセス経路: onnxruntime-gpu と onnxruntime-directml は共存不可
+        _bench_backend = os.environ.get("SS_BENCH_BACKEND", "")
+        if _bench_backend == "directml":
+            try:
+                import onnxruntime as _ort
+                if "DmlExecutionProvider" not in _ort.get_available_providers():
+                    return self._bench_via_directml_subprocess(
+                        device, n_frames, job, progress_cb, target_name="tracknet",
+                    )
+            except ImportError:
+                return self._bench_via_directml_subprocess(
+                    device, n_frames, job, progress_cb, target_name="tracknet",
+                )
+
         from backend.cv import factory
         from backend.tracknet.inference import FRAME_STACK
 
@@ -494,7 +570,22 @@ class BenchmarkRunner:
 
         MediaPipe はビデオ入力前提のため動画ファイル経由。
         1 ファイルあたり _BATCH_SIZE フレームを計測し、最大 10 回繰り返す。
+        DirectML デバイスで DmlExecutionProvider が現在の env に存在しない場合は
+        backend/.venv-directml を使ったサブプロセスで計測する。
         """
+        _bench_backend = os.environ.get("SS_BENCH_BACKEND", "")
+        if _bench_backend == "directml":
+            try:
+                import onnxruntime as _ort
+                if "DmlExecutionProvider" not in _ort.get_available_providers():
+                    return self._bench_via_directml_subprocess(
+                        device, n_frames, job, progress_cb, target_name="pose",
+                    )
+            except ImportError:
+                return self._bench_via_directml_subprocess(
+                    device, n_frames, job, progress_cb, target_name="pose",
+                )
+
         from backend.cv import factory
         from backend.benchmark.synthetic import make_video_file
 
@@ -539,9 +630,10 @@ class BenchmarkRunner:
         GPU 経路では backend/models/yolov8n_fp16.onnx（dynamic batch）を優先し、
         batch=[1, 4, 16, 32, 64] の中から実デバイスで最速のスループットを採用する。
         CPU 経路は FP32 を batch=1 で計測する。
+        DirectML デバイスで DmlExecutionProvider が現在の env に存在しない場合は
+        backend/.venv-directml を使ったサブプロセスで計測する。
         """
         import os as _os
-        from pathlib import Path
 
         _MODELS_DIR = Path(__file__).parent.parent / "models"
         _YOLO_FP32 = _MODELS_DIR / "yolov8n.onnx"
@@ -583,8 +675,14 @@ class BenchmarkRunner:
         device_id = int(_os.environ.get("SS_CUDA_DEVICE", "0"))
         _trt_cache = str(Path(__file__).parent.parent / "models" / "trt_cache")
         _os.makedirs(_trt_cache, exist_ok=True)
+        use_trt = False  # CUDA Graph 判定用: TRT 経路に入った場合のみ True に更新
 
         if bench_backend == "directml":
+            if "DmlExecutionProvider" not in avail:
+                # onnxruntime-directml が現在の env にない → サブプロセスで計測
+                return self._bench_via_directml_subprocess(
+                    device, n_frames, job, progress_cb, target_name="yolo",
+                )
             providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
         elif bench_backend == "openvino":
             providers = (["OpenVINOExecutionProvider", "CPUExecutionProvider"]
@@ -633,11 +731,26 @@ class BenchmarkRunner:
                 providers = [("CUDAExecutionProvider", cuda_opts), "CPUExecutionProvider"]
         else:
             providers = ["CPUExecutionProvider"]
+            use_trt = False  # CPU 経路は TRT なし
 
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        so.enable_mem_pattern = True
         so.enable_mem_reuse = True
+        # CUDA Graph: バッチが固定（スイープ後に固定）されるため Python dispatch
+        # オーバーヘッドを除去できる。TRT EP は独自の実行グラフを持つため対象外。
+        # enable_mem_pattern は CUDA Graph 使用時に False が必須。
+        _use_cuda_graph = (
+            use_gpu
+            and not use_trt
+            and bench_backend not in ("directml", "openvino")
+            and "CUDAExecutionProvider" in avail
+        )
+        if _use_cuda_graph:
+            so.enable_mem_pattern = False
+            so.add_session_config_entry("session.use_cuda_graphs", "1")
+            logger.info("[bench/yolo] CUDA Graph 有効")
+        else:
+            so.enable_mem_pattern = True
 
         try:
             sess = ort.InferenceSession(str(target), sess_options=so, providers=providers)
@@ -876,6 +989,109 @@ class BenchmarkRunner:
         metrics = _compute_metrics(latencies)
         metrics["iters"] = len(latencies)
         metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+        return metrics
+
+    # ── DirectML サブプロセスベンチマーク ─────────────────────────────────────
+
+    def _bench_via_directml_subprocess(
+        self, device: ComputeDevice, n_frames: int,
+        job: "Any | None", progress_cb,
+        target_name: str,
+    ) -> Dict[str, Any]:
+        """DirectML 専用 venv をサブプロセスで呼び出してベンチマーク計測する。
+
+        onnxruntime-directml は onnxruntime-gpu と同一 venv に共存できないため
+        backend/.venv-directml 内の Python で directml_worker.py を実行する。
+        raw tensor 推論（ビデオデコード除外）でスループットを計測する。
+        """
+        _MODELS_DIR = Path(__file__).parent.parent / "models"
+        _WEIGHTS_DIR = Path(__file__).parent.parent / "tracknet" / "weights"
+
+        if target_name == "tracknet":
+            _fp16 = _WEIGHTS_DIR / "tracknet_fp16.onnx"
+            _fp32_cands = [_WEIGHTS_DIR / "tracknet.onnx", _WEIGHTS_DIR / "tracknet_v2.onnx"]
+            model = _fp16 if _fp16.exists() else next((p for p in _fp32_cands if p.exists()), None)
+            if model is None:
+                return {"error": "TrackNet ONNX モデルが見つかりません"}
+            # tracknet_fp16.onnx は keep_io_types=True → IO は float32
+            params: dict = {
+                "model_path": str(model),
+                "input_shape": [8, 3, 288, 512],
+                "in_dtype": "float32",
+                "batch_sweep": [1, 2, 4, 8, 16, 32],
+                "warmup": 3,
+                "min_iters": 5,
+                "budget_sec": _time_budget_sec(),
+                "max_iters": 300,
+            }
+
+        elif target_name == "yolo":
+            _yolo_fp16 = _MODELS_DIR / "yolov8n_fp16.onnx"
+            _yolo_fp32 = _MODELS_DIR / "yolov8n.onnx"
+            model = _yolo_fp16 if _yolo_fp16.exists() else (_yolo_fp32 if _yolo_fp32.exists() else None)
+            if model is None:
+                return {"error": "YOLO ONNX モデルが見つかりません"}
+            in_dtype = "float16" if model.suffix == ".onnx" and "fp16" in model.name else "float32"
+            params = {
+                "model_path": str(model),
+                "input_shape": [16, 3, 384, 640],
+                "in_dtype": in_dtype,
+                "batch_sweep": [1, 4, 16, 32] if not _is_aggressive() else [64],
+                "warmup": 3,
+                "min_iters": 5,
+                "budget_sec": _time_budget_sec(),
+                "max_iters": 500,
+            }
+
+        elif target_name == "pose":
+            _pose_fp16 = _MODELS_DIR / "yolov8n_pose_fp16.onnx"
+            _pose_fp32 = _MODELS_DIR / "yolov8n_pose.onnx"
+            model = _pose_fp16 if _pose_fp16.exists() else (_pose_fp32 if _pose_fp32.exists() else None)
+            if model is None:
+                return {"error": "Pose ONNX モデルが見つかりません"}
+            # yolov8n_pose_fp16.onnx: ultralytics half=True → IO は float32
+            params = {
+                "model_path": str(model),
+                "input_shape": [16, 3, 384, 640],
+                "in_dtype": "float32",
+                "batch_sweep": [1, 4, 8, 16] if not _is_aggressive() else [32],
+                "warmup": 3,
+                "min_iters": 5,
+                "budget_sec": _time_budget_sec(),
+                "max_iters": 300,
+            }
+
+        else:
+            return {"error": f"不明なターゲット: {target_name}"}
+
+        logger.info(
+            "[bench/directml] target=%s model=%s batch_sweep=%s budget=%.1fs",
+            target_name, params["model_path"], params.get("batch_sweep"), params["budget_sec"],
+        )
+
+        if job is not None and job.cancelled:
+            return {"error": "キャンセルされました"}
+
+        result = _run_directml_worker(params)
+        if "error" in result:
+            logger.warning("[bench/directml] ワーカーエラー: %s", result["error"])
+            return result
+
+        lats: list[float] = result.get("latencies", [])
+        if not lats:
+            return {"error": "計測結果なし"}
+
+        chosen_batch: int = result.get("chosen_batch", params["input_shape"][0])
+        metrics = _compute_metrics(lats)
+        if chosen_batch > 1 and metrics["avg_ms"] > 0:
+            metrics["fps"] = round(chosen_batch * 1000.0 / metrics["avg_ms"], 2)
+        metrics["batch"] = chosen_batch
+        metrics["iters"] = len(lats)
+        metrics["backend"] = "directml"
+        metrics["providers"] = result.get("providers", [])
+        metrics["note"] = "raw tensor inference"
+        if _is_aggressive():
+            metrics["aggressive"] = True
         return metrics
 
     # ── Ray ワーカーベンチマーク ──────────────────────────────────────────────
