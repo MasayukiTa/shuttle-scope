@@ -61,6 +61,7 @@ class LoginResponse(BaseModel):
     role: str
     user_id: int
     player_id: Optional[int] = None
+    team_name: Optional[str] = None
     display_name: Optional[str] = None
 
 
@@ -111,6 +112,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             role=user.role,
             user_id=user.id,
             player_id=user.player_id,
+            team_name=user.team_name,
             display_name=user.display_name or user.username,
         )
 
@@ -141,6 +143,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             role=user.role,
             user_id=user.id,
             player_id=user.player_id,
+            team_name=user.team_name,
             display_name=user.display_name or user.username,
         )
 
@@ -162,6 +165,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             role=user.role,
             user_id=user.id,
             player_id=user.player_id,
+            team_name=user.team_name,
             display_name=user.display_name or user.username,
         )
 
@@ -191,6 +195,7 @@ def me(request: Request, db: Session = Depends(get_db)):
         "role": ctx.role,
         "player_id": ctx.player_id,
         "user_id": user_id,
+        "team_name": ctx.team_name,
         "display_name": (user.display_name or user.username) if user else None,
     }
 

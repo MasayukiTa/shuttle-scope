@@ -3,16 +3,40 @@ import { UserRole } from '@/types'
 
 const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
-const STORAGE_KEY         = 'shuttlescope_token'
-const STORAGE_KEY_ROLE    = 'shuttlescope_role'
+const STORAGE_KEY = 'shuttlescope_token'
+const STORAGE_KEY_ROLE = 'shuttlescope_role'
 const STORAGE_KEY_PLAYER_ID = 'shuttlescope_player_id'
 const STORAGE_KEY_TEAM_NAME = 'shuttlescope_team_name'
 const STORAGE_KEY_USER_ID = 'shuttlescope_user_id'
 const STORAGE_KEY_DISPLAY_NAME = 'shuttlescope_display_name'
 
+function readStorage(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    sessionStorage.setItem(key, value)
+  } catch {
+    // ignore storage failures and keep in-memory state authoritative for this render
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    sessionStorage.removeItem(key)
+  } catch {
+    // ignore
+  }
+}
+
 function getStored<T>(key: string, parse?: (v: string) => T): T | null {
   try {
-    const v = localStorage.getItem(key)
+    const v = readStorage(key)
     if (!v) return null
     return parse ? parse(v) : (v as unknown as T)
   } catch {
@@ -65,32 +89,31 @@ export function useAuth() {
       setUserIdState(uid ? parseInt(uid, 10) : null)
       setDisplayNameState(getStored(STORAGE_KEY_DISPLAY_NAME))
     }
+
     window.addEventListener(AUTH_CHANGED_EVENT, handler)
-    window.addEventListener('storage', handler)
     return () => {
       window.removeEventListener(AUTH_CHANGED_EVENT, handler)
-      window.removeEventListener('storage', handler)
     }
   }, [])
 
   const setSession = useCallback((session: AuthSession) => {
-    localStorage.setItem(STORAGE_KEY, session.token)
-    localStorage.setItem(STORAGE_KEY_ROLE, session.role)
-    localStorage.setItem(STORAGE_KEY_USER_ID, String(session.userId))
+    writeStorage(STORAGE_KEY, session.token)
+    writeStorage(STORAGE_KEY_ROLE, session.role)
+    writeStorage(STORAGE_KEY_USER_ID, String(session.userId))
     if (session.playerId != null) {
-      localStorage.setItem(STORAGE_KEY_PLAYER_ID, String(session.playerId))
+      writeStorage(STORAGE_KEY_PLAYER_ID, String(session.playerId))
     } else {
-      localStorage.removeItem(STORAGE_KEY_PLAYER_ID)
+      removeStorage(STORAGE_KEY_PLAYER_ID)
     }
     if (session.teamName) {
-      localStorage.setItem(STORAGE_KEY_TEAM_NAME, session.teamName)
+      writeStorage(STORAGE_KEY_TEAM_NAME, session.teamName)
     } else {
-      localStorage.removeItem(STORAGE_KEY_TEAM_NAME)
+      removeStorage(STORAGE_KEY_TEAM_NAME)
     }
     if (session.displayName) {
-      localStorage.setItem(STORAGE_KEY_DISPLAY_NAME, session.displayName)
+      writeStorage(STORAGE_KEY_DISPLAY_NAME, session.displayName)
     } else {
-      localStorage.removeItem(STORAGE_KEY_DISPLAY_NAME)
+      removeStorage(STORAGE_KEY_DISPLAY_NAME)
     }
     setTokenState(session.token)
     setRoleState(session.role)
@@ -101,29 +124,13 @@ export function useAuth() {
     window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
   }, [])
 
-  // 旧 POC 互換: setRole は setSession に委譲
-  const setRole = useCallback((
-    newRole: UserRole,
-    newPlayerId?: number | null,
-    newTeamName?: string | null,
-  ) => {
-    setSession({
-      token: localStorage.getItem(STORAGE_KEY) || 'dev-no-token',
-      role: newRole,
-      userId: 0,
-      playerId: newPlayerId ?? null,
-      teamName: newTeamName ?? null,
-      displayName: null,
-    })
-  }, [setSession])
-
   const clearRole = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY)
-    localStorage.removeItem(STORAGE_KEY_ROLE)
-    localStorage.removeItem(STORAGE_KEY_PLAYER_ID)
-    localStorage.removeItem(STORAGE_KEY_TEAM_NAME)
-    localStorage.removeItem(STORAGE_KEY_USER_ID)
-    localStorage.removeItem(STORAGE_KEY_DISPLAY_NAME)
+    removeStorage(STORAGE_KEY)
+    removeStorage(STORAGE_KEY_ROLE)
+    removeStorage(STORAGE_KEY_PLAYER_ID)
+    removeStorage(STORAGE_KEY_TEAM_NAME)
+    removeStorage(STORAGE_KEY_USER_ID)
+    removeStorage(STORAGE_KEY_DISPLAY_NAME)
     setTokenState(null)
     setRoleState(null)
     setPlayerIdState(null)
@@ -136,14 +143,13 @@ export function useAuth() {
   const hasRole = useCallback(
     (allowedRoles: UserRole[]) => {
       if (!role) return false
-      // admin は全ロールの権限を持つ（player < coach < analyst <= admin）
       if (role === 'admin') return true
       return allowedRoles.includes(role)
     },
     [role]
   )
 
-  return { token, role, playerId, teamName, userId, displayName, setRole, setSession, clearRole, hasRole }
+  return { token, role, playerId, teamName, userId, displayName, setSession, clearRole, hasRole }
 }
 
 export type { UserRole }
