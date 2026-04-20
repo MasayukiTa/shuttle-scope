@@ -203,48 +203,46 @@ export function DashboardShell() {
 
   return (
     <div className={`flex flex-col h-full ${cardBg} ${textPrimary}`}>
-      {/* ── Header（常時表示） ── */}
-      <div className={`px-6 pt-6 pb-4 border-b ${borderColor} shrink-0`}>
-        <div className="flex items-center gap-3 mb-4">
-          <BarChart2 className="text-blue-400" size={20} />
-          <h1 className="text-xl font-semibold">{t('nav.dashboard_title', 'ダッシュボード')}</h1>
-          {role && (
-            <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${ROLE_BADGE_CLASS[role] ?? 'bg-gray-700 border-gray-500 text-gray-300'}`}>
-              {ROLE_LABELS[role] ?? role}
-            </span>
-          )}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+        <div className={`px-6 pt-6 pb-4 border-b ${borderColor}`}>
+          <div className="flex items-center gap-3 mb-4">
+            <BarChart2 className="text-blue-400" size={20} />
+            <h1 className="text-xl font-semibold">{t('nav.dashboard_title', 'ダッシュボード')}</h1>
+            {role && (
+              <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${ROLE_BADGE_CLASS[role] ?? 'bg-gray-700 border-gray-500 text-gray-300'}`}>
+                {ROLE_LABELS[role] ?? role}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <User size={16} className={`${textMuted} shrink-0`} />
+            <label className={`text-sm ${textMuted} shrink-0`}>選手：</label>
+            <SearchableSelect
+              options={sortedPlayers.map((p) => ({
+                value: p.id,
+                label: p.name,
+                searchText: p.team ?? '',
+                prefix: p.is_target ? '★' : undefined,
+                suffix: `${p.team ? `（${p.team}）` : ''} [${p.match_count ?? 0}試合]`,
+              }))}
+              value={selectedPlayerId}
+              onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
+              emptyLabel="— 選手を選択 —"
+              placeholder="選手名で検索..."
+              loading={loadingPlayers}
+              className="min-w-[280px]"
+            />
+          </div>
         </div>
 
-        {/* 選手セレクター */}
-        <div className="flex flex-wrap items-center gap-3">
-          <User size={16} className={`${textMuted} shrink-0`} />
-          <label className={`text-sm ${textMuted} shrink-0`}>選手：</label>
-          <SearchableSelect
-            options={sortedPlayers.map((p) => ({
-              value: p.id,
-              label: p.name,
-              searchText: p.team ?? '',
-              prefix: p.is_target ? '★' : undefined,
-              suffix: `${p.team ? `（${p.team}）` : ''} [${p.match_count ?? 0}試合]`,
-            }))}
-            value={selectedPlayerId}
-            onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
-            emptyLabel="— 選手を選択 —"
-            placeholder="選手名で検索..."
-            loading={loadingPlayers}
-            className="min-w-[280px]"
-          />
-        </div>
-      </div>
-
-      {/* ── Body（単一スクロール領域） ── */}
-      {!selectedPlayerId ? (
-        <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
-          選手を選択してください
-        </div>
+        {!selectedPlayerId ? (
+          <div className="flex min-h-[40vh] items-center justify-center text-gray-500 text-sm">
+            選手を選択してください
+          </div>
         ) : (
-          <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
-            <div className={`px-6 pt-4 ${selectedPlayerId ? 'pb-0' : 'pb-3'}`}>
+          <>
+            <div className="px-6 pt-4 pb-0">
               <div className="flex flex-wrap items-center justify-end gap-1.5">
                 <FileDown size={13} className={textMuted} />
                 {(role === 'analyst' || role === 'coach') && (
@@ -276,164 +274,161 @@ export function DashboardShell() {
               </div>
             </div>
 
-            {/* StatCards（スクロールで上に消える） */}
             <div className={`px-6 pt-3 pb-3 border-b ${borderColor}`}>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard icon={<Award size={18} />} label="試合数" value={descriptive?.total_matches} />
-              <StatCard icon={<Activity size={18} />} label="ラリー数" value={descriptive?.total_rallies} sampleSize={descriptive?.total_rallies} />
-              <StatCard
-                icon={<TrendingUp size={18} />}
-                label="勝率"
-                value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
-                sampleSize={descriptive?.total_rallies}
-              />
-              <StatCard
-                icon={<Target size={18} />}
-                label="平均ラリー長"
-                value={descriptive?.avg_rally_length !== undefined ? descriptive.avg_rally_length.toFixed(1) : undefined}
-                sampleSize={descriptive?.total_rallies}
-              />
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <StatCard icon={<Award size={18} />} label="試合数" value={descriptive?.total_matches} />
+                <StatCard icon={<Activity size={18} />} label="ラリー数" value={descriptive?.total_rallies} sampleSize={descriptive?.total_rallies} />
+                <StatCard
+                  icon={<TrendingUp size={18} />}
+                  label="勝率"
+                  value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
+                  sampleSize={descriptive?.total_rallies}
+                />
+                <StatCard
+                  icon={<Target size={18} />}
+                  label="平均ラリー長"
+                  value={descriptive?.avg_rally_length !== undefined ? descriptive.avg_rally_length.toFixed(1) : undefined}
+                  sampleSize={descriptive?.total_rallies}
+                />
+              </div>
             </div>
-          </div>
 
-          {/* フィルターパネル（スクロールで上に消える） */}
-          <div className={`px-6 py-2 border-b ${borderColor}`}>
-            <div className={`flex gap-2 flex-wrap items-center rounded-lg px-3 py-2 ${isLight ? 'bg-gray-100' : 'bg-gray-800/50'}`}>
-              <span className={`text-xs ${textMuted} shrink-0`}>{t('analysis.filter.result')}:</span>
-              <select
-                className={`border text-xs rounded px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
-                value={filterResult}
-                onChange={(e) => setFilterResult(e.target.value as 'all' | 'win' | 'loss')}
-              >
-                <option value="all">{t('analysis.filter.all')}</option>
-                <option value="win">{t('analysis.filter.win')}</option>
-                <option value="loss">{t('analysis.filter.loss')}</option>
-              </select>
-              <span className={`text-xs ${textMuted} shrink-0 ml-2`}>{t('analysis.filter.level')}:</span>
-              <select
-                className={`border text-xs rounded px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
-                value={filterLevel ?? ''}
-                onChange={(e) => setFilterLevel(e.target.value || null)}
-              >
-                <option value="">{t('analysis.filter.all_levels')}</option>
-                {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((lv) => (
-                  <option key={lv} value={lv}>{lv}</option>
-                ))}
-              </select>
-              <span className={`text-xs ${textMuted} shrink-0 ml-2`}>期間:</span>
-              <input
-                type="date"
-                className={`border text-xs rounded px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
-                value={filterDateFrom ?? ''}
-                onChange={(e) => setFilterDateFrom(e.target.value || null)}
-              />
-              <span className={`text-xs ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>〜</span>
-              <input
-                type="date"
-                className={`border text-xs rounded px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
-                value={filterDateTo ?? ''}
-                onChange={(e) => setFilterDateTo(e.target.value || null)}
-              />
-              <DateRangeSlider
-                from={filterDateFrom}
-                to={filterDateTo}
-                minDate={sliderMin}
-                maxDate={sliderMax}
-                densityDates={matchDates}
-                onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t) }}
-                isLight={isLight}
-              />
-              {(filterResult !== 'all' || filterLevel || filterDateFrom || filterDateTo) && (
-                <button
-                  className="text-xs text-blue-400 hover:text-blue-300 ml-1"
-                  onClick={() => {
-                    setFilterResult('all')
-                    setFilterLevel(null)
-                    setFilterDateFrom(null)
-                    setFilterDateTo(null)
-                  }}
+            <div className={`px-6 py-2 border-b ${borderColor}`}>
+              <div className={`flex gap-2 flex-wrap items-center rounded-lg px-3 py-2 ${isLight ? 'bg-gray-100' : 'bg-gray-800/50'}`}>
+                <span className={`text-xs ${textMuted} shrink-0`}>{t('analysis.filter.result')}:</span>
+                <select
+                  className={`border text-xs rounded px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                  value={filterResult}
+                  onChange={(e) => setFilterResult(e.target.value as 'all' | 'win' | 'loss')}
                 >
-                  リセット
-                </button>
-              )}
+                  <option value="all">{t('analysis.filter.all')}</option>
+                  <option value="win">{t('analysis.filter.win')}</option>
+                  <option value="loss">{t('analysis.filter.loss')}</option>
+                </select>
+                <span className={`text-xs ${textMuted} shrink-0 ml-2`}>{t('analysis.filter.level')}:</span>
+                <select
+                  className={`border text-xs rounded px-2 py-1 focus:outline-none ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                  value={filterLevel ?? ''}
+                  onChange={(e) => setFilterLevel(e.target.value || null)}
+                >
+                  <option value="">{t('analysis.filter.all_levels')}</option>
+                  {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((lv) => (
+                    <option key={lv} value={lv}>{lv}</option>
+                  ))}
+                </select>
+                <span className={`text-xs ${textMuted} shrink-0 ml-2`}>期間:</span>
+                <input
+                  type="date"
+                  className={`border text-xs rounded px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                  value={filterDateFrom ?? ''}
+                  onChange={(e) => setFilterDateFrom(e.target.value || null)}
+                />
+                <span className={`text-xs ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>〜</span>
+                <input
+                  type="date"
+                  className={`border text-xs rounded px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
+                  value={filterDateTo ?? ''}
+                  onChange={(e) => setFilterDateTo(e.target.value || null)}
+                />
+                <DateRangeSlider
+                  from={filterDateFrom}
+                  to={filterDateTo}
+                  minDate={sliderMin}
+                  maxDate={sliderMax}
+                  densityDates={matchDates}
+                  onChange={(f, t) => { setFilterDateFrom(f); setFilterDateTo(t) }}
+                  isLight={isLight}
+                />
+                {(filterResult !== 'all' || filterLevel || filterDateFrom || filterDateTo) && (
+                  <button
+                    className="text-xs text-blue-400 hover:text-blue-300 ml-1"
+                    onClick={() => {
+                      setFilterResult('all')
+                      setFilterLevel(null)
+                      setFilterDateFrom(null)
+                      setFilterDateTo(null)
+                    }}
+                  >
+                    リセット
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* サブページナビ（sticky：スクロールしても固定） */}
-          <DashboardTopNav />
+            <DashboardTopNav />
 
-          {/* サブページコンテンツ */}
-          <div className="px-6 pt-1 pb-8">
-            <ErrorBoundary>
-              <Routes>
-                <Route path="/" element={<Navigate to="overview" replace />} />
-                <Route
-                  path="overview"
-                  element={
-                    <DashboardOverviewPage
-                      playerId={selectedPlayerId}
-                      filters={filters}
-                      filterApiParams={filterApiParams}
-                      matches={matches}
-                      loadingMatches={loadingMatches}
-                    />
-                  }
-                />
-                <Route
-                  path="live"
-                  element={
-                    <DashboardLivePage
-                      playerId={selectedPlayerId}
-                      filters={filters}
-                      matches={matches}
-                    />
-                  }
-                />
-                <Route
-                  path="review"
-                  element={
-                    <DashboardReviewPage
-                      playerId={selectedPlayerId}
-                      filters={filters}
-                      matches={matches}
-                    />
-                  }
-                />
-                <Route
-                  path="growth"
-                  element={
-                    <DashboardGrowthPage
-                      playerId={selectedPlayerId}
-                      filters={filters}
-                      sortedPlayers={sortedPlayers}
-                    />
-                  }
-                />
-                <Route
-                  path="advanced"
-                  element={
-                    <DashboardAdvancedPage
-                      playerId={selectedPlayerId}
-                      filters={filters}
-                      matches={matches}
-                      sortedPlayers={sortedPlayers}
-                    />
-                  }
-                />
-                <Route
-                  path="research"
-                  element={
-                    <DashboardResearchPage
-                      playerId={selectedPlayerId}
-                      filters={filters}
-                    />
-                  }
-                />
-              </Routes>
-            </ErrorBoundary>
-          </div>
-        </div>
-      )}
+            <div className="px-6 pt-1 pb-8">
+              <ErrorBoundary>
+                <Routes>
+                  <Route path="/" element={<Navigate to="overview" replace />} />
+                  <Route
+                    path="overview"
+                    element={
+                      <DashboardOverviewPage
+                        playerId={selectedPlayerId}
+                        filters={filters}
+                        filterApiParams={filterApiParams}
+                        matches={matches}
+                        loadingMatches={loadingMatches}
+                      />
+                    }
+                  />
+                  <Route
+                    path="live"
+                    element={
+                      <DashboardLivePage
+                        playerId={selectedPlayerId}
+                        filters={filters}
+                        matches={matches}
+                      />
+                    }
+                  />
+                  <Route
+                    path="review"
+                    element={
+                      <DashboardReviewPage
+                        playerId={selectedPlayerId}
+                        filters={filters}
+                        matches={matches}
+                      />
+                    }
+                  />
+                  <Route
+                    path="growth"
+                    element={
+                      <DashboardGrowthPage
+                        playerId={selectedPlayerId}
+                        filters={filters}
+                        sortedPlayers={sortedPlayers}
+                      />
+                    }
+                  />
+                  <Route
+                    path="advanced"
+                    element={
+                      <DashboardAdvancedPage
+                        playerId={selectedPlayerId}
+                        filters={filters}
+                        matches={matches}
+                        sortedPlayers={sortedPlayers}
+                      />
+                    }
+                  />
+                  <Route
+                    path="research"
+                    element={
+                      <DashboardResearchPage
+                        playerId={selectedPlayerId}
+                        filters={filters}
+                      />
+                    }
+                  />
+                </Routes>
+              </ErrorBoundary>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
