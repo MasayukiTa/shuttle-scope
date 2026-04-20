@@ -460,7 +460,7 @@ export function ClusterSettingsPanel() {
               </p>
               <p className={`text-xs ${textMuted}`}>
                 {rayConnecting ? '接続確認中...' :
-                 rayRunning    ? `稼働中 — ${status?.ray.nodes.length ?? 0} ノード接続` :
+                 rayRunning    ? `稼働中 — ${status?.ray.nodes.filter(n => n.alive).length ?? 0} ノード接続` :
                                  '停止中'}
               </p>
             </div>

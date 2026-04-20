@@ -383,6 +383,13 @@ def _detect_hardware() -> dict:
         except Exception:
             pass
 
+    # タスクが実際に動いたノードのIDを記録（スケジューリング検証用）
+    try:
+        import ray as _ray
+        result["_node_id"] = _ray.get_runtime_context().get_node_id()
+    except Exception:
+        result["_node_id"] = ""
+
     return result
 
 
@@ -535,22 +542,32 @@ def dispatch_hardware_detect(worker_ip: str) -> Dict[str, Any]:
                 return {"error": f"Alive なノードがありません。K10 で join コマンドを実行してください"}
             return {"error": f"ワーカーノード {worker_ip} が見つかりません。現在のノード: {', '.join(alive_ips)}"}
 
-        # 特定ノードで実行するために NodeAffinitySchedulingStrategy を使用
-        node_id = target_node.get("NodeID", "")
-        try:
-            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # type: ignore
-            strategy = NodeAffinitySchedulingStrategy(node_id=node_id, soft=False)
-            remote_fn = ray.remote(
-                num_cpus=0.1,
-                scheduling_strategy=strategy,
-            )(_detect_hardware)
-        except ImportError:
-            # Ray 古バージョン: resources でノード指定（フォールバック）
-            remote_fn = ray.remote(_detect_hardware)
+        # Ray は各ノードに node:<IP> カスタムリソースを自動登録する。
+        # NodeAffinitySchedulingStrategy は Windows Ray では動作しないため、
+        # このカスタムリソースを使って特定ノードに確実にスケジュールする。
+        node_resource = f"node:{worker_ip}"
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                remote_fn = ray.remote(
+                    num_cpus=0,
+                    resources={node_resource: 0.001},
+                )(_detect_hardware)
+                future = remote_fn.remote()
+                result = ray.get(future, timeout=30)
+                result.pop("_node_id", None)
+                return result
 
-        future = remote_fn.remote()
-        result = ray.get(future, timeout=30)
-        return result
+            except Exception as exc:
+                last_exc = exc
+                err_str = str(exc)
+                logger.warning("dispatch_hardware_detect attempt=%d: %s", attempt + 1, err_str[:200])
+                if attempt < 2:
+                    import time as _t
+                    _t.sleep(2)
+                    continue
+                raise
+        return {"error": str(last_exc)}
 
     except Exception as exc:
         logger.warning("dispatch_hardware_detect 失敗: %s", exc)

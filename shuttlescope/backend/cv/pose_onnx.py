@@ -293,12 +293,18 @@ class OnnxPose:
                 except Exception as exc2:
                     logger.warning("OnnxPose CUDA EP 再試行失敗: %s — CPU にフォールバック", exc2)
 
-        # CPU fallback
-        self._sess = ort.InferenceSession(
-            str(self._model_path), sess_options=so, providers=["CPUExecutionProvider"]
+        # CPU fallback: OpenVINO EP が利用可能なら優先（AMD/Intel 問わず AVX 最適化が効く）
+        _avail = ort.get_available_providers()
+        _cpu_providers = (
+            ["OpenVINOExecutionProvider", "CPUExecutionProvider"]
+            if "OpenVINOExecutionProvider" in _avail
+            else ["CPUExecutionProvider"]
         )
-        self._backend = "cpu"
-        logger.info("OnnxPose loaded via CPU EP (model=%s)", self._model_path.name)
+        self._sess = ort.InferenceSession(
+            str(self._model_path), sess_options=so, providers=_cpu_providers
+        )
+        self._backend = "openvino_cpu" if "OpenVINOExecutionProvider" in _avail else "cpu"
+        logger.info("OnnxPose loaded via %s EP (model=%s)", self._backend.upper(), self._model_path.name)
 
     def backend_name(self) -> str:
         return self._backend

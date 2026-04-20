@@ -731,11 +731,31 @@ class BenchmarkRunner:
                 providers = [("CUDAExecutionProvider", cuda_opts), "CPUExecutionProvider"]
         else:
             providers = ["CPUExecutionProvider"]
-            use_trt = False  # CPU 経路は TRT なし
+            use_trt = False
 
+        # ── CPU 経路: OpenVINO ネイティブ API で推論（onnxruntime-gpu と競合しないため EP 経由は不可）
+        _ov_compiled = None
+        _ov_input_name: str = ""
+        if not use_gpu:
+            try:
+                import openvino as _ov
+                _ov_core = _ov.Core()
+                _ov_model = _ov_core.read_model(str(target))
+                _ov_compiled = _ov_core.compile_model(
+                    _ov_model, "CPU",
+                    {"PERFORMANCE_HINT": "LATENCY", "INFERENCE_NUM_THREADS": str(_os.cpu_count() or 4)},
+                )
+                _ov_input_name = next(iter(_ov_compiled.input(0).get_names()))
+                logger.info("[bench/yolo] OpenVINO ネイティブ CPU 経路を使用 (model=%s)", target.name)
+            except Exception as _ov_e:
+                logger.warning("[bench/yolo] OpenVINO ネイティブ初期化失敗、ORT CPU にフォールバック: %s", _ov_e)
+                _ov_compiled = None
+
+        import os as _os2
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         so.enable_mem_reuse = True
+        so.intra_op_num_threads = int(_os2.cpu_count() or 4)
         # CUDA Graph: バッチが固定（スイープ後に固定）されるため Python dispatch
         # オーバーヘッドを除去できる。TRT EP は独自の実行グラフを持つため対象外。
         # enable_mem_pattern は CUDA Graph 使用時に False が必須。
@@ -752,6 +772,34 @@ class BenchmarkRunner:
         else:
             so.enable_mem_pattern = True
 
+        # ── OpenVINO ネイティブ CPU 経路 ────────────────────────────────────
+        if _ov_compiled is not None:
+            x_ov = np.zeros((1, 3, 384, 640), dtype=np.float32)
+            t_wall0 = time.perf_counter()
+            try:
+                lats = _measure_budget(
+                    lambda: _ov_compiled({_ov_input_name: x_ov}),
+                    warmup=3,
+                    min_iters=5,
+                    max_iters=500,
+                    cancelled_fn=(lambda: job is not None and job.cancelled),
+                    progress_cb=(lambda f: progress_cb(round(f * n_frames)) if progress_cb else None),
+                )
+            except Exception as exc:
+                return {"error": f"OpenVINO 推論失敗: {exc}"}
+            if not lats:
+                return {"error": "キャンセルされました"}
+            metrics = _compute_metrics(lats)
+            if metrics["avg_ms"] > 0:
+                metrics["fps"] = round(1000.0 / metrics["avg_ms"], 2)
+            metrics["batch"] = 1
+            metrics["iters"] = len(lats)
+            metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+            metrics["model"] = target.name
+            metrics["providers"] = ["OpenVINO/CPU"]
+            return metrics
+
+        # ── ORT 経路（GPU / OpenVINO 非対応環境）────────────────────────────
         try:
             sess = ort.InferenceSession(str(target), sess_options=so, providers=providers)
         except Exception as exc:
@@ -765,10 +813,8 @@ class BenchmarkRunner:
         # 動的バッチ対応か判定（shape に 'batch' 等の文字列があれば可変）
         dyn_batch = not isinstance(input_meta.shape[0], int)
         if _is_aggressive() and dyn_batch and use_gpu:
-            # 攻めモード: 常に batch=64 固定で VRAM/GPU util を可視化
             candidates = [64]
         elif dyn_batch and use_gpu:
-            # 通常モード: 短いスイープで per-sample 最速の batch を選ぶ
             candidates = [1, 4, 16, 32]
         else:
             candidates = [1]
@@ -803,7 +849,7 @@ class BenchmarkRunner:
         else:
             chosen = candidates[0]
 
-        # ── 時間予算ベースで本計測（GPU/VRAM を十分可視化できる長さ）
+        # ── 時間予算ベースで本計測
         x = np.zeros((chosen, 3, 384, 640), dtype=in_dtype)
         t_wall0 = time.perf_counter()
         try:
