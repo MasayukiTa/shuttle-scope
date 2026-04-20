@@ -463,12 +463,17 @@ def dispatch_benchmark(fn_name: str, **kwargs) -> Dict[str, Any]:
         if not worker_nodes:
             return {"error": "Alive なノードが見つかりません"}
 
-        remote_fn = ray.remote(fn)
-
         futures = {}
         for node in worker_nodes:
             node_id = node.get("NodeID", "unknown")
             node_ip = node.get("NodeManagerAddress", "unknown")
+            # node:<IP> カスタムリソースを使って特定ノードに確実にスケジュールする
+            # (dispatch_hardware_detect と同じパターン)
+            node_resource = f"node:{node_ip}"
+            remote_fn = ray.remote(
+                num_cpus=0,
+                resources={node_resource: 0.001},
+            )(fn)
             future = remote_fn.remote(**kwargs)
             futures[f"ray_{node_ip}_{node_id[:8]}"] = future
 
