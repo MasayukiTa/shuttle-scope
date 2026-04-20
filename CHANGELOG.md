@@ -14,6 +14,64 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-20
+
+### CI Stabilization and Benchmark Test Reliability
+
+- Fixed CI installation failures by removing the assumption that `onnxruntime-gpu` is available in the base backend requirements on generic GitHub Actions runners.
+- Reframed GPU ONNX Runtime as an environment-specific add-on, installed through machine setup scripts or targeted prep rather than forced into every CI or worker environment.
+- Fixed benchmark test regressions so explicit mock mode is now respected during test execution instead of being silently disabled inside the runner.
+- Aligned pipeline mock loading with the benchmark and smoke-test path, which removed false failures caused by real `ffmpeg` / runtime expectations in CI.
+
+### Validation
+
+- Verified the CI repair with a green GitHub Actions run on both `ubuntu-latest` and `windows-latest`.
+- Re-ran local backend verification after the fixes:
+  - backend tests: `624 passed, 4 skipped`
+  - frontend tests: `84 passed`
+  - production build: `npm run build` successful
+
+### Detailed Progress
+
+- Removed mandatory `onnxruntime-gpu` from generic backend dependency install flow.
+- Updated benchmark runner behavior around tiny latency metrics and unavailable non-CPU devices.
+- Preserved explicit `SS_CV_MOCK=1` behavior in benchmark execution.
+- Updated video pipeline mock resolution so real mock implementations are used when available.
+
+## 2026-04-19
+
+### Cluster Routing and Remote Task Expansion
+
+- Added Ray remote task support for distributed inference and analysis execution so GPU-heavy and CPU-heavy stages can now be routed more intentionally across machines.
+- Expanded cluster bootstrap and topology handling so ShuttleScope can manage primary / worker behavior, remote task routing, and worker visibility with less manual editing.
+- Strengthened the cluster settings surface so operators can inspect worker status, choose routing preferences, and tune load limits from the app rather than relying only on scripts.
+
+### Benchmarking and Device Selection
+
+- Expanded benchmark device detection across CPU, GPU, OpenVINO-capable paths, and Ray-aware environments.
+- Added richer benchmark runner behavior including cancellation, backend overrides, YOLO as a benchmark target, and result handling better suited to mixed-device experiments.
+- Raised the cluster inference concurrency limit and tuned benchmark / inference flow so experimentation on stronger local hardware is less artificially constrained.
+
+### Worker Setup and Windows Operations
+
+- Added `requirements_worker.txt` and `scripts/setup_k10_worker.ps1` so a second Windows machine can be prepared as a Ray worker with a narrower dependency surface than the full primary machine.
+- Added and extended `scripts/fix_ray_firewall.ps1` to reduce the amount of manual Windows networking work needed to get distributed execution unstuck.
+- Improved cluster worker setup details in `cluster.config.yaml`, backend bootstrap, and the Settings UI so practical worker onboarding is closer to a repeatable workflow.
+
+### Model and Runtime Readiness
+
+- Added a checked-in `backend/models/yolov8n.onnx` baseline asset so current YOLO-oriented flows have a default ONNX model available in-repo.
+- Improved TrackNet inference fallback and backend selection behavior so OpenVINO / CPU / mock routes behave more predictably in mixed environments.
+
+### Detailed Progress
+
+- Added `backend/cluster/remote_tasks.py` and expanded cluster bootstrap / routing logic.
+- Improved benchmark runner controls, target selection, backend override behavior, and cancellation support.
+- Added YOLO benchmark target and corresponding frontend selector support.
+- Added worker-specific requirements and a K10 worker setup script.
+- Extended `ClusterSettingsPanel`, `SettingsPage`, and related i18n for cluster operations.
+- Added `yolov8n.onnx` and refined TrackNet / benchmark integration behavior.
+
 ## 2026-04-18
 
 ### Role-Aware Local Authentication

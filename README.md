@@ -24,6 +24,8 @@ If someone opens ShuttleScope today, the parts they can realistically expect to 
 - use local video, second-screen playback, and court calibration support
 - capture desktop video regions, define ROI, and run ROI-aware CV batch analysis on prepared environments
 - test CV-assisted annotation flows, candidate review, and TrackNet / YOLO readiness on prepared environments
+- benchmark CPU / GPU / OpenVINO / Ray-capable environments from Settings and compare available inference targets
+- configure Ray / cluster routing from Settings and inspect worker availability, load limits, and network health
 - share sessions on nearby devices over LAN with password-protected join flow
 
 The parts that still need more real-world proof are:
@@ -120,12 +122,15 @@ These areas are usable for internal exploration, but they are still a step behin
 - ROI-aware TrackNet / YOLO batch processing
 - CV resume / diff workflow foundation
 - TrackNet and YOLO readiness checks
+- GPU device selection and setup checks in Settings
 - TrackNet shuttle-track persistence
 - YOLO player-position artifact flow
 - CV assist candidate flow, candidate badges, and review queue foundation
 - player / shuttle overlay groundwork in the annotator
 - realtime YOLO overlay and player-tracking foundation
-- benchmark and doctor scripts for CV environment validation
+- benchmark jobs, device probing, and doctor scripts for CV environment validation
+- YOLO benchmark target and backend override controls
+- Ray / worker-aware benchmark routing for cluster environments
 
 These areas are useful for development and internal testing, but CV quality still depends heavily on real-video validation.
 
@@ -145,6 +150,15 @@ These areas are useful for development and internal testing, but CV quality stil
 - tunnel-provider selection and remote health status groundwork
 
 Remote and browser-based video workflows exist, but they should still be treated as experimental compared with the core local workflow.
+
+### Cluster and Distributed Processing
+
+- two-node cluster foundation for a primary machine plus worker machine
+- Ray-aware task routing for TrackNet, pose, clip extraction, and analysis stages
+- Settings-based cluster management with interface selection, worker list, ping tests, and load thresholds
+- worker bootstrap support for K10-style CPU / iGPU nodes
+- firewall / routing support scripts for Windows cluster deployment
+- graceful fallback to local execution when Ray or worker capabilities are unavailable
 
 ## Main Screens
 
@@ -258,6 +272,22 @@ Useful variants:
 .\backend\.venv\Scripts\python -m backend.tools.setup_doctor --strict
 ```
 
+### Worker / Cluster Setup
+
+If you are preparing a second Windows machine as a Ray worker:
+
+```powershell
+cd shuttlescope
+.\scripts\setup_k10_worker.ps1
+```
+
+Related files:
+
+- `shuttlescope\requirements_worker.txt`
+- `shuttlescope\cluster.config.yaml`
+- `shuttlescope\scripts\cluster\start_primary.bat`
+- `shuttlescope\scripts\fix_ray_firewall.ps1`
+
 The doctor reports:
 
 - missing Python / npm tools
@@ -319,10 +349,11 @@ The default backend URL is `http://127.0.0.1:8765`.
 ## TrackNet / YOLO Notes
 
 - TrackNet needs weights and runtime support
-- YOLO needs `ultralytics` or a local ONNX/PT model
+- YOLO can run through a local ONNX / PT model and the repository already includes a checked-in `yolov8n.onnx` baseline asset for current flows
 - the bootstrap and doctor commands above are the quickest way to check readiness on a new device
 - current CV support should be read as assistive and development-stage, not fully automatic production annotation
 - real match videos are still the main requirement for confidence tuning, threshold adjustment, and practical validation
+- base backend requirements are intentionally CI-safe; GPU-specific runtime pieces should be added through setup scripts or targeted machine prep rather than assumed in every environment
 
 ## Tests
 
@@ -355,10 +386,17 @@ GitHub Actions workflows are included for:
 - desktop package smoke
 - TrackNet smoke
 
+Recent CI hardening:
+
+- base backend install no longer assumes `onnxruntime-gpu` in generic CI environments
+- benchmark tests now respect explicit mock mode and avoid spurious `ffmpeg`-driven failures
+- backend pipeline mock loading is aligned with the benchmark / smoke test path
+
 ## Local Data
 
-- the current database is SQLite
-- the default database file is `shuttlescope/shuttlescope.db`
+- current development configuration points `DATABASE_URL` to local PostgreSQL by default
+- SQLite is still available as a fallback / legacy local mode for some setups and older data
+- `shuttlescope/.env.development` is the practical source of truth for the active local DB target
 - `private_docs/` is ignored
 - `shuttlescope/docs/validation/` is committed and used as implementation / verification history
 - local DBs, DB backups, videos, CV weights, and generated artifacts are not committed
@@ -373,6 +411,7 @@ Its strongest areas today are:
 - badminton-specific analysis
 - local setup / bootstrap / doctor support
 - local video and ROI-based CV batch workflow
+- cluster / benchmark groundwork for multi-machine inference experiments
 
 It is weaker, or still more conditional, in:
 
