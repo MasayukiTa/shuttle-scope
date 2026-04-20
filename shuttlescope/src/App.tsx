@@ -74,7 +74,9 @@ function Sidebar() {
     { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
     { to: '/prediction', label: t('nav.prediction'), icon: TrendingUp },
     { to: '/expert-labeler', label: t('nav.expert'), icon: ClipboardCheck },
-    ...(role === 'admin' ? [{ to: '/users', label: t('nav.users'), icon: Users }] : []),
+    ...(role === 'admin'
+      ? [{ to: '/users', label: t('nav.users'), shortLabel: 'ユーザ', icon: Users }]
+      : []),
     { to: '/settings', label: t('nav.settings'), icon: Settings },
   ]
 
@@ -95,7 +97,7 @@ function Sidebar() {
     <>
       <div className={clsx('hidden md:flex w-16 flex-col items-center py-4 border-r', sidebarBg, isAnnotatorPage && 'md:hidden')}>
         <div className="text-blue-500 text-xs font-bold mb-4">SS</div>
-        {navItems.map(({ to, label, icon: Icon }) => (
+        {navItems.map(({ to, label, shortLabel, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -110,7 +112,7 @@ function Sidebar() {
             }
           >
             <Icon size={20} />
-            <span className="text-[9px] leading-none">{label.slice(0, 4)}</span>
+            <span className="text-[9px] leading-none">{shortLabel ?? label.slice(0, 4)}</span>
           </NavLink>
         ))}
 
@@ -147,7 +149,7 @@ function Sidebar() {
           className={`md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t ${sidebarBg}`}
           style={{ paddingBottom: 'env(safe-area-inset-bottom, 8px)', height: '56px' }}
         >
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {navItems.map(({ to, label, shortLabel, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -161,7 +163,7 @@ function Sidebar() {
               }
             >
               <Icon size={22} />
-              <span className="truncate font-medium">{label.slice(0, 4)}</span>
+              <span className="truncate font-medium">{shortLabel ?? label.slice(0, 4)}</span>
             </NavLink>
           ))}
         </div>
