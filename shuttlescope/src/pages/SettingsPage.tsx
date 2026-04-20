@@ -116,10 +116,11 @@ export function SettingsPage() {
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
-  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'cluster' | 'account'>(() => ((role === 'analyst' || role === 'coach') ? 'players' : 'account'))
+  const [activeTab, setActiveTab] = useState<'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'cluster' | 'account'>(() => ((role === 'analyst' || role === 'coach' || role === 'admin') ? 'players' : 'account'))
   // 選手ロールは 選手管理・要レビュー タブを閲覧不可（個人情報保護）
   // コーチロールは自チーム選手のみ管理可能
-  const canManagePlayers = role === 'analyst' || role === 'coach'
+  // adminロールは全選手を管理可能
+  const canManagePlayers = role === 'analyst' || role === 'coach' || role === 'admin'
   const coachTeamFilter = role === 'coach' ? (teamName ?? '') : null
   // ロール切替用モーダル
   // ロール変更で閲覧権限が失われた場合はタブを退避
@@ -265,7 +266,13 @@ export function SettingsPage() {
         url: string | null
         active_provider: 'cloudflare' | 'ngrok' | null
         providers: {
-          cloudflare: { available: boolean }
+          cloudflare: {
+            available: boolean
+            named_ready?: boolean
+            hostname?: string | null
+            config_path?: string | null
+            reason?: string | null
+          }
           ngrok: { available: boolean }
         }
         recent_log: string[]
@@ -1680,6 +1687,29 @@ export function SettingsPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
+                  {tunnelStatus?.data?.providers?.cloudflare?.available && (
+                    <div className={`rounded border px-3 py-2 text-xs ${
+                      isLight ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-blue-800 bg-blue-950/30 text-blue-300'
+                    }`}>
+                      <div className="font-medium">Cloudflare named tunnel</div>
+                      <div className="mt-1 font-mono break-all">
+                        {tunnelStatus.data.providers.cloudflare.hostname
+                          ? `https://${tunnelStatus.data.providers.cloudflare.hostname}`
+                          : 'https://app.shuttle-scope.com'}
+                      </div>
+                      <div className={`mt-1 ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
+                        {tunnelStatus.data.providers.cloudflare.named_ready
+                          ? 'named tunnel 設定を検出しました。Cloudflare 選択時は固定ドメインを優先します。'
+                          : 'named tunnel 設定は未完了です。repo外の Desktop\\cloudflare-shuttle-scope または ~/.cloudflared を使う想定です。'}
+                      </div>
+                      {tunnelStatus.data.providers.cloudflare.config_path && (
+                        <div className={`mt-1 break-all ${isLight ? 'text-blue-500' : 'text-blue-500'}`}>
+                          {tunnelStatus.data.providers.cloudflare.config_path}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
                       {tunnelStatus?.data?.running

@@ -262,16 +262,36 @@ class OnnxPose:
                 ("CUDAExecutionProvider", cuda_opts),
                 "CPUExecutionProvider",
             ]
+            # CUDA Graph: inference_batch が固定のため Python dispatch オーバーヘッドを除去。
+            # TRT EP の場合は TRT が独自グラフを持つためスキップ（TRT 経路では return 済み）。
+            # enable_mem_pattern は CUDA Graph と併用不可のため False に設定する。
+            so.enable_mem_pattern = False
+            so.add_session_config_entry("session.use_cuda_graphs", "1")
             try:
                 self._sess = ort.InferenceSession(
                     str(self._model_path), sess_options=so, providers=providers
                 )
                 self._backend = f"cuda:{self._device_index}"
-                logger.info("OnnxPose loaded via CUDA EP (device=%d, model=%s)",
+                logger.info("OnnxPose loaded via CUDA EP + CUDA Graph (device=%d, model=%s)",
                             self._device_index, self._model_path.name)
                 return
             except Exception as exc:
                 logger.warning("OnnxPose CUDA EP 初期化失敗: %s — CPU にフォールバック", exc)
+                # CUDA Graph 無しで再試行
+                so2 = ort.SessionOptions()
+                so2.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+                so2.enable_mem_pattern = True
+                so2.enable_mem_reuse = True
+                try:
+                    self._sess = ort.InferenceSession(
+                        str(self._model_path), sess_options=so2, providers=providers
+                    )
+                    self._backend = f"cuda:{self._device_index}"
+                    logger.info("OnnxPose loaded via CUDA EP (no graph, device=%d, model=%s)",
+                                self._device_index, self._model_path.name)
+                    return
+                except Exception as exc2:
+                    logger.warning("OnnxPose CUDA EP 再試行失敗: %s — CPU にフォールバック", exc2)
 
         # CPU fallback
         self._sess = ort.InferenceSession(
