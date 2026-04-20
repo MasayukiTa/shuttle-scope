@@ -15,7 +15,7 @@ export const DEFAULT_FILTERS: AnalysisFilters = {
   dateTo: null,
 }
 
-export type UserRole = 'analyst' | 'coach' | 'player'
+export type UserRole = 'admin' | 'analyst' | 'coach' | 'player'
 
 export type DominantHand = 'R' | 'L' | 'unknown'
 

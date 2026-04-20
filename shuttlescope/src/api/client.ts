@@ -1,8 +1,3 @@
-// FastAPI HTTPクライアント
-// IPC Bridgeを使わず fetch() で直接リクエスト
-//
-// Electron（file: / app: プロトコル）: localhost:8765 に固定
-// ブラウザ（http: / https:）: window.location.origin を使用（LAN・トンネル対応）
 const BASE_URL = (() => {
   if (
     typeof window !== 'undefined' &&
@@ -13,30 +8,26 @@ const BASE_URL = (() => {
   return 'http://localhost:8765/api'
 })()
 
-// ─── 認証ヘッダ ──────────────────────────────────────────────────────────────
-// POCフェーズ: localStorage から現在のロール/選手IDを読んで全 HTTP リクエストに付与する。
-// バックエンドは X-Role='player' の場合 X-Player-Id を match.player_* と照合してアクセス制御する。
-// 将来 JWT に移行する際もここを差し替えるだけでよい。
 function authHeaders(): Record<string, string> {
   const h: Record<string, string> = {}
   try {
-    const token = localStorage.getItem('shuttlescope_token')
+    const token = sessionStorage.getItem('shuttlescope_token')
     if (token) {
       h['Authorization'] = `Bearer ${token}`
     } else {
-      // フォールバック: X-Role ヘッダ（JWT なし開発環境互換）
-      const role = localStorage.getItem('shuttlescope_role')
-      const pid  = localStorage.getItem('shuttlescope_player_id')
-      const team = localStorage.getItem('shuttlescope_team_name')
+      const role = sessionStorage.getItem('shuttlescope_role')
+      const pid = sessionStorage.getItem('shuttlescope_player_id')
+      const team = sessionStorage.getItem('shuttlescope_team_name')
       if (role) h['X-Role'] = role
-      if (pid)  h['X-Player-Id'] = pid
+      if (pid) h['X-Player-Id'] = pid
       if (team) h['X-Team-Name'] = encodeURIComponent(team)
     }
-  } catch { /* SSR / storage 無効環境は無視 */ }
+  } catch {
+    // ignore missing storage access
+  }
   return h
 }
 
-// HTTP エラーに status プロパティを付与するヘルパー
 function httpError(status: number, text: string): Error {
   const err = new Error(text) as Error & { status: number }
   err.status = status
@@ -110,8 +101,22 @@ export async function apiDelete<T>(path: string): Promise<T> {
   return res.json()
 }
 
-// ─── INFRA Phase B: 解析パイプライン ─────────────────────────────────────────
-// AnalysisJob のライフサイクル: queued → running → done / failed
+export interface AuthMeDTO {
+  role: 'admin' | 'analyst' | 'coach' | 'player'
+  user_id: number | null
+  player_id: number | null
+  team_name: string | null
+  display_name: string | null
+}
+
+export function authMe(): Promise<AuthMeDTO> {
+  return apiGet<AuthMeDTO>('/auth/me')
+}
+
+export function authLogout(): Promise<{ success: boolean }> {
+  return apiPost<{ success: boolean }>('/auth/logout', {})
+}
+
 export interface AnalysisJobDTO {
   id: number
   match_id: number
@@ -141,7 +146,6 @@ export function pipelineJob(job_id: number): Promise<AnalysisJobDTO> {
   return apiGet<AnalysisJobDTO>(`/v1/pipeline/jobs/${job_id}`)
 }
 
-// ヘルスチェック
 export async function checkHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE_URL}/health`)

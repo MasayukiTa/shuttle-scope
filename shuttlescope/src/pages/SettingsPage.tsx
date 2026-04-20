@@ -2,16 +2,15 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2 } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
-import { Player, TeamHistoryEntry, UserRole, SharedSession, NetworkDiagnostics } from '@/types'
+import { Player, TeamHistoryEntry, SharedSession, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
-import { RolePicker } from '@/components/common/RolePicker'
 import { ClusterSettingsPanel } from '@/components/cluster/ClusterSettingsPanel'
 import { DeviceSelector } from '@/components/benchmark/DeviceSelector'
 import { TargetSelector } from '@/components/benchmark/TargetSelector'
@@ -112,7 +111,7 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
 export function SettingsPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const { role, setRole, teamName } = useAuth()
+  const { role, teamName, displayName, userId, clearRole } = useAuth()
 
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
@@ -123,9 +122,6 @@ export function SettingsPage() {
   const canManagePlayers = role === 'analyst' || role === 'coach'
   const coachTeamFilter = role === 'coach' ? (teamName ?? '') : null
   // ロール切替用モーダル
-  const [roleSwitchOpen, setRoleSwitchOpen] = useState(false)
-  const [roleSwitchTarget, setRoleSwitchTarget] = useState<UserRole | null>(null)
-
   // ロール変更で閲覧権限が失われた場合はタブを退避
   useEffect(() => {
     if (!canManagePlayers && (activeTab === 'players' || activeTab === 'review')) {
@@ -151,6 +147,17 @@ export function SettingsPage() {
   const { settings: appSettings, updateSettings, loading: settingsLoading } = useSettings()
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const navigate = useNavigate()
+
+  async function handleLogout() {
+    try {
+      await apiPost('/auth/logout', {})
+    } catch {
+      // continue and clear the client session even if logout logging fails
+    } finally {
+      clearRole()
+      navigate('/', { replace: true })
+    }
+  }
 
   // データ管理タブ用状態
   const [exportMatchIds, setExportMatchIds] = useState<string>('')
@@ -2489,39 +2496,30 @@ export function SettingsPage() {
 
             {/* ロール設定 */}
             <section>
-              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>ロール設定（POCフェーズ）</h2>
-              <p className={`text-xs ${textMuted} mb-3`}>操作権限の種別を選択します</p>
-              <div className="flex flex-col gap-2">
-                {(['analyst', 'coach', 'player'] as UserRole[]).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => {
-                      if (r === role) return
-                      if (r === 'analyst') {
-                        setRole(r, null, null)
-                      } else {
-                        // player / coach は選手/チーム選択が必要
-                        setRoleSwitchTarget(r)
-                        setRoleSwitchOpen(true)
-                      }
-                    }}
-                    className={`flex items-center justify-between px-4 py-3 rounded border ${
-                      role === r
-                        ? 'border-blue-500 bg-blue-900/30 text-blue-300'
-                        : isLight
-                          ? 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
-                          : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500'
-                    }`}
-                  >
-                    <span className="font-medium">{t(`roles.${r}`)}</span>
-                    {role === r && <CheckCircle size={16} className="text-blue-400" />}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-gray-500 mt-3">
-                ※ POCフェーズでは簡易ロール管理（ローカルストレージ保存）。
-                本番展開時にJWT認証へ移行予定。
+              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>Account</h2>
+              <p className={`text-xs ${textMuted} mb-3`}>
+                The active role is fixed by login. To switch users or roles, log out and sign in again.
               </p>
+              <div className={`rounded-lg border p-4 space-y-2 ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-800'}`}>
+                <div className={`text-sm ${textSecondary}`}>Display name: <span className={textHeading}>{displayName ?? 'Unset'}</span></div>
+                <div className={`text-sm ${textSecondary}`}>Role: <span className={textHeading}>{role ? t(`auth.role.${role}`) : 'Not logged in'}</span></div>
+                <div className={`text-sm ${textSecondary}`}>User ID: <span className={textHeading}>{userId ?? '-'}</span></div>
+                <div className={`text-sm ${textSecondary}`}>Team: <span className={textHeading}>{teamName ?? '-'}</span></div>
+              </div>
+              <div className="mt-4 flex flex-col gap-3">
+                <button
+                  onClick={handleLogout}
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    isLight ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-red-700 hover:bg-red-600 text-white'
+                  }`}
+                >
+                  <LogOut size={16} />
+                  {t('auth.logout')}
+                </button>
+                <p className={`text-xs ${textMuted}`}>
+                  Auth state is stored per session. After closing the app or browser, the next launch starts from the login screen.
+                </p>
+              </div>
             </section>
 
             {/* アプリ再起動 */}
@@ -2685,20 +2683,6 @@ export function SettingsPage() {
             </form>
           </div>
         </div>
-      )}
-
-      {/* ロール切替モーダル（player → 選手選択 / coach → チーム選択） */}
-      {roleSwitchOpen && roleSwitchTarget && (
-        <RolePicker
-          mode="modal"
-          initialStage={{ kind: roleSwitchTarget === 'player' ? 'player' : 'team' }}
-          onSelect={(newRole, newPlayerId, newTeamName) => {
-            setRole(newRole, newPlayerId ?? null, newTeamName ?? null)
-            setRoleSwitchOpen(false)
-            setRoleSwitchTarget(null)
-          }}
-          onCancel={() => { setRoleSwitchOpen(false); setRoleSwitchTarget(null) }}
-        />
       )}
     </div>
   )

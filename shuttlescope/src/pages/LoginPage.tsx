@@ -30,7 +30,7 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
       role: data.role as UserRole,
       userId: data.user_id,
       playerId: data.player_id ?? null,
-      teamName: null,
+      teamName: data.team_name ?? null,
       displayName: data.display_name ?? null,
     }
   } catch (e) {
