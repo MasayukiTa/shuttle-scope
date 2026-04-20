@@ -98,6 +98,12 @@ ONNX_CANDIDATES = [
     WEIGHTS_DIR / "tracknet.onnx",
     WEIGHTS_DIR / "tracknet_v2.onnx",
 ]
+# GPU（CUDA/DirectML）実行時に優先的に使う FP16 モデル。
+# keep_io_types=True で保存されているため入出力は float32 のまま、内部演算のみ FP16。
+# RTX 5060 Ti 実測: batch=8 で FP32 40fps → FP16 64fps（1.6x）。batch=12 以上で急激なレイテンシ崖あり。
+ONNX_FP16_CANDIDATES = [
+    WEIGHTS_DIR / "tracknet_fp16.onnx",
+]
 OPENVINO_XML_CANDIDATES = [
     WEIGHTS_DIR / "tracknet.xml",
     WEIGHTS_DIR / "tracknet_v2.xml",
@@ -170,10 +176,12 @@ class TrackNetInference:
                     pass
 
         onnx_model = _existing_path(ONNX_CANDIDATES)
+        # GPU 実行時は FP16 版があればそちらを優先する
+        onnx_model_gpu = _existing_path(ONNX_FP16_CANDIDATES) or onnx_model
 
         # ── CUDA / ONNX CUDA ──────────────────────────────────────────────────
         if effective_backend in ("auto", "cuda", "onnx_cuda"):
-            if onnx_model is None:
+            if onnx_model_gpu is None:
                 if effective_backend in ("cuda", "onnx_cuda"):
                     tried.append("onnx_cuda: ONNXファイルが見つかりません")
                     effective_backend = "auto"
@@ -222,7 +230,7 @@ class TrackNetInference:
                         def _init_sess():
                             try:
                                 _sess_holder[0] = ort.InferenceSession(
-                                    str(onnx_model),
+                                    str(onnx_model_gpu),
                                     sess_options=sess_opts,
                                     providers=providers,
                                 )
@@ -286,16 +294,21 @@ class TrackNetInference:
                                 if effective_backend in ("cuda", "onnx_cuda"):
                                     effective_backend = "auto"
                             else:
-                                # VRAM から最適バッチサイズを決定（下限 1、上限 128）
-                                self._max_batch = _vram_based_max_batch(self._cuda_device_index)
+                                # FP16 使用時はバッチ=8 固定（batch>=12 で約 5-6 倍の急激なレイテンシ劣化を実測）。
+                                # FP32 のみの場合は VRAM から推定するが、同様の劣化があるため 8 で頭打ちにする。
+                                is_fp16 = onnx_model_gpu is not None and "fp16" in onnx_model_gpu.name.lower()
+                                if is_fp16:
+                                    self._max_batch = 8
+                                else:
+                                    self._max_batch = min(8, _vram_based_max_batch(self._cuda_device_index))
                                 self._infer_fn = lambda frames, _s=sess, _n=input_name: self._run_onnx(_s, _n, frames)
                                 self._batch_infer_fn = lambda batch, _s=sess, _n=input_name: self._run_onnx_batch(_s, _n, batch)
                                 self._backend_name = f"onnx_cuda:{self._cuda_device_index}"
                                 self._load_error = None
                                 logger.info(
-                                    "TrackNet loaded via ONNX CUDA (device=%d, max_batch=%d, "
+                                    "TrackNet loaded via ONNX CUDA (device=%d, model=%s, max_batch=%d, "
                                     "gpu_mem_limit=%.1fGB)",
-                                    self._cuda_device_index, self._max_batch,
+                                    self._cuda_device_index, onnx_model_gpu.name, self._max_batch,
                                     gpu_mem_limit / (1024 ** 3) if gpu_mem_limit > 0 else 0,
                                 )
                                 return True
@@ -310,12 +323,12 @@ class TrackNetInference:
 
         # ── DirectML（AMD/NVIDIA Windows）──────────────────────────────────────
         if effective_backend in ("auto", "directml"):
-            if onnx_model is not None:
+            if onnx_model_gpu is not None:
                 try:
                     import onnxruntime as ort
                     if "DmlExecutionProvider" in ort.get_available_providers():
                         providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-                        sess = ort.InferenceSession(str(onnx_model), providers=providers)
+                        sess = ort.InferenceSession(str(onnx_model_gpu), providers=providers)
                         input_name = sess.get_inputs()[0].name
 
                         # Blackwell 等の新 GPU では sess.run() の初回 DirectML シェーダ

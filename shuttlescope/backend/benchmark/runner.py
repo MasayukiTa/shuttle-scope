@@ -65,6 +65,65 @@ def _compute_metrics(latencies_sec: List[float]) -> Dict[str, float]:
     }
 
 
+def _time_budget_sec() -> float:
+    """SS_BENCH_TIME_BUDGET_SEC 環境変数から計測予算（秒）を取得。既定 5 秒。"""
+    try:
+        return max(0.5, float(os.environ.get("SS_BENCH_TIME_BUDGET_SEC", "5")))
+    except (TypeError, ValueError):
+        return 5.0
+
+
+def _is_aggressive() -> bool:
+    """SS_BENCH_AGGRESSIVE=1 で攻めモード（batch を大きめ固定にして VRAM/GPU util を可視化）。"""
+    return os.environ.get("SS_BENCH_AGGRESSIVE", "0") not in ("", "0", "false", "False")
+
+
+def _measure_budget(
+    run_fn,
+    warmup: int = 3,
+    min_iters: int = 5,
+    max_iters: int = 500,
+    budget_sec: float | None = None,
+    cancelled_fn=None,
+    progress_cb=None,
+) -> List[float]:
+    """時間予算ベース計測: warmup 後、最低 min_iters を満たしつつ budget_sec 経過まで反復。
+
+    戻り値は秒単位レイテンシ列。GPU 初回のアルゴリズム選択・JIT を warmup で除外し、
+    Task Manager の 1-2 秒サンプリングでも GPU/VRAM の上昇が確実に観測できる長さになる。
+    """
+    budget = _time_budget_sec() if budget_sec is None else budget_sec
+    # ウォームアップ（計測に含めない）。失敗しても黙殺して本計測に進む。
+    for _ in range(max(0, warmup)):
+        try:
+            run_fn()
+        except Exception:
+            break
+
+    lats: List[float] = []
+    t_start = time.perf_counter()
+    while True:
+        if cancelled_fn is not None and cancelled_fn():
+            break
+        if len(lats) >= max_iters:
+            break
+        elapsed = time.perf_counter() - t_start
+        if len(lats) >= min_iters and elapsed >= budget:
+            break
+        t0 = time.perf_counter()
+        try:
+            run_fn()
+        except Exception:
+            raise
+        lats.append(time.perf_counter() - t0)
+        if progress_cb is not None:
+            # 予算 or 最大 iter の進捗の大きい方をサブ進捗として報告
+            frac_time = min(1.0, elapsed / budget) if budget > 0 else 1.0
+            frac_iter = len(lats) / max(min_iters, 1)
+            progress_cb(min(1.0, max(frac_time, min(frac_iter, 1.0))))
+    return lats
+
+
 @contextmanager
 def _gpu_cleanup(use_gpu: bool) -> Generator[None, None, None]:
     """計測前後で GC + GPU キャッシュをクリアする。"""
@@ -320,19 +379,14 @@ class BenchmarkRunner:
     def _bench_tracknet(self, device: ComputeDevice, n_frames: int,
                         job: "Any | None" = None,
                         progress_cb=None) -> Dict[str, Any]:
-        """TrackNet 推論速度計測。
+        """TrackNet 推論速度計測（時間予算ベース）。
 
-        1トリプレット（3フレーム→1推論）単位でレイテンシを直接計測する。
-        _MEASURE_ITERS 回繰り返して統計を取り、fps = 1000 / avg_ms で報告する。
-
-        反復数を最大 5 に制限することで、ONNX CPU など低速バックエンドでも
-        数分以内に完了する。progress は n_frames まで到達するようスケールする。
+        GPU は warmup を十分に入れた上で SS_BENCH_TIME_BUDGET_SEC（既定 5 秒）だけ
+        連続推論してスループットを採る。攻めモードでは batch を 16 に拡張して
+        VRAM/GPU util を可視化する（レイテンシ崖が出てもスループット確認目的）。
         """
         from backend.cv import factory
         from backend.tracknet.inference import FRAME_STACK
-
-        # 最大5回の計測（低速CPUでも数分以内に完了）
-        _MEASURE_ITERS = min(n_frames, 5)
 
         inferencer = factory.get_tracknet()
 
@@ -343,8 +397,8 @@ class BenchmarkRunner:
                     (impl.backend_name() if impl is not None else '?')
         except Exception:
             bname = '?'
-        logger.info("[bench/tracknet] device=%s backend=%s n_iters=%d",
-                    device.device_id, bname, _MEASURE_ITERS)
+        logger.info("[bench/tracknet] device=%s backend=%s budget=%.1fs aggressive=%s",
+                    device.device_id, bname, _time_budget_sec(), _is_aggressive())
 
         # GPU バックエンドでは _max_batch を使って大きなバッチで計測する（VRAM 活用）
         # CPU バックエンドでは 1 トリプレット（batch=1）のレイテンシを計測する
@@ -372,12 +426,18 @@ class BenchmarkRunner:
                 return {"error": f"GPU推論不可 — {reason}"}
 
         if use_gpu and impl is not None and hasattr(impl, '_max_batch'):
-            bench_batch = impl._max_batch  # VRAM から自動計算されたバッチサイズ
+            bench_batch = impl._max_batch
+            if _is_aggressive():
+                # 攻めモード: FP16 でも VRAM/GPU util を確実に押し上げる狙いで batch=16 に拡張
+                bench_batch = max(bench_batch, 16)
+                try:
+                    impl._max_batch = bench_batch
+                except Exception:
+                    pass
         else:
             bench_batch = 1  # CPU: 1トリプレットのレイテンシ計測
 
         # bench_batch トリプレット分のフレームを生成
-        # make_frames(FRAME_STACK + bench_batch - 1) → bench_batch 個のトリプレット
         n_bench_frames = FRAME_STACK + bench_batch - 1
         frames = make_frames(n_bench_frames, 512, 288)
 
@@ -388,31 +448,24 @@ class BenchmarkRunner:
 
         video_path: str | None = None
         if hasattr(inferencer, 'run_frames'):
-            # run_frames 対応実装（OpenVINOTrackNet / MockTrackNet 等）
             def run_one() -> None:
                 inferencer.run_frames(list(frames))
         else:
-            # CpuTrackNet 等: 最小サイズの動画ファイル経由
             video_path = make_video_file(n=n_bench_frames)
             def run_one(_vp: str = video_path) -> None:
                 inferencer.run(_vp)
 
+        t_wall0 = time.perf_counter()
         latencies: List[float] = []
         try:
-            # ウォームアップ 1 回（CUDA JIT / cuDNN アルゴ検索を計測から除外）
-            try:
-                run_one()
-            except Exception:
-                pass
-
-            for i in range(_MEASURE_ITERS):
-                if job is not None and job.cancelled:
-                    break
-                t0 = time.perf_counter()
-                run_one()
-                latencies.append(time.perf_counter() - t0)
-                if progress_cb is not None:
-                    progress_cb(round((i + 1) * n_frames / _MEASURE_ITERS))
+            latencies = _measure_budget(
+                run_one,
+                warmup=5 if use_gpu else 1,
+                min_iters=5,
+                max_iters=500,
+                cancelled_fn=(lambda: job is not None and job.cancelled),
+                progress_cb=(lambda f: progress_cb(round(f * n_frames)) if progress_cb else None),
+            )
         finally:
             if video_path is not None:
                 try:
@@ -424,9 +477,14 @@ class BenchmarkRunner:
             return {"error": "キャンセルされました"}
 
         metrics = _compute_metrics(latencies)
-        # fps = bench_batch トリプレット / avg_sec（GPU は大バッチのスループット計測）
-        if bench_batch > 1:
-            metrics["fps"] = round(bench_batch * 1000.0 / metrics["avg_ms"], 2) if metrics["avg_ms"] > 0 else 0.0
+        if bench_batch > 1 and metrics["avg_ms"] > 0:
+            metrics["fps"] = round(bench_batch * 1000.0 / metrics["avg_ms"], 2)
+        metrics["batch"] = bench_batch
+        metrics["iters"] = len(latencies)
+        metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+        metrics["backend"] = bname
+        if _is_aggressive():
+            metrics["aggressive"] = True
         return metrics
 
     def _bench_pose(self, device: ComputeDevice, n_frames: int,
@@ -440,27 +498,21 @@ class BenchmarkRunner:
         from backend.cv import factory
         from backend.benchmark.synthetic import make_video_file
 
-        _BATCH_SIZE = 10
-        _MEASURE_ITERS = min(n_frames, 10)
+        # 攻めモードでは 1 回のビデオを長くして GPU/CPU 負荷を可視化する
+        _BATCH_SIZE = 60 if _is_aggressive() else 10
 
         inferencer = factory.get_pose()
         video_path = make_video_file(n=_BATCH_SIZE)
-        latencies: List[float] = []
+        t_wall0 = time.perf_counter()
         try:
-            # ウォームアップ 1 回
-            try:
-                inferencer.run(video_path)
-            except Exception:
-                pass
-
-            for i in range(_MEASURE_ITERS):
-                if job is not None and job.cancelled:
-                    break
-                t0 = time.perf_counter()
-                inferencer.run(video_path)
-                latencies.append(time.perf_counter() - t0)
-                if progress_cb is not None:
-                    progress_cb(round((i + 1) * n_frames / _MEASURE_ITERS))
+            latencies = _measure_budget(
+                lambda: inferencer.run(video_path),
+                warmup=2,
+                min_iters=3,
+                max_iters=200,
+                cancelled_fn=(lambda: job is not None and job.cancelled),
+                progress_cb=(lambda f: progress_cb(round(f * n_frames)) if progress_cb else None),
+            )
         finally:
             try:
                 os.remove(video_path)
@@ -471,95 +523,169 @@ class BenchmarkRunner:
             return {"error": "キャンセルされました"}
 
         metrics = _compute_metrics(latencies)
-        # fps = _BATCH_SIZE フレーム / avg_ms
         metrics["fps"] = round(_BATCH_SIZE * 1000.0 / metrics["avg_ms"], 2) if metrics["avg_ms"] > 0 else 0.0
+        metrics["batch"] = _BATCH_SIZE
+        metrics["iters"] = len(latencies)
+        metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+        if _is_aggressive():
+            metrics["aggressive"] = True
         return metrics
 
     def _bench_yolo(self, device: ComputeDevice, n_frames: int,
                     job: "Any | None" = None,
                     progress_cb=None) -> Dict[str, Any]:
-        """YOLOv8n 物体検出速度計測。
+        """YOLOv8n 物体検出速度計測（FP16 + 適応バッチ）。
 
-        backend/models/yolov8n.onnx が存在する場合のみ計測する。
-        入力: (1, 3, 384, 640) float32 合成フレーム。
-        EP 選択: CUDA → DirectML → CPU の優先順（デバイスに応じて SS_BENCH_BACKEND で制御）。
+        GPU 経路では backend/models/yolov8n_fp16.onnx（dynamic batch）を優先し、
+        batch=[1, 4, 16, 32, 64] の中から実デバイスで最速のスループットを採用する。
+        CPU 経路は FP32 を batch=1 で計測する。
         """
         import os as _os
         from pathlib import Path
 
-        _YOLO_MODEL = Path(__file__).parent.parent / "models" / "yolov8n.onnx"
-        if not _YOLO_MODEL.exists():
-            # ultralytics が使える場合は自動エクスポートを試みる
-            try:
-                logger.info("yolov8n.onnx 未配置 — ultralytics で自動エクスポートを開始します")
-                from ultralytics import YOLO as _YOLO
-                import tempfile as _tf, shutil as _sh
-                with _tf.TemporaryDirectory() as _tmp:
-                    _model = _YOLO("yolov8n.pt")
-                    _exported = _model.export(
-                        format="onnx",
-                        imgsz=(384, 640),
-                        opset=12,
-                        simplify=True,
-                        dynamic=False,
-                    )
-                    # export() は保存先パスを返す
-                    _exported_path = Path(str(_exported))
-                    if _exported_path.exists():
-                        _sh.move(str(_exported_path), str(_YOLO_MODEL))
-                        logger.info("yolov8n.onnx を %s に配置しました", _YOLO_MODEL)
-                    else:
-                        return {"error": "yolov8n.onnx エクスポート失敗: 出力ファイルが見つかりません"}
-            except Exception as _e:
-                logger.warning("yolov8n.onnx 自動エクスポート失敗: %s", _e)
-                return {"error": f"モデル未配置: {_YOLO_MODEL.name}"}
+        _MODELS_DIR = Path(__file__).parent.parent / "models"
+        _YOLO_FP32 = _MODELS_DIR / "yolov8n.onnx"
+        _YOLO_FP16 = _MODELS_DIR / "yolov8n_fp16.onnx"
 
-        _YOLO_W, _YOLO_H = 640, 384
-        _MEASURE_ITERS = min(n_frames, 5)
+        use_gpu = device.device_type in ("dgpu", "igpu")
+        # GPU なら FP16（dynamic batch）を優先、無ければ FP32
+        target = _YOLO_FP16 if (use_gpu and _YOLO_FP16.exists()) else _YOLO_FP32
+
+        if not target.exists():
+            # ultralytics で自動エクスポート（dynamic batch、必要なら half=True）
+            try:
+                from ultralytics import YOLO as _YOLO
+                import shutil as _sh
+                want_half = use_gpu
+                logger.info(
+                    "YOLO モデル未配置 — 自動エクスポート (half=%s, dynamic=True)", want_half
+                )
+                _m = _YOLO("yolov8n.pt")
+                _exported = _m.export(
+                    format="onnx", imgsz=(384, 640), opset=17,
+                    simplify=True, dynamic=True, half=want_half,
+                )
+                _exported_path = Path(str(_exported))
+                if not _exported_path.exists():
+                    return {"error": "yolov8n.onnx エクスポート失敗: 出力ファイル無し"}
+                _sh.move(str(_exported_path), str(target))
+            except Exception as _e:
+                logger.warning("YOLO 自動エクスポート失敗: %s", _e)
+                return {"error": f"モデル未配置: {target.name}"}
 
         try:
             import onnxruntime as ort
         except ImportError:
             return {"error": "onnxruntime 未インストール"}
 
-        # デバイスに応じた EP 選択（SS_BENCH_BACKEND を参照）
         bench_backend = _os.environ.get("SS_BENCH_BACKEND", "")
         if bench_backend == "directml":
             providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-        elif bench_backend in ("", "onnx_cuda") and "CUDAExecutionProvider" in ort.get_available_providers():
+        elif bench_backend == "openvino":
+            if "OpenVINOExecutionProvider" in ort.get_available_providers():
+                providers = ["OpenVINOExecutionProvider", "CPUExecutionProvider"]
+            else:
+                providers = ["CPUExecutionProvider"]
+        elif bench_backend in ("", "onnx_cuda") and use_gpu and \
+                "CUDAExecutionProvider" in ort.get_available_providers():
             device_id = int(_os.environ.get("SS_CUDA_DEVICE", "0"))
-            providers = [("CUDAExecutionProvider", {"device_id": device_id}), "CPUExecutionProvider"]
+            providers = [
+                ("CUDAExecutionProvider", {
+                    "device_id": device_id,
+                    "cudnn_conv_algo_search": "HEURISTIC",
+                    "arena_extend_strategy": "kNextPowerOfTwo",
+                    "do_copy_in_default_stream": "1",
+                }),
+                "CPUExecutionProvider",
+            ]
         else:
             providers = ["CPUExecutionProvider"]
 
+        so = ort.SessionOptions()
+        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        so.enable_mem_pattern = True
+        so.enable_mem_reuse = True
+
         try:
-            sess = ort.InferenceSession(str(_YOLO_MODEL), providers=providers)
+            sess = ort.InferenceSession(str(target), sess_options=so, providers=providers)
         except Exception as exc:
             return {"error": f"セッション初期化失敗: {exc}"}
 
-        input_name = sess.get_inputs()[0].name
-        dummy = np.zeros((1, 3, _YOLO_H, _YOLO_W), dtype=np.float32)
+        input_meta = sess.get_inputs()[0]
+        input_name = input_meta.name
+        # 入力 dtype を ONNX メタから自動判定（FP16 モデルは float16）
+        in_dtype = np.float16 if "float16" in input_meta.type else np.float32
 
-        latencies: List[float] = []
-        # ウォームアップ
+        # 動的バッチ対応か判定（shape に 'batch' 等の文字列があれば可変）
+        dyn_batch = not isinstance(input_meta.shape[0], int)
+        if _is_aggressive() and dyn_batch and use_gpu:
+            # 攻めモード: 常に batch=64 固定で VRAM/GPU util を可視化
+            candidates = [64]
+        elif dyn_batch and use_gpu:
+            # 通常モード: 短いスイープで per-sample 最速の batch を選ぶ
+            candidates = [1, 4, 16, 32]
+        else:
+            candidates = [1]
+
+        # ── 短いスイープで最適バッチを決定（各 3 iter・ウォームアップ込）
+        best = None  # (per_sample_sec, batch)
+        if len(candidates) > 1:
+            for b in candidates:
+                if job is not None and job.cancelled:
+                    break
+                x = np.zeros((b, 3, 384, 640), dtype=in_dtype)
+                try:
+                    sess.run(None, {input_name: x})
+                    sess.run(None, {input_name: x})
+                    lats: List[float] = []
+                    for _ in range(3):
+                        t0 = time.perf_counter()
+                        sess.run(None, {input_name: x})
+                        lats.append(time.perf_counter() - t0)
+                    avg = float(np.mean(lats))
+                    per_sample = avg / b
+                    logger.info(
+                        "[bench/yolo] sweep batch=%d avg=%.2fms per_sample=%.2fms fps=%.1f",
+                        b, avg * 1000, per_sample * 1000, b / avg,
+                    )
+                    if best is None or per_sample < best[0]:
+                        best = (per_sample, b)
+                except Exception as exc:
+                    logger.warning("[bench/yolo] batch=%d 失敗: %s", b, exc)
+                    break
+            chosen = best[1] if best else candidates[0]
+        else:
+            chosen = candidates[0]
+
+        # ── 時間予算ベースで本計測（GPU/VRAM を十分可視化できる長さ）
+        x = np.zeros((chosen, 3, 384, 640), dtype=in_dtype)
+        t_wall0 = time.perf_counter()
         try:
-            sess.run(None, {input_name: dummy})
-        except Exception:
-            pass
+            lats = _measure_budget(
+                lambda: sess.run(None, {input_name: x}),
+                warmup=5 if use_gpu else 2,
+                min_iters=5,
+                max_iters=2000,
+                cancelled_fn=(lambda: job is not None and job.cancelled),
+                progress_cb=(lambda f: progress_cb(round(f * n_frames)) if progress_cb else None),
+            )
+        except Exception as exc:
+            return {"error": f"推論失敗: {exc}"}
 
-        for i in range(_MEASURE_ITERS):
-            if job is not None and job.cancelled:
-                break
-            t0 = time.perf_counter()
-            sess.run(None, {input_name: dummy})
-            latencies.append(time.perf_counter() - t0)
-            if progress_cb is not None:
-                progress_cb(round((i + 1) * n_frames / _MEASURE_ITERS))
-
-        if not latencies:
+        if not lats:
             return {"error": "キャンセルされました"}
 
-        return _compute_metrics(latencies)
+        metrics = _compute_metrics(lats)
+        if metrics["avg_ms"] > 0:
+            metrics["fps"] = round(chosen * 1000.0 / metrics["avg_ms"], 2)
+        metrics["batch"] = chosen
+        metrics["iters"] = len(lats)
+        metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+        metrics["model"] = target.name
+        metrics["providers"] = sess.get_providers()
+        if _is_aggressive():
+            metrics["aggressive"] = True
+        return metrics
 
     def _bench_pipeline_full(self, device: ComputeDevice, n_frames: int,
                              job: "Any | None" = None,
@@ -573,39 +699,31 @@ class BenchmarkRunner:
         from backend.cv.gravity import compute_cog_batch
         from backend.tracknet.inference import FRAME_STACK
 
-        _MEASURE_ITERS = min(n_frames, 3)
-        _POSE_FRAMES = 10
+        _POSE_FRAMES = 30 if _is_aggressive() else 10
 
         tracknet = factory.get_tracknet()
         pose = factory.get_pose()
         video_path = make_video_file(n=_POSE_FRAMES)
-        latencies: List[float] = []
+        t_wall0 = time.perf_counter()
+
+        def _run_once() -> None:
+            if hasattr(tracknet, 'run_frames'):
+                tracknet.run_frames(list(make_frames(FRAME_STACK, 512, 288)))
+            else:
+                tracknet.run(video_path)
+            pose_samples = pose.run(video_path)
+            landmarks_batch = [s.landmarks for s in pose_samples]
+            compute_cog_batch(landmarks_batch)
 
         try:
-            # ウォームアップ
-            try:
-                if hasattr(tracknet, 'run_frames'):
-                    tracknet.run_frames(list(make_frames(FRAME_STACK, 512, 288)))
-                else:
-                    tracknet.run(video_path)
-                pose.run(video_path)
-            except Exception:
-                pass
-
-            for i in range(_MEASURE_ITERS):
-                if job is not None and job.cancelled:
-                    break
-                t0 = time.perf_counter()
-                if hasattr(tracknet, 'run_frames'):
-                    tracknet.run_frames(list(make_frames(FRAME_STACK, 512, 288)))
-                else:
-                    tracknet.run(video_path)
-                pose_samples = pose.run(video_path)
-                landmarks_batch = [s.landmarks for s in pose_samples]
-                compute_cog_batch(landmarks_batch)
-                latencies.append(time.perf_counter() - t0)
-                if progress_cb is not None:
-                    progress_cb(round((i + 1) * n_frames / _MEASURE_ITERS))
+            latencies = _measure_budget(
+                _run_once,
+                warmup=2,
+                min_iters=3,
+                max_iters=100,
+                cancelled_fn=(lambda: job is not None and job.cancelled),
+                progress_cb=(lambda f: progress_cb(round(f * n_frames)) if progress_cb else None),
+            )
         finally:
             try:
                 os.remove(video_path)
@@ -617,6 +735,11 @@ class BenchmarkRunner:
 
         metrics = _compute_metrics(latencies)
         metrics["fps"] = round(_POSE_FRAMES * 1000.0 / metrics["avg_ms"], 2) if metrics["avg_ms"] > 0 else 0.0
+        metrics["batch"] = _POSE_FRAMES
+        metrics["iters"] = len(latencies)
+        metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+        if _is_aggressive():
+            metrics["aggressive"] = True
         return metrics
 
     def _bench_clip_extract(self, device: ComputeDevice, n_frames: int,
@@ -633,40 +756,53 @@ class BenchmarkRunner:
         if not created:
             return {"error": "ffmpeg unavailable"}
 
+        t_wall0 = time.perf_counter()
+        budget = _time_budget_sec()
+        max_iters = 50
+        latencies: List[float] = []
+        err: str | None = None
         try:
-            latencies: List[float] = []
-            for i in range(min(n_frames, 5)):  # クリップ切り出しは重いので最大 5 回
+            i = 0
+            while True:
                 if job is not None and job.cancelled:
+                    break
+                if len(latencies) >= max_iters:
+                    break
+                if len(latencies) >= 3 and (time.perf_counter() - t_wall0) >= budget:
                     break
                 out_path = tempfile.mktemp(suffix=f"_clip_{i}.mp4")
                 cmd = [
-                    "ffmpeg", "-y",
-                    "-ss", "0",
-                    "-i", video_path,
-                    "-t", "1",
-                    "-c", "copy",
-                    out_path,
+                    "ffmpeg", "-y", "-ss", "0", "-i", video_path,
+                    "-t", "1", "-c", "copy", out_path,
                 ]
                 t0 = time.perf_counter()
                 result = subprocess.run(cmd, capture_output=True, timeout=30)
                 latencies.append(time.perf_counter() - t0)
-                if progress_cb is not None:
-                    progress_cb(round((i + 1) * n_frames / min(n_frames, 5)))
-                # 一時ファイルを削除
                 try:
                     os.remove(out_path)
                 except OSError:
                     pass
+                if progress_cb is not None:
+                    frac = min(1.0, (time.perf_counter() - t_wall0) / max(budget, 0.001))
+                    progress_cb(round(frac * n_frames))
                 if result.returncode != 0:
-                    return {"error": f"ffmpeg clip 失敗 (code={result.returncode})"}
+                    err = f"ffmpeg clip 失敗 (code={result.returncode})"
+                    break
+                i += 1
         finally:
-            # 合成元動画を削除
             try:
                 os.remove(video_path)
             except OSError:
                 pass
 
-        return _compute_metrics(latencies)
+        if err:
+            return {"error": err}
+        if not latencies:
+            return {"error": "キャンセルされました"}
+        metrics = _compute_metrics(latencies)
+        metrics["iters"] = len(latencies)
+        metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+        return metrics
 
     def _bench_statistics(self, device: ComputeDevice, n_frames: int,
                           job: "Any | None" = None,
@@ -680,43 +816,34 @@ class BenchmarkRunner:
             return {"error": "device unavailable"}
 
         rng = np.random.default_rng(123)
-        latencies: List[float] = []
+        try:
+            from scipy import stats as scipy_stats
+        except ImportError:
+            scipy_stats = None
 
-        for i in range(n_frames):
-            if job is not None and job.cancelled:
-                break
-            # EPV 模擬: n=200 の多変量乱数に対して相関行列・期待値計算
+        def _run_one() -> None:
             data = rng.standard_normal((200, 10))
+            np.corrcoef(data.T)
+            w = np.exp(data[:, 0]); w /= w.sum()
+            float(np.dot(w, data[:, 1]))
+            if scipy_stats is not None:
+                scipy_stats.linregress(data[:, 0], data[:, 1])
 
-            t0 = time.perf_counter()
-
-            # 相関行列
-            corr = np.corrcoef(data.T)
-
-            # EPV 模擬: ソフトマックス重み付き平均
-            weights = np.exp(data[:, 0])
-            weights /= weights.sum()
-            epv = float(np.dot(weights, data[:, 1]))
-
-            # scipy が使えれば線形回帰も計測に含める
-            try:
-                from scipy import stats as scipy_stats
-                slope, intercept, r_value, p_value, std_err = scipy_stats.linregress(
-                    data[:, 0], data[:, 1]
-                )
-            except ImportError:
-                pass
-
-            latencies.append(time.perf_counter() - t0)
-            if progress_cb is not None:
-                progress_cb(i + 1)
-
-            # 変数を明示的に削除して GC を促す
-            del corr, weights, epv
-
+        t_wall0 = time.perf_counter()
+        latencies = _measure_budget(
+            _run_one,
+            warmup=5,
+            min_iters=max(50, n_frames),
+            max_iters=200000,
+            cancelled_fn=(lambda: job is not None and job.cancelled),
+            progress_cb=(lambda f: progress_cb(round(f * n_frames)) if progress_cb else None),
+        )
         if not latencies:
             return {"error": "キャンセルされました"}
-        return _compute_metrics(latencies)
+        metrics = _compute_metrics(latencies)
+        metrics["iters"] = len(latencies)
+        metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+        return metrics
 
     # ── Ray ワーカーベンチマーク ──────────────────────────────────────────────
 
