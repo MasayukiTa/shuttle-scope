@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useEffect, useMemo, useState } from 'react'
+import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check } from 'lucide-react'
+
+import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
-import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
-import { Pencil, Trash2, Plus, X, Check } from 'lucide-react'
 
 interface UserRow {
   id: number
@@ -22,6 +22,15 @@ interface PlayerOption {
   name: string
 }
 
+interface FormState {
+  role: string
+  display_name: string
+  username: string
+  credential: string
+  player_id: string
+  team_name: string
+}
+
 const ROLE_LABELS: Record<string, string> = {
   admin: '管理者',
   analyst: 'アナリスト',
@@ -36,30 +45,63 @@ const ROLE_COLORS: Record<string, string> = {
   player: 'bg-green-100 text-green-700',
 }
 
-interface FormState {
-  role: string
-  display_name: string
-  username: string
-  password: string
-  pin: string
-  player_id: string
-  team_name: string
-}
-
 const emptyForm = (): FormState => ({
   role: 'player',
   display_name: '',
   username: '',
-  password: '',
-  pin: '',
+  credential: '',
   player_id: '',
   team_name: '',
 })
 
+function SecretField(props: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  autoComplete?: string
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']
+  hint?: string
+  isLight: boolean
+  textMuted: string
+  inputCls: string
+}) {
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <div>
+      <label className={`block text-xs font-medium mb-1 ${props.textMuted}`}>{props.label}</label>
+      <div className="relative">
+        <input
+          type={visible ? 'text' : 'password'}
+          value={props.value}
+          onChange={(e) => props.onChange(e.target.value)}
+          className={`${props.inputCls} pr-11`}
+          placeholder={props.placeholder}
+          autoComplete={props.autoComplete}
+          inputMode={props.inputMode}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          className={`absolute inset-y-0 right-0 flex items-center px-3 ${
+            props.isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'
+          }`}
+          title={visible ? '非表示' : '表示'}
+          aria-label={visible ? 'パスワードを隠す' : 'パスワードを表示'}
+        >
+          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+      {props.hint ? <p className={`mt-1 text-xs ${props.textMuted}`}>{props.hint}</p> : null}
+    </div>
+  )
+}
+
 export function UserManagementPage() {
-  const { t } = useTranslation()
   const { role: myRole } = useAuth()
   const isLight = useIsLightMode()
+
   const [users, setUsers] = useState<UserRow[]>([])
   const [players, setPlayers] = useState<PlayerOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -74,6 +116,17 @@ export function UserManagementPage() {
   const textMain = isLight ? 'text-gray-900' : 'text-gray-100'
   const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
   const rowHover = isLight ? 'hover:bg-gray-50' : 'hover:bg-gray-700/50'
+  const inputCls = `w-full border ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-700'} rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${textMain}`
+
+  const isPlayerRole = form.role === 'player'
+  const isCoachRole = form.role === 'coach'
+
+  const credentialLabel = useMemo(() => {
+    if (isPlayerRole) {
+      return editId != null ? 'パスワード / PIN を更新' : 'パスワード / PIN'
+    }
+    return editId != null ? 'パスワードを更新' : 'パスワード'
+  }, [editId, isPlayerRole])
 
   const load = async () => {
     setLoading(true)
@@ -91,12 +144,12 @@ export function UserManagementPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+  }, [])
 
   if (myRole !== 'admin' && myRole !== 'analyst') {
-    return (
-      <div className="p-8 text-center text-gray-500">管理者権限が必要です</div>
-    )
+    return <div className="p-8 text-center text-gray-500">ユーザー管理の権限がありません</div>
   }
 
   const openCreate = () => {
@@ -111,8 +164,7 @@ export function UserManagementPage() {
       role: u.role,
       display_name: u.display_name ?? '',
       username: u.username ?? '',
-      password: '',
-      pin: '',
+      credential: '',
       player_id: u.player_id ? String(u.player_id) : '',
       team_name: u.team_name ?? '',
     })
@@ -126,33 +178,33 @@ export function UserManagementPage() {
       setError('表示名を入力してください')
       return
     }
+
     setSaving(true)
     setError(null)
+
     try {
       if (editId != null) {
         const body: Record<string, unknown> = {
           display_name: form.display_name || undefined,
           team_name: form.team_name || undefined,
-          player_id: form.player_id ? parseInt(form.player_id) : undefined,
+          player_id: form.player_id ? parseInt(form.player_id, 10) : undefined,
         }
-        if (form.password) body.password = form.password
-        if (form.pin) body.pin = form.pin
+        if (form.credential.trim()) body.password = form.credential.trim()
         await apiPut(`/auth/users/${editId}`, body)
       } else {
         const body: Record<string, unknown> = {
           role: form.role,
-          display_name: form.display_name,
-          username: form.username || undefined,
-          team_name: form.team_name || undefined,
-          player_id: form.player_id ? parseInt(form.player_id) : undefined,
+          display_name: form.display_name.trim(),
+          username: form.username.trim() || undefined,
+          team_name: form.team_name.trim() || undefined,
+          player_id: form.player_id ? parseInt(form.player_id, 10) : undefined,
         }
-        if (form.password) body.password = form.password
-        if (form.pin) body.pin = form.pin
+        if (form.credential.trim()) body.password = form.credential.trim()
         await apiPost('/auth/users', body)
       }
       setShowForm(false)
       await load()
-    } catch (e: unknown) {
+    } catch (e) {
       setError(String(e))
     } finally {
       setSaving(false)
@@ -160,7 +212,8 @@ export function UserManagementPage() {
   }
 
   const handleDelete = async (u: UserRow) => {
-    if (!window.confirm(`「${u.display_name ?? u.username}」を削除しますか？`)) return
+    const targetName = u.display_name ?? u.username
+    if (!window.confirm(`${targetName} を削除しますか？`)) return
     try {
       await apiDelete(`/auth/users/${u.id}`)
       await load()
@@ -169,105 +222,149 @@ export function UserManagementPage() {
     }
   }
 
-  // t() を参照することで未使用変数警告を抑制
-  void t
-
-  const inputCls = `w-full border ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-700'} rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${textMain}`
-
   return (
     <div className="flex flex-col h-full">
-      {/* ヘッダ */}
       <div className={`shrink-0 px-6 py-4 border-b ${border} ${panelBg} flex items-center justify-between`}>
-        <h1 className={`text-base font-semibold ${textMain}`}>ユーザ管理</h1>
+        <h1 className={`text-base font-semibold ${textMain}`}>ユーザー管理</h1>
         <button
           onClick={openCreate}
           className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg"
         >
           <Plus size={14} />
-          ユーザ追加
+          ユーザー追加
         </button>
       </div>
 
-      {/* コンテンツ */}
       <div className="flex-1 overflow-y-auto p-6">
-        {error && (
+        {error ? (
           <div className="mb-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-2">
             {error}
           </div>
-        )}
+        ) : null}
 
-        {/* 追加/編集フォーム */}
-        {showForm && (
+        {showForm ? (
           <div className={`mb-6 ${panelBg} border ${border} rounded-xl p-5`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-sm font-semibold ${textMain}`}>
-                {editId != null ? 'ユーザ編集' : '新規ユーザ追加'}
+                {editId != null ? 'ユーザー編集' : '新規ユーザー追加'}
               </h2>
-              <button onClick={() => setShowForm(false)} className={textMuted}><X size={16} /></button>
+              <button onClick={() => setShowForm(false)} className={textMuted}>
+                <X size={16} />
+              </button>
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {editId == null && (
+              {editId == null ? (
                 <div>
                   <label className={`block text-xs font-medium mb-1 ${textMuted}`}>ロール</label>
-                  <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className={inputCls}>
-                    {['admin', 'analyst', 'coach', 'player'].map(r => (
-                      <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                  <select
+                    value={form.role}
+                    onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+                    className={inputCls}
+                  >
+                    {['admin', 'analyst', 'coach', 'player'].map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
                     ))}
                   </select>
                 </div>
-              )}
+              ) : null}
+
               <div>
                 <label className={`block text-xs font-medium mb-1 ${textMuted}`}>表示名 *</label>
-                <input value={form.display_name} onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))} className={inputCls} placeholder="山田コーチ" />
+                <input
+                  value={form.display_name}
+                  onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
+                  className={inputCls}
+                  placeholder="山田 太郎"
+                />
               </div>
-              {(editId == null && (form.role === 'admin' || form.role === 'analyst')) && (
+
+              {editId == null ? (
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>ユーザ名</label>
-                  <input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} className={inputCls} placeholder="yamada" />
+                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>username</label>
+                  <input
+                    value={form.username}
+                    onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                    className={inputCls}
+                    placeholder="yamada"
+                  />
+                  <p className={`mt-1 text-xs ${textMuted}`}>
+                    未入力なら表示名ベースで作成されます。ログインの安定性を考えると設定推奨です。
+                  </p>
                 </div>
-              )}
-              {(form.role === 'admin' || form.role === 'analyst') && (
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{editId != null ? 'パスワード変更（空欄=変更なし）' : 'パスワード'}</label>
-                  <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className={inputCls} autoComplete="new-password" />
-                </div>
-              )}
-              {form.role === 'coach' && (
+              ) : null}
+
+              <SecretField
+                label={credentialLabel}
+                value={form.credential}
+                onChange={(value) => setForm((f) => ({ ...f, credential: value }))}
+                placeholder={isPlayerRole ? '例: 2468 または strong-pass' : '新しいパスワード'}
+                autoComplete="new-password"
+                inputMode={isPlayerRole ? 'text' : undefined}
+                hint={
+                  editId != null
+                    ? '空欄なら変更しません'
+                    : isPlayerRole
+                      ? '選手も通常のパスワードとして設定できます'
+                      : undefined
+                }
+                isLight={isLight}
+                textMuted={textMuted}
+                inputCls={inputCls}
+              />
+
+              {isCoachRole ? (
                 <div>
                   <label className={`block text-xs font-medium mb-1 ${textMuted}`}>チーム名</label>
-                  <input value={form.team_name} onChange={e => setForm(f => ({ ...f, team_name: e.target.value }))} className={inputCls} placeholder="ACT SAIKYO" />
+                  <input
+                    value={form.team_name}
+                    onChange={(e) => setForm((f) => ({ ...f, team_name: e.target.value }))}
+                    className={inputCls}
+                    placeholder="ACT SAIKYO"
+                  />
                 </div>
-              )}
-              {form.role === 'player' && (
-                <>
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${textMuted}`}>選手連携</label>
-                    <select value={form.player_id} onChange={e => setForm(f => ({ ...f, player_id: e.target.value }))} className={inputCls}>
-                      <option value="">（未連携）</option>
-                      {players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{editId != null ? 'PIN変更（空欄=変更なし）' : 'PIN（任意）'}</label>
-                    <input type="password" value={form.pin} onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} className={inputCls} placeholder="••••" inputMode="numeric" autoComplete="new-password" />
-                  </div>
-                </>
-              )}
+              ) : null}
+
+              {isPlayerRole ? (
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>選手紐付け</label>
+                  <select
+                    value={form.player_id}
+                    onChange={(e) => setForm((f) => ({ ...f, player_id: e.target.value }))}
+                    className={inputCls}
+                  >
+                    <option value="">未選択</option>
+                    {players.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
             </div>
-            {error && <div className="mt-2 text-red-500 text-xs">{error}</div>}
+
             <div className="mt-4 flex gap-2">
-              <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded-lg">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded-lg"
+              >
                 <Check size={14} />
                 {saving ? '保存中...' : '保存'}
               </button>
-              <button onClick={() => setShowForm(false)} className={`text-sm px-4 py-1.5 rounded-lg border ${border} ${textMuted}`}>
+              <button
+                onClick={() => setShowForm(false)}
+                className={`text-sm px-4 py-1.5 rounded-lg border ${border} ${textMuted}`}
+              >
                 キャンセル
               </button>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* ユーザ一覧テーブル */}
         {loading ? (
           <div className={`text-sm ${textMuted}`}>読み込み中...</div>
         ) : (
@@ -277,13 +374,15 @@ export function UserManagementPage() {
                 <tr className={`border-b ${border} text-left`}>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>ロール</th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>表示名</th>
-                  <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>ユーザ名/チーム/選手</th>
+                  <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>
+                    username / チーム / 選手
+                  </th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>認証</th>
-                  <th className="px-4 py-2.5"></th>
+                  <th className="px-4 py-2.5" />
                 </tr>
               </thead>
               <tbody>
-                {users.map(u => (
+                {users.map((u) => (
                   <tr key={u.id} className={`border-b last:border-0 ${border} ${rowHover}`}>
                     <td className="px-4 py-2.5">
                       <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[u.role] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -292,24 +391,32 @@ export function UserManagementPage() {
                     </td>
                     <td className={`px-4 py-2.5 font-medium ${textMain}`}>{u.display_name ?? '—'}</td>
                     <td className={`px-4 py-2.5 ${textMuted} text-xs hidden sm:table-cell`}>
-                      {u.role === 'coach' && u.team_name}
-                      {u.role === 'player' && u.player_name}
-                      {(u.role === 'admin' || u.role === 'analyst') && u.username}
+                      {u.role === 'coach' ? u.team_name || '—' : null}
+                      {u.role === 'player' ? u.player_name || '—' : null}
+                      {u.role === 'admin' || u.role === 'analyst' ? u.username || '—' : null}
                     </td>
                     <td className={`px-4 py-2.5 text-xs ${textMuted} hidden sm:table-cell`}>
-                      {u.has_credential ? '✓' : '—'}
+                      {u.has_credential ? '設定済み' : '未設定'}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2 justify-end">
-                        <button onClick={() => openEdit(u)} className={`${textMuted} hover:text-blue-500`}><Pencil size={14} /></button>
-                        <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-red-500`}><Trash2 size={14} /></button>
+                        <button onClick={() => openEdit(u)} className={`${textMuted} hover:text-blue-500`}>
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-red-500`}>
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
                 ))}
-                {users.length === 0 && (
-                  <tr><td colSpan={5} className={`px-4 py-8 text-center ${textMuted} text-sm`}>ユーザが登録されていません</td></tr>
-                )}
+                {users.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className={`px-4 py-8 text-center ${textMuted} text-sm`}>
+                      ユーザーが登録されていません
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
