@@ -51,6 +51,68 @@ def _cloudflare_available() -> bool:
     return shutil.which("cloudflared") is not None
 
 
+def _cloudflare_config_candidates() -> list[str]:
+    candidates: list[str] = []
+    cfg = (settings.CLOUDFLARE_TUNNEL_CONFIG or "").strip()
+    if cfg:
+        candidates.append(cfg)
+    user_cfg = os.path.join(os.path.expanduser("~"), ".cloudflared", "config.yml")
+    if user_cfg not in candidates:
+        candidates.append(user_cfg)
+    desktop_cfg = os.path.join(
+        os.path.expanduser("~"),
+        "Desktop",
+        "cloudflare-shuttle-scope",
+        "config.yml",
+    )
+    if desktop_cfg not in candidates:
+        candidates.append(desktop_cfg)
+    return candidates
+
+
+def _cloudflare_named_tunnel_info() -> dict:
+    info = {
+        "config_path": None,
+        "hostname": settings.CLOUDFLARE_TUNNEL_HOSTNAME,
+        "tunnel_name": settings.CLOUDFLARE_TUNNEL_NAME,
+        "named_ready": False,
+        "reason": "config not found",
+    }
+
+    config_path = next((p for p in _cloudflare_config_candidates() if p and os.path.isfile(p)), None)
+    if not config_path:
+        return info
+
+    info["config_path"] = config_path
+    try:
+        text = open(config_path, "r", encoding="utf-8").read()
+    except Exception as exc:
+        info["reason"] = f"config unreadable: {exc}"
+        return info
+
+    host_match = re.search(r'^\s*-\s*hostname:\s*([^\s#]+)', text, re.MULTILINE)
+    if host_match:
+        info["hostname"] = host_match.group(1).strip()
+
+    if "<UUID>" in text or "<USER>" in text or "app.example.com" in text:
+        info["reason"] = "template placeholders remain"
+        return info
+
+    if not re.search(r'^\s*tunnel:\s*\S+', text, re.MULTILINE):
+        info["reason"] = "missing tunnel id"
+        return info
+
+    if not re.search(r'^\s*credentials-file:\s*\S+', text, re.MULTILINE):
+        info["reason"] = "missing credentials-file"
+        return info
+
+    if not host_match:
+        info["reason"] = "missing hostname"
+        return info
+
+    info["named_ready"] = True
+    info["reason"] = "ready"
+    return info
 def _find_ngrok() -> Optional[str]:
     """ngrok バイナリのパスを返す。見つからない場合は None。
 
@@ -256,14 +318,20 @@ def _poll_ngrok_url(proc: subprocess.Popen) -> None:
 # ─── プロセス起動ヘルパー ─────────────────────────────────────────────────────
 
 def _start_cloudflare(port: int) -> subprocess.Popen:
-    use_shell = sys.platform == "win32"
     cf_path = shutil.which("cloudflared")
-    cmd = (
-        f'"{cf_path}" tunnel --url http://localhost:{port}'
-        if use_shell
-        else [cf_path, "tunnel", "--url", f"http://localhost:{port}"]
-    )
-    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, shell=use_shell)
+    named = _cloudflare_named_tunnel_info()
+    if named["named_ready"] and named["config_path"]:
+        cmd = [
+            cf_path,
+            "tunnel",
+            "--config",
+            str(named["config_path"]),
+            "run",
+        ]
+        return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, shell=False)
+
+    cmd = [cf_path, "tunnel", "--url", f"http://localhost:{port}"]
+    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, shell=False)
 
 
 def _start_ngrok(port: int, authtoken: str = "") -> subprocess.Popen:
@@ -291,6 +359,7 @@ def _start_ngrok(port: int, authtoken: str = "") -> subprocess.Popen:
 def tunnel_status():
     cf_avail = _cloudflare_available()
     ngrok_avail = _ngrok_available()
+    cf_named = _cloudflare_named_tunnel_info()
 
     with _lock:
         running = _proc is not None and _proc.poll() is None
@@ -308,7 +377,13 @@ def tunnel_status():
             # 拡張フィールド
             "active_provider": provider,
             "providers": {
-                "cloudflare": {"available": cf_avail},
+                "cloudflare": {
+                    "available": cf_avail,
+                    "named_ready": cf_named["named_ready"],
+                    "hostname": cf_named["hostname"],
+                    "config_path": cf_named["config_path"],
+                    "reason": cf_named["reason"],
+                },
                 "ngrok": {"available": ngrok_avail, "path": _find_ngrok()},
             },
             "recent_log": recent_log,
@@ -386,16 +461,23 @@ def tunnel_start(provider: str = "auto", db: Session = Depends(get_db)):
             },
         }
     else:
+        cf_named = _cloudflare_named_tunnel_info()
         proc = _start_cloudflare(port)
         with _lock:
             _proc = proc
             _active_provider = 'cloudflare'
+            if cf_named["named_ready"] and cf_named["hostname"]:
+                _tunnel_url = f'https://{cf_named["hostname"]}'
         t = threading.Thread(target=_read_stderr_cloudflare, args=(proc,), daemon=True)
         t.start()
         return {
             "success": True,
             "data": {
-                "message": "cloudflared を起動しました。URL取得まで数秒かかります。",
+                "message": (
+                    f'cloudflared を起動しました。{cf_named["hostname"]} を使用します。'
+                    if cf_named["named_ready"] and cf_named["hostname"]
+                    else "cloudflared を起動しました。URL取得まで数秒かかります。"
+                ),
                 "provider": "cloudflare",
             },
         }
