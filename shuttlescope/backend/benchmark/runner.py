@@ -104,8 +104,10 @@ def _env_override(device: ComputeDevice) -> Generator[None, None, None]:
         # specs に device_index があれば使う、なければ 0
         dev_idx = str(device.specs.get("device_index", 0))
         os.environ["SS_CUDA_DEVICE"] = dev_idx
-    # ベンチマーク時は常に実モデルを使用する（Mock では計測値が無意味になる）
-    os.environ["SS_CV_MOCK"] = "0"
+    # 通常ベンチでは実モデルを使うが、テストなどで明示的に SS_CV_MOCK=1 が
+    # 指定されている場合はそれを尊重する。これにより CI では ffmpeg / 実重み
+    # 非依存のモック経路を安定して使える。
+    os.environ["SS_CV_MOCK"] = "1" if old_cv_mock == "1" else "0"
 
     # デバイスの backend に応じて推論バックエンドを明示指定する。
     # dGPU(NVIDIA) → auto（ONNX CUDA を優先）
