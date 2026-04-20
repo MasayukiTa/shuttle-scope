@@ -264,25 +264,18 @@ function ProtectedMainRoute() {
 }
 
 function App() {
-  const { ready, elapsed } = useBackendReady()
+  const { ready } = useBackendReady()
 
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
-        <div className="text-center space-y-4">
+        <div className="text-center">
           <div className="text-3xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>ShuttleScope</div>
-          <div className="flex items-center justify-center gap-2">
+          <div className="mt-6 flex items-center justify-center gap-2">
             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
-          <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>バックエンド起動中...</p>
-          {elapsed >= 10 && (
-            <p className="text-yellow-500 text-xs">
-              起動に時間がかかっています ({elapsed}秒)
-              <br />Python と依存パッケージのセットアップ状況を確認してください
-            </p>
-          )}
         </div>
       </div>
     )

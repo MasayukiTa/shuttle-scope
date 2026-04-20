@@ -95,9 +95,6 @@ export function LoginPage({ onLogin }: Props) {
   useEffect(() => {
     fetchBootstrapStatus().then((status) => {
       setBootstrapStatus(status)
-      if (status?.bootstrap_username) {
-      setIdentifier((current) => current || status.bootstrap_username || '')
-      }
     })
   }, [])
 
@@ -158,7 +155,7 @@ export function LoginPage({ onLogin }: Props) {
             }`}
           >
             {bootstrapStatus.bootstrap_configured
-              ? `初回管理者は "${bootstrapStatus.bootstrap_username ?? 'admin'}" でログインすると作成されます。`
+              ? '初回管理者アカウントは、設定済みのログインIDとパスワードで作成されます。'
               : '初回管理者パスワードが未設定です。BOOTSTRAP_ADMIN_PASSWORD を backend 環境変数に設定してください。'}
           </div>
         )}
@@ -171,7 +168,7 @@ export function LoginPage({ onLogin }: Props) {
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               className={fieldCls}
-              placeholder={bootstrapStatus?.bootstrap_username ?? 'admin'}
+              placeholder="ログインIDを入力"
               autoComplete="username"
             />
             <p className={`mt-1 text-xs ${mutedCls}`}>
