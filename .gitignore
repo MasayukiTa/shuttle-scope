@@ -17,3 +17,6 @@ shuttlescope/node_modules/
 shuttlescope/backend/.venv/
 shuttlescope/**/__pycache__/
 shuttlescope/**/*.pyc
+
+# Local-only runtime diagnostics
+kernel.errors.txt
