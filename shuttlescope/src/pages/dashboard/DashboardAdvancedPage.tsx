@@ -60,14 +60,14 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const { card, cardInner, textHeading, textSecondary, textMuted, textFaint, badge, border, isLight } = useCardTheme()
   const { role } = useAuth()
 
-  // Override summary: analyst/coach のみクエリ
+  // Override summary: admin/analyst/coach のみクエリ
   const { data: overridesResp } = useQuery({
     queryKey: ['promotion-overrides'],
     queryFn: () => apiGet<{ success: boolean; data: Record<string, { status: string; note: string; analyst: string }> }>(
       '/analysis/meta/promotion_overrides'
     ),
     staleTime: 30 * 1000,
-    enabled: role === 'analyst' || role === 'coach',
+    enabled: role === 'admin' || role === 'analyst' || role === 'coach',
   })
   const activeOverrides = Object.values(overridesResp?.data ?? {})
   const holdCount = activeOverrides.filter((o) => o.status === 'hold').length
@@ -104,8 +104,8 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
         <EvidenceBadge tier="advanced" evidenceLevel="practical_candidate" className="shrink-0" />
       </div>
 
-      {/* Override summary バナー: analyst/coach のみ、active override がある場合に表示 */}
-      {activeOverrides.length > 0 && (role === 'analyst' || role === 'coach') && (
+      {/* Override summary バナー: admin/analyst/coach のみ、active override がある場合に表示 */}
+      {activeOverrides.length > 0 && (role === 'admin' || role === 'analyst' || role === 'coach') && (
         <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border-l-4 text-xs ${
           isLight
             ? 'bg-amber-50 border-amber-400 text-amber-800'

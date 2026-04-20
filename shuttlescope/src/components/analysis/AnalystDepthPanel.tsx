@@ -4,7 +4,7 @@
  * 直近フォーム / 成長トレンド / ブライアスコア /
  * 最近傍試合エビデンス / 特徴量ブレンド内訳
  *
- * RoleGuard: analyst のみ
+ * RoleGuard: analyst / admin
  */
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -448,7 +448,7 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
 
 export function AnalystDepthPanel({ playerId, opponentId, tournamentLevel }: Props) {
   return (
-    <RoleGuard allowedRoles={['analyst']}>
+    <RoleGuard allowedRoles={['analyst', 'admin']}>
       <Inner playerId={playerId} opponentId={opponentId} tournamentLevel={tournamentLevel} />
     </RoleGuard>
   )

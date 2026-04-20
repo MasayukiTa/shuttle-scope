@@ -39,7 +39,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
   const { t } = useTranslation()
   const { role } = useAuth()
   const qc = useQueryClient()
-  const isAnalyst = role === 'analyst'
+  const isAnalyst = role === 'analyst' || role === 'admin'
 
   const initial = useMemo(() => parseQuestionnaire(record['questionnaire_json']), [record])
   const [answers, setAnswers] = useState<Record<string, number>>(initial)

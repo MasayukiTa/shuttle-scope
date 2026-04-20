@@ -405,8 +405,8 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
         </div>
       )}
 
-      {/* ── アナリスト専用: ベストパートナーランキング ── */}
-      {role === 'analyst' && (
+      {/* ── アナリスト/管理者向け: ベストパートナーランキング ── */}
+      {(role === 'analyst' || role === 'admin') && (
         <PartnerRankingSection players={players} />
       )}
     </div>

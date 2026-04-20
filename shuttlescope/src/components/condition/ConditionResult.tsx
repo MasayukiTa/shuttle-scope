@@ -48,8 +48,8 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
   const lowPct = pctOf(rangeLow)
   const highPct = pctOf(rangeHigh)
 
-  const showCoach = role === 'coach' || role === 'analyst'
-  const showAnalyst = role === 'analyst'
+  const showCoach = role === 'coach' || role === 'analyst' || role === 'admin'
+  const showAnalyst = role === 'analyst' || role === 'admin'
 
   return (
     <div className="space-y-4">
