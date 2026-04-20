@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     API_PORT: int = 8765
     SECRET_KEY: str = "development-secret-key"
     ENVIRONMENT: str = "development"
+    BOOTSTRAP_ADMIN_USERNAME: str = "admin"
+    BOOTSTRAP_ADMIN_PASSWORD: str = ""
+    BOOTSTRAP_ADMIN_DISPLAY_NAME: str = "Admin"
     # R-002: LAN共有モード（0.0.0.0バインドでLAN内アクセスを可能にする）
     LAN_MODE: bool = False
     # ngrok 認証トークン（環境変数 NGROK_AUTHTOKEN から自動読み込み）

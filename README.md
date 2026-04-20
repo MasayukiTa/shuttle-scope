@@ -345,6 +345,8 @@ The default backend URL is `http://127.0.0.1:8765`.
 - Player access is designed around player-linked accounts and PIN-style entry, while admin access uses password login.
 - Coach and analyst views are intended for internal workflows and do not expose the same condition-detail surface as player self-view or privileged admin flows.
 - Sensitive access now depends on backend auth context rather than only frontend role selection.
+- The first admin user is no longer created with a hard-coded password. For a fresh environment, set `BOOTSTRAP_ADMIN_PASSWORD` before the first admin login.
+- Optional bootstrap knobs are `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_DISPLAY_NAME`; if omitted, the first admin defaults to username `admin`.
 
 ## TrackNet / YOLO Notes
 

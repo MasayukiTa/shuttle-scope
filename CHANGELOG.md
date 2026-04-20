@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 This changelog records ShuttleScope's evolution from repository creation onward.
 It is intentionally more detailed than a typical release changelog because the project is still moving quickly, and the history itself is useful context and motivation.
@@ -15,6 +15,13 @@ Read it together with:
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
 ## 2026-04-20
+
+### Admin Bootstrap Security
+
+- Removed the fixed repository-visible bootstrap admin password and replaced it with environment-driven first-run admin provisioning.
+- Added backend bootstrap-status reporting so the login screen can indicate whether initial admin creation is ready without exposing any secret value.
+- Updated the login UI to prefill the bootstrap admin username and clearly warn when `BOOTSTRAP_ADMIN_PASSWORD` has not been configured yet.
+- Added backend coverage for the bootstrap-status path and first admin creation on password login.
 
 ### Auth Flow Hardening and Session Cleanup
 
@@ -134,8 +141,8 @@ Read it together with:
 
 - Fixed canvas overlay blur on high-DPI secondary monitors in the video extension window.
   `PlayerPositionOverlay` and `ShuttleTrackOverlay` were setting `canvas.width` / `canvas.height` to CSS logical pixels, causing the browser to upscale the canvas by `devicePixelRatio` and producing visibly blurred YOLO bounding boxes, shuttle trail dots, and label text.
-  Both components now set canvas physical dimensions to `videoWidth × dpr` / `videoHeight × dpr`, apply `ctx.scale(dpr, dpr)` to keep drawing coordinates in logical pixels, and remove the `width` / `height` JSX attributes so sizing is managed entirely in the effect.
-  On a 4K external monitor (`dpr = 2.0`), canvas resolution doubles from 1920 × 1080 to 3840 × 2160 physical pixels, utilizing the display's full native resolution while the main 1080p window remains unaffected.
+  Both components now set canvas physical dimensions to `videoWidth ﾃ・dpr` / `videoHeight ﾃ・dpr`, apply `ctx.scale(dpr, dpr)` to keep drawing coordinates in logical pixels, and remove the `width` / `height` JSX attributes so sizing is managed entirely in the effect.
+  On a 4K external monitor (`dpr = 2.0`), canvas resolution doubles from 1920 ﾃ・1080 to 3840 ﾃ・2160 physical pixels, utilizing the display's full native resolution while the main 1080p window remains unaffected.
 
 ### Multi-Monitor Selection UI
 
@@ -145,13 +152,13 @@ Read it together with:
   Single-monitor laptop setups (one external display) see no UI change; the dropdown only surfaces when a choice is meaningful.
   The `openVideoWindow` call now routes to the user-selected display ID, with a fallback to the first non-primary if the state is uninitialised.
 
-### GPU Inference Backend — Missing Pieces Completed (RTX 5060 Ti Preparation)
+### GPU Inference Backend 窶・Missing Pieces Completed (RTX 5060 Ti Preparation)
 
 - Added `backend/cv/tracknet_openvino.py`: OpenVINO backend wrapper that adapts `tracknet/inference.py`'s `TrackNetInference` to the `TrackNetInferencer` Protocol.
   Implements chunked frame processing (300-frame chunks with a 2-frame overlap) so 30-minute match videos are not loaded entirely into RAM before inference starts.
   Frame indices are accumulated with a global offset to produce correct absolute timestamps across chunk boundaries.
 - Extended `backend/cv/factory.py` with an OpenVINO intermediate tier.
-  The new priority order is: Mock → CUDA (torch + RTX) → OpenVINO (iGPU / CPU, also works on K10) → CPU (classical CV) → Mock.
+  The new priority order is: Mock 竊・CUDA (torch + RTX) 竊・OpenVINO (iGPU / CPU, also works on K10) 竊・CPU (classical CV) 竊・Mock.
   Previously the OpenVINO inference path in `tracknet/inference.py` was entirely disconnected from the factory used by the pipeline.
 - Added `backend/cv/tracknet_runner.py` and `backend/cv/mediapipe_runner.py`: thin runner modules that `cluster/tasks.py` was already referencing via `_safe_call` but which did not exist.
   Each module calls `factory.get_tracknet()` / `factory.get_pose()`, runs inference, and returns a status dict; the factory handles backend selection transparently so the same runner works on X1 AI (CUDA path) and K10 (CPU / OpenVINO path).
@@ -174,7 +181,7 @@ Read it together with:
 - Fixed Canvas DPI scaling in PlayerPositionOverlay and ShuttleTrackOverlay for high-DPI secondary monitors.
 - Added multi-monitor selection dropdown to video extension UI (shown only with 2+ non-primary displays).
 - Added tracknet_openvino.py with chunked frame processing and connected it to factory.py.
-- Extended factory.py with CUDA → OpenVINO → CPU → Mock priority chain.
+- Extended factory.py with CUDA 竊・OpenVINO 竊・CPU 竊・Mock priority chain.
 - Added tracknet_runner.py and mediapipe_runner.py to complete the cluster/tasks.py call chain.
 - Added pipeline/clips.py with automatic NVENC / libx264 selection.
 - Added pipeline/statistics.py, cog.py, and shot_classifier.py as K10-targeted pipeline stubs.
@@ -223,7 +230,7 @@ Read it together with:
   The navigator uses the `localfile://` protocol for desktop local video access and ties clip boundaries to annotated rally records, turning annotation data into a navigation layer over existing video.
 - Added QuickSummaryCard with five rule-based coaching signals (momentum shift, serve pattern, unforced error rate, return pressure, fatigue indicator) targeted at between-set intervals.
   Cards are intentionally rule-based rather than model-driven so they surface reliably even when sample sizes are small enough to make statistical inference unreliable.
-  Growth-oriented framing is preserved throughout — no direct weakness labels appear in any card.
+  Growth-oriented framing is preserved throughout 窶・no direct weakness labels appear in any card.
 
 ### Data Asset Packaging
 - Added a JSON data package export / import workflow that bundles a match together with its linked players, sets, rallies, and strokes into a single portable file.
@@ -245,7 +252,7 @@ Read it together with:
 ### Cluster Infrastructure and Distributed Processing
 - Designed and implemented a two-node cluster architecture targeting Minisforum X1 AI (primary) and GMKtec K10 (worker).
   Network topology: 2.5GbE direct Ethernet as the primary cluster link (192.168.100.0/24), USB-C RNDIS as a fallback link (192.168.101.0/24), WiFi for client access.
-  USB-C is treated as fallback only — the K10 does not have Thunderbolt, so USB networking tops out around 300–500 Mbps via RNDIS rather than full Thunderbolt speeds.
+  USB-C is treated as fallback only 窶・the K10 does not have Thunderbolt, so USB networking tops out around 300窶・00 Mbps via RNDIS rather than full Thunderbolt speeds.
   Traffic budget analysis confirmed the 2.5GbE link is sufficient: ~50 Mbps for PostgreSQL WAL replication plus ~200 Mbps for four cameras at compressed JPEG frame rates leaves substantial headroom under the 2.5 Gbps physical limit.
 - Added `cluster.config.yaml` as the user-facing cluster configuration file at the app root.
   Fields cover cluster mode (single / primary / worker), network interface assignment, Ray head address, PostgreSQL connection settings, camera inference limits, and per-node load thresholds.
@@ -269,7 +276,7 @@ Read it together with:
 - Added `scripts/cluster/pg_setup_primary.bat`: creates the `ss_user` database role, the `shuttlescope` database, and the `replicator` replication role, and configures PostgreSQL `wal_level`, `max_wal_senders`, `wal_keep_size`, and `listen_addresses` for streaming replication.
 - Added `scripts/cluster/pg_setup_standby.bat`: runs `pg_basebackup` from the primary and starts the standby in hot-standby mode via `standby.signal`.
 
-### SQLite → PostgreSQL 18 Migration
+### SQLite 竊・PostgreSQL 18 Migration
 - Migrated the operational database from SQLite to PostgreSQL 18.
   PostgreSQL 18 was installed via winget on the primary PC (`127.0.0.1:5432`, database `shuttlescope`, user `ss_user`).
   41,204 rows across 13 populated tables were migrated successfully (players 22, matches 62, sets 129, rallies 4,467, strokes 35,750, and supporting tables).
@@ -282,7 +289,7 @@ Read it together with:
 ### CV Inference Architecture Foundation
 
 - Added the CV inference factory (`backend/cv/factory.py`) as the single entry point for all CV backend selection.
-  Priority chain: `SS_CV_MOCK=1` → Mock, `SS_USE_GPU=1` → CUDA, fallback → CPU, final fallback → Mock.
+  Priority chain: `SS_CV_MOCK=1` 竊・Mock, `SS_USE_GPU=1` 竊・CUDA, fallback 竊・CPU, final fallback 竊・Mock.
   All routers and pipeline code use only `get_tracknet()` / `get_pose()` so backend selection stays in one place.
 - Added `CpuTrackNet` (`cv/tracknet_cpu.py`): classical CV shuttle detection using HSV color filter, MOG2 background subtraction, contour matching, and HoughCircles fallback.
   Missing frames are filled with linear interpolation so downstream consumers always receive a full-length sample list.
@@ -291,13 +298,13 @@ Read it together with:
 - Added `CudaPose` (`cv/pose_cuda.py`) and `CpuPose` (`cv/pose_cpu.py`): MediaPipe Pose inferencer pair.
   The CUDA variant uses MediaPipe Tasks GPU delegate; the CPU variant is the plain MediaPipe CPU path.
   Both satisfy the `PoseInferencer` Protocol so the factory can swap them without caller changes.
-- Added `backend/tracknet/inference.py`: TrackNet inference wrapper with OpenVINO (GPU-preferred) → ONNX Runtime CPU → TensorFlow CPU priority chain.
+- Added `backend/tracknet/inference.py`: TrackNet inference wrapper with OpenVINO (GPU-preferred) 竊・ONNX Runtime CPU 竊・TensorFlow CPU priority chain.
   Loads real badminton-tuned TrackNet checkpoint weights and exposes `predict_frames(frames)` returning per-frame zone / coordinate / confidence dicts.
-- Added `backend/yolo/inference.py`: YOLOv8 player detection wrapper with OpenVINO IR → ultralytics PT → custom ONNX CPU priority chain, per-frame court-side and depth-band assignment, and thread-safe locking for OpenVINO's stateful compiled model.
+- Added `backend/yolo/inference.py`: YOLOv8 player detection wrapper with OpenVINO IR 竊・ultralytics PT 竊・custom ONNX CPU priority chain, per-frame court-side and depth-band assignment, and thread-safe locking for OpenVINO's stateful compiled model.
 - Added Ray remote task structure (`backend/cluster/tasks.py`) with `_maybe_remote` decorator: GPU-intensive tasks (`run_tracknet`, `run_mediapipe`, `num_gpus=1`) target the X1 AI GPU node; CPU tasks (`extract_clips`, `run_statistics`, `calc_center_of_gravity`, `classify_shots`, `num_cpus=1`) target K10 worker nodes.
   Tasks degrade to synchronous execution when Ray is not initialized.
 - Added `backend/cluster/pipeline.py`: orchestration layer that calls tasks in parallel stages (TrackNet + MediaPipe concurrently, then clips, then statistics / CoG / shots concurrently) using Ray when live or sequential fallback otherwise.
-- Added `backend/pipeline/video_pipeline.py` and `backend/pipeline/jobs.py`: `run_pipeline()` and `execute_job()` coordinate full per-match analysis runs (TrackNet → ShuttleTrack DB, Pose → PoseFrame + CenterOfGravity DB, shot classification → ShotInference DB), with `AnalysisJob` status tracking (running → done / failed), error recording, and idempotent delete-before-insert.
+- Added `backend/pipeline/video_pipeline.py` and `backend/pipeline/jobs.py`: `run_pipeline()` and `execute_job()` coordinate full per-match analysis runs (TrackNet 竊・ShuttleTrack DB, Pose 竊・PoseFrame + CenterOfGravity DB, shot classification 竊・ShotInference DB), with `AnalysisJob` status tracking (running 竊・done / failed), error recording, and idempotent delete-before-insert.
 - Added `backend/benchmark/devices.py`: compute device probe layer (`probe_all()`) covering CPU (psutil), NVIDIA GPU (pynvml), OpenVINO devices (iGPU / dGPU), ONNX Runtime CUDA EP, and Ray worker nodes.
   Results are cached for 60 seconds to avoid repeated probe overhead during dashboard polling.
 - Added `scripts/setup_gpu.ps1` and `scripts/setup_gpu.sh`: GPU environment setup scripts that install PyTorch (CUDA 12.4 index), MediaPipe, and pynvml into the backend venv.
@@ -317,7 +324,7 @@ Read it together with:
 - Added QuickSummaryCard with five rule-based between-set coaching signals.
 - Added JSON match data package export and import workflow.
 - Extended camera model to four simultaneous cameras with oldest-handoff policy.
-- Fixed DeviceSelector CPU text color (blue-on-blue → white).
+- Fixed DeviceSelector CPU text color (blue-on-blue 竊・white).
 - Added PlayerPositionFrame model and Alembic migration 0007.
 - Designed two-node cluster topology (2.5GbE primary, USB-C fallback, WiFi clients).
 - Added cluster.config.yaml, topology.py, load_guard.py, and cluster router.
