@@ -215,7 +215,7 @@ export function DashboardShell() {
           )}
         </div>
 
-        {/* 選手セレクター + エクスポートボタン */}
+        {/* 選手セレクター */}
         <div className="flex flex-wrap items-center gap-3">
           <User size={16} className={`${textMuted} shrink-0`} />
           <label className={`text-sm ${textMuted} shrink-0`}>選手：</label>
@@ -234,40 +234,6 @@ export function DashboardShell() {
             loading={loadingPlayers}
             className="min-w-[280px]"
           />
-          {/* エクスポートボタン（選手選択後のみ表示） */}
-          {selectedPlayerId && (
-            <div className="flex items-center gap-1.5 ml-auto">
-              <FileDown size={13} className={textMuted} />
-              {/* スカウティングPDF — アナリスト・コーチのみ */}
-              {(role === 'analyst' || role === 'coach') && (
-                <a
-                  href={`/api/reports/scouting?player_id=${selectedPlayerId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`text-xs px-2.5 py-1 rounded border transition-colors ${
-                    isLight
-                      ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
-                      : 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                  }`}
-                >
-                  スカウティング PDF
-                </a>
-              )}
-              {/* 成長レポート — 全ロール */}
-              <a
-                href={`/api/reports/player_growth?player_id=${selectedPlayerId}`}
-                target="_blank"
-                rel="noreferrer"
-                className={`text-xs px-2.5 py-1 rounded border transition-colors ${
-                  isLight
-                    ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
-                    : 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                成長レポート JSON
-              </a>
-            </div>
-          )}
         </div>
       </div>
 
@@ -276,10 +242,42 @@ export function DashboardShell() {
         <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
           選手を選択してください
         </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
-          {/* StatCards（スクロールで上に消える） */}
-          <div className={`px-6 pt-4 pb-3 border-b ${borderColor}`}>
+        ) : (
+          <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+            <div className={`px-6 pt-4 ${selectedPlayerId ? 'pb-0' : 'pb-3'}`}>
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <FileDown size={13} className={textMuted} />
+                {(role === 'analyst' || role === 'coach') && (
+                  <a
+                    href={`/api/reports/scouting?player_id=${selectedPlayerId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                      isLight
+                        ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                        : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    スカウティング PDF
+                  </a>
+                )}
+                <a
+                  href={`/api/reports/player_growth?player_id=${selectedPlayerId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                    isLight
+                      ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                      : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  成長レポート JSON
+                </a>
+              </div>
+            </div>
+
+            {/* StatCards（スクロールで上に消える） */}
+            <div className={`px-6 pt-3 pb-3 border-b ${borderColor}`}>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard icon={<Award size={18} />} label="試合数" value={descriptive?.total_matches} />
               <StatCard icon={<Activity size={18} />} label="ラリー数" value={descriptive?.total_rallies} sampleSize={descriptive?.total_rallies} />
