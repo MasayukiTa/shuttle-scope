@@ -38,6 +38,10 @@ logging.basicConfig(
 )
 # uvicorn のアクセスログはノイズが多いので WARNING に落とす
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+# Ray 内部ワーカーの接続リトライログを抑制（クラスタ未使用時の spam 防止）
+logging.getLogger("ray").setLevel(logging.WARNING)
+logging.getLogger("ray.worker").setLevel(logging.WARNING)
+logging.getLogger("ray._private.worker").setLevel(logging.WARNING)
 import mimetypes
 import uvicorn
 from contextlib import asynccontextmanager
