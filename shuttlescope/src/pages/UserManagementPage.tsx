@@ -99,6 +99,8 @@ function SecretField(props: {
 }
 
 export function UserManagementPage() {
+  type SortKey = 'display_name' | 'username' | 'player_name'
+
   const { role: myRole } = useAuth()
   const isLight = useIsLightMode()
 
@@ -110,6 +112,8 @@ export function UserManagementPage() {
   const [form, setForm] = useState<FormState>(emptyForm())
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('display_name')
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const border = isLight ? 'border-gray-200' : 'border-gray-700'
@@ -127,6 +131,23 @@ export function UserManagementPage() {
     }
     return editId != null ? 'パスワードを更新' : 'パスワード'
   }, [editId, isPlayerRole])
+
+  const filteredUsers = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase()
+
+    const filtered = keyword
+      ? users.filter((user) => {
+          const values = [user.display_name, user.username, user.player_name]
+          return values.some((value) => (value ?? '').toLowerCase().includes(keyword))
+        })
+      : users
+
+    return [...filtered].sort((a, b) => {
+      const aValue = (a[sortKey] ?? '').toString().toLowerCase()
+      const bValue = (b[sortKey] ?? '').toString().toLowerCase()
+      return aValue.localeCompare(bValue, 'ja')
+    })
+  }, [searchTerm, sortKey, users])
 
   const load = async () => {
     setLoading(true)
@@ -246,6 +267,32 @@ export function UserManagementPage() {
             {error}
           </div>
         ) : null}
+
+        <div className={`mb-4 ${panelBg} border ${border} rounded-xl p-4`}>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+            <div>
+              <label className={`block text-xs font-medium mb-1 ${textMuted}`}>検索</label>
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className={inputCls}
+                placeholder="表示名・ログインID・選手名で検索"
+              />
+            </div>
+            <div>
+              <label className={`block text-xs font-medium mb-1 ${textMuted}`}>並び順</label>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className={inputCls}
+              >
+                <option value="display_name">表示名順</option>
+                <option value="username">ログインID順</option>
+                <option value="player_name">選手名順</option>
+              </select>
+            </div>
+          </div>
+        </div>
 
         {showForm ? (
           <div className={`mb-6 ${panelBg} border ${border} rounded-xl p-5`}>
@@ -385,7 +432,7 @@ export function UserManagementPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
+                {filteredUsers.map((u) => (
                   <tr key={u.id} className={`border-b last:border-0 ${border} ${rowHover}`}>
                     <td className="px-4 py-2.5">
                       <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[u.role] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -413,10 +460,10 @@ export function UserManagementPage() {
                     </td>
                   </tr>
                 ))}
-                {users.length === 0 ? (
+                {filteredUsers.length === 0 ? (
                   <tr>
                     <td colSpan={5} className={`px-4 py-8 text-center ${textMuted} text-sm`}>
-                      ユーザーが登録されていません
+                      {searchTerm.trim() ? '該当するユーザーが見つかりません' : 'ユーザーが登録されていません'}
                     </td>
                   </tr>
                 ) : null}
