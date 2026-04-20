@@ -29,6 +29,13 @@ def _verify_password(password: str, hashed: str) -> bool:
         return False
 
 
+def _hash_user_credential(password: Optional[str], pin: Optional[str]) -> Optional[str]:
+    secret = (password or pin or "").strip()
+    if not secret:
+        return None
+    return _hash_password(secret)
+
+
 def _get_ip(request: Request) -> Optional[str]:
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
@@ -355,11 +362,7 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
         if existing:
             raise HTTPException(status_code=409, detail="username is already in use")
 
-    hashed: Optional[str] = None
-    if body.role in {"admin", "analyst"} and body.password:
-        hashed = _hash_password(body.password)
-    elif body.role == "player" and body.pin:
-        hashed = _hash_password(body.pin)
+    hashed = _hash_user_credential(body.password, body.pin)
 
     user = User(
         username=body.username or body.display_name,
@@ -388,10 +391,9 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         user.team_name = body.team_name
     if body.player_id is not None:
         user.player_id = body.player_id
-    if body.password:
-        user.hashed_credential = _hash_password(body.password)
-    elif body.pin:
-        user.hashed_credential = _hash_password(body.pin)
+    hashed = _hash_user_credential(body.password, body.pin)
+    if hashed:
+        user.hashed_credential = hashed
     db.commit()
     log_access(db, "user_updated", user_id=user.id)
     return {"success": True}
