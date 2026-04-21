@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player
+from backend.utils.auth import get_auth, check_export_match_scope, require_analyst
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -143,7 +144,7 @@ def _stroke_dict(s: Stroke) -> dict:
 # ─── エクスポート ──────────────────────────────────────────────────────────────
 
 @router.get("/export/package")
-def export_package(match_id: int, db: Session = Depends(get_db)):
+def export_package(match_id: int, request: Request, db: Session = Depends(get_db)):
     """試合データを JSON パッケージとしてダウンロードする。
 
     レスポンスボディ形式:
@@ -157,9 +158,11 @@ def export_package(match_id: int, db: Session = Depends(get_db)):
       "strokes": [...]
     }
     """
+    ctx = get_auth(request)
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    check_export_match_scope(ctx, [match], db)
 
     # プレイヤー収集（重複なし）
     player_ids = {match.player_a_id, match.player_b_id}
@@ -219,13 +222,14 @@ def export_package(match_id: int, db: Session = Depends(get_db)):
 
 @router.post("/import/package")
 async def import_package_endpoint(request: Request, db: Session = Depends(get_db)):
-    """JSON パッケージをインポートする。
+    """JSON パッケージをインポートする（analyst / admin 限定）。
 
     クエリパラメータ:
       force=true  既存 match.uuid が存在する場合に上書きする
 
     リクエストボディ: export_package が生成した JSON
     """
+    require_analyst(request)
     force = request.query_params.get("force", "false").lower() == "true"
 
     try:
