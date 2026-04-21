@@ -113,6 +113,13 @@ export function SettingsPage() {
   const queryClient = useQueryClient()
   const { role, teamName, displayName, userId, clearRole } = useAuth()
 
+  const { data: healthData } = useQuery<{ public_mode?: boolean }>({
+    queryKey: ['health'],
+    queryFn: () => apiGet('/health'),
+    staleTime: 60_000,
+  })
+  const isPublicMode = healthData?.public_mode === true
+
   const [showPlayerForm, setShowPlayerForm] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormData>(defaultPlayerForm())
@@ -824,12 +831,12 @@ export function SettingsPage() {
               { key: 'players' as const, label: '選手管理' },
               { key: 'review' as const, label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
             ] : []),
-            ...(role === 'admin' ? [
+            ...(role === 'admin' && !isPublicMode ? [
               { key: 'tracknet' as const, label: t('tracknet.tab_label') },
               { key: 'sharing' as const, label: t('sharing.tab_label') },
             ] : []),
             { key: 'data' as const, label: 'データ管理' },
-            ...(role === 'admin' ? [
+            ...(role === 'admin' && !isPublicMode ? [
               { key: 'cluster' as const, label: t('cluster.tab') },
             ] : []),
             { key: 'account' as const, label: 'アカウント設定' },

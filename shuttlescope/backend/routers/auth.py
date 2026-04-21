@@ -143,7 +143,9 @@ def _seed_admin_if_needed(db: Session) -> None:
 @router.post("/login", response_model=LoginResponse)
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     ip = _get_ip(request)
-    _seed_admin_if_needed(db)
+    from backend.utils.control_plane import allow_seed_admin, allow_select_login
+    if allow_seed_admin(request):
+        _seed_admin_if_needed(db)
 
     if req.grant_type == "credential":
         identifier = (req.identifier or req.username or "").strip()
@@ -194,6 +196,8 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         )
 
     if req.grant_type == "select":
+        if not allow_select_login(request):
+            raise HTTPException(status_code=403, detail="select login はローカルからのみ利用できます")
         allowed = {"analyst", "coach"}
         role = req.role
         if role not in allowed:
