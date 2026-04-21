@@ -140,9 +140,11 @@ These areas are useful for development and internal testing, but CV quality stil
 - password-protected LAN sessions
 - role-aware local login flow for admin / analyst / coach / player
 - JWT-backed local auth session handling
-- user management page for creating and maintaining role-bound users
+- user management page with role-scoped editing (admin sees all, coach sees own team, player sees self)
 - access logging groundwork for auth and sensitive data access
 - condition views filtered by audience and field sensitivity
+- public landing site at shuttle-scope.com with v7 design and light / dark theme toggle
+- admin notification inbox for contact-form inquiries
 - comments and bookmarks
 - QR-based join flow
 - device manager and camera sender pages
@@ -169,6 +171,7 @@ Remote and browser-based video workflows exist, but they should still be treated
 - `Prediction`
 - `Settings`
 - `User Management`
+- `Notification Inbox` (admin)
 - `Video Only`
 
 ## Current Product Shape
