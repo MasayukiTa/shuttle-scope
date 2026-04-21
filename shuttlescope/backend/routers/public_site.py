@@ -184,16 +184,33 @@ def _rewrite_preview_links(html_str: str) -> str:
     return html_str
 
 
-def _public_nav(login_href: str) -> str:
+def _public_nav(login_href: str, lang_href: str = "/en") -> str:
     return f"""
     <div class="topbar">
-      <div class="brand">Shuttle<span>Scope</span></div>
+      <a class="brand" href="https://shuttle-scope.com">Shuttle<span>Scope</span></a>
       <div class="nav">
         <a href="/">概要</a>
         <a href="/terms">利用規約</a>
         <a href="/privacy">プライバシーポリシー</a>
         <a href="/contact">お問い合わせ</a>
         <a href="{login_href}">ログイン</a>
+        <a href="{lang_href}" style="font-size:.8rem;opacity:.65;letter-spacing:.04em">EN</a>
+      </div>
+    </div>
+    """
+
+
+def _public_nav_en(login_href: str, lang_href: str = "/") -> str:
+    return f"""
+    <div class="topbar">
+      <a class="brand" href="https://shuttle-scope.com">Shuttle<span>Scope</span></a>
+      <div class="nav">
+        <a href="/en">Overview</a>
+        <a href="/en/terms">Terms of Use</a>
+        <a href="/en/privacy">Privacy Policy</a>
+        <a href="/en/contact">Contact</a>
+        <a href="{login_href}">Login</a>
+        <a href="{lang_href}" style="font-size:.8rem;opacity:.65;letter-spacing:.04em">JP</a>
       </div>
     </div>
     """
@@ -633,15 +650,17 @@ tbtn.addEventListener('click',()=>{
   html.dataset.theme=next;tbtn.textContent=next==='dark'?'☀':'🌙';
   localStorage.setItem('ss-theme',next);
 });
-// lang
+// lang — URL-based: /en = English, / = Japanese
 const lbtn=document.getElementById('lang-btn');
-let lang=localStorage.getItem('ss-lang')||'ja';
+let lang=location.pathname.startsWith('/en')?'en':'ja';
 html.lang=lang;lbtn.textContent=lang==='ja'?'EN':'JA';
-lbtn.addEventListener('click',()=>{
-  lang=lang==='ja'?'en':'ja';
-  html.lang=lang;lbtn.textContent=lang==='ja'?'EN':'JA';
-  localStorage.setItem('ss-lang',lang);
-});
+lbtn.addEventListener('click',()=>{location.href=lang==='ja'?'/en':'/'});
+// Fix footer/nav links to language-appropriate equivalents
+if(lang==='en'){
+  document.querySelectorAll('a[href="/terms"]').forEach(a=>a.setAttribute('href','/en/terms'));
+  document.querySelectorAll('a[href="/privacy"]').forEach(a=>a.setAttribute('href','/en/privacy'));
+  document.querySelectorAll('a[href="/contact"]').forEach(a=>a.setAttribute('href','/en/contact'));
+}
 // hamburger
 const ham=document.getElementById('ham'),mm=document.getElementById('mmenu');
 ham.addEventListener('click',()=>{ham.classList.toggle('open');mm.classList.toggle('open')});
@@ -664,7 +683,7 @@ def _render_terms_str(request: Request) -> str:
     login_href = _public_login_href(request)
     body = f"""
     <div class="shell legal">
-      {_public_nav(login_href)}
+      {_public_nav(login_href, lang_href="/en/terms")}
       <section class="panel">
         <h1>ShuttleScope 利用規約</h1>
         <p class="small">最終更新日: 2026-04-21</p>
@@ -731,7 +750,7 @@ def _render_privacy_str(request: Request) -> str:
     login_href = _public_login_href(request)
     body = f"""
     <div class="shell legal">
-      {_public_nav(login_href)}
+      {_public_nav(login_href, lang_href="/en/privacy")}
       <section class="panel">
         <h1>ShuttleScope プライバシーポリシー</h1>
         <p class="small">最終更新日: 2026-04-21</p>
@@ -799,7 +818,7 @@ def _render_contact_str(request: Request, *, preview: bool = False) -> str:
     submit_path = "/api/public/contact"
     body = f"""
     <div class="shell">
-      {_public_nav(login_href)}
+      {_public_nav(login_href, lang_href="/en/contact")}
       <section class="panel" style="margin-bottom:20px;">
         <h1>お問い合わせ</h1>
         <p>
@@ -948,6 +967,282 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
         logger.warning("public inquiry webhook failed: %s", exc)
 
 
+# ── English pages ──────────────────────────────────────────────────────────────
+
+def _base_layout_str_en(title: str, body: str, *, canonical_path: str = "/en", noindex: bool = False) -> str:
+    robots = '<meta name="robots" content="noindex,nofollow">' if noindex else ""
+    canonical = f"https://shuttle-scope.com{canonical_path}"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(title)}</title>
+  <meta name="description" content="ShuttleScope is a badminton analysis and review platform for structured match, player, and coaching workflows.">
+  <link rel="canonical" href="{canonical}">
+  {robots}
+  <style>
+    :root {{
+      --bg: #f5f8fc; --panel: rgba(255,255,255,.88); --text: #11314d; --muted: #4f6478;
+      --line: #d5e3f2; --brand: #0f5ea8; --brand-soft: #dcecff; --accent: #0d7b83;
+      --danger: #b33f3f; --shadow: 0 20px 60px rgba(18,54,90,.10);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0; color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(circle at top right,rgba(13,123,131,.16),transparent 26%),
+        radial-gradient(circle at top left,rgba(15,94,168,.16),transparent 24%),
+        linear-gradient(180deg,#f9fbfe 0%,var(--bg) 100%);
+    }}
+    a {{ color: var(--brand); text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .shell {{ max-width: 1120px; margin: 0 auto; padding: 24px; }}
+    .topbar {{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:28px; }}
+    .brand {{ font-size:1.2rem; font-weight:800; letter-spacing:.02em; color:var(--text); }}
+    .brand span {{ color:var(--brand); }}
+    .nav {{ display:flex; gap:18px; flex-wrap:wrap; font-size:.95rem; color:var(--muted); }}
+    .hero,.panel {{ background:var(--panel); border:1px solid rgba(213,227,242,.9); border-radius:24px; box-shadow:var(--shadow); backdrop-filter:blur(14px); }}
+    .hero {{ padding:48px; margin-bottom:24px; }}
+    h1 {{ margin:0 0 16px; font-size:clamp(1.8rem,3.5vw,2.8rem); line-height:1.1; }}
+    h2 {{ margin:0 0 14px; font-size:1.4rem; }}
+    h3 {{ margin:0 0 10px; font-size:1.05rem; }}
+    p,li {{ color:var(--muted); line-height:1.85; }}
+    .hero-actions {{ display:flex; gap:14px; flex-wrap:wrap; margin-top:26px; }}
+    .btn {{ display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border-radius:999px; font-weight:700; border:1px solid transparent; }}
+    .btn-primary {{ background:linear-gradient(135deg,var(--brand),#1679d1); color:white; }}
+    .btn-secondary {{ background:white; border-color:var(--line); color:var(--text); }}
+    .grid {{ display:grid; gap:20px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }}
+    .panel {{ padding:28px; }}
+    .footer {{ padding:24px 0 36px; color:var(--muted); font-size:.9rem; }}
+    .legal h2 {{ margin-top:30px; }}
+    .legal ul {{ padding-left:22px; }}
+    label {{ display:block; font-size:.92rem; font-weight:700; margin-bottom:8px; }}
+    input,textarea,select {{ width:100%; border:1px solid var(--line); border-radius:14px; background:white; padding:12px 14px; font:inherit; color:var(--text); }}
+    textarea {{ min-height:180px; resize:vertical; }}
+    .form-grid {{ display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }}
+    .notice {{ border-left:4px solid var(--accent); background:rgba(13,123,131,.07); padding:14px 16px; border-radius:12px; margin:16px 0; }}
+    .hidden-field {{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }}
+    .result {{ margin-top:16px; font-size:.95rem; }}
+    @media(max-width:720px) {{ .shell{{padding:16px}} .hero{{padding:22px;border-radius:20px}} .topbar{{align-items:flex-start;flex-direction:column}} }}
+  </style>
+</head>
+<body>
+{body}
+</body>
+</html>"""
+
+
+def _render_terms_str_en(request: Request) -> str:
+    login_href = _public_login_href(request)
+    body = f"""
+    <div class="shell legal">
+      {_public_nav_en(login_href, lang_href="/terms")}
+      <section class="panel">
+        <h1>ShuttleScope Terms of Use</h1>
+        <p class="small" style="color:var(--muted);font-size:.88rem;">Last updated: 2026-04-21</p>
+        <p>These Terms govern your use of ShuttleScope and its related features.</p>
+
+        <h2>1. Scope</h2>
+        <p>These Terms apply to all use of the ShuttleScope website, application, and associated features.</p>
+
+        <h2>2. Service Description</h2>
+        <p>ShuttleScope provides tools for badminton match review, video-based analysis, player data management, and team-level analysis sharing. Features may be added, modified, or discontinued without prior notice.</p>
+
+        <h2>3. User Responsibilities</h2>
+        <ul>
+          <li>You are responsible for maintaining the security of your account credentials and access environment.</li>
+          <li>You must comply with applicable laws, your organization's policies, and any third-party agreements when using this service.</li>
+          <li>You may not upload or process data that infringes on the rights of others without proper authorization.</li>
+        </ul>
+
+        <h2>4. Prohibited Use</h2>
+        <ul>
+          <li>Interfering with or disrupting the operation of the service</li>
+          <li>Unauthorized access, circumvention of authentication, or probing for vulnerabilities</li>
+          <li>Use for unlawful purposes or activities contrary to public order and morals</li>
+          <li>Sharing or publishing third-party personal information, videos, or records without proper authorization</li>
+          <li>Reproducing, redistributing, or commercially exploiting service content in a misleading manner</li>
+        </ul>
+
+        <h2>5. Data and Intellectual Property</h2>
+        <p>Data that you input, store, or upload to the service remains the property of you or the rightful owner, except as otherwise required by law. You agree that such data may be processed to the extent reasonably necessary for service provision, maintenance, improvement, and incident response.</p>
+
+        <h2>6. Disclaimer</h2>
+        <ul>
+          <li>ShuttleScope does not guarantee specific outcomes, performance improvements, or the completeness and accuracy of analysis results.</li>
+          <li>All displayed content and analysis should be used as supplementary information, not as the sole basis for decisions.</li>
+          <li>Service availability may be interrupted due to network issues, maintenance, or third-party service failures.</li>
+        </ul>
+
+        <h2>7. Service Changes and Termination</h2>
+        <p>We may modify, suspend, or terminate all or part of the service when operationally or technically necessary.</p>
+
+        <h2>8. Amendments</h2>
+        <p>These Terms may be revised as needed. Amended Terms become effective upon publication on this site or within the application.</p>
+
+        <h2>9. Contact</h2>
+        <p>For inquiries regarding this service, please use the <a href="/en/contact">Contact form</a>.</p>
+      </section>
+      <div class="footer">
+        <div>ShuttleScope</div>
+        <div><a href="/en/terms">Terms</a> · <a href="/en/privacy">Privacy Policy</a> · <a href="/en/contact">Contact</a></div>
+      </div>
+    </div>
+    """
+    return _base_layout_str_en("ShuttleScope | Terms of Use", body, canonical_path="/en/terms")
+
+
+def _render_privacy_str_en(request: Request) -> str:
+    login_href = _public_login_href(request)
+    body = f"""
+    <div class="shell legal">
+      {_public_nav_en(login_href, lang_href="/privacy")}
+      <section class="panel">
+        <h1>ShuttleScope Privacy Policy</h1>
+        <p style="color:var(--muted);font-size:.88rem;">Last updated: 2026-04-21</p>
+        <p>This Privacy Policy describes how ShuttleScope handles information we collect.</p>
+
+        <h2>1. Information We Collect</h2>
+        <ul>
+          <li>Account identifiers, display names, team-related information, and other information necessary for service use</li>
+          <li>Match data, videos, review notes, observations, condition logs, and other content you input or upload</li>
+          <li>Usage logs, access timestamps, IP addresses, and basic browser or device information</li>
+          <li>Name, affiliation, contact details, and message content submitted through the contact form</li>
+        </ul>
+
+        <h2>2. Purposes of Use</h2>
+        <ul>
+          <li>Providing, authenticating, operating, and maintaining the service</li>
+          <li>Delivering features such as match review, analysis sharing, and condition tracking</li>
+          <li>Responding to incidents, ensuring security, and preventing unauthorized use</li>
+          <li>Responding to inquiries and communicating with users</li>
+          <li>Improving service quality and evaluating new features</li>
+        </ul>
+
+        <h2>3. Sharing with Third Parties</h2>
+        <p>We do not share collected information with third parties except as required by law, with your consent, or when necessary for legitimate purposes such as service outsourcing.</p>
+
+        <h2>4. Data Retention</h2>
+        <p>Data is retained for as long as necessary to fulfill the purposes described above or as required by applicable law. You may request deletion of your account data through the contact form.</p>
+
+        <h2>5. Security</h2>
+        <p>We implement reasonable technical and organizational measures to protect information from unauthorized access, loss, or disclosure. However, no method of transmission or storage is completely secure.</p>
+
+        <h2>6. Cookies and Local Storage</h2>
+        <p>ShuttleScope uses browser local storage and session storage to maintain authentication state and user preferences. No third-party tracking cookies are used.</p>
+
+        <h2>7. Children's Privacy</h2>
+        <p>ShuttleScope is not directed to children under 13. We do not knowingly collect personal information from children under 13 without parental consent.</p>
+
+        <h2>8. Changes to This Policy</h2>
+        <p>This Privacy Policy may be updated from time to time. Continued use of the service after changes are posted constitutes acceptance of the revised policy.</p>
+
+        <h2>9. Contact</h2>
+        <p>For questions about this policy or your data, please use the <a href="/en/contact">Contact form</a>.</p>
+      </section>
+      <div class="footer">
+        <div>ShuttleScope</div>
+        <div><a href="/en/terms">Terms</a> · <a href="/en/privacy">Privacy Policy</a> · <a href="/en/contact">Contact</a></div>
+      </div>
+    </div>
+    """
+    return _base_layout_str_en("ShuttleScope | Privacy Policy", body, canonical_path="/en/privacy")
+
+
+def _render_contact_str_en(request: Request) -> str:
+    login_href = _public_login_href(request)
+    submit_path = "/api/public/contact"
+    body = f"""
+    <div class="shell">
+      {_public_nav_en(login_href, lang_href="/contact")}
+      <section class="panel" style="margin-bottom:20px;">
+        <h1>Contact</h1>
+        <p>
+          Use this form for inquiries about ShuttleScope — introduction consultations, feature questions,
+          or feedback about the public site. If you need a reply, please include your preferred contact method
+          in the message or the contact field below.
+        </p>
+        <div class="notice">
+          This form does not send email directly. Your message will be saved as an inquiry and reviewed
+          by the ShuttleScope team.
+        </div>
+      </section>
+
+      <section class="panel">
+        <form id="contact-form-en">
+          <div class="form-grid">
+            <div>
+              <label for="name-en">Name</label>
+              <input id="name-en" name="name" maxlength="120" required placeholder="Your name">
+            </div>
+            <div>
+              <label for="organization-en">Organization / Team</label>
+              <input id="organization-en" name="organization" maxlength="160" placeholder="Optional">
+            </div>
+            <div>
+              <label for="role-en">Role</label>
+              <select id="role-en" name="role">
+                <option value="">Select…</option>
+                <option value="player">Player</option>
+                <option value="coach">Coach</option>
+                <option value="analyst">Analyst</option>
+                <option value="team_staff">Team Staff</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label for="contact_reference-en">Preferred contact / reply method</label>
+              <input id="contact_reference-en" name="contact_reference" maxlength="200" placeholder="Optional: email, SNS handle, etc.">
+            </div>
+          </div>
+
+          <div style="margin-top:18px;">
+            <label for="message-en">Message</label>
+            <textarea id="message-en" name="message" required minlength="10" maxlength="4000" placeholder="Please describe your inquiry…"></textarea>
+          </div>
+
+          <div class="hidden-field" aria-hidden="true">
+            <label for="website-en">website</label>
+            <input id="website-en" name="website" tabindex="-1" autocomplete="off">
+          </div>
+
+          <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+            <button class="btn btn-primary" type="submit">Send</button>
+            <a class="btn btn-secondary" href="/en">Back to top</a>
+          </div>
+          <div id="contact-result-en" class="result" aria-live="polite"></div>
+        </form>
+      </section>
+    </div>
+    <script>
+      const form = document.getElementById('contact-form-en');
+      const result = document.getElementById('contact-result-en');
+      form.addEventListener('submit', async (event) => {{
+        event.preventDefault();
+        result.textContent = 'Sending…';
+        const payload = Object.fromEntries(new FormData(form).entries());
+        try {{
+          const res = await fetch('{submit_path}', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify(payload),
+          }});
+          const data = await res.json().catch(() => ({{}}));
+          if (!res.ok) {{
+            throw new Error(data.detail || 'Submission failed.');
+          }}
+          form.reset();
+          result.textContent = 'Your inquiry has been received. We will review it and follow up as needed.';
+        }} catch (error) {{
+          result.textContent = error.message || 'Submission failed. Please try again later.';
+        }}
+      }});
+    </script>
+    """
+    return _base_layout_str_en("ShuttleScope | Contact", body, canonical_path="/en/contact")
+
+
 @router.get("/public-preview")
 async def public_preview(request: Request):
     return render_public_preview_home(request)
@@ -981,6 +1276,34 @@ async def privacy_page(request: Request):
 @router.get("/contact")
 async def contact_page(request: Request):
     return render_contact_page(request)
+
+
+# 英語ページ（ホームは同一HTML、URLが /en のまま残るのでJS側が英語モードで起動）
+@router.get("/en")
+async def en_home(request: Request):
+    return render_public_home(request)
+
+
+@router.get("/en/terms")
+async def en_terms_page(request: Request):
+    return HTMLResponse(_render_terms_str_en(request))
+
+
+@router.get("/en/privacy")
+async def en_privacy_page(request: Request):
+    return HTMLResponse(_render_privacy_str_en(request))
+
+
+@router.get("/en/contact")
+async def en_contact_page(request: Request):
+    return HTMLResponse(_render_contact_str_en(request))
+
+
+# /jp → / にリダイレクト
+@router.get("/jp")
+async def jp_redirect(request: Request):
+    from fastapi.responses import RedirectResponse as _RR
+    return _RR(url="/", status_code=301)
 
 
 @router.post("/api/public/contact")

@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check } from 'lucide-react'
 
-import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
+import { apiDelete, apiGet, apiPost, apiPut, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+
+const PAGE_ACCESS_OPTIONS = [
+  { key: 'prediction', label: '予測・分析' },
+  { key: 'expert_labeler', label: '専門家ラベル' },
+] as const
 
 interface UserRow {
   id: number
@@ -114,6 +119,9 @@ export function UserManagementPage() {
   const [saving, setSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('display_name')
+  const [editPageAccess, setEditPageAccess] = useState<string[]>([])
+  const [editTeamPageAccess, setEditTeamPageAccess] = useState<string[]>([])
+  const [editingTeamName, setEditingTeamName] = useState<string | null>(null)
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const border = isLight ? 'border-gray-200' : 'border-gray-700'
@@ -184,7 +192,7 @@ export function UserManagementPage() {
     setShowForm(true)
   }
 
-  const openEdit = (u: UserRow) => {
+  const openEdit = async (u: UserRow) => {
     setForm({
       role: u.role,
       display_name: u.display_name ?? '',
@@ -195,6 +203,22 @@ export function UserManagementPage() {
     })
     setEditId(u.id)
     setError(null)
+    setEditPageAccess([])
+    setEditTeamPageAccess([])
+    setEditingTeamName(null)
+    if (u.role === 'player') {
+      try {
+        const res = await getUserPageAccess(u.id)
+        setEditPageAccess(res.data ?? [])
+      } catch { /* ignore */ }
+      if (u.team_name) {
+        setEditingTeamName(u.team_name)
+        try {
+          const tr = await getTeamPageAccess(u.team_name)
+          setEditTeamPageAccess(tr.data ?? [])
+        } catch { /* ignore */ }
+      }
+    }
     setShowForm(true)
   }
 
@@ -223,6 +247,12 @@ export function UserManagementPage() {
         }
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPut(`/auth/users/${editId}`, body)
+        if (form.role === 'player' && !isSelfOnly) {
+          await setUserPageAccess(editId, editPageAccess)
+          if (editingTeamName) {
+            await setTeamPageAccess(editingTeamName, editTeamPageAccess)
+          }
+        }
       } else {
         const body: Record<string, unknown> = {
           role: form.role,
@@ -414,6 +444,51 @@ export function UserManagementPage() {
                 </div>
               ) : null}
             </div>
+
+            {isPlayerRole && editId != null && !isSelfOnly ? (
+              <div className={`mt-4 pt-4 border-t ${border}`}>
+                <p className={`text-xs font-semibold mb-2 ${textMain}`}>ページアクセス</p>
+                <div className="space-y-3">
+                  {PAGE_ACCESS_OPTIONS.map(({ key, label }) => {
+                    const indiv = editPageAccess.includes(key)
+                    const team = editTeamPageAccess.includes(key)
+                    return (
+                      <div key={key} className="flex flex-col gap-1">
+                        <span className={`text-xs font-medium ${textMuted}`}>{label}</span>
+                        <div className="flex flex-wrap gap-3">
+                          <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
+                            <input
+                              type="checkbox"
+                              checked={indiv}
+                              onChange={(e) =>
+                                setEditPageAccess((prev) =>
+                                  e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
+                                )
+                              }
+                            />
+                            個人
+                          </label>
+                          {editingTeamName ? (
+                            <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
+                              <input
+                                type="checkbox"
+                                checked={team}
+                                onChange={(e) =>
+                                  setEditTeamPageAccess((prev) =>
+                                    e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
+                                  )
+                                }
+                              />
+                              チーム全体（{editingTeamName}）
+                            </label>
+                          ) : null}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-4 flex gap-2">
               <button

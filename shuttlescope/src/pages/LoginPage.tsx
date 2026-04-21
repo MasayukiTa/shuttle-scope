@@ -229,6 +229,14 @@ export function LoginPage({ onLogin }: Props) {
             {loading ? t('auth.logging_in') : t('auth.login_button')}
           </button>
         </div>
+        <div className="mt-6 text-center">
+          <a
+            href="https://shuttle-scope.com"
+            className={`text-sm ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'} transition-colors`}
+          >
+            ← shuttle-scope.com
+          </a>
+        </div>
       </div>
     </div>
   )

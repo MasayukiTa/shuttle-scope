@@ -9,6 +9,7 @@ const STORAGE_KEY_PLAYER_ID = 'shuttlescope_player_id'
 const STORAGE_KEY_TEAM_NAME = 'shuttlescope_team_name'
 const STORAGE_KEY_USER_ID = 'shuttlescope_user_id'
 const STORAGE_KEY_DISPLAY_NAME = 'shuttlescope_display_name'
+const STORAGE_KEY_PAGE_ACCESS = 'shuttlescope_page_access'
 
 function readStorage(key: string): string | null {
   try {
@@ -64,6 +65,7 @@ export interface AuthSession {
   playerId: number | null
   teamName: string | null
   displayName: string | null
+  pageAccess: string[]
 }
 
 export function useAuth() {
@@ -78,6 +80,12 @@ export function useAuth() {
     return Number.isFinite(n) ? n : null
   })
   const [displayName, setDisplayNameState] = useState<string | null>(() => getStored(STORAGE_KEY_DISPLAY_NAME))
+  const [pageAccess, setPageAccessState] = useState<string[]>(() => {
+    try {
+      const v = readStorage(STORAGE_KEY_PAGE_ACCESS)
+      return v ? JSON.parse(v) : []
+    } catch { return [] }
+  })
 
   useEffect(() => {
     const handler = () => {
@@ -88,6 +96,10 @@ export function useAuth() {
       const uid = getStored<string>(STORAGE_KEY_USER_ID)
       setUserIdState(uid ? parseInt(uid, 10) : null)
       setDisplayNameState(getStored(STORAGE_KEY_DISPLAY_NAME))
+      try {
+        const pa = readStorage(STORAGE_KEY_PAGE_ACCESS)
+        setPageAccessState(pa ? JSON.parse(pa) : [])
+      } catch { setPageAccessState([]) }
     }
 
     window.addEventListener(AUTH_CHANGED_EVENT, handler)
@@ -115,12 +127,15 @@ export function useAuth() {
     } else {
       removeStorage(STORAGE_KEY_DISPLAY_NAME)
     }
+    const pa = session.pageAccess ?? []
+    writeStorage(STORAGE_KEY_PAGE_ACCESS, JSON.stringify(pa))
     setTokenState(session.token)
     setRoleState(session.role)
     setUserIdState(session.userId)
     setPlayerIdState(session.playerId)
     setTeamNameState(session.teamName)
     setDisplayNameState(session.displayName)
+    setPageAccessState(pa)
     window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
   }, [])
 
@@ -131,12 +146,14 @@ export function useAuth() {
     removeStorage(STORAGE_KEY_TEAM_NAME)
     removeStorage(STORAGE_KEY_USER_ID)
     removeStorage(STORAGE_KEY_DISPLAY_NAME)
+    removeStorage(STORAGE_KEY_PAGE_ACCESS)
     setTokenState(null)
     setRoleState(null)
     setPlayerIdState(null)
     setTeamNameState(null)
     setUserIdState(null)
     setDisplayNameState(null)
+    setPageAccessState([])
     window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
   }, [])
 
@@ -149,7 +166,16 @@ export function useAuth() {
     [role]
   )
 
-  return { token, role, playerId, teamName, userId, displayName, setSession, clearRole, hasRole }
+  const hasPageAccess = useCallback(
+    (key: string): boolean => {
+      if (!role) return false
+      if (role === 'admin' || role === 'analyst' || role === 'coach') return true
+      return pageAccess.includes(key)
+    },
+    [role, pageAccess]
+  )
+
+  return { token, role, playerId, teamName, userId, displayName, pageAccess, setSession, clearRole, hasRole, hasPageAccess }
 }
 
 export type { UserRole }

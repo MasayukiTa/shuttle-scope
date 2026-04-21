@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # Phase C 用。Phase A では宣言のみ（参照はされない）。
     ss_line_notify_token: str = ""
     ss_notify_webhook_url: str = ""
+    # ループバック専用オペレーション用トークン（未設定時は無効）
+    ss_operator_token: str = ""
 
     class Config:
         # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）

@@ -73,7 +73,7 @@ type NavItem = {
 function Sidebar() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { role, clearRole } = useAuth()
+  const { role, clearRole, hasPageAccess } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
   const isLight = theme === 'light'
@@ -90,12 +90,16 @@ function Sidebar() {
     { to: '/matches', label: t('nav.matches'), icon: List },
     { to: '/condition', label: t('nav.condition'), icon: Heart },
     { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
-    { to: '/prediction', label: t('nav.prediction'), icon: TrendingUp },
-    { to: '/expert-labeler', label: t('nav.expert'), icon: ClipboardCheck },
+    ...(hasPageAccess('prediction')
+      ? [{ to: '/prediction', label: t('nav.prediction'), icon: TrendingUp }]
+      : []),
+    ...(hasPageAccess('expert_labeler')
+      ? [{ to: '/expert-labeler', label: t('nav.expert'), icon: ClipboardCheck }]
+      : []),
     ...(role === 'admin'
       ? [
           { to: '/notifications', label: '通知', shortLabel: '通知', icon: Bell, badge: unreadCount > 0 ? unreadCount : null },
-          { to: '/users', label: t('nav.users'), shortLabel: '繝ｦ繝ｼ繧ｶ', icon: Users },
+          { to: '/users', label: t('nav.users'), icon: Users },
         ]
       : []),
     { to: '/settings', label: t('nav.settings'), icon: Settings },
@@ -207,6 +211,18 @@ function Sidebar() {
   )
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { role } = useAuth()
+  if (role !== 'admin') return <Navigate to="/matches" replace />
+  return <>{children}</>
+}
+
+function PageAccessRoute({ pageKey, children }: { pageKey: string; children: React.ReactNode }) {
+  const { hasPageAccess } = useAuth()
+  if (!hasPageAccess(pageKey)) return <Navigate to="/matches" replace />
+  return <>{children}</>
+}
+
 function MainLayout() {
   return (
     <div className="flex h-screen">
@@ -219,11 +235,11 @@ function MainLayout() {
             <Route path="/annotator/:matchId" element={<AnnotatorPage />} />
             <Route path="/condition" element={<ConditionPage />} />
             <Route path="/dashboard/*" element={<DashboardShell />} />
-            <Route path="/prediction" element={<PredictionPage />} />
-            <Route path="/expert-labeler" element={<ExpertLabelerPage />} />
-            <Route path="/expert-labeler/:matchId" element={<ExpertLabelerAnnotatePage />} />
-            <Route path="/notifications" element={<NotificationInboxPage />} />
-            <Route path="/users" element={<UserManagementPage />} />
+            <Route path="/prediction" element={<PageAccessRoute pageKey="prediction"><PredictionPage /></PageAccessRoute>} />
+            <Route path="/expert-labeler" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerPage /></PageAccessRoute>} />
+            <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerAnnotatePage /></PageAccessRoute>} />
+            <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
+            <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </ErrorBoundary>
@@ -268,6 +284,7 @@ function ProtectedMainRoute() {
           playerId: me.player_id ?? null,
           teamName: me.team_name ?? null,
           displayName: me.display_name ?? null,
+          pageAccess: me.page_access ?? [],
         })
       })
       .catch(() => {
@@ -295,7 +312,7 @@ function ProtectedMainRoute() {
   }
 
   if (!token || !role) {
-    return <LoginPage onLogin={() => {}} />
+    return <LoginPage onLogin={() => { window.location.hash = '/matches' }} />
   }
 
   return <MainLayout />

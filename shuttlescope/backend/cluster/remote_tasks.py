@@ -31,21 +31,55 @@ logger = logging.getLogger(__name__)
 # ────────────────────────────────────────────────────────────────────────────
 
 def _run_benchmark_tracknet(model_path: str, n_iters: int, use_gpu: bool) -> dict:
-    """TrackNet ONNX ベンチマーク。
+    """TrackNet ベンチマーク。OpenVINO → ONNX の順で試みる。
 
-    K10 上でローカル実行される。onnxruntime を直接使用する。
+    K10 上でローカル実行される。
     戻り値: {"fps": float, "avg_ms": float, "p95_ms": float} または {"error": str}
     """
+    import numpy as np
+    import time
+    import os
+
+    if not os.path.exists(model_path):
+        return {"error": f"モデルファイルが見つかりません: {model_path}"}
+
+    SHAPE = [1, 3, 288, 512]
+    dummy = np.zeros(SHAPE, dtype=np.float32)
+
+    def _measure(fn):
+        fn()
+        lats = []
+        for _ in range(n_iters):
+            t0 = time.perf_counter(); fn(); lats.append(time.perf_counter() - t0)
+        arr = np.array(lats) * 1000.0
+        return round(1000.0 / float(np.mean(arr)), 2), round(float(np.mean(arr)), 2), round(float(np.percentile(arr, 95)), 2)
+
+    # OpenVINO 試行（use_gpu フラグ時）
+    if use_gpu:
+        xml_path = model_path.replace(".onnx", ".xml")
+        try:
+            import openvino as ov
+            core = ov.Core()
+            src = xml_path if os.path.exists(xml_path) else model_path
+            model = core.read_model(src)
+            model.reshape({model.input(0).any_name: SHAPE})
+            for dev in ("GPU", "CPU"):
+                if dev not in core.available_devices:
+                    continue
+                try:
+                    compiled = core.compile_model(model, dev, {"PERFORMANCE_HINT": "LATENCY"})
+                    req = compiled.create_infer_request()
+                    iname = compiled.input(0).any_name
+                    fps, avg_ms, p95_ms = _measure(lambda: req.infer({iname: dummy}))
+                    return {"fps": fps, "avg_ms": avg_ms, "p95_ms": p95_ms, "provider": f"openvino:{dev}"}
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # ONNX フォールバック
     try:
         import onnxruntime as ort
-        import numpy as np
-        import time
-        import os
-
-        if not os.path.exists(model_path):
-            return {"error": f"モデルファイルが見つかりません: {model_path}"}
-
-        # EP 選択: GPU フラグに応じて DirectML → CPU にフォールバック
         available = ort.get_available_providers()
         if use_gpu and "DmlExecutionProvider" in available:
             providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
@@ -53,52 +87,13 @@ def _run_benchmark_tracknet(model_path: str, n_iters: int, use_gpu: bool) -> dic
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         else:
             providers = ["CPUExecutionProvider"]
-
         try:
             sess = ort.InferenceSession(model_path, providers=providers)
         except Exception as exc:
             return {"error": f"ONNX セッション初期化失敗: {exc}"}
-
-        # TrackNet 入力: (1, 9, H, W) または (1, 3, H, W) — モデルシェイプを動的取得
-        input_info = sess.get_inputs()[0]
-        input_name = input_info.name
-        shape = input_info.shape  # 例: [1, 9, 288, 512]
-        # None / 動的次元は固定値で置換
-        fixed_shape = []
-        for i, dim in enumerate(shape):
-            if dim is None or (isinstance(dim, str)):
-                # バッチ次元は 1、それ以外はデフォルト値
-                fixed_shape.append(1 if i == 0 else (9 if i == 1 else (288 if i == 2 else 512)))
-            else:
-                fixed_shape.append(int(dim))
-
-        dummy = np.zeros(fixed_shape, dtype=np.float32)
-
-        latencies = []
-        # ウォームアップ
-        try:
-            sess.run(None, {input_name: dummy})
-        except Exception:
-            pass
-
-        for _ in range(n_iters):
-            t0 = time.perf_counter()
-            sess.run(None, {input_name: dummy})
-            latencies.append(time.perf_counter() - t0)
-
-        if not latencies:
-            return {"error": "計測データなし"}
-
-        arr = np.array(latencies) * 1000.0  # ms に変換
-        avg_ms = float(np.mean(arr))
-        p95_ms = float(np.percentile(arr, 95))
-        fps = 1000.0 / avg_ms if avg_ms > 0 else 0.0
-        return {
-            "fps": round(fps, 2),
-            "avg_ms": round(avg_ms, 2),
-            "p95_ms": round(p95_ms, 2),
-        }
-
+        iname = sess.get_inputs()[0].name
+        fps, avg_ms, p95_ms = _measure(lambda: sess.run(None, {iname: dummy}))
+        return {"fps": fps, "avg_ms": avg_ms, "p95_ms": p95_ms, "provider": providers[0]}
     except ImportError as exc:
         return {"error": f"onnxruntime 未インストール: {exc}"}
     except Exception as exc:
@@ -243,29 +238,57 @@ def _infer_tracknet_frames(model_path: str, frames_npy: bytes) -> bytes:
 
     K10 上でローカル実行される。
     Args:
-        model_path: ONNX モデルファイルのパス
-        frames_npy: np.ndarray.tobytes() でシリアライズされた float32 フレームデータ
-                    shape 情報はフレームバイト列の先頭 4 つの int32 に埋め込まれる
-                    フォーマット: [N, C, H, W, ...data...]
+        model_path: ONNX または OpenVINO XML モデルファイルのパス
+        frames_npy: 先頭16バイトが shape (N,C,H,W) の int32x4、残りが float32 フレームデータ
     Returns:
-        推論結果を np.ndarray.tobytes() でシリアライズしたバイト列
-        エラー時は JSON エンコードされたエラー dict の bytes を返す
+        先頭12バイトが出力 shape (N,H,W) の int32x3、残りが float32 ヒートマップデータ
+        エラー時は JSON エンコードされたエラー dict の bytes
     """
     try:
-        import onnxruntime as ort
         import numpy as np
         import os
 
         if not os.path.exists(model_path):
-            err = {"error": f"モデルファイルが見つかりません: {model_path}"}
-            return json.dumps(err).encode("utf-8")
+            return json.dumps({"error": f"モデルファイルが見つかりません: {model_path}"}).encode("utf-8")
 
         # フレームデシリアライズ: 先頭 16 バイトが shape (4 x int32)
-        shape_arr = np.frombuffer(frames_npy[:16], dtype=np.int32)
-        n, c, h, w = int(shape_arr[0]), int(shape_arr[1]), int(shape_arr[2]), int(shape_arr[3])
+        header = np.frombuffer(frames_npy[:16], dtype=np.int32)
+        n, c, h, w = int(header[0]), int(header[1]), int(header[2]), int(header[3])
         frames = np.frombuffer(frames_npy[16:], dtype=np.float32).reshape(n, c, h, w)
 
-        # EP 選択（DirectML 優先）
+        def _serialize(raw: "np.ndarray") -> bytes:
+            # (N,1,H,W) → (N,H,W) に正規化、12バイトヘッダ付きで返す
+            out = raw.squeeze(1) if raw.ndim == 4 else raw
+            shape_bytes = np.array(out.shape, dtype=np.int32).tobytes()  # 3×int32=12B
+            return shape_bytes + out.astype(np.float32).tobytes()
+
+        # ── OpenVINO 優先（K10 は GPU/CPU とも利用可能）────────────────────────
+        try:
+            import openvino as ov
+            xml_path = model_path.replace(".onnx", ".xml")
+            load_path = xml_path if os.path.exists(xml_path) else model_path
+            core = ov.Core()
+            model = core.read_model(load_path)
+            try:
+                model.reshape({model.input(0).any_name: list(frames.shape)})
+            except Exception:
+                pass
+            for dev in ("GPU", "CPU"):
+                if dev not in core.available_devices:
+                    continue
+                try:
+                    compiled = core.compile_model(model, dev, {"PERFORMANCE_HINT": "LATENCY"})
+                    req = compiled.create_infer_request()
+                    iname = compiled.input(0).any_name
+                    req.infer({iname: frames})
+                    return _serialize(req.get_output_tensor(0).data)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # ── onnxruntime フォールバック ────────────────────────────────────────
+        import onnxruntime as ort
         available = ort.get_available_providers()
         if "DmlExecutionProvider" in available:
             providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
@@ -273,24 +296,14 @@ def _infer_tracknet_frames(model_path: str, frames_npy: bytes) -> bytes:
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         else:
             providers = ["CPUExecutionProvider"]
-
         sess = ort.InferenceSession(model_path, providers=providers)
-        input_name = sess.get_inputs()[0].name
-
-        result = sess.run(None, {input_name: frames})
-        output = result[0]  # 最初の出力テンソル
-
-        # シリアライズ: shape を先頭に付加
-        shape_bytes = np.array(output.shape, dtype=np.int32).tobytes()
-        data_bytes = output.astype(np.float32).tobytes()
-        return shape_bytes + data_bytes
+        result = sess.run(None, {sess.get_inputs()[0].name: frames})
+        return _serialize(result[0])
 
     except ImportError as exc:
-        err = {"error": f"onnxruntime 未インストール: {exc}"}
-        return json.dumps(err).encode("utf-8")
+        return json.dumps({"error": f"推論ライブラリ未インストール: {exc}"}).encode("utf-8")
     except Exception as exc:
-        err = {"error": str(exc)}
-        return json.dumps(err).encode("utf-8")
+        return json.dumps({"error": str(exc)}).encode("utf-8")
 
 
 def _detect_hardware() -> dict:
@@ -463,12 +476,42 @@ import numpy as np
 model_path = {model_path!r}
 n_iters = {n_iters}
 use_gpu = {use_gpu}
+SHAPE = [1, 3, 288, 512]
+dummy = np.zeros(SHAPE, dtype=np.float32)
 
+def _measure(fn, n):
+    fn()
+    lats = []
+    for _ in range(n):
+        t0 = time.perf_counter(); fn(); lats.append(time.perf_counter()-t0)
+    arr = np.array(lats)*1000
+    return round(1000/float(np.mean(arr)),2), round(float(np.mean(arr)),2), round(float(np.percentile(arr,95)),2)
+
+# OpenVINO 試行（use_gpu フラグ問わず常に試みる）
+if use_gpu:
+    xml_path = model_path.replace(".onnx", ".xml")
+    try:
+        import openvino as ov
+        core = ov.Core()
+        model = core.read_model(xml_path if os.path.exists(xml_path) else model_path)
+        model.reshape({{model.input(0).any_name: SHAPE}})
+        for dev in ("GPU", "CPU"):
+            if dev not in core.available_devices: continue
+            try:
+                compiled = core.compile_model(model, dev, {{"PERFORMANCE_HINT": "LATENCY"}})
+                req = compiled.create_infer_request()
+                iname = compiled.input(0).any_name
+                fps, avg, p95 = _measure(lambda: req.infer({{iname: dummy}}), n_iters)
+                print(json.dumps({{"fps": fps, "avg_ms": avg, "p95_ms": p95, "provider": "openvino:" + dev}}))
+                sys.exit(0)
+            except Exception: continue
+    except Exception: pass
+
+# ONNX フォールバック
 try:
     import onnxruntime as ort
     if not os.path.exists(model_path):
-        print(json.dumps({{"error": "model not found: " + model_path}}))
-        sys.exit(0)
+        print(json.dumps({{"error": "model not found: " + model_path}})); sys.exit(0)
     available = ort.get_available_providers()
     if use_gpu and "DmlExecutionProvider" in available:
         providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
@@ -477,68 +520,122 @@ try:
     else:
         providers = ["CPUExecutionProvider"]
     sess = ort.InferenceSession(model_path, providers=providers)
-    input_info = sess.get_inputs()[0]
-    input_name = input_info.name
-    shape = input_info.shape
-    fixed = []
-    for i, d in enumerate(shape):
-        if d is None or isinstance(d, str):
-            fixed.append(1 if i==0 else (9 if i==1 else (288 if i==2 else 512)))
-        else:
-            fixed.append(int(d))
-    dummy = np.zeros(fixed, dtype=np.float32)
-    try: sess.run(None, {{input_name: dummy}})
-    except: pass
-    latencies = []
-    for _ in range(n_iters):
-        t0 = time.perf_counter()
-        sess.run(None, {{input_name: dummy}})
-        latencies.append(time.perf_counter() - t0)
-    arr = np.array(latencies) * 1000.0
-    used_ep = providers[0]
-    print(json.dumps({{"fps": round(1000.0/float(np.mean(arr)), 2),
-                       "avg_ms": round(float(np.mean(arr)), 2),
-                       "p95_ms": round(float(np.percentile(arr, 95)), 2),
-                       "provider": used_ep}}))
-except ImportError as e:
-    print(json.dumps({{"error": "onnxruntime not installed: " + str(e)}}))
+    iname = sess.get_inputs()[0].name
+    fps, avg, p95 = _measure(lambda: sess.run(None, {{iname: dummy}}), n_iters)
+    print(json.dumps({{"fps": fps, "avg_ms": avg, "p95_ms": p95, "provider": providers[0]}}))
 except Exception as e:
     print(json.dumps({{"error": str(e)}}))
 '''
 
 _SSH_BENCH_POSE_SCRIPT = '''\
-import time, json
+import time, json, os
 import numpy as np
 
 n_iters = {n_iters}
+task_path = {task_path!r}
+dummy = np.zeros((270, 480, 3), dtype=np.uint8)
 
+def _measure(fn, n):
+    fn()
+    lats = []
+    for _ in range(n):
+        t0 = time.perf_counter(); fn(); lats.append(time.perf_counter()-t0)
+    arr = np.array(lats)*1000
+    return round(1000/float(np.mean(arr)),2), round(float(np.mean(arr)),2), round(float(np.percentile(arr,95)),2)
+
+# Tasks API (mediapipe >= 0.10)
+if os.path.exists(task_path):
+    try:
+        import mediapipe as mp
+        from mediapipe.tasks import python as mp_python
+        from mediapipe.tasks.python import vision as mp_vision
+        opts = mp_vision.PoseLandmarkerOptions(
+            base_options=mp_python.BaseOptions(model_asset_path=task_path),
+            running_mode=mp_vision.RunningMode.IMAGE)
+        img = mp.Image(image_format=mp.ImageFormat.SRGB, data=dummy)
+        with mp_vision.PoseLandmarker.create_from_options(opts) as lm:
+            fps, avg, p95 = _measure(lambda: lm.detect(img), n_iters)
+        print(json.dumps({{"fps": fps, "avg_ms": avg, "p95_ms": p95, "backend": "mediapipe_tasks"}}))
+        import sys; sys.exit(0)
+    except Exception as e:
+        pass
+
+# Legacy solutions API fallback
 try:
     import mediapipe as mp
-    if not hasattr(mp, 'solutions'):
-        print(json.dumps({{"error": "mediapipe>=0.10 (solutions removed). version=" + mp.__version__}}))
-    else:
-        import numpy as np
+    if hasattr(mp, "solutions"):
         mp_pose = mp.solutions.pose
-        dummy = np.zeros((270, 480, 3), dtype=np.uint8)
-        try:
-            import cv2
-            cv2.circle(dummy, (240, 135), 50, (255,255,255), -1)
-        except: pass
-        latencies = []
         with mp_pose.Pose(static_image_mode=False, model_complexity=0,
                           enable_segmentation=False, min_detection_confidence=0.3) as pose:
-            try: pose.process(dummy)
-            except: pass
-            for _ in range(n_iters):
-                t0 = time.perf_counter()
-                pose.process(dummy)
-                latencies.append(time.perf_counter() - t0)
-        arr = np.array(latencies) * 1000.0
-        print(json.dumps({{"fps": round(1000.0/float(np.mean(arr)), 2),
-                           "avg_ms": round(float(np.mean(arr)), 2),
-                           "p95_ms": round(float(np.percentile(arr, 95)), 2)}}))
-except ImportError as e:
-    print(json.dumps({{"error": "mediapipe not installed: " + str(e)}}))
+            fps, avg, p95 = _measure(lambda: pose.process(dummy), n_iters)
+        print(json.dumps({{"fps": fps, "avg_ms": avg, "p95_ms": p95, "backend": "mediapipe_solutions"}}))
+    else:
+        print(json.dumps({{"error": "mediapipe solutions removed and no task file: " + task_path}}))
+except Exception as e:
+    print(json.dumps({{"error": str(e)}}))
+'''
+
+_SSH_BENCH_YOLO_SCRIPT = '''\
+import sys, os, time, json
+import numpy as np
+
+model_path = {model_path!r}
+n_iters = {n_iters}
+use_gpu = {use_gpu}
+SHAPE = [1, 3, 384, 640]
+dummy = np.zeros(SHAPE, dtype=np.float32)
+
+def _measure(fn, n):
+    # ウォームアップ3回
+    for _ in range(3): fn()
+    lats = []
+    for _ in range(n):
+        t0 = time.perf_counter(); fn(); lats.append(time.perf_counter()-t0)
+    arr = np.array(lats)*1000
+    return round(1000/float(np.mean(arr)),2), round(float(np.mean(arr)),2), round(float(np.percentile(arr,95)),2)
+
+if not os.path.exists(model_path):
+    print(json.dumps({{"error": "model not found: " + model_path}})); sys.exit(0)
+
+# OpenVINO 試行 — IR形式(.xml)があれば優先、なければONNXを直接読む
+if use_gpu:
+    try:
+        import openvino as ov
+        xml_path = model_path.replace(".onnx", ".xml")
+        load_path = xml_path if os.path.exists(xml_path) else model_path
+        core = ov.Core()
+        model = core.read_model(load_path)
+        try:
+            model.reshape({{model.input(0).any_name: SHAPE}})
+        except Exception:
+            pass
+        for dev in ("GPU", "CPU"):
+            if dev not in core.available_devices: continue
+            try:
+                compiled = core.compile_model(model, dev, {{"PERFORMANCE_HINT": "LATENCY"}})
+                req = compiled.create_infer_request()
+                iname = compiled.input(0).any_name
+                fps, avg, p95 = _measure(lambda: req.infer({{iname: dummy}}), n_iters)
+                src = "ir" if os.path.exists(xml_path) else "onnx"
+                print(json.dumps({{"fps": fps, "avg_ms": avg, "p95_ms": p95, "provider": f"openvino:{{dev}}({{src}})"}}))
+                sys.exit(0)
+            except Exception: continue
+    except Exception: pass
+
+# ONNX フォールバック
+try:
+    import onnxruntime as ort
+    available = ort.get_available_providers()
+    if use_gpu and "DmlExecutionProvider" in available:
+        providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+    elif use_gpu and "CUDAExecutionProvider" in available:
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    else:
+        providers = ["CPUExecutionProvider"]
+    sess = ort.InferenceSession(model_path, providers=providers)
+    iname = sess.get_inputs()[0].name
+    fps, avg, p95 = _measure(lambda: sess.run(None, {{iname: dummy}}), n_iters)
+    print(json.dumps({{"fps": fps, "avg_ms": avg, "p95_ms": p95, "provider": providers[0]}}))
 except Exception as e:
     print(json.dumps({{"error": str(e)}}))
 '''
@@ -640,10 +737,21 @@ def dispatch_benchmark_ssh(fn_name: str, worker_ip: str, username: str, password
         )
         timeout = 300
     elif fn_name == "_run_benchmark_pose":
+        # K10向けにモデルファイルを C:\ss-models\ に配置
+        task_path_k10 = r"C:\ss-models\pose_landmarker_lite.task"
         script = _SSH_BENCH_POSE_SCRIPT.format(
             n_iters=kwargs.get("n_iters", 10),
+            task_path=task_path_k10,
         )
         timeout = 120
+    elif fn_name == "_run_benchmark_yolo":
+        model_path = kwargs.get("model_path", r"C:\ss-models\yolov8n.onnx")
+        script = _SSH_BENCH_YOLO_SCRIPT.format(
+            model_path=model_path,
+            n_iters=kwargs.get("n_iters", 10),
+            use_gpu=kwargs.get("use_gpu", False),
+        )
+        timeout = 300
     else:
         return {"error": f"SSH 未対応のベンチマーク: {fn_name}"}
 

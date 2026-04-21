@@ -106,7 +106,7 @@ def _vram_based_max_batch(device_index: int, per_sample_mb: int = 800) -> int:
 INPUT_W, INPUT_H = 512, 288
 FRAME_STACK = 3
 
-WEIGHTS_DIR = Path(__file__).parent / "weights"
+WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
 TF_CKPT_PREFIX = WEIGHTS_DIR / "TrackNet"
 
 ONNX_CANDIDATES = [
@@ -432,6 +432,13 @@ class TrackNetInference:
                     if not device_candidates:
                         device_candidates = ["CPU"]
                     ov_model = core.read_model(str(openvino_xml))
+                    # dynamic shape モデルを静的シェイプに固定（K10等で必須）
+                    try:
+                        _inp = ov_model.input(0)
+                        _inp_name = _inp.any_name
+                        ov_model.reshape({_inp_name: [1, FRAME_STACK, INPUT_H, INPUT_W]})
+                    except Exception:
+                        pass
                     for dev in device_candidates:
                         try:
                             # compile_model は初回に数分かかることがあるためタイムアウト付きで実行
@@ -449,10 +456,10 @@ class TrackNetInference:
                                     _ov_done.set()
 
                             _ov_threading.Thread(target=_compile_ov, daemon=True).start()
-                            _ov_done.wait(timeout=30)
+                            _ov_done.wait(timeout=60)
 
                             if not _ov_done.is_set():
-                                tried.append(f"openvino:{dev}: compile_model タイムアウト（30s）")
+                                tried.append(f"openvino:{dev}: compile_model タイムアウト（60s）")
                                 continue
                             if _ov_err[0] is not None:
                                 tried.append(f"openvino:{dev}: {_ov_err[0]}")

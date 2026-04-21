@@ -60,15 +60,16 @@ def _safe_call(import_path: str, func_name: str, *args: Any, **kwargs: Any) -> A
         return {"status": "error", "error": str(exc)}
 
 
-@_maybe_remote(num_cpus=2, num_gpus=1)
+# 動画ファイルはPC1にしかないため ray.remote は付けない
+# 分散推論は pipeline._run_tracknet_distributed() が担当する
 def run_tracknet(video_path: str, **kwargs: Any) -> Any:
-    """TrackNet によるシャトル軌跡推定"""
+    """TrackNet によるシャトル軌跡推定（PC1ローカル実行）"""
     return _safe_call("backend.cv.tracknet_runner", "run_tracknet", video_path, **kwargs)
 
 
-@_maybe_remote(num_cpus=2, num_gpus=1)
+# Poseも動画ファイルへのアクセスが必要なためPC1ローカル実行
 def run_mediapipe(video_path: str, **kwargs: Any) -> Any:
-    """MediaPipe による姿勢推定"""
+    """MediaPipe による姿勢推定（PC1ローカル実行）"""
     return _safe_call("backend.cv.mediapipe_runner", "run_mediapipe", video_path, **kwargs)
 
 
