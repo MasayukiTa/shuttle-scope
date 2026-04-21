@@ -22,11 +22,7 @@ function severityClass(sev: DiscrepancyItem['severity']): string {
 
 export function DiscrepancyAlertList({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { role } = useAuth()
   const { data, isLoading, error } = useDiscrepancy(playerId)
-
-  // 二重防御: player にはコンポーネントも何もレンダリングしない
-  if (role === 'player') return null
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'

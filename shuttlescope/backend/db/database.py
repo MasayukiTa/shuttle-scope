@@ -569,6 +569,7 @@ def bootstrap_database(eng=None, db_url: str | None = None) -> None:
         return
 
     if has_version_table:
+        create_tables(bind)
         run_db_migrations(url)
         _ensure_unique_indexes(bind)
         _ensure_analytics_indexes(bind)

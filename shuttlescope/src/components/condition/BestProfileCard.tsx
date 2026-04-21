@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Info } from 'lucide-react'
 import { useBestProfile } from '@/hooks/useConditionAnalytics'
-import { useAuth } from '@/hooks/useAuth'
 
 interface Props {
   playerId: number
@@ -67,7 +66,6 @@ function MatchConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
 
 export function BestProfileCard({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { role } = useAuth()
   const { data, isLoading, error } = useBestProfile(playerId)
 
   const panelBg    = isLight ? 'bg-white'        : 'bg-gray-800'
@@ -75,8 +73,6 @@ export function BestProfileCard({ playerId, isLight }: Props) {
   const textMuted   = isLight ? 'text-gray-500'   : 'text-gray-400'
   const textStrong  = isLight ? 'text-gray-800'   : 'text-gray-100'
   const sepColor    = isLight ? 'border-gray-100' : 'border-gray-700'
-  const isPlayer    = role === 'player'
-
   const topFactors = (data?.key_factors ?? []).slice(0, 5)
   const n = data?.n_matches ?? 0
   const inRate  = data?.win_rate_in_profile
@@ -89,9 +85,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
     <section className={`rounded-lg border ${borderColor} ${panelBg} p-4`}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className={`text-sm font-semibold ${textStrong}`}>
-          {isPlayer
-            ? t('condition.best_profile.title_player')
-            : t('condition.best_profile.title_coach')}
+          {t('condition.best_profile.title_coach')}
         </h2>
         {n > 0 && <MatchConfidenceBadge n={n} isLight={isLight} />}
       </div>
@@ -102,8 +96,8 @@ export function BestProfileCard({ playerId, isLight }: Props) {
         <div className={`${textMuted} text-xs`}>{t('condition.best_profile.no_data')}</div>
       ) : (
         <div className="space-y-4">
-          {/* 勝率サマリー（coach/analyst） */}
-          {!isPlayer && inRate != null && outRate != null && (
+          {/* 勝率サマリー */}
+          {inRate != null && outRate != null && (
             <div className={`flex items-center gap-4 text-sm pb-3 border-b ${sepColor}`}>
               <div>
                 <span className={`text-xs ${textMuted}`}>{t('condition.best_profile.in_profile')}: </span>
@@ -124,20 +118,13 @@ export function BestProfileCard({ playerId, isLight }: Props) {
             </div>
           )}
 
-          {/* 全ロール向け: player intro text */}
-          {isPlayer && (
-            <div className={`text-xs ${textMuted}`}>
-              {t('condition.best_profile.player_intro')}
-            </div>
-          )}
-
           {/* key factors + gap */}
           {topFactors.length > 0 ? (
             <div>
               <div className={`text-xs ${textMuted} mb-2`}>
                 {t('condition.best_profile.factors_label')}
               </div>
-              <ul className="space-y-3">
+              <ul className="space-y-0 divide-y divide-inherit" style={{ borderColor: 'inherit' }}>
                 {topFactors.map((f) => {
                   const unit = FACTOR_UNITS[f.key] ?? ''
                   const label = t(`condition.best_profile.key.${f.key}`, { defaultValue: f.key })
@@ -147,7 +134,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                   const gap = f.gap
 
                   const targetRange = (tMin != null || tMax != null)
-                    ? `${tMin != null ? tMin.toFixed(1) : '—'} 〜 ${tMax != null ? tMax.toFixed(1) : '—'}${unit ? ' ' + unit : ''}`
+                    ? `${tMin != null ? tMin.toFixed(1) : '—'}〜${tMax != null ? tMax.toFixed(1) : '—'}${unit ? unit : ''}`
                     : null
 
                   let gapNode: ReactNode = null
@@ -155,41 +142,39 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                     gapNode = null
                   } else if (gap === 0) {
                     gapNode = (
-                      <span className={`text-xs font-medium ${isLight ? 'text-green-600' : 'text-green-400'}`}>
-                        {t('condition.best_profile.gap_in_range')} ✓
+                      <span className={`font-medium ${isLight ? 'text-green-600' : 'text-green-400'}`}>
+                        ✓
                       </span>
                     )
                   } else if (gap > 0) {
                     gapNode = (
-                      <span className={`text-xs ${isLight ? 'text-orange-600' : 'text-orange-400'}`}>
-                        {t('condition.best_profile.gap_up', { n: gap.toFixed(1), unit })}
+                      <span className={`${isLight ? 'text-orange-600' : 'text-orange-400'}`}>
+                        ↑{gap.toFixed(1)}{unit}
                       </span>
                     )
                   } else {
                     gapNode = (
-                      <span className={`text-xs ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
-                        {t('condition.best_profile.gap_down', { n: Math.abs(gap).toFixed(1), unit })}
+                      <span className={`${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
+                        ↓{Math.abs(gap).toFixed(1)}{unit}
                       </span>
                     )
                   }
 
                   return (
-                    <li key={f.key} className={`flex flex-col gap-0.5 pb-2 border-b last:border-0 last:pb-0 ${sepColor}`}>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="inline-block w-2 h-2 rounded-full bg-pink-500 shrink-0" />
-                        <span className={`text-sm font-medium ${textStrong}`}>{label}</span>
-                        {cur != null && (
-                          <span className={`text-xs font-mono ${textMuted}`}>
-                            {t('condition.best_profile.current_value')}: <strong>{cur.toFixed(1)}{unit}</strong>
-                          </span>
-                        )}
-                      </div>
-                      {targetRange && (
-                        <div className={`ml-4 text-xs ${textMuted}`}>
-                          {t('condition.best_profile.target_range')}: <span className="font-mono">{targetRange}</span>
-                        </div>
+                    <li key={f.key} className={`flex items-center gap-2 py-1.5 ${sepColor}`}>
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-pink-500 shrink-0" />
+                      <span className={`text-xs font-medium ${textStrong} shrink-0`}>{label}</span>
+                      {cur != null && (
+                        <span className={`text-xs font-mono ${textMuted} shrink-0`}>
+                          <strong>{cur.toFixed(1)}{unit}</strong>
+                        </span>
                       )}
-                      {gapNode && <div className="ml-4">{gapNode}</div>}
+                      {targetRange && (
+                        <span className={`text-[11px] font-mono ${textMuted} shrink-0`}>
+                          [{targetRange}]
+                        </span>
+                      )}
+                      {gapNode && <span className="text-xs shrink-0">{gapNode}</span>}
                     </li>
                   )
                 })}
@@ -199,8 +184,8 @@ export function BestProfileCard({ playerId, isLight }: Props) {
             <div className={`${textMuted} text-xs`}>{t('condition.best_profile.no_data')}</div>
           )}
 
-          {/* 期待勝率改善（coach/analyst） */}
-          {!isPlayer && rateDiff != null && rateDiff > 0 && (
+          {/* 期待勝率改善 */}
+          {rateDiff != null && rateDiff > 0 && (
             <div className={`pt-2 border-t ${sepColor} flex items-start gap-1.5 text-xs ${textMuted}`}>
               <Info size={11} className="shrink-0 mt-0.5" />
               <span>
@@ -209,11 +194,6 @@ export function BestProfileCard({ playerId, isLight }: Props) {
             </div>
           )}
 
-          {isPlayer && (
-            <div className={`text-xs ${textMuted} italic`}>
-              {t('condition.best_profile.player_note')}
-            </div>
-          )}
         </div>
       )}
     </section>

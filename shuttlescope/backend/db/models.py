@@ -813,6 +813,29 @@ class ShotInference(Base):
     model_version: Mapped[str] = mapped_column(String(40), default="mock-v0")
 
 
+class PublicInquiry(Base):
+    """Public website inquiry submitted through the top-domain contact form."""
+
+    __tablename__ = "public_inquiries"
+    __table_args__ = (
+        Index("ix_public_inquiries_status", "status"),
+        Index("ix_public_inquiries_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    organization: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    role: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    contact_reference: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="new")
+    admin_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # ─── A Phase 1: ダブルス4人+シャトル時系列位置データ ─────────────────────────
 
 class PlayerPositionFrame(Base):
