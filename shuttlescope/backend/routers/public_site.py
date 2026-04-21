@@ -498,6 +498,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
       <h1 class="hero-h1 fa">試合をデータで説明する</h1>
       <p class="hero-tagline fb">直感に統計的な根拠を</p>
       <p class="hero-sub fc">ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチです。コーチ・アナリスト・選手それぞれの役割に応じた分析レイヤーを提供します。</p>
+      <p class="hero-sub" style="font-size:12px;opacity:.6;margin-top:-18px;margin-bottom:20px">ShuttleScope is a sports data analysis platform for badminton match analysis. It provides statistical visualization and performance analysis tools for coaches, analysts, and players.</p>
       <div class="hero-tags fd">
         <span class="htag">ストローク分析</span>
         <span class="htag">統計モデル</span>
