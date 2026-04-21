@@ -319,8 +319,8 @@ def _require_admin(request: Request) -> None:
     from backend.utils.auth import get_auth
 
     ctx = get_auth(request)
-    if not (ctx.is_admin or ctx.is_analyst):
-        raise HTTPException(status_code=403, detail="admin privileges required")
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin role required")
 
 
 class UserCreate(BaseModel):
@@ -342,32 +342,53 @@ class UserUpdate(BaseModel):
     player_id: Optional[int] = None
 
 
+def _user_to_dict(user: User, db: Session) -> dict:
+    player = db.get(Player, user.player_id) if user.player_id else None
+    return {
+        "id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "display_name": user.display_name,
+        "team_name": user.team_name,
+        "player_id": user.player_id,
+        "player_name": player.name if player else None,
+        "has_credential": user.hashed_credential is not None,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
 @router.get("/users")
 def list_users(request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
-    users = db.query(User).order_by(User.id).all()
-    result = []
-    for user in users:
-        player = db.get(Player, user.player_id) if user.player_id else None
-        result.append(
-            {
-                "id": user.id,
-                "username": user.username,
-                "role": user.role,
-                "display_name": user.display_name,
-                "team_name": user.team_name,
-                "player_id": user.player_id,
-                "player_name": player.name if player else None,
-                "has_credential": user.hashed_credential is not None,
-                "created_at": user.created_at.isoformat() if user.created_at else None,
-            }
-        )
-    return {"success": True, "data": result}
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+
+    # admin / analyst: 全ユーザー
+    if ctx.is_admin or ctx.is_analyst:
+        users = db.query(User).order_by(User.id).all()
+        return {"success": True, "data": [_user_to_dict(u, db) for u in users]}
+
+    # coach: 同じ team_name のユーザーのみ
+    if ctx.is_coach:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            return {"success": True, "data": []}
+        users = db.query(User).filter(User.team_name == team).order_by(User.id).all()
+        return {"success": True, "data": [_user_to_dict(u, db) for u in users]}
+
+    # player: 自分自身のみ
+    if ctx.is_player and ctx.user_id:
+        user = db.get(User, ctx.user_id)
+        return {"success": True, "data": [_user_to_dict(user, db)] if user else []}
+
+    raise HTTPException(status_code=403, detail="ユーザー一覧の権限がありません")
 
 
 @router.post("/users", status_code=201)
 def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not (ctx.is_admin or ctx.is_analyst):
+        raise HTTPException(status_code=403, detail="ユーザー作成は admin / analyst のみ可能です")
     allowed_roles = {"admin", "analyst", "coach", "player"}
     if body.role not in allowed_roles:
         raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
@@ -395,21 +416,42 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
 
 @router.put("/users/{target_id}")
 def update_user(target_id: int, body: UserUpdate, request: Request, db: Session = Depends(get_db)):
-    _require_admin(request)
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+
     user = db.get(User, target_id)
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
+
+    # admin / analyst: 誰でも全フィールド更新可
+    # coach: 自チームのユーザーのみ、role 変更不可
+    # player: 自分自身のみ、display_name / password のみ
+    if ctx.is_admin or ctx.is_analyst:
+        pass  # 制限なし
+    elif ctx.is_coach:
+        team = (ctx.team_name or "").strip()
+        if not team or (user.team_name or "").strip() != team:
+            raise HTTPException(status_code=403, detail="自チームのユーザーのみ編集できます")
+    elif ctx.is_player:
+        if ctx.user_id != target_id:
+            raise HTTPException(status_code=403, detail="自分自身のみ編集できます")
+        # player は display_name / password のみ許可
+        allowed = UserUpdate(display_name=body.display_name, password=body.password, pin=body.pin)
+        body = allowed
+    else:
+        raise HTTPException(status_code=403, detail="編集権限がありません")
+
     if body.display_name is not None:
         user.display_name = body.display_name
-    if body.username is not None:
+    if body.username is not None and (ctx.is_admin or ctx.is_analyst):
         login_id = _validate_login_id(body.username)
         existing = db.query(User).filter(User.username == login_id, User.id != target_id).first()
         if existing:
             raise HTTPException(status_code=409, detail="login_id is already in use")
         user.username = login_id
-    if body.team_name is not None:
+    if body.team_name is not None and (ctx.is_admin or ctx.is_analyst or ctx.is_coach):
         user.team_name = body.team_name
-    if body.player_id is not None:
+    if body.player_id is not None and (ctx.is_admin or ctx.is_analyst):
         user.player_id = body.player_id
     hashed = _hash_user_credential(body.password, body.pin)
     if hashed:

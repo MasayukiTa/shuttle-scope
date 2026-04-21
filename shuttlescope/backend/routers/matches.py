@@ -232,9 +232,21 @@ def list_matches(
         query = query.filter(Match.annotation_status != "complete")
     matches = query.order_by(Match.date.desc()).all()
     ctx_bulk = _bulk_match_context(matches, db)
-    return {"success": True, "data": [
-        match_to_dict(m, include_players=True, db=db, **ctx_bulk) for m in matches
-    ]}
+
+    def _result_for(m: Match) -> str | None:
+        """player ロール時、B サイド選手なら result を反転して返す。"""
+        r = m.result
+        if ctx.is_player and ctx.player_id and r in ("win", "loss"):
+            if ctx.player_id in {m.player_b_id, m.partner_b_id}:
+                return "loss" if r == "win" else "win"
+        return r
+
+    result = []
+    for m in matches:
+        d = match_to_dict(m, include_players=True, db=db, **ctx_bulk)
+        d["result"] = _result_for(m)
+        result.append(d)
+    return {"success": True, "data": result}
 
 
 @router.post("/matches", status_code=201)

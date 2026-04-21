@@ -169,7 +169,11 @@ export function UserManagementPage() {
     load()
   }, [])
 
-  if (myRole !== 'admin' && myRole !== 'analyst') {
+  const canCreate = myRole === 'admin' || myRole === 'analyst'
+  const canDelete = myRole === 'admin'
+  const isSelfOnly = myRole === 'player'
+
+  if (!myRole || myRole === '') {
     return <div className="p-8 text-center text-gray-500">ユーザー管理の権限がありません</div>
   }
 
@@ -211,9 +215,11 @@ export function UserManagementPage() {
       if (editId != null) {
         const body: Record<string, unknown> = {
           display_name: form.display_name || undefined,
-          username: form.username.trim(),
-          team_name: form.team_name || undefined,
-          player_id: form.player_id ? parseInt(form.player_id, 10) : undefined,
+        }
+        if (!isSelfOnly) {
+          body.username = form.username.trim()
+          body.team_name = form.team_name || undefined
+          body.player_id = form.player_id ? parseInt(form.player_id, 10) : undefined
         }
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPut(`/auth/users/${editId}`, body)
@@ -251,14 +257,24 @@ export function UserManagementPage() {
   return (
     <div className="flex flex-col h-full">
       <div className={`shrink-0 px-6 py-4 border-b ${border} ${panelBg} flex items-center justify-between`}>
-        <h1 className={`text-base font-semibold ${textMain}`}>ユーザー管理</h1>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg"
-        >
-          <Plus size={14} />
-          ユーザー追加
-        </button>
+        <div>
+          <h1 className={`text-base font-semibold ${textMain}`}>ユーザー管理</h1>
+          {isSelfOnly && (
+            <p className={`text-xs mt-0.5 ${textMuted}`}>自分のプロフィールを編集できます</p>
+          )}
+          {myRole === 'coach' && (
+            <p className={`text-xs mt-0.5 ${textMuted}`}>チームメンバーのみ表示・編集できます</p>
+          )}
+        </div>
+        {canCreate && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg"
+          >
+            <Plus size={14} />
+            ユーザー追加
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -306,7 +322,7 @@ export function UserManagementPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {editId == null ? (
+              {editId == null && canCreate ? (
                 <div>
                   <label className={`block text-xs font-medium mb-1 ${textMuted}`}>ロール</label>
                   <select
@@ -333,18 +349,21 @@ export function UserManagementPage() {
                 />
               </div>
 
-              <div>
-                <label className={`block text-xs font-medium mb-1 ${textMuted}`}>ログインID *</label>
-                <input
-                  value={form.username}
-                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-                  className={inputCls}
-                  placeholder="admin001"
-                />
-                <p className={`mt-1 text-xs ${textMuted}`}>
-                  6文字以上20文字未満。英数字、`-`、`_` が使えます。
-                </p>
-              </div>
+              {!isSelfOnly && (
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>ログインID *</label>
+                  <input
+                    value={form.username}
+                    onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                    className={inputCls}
+                    placeholder="admin001"
+                    disabled={isSelfOnly}
+                  />
+                  <p className={`mt-1 text-xs ${textMuted}`}>
+                    6文字以上20文字未満。英数字、`-`、`_` が使えます。
+                  </p>
+                </div>
+              )}
 
               <SecretField
                 label={credentialLabel}
@@ -453,9 +472,11 @@ export function UserManagementPage() {
                         <button onClick={() => openEdit(u)} className={`${textMuted} hover:text-blue-500`}>
                           <Pencil size={14} />
                         </button>
-                        <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-red-500`}>
-                          <Trash2 size={14} />
-                        </button>
+                        {canDelete && (
+                          <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-red-500`}>
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
