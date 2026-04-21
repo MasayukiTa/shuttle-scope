@@ -260,12 +260,13 @@ try:
 except ImportError:
     pass
 
-# ベンチマーク用デバイス自動検出 + ジョブ管理ルーター（benchmark.py 未存在なら no-op）
-try:
-    from backend.routers import benchmark as _bm_router  # type: ignore
-    app.include_router(_bm_router.router, prefix="/api")
-except ImportError:
-    pass
+# ベンチマーク用デバイス自動検出 + ジョブ管理ルーター（PUBLIC_MODE 時はマウント除外）
+if not app_settings.PUBLIC_MODE:
+    try:
+        from backend.routers import benchmark as _bm_router  # type: ignore
+        app.include_router(_bm_router.router, prefix="/api")
+    except ImportError:
+        pass
 
 
 # ─── HTTP ボディサイズ上限ミドルウェア ────────────────────────────────────────
