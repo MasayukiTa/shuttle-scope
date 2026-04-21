@@ -473,6 +473,72 @@ def _probe_ray() -> list[ComputeDevice]:
     return devices
 
 
+def _probe_ssh_workers(existing_ids: set | None = None) -> list[ComputeDevice]:
+    """SSH 認証情報が設定されたワーカーノードを列挙する（Ray 不要）。
+
+    cluster.config.yaml の workers エントリに ssh_user / ssh_password がある場合、
+    Ray 状態に関わらず常にデバイスとして登録する。
+    Ray 経由で既に登録済み（existing_ids 内）のデバイスは重複追加しない。
+    """
+    devices: list[ComputeDevice] = []
+    if existing_ids is None:
+        existing_ids = set()
+
+    try:
+        from backend.cluster.topology import get_workers
+        workers = get_workers()
+
+        for worker in workers:
+            ip = worker.get("ip", "")
+            if not ip:
+                continue
+            if not worker.get("ssh_user") or not worker.get("ssh_password"):
+                continue
+
+            label = worker.get("label", ip)
+            node_id = worker.get("id", f"ssh_{_sanitize(ip)}")
+            num_gpus = int(worker.get("num_gpus", 0))
+            gpu_label = worker.get("gpu_label", "iGPU")
+
+            cpu_id = f"ssh_cpu_{_sanitize(ip)}"
+            if cpu_id not in existing_ids:
+                devices.append(
+                    ComputeDevice(
+                        device_id=cpu_id,
+                        label=f"SSH CPU: {label} ({ip})",
+                        device_type="cpu",
+                        backend="ssh",
+                        available=True,
+                        specs={"name": label, "ip": ip, "node_id": node_id},
+                    )
+                )
+
+            # iGPU デバイスは num_gpus > 0 かつ GPU 対応 ORT プロバイダーが存在する場合のみ追加
+            ort_providers = worker.get("ort_providers", [])
+            has_gpu_provider = any(
+                p in ort_providers
+                for p in ("DmlExecutionProvider", "CUDAExecutionProvider", "OpenVINOExecutionProvider")
+            )
+            if num_gpus > 0 and (has_gpu_provider or not ort_providers):
+                # ort_providers 未設定の場合は楽観的に追加（auto-detect 前の状態）
+                gpu_id = f"ssh_igpu_{_sanitize(ip)}"
+                if gpu_id not in existing_ids:
+                    devices.append(
+                        ComputeDevice(
+                            device_id=gpu_id,
+                            label=f"SSH iGPU: {gpu_label} ({label})",
+                            device_type="igpu",
+                            backend="ssh",
+                            available=has_gpu_provider,
+                            specs={"name": gpu_label, "ip": ip, "node_id": node_id},
+                        )
+                    )
+    except Exception:
+        pass
+
+    return devices
+
+
 # ─── メイン API ────────────────────────────────────────────────────────────────
 
 def probe_all() -> list[ComputeDevice]:
@@ -517,6 +583,9 @@ def probe_all() -> list[ComputeDevice]:
 
     # 7. Ray ワーカー（SS_CLUSTER_MODE=ray のとき）
     result.extend(_probe_ray())
+
+    # 8. SSH ワーカー（cluster.config.yaml に ssh_user が設定されているワーカー）
+    result.extend(_probe_ssh_workers(existing_ids={d.device_id for d in result}))
 
     _cache_result = result
     _cache_ts = now

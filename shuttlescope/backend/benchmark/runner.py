@@ -385,13 +385,14 @@ class BenchmarkRunner:
         if job is not None and job.cancelled:
             return {"error": "キャンセルされました"}
 
-        # Ray ワーカーデバイスは別経路で処理する
-        is_ray_device = (
+        # SSH / Ray ワーカーデバイスは別経路で処理する
+        is_remote_device = (
             device.device_type == "ray_worker"
-            or device.backend == "ray"
+            or device.backend in ("ray", "ssh")
             or device.device_id.startswith("ray_")
+            or device.device_id.startswith("ssh_")
         )
-        if is_ray_device:
+        if is_remote_device:
             ray_dispatch = {
                 TARGET_TRACKNET: self._bench_ray_tracknet,
                 TARGET_POSE: self._bench_ray_pose,
@@ -1163,24 +1164,34 @@ class BenchmarkRunner:
             return "C:\\ss-models"
 
     def _bench_ray_tracknet(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
-        """Ray ワーカーで TrackNet ベンチマークを実行する。"""
+        """SSH / Ray ワーカーで TrackNet ベンチマークを実行する。"""
         from backend.cluster import bootstrap
         from backend.cluster import remote_tasks
 
-        if not bootstrap.is_ray_connected():
-            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
-
         model_base = self._get_ray_worker_model_base(device)
-        # TrackNet モデルパス（ワーカー側のパス）
         import os
         model_path = os.path.join(model_base, "tracknet.onnx")
-        use_gpu = device.device_id.startswith("ray_igpu")
+        use_gpu = device.device_id.startswith(("ray_igpu", "ssh_igpu"))
         n_iters = min(n_frames, 5)
 
         logger.info(
-            "[runner/ray] TrackNet ベンチマーク: device=%s model=%s use_gpu=%s n_iters=%d",
+            "[runner/worker] TrackNet bench: device=%s model=%s use_gpu=%s n_iters=%d",
             device.device_id, model_path, use_gpu, n_iters,
         )
+
+        # SSH ワーカーは直接 SSH 経由で実行
+        ip = (device.specs or {}).get("ip", "")
+        if device.backend == "ssh" and ip:
+            creds = remote_tasks._get_worker_ssh_creds(ip)
+            if creds:
+                return remote_tasks.dispatch_benchmark_ssh(
+                    "_run_benchmark_tracknet",
+                    creds["host"], creds["username"], creds["password"],
+                    model_path=model_path, n_iters=n_iters, use_gpu=use_gpu,
+                )
+
+        if not bootstrap.is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
 
         results = remote_tasks.dispatch_benchmark(
             "_run_benchmark_tracknet",
@@ -1188,26 +1199,35 @@ class BenchmarkRunner:
             n_iters=n_iters,
             use_gpu=use_gpu,
         )
-        # 最初のワーカー結果を返す（単一ワーカー構成を想定）
         if isinstance(results, dict) and "error" not in results:
             for v in results.values():
                 return v
         return results if isinstance(results, dict) else {"error": str(results)}
 
     def _bench_ray_pose(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
-        """Ray ワーカーで Pose ベンチマークを実行する。"""
+        """SSH / Ray ワーカーで Pose ベンチマークを実行する。"""
         from backend.cluster import bootstrap
         from backend.cluster import remote_tasks
-
-        if not bootstrap.is_ray_connected():
-            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
 
         n_iters = min(n_frames, 10)
 
         logger.info(
-            "[runner/ray] Pose ベンチマーク: device=%s n_iters=%d",
+            "[runner/worker] Pose bench: device=%s n_iters=%d",
             device.device_id, n_iters,
         )
+
+        ip = (device.specs or {}).get("ip", "")
+        if device.backend == "ssh" and ip:
+            creds = remote_tasks._get_worker_ssh_creds(ip)
+            if creds:
+                return remote_tasks.dispatch_benchmark_ssh(
+                    "_run_benchmark_pose",
+                    creds["host"], creds["username"], creds["password"],
+                    n_iters=n_iters,
+                )
+
+        if not bootstrap.is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
 
         results = remote_tasks.dispatch_benchmark(
             "_run_benchmark_pose",

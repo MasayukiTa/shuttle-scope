@@ -278,16 +278,13 @@ def stop_ray(request: Request) -> Dict[str, Any]:
 
 @router.post("/cluster/nodes/{worker_ip}/detect")
 def detect_worker_hardware(worker_ip: str, request: Request) -> Dict[str, Any]:
-    """Ray 経由で指定ワーカーのハードウェア情報を取得する。
+    """SSH または Ray 経由で指定ワーカーのハードウェア情報を取得する。
 
     取得成功後は cluster.config.yaml のワーカー設定を自動更新する。
     worker_ip はパスパラメータ（ドット → アンダースコア変換不要、そのまま渡す）。
     """
     require_local_or_operator_token(request)
-    # URL パスでは "." がそのまま使えないためクライアント側でアンダースコアに変換している場合に対応
     actual_ip = worker_ip.replace("_", ".")
-    # ただし実際の IP（例 169.254.140.146）はそのまま来ることも多いので両方試みる
-    # ここでは受け取った値をそのまま渡し、dispatch 側でノードを検索させる
 
     from backend.cluster.remote_tasks import dispatch_hardware_detect
 
@@ -307,6 +304,10 @@ def detect_worker_hardware(worker_ip: str, request: Request) -> Dict[str, Any]:
                 w["num_gpus"] = hw["num_gpus"]
             if hw.get("gpu_label"):
                 w["gpu_label"] = hw["gpu_label"]
+            # ORT プロバイダー情報も保存（GPU デバイス判定に使用）
+            ort_providers = hw.get("ort_providers")
+            if ort_providers is not None:
+                w["ort_providers"] = ort_providers
             updated = True
             break
 
