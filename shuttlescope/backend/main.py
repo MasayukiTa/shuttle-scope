@@ -94,6 +94,7 @@ from backend.routers import review as review_router
 from backend.routers import data_package as data_package_router
 from backend.routers import cluster as cluster_router
 from backend.routers import auth as auth_router
+from backend.routers import public_site
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -555,6 +556,7 @@ app.include_router(data_package_router.router, prefix="/api")
 app.include_router(cluster_router.router, prefix="/api")
 # Phase A: 認証
 app.include_router(auth_router.router, prefix="/api")
+app.include_router(public_site.router)
 
 
 
@@ -888,8 +890,10 @@ async def serve_assets(asset_path: str):
 
 
 @app.get("/")
-async def spa_root():
+async def spa_root(request: StarletteRequest):
     """React SPA エントリポイント（ブラウザ / LAN / トンネルアクセス用）"""
+    if public_site.should_serve_public_site(request):
+        return public_site.render_public_home(request)
     if _INDEX_HTML.exists():
         return FileResponse(str(_INDEX_HTML), media_type="text/html; charset=utf-8")
     return HTMLResponse(content=_FALLBACK_HTML)

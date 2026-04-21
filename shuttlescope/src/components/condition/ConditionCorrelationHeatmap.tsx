@@ -69,7 +69,6 @@ function textOnCell(r: number | null, isLight: boolean): string {
 
 export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { role } = useAuth()
   const { data: records, isLoading, error } = useConditions(playerId, { limit: 200 })
   const [selected, setSelected] = useState<{
     xi: number
@@ -77,9 +76,6 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
     r: number | null
     n: number
   } | null>(null)
-
-  // player ロールには非表示
-  if (role === 'player') return null
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'

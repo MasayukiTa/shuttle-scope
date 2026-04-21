@@ -117,6 +117,33 @@ export function authLogout(): Promise<{ success: boolean }> {
   return apiPost<{ success: boolean }>('/auth/logout', {})
 }
 
+export interface PublicInquiryRow {
+  id: number
+  name: string
+  organization: string | null
+  role: string | null
+  contact_reference: string | null
+  message: string
+  status: 'new' | 'reviewed' | 'resolved'
+  admin_note: string | null
+  created_at: string
+}
+
+export function publicInquiryUnreadCount(): Promise<{ success: boolean; data: { count: number } }> {
+  return apiGet('/public/inquiries/unread-count')
+}
+
+export function publicInquiryList(): Promise<{ success: boolean; data: PublicInquiryRow[] }> {
+  return apiGet('/public/inquiries')
+}
+
+export function publicInquiryUpdate(
+  inquiryId: number,
+  body: { status: 'new' | 'reviewed' | 'resolved'; admin_note?: string | null }
+): Promise<{ success: boolean }> {
+  return apiPatch(`/public/inquiries/${inquiryId}`, body)
+}
+
 export interface AnalysisJobDTO {
   id: number
   match_id: number

@@ -100,12 +100,8 @@ function computeZ(records: ConditionRecord[], idx: number, key: MetricKey): numb
 
 export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { role } = useAuth()
   const { data, isLoading, error } = useConditions(playerId, { limit: 200 })
   const [openId, setOpenId] = useState<number | null>(null)
-
-  // 二重防御: player には何も描画しない
-  if (role !== 'coach' && role !== 'analyst' && role !== 'admin') return null
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'

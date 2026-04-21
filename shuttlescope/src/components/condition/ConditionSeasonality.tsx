@@ -9,7 +9,6 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts'
-import { useAuth } from '@/hooks/useAuth'
 import { useConditions, ConditionRecord } from '@/hooks/useConditions'
 import { mean } from '@/utils/stats'
 
@@ -117,13 +116,10 @@ function bucketize(
 
 export function ConditionSeasonality({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { role } = useAuth()
   const { data, isLoading, error } = useConditions(playerId, { limit: 200 })
   const [mode, setMode] = useState<ViewMode>('month')
   const [metric, setMetric] = useState<MetricKey>('ccs')
 
-  // 二重防御: player には何も描画しない
-  if (role !== 'coach' && role !== 'analyst' && role !== 'admin') return null
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'

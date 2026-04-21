@@ -231,44 +231,42 @@ export function ConditionPage() {
             {/* 全ロール: 時系列トレンド（全幅） */}
             <ConditionTrendChart playerId={effectivePlayerId} isLight={isLight} />
 
-            {/* coach/analyst: 追加解析 */}
-            {role !== 'player' && (
-              <>
-                {/* 全幅: ヒートマップ（幅が必要） */}
-                <ConditionCorrelationHeatmap playerId={effectivePlayerId} isLight={isLight} />
+            {/* 追加解析: 全ロール共通 */}
+            <>
+              {/* 全幅: ヒートマップ（幅が必要） */}
+              <ConditionCorrelationHeatmap playerId={effectivePlayerId} isLight={isLight} />
 
-                {/* 2カラム: ラグ相関 + 季節性 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                  <ConditionLagCorrelation playerId={effectivePlayerId} isLight={isLight} />
-                  <ConditionSeasonality playerId={effectivePlayerId} isLight={isLight} />
-                </div>
+              {/* 2カラム: ラグ相関 + 季節性 */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <ConditionLagCorrelation playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionSeasonality playerId={effectivePlayerId} isLight={isLight} />
+              </div>
 
-                {/* 2カラム: 変動ランキング + 散布図 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                  <ConditionVolatilityRanking playerId={effectivePlayerId} isLight={isLight} />
-                  <ConditionGenericScatter playerId={effectivePlayerId} isLight={isLight} />
-                </div>
+              {/* 2カラム: 変動ランキング + 散布図 */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <ConditionVolatilityRanking playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionGenericScatter playerId={effectivePlayerId} isLight={isLight} />
+              </div>
 
-                {/* 2カラム: PCA + 試合前後変化 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                  <ConditionPCAScatter playerId={effectivePlayerId} isLight={isLight} />
-                  <ConditionPostMatchChange playerId={effectivePlayerId} isLight={isLight} />
-                </div>
+              {/* 2カラム: PCA + 試合前後変化 */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <ConditionPCAScatter playerId={effectivePlayerId} isLight={isLight} />
+                <ConditionPostMatchChange playerId={effectivePlayerId} isLight={isLight} />
+              </div>
 
-                {/* 2カラム: 外れ週検出 + CorrelationScatter */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                  <ConditionOutlierWeeks playerId={effectivePlayerId} isLight={isLight} />
-                  <CorrelationScatter playerId={effectivePlayerId} isLight={isLight} />
-                </div>
+              {/* 2カラム: 外れ週検出 + CorrelationScatter */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <ConditionOutlierWeeks playerId={effectivePlayerId} isLight={isLight} />
+                <CorrelationScatter playerId={effectivePlayerId} isLight={isLight} />
+              </div>
 
-                {/* 全幅: タグ管理・比較 */}
-                <ConditionTagManager playerId={effectivePlayerId} isLight={isLight} />
-                <ConditionTagCompare playerId={effectivePlayerId} isLight={isLight} />
+              {/* 全幅: タグ管理・比較 */}
+              <ConditionTagManager playerId={effectivePlayerId} isLight={isLight} />
+              <ConditionTagCompare playerId={effectivePlayerId} isLight={isLight} />
 
-                {/* 全幅: 乖離アラート */}
-                <DiscrepancyAlertList playerId={effectivePlayerId} isLight={isLight} />
-              </>
-            )}
+              {/* 全幅: 乖離アラート */}
+              <DiscrepancyAlertList playerId={effectivePlayerId} isLight={isLight} />
+            </>
 
           </div>
         ) : (

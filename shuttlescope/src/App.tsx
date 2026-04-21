@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart, ClipboardCheck, Users, LogOut } from 'lucide-react'
+import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart, ClipboardCheck, Users, LogOut, Bell } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import '@/i18n'
@@ -20,9 +20,10 @@ import { ExpertLabelerPage } from '@/pages/ExpertLabelerPage'
 import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import { useAuth } from '@/hooks/useAuth'
 import { LoginPage } from '@/pages/LoginPage'
+import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
 import { useTheme } from '@/hooks/useTheme'
-import { authLogout, authMe, checkHealth } from '@/api/client'
+import { authLogout, authMe, checkHealth, publicInquiryUnreadCount } from '@/api/client'
 
 function useBackendReady() {
   const [ready, setReady] = useState(false)
@@ -44,7 +45,9 @@ function useBackendReady() {
     }
 
     poll()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return { ready, elapsed }
@@ -59,6 +62,14 @@ const queryClient = new QueryClient({
   },
 })
 
+type NavItem = {
+  to: string
+  label: string
+  shortLabel?: string
+  icon: typeof List
+  badge?: number | null
+}
+
 function Sidebar() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -67,15 +78,25 @@ function Sidebar() {
   const location = useLocation()
   const isLight = theme === 'light'
   const isAnnotatorPage = location.pathname.startsWith('/annotator')
+  const unreadCountQuery = useQuery({
+    queryKey: ['public-inquiries-unread-count'],
+    queryFn: publicInquiryUnreadCount,
+    enabled: role === 'admin',
+    refetchInterval: 30_000,
+  })
+  const unreadCount = unreadCountQuery.data?.data?.count ?? 0
 
-  const navItems = [
+  const navItems: NavItem[] = [
     { to: '/matches', label: t('nav.matches'), icon: List },
     { to: '/condition', label: t('nav.condition'), icon: Heart },
     { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
     { to: '/prediction', label: t('nav.prediction'), icon: TrendingUp },
     { to: '/expert-labeler', label: t('nav.expert'), icon: ClipboardCheck },
     ...(role === 'admin'
-      ? [{ to: '/users', label: t('nav.users'), shortLabel: 'ユーザ', icon: Users }]
+      ? [
+          { to: '/notifications', label: '通知', shortLabel: '通知', icon: Bell, badge: unreadCount > 0 ? unreadCount : null },
+          { to: '/users', label: t('nav.users'), shortLabel: '繝ｦ繝ｼ繧ｶ', icon: Users },
+        ]
       : []),
     { to: '/settings', label: t('nav.settings'), icon: Settings },
   ]
@@ -97,7 +118,7 @@ function Sidebar() {
     <>
       <div className={clsx('hidden md:flex w-16 flex-col items-center py-4 border-r', sidebarBg, isAnnotatorPage && 'md:hidden')}>
         <div className="text-blue-500 text-xs font-bold mb-4">SS</div>
-        {navItems.map(({ to, label, shortLabel, icon: Icon }) => (
+        {navItems.map(({ to, label, shortLabel, icon: Icon, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -111,7 +132,14 @@ function Sidebar() {
               )
             }
           >
-            <Icon size={20} />
+            <div className="relative">
+              <Icon size={20} />
+              {badge ? (
+                <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
+                  {badge > 99 ? '99+' : badge}
+                </span>
+              ) : null}
+            </div>
             <span className="text-[9px] leading-none">{shortLabel ?? label.slice(0, 4)}</span>
           </NavLink>
         ))}
@@ -129,7 +157,7 @@ function Sidebar() {
           </button>
           <button
             onClick={toggleTheme}
-            title={theme === 'dark' ? 'ライトモードに切替' : 'ダークモードに切替'}
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
             className={`flex flex-col items-center gap-1 p-2 rounded text-xs w-full transition-colors ${
               isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700'
             }`}
@@ -149,7 +177,7 @@ function Sidebar() {
           className={`md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t ${sidebarBg}`}
           style={{ paddingBottom: 'env(safe-area-inset-bottom, 8px)', height: '56px' }}
         >
-          {navItems.map(({ to, label, shortLabel, icon: Icon }) => (
+          {navItems.map(({ to, label, shortLabel, icon: Icon, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -162,7 +190,14 @@ function Sidebar() {
                 )
               }
             >
-              <Icon size={22} />
+              <div className="relative">
+                <Icon size={22} />
+                {badge ? (
+                  <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                ) : null}
+              </div>
               <span className="truncate font-medium">{shortLabel ?? label.slice(0, 4)}</span>
             </NavLink>
           ))}
@@ -187,6 +222,7 @@ function MainLayout() {
             <Route path="/prediction" element={<PredictionPage />} />
             <Route path="/expert-labeler" element={<ExpertLabelerPage />} />
             <Route path="/expert-labeler/:matchId" element={<ExpertLabelerAnnotatePage />} />
+            <Route path="/notifications" element={<NotificationInboxPage />} />
             <Route path="/users" element={<UserManagementPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

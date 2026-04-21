@@ -11,7 +11,6 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
-import { useAuth } from '@/hooks/useAuth'
 
 // 体調タブ解析サブタブ用: 時系列トレンドチャート
 // - CCS 折れ線 + 28日移動平均
@@ -95,12 +94,9 @@ function toPoints(records: ConditionRecord[]): ChartPoint[] {
 
 export function ConditionTrendChart({ playerId, isLight }: Props) {
   const { t } = useTranslation()
-  const { role } = useAuth()
   const { data, isLoading, error } = useConditions(playerId, { limit: 200 })
 
   const points = useMemo<ChartPoint[]>(() => toPoints(data ?? []), [data])
-
-  const isPlayer = role === 'player'
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
@@ -149,11 +145,6 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
         <div className={`text-xs font-semibold mb-1 ${sectionTitle}`}>
           {t('condition.trend.ccs_section')}
         </div>
-        {isPlayer && (
-          <div className={`${textMuted} text-xs mb-2`}>
-            {t('condition.trend.player_growth_note')}
-          </div>
-        )}
         <div style={{ width: '100%', height: 240 }}>
           <ResponsiveContainer>
             <LineChart data={points} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
@@ -188,9 +179,8 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
         </div>
       </div>
 
-      {/* 因子別 F1〜F5 (coach/analyst のみ) */}
-      {!isPlayer && (
-        <div>
+      {/* 因子別 F1〜F5 */}
+      <div>
           <div className={`text-xs font-semibold mb-1 ${sectionTitle}`}>
             {t('condition.trend.factors_section')}
           </div>
@@ -252,7 +242,6 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
             </ResponsiveContainer>
           </div>
         </div>
-      )}
 
       {/* 補助指標: データある列のみ */}
       {hasAnyAux && (
