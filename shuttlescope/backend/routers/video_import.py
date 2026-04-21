@@ -22,8 +22,9 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
+from backend.utils.control_plane import allow_local_file_control
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -81,10 +82,12 @@ class PathImportRequest(BaseModel):
 
 
 @router.post("/video_import/path")
-def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks):
+def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks, request: Request):
     """試合動画のローカルパスと match_id を指定してバックグラウンド解析を開始。
     試合終了後に自動呼び出しされる想定。
     """
+    if not allow_local_file_control(request):
+        raise HTTPException(status_code=403, detail="ローカルファイル操作はローカルからのみ実行できます")
     # URLスキームを持つパスを拒否（SSRF防止 — OpenCV は rtsp:// / http:// を直接開けるため）
     if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://', body.video_path.strip()):
         raise HTTPException(status_code=400, detail="URLは指定できません。ローカルファイルパスのみ有効です")

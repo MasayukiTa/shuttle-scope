@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from backend.cluster import bootstrap as _bootstrap
 from backend.cluster.load_guard import load_guard
 from backend.cluster import topology
+from backend.utils.control_plane import require_local_or_operator_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["cluster"])
@@ -98,8 +99,9 @@ def get_cluster_config() -> Dict[str, Any]:
 
 
 @router.post("/cluster/config")
-def save_cluster_config(body: ConfigSaveRequest) -> Dict[str, Any]:
+def save_cluster_config(body: ConfigSaveRequest, request: Request) -> Dict[str, Any]:
     """cluster.config.yaml を更新する。"""
+    require_local_or_operator_token(request)
     try:
         topology.save_config(body.config)
         return {"ok": True, "message": "cluster.config.yaml を保存しました"}
@@ -158,13 +160,14 @@ def get_hardware() -> Dict[str, Any]:
 
 
 @router.post("/cluster/ray/start")
-def start_ray() -> Dict[str, Any]:
+def start_ray(request: Request) -> Dict[str, Any]:
     """Ray クラスタへの接続確認をバックグラウンドで行う。
 
     Windows Firewall 環境では ray.init() の TCP 接続がブロックされるため、
     subprocess で ray status を実行してクラスタ稼働を確認する方式を採用する。
     確認完了後は /cluster/status の ray.status が "running" に変わる。
     """
+    require_local_or_operator_token(request)
     import threading
 
     if _bootstrap.is_ray_connected():
@@ -194,11 +197,12 @@ class StartHeadRequest(BaseModel):
 
 
 @router.post("/cluster/ray/start-head")
-def start_ray_head(body: StartHeadRequest) -> Dict[str, Any]:
+def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
     """このノードで Ray ヘッドとして起動する（ray start --head を実行）。
 
     既存の Ray プロセスは先に停止してから起動する。
     """
+    require_local_or_operator_token(request)
     import subprocess, sys, os
 
     ray_cmd = _bootstrap._find_ray_cmd()
@@ -261,8 +265,9 @@ def start_ray_head(body: StartHeadRequest) -> Dict[str, Any]:
 
 
 @router.post("/cluster/ray/stop")
-def stop_ray() -> Dict[str, Any]:
+def stop_ray(request: Request) -> Dict[str, Any]:
     """Ray 接続フラグをクリアする（ray.shutdown() は呼ばない）。"""
+    require_local_or_operator_token(request)
     try:
         _bootstrap.shutdown_ray()
         return {"ok": True, "message": "Ray 接続をクリアしました"}
@@ -272,12 +277,13 @@ def stop_ray() -> Dict[str, Any]:
 
 
 @router.post("/cluster/nodes/{worker_ip}/detect")
-def detect_worker_hardware(worker_ip: str) -> Dict[str, Any]:
+def detect_worker_hardware(worker_ip: str, request: Request) -> Dict[str, Any]:
     """Ray 経由で指定ワーカーのハードウェア情報を取得する。
 
     取得成功後は cluster.config.yaml のワーカー設定を自動更新する。
     worker_ip はパスパラメータ（ドット → アンダースコア変換不要、そのまま渡す）。
     """
+    require_local_or_operator_token(request)
     # URL パスでは "." がそのまま使えないためクライアント側でアンダースコアに変換している場合に対応
     actual_ip = worker_ip.replace("_", ".")
     # ただし実際の IP（例 169.254.140.146）はそのまま来ることも多いので両方試みる
@@ -312,12 +318,13 @@ def detect_worker_hardware(worker_ip: str) -> Dict[str, Any]:
 
 
 @router.get("/cluster/network/arp")
-def get_arp_devices() -> List[Dict[str, Any]]:
+def get_arp_devices(request: Request) -> List[Dict[str, Any]]:
     """ARP テーブルから近隣デバイス一覧を返す。
 
     Windows: arp -a、Linux/Mac: arp -a で解析する。
     このノード自身の全インターフェース IP は除外する。
     """
+    require_local_or_operator_token(request)
     import subprocess, sys, re
 
     kw: dict = {"capture_output": True, "text": True, "timeout": 10}
@@ -484,12 +491,13 @@ class RemoteRayJoinRequest(BaseModel):
 
 
 @router.post("/cluster/nodes/{worker_ip}/ray-join")
-def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest) -> Dict[str, Any]:
+def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest, request: Request) -> Dict[str, Any]:
     """SSH 経由でワーカーノードに ray start コマンドを送信する。
 
     paramiko が必要: pip install paramiko
     K10 側で OpenSSH Server が有効になっている必要がある。
     """
+    require_local_or_operator_token(request)
     try:
         import paramiko  # type: ignore
     except ImportError:

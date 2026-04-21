@@ -114,7 +114,12 @@ def get_auth(request: Request) -> AuthCtx:
             team_name: Optional[str] = tn.strip() if isinstance(tn, str) and tn.strip() else None
             return AuthCtx(role, pid, team_name, user_id=uid)
 
-    # ── フォールバック: X-Role ヘッダ（開発時互換）──────────────────────────
+    # ── フォールバック: X-Role ヘッダ（ローカルのみ互換）────────────────────
+    # loopback 以外からの X-Role ヘッダは信用しない。
+    from backend.utils.control_plane import allow_legacy_header_auth
+    if not allow_legacy_header_auth(request):
+        return AuthCtx(None, None)
+
     role = request.headers.get("X-Role")
     if role not in {r.value for r in UserRole}:
         role = None

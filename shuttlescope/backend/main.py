@@ -518,16 +518,12 @@ app.include_router(tracknet.router, prefix="/api")
 app.include_router(yolo.router, prefix="/api")
 # CV補助アノテーション候補
 app.include_router(cv_candidates.router, prefix="/api")
-# CV モデルベンチマーク
-app.include_router(cv_benchmark.router, prefix="/api")
 # R-001/R-002: 共有セッション
 app.include_router(sessions.router, prefix="/api")
 # S-003: コメント
 app.include_router(comments.router, prefix="/api")
 # U-001: ブックマーク
 app.include_router(bookmarks.router, prefix="/api")
-# Q-002/Q-008: ネットワーク診断
-app.include_router(network_diag.router, prefix="/api")
 # G3: ウォームアップ観察
 app.include_router(warmup.router, prefix="/api")
 # 予測エンジン (Phase A+B)
@@ -547,13 +543,21 @@ app.include_router(conditions_router.router)
 app.include_router(condition_tags_router.router)
 # Expert Labeler Phase 1（コーチ・アナリスト専用アノテーション）
 app.include_router(expert_router.router, prefix="/api")
-app.include_router(db_maintenance_router.router, prefix="/api")
 # B: 高速レビュー導線 / D: セット間支援
 app.include_router(review_router.router, prefix="/api")
 # E: データ資産化 JSON パッケージ
 app.include_router(data_package_router.router, prefix="/api")
-# クラスタ管理 API
-app.include_router(cluster_router.router, prefix="/api")
+
+# PUBLIC_MODE=0（デフォルト）の場合のみマウントする危険ルーター群
+if not app_settings.PUBLIC_MODE:
+    # CV モデルベンチマーク
+    app.include_router(cv_benchmark.router, prefix="/api")
+    # Q-002/Q-008: ネットワーク診断
+    app.include_router(network_diag.router, prefix="/api")
+    # DB メンテナンス
+    app.include_router(db_maintenance_router.router, prefix="/api")
+    # クラスタ管理 API
+    app.include_router(cluster_router.router, prefix="/api")
 # Phase A: 認証
 app.include_router(auth_router.router, prefix="/api")
 app.include_router(public_site.router)
@@ -563,7 +567,7 @@ app.include_router(public_site.router)
 @app.get("/api/health")
 async def health():
     """ヘルスチェック（Electron起動確認用）"""
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": "1.0.0", "public_mode": app_settings.PUBLIC_MODE}
 
 
 @app.post("/api/cache/invalidate")
