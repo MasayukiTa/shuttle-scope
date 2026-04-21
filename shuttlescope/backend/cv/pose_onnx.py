@@ -28,6 +28,13 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+
+# CUDA EP が cublasLt64_12.dll 等を見つけられるよう torch の DLL ディレクトリを登録
+try:
+    from backend.tracknet.inference import _register_cuda_dll_dirs
+    _register_cuda_dll_dirs()
+except Exception:
+    pass
 from typing import List
 
 import cv2
