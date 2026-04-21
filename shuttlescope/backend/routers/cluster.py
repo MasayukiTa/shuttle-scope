@@ -206,7 +206,7 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
     import subprocess, sys, os
 
     ray_cmd = _bootstrap._find_ray_cmd()
-    kw: dict = {"capture_output": True, "text": True, "timeout": 30}
+    kw: dict = {"capture_output": True, "text": True, "errors": "replace", "timeout": 30}
     if sys.platform == "win32":
         kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
 
@@ -328,7 +328,7 @@ def get_arp_devices(request: Request) -> List[Dict[str, Any]]:
     require_local_or_operator_token(request)
     import subprocess, sys, re
 
-    kw: dict = {"capture_output": True, "text": True, "timeout": 10}
+    kw: dict = {"capture_output": True, "text": True, "errors": "replace", "timeout": 10}
     if sys.platform == "win32":
         kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
 

@@ -98,11 +98,6 @@ export function PredictionPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={['analyst', 'coach']} fallback={
-      <div className={`flex items-center justify-center h-full ${isLight ? 'text-gray-500 bg-gray-50' : 'text-gray-500 bg-gray-900'}`}>
-        予測機能はアナリスト・コーチのみ利用できます
-      </div>
-    }>
       <div className={`flex flex-col h-full ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
         {/* ヘッダー */}
         <div className={`px-6 pt-6 pb-4 shrink-0 ${headerBg}`}>
@@ -283,6 +278,5 @@ export function PredictionPage() {
           )}
         </div>
       </div>
-    </RoleGuard>
   )
 }

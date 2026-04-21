@@ -61,7 +61,7 @@ def _find_ray_cmd() -> str:
 
 def _subprocess_kwargs() -> dict:
     """subprocess.run に渡す共通キーワード引数。"""
-    kw: dict = {"capture_output": True, "text": True, "timeout": 15}
+    kw: dict = {"capture_output": True, "text": True, "errors": "replace", "timeout": 15}
     if sys.platform == "win32":
         kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
     return kw

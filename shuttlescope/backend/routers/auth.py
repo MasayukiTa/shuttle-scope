@@ -10,7 +10,29 @@ from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import Player, User
+from backend.db.models import Player, PlayerPageAccess, User
+
+GRANTABLE_PAGES = {"prediction", "expert_labeler"}
+
+
+def _get_page_access(user_id: int, user: User, db: Session) -> list[str]:
+    """選手ユーザーが実際にアクセス可能なページキー一覧を返す。"""
+    individual = (
+        db.query(PlayerPageAccess.page_key)
+        .filter(PlayerPageAccess.user_id == user_id)
+        .all()
+    )
+    team_grants: list = []
+    if user and user.team_name:
+        team_grants = (
+            db.query(PlayerPageAccess.page_key)
+            .filter(
+                PlayerPageAccess.team_name == user.team_name,
+                PlayerPageAccess.user_id.is_(None),
+            )
+            .all()
+        )
+    return list({row[0] for row in individual + team_grants})
 from backend.utils.access_log import log_access
 from backend.utils.jwt_utils import create_access_token
 
@@ -272,12 +294,19 @@ def me(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="not logged in")
     user_id = getattr(ctx, "user_id", None)
     user = db.get(User, user_id) if user_id else None
+
+    if ctx.role == "player" and user_id and user:
+        page_access = _get_page_access(user_id, user, db)
+    else:
+        page_access = list(GRANTABLE_PAGES)
+
     return {
         "role": ctx.role,
         "player_id": ctx.player_id,
         "user_id": user_id,
         "team_name": ctx.team_name,
         "display_name": (user.display_name or user.username) if user else None,
+        "page_access": page_access,
     }
 
 
@@ -480,3 +509,72 @@ def delete_user(target_id: int, request: Request, db: Session = Depends(get_db))
     db.commit()
     log_access(db, "user_deleted", details={"deleted_user_id": target_id})
     return {"success": True}
+
+
+# ── ページアクセス付与管理 ──────────────────────────────────────────────────────
+
+class PageAccessBody(BaseModel):
+    page_keys: list[str]
+
+
+def _require_manager(request: Request) -> None:
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not (ctx.is_admin or ctx.is_analyst or ctx.is_coach):
+        raise HTTPException(status_code=403, detail="管理者・アナリスト・コーチのみ操作できます")
+
+
+@router.get("/users/{target_id}/page-access")
+def get_user_page_access(target_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_manager(request)
+    user = db.get(User, target_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    rows = db.query(PlayerPageAccess).filter(PlayerPageAccess.user_id == target_id).all()
+    return {"success": True, "data": [r.page_key for r in rows]}
+
+
+@router.put("/users/{target_id}/page-access")
+def set_user_page_access(target_id: int, body: PageAccessBody, request: Request, db: Session = Depends(get_db)):
+    from backend.utils.auth import get_auth
+    _require_manager(request)
+    ctx = get_auth(request)
+    user = db.get(User, target_id)
+    if not user or user.role != "player":
+        raise HTTPException(status_code=404, detail="player user not found")
+    valid = {k for k in body.page_keys if k in GRANTABLE_PAGES}
+    db.query(PlayerPageAccess).filter(
+        PlayerPageAccess.user_id == target_id,
+        PlayerPageAccess.team_name.is_(None),
+    ).delete()
+    for key in valid:
+        db.add(PlayerPageAccess(page_key=key, user_id=target_id, granted_by_user_id=ctx.user_id))
+    db.commit()
+    return {"success": True, "data": list(valid)}
+
+
+@router.get("/teams/{team_name}/page-access")
+def get_team_page_access(team_name: str, request: Request, db: Session = Depends(get_db)):
+    _require_manager(request)
+    rows = (
+        db.query(PlayerPageAccess)
+        .filter(PlayerPageAccess.team_name == team_name, PlayerPageAccess.user_id.is_(None))
+        .all()
+    )
+    return {"success": True, "data": [r.page_key for r in rows]}
+
+
+@router.put("/teams/{team_name}/page-access")
+def set_team_page_access(team_name: str, body: PageAccessBody, request: Request, db: Session = Depends(get_db)):
+    from backend.utils.auth import get_auth
+    _require_manager(request)
+    ctx = get_auth(request)
+    valid = {k for k in body.page_keys if k in GRANTABLE_PAGES}
+    db.query(PlayerPageAccess).filter(
+        PlayerPageAccess.team_name == team_name,
+        PlayerPageAccess.user_id.is_(None),
+    ).delete()
+    for key in valid:
+        db.add(PlayerPageAccess(page_key=key, team_name=team_name, granted_by_user_id=ctx.user_id))
+    db.commit()
+    return {"success": True, "data": list(valid)}

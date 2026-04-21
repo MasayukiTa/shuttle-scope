@@ -195,19 +195,7 @@ function ExpertLabelerContent() {
 
 
 export function ExpertLabelerPage() {
-  // コーチ・アナリストのみ閲覧可（player は拒否）
-  return (
-    <RoleGuard
-      allowedRoles={['analyst', 'coach']}
-      fallback={
-        <div className="h-full flex items-center justify-center p-6 text-center text-sm opacity-70">
-          コーチ・アナリスト専用ページです
-        </div>
-      }
-    >
-      <ExpertLabelerContent />
-    </RoleGuard>
-  )
+  return <ExpertLabelerContent />
 }
 
 export default ExpertLabelerPage

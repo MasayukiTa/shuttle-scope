@@ -3,12 +3,13 @@ import json
 import re
 import unicodedata
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Player, Match
+from backend.utils.auth import get_auth
 from backend.utils.sync_meta import touch
 from backend.utils import response_cache
 
@@ -108,9 +109,25 @@ def player_to_dict(p: Player, match_count: int = 0) -> dict:
 
 
 @router.get("/players")
-def list_players(db: Session = Depends(get_db)):
-    """選手一覧（試合数付き）"""
-    players = db.query(Player).order_by(Player.name).all()
+def list_players(request: Request, db: Session = Depends(get_db)):
+    """選手一覧（試合数付き）。ロールに応じて閲覧範囲を制限する。"""
+    ctx = get_auth(request)
+    query = db.query(Player).order_by(Player.name)
+    if ctx.is_player:
+        # 選手は自分自身のPlayerレコードのみ
+        if ctx.player_id:
+            query = query.filter(Player.id == ctx.player_id)
+        else:
+            return {"success": True, "data": []}
+    elif ctx.is_coach:
+        # コーチは自チームの選手のみ
+        team = (ctx.team_name or "").strip()
+        if not team:
+            return {"success": True, "data": []}
+        query = query.filter(Player.team == team)
+    # admin / analyst は全選手
+
+    players = query.all()
     result = []
     for p in players:
         cnt = db.query(Match).filter(

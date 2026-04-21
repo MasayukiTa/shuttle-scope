@@ -536,18 +536,7 @@ function AnnotateContent() {
 }
 
 export function ExpertLabelerAnnotatePage() {
-  return (
-    <RoleGuard
-      allowedRoles={['analyst', 'coach']}
-      fallback={
-        <div className="h-full flex items-center justify-center p-6 text-center text-sm opacity-70">
-          コーチ・アナリスト専用ページです
-        </div>
-      }
-    >
-      <AnnotateContent />
-    </RoleGuard>
-  )
+  return <AnnotateContent />
 }
 
 export default ExpertLabelerAnnotatePage

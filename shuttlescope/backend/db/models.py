@@ -27,6 +27,23 @@ class User(Base):
     team_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
+class PlayerPageAccess(Base):
+    """選手ユーザーへのページアクセス付与。
+    user_id が設定されていれば個人付与、team_name のみなら同チーム全選手への付与。
+    page_key: "prediction" | "expert_labeler"
+    """
+    __tablename__ = "player_page_access"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    page_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    team_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    granted_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class Player(Base):
     __tablename__ = "players"
 

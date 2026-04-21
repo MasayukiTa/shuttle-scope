@@ -911,6 +911,18 @@ async def spa_index():
     return HTMLResponse(content=_FALLBACK_HTML)
 
 
+@app.get("/{path:path}")
+async def spa_catch_all(path: str, request: StarletteRequest):
+    """HashRouter 用リダイレクト: /login などのパスを /#/<path> に転送する。
+    HashRouter はハッシュ部分でルーティングするため、サーバー側パスで配信すると
+    /#/ が /login# になってしまう。リダイレクトで root に統一する。
+    公開サイトホストの場合は 404 を返す。"""
+    if public_site.should_serve_public_site(request):
+        raise HTTPException(status_code=404)
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/#/{path}", status_code=302)
+
+
 if __name__ == "__main__":
     # R-002: LAN_MODE=true のとき 0.0.0.0 でバインドして LAN 内からアクセス可能にする
     host = "0.0.0.0" if app_settings.LAN_MODE else "127.0.0.1"

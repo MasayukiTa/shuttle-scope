@@ -148,8 +148,10 @@ export function ClusterSettingsPanel() {
   const [sshPass, setSshPass] = useState('')
   const [remoteJoinLoading, setRemoteJoinLoading] = useState<Record<number, boolean>>({})
   const [remoteJoinMsg, setRemoteJoinMsg] = useState<Record<number, string>>({})
-  // 詳細設定の開閉
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  // 詳細設定の開閉（localStorage で永続化）
+  const [showAdvanced, setShowAdvanced] = useState(() =>
+    localStorage.getItem('cluster_showAdvanced') === '1'
+  )
   const [taskRouting, setTaskRouting] = useState<Record<string, string>>({
     tracknet: 'auto',
     pose: 'auto',
@@ -630,7 +632,7 @@ export function ClusterSettingsPanel() {
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <div className={`${cardBg} border ${border} rounded-lg overflow-hidden`}>
         <button
-          onClick={() => setShowAdvanced(v => !v)}
+          onClick={() => setShowAdvanced(v => { const next = !v; localStorage.setItem('cluster_showAdvanced', next ? '1' : '0'); return next })}
           className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium ${
             isLight ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-300 hover:bg-gray-800/50'
           } transition-colors`}

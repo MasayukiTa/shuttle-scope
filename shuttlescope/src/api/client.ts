@@ -107,10 +107,27 @@ export interface AuthMeDTO {
   player_id: number | null
   team_name: string | null
   display_name: string | null
+  page_access: string[]
 }
 
 export function authMe(): Promise<AuthMeDTO> {
   return apiGet<AuthMeDTO>('/auth/me')
+}
+
+export function getUserPageAccess(userId: number): Promise<{ success: boolean; data: string[] }> {
+  return apiGet(`/auth/users/${userId}/page-access`)
+}
+
+export function setUserPageAccess(userId: number, pageKeys: string[]): Promise<{ success: boolean; data: string[] }> {
+  return apiPut(`/auth/users/${userId}/page-access`, { page_keys: pageKeys })
+}
+
+export function getTeamPageAccess(teamName: string): Promise<{ success: boolean; data: string[] }> {
+  return apiGet(`/auth/teams/${encodeURIComponent(teamName)}/page-access`)
+}
+
+export function setTeamPageAccess(teamName: string, pageKeys: string[]): Promise<{ success: boolean; data: string[] }> {
+  return apiPut(`/auth/teams/${encodeURIComponent(teamName)}/page-access`, { page_keys: pageKeys })
 }
 
 export function authLogout(): Promise<{ success: boolean }> {
