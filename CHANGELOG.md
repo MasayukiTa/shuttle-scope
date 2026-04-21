@@ -14,6 +14,42 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-21
+
+### Public Landing Site v7
+
+- Replaced the shuttle-scope.com top page with a full v7 design.
+  New layout includes a fixed navigation bar with hamburger menu (mobile), a dark-navy hero section with an app mock panel, a three-column feature card row, a 2×2 analysis capabilities grid, a data policy section, a footer CTA, and a mobile sticky bottom bar.
+- Added light / dark theme toggle via CSS custom properties persisted in localStorage.
+- Added scroll-reveal animations using IntersectionObserver.
+- Fixed all login / "アプリへ進む" link targets to `https://app.shuttle-scope.com/login`.
+  Previously these pointed to the app root; they now go directly to the login screen.
+- Preview route `/public-preview` continues to use link rewriting so internal development previews stay self-contained without affecting real login flow.
+
+### Permission Scope Enforcement
+
+- **User management** — role-scoped list, update, and create:
+  - admin / analyst: full access to all users.
+  - coach: can list and edit only users within their own team; cannot change roles.
+  - player: can view and edit only their own account; restricted to `display_name` and password changes.
+  - Frontend `UserManagementPage` now surfaces the appropriate UI controls per role instead of showing an "access denied" wall to non-admin roles.
+- **Match result perspective** — practice match win / loss now reflects the viewing player's side:
+  - `Match.result` is stored from player_a's perspective.
+  - When the authenticated player is `player_b` or `partner_b`, `list_matches` now inverts `win` ↔ `loss` so each player sees their own outcome.
+- **Data export / import auth (critical fix)** — `GET /api/export/package` and `POST /api/import/package` previously had no authentication checks.
+  - Export now enforces the same `check_export_match_scope` scoping used by analysis endpoints (player / coach / analyst boundaries).
+  - Import now requires analyst or admin role via `require_analyst`.
+
+### Condition Analytics Role Restrictions Removed
+
+- Removed the condition-analytics analyst-only gate that was blocking coach-role access to condition views.
+  Coaches now receive the same condition analytics responses as analysts; player-facing restrictions remain in place.
+
+### Admin Notification Inbox
+
+- Added `NotificationInboxPage` so admin users can review inquiry submissions sent through the public contact form.
+- Added backend coverage for the public-site test suite (`test_public_site`).
+
 ## 2026-04-20
 
 ### Admin Bootstrap Security
