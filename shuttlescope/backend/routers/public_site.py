@@ -328,6 +328,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;ali
 .nav-right{display:flex;align-items:center;gap:8px}
 .theme-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:6px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;transition:background .15s,border-color .15s;color:var(--t2)}
 .theme-toggle:hover{background:var(--blue-lt);border-color:var(--blue)}
+.lang-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:6px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--t2);transition:background .15s,border-color .15s,color .15s}
+.lang-toggle:hover{background:var(--blue-lt);border-color:var(--blue);color:var(--blue)}
+html[lang=en] .ja{display:none}
+html[lang=ja] .en{display:none}
 .btn-login{font-family:'MigMix 1P',sans-serif;font-size:12px;font-weight:700;padding:7px 18px;border:1px solid var(--bdr2);border-radius:5px;color:var(--t2);background:transparent;text-decoration:none;transition:all .15s}
 .btn-login:hover{color:var(--t1);border-color:var(--blue);background:var(--blue-lt)}
 .hamburger{display:none;flex-direction:column;justify-content:center;gap:4px;width:36px;height:36px;cursor:pointer;background:none;border:none;padding:4px}
@@ -472,42 +476,42 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 <nav>
   <a class="logo" href="/"><div class="logo-mark">S</div>ShuttleScope</a>
   <ul class="nav-links">
-    <li><a href="#features">機能</a></li>
-    <li><a href="#usecases">利用シーン</a></li>
-    <li><a href="/privacy">プライバシーポリシー</a></li>
-    <li><a href="/contact">お問い合わせ</a></li>
+    <li><a href="#features"><span class="ja">機能</span><span class="en">Features</span></a></li>
+    <li><a href="#usecases"><span class="ja">利用シーン</span><span class="en">Use Cases</span></a></li>
+    <li><a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a></li>
+    <li><a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a></li>
   </ul>
   <div class="nav-right">
     <button class="theme-toggle" id="theme-btn" title="テーマ切り替え">🌙</button>
-    <a href="https://app.shuttle-scope.com/login" class="btn-login">ログイン</a>
+    <button class="lang-toggle" id="lang-btn">EN</button>
+    <a href="https://app.shuttle-scope.com/login" class="btn-login"><span class="ja">ログイン</span><span class="en">Login</span></a>
     <button class="hamburger" id="ham" aria-label="メニュー"><span></span><span></span><span></span></button>
   </div>
 </nav>
 
 <nav class="mobile-menu" id="mmenu">
-  <a href="#features">機能</a>
-  <a href="#usecases">利用シーン</a>
-  <a href="/privacy">プライバシーポリシー</a>
-  <a href="/contact">お問い合わせ</a>
-  <a href="https://app.shuttle-scope.com/login" style="color:var(--blue);font-weight:700">ログイン →</a>
+  <a href="#features"><span class="ja">機能</span><span class="en">Features</span></a>
+  <a href="#usecases"><span class="ja">利用シーン</span><span class="en">Use Cases</span></a>
+  <a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a>
+  <a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
+  <a href="https://app.shuttle-scope.com/login" style="color:var(--blue);font-weight:700"><span class="ja">ログイン →</span><span class="en">Login →</span></a>
 </nav>
 
 <section class="hero">
   <div class="hero-inner">
     <div>
-      <h1 class="hero-h1 fa">試合をデータで説明する</h1>
-      <p class="hero-tagline fb">直感に統計的な根拠を</p>
-      <p class="hero-sub fc">ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチです。コーチ・アナリスト・選手それぞれの役割に応じた分析レイヤーを提供します。</p>
-      <p class="hero-sub" style="font-size:12px;opacity:.6;margin-top:-18px;margin-bottom:20px">ShuttleScope is a sports data analysis platform for badminton match analysis. It provides statistical visualization and performance analysis tools for coaches, analysts, and players.</p>
+      <h1 class="hero-h1 fa"><span class="ja">試合をデータで説明する</span><span class="en">Explain the Match with Data</span></h1>
+      <p class="hero-tagline fb"><span class="ja">直感に統計的な根拠を</span><span class="en">Back Your Instincts with Statistics</span></p>
+      <p class="hero-sub fc"><span class="ja">ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチです。コーチ・アナリスト・選手それぞれの役割に応じた分析レイヤーを提供します。</span><span class="en">ShuttleScope is a sports data analysis platform for badminton match analysis. It provides statistical visualization and performance analysis tools for coaches, analysts, and players.</span></p>
       <div class="hero-tags fd">
-        <span class="htag">ストローク分析</span>
-        <span class="htag">統計モデル</span>
-        <span class="htag">戦術可視化</span>
-        <span class="htag">コンディション追跡</span>
+        <span class="htag"><span class="ja">ストローク分析</span><span class="en">Stroke Analysis</span></span>
+        <span class="htag"><span class="ja">統計モデル</span><span class="en">Statistical Model</span></span>
+        <span class="htag"><span class="ja">戦術可視化</span><span class="en">Tactical Viz</span></span>
+        <span class="htag"><span class="ja">コンディション追跡</span><span class="en">Condition Tracking</span></span>
       </div>
       <div class="hero-actions fd">
-        <a href="https://app.shuttle-scope.com/login" class="btn-cta">アプリに進む <span class="cta-arrow">›</span></a>
-        <a href="/contact" class="btn-ghost">お問い合わせ</a>
+        <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリに進む</span><span class="en">Open App</span> <span class="cta-arrow">›</span></a>
+        <a href="/contact" class="btn-ghost"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
       </div>
     </div>
     <div class="hero-panel fd">
@@ -547,27 +551,27 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   <div class="sec-wrap">
     <div class="reveal">
       <div class="sec-kicker">Core Features</div>
-      <h2 class="sec-h2">分析を支える3つの機能</h2>
-      <p class="sec-sub">アノテーション・統計解析・役割別アクセスが一体になった設計です。</p>
+      <h2 class="sec-h2"><span class="ja">分析を支える3つの機能</span><span class="en">Three Core Features</span></h2>
+      <p class="sec-sub"><span class="ja">アノテーション・統計解析・役割別アクセスが一体になった設計です。</span><span class="en">Annotation, statistical analysis, and role-based access — unified in one platform.</span></p>
     </div>
     <div class="feat-grid">
       <div class="feat-card reveal d1">
         <div class="feat-no">01 / ANNOTATION</div>
         <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--blue)" stroke-width="1.6"><polygon points="3,2.5 13.5,8.5 3,14.5"/></svg></div>
-        <div class="feat-h">ストローク単位のアノテーション</div>
-        <p class="feat-p">ラリーをストローク単位で記録します。配球位置・球種・着地点を逐次入力することで、統計モデルの精度が上がります。</p>
+        <div class="feat-h"><span class="ja">ストローク単位のアノテーション</span><span class="en">Stroke-level Annotation</span></div>
+        <p class="feat-p"><span class="ja">ラリーをストローク単位で記録します。配球位置・球種・着地点を逐次入力することで、統計モデルの精度が上がります。</span><span class="en">Record each rally stroke by stroke. Logging shot position, type, and landing zone improves the accuracy of statistical models.</span></p>
       </div>
       <div class="feat-card reveal d2">
         <div class="feat-no">02 / ANALYSIS</div>
         <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--blue)" stroke-width="1.6"><circle cx="8.5" cy="5.5" r="2.5"/><path d="M3 14.5c0-3.1 2.4-5.5 5.5-5.5s5.5 2.4 5.5 5.5"/></svg></div>
-        <div class="feat-h">統計モデルによる試合解析</div>
-        <p class="feat-p">Markov モデル・EPV・コートヒートマップ・疲労指標により試合構造を多角的に可視化します。記録が増えるほど分析の解像度が上がります。</p>
+        <div class="feat-h"><span class="ja">統計モデルによる試合解析</span><span class="en">Statistical Match Analysis</span></div>
+        <p class="feat-p"><span class="ja">Markov モデル・EPV・コートヒートマップ・疲労指標により試合構造を多角的に可視化します。記録が増えるほど分析の解像度が上がります。</span><span class="en">Markov models, EPV, court heatmaps, and fatigue indicators visualize match structure from multiple angles. Resolution improves as more data is recorded.</span></p>
       </div>
       <div class="feat-card reveal d3">
         <div class="feat-no">03 / ROLES</div>
         <div class="feat-icon"><svg viewBox="0 0 17 17" fill="none" stroke="var(--blue)" stroke-width="1.6"><circle cx="3" cy="8.5" r="1.8"/><circle cx="14" cy="4" r="1.8"/><circle cx="14" cy="13" r="1.8"/><line x1="4.7" y1="7.6" x2="12.3" y2="4.9"/><line x1="4.7" y1="9.4" x2="12.3" y2="12.1"/></svg></div>
-        <div class="feat-h">役割に応じた分析レイヤー</div>
-        <p class="feat-p">コーチ・アナリスト・選手で参照できる情報の粒度が異なります。それぞれの判断に必要なデータを、適切な形で届けます。</p>
+        <div class="feat-h"><span class="ja">役割に応じた分析レイヤー</span><span class="en">Role-based Analysis Layers</span></div>
+        <p class="feat-p"><span class="ja">コーチ・アナリスト・選手で参照できる情報の粒度が異なります。それぞれの判断に必要なデータを、適切な形で届けます。</span><span class="en">Coaches, analysts, and players each see a different level of detail. The right data is delivered to the right person in the right form.</span></p>
       </div>
     </div>
   </div>
@@ -577,14 +581,14 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   <div class="sec-wrap">
     <div class="reveal">
       <div class="sec-kicker">Analysis Capabilities</div>
-      <h2 class="sec-h2">試合から読み取れること</h2>
-      <p class="sec-sub">ストロークを記録するたびに統計モデルが更新され、試合の構造が可視化されます。</p>
+      <h2 class="sec-h2"><span class="ja">試合から読み取れること</span><span class="en">What the Match Data Reveals</span></h2>
+      <p class="sec-sub"><span class="ja">ストロークを記録するたびに統計モデルが更新され、試合の構造が可視化されます。</span><span class="en">Every stroke recorded updates the statistical model and makes match structure more visible.</span></p>
     </div>
     <div class="uc-grid">
-      <div class="uc-card reveal d1"><div class="uc-badge">01</div><div><div class="uc-h">ラリー構造の分析</div><p class="uc-p">どのパターンで得点・失点しているかをラリー単位で可視化します。コートヒートマップと配球傾向から試合の構造が見えます。</p></div></div>
-      <div class="uc-card reveal d2"><div class="uc-badge">02</div><div><div class="uc-h">得点期待値の算出</div><p class="uc-p">Markov モデルと EPV により各局面の優位性を数値化します。「なんとなく苦しかった」を統計的な根拠に変えます。</p></div></div>
-      <div class="uc-card reveal d1"><div class="uc-badge">03</div><div><div class="uc-h">戦術傾向の可視化</div><p class="uc-p">配球パターン・反実仮想分析・セット間比較により、勝敗に影響した戦術要因を特定します。</p></div></div>
-      <div class="uc-card reveal d2"><div class="uc-badge">04</div><div><div class="uc-h">コンディションとの相関</div><p class="uc-p">体調指標とパフォーマンスデータを重ねて分析します。疲労が試合展開に与える影響をシーズン単位で追跡できます。</p></div></div>
+      <div class="uc-card reveal d1"><div class="uc-badge">01</div><div><div class="uc-h"><span class="ja">ラリー構造の分析</span><span class="en">Rally Structure Analysis</span></div><p class="uc-p"><span class="ja">どのパターンで得点・失点しているかをラリー単位で可視化します。コートヒートマップと配球傾向から試合の構造が見えます。</span><span class="en">Visualize scoring and losing patterns at the rally level. Court heatmaps and shot tendency data reveal match structure.</span></p></div></div>
+      <div class="uc-card reveal d2"><div class="uc-badge">02</div><div><div class="uc-h"><span class="ja">得点期待値の算出</span><span class="en">Expected Score Calculation</span></div><p class="uc-p"><span class="ja">Markov モデルと EPV により各局面の優位性を数値化します。「なんとなく苦しかった」を統計的な根拠に変えます。</span><span class="en">Markov models and EPV quantify the advantage at each stage. Turn "it felt tough" into statistical evidence.</span></p></div></div>
+      <div class="uc-card reveal d1"><div class="uc-badge">03</div><div><div class="uc-h"><span class="ja">戦術傾向の可視化</span><span class="en">Tactical Pattern Visualization</span></div><p class="uc-p"><span class="ja">配球パターン・反実仮想分析・セット間比較により、勝敗に影響した戦術要因を特定します。</span><span class="en">Identify tactical factors that influenced the outcome through shot patterns, counterfactual analysis, and set comparisons.</span></p></div></div>
+      <div class="uc-card reveal d2"><div class="uc-badge">04</div><div><div class="uc-h"><span class="ja">コンディションとの相関</span><span class="en">Correlation with Physical Condition</span></div><p class="uc-p"><span class="ja">体調指標とパフォーマンスデータを重ねて分析します。疲労が試合展開に与える影響をシーズン単位で追跡できます。</span><span class="en">Overlay condition indicators with performance data. Track the impact of fatigue on match flow across an entire season.</span></p></div></div>
     </div>
   </div>
 </section>
@@ -592,45 +596,57 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 <section class="sec-data">
   <div class="sec-wrap reveal">
     <div class="sec-kicker">Data Policy</div>
-    <p class="data-body">ShuttleScope では利用目的に応じて試合映像・レビュー情報・選手に関する入力情報を扱う場合があります。具体的な取扱方針は <a href="/privacy">プライバシーポリシー</a> を、利用条件は <a href="/terms">利用規約</a> をご確認ください。</p>
+    <p class="data-body"><span class="ja">ShuttleScope では利用目的に応じて試合映像・レビュー情報・選手に関する入力情報を扱う場合があります。具体的な取扱方針は <a href="/privacy">プライバシーポリシー</a> を、利用条件は <a href="/terms">利用規約</a> をご確認ください。</span><span class="en">ShuttleScope may handle match footage, review information, and player input data depending on the purpose of use. See our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms of Use</a> for details.</span></p>
   </div>
 </section>
 
 <section class="sec-fcta reveal">
   <div class="sec-kicker" style="justify-content:center">Get Started</div>
-  <h2 class="fcta-h">記録が増えるほど見えてくるものがある</h2>
-  <p class="fcta-sub">アカウントをお持ちの方はそのままログインできます。</p>
-  <a href="https://app.shuttle-scope.com/login" class="btn-cta" style="font-size:16px;padding:16px 40px">アプリを開く <span class="cta-arrow">›</span></a>
+  <h2 class="fcta-h"><span class="ja">記録が増えるほど見えてくるものがある</span><span class="en">The More You Record, the More You See</span></h2>
+  <p class="fcta-sub"><span class="ja">アカウントをお持ちの方はそのままログインできます。</span><span class="en">Existing accounts can log in directly.</span></p>
+  <a href="https://app.shuttle-scope.com/login" class="btn-cta" style="font-size:16px;padding:16px 40px"><span class="ja">アプリを開く</span><span class="en">Open App</span> <span class="cta-arrow">›</span></a>
 </section>
 
 <footer>
   <a class="footer-logo" href="/"><div class="logo-mark">S</div>ShuttleScope</a>
   <ul class="footer-links">
-    <li><a href="/terms">利用規約</a></li>
-    <li><a href="/privacy">プライバシーポリシー</a></li>
-    <li><a href="/contact">お問い合わせ</a></li>
+    <li><a href="/terms"><span class="ja">利用規約</span><span class="en">Terms</span></a></li>
+    <li><a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a></li>
+    <li><a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a></li>
   </ul>
   <span class="footer-copy">© 2026 ShuttleScope</span>
 </footer>
 
 <div class="mob-bar">
-  <a href="https://app.shuttle-scope.com/login" class="btn-cta">アプリに進む <span class="cta-arrow">›</span></a>
-  <a href="https://app.shuttle-scope.com/login" class="mob-bar-login">ログイン</a>
+  <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリに進む</span><span class="en">Open App</span> <span class="cta-arrow">›</span></a>
+  <a href="https://app.shuttle-scope.com/login" class="mob-bar-login"><span class="ja">ログイン</span><span class="en">Login</span></a>
 </div>
 
 <script>
 const html=document.documentElement;
-const btn=document.getElementById('theme-btn');
-const saved=localStorage.getItem('ss-theme');
-if(saved){html.dataset.theme=saved;btn.textContent=saved==='dark'?'☀':'🌙'}
-btn.addEventListener('click',()=>{
+// theme
+const tbtn=document.getElementById('theme-btn');
+const savedTheme=localStorage.getItem('ss-theme');
+if(savedTheme){html.dataset.theme=savedTheme;tbtn.textContent=savedTheme==='dark'?'☀':'🌙'}
+tbtn.addEventListener('click',()=>{
   const next=html.dataset.theme==='dark'?'light':'dark';
-  html.dataset.theme=next;btn.textContent=next==='dark'?'☀':'🌙';
+  html.dataset.theme=next;tbtn.textContent=next==='dark'?'☀':'🌙';
   localStorage.setItem('ss-theme',next);
 });
+// lang
+const lbtn=document.getElementById('lang-btn');
+let lang=localStorage.getItem('ss-lang')||'ja';
+html.lang=lang;lbtn.textContent=lang==='ja'?'EN':'JA';
+lbtn.addEventListener('click',()=>{
+  lang=lang==='ja'?'en':'ja';
+  html.lang=lang;lbtn.textContent=lang==='ja'?'EN':'JA';
+  localStorage.setItem('ss-lang',lang);
+});
+// hamburger
 const ham=document.getElementById('ham'),mm=document.getElementById('mmenu');
 ham.addEventListener('click',()=>{ham.classList.toggle('open');mm.classList.toggle('open')});
 mm.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{ham.classList.remove('open');mm.classList.remove('open')}));
+// scroll reveal
 const obs=new IntersectionObserver(e=>{
   e.forEach(x=>{if(x.isIntersecting){x.target.classList.add('vis');obs.unobserve(x.target)}});
 },{threshold:0.1});
