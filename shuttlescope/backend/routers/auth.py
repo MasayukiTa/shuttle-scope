@@ -111,8 +111,8 @@ class LoginResponse(BaseModel):
 class BootstrapStatusResponse(BaseModel):
     has_admin: bool
     bootstrap_configured: bool
-    bootstrap_username: Optional[str] = None
-    bootstrap_display_name: Optional[str] = None
+    # bootstrap_username / bootstrap_display_name は除外済み
+    # 管理者ユーザー名を無認証で公開するとブルートフォースの標的になるため
 
 
 def _bootstrap_admin_status(db: Session) -> BootstrapStatusResponse:
@@ -121,8 +121,6 @@ def _bootstrap_admin_status(db: Session) -> BootstrapStatusResponse:
     return BootstrapStatusResponse(
         has_admin=exists is not None,
         bootstrap_configured=configured,
-        bootstrap_username=(settings.BOOTSTRAP_ADMIN_USERNAME or "admin001").strip() or "admin001",
-        bootstrap_display_name=(settings.BOOTSTRAP_ADMIN_DISPLAY_NAME or "Admin").strip() or "Admin",
     )
 
 
@@ -131,6 +129,8 @@ def _seed_admin_if_needed(db: Session) -> None:
     if status.has_admin:
         return
 
+    bootstrap_username = (settings.BOOTSTRAP_ADMIN_USERNAME or "admin001").strip() or "admin001"
+    bootstrap_display_name = (settings.BOOTSTRAP_ADMIN_DISPLAY_NAME or "Admin").strip() or "Admin"
     password = (settings.BOOTSTRAP_ADMIN_PASSWORD or "").strip()
     if not password:
         logger.warning(
@@ -139,26 +139,26 @@ def _seed_admin_if_needed(db: Session) -> None:
         )
         return
 
-    conflicting_user = db.query(User).filter(User.username == status.bootstrap_username).first()
+    conflicting_user = db.query(User).filter(User.username == bootstrap_username).first()
     if conflicting_user:
         logger.warning(
             "Cannot bootstrap initial admin user '%s' because that username already belongs to role '%s'.",
-            status.bootstrap_username,
+            bootstrap_username,
             conflicting_user.role,
         )
         return
 
     admin = User(
-        username=status.bootstrap_username,
+        username=bootstrap_username,
         role="admin",
-        display_name=status.bootstrap_display_name,
+        display_name=bootstrap_display_name,
         hashed_credential=_hash_password(password),
     )
     db.add(admin)
     db.commit()
     logger.warning(
         "Bootstrapped initial admin user '%s'. Change the password after first login.",
-        status.bootstrap_username,
+        bootstrap_username,
     )
 
 

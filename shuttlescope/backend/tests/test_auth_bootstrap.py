@@ -23,8 +23,6 @@ def test_bootstrap_status_reports_missing_admin_and_missing_password(db_session,
         assert resp.json() == {
             "has_admin": False,
             "bootstrap_configured": False,
-            "bootstrap_username": "admin001",
-            "bootstrap_display_name": "Admin",
         }
     finally:
         app.dependency_overrides.clear()

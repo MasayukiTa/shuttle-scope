@@ -74,8 +74,6 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
 interface BootstrapStatus {
   has_admin: boolean
   bootstrap_configured: boolean
-  bootstrap_username: string | null
-  bootstrap_display_name: string | null
 }
 
 async function fetchBootstrapStatus(): Promise<BootstrapStatus | null> {

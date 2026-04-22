@@ -120,6 +120,40 @@ if not user or not user.hashed_credential:
     raise HTTPException(status_code=401, detail="login failed")
 ```
 
+#### キャッシュIDOR: AnalysisCacheMiddleware がアクセス制御前に実行（main.py）
+
+Starlette は `add_middleware` の逆順でミドルウェアを実行する。
+`AnalysisCacheMiddleware`（line 518）が `PlayerAccessControlMiddleware`（line 443）より後に登録されていたため、
+実行順では AnalysisCache が先に動き、キャッシュ HIT 時に PlayerAccess を完全にスキップしていた。
+
+さらにキャッシュキーが `X-Role`/`X-Player-Id` ヘッダー（ユーザーが任意に設定可能）を使っていたため、
+player JWT ユーザーがアナリストと同一キャッシュキーを生成し、他選手のデータを取得できた。
+前述の H-2 IDOR 修正（クエリパラメータ検証）もキャッシュがある状態では完全にバイパスされていた。
+
+修正: キャッシュキーを JWT 検証済み claims（role/player_id/team_name）から生成するよう変更。
+`X-Role` 等の生ヘッダーはキャッシュキーに使用しない。
+
+#### bootstrap-status: 管理者ユーザー名を無認証公開（auth.py BootstrapStatusResponse）
+
+`/api/auth/bootstrap-status`（認証不要）が `bootstrap_username` フィールドで管理者のユーザー名を返していた。
+攻撃者がブルートフォースの標的ユーザー名を特定できる状態だった。
+
+修正: `BootstrapStatusResponse` から `bootstrap_username` / `bootstrap_display_name` を削除。
+フロントエンドは `has_admin` / `bootstrap_configured` のみを使用しており動作に影響なし。
+
+#### セキュリティヘッダー未設定（main.py）
+
+`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` が未設定だった。
+
+修正: `SecurityHeadersMiddleware` を追加。
+`PUBLIC_MODE=True` 時は `Strict-Transport-Security` も付加。
+CSP は React の動的スクリプト・スタイルと衝突するリスクがあるため別途検討。
+
+#### CORS: allow_origins=["*"] をPUBLIC_MODE時のみ限定（main.py）
+
+LAN モード（`PUBLIC_MODE=False`）では任意 IP の LAN デバイスが接続するため wildcard を維持。
+`PUBLIC_MODE=True`（Cloudflare 公開）では `CLOUDFLARE_TUNNEL_HOSTNAME` のオリジンのみに限定するよう変更。
+
 ---
 
 ## 未対応（意図的スキップ）
