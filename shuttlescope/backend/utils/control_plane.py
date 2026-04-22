@@ -27,9 +27,12 @@ _OPERATOR_TOKEN: str = os.getenv("SS_OPERATOR_TOKEN", "").strip()
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    # CF-Connecting-IP は Cloudflare が設定するため、クライアントによる偽造不可。
+    # X-Forwarded-For の先頭はクライアントが任意に設定できるため loopback 判定に使用しない。
+    cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
+    if cf_ip:
+        return cf_ip
+    # Cloudflare Tunnel を経由しない接続（Electron ローカル等）はソケット IP を使用。
     return request.client.host if request.client else ""
 
 

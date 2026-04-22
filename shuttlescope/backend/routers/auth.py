@@ -178,6 +178,8 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         user = db.query(User).filter(User.username == identifier).first()
 
         if not user or not user.hashed_credential:
+            # ユーザー不在時もダミーのbcrypt検証を走らせてタイミング差を消す
+            _verify_password(secret, "$2b$12$dummyhashfortimingequalizationxxxxxxxxxxxxxxxx")
             log_access(db, "login_failed", details={"reason": "user_not_found", "identifier": identifier}, ip_addr=ip)
             raise HTTPException(status_code=401, detail="login failed")
 
