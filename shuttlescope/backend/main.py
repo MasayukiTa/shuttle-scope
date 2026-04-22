@@ -399,7 +399,7 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
             finally:
                 db.close()
 
-        # ── player スコープ ──
+        # ── player スコープ（パスパラメータ） ──
         tgt_pid = _extract_id(path, _PLAYER_ID_PATTERNS)
         if tgt_pid is not None and tgt_pid != pid:
             try:
@@ -413,6 +413,29 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
                 "この選手データへのアクセス権限がありません",
                 status_code=403,
             )
+
+        # ── player_id クエリパラメータ（解析系 IDOR 対策） ──
+        # /api/analysis/* は player_id をクエリパラメータで受け取るため
+        # パスパターンでは捕捉できない。クエリパラメータを直接検証する。
+        if path.startswith("/api/analysis/") or path.startswith("/api/reports/"):
+            qp_pid_raw = request.query_params.get("player_id", "")
+            if qp_pid_raw:
+                try:
+                    qp_pid = int(qp_pid_raw)
+                except (ValueError, TypeError):
+                    qp_pid = None
+                if qp_pid and qp_pid != pid:
+                    try:
+                        from backend.utils.access_log import log_access
+                        from backend.db.database import SessionLocal
+                        with SessionLocal() as _log_db:
+                            log_access(_log_db, "access_denied", details={"path": path, "query_player_id": qp_pid})
+                    except Exception:
+                        pass
+                    return StarletteResponse(
+                        "この選手データへのアクセス権限がありません",
+                        status_code=403,
+                    )
 
         return await call_next(request)
 
@@ -497,11 +520,12 @@ app.add_middleware(AnalysisCacheMiddleware)
 
 # ─── グローバル認証ミドルウェア ────────────────────────────────────────────────
 # 全 /api/ ルートに Bearer JWT を必須とする。
-# 除外: /api/auth/* (ログインフロー), /api/health, /api/public/*
+# 除外: /api/auth/login, /api/auth/logout, /api/auth/bootstrap-status のみ
+#       （/api/auth/analysts, /api/auth/players 等は要認証）
 # loopback (Electron ローカル起動) は X-Role フォールバックを維持するため除外。
 # CORS preflight (OPTIONS) も除外。
 _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
-    r"^/api/(auth(/.*)?|health|public(/.*)?)"
+    r"^/api/(auth/(login|logout|bootstrap-status)|health|public(/.*)?)"
 )
 
 
@@ -614,16 +638,56 @@ async def health():
 
 
 @app.post("/api/cache/invalidate")
-async def cache_invalidate():
-    """解析レスポンスキャッシュを手動で全無効化する（POC用、無認証）"""
+async def cache_invalidate(request: StarletteRequest):
+    """解析レスポンスキャッシュを手動で全無効化する（admin のみ）"""
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        from starlette.responses import Response as StarletteResp
+        return StarletteResp('{"detail":"管理者権限が必要です"}', status_code=403, media_type="application/json")
     version = response_cache.bump_version()
     return {"success": True, "data_version": version, "stats": response_cache.stats()}
 
 
 @app.get("/api/cache/stats")
-async def cache_stats():
-    """キャッシュ統計（デバッグ用）"""
+async def cache_stats(request: StarletteRequest):
+    """キャッシュ統計（admin のみ）"""
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        from starlette.responses import Response as StarletteResp
+        return StarletteResp('{"detail":"管理者権限が必要です"}', status_code=403, media_type="application/json")
     return {"success": True, "stats": response_cache.stats()}
+
+
+# ─── WebSocket 共通: JWT 認証ヘルパー ────────────────────────────────────────
+
+async def _ws_require_auth(websocket: WebSocket) -> bool:
+    """WS 接続時のJWT事前検証（accept() 前に呼ぶ）。
+
+    許可条件（優先順）:
+      1. loopback (127.0.0.1 / ::1) — Electron ローカル起動
+      2. 平文 WS (ws://) — LAN 直接接続。session_code が暗黙の shared-secret として機能
+      3. ?token=<jwt> クエリパラメータが有効 — Cloudflare 経由の外部接続
+    上記いずれも満たさない場合は接続を拒否する。
+    """
+    from backend.utils.jwt_utils import verify_token
+
+    client_ip = websocket.client.host if websocket.client else ""
+    if client_ip in ("127.0.0.1", "::1", "localhost", ""):
+        return True
+
+    # LAN 直接接続（ws://）は session_code が認証代替として機能
+    if websocket.url.scheme == "ws":
+        return True
+
+    # Cloudflare 経由（wss://）は JWT 必須
+    token = websocket.query_params.get("token", "")
+    if token and verify_token(token):
+        return True
+
+    await websocket.close(code=4401)
+    return False
 
 
 # ─── S-001: WebSocket ライブフィード ─────────────────────────────────────────
@@ -631,6 +695,8 @@ async def cache_stats():
 @app.websocket("/ws/live/{session_code}")
 async def ws_live(session_code: str, websocket: WebSocket):
     """コーチ / ビューワーがリアルタイムでスコア・ラリー情報を受け取る WS エンドポイント"""
+    if not await _ws_require_auth(websocket):
+        return
     from backend.ws.live import ws_live_handler
     db = next(get_db())
     try:
@@ -650,6 +716,8 @@ async def ws_yolo_realtime(session_code: str, websocket: WebSocket):
     セッションごとに独立、接続ごとに独立タスクで動作するため、複数 PC からの
     並列接続が自然にサポートされる（共有状態なし）。
     """
+    if not await _ws_require_auth(websocket):
+        return
     from backend.routers.yolo_realtime import ws_realtime_yolo_handler
     await ws_realtime_yolo_handler(session_code, websocket)
 
@@ -667,6 +735,8 @@ async def ws_camera(
     ?role=viewer&viewer_id={id}  → ビューワーデバイス（他PC / タブレット）
     ?participant_id={id}         → iOS / タブレット 送信デバイス
     """
+    if not await _ws_require_auth(websocket):
+        return
     from backend.ws.camera import ws_camera_handler
     await ws_camera_handler(
         session_code, websocket,

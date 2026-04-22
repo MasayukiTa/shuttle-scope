@@ -187,7 +187,8 @@ function useWebRTCReceiver(sessionCode: string) {
     const isHttps = window.location.protocol === 'https:'
     const wsProto = isHttps ? 'wss' : 'ws'
     const wsHost = isElectron ? 'localhost:8765' : isHttps ? window.location.host : `${window.location.hostname || 'localhost'}:8765`
-    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${sessionCode}?role=operator`
+    const wsToken = isHttps ? (sessionStorage.getItem('shuttlescope_token') ?? '') : ''
+    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${sessionCode}?role=operator${wsToken ? `&token=${wsToken}` : ''}`
     let ws: WebSocket
     try {
       ws = new WebSocket(wsUrl)

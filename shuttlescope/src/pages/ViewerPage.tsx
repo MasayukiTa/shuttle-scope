@@ -92,7 +92,8 @@ export function ViewerPage() {
       : isHttps
         ? window.location.host
         : `${window.location.hostname}:8765`
-    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${code}?role=viewer&vid=${pid}`
+    const wsToken = isHttps ? (sessionStorage.getItem('shuttlescope_token') ?? '') : ''
+    const wsUrl = `${wsProto}://${wsHost}/ws/camera/${code}?role=viewer&vid=${pid}${wsToken ? `&token=${wsToken}` : ''}`
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
