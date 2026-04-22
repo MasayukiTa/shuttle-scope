@@ -605,3 +605,71 @@ def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest, request: Request
     except Exception as exc:
         logger.error("remote_ray_join %s failed: %s", actual_ip, exc, exc_info=True)
         return {"ok": False, "message": "SSH 接続またはコマンド実行に失敗しました"}
+
+
+@router.post("/cluster/nodes/{worker_ip}/ray-restart")
+def remote_ray_restart(worker_ip: str, request: Request) -> Dict[str, Any]:
+    """SSH 経由でワーカーの ray-restart.bat を実行する。
+
+    cluster.config.yaml の workers[] に ssh_user / ssh_password / ray_restart_bat が
+    設定されている必要がある。
+    """
+    require_local_or_operator_token(request)
+    try:
+        import paramiko  # type: ignore
+    except ImportError:
+        raise HTTPException(500, "paramiko が必要です: pip install paramiko")
+
+    actual_ip = worker_ip.replace("_", ".")
+
+    cfg = topology.load_config()
+    worker: Optional[Dict[str, Any]] = None
+    for w in cfg.get("network", {}).get("workers", []):
+        if w.get("ip") == actual_ip:
+            worker = w
+            break
+    if worker is None:
+        raise HTTPException(404, f"worker {actual_ip} が cluster.config.yaml に見つかりません")
+
+    user = worker.get("ssh_user")
+    password = worker.get("ssh_password")
+    bat_path = worker.get("ray_restart_bat")
+    if not (user and password and bat_path):
+        raise HTTPException(
+            400,
+            "worker の ssh_user / ssh_password / ray_restart_bat が未設定です",
+        )
+
+    cmd = f'cmd /c "{bat_path}"'
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(actual_ip, username=user, password=password, timeout=10)
+        _, stdout, stderr = client.exec_command(cmd, timeout=120)
+        raw_out = stdout.read()
+        raw_err = stderr.read()
+        exit_code = stdout.channel.recv_exit_status()
+        client.close()
+        # Windows の batch 出力は cp932 が多いため両方試す
+        def _dec(b: bytes) -> str:
+            for enc in ("utf-8", "cp932"):
+                try:
+                    return b.decode(enc)
+                except UnicodeDecodeError:
+                    continue
+            return b.decode("utf-8", errors="replace")
+
+        out = _dec(raw_out)
+        err = _dec(raw_err)
+        ok = exit_code == 0
+        # 出力は末尾 2000 文字のみ返す（UI ログ用）
+        return {
+            "ok": ok,
+            "exit_code": exit_code,
+            "stdout": out[-2000:].strip(),
+            "stderr": err[-2000:].strip(),
+            "cmd": cmd,
+        }
+    except Exception as exc:
+        logger.error("remote_ray_restart %s failed: %s", actual_ip, exc, exc_info=True)
+        return {"ok": False, "message": f"SSH 接続またはコマンド実行に失敗しました: {exc}"}

@@ -152,6 +152,8 @@ export function ClusterSettingsPanel() {
   const [wakeMsg, setWakeMsg] = useState<Record<number, string>>({})
   const [sleepDisableLoading, setSleepDisableLoading] = useState<Record<number, boolean>>({})
   const [sleepDisableMsg, setSleepDisableMsg] = useState<Record<number, string>>({})
+  const [rayRestartLoading, setRayRestartLoading] = useState<Record<number, boolean>>({})
+  const [rayRestartMsg, setRayRestartMsg] = useState<Record<number, string>>({})
   // 詳細設定の開閉（localStorage で永続化）
   const [showAdvanced, setShowAdvanced] = useState(() =>
     localStorage.getItem('cluster_showAdvanced') === '1'
@@ -373,6 +375,28 @@ export function ClusterSettingsPanel() {
       setWakeMsg(m => ({ ...m, [idx]: e?.message ?? 'エラー' }))
     } finally {
       setWakeLoading(l => ({ ...l, [idx]: false }))
+    }
+  }
+
+  const restartWorkerRay = async (ip: string, idx: number) => {
+    if (!ip) return
+    setRayRestartLoading(l => ({ ...l, [idx]: true }))
+    setRayRestartMsg(m => { const n = { ...m }; delete n[idx]; return n })
+    try {
+      const res = await apiPost<{ ok: boolean; exit_code?: number; stdout?: string; stderr?: string; message?: string }>(
+        `/cluster/nodes/${ip}/ray-restart`, {}
+      )
+      if (res.ok) {
+        setRayRestartMsg(m => ({ ...m, [idx]: 'Ray 再起動完了' }))
+        refetchStatus()
+      } else {
+        const tail = (res.stderr || res.stdout || res.message || '失敗').slice(-200)
+        setRayRestartMsg(m => ({ ...m, [idx]: `失敗: ${tail}` }))
+      }
+    } catch (e: any) {
+      setRayRestartMsg(m => ({ ...m, [idx]: e?.message ?? 'エラー' }))
+    } finally {
+      setRayRestartLoading(l => ({ ...l, [idx]: false }))
     }
   }
 
@@ -896,13 +920,27 @@ export function ClusterSettingsPanel() {
                     {sleepDisableLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Moon size={11} />}
                     スリープ無効化
                   </button>
+                  <button
+                    onClick={() => restartWorkerRay(w.ip, i)}
+                    disabled={rayRestartLoading[i] || !w.ip}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-emerald-700 hover:bg-emerald-600 text-white disabled:opacity-50 shrink-0"
+                    title="SSH経由で ray-restart.bat を実行 (cluster.config.yaml の ssh_user/ssh_password/ray_restart_bat が必要)"
+                  >
+                    {rayRestartLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                    Ray 再起動
+                  </button>
+                  {rayRestartMsg[i] && (
+                    <span className={`text-[10px] ${rayRestartMsg[i].includes('完了') ? 'text-green-400' : 'text-red-400'}`}>
+                      {rayRestartMsg[i]}
+                    </span>
+                  )}
                   {wakeMsg[i] && (
                     <span className={`text-[10px] ${wakeMsg[i].startsWith('WOL') ? 'text-yellow-400' : 'text-red-400'}`}>
                       {wakeMsg[i]}
                     </span>
                   )}
                   {sleepDisableMsg[i] && (
-                    <span className={`text-[10px] ${sleepDisableMsg[i].includes('完了') ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className={`text-[10px] ${sleepDisableMsg[i].includes('完了') ? 'text-green-400' : 'text-red-400'} text-white`}>
                       {sleepDisableMsg[i]}
                     </span>
                   )}

@@ -23,23 +23,44 @@ logger = logging.getLogger(__name__)
 
 
 def _register_cuda_dll_dirs() -> None:
-    """PyTorch 同梱の CUDA/cuDNN DLL を ONNX Runtime GPU から参照可能にする。
+    """PyTorch 同梱の CUDA/cuDNN DLL と TensorRT ランタイム DLL を
+    ONNX Runtime GPU から参照可能にする。
 
-    os.add_dll_directory() のみ使用する。PATH を変更すると OpenVINO が
-    CUDA 経由で NVIDIA GPU を検出してしまい AMD/Intel iGPU ベンチが壊れる。
+    Python 3.8+ は PATH に通っていても依存 DLL を自動解決しないため、
+    os.add_dll_directory() で明示登録が必要。OpenVINO 検出を壊さないため
+    PATH は変更しない。
     """
+    if not hasattr(os, "add_dll_directory"):
+        return
+    # PyTorch 同梱 CUDA/cuDNN
     try:
         import torch  # type: ignore
         lib_dir = os.path.join(os.path.dirname(torch.__file__), "lib")
-        if not os.path.isdir(lib_dir):
-            return
-        if hasattr(os, "add_dll_directory"):
+        if os.path.isdir(lib_dir):
             try:
                 os.add_dll_directory(lib_dir)
             except (FileNotFoundError, OSError):
                 pass
     except Exception:
         pass
+    # TensorRT bin （SS_TRT_DIR 環境変数 or 既定パス）
+    # onnxruntime_providers_tensorrt.dll が nvonnxparser_10.dll 等を
+    # 遷移的にロードする際 os.add_dll_directory では解決されないため、
+    # PATH の先頭にも TRT bin を追加する（CUDA/cuDNN と衝突しないよう TRT のみ）。
+    trt_candidates = [
+        os.environ.get("SS_TRT_DIR", "").strip(),
+        r"C:\TensorRT\TensorRT-10.16.1.11\bin",
+        r"C:\TensorRT\TensorRT-10.16.1.11\lib",
+    ]
+    _existing_path = os.environ.get("PATH", "")
+    for d in trt_candidates:
+        if d and os.path.isdir(d):
+            try:
+                os.add_dll_directory(d)
+            except (FileNotFoundError, OSError):
+                pass
+            if d not in _existing_path:
+                os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
 
 
 # ONNX Runtime をロードする前に DLL 検索パスを整備する
@@ -189,7 +210,10 @@ class TrackNetInference:
                     pass
 
         onnx_model = _existing_path(ONNX_CANDIDATES)
-        # GPU 実行時は FP16 版があればそちらを優先する
+        # GPU 実行時: TRT は FP32 ONNX + trt_fp16_enable=True の方が安定（FP16 ONNX の
+        # 先頭/末尾 Cast が TRT で巨大 ForeignNode 化して tactic 不在になる）。
+        # CUDA/DirectML は FP16 ONNX を優先（既存通り）。
+        onnx_model_gpu_trt = onnx_model or _existing_path(ONNX_FP16_CANDIDATES)
         onnx_model_gpu = _existing_path(ONNX_FP16_CANDIDATES) or onnx_model
 
         # ── TensorRT → CUDA → CPU の順で試みる ──────────────────────────────────
@@ -228,17 +252,23 @@ class TrackNetInference:
                             and "TensorrtExecutionProvider" in available_providers
                             and os.environ.get("SS_DISABLE_TRT", "0") not in ("1", "true", "True")
                         )
+                        # TRT 向けモデル: FP32 ONNX を優先（TRT 側で FP16 化）。
+                        # リアルタイム目的のため opt_shapes は batch=1、max=8。
+                        # 実測: opt=8/max=16/ws=6GB が RTX 5060 Ti で最速 (133 fps / 7.5ms per batch=8)
+                        _trt_opt_batch = int(os.environ.get("SS_TRACKNET_TRT_OPT_BATCH", "8") or "8")
+                        _trt_max_batch = int(os.environ.get("SS_TRACKNET_TRT_MAX_BATCH", "16") or "16")
+                        _trt_workspace_gb = int(os.environ.get("SS_TRACKNET_TRT_WORKSPACE_GB", "6") or "6")
                         if _use_trt:
                             trt_opts: dict = {
                                 "device_id": self._cuda_device_index,
                                 "trt_fp16_enable": True,
                                 "trt_engine_cache_enable": True,
                                 "trt_engine_cache_path": _trt_cache,
-                                "trt_max_workspace_size": 2 * 1024 ** 3,
-                                # バッチ範囲: 1〜16、最適化点=8 (実用スループット sweet spot)
+                                "trt_max_workspace_size": _trt_workspace_gb * 1024 ** 3,
+                                "trt_builder_optimization_level": 5,
                                 "trt_profile_min_shapes": f"input:1x{FRAME_STACK}x{INPUT_H}x{INPUT_W}",
-                                "trt_profile_opt_shapes": f"input:8x{FRAME_STACK}x{INPUT_H}x{INPUT_W}",
-                                "trt_profile_max_shapes": f"input:16x{FRAME_STACK}x{INPUT_H}x{INPUT_W}",
+                                "trt_profile_opt_shapes": f"input:{_trt_opt_batch}x{FRAME_STACK}x{INPUT_H}x{INPUT_W}",
+                                "trt_profile_max_shapes": f"input:{_trt_max_batch}x{FRAME_STACK}x{INPUT_H}x{INPUT_W}",
                             }
                             providers = [
                                 ("TensorrtExecutionProvider", trt_opts),
@@ -256,10 +286,16 @@ class TrackNetInference:
                         _sess_holder: list = [None]
                         _err_holder: list = [None]
 
+                        # TRT 時は FP32 ONNX、CUDA 時は FP16 ONNX を使用
+                        _model_for_init = (
+                            str(onnx_model_gpu_trt) if _use_trt and onnx_model_gpu_trt is not None
+                            else str(onnx_model_gpu)
+                        )
+
                         def _init_sess():
                             try:
                                 _sess_holder[0] = ort.InferenceSession(
-                                    str(onnx_model_gpu),
+                                    _model_for_init,
                                     sess_options=sess_opts,
                                     providers=providers,
                                 )
@@ -278,9 +314,29 @@ class TrackNetInference:
                             if effective_backend in ("cuda", "onnx_cuda"):
                                 effective_backend = "auto"
                         elif _err_holder[0] is not None:
-                            tried.append(f"onnx_cuda: {_err_holder[0]}")
-                            if effective_backend in ("cuda", "onnx_cuda"):
-                                effective_backend = "auto"
+                            # TRT 付きで失敗した場合、TRT を外して CUDA EP 単体で再試行
+                            # （TrackNet の FP16 ONNX は TRT の ForeignNode 実装が無い）
+                            _retry_ok = False
+                            if _use_trt:
+                                tried.append(f"onnx_trt: {_err_holder[0]} — CUDA EP にフォールバック")
+                                try:
+                                    # CUDA 再試行時は FP16 ONNX を使用
+                                    _sess_holder[0] = ort.InferenceSession(
+                                        str(onnx_model_gpu),
+                                        sess_options=sess_opts,
+                                        providers=[
+                                            ("CUDAExecutionProvider", cuda_opts),
+                                            "CPUExecutionProvider",
+                                        ],
+                                    )
+                                    _err_holder[0] = None
+                                    _retry_ok = True
+                                except Exception as _e2:
+                                    tried.append(f"onnx_cuda retry: {_e2}")
+                            if not _retry_ok:
+                                tried.append(f"onnx_cuda: {_err_holder[0]}")
+                                if effective_backend in ("cuda", "onnx_cuda"):
+                                    effective_backend = "auto"
                         else:
                             sess = _sess_holder[0]
                             input_name = sess.get_inputs()[0].name

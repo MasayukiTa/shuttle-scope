@@ -463,7 +463,51 @@ class BenchmarkRunner:
                 )
 
         from backend.cv import factory
-        from backend.tracknet.inference import FRAME_STACK
+        from backend.tracknet.inference import FRAME_STACK, INPUT_H, INPUT_W
+
+        # ── CPU 経路: OpenVINO ネイティブ（LATENCY）で raw tensor 推論 ───────
+        # onnx_cpu (CPUExecutionProvider) は TrackNet で 3000ms 超になるため、
+        # OpenVINO IR + CPU を LATENCY モードで直接叩く。
+        if device.device_type == "cpu":
+            try:
+                import openvino as _ov
+                xml = Path(__file__).parent.parent / "tracknet" / "weights" / "tracknet.xml"
+                if xml.exists():
+                    _ov_core = _ov.Core()
+                    _ov_model = _ov_core.read_model(str(xml))
+                    try:
+                        _inp_name0 = _ov_model.input(0).any_name
+                        _ov_model.reshape({_inp_name0: [1, FRAME_STACK, INPUT_H, INPUT_W]})
+                    except Exception:
+                        pass
+                    _ov_compiled = _ov_core.compile_model(
+                        _ov_model, "CPU",
+                        {"PERFORMANCE_HINT": "LATENCY",
+                         "INFERENCE_NUM_THREADS": str(os.cpu_count() or 4)},
+                    )
+                    _ov_in = next(iter(_ov_compiled.input(0).get_names()))
+                    x_ov = np.zeros((1, FRAME_STACK, INPUT_H, INPUT_W), dtype=np.float32)
+                    t_wall0 = time.perf_counter()
+                    lats = _measure_budget(
+                        lambda: _ov_compiled({_ov_in: x_ov}),
+                        warmup=3, min_iters=5, max_iters=500,
+                        cancelled_fn=(lambda: job is not None and job.cancelled),
+                        progress_cb=(lambda f: progress_cb(round(f * n_frames)) if progress_cb else None),
+                    )
+                    if not lats:
+                        return {"error": "キャンセルされました"}
+                    metrics = _compute_metrics(lats)
+                    if metrics["avg_ms"] > 0:
+                        metrics["fps"] = round(1000.0 / metrics["avg_ms"], 2)
+                    metrics["batch"] = 1
+                    metrics["iters"] = len(lats)
+                    metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+                    metrics["backend"] = "openvino:CPU"
+                    logger.info("[bench/tracknet] OpenVINO CPU native: fps=%s avg=%sms",
+                                metrics["fps"], metrics["avg_ms"])
+                    return metrics
+            except Exception as _ov_e:
+                logger.warning("[bench/tracknet] OpenVINO CPU native 失敗、通常経路へ: %s", _ov_e)
 
         inferencer = factory.get_tracknet()
 
@@ -489,7 +533,10 @@ class BenchmarkRunner:
                 actual_backend = impl.backend_name().lower()
             except Exception:
                 pass
-            is_gpu_backend = any(k in actual_backend for k in ('cuda', 'directml', 'openvino'))
+            is_gpu_backend = any(k in actual_backend for k in ('cuda', 'trt', 'tensorrt', 'directml', 'openvino'))
+            # openvino:CPU は GPU 判定から除外
+            if 'openvino:cpu' in actual_backend:
+                is_gpu_backend = False
             if actual_backend and not is_gpu_backend:
                 # GPU ロード失敗理由を取得（TrackNetInference._gpu_load_error に保存済み）
                 reason = (
@@ -503,9 +550,11 @@ class BenchmarkRunner:
                 return {"error": f"GPU推論不可 — {reason}"}
 
         if use_gpu and impl is not None and hasattr(impl, '_max_batch'):
+            # impl._max_batch は VRAM ベースで TrackNet 側が決めた CUDA Graph 固定
+            # バッチ。これを超えて設定すると graph 再コンパイルで逆に遅くなるので
+            # そのまま使用する（5060Ti/780M いずれも 8 が上限）。
             bench_batch = impl._max_batch
             if _is_aggressive():
-                # 攻めモード: FP16 でも VRAM/GPU util を確実に押し上げる狙いで batch=16 に拡張
                 bench_batch = max(bench_batch, 16)
                 try:
                     impl._max_batch = bench_batch
@@ -596,6 +645,69 @@ class BenchmarkRunner:
         _BATCH_SIZE = 60 if _is_aggressive() else 10
 
         inferencer = factory.get_pose()
+
+        # ── GPU 経路（OnnxPose）: raw tensor batch sweep で CUDA/TRT を叩く ──
+        # 動画デコードコストを排して実 GPU スループットを測る。YOLO と同じ方針。
+        use_gpu = device.device_type in ("dgpu", "igpu")
+        _sess = getattr(inferencer, "_sess", None)
+        _input_name = getattr(inferencer, "_input_name", None)
+        _in_dtype = getattr(inferencer, "_in_dtype", None)
+        if use_gpu and _sess is not None and _input_name and _in_dtype is not None:
+            backend_tag = getattr(inferencer, "backend_name", lambda: "?")()
+            # GPU バックエンド（cuda/trt/directml）のみ raw 経路に入る
+            if any(k in str(backend_tag).lower() for k in ("cuda", "trt", "directml")):
+                candidates = [64] if _is_aggressive() else [1, 4, 8, 16, 32]
+                best = None
+                for b in candidates:
+                    if job is not None and job.cancelled:
+                        break
+                    x = np.zeros((b, 3, 384, 640), dtype=_in_dtype)
+                    try:
+                        _sess.run(None, {_input_name: x})
+                        _sess.run(None, {_input_name: x})
+                        _lats: List[float] = []
+                        for _ in range(3):
+                            t0 = time.perf_counter()
+                            _sess.run(None, {_input_name: x})
+                            _lats.append(time.perf_counter() - t0)
+                        avg = float(np.mean(_lats))
+                        per_sample = avg / b
+                        logger.info("[bench/pose] sweep batch=%d avg=%.2fms per=%0.2fms fps=%.1f",
+                                    b, avg * 1000, per_sample * 1000, b / avg)
+                        if best is None or per_sample < best[0]:
+                            best = (per_sample, b)
+                    except Exception as exc:
+                        logger.warning("[bench/pose] batch=%d 失敗: %s", b, exc)
+                        break
+                chosen = best[1] if best else 1
+                x = np.zeros((chosen, 3, 384, 640), dtype=_in_dtype)
+                t_wall0 = time.perf_counter()
+                try:
+                    lats = _measure_budget(
+                        lambda: _sess.run(None, {_input_name: x}),
+                        warmup=5, min_iters=5, max_iters=2000,
+                        cancelled_fn=(lambda: job is not None and job.cancelled),
+                        progress_cb=(lambda f: progress_cb(round(f * n_frames)) if progress_cb else None),
+                    )
+                except Exception as exc:
+                    return {"error": f"Pose 推論失敗: {exc}"}
+                if not lats:
+                    return {"error": "キャンセルされました"}
+                metrics = _compute_metrics(lats)
+                if metrics["avg_ms"] > 0:
+                    metrics["fps"] = round(chosen * 1000.0 / metrics["avg_ms"], 2)
+                    metrics["avg_ms"] = round(metrics["avg_ms"] / chosen, 2)
+                    metrics["p95_ms"] = round(metrics["p95_ms"] / chosen, 2)
+                metrics["batch"] = chosen
+                metrics["iters"] = len(lats)
+                metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
+                metrics["backend"] = backend_tag
+                metrics["providers"] = _sess.get_providers()
+                metrics["note"] = "raw tensor inference"
+                if _is_aggressive():
+                    metrics["aggressive"] = True
+                return metrics
+
         video_path = make_video_file(n=_BATCH_SIZE)
         t_wall0 = time.perf_counter()
         try:
@@ -702,6 +814,11 @@ class BenchmarkRunner:
             }
             # TRT EP: nvinfer_10.dll が存在する場合のみ有効化（DLL 未インストールなら CUDA にフォールバック）
             _trt_dll_ok = False
+            try:
+                from backend.tracknet.inference import _register_cuda_dll_dirs as _reg
+                _reg()
+            except Exception:
+                pass
             try:
                 import ctypes as _ct
                 _ct.WinDLL("nvinfer_10.dll")
@@ -1252,18 +1369,28 @@ class BenchmarkRunner:
         return results if isinstance(results, dict) else {"error": str(results)}
 
     def _bench_ray_yolo(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
-        """Ray ワーカーで YOLO ベンチマークを実行する。"""
+        """SSH / Ray ワーカーで YOLO ベンチマークを実行する。"""
         from backend.cluster import bootstrap
         from backend.cluster import remote_tasks
-
-        if not bootstrap.is_ray_connected():
-            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
 
         model_base = self._get_ray_worker_model_base(device)
         import os
         model_path = os.path.join(model_base, "yolov8n.onnx")
-        use_gpu = device.device_id.startswith("ray_igpu")
+        use_gpu = device.device_id.startswith(("ray_igpu", "ssh_igpu"))
         n_iters = min(n_frames, 5)
+
+        ip = (device.specs or {}).get("ip", "")
+        if device.backend == "ssh" and ip:
+            creds = remote_tasks._get_worker_ssh_creds(ip)
+            if creds:
+                return remote_tasks.dispatch_benchmark_ssh(
+                    "_run_benchmark_yolo",
+                    creds["host"], creds["username"], creds["password"],
+                    model_path=model_path, n_iters=n_iters, use_gpu=use_gpu,
+                )
+
+        if not bootstrap.is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
 
         logger.info(
             "[runner/ray] YOLO ベンチマーク: device=%s model=%s use_gpu=%s n_iters=%d",

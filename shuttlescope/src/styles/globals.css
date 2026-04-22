@@ -419,6 +419,14 @@ html[data-theme="light"] .bg-emerald-600.text-white,
 html[data-theme="light"] .bg-emerald-700.text-white,
 html[data-theme="light"] .bg-emerald-600 .text-white,
 html[data-theme="light"] .bg-emerald-700 .text-white,
+html[data-theme="light"] .bg-slate-500.text-white,
+html[data-theme="light"] .bg-slate-600.text-white,
+html[data-theme="light"] .bg-slate-700.text-white,
+html[data-theme="light"] .bg-slate-800.text-white,
+html[data-theme="light"] .bg-slate-500 .text-white,
+html[data-theme="light"] .bg-slate-600 .text-white,
+html[data-theme="light"] .bg-slate-700 .text-white,
+html[data-theme="light"] .bg-slate-800 .text-white,
 html[data-theme="light"] .bg-violet-600.text-white,
 html[data-theme="light"] .bg-violet-700.text-white,
 html[data-theme="light"] .bg-purple-600.text-white,
@@ -442,6 +450,11 @@ html[data-theme="light"] .bg-amber-600.text-white,
 html[data-theme="light"] .bg-amber-700.text-white {
   color: #ffffff !important;
 }
+
+/* hover 時もスレート背景には白文字を維持 */
+html[data-theme="light"] .hover\:bg-slate-500.text-white:hover,
+html[data-theme="light"] .hover\:bg-slate-600.text-white:hover,
+html[data-theme="light"] .hover\:bg-emerald-600.text-white:hover { color: #ffffff !important; }
 
 /* hover 時もオレンジ背景には白文字を維持 */
 html[data-theme="light"] .hover\:bg-orange-400.text-white:hover,

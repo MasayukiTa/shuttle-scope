@@ -134,15 +134,15 @@ def _base_layout_str(title: str, body: str, *, canonical_path: str = "/", noinde
     .legal h2 {{ margin-top: 30px; }}
     .legal ul, .legal ol {{ padding-left: 22px; }}
     .notice {{
-      border-left: 4px solid var(--accent);
-      background: rgba(13,123,131,.07);
+      background: rgba(13,123,131,.10);
+      border: 1px solid rgba(13,123,131,.18);
       padding: 14px 16px;
       border-radius: 12px;
       margin: 16px 0;
     }}
     .warning {{
-      border-left-color: var(--danger);
-      background: rgba(179,63,63,.07);
+      background: rgba(179,63,63,.09);
+      border-color: rgba(179,63,63,.18);
     }}
     label {{ display: block; font-size: .92rem; font-weight: 700; margin-bottom: 8px; }}
     input, textarea, select {{
@@ -356,7 +356,8 @@ html[lang=ja] .en{display:none}
 .hamburger.open span:nth-child(1){transform:translateY(5.5px) rotate(45deg)}
 .hamburger.open span:nth-child(2){opacity:0}
 .hamburger.open span:nth-child(3){transform:translateY(-5.5px) rotate(-45deg)}
-.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;background:var(--surface);border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 4px 16px rgba(0,0,0,0.08)}
+.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;background:rgba(255,255,255,0.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 4px 16px rgba(0,0,0,0.12)}
+[data-theme="dark"] .mobile-menu{background:rgba(7,16,29,0.88)}
 .mobile-menu.open{display:flex}
 .mobile-menu a{font-size:14px;color:var(--t2);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--bdr);transition:color .15s,background .15s}
 .mobile-menu a:hover{color:var(--t1);background:var(--blue-lt)}
@@ -636,7 +637,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 
 <div class="mob-bar">
   <a href="https://app.shuttle-scope.com/login" class="btn-cta"><span class="ja">アプリに進む</span><span class="en">Open App</span> <span class="cta-arrow">›</span></a>
-  <a href="https://app.shuttle-scope.com/login" class="mob-bar-login"><span class="ja">ログイン</span><span class="en">Login</span></a>
+  <a href="/contact" class="mob-bar-login"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
 </div>
 
 <script>
@@ -822,11 +823,12 @@ def _render_contact_str(request: Request, *, preview: bool = False) -> str:
       <section class="panel" style="margin-bottom:20px;">
         <h1>お問い合わせ</h1>
         <p>
-          ShuttleScope に関する導入相談、機能確認、公開サイト内容に関する連絡は、以下のフォームから送信できます。
-          返信が必要な場合は、本文または連絡先欄にご希望の連絡手段をご記入ください。
+          導入相談・機能確認・障害報告・その他 ShuttleScope に関する連絡は、以下のフォームから送信できます。
+          返信が必要な場合は、連絡先欄に希望する連絡手段を記入してください。
         </p>
         <div class="notice">
-          このフォームはメール送信ではなく、ShuttleScope 側の管理画面で確認できる問い合わせとして保存されます。
+          現在ベータ版として限定提供中です。試してみたい方はメッセージと連絡先を送ってください。内容を確認のうえ返事します。
+          <br>このフォームはメール送信ではなく、管理画面で確認する形式です。
         </div>
       </section>
 
