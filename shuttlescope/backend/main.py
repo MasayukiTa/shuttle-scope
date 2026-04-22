@@ -494,6 +494,48 @@ class AnalysisCacheMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(AnalysisCacheMiddleware)
 
+
+# ─── グローバル認証ミドルウェア ────────────────────────────────────────────────
+# 全 /api/ ルートに Bearer JWT を必須とする。
+# 除外: /api/auth/* (ログインフロー), /api/health, /api/public/*
+# loopback (Electron ローカル起動) は X-Role フォールバックを維持するため除外。
+# CORS preflight (OPTIONS) も除外。
+_GLOBAL_AUTH_EXEMPT = _re_acl.compile(
+    r"^/api/(auth(/.*)?|health|public(/.*)?)"
+)
+
+
+class GlobalAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if not request.url.path.startswith("/api/"):
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        if _GLOBAL_AUTH_EXEMPT.match(request.url.path):
+            return await call_next(request)
+        from backend.utils.control_plane import is_loopback_request
+        if is_loopback_request(request):
+            return await call_next(request)
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return StarletteResponse(
+                '{"detail":"認証が必要です"}',
+                status_code=401,
+                media_type="application/json",
+            )
+        from backend.utils.jwt_utils import verify_token
+        payload = verify_token(auth_header[7:])
+        if not payload:
+            return StarletteResponse(
+                '{"detail":"トークンが無効または期限切れです"}',
+                status_code=401,
+                media_type="application/json",
+            )
+        return await call_next(request)
+
+
+app.add_middleware(GlobalAuthMiddleware)
+
 # CORS設定
 # allow_credentials=True と allow_origins=["*"] の組み合わせはブラウザ仕様違反で
 # ブラウザが拒否する。credentials 不使用に統一し wildcard origin を維持する。
@@ -920,7 +962,8 @@ async def spa_catch_all(path: str, request: StarletteRequest):
     if public_site.should_serve_public_site(request):
         raise HTTPException(status_code=404)
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=f"/#/{path}", status_code=302)
+    safe_path = path.lstrip("/")
+    return RedirectResponse(url=f"/#/{safe_path}", status_code=302)
 
 
 if __name__ == "__main__":

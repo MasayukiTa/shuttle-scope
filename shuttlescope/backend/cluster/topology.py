@@ -226,9 +226,13 @@ def ping_node(ip: str, port: int = 8765, timeout: float = 2.0) -> Dict[str, Any]
     if result["reachable"]:
         return result
     # ICMP が通らない場合（ファイアウォール等）は HTTP も試みる
-    import time, urllib.request
+    import time, urllib.request, ipaddress
     started = time.time()
     try:
+        # SSRF防止: ip が有効なIPアドレスであることを確認
+        _addr = ipaddress.ip_address(ip)
+        if not (_addr.is_private or _addr.is_loopback or _addr.is_link_local):
+            raise ValueError("クラスタ外アドレスへの HTTP 疎通確認は許可されていません")
         url = f"http://{ip}:{port}/api/health"
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             latency_ms = int((time.time() - started) * 1000)

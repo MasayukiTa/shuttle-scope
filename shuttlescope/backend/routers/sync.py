@@ -378,11 +378,12 @@ def import_from_cloud_path(
     # パストラバーサル防止: sync_folder_path 配下であることを検証
     settings_cfg = _load_settings(db)
     sync_folder = settings_cfg.get("sync_folder_path", "")
-    if sync_folder:
-        try:
-            pkg_path.relative_to(Path(sync_folder).resolve())
-        except ValueError:
-            raise HTTPException(status_code=403, detail="指定パスは同期フォルダ外です")
+    if not sync_folder:
+        raise HTTPException(status_code=400, detail="同期フォルダが設定されていません")
+    try:
+        pkg_path.relative_to(Path(sync_folder).resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="指定パスは同期フォルダ外です")
 
     if not pkg_path.exists():
         raise HTTPException(status_code=404, detail="ファイルが見つかりません")

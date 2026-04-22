@@ -261,7 +261,8 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
     except subprocess.TimeoutExpired:
         return {"ok": False, "message": "ray start タイムアウト"}
     except Exception as exc:
-        return {"ok": False, "message": str(exc)}
+        logger.error("ray start failed: %s", exc, exc_info=True)
+        return {"ok": False, "message": "Ray head 起動に失敗しました"}
 
 
 @router.post("/cluster/ray/stop")
@@ -272,8 +273,8 @@ def stop_ray(request: Request) -> Dict[str, Any]:
         _bootstrap.shutdown_ray()
         return {"ok": True, "message": "Ray 接続をクリアしました"}
     except Exception as exc:
-        logger.error("Ray stop failed: %s", exc)
-        raise HTTPException(500, str(exc))
+        logger.error("Ray stop failed: %s", exc, exc_info=True)
+        raise HTTPException(500, "Ray 停止処理に失敗しました")
 
 
 @router.post("/cluster/nodes/{worker_ip}/detect")
@@ -347,7 +348,8 @@ def get_arp_devices(request: Request) -> List[Dict[str, Any]]:
         result = subprocess.run(["arp", "-a"], **kw)
         lines = result.stdout.splitlines()
     except Exception as exc:
-        return [{"error": str(exc)}]
+        logger.error("arp scan failed: %s", exc, exc_info=True)
+        return [{"error": "ARP スキャンに失敗しました"}]
 
     devices: List[Dict[str, Any]] = []
     seen: set = set()
@@ -537,5 +539,5 @@ def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest, request: Request
         ok = exit_code == 0
         return {"ok": ok, "message": out.strip() if ok else (err.strip() or out.strip()), "cmd": cmd}
     except Exception as exc:
-        logger.error("remote_ray_join %s failed: %s", actual_ip, exc)
-        return {"ok": False, "message": str(exc)}
+        logger.error("remote_ray_join %s failed: %s", actual_ip, exc, exc_info=True)
+        return {"ok": False, "message": "SSH 接続またはコマンド実行に失敗しました"}

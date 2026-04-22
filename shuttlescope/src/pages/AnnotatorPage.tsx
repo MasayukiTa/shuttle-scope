@@ -3667,7 +3667,7 @@ export function AnnotatorPage() {
                       container_width: window.innerWidth,
                       container_height: window.innerHeight,
                     }
-                    console.info('[GridSync] POST /matches/' + matchId + '/court_calibration', body)
+                    console.info('[GridSync] POST court_calibration', { matchId: Number(matchId), ...body })
                     // apiPost を経由して http://localhost:8765/api を絶対 URL で叩く。
                     // 旧実装は相対 URL の fetch だったため Electron(file://) では
                     // "Failed to fetch" になっていた。

@@ -14,6 +14,7 @@
 """
 import glob
 import json
+import logging
 import os
 import re
 import shutil
@@ -31,6 +32,7 @@ from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.db.database import get_db
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 TunnelProvider = Literal['cloudflare', 'ngrok']
@@ -94,7 +96,7 @@ def _cloudflare_named_tunnel_info() -> dict:
     if host_match:
         info["hostname"] = host_match.group(1).strip()
 
-    if "<UUID>" in text or "<USER>" in text or "app.example.com" in text:
+    if re.search(r'(?<![.\w])app\.example\.com(?![.\w])', text) or "<UUID>" in text or "<USER>" in text:
         info["reason"] = "template placeholders remain"
         return info
 
@@ -608,8 +610,9 @@ def webrtc_test_turn(db: Session = Depends(get_db)):
             "error": f"{host}:{port} への接続がタイムアウトしました（5秒）",
         }
     except Exception as e:
+        logger.error("reachability check failed %s:%s: %s", host, port, e, exc_info=True)
         return {
             "success": False,
             "data": {"host": host, "port": port, "reachable": False},
-            "error": str(e),
+            "error": "到達確認に失敗しました",
         }
