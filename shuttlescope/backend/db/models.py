@@ -25,6 +25,22 @@ class User(Base):
     hashed_credential: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     team_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # セキュリティ強化カラム
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    totp_secret: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+
+
+class RevokedToken(Base):
+    """ログアウト済みJWTのブラックリスト。expires_at 以降は自動的に参照不要になる。"""
+    __tablename__ = "revoked_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    jti: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class PlayerPageAccess(Base):

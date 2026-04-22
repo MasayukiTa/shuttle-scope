@@ -188,6 +188,11 @@ def add_columns_if_missing(eng) -> None:
         # コートキャリブレーション（court_calibration artifact type が使用）
         ("match_cv_artifacts",   "summary",          "TEXT"),
         ("match_cv_artifacts",   "backend_used",     "TEXT"),
+        # セキュリティ強化: アカウントロックアウト・MFA
+        ("users", "failed_attempts", "INTEGER DEFAULT 0"),
+        ("users", "locked_until",    "TEXT"),
+        ("users", "totp_secret",     "VARCHAR(64)"),
+        ("users", "totp_enabled",    "INTEGER DEFAULT 0"),
     ]
     with eng.connect() as conn:
         for table, col, col_type in new_cols:

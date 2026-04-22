@@ -148,7 +148,7 @@ def test_admin_can_create_coach_with_password_credential(db_session, monkeypatch
                 "role": "coach",
                 "display_name": "Coach Two",
                 "username": "coach002",
-                "password": "coach-pass",
+                "password": "CoachPass#2026",
                 "team_name": "Team B",
             },
         )
@@ -159,7 +159,7 @@ def test_admin_can_create_coach_with_password_credential(db_session, monkeypatch
             json={
                 "grant_type": "credential",
                 "identifier": "coach002",
-                "password": "coach-pass",
+                "password": "CoachPass#2026",
             },
         )
         assert login.status_code == 200
@@ -193,7 +193,7 @@ def test_admin_can_update_player_password_via_password_field(db_session, monkeyp
         resp = client.put(
             f"/api/auth/users/{player.id}",
             headers={"Authorization": f"Bearer {token}"},
-            json={"password": "player-pass"},
+            json={"password": "PlayerPass#2026"},
         )
         assert resp.status_code == 200
 
@@ -202,7 +202,7 @@ def test_admin_can_update_player_password_via_password_field(db_session, monkeyp
             json={
                 "grant_type": "credential",
                 "identifier": "player002",
-                "password": "player-pass",
+                "password": "PlayerPass#2026",
             },
         )
         assert login.status_code == 200
@@ -235,7 +235,7 @@ def test_create_user_rejects_short_login_id(db_session, monkeypatch):
                 "role": "coach",
                 "display_name": "Coach Bad",
                 "username": "abc",
-                "password": "coach-pass",
+                "password": "CoachPass#2026",
             },
         )
         assert resp.status_code == 422
