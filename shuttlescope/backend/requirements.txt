@@ -3,7 +3,8 @@
 # ────────────────────────────────────────────────────────────────
 
 # ── Web フレームワーク ────────────────────────────────────────────
-fastapi==0.115.0
+fastapi>=0.136.0              # CVE-2024-47874 / CVE-2025-54121 (via starlette) 修正のため bump
+starlette>=1.0.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.26
 pydantic-settings==2.1.0

@@ -301,7 +301,7 @@ def get_backups(_ctx=Depends(require_analyst)):
 # ─── クラウドフォルダ連携 ──────────────────────────────────────────────────────
 
 @router.get("/cloud/packages")
-def list_cloud_packages(db: Session = Depends(get_db)):
+def list_cloud_packages(db: Session = Depends(get_db), _ctx=Depends(require_analyst)):
     """
     設定済みの sync_folder_path から .sspkg ファイル一覧を返す。
     OneDrive / SharePoint 等の共有フォルダに置いたパッケージの候補表示に使用。
@@ -329,7 +329,11 @@ def list_cloud_packages(db: Session = Depends(get_db)):
 
 
 @router.post("/cloud/copy")
-async def copy_to_cloud(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def copy_to_cloud(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _ctx=Depends(require_analyst),
+):
     """
     クライアントがアップロードした .sspkg を sync_folder_path へコピーする。
     エクスポート後の自動コピーに使用。
@@ -364,6 +368,7 @@ def import_from_cloud_path(
     path: str = Query(..., description="クラウドフォルダ内の .sspkg フルパス"),
     dry_run: bool = Query(False),
     db: Session = Depends(get_db),
+    _ctx=Depends(require_analyst),
 ):
     """
     sync_folder_path 内の指定 .sspkg ファイルを直接インポート。
@@ -414,7 +419,7 @@ def import_from_cloud_path(
 # ─── パッケージ検証のみ ────────────────────────────────────────────────────────
 
 @router.post("/validate")
-async def validate_only(file: UploadFile = File(...)):
+async def validate_only(file: UploadFile = File(...), _ctx=Depends(require_analyst)):
     """DB を変更せずパッケージの整合性のみ検証"""
     raw = await file.read(_MAX_IMPORT_BYTES + 1)
     if len(raw) > _MAX_IMPORT_BYTES:

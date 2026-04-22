@@ -153,13 +153,12 @@ def _validate_login_id(login_id: str) -> str:
 
 
 def _get_ip(request: Request) -> Optional[str]:
-    # control_plane._client_ip と同じロジック（CF-Connecting-IP 優先）
+    # CF-Connecting-IP は Cloudflare 側で設定される（偽造不可）。
+    # X-Forwarded-For はクライアントが任意に設定できるためログイン
+    # IP レート制限の根拠に使ってはならない（レート制限バイパス防止）。
     cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
     if cf_ip:
         return cf_ip
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
     return request.client.host if request.client else None
 
 
@@ -720,6 +719,9 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     allowed_roles = {"admin", "analyst", "coach", "player"}
     if body.role not in allowed_roles:
         raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
+    # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
+    if ctx.is_analyst and body.role in ("admin", "analyst"):
+        raise HTTPException(status_code=403, detail="admin/analyst アカウントは admin のみ作成できます")
     login_id = _validate_login_id(body.username)
     existing = db.query(User).filter(User.username == login_id).first()
     if existing:
@@ -754,8 +756,12 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
 
-    if ctx.is_admin or ctx.is_analyst:
+    if ctx.is_admin:
         pass
+    elif ctx.is_analyst:
+        # analyst は admin / analyst アカウントを編集できない（権限昇格・乗っ取り防止）
+        if user.role in ("admin", "analyst") and ctx.user_id != target_id:
+            raise HTTPException(status_code=403, detail="他の管理者/analyst を編集する権限がありません")
     elif ctx.is_coach:
         team = (ctx.team_name or "").strip()
         if not team or (user.team_name or "").strip() != team:

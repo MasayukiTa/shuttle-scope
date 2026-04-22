@@ -5,7 +5,7 @@ import * as http from 'http'
 import { existsSync, statSync, createReadStream } from 'fs'
 import { Readable } from 'stream'
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, screen } = electron
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, screen, shell } = electron
 
 // YouTube が Electron UA を検知してブロックするのを回避するための汎用ブラウザ UA
 const BROWSER_UA =
@@ -451,6 +451,45 @@ function createWindow(): void {
   // YouTube が Electron UA を検知してブロックするのを防ぐため UA を上書き
   // （loadURL より前に設定すること）
   mainWindow.webContents.setUserAgent(BROWSER_UA)
+
+  // ─── ナビゲーション / 新ウィンドウの制限（XSS → 外部誘導の防御） ─────────────
+  // webSecurity:false の副作用で SOP が無効化されているため、
+  // 悪意のあるスクリプトが別 URL に遷移しないよう明示的にブロックする。
+  const ALLOWED_NAV_ORIGINS = new Set([
+    'http://localhost:5173',
+    'http://localhost:8765',
+    'http://127.0.0.1:8765',
+  ])
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      const u = new URL(url)
+      if (u.protocol === 'file:' || u.protocol === 'localfile:') return
+      if (!ALLOWED_NAV_ORIGINS.has(`${u.protocol}//${u.host}`)) {
+        event.preventDefault()
+        // 外部 http(s) URL は既定ブラウザで開く
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+          shell.openExternal(url).catch(() => {})
+        }
+      }
+    } catch {
+      event.preventDefault()
+    }
+  })
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const u = new URL(url)
+      if (u.protocol === 'http:' || u.protocol === 'https:') {
+        shell.openExternal(url).catch(() => {})
+      }
+    } catch {}
+    return { action: 'deny' }
+  })
+  // webview へ不審な webPreferences を差し込ませない
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    delete (webPreferences as any).preload
+    ;(webPreferences as any).nodeIntegration = false
+    ;(webPreferences as any).contextIsolation = true
+  })
 
   const rendererFile = path.join(app.getAppPath(), 'out', 'renderer', 'index.html')
   if (process.env.NODE_ENV === 'development') {
