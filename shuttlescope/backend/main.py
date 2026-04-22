@@ -456,11 +456,25 @@ class AnalysisCacheMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         path = request.url.path
         query = str(request.url.query)
+        # キャッシュキーは必ずJWT検証済みのclaimsから生成する。
+        # X-Role/X-Player-Id ヘッダーはユーザーが自由に設定できるため、
+        # キャッシュキーに使うと PlayerAccessControlMiddleware をバイパスできる。
+        jwt_role = ""
+        jwt_pid = ""
+        jwt_team = ""
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            from backend.utils.jwt_utils import verify_token
+            _payload = verify_token(auth_header[7:])
+            if _payload:
+                jwt_role = _payload.get("role", "")
+                jwt_pid = str(_payload.get("player_id", "")) if _payload.get("player_id") else ""
+                jwt_team = _payload.get("team_name", "") or ""
         params = {
             "q": query,
-            "role": request.headers.get("X-Role", ""),
-            "pid": request.headers.get("X-Player-Id", ""),
-            "team": request.headers.get("X-Team-Name", ""),
+            "role": jwt_role,
+            "pid": jwt_pid,
+            "team": jwt_team,
         }
         key = response_cache.build_key(path, params)
         cached = response_cache.get(key)
@@ -478,11 +492,10 @@ class AnalysisCacheMiddleware(BaseHTTPMiddleware):
                 body += chunk
             try:
                 payload = _json_cache.loads(body)
-                # DB 永続化用メタデータを組み立てる
-                pid_header = request.headers.get("X-Player-Id", "")
+                # DB 永続化用メタデータ: JWT検証済みpidを優先、なければクエリパラメータ
                 pid: int | None
-                if pid_header.isdigit():
-                    pid = int(pid_header)
+                if jwt_pid.isdigit():
+                    pid = int(jwt_pid)
                 else:
                     import re as _re
                     m = _re.search(r"player_id=(\d+)", query)
@@ -560,13 +573,35 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(GlobalAuthMiddleware)
 
-# CORS設定
-# allow_credentials=True と allow_origins=["*"] の組み合わせはブラウザ仕様違反で
-# ブラウザが拒否する。credentials 不使用に統一し wildcard origin を維持する。
-# （Electron は CORS を適用しないため影響なし。LAN ブラウザ向けは wildcard で十分）
+
+# ─── セキュリティヘッダーミドルウェア ─────────────────────────────────────────
+# 最後に add するため実行は一番最初（Starlette は逆順実行）。
+# CSP は React の動的スタイル・スクリプトと衝突しうるため除外。
+# HSTS は HTTPS 終端の Cloudflare 側でも設定されるが多層防御として追加。
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if app_settings.PUBLIC_MODE:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+
+# ─── CORS設定 ───────────────────────────────────────────────────────────────
+# PUBLIC_MODE=True（Cloudflare公開）: 許可オリジンをトンネルホスト名に限定。
+# PUBLIC_MODE=False（LAN / Electron）: wildcard。LAN デバイスは任意 IP のため。
+_cors_origins = (
+    [f"https://{app_settings.CLOUDFLARE_TUNNEL_HOSTNAME}"]
+    if app_settings.PUBLIC_MODE
+    else ["*"]
+)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "Authorization", "X-Session-Token", "X-Role", "X-Player-Id", "X-Team-Name"],
