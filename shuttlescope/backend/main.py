@@ -765,7 +765,8 @@ app.include_router(public_site.router)
 @app.get("/api/health")
 async def health():
     """ヘルスチェック（Electron起動確認用）"""
-    return {"status": "ok", "version": "1.0.0", "public_mode": app_settings.PUBLIC_MODE}
+    # 無認証でアクセス可能なため、内部モード（PUBLIC_MODE）/ バージョンは返さない
+    return {"status": "ok"}
 
 
 @app.post("/api/cache/invalidate")

@@ -256,6 +256,29 @@ limit = _AUTH_BODY_LIMIT if request.url.path.startswith("/api/auth/") else _HTTP
 _DUMMY_BCRYPT_HASH: str = _bcrypt_lib.hashpw(b"_dummy_timing_eq_", _bcrypt_lib.gensalt(rounds=12)).decode()
 ```
 
+#### [Medium] `/api/auth/logout` が無認証でも audit_logs に書き込み → 監査ログ肥大 DoS (`auth.py`)
+
+`logout` は auth 除外リストに含まれるため無認証で到達可能。コードは Bearer が無くても `log_access(db, "logout", user_id=None)` を実行しており、
+攻撃者が毎秒数千回叩くと `audit_logs` テーブルが肥大化してディスク／検索性能を圧迫する。
+
+修正: Bearer 不在 or 無効 JWT の場合は `log_access` を呼ばず 200 を返す（audit_logs は有効 JWT の正当なログアウト時のみ記録する）。
+
+#### [Low] `/api/health` が内部モード（PUBLIC_MODE）/ バージョンを無認証で返却 (`main.py`)
+
+ヘルスチェックは無認証で叩けるため、レスポンスに `public_mode`, `version` を含めると
+内部設定が攻撃者に漏れる（recon）。修正: `{"status":"ok"}` のみ返す。
+
+#### [Medium] `grant_type=pin` に同じタイミングオラクルが残っていた (`auth.py`)
+
+credential フローの修正後に再度実攻撃したところ、別の grant_type である `pin` 経路で
+同じユーザー列挙が可能だった。
+- 存在する user_id: 800–1100ms
+- 存在しない user_id: 575ms （~250ms 高速）
+
+原因: pin 経路では `user` 不在 or 非 player ロールの早期 return 前にダミー bcrypt を実行していなかった。
+
+修正: credential 経路と同様に `_verify_password(req.pin or "", _DUMMY_BCRYPT_HASH)` を呼び出してタイミング差を消す。
+
 #### [Medium] IP ベースのレート制限なし (`auth.py`)
 
 1分間に 20+ 回の連続ログイン試行がすべて処理された。
