@@ -556,6 +556,8 @@ class BenchmarkRunner:
         metrics = _compute_metrics(latencies)
         if bench_batch > 1 and metrics["avg_ms"] > 0:
             metrics["fps"] = round(bench_batch * 1000.0 / metrics["avg_ms"], 2)
+            metrics["avg_ms"] = round(metrics["avg_ms"] / bench_batch, 2)
+            metrics["p95_ms"] = round(metrics["p95_ms"] / bench_batch, 2)
         metrics["batch"] = bench_batch
         metrics["iters"] = len(latencies)
         metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
@@ -615,7 +617,10 @@ class BenchmarkRunner:
             return {"error": "キャンセルされました"}
 
         metrics = _compute_metrics(latencies)
-        metrics["fps"] = round(_BATCH_SIZE * 1000.0 / metrics["avg_ms"], 2) if metrics["avg_ms"] > 0 else 0.0
+        if metrics["avg_ms"] > 0:
+            metrics["fps"] = round(_BATCH_SIZE * 1000.0 / metrics["avg_ms"], 2)
+            metrics["avg_ms"] = round(metrics["avg_ms"] / _BATCH_SIZE, 2)
+            metrics["p95_ms"] = round(metrics["p95_ms"] / _BATCH_SIZE, 2)
         metrics["batch"] = _BATCH_SIZE
         metrics["iters"] = len(latencies)
         metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
@@ -871,6 +876,8 @@ class BenchmarkRunner:
         metrics = _compute_metrics(lats)
         if metrics["avg_ms"] > 0:
             metrics["fps"] = round(chosen * 1000.0 / metrics["avg_ms"], 2)
+            metrics["avg_ms"] = round(metrics["avg_ms"] / chosen, 2)
+            metrics["p95_ms"] = round(metrics["p95_ms"] / chosen, 2)
         metrics["batch"] = chosen
         metrics["iters"] = len(lats)
         metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
@@ -927,7 +934,10 @@ class BenchmarkRunner:
             return {"error": "キャンセルされました"}
 
         metrics = _compute_metrics(latencies)
-        metrics["fps"] = round(_POSE_FRAMES * 1000.0 / metrics["avg_ms"], 2) if metrics["avg_ms"] > 0 else 0.0
+        if metrics["avg_ms"] > 0:
+            metrics["fps"] = round(_POSE_FRAMES * 1000.0 / metrics["avg_ms"], 2)
+            metrics["avg_ms"] = round(metrics["avg_ms"] / _POSE_FRAMES, 2)
+            metrics["p95_ms"] = round(metrics["p95_ms"] / _POSE_FRAMES, 2)
         metrics["batch"] = _POSE_FRAMES
         metrics["iters"] = len(latencies)
         metrics["wall_sec"] = round(time.perf_counter() - t_wall0, 2)
@@ -1133,6 +1143,8 @@ class BenchmarkRunner:
         metrics = _compute_metrics(lats)
         if chosen_batch > 1 and metrics["avg_ms"] > 0:
             metrics["fps"] = round(chosen_batch * 1000.0 / metrics["avg_ms"], 2)
+            metrics["avg_ms"] = round(metrics["avg_ms"] / chosen_batch, 2)
+            metrics["p95_ms"] = round(metrics["p95_ms"] / chosen_batch, 2)
         metrics["batch"] = chosen_batch
         metrics["iters"] = len(lats)
         metrics["backend"] = "directml"
