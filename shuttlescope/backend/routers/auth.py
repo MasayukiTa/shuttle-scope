@@ -422,6 +422,8 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=422, detail="user_id is required")
         user = db.get(User, req.user_id)
         if not user or user.role != "player":
+            # 不存在 or 非playerロール時もダミーbcryptを実行してタイミング差を消す
+            _verify_password(req.pin or "", _DUMMY_BCRYPT_HASH)
             log_access(db, "login_failed", details={"reason": "user_not_found", "user_id": req.user_id}, ip_addr=ip)
             raise HTTPException(status_code=401, detail="login failed")
         _check_lockout(user)
@@ -553,22 +555,26 @@ def logout(request: Request, db: Session = Depends(get_db)):
     from backend.utils.auth import get_auth
     from backend.utils.jwt_utils import revoke_token
 
+    auth_header = request.headers.get("Authorization", "")
+    # Bearer が無い / 形式不正 → 何もせず 200 を返す（audit_logs スパム防止）
+    if not auth_header.startswith("Bearer "):
+        return {"success": True}
+
     ctx = get_auth(request)
 
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        from jose import jwt as _jose_jwt, JWTError
-        try:
-            payload = _jose_jwt.decode(
-                auth_header[7:], settings.SECRET_KEY, algorithms=["HS256"]
-            )
-            jti = payload.get("jti")
-            exp = payload.get("exp")
-            if jti and exp:
-                expires_at = datetime.utcfromtimestamp(exp)
-                revoke_token(jti, getattr(ctx, "user_id", None), expires_at)
-        except JWTError:
-            pass
+    from jose import jwt as _jose_jwt, JWTError
+    try:
+        payload = _jose_jwt.decode(
+            auth_header[7:], settings.SECRET_KEY, algorithms=["HS256"]
+        )
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if jti and exp:
+            expires_at = datetime.utcfromtimestamp(exp)
+            revoke_token(jti, getattr(ctx, "user_id", None), expires_at)
+    except JWTError:
+        # 無効な Bearer token もログ書かず 200（スパム防止）
+        return {"success": True}
 
     log_access(db, "logout", user_id=getattr(ctx, "user_id", None))
     return {"success": True}
