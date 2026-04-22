@@ -213,6 +213,66 @@ LAN モード（`PUBLIC_MODE=False`）では任意 IP の LAN デバイスが接
 | analysis_research.py:332/340 | 正常系の return 文。CodeQL 間接追跡による偽陽性 |
 | Electron webSecurity | localfile:// プロトコル依存。変更で動画再生が壊れるリスクあり。別途検討 |
 
+---
+
+### 本番公開後 実攻撃テストで新たに発見・修正済み（2026-04-22 夜）
+
+以下は `https://app.shuttle-scope.com` に対して全攻撃手法を試した結果発見した残課題。
+4件すべてコードで修正済み。次回 `git pull` → バックエンド再起動で反映される。
+
+#### [High] OpenAPI/docs が PUBLIC_MODE 時に公開 (`main.py`)
+
+`/docs`, `/redoc`, `/openapi.json` が無認証で 200 を返し、全 API の構造・パラメータ・スキーマを列挙可能だった。
+
+修正: `PUBLIC_MODE=True` の場合は FastAPI に `docs_url=None, redoc_url=None, openapi_url=None` を渡す。
+
+```python
+_docs_url    = None if app_settings.PUBLIC_MODE else "/docs"
+_redoc_url   = None if app_settings.PUBLIC_MODE else "/redoc"
+_openapi_url = None if app_settings.PUBLIC_MODE else "/openapi.json"
+app = FastAPI(..., docs_url=_docs_url, redoc_url=_redoc_url, openapi_url=_openapi_url)
+```
+
+#### [High] 認証エンドポイントにボディサイズ上限なし (`main.py UploadSizeLimitMiddleware`)
+
+5MB のログインボディが処理された。全体の 100MB 上限のみで auth エンドポイントの制限がなかった。
+
+修正: `/api/auth/` パスに対して 4KB 上限を追加。
+
+```python
+_AUTH_BODY_LIMIT = 4 * 1024
+limit = _AUTH_BODY_LIMIT if request.url.path.startswith("/api/auth/") else _HTTP_UPLOAD_LIMIT
+```
+
+#### [Medium] タイミングオラクルによるユーザー名列挙 (`auth.py`)
+
+既存ユーザー ~770ms・非実在ユーザー ~530ms の ~240ms 差が確認された。
+原因: ダミーハッシュ文字列 `"$2b$12$dummyhashfortimingequalizationxxxxxxxxxxxxxxxx"` が
+52文字で bcrypt の有効フォーマット（60文字）ではなく、`checkpw` が例外を投げて即リターンしていた。
+
+修正: 起動時に有効な bcrypt ハッシュを1回生成し `_DUMMY_BCRYPT_HASH` として使用。
+
+```python
+_DUMMY_BCRYPT_HASH: str = _bcrypt_lib.hashpw(b"_dummy_timing_eq_", _bcrypt_lib.gensalt(rounds=12)).decode()
+```
+
+#### [Medium] IP ベースのレート制限なし (`auth.py`)
+
+1分間に 20+ 回の連続ログイン試行がすべて処理された。
+ユーザーごとのロックアウトは機能するが、ユーザー名を変えながら別ユーザーへのブルートフォースが無制限に可能だった。
+
+修正: 標準ライブラリ（threading + collections.defaultdict）で IP レート制限を実装（pip 追加インストール不要）。
+同一 IP から 60 秒以内に 10 回を超えたら 429 を返す。
+
+```python
+_IP_RATE_LOCK = threading.Lock()
+_IP_LOGIN_TIMES: dict[str, list[float]] = defaultdict(list)
+_IP_RATE_WINDOW = 60   # 秒
+_IP_RATE_LIMIT  = 10   # 同一 IP から 60 秒以内
+```
+
+---
+
 ## 検証手順
 
 ```bash

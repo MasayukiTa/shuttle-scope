@@ -255,11 +255,19 @@ async def lifespan(app: FastAPI):
         pass
 
 
+# PUBLIC_MODE=True ではドキュメントエンドポイントを無効化（API 構造の漏洩防止）
+_docs_url    = None if app_settings.PUBLIC_MODE else "/docs"
+_redoc_url   = None if app_settings.PUBLIC_MODE else "/redoc"
+_openapi_url = None if app_settings.PUBLIC_MODE else "/openapi.json"
+
 app = FastAPI(
     title="ShuttleScope API",
     version="1.0.0",
     description="バドミントン動画アノテーション・解析API",
     lifespan=lifespan,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
 # Phase B で実装される pipeline ルーター。未実装なら何もしない。
@@ -283,16 +291,21 @@ if not app_settings.PUBLIC_MODE:
 # sync .sspkg: アプリ層で 50 MB 制限済み。ここでは Content-Length ヘッダーによる
 # 早期拒否（100 MB）で多層防御とする。チャンク転送はアプリ層で catch する。
 _HTTP_UPLOAD_LIMIT = 100 * 1024 * 1024  # 100 MB
+_AUTH_BODY_LIMIT   =  4 * 1024          # 4 KB（auth エンドポイント）
 
 
 class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         cl = request.headers.get("content-length")
-        if cl and int(cl) > _HTTP_UPLOAD_LIMIT:
-            return StarletteResponse(
-                "リクエストボディが上限（100 MB）を超えています",
-                status_code=413,
-            )
+        if cl:
+            cl_int = int(cl)
+            limit = _AUTH_BODY_LIMIT if request.url.path.startswith("/api/auth/") else _HTTP_UPLOAD_LIMIT
+            if cl_int > limit:
+                return StarletteResponse(
+                    "リクエストボディが上限を超えています",
+                    status_code=413,
+                    media_type="application/json",
+                )
         return await call_next(request)
 
 

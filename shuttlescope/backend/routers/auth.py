@@ -7,8 +7,10 @@ import logging
 import os
 import re as _re
 import struct
+import threading
 import time
 import urllib.parse
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -29,6 +31,31 @@ _PASSWORD_MIN_LENGTH = 12
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# タイミング均一化用ダミーハッシュ（起動時1回だけ生成、有効な bcrypt ハッシュ形式）
+_DUMMY_BCRYPT_HASH: str = _bcrypt_lib.hashpw(b"_dummy_timing_eq_", _bcrypt_lib.gensalt(rounds=12)).decode()
+
+# IP ベースのログインレート制限（標準ライブラリのみ）
+_IP_RATE_LOCK    = threading.Lock()
+_IP_LOGIN_TIMES: dict[str, list[float]] = defaultdict(list)
+_IP_RATE_WINDOW  = 60   # 秒
+_IP_RATE_LIMIT   = 10   # 同一 IP から 60 秒以内に 10 回まで
+
+
+def _check_ip_rate_limit(ip: Optional[str]) -> None:
+    if not ip:
+        return
+    now = time.time()
+    cutoff = now - _IP_RATE_WINDOW
+    with _IP_RATE_LOCK:
+        times = [t for t in _IP_LOGIN_TIMES[ip] if t > cutoff]
+        _IP_LOGIN_TIMES[ip] = times
+        if len(times) >= _IP_RATE_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"リクエストが多すぎます。{_IP_RATE_WINDOW}秒後に再試行してください。",
+            )
+        _IP_LOGIN_TIMES[ip].append(now)
 
 LOGIN_ID_MIN_LENGTH = 6
 LOGIN_ID_MAX_LENGTH = 19
@@ -296,6 +323,7 @@ def _seed_admin_if_needed(db: Session) -> None:
 @router.post("/login", response_model=LoginResponse)
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     ip = _get_ip(request)
+    _check_ip_rate_limit(ip)
     from backend.utils.control_plane import allow_seed_admin, allow_select_login
     if allow_seed_admin(request):
         _seed_admin_if_needed(db)
@@ -310,7 +338,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
         if not user or not user.hashed_credential:
             # ユーザー不在時もダミーbcryptを実行してタイミング差を消す
-            _verify_password(secret, "$2b$12$dummyhashfortimingequalizationxxxxxxxxxxxxxxxx")
+            _verify_password(secret, _DUMMY_BCRYPT_HASH)
             log_access(db, "login_failed", details={"reason": "user_not_found", "identifier": identifier}, ip_addr=ip)
             raise HTTPException(status_code=401, detail="login failed")
 
@@ -343,7 +371,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=422, detail="username and password are required")
         user = db.query(User).filter(User.username == req.username).first()
         if not user or not user.hashed_credential:
-            _verify_password(req.password, "$2b$12$dummyhashfortimingequalizationxxxxxxxxxxxxxxxx")
+            _verify_password(req.password, _DUMMY_BCRYPT_HASH)
             log_access(db, "login_failed", details={"reason": "user_not_found", "username": req.username}, ip_addr=ip)
             raise HTTPException(status_code=401, detail="login failed")
         _check_lockout(user)
