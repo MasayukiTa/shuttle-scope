@@ -364,6 +364,7 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
         # JWT 優先、フォールバックは X-Role
         role = None
         pid_raw = ""
+        payload = None
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
@@ -393,7 +394,59 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
                 status_code=401,
             )
 
+        # JWT の player_id が DB の user.player_id と一致するかを検証する。
+        # (admin が user.player_id を変更した / 古いトークンの再利用を塞ぐ防御的チェック)
+        uid_raw = payload.get("sub") if payload else None
+        if uid_raw:
+            try:
+                uid = int(uid_raw)
+            except (ValueError, TypeError):
+                uid = None
+            if uid and uid > 0:
+                try:
+                    from backend.db.database import SessionLocal as _SL
+                    from backend.db.models import User as _User
+                    with _SL() as _db:
+                        _u = _db.get(_User, uid)
+                        if _u is None or _u.role != "player" or _u.player_id != pid:
+                            return StarletteResponse(
+                                "セッション情報が最新ではありません。再ログインしてください。",
+                                status_code=401,
+                            )
+                except Exception:
+                    pass
+
         path = request.url.path
+
+        # ── player ロールの書き込み制限 ──
+        # player が変更可能なエンドポイントは極めて限定的（自分の User / Player 情報更新のみ）。
+        # 他はすべて 403 にする。データ改ざん・リソース作成の全面防御。
+        method = request.method.upper()
+        if method in ("POST", "PUT", "PATCH", "DELETE") and path.startswith("/api/"):
+            _player_write_allowed = False
+            # 自分の User レコードへの PUT (password/pin/display_name 更新など) は OK
+            if payload and method == "PUT" and path == f"/api/auth/users/{payload.get('sub')}":
+                _player_write_allowed = True
+            # 自分の Player レコードへの PUT は OK
+            if method == "PUT" and path == f"/api/players/{pid}":
+                _player_write_allowed = True
+            # MFA / ログアウト
+            if path in ("/api/auth/logout", "/api/auth/mfa/setup", "/api/auth/mfa/confirm",
+                        "/api/auth/mfa/disable", "/api/auth/mfa/login"):
+                _player_write_allowed = True
+            if not _player_write_allowed:
+                try:
+                    from backend.utils.access_log import log_access
+                    from backend.db.database import SessionLocal
+                    with SessionLocal() as _log_db:
+                        log_access(_log_db, "access_denied_write",
+                                   details={"method": method, "path": path})
+                except Exception:
+                    pass
+                return StarletteResponse(
+                    "この操作を行う権限がありません",
+                    status_code=403,
+                )
 
         # ── match スコープ ──
         mid = _extract_id(path, _MATCH_ID_PATTERNS)
@@ -440,24 +493,32 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
         # /api/analysis/* は player_id をクエリパラメータで受け取るため
         # パスパターンでは捕捉できない。クエリパラメータを直接検証する。
         if path.startswith("/api/analysis/") or path.startswith("/api/reports/"):
-            qp_pid_raw = request.query_params.get("player_id", "")
-            if qp_pid_raw:
+            # HPP 対策: ?player_id=12&player_id=5 のような重複指定は、
+            # どれか 1 つでも自分の player_id と異なる値が含まれていれば拒否する。
+            qp_pids_raw = request.query_params.getlist("player_id")
+            mismatched = False
+            for qp_pid_raw in qp_pids_raw:
+                if not qp_pid_raw:
+                    continue
                 try:
                     qp_pid = int(qp_pid_raw)
                 except (ValueError, TypeError):
                     qp_pid = None
                 if qp_pid and qp_pid != pid:
-                    try:
-                        from backend.utils.access_log import log_access
-                        from backend.db.database import SessionLocal
-                        with SessionLocal() as _log_db:
-                            log_access(_log_db, "access_denied", details={"path": path, "query_player_id": qp_pid})
-                    except Exception:
-                        pass
-                    return StarletteResponse(
-                        "この選手データへのアクセス権限がありません",
-                        status_code=403,
-                    )
+                    mismatched = True
+                    break
+            if mismatched:
+                try:
+                    from backend.utils.access_log import log_access
+                    from backend.db.database import SessionLocal
+                    with SessionLocal() as _log_db:
+                        log_access(_log_db, "access_denied", details={"path": path, "query_player_ids": qp_pids_raw})
+                except Exception:
+                    pass
+                return StarletteResponse(
+                    "この選手データへのアクセス権限がありません",
+                    status_code=403,
+                )
 
         return await call_next(request)
 
@@ -572,9 +633,13 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if _GLOBAL_AUTH_EXEMPT.match(request.url.path):
             return await call_next(request)
-        from backend.utils.control_plane import is_loopback_request
-        if is_loopback_request(request):
-            return await call_next(request)
+        # PUBLIC_MODE（Cloudflare 公開）では loopback 緩和を適用しない。
+        # Cloudflare 設定ミス等で CF-Connecting-IP が欠落した場合も全リクエストが
+        # 127.0.0.1 として届くため、そこを唯一の信頼点にしてはならない。
+        if not app_settings.PUBLIC_MODE:
+            from backend.utils.control_plane import is_loopback_request
+            if is_loopback_request(request):
+                return await call_next(request)
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             return StarletteResponse(
@@ -609,6 +674,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         if app_settings.PUBLIC_MODE:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # 認証 Bearer 付きの API レスポンスは機密扱い — 中間キャッシュ禁止
+        path = request.url.path
+        if request.headers.get("Authorization", "").startswith("Bearer ") and path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Pragma"] = "no-cache"
+        # CSP: API/JSON 応答には厳格なポリシーを設定（レンダラーは default-src 'none' で十分）
+        ctype = response.headers.get("content-type", "")
+        if path.startswith("/api/") and "application/json" in ctype:
+            response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
         return response
 
 
@@ -729,6 +803,16 @@ async def _ws_require_auth(websocket: WebSocket) -> bool:
     上記いずれも満たさない場合は接続を拒否する。
     """
     from backend.utils.jwt_utils import verify_token
+
+    # PUBLIC_MODE（Cloudflare 公開）では、cloudflared が 127.0.0.1 から接続するため
+    # loopback / ws:// の緩和条件を許容すると外部から JWT 無しで WS に繋げてしまう。
+    # したがって PUBLIC_MODE 時は例外なく JWT を要求する。
+    if app_settings.PUBLIC_MODE:
+        token = websocket.query_params.get("token", "")
+        if token and verify_token(token):
+            return True
+        await websocket.close(code=4401)
+        return False
 
     client_ip = websocket.client.host if websocket.client else ""
     if client_ip in ("127.0.0.1", "::1", "localhost", ""):

@@ -15,17 +15,39 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from backend.cluster import bootstrap as _bootstrap
 from backend.cluster.load_guard import load_guard
 from backend.cluster import topology
+from backend.utils.auth import get_auth
 from backend.utils.control_plane import require_local_or_operator_token
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["cluster"])
+
+
+def _require_admin_dep(request: Request) -> None:
+    """クラスタ管理エンドポイントは admin ロール限定。
+
+    SSH 資格情報・ネットワーク構成を含むため player/analyst/coach からは秘匿する。
+    """
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin role required")
+
+
+def _mask_worker_secrets(worker: Dict[str, Any]) -> Dict[str, Any]:
+    """レスポンス経路で SSH 資格情報などの秘密値を除去する。"""
+    redacted = dict(worker)
+    for k in ("ssh_password", "ssh_user", "ssh_key", "ssh_private_key"):
+        if k in redacted:
+            redacted[k] = "***" if redacted.get(k) else redacted.get(k)
+    return redacted
+
+
+router = APIRouter(tags=["cluster"], dependencies=[Depends(_require_admin_dep)])
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -94,8 +116,15 @@ def get_cluster_status() -> Dict[str, Any]:
 
 @router.get("/cluster/config")
 def get_cluster_config() -> Dict[str, Any]:
-    """cluster.config.yaml の内容を返す。"""
-    return topology.reload()
+    """cluster.config.yaml の内容を返す（SSH 資格情報はマスク）。"""
+    cfg = topology.reload()
+    try:
+        workers = cfg.get("network", {}).get("workers", [])
+        if isinstance(workers, list):
+            cfg["network"]["workers"] = [_mask_worker_secrets(w) for w in workers]
+    except Exception:
+        pass
+    return cfg
 
 
 @router.post("/cluster/config")
@@ -103,7 +132,24 @@ def save_cluster_config(body: ConfigSaveRequest, request: Request) -> Dict[str, 
     """cluster.config.yaml を更新する。"""
     require_local_or_operator_token(request)
     try:
-        topology.save_config(body.config)
+        # UI に返した際にマスクされた "***" を受け取った場合は既存値を維持する。
+        incoming = body.config or {}
+        existing = topology.reload() or {}
+        try:
+            ex_workers = {w.get("ip"): w for w in existing.get("network", {}).get("workers", []) if isinstance(w, dict)}
+            in_workers = incoming.get("network", {}).get("workers", [])
+            if isinstance(in_workers, list):
+                for w in in_workers:
+                    if not isinstance(w, dict):
+                        continue
+                    ip = w.get("ip")
+                    ex = ex_workers.get(ip, {})
+                    for k in ("ssh_password", "ssh_user", "ssh_key", "ssh_private_key"):
+                        if w.get(k) == "***" and ex.get(k):
+                            w[k] = ex[k]
+        except Exception:
+            pass
+        topology.save_config(incoming)
         return {"ok": True, "message": "cluster.config.yaml を保存しました"}
     except Exception as exc:
         logger.error("cluster config save failed: %s", exc)
@@ -439,7 +485,7 @@ def get_nodes() -> List[Dict[str, Any]]:
             ping["via"] = "http"
         else:
             ping = {"reachable": False, "via": "none"}
-        results.append({**w, "ping": ping})
+        results.append({**_mask_worker_secrets(w), "ping": ping})
     return results
 
 

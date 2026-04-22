@@ -926,9 +926,11 @@ def _require_admin(request: Request) -> None:
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    # CF-Connecting-IP は Cloudflare が設定するため、クライアント偽造不可。
+    # X-Forwarded-For の先頭はクライアントが任意設定できるためレート制限回避に使われる → 採用しない。
+    cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
+    if cf_ip:
+        return cf_ip
     return request.client.host if request.client else "unknown"
 
 

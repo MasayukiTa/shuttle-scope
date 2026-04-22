@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db, engine
+from backend.utils.auth import require_analyst
 
 router = APIRouter()
 
@@ -100,7 +101,11 @@ def get_settings(db: Session = Depends(get_db)):
 
 
 @router.put("/settings")
-def update_settings(body: SettingsUpdate, db: Session = Depends(get_db)):
+def update_settings(
+    body: SettingsUpdate,
+    db: Session = Depends(get_db),
+    _ctx=Depends(require_analyst),
+):
     """設定を部分更新（指定したキーのみ上書き）"""
     for key, value in body.settings.items():
         db.execute(

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Player, Match
-from backend.utils.auth import get_auth
+from backend.utils.auth import get_auth, require_analyst
 from backend.utils.sync_meta import touch
 from backend.utils import response_cache
 
@@ -219,7 +219,11 @@ def list_teams(db: Session = Depends(get_db)):
 
 
 @router.post("/players", status_code=201)
-def create_player(body: PlayerCreate, db: Session = Depends(get_db)):
+def create_player(
+    body: PlayerCreate,
+    db: Session = Depends(get_db),
+    _ctx=Depends(require_analyst),
+):
     """選手登録"""
     data = body.model_dump()
     aliases = data.pop("aliases", None)
@@ -298,7 +302,11 @@ def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_
 
 
 @router.delete("/players/{player_id}")
-def delete_player(player_id: int, db: Session = Depends(get_db)):
+def delete_player(
+    player_id: int,
+    db: Session = Depends(get_db),
+    _ctx=Depends(require_analyst),
+):
     """選手削除"""
     player = db.get(Player, player_id)
     if not player:
