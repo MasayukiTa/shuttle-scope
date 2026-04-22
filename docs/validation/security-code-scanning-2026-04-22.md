@@ -154,6 +154,53 @@ CSP は React の動的スクリプト・スタイルと衝突するリスクが
 LAN モード（`PUBLIC_MODE=False`）では任意 IP の LAN デバイスが接続するため wildcard を維持。
 `PUBLIC_MODE=True`（Cloudflare 公開）では `CLOUDFLARE_TUNNEL_HOSTNAME` のオリジンのみに限定するよう変更。
 
+#### M-4 / S-3: ログアウト後JWT有効（jwt_utils.py + auth.py + models.py）
+
+ログアウト後もトークンが有効期限（8時間）まで使い続けられる状態だった。
+
+修正:
+- `RevokedToken` テーブル追加（`jti`, `user_id`, `expires_at`, `revoked_at`）
+- JWT に `jti`（UUID）を付与
+- `verify_token()` でブラックリスト照合を追加
+- `/api/auth/logout` で JTI を `revoked_tokens` に登録
+- 起動時に期限切れエントリを自動クリーンアップ
+- Redis 不要。PostgreSQL テーブルで実装（小規模用途では性能差ゼロ）
+
+#### A-1: アカウントロックアウト未実装（auth.py）
+
+ブルートフォース試行を無制限に許容していた。
+
+修正:
+- `User` モデルに `failed_attempts`, `locked_until` カラム追加
+- ログイン失敗5回でアカウントを30分ロック
+- ロック中は429を返しロック解除時間を通知
+- ログイン成功時に `failed_attempts` をリセット
+- admin が `/api/auth/users/{id}/unlock` で手動解除可能
+
+#### A-2: パスワードポリシー未実装（auth.py）
+
+パスワード強度の検証が存在しなかった。
+
+修正: ユーザー作成・パスワード更新時に `_validate_password_strength()` を適用。
+要件: 12文字以上、大文字・小文字・数字・記号をそれぞれ1文字以上。
+
+#### S-1: MFA（TOTP）未実装（auth.py + jwt_utils.py）
+
+パスワード1要素のみで多要素認証がなかった。
+
+修正: 標準ライブラリ（hmac/hashlib/struct）のみで TOTP (RFC 6238) を実装（pyotp 不要）。
+
+新規エンドポイント:
+- `POST /api/auth/mfa/setup` → TOTPシークレット生成・`otpauth://` URI返却
+- `POST /api/auth/mfa/confirm` → コード検証でMFA有効化
+- `POST /api/auth/mfa/disable` → コード検証でMFA無効化
+- `GET  /api/auth/mfa/status` → MFA有効化状態確認
+- `POST /api/auth/mfa/login` → ログイン後のMFAコード検証でフルJWT発行
+
+ログインフロー変更: `totp_enabled=True` のユーザーは credential 検証後に
+`mfa_required: true` と短命な `mfa_token`（有効期限5分）を返す。
+クライアントは Authenticator アプリのコードを `/api/auth/mfa/login` に送信してフルJWTを取得する。
+
 ---
 
 ## 未対応（意図的スキップ）

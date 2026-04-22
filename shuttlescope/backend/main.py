@@ -155,6 +155,15 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.debug("AnalysisCache cleanup skipped: %s", exc)
 
+    # 期限切れ JWT ブラックリストエントリをクリーンアップ（起動時のみ）
+    try:
+        from backend.utils.jwt_utils import cleanup_expired_revoked_tokens
+        deleted = cleanup_expired_revoked_tokens()
+        if deleted:
+            logger.info("revoked_tokens cleanup: %d expired entries removed", deleted)
+    except Exception as exc:
+        logger.debug("revoked_tokens cleanup skipped: %s", exc)
+
     # ── INFRA Phase A: GPU ヘルスプローブ ────────────────────────────────────
     try:
         from backend.services import gpu_health
