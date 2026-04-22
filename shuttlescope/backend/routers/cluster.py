@@ -493,6 +493,70 @@ class RemoteRayJoinRequest(BaseModel):
     num_gpus: Optional[int] = None
 
 
+@router.post("/cluster/nodes/{worker_ip}/wake")
+def wake_worker_node(worker_ip: str, request: Request) -> Dict[str, Any]:
+    """Wake-on-LAN マジックパケットをワーカーノードへ送信する。
+
+    MAC アドレスは cluster.config.yaml の workers[].mac または ARP テーブルから取得する。
+    link-local (169.254.x.x) ネットワークでは 169.254.255.255 にブロードキャストする。
+
+    WOL が動作するには K10 側で:
+    1. BIOS の Wake-on-LAN を有効化
+    2. NIC ドライバの省電力設定で WOL を許可
+    が必要。
+    """
+    require_local_or_operator_token(request)
+    actual_ip = worker_ip.replace("_", ".")
+    return topology.wake_worker(actual_ip)
+
+
+class SleepDisableRequest(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/cluster/nodes/{worker_ip}/disable-sleep")
+def disable_worker_sleep(worker_ip: str, body: SleepDisableRequest, request: Request) -> Dict[str, Any]:
+    """SSH 経由でワーカーのスリープ設定を無効化する。
+
+    Windows の電源設定を変更し、AC 電源接続中はスリープしないようにする。
+    K10 側で OpenSSH Server が有効になっている必要がある。
+    """
+    require_local_or_operator_token(request)
+    try:
+        import paramiko  # type: ignore
+    except ImportError:
+        raise HTTPException(500, "paramiko が必要です: pip install paramiko")
+
+    actual_ip = worker_ip.replace("_", ".")
+
+    # スリープ無効化コマンド（AC 電源接続中のスタンバイタイムアウトを 0 = 無効）
+    cmds = [
+        "powercfg /change standby-timeout-ac 0",
+        "powercfg /change hibernate-timeout-ac 0",
+        "powercfg /change monitor-timeout-ac 0",
+    ]
+
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(actual_ip, username=body.username, password=body.password, timeout=10)
+        results = []
+        for cmd in cmds:
+            _, stdout, stderr = client.exec_command(cmd, timeout=10)
+            stdout.channel.recv_exit_status()
+            results.append(cmd)
+        client.close()
+        return {
+            "ok": True,
+            "message": "スリープ設定を無効化しました（AC 電源接続中）",
+            "applied": results,
+        }
+    except Exception as exc:
+        logger.error("disable_worker_sleep %s failed: %s", actual_ip, exc)
+        return {"ok": False, "message": f"SSH 接続またはコマンド実行に失敗しました: {exc}"}
+
+
 @router.post("/cluster/nodes/{worker_ip}/ray-join")
 def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest, request: Request) -> Dict[str, Any]:
     """SSH 経由でワーカーノードに ray start コマンドを送信する。

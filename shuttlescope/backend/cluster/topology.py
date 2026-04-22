@@ -240,3 +240,134 @@ def ping_node(ip: str, port: int = 8765, timeout: float = 2.0) -> Dict[str, Any]
     except Exception:
         pass
     return result  # ICMP の結果を返す
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Wake-on-LAN
+# ────────────────────────────────────────────────────────────────────────────
+
+def _mac_to_bytes(mac: str) -> bytes:
+    """xx:xx:xx:xx:xx:xx または xx-xx-xx-xx-xx-xx 形式を 6 バイトに変換する。"""
+    mac = mac.strip().replace("-", ":").replace(" ", "")
+    parts = mac.split(":")
+    if len(parts) != 6:
+        raise ValueError(f"無効な MAC アドレス形式: {mac!r}")
+    return bytes(int(p, 16) for p in parts)
+
+
+def get_mac_from_arp(ip: str) -> Optional[str]:
+    """ARP テーブルから指定 IP の MAC アドレスを取得する。
+
+    取得できなかった場合は None を返す。
+    """
+    import subprocess, sys, re
+
+    kw: dict = {"capture_output": True, "text": True, "errors": "replace", "timeout": 5}
+    if sys.platform == "win32":
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+
+    try:
+        result = subprocess.run(["arp", "-a", ip], **kw)
+        # Windows 出力例: "  169.254.140.146      aa-bb-cc-dd-ee-ff     動的"
+        m = re.search(r'([0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2})', result.stdout)
+        if m:
+            return m.group(1).replace("-", ":")
+    except Exception as exc:
+        logger.debug("get_mac_from_arp(%s): %s", ip, exc)
+    return None
+
+
+def get_worker_mac(worker_ip: str) -> Optional[str]:
+    """ワーカーの MAC アドレスを返す。
+
+    優先順位: cluster.config.yaml の mac フィールド → ARP テーブル
+    """
+    workers = get_workers()
+    for w in workers:
+        if w.get("ip") == worker_ip:
+            mac = w.get("mac")
+            if mac:
+                return str(mac)
+    # ARP から取得を試みる
+    return get_mac_from_arp(worker_ip)
+
+
+def save_worker_mac(worker_ip: str, mac: str) -> bool:
+    """cluster.config.yaml のワーカーエントリに MAC アドレスを保存する。"""
+    cfg = load_config(force=True)
+    workers = cfg.get("network", {}).get("workers", [])
+    for w in workers:
+        if w.get("ip") == worker_ip:
+            w["mac"] = mac
+            save_config(cfg)
+            logger.info("save_worker_mac: %s の MAC アドレスを保存しました: %s", worker_ip, mac)
+            return True
+    return False
+
+
+def send_wol(mac: str, broadcast_ip: str = "255.255.255.255", port: int = 9) -> None:
+    """Wake-on-LAN マジックパケットを送信する。
+
+    マジックパケット: 0xFF x6 + MAC x16 = 102 バイト
+    link-local (169.254.x.x) ネットワークでは broadcast_ip に 169.254.255.255 を使う。
+    """
+    import socket
+
+    mac_bytes = _mac_to_bytes(mac)
+    magic = b"\xff" * 6 + mac_bytes * 16
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(magic, (broadcast_ip, port))
+        # セカンダリポート (7) にも送信（一部 NIC はこちらのみ受け付ける）
+        sock.sendto(magic, (broadcast_ip, 7))
+
+    logger.info("WOL magic packet 送信完了: MAC=%s → %s:%d", mac, broadcast_ip, port)
+
+
+def wake_worker(worker_ip: str) -> Dict[str, Any]:
+    """ワーカーノードへ WOL マジックパケットを送信する。
+
+    MAC アドレスが不明な場合は ARP テーブルから取得を試みる。
+    link-local アドレス (169.254.x.x) の場合は 169.254.255.255 にブロードキャストする。
+    """
+    import ipaddress
+
+    mac = get_worker_mac(worker_ip)
+    if mac is None:
+        # ARP に無い場合、ping して ARP を更新してから再試行
+        ping_icmp(worker_ip, timeout=1.0)
+        mac = get_mac_from_arp(worker_ip)
+
+    if mac is None:
+        return {
+            "ok": False,
+            "error": f"MAC アドレスが不明です。K10 が一度でも接続されていれば ARP テーブルに残っているはずです。"
+                     f" cluster.config.yaml の workers[].mac に手動で設定することもできます。",
+        }
+
+    # MAC をキャッシュ保存
+    try:
+        save_worker_mac(worker_ip, mac)
+    except Exception:
+        pass
+
+    # ブロードキャストアドレスを決定する
+    try:
+        addr = ipaddress.ip_address(worker_ip)
+        if addr.is_link_local:
+            # 169.254.0.0/16 → 169.254.255.255
+            broadcast = "169.254.255.255"
+        else:
+            # サブネットブロードキャストを計算（/24 と仮定）
+            parts = worker_ip.split(".")
+            broadcast = f"{parts[0]}.{parts[1]}.{parts[2]}.255"
+    except Exception:
+        broadcast = "255.255.255.255"
+
+    try:
+        send_wol(mac, broadcast_ip=broadcast)
+        return {"ok": True, "mac": mac, "broadcast": broadcast, "message": f"WOL 送信済み → {broadcast}"}
+    except Exception as exc:
+        logger.error("wake_worker(%s): %s", worker_ip, exc)
+        return {"ok": False, "error": str(exc)}

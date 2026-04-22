@@ -8,7 +8,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   Network, Server, Cpu, Zap, Plus, Trash2,
   RefreshCw, CheckCircle2, XCircle, Loader2, Save, ScanSearch,
-  Play, Square, Copy, Check, Wifi,
+  Play, Square, Copy, Check, Wifi, Power, Moon,
 } from 'lucide-react'
 import { apiGet, apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -148,6 +148,10 @@ export function ClusterSettingsPanel() {
   const [sshPass, setSshPass] = useState('')
   const [remoteJoinLoading, setRemoteJoinLoading] = useState<Record<number, boolean>>({})
   const [remoteJoinMsg, setRemoteJoinMsg] = useState<Record<number, string>>({})
+  const [wakeLoading, setWakeLoading] = useState<Record<number, boolean>>({})
+  const [wakeMsg, setWakeMsg] = useState<Record<number, string>>({})
+  const [sleepDisableLoading, setSleepDisableLoading] = useState<Record<number, boolean>>({})
+  const [sleepDisableMsg, setSleepDisableMsg] = useState<Record<number, string>>({})
   // 詳細設定の開閉（localStorage で永続化）
   const [showAdvanced, setShowAdvanced] = useState(() =>
     localStorage.getItem('cluster_showAdvanced') === '1'
@@ -356,6 +360,42 @@ export function ClusterSettingsPanel() {
     }
   }
 
+  const wakeWorker = async (ip: string, idx: number) => {
+    if (!ip) return
+    setWakeLoading(l => ({ ...l, [idx]: true }))
+    setWakeMsg(m => { const n = { ...m }; delete n[idx]; return n })
+    try {
+      const res = await apiPost<{ ok: boolean; message?: string; error?: string; mac?: string }>(
+        `/cluster/nodes/${ip}/wake`, {}
+      )
+      setWakeMsg(m => ({ ...m, [idx]: res.ok ? `WOL送信 (${res.mac ?? ''})` : (res.error ?? '失敗') }))
+    } catch (e: any) {
+      setWakeMsg(m => ({ ...m, [idx]: e?.message ?? 'エラー' }))
+    } finally {
+      setWakeLoading(l => ({ ...l, [idx]: false }))
+    }
+  }
+
+  const disableWorkerSleep = async (ip: string, idx: number) => {
+    if (!ip || !sshUser) {
+      setSleepDisableMsg(m => ({ ...m, [idx]: 'SSHユーザー名を入力してください' }))
+      return
+    }
+    setSleepDisableLoading(l => ({ ...l, [idx]: true }))
+    setSleepDisableMsg(m => { const n = { ...m }; delete n[idx]; return n })
+    try {
+      const res = await apiPost<{ ok: boolean; message?: string }>(
+        `/cluster/nodes/${ip}/disable-sleep`,
+        { username: sshUser, password: sshPass }
+      )
+      setSleepDisableMsg(m => ({ ...m, [idx]: res.ok ? 'スリープ無効化完了' : (res.message ?? '失敗') }))
+    } catch (e: any) {
+      setSleepDisableMsg(m => ({ ...m, [idx]: e?.message ?? 'エラー' }))
+    } finally {
+      setSleepDisableLoading(l => ({ ...l, [idx]: false }))
+    }
+  }
+
   const detectWorkerHardware = async (ip: string, idx: number) => {
     if (!ip) return
     setDetectingWorkers(d => ({ ...d, [idx]: true }))
@@ -538,9 +578,22 @@ export function ClusterSettingsPanel() {
                         </span>
                       : null
                   }
-                  <button onClick={() => pingWorker(w.ip, i)} className={`${textMuted} hover:text-white`}>
+                  <button onClick={() => pingWorker(w.ip, i)} className={`${textMuted} hover:text-white`} title="疎通確認">
                     <Network size={10} />
                   </button>
+                  <button
+                    onClick={() => wakeWorker(w.ip, i)}
+                    disabled={wakeLoading[i]}
+                    className={`${textMuted} hover:text-yellow-400 disabled:opacity-40`}
+                    title="Wake-on-LAN"
+                  >
+                    {wakeLoading[i] ? <Loader2 size={10} className="animate-spin" /> : <Power size={10} />}
+                  </button>
+                  {wakeMsg[i] && (
+                    <span className={`text-[10px] ${wakeMsg[i].startsWith('WOL') ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {wakeMsg[i]}
+                    </span>
+                  )}
                 </div>
               )
             })}
@@ -823,6 +876,37 @@ export function ClusterSettingsPanel() {
                 {detectErr && (
                   <p className="text-[11px] text-red-400">{detectErr}</p>
                 )}
+                {/* WOL / スリープ無効化 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => wakeWorker(w.ip, i)}
+                    disabled={wakeLoading[i] || !w.ip}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-yellow-700 hover:bg-yellow-600 text-white disabled:opacity-50 shrink-0"
+                    title="Wake-on-LAN: BIOSでWOLを有効にしている必要があります"
+                  >
+                    {wakeLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Power size={11} />}
+                    Wake (WOL)
+                  </button>
+                  <button
+                    onClick={() => disableWorkerSleep(w.ip, i)}
+                    disabled={sleepDisableLoading[i] || !w.ip}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-slate-600 hover:bg-slate-500 text-white disabled:opacity-50 shrink-0"
+                    title="SSH経由でスリープ無効化 (powercfg)"
+                  >
+                    {sleepDisableLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Moon size={11} />}
+                    スリープ無効化
+                  </button>
+                  {wakeMsg[i] && (
+                    <span className={`text-[10px] ${wakeMsg[i].startsWith('WOL') ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {wakeMsg[i]}
+                    </span>
+                  )}
+                  {sleepDisableMsg[i] && (
+                    <span className={`text-[10px] ${sleepDisableMsg[i].includes('完了') ? 'text-green-400' : 'text-red-400'}`}>
+                      {sleepDisableMsg[i]}
+                    </span>
+                  )}
+                </div>
               </div>
             )
           })}

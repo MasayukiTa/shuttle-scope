@@ -25,16 +25,14 @@ logger = logging.getLogger(__name__)
 def _register_cuda_dll_dirs() -> None:
     """PyTorch 同梱の CUDA/cuDNN DLL を ONNX Runtime GPU から参照可能にする。
 
-    Windows は Python 3.8+ の secure DLL search で PATH だけでは不足。
-    os.add_dll_directory() で明示登録する。idempotent。
+    os.add_dll_directory() のみ使用する。PATH を変更すると OpenVINO が
+    CUDA 経由で NVIDIA GPU を検出してしまい AMD/Intel iGPU ベンチが壊れる。
     """
     try:
         import torch  # type: ignore
         lib_dir = os.path.join(os.path.dirname(torch.__file__), "lib")
         if not os.path.isdir(lib_dir):
             return
-        if lib_dir not in os.environ.get("PATH", ""):
-            os.environ["PATH"] = lib_dir + os.pathsep + os.environ.get("PATH", "")
         if hasattr(os, "add_dll_directory"):
             try:
                 os.add_dll_directory(lib_dir)
