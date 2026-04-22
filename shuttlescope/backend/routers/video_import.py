@@ -89,18 +89,27 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks,
     if not allow_local_file_control(request):
         raise HTTPException(status_code=403, detail="ローカルファイル操作はローカルからのみ実行できます")
     # URLスキームを持つパスを拒否（SSRF防止 — OpenCV は rtsp:// / http:// を直接開けるため）
-    if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://', body.video_path.strip()):
+    raw_video_path = body.video_path.strip()
+    if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://', raw_video_path):
         raise HTTPException(status_code=400, detail="URLは指定できません。ローカルファイルパスのみ有効です")
+    # NUL / 改行等の制御文字を拒否
+    if any(ch in raw_video_path for ch in ("\x00", "\r", "\n")):
+        raise HTTPException(status_code=400, detail="パスに不正な文字が含まれています")
 
-    path = Path(body.video_path)
+    # Path-injection 防止: 拡張子チェックを resolve 前に行う
+    ALLOWED_VIDEO_EXTS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.m4v', '.webm', '.ts', '.mts'}
+    _pre_suffix = Path(raw_video_path).suffix.lower()
+    if _pre_suffix not in ALLOWED_VIDEO_EXTS:
+        raise HTTPException(status_code=400, detail=f"動画ファイル以外は処理できません: {_pre_suffix}")
+
+    path = Path(raw_video_path).resolve()
+    # 再度拡張子チェック（シンボリックリンク越し対策）
+    if path.suffix.lower() not in ALLOWED_VIDEO_EXTS:
+        raise HTTPException(status_code=400, detail="動画ファイル以外は処理できません")
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"ファイルが存在しません: {path}")
+        raise HTTPException(status_code=404, detail="ファイルが存在しません")
     if not path.is_file():
         raise HTTPException(status_code=400, detail="ファイルパスを指定してください（ディレクトリ不可）")
-
-    ALLOWED_VIDEO_EXTS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.m4v', '.webm', '.ts', '.mts'}
-    if path.suffix.lower() not in ALLOWED_VIDEO_EXTS:
-        raise HTTPException(status_code=400, detail=f"動画ファイル以外は処理できません: {path.suffix}")
 
     file_size = path.stat().st_size
     if file_size > _MAX_VIDEO_BYTES:

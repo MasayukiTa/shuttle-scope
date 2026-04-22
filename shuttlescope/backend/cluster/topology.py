@@ -198,15 +198,21 @@ def ping_icmp(ip: str, timeout: float = 2.0) -> Dict[str, Any]:
 
     HTTP ではなく ICMP を使うため、ShuttleScope 未搭載の K10 等でも機能する。
     """
-    import subprocess, sys, time
+    import subprocess, sys, time, ipaddress
 
     started = time.time()
+    # Command-injection 防止: ip を IPv4/IPv6 アドレスに正規化してから使用する
+    try:
+        _safe_ip = str(ipaddress.ip_address(ip))
+    except (ValueError, TypeError):
+        return {"reachable": False, "latency_ms": 0, "via": "icmp", "error": "invalid ip"}
+
     kw: dict = {"capture_output": True, "text": True}
     if sys.platform == "win32":
-        cmd = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), ip]
+        cmd = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), _safe_ip]
         kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
     else:
-        cmd = ["ping", "-c", "1", "-W", str(int(timeout)), ip]
+        cmd = ["ping", "-c", "1", "-W", str(int(timeout)), _safe_ip]
 
     try:
         result = subprocess.run(cmd, timeout=timeout + 1, **kw)
@@ -229,11 +235,15 @@ def ping_node(ip: str, port: int = 8765, timeout: float = 2.0) -> Dict[str, Any]
     import time, urllib.request, ipaddress
     started = time.time()
     try:
-        # SSRF防止: ip が有効なIPアドレスであることを確認
+        # SSRF防止: ip を正規化し、プライベート/ループバック/リンクローカル限定
         _addr = ipaddress.ip_address(ip)
         if not (_addr.is_private or _addr.is_loopback or _addr.is_link_local):
             raise ValueError("クラスタ外アドレスへの HTTP 疎通確認は許可されていません")
-        url = f"http://{ip}:{port}/api/health"
+        _safe_ip = str(_addr)
+        _safe_port = int(port)
+        if not (1 <= _safe_port <= 65535):
+            raise ValueError("invalid port")
+        url = f"http://{_safe_ip}:{_safe_port}/api/health"
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             latency_ms = int((time.time() - started) * 1000)
             return {"reachable": True, "latency_ms": latency_ms, "via": "http"}
