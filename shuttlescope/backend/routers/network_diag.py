@@ -61,8 +61,8 @@ async def _probe_tcp(host: str, port: int, timeout: float = 3.0) -> tuple[bool, 
         return True, None
     except asyncio.TimeoutError:
         return False, f"timeout ({timeout}s)"
-    except OSError as e:
-        return False, str(e)
+    except OSError:
+        return False, "connection refused or unreachable"
 
 
 def _get_lan_ips() -> list[str]:

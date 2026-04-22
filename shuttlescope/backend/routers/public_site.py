@@ -1317,7 +1317,7 @@ async def submit_public_contact(body: PublicInquiryCreate, request: Request, db:
         organization=(body.organization or "").strip() or None,
         role=(body.role or "").strip() or None,
         contact_reference=(body.contact_reference or "").strip() or None,
-        message=re.sub(r"\s+\n", "\n", body.message.strip()),
+        message=re.sub(r"[^\S\n]+\n", "\n", body.message.strip()),
         ip_address=_client_ip(request),
         user_agent=(request.headers.get("User-Agent") or "")[:400] or None,
     )

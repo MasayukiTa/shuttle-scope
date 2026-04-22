@@ -977,8 +977,8 @@ def yolo_warmup():
         inf.predict_frame(dummy)
         return {"success": True, "data": {"message": "warmup ok", "backend": inf.backend_name()}}
     except Exception as exc:
-        logger.warning("YOLO warmup failed: %s", exc)
-        return {"success": False, "data": {"message": str(exc)}}
+        logger.warning("YOLO warmup failed: %s", exc, exc_info=True)
+        return {"success": False, "data": {"message": "YOLO ウォームアップに失敗しました"}}
 
 
 # ─── 選手割り当て + IoU 追跡 ─────────────────────────────────────────────────

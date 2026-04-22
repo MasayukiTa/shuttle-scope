@@ -963,7 +963,8 @@ class BenchmarkRunner:
                     break
                 if len(latencies) >= 3 and (time.perf_counter() - t_wall0) >= budget:
                     break
-                out_path = tempfile.mktemp(suffix=f"_clip_{i}.mp4")
+                with tempfile.NamedTemporaryFile(suffix=f"_clip_{i}.mp4", delete=False) as _tmp:
+                    out_path = _tmp.name
                 cmd = [
                     "ffmpeg", "-y", "-ss", "0", "-i", video_path,
                     "-t", "1", "-c", "copy", out_path,

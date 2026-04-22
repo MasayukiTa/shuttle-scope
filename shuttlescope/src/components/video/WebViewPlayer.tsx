@@ -99,6 +99,7 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
     if (!wv) return
     const target = inputUrl.trim()
     if (!target) return
+    if (!/^https?:\/\//i.test(target)) return
     wv.src = target
   }, [inputUrl])
 
