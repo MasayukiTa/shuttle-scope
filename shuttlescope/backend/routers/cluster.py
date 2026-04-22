@@ -249,7 +249,27 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
     既存の Ray プロセスは先に停止してから起動する。
     """
     require_local_or_operator_token(request)
-    import subprocess, sys, os
+    import subprocess, sys, os, ipaddress
+
+    # Command-injection 防止: 入力値を厳格に正規化
+    try:
+        safe_ip = str(ipaddress.ip_address(body.node_ip))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="node_ip が不正なIPアドレス形式です")
+    try:
+        safe_port = int(body.port)
+        if not (1 <= safe_port <= 65535):
+            raise ValueError
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="port が不正です")
+    try:
+        safe_cpus = int(body.num_cpus) if body.num_cpus is not None else None
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="num_cpus が不正です")
+    try:
+        safe_gpus = int(body.num_gpus) if body.num_gpus is not None else None
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="num_gpus が不正です")
 
     ray_cmd = _bootstrap._find_ray_cmd()
     kw: dict = {"capture_output": True, "text": True, "errors": "replace", "timeout": 30}
@@ -266,14 +286,14 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
     # ray start --head
     cmd = [
         ray_cmd, "start", "--head",
-        f"--node-ip-address={body.node_ip}",
-        f"--port={body.port}",
+        f"--node-ip-address={safe_ip}",
+        f"--port={safe_port}",
         "--dashboard-host=0.0.0.0",
     ]
-    if body.num_cpus is not None:
-        cmd.append(f"--num-cpus={body.num_cpus}")
-    if body.num_gpus is not None:
-        cmd.append(f"--num-gpus={body.num_gpus}")
+    if safe_cpus is not None:
+        cmd.append(f"--num-cpus={safe_cpus}")
+    if safe_gpus is not None:
+        cmd.append(f"--num-gpus={safe_gpus}")
 
     import os as _os
     env = _os.environ.copy()

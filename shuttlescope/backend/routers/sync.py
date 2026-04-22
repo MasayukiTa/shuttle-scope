@@ -374,23 +374,24 @@ def import_from_cloud_path(
     sync_folder_path 内の指定 .sspkg ファイルを直接インポート。
     dry_run=True の場合はプレビューのみ。
     """
-    pkg_path = Path(path).resolve()
+    # Path-injection 防止: 同期フォルダを基準に結合 → resolve → 基準配下チェックを優先
+    settings_cfg = _load_settings(db)
+    sync_folder = settings_cfg.get("sync_folder_path", "")
+    if not sync_folder:
+        raise HTTPException(status_code=400, detail="同期フォルダが設定されていません")
+    sync_root = Path(sync_folder).resolve()
+    raw_path = Path(path)
+    pkg_path = (raw_path if raw_path.is_absolute() else (sync_root / raw_path)).resolve()
+    try:
+        pkg_path.relative_to(sync_root)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="指定パスは同期フォルダ外です")
 
     # 拡張子を .sspkg に限定
     if pkg_path.suffix.lower() != ".sspkg":
         raise HTTPException(status_code=400, detail=".sspkg ファイルのみ指定できます")
 
-    # パストラバーサル防止: sync_folder_path 配下であることを検証
-    settings_cfg = _load_settings(db)
-    sync_folder = settings_cfg.get("sync_folder_path", "")
-    if not sync_folder:
-        raise HTTPException(status_code=400, detail="同期フォルダが設定されていません")
-    try:
-        pkg_path.relative_to(Path(sync_folder).resolve())
-    except ValueError:
-        raise HTTPException(status_code=403, detail="指定パスは同期フォルダ外です")
-
-    if not pkg_path.exists():
+    if not pkg_path.exists() or not pkg_path.is_file():
         raise HTTPException(status_code=404, detail="ファイルが見つかりません")
 
     raw = pkg_path.read_bytes()

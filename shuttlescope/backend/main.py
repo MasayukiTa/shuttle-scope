@@ -212,6 +212,13 @@ async def lifespan(app: FastAPI):
             if not primary_ip:
                 logger.warning("[INFRA] auto_start: primary_ip 未設定のため Ray 自動起動をスキップ")
                 return
+            # Command-injection 防止: primary_ip を IP アドレスとして検証
+            import ipaddress as _ipaddr
+            try:
+                primary_ip = str(_ipaddr.ip_address(primary_ip))
+            except (ValueError, TypeError):
+                logger.warning("[INFRA] auto_start: primary_ip が不正 (%r) のためスキップ", primary_ip)
+                return
 
             logger.info("[INFRA] auto_start: ray start --head を実行 ip=%s", primary_ip)
             import os as _os
@@ -220,8 +227,17 @@ async def lifespan(app: FastAPI):
             ray_cmd = _find_ray_cmd()
             kw = _subprocess_kwargs()
             kw["env"] = env
-            num_cpus = cfg.get("ray", {}).get("num_cpus")
-            num_gpus = cfg.get("ray", {}).get("num_gpus")
+            # int 強制で command-injection 防止
+            _raw_cpus = cfg.get("ray", {}).get("num_cpus")
+            _raw_gpus = cfg.get("ray", {}).get("num_gpus")
+            try:
+                num_cpus = int(_raw_cpus) if _raw_cpus is not None else None
+            except (ValueError, TypeError):
+                num_cpus = None
+            try:
+                num_gpus = int(_raw_gpus) if _raw_gpus is not None else None
+            except (ValueError, TypeError):
+                num_gpus = None
             cmd = [ray_cmd, "start", "--head",
                    f"--node-ip-address={primary_ip}", "--port=6379",
                    "--dashboard-host=0.0.0.0"]
@@ -1132,20 +1148,35 @@ _FALLBACK_HTML = """<!DOCTYPE html>
 </html>"""
 
 
+_ASSETS_ALLOWED_EXTS = {".js", ".mjs", ".css", ".map", ".woff", ".woff2", ".ttf", ".otf",
+                        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
+                        ".json", ".txt", ".wasm"}
+_ASSETS_SEGMENT_RE = _re_acl.compile(r"^[A-Za-z0-9_.\-]+$")
+
+
 @app.get("/assets/{asset_path:path}")
 async def serve_assets(asset_path: str):
     """静的アセット配信（JS/CSS/Font 等）— Windows mimetypes に依存せず Content-Type を明示指定"""
-    file_path = _assets_dir / asset_path
-    # ディレクトリトラバーサル防止
+    # Path-injection 防止: 事前にセグメントをホワイトリスト化し、絶対パス/空文字/.. を拒否
+    if not asset_path or asset_path.startswith(("/", "\\")):
+        raise HTTPException(status_code=404)
+    segments = asset_path.replace("\\", "/").split("/")
+    for seg in segments:
+        if not seg or seg in (".", "..") or not _ASSETS_SEGMENT_RE.match(seg):
+            raise HTTPException(status_code=404)
+    _assets_root = _assets_dir.resolve()
+    candidate = (_assets_root / "/".join(segments)).resolve()
+    # Path 配下限定
     try:
-        file_path.resolve().relative_to(_assets_dir.resolve())
+        candidate.relative_to(_assets_root)
     except ValueError:
         raise HTTPException(status_code=404)
-    if not file_path.exists() or not file_path.is_file():
+    if candidate.suffix.lower() not in _ASSETS_ALLOWED_EXTS:
         raise HTTPException(status_code=404)
-    suffix = file_path.suffix.lower()
-    media_type = _MIME_MAP.get(suffix, "application/octet-stream")
-    return FileResponse(str(file_path), media_type=media_type)
+    if not candidate.exists() or not candidate.is_file():
+        raise HTTPException(status_code=404)
+    media_type = _MIME_MAP.get(candidate.suffix.lower(), "application/octet-stream")
+    return FileResponse(str(candidate), media_type=media_type)
 
 
 @app.get("/")
@@ -1174,7 +1205,12 @@ async def spa_catch_all(path: str, request: StarletteRequest):
     if public_site.should_serve_public_site(request):
         raise HTTPException(status_code=404)
     from fastapi.responses import RedirectResponse
-    safe_path = path.lstrip("/")
+    # Open-redirect 防止: スキーム/プロトコル相対 URL/逆スラッシュを禁止し、英数と一部記号のみ許容
+    safe_path = path.lstrip("/").lstrip("\\")
+    if "://" in safe_path or safe_path.startswith(("/", "\\")) or "\\" in safe_path:
+        raise HTTPException(status_code=404)
+    if not _re_acl.match(r"^[A-Za-z0-9_\-./]*$", safe_path):
+        raise HTTPException(status_code=404)
     return RedirectResponse(url=f"/#/{safe_path}", status_code=302)
 
 

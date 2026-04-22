@@ -99,8 +99,15 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
     if (!wv) return
     const target = inputUrl.trim()
     if (!target) return
-    if (!/^https?:\/\//i.test(target)) return
-    wv.src = target
+    // xss-through-dom 防止: URL パースで http(s) のみ許可し、文字列結合は行わない
+    let parsed: URL
+    try {
+      parsed = new URL(target)
+    } catch {
+      return
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return
+    wv.src = parsed.toString()
   }, [inputUrl])
 
   const handleBack = useCallback(() => {
