@@ -216,14 +216,15 @@ It should not be read as a finished commercial product yet.
 shuttle-scope/
 ├─ README.md
 ├─ CHANGELOG.md
+├─ SECURITY.md
 ├─ LICENSE
 ├─ private_docs/              # local private notes, ignored
-├─ .github/workflows/         # CI and smoke workflows
+├─ .github/workflows/         # CI, smoke, and security scanning workflows
 └─ shuttlescope/
    ├─ electron/
    ├─ src/
    ├─ backend/
-   ├─ docs/
+   ├─ docs/                   # including docs/validation/ for verification history
    ├─ scripts/
    └─ start.bat
 ```
@@ -387,15 +388,31 @@ npm run build
 
 GitHub Actions workflows are included for:
 
-- CI
-- desktop package smoke
+- CI (build + frontend / backend tests on Ubuntu and Windows)
+- Desktop package smoke
 - TrackNet smoke
+- CodeQL Advanced (actions / javascript-typescript / python)
+- Bandit (Python static analysis)
+- ESLint (with SARIF upload)
+- DevSkim (Microsoft static analysis)
+- OSV-Scanner and OSV-Scanner PR (Python dependency vulnerabilities)
+- Microsoft Defender For Devops (MSDO)
+- OpenSSF Scorecard (supply-chain posture)
 
 Recent CI hardening:
 
 - base backend install no longer assumes `onnxruntime-gpu` in generic CI environments
 - benchmark tests now respect explicit mock mode and avoid spurious `ffmpeg`-driven failures
 - backend pipeline mock loading is aligned with the benchmark / smoke test path
+- every workflow declares minimal top-level token permissions (`contents: read`) and only grants `security-events: write` at the job level that actually uploads SARIF
+- every `uses:` reference is pinned to a commit SHA with the version tag kept as a trailing comment
+
+## Security Posture
+
+- Vulnerability reports are handled through `SECURITY.md` at the repository root.
+- `main` is protected against force-push and branch deletion; normal pushes remain available so solo / cross-device workflows are not blocked.
+- Known accepted risks (e.g. `paramiko` AutoAddPolicy for loopback / private-LAN SSH, and Electron `webSecurity: false` required for the `localfile://` video scheme) are documented in `shuttlescope/docs/validation/security-code-scanning-2026-04-23.md` rather than left implicit.
+- Code Scanning alerts are actively triaged: false positives are dismissed with explicit justification, known-unfixable findings are marked `won't fix` with the reason, and remaining real findings are fixed in the source.
 
 ## Local Data
 

@@ -14,6 +14,74 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-23
+
+### Security Code Scanning Triage (Phase 1)
+
+- Dismissed 25 CodeQL alerts with explicit rationale after verifying mitigations or accepting residual risk.
+  - 19 false positives: `py/path-injection` x12 (sanitized via `Path.resolve()` + `relative_to()` scope check, segment whitelist regex, and extension whitelist), `py/stack-trace-exposure` x6 (sanitized via `_sanitize_errors()` and generic user-facing messages with `logger.exception` redirected to server logs), `py/url-redirection` x1 (SPA catch-all blocks scheme / backslash / protocol-relative URLs plus charset whitelist).
+  - 6 won't-fix: `py/paramiko-missing-host-key-validation` x4 (cluster SSH is loopback / private LAN only and worker nodes rotate too aggressively for `known_hosts`), `js/disabling-electron-websecurity` x2 (the `localfile://` scheme for local video playback requires `webSecurity: false` inside the Electron shell).
+- Added `SECURITY.md` at repository root so Scorecard `SecurityPolicyID` clears and external reporters have a documented reporting channel.
+- Enabled minimum branch protection on `main` (force-push blocked, branch deletion blocked, no status-check gating) so solo-maintainer push from any device continues to work while Scorecard `BranchProtectionID` score improves.
+
+### Scorecard Supply-Chain Hardening (Phase 2a)
+
+- Pinned every third-party and first-party GitHub Action `uses:` reference to a commit SHA across all eleven workflows: `bandit.yml`, `ci.yml`, `codeql.yml`, `defender-for-devops.yml`, `desktop-package-smoke.yml`, `devskim.yml`, `eslint.yml`, `osv-scanner.yml`, `osv-scanner-pr.yml`, `scorecard.yml`, `tracknet-smoke.yml`.
+  Version tags are preserved as trailing comments so Dependabot can continue to propose upgrades and humans can still read the intent at a glance.
+  This resolves the 46 Scorecard `PinnedDependenciesID` alerts.
+
+### Python Dependency CVE Bumps (Phase 2b)
+
+- Raised declared floor versions in `shuttlescope/backend/requirements.txt` so OSV-Scanner (which reads the minimum pin) stops flagging already-patched CVEs:
+  - `scikit-learn` `>=1.3.0` → `>=1.5.0` (CVE-2024-5206)
+  - `yt-dlp` `>=2024.3.10` → `>=2025.1.15` (CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785)
+  - `pytest` `>=8.0.0` → `>=8.4.0` (CVE-2025-71176)
+  - `python-jose[cryptography]` `>=3.3.0` → `>=3.4.0` (CVE-2024-33663 / CVE-2024-33664)
+
+### Validation
+
+- Recorded the full triage and scope decisions in `shuttlescope/docs/validation/security-code-scanning-2026-04-23.md`, which also tracks what is intentionally left for later phases (Bandit warnings, Bandit `note`-level noise, and time-based Scorecard checks).
+
+## 2026-04-22
+
+### Code Scanning Response (Dependabot + CodeQL Critical / High)
+
+- Bumped `@xmldom/xmldom` to `^0.8.13` to clear the three Dependabot advisories (CVE-2026-41672 / 41674 / 41675).
+- Fixed critical command-line-injection and SSRF issues surfaced by CodeQL:
+  - `backend/cluster/topology.py` now normalizes IP input through `ipaddress.ip_address()` before passing to `ping`, and coerces / range-checks ports before constructing URLs.
+  - `backend/main.py` validates `primary_ip` and coerces `num_cpus` / `num_gpus` to `int` before invoking the Ray auto-start subprocess.
+  - `backend/routers/cluster.py` validates `body.node_ip`, `body.port`, `body.num_cpus`, and `body.num_gpus` before any subprocess call.
+- Fixed high-severity path-injection findings in asset, sync, and video-import routes:
+  - `backend/main.py` `serve_assets` now decomposes the asset path, whitelists each segment against a conservative regex, resolves against the assets root, and verifies the final path stays inside `_assets_dir` before doing an extension whitelist check.
+  - `backend/routers/sync.py` `cloud_import` resolves relative to the configured sync folder first, rejects paths outside the folder, and limits the extension to `.sspkg`.
+  - `backend/routers/video_import.py` rejects URL-scheme paths and control characters, enforces an allowed-extension set both before and after `Path.resolve()` so symlink hops cannot bypass the check.
+- Fixed the XSS-through-DOM finding in `src/components/video/WebViewPlayer.tsx` by parsing incoming URLs with `new URL()` and accepting only `http:` / `https:` before setting `wv.src`.
+- Fixed the medium open-redirect finding in `backend/main.py` SPA catch-all by rejecting `://`, backslash, leading `/` or `\`, and restricting the remaining charset.
+
+### Stack-Trace Exposure Total Cleanup
+
+- While in a coding-focused environment, walked through all 14 `py/stack-trace-exposure` findings and redirected any `str(exc)` or traceback content to `logger.warning` / `logger.exception` on the server side while returning only generic, user-safe messages in responses.
+  Touched routers: `analysis_research.py`, `cluster.py`, `db_maintenance.py`, `sync.py`, `tracknet.py`, `tunnel.py`.
+- Backend smoke: `python -m pytest backend/tests` → `635 passed / 4 skipped`.
+
+### CI Failure Recovery and Scorecard TokenPermissions
+
+- Resolved the CodeQL Advanced / default-setup conflict by disabling GitHub's default Code Scanning setup (`gh api --method PATCH repos/.../code-scanning/default-setup -f state=not-configured`) so the advanced matrix workflow (`actions` + `javascript-typescript` + `python`) can run.
+- Fixed Microsoft Defender For Devops SARIF upload failing with `Resource not accessible by integration` by adding explicit `security-events: write`, `contents: read`, and `actions: read` permissions to the `MSDO` job.
+- Cleared eight Scorecard `TokenPermissionsID` high alerts by adding top-level `permissions: contents: read` to `bandit.yml`, `codeql.yml`, `defender-for-devops.yml`, `devskim.yml`, and `eslint.yml`, and by moving the write permissions from top-level to job-level in `osv-scanner.yml` and `osv-scanner-pr.yml`.
+
+### Detailed Progress
+
+- Bumped `@xmldom/xmldom` to `0.8.13+`.
+- Added IP and port validation to cluster topology, cluster router, and Ray auto-start paths.
+- Tightened static asset, sync import, and video import routes against path injection.
+- Sanitized XSS-capable URL handling in the WebView player.
+- Tightened SPA catch-all redirect handling against open-redirect patterns.
+- Sanitized all 14 stack-trace-exposure responses across analysis, cluster, DB maintenance, sync, TrackNet, and tunnel routers.
+- Switched from GitHub's default Code Scanning setup to the advanced matrix workflow.
+- Added job-level SARIF permissions for the Microsoft Defender For Devops workflow.
+- Declared minimal top-level workflow token permissions across security scanning workflows.
+
 ## 2026-04-21
 
 ### Public Landing Site v7
