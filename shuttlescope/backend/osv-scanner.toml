@@ -1,0 +1,28 @@
+# OSV-Scanner ignore 設定
+# GitHub Scorecard の Vulnerabilities check が拾う OSV 結果から
+# 未修正 CVE のうちリスクを受容したものを除外する。
+#
+# 対象: ray の未修正 CVE 2 件。
+# ray cluster は trusted network (Tailscale / プライベートサブネット等) 内でのみ運用し、
+# dashboard / jobs submission API を外部公開しない運用前提でリスクを受容する。
+# ray 公式も cluster を trusted network 前提と明記している。
+# https://docs.ray.io/en/latest/ray-observability/user-guides/configure-logging.html
+# https://docs.ray.io/en/latest/ray-core/configure.html#security
+
+[[IgnoredVulns]]
+id = "GHSA-gx77-xgc2-4888"
+# ignoreUntil は設定せず恒久的に ignore（公式修正が出るまで）
+reason = """
+Ray の新トークン認証がデフォルト無効な問題。
+本プロジェクトでは ray cluster を trusted network 内に閉じて運用するため、
+外部からの未認証アクセスは不可。修正版が出たら再評価。
+"""
+
+[[IgnoredVulns]]
+id = "GHSA-6wgj-66m2-xxp2"
+reason = """
+Ray の jobs submission API 経由の任意コード実行問題（設計的制約）。
+ray cluster を trusted network に閉じて jobs submission API を外部に露出させない
+運用で無害化。dashboard / API 向けポートはプライベートサブネットまたは
+Tailscale 経由のみで提供する。
+"""

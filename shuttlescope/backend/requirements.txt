@@ -27,16 +27,19 @@ reportlab==4.1.0
 fpdf2>=2.7.0                 # PDF 代替ライブラリ
 
 # ── 動画・ネットワーク ─────────────────────────────────────────────
-yt-dlp>=2025.1.15            # CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785 修正
+yt-dlp>=2026.02.21           # CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785 / GHSA-g3gw-q23r-pgqm (netrc command injection) 修正
 httpx==0.26.0
 
 # ── クラスタ / システム監視 ────────────────────────────────────────
 pyyaml>=6.0                  # cluster.config.yaml の読み書き
 psutil>=5.9                  # CPU / メモリ / ネットワーク IF 監視
-# ray>=2.9                   # 分散推論。pip install "ray[default]" で別途導入（大容量）
+# ray>=2.54.0                # 分散推論。pip install "ray[default]" で別途導入（大容量）。
+#                            # 2.54 未満は複数 CVE あり (GHSA-w4rh-fgx7-q63m / q279-jhrf-cc6v / q5fh-2hc8-f6rq)。
+#                            # 未修正 CVE (GHSA-gx77-xgc2-4888 token auth, GHSA-6wgj-66m2-xxp2 jobs API) は
+#                            # ray cluster を trusted network 内に閉じる前提で運用する (ray 公式も trusted network 前提)。
 
 # ── テスト ─────────────────────────────────────────────────────────
-pytest>=8.4.0                # CVE-2025-71176 修正
+pytest>=9.0.3                # CVE-2025-71176 / GHSA-6w46-j5rx-g56g (tmpdir handling) 修正
 pytest-asyncio>=0.23.0
 
 # ── P3: TrackNet / 推論ランタイム ────────────────────────────────
