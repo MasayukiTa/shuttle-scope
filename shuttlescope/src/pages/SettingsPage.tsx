@@ -871,13 +871,13 @@ export function SettingsPage() {
           <div>
             {/* ヘッダー行: タイトル＋追加ボタン */}
             <div className="flex items-center justify-between mb-3">
-              <h2 className={`text-lg font-medium ${textHeading}`}>選手一覧</h2>
+              <h2 className={`text-lg font-medium ${textHeading}`}>{t('settings.ui.player_list')}</h2>
               <button
                 onClick={() => { setEditingPlayer(null); setPlayerForm(defaultPlayerForm()); setShowPlayerForm(true) }}
                 className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm"
               >
                 <Plus size={14} />
-                選手追加
+                {t('settings.ui.add_player')}
               </button>
             </div>
 
@@ -952,7 +952,7 @@ export function SettingsPage() {
                       </th>
                     ))}
                     {/* 手（ソートなし） */}
-                    <th className="text-left py-2 pr-3 whitespace-nowrap">手</th>
+                    <th className="text-left py-2 pr-3 whitespace-nowrap">{t('settings.ui.hand')}</th>
                     {/* Rk: ソート可能 */}
                     <th
                       className="text-left py-2 pr-3 whitespace-nowrap cursor-pointer select-none hover:opacity-80"
@@ -973,7 +973,7 @@ export function SettingsPage() {
                       onClick={() => handlePlayerSort('is_target')}
                     >
                       <span className="inline-flex items-center gap-0.5">
-                        対象
+                        {t('settings.ui.target')}
                         {playerSortKey === 'is_target' ? (
                           playerSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
                         ) : (
@@ -981,7 +981,7 @@ export function SettingsPage() {
                         )}
                       </span>
                     </th>
-                    <th className="text-left py-2 whitespace-nowrap">操作</th>
+                    <th className="text-left py-2 whitespace-nowrap">{t('settings.ui.operation')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1076,12 +1076,12 @@ export function SettingsPage() {
             {/* 空状態メッセージ */}
             {players.length === 0 && (
               <div className="text-center text-gray-500 py-8">
-                選手が登録されていません。「選手追加」ボタンで追加してください。
+                {t('settings.ui.no_players')}
               </div>
             )}
             {players.length > 0 && filteredPlayers.length === 0 && (
               <div className={`text-center ${textMuted} py-8 text-sm`}>
-                絞り込み条件に一致する選手がいません。
+                {t('settings.ui.no_match_players')}
               </div>
             )}
           </div>
@@ -1102,11 +1102,11 @@ export function SettingsPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className={`${textSecondary} border-b ${borderLine}`}>
-                      <th className="text-left py-2 pr-4">名前</th>
+                      <th className="text-left py-2 pr-4">{t('settings.ui.name')}</th>
                       <th className="text-left py-2 pr-4">{t('review.profile_status')}</th>
-                      <th className="text-left py-2 pr-4">利き手</th>
-                      <th className="text-left py-2 pr-4">試合数</th>
-                      <th className="text-left py-2">操作</th>
+                      <th className="text-left py-2 pr-4">{t('settings.ui.dominant_hand')}</th>
+                      <th className="text-left py-2 pr-4">{t('settings.ui.match_count')}</th>
+                      <th className="text-left py-2">{t('settings.ui.operation')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1116,7 +1116,7 @@ export function SettingsPage() {
                           <div className="flex items-center gap-2">
                             {p.name}
                             {p.profile_status === 'provisional' && (
-                              <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded">暫定</span>
+                              <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded">{t('settings.ui.tentative')}</span>
                             )}
                           </div>
                         </td>
@@ -1307,9 +1307,9 @@ export function SettingsPage() {
 
               {/* YOLO モデルステータス */}
               <div className={`rounded p-2.5 text-xs space-y-1.5 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
-                <p className={`font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>モデル状態</p>
+                <p className={`font-medium ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{t('settings.ui.model_state')}</p>
                 {!yoloStatus ? (
-                  <p className={isLight ? 'text-gray-500' : 'text-gray-500'}>バックエンド接続中...</p>
+                  <p className={isLight ? 'text-gray-500' : 'text-gray-500'}>{t('settings.ui.backend_connecting')}</p>
                 ) : (() => {
                   const sc = yoloStatus.data?.status_code
                   const msg = yoloStatus.data?.status_message
@@ -1343,7 +1343,7 @@ export function SettingsPage() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="text-red-400">●</span>
-                          <span className={isLight ? 'text-red-700' : 'text-red-300'}>ロード失敗</span>
+                          <span className={isLight ? 'text-red-700' : 'text-red-300'}>{t('settings.ui.load_failed')}</span>
                         </div>
                         {msg && <p className={`text-[10px] font-mono break-all ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{msg}</p>}
                       </div>
@@ -1354,7 +1354,7 @@ export function SettingsPage() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="text-orange-400">●</span>
-                        <span className={isLight ? 'text-orange-700' : 'text-orange-300'}>パッケージ未導入</span>
+                        <span className={isLight ? 'text-orange-700' : 'text-orange-300'}>{t('settings.ui.package_missing')}</span>
                       </div>
                       <code className={`block text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-800 text-gray-300'}`}>
                         pip install ultralytics
@@ -1381,7 +1381,7 @@ export function SettingsPage() {
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
                 >
                   {devicesFetching ? <RotateCcw size={11} className="animate-spin" /> : <RotateCcw size={11} />}
-                  再検出
+                  {t('settings.ui.redetect')}
                 </button>
               </div>
 
@@ -1987,7 +1987,7 @@ export function SettingsPage() {
             {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-gray-400" />
-                <h2 className="text-base font-semibold">同期設定</h2>
+                <h2 className="text-base font-semibold">{t('settings.ui.sync_settings')}</h2>
               </div>
               <div className="space-y-3">
                 <div>
@@ -2021,7 +2021,7 @@ export function SettingsPage() {
             <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <Download size={16} className="text-blue-400" />
-                <h2 className="text-base font-semibold">エクスポート</h2>
+                <h2 className="text-base font-semibold">{t('settings.ui.export')}</h2>
               </div>
               <p className="text-xs text-gray-400">
                 試合データを <code className="bg-gray-700 px-1 rounded">.sspkg</code> 形式でダウンロード。別 PC へのデータ持ち運びや引き継ぎに使用します。
@@ -2135,7 +2135,7 @@ export function SettingsPage() {
             <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <Upload size={16} className="text-emerald-400" />
-                <h2 className="text-base font-semibold">インポート</h2>
+                <h2 className="text-base font-semibold">{t('settings.ui.import')}</h2>
               </div>
               <p className="text-xs text-gray-400">
                 別 PC からエクスポートされた <code className="bg-gray-700 px-1 rounded">.sspkg</code> ファイルを取り込みます。既存データはレコード単位でマージされます。
@@ -2227,7 +2227,7 @@ export function SettingsPage() {
             {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-purple-400" />
-                <h2 className="text-base font-semibold">バックアップ</h2>
+                <h2 className="text-base font-semibold">{t('settings.ui.backup')}</h2>
               </div>
               <p className="text-xs text-gray-400">
                 現行データベースをローカルにバックアップします。最大 10 世代を自動ローテーション保持します。
@@ -2240,7 +2240,7 @@ export function SettingsPage() {
                   className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded text-sm font-medium transition-colors text-white"
                 >
                   <FileArchive size={14} />
-                  {backupRunning ? 'バックアップ中...' : '今すぐバックアップ'}
+                  {backupRunning ? t('settings.ui.backup_running') : t('settings.ui.backup_now')}
                 </button>
                 {backupResult && (
                   <p className="text-xs text-gray-300 truncate max-w-xs">{backupResult}</p>
@@ -2250,7 +2250,7 @@ export function SettingsPage() {
               {/* バックアップ一覧 */}
               {(backupsData as any)?.data?.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-500">保存済みバックアップ</p>
+                  <p className="text-xs text-gray-500">{t('settings.ui.saved_backups')}</p>
                   <div className="rounded border border-gray-700 divide-y divide-gray-700 max-h-48 overflow-y-auto">
                     {((backupsData as any).data as Array<{ filename: string; size_bytes: number; created_at: string }>).map((b) => (
                       <div key={b.filename} className="flex items-center justify-between px-3 py-2 text-xs text-gray-300">
@@ -2269,14 +2269,14 @@ export function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Share2 size={16} className="text-cyan-400" />
-                    <h2 className="text-base font-semibold">同期フォルダ内パッケージ</h2>
+                    <h2 className="text-base font-semibold">{t('settings.ui.cloud_packages')}</h2>
                   </div>
                   <button onClick={() => refetchCloudPackages()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>更新</button>
                 </div>
                 <p className="text-xs text-gray-400 font-mono truncate">{(cloudPackagesData as any)?.folder}</p>
 
                 {cloudPackages.length === 0 ? (
-                  <p className="text-sm text-gray-500">パッケージファイルがありません</p>
+                  <p className="text-sm text-gray-500">{t('settings.ui.no_packages')}</p>
                 ) : (
                   <div className="rounded border border-gray-700 divide-y divide-gray-700 max-h-60 overflow-y-auto">
                     {cloudPackages.map((pkg: any) => (
@@ -2297,7 +2297,7 @@ export function SettingsPage() {
                           className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-white whitespace-nowrap shrink-0"
                         >
                           <Upload size={11} />
-                          取込
+                          {t('settings.ui.fetch_in')}
                         </button>
                       </div>
                     ))}
@@ -2312,7 +2312,7 @@ export function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <AlertCircle size={16} className="text-orange-400" />
-                    <h2 className="text-base font-semibold">競合レビュー</h2>
+                    <h2 className="text-base font-semibold">{t('settings.ui.conflict_review')}</h2>
                     <span className="text-xs bg-orange-500 text-white px-1.5 py-0.5 rounded-full">{conflicts.length}</span>
                   </div>
                   <button onClick={() => refetchConflicts()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>更新</button>
@@ -2338,13 +2338,13 @@ export function SettingsPage() {
                           onClick={() => resolveConflict(c.id, 'keep_local')}
                           className="flex-1 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
                         >
-                          ローカルを維持
+                          {t('settings.ui.keep_local')}
                         </button>
                         <button
                           onClick={() => resolveConflict(c.id, 'use_incoming')}
                           className="flex-1 py-1.5 text-xs bg-orange-700 hover:bg-orange-600 text-white rounded transition-colors"
                         >
-                          取込データで上書き
+                          {t('settings.ui.overwrite_with_import')}
                         </button>
                       </div>
                     </div>
@@ -2355,7 +2355,7 @@ export function SettingsPage() {
 
             {/* ── JSON パッケージ インポート ──────────────────────── */}
             <section>
-              <h2 className="text-base font-semibold">JSON パッケージ インポート</h2>
+              <h2 className="text-base font-semibold">{t('settings.ui.json_package_import')}</h2>
               <p className={`text-xs ${textMuted} mt-1 mb-3`}>
                 試合一覧ページからエクスポートした JSON ファイルをインポートします。
               </p>
@@ -2381,7 +2381,7 @@ export function SettingsPage() {
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed`}
                   >
                     <Upload size={12} />
-                    {pkgImportRunning ? 'インポート中...' : 'インポート'}
+                    {pkgImportRunning ? t('settings.ui.importing') : t('settings.ui.import')}
                   </button>
                   {pkgImportResult && !pkgImportResult.success && pkgImportResult.message.includes('競合') && (
                     <button
@@ -2389,7 +2389,7 @@ export function SettingsPage() {
                       disabled={pkgImportRunning}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-orange-600 hover:bg-orange-500 disabled:opacity-40"
                     >
-                      上書きで再インポート
+                      {t('settings.ui.reimport_overwrite')}
                     </button>
                   )}
                 </div>
@@ -2405,22 +2405,22 @@ export function SettingsPage() {
             {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
                 <HardDrive size={16} className="text-purple-400" />
-                <h2 className="text-base font-semibold">DB メンテナンス</h2>
+                <h2 className="text-base font-semibold">{t('settings.ui.db_maintenance')}</h2>
               </div>
 
               {/* DB 状態 */}
               {dbStats?.supported && (
                 <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
                   <div className="flex justify-between">
-                    <span className={textSecondary}>DB サイズ</span>
+                    <span className={textSecondary}>{t('settings.ui.db_size')}</span>
                     <span className="font-mono">{dbStats.file_size_mb} MB</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className={textSecondary}>WAL サイズ</span>
+                    <span className={textSecondary}>{t('settings.ui.wal_size')}</span>
                     <span className="font-mono">{dbStats.wal_size_mb} MB</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className={textSecondary}>空きページ</span>
+                    <span className={textSecondary}>{t('settings.ui.free_pages')}</span>
                     <span className={`font-mono ${dbStats.freelist_ratio > 0.1 ? 'text-orange-400' : ''}`}>
                       {dbStats.freelist_count} ({(dbStats.freelist_ratio * 100).toFixed(1)}%)
                     </span>
@@ -2512,12 +2512,12 @@ export function SettingsPage() {
 
             {/* テーマ */}
             <section>
-              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>テーマ</h2>
-              <p className={`text-xs ${textMuted} mb-3`}>ライト / ダークモードを切り替えます</p>
+              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>{t('settings.ui.theme')}</h2>
+              <p className={`text-xs ${textMuted} mb-3`}>{t('settings.ui.theme_hint')}</p>
               <div className="flex gap-3">
                 {([
-                  { mode: 'dark' as const, label: 'ダーク', Icon: Moon },
-                  { mode: 'light' as const, label: 'ライト', Icon: Sun },
+                  { mode: 'dark' as const, label: t('settings.ui.dark'), Icon: Moon },
+                  { mode: 'light' as const, label: t('settings.ui.light'), Icon: Sun },
                 ]).map(({ mode, label, Icon }) => (
                   <button
                     key={mode}
@@ -2569,7 +2569,7 @@ export function SettingsPage() {
             {/* アプリ再起動 (admin only) */}
             {role === 'admin' && (
               <section>
-                <h2 className={`text-lg font-medium ${textHeading} mb-1`}>アプリ再起動</h2>
+                <h2 className={`text-lg font-medium ${textHeading} mb-1`}>{t('settings.ui.restart_app')}</h2>
                 <p className={`text-xs ${textMuted} mb-3`}>
                   設定変更や不具合が発生した際にアプリを再起動します。未保存のアノテーションデータは失われます。
                 </p>
@@ -2588,7 +2588,7 @@ export function SettingsPage() {
                     }`}
                 >
                   <RotateCcw size={15} />
-                  アプリを再起動
+                  {t('settings.ui.restart_app_btn')}
                 </button>
               </section>
             )}
@@ -2669,8 +2669,8 @@ export function SettingsPage() {
                     onChange={(e) => setPlayerForm({ ...playerForm, dominant_hand: e.target.value as 'R' | 'L' })}
                     className={`w-full ${inputClass}`}
                   >
-                    <option value="R">右利き</option>
-                    <option value="L">左利き</option>
+                    <option value="R">{t('settings.ui.right_handed')}</option>
+                    <option value="L">{t('settings.ui.left_handed')}</option>
                   </select>
                 </div>
                 <div>
@@ -2747,6 +2747,7 @@ function BackendConsole({
   textHeading: string
   textMuted: string
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [lines, setLines] = useState<string[]>([])
   const endRef = useRef<HTMLTextAreaElement | null>(null)
@@ -2781,7 +2782,7 @@ function BackendConsole({
   return (
     <section>
       <div className="flex items-center justify-between mb-2">
-        <h2 className={`text-lg font-medium ${textHeading}`}>バックエンドコンソール</h2>
+        <h2 className={`text-lg font-medium ${textHeading}`}>{t('settings.ui.backend_console')}</h2>
         <button
           onClick={() => setOpen(v => !v)}
           className={`text-xs px-2 py-1 rounded border transition-colors ${
@@ -2790,7 +2791,7 @@ function BackendConsole({
               : 'border-gray-600 text-gray-400 hover:bg-gray-700'
           }`}
         >
-          {open ? '非表示' : '表示'}
+          {open ? t('settings.ui.hide') : t('settings.ui.show')}
         </button>
       </div>
       <p className={`text-xs ${textMuted} mb-2`}>
@@ -2814,7 +2815,7 @@ function BackendConsole({
             onClick={() => setLines([])}
             className={`text-[10px] ${textMuted} hover:underline`}
           >
-            クリア
+            {t('settings.ui.clear')}
           </button>
           <span className={`text-[10px] ${textMuted}`}>{lines.length} 行 — Ctrl+A → Ctrl+C でコピー可</span>
         </div>
