@@ -14,9 +14,6 @@ on:
   push:
     branches: [ "main" ]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 # Declare default permissions as read only.
 permissions: read-all
 

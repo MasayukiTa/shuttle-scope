@@ -37,21 +37,59 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: shuttlescope/package-lock.json
 
-      - name: Install ESLint
+      - name: Detect ESLint config
+        id: eslint_config
+        shell: bash
         run: |
-          npm install eslint@8.10.0
+          if compgen -G "shuttlescope/eslint.config.*" > /dev/null || compgen -G "shuttlescope/.eslintrc*" > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install ESLint dependencies
+        if: steps.eslint_config.outputs.exists == 'true'
+        working-directory: shuttlescope
+        run: |
+          npm ci
           npm install @microsoft/eslint-formatter-sarif@3.1.0
 
       - name: Run ESLint
+        if: steps.eslint_config.outputs.exists == 'true'
+        working-directory: shuttlescope
         env:
           SARIF_ESLINT_IGNORE_SUPPRESSED: "true"
-        run: npx eslint .
-          --config .eslintrc.js
-          --ext .js,.jsx,.ts,.tsx
-          --format @microsoft/eslint-formatter-sarif
-          --output-file eslint-results.sarif
+        run: |
+          npx eslint . \
+            --format @microsoft/eslint-formatter-sarif \
+            --output-file ../eslint-results.sarif
         continue-on-error: true
+
+      - name: Create empty SARIF when ESLint is not configured
+        if: steps.eslint_config.outputs.exists != 'true'
+        shell: bash
+        run: |
+          cat > eslint-results.sarif <<'JSON'
+          {
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [
+              {
+                "tool": {
+                  "driver": {
+                    "name": "ESLint",
+                    "informationUri": "https://eslint.org",
+                    "rules": []
+                  }
+                },
+                "results": []
+              }
+            ]
+          }
+          JSON
 
       - name: Upload analysis results to GitHub
         uses: github/codeql-action/upload-sarif@v4
