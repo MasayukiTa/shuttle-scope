@@ -8,10 +8,11 @@ import logging
 import re
 import urllib.request
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,9 @@ router = APIRouter(tags=["public-site"])
 
 PUBLIC_HOSTS = {"shuttle-scope.com", "www.shuttle-scope.com"}
 _recent_contact_requests: dict[str, list[datetime]] = {}
+
+# サイトアイコン / OG 画像を backend/public/ から配信（shuttle-scope.com からも Electron SPA からも利用）
+_PUBLIC_ASSETS_DIR = Path(__file__).resolve().parent.parent / "public"
 
 
 class PublicInquiryCreate(BaseModel):
@@ -65,6 +69,14 @@ def _base_layout_str(title: str, body: str, *, canonical_path: str = "/", noinde
   <title>{html.escape(title)}</title>
   <meta name="description" content="ShuttleScope is a badminton analysis and review platform for structured match, player, and coaching workflows.">
   <link rel="canonical" href="{canonical}">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{canonical}">
+  <meta property="og:title" content="{html.escape(title)}">
+  <meta property="og:image" content="https://shuttle-scope.com/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
   {robots}
   <style>
     :root {{
@@ -299,6 +311,17 @@ _V7_HOME_HTML = r"""<!DOCTYPE html>
 <title>ShuttleScope — バドミントン試合分析プラットフォーム</title>
 <meta name="description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。コーチ・アナリスト・選手それぞれの役割に応じた分析レイヤーを提供します。">
 <link rel="canonical" href="https://shuttle-scope.com/">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://shuttle-scope.com/">
+<meta property="og:title" content="ShuttleScope — バドミントン試合分析プラットフォーム">
+<meta property="og:description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。">
+<meta property="og:image" content="https://shuttle-scope.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ShuttleScope">
+<meta name="twitter:description" content="ストローク単位の記録から試合構造を統計的に可視化するバドミントン分析ワークベンチ。">
+<meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=MigMix+1P:wght@400;700&family=Barlow+Condensed:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -984,6 +1007,14 @@ def _base_layout_str_en(title: str, body: str, *, canonical_path: str = "/en", n
   <title>{html.escape(title)}</title>
   <meta name="description" content="ShuttleScope is a badminton analysis and review platform for structured match, player, and coaching workflows.">
   <link rel="canonical" href="{canonical}">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{canonical}">
+  <meta property="og:title" content="{html.escape(title)}">
+  <meta property="og:image" content="https://shuttle-scope.com/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
   {robots}
   <style>
     :root {{
@@ -1245,6 +1276,40 @@ def _render_contact_str_en(request: Request) -> str:
     </script>
     """
     return _base_layout_str_en("ShuttleScope | Contact", body, canonical_path="/en/contact")
+
+
+def _serve_public_asset(filename: str, media_type: str):
+    """backend/public/ 配下の静的ファイルを安全に配信する共通ハンドラ。"""
+    path = _PUBLIC_ASSETS_DIR / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(str(path), media_type=media_type)
+
+
+@router.get("/favicon.png")
+async def favicon_png():
+    return _serve_public_asset("favicon.png", "image/png")
+
+
+@router.get("/favicon.ico")
+async def favicon_ico():
+    # 古い User-Agent 向けに .ico も同じ PNG で返す
+    return _serve_public_asset("favicon.png", "image/png")
+
+
+@router.get("/apple-touch-icon.png")
+async def apple_touch_icon_png():
+    return _serve_public_asset("apple-touch-icon.png", "image/png")
+
+
+@router.get("/apple-touch-icon-precomposed.png")
+async def apple_touch_icon_precomposed():
+    return _serve_public_asset("apple-touch-icon.png", "image/png")
+
+
+@router.get("/og-image.png")
+async def og_image_png():
+    return _serve_public_asset("og-image.png", "image/png")
 
 
 @router.get("/public-preview")
