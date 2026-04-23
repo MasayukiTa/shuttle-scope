@@ -1,6 +1,7 @@
 // ダブルス解析コンポーネント（F-002 / F-003 / F-004）
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import {
   BarChart,
   Bar,
@@ -47,6 +48,7 @@ interface PartnerItem {
 }
 
 function PartnerComparison({ playerId }: { playerId: number }) {
+  const { t } = useTranslation()
   const isLight = useIsLightMode()
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-partner-comparison', playerId],
@@ -58,13 +60,13 @@ function PartnerComparison({ playerId }: { playerId: number }) {
     enabled: !!playerId,
   })
 
-  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">読み込み中...</p>
+  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
 
   const partners = resp?.data?.partners ?? []
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (partners.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ダブルス試合" />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit={t('doubles_analysis.unit_doubles_match')} />
   }
 
   return (
@@ -82,20 +84,20 @@ function PartnerComparison({ playerId }: { playerId: number }) {
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{p.partner_name}</span>
-              <span className="text-xs text-gray-400">{p.match_count}試合</span>
+              <span className="text-xs text-gray-400">{t('doubles_analysis.match_count', { n: p.match_count })}</span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
                 <p className="text-lg font-bold" style={{ color: isLight ? '#1d4ed8' : '#93c5fd' }}>{(p.win_rate * 100).toFixed(0)}%</p>
-                <p className="text-[10px] text-gray-500">勝率</p>
+                <p className="text-[10px] text-gray-500">{t('doubles_analysis.win_rate')}</p>
               </div>
               <div>
                 <p className="text-lg font-bold" style={{ color: isLight ? '#b45309' : '#fcd34d' }}>{(p.synergy_score * 100).toFixed(0)}</p>
-                <p className="text-[10px] text-gray-500">相乗効果</p>
+                <p className="text-[10px] text-gray-500">{t('doubles_analysis.synergy')}</p>
               </div>
               <div>
                 <p className="text-lg font-bold" style={{ color: isLight ? '#0e7490' : '#67e8f9' }}>{p.avg_rally_length.toFixed(1)}</p>
-                <p className="text-[10px] text-gray-500">平均打数</p>
+                <p className="text-[10px] text-gray-500">{t('doubles_analysis.avg_rally')}</p>
               </div>
             </div>
           </div>
@@ -115,6 +117,7 @@ interface ServeReceiveData {
 }
 
 function ServeReceiveStats({ playerId }: { playerId: number }) {
+  const { t } = useTranslation()
   const isLight = useIsLightMode()
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-doubles-serve-receive', playerId],
@@ -126,18 +129,18 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
     enabled: !!playerId,
   })
 
-  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">読み込み中...</p>
+  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
 
   const d = resp?.data
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (!d || sampleSize === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ダブルス試合" />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit={t('doubles_analysis.unit_doubles_match')} />
   }
 
   const srData = [
-    { name: 'サーブ側', rate: +(d.serve_win_rate * 100).toFixed(1), fill: WIN },
-    { name: 'レシーブ側', rate: +(d.receive_win_rate * 100).toFixed(1), fill: BAR },
+    { name: t('doubles_analysis.serve_side'), rate: +(d.serve_win_rate * 100).toFixed(1), fill: WIN },
+    { name: t('doubles_analysis.receive_side'), rate: +(d.receive_win_rate * 100).toFixed(1), fill: BAR },
   ]
 
   const serveStyleEntries = Object.entries(d.serve_style)
@@ -154,7 +157,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
           <YAxis type="category" dataKey="name" width={72} tick={{ fill: isLight ? AXIS_TICK_LIGHT : '#d1d5db', fontSize: 11 }} />
           <Tooltip
             contentStyle={getTooltipStyle(isLight)}
-            formatter={(v: number) => [`${v.toFixed(1)}%`, '勝率']}
+            formatter={(v: number) => [`${v.toFixed(1)}%`, t('doubles_analysis.win_rate')]}
           />
           <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
             {srData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
@@ -165,7 +168,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
       {/* サーブ種別比率 */}
       {serveStyleEntries.length > 0 && (
         <div>
-          <p className="text-xs text-gray-500 mb-1.5">サーブ種別比率</p>
+          <p className="text-xs text-gray-500 mb-1.5">{t('doubles_analysis.serve_style_title')}</p>
           <div className="flex gap-3">
             {serveStyleEntries.map(([st, rate]) => (
               <div
@@ -178,7 +181,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
               >
                 <p className="text-sm font-bold" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{(rate * 100).toFixed(0)}%</p>
                 <p className="text-[10px] text-gray-400">
-                  {st === 'short_service' ? 'ショート' : 'ロング'}サーブ
+                  {st === 'short_service' ? t('doubles_analysis.serve_short') : t('doubles_analysis.serve_long')}{t('doubles_analysis.serve_suffix')}
                 </p>
               </div>
             ))}
@@ -189,7 +192,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
       {/* レシーブゾーン勝率 */}
       {d.receive_zones.length > 0 && (
         <div>
-          <p className="text-xs text-gray-500 mb-1.5">レシーブゾーン別勝率</p>
+          <p className="text-xs text-gray-500 mb-1.5">{t('doubles_analysis.receive_zone_title')}</p>
           <div className="grid grid-cols-3 gap-1">
             {d.receive_zones.slice(0, 9).map((z) => (
               <div
@@ -199,7 +202,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
               >
                 <p className="font-medium" style={{ color: isLight ? '#1e293b' : '#ffffff' }}>{z.zone}</p>
                 <p style={{ color: isLight ? '#334155' : '#d1d5db' }}>{(z.win_rate * 100).toFixed(0)}%</p>
-                <p className="text-[10px]" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>{z.count}回</p>
+                <p className="text-[10px]" style={{ color: isLight ? '#64748b' : '#9ca3af' }}>{z.count}{t('doubles_analysis.count_suffix')}</p>
               </div>
             ))}
           </div>
@@ -220,6 +223,7 @@ interface StrokeSharingData {
 }
 
 function StrokeSharing({ playerId }: { playerId: number }) {
+  const { t } = useTranslation()
   const isLight = useIsLightMode()
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-stroke-sharing', playerId],
@@ -231,18 +235,18 @@ function StrokeSharing({ playerId }: { playerId: number }) {
     enabled: !!playerId,
   })
 
-  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">読み込み中...</p>
+  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
 
   const d = resp?.data
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (!d || sampleSize === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ダブルス試合" />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit={t('doubles_analysis.unit_doubles_match')} />
   }
 
   const shareData = [
-    { name: 'バランス良', rate: +(d.balanced_win_rate * 100).toFixed(1), count: d.balanced_count, fill: WIN },
-    { name: '偏り大', rate: +(d.imbalanced_win_rate * 100).toFixed(1), count: d.imbalanced_count, fill: LOSS },
+    { name: t('doubles_analysis.balanced'), rate: +(d.balanced_win_rate * 100).toFixed(1), count: d.balanced_count, fill: WIN },
+    { name: t('doubles_analysis.imbalanced'), rate: +(d.imbalanced_win_rate * 100).toFixed(1), count: d.imbalanced_count, fill: LOSS },
   ]
 
   const balancePct = Math.round(d.avg_balance_ratio * 100)
@@ -259,7 +263,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
           border: `1px solid ${isLight ? '#e2e8f0' : '#374151'}`,
         }}
       >
-        <p className="text-xs text-gray-400 mb-2">平均打球分担バランス</p>
+        <p className="text-xs text-gray-400 mb-2">{t('doubles_analysis.avg_balance_title')}</p>
         <div className="relative h-4 bg-gray-700 rounded-full overflow-hidden">
           <div
             className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-orange-500 via-green-400 to-orange-500"
@@ -270,7 +274,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
           </div>
         </div>
         <div className="flex justify-between text-[10px] text-gray-600 mt-0.5">
-          <span>偏り大</span><span>バランス均衡</span>
+          <span>{t('doubles_analysis.imbalanced')}</span><span>{t('doubles_analysis.balance_equilibrium')}</span>
         </div>
       </div>
 
@@ -282,7 +286,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
           <Tooltip
             contentStyle={getTooltipStyle(isLight)}
             formatter={(v: number, _: string, entry: any) =>
-              [`${v.toFixed(1)}% (${entry.payload.count}ラリー)`, '勝率']
+              [`${v.toFixed(1)}% (${entry.payload.count}${t('doubles_analysis.rally_suffix')})`, t('doubles_analysis.win_rate')]
             }
           />
           <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
@@ -303,6 +307,7 @@ interface CoverageData {
 }
 
 function CourtCoverage({ matchId }: { matchId: number }) {
+  const { t } = useTranslation()
   const isLight = useIsLightMode()
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-court-coverage-split', matchId],
@@ -314,22 +319,22 @@ function CourtCoverage({ matchId }: { matchId: number }) {
     enabled: !!matchId,
   })
 
-  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">読み込み中...</p>
+  if (isLoading) return <p className="text-gray-500 text-xs py-3 text-center">{t('doubles_analysis.loading')}</p>
 
   const d = resp?.data
-  if (!d) return <p className="text-gray-500 text-sm py-3 text-center">データがありません</p>
+  if (!d) return <p className="text-gray-500 text-sm py-3 text-center">{t('doubles_analysis.no_data')}</p>
 
   const players = [
-    { label: '自分', data: d.player_a },
-    { label: 'パートナー', data: d.partner_a },
+    { label: t('doubles_analysis.self'), data: d.player_a },
+    { label: t('doubles_analysis.partner'), data: d.partner_a },
   ].filter((p) => p.data)
 
-  if (players.length === 0) return <p className="text-gray-500 text-sm py-3">コートデータがありません</p>
+  if (players.length === 0) return <p className="text-gray-500 text-sm py-3">{t('doubles_analysis.no_court_data')}</p>
 
   const radarData = [
-    { area: '前衛率', ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.front_rate * 100).toFixed(1)])) },
-    { area: '中間率', ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.mid_rate * 100).toFixed(1)])) },
-    { area: '後衛率', ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.back_rate * 100).toFixed(1)])) },
+    { area: t('doubles_analysis.area_front'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.front_rate * 100).toFixed(1)])) },
+    { area: t('doubles_analysis.area_mid'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.mid_rate * 100).toFixed(1)])) },
+    { area: t('doubles_analysis.area_back'), ...Object.fromEntries(players.map((p) => [p.label, +(p.data!.back_rate * 100).toFixed(1)])) },
   ]
 
   const COLORS = [WIN, BAR]
@@ -337,7 +342,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">バランススコア:</span>
+        <span className="text-xs text-gray-400">{t('doubles_analysis.balance_score')}:</span>
         <span
           className="text-sm font-bold"
           style={{
@@ -374,7 +379,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
           <div key={p.label} className="flex items-center gap-1.5 text-xs">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i] }} />
             <span className="text-gray-400">{p.label}</span>
-            <span style={{ color: isLight ? '#475569' : '#d1d5db' }}>{p.data!.total_strokes}打</span>
+            <span style={{ color: isLight ? '#475569' : '#d1d5db' }}>{p.data!.total_strokes}{t('doubles_analysis.strokes_suffix')}</span>
           </div>
         ))}
       </div>
@@ -385,6 +390,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
 // ─── メインコンポーネント ────────────────────────────────────────────────────
 
 export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) {
+  const { t } = useTranslation()
   const doublesMatches = allMatches.filter((m) => m.format && m.format !== 'singles')
   const [selectedDoubleMatchId, setSelectedDoubleMatchId] = useState<number | null>(
     doublesMatches[0]?.match_id ?? null
@@ -395,11 +401,11 @@ export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) 
       {/* パートナー比較 + サーブ受け */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <div className="bg-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-200 mb-3">パートナー別パフォーマンス</h3>
+          <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('doubles_analysis.section_partner')}</h3>
           <PartnerComparison playerId={playerId} />
         </div>
         <div className="bg-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-200 mb-3">サーブ / レシーブ勝率</h3>
+          <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('doubles_analysis.section_serve_receive')}</h3>
           <ServeReceiveStats playerId={playerId} />
         </div>
       </div>
@@ -407,25 +413,25 @@ export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) 
       {/* 打球分担 + コートカバレッジ */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <div className="bg-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-200 mb-3">打球分担バランス</h3>
+          <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('doubles_analysis.section_sharing')}</h3>
           <StrokeSharing playerId={playerId} />
         </div>
 
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-200">コートカバレッジ分担</h3>
+            <h3 className="text-sm font-semibold text-gray-200">{t('doubles_analysis.section_coverage')}</h3>
             {doublesMatches.length > 0 && (
               <SearchableSelect
                 options={doublesMatches.map((m) => ({
                   value: m.match_id,
                   label: `${m.date} vs ${m.opponent}`,
-                  suffix: m.result === 'win' ? '勝' : m.result === 'loss' ? '敗' : m.result,
+                  suffix: m.result === 'win' ? t('doubles_analysis.result_win_short') : m.result === 'loss' ? t('doubles_analysis.result_loss_short') : m.result,
                   searchText: `${m.date} ${m.opponent}`,
                 }))}
                 value={selectedDoubleMatchId}
                 onChange={(v) => setSelectedDoubleMatchId(v != null ? Number(v) : null)}
-                emptyLabel="-- 試合を選択 --"
-                placeholder="日付・対戦相手で検索..."
+                emptyLabel={t('doubles_analysis.select_match_empty')}
+                placeholder={t('doubles_analysis.select_match_placeholder')}
                 className="max-w-[240px]"
               />
             )}
@@ -434,7 +440,7 @@ export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) 
             <CourtCoverage matchId={selectedDoubleMatchId} />
           ) : (
             <p className="text-gray-500 text-sm text-center py-4">
-              ダブルス試合を選択するとカバレッジが表示されます
+              {t('doubles_analysis.no_match_selected')}
             </p>
           )}
         </div>

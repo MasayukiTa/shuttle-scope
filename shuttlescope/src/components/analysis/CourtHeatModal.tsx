@@ -70,11 +70,7 @@ interface ZoneDetailResponse {
   meta: { sample_size: number }
 }
 
-const ZONE_LABELS: Record<string, string> = {
-  BL: 'バック左', BC: 'バック中', BR: 'バック右',
-  ML: 'ミドル左', MC: 'ミドル中', MR: 'ミドル右',
-  NL: 'ネット左', NC: 'ネット中', NR: 'ネット右',
-}
+const ZONE_KEYS = ['BL', 'BC', 'BR', 'ML', 'MC', 'MR', 'NL', 'NC', 'NR'] as const
 
 export function CourtHeatModal({
   playerId,
@@ -189,19 +185,19 @@ export function CourtHeatModal({
     <div className="fixed inset-0 z-50 bg-black/85 flex flex-col">
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-gray-900 shrink-0">
-        <span className="text-white font-semibold text-base">コートヒートマップ</span>
+        <span className="text-white font-semibold text-base">{t('court_heat_modal.title')}</span>
         <div className="flex items-center gap-3">
           <button
             onClick={onClose}
             className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 transition-colors px-3 py-1.5 rounded"
           >
             <LayoutDashboard size={13} />
-            ダッシュボードへ戻る
+            {t('court_heat_modal.back_to_dashboard')}
           </button>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
-            title="閉じる (Esc)"
+            title={t('court_heat_modal.close_esc')}
           >
             <X size={18} />
           </button>
@@ -217,9 +213,9 @@ export function CourtHeatModal({
             {/* 打点 / 着地点 / 合成切替 */}
             <div className="flex gap-1.5 flex-wrap">
               {([
-                { key: 'hit', label: '打点' },
-                { key: 'land', label: '着地点' },
-                { key: 'composite', label: '合成' },
+                { key: 'hit', labelKey: 'court_heat_modal.tab_hit' },
+                { key: 'land', labelKey: 'court_heat_modal.tab_land' },
+                { key: 'composite', labelKey: 'court_heat_modal.tab_composite' },
               ] as const).map((tab) => (
                 <button
                   key={tab.key}
@@ -230,7 +226,7 @@ export function CourtHeatModal({
                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                   }`}
                 >
-                  {tab.label}
+                  {t(tab.labelKey)}
                 </button>
               ))}
             </div>
@@ -240,7 +236,7 @@ export function CourtHeatModal({
               <div className="flex items-start gap-2 p-3 bg-amber-950/60 border border-amber-700/50 rounded-lg text-xs max-w-xs">
                 <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />
                 <div className="text-amber-300/80">
-                  着地点はネット中心で点対称変換し、自コート座標に重ね合わせています。タイルをクリックして打点・着地点の詳細を確認できます。
+                  {t('court_heat_modal.composite_note')}
                 </div>
               </div>
             )}
@@ -255,7 +251,7 @@ export function CourtHeatModal({
                     disabled={matchId != null}
                     className={filterBarClass(matchId == null && lastN === n)}
                   >
-                    {n == null ? '全期間' : `直近${n}試合`}
+                    {n == null ? t('court_heat_modal.period_all') : t('court_heat_modal.period_last_n', { n })}
                   </button>
                 ))}
               </div>
@@ -265,8 +261,8 @@ export function CourtHeatModal({
                     .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
                     .map((m) => ({
                       value: m.match_id,
-                      label: `${m.date ?? '日付不明'} ${m.opponent}`,
-                      suffix: m.result === 'win' ? '勝' : '敗',
+                      label: `${m.date ?? t('court_heat_modal.match_date_unknown')} ${m.opponent}`,
+                      suffix: m.result === 'win' ? t('court_heat_modal.result_win_short') : t('court_heat_modal.result_loss_short'),
                       searchText: `${m.date} ${m.opponent}`,
                     }))}
                   value={matchId}
@@ -275,8 +271,8 @@ export function CourtHeatModal({
                     if (v != null) setLastN(null)
                     setSelectedZone(null)
                   }}
-                  emptyLabel="試合を選択（個別）"
-                  placeholder="日付・対戦相手で検索..."
+                  emptyLabel={t('court_heat_modal.match_select_empty')}
+                  placeholder={t('court_heat_modal.match_select_placeholder')}
                 />
               )}
             </div>
@@ -285,17 +281,17 @@ export function CourtHeatModal({
             <div className="flex items-center gap-2">
               {sampleSize > 0 && <ConfidenceBadge sampleSize={sampleSize} />}
               <span className="text-[11px] text-gray-500">
-                {sampleSize} ストローク
+                {t('court_heat_modal.stroke_count', { n: sampleSize })}
               </span>
             </div>
 
             {/* コート図（インタラクティブ） */}
             {loadingCurrent ? (
-              <div className="text-gray-500 text-sm py-8">読み込み中...</div>
+              <div className="text-gray-500 text-sm py-8">{t('court_heat_modal.loading')}</div>
             ) : sampleSize === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-gray-500 text-sm">対象期間にストロークデータがありません</p>
-                <p className="text-gray-600 text-xs mt-1">試合のアノテーションが完了するとヒートマップが表示されます</p>
+                <p className="text-gray-500 text-sm">{t('court_heat_modal.no_data')}</p>
+                <p className="text-gray-600 text-xs mt-1">{t('court_heat_modal.no_data_hint')}</p>
               </div>
             ) : (
               <CourtDiagram
@@ -318,17 +314,17 @@ export function CourtHeatModal({
               <div className="flex items-center gap-4 text-xs text-gray-400">
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.85)' }} />
-                  打点
+                  {t('court_heat_modal.legend_hit')}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(249,115,22,0.70)' }} />
-                  着地点（変換済み）
+                  {t('court_heat_modal.legend_land_transformed')}
                 </div>
               </div>
             )}
 
             <p className="text-[10px] text-gray-600">
-              ゾーンをクリックすると詳細を表示
+              {t('court_heat_modal.click_zone_hint')}
             </p>
           </div>
 
@@ -336,25 +332,25 @@ export function CourtHeatModal({
           <div className="flex-1 min-w-0">
             {selectedZone == null ? (
               <div className="flex items-center justify-center h-full min-h-[200px]">
-                <p className="text-gray-600 text-sm text-center">
-                  左のコート図のゾーンをクリックすると<br />詳細な分析が表示されます
+                <p className="text-gray-600 text-sm text-center whitespace-pre-line">
+                  {t('court_heat_modal.click_zone_detail')}
                 </p>
               </div>
             ) : (loadingDetail || (mode === 'composite' && loadingDetailLand)) ? (
               <div className="flex items-center justify-center h-full min-h-[200px]">
-                <div className="text-gray-500 text-sm">読み込み中...</div>
+                <div className="text-gray-500 text-sm">{t('court_heat_modal.loading')}</div>
               </div>
             ) : mode === 'composite' ? (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {detail && (
                   <div>
-                    <p className="text-[11px] font-semibold text-blue-400 mb-2 px-1">打点</p>
+                    <p className="text-[11px] font-semibold text-blue-400 mb-2 px-1">{t('court_heat_modal.header_hit')}</p>
                     <ZoneDetailPanel detail={detail} mode="hit" t={t} isLight={isLight} />
                   </div>
                 )}
                 {detailLand && (
                   <div>
-                    <p className="text-[11px] font-semibold text-orange-400 mb-2 px-1">着地点（変換済み）</p>
+                    <p className="text-[11px] font-semibold text-orange-400 mb-2 px-1">{t('court_heat_modal.header_land_transformed')}</p>
                     <ZoneDetailPanel detail={detailLand} mode="land" t={t} isLight={isLight} />
                   </div>
                 )}
@@ -382,7 +378,9 @@ function ZoneDetailPanel({
   t: (key: string, fallback?: string) => string
   isLight: boolean
 }) {
-  const zoneName = ZONE_LABELS[detail.zone] ?? detail.zone
+  const zoneName = ZONE_KEYS.includes(detail.zone as typeof ZONE_KEYS[number])
+    ? t(`court_heat_modal.zones.${detail.zone}`)
+    : detail.zone
   const maxShotCount = detail.top_shot_types[0]?.count ?? 1
   const maxTransCount = detail.transitions[0]?.count ?? 1
 
@@ -402,24 +400,24 @@ function ZoneDetailPanel({
           <span className="text-lg font-bold text-gray-100">{zoneName}</span>
           <span className="text-sm text-gray-500 font-mono">({detail.zone})</span>
           <span className="text-xs text-gray-500 ml-auto">
-            {mode === 'hit' ? '打点' : '着地点'}
+            {mode === 'hit' ? t('court_heat_modal.zone_mode_hit') : t('court_heat_modal.zone_mode_land')}
           </span>
         </div>
 
         <div className="grid grid-cols-3 gap-3 text-center">
           <div>
             <p className="text-2xl font-bold text-gray-100">{detail.count}</p>
-            <p className="text-[11px] text-gray-500">ストローク数</p>
+            <p className="text-[11px] text-gray-500">{t('court_heat_modal.stat_strokes')}</p>
           </div>
           <div>
             <p className="text-2xl font-bold" style={{ color: winRateColor }}>
               {detail.win_rate != null ? `${(detail.win_rate * 100).toFixed(0)}%` : '—'}
             </p>
-            <p className="text-[11px] text-gray-500">得点率</p>
+            <p className="text-[11px] text-gray-500">{t('court_heat_modal.stat_win_rate')}</p>
           </div>
           <div>
             <p className="text-2xl font-bold text-gray-100">{detail.wins}</p>
-            <p className="text-[11px] text-gray-500">得点数</p>
+            <p className="text-[11px] text-gray-500">{t('court_heat_modal.stat_wins')}</p>
           </div>
         </div>
       </div>
@@ -428,7 +426,7 @@ function ZoneDetailPanel({
       {detail.top_shot_types.length > 0 && (
         <div className="bg-gray-800 rounded-lg p-4">
           <p className="text-xs font-semibold text-gray-300 mb-3">
-            {mode === 'hit' ? 'このゾーンから打ったショット' : 'このゾーンへの配球ショット'}
+            {mode === 'hit' ? t('court_heat_modal.section_shots_from') : t('court_heat_modal.section_shots_into')}
           </p>
           <div className="space-y-2">
             {detail.top_shot_types.map(({ shot_type, count }) => {
@@ -455,12 +453,14 @@ function ZoneDetailPanel({
       {mode === 'hit' && detail.transitions.length > 0 && (
         <div className="bg-gray-800 rounded-lg p-4">
           <p className="text-xs font-semibold text-gray-300 mb-3">
-            このゾーンから打った球の着地先
+            {t('court_heat_modal.section_transitions')}
           </p>
           <div className="space-y-2">
             {detail.transitions.map(({ zone, count }) => {
               const ratio = count / maxTransCount
-              const label = ZONE_LABELS[zone] ?? zone
+              const label = ZONE_KEYS.includes(zone as typeof ZONE_KEYS[number])
+                ? t(`court_heat_modal.zones.${zone}`)
+                : zone
               return (
                 <div key={zone} className="flex items-center gap-2">
                   <span className="text-[11px] text-gray-400 w-20">{label}</span>
@@ -481,7 +481,7 @@ function ZoneDetailPanel({
 
       {detail.count === 0 && (
         <p className="text-gray-600 text-sm text-center py-4">
-          このゾーンのデータがありません
+          {t('court_heat_modal.zone_empty')}
         </p>
       )}
     </div>
