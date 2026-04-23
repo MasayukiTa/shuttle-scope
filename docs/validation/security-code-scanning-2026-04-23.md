@@ -47,3 +47,36 @@
 
 ## メモ
 - `SS_PUBLIC_MODE=1` に依存する追加ゲーティングは今回行わない（ユーザー指示）。
+
+---
+
+## 追加対応: stack-trace-exposure 14 件の総ざらい (同日)
+
+コーディング作業環境にいる間に実リスクを潰す方針で、保留していた 14 件を全て対応。
+
+### 方針
+- 外部返却文字列/dict から `str(exc)` / `traceback` 情報を除去
+- 詳細は `logger.warning` / `logger.exception` でサーバ側ログに限定
+- ユーザー向けには汎用メッセージのみ返す
+
+### 修正箇所
+| 行 | ファイル | 対応 |
+|----|---------|------|
+| #7, #8 | `analysis_research.py:332/340` | `interval_report` を try/except で囲み、失敗時は汎用 `error` を返却。成功時も `data` を安全フィールドのみ再構築。|
+| #42 | `cluster.py:509` (list_ray_workers) | 各 worker の `ping` dict から `error` キーを pop |
+| #54 | `cluster.py:576` (wake_worker_node) | `topology.wake_worker` 戻り値から `error` キーを pop |
+| #55 | `cluster.py:623` (disable_worker_sleep) | `{exc}` を含む message を「SSH 接続またはコマンド実行に失敗しました」に置換、`logger.exception` へ |
+| #57 | `cluster.py:741` (remote_ray_restart) | 同上 |
+| #34 | `db_maintenance.py:40` (set_auto_vacuum) | 戻り dict から `error` / `exception` / `traceback` を pop |
+| #9, #10 | `sync.py:224/261` (preview / import) | `summary.errors` を `_sanitize_errors()` で件数メッセージのみに変換、詳細はログへ |
+| #12 | `sync.py:405` (cloud_import) | 同上 |
+| #13 | `sync.py:429` (validate_only) | 検証失敗時の `error` を「パッケージ検証に失敗しました」に置換 |
+| #20 | `tracknet.py:117` (tracknet_status) | `inf.get_load_error()` の生文字列を返さず「モデルの読み込みに失敗しました」を返却 |
+| #46 | `tunnel.py:372` (tunnel_status) | `recent_log` に `_stderr_lines` 生値を返さず件数メッセージのみ。`cf_named.reason` の `{exc}` も削除 |
+| #19 | `tunnel.py:448` (start ngrok) | `str(e)` を「ngrok が見つかりません」に置換、`logger.exception` へ |
+
+### 検証
+- `python -m pytest backend/tests` → 635 passed / 4 skipped
+- `python -c "import backend.main; ..."` → OK
+
+残: `paramiko-missing-host-key-validation` x4、`disabling-electron-websecurity` x2 は引き続き既知リスク許容。

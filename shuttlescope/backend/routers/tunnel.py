@@ -89,7 +89,9 @@ def _cloudflare_named_tunnel_info() -> dict:
     try:
         text = open(config_path, "r", encoding="utf-8").read()
     except Exception as exc:
-        info["reason"] = f"config unreadable: {exc}"
+        # Stack-trace-exposure 防止: 例外詳細はログのみ
+        logger.warning("cloudflare config unreadable (sanitized): %s", exc)
+        info["reason"] = "config unreadable"
         return info
 
     host_match = re.search(r'^\s*-\s*hostname:\s*([^\s#]+)', text, re.MULTILINE)
@@ -366,7 +368,9 @@ def tunnel_status():
     with _lock:
         running = _proc is not None and _proc.poll() is None
         url = _tunnel_url if running else None
-        recent_log = list(_stderr_lines[-10:])
+        # Stack-trace-exposure 防止: stderr 生ログは返さず件数と直近マスク済みシグナルのみ
+        _raw_recent = list(_stderr_lines[-10:])
+        recent_log = [f"{len(_raw_recent)} 件のログを受信済み"] if _raw_recent else []
         provider = _active_provider if running else None
 
     return {
@@ -444,8 +448,9 @@ def tunnel_start(provider: str = "auto", db: Session = Depends(get_db)):
                 pass
         try:
             proc = _start_ngrok(port, authtoken)
-        except FileNotFoundError as e:
-            return {"success": False, "error": str(e)}
+        except FileNotFoundError:
+            logger.exception("ngrok start failed (FileNotFoundError)")
+            return {"success": False, "error": "ngrok が見つかりません"}
         with _lock:
             _proc = proc
             _active_provider = 'ngrok'

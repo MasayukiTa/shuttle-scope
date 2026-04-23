@@ -505,6 +505,9 @@ def get_nodes() -> List[Dict[str, Any]]:
             ping["via"] = "http"
         else:
             ping = {"reachable": False, "via": "none"}
+        # Stack-trace-exposure 防止: ping dict からエラー詳細を除去
+        if isinstance(ping, dict):
+            ping.pop("error", None)
         results.append({**_mask_worker_secrets(w), "ping": ping})
     return results
 
@@ -573,7 +576,11 @@ def wake_worker_node(worker_ip: str, request: Request) -> Dict[str, Any]:
     """
     require_local_or_operator_token(request)
     actual_ip = worker_ip.replace("_", ".")
-    return topology.wake_worker(actual_ip)
+    wake_result = topology.wake_worker(actual_ip)
+    # Stack-trace-exposure 防止: 内部例外文字列を除去
+    if isinstance(wake_result, dict):
+        wake_result.pop("error", None)
+    return wake_result
 
 
 class SleepDisableRequest(BaseModel):
@@ -618,9 +625,9 @@ def disable_worker_sleep(worker_ip: str, body: SleepDisableRequest, request: Req
             "message": "スリープ設定を無効化しました（AC 電源接続中）",
             "applied": results,
         }
-    except Exception as exc:
-        logger.error("disable_worker_sleep %s failed: %s", actual_ip, exc)
-        return {"ok": False, "message": f"SSH 接続またはコマンド実行に失敗しました: {exc}"}
+    except Exception:
+        logger.exception("disable_worker_sleep %s failed", actual_ip)
+        return {"ok": False, "message": "SSH 接続またはコマンド実行に失敗しました"}
 
 
 @router.post("/cluster/nodes/{worker_ip}/ray-join")
@@ -736,6 +743,6 @@ def remote_ray_restart(worker_ip: str, request: Request) -> Dict[str, Any]:
             "stderr": err[-2000:].strip(),
             "cmd": cmd,
         }
-    except Exception as exc:
-        logger.error("remote_ray_restart %s failed: %s", actual_ip, exc, exc_info=True)
-        return {"ok": False, "message": f"SSH 接続またはコマンド実行に失敗しました: {exc}"}
+    except Exception:
+        logger.exception("remote_ray_restart %s failed", actual_ip)
+        return {"ok": False, "message": "SSH 接続またはコマンド実行に失敗しました"}
