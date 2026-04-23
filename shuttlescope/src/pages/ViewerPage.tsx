@@ -26,6 +26,7 @@ const RECONNECT_DELAY_MS = 5_000
 const VIEWER_NAME_KEY = 'ss_viewer_name'
 
 export function ViewerPage() {
+  const { t } = useTranslation()
   const { sessionCode: paramCode } = useParams<{ sessionCode: string }>()
   const { search } = useLocation()
   const pwdParam = new URLSearchParams(search).get('pwd') ?? ''

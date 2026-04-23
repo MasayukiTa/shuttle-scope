@@ -95,6 +95,7 @@ from backend.routers import data_package as data_package_router
 from backend.routers import cluster as cluster_router
 from backend.routers import auth as auth_router
 from backend.routers import public_site
+from backend.routers import uploads as uploads_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -263,12 +264,27 @@ async def lifespan(app: FastAPI):
         logger.debug("[INFRA] _auto_detect_ray skipped: %s", exc)
 
     cleanup_task = asyncio.create_task(_stale_device_cleanup())
+
+    # 分割アップロードのアイドル GC
+    try:
+        from backend.routers.uploads import gc_loop as _uploads_gc_loop
+        uploads_gc_task = asyncio.create_task(_uploads_gc_loop())
+    except Exception as exc:
+        logger.debug("uploads GC skipped: %s", exc)
+        uploads_gc_task = None
+
     yield
     cleanup_task.cancel()
     try:
         await cleanup_task
     except asyncio.CancelledError:
         pass
+    if uploads_gc_task is not None:
+        uploads_gc_task.cancel()
+        try:
+            await uploads_gc_task
+        except asyncio.CancelledError:
+            pass
 
 
 # PUBLIC_MODE=True ではドキュメントエンドポイントを無効化（API 構造の漏洩防止）
@@ -761,6 +777,8 @@ app.include_router(expert_router.router, prefix="/api")
 app.include_router(review_router.router, prefix="/api")
 # E: データ資産化 JSON パッケージ
 app.include_router(data_package_router.router, prefix="/api")
+# 分割動画アップロード（ブラウザ用。iOS Safari 含む）
+app.include_router(uploads_router.router, prefix="/api")
 
 # PUBLIC_MODE=0（デフォルト）の場合のみマウントする危険ルーター群
 if not app_settings.PUBLIC_MODE:

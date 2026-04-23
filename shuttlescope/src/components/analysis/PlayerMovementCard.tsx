@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -82,9 +83,9 @@ const PLAYER_COLORS: Record<string, { line: string; bg: string; text: string }> 
 }
 
 const DIR_COLORS = {
-  lateral:  { bar: 'bg-teal-500',   label: t('auto.PlayerMovementCard.k9') },
-  diagonal: { bar: 'bg-purple-500', label: t('auto.PlayerMovementCard.k10') },
-  depth:    { bar: 'bg-blue-500',   label: t('auto.PlayerMovementCard.k11') },
+  lateral:  { bar: 'bg-teal-500',   label: i18n.t('auto.PlayerMovementCard.k9') },
+  diagonal: { bar: 'bg-purple-500', label: i18n.t('auto.PlayerMovementCard.k10') },
+  depth:    { bar: 'bg-blue-500',   label: i18n.t('auto.PlayerMovementCard.k11') },
 }
 
 const CONF_COLORS = {

@@ -161,6 +161,23 @@ class VideoDownloader:
         self.ffmpeg_available: bool = _check_ffmpeg()
         # job_id → 最後に進捗を書き込んだ時刻
         self._progress_last_update: dict[str, float] = {}
+        # 起動時に孤児化した中途ファイルを削除する。
+        # job_id は UUID なので再起動後は同じパスが再利用されることはなく、
+        # yt-dlp の resume (.part からの継続DL) も効かないため残しても意味がない。
+        self._cleanup_orphan_partials()
+
+    def _cleanup_orphan_partials(self) -> None:
+        """download_dir 内の .part / .ytdl / .tmp を削除する。"""
+        removed = 0
+        for f in self.download_dir.glob("*"):
+            if f.is_file() and f.suffix in {".part", ".ytdl", ".tmp"}:
+                try:
+                    f.unlink()
+                    removed += 1
+                except OSError:
+                    pass
+        if removed:
+            print(f"[shuttlescope] cleaned up {removed} orphan partial download file(s)", file=sys.stderr)
 
     def create_job_id(self) -> str:
         return str(uuid.uuid4())

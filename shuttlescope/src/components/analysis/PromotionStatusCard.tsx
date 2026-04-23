@@ -5,6 +5,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { useAuth } from '@/hooks/useAuth'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 
 interface ChecklistItem {
   item: string
@@ -76,10 +77,10 @@ const TIER_LABELS: Record<string, string> = {
 }
 
 const OVERRIDE_STATUS_OPTIONS = [
-  { value: 'promotion_ready', label: t('auto.PromotionStatusCard.k6') },
-  { value: 'requires_review', label: t('auto.PromotionStatusCard.k7') },
-  { value: 'insufficient_data', label: t('auto.PromotionStatusCard.k8') },
-  { value: 'hold', label: t('auto.PromotionStatusCard.k10') },
+  { value: 'promotion_ready', label: i18n.t('auto.PromotionStatusCard.k6') },
+  { value: 'requires_review', label: i18n.t('auto.PromotionStatusCard.k7') },
+  { value: 'insufficient_data', label: i18n.t('auto.PromotionStatusCard.k8') },
+  { value: 'hold', label: i18n.t('auto.PromotionStatusCard.k10') },
 ]
 
 interface ThemeProps {
@@ -96,22 +97,22 @@ interface ThemeProps {
 function getStatusConfig(isLight: boolean) {
   return {
     promotion_ready: {
-      label: t('auto.PromotionStatusCard.k6'),
+      label: i18n.t('auto.PromotionStatusCard.k6'),
       color: isLight ? 'text-emerald-600' : 'text-emerald-400',
       dot: isLight ? 'bg-emerald-500' : 'bg-emerald-400',
     },
     requires_review: {
-      label: t('auto.PromotionStatusCard.k7'),
+      label: i18n.t('auto.PromotionStatusCard.k7'),
       color: isLight ? 'text-amber-600' : 'text-yellow-400',
       dot: isLight ? 'bg-amber-500' : 'bg-yellow-400',
     },
     insufficient_data: {
-      label: t('auto.PromotionStatusCard.k8'),
+      label: i18n.t('auto.PromotionStatusCard.k8'),
       color: isLight ? 'text-gray-500' : 'text-gray-500',
       dot: isLight ? 'bg-gray-400' : 'bg-gray-600',
     },
     hold: {
-      label: t('auto.PromotionStatusCard.k11'),
+      label: i18n.t('auto.PromotionStatusCard.k11'),
       color: isLight ? 'text-orange-600' : 'text-orange-400',
       dot: isLight ? 'bg-orange-500' : 'bg-orange-400',
     },
@@ -182,6 +183,7 @@ function OverrideForm({
   theme: ThemeProps
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const { isLight, textHeading, textMuted, textFaint, cardInner, border } = theme
   const { role } = useAuth()
   const qc = useQueryClient()

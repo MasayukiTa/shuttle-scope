@@ -10,6 +10,7 @@
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
+import i18n from '@/i18n'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
 import type { ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import type { Match } from '@/types'
@@ -307,7 +308,7 @@ export function useCVJobs({
     if (!matchId) return
     const hasVideo = !!(match?.video_local_path || match?.video_url)
     if (!hasVideo) {
-      alert(t('tracknet.batch_no_video'))
+      alert(i18n.t('tracknet.batch_no_video'))
       return
     }
     try {
@@ -402,7 +403,7 @@ export function useCVJobs({
     if (!matchId) return
     const hasVideo = !!(match?.video_local_path || match?.video_url)
     if (!hasVideo) {
-      alert(t('yolo.batch_no_video'))
+      alert(i18n.t('yolo.batch_no_video'))
       return
     }
     try {

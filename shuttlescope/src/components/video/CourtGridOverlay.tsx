@@ -104,6 +104,7 @@ function halfGridLines(
 type CalibSource = 'backend' | 'local' | 'none'
 
 export function CourtGridOverlay({ matchId, containerRef, visible, onCalibrationSaved, onCalibSourceChange }: CourtGridOverlayProps) {
+  const { t } = useTranslation()
   const [points, setPoints] = useState<Pt[]>([])          // 設定済み点（最大6個）
   const [calibrating, setCalibrating] = useState(false)   // キャリブレーションモード
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null)

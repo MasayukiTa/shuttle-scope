@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { X, ChevronRight, AlertTriangle } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
@@ -74,9 +75,9 @@ const TREND_LABEL: Record<string, string> = {
 type TabKey = 'overview' | 'loss' | 'shots'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: t('auto.SetIntervalSummary.k4') },
-  { key: 'loss',     label: t('auto.SetIntervalSummary.k5') },
-  { key: 'shots',    label: t('auto.SetIntervalSummary.k6') },
+  { key: 'overview', label: i18n.t('auto.SetIntervalSummary.k4') },
+  { key: 'loss',     label: i18n.t('auto.SetIntervalSummary.k5') },
+  { key: 'shots',    label: i18n.t('auto.SetIntervalSummary.k6') },
 ]
 
 export function SetIntervalSummary({

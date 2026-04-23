@@ -114,7 +114,9 @@ def compute_shot_influence_v2(
     global_win_rate: float = epv_result.get("global_win_rate", 0.5)
 
     # state_key → epv マップ
-    epv_map: dict[str, float] = {row["state_key"]: row["epv"] for row in state_table}
+    # state_table の各行は state 単位の勝率 (win_rate) を持つ。
+    # state_epv は「その状態での期待勝率」として扱うため win_rate を採用する。
+    epv_map: dict[str, float] = {row["state_key"]: row.get("win_rate", global_win_rate) for row in state_table}
 
     # ── 2. 各ラリーの影響度計算 ──
     rally_results: list[RallyInfluenceV2] = []
@@ -156,9 +158,8 @@ def compute_shot_influence_v2(
         credit_base = outcome - state_epv  # [-1, +1]
 
         shot_results: list[ShotInfluenceV2Result] = []
-        for i, stroke in enumerate(
-            sorted(strokes, key=lambda s: getattr(s, 'stroke_num', i))
-        ):
+        sorted_strokes = sorted(strokes, key=lambda s: getattr(s, 'stroke_num', 0) or 0)
+        for i, stroke in enumerate(sorted_strokes):
             shot_type = getattr(stroke, 'shot_type', 'other') or 'other'
             quality = getattr(stroke, 'shot_quality', 'neutral') or 'neutral'
             terminal = (i == rally_length - 1)

@@ -8,6 +8,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -63,13 +64,13 @@ interface Props {
 
 const SET_PATH_OPTIONS = ['', '2-0', '2-1', '1-2', '0-2']
 const ROLE_OPTIONS = [
-  { value: 'coach', label: t('auto.HumanForecastPanel.k10') },
-  { value: 'analyst', label: t('auto.HumanForecastPanel.k11') },
+  { value: 'coach', label: i18n.t('auto.HumanForecastPanel.k10') },
+  { value: 'analyst', label: i18n.t('auto.HumanForecastPanel.k11') },
 ]
 const CONFIDENCE_OPTIONS = [
-  { value: 'high', label: t('auto.HumanForecastPanel.k12') },
-  { value: 'medium', label: t('auto.HumanForecastPanel.k13') },
-  { value: 'low', label: t('auto.HumanForecastPanel.k14') },
+  { value: 'high', label: i18n.t('auto.HumanForecastPanel.k12') },
+  { value: 'medium', label: i18n.t('auto.HumanForecastPanel.k13') },
+  { value: 'low', label: i18n.t('auto.HumanForecastPanel.k14') },
 ]
 
 // ── フォームセクション ────────────────────────────────────────────────────────
