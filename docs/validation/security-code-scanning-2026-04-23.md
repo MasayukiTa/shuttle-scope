@@ -146,7 +146,36 @@ CI 全件 success 後、残 open alert を triage して Phase 1 相当を一括
 
 ### 次フェーズ（保留）
 - Scorecard `CodeReviewID` / `MaintainedID` / `VulnerabilitiesID` — 時間解決（PR 運用蓄積 / repo age / Dependabot 再集計待ち）
-- Scorecard `PinnedDependenciesID` x46 — Phase 2 で SHA pin
-- osv-scanner CVE x11 — Phase 2 で Python 依存 bump
-- Bandit warning (B310/B608/B601/B104) x25 — Phase 2 で個別精査
+- Bandit warning (B310/B608/B601/B104) x25 — Phase 2c で個別精査
 - Bandit note 系 大量 — Phase 3 で `.bandit` / `pyproject.toml` 抑制
+
+---
+
+## Phase 2a+2b: Scorecard SHA pin + osv-scanner CVE 修正 (同日)
+
+### 2a: GitHub Actions を SHA pin（Scorecard `PinnedDependenciesID` x46 対応）
+全 workflow の `uses: <repo>@<tag>` を `uses: <repo>@<SHA> # <tag>` に変換。Dependabot による自動更新を継続可能。
+
+| Action | 固定 SHA |
+|--------|---------|
+| `actions/checkout` v6 | `de0fac2e4500dabe0009e67214ff5f5447ce83dd` |
+| `actions/setup-node` v6 | `48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e` |
+| `actions/setup-python` v5 | `a26af69be951a213d495a4c3e4e4022e16d87065` |
+| `actions/setup-dotnet` v4 | `67a3573c9a986a3f9c594539f4ab511d57bb3ce9` |
+| `actions/upload-artifact` v7 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
+| `github/codeql-action/*` v4 | `95e58e9a2cdfd71adc6e0353d5c52f41a045d225` |
+| `microsoft/security-devops-action` v1.6.0 | `e94440350ed10e2806d47cd0d7504a2c51abdbe9` |
+| `microsoft/DevSkim-Action` v1 | `4b5047945a44163b94642a1cecc0d93a3f428cc6` |
+| `google/osv-scanner-action/*` v1.7.1 | `1f1242919d8a60496dd1874b24b62b2370ed4c78` |
+
+対象 workflow: `bandit.yml`, `ci.yml`, `codeql.yml`, `defender-for-devops.yml`, `desktop-package-smoke.yml`, `devskim.yml`, `eslint.yml`, `osv-scanner.yml`, `osv-scanner-pr.yml`, `scorecard.yml`, `tracknet-smoke.yml` の計 11 ファイル。
+
+### 2b: Python 依存バージョン bump（osv-scanner CVE x11 対応）
+`shuttlescope/backend/requirements.txt` のフロア値を上げる。既にランタイム最新はインストール済みだが OSV-Scanner は宣言上の最小を基準に判定するため floor bump で解消。
+
+| パッケージ | 変更 | 解消 CVE |
+|-----------|------|---------|
+| `scikit-learn` | `>=1.3.0` → `>=1.5.0` | CVE-2024-5206 |
+| `yt-dlp` | `>=2024.3.10` → `>=2025.1.15` | CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785 |
+| `pytest` | `>=8.0.0` → `>=8.4.0` | CVE-2025-71176 |
+| `python-jose[cryptography]` | `>=3.3.0` → `>=3.4.0` | CVE-2024-33663 / CVE-2024-33664 |

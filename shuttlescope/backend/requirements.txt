@@ -18,7 +18,7 @@ psycopg2-binary==2.9.11      # PostgreSQL ドライバ（SQLite → PG 移行後
 pandas==2.2.0
 numpy==1.26.4
 scipy==1.12.0
-scikit-learn>=1.3.0
+scikit-learn>=1.5.0          # CVE-2024-5206 修正
 matplotlib>=3.8.0
 polars>=1.0.0                # 高速 DataFrame（ベンチマーク・バルク集計で使用）
 
@@ -27,7 +27,7 @@ reportlab==4.1.0
 fpdf2>=2.7.0                 # PDF 代替ライブラリ
 
 # ── 動画・ネットワーク ─────────────────────────────────────────────
-yt-dlp>=2024.3.10
+yt-dlp>=2025.1.15            # CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785 修正
 httpx==0.26.0
 
 # ── クラスタ / システム監視 ────────────────────────────────────────
@@ -36,7 +36,7 @@ psutil>=5.9                  # CPU / メモリ / ネットワーク IF 監視
 # ray>=2.9                   # 分散推論。pip install "ray[default]" で別途導入（大容量）
 
 # ── テスト ─────────────────────────────────────────────────────────
-pytest>=8.0.0
+pytest>=8.4.0                # CVE-2025-71176 修正
 pytest-asyncio>=0.23.0
 
 # ── P3: TrackNet / 推論ランタイム ────────────────────────────────
@@ -64,5 +64,5 @@ nvidia-ml-py>=12.0               # NVIDIA GPU 監視（旧 pynvml の後継）
 # ── P4: YOLO プレイヤー検出 ───────────────────────────────────────
 # ultralytics が torch / torchvision を自動インストールする
 ultralytics>=8.0
-python-jose[cryptography]>=3.3.0  # JWT トークン生成・検証
+python-jose[cryptography]>=3.4.0  # JWT トークン生成・検証 / CVE-2024-33663 / CVE-2024-33664 修正
 bcrypt>=4.0.0                     # パスワードハッシュ（passlib は bcrypt 4+ 非互換のため直接使用）
