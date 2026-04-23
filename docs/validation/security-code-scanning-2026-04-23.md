@@ -179,3 +179,56 @@ CI 全件 success 後、残 open alert を triage して Phase 1 相当を一括
 | `yt-dlp` | `>=2024.3.10` → `>=2025.1.15` | CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785 |
 | `pytest` | `>=8.0.0` → `>=8.4.0` | CVE-2025-71176 |
 | `python-jose[cryptography]` | `>=3.3.0` → `>=3.4.0` | CVE-2024-33663 / CVE-2024-33664 |
+
+---
+
+## Phase 2c + Phase 3: Bandit / DevSkim 残 medium/low 全件処理 (同日)
+
+Phase 2b 後も残っていた Bandit warning / note、DevSkim error / note を全件 triage して一括 dismiss + 設定ファイルで再発抑制。
+
+### Phase 2c: Bandit warning (29) + DevSkim error (8) の per-alert dismiss
+| Tool | Rule | 件数 | dismissed_reason | 根拠 |
+|------|------|------|------------------|------|
+| Bandit | B310 (urlopen) | 13 | false positive | maintenance script 内のハードコード URL、外部入力なし |
+| Bandit | B608 (SQL string) | 7 | false positive | 動的テーブル名は schema introspection / PRAGMA 由来で外部入力なし |
+| Bandit | B601 (paramiko shell) | 4 | won't fix | クラスタ IP は事前検証済み。既 dismiss の paramiko 方針を踏襲 |
+| Bandit | B507 (ssh_no_host_key) | 4 | won't fix | 同上、既 dismiss の paramiko 方針と同じ |
+| Bandit | B104 (0.0.0.0 bind) | 1 | false positive | `main.py:1219` `LAN_MODE` ゲート時のみ、intentional |
+| Bandit | B324 (weak hash) | 1 | false positive | 非セキュリティ cache key / TOTP RFC 6238 |
+| DevSkim | DS126858 (weak hash) | 3 | false positive | `auth.py` SHA1 は RFC 6238 TOTP 必須、`response_cache.py` は cache key |
+| DevSkim | DS148264 (weak RNG) | 4 | used in tests | test data generator / seed script、暗号用途なし |
+| DevSkim | DS187371 (weak cipher) | 1 | false positive | `electron/main.ts` 該当行は DRM permission-handler のコメント |
+
+### Phase 3: Bandit note (1525) + DevSkim note (83) の bulk dismiss + 設定抑制
+| Tool | Rule | 件数 | dismissed_reason | 根拠 |
+|------|------|------|------------------|------|
+| Bandit | B101 | 1243 | used in tests | tests / 試作スクリプトの assert |
+| Bandit | B110 | 115 | won't fix | best-effort cleanup の try/except/pass |
+| Bandit | B311 | 96 | used in tests | test data generator / seed の random、非暗号 |
+| Bandit | B603 | 30 | won't fix | subprocess は固定 argv、`shell=True` 無し |
+| Bandit | B404 | 17 | won't fix | subprocess import 監査済 |
+| Bandit | B607 | 12 | won't fix | 部分 PATH 解決、operator-controlled env |
+| Bandit | B105 | 9 | false positive | サンプル/テスト用文字列リテラル、真の認証情報ではない |
+| Bandit | B112 | 3 | won't fix | best-effort ループの try/except/continue |
+| DevSkim | DS162092 | 71 | won't fix | localhost dev 参照 / コメント内の HTTP URL |
+| DevSkim | DS137138 | 9 | won't fix | ドキュメント/参照文字列、実行可能な credential ではない |
+| DevSkim | DS176209 | 3 | won't fix | maintenance script 内の文字列リテラル |
+
+### 再発抑制設定の追加
+新規ファイルで以降のスキャンから note tier を抑制。
+- `.bandit`（リポジトリルート）: `skips = B101,B110,B311,B603,B404,B607,B105,B112` / `exclude = tests,.venv,node_modules,out`
+- `.devskim.json`（リポジトリルート）: DS162092 / DS137138 / DS176209 を `ignores`
+- `.github/workflows/bandit.yml` の `shundor/python-bandit-scan` 起動時に `skips` / `excluded_paths` を渡すよう更新
+
+### 残存 (既知/時間解決)
+| Alert | 理由 |
+|-------|------|
+| Scorecard `CodeReviewID` / `MaintainedID` / `VulnerabilitiesID` / `FuzzingID` / `CIIBestPracticesID` / `SecurityPolicyID` | 時間解決 or 本 POC に適用困難（fuzzing・CII badge は単独開発では現実的でない） |
+| `paramiko-missing-host-key-validation` x4, `electron-websecurity` x2 | 既知リスクとして許容（前述） |
+| osv-scanner CVE x11 | Phase 2b で floor bump 済み。次回 push スキャン後に自動 close 想定 |
+
+### 検証
+- `cd shuttlescope && npm run build`（`NODE_OPTIONS=--max-old-space-size=16384` 必須）
+- `.\backend\.venv\Scripts\python -m pytest backend/tests`
+- push 後の GitHub Actions 全 success を確認
+
