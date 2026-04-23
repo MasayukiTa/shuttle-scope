@@ -33,6 +33,10 @@ jobs:
   MSDO:
     # currently only windows latest is supported
     runs-on: windows-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
 
     steps:
     - uses: actions/checkout@v6
