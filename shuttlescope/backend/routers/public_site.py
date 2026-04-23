@@ -361,7 +361,8 @@ body{font-family:'MigMix 1P','Noto Sans JP',sans-serif;background:var(--bg);colo
 
 nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:var(--nav-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--nav-bdr);box-shadow:var(--nav-shadow)}
 .logo{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;letter-spacing:.06em;color:var(--t1);text-decoration:none;display:flex;align-items:center;gap:8px}
-.logo-mark{width:26px;height:26px;background:var(--blue);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;letter-spacing:0;transition:background .25s}
+.logo-mark{width:26px;height:26px;background:#fff;border-radius:5px;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:background .25s}
+.logo-mark img{width:100%;height:100%;object-fit:contain;display:block}
 .nav-links{display:flex;align-items:center;gap:28px;list-style:none}
 .nav-links a{font-size:13px;color:var(--t2);text-decoration:none;transition:color .15s}
 .nav-links a:hover{color:var(--t1)}
@@ -515,7 +516,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 <body>
 
 <nav>
-  <a class="logo" href="/"><div class="logo-mark">S</div>ShuttleScope</a>
+  <a class="logo" href="/"><div class="logo-mark"><img src="/favicon.png" alt=""></div>ShuttleScope</a>
   <ul class="nav-links">
     <li><a href="#features"><span class="ja">機能</span><span class="en">Features</span></a></li>
     <li><a href="#usecases"><span class="ja">利用シーン</span><span class="en">Use Cases</span></a></li>
@@ -649,7 +650,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 </section>
 
 <footer>
-  <a class="footer-logo" href="/"><div class="logo-mark">S</div>ShuttleScope</a>
+  <a class="footer-logo" href="/"><div class="logo-mark"><img src="/favicon.png" alt=""></div>ShuttleScope</a>
   <ul class="footer-links">
     <li><a href="/terms"><span class="ja">利用規約</span><span class="en">Terms</span></a></li>
     <li><a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a></li>
