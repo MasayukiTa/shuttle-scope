@@ -20,16 +20,17 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Scorecard TokenPermissions: top-level は read のみ、write は job レベル
 permissions:
-  # Require writing security events to upload SARIF file to security tab
-  security-events: write
-  # Read commit contents
   contents: read
 
 jobs:
   scan-scheduled:
     name: osv-scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
