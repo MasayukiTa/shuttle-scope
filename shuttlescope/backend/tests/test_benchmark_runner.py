@@ -50,9 +50,16 @@ def mock_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setenv("SS_CV_MOCK", "1")
     monkeypatch.setenv("SS_USE_GPU", "0")
-    # settings を再生成して環境変数を反映させる
+    # settings を in-place で更新して環境変数を反映させる
+    # (instance を差し替えると `from backend.config import settings` の参照が切れて
+    # 他テストで pollution を起こすため)
     from backend import config as cfg_mod
-    cfg_mod.settings = cfg_mod.Settings()
+    _fresh = cfg_mod.Settings()
+    for _k in _fresh.model_fields.keys():
+        try:
+            setattr(cfg_mod.settings, _k, getattr(_fresh, _k))
+        except Exception:
+            pass
 
 
 # ─── TrackNet ベンチマークテスト ───────────────────────────────────────────────

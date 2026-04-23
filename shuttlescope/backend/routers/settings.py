@@ -10,23 +10,25 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend.db.database import get_db, engine
+from backend.db import database as _db_module
+from backend.db.database import get_db
 from backend.utils.auth import require_analyst
 
 router = APIRouter()
 
-# 設定テーブルを初回起動時に作成（add_columns_if_missing とは別に管理）
-def create_settings_table():
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS app_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )
-        """))
-        conn.commit()
 
-create_settings_table()
+# 設定テーブル DDL（app_settings）。import 時に engine を固定してしまうと、
+# テスト用に db_module.engine を差し替えた場合に別 DB 上でテーブル作成してしまい
+# 本来の操作先で "no such table" となる。そのため各リクエストで現在の engine を
+# 参照しつつ CREATE TABLE IF NOT EXISTS を冪等に実行する。
+def _ensure_settings_table(db: Session) -> None:
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """))
+    db.commit()
 
 def _default_device_id() -> str:
     """ホスト名 + UUID ショートを組み合わせたデバイス識別子"""
@@ -87,6 +89,7 @@ def _load_all(db: Session) -> dict:
 @router.get("/settings")
 def get_settings(db: Session = Depends(get_db)):
     """全設定を返す（未設定キーはデフォルト値）"""
+    _ensure_settings_table(db)
     data = _load_all(db)
     # sync_device_id が未設定なら自動生成して永続化
     if not data.get("sync_device_id"):
@@ -107,6 +110,7 @@ def update_settings(
     _ctx=Depends(require_analyst),
 ):
     """設定を部分更新（指定したキーのみ上書き）"""
+    _ensure_settings_table(db)
     for key, value in body.settings.items():
         db.execute(
             text("INSERT OR REPLACE INTO app_settings(key, value) VALUES(:k, :v)"),

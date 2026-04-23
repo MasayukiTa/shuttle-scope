@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
     try:
         loop = asyncio.get_event_loop()
         await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: bootstrap_database(engine, app_settings.DATABASE_URL)),
+            loop.run_in_executor(None, lambda: bootstrap_database(None, app_settings.DATABASE_URL)),
             timeout=30.0,
         )
     except asyncio.TimeoutError:

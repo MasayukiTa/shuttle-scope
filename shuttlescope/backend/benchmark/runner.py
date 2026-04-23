@@ -245,9 +245,18 @@ def _env_override(device: ComputeDevice) -> Generator[None, None, None]:
     os.environ["SS_BENCH_BACKEND"] = preferred_backend
 
     try:
-        # pydantic_settings の singleton を更新するために settings を再生成する
+        # pydantic_settings の singleton を更新する。
+        # NOTE: 以前は `cfg_mod.settings = cfg_mod.Settings()` で差し替えていたが、
+        # `from backend.config import settings` で参照をキャプチャしている他モジュール
+        # (auth / network_diag 等) が古い instance を保持し続け、テスト間で
+        # settings 属性のずれによる pollution を起こすため、属性を in-place で更新する。
         from backend import config as cfg_mod
-        cfg_mod.settings = cfg_mod.Settings()
+        _fresh = cfg_mod.Settings()
+        for _k in _fresh.model_fields.keys():
+            try:
+                setattr(cfg_mod.settings, _k, getattr(_fresh, _k))
+            except Exception:
+                pass
         # デバイスが変わるたびにキャッシュを破棄して正しいバックエンドを再解決する
         from backend.cv import factory as _factory
         _factory.clear_cache()
@@ -259,7 +268,12 @@ def _env_override(device: ComputeDevice) -> Generator[None, None, None]:
         _restore_env("SS_CV_MOCK", old_cv_mock)
         _restore_env("SS_BENCH_BACKEND", old_backend)
         from backend import config as cfg_mod
-        cfg_mod.settings = cfg_mod.Settings()
+        _fresh = cfg_mod.Settings()
+        for _k in _fresh.model_fields.keys():
+            try:
+                setattr(cfg_mod.settings, _k, getattr(_fresh, _k))
+            except Exception:
+                pass
         from backend.cv import factory as _factory
         _factory.clear_cache()
 
