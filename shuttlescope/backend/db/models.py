@@ -953,3 +953,6 @@ class AccessLog(Base):
     details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)        # JSON
     ip_addr: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # 改ざん検知用ハッシュチェーン。row_hash = HMAC(secret, prev_hash || canonical(row))
+    prev_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    row_hash:  Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

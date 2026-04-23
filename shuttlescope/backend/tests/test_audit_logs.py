@@ -107,3 +107,66 @@ class TestAuditLogList:
             headers={"Authorization": f"Bearer {data['access_token']}"},
         )
         assert resp.status_code == 422
+
+
+class TestAuditLogHashChain:
+    def test_chain_is_intact_after_logins(self, client, test_engine):
+        data = _login(client, ADMIN_USER, ADMIN_PASS)
+        access = data["access_token"]
+        # 複数イベントを記録
+        for _ in range(3):
+            client.post("/api/auth/login", json={
+                "grant_type": "credential", "identifier": ADMIN_USER, "password": "bogus",
+            })
+
+        resp = client.get(
+            "/api/auth/audit-logs/verify",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()["data"]
+        assert body["ok"] is True
+        assert body["first_bad_id"] is None
+        assert body["checked"] >= 3
+
+    def test_tamper_is_detected(self, client, test_engine):
+        data = _login(client, ADMIN_USER, ADMIN_PASS)
+        access = data["access_token"]
+        client.post("/api/auth/login", json={
+            "grant_type": "credential", "identifier": ADMIN_USER, "password": "bogus",
+        })
+
+        # row を改ざんする（details を書き換え）
+        from sqlalchemy.orm import sessionmaker
+        from backend.db.models import AccessLog
+        Session = sessionmaker(bind=test_engine)
+        with Session() as s:
+            row = s.query(AccessLog).order_by(AccessLog.id.asc()).first()
+            assert row is not None
+            row.details = '{"tampered": true}'
+            s.commit()
+            tampered_id = row.id
+
+        resp = client.get(
+            "/api/auth/audit-logs/verify",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()["data"]
+        assert body["ok"] is False
+        assert body["first_bad_id"] == tampered_id
+
+    def test_non_admin_cannot_verify(self, client):
+        admin = _login(client, ADMIN_USER, ADMIN_PASS)
+        client.post(
+            "/api/auth/users",
+            json={"username": "analyst_v", "role": "analyst",
+                  "display_name": "AV", "password": "AnalystPass1!"},
+            headers={"Authorization": f"Bearer {admin['access_token']}"},
+        )
+        analyst = _login(client, "analyst_v", "AnalystPass1!")
+        resp = client.get(
+            "/api/auth/audit-logs/verify",
+            headers={"Authorization": f"Bearer {analyst['access_token']}"},
+        )
+        assert resp.status_code == 403
