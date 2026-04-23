@@ -22,7 +22,12 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from backend.config import settings
+from backend import config as _config_module
+
+# settings は test などで importlib.reload(backend.config) により差し替わる可能性があるため、
+# 常に最新のモジュール属性を参照する。
+def _get_settings():
+    return _config_module.settings
 
 router = APIRouter()
 
@@ -163,6 +168,7 @@ async def network_diagnostics():
     tcp_80, tcp_80_err = tcp_80_result
 
     # localhost bridge 自己チェック
+    settings = _get_settings()
     local_ok, local_err = await _probe_tcp("127.0.0.1", settings.API_PORT, timeout=1.0)
 
     # プロキシ検出
@@ -238,7 +244,7 @@ def toggle_lan_mode(enable: bool):
     env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # メモリ上の設定値も即時反映（再起動なしでトグル状態を UI に返す）
-    settings.LAN_MODE = enable
+    _get_settings().LAN_MODE = enable
 
     return {
         "success": True,

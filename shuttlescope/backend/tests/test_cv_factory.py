@@ -11,13 +11,33 @@ import importlib
 import pytest
 
 
+_SETTINGS_ATTRS_TO_SNAPSHOT = ("ss_cv_mock", "ss_use_gpu", "ss_cuda_device")
+
+
 def _reload_settings(monkeypatch, **env):
-    """環境変数を差し替えた上で backend.config を再読込する。"""
-    for k, v in env.items():
-        monkeypatch.setenv(k, v)
+    """環境変数を差し替えた上で settings オブジェクトに反映する。
+
+    注意: 以前は importlib.reload(backend.config) していたが、
+    `from backend.config import settings` で参照をキャプチャしている他モジュール
+    (auth.py, network_diag.py 等) が古い singleton を保持し続けて
+    後続テストの BOOTSTRAP_ADMIN 等の設定が反映されない pollution の原因となった。
+    そのため reload せず、現行 settings の属性を直接書き換えて
+    monkeypatch.setattr で自動復元する。
+    """
     import backend.config as cfg
 
-    importlib.reload(cfg)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+        attr = k.lower()
+        if hasattr(cfg.settings, attr):
+            # 型を合わせて反映（ss_cv_mock は int 等）
+            current = getattr(cfg.settings, attr)
+            try:
+                casted = type(current)(v) if not isinstance(current, bool) else (v in ("1", "true", "True"))
+            except Exception:
+                casted = v
+            monkeypatch.setattr(cfg.settings, attr, casted)
+
     return cfg.settings
 
 
