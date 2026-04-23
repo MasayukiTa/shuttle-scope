@@ -978,6 +978,82 @@ def delete_user(target_id: int, request: Request, db: Session = Depends(get_db))
     return {"success": True}
 
 
+# ── 監査ログ閲覧 (admin only) ────────────────────────────────────────────────
+
+class AuditLogEntry(BaseModel):
+    id: int
+    user_id: Optional[int]
+    username: Optional[str]
+    action: str
+    resource_type: Optional[str]
+    resource_id: Optional[int]
+    details: Optional[str]
+    ip_addr: Optional[str]
+    created_at: str
+
+
+@router.get("/audit-logs")
+def list_audit_logs(
+    request: Request,
+    action: Optional[str] = None,
+    user_id: Optional[int] = None,
+    since: Optional[str] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。audit (access_logs) を新しい順に最大 limit 件返す。
+
+    Query:
+      - action: 完全一致フィルタ (例 "login_failed")
+      - user_id: 該当 user_id のみ
+      - since: ISO8601 datetime 以降 (created_at >= since)
+      - limit: 1..500 (default 100)
+    """
+    from backend.db.models import AccessLog
+    _require_admin(request)
+
+    limit = max(1, min(int(limit or 100), 500))
+    q = db.query(AccessLog)
+    if action:
+        q = q.filter(AccessLog.action == action)
+    if user_id is not None:
+        q = q.filter(AccessLog.user_id == user_id)
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            # naive UTC として比較
+            if since_dt.tzinfo is not None:
+                since_dt = since_dt.astimezone(tz=None).replace(tzinfo=None)
+            q = q.filter(AccessLog.created_at >= since_dt)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="since must be ISO8601")
+
+    rows = q.order_by(AccessLog.created_at.desc()).limit(limit).all()
+
+    # user_id → username を一括取得
+    uids = {r.user_id for r in rows if r.user_id}
+    uname_map: dict[int, str] = {}
+    if uids:
+        users = db.query(User).filter(User.id.in_(uids)).all()
+        uname_map = {u.id: u.username for u in users}
+
+    entries = [
+        AuditLogEntry(
+            id=r.id,
+            user_id=r.user_id,
+            username=uname_map.get(r.user_id) if r.user_id else None,
+            action=r.action,
+            resource_type=r.resource_type,
+            resource_id=r.resource_id,
+            details=r.details,
+            ip_addr=r.ip_addr,
+            created_at=r.created_at.isoformat() if r.created_at else "",
+        )
+        for r in rows
+    ]
+    return {"success": True, "data": [e.model_dump() for e in entries]}
+
+
 # ── ページアクセス付与管理 ───────────────────────────────────────────────────
 
 class PageAccessBody(BaseModel):

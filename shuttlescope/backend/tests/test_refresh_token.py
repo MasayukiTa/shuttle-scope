@@ -14,7 +14,19 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture()
 def client(test_engine, monkeypatch):
-    # bootstrap 有効化のため環境変数を用意
+    # 他テストで作成した users / refresh_tokens を除去し、bootstrap admin を再シード可能にする
+    from backend.routers import auth as _auth_module
+    _auth_module._IP_LOGIN_TIMES.clear()
+    from backend.db.models import User, RefreshToken, RevokedToken, AccessLog
+    from sqlalchemy.orm import sessionmaker
+    Session = sessionmaker(bind=test_engine)
+    with Session() as s:
+        s.query(AccessLog).delete()
+        s.query(RefreshToken).delete()
+        s.query(RevokedToken).delete()
+        s.query(User).delete()
+        s.commit()
+
     monkeypatch.setenv("BOOTSTRAP_ADMIN_USERNAME", "admin_rt")
     monkeypatch.setenv("BOOTSTRAP_ADMIN_PASSWORD", "RefreshTest123!")
     from backend.config import settings
