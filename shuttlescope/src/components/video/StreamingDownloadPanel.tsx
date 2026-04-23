@@ -43,32 +43,31 @@ interface Capabilities {
   ffmpeg: boolean
 }
 
-const QUALITY_OPTIONS = [
-  { value: '360', label: '360p' },
-  { value: '480', label: '480p' },
-  { value: '720', label: t('auto.StreamingDownloadPanel.k11') },
-  { value: '1080', label: '1080p' },
-  { value: 'best', label: t('auto.StreamingDownloadPanel.k12') },
-]
-
-const COOKIE_BROWSER_OPTIONS = [
-  { value: '', label: t('auto.StreamingDownloadPanel.k13') },
-  { value: 'chrome', label: 'Chrome' },
-  { value: 'edge', label: 'Edge' },
-  { value: 'firefox', label: 'Firefox' },
-  { value: 'brave', label: 'Brave' },
-  { value: 'opera', label: 'Opera' },
-  { value: 'vivaldi', label: 'Vivaldi' },
-  { value: 'chromium', label: 'Chromium' },
-]
-
 export function StreamingDownloadPanel({
   url,
   matchId,
   siteName,
   onDownloadComplete,
 }: StreamingDownloadPanelProps) {
+  const { t } = useTranslation()
   const isLight = useIsLightMode()
+  const QUALITY_OPTIONS = [
+    { value: '360', label: '360p' },
+    { value: '480', label: '480p' },
+    { value: '720', label: t('auto.StreamingDownloadPanel.k11') },
+    { value: '1080', label: '1080p' },
+    { value: 'best', label: t('auto.StreamingDownloadPanel.k12') },
+  ]
+  const COOKIE_BROWSER_OPTIONS = [
+    { value: '', label: t('auto.StreamingDownloadPanel.k13') },
+    { value: 'chrome', label: 'Chrome' },
+    { value: 'edge', label: 'Edge' },
+    { value: 'firefox', label: 'Firefox' },
+    { value: 'brave', label: 'Brave' },
+    { value: 'opera', label: 'Opera' },
+    { value: 'vivaldi', label: 'Vivaldi' },
+    { value: 'chromium', label: 'Chromium' },
+  ]
   const [quality, setQuality] = useState('720')
   const [cookieBrowser, setCookieBrowser] = useState('')
   const [dlState, setDlState] = useState<DLState>('idle')

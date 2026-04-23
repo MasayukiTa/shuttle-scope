@@ -12,6 +12,12 @@ const TOKEN_KEY = 'shuttlescope_token'
 const REFRESH_KEY = 'shuttlescope_refresh_token'
 const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
+export const API_BASE_URL = BASE_URL
+
+export function getAuthHeaders(): Record<string, string> {
+  return authHeaders()
+}
+
 function authHeaders(): Record<string, string> {
   const h: Record<string, string> = {}
   try {

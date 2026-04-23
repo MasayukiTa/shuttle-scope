@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp, Monitor, Globe, Video, Square, Crosshair } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
@@ -33,6 +34,7 @@ import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import { CVAssistPanel } from '@/components/annotation/CVAssistPanel'
 import { ReviewQueuePanel as CVReviewQueuePanel } from '@/components/annotation/ReviewQueuePanel'
 import { PlayerMovementCard } from '@/components/analysis/PlayerMovementCard'
+import { uploadVideoInChunks, abortChunkUpload } from '@/utils/chunkUpload'
 
 // ─── 配信URL検出 ──────────────────────────────────────────────────────────────
 // Electron では配信サービスの動画を直接再生できないため、yt-dlp でダウンロードする。
@@ -90,9 +92,21 @@ function detectStreamingSite(url: string): string | null {
 /**
  * 旧バージョンで保存された生のWindowsパスを localfile:// URL に変換する
  * 例: C:\path\video.mp4 → localfile:///C:/path/video.mp4
+ *
+ * サーバ保管動画 (server://{upload_id}.ext) はブラウザの <video> から再生できないため
+ * バックエンドの Range 対応ストリーミング API URL に書き換える。
  */
-function normalizeVideoPath(path: string): string {
+function normalizeVideoPath(path: string, matchId?: number | string): string {
   if (!path) return path
+  if (path.startsWith('server://')) {
+    if (matchId == null) return path
+    // API 基底 URL は client.ts と同じロジックで解決
+    const base = (typeof window !== 'undefined' &&
+      (window.location.protocol === 'http:' || window.location.protocol === 'https:'))
+      ? `${window.location.origin}/api`
+      : 'http://localhost:8765/api'
+    return `${base}/v1/uploads/video/by_match/${matchId}/stream`
+  }
   if (/^[A-Za-z]:[/\\]/.test(path)) {
     return 'localfile:///' + path.replace(/\\/g, '/')
   }
@@ -119,12 +133,12 @@ function computePlayerASide(
 // 内部コード値は backward-compat のため ace のまま維持
 
 const END_TYPES = [
-  { value: 'ace', label: t('auto.AnnotatorPage.k31') },
-  { value: 'forced_error', label: t('auto.AnnotatorPage.k32') },
-  { value: 'unforced_error', label: t('auto.AnnotatorPage.k33') },
-  { value: 'net', label: t('auto.AnnotatorPage.k34') },
-  { value: 'out', label: t('auto.AnnotatorPage.k35') },
-  { value: 'cant_reach', label: t('auto.AnnotatorPage.k36') },
+  { value: 'ace', label: i18n.t('auto.AnnotatorPage.k31') },
+  { value: 'forced_error', label: i18n.t('auto.AnnotatorPage.k32') },
+  { value: 'unforced_error', label: i18n.t('auto.AnnotatorPage.k33') },
+  { value: 'net', label: i18n.t('auto.AnnotatorPage.k34') },
+  { value: 'out', label: i18n.t('auto.AnnotatorPage.k35') },
+  { value: 'cant_reach', label: i18n.t('auto.AnnotatorPage.k36') },
 ]
 
 // B-2: エンドタイプと最終打者から勝者を推定
@@ -658,21 +672,85 @@ export function AnnotatorPage() {
     setIsRecording(false)
   }, [])
 
-  // --- ファイルピッカー（Electron IPC） ---
-  const handleFileOpen = useCallback(async () => {
-    if (!window.shuttlescope?.openVideoFile) {
-      alert('ファイル選択はElectronアプリ版のみ使用できます。')
+  // --- ファイルピッカー: Electron は IPC、ブラウザは分割チャンクアップロード ---
+  const browserFileInputRef = useRef<HTMLInputElement | null>(null)
+  const uploadAbortRef = useRef<AbortController | null>(null)
+  const uploadIdRef = useRef<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<{
+    ratio: number
+    mbps: number
+    fileName: string
+  } | null>(null)
+
+  const handleBrowserFilePicked = useCallback(async (file: File) => {
+    if (!matchId) return
+    if (!file.type.startsWith('video/')) {
+      alert('動画ファイルのみアップロードできます')
       return
     }
-    const fileUrl = await window.shuttlescope.openVideoFile()
-    if (!fileUrl) return
+    // 5GB 上限（サーバ側と一致）
+    if (file.size > 5 * 1024 * 1024 * 1024) {
+      alert('ファイルサイズは最大 5GB までです')
+      return
+    }
+    uploadAbortRef.current?.abort()
+    const controller = new AbortController()
+    uploadAbortRef.current = controller
+    uploadIdRef.current = null
+    setUploadProgress({ ratio: 0, mbps: 0, fileName: file.name })
     try {
-      await apiPut(`/matches/${matchId}`, { video_local_path: fileUrl, video_url: '' })
+      const result = await uploadVideoInChunks({
+        file,
+        matchId: matchId ? Number(matchId) : undefined,
+        // 2MB チャンク / 16Mbps スロットル
+        // Cloudflare Free の帯域配慮と iOS Safari のメモリ負荷のバランス
+        chunkSize: 2 * 1024 * 1024,
+        throttleMbps: 16,
+        signal: controller.signal,
+        onUploadIdAssigned: (id) => { uploadIdRef.current = id },
+        onProgress: ({ ratio, mbps }) => {
+          setUploadProgress({ ratio, mbps, fileName: file.name })
+        },
+      })
+      setUploadProgress(null)
+      // サーバ保管パスは finalize 側で match.video_local_path = server://... に設定済み
       setUrlInput('')
       queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+      void result
     } catch (err: any) {
-      alert(`保存エラー: ${err?.message ?? '不明なエラー'}`)
+      if (err?.name !== 'AbortError') {
+        alert(`アップロードエラー: ${err?.message ?? '不明なエラー'}`)
+      }
+      setUploadProgress(null)
+    } finally {
+      if (uploadAbortRef.current === controller) uploadAbortRef.current = null
     }
+  }, [matchId, queryClient])
+
+  const handleCancelUpload = useCallback(() => {
+    uploadAbortRef.current?.abort()
+    if (uploadIdRef.current) {
+      void abortChunkUpload(uploadIdRef.current)
+    }
+    setUploadProgress(null)
+  }, [])
+
+  const handleFileOpen = useCallback(async () => {
+    // Electron 版は IPC 経由でローカルファイルを直接参照
+    if (window.shuttlescope?.openVideoFile) {
+      const fileUrl = await window.shuttlescope.openVideoFile()
+      if (!fileUrl) return
+      try {
+        await apiPut(`/matches/${matchId}`, { video_local_path: fileUrl, video_url: '' })
+        setUrlInput('')
+        queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+      } catch (err: any) {
+        alert(`保存エラー: ${err?.message ?? '不明なエラー'}`)
+      }
+      return
+    }
+    // ブラウザ版: hidden input を開いてチャンクアップロード
+    browserFileInputRef.current?.click()
   }, [matchId, queryClient])
 
   // --- URL入力保存 ---
@@ -1368,7 +1446,7 @@ export function AnnotatorPage() {
   // P4: 別モニタで動画を開く
   const handleOpenVideoWindow = useCallback(() => {
     const rawSrc = match?.video_local_path || match?.video_url || ''
-    const src = normalizeVideoPath(rawSrc)
+    const src = normalizeVideoPath(rawSrc, matchId)
     if (!src || !window.shuttlescope?.openVideoWindow) return
     // selectedDisplayId が未設定の場合は非プライマリの先頭にフォールバック
     const targetId = selectedDisplayId ?? displays.find((d) => !d.isPrimary)?.id ?? displays[0]?.id
@@ -2551,7 +2629,7 @@ export function AnnotatorPage() {
 
             // 動画ソース決定（旧形式の Windows パスを normalizeVideoPath で変換）
             const rawSrc = match?.video_local_path || match?.video_url || ''
-            const videoSrc = normalizeVideoPath(rawSrc)
+            const videoSrc = normalizeVideoPath(rawSrc, matchId)
             const streamingSiteName = videoSrc ? detectStreamingSite(videoSrc) : null
 
             // 中継ブラウザモード: DeviceManagerのWebRTCストリームまたはローカルカメラを表示
@@ -2728,6 +2806,20 @@ export function AnnotatorPage() {
                 ファイルを開く
               </button>
               <input
+                ref={browserFileInputRef}
+                type="file"
+                accept="video/*"
+                // iOS Safari: capture 属性で直接カメラ起動を優先 (value 属性は書き込み不要)
+                // @ts-ignore
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void handleBrowserFilePicked(f)
+                  e.target.value = ''
+                }}
+              />
+              <input
                 type="text"
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
@@ -2748,6 +2840,28 @@ export function AnnotatorPage() {
                 {match?.video_local_path
                   ? `📁 ${match.video_local_path.split(/[/\\]/).pop()?.replace('localfile:///', '') ?? match.video_local_path}`
                   : `🔗 ${match?.video_url}`}
+              </div>
+            )}
+            {uploadProgress && (
+              <div className="mt-2 px-2 py-1.5 bg-gray-900 rounded border border-gray-700">
+                <div className="flex items-center justify-between text-[11px] text-gray-300 mb-1">
+                  <span className="truncate mr-2">{uploadProgress.fileName}</span>
+                  <span className="tabular-nums whitespace-nowrap">
+                    {(uploadProgress.ratio * 100).toFixed(1)}% / {uploadProgress.mbps.toFixed(1)} Mbps
+                  </span>
+                </div>
+                <div className="h-1 bg-gray-700 rounded overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 transition-all"
+                    style={{ width: `${uploadProgress.ratio * 100}%` }}
+                  />
+                </div>
+                <button
+                  onClick={handleCancelUpload}
+                  className="mt-1 text-[10px] text-red-400 hover:text-red-300"
+                >
+                  キャンセル
+                </button>
               </div>
             )}
             {/* P2: 映像モードセレクター */}

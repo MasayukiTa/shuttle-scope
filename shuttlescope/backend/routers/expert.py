@@ -139,9 +139,12 @@ def _fps_for_match(m: Match) -> int:
 @router.get("/videos", response_model=list[VideoSummary])
 def list_videos(
     db: Session = Depends(get_db),
-    _ctx: AuthCtx = Depends(require_labeler_role),
+    ctx: AuthCtx = Depends(get_auth),
 ):
     """アノテーション対象試合一覧（ミスプロキシ件数 + クリップ準備済み件数）。"""
+    # 権限外の閲覧者には空配列を返す（UI が隠れる前に一瞬呼ばれるケースで 403 を出さない）
+    if ctx.role not in ALLOWED_ROLES:
+        return []
     matches = db.query(Match).filter(Match.deleted_at.is_(None)).all()
     out: list[VideoSummary] = []
     for m in matches:
@@ -290,9 +293,11 @@ def list_labels(
 def get_progress(
     annotator_role: Literal["coach", "analyst"] = Query(...),
     db: Session = Depends(get_db),
-    _ctx: AuthCtx = Depends(require_labeler_role),
+    ctx: AuthCtx = Depends(get_auth),
 ):
     """自分（指定ロール）の進捗: 全ミス件数 / ラベル済み件数。"""
+    if ctx.role not in ALLOWED_ROLES:
+        return {"annotator_role": annotator_role, "total": 0, "labeled": 0, "per_match": []}
     matches = db.query(Match).filter(Match.deleted_at.is_(None)).all()
     total = 0
     per_match: list[dict] = []

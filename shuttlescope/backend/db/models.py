@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import uuid4
 from sqlalchemy import (
     Integer, String, Float, Boolean, DateTime, Date,
-    ForeignKey, Text, UniqueConstraint, Index
+    ForeignKey, Text, UniqueConstraint, Index, LargeBinary
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -956,3 +956,31 @@ class AccessLog(Base):
     # 改ざん検知用ハッシュチェーン。row_hash = HMAC(secret, prev_hash || canonical(row))
     prev_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     row_hash:  Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+
+class UploadSession(Base):
+    """ブラウザからの分割動画アップロード状態。
+
+    chunk は {upload_id}.part ファイルに pwrite（絶対オフセット書き込み）で配置するため
+    到着順不同でも安全。受信管理は received_bitmap（bytes, 1bit/chunk）で行う。
+    """
+    __tablename__ = "upload_sessions"
+    __table_args__ = (
+        Index("ix_upload_sessions_status",  "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID = upload_id
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    match_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("matches.id"), nullable=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    total_size: Mapped[int] = mapped_column(Integer, nullable=False)   # bytes
+    chunk_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_chunks: Mapped[int] = mapped_column(Integer, nullable=False)
+    # bitmap。1bit/chunk で受領状態を保持。ceil(total_chunks/8) bytes。
+    received_bitmap: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, default=b"")
+    received_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="uploading")  # uploading/completed/aborted/expired
+    final_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

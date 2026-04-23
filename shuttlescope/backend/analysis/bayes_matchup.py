@@ -133,16 +133,19 @@ def compute_bayes_matchup(
     for m in matches:
         # 対戦相手 ID を判定
         if hasattr(m, 'player_a_id') and hasattr(m, 'player_b_id'):
+            # Match.result は player_a 視点で 'win' / 'loss' / その他（walkover/unfinished 等）
+            res = getattr(m, 'result', None)
+            if res not in ('win', 'loss'):
+                continue
             if m.player_a_id == player_id:
                 opp_id = m.player_b_id
-                player_won = m.winner == 'player_a'
+                player_won = res == 'win'
             elif m.player_b_id == player_id:
                 opp_id = m.player_a_id
-                player_won = m.winner == 'player_b'
+                player_won = res == 'loss'
             else:
                 continue
         else:
-            # シンプル構造
             opp_id = getattr(m, 'opponent_id', 0)
             player_won = getattr(m, 'result', '') == 'win'
 

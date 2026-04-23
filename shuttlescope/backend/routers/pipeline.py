@@ -1,9 +1,12 @@
 """INFRA Phase B: 解析パイプライン REST API。
 
-- POST /v1/pipeline/run       : AnalysisJob を enqueue
-- GET  /v1/pipeline/jobs      : ジョブ一覧
-- GET  /v1/pipeline/jobs/{id} : 単一ジョブ
-ロール制約: analyst / coach のみ。
+- POST /v1/pipeline/run       : AnalysisJob を enqueue（analyst / coach のみ）
+- GET  /v1/pipeline/jobs      : ジョブ一覧（認証済みなら誰でも。権限が無ければ空配列を返す）
+- GET  /v1/pipeline/jobs/{id} : 単一ジョブ（同上。権限が無い場合は 404 で秘匿）
+
+権限が無い閲覧者に対して GET を 403 にすると、試合一覧の各行から
+1 リクエストずつ 403 がブラウザコンソールに大量出力されてしまう。
+閲覧権限管理は「見せないように空で返す」方針とし、書き込み系のみ 403 を維持する。
 """
 from __future__ import annotations
 
@@ -86,8 +89,11 @@ def list_jobs(
     status: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     db: Session = Depends(get_db),
-    _ctx: AuthCtx = Depends(_require_analyst_or_coach),
+    ctx: AuthCtx = Depends(get_auth),
 ):
+    # 権限が無い閲覧者には空配列を返す（試合一覧バッジ等、全行で叩く用途のため 403 を大量発生させない）
+    if ctx.role not in ALLOWED_ROLES:
+        return []
     q = db.query(AnalysisJob)
     if match_id is not None:
         q = q.filter(AnalysisJob.match_id == match_id)
@@ -101,8 +107,11 @@ def list_jobs(
 def get_job(
     job_id: int,
     db: Session = Depends(get_db),
-    _ctx: AuthCtx = Depends(_require_analyst_or_coach),
+    ctx: AuthCtx = Depends(get_auth),
 ):
+    # 権限が無い閲覧者にはジョブの存在自体を秘匿するため 404 を返す
+    if ctx.role not in ALLOWED_ROLES:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
     j = db.get(AnalysisJob, job_id)
     if j is None:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")

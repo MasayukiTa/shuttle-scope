@@ -7,6 +7,7 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 
 interface CFComparison {
   context_key: string
@@ -71,7 +72,7 @@ const CF_PHASE_CONFIG: Record<CFPhase, {
     additionalInfo: '有効サンプル数(N_eff)が少ない行は注意',
   },
   cf3: {
-    label: t('auto.CounterfactualV2Card.k2'),
+    label: i18n.t('auto.CounterfactualV2Card.k2'),
     endpoint: '/analysis/counterfactual_cf3',
     description: '対戦相手タイプ条件付き比較',
     additionalInfo: '強敵/格下/均衡の別に傾向が異なる場合',
