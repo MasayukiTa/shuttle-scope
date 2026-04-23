@@ -158,8 +158,8 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
         <TrendingUp size={32} className="text-gray-400" />
-        <p className="text-sm font-medium text-gray-300">相手チームを選択すると予測が表示されます</p>
-        <p className="text-xs text-gray-500">ヘッダーの「相手」セレクターから対戦相手を選んでください</p>
+        <p className="text-sm font-medium text-gray-300">{t('auto.PredictionPanel.k1')}</p>
+        <p className="text-xs text-gray-500">{t('auto.PredictionPanel.k2')}</p>
       </div>
     )
   }

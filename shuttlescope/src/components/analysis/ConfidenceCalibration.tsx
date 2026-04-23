@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { seqBlue } from '@/styles/colors'
+import { useTranslation } from 'react-i18next'
 
 interface ConfidenceCalibrationProps {
   playerId: number
@@ -35,6 +36,8 @@ const TIER_COLORS: Record<string, string> = {
 }
 
 export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) {
+  const { t } = useTranslation()
+
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-confidence-calibration', playerId],
     queryFn: () => apiGet<Response>('/analysis/confidence_calibration', { player_id: playerId }),
@@ -44,8 +47,8 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
   if (isLoading) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-2">データ品質概況</h3>
-        <div className="text-gray-500 text-sm py-2 text-center">読み込み中...</div>
+        <h3 className="text-sm font-semibold text-gray-200 mb-2">{t('auto.ConfidenceCalibration.k1')}</h3>
+        <div className="text-gray-500 text-sm py-2 text-center">{t('auto.ConfidenceCalibration.k2')}</div>
       </div>
     )
   }
@@ -57,7 +60,7 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
   return (
     <div className="bg-gray-800 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-200">データ品質概況</h3>
+        <h3 className="text-sm font-semibold text-gray-200">{t('auto.ConfidenceCalibration.k1')}</h3>
         {d && (
           <span className="text-xs text-gray-400">
             全体品質: <span className="text-gray-200 font-semibold">{d.overall_quality}</span>

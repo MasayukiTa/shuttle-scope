@@ -1,5 +1,6 @@
 // セット別（1・2・3セット目）の勝率と平均ラリー長を縦棒グラフで表示
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import {
   BarChart,
   Bar,
@@ -39,6 +40,8 @@ interface SetComparisonResponse {
 }
 
 function CustomTooltip({ active, payload, label }: any) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const winRate = payload.find((p: any) => p.dataKey === 'win_rate_pct')?.value ?? 0
@@ -57,6 +60,8 @@ function CustomTooltip({ active, payload, label }: any) {
 // セット別の色は勝率に基づいて動的に決定（perfColor: 高勝率=青=良い, 低勝率=赤=悪い）
 
 export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_FILTERS }: SetComparisonProps) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -80,7 +85,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
 
   if (isLoading) {
     return (
-      <div className="text-gray-500 text-sm py-8 text-center">読み込み中...</div>
+      <div className="text-gray-500 text-sm py-8 text-center">{t('auto.SetComparison.k1')}</div>
     )
   }
 

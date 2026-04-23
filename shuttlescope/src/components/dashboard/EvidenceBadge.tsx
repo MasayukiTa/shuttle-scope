@@ -1,5 +1,6 @@
 // Tier / Evidence バッジコンポーネント
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useTranslation } from 'react-i18next'
 
 export type Tier = 'stable' | 'advanced' | 'research'
 export type EvidenceLevel = 'exploratory' | 'directional' | 'practical_candidate' | 'practical_adopted'
@@ -45,6 +46,8 @@ export function EvidenceBadge({
   recommendationAllowed,
   className = '',
 }: EvidenceBadgeProps) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   const tierColors = isLight ? TIER_COLORS_LIGHT : TIER_COLORS_DARK
   const metaText = isLight ? 'text-gray-500 border border-gray-300' : 'text-gray-300 border border-gray-600'
@@ -68,7 +71,7 @@ export function EvidenceBadge({
         <span className={`text-[10px] ${sampleText}`}>{(confidenceLevel * 100).toFixed(0)}%</span>
       )}
       {recommendationAllowed === false && (
-        <span className={`text-[10px] ${warnText}`}>推奨非対応</span>
+        <span className={`text-[10px] ${warnText}`}>{t('auto.EvidenceBadge.k1')}</span>
       )}
     </div>
   )

@@ -119,7 +119,7 @@ export function PredictionPage() {
           {/* 選手セレクター行 */}
           <div className="flex items-center gap-3">
             <User size={16} className={`${textMuted} shrink-0`} />
-            <label className={`text-sm ${textSecondary} shrink-0`}>選手：</label>
+            <label className={`text-sm ${textSecondary} shrink-0`}>{t('auto.PredictionPage.k1')}</label>
             <SearchableSelect
               options={sortedPlayers.map((p) => ({
                 value: p.id,
@@ -131,7 +131,7 @@ export function PredictionPage() {
               value={selectedPlayerId}
               onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
               emptyLabel="— 選手を選択 —"
-              placeholder="選手名で検索..."
+              placeholder={t('auto.PredictionPage.k5')}
               loading={loadingPlayers}
               className="min-w-[280px]"
             />
@@ -142,7 +142,7 @@ export function PredictionPage() {
             <div className="flex items-center gap-4 mt-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <Swords size={15} className={`${textMuted} shrink-0`} />
-                <label className={`text-sm ${textSecondary} shrink-0`}>相手：</label>
+                <label className={`text-sm ${textSecondary} shrink-0`}>{t('auto.PredictionPage.k2')}</label>
                 <SearchableSelect
                   options={sortedPlayers
                     .filter((p) => p.id !== selectedPlayerId)
@@ -155,12 +155,12 @@ export function PredictionPage() {
                   value={opponentId}
                   onChange={(v) => setOpponentId(v != null ? Number(v) : null)}
                   emptyLabel="— 相手を選択 —"
-                  placeholder="相手選手名で検索..."
+                  placeholder={t('auto.PredictionPage.k6')}
                   className="min-w-[240px]"
                 />
               </div>
               <div className="flex items-center gap-2">
-                <label className={`text-sm ${textSecondary} shrink-0`}>大会レベル：</label>
+                <label className={`text-sm ${textSecondary} shrink-0`}>{t('auto.PredictionPage.k3')}</label>
                 <select
                   value={tournamentLevel}
                   onChange={(e) => setTournamentLevel(e.target.value)}
@@ -170,7 +170,7 @@ export function PredictionPage() {
                       : 'bg-gray-700 border border-gray-600 text-gray-200'
                   }`}
                 >
-                  <option value="">— 全レベル —</option>
+                  <option value="">{t('auto.PredictionPage.k4')}</option>
                   {LEVEL_OPTIONS.map((lv) => (
                     <option key={lv} value={lv}>{lv}</option>
                   ))}
@@ -254,7 +254,7 @@ export function PredictionPage() {
                   value={forecastMatchId}
                   onChange={(v) => setForecastMatchId(v != null ? Number(v) : null)}
                   emptyLabel="— 試合を選択 —"
-                  placeholder="日付・大会レベルで検索..."
+                  placeholder={t('auto.PredictionPage.k7')}
                   loading={forecastMatches.length === 0 && !!selectedPlayerId}
                 />
               </div>

@@ -7,6 +7,7 @@
 import { Swords, Target, AlertTriangle, Info } from 'lucide-react'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useTranslation } from 'react-i18next'
 
 export interface MatchNarrative {
   verdict: string          // "勝利有力" | "やや優勢" | "五分五分" | "やや不利" | "苦戦が予想"
@@ -24,6 +25,8 @@ interface Props {
 }
 
 export function MatchNarrativeCard({ narrative, playerName, opponentName }: Props) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
 
   const verdictColor =
@@ -71,7 +74,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-[10px]" style={{ color: subText }}>最有力展開</p>
+          <p className="text-[10px]" style={{ color: subText }}>{t('auto.MatchNarrativeCard.k1')}</p>
           <p className="text-xs font-mono font-semibold" style={{ color: neutral }}>
             {narrative.likely_score}
           </p>

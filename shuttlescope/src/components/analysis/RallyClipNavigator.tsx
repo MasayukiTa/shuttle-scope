@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Play, Clock, Filter, ChevronDown } from 'lucide-react'
 import { getPlaylist, PlaylistRally } from '@/api/review'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { useTranslation } from 'react-i18next'
 
 const END_TYPE_LABELS: Record<string, string> = {
   forced_error: '強制エラー',
@@ -36,6 +37,8 @@ function fmtTime(sec: number): string {
 }
 
 export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = 'B' }: Props) {
+  const { t } = useTranslation()
+
   const { card, textPrimary, textMuted, textSecondary, border, rowHover, isLight } = useCardTheme()
 
   // フィルター状態
@@ -80,7 +83,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
       <div className={`flex items-center justify-between px-4 py-3 border-b ${border}`}>
         <div className="flex items-center gap-2">
           <Play size={14} className="text-blue-500" />
-          <span className={`text-sm font-semibold ${textPrimary}`}>ラリークリップナビゲーター</span>
+          <span className={`text-sm font-semibold ${textPrimary}`}>{t('auto.RallyClipNavigator.k1')}</span>
           {!hasVideo && (
             <span className={`text-xs px-2 py-0.5 rounded ${isLight ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-yellow-900/30 text-yellow-400 border border-yellow-700/40'}`}>
               動画未保存
@@ -108,25 +111,25 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
       {showFilters && (
         <div className={`flex flex-wrap gap-3 px-4 py-3 border-b ${border} ${isLight ? 'bg-gray-50' : 'bg-gray-700/20'}`}>
           <div className="flex flex-col gap-1">
-            <label className={`text-[10px] font-medium ${textMuted}`}>勝者</label>
+            <label className={`text-[10px] font-medium ${textMuted}`}>{t('auto.RallyClipNavigator.k2')}</label>
             <select
               value={filterWinner}
               onChange={(e) => setFilterWinner(e.target.value)}
               className={`text-xs px-2 py-1 rounded border ${isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-700 border-gray-600 text-gray-200'}`}
             >
-              <option value="">すべて</option>
+              <option value="">{t('auto.RallyClipNavigator.k3')}</option>
               <option value="player_a">{playerAName}</option>
               <option value="player_b">{playerBName}</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className={`text-[10px] font-medium ${textMuted}`}>終了種別</label>
+            <label className={`text-[10px] font-medium ${textMuted}`}>{t('auto.RallyClipNavigator.k4')}</label>
             <select
               value={filterEndType}
               onChange={(e) => setFilterEndType(e.target.value)}
               className={`text-xs px-2 py-1 rounded border ${isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-700 border-gray-600 text-gray-200'}`}
             >
-              <option value="">すべて</option>
+              <option value="">{t('auto.RallyClipNavigator.k3')}</option>
               {Object.entries(END_TYPE_LABELS).map(([v, l]) => (
                 <option key={v} value={v}>{l}</option>
               ))}
@@ -134,13 +137,13 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
           </div>
           {setNums.length > 1 && (
             <div className="flex flex-col gap-1">
-              <label className={`text-[10px] font-medium ${textMuted}`}>セット</label>
+              <label className={`text-[10px] font-medium ${textMuted}`}>{t('auto.RallyClipNavigator.k5')}</label>
               <select
                 value={filterSetNum}
                 onChange={(e) => setFilterSetNum(e.target.value)}
                 className={`text-xs px-2 py-1 rounded border ${isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-700 border-gray-600 text-gray-200'}`}
               >
-                <option value="">全セット</option>
+                <option value="">{t('auto.RallyClipNavigator.k6')}</option>
                 {setNums.map((n) => (
                   <option key={n} value={String(n)}>Set {n}</option>
                 ))}
@@ -182,7 +185,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
       {/* ラリーリスト */}
       <div className="overflow-y-auto" style={{ maxHeight: '320px' }}>
         {isLoading && (
-          <div className={`px-4 py-6 text-center text-sm ${textMuted}`}>読み込み中...</div>
+          <div className={`px-4 py-6 text-center text-sm ${textMuted}`}>{t('auto.RallyClipNavigator.k7')}</div>
         )}
         {!isLoading && rallies.length === 0 && (
           <div className={`px-4 py-6 text-center text-sm ${textMuted}`}>

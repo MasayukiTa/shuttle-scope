@@ -39,6 +39,8 @@ interface FatigueRiskCardProps {
 }
 
 function RiskBar({ value, label }: { value: number; label: string }) {
+  const { t } = useTranslation()
+
   const pct = Math.min(100, Math.round(value * 100))
   const color = pct >= 12 ? LOSS : pct >= 6 ? '#f59e0b' : '#6b7280'
   return (
@@ -117,7 +119,7 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
       )}
 
       {d.risk_signals.length === 0 && (
-        <p className="text-xs" style={{ color: subText }}>明確なリスクシグナルなし</p>
+        <p className="text-xs" style={{ color: subText }}>{t('auto.FatigueRiskCard.k1')}</p>
       )}
 
       {/* 推奨 */}
@@ -146,10 +148,12 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
 }
 
 export function FatigueRiskCard({ playerId, tournamentLevel }: FatigueRiskCardProps) {
+  const { t } = useTranslation()
+
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']}>
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">疲労・崩壊リスク</h3>
+        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.FatigueRiskCard.k2')}</h3>
         <Inner playerId={playerId} tournamentLevel={tournamentLevel} />
       </div>
     </RoleGuard>

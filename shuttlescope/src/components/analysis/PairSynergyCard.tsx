@@ -5,6 +5,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { perfColor, WIN, LOSS } from '@/styles/colors'
+import { useTranslation } from 'react-i18next'
 
 interface PairSynergyCardProps {
   playerId: number
@@ -30,6 +31,8 @@ interface Response {
 }
 
 function SynergyBar({ score }: { score: number }) {
+  const { t } = useTranslation()
+
   const MAX = 0.5
   const pct = Math.min(Math.abs(score) / MAX * 50, 50)
   const positive = score >= 0
@@ -57,6 +60,8 @@ function SynergyBar({ score }: { score: number }) {
 }
 
 function Inner({ playerId }: { playerId: number }) {
+  const { t } = useTranslation()
+
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-pair-synergy', playerId],
     queryFn: () => apiGet<Response>('/analysis/pair_synergy', { player_id: playerId }),
@@ -64,7 +69,7 @@ function Inner({ playerId }: { playerId: number }) {
   })
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">読み込み中...</div>
+    return <div className="text-gray-500 text-sm py-4 text-center">{t('auto.PairSynergyCard.k1')}</div>
   }
 
   const pairs = resp?.data?.pairs ?? []
@@ -91,7 +96,7 @@ function Inner({ playerId }: { playerId: number }) {
             </div>
             <div className="flex items-center gap-3 text-xs">
               <div className="flex items-center gap-1">
-                <span className="text-gray-400">勝率</span>
+                <span className="text-gray-400">{t('auto.PairSynergyCard.k2')}</span>
                 <span
                   className="font-mono font-semibold"
                   style={{ color: perfColor(p.win_rate) }}
@@ -100,7 +105,7 @@ function Inner({ playerId }: { playerId: number }) {
                 </span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-gray-400">シナジー</span>
+                <span className="text-gray-400">{t('auto.PairSynergyCard.k3')}</span>
                 <SynergyBar score={p.synergy_score} />
                 <span
                   className="font-mono text-xs"
@@ -122,10 +127,12 @@ function Inner({ playerId }: { playerId: number }) {
 }
 
 export function PairSynergyCard({ playerId }: PairSynergyCardProps) {
+  const { t } = useTranslation()
+
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']}>
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">ペアシナジースコア</h3>
+        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.PairSynergyCard.k4')}</h3>
         <Inner playerId={playerId} />
       </div>
     </RoleGuard>

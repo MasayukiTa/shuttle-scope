@@ -174,13 +174,13 @@ export function LoginPage({ onLogin }: Props) {
 
         <div className="space-y-4">
           <div>
-            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>ログインID</label>
+            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.k1')}</label>
             <input
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               className={fieldCls}
-              placeholder="ログインIDを入力"
+              placeholder={t('auto.LoginPage.k2')}
               autoComplete="username"
             />
           </div>

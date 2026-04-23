@@ -7,6 +7,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+import { useTranslation } from 'react-i18next'
 
 // ショット略称マッピング（モバイルサマリー用）
 const SHOT_ABBR: Record<string, string> = {
@@ -223,6 +224,8 @@ function shot_keys_fallback(i: number): string {
 // ──────────────────────────────────────────────────────────────────────────────
 
 export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: TransitionMatrixProps) {
+  const { t } = useTranslation()
+
   const svgRef = useRef<SVGSVGElement>(null)
   const isLight = useIsLightMode()
 
@@ -258,7 +261,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
 
   if (isLoading) {
     return (
-      <div className="text-gray-500 text-sm py-8 text-center">読み込み中...</div>
+      <div className="text-gray-500 text-sm py-8 text-center">{t('auto.TransitionMatrix.k1')}</div>
     )
   }
 
@@ -294,7 +297,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
       {/* ── モバイル: 上位10サマリー ────────────────────────────────── */}
       {matrixData.top_sequences?.length > 0 && (
         <div className="md:hidden">
-          <p className="text-xs text-gray-500 mb-2">主要遷移パターン（頻度順）</p>
+          <p className="text-xs text-gray-500 mb-2">{t('auto.TransitionMatrix.k2')}</p>
           <div className="space-y-0">
             {matrixData.top_sequences.slice(0, 10).map((seq, i) => (
               <div key={i} className="flex items-center gap-2 py-2 border-b border-gray-700/50">
@@ -332,15 +335,15 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
 
         {/* 凡例: 白→深青（密度スケール） */}
         <div className="flex items-center gap-2 text-xs text-gray-400 mt-2">
-          <span>低頻度</span>
+          <span>{t('auto.TransitionMatrix.k3')}</span>
           <div
             className="h-3 w-32 rounded"
             style={{
               background: 'linear-gradient(to right, rgb(240,244,255), rgb(59,76,192))',
             }}
           />
-          <span>高頻度</span>
-          <span className="ml-2 text-gray-600 hidden md:inline">（対角線はグレーでマスク）</span>
+          <span>{t('auto.TransitionMatrix.k4')}</span>
+          <span className="ml-2 text-gray-600 hidden md:inline">{t('auto.TransitionMatrix.k5')}</span>
         </div>
       </div>
 

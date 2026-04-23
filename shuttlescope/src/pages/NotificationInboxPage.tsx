@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 
 import { publicInquiryList, publicInquiryUpdate, type PublicInquiryRow } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -12,6 +13,8 @@ const STATUS_LABELS: Record<PublicInquiryRow['status'], string> = {
 }
 
 export function NotificationInboxPage() {
+  const { t } = useTranslation()
+
   const { role } = useAuth()
   const isLight = useIsLightMode()
   const queryClient = useQueryClient()
@@ -48,7 +51,7 @@ export function NotificationInboxPage() {
   })
 
   if (role !== 'admin') {
-    return <div className="p-8 text-center text-gray-500">通知の確認は admin ロール専用です。</div>
+    return <div className="p-8 text-center text-gray-500">{t('auto.NotificationInboxPage.k1')}</div>
   }
 
   const items = inquiriesQuery.data?.data ?? []
@@ -57,8 +60,8 @@ export function NotificationInboxPage() {
     <div className="flex h-full">
       <div className={`w-[360px] shrink-0 border-r ${border} ${panelBg} overflow-y-auto`}>
         <div className={`px-5 py-4 border-b ${border}`}>
-          <h1 className={`text-base font-semibold ${textMain}`}>通知 / お問い合わせ</h1>
-          <p className={`text-sm mt-1 ${textMuted}`}>公開サイトから届いた問い合わせを確認します。</p>
+          <h1 className={`text-base font-semibold ${textMain}`}>{t('auto.NotificationInboxPage.k2')}</h1>
+          <p className={`text-sm mt-1 ${textMuted}`}>{t('auto.NotificationInboxPage.k3')}</p>
         </div>
         <div className="divide-y divide-transparent">
           {items.map((item) => (
@@ -91,7 +94,7 @@ export function NotificationInboxPage() {
               <div className={`text-xs mt-2 line-clamp-2 ${textMuted}`}>{item.message}</div>
             </button>
           ))}
-          {items.length === 0 && <div className={`px-5 py-6 text-sm ${textMuted}`}>新しい通知はありません。</div>}
+          {items.length === 0 && <div className={`px-5 py-6 text-sm ${textMuted}`}>{t('auto.NotificationInboxPage.k4')}</div>}
         </div>
       </div>
 
@@ -126,31 +129,31 @@ export function NotificationInboxPage() {
 
               <div className="grid gap-4 md:grid-cols-2 mb-5">
                 <div>
-                  <div className={`text-xs uppercase tracking-wide ${textMuted}`}>所属</div>
+                  <div className={`text-xs uppercase tracking-wide ${textMuted}`}>{t('auto.NotificationInboxPage.k5')}</div>
                   <div className={`text-sm mt-1 ${textMain}`}>{selected.organization || '未記入'}</div>
                 </div>
                 <div>
-                  <div className={`text-xs uppercase tracking-wide ${textMuted}`}>立場</div>
+                  <div className={`text-xs uppercase tracking-wide ${textMuted}`}>{t('auto.NotificationInboxPage.k6')}</div>
                   <div className={`text-sm mt-1 ${textMain}`}>{selected.role || '未記入'}</div>
                 </div>
                 <div className="md:col-span-2">
-                  <div className={`text-xs uppercase tracking-wide ${textMuted}`}>連絡手段</div>
+                  <div className={`text-xs uppercase tracking-wide ${textMuted}`}>{t('auto.NotificationInboxPage.k7')}</div>
                   <div className={`text-sm mt-1 ${textMain}`}>{selected.contact_reference || '未記入'}</div>
                 </div>
               </div>
 
               <div className="mb-5">
-                <div className={`text-xs uppercase tracking-wide ${textMuted}`}>お問い合わせ内容</div>
+                <div className={`text-xs uppercase tracking-wide ${textMuted}`}>{t('auto.NotificationInboxPage.k8')}</div>
                 <div className={`mt-2 whitespace-pre-wrap text-sm leading-7 ${textMain}`}>{selected.message}</div>
               </div>
 
               <div>
-                <label className={`block text-sm font-medium mb-2 ${textMain}`}>管理メモ</label>
+                <label className={`block text-sm font-medium mb-2 ${textMain}`}>{t('auto.NotificationInboxPage.k9')}</label>
                 <textarea
                   value={draftNote}
                   onChange={(e) => setDraftNote(e.target.value)}
                   className={`${inputCls} min-h-[140px]`}
-                  placeholder="対応状況やメモを残せます"
+                  placeholder={t('auto.NotificationInboxPage.k11')}
                 />
                 <div className="mt-3">
                   <button
@@ -171,7 +174,7 @@ export function NotificationInboxPage() {
             </div>
           </div>
         ) : (
-          <div className={`h-full flex items-center justify-center text-sm ${textMuted}`}>左側から通知を選択してください。</div>
+          <div className={`h-full flex items-center justify-center text-sm ${textMuted}`}>{t('auto.NotificationInboxPage.k10')}</div>
         )}
       </div>
     </div>

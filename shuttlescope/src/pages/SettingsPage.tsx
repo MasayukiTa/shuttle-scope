@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { setLanguage, SUPPORTED_LANGS, type SupportedLang } from '@/i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut } from 'lucide-react'
 import QRCode from 'qrcode'
@@ -57,6 +58,8 @@ const defaultPlayerForm = (): PlayerFormData => ({
 
 /** URL + QRコード + コピーボタンをまとめた小コンポーネント */
 function LanUrlCard({ url, hint }: { url: string; hint: string }) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [copied, setCopied] = useState(false)
@@ -99,7 +102,7 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
           <button
             onClick={handleCopy}
             className={`flex-shrink-0 p-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-            title="コピー"
+            title={t('auto.SettingsPage.k21')}
           >
             {copied ? <CheckCircle size={12} className="text-green-500" /> : <Copy size={12} />}
           </button>
@@ -110,7 +113,7 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
 }
 
 export function SettingsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const { role, teamName, displayName, userId, clearRole } = useAuth()
 
@@ -829,18 +832,18 @@ export function SettingsPage() {
         <div className="flex overflow-x-auto scrollbar-hide">
           {([
             ...(canManagePlayers ? [
-              { key: 'players' as const, label: '選手管理' },
+              { key: 'players' as const, label: t('auto.SettingsPage.k31') },
               { key: 'review' as const, label: t('review.title'), badge: reviewPlayersData?.data?.length ?? 0 },
             ] : []),
             ...(role === 'admin' && !isPublicMode ? [
               { key: 'tracknet' as const, label: t('tracknet.tab_label') },
               { key: 'sharing' as const, label: t('sharing.tab_label') },
             ] : []),
-            { key: 'data' as const, label: 'データ管理' },
+            { key: 'data' as const, label: t('auto.SettingsPage.k32') },
             ...(role === 'admin' && !isPublicMode ? [
               { key: 'cluster' as const, label: t('cluster.tab') },
             ] : []),
-            { key: 'account' as const, label: 'アカウント設定' },
+            { key: 'account' as const, label: t('auto.SettingsPage.k33') },
           ]).map((tab) => (
             <button
               key={tab.key}
@@ -899,7 +902,7 @@ export function SettingsPage() {
                   <button
                     onClick={() => setPlayerSearch('')}
                     className={`absolute right-2 top-1/2 -translate-y-1/2 ${textMuted} hover:opacity-80`}
-                    aria-label="クリア"
+                    aria-label={t('auto.SettingsPage.k30')}
                   >
                     <X size={13} />
                   </button>
@@ -932,9 +935,9 @@ export function SettingsPage() {
                     {/* ソート可能カラム共通ヘルパー */}
                     {(
                       [
-                        { key: 'name', label: '名前' },
-                        { key: 'team', label: 'チーム' },
-                        { key: 'nationality', label: '国' },
+                        { key: 'name', label: t('auto.SettingsPage.k34') },
+                        { key: 'team', label: t('auto.SettingsPage.k35') },
+                        { key: 'nationality', label: t('auto.SettingsPage.k36') },
                       ] as { key: PlayerSortKey; label: string }[]
                     ).map(({ key, label }) => (
                       <th
@@ -996,7 +999,7 @@ export function SettingsPage() {
                             type="button"
                             onClick={() => copyPlayerName(p)}
                             className="text-left group flex items-center gap-1.5"
-                            title="クリックでコピー"
+                            title={t('auto.SettingsPage.k22')}
                           >
                             <span>{p.name}</span>
                             {copiedPlayerId === p.id ? (
@@ -1133,7 +1136,7 @@ export function SettingsPage() {
                             <button
                               onClick={() => openEdit(p)}
                               className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                              title="編集"
+                              title={t('auto.SettingsPage.k23')}
                             >
                               <Edit2 size={12} />
                             </button>
@@ -1189,7 +1192,7 @@ export function SettingsPage() {
                     <p>python -m backend.tracknet.setup download</p>
                     <p>python -m backend.tracknet.setup export</p>
                     <p>python -m backend.tracknet.setup convert</p>
-                    <p className="text-gray-500 font-sans"># または一括: python -m backend.tracknet.setup all</p>
+                    <p className="text-gray-500 font-sans">{t('auto.SettingsPage.k1')}</p>
                   </div>
                 </div>
               )}
@@ -1389,7 +1392,7 @@ export function SettingsPage() {
               {/* CUDA デバイス選択 */}
               {computeDevices && (computeDevices.cuda_devices?.length ?? 0) > 0 && (
                 <div>
-                  <p className={`text-xs font-medium mb-2 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>CUDA デバイス（NVIDIA GPU）</p>
+                  <p className={`text-xs font-medium mb-2 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{t('auto.SettingsPage.k2')}</p>
                   <div className="space-y-1.5">
                     {computeDevices.cuda_devices.map((dev) => (
                       <button
@@ -1413,7 +1416,7 @@ export function SettingsPage() {
               {/* OpenVINO デバイス選択 */}
               {computeDevices && (computeDevices.openvino_devices?.length ?? 0) > 0 && (
                 <div>
-                  <p className={`text-xs font-medium mb-2 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>OpenVINO デバイス（Intel GPU / CPU）</p>
+                  <p className={`text-xs font-medium mb-2 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{t('auto.SettingsPage.k3')}</p>
                   <div className="flex flex-wrap gap-2">
                     {computeDevices.openvino_devices.map((dev) => (
                       <button
@@ -1435,7 +1438,7 @@ export function SettingsPage() {
               {/* ONNX プロバイダー状態表示 */}
               {computeDevices && (
                 <div>
-                  <p className={`text-xs font-medium mb-1.5 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>ONNX Runtime プロバイダー</p>
+                  <p className={`text-xs font-medium mb-1.5 ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{t('auto.SettingsPage.k4')}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {(computeDevices.onnx_providers ?? []).map((p) => (
                       <span
@@ -1452,7 +1455,7 @@ export function SettingsPage() {
                       </span>
                     ))}
                     {(computeDevices.onnx_providers ?? []).length === 0 && (
-                      <span className="text-xs text-gray-500">onnxruntime 未インストール</span>
+                      <span className="text-xs text-gray-500">{t('auto.SettingsPage.k5')}</span>
                     )}
                   </div>
                   {(() => {
@@ -1472,7 +1475,7 @@ export function SettingsPage() {
               )}
 
               {!computeDevices && !devicesFetching && (
-                <p className="text-xs text-gray-500">「再検出」を押してデバイスを確認</p>
+                <p className="text-xs text-gray-500">{t('auto.SettingsPage.k6')}</p>
               )}
             </div>
 
@@ -1769,7 +1772,7 @@ export function SettingsPage() {
                   )}
 
                   {tunnelStatus?.data?.running && !tunnelStatus.data.url && (
-                    <p className={`text-xs animate-pulse ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>URL取得中…（数秒かかります）</p>
+                    <p className={`text-xs animate-pulse ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.SettingsPage.k7')}</p>
                   )}
                 </div>
               )}
@@ -1992,28 +1995,28 @@ export function SettingsPage() {
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>デバイス名（エクスポートパッケージに記録）</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k8')}</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={appSettings.sync_device_id}
                       onChange={(e) => updateSettings({ sync_device_id: e.target.value })}
-                      placeholder="自動生成されます"
+                      placeholder={t('auto.SettingsPage.k26')}
                       className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white font-mono"
                     />
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-0.5">PC ごとに一意な識別子。パッケージのどの端末由来かを記録します。</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{t('auto.SettingsPage.k9')}</p>
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>同期フォルダパス（OneDrive / SharePoint / Google Drive 等）</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k10')}</label>
                   <input
                     type="text"
                     value={appSettings.sync_folder_path}
                     onChange={(e) => updateSettings({ sync_folder_path: e.target.value })}
-                    placeholder="例: C:\Users\YourName\OneDrive\ShuttleScope"
+                    placeholder={t('auto.SettingsPage.k27')}
                     className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white font-mono"
                   />
-                  <p className="text-[11px] text-gray-500 mt-0.5">設定するとフォルダ内の .sspkg ファイルを直接インポートできます。</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{t('auto.SettingsPage.k11')}</p>
                 </div>
               </div>
             </section>}
@@ -2030,7 +2033,7 @@ export function SettingsPage() {
 
               {/* エクスポートモード切替 */}
               <div className="flex gap-1.5">
-                {([{ key: 'match', label: '試合選択' }, { key: 'change_set', label: '差分（更新日以降）' }] as const).map(({ key, label }) => (
+                {([{ key: 'match', label: t('auto.SettingsPage.k37') }, { key: 'change_set', label: t('auto.SettingsPage.k38') }] as const).map(({ key, label }) => (
                   <button
                     key={key}
                     onClick={() => setExportMode(key)}
@@ -2047,7 +2050,7 @@ export function SettingsPage() {
                 /* 試合選択 */
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-sm text-gray-400">エクスポートする試合（クリックで選択）</label>
+                    <label className="text-sm text-gray-400">{t('auto.SettingsPage.k12')}</label>
                     {exportMatchList.length > 0 && (
                       <button
                         type="button"
@@ -2070,7 +2073,7 @@ export function SettingsPage() {
                         type="text"
                         value={exportMatchIds}
                         onChange={(e) => setExportMatchIds(e.target.value)}
-                        placeholder="例: 1, 3, 7"
+                        placeholder={t('auto.SettingsPage.k28')}
                         className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white mb-1"
                       />
                       {exportMatchList.length > 0 && (
@@ -2111,7 +2114,7 @@ export function SettingsPage() {
               ) : (
                 /* Change Set */
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>この日時以降に更新されたデータを全てエクスポート</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k13')}</label>
                   <div className="flex gap-2">
                     <input
                       type="datetime-local"
@@ -2143,7 +2146,7 @@ export function SettingsPage() {
               </p>
 
               <div>
-                <label className={`block text-sm ${textSecondary} mb-1`}>パッケージファイル（.sspkg）</label>
+                <label className={`block text-sm ${textSecondary} mb-1`}>{t('auto.SettingsPage.k14')}</label>
                 <input
                   type="file"
                   accept=".sspkg,.zip"
@@ -2176,10 +2179,10 @@ export function SettingsPage() {
                     <>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         {[
-                          { label: '追加', value: importPreview.data?.merge_preview?.added ?? 0, color: 'text-blue-400' },
-                          { label: '更新', value: importPreview.data?.merge_preview?.updated ?? 0, color: 'text-yellow-400' },
-                          { label: '保持', value: importPreview.data?.merge_preview?.kept ?? 0, color: 'text-gray-400' },
-                          { label: '競合', value: importPreview.data?.merge_preview?.conflicts ?? 0, color: 'text-orange-400' },
+                          { label: t('auto.SettingsPage.k39'), value: importPreview.data?.merge_preview?.added ?? 0, color: 'text-blue-400' },
+                          { label: t('auto.SettingsPage.k16'), value: importPreview.data?.merge_preview?.updated ?? 0, color: 'text-yellow-400' },
+                          { label: t('auto.SettingsPage.k40'), value: importPreview.data?.merge_preview?.kept ?? 0, color: 'text-gray-400' },
+                          { label: t('auto.SettingsPage.k41'), value: importPreview.data?.merge_preview?.conflicts ?? 0, color: 'text-orange-400' },
                         ].map(({ label, value, color }) => (
                           <div key={label} className="bg-gray-700/50 rounded p-2 text-center">
                             <p className={`text-xl font-bold ${color}`}>{value}</p>
@@ -2212,7 +2215,7 @@ export function SettingsPage() {
                 <div className={`rounded-lg p-3 text-sm ${importResult.success ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-red-900/30 border border-red-700'}`}>
                   {importResult.success ? (
                     <>
-                      <p className="font-medium text-emerald-300 mb-1">インポート完了</p>
+                      <p className="font-medium text-emerald-300 mb-1">{t('auto.SettingsPage.k15')}</p>
                       <p className="text-xs text-gray-300">
                         追加 {importResult.data?.added} / 更新 {importResult.data?.updated} / 保持 {importResult.data?.kept} / 競合 {importResult.data?.conflicts}
                       </p>
@@ -2272,7 +2275,7 @@ export function SettingsPage() {
                     <Share2 size={16} className="text-cyan-400" />
                     <h2 className="text-base font-semibold">{t('settings.ui.cloud_packages')}</h2>
                   </div>
-                  <button onClick={() => refetchCloudPackages()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>更新</button>
+                  <button onClick={() => refetchCloudPackages()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>{t('auto.SettingsPage.k16')}</button>
                 </div>
                 <p className="text-xs text-gray-400 font-mono truncate">{(cloudPackagesData as any)?.folder}</p>
 
@@ -2316,7 +2319,7 @@ export function SettingsPage() {
                     <h2 className="text-base font-semibold">{t('settings.ui.conflict_review')}</h2>
                     <span className="text-xs bg-orange-500 text-white px-1.5 py-0.5 rounded-full">{conflicts.length}</span>
                   </div>
-                  <button onClick={() => refetchConflicts()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>更新</button>
+                  <button onClick={() => refetchConflicts()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>{t('auto.SettingsPage.k16')}</button>
                 </div>
                 <p className="text-xs text-gray-400">
                   インポート時に検出された競合レコードです。ローカルを維持するか、取込データで上書きするかを選択してください。
@@ -2437,7 +2440,7 @@ export function SettingsPage() {
                         <button
                           onClick={() => handleSetAutoVacuum('incremental')}
                           disabled={dbAvRunning}
-                          title="INCREMENTAL に変更（VACUUM を実行・数秒かかります）"
+                          title={t('auto.SettingsPage.k24')}
                           className="text-[10px] px-2 py-0.5 rounded bg-yellow-600 hover:bg-yellow-500 text-white disabled:opacity-40 transition-colors"
                         >
                           {dbAvRunning ? <RotateCcw size={10} className="animate-spin inline" /> : 'INCREMENTAL に変更'}
@@ -2446,7 +2449,7 @@ export function SettingsPage() {
                         <button
                           onClick={() => handleSetAutoVacuum('off')}
                           disabled={dbAvRunning}
-                          title="OFF に戻す"
+                          title={t('auto.SettingsPage.k25')}
                           className="text-[10px] px-2 py-0.5 rounded bg-gray-600 hover:bg-gray-500 text-white disabled:opacity-40 transition-colors"
                         >
                           {dbAvRunning ? <RotateCcw size={10} className="animate-spin inline" /> : 'OFF に戻す'}
@@ -2464,7 +2467,7 @@ export function SettingsPage() {
               )}
 
               <p className="text-xs text-gray-400 leading-relaxed">
-                <span className="font-medium text-gray-300">DB 最適化：</span>
+                <span className="font-medium text-gray-300">{t('auto.SettingsPage.k17')}</span>
                 WAL チェックポイントと incremental vacuum を実行します（auto_vacuum=INCREMENTAL 時に空きページを回収）。
                 大量削除後や定期メンテとして実行してください。
               </p>
@@ -2491,8 +2494,8 @@ export function SettingsPage() {
                 }`}
               >
                 {dbMaintRunning
-                  ? <><RotateCcw size={13} className="animate-spin" /> 実行中…</>
-                  : <><Zap size={13} /> DB 最適化を実行</>
+                  ? <><RotateCcw size={13} className="animate-spin" /> {t('auto.SettingsPage.k18')}</>
+                  : <><Zap size={13} /> {t('auto.SettingsPage.k19')}</>
                 }
               </button>
             </section>}
@@ -2536,6 +2539,35 @@ export function SettingsPage() {
                     {theme === mode && <CheckCircle size={14} className="text-blue-400 ml-auto" />}
                   </button>
                 ))}
+              </div>
+            </section>
+
+            {/* 言語 */}
+            <section>
+              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>{t('settings.ui.language')}</h2>
+              <p className={`text-xs ${textMuted} mb-3`}>{t('settings.ui.language_hint')}</p>
+              <div className="flex gap-3">
+                {SUPPORTED_LANGS.map((lng) => {
+                  const active = (i18n.language as SupportedLang) === lng
+                  const label = lng === 'ja' ? t('settings.ui.language_ja') : t('settings.ui.language_en')
+                  return (
+                    <button
+                      key={lng}
+                      onClick={() => setLanguage(lng as SupportedLang)}
+                      className={`flex items-center gap-2 flex-1 justify-center px-4 py-3 rounded-lg border transition-colors ${
+                        active
+                          ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                          : isLight
+                            ? 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                            : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500'
+                      }`}
+                    >
+                      <Globe size={16} />
+                      <span className="font-medium text-sm">{label}</span>
+                      {active && <CheckCircle size={14} className="text-blue-400 ml-auto" />}
+                    </button>
+                  )
+                })}
               </div>
             </section>
 
@@ -2622,7 +2654,7 @@ export function SettingsPage() {
                   onChange={(e) => setPlayerForm({ ...playerForm, name: e.target.value })}
                   required
                   className={`w-full ${inputClass}`}
-                  placeholder="例: 山田 太郎"
+                  placeholder={t('auto.SettingsPage.k29')}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -2644,7 +2676,7 @@ export function SettingsPage() {
                   />
                   {editingPlayer?.team_history && editingPlayer.team_history.length > 0 && (
                     <div className={`mt-1.5 text-xs ${textMuted} space-y-0.5`}>
-                      <div className="font-medium">所属履歴:</div>
+                      <div className="font-medium">{t('auto.SettingsPage.k20')}</div>
                       {editingPlayer.team_history.map((h: TeamHistoryEntry, i: number) => (
                         <div key={i} className="flex items-center gap-1">
                           <span className={`px-1.5 py-0.5 rounded ${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-700 text-gray-400'}`}>

@@ -100,7 +100,7 @@ function Sidebar() {
       : []),
     ...(role === 'admin'
       ? [
-          { to: '/notifications', label: '通知', shortLabel: '通知', icon: Bell, badge: unreadCount > 0 ? unreadCount : null },
+          { to: '/notifications', label: t('auto.App.k2'), shortLabel: '通知', icon: Bell, badge: unreadCount > 0 ? unreadCount : null },
           { to: '/users', label: t('nav.users'), icon: Users },
         ]
       : []),
@@ -218,18 +218,24 @@ function Sidebar() {
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
+
   const { role } = useAuth()
   if (role !== 'admin') return <Navigate to="/matches" replace />
   return <>{children}</>
 }
 
 function PageAccessRoute({ pageKey, children }: { pageKey: string; children: React.ReactNode }) {
+  const { t } = useTranslation()
+
   const { hasPageAccess } = useAuth()
   if (!hasPageAccess(pageKey)) return <Navigate to="/matches" replace />
   return <>{children}</>
 }
 
 function MainLayout() {
+  const { t } = useTranslation()
+
   return (
     <div className="flex h-screen">
       <Sidebar />
@@ -256,6 +262,8 @@ function MainLayout() {
 }
 
 function ThemeApplier({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
+
   const { theme } = useTheme()
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -271,6 +279,8 @@ function ThemeApplier({ children }: { children: React.ReactNode }) {
 const IDLE_LOGOUT_MS = 15 * 60 * 1000
 
 function ProtectedMainRoute() {
+  const { t } = useTranslation()
+
   const { token, role, setSession, clearRole } = useAuth()
   const [checkingAuth, setCheckingAuth] = useState(true)
 
@@ -323,7 +333,7 @@ function ProtectedMainRoute() {
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
         <div className="text-center space-y-3">
           <div className="text-2xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>ShuttleScope</div>
-          <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>認証状態を確認しています...</p>
+          <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>{t('auto.App.k1')}</p>
         </div>
       </div>
     )

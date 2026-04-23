@@ -96,14 +96,14 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   const ExpandBtn = ({ onClick }: { onClick: () => void }) => (
     <button
       onClick={onClick}
-      title="全画面で表示"
+      title={t('auto.DashboardOverviewPage.k18')}
       className={`shrink-0 ${textMuted} hover:${textHeading} transition-colors p-1 rounded ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
     >
       <Maximize2 size={13} />
     </button>
   )
   const LoadingRow = () => (
-    <div className={`${loadingClass} text-sm py-4 text-center`}>読み込み中...</div>
+    <div className={`${loadingClass} text-sm py-4 text-center`}>{t('auto.DashboardOverviewPage.k1')}</div>
   )
 
   // ローカル状態
@@ -222,7 +222,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           {/* ラリー終了タイプ */}
           <div className={`${card} rounded-lg p-4`}>
             <div className="flex items-center justify-between mb-3">
-              <SectionTitle>ラリー終了タイプ</SectionTitle>
+              <SectionTitle>{t('auto.DashboardOverviewPage.k2')}</SectionTitle>
               <div className="flex items-center gap-2">
                 {descriptive && (
                   <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />
@@ -231,7 +231,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               </div>
             </div>
             {loadingDescriptive ? <LoadingRow /> : endTypeData.length === 0 ? (
-              <p className={`${textMuted} text-sm text-center py-4`}>データなし</p>
+              <p className={`${textMuted} text-sm text-center py-4`}>{t('auto.DashboardOverviewPage.k3')}</p>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={endTypeData} layout="vertical" margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
@@ -247,7 +247,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           {/* ラリー長分布 */}
           <div className={`${card} rounded-lg p-4`}>
             <div className="flex items-center justify-between mb-3">
-              <SectionTitle>ラリー長分布（〜20打）</SectionTitle>
+              <SectionTitle>{t('auto.DashboardOverviewPage.k4')}</SectionTitle>
               <div className="flex items-center gap-2">
                 {descriptive && (
                   <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />
@@ -256,7 +256,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               </div>
             </div>
             {loadingDescriptive ? <LoadingRow /> : !descriptive ? (
-              <p className={`${textMuted} text-sm text-center py-4`}>データなし</p>
+              <p className={`${textMuted} text-sm text-center py-4`}>{t('auto.DashboardOverviewPage.k3')}</p>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart
@@ -278,7 +278,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           {/* コートヒートマップ */}
           <div className={`${card} rounded-lg p-4`}>
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              <SectionTitle>コートヒートマップ</SectionTitle>
+              <SectionTitle>{t('auto.DashboardOverviewPage.k5')}</SectionTitle>
               <div className="flex items-center gap-1 ml-auto shrink-0">
                 {(() => {
                   const s = heatmapTab === 'hit' ? heatmapHitResp?.meta?.sample_size : heatmapLandResp?.meta?.sample_size
@@ -321,7 +321,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   }}
                   className={`w-full text-[11px] rounded px-2 py-1 focus:outline-none ${isLight ? 'bg-white border border-gray-300 text-gray-700' : 'bg-gray-700 border border-gray-600 text-gray-300'}`}
                 >
-                  <option value="">試合を選択（個別）</option>
+                  <option value="">{t('auto.DashboardOverviewPage.k6')}</option>
                   {[...matches].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).map((m) => (
                     <option key={m.match_id} value={m.match_id}>
                       {m.date ?? '日付不明'} {m.opponent} ({m.result === 'win' ? '勝' : '敗'})
@@ -340,7 +340,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   onZoneSelect={() => setCourtHeatOpen(true)}
                   label={heatmapTab === 'hit' ? '打点分布' : '着地点分布'}
                 />
-                <p className={`text-[10px] ${textFaint} mt-1`}>クリックで詳細分析を開く</p>
+                <p className={`text-[10px] ${textFaint} mt-1`}>{t('auto.DashboardOverviewPage.k7')}</p>
               </div>
             )}
           </div>
@@ -350,26 +350,26 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             allowedRoles={['analyst', 'coach']}
             fallback={
               <div className={`${card} rounded-lg p-4`}>
-                <p className={`text-xs ${textMuted} text-center py-2`}>※ このコンテンツはアナリスト・コーチ向けです</p>
+                <p className={`text-xs ${textMuted} text-center py-2`}>{t('auto.DashboardOverviewPage.k8')}</p>
               </div>
             }
           >
             <div className={`${card} rounded-lg p-4`}>
               <div className="flex items-center justify-between mb-3">
-                <SectionTitle>サーブ勝率</SectionTitle>
+                <SectionTitle>{t('auto.DashboardOverviewPage.k9')}</SectionTitle>
                 {descriptive && <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />}
               </div>
               {loadingDescriptive || !descriptive?.server_win_rate ? <LoadingRow /> : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className={`text-sm ${textSecondary}`}>サーバー時</span>
+                    <span className={`text-sm ${textSecondary}`}>{t('auto.DashboardOverviewPage.k10')}</span>
                     <span className="text-lg font-semibold text-blue-400">{pct(descriptive.server_win_rate.as_server)}</span>
                   </div>
                   <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
                     <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${(descriptive.server_win_rate.as_server * 100).toFixed(1)}%` }} />
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className={`text-sm ${textSecondary}`}>レシーバー時</span>
+                    <span className={`text-sm ${textSecondary}`}>{t('auto.DashboardOverviewPage.k11')}</span>
                     <span className="text-lg font-semibold text-emerald-400">{pct(descriptive.server_win_rate.as_receiver)}</span>
                   </div>
                   <div className={`w-full ${isLight ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
@@ -388,7 +388,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       {/* 試合一覧テーブル */}
       <div className={`${card} rounded-lg p-4`}>
         <div className="flex items-center justify-between mb-3">
-          <SectionTitle>試合一覧</SectionTitle>
+          <SectionTitle>{t('auto.DashboardOverviewPage.k12')}</SectionTitle>
           <span className={`text-xs ${textMuted}`}>{filteredMatches.length} / {matches.length} 試合</span>
         </div>
         {loadingMatches ? <LoadingRow /> : filteredMatches.length === 0 ? (
@@ -401,12 +401,12 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               <thead>
                 <tr className={`${textSecondary} border-b ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
                   {([
-                    { col: 'opponent' as const,        label: '対戦相手', align: 'left'   },
-                    { col: null,                        label: '大会',     align: 'left'   },
-                    { col: 'tournament_level' as const, label: 'レベル',   align: 'center' },
-                    { col: 'date' as const,             label: '日付',     align: 'left'   },
-                    { col: 'result' as const,           label: '結果',     align: 'center' },
-                    { col: 'rally_count' as const,      label: 'ラリー',   align: 'right'  },
+                    { col: 'opponent' as const,        label: t('auto.DashboardOverviewPage.k22'), align: 'left'   },
+                    { col: null,                        label: t('auto.DashboardOverviewPage.k23'),     align: 'left'   },
+                    { col: 'tournament_level' as const, label: t('auto.DashboardOverviewPage.k24'),   align: 'center' },
+                    { col: 'date' as const,             label: t('auto.DashboardOverviewPage.k25'),     align: 'left'   },
+                    { col: 'result' as const,           label: t('auto.DashboardOverviewPage.k26'),     align: 'center' },
+                    { col: 'rally_count' as const,      label: t('auto.DashboardOverviewPage.k27'),   align: 'right'  },
                   ] as const).map(({ col, label, align }) => (
                     <th
                       key={label}
@@ -455,7 +455,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             <button
               onClick={() => setSelectedMatchId(matchOptions[matchNavIdx - 1].value as number)}
               disabled={!canGoPrev}
-              title="前の試合"
+              title={t('auto.DashboardOverviewPage.k19')}
               className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
             >
               <ChevronLeft size={14} className={textMuted} />
@@ -465,14 +465,14 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               value={selectedMatchId}
               onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
               emptyLabel="— 試合を選択 —"
-              placeholder="日付・対戦相手で検索..."
+              placeholder={t('auto.DashboardOverviewPage.k21')}
               dropdownAlign="right"
               className="w-[210px]"
             />
             <button
               onClick={() => setSelectedMatchId(matchOptions[matchNavIdx + 1].value as number)}
               disabled={!canGoNext}
-              title="次の試合"
+              title={t('auto.DashboardOverviewPage.k20')}
               className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
             >
               <ChevronRight size={14} className={textMuted} />
@@ -488,7 +488,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {selectedMatchId ? (
           <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
         ) : (
-          <p className={`${textMuted} text-sm text-center py-6`}>試合を選択するとスコア推移が表示されます</p>
+          <p className={`${textMuted} text-sm text-center py-6`}>{t('auto.DashboardOverviewPage.k13')}</p>
         )}
       </div>
 
@@ -517,7 +517,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {selectedMatchId ? (
           <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
         ) : (
-          <p className={`${textMuted} text-sm text-center py-6`}>試合を選択するとインターバルレポートが表示されます</p>
+          <p className={`${textMuted} text-sm text-center py-6`}>{t('auto.DashboardOverviewPage.k14')}</p>
         )}
       </div>
 
@@ -559,8 +559,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           <ErrorBoundary fallback={
             <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center">
               <div className={`${card} rounded-lg p-8 max-w-sm text-center`}>
-                <p className={`${textSecondary} mb-4`}>グラフの表示中にエラーが発生しました</p>
-                <button onClick={() => setExpandedChart(null)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded text-sm`}>閉じる</button>
+                <p className={`${textSecondary} mb-4`}>{t('auto.DashboardOverviewPage.k15')}</p>
+                <button onClick={() => setExpandedChart(null)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded text-sm`}>{t('auto.DashboardOverviewPage.k16')}</button>
               </div>
             </div>
           }>
@@ -576,8 +576,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         <ErrorBoundary fallback={
           <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center">
             <div className={`${card} rounded-lg p-8 max-w-sm text-center`}>
-              <p className={`${textSecondary} mb-4`}>ヒートマップの表示中にエラーが発生しました</p>
-              <button onClick={() => setCourtHeatOpen(false)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded text-sm`}>閉じる</button>
+              <p className={`${textSecondary} mb-4`}>{t('auto.DashboardOverviewPage.k17')}</p>
+              <button onClick={() => setCourtHeatOpen(false)} className={`px-4 py-2 ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-600 hover:bg-gray-500 text-white'} rounded text-sm`}>{t('auto.DashboardOverviewPage.k16')}</button>
             </div>
           </div>
         }>

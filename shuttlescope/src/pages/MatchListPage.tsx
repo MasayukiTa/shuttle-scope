@@ -70,6 +70,8 @@ function PlayerCombobox({
   label, required = false, value, query, setQuery, setValue,
   candidates, isLight, textSecondary, placeholder = '名前を入力して検索...',
 }: PlayerComboboxProps) {
+  const { t } = useTranslation()
+
   const [showDropdown, setShowDropdown] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -106,7 +108,7 @@ function PlayerCombobox({
         {value !== '' && (
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
             <User size={12} className="text-green-400" />
-            <span className="text-[10px] text-green-400">登録済</span>
+            <span className="text-[10px] text-green-400">{t('auto.MatchListPage.k1')}</span>
           </div>
         )}
       </div>
@@ -626,7 +628,7 @@ export function MatchListPage() {
             type="text"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
-            placeholder="大会名・選手名・会場・備考で検索..."
+            placeholder={t('auto.MatchListPage.k13')}
             className={`w-full pl-8 pr-8 py-1.5 rounded border text-sm ${
               isLight
                 ? 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'
@@ -649,7 +651,7 @@ export function MatchListPage() {
             value={filterPlayer || null}
             onChange={(v) => setFilterPlayer(v != null ? String(v) : '')}
             emptyLabel="全選手"
-            placeholder="選手名で検索..."
+            placeholder={t('auto.MatchListPage.k14')}
             className="min-w-[200px]"
           />
           <select
@@ -688,7 +690,7 @@ export function MatchListPage() {
               value={downloadCookieBrowser}
               onChange={(e) => setDownloadCookieBrowser(e.target.value)}
               className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded px-2 py-1 text-sm`}
-              title="ログイン必須サイトのCookieを取得するブラウザ"
+              title={t('auto.MatchListPage.k4')}
             >
               <option value="">{t('match.list.cookie_none')}</option>
               <option value="chrome">Chrome</option>
@@ -773,7 +775,7 @@ export function MatchListPage() {
               type="text"
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
-              placeholder="大会名・選手名・会場・備考で検索..."
+              placeholder={t('auto.MatchListPage.k13')}
               className={`w-full pl-8 pr-8 py-1.5 rounded border text-sm ${
                 isLight
                   ? 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'
@@ -796,7 +798,7 @@ export function MatchListPage() {
               value={filterPlayer || null}
               onChange={(v) => setFilterPlayer(v != null ? String(v) : '')}
               emptyLabel="全選手"
-              placeholder="選手名で検索..."
+              placeholder={t('auto.MatchListPage.k14')}
               className="min-w-[160px]"
             />
             <select
@@ -926,7 +928,7 @@ export function MatchListPage() {
                       <button
                         onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
                         className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700'}`}
-                        title="予測ページで確認"
+                        title={t('auto.MatchListPage.k5')}
                       >
                         <TrendingUp size={16} />
                       </button>
@@ -935,7 +937,7 @@ export function MatchListPage() {
                       <button
                         onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
                         className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
-                        title="動画ダウンロード"
+                        title={t('auto.MatchListPage.k6')}
                         disabled={startDownload.isPending}
                       >
                         <Download size={16} />
@@ -944,7 +946,7 @@ export function MatchListPage() {
                     <a
                       href={`/api/export/package?match_id=${m.id}`}
                       download
-                      title="JSONパッケージ出力"
+                      title={t('auto.MatchListPage.k7')}
                       className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-green-600 hover:bg-green-50' : 'text-gray-400 hover:text-green-400 hover:bg-gray-700'}`}
                     >
                       <Download size={16} />
@@ -952,7 +954,7 @@ export function MatchListPage() {
                     <button
                       onClick={() => handleStartEdit(m)}
                       className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
-                      title="編集"
+                      title={t('auto.MatchListPage.k8')}
                     >
                       <Pencil size={16} />
                     </button>
@@ -973,7 +975,7 @@ export function MatchListPage() {
                       <button
                         onClick={() => setDeleteConfirmMatchId(m.id)}
                         className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                        title="削除"
+                        title={t('auto.MatchListPage.k9')}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -994,7 +996,7 @@ export function MatchListPage() {
                       checked={matches.length > 0 && selectedMatchIds.size === matches.length}
                       onChange={toggleSelectAll}
                       className="accent-blue-500"
-                      title="全選択"
+                      title={t('auto.MatchListPage.k10')}
                     />
                   </th>
                   {/* ソート可能: 日付 */}
@@ -1057,9 +1059,9 @@ export function MatchListPage() {
                           isLight ? 'bg-white border-gray-200 text-gray-800' : 'bg-gray-900 border-gray-700 text-gray-100'
                         }`}>
                           {([
-                            { key: 'pending',    label: '未着手' },
-                            { key: 'in_progress', label: '作業中' },
-                            { key: 'complete',   label: '完了' },
+                            { key: 'pending',    label: t('auto.MatchListPage.k20') },
+                            { key: 'in_progress', label: t('auto.MatchListPage.k21') },
+                            { key: 'complete',   label: t('auto.MatchListPage.k22') },
                           ] as const).map(({ key, label }) => (
                             <button
                               key={key}
@@ -1148,7 +1150,7 @@ export function MatchListPage() {
                           <button
                             onClick={() => navigate(`/prediction?playerId=${m.player_a_id}`)}
                             className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                            title="予測ページで確認"
+                            title={t('auto.MatchListPage.k5')}
                           >
                             <TrendingUp size={14} />
                           </button>
@@ -1170,7 +1172,7 @@ export function MatchListPage() {
                         <button
                           onClick={() => handleStartEdit(m)}
                           className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                          title="試合情報を編集"
+                          title={t('auto.MatchListPage.k11')}
                         >
                           <Pencil size={14} />
                         </button>
@@ -1191,7 +1193,7 @@ export function MatchListPage() {
                           <button
                             onClick={() => setDeleteConfirmMatchId(m.id)}
                             className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
-                            title="削除"
+                            title={t('auto.MatchListPage.k9')}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -1236,7 +1238,7 @@ export function MatchListPage() {
                     onChange={(e) => setForm({ ...form, tournament: e.target.value })}
                     required
                     className={`w-full ${inputClass}`}
-                    placeholder="例: 全日本総合選手権"
+                    placeholder={t('auto.MatchListPage.k15')}
                   />
                 </div>
 
@@ -1302,7 +1304,7 @@ export function MatchListPage() {
                   candidates={playerACandidates}
                   isLight={isLight}
                   textSecondary={textSecondary}
-                  placeholder="名前を入力して検索..."
+                  placeholder={t('auto.MatchListPage.k16')}
                 />
                 <PlayerCombobox
                   label="対戦相手（B）"
@@ -1314,7 +1316,7 @@ export function MatchListPage() {
                   candidates={playerBCandidates}
                   isLight={isLight}
                   textSecondary={textSecondary}
-                  placeholder="名前を入力して検索..."
+                  placeholder={t('auto.MatchListPage.k16')}
                 />
 
                 {/* ダブルス: 相方欄（自チーム左・相手チーム右） */}
@@ -1329,7 +1331,7 @@ export function MatchListPage() {
                       candidates={partnerACandidates}
                       isLight={isLight}
                       textSecondary={textSecondary}
-                      placeholder="名前を入力して検索..."
+                      placeholder={t('auto.MatchListPage.k16')}
                     />
                     <PlayerCombobox
                       label="相手チーム相方"
@@ -1340,7 +1342,7 @@ export function MatchListPage() {
                       candidates={partnerBCandidates}
                       isLight={isLight}
                       textSecondary={textSecondary}
-                      placeholder="名前を入力して検索..."
+                      placeholder={t('auto.MatchListPage.k16')}
                     />
                   </>
                 )}
@@ -1350,13 +1352,13 @@ export function MatchListPage() {
                   <div>
                     <label className={`block text-sm ${textSecondary} mb-1`}>
                       自チーム名
-                      <span className={`ml-1 ${textFaint} text-xs`}>（同姓同名の識別に使用）</span>
+                      <span className={`ml-1 ${textFaint} text-xs`}>{t('auto.MatchListPage.k2')}</span>
                     </label>
                     <input
                       list="player-a-teams-list"
                       value={playerATeam}
                       onChange={(e) => setPlayerATeam(e.target.value)}
-                      placeholder="例: ○○クラブ、△△大学"
+                      placeholder={t('auto.MatchListPage.k17')}
                       className={`w-full ${inputClass}`}
                       autoComplete="off"
                     />
@@ -1366,7 +1368,7 @@ export function MatchListPage() {
                       ))}
                     </datalist>
                     {(form.player_a_id !== '' || form.partner_a_id !== '') && playerATeam && (
-                      <p className="text-[11px] text-blue-400 mt-0.5">既存選手のチーム（変更可）</p>
+                      <p className="text-[11px] text-blue-400 mt-0.5">{t('auto.MatchListPage.k3')}</p>
                     )}
                   </div>
                 )}
@@ -1376,13 +1378,13 @@ export function MatchListPage() {
                   <div>
                     <label className={`block text-sm ${textSecondary} mb-1`}>
                       相手チーム名
-                      <span className={`ml-1 ${textFaint} text-xs`}>（同姓同名の識別に使用）</span>
+                      <span className={`ml-1 ${textFaint} text-xs`}>{t('auto.MatchListPage.k2')}</span>
                     </label>
                     <input
                       list="player-b-teams-list"
                       value={playerBTeam}
                       onChange={(e) => setPlayerBTeam(e.target.value)}
-                      placeholder="例: ○○クラブ、△△大学"
+                      placeholder={t('auto.MatchListPage.k17')}
                       className={`w-full ${inputClass}`}
                       autoComplete="off"
                     />
@@ -1392,7 +1394,7 @@ export function MatchListPage() {
                       ))}
                     </datalist>
                     {(form.player_b_id !== '' || form.partner_b_id !== '') && playerBTeam && (
-                      <p className="text-[11px] text-blue-400 mt-0.5">既存選手のチーム（変更可）</p>
+                      <p className="text-[11px] text-blue-400 mt-0.5">{t('auto.MatchListPage.k3')}</p>
                     )}
                   </div>
                 )}
@@ -1417,7 +1419,7 @@ export function MatchListPage() {
                     value={form.final_score}
                     onChange={(e) => setForm({ ...form, final_score: e.target.value })}
                     className={`w-full ${inputClass}`}
-                    placeholder="例: 21-15, 18-21, 21-19"
+                    placeholder={t('auto.MatchListPage.k18')}
                   />
                 </div>
 
@@ -1440,14 +1442,14 @@ export function MatchListPage() {
                       onChange={(e) => setForm((f) => ({ ...f, video_url: e.target.value, video_local_path: '' }))}
                       readOnly={!!form.video_local_path}
                       className={`flex-1 ${inputClass} min-w-0`}
-                      placeholder="YouTube URL または動画URL（任意）"
+                      placeholder={t('auto.MatchListPage.k19')}
                     />
                     {form.video_local_path && (
                       <button
                         type="button"
                         onClick={() => setForm((f) => ({ ...f, video_local_path: '' }))}
                         className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'} text-xs px-1`}
-                        title="クリア"
+                        title={t('auto.MatchListPage.k12')}
                       >✕</button>
                     )}
                   </div>
@@ -1461,8 +1463,8 @@ export function MatchListPage() {
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.list.first_serve')}</label>
                   <div className="flex gap-2">
                     {([
-                      { value: 'player_a', label: 'A側（自チーム）' },
-                      { value: 'player_b', label: 'B側（相手）' },
+                      { value: 'player_a', label: t('auto.MatchListPage.k23') },
+                      { value: 'player_b', label: t('auto.MatchListPage.k24') },
                     ] as const).map((opt) => (
                       <button
                         key={opt.value}
@@ -1485,8 +1487,8 @@ export function MatchListPage() {
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.list.analyst_view')}</label>
                   <div className="flex gap-2">
                     {([
-                      { value: 'bottom' as const, label: '⬇ 画面下（手前）' },
-                      { value: 'top'    as const, label: '⬆ 画面上（奥側）' },
+                      { value: 'bottom' as const, label: t('auto.MatchListPage.k25') },
+                      { value: 'top'    as const, label: t('auto.MatchListPage.k26') },
                     ]).map((opt) => (
                       <button
                         key={opt.value}

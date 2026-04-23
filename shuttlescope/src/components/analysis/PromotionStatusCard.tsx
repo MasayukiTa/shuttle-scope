@@ -4,6 +4,7 @@ import { apiGet, apiPost, apiDelete } from '@/api/client'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useAuth } from '@/hooks/useAuth'
 import { AnalysisFilters } from '@/types'
+import { useTranslation } from 'react-i18next'
 
 interface ChecklistItem {
   item: string
@@ -75,10 +76,10 @@ const TIER_LABELS: Record<string, string> = {
 }
 
 const OVERRIDE_STATUS_OPTIONS = [
-  { value: 'promotion_ready', label: '昇格準備完了' },
-  { value: 'requires_review', label: 'レビュー待ち' },
-  { value: 'insufficient_data', label: 'データ不足' },
-  { value: 'hold', label: '保留（note必須）' },
+  { value: 'promotion_ready', label: t('auto.PromotionStatusCard.k6') },
+  { value: 'requires_review', label: t('auto.PromotionStatusCard.k7') },
+  { value: 'insufficient_data', label: t('auto.PromotionStatusCard.k8') },
+  { value: 'hold', label: t('auto.PromotionStatusCard.k10') },
 ]
 
 interface ThemeProps {
@@ -95,22 +96,22 @@ interface ThemeProps {
 function getStatusConfig(isLight: boolean) {
   return {
     promotion_ready: {
-      label: '昇格準備完了',
+      label: t('auto.PromotionStatusCard.k6'),
       color: isLight ? 'text-emerald-600' : 'text-emerald-400',
       dot: isLight ? 'bg-emerald-500' : 'bg-emerald-400',
     },
     requires_review: {
-      label: 'レビュー待ち',
+      label: t('auto.PromotionStatusCard.k7'),
       color: isLight ? 'text-amber-600' : 'text-yellow-400',
       dot: isLight ? 'bg-amber-500' : 'bg-yellow-400',
     },
     insufficient_data: {
-      label: 'データ不足',
+      label: t('auto.PromotionStatusCard.k8'),
       color: isLight ? 'text-gray-500' : 'text-gray-500',
       dot: isLight ? 'bg-gray-400' : 'bg-gray-600',
     },
     hold: {
-      label: '保留',
+      label: t('auto.PromotionStatusCard.k11'),
       color: isLight ? 'text-orange-600' : 'text-orange-400',
       dot: isLight ? 'bg-orange-500' : 'bg-orange-400',
     },
@@ -150,6 +151,8 @@ const ACTION_LABEL: Record<string, string> = {
 }
 
 function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: boolean }) {
+  const { t } = useTranslation()
+
   const icon = item.met === true ? '✓' : item.met === false ? '✗' : '○'
   const color =
     item.met === true ? (isLight ? 'text-emerald-600' : 'text-emerald-400') :
@@ -227,8 +230,8 @@ function OverrideForm({
   return (
     <div className={`mt-2 p-2 rounded border ${border} ${cardInner} space-y-2`}>
       <div className="flex items-center justify-between">
-        <p className={`text-[10px] font-semibold ${textHeading}`}>アナリスト判断 Override</p>
-        <span className={`text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>admin / analyst のみ書込可</span>
+        <p className={`text-[10px] font-semibold ${textHeading}`}>{t('auto.PromotionStatusCard.k1')}</p>
+        <span className={`text-[9px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>{t('auto.PromotionStatusCard.k2')}</span>
       </div>
       <select
         className={`w-full text-xs rounded px-2 py-1 ${inputClass}`}
@@ -294,6 +297,8 @@ function EvaluationRow({
   isAnalyst: boolean
   theme: ThemeProps
 }) {
+  const { t } = useTranslation()
+
   const { isLight, textHeading, textMuted, textFaint, border } = theme
   const statusConfig = getStatusConfig(isLight)
   const tierColors = getTierColors(isLight)
@@ -354,7 +359,7 @@ function EvaluationRow({
               {/* 操作履歴（audit_log） */}
               {override.audit_log && override.audit_log.length > 0 && (
                 <div className={`border-t pt-1 mt-1 space-y-0.5 ${isLight ? 'border-gray-100' : 'border-gray-700'}`}>
-                  <p className={`font-medium ${textFaint}`}>操作履歴</p>
+                  <p className={`font-medium ${textFaint}`}>{t('auto.PromotionStatusCard.k3')}</p>
                   {[...override.audit_log].reverse().slice(0, 3).map((log, i) => (
                     <div key={i} className={`${textFaint} leading-snug`}>
                       {formatTs(log.timestamp)}&nbsp;
@@ -394,6 +399,8 @@ function EvaluationRow({
 }
 
 export function PromotionStatusCard({ playerId, filters }: Props) {
+  const { t } = useTranslation()
+
   const { card, cardInner, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, border, loading, badge, isLight } = useCardTheme()
   const { role } = useAuth()
   const isAnalyst = role === 'analyst' || role === 'admin'
@@ -432,7 +439,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
   return (
     <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className={`text-sm font-semibold ${textHeading}`}>昇格ワークフロー（Promotion Workflow）</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PromotionStatusCard.k4')}</h3>
         <span className={`text-[9px] rounded px-1.5 py-0.5 ${badge}`}>analyst/coach</span>
       </div>
 
@@ -442,7 +449,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
       </p>
 
       {isLoading ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>評価中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.PromotionStatusCard.k5')}</p>
       ) : (
         <div className="space-y-3">
           {/* サマリー */}
@@ -450,15 +457,15 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
             <div className="grid grid-cols-3 gap-2">
               <div className={`${cardInner} rounded px-2 py-1.5 text-center`}>
                 <div className={`text-sm font-bold ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>{summary.promotion_ready_count}</div>
-                <div className={`text-[10px] ${textMuted}`}>昇格準備完了</div>
+                <div className={`text-[10px] ${textMuted}`}>{t('auto.PromotionStatusCard.k6')}</div>
               </div>
               <div className={`${cardInner} rounded px-2 py-1.5 text-center`}>
                 <div className={`text-sm font-bold ${isLight ? 'text-amber-600' : 'text-yellow-400'}`}>{summary.requires_review_count}</div>
-                <div className={`text-[10px] ${textMuted}`}>レビュー待ち</div>
+                <div className={`text-[10px] ${textMuted}`}>{t('auto.PromotionStatusCard.k7')}</div>
               </div>
               <div className={`${cardInner} rounded px-2 py-1.5 text-center`}>
                 <div className={`text-sm font-bold ${textSecondary}`}>{summary.insufficient_data_count}</div>
-                <div className={`text-[10px] ${textMuted}`}>データ不足</div>
+                <div className={`text-[10px] ${textMuted}`}>{t('auto.PromotionStatusCard.k8')}</div>
               </div>
             </div>
           )}
@@ -492,7 +499,7 @@ export function PromotionStatusCard({ playerId, filters }: Props) {
               {showDemotion && (
                 <div className="mt-2 space-y-2">
                   <div className={`${cardInner} rounded px-2 py-2`}>
-                    <p className={`text-[10px] font-medium mb-1 ${textSecondary}`}>共通降格条件</p>
+                    <p className={`text-[10px] font-medium mb-1 ${textSecondary}`}>{t('auto.PromotionStatusCard.k9')}</p>
                     <ul className="space-y-0.5">
                       {(demotionConditions.general ?? []).map((cond, i) => (
                         <li key={i} className={`text-[10px] flex items-start gap-1 ${textMuted}`}>

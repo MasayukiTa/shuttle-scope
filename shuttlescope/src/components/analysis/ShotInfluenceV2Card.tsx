@@ -5,6 +5,7 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
+import { useTranslation } from 'react-i18next'
 
 interface ShotTypeStat {
   avg: number
@@ -51,6 +52,8 @@ interface Props {
 }
 
 function InfluenceBar({ value, max = 1, isLight }: { value: number; max?: number; isLight: boolean }) {
+  const { t } = useTranslation()
+
   const ratio = Math.min(value / max, 1)
   return (
     <div className="flex items-center gap-1.5">
@@ -66,6 +69,8 @@ function InfluenceBar({ value, max = 1, isLight }: { value: number; max?: number
 }
 
 export function ShotInfluenceV2Card({ playerId, filters }: Props) {
+  const { t } = useTranslation()
+
   const { card, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, loading, isLight } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -100,7 +105,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
   return (
     <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className={`text-sm font-semibold ${textHeading}`}>ショット影響度 v2（状態条件付き）</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.ShotInfluenceV2Card.k1')}</h3>
         <EvidenceBadge
           tier="research"
           evidenceLevel="exploratory"
@@ -116,9 +121,9 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
       />
 
       {isLoading ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>計算中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.ShotInfluenceV2Card.k2')}</p>
       ) : topShots.length === 0 ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>データが不足しています</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.ShotInfluenceV2Card.k3')}</p>
       ) : (
         <div className="space-y-3">
           <div className={`flex items-center justify-between text-[10px] ${textMuted}`}>
@@ -128,7 +133,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
 
           {/* ショット種別ランキング */}
           <div>
-            <p className={`text-[10px] ${textMuted} mb-1.5`}>ショット種別平均影響度（状態補正後）</p>
+            <p className={`text-[10px] ${textMuted} mb-1.5`}>{t('auto.ShotInfluenceV2Card.k4')}</p>
             <div className="space-y-1">
               {topShots.map(([shotType, stat], i) => (
                 <div key={shotType} className="flex items-center gap-2">
@@ -146,7 +151,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
           {/* 状態別内訳 */}
           {stateBreakdown.length > 0 && (
             <div>
-              <p className={`text-[10px] ${textMuted} mb-1.5`}>状態別トップショット</p>
+              <p className={`text-[10px] ${textMuted} mb-1.5`}>{t('auto.ShotInfluenceV2Card.k5')}</p>
               <div className="space-y-2">
                 {stateBreakdown.map((sb) => (
                   <div key={sb.state_key} className={`${cardInnerAlt} rounded px-2 py-1.5`}>

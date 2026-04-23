@@ -424,8 +424,8 @@ export function CourtDiagram({
       {label && (
         <span className="text-xs text-gray-400">{label}</span>
       )}
-      {!showOOB && !isComposite && <span className="text-[10px] text-gray-500">相手コート（着地点）</span>}
-      {isComposite && <span className="text-[10px] text-gray-500">合成表示（自コート視点）</span>}
+      {!showOOB && !isComposite && <span className="text-[10px] text-gray-500">{t('auto.CourtDiagram.k1')}</span>}
+      {isComposite && <span className="text-[10px] text-gray-500">{t('auto.CourtDiagram.k2')}</span>}
       <svg
         viewBox={`${vbLeft} ${vbTop} ${vbWidth} ${vbHeight}`}
         style={
@@ -465,7 +465,7 @@ export function CourtDiagram({
           strokeWidth={3}
           pointerEvents="none"
         />
-        <text x={SVG_WIDTH / 2} y={197} textAnchor="middle" fontSize="9" fill="#6b7280" pointerEvents="none">ネット</text>
+        <text x={SVG_WIDTH / 2} y={197} textAnchor="middle" fontSize="9" fill="#6b7280" pointerEvents="none">{t('auto.CourtDiagram.k3')}</text>
 
         {/* 自コートゾーン（下半分）: composite は自コート視点なので hit 扱いでアクティブ */}
         {OWN_ZONES.map((z) => renderZone(z, mode === 'hit' || mode === 'composite'))}
@@ -482,7 +482,7 @@ export function CourtDiagram({
           strokeWidth={2}
         />
       </svg>
-      {!showOOB && !isComposite && <span className="text-[10px] text-gray-500">自コート（打点）</span>}
+      {!showOOB && !isComposite && <span className="text-[10px] text-gray-500">{t('auto.CourtDiagram.k4')}</span>}
     </div>
   )
 }

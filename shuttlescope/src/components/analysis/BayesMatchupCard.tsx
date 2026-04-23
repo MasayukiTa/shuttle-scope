@@ -5,6 +5,7 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
+import { useTranslation } from 'react-i18next'
 
 interface OpponentEstimate {
   opponent_id: number
@@ -47,6 +48,8 @@ function pct(v: number) {
 }
 
 export function BayesMatchupCard({ playerId, filters }: Props) {
+  const { t } = useTranslation()
+
   const { card, textHeading, textSecondary, textMuted, textFaint, tableHeader, rowBorder, rowHover, loading, isLight } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -76,7 +79,7 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
   return (
     <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className={`text-sm font-semibold ${textHeading}`}>ベイズ対戦予測（相手別勝率）</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.BayesMatchupCard.k1')}</h3>
         <EvidenceBadge
           tier="research"
           evidenceLevel="exploratory"
@@ -92,9 +95,9 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
       />
 
       {isLoading ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>計算中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.BayesMatchupCard.k2')}</p>
       ) : estimates.length === 0 ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>対戦データが不足しています</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.BayesMatchupCard.k3')}</p>
       ) : (
         <div className="space-y-1">
           <div className={`flex items-center justify-between text-[10px] ${textMuted} pb-1`}>
@@ -105,10 +108,10 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
             <table className="w-full text-xs">
               <thead>
                 <tr className={tableHeader}>
-                  <th className="text-left py-1.5 pr-2">相手</th>
+                  <th className="text-left py-1.5 pr-2">{t('auto.BayesMatchupCard.k4')}</th>
                   <th className="text-right py-1.5 pr-2">N</th>
-                  <th className="text-right py-1.5 pr-2">生勝率</th>
-                  <th className="text-right py-1.5 pr-2">事後勝率</th>
+                  <th className="text-right py-1.5 pr-2">{t('auto.BayesMatchupCard.k5')}</th>
+                  <th className="text-right py-1.5 pr-2">{t('auto.BayesMatchupCard.k6')}</th>
                   <th className="text-right py-1.5">CI [95%]</th>
                 </tr>
               </thead>

@@ -37,7 +37,7 @@ export function MatchScoreBand({ scoreBands, playerName, opponentName }: MatchSc
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-4 gap-2 text-[10px] font-medium pb-1 border-b border-gray-700">
-        <span style={{ color: subColor }}>セット</span>
+        <span style={{ color: subColor }}>{t('auto.MatchScoreBand.k1')}</span>
         <span className="text-center" style={{ color: subColor }}>{t('prediction.my_score')}</span>
         <span className="text-center" style={{ color: subColor }}>{t('prediction.opp_score')}</span>
         <span className="text-right" style={{ color: subColor }}>N</span>

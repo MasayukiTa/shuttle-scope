@@ -96,7 +96,7 @@ export function CoachSummaryStrip({
           </p>
           <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.confidence')}</p>
           {sampleSize < 10 && (
-            <p className="text-[10px]" style={{ color: LOSS }}>データ少</p>
+            <p className="text-[10px]" style={{ color: LOSS }}>{t('auto.CoachSummaryStrip.k1')}</p>
           )}
         </div>
 

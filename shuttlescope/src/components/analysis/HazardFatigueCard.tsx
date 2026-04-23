@@ -5,6 +5,7 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
+import { useTranslation } from 'react-i18next'
 
 interface HazardData {
   hazard_next_loss: number
@@ -31,6 +32,8 @@ const BAND_LABELS: Record<string, string> = {
 function pct(v: number) { return `${(v * 100).toFixed(1)}%` }
 
 export function HazardFatigueCard({ playerId, filters }: Props) {
+  const { t } = useTranslation()
+
   const { card, cardInner, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, loading } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -53,7 +56,7 @@ export function HazardFatigueCard({ playerId, filters }: Props) {
   return (
     <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className={`text-sm font-semibold ${textHeading}`}>ハザード・疲労モデル</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.HazardFatigueCard.k1')}</h3>
         <EvidenceBadge tier="research" evidenceLevel="exploratory" sampleSize={meta?.sample_size} recommendationAllowed={false} />
       </div>
       <ResearchNotice
@@ -62,29 +65,29 @@ export function HazardFatigueCard({ playerId, filters }: Props) {
         promotionCriteria="生理指標との相関確認・N≥500ラリーの安定確認"
       />
       {isLoading ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>計算中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.HazardFatigueCard.k2')}</p>
       ) : !d || d.total_rallies === 0 ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>データなし</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.HazardFatigueCard.k3')}</p>
       ) : (
         <div className="space-y-3">
           <div className={`flex items-center gap-4 ${cardInner} rounded px-3 py-2`}>
             <div>
-              <p className={`text-[10px] ${textMuted}`}>総合崩壊リスク</p>
+              <p className={`text-[10px] ${textMuted}`}>{t('auto.HazardFatigueCard.k4')}</p>
               <p className={`text-lg font-bold ${BAND_COLORS[d.collapse_risk_band] ?? textSecondary}`}>
                 {BAND_LABELS[d.collapse_risk_band] ?? d.collapse_risk_band}
               </p>
               <p className={`text-[10px] ${textMuted}`}>信頼度: {pct(d.calibrated_confidence)} (N={d.total_rallies})</p>
             </div>
             <div className="ml-auto text-right">
-              <p className={`text-[10px] ${textMuted}`}>ベースライン失点率</p>
+              <p className={`text-[10px] ${textMuted}`}>{t('auto.HazardFatigueCard.k5')}</p>
               <p className={`text-sm ${textSecondary}`}>{pct(d.baseline_loss_rate)}</p>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: '直近ウィンドウ', value: d.hazard_next_loss },
-              { label: 'ロングラリー後', value: d.hazard_after_long },
-              { label: '終盤(18+)', value: d.hazard_endgame },
+              { label: t('auto.HazardFatigueCard.k6'), value: d.hazard_next_loss },
+              { label: t('auto.HazardFatigueCard.k7'), value: d.hazard_after_long },
+              { label: t('auto.HazardFatigueCard.k8'), value: d.hazard_endgame },
             ].map(({ label, value }) => (
               <div key={label} className={`${cardInnerAlt} rounded px-2 py-2 text-center`}>
                 <p className={`text-[10px] mb-1 ${textMuted}`}>{label}</p>

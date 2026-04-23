@@ -177,7 +177,7 @@ export function ConditionPage() {
               value={selectedPlayerId}
               onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
               emptyLabel="— 選手を選択 —"
-              placeholder="選手名で検索..."
+              placeholder={t('auto.ConditionPage.k2')}
               className="min-w-[280px]"
             />
           </div>
@@ -208,7 +208,7 @@ export function ConditionPage() {
       {/* 本体 */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-6 py-4">
         {!effectivePlayerId ? (
-          <div className={`${textMuted} text-sm`}>選手を選択してください</div>
+          <div className={`${textMuted} text-sm`}>{t('auto.ConditionPage.k1')}</div>
         ) : subtab === 'history' ? (
           <HistoryView
             list={historyList}

@@ -259,7 +259,7 @@ export function DashboardShell() {
 
           <div className="flex flex-wrap items-center gap-3">
             <User size={16} className={`${textMuted} shrink-0`} />
-            <label className={`text-sm ${textMuted} shrink-0`}>選手：</label>
+            <label className={`text-sm ${textMuted} shrink-0`}>{t('auto.DashboardShell.k1')}</label>
             <SearchableSelect
               options={sortedPlayers.map((p) => ({
                 value: p.id,
@@ -271,7 +271,7 @@ export function DashboardShell() {
               value={selectedPlayerId}
               onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
               emptyLabel="— 選手を選択 —"
-              placeholder="選手名で検索..."
+              placeholder={t('auto.DashboardShell.k3')}
               loading={loadingPlayers}
               className="min-w-[280px]"
             />
@@ -358,7 +358,7 @@ export function DashboardShell() {
                     <option key={lv} value={lv}>{lv}</option>
                   ))}
                 </select>
-                <span className={`text-xs ${textMuted} shrink-0 ml-2`}>期間:</span>
+                <span className={`text-xs ${textMuted} shrink-0 ml-2`}>{t('auto.DashboardShell.k2')}</span>
                 <input
                   type="date"
                   className={`border text-xs rounded px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}

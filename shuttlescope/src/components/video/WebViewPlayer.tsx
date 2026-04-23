@@ -21,6 +21,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { Globe, ArrowLeft, ArrowRight, RotateCcw, ExternalLink, AlertCircle, MonitorPlay } from 'lucide-react'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useTranslation } from 'react-i18next'
 
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
@@ -33,6 +34,8 @@ interface WebViewPlayerProps {
 }
 
 export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   const webviewRef = useRef<HTMLElement>(null)
   const [currentUrl, setCurrentUrl] = useState(url)
@@ -155,7 +158,7 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
           onClick={handleBack}
           disabled={!canGoBack}
           className={`p-1 rounded disabled:cursor-not-allowed ${btnHover}`}
-          title="戻る"
+          title={t('auto.WebViewPlayer.k2')}
         >
           <ArrowLeft size={14} />
         </button>
@@ -163,14 +166,14 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
           onClick={handleForward}
           disabled={!canGoForward}
           className={`p-1 rounded disabled:cursor-not-allowed ${btnHover}`}
-          title="進む"
+          title={t('auto.WebViewPlayer.k3')}
         >
           <ArrowRight size={14} />
         </button>
         <button
           onClick={handleReload}
           className={`p-1 rounded ${btnHover}`}
-          title="再読込"
+          title={t('auto.WebViewPlayer.k4')}
         >
           <RotateCcw size={14} className={isLoading ? 'animate-spin' : ''} />
         </button>
@@ -192,7 +195,7 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
         <button
           onClick={handleOpenExternal}
           className={`p-1 rounded ${btnHover}`}
-          title="システムブラウザで開く"
+          title={t('auto.WebViewPlayer.k5')}
         >
           <ExternalLink size={14} />
         </button>
@@ -203,7 +206,7 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
         <MonitorPlay size={11} className="text-blue-400 shrink-0" />
         <span className={`text-[10px] truncate flex-1 ${titleText}`}>{pageTitle}</span>
         {isLoading && (
-          <span className="text-[10px] text-blue-400 shrink-0 animate-pulse">読み込み中...</span>
+          <span className="text-[10px] text-blue-400 shrink-0 animate-pulse">{t('auto.WebViewPlayer.k1')}</span>
         )}
       </div>
 

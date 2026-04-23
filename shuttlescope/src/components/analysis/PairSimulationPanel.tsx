@@ -70,6 +70,8 @@ function PartnerRankingSection({
 }: {
   players: PlayerSummary[]
 }) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   const neutral = isLight ? '#334155' : '#d1d5db'
   const subText = isLight ? '#64748b' : '#9ca3af'
@@ -126,7 +128,7 @@ function PartnerRankingSection({
       {/* 選手1 + 大会レベル */}
       <div className="flex gap-2 flex-wrap items-end">
         <div className="space-y-1 flex-1 min-w-[200px]">
-          <p className="text-[10px]" style={{ color: subText }}>基準選手（選手1）</p>
+          <p className="text-[10px]" style={{ color: subText }}>{t('auto.PairSimulationPanel.k1')}</p>
           <SearchableSelect
             options={players.map((p) => ({
               value: p.id,
@@ -137,17 +139,17 @@ function PartnerRankingSection({
             value={anchorId}
             onChange={(v) => { setAnchorId(v != null ? Number(v) : null); setRun(false) }}
             emptyLabel="— 選手を選択 —"
-            placeholder="選手名で検索..."
+            placeholder={t('auto.PairSimulationPanel.k7')}
           />
         </div>
         <div className="space-y-1">
-          <p className="text-[10px]" style={{ color: subText }}>大会レベル（任意）</p>
+          <p className="text-[10px]" style={{ color: subText }}>{t('auto.PairSimulationPanel.k2')}</p>
           <select
             value={level}
             onChange={(e) => { setLevel(e.target.value); setRun(false) }}
             className={selectClass}
           >
-            <option value="">— 全レベル —</option>
+            <option value="">{t('auto.PairSimulationPanel.k3')}</option>
             {['IC', 'IS', 'SJL', '全日本', '国内'].map((lv) => (
               <option key={lv} value={lv}>{lv}</option>
             ))}
@@ -164,7 +166,7 @@ function PartnerRankingSection({
 
       {/* ローディング */}
       {isLoading && (
-        <p className="text-xs text-center py-3" style={{ color: subText }}>計算中...</p>
+        <p className="text-xs text-center py-3" style={{ color: subText }}>{t('auto.PairSimulationPanel.k4')}</p>
       )}
 
       {/* 結果一覧 */}
@@ -249,7 +251,7 @@ function PartnerRankingSection({
                       {r.partner_name}
                       {r.partner_team && <span className="ml-1 opacity-50">（{r.partner_team}）</span>}
                     </span>
-                    <span className="text-[10px] shrink-0" style={{ color: subText }}>データなし</span>
+                    <span className="text-[10px] shrink-0" style={{ color: subText }}>{t('auto.PairSimulationPanel.k5')}</span>
                   </div>
                 ))}
               </div>
@@ -321,7 +323,7 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
               value={pid1}
               onChange={(v) => { setPid1(v != null ? Number(v) : null); setRun(false) }}
               emptyLabel="— 選手1 —"
-              placeholder="選手名で検索..."
+              placeholder={t('auto.PairSimulationPanel.k7')}
             />
           </div>
           <div className="space-y-1 flex-1 min-w-[180px]">
@@ -338,15 +340,15 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
               value={pid2}
               onChange={(v) => { setPid2(v != null ? Number(v) : null); setRun(false) }}
               emptyLabel="— 選手2 —"
-              placeholder="選手名で検索..."
+              placeholder={t('auto.PairSimulationPanel.k7')}
             />
           </div>
         </div>
         <div className="flex gap-2 flex-wrap items-end">
           <div className="space-y-1">
-            <p className="text-[10px]" style={{ color: subText }}>大会レベル</p>
+            <p className="text-[10px]" style={{ color: subText }}>{t('auto.PairSimulationPanel.k6')}</p>
             <select value={level} onChange={(e) => { setLevel(e.target.value); setRun(false) }} className={selectClass}>
-              <option value="">— 全レベル —</option>
+              <option value="">{t('auto.PairSimulationPanel.k3')}</option>
               {['IC', 'IS', 'SJL', '全日本', '国内'].map((lv) => (
                 <option key={lv} value={lv}>{lv}</option>
               ))}

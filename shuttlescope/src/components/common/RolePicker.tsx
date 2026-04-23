@@ -71,20 +71,20 @@ export function RolePicker({
       <div className={wrapperCls}>
         <div className={panelCls}>
           <div className="text-center mb-4">
-            <div className={`text-xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>どの選手としてログインしますか？</div>
-            <div className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>あなたが関与した試合のみが表示されます</div>
+            <div className={`text-xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>{t('auto.RolePicker.k1')}</div>
+            <div className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k2')}</div>
           </div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="選手名で検索"
+            placeholder={t('auto.RolePicker.k7')}
             className={`w-full mb-3 px-3 py-2 rounded text-sm border ${
               isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'
             }`}
           />
           <div className="flex-1 overflow-y-auto space-y-1">
             {loadErr && <p className="text-red-400 text-xs">{loadErr}</p>}
-            {!loadErr && players === null && <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>読み込み中...</p>}
+            {!loadErr && players === null && <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k3')}</p>}
             {players !== null && filteredPlayers.length === 0 && (
               <p className={`text-xs text-center py-4 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
                 {players.length === 0 ? '登録選手がいません' : '該当する選手が見つかりません'}
@@ -122,20 +122,20 @@ export function RolePicker({
       <div className={wrapperCls}>
         <div className={panelCls}>
           <div className="text-center mb-4">
-            <div className={`text-xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>どのチームのコーチですか？</div>
-            <div className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>チーム所属選手の試合のみが表示されます</div>
+            <div className={`text-xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>{t('auto.RolePicker.k4')}</div>
+            <div className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k5')}</div>
           </div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="チーム名で検索 / 直接入力"
+            placeholder={t('auto.RolePicker.k8')}
             className={`w-full mb-3 px-3 py-2 rounded text-sm border ${
               isLight ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-white'
             }`}
           />
           <div className="flex-1 overflow-y-auto space-y-1">
             {loadErr && <p className="text-red-400 text-xs">{loadErr}</p>}
-            {!loadErr && players === null && <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>読み込み中...</p>}
+            {!loadErr && players === null && <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k3')}</p>}
             {players !== null && teams.length === 0 && !search.trim() && (
               <p className={`text-xs text-center py-4 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
                 登録チームがありません
@@ -184,7 +184,7 @@ export function RolePicker({
       <div className={`rounded-lg p-8 w-80 ${isLight ? 'bg-white shadow-lg border border-gray-200' : 'bg-gray-800'}`}>
         <div className="text-center mb-6">
           <div className={`text-3xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>ShuttleScope</div>
-          <div className={`text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>ロールを選択してください</div>
+          <div className={`text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k6')}</div>
         </div>
         <div className="flex flex-col gap-3">
           {(['analyst', 'coach', 'player'] as UserRole[]).map((r) => (

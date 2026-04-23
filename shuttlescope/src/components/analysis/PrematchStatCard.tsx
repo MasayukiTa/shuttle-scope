@@ -12,6 +12,7 @@ import { apiGet } from '@/api/client'
 import { MatchNarrativeCard, type MatchNarrative } from '@/components/analysis/MatchNarrativeCard'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useTranslation } from 'react-i18next'
 
 interface PrematchData {
   match_date: string
@@ -42,6 +43,8 @@ interface Props {
 }
 
 export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   const subText = isLight ? '#64748b' : '#9ca3af'
   const neutral = isLight ? '#334155' : '#d1d5db'
@@ -103,7 +106,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
         <button
           onClick={handleForceRecalc}
           disabled={isFetching}
-          title="再計算"
+          title={t('auto.PrematchStatCard.k2')}
           className="shrink-0 p-1 rounded hover:opacity-70 transition-opacity disabled:opacity-40"
         >
           <RefreshCw size={11} style={{ color: subText }} className={isFetching ? 'animate-spin' : ''} />
@@ -148,7 +151,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
               >
                 {Math.round(d.win_probability * 100)}%
               </p>
-              <p className="text-[10px] mt-0.5" style={{ color: subText }}>勝率（統計）</p>
+              <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('auto.PrematchStatCard.k1')}</p>
             </div>
             <div className="flex flex-col gap-1 text-[11px]" style={{ color: subText }}>
               {d.confidence_meta && (

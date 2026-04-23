@@ -21,6 +21,7 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   playerId: number
@@ -89,6 +90,8 @@ function pct(v: number) {
 }
 
 function FormationBar({ breakdown }: { breakdown: Record<string, FormationBreakdown> }) {
+  const { t } = useTranslation()
+
   const colors: Record<string, string> = {
     front_back: 'bg-sky-500',
     parallel: 'bg-amber-500',
@@ -117,6 +120,8 @@ function FormationBar({ breakdown }: { breakdown: Record<string, FormationBreakd
 // ─── メインコンポーネント ──────────────────────────────────────────────────────
 
 export function YoloCVPositionCard({ playerId, filters }: Props) {
+  const { t } = useTranslation()
+
   const { card, cardInner, textHeading, textSecondary, textMuted, textFaint, loading, isLight } =
     useCardTheme()
 
@@ -153,7 +158,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
   if (isLoading) {
     return (
       <div className={`${card} rounded-lg p-4`}>
-        <div className={`text-xs ${textMuted} animate-pulse`}>CV 解析データを読み込み中…</div>
+        <div className={`text-xs ${textMuted} animate-pulse`}>{t('auto.YoloCVPositionCard.k1')}</div>
       </div>
     )
   }
@@ -162,7 +167,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
   if (!recentMatch) {
     return (
       <div className={`${card} rounded-lg p-4`}>
-        <p className={`text-xs ${textMuted}`}>対象期間に試合データがありません。</p>
+        <p className={`text-xs ${textMuted}`}>{t('auto.YoloCVPositionCard.k2')}</p>
       </div>
     )
   }
@@ -171,7 +176,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
   if (!cv?.available) {
     return (
       <div className={`${card} rounded-lg p-4 space-y-2`}>
-        <h3 className={`text-sm font-semibold ${textHeading}`}>CV ポジション解析</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.YoloCVPositionCard.k3')}</h3>
         <p className={`text-xs ${textMuted}`}>
           試合 #{recentMatch.id} の YOLO 検出データがありません。
         </p>
@@ -194,7 +199,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className={`text-sm font-semibold ${textHeading}`}>CV ポジション解析</h3>
+          <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.YoloCVPositionCard.k3')}</h3>
           <p className={`text-[10px] ${textFaint}`}>
             試合 #{recentMatch.id}
             {recentMatch.match_date ? ` · ${recentMatch.match_date}` : ''}
@@ -215,7 +220,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
       {ft && (
         <div className={`${cardInner} rounded p-3 space-y-2`}>
           <div className="flex items-center justify-between">
-            <span className={`text-xs font-medium ${textSecondary}`}>陣形傾向</span>
+            <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.YoloCVPositionCard.k4')}</span>
             <span className={`text-xs font-bold ${textHeading}`}>{ft.style_label}</span>
           </div>
           {Object.keys(ft.breakdown).length > 0 && (
@@ -231,7 +236,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
           </div>
           {cv.rotation_transitions !== undefined && (
             <div className={`flex items-center justify-between text-[11px] ${textMuted} pt-1 border-t ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
-              <span>ラリー間陣形切り替え</span>
+              <span>{t('auto.YoloCVPositionCard.k5')}</span>
               <span className={`font-bold ${textHeading}`}>{cv.rotation_transitions} 回</span>
             </div>
           )}
@@ -241,7 +246,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
       {/* ヒッター候補分布（アライメントがある場合） */}
       {hd && (
         <div className={`${cardInner} rounded p-3 space-y-2`}>
-          <span className={`text-xs font-medium ${textSecondary}`}>ヒッター候補分布</span>
+          <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.YoloCVPositionCard.k6')}</span>
           <div className="flex h-2.5 w-full rounded-full overflow-hidden gap-px">
             <div
               className="bg-blue-500"
@@ -272,7 +277,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
       {/* 圧力マップ（ゾーン別） */}
       {Object.keys(pm).length > 0 && (
         <div className={`${cardInner} rounded p-3 space-y-2`}>
-          <span className={`text-xs font-medium ${textSecondary}`}>ゾーン別受け手前衛率</span>
+          <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.YoloCVPositionCard.k7')}</span>
           <div className="grid grid-cols-2 gap-1">
             {Object.entries(pm)
               .sort((a, b) => b[1].receiver_front_ratio - a[1].receiver_front_ratio)
@@ -291,7 +296,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
                 </div>
               ))}
           </div>
-          <p className={`text-[9px] ${textFaint}`}>受け手(player_b)が前衛にいた割合。n はサンプル数。</p>
+          <p className={`text-[9px] ${textFaint}`}>{t('auto.YoloCVPositionCard.k8')}</p>
         </div>
       )}
 

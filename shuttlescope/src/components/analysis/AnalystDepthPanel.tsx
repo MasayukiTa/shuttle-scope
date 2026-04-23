@@ -242,8 +242,8 @@ function BrierScoreSection({ data, isLight }: { data: BrierScore; isLight: boole
             />
           </div>
           <div className="flex justify-between text-[9px] mt-0.5" style={{ color: subText }}>
-            <span>良好 0.0</span>
-            <span>0.25 要注意</span>
+            <span>{t('auto.AnalystDepthPanel.k1')}</span>
+            <span>{t('auto.AnalystDepthPanel.k2')}</span>
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -269,7 +269,7 @@ function NearestEvidenceSection({ data, isLight }: { data: NearestMatch[]; isLig
         <p className="text-xs font-semibold mb-1" style={{ color: subText }}>
           {t('prediction.nearest_evidence')}
         </p>
-        <p className="text-xs" style={{ color: subText }}>試合データなし</p>
+        <p className="text-xs" style={{ color: subText }}>{t('auto.AnalystDepthPanel.k3')}</p>
       </div>
     )
   }
@@ -324,10 +324,10 @@ function FeatureBreakdownSection({ data, isLight }: { data: FeatureBreakdown; is
 
   type WeightEntry = { label: string; wr: number; weight: number }
   const entries: WeightEntry[] = [
-    { label: '全試合統計', wr: data.base_wr, weight: data.weights['base'] ?? 0 },
-    { label: '直近フォーム', wr: data.recent_wr, weight: data.weights['recent'] ?? 0 },
+    { label: t('auto.AnalystDepthPanel.k5'), wr: data.base_wr, weight: data.weights['base'] ?? 0 },
+    { label: t('auto.AnalystDepthPanel.k6'), wr: data.recent_wr, weight: data.weights['recent'] ?? 0 },
     ...(data.h2h_wr !== null && data.weights['h2h']
-      ? [{ label: '直接対戦', wr: data.h2h_wr, weight: data.weights['h2h'] }]
+      ? [{ label: t('auto.AnalystDepthPanel.k7'), wr: data.h2h_wr, weight: data.weights['h2h'] }]
       : []),
   ]
 
@@ -359,7 +359,7 @@ function FeatureBreakdownSection({ data, isLight }: { data: FeatureBreakdown; is
         ))}
         {data.obs_modifier !== 0 && (
           <div className="flex items-center gap-2 text-xs pt-1 border-t border-gray-700">
-            <span className="w-20 shrink-0" style={{ color: subText }}>観察補正</span>
+            <span className="w-20 shrink-0" style={{ color: subText }}>{t('auto.AnalystDepthPanel.k4')}</span>
             <span
               className="font-mono"
               style={{ color: data.obs_modifier > 0 ? WIN : LOSS }}

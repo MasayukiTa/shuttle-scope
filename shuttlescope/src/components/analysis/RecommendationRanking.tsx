@@ -5,6 +5,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { perfColor, BAR } from '@/styles/colors'
+import { useTranslation } from 'react-i18next'
 
 interface RecommendationRankingProps {
   playerId: number
@@ -31,6 +32,8 @@ interface Response {
 }
 
 function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
+  const { t } = useTranslation()
+
   // プレイヤー向けは伸びしろ言語に変換
   const displayTitle = isPlayer
     ? item.title.replace('改善余地', '伸びしろ').replace('要改善', '成長エリア')
@@ -75,6 +78,8 @@ function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
 }
 
 export function RecommendationRanking({ playerId }: RecommendationRankingProps) {
+  const { t } = useTranslation()
+
   const { role } = useAuth()
   const isPlayer = role === 'player'
 
@@ -87,8 +92,8 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
   if (isLoading) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">推奨アドバイス</h3>
-        <div className="text-gray-500 text-sm py-4 text-center">読み込み中...</div>
+        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.RecommendationRanking.k1')}</h3>
+        <div className="text-gray-500 text-sm py-4 text-center">{t('auto.RecommendationRanking.k2')}</div>
       </div>
     )
   }

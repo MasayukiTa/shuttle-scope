@@ -44,7 +44,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
     <div className={`${card} rounded-lg p-6 text-center text-sm ${textMuted}`}>{t('analysis.restricted')}</div>
   )
   const analystFallback = (
-    <div className={`${card} rounded-lg p-6 text-center text-sm ${textMuted}`}>昇格ワークフローはアナリスト向けです</div>
+    <div className={`${card} rounded-lg p-6 text-center text-sm ${textMuted}`}>{t('auto.DashboardResearchPage.k1')}</div>
   )
 
   return (
@@ -84,7 +84,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className={`text-xs font-semibold uppercase tracking-wider ${textMuted}`}>反事実的ショット比較</h3>
+              <h3 className={`text-xs font-semibold uppercase tracking-wider ${textMuted}`}>{t('auto.DashboardResearchPage.k2')}</h3>
               <EvidenceBadge
                 tier="research"
                 evidenceLevel={(cfMeta?.evidence_level as any) ?? 'exploratory'}
@@ -106,7 +106,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
         <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className={`text-xs font-semibold uppercase tracking-wider ${textMuted}`}>コート空間密度マップ</h3>
+              <h3 className={`text-xs font-semibold uppercase tracking-wider ${textMuted}`}>{t('auto.DashboardResearchPage.k3')}</h3>
               <EvidenceBadge
                 tier="research"
                 evidenceLevel={(spatialMeta?.evidence_level as any) ?? 'exploratory'}

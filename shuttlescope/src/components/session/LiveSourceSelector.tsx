@@ -17,6 +17,8 @@ interface Props {
 // ─── ソース種別アイコン ───────────────────────────────────────────────────────
 
 function SourceIcon({ kind }: { kind: string }) {
+  const { t } = useTranslation()
+
   const cls = 'w-4 h-4 flex-shrink-0'
   switch (kind) {
     case 'iphone_webrtc': return <Smartphone className={cls} />
@@ -30,6 +32,8 @@ function SourceIcon({ kind }: { kind: string }) {
 // ─── 適合性バッジ ─────────────────────────────────────────────────────────────
 
 function SuitabilityBadge({ value }: { value: string }) {
+  const { t } = useTranslation()
+
   const color = value === 'high' ? 'bg-green-600 text-white'
     : value === 'usable' ? 'bg-yellow-600 text-white'
     : 'bg-gray-600 text-gray-300'
@@ -46,6 +50,8 @@ function SuitabilityBadge({ value }: { value: string }) {
 // ─── ソース状態バッジ ─────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation()
+
   if (status === 'active') {
     return (
       <span className="flex items-center gap-0.5 text-[9px] text-red-400 font-medium">
@@ -55,9 +61,9 @@ function StatusBadge({ status }: { status: string }) {
     )
   }
   if (status === 'candidate') {
-    return <span className="text-[9px] text-yellow-400">候補</span>
+    return <span className="text-[9px] text-yellow-400">{t('auto.LiveSourceSelector.k1')}</span>
   }
-  return <span className="text-[9px] text-gray-500">待機</span>
+  return <span className="text-[9px] text-gray-500">{t('auto.LiveSourceSelector.k2')}</span>
 }
 
 // ─── メインコンポーネント ─────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 // ラリー長区間別勝率を棒グラフ（件数）＋折れ線（勝率）のコンポーズドチャートで表示
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import {
   ComposedChart,
   Bar,
@@ -62,6 +63,8 @@ function playerTypeBadgeClass(typeKey: string): string {
 
 // カスタムツールチップ
 function CustomTooltip({ active, payload, label }: any) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const count = payload.find((p: any) => p.dataKey === 'count')?.value ?? 0
@@ -77,6 +80,8 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFAULT_FILTERS }: RallyLengthWinRateProps) {
+  const { t } = useTranslation()
+
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
     ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
@@ -95,7 +100,7 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
 
   if (isLoading) {
     return (
-      <div className="text-gray-500 text-sm py-8 text-center">読み込み中...</div>
+      <div className="text-gray-500 text-sm py-8 text-center">{t('auto.RallyLengthWinRate.k1')}</div>
     )
   }
 

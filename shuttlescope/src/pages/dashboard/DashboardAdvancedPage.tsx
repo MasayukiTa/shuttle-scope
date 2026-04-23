@@ -134,16 +134,16 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
             <div className="space-y-5">
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <div className={`${card} rounded-lg p-4`}>
-                  <SectionTitle>ショット別 得点・失点</SectionTitle>
+                  <SectionTitle>{t('auto.DashboardAdvancedPage.k1')}</SectionTitle>
                   <ShotWinLoss playerId={playerId} filters={filters} />
                 </div>
                 <div className={`${card} rounded-lg p-4`}>
-                  <SectionTitle>勝ち/課題のある試合比較</SectionTitle>
+                  <SectionTitle>{t('auto.DashboardAdvancedPage.k2')}</SectionTitle>
                   <WinLossComparison playerId={playerId} filters={filters} />
                 </div>
               </div>
               <div className={`${card} rounded-lg p-4`}>
-                <SectionTitle>大会レベル別比較</SectionTitle>
+                <SectionTitle>{t('auto.DashboardAdvancedPage.k3')}</SectionTitle>
                 <TournamentComparison playerId={playerId} filters={filters} />
               </div>
             </div>
@@ -164,12 +164,12 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
             )}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
               <div className={`${card} rounded-lg p-4`}>
-                <SectionTitle>ラリー長別 勝率</SectionTitle>
+                <SectionTitle>{t('auto.DashboardAdvancedPage.k4')}</SectionTitle>
                 <RallyLengthWinRate playerId={playerId} filters={filters} />
               </div>
               <div className={`${card} rounded-lg p-4 space-y-2`}>
                 <div className="flex items-center justify-between">
-                  <SectionTitle>プレッシャー下のパフォーマンス</SectionTitle>
+                  <SectionTitle>{t('auto.DashboardAdvancedPage.k5')}</SectionTitle>
                   <EvidenceBadge
                     tier="advanced"
                     evidenceLevel={(pressureMeta?.evidence_level as any) ?? 'practical_candidate'}
@@ -189,7 +189,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
           <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
             <div className={`${card} rounded-lg p-4 space-y-2`}>
               <div className="flex items-center justify-between">
-                <SectionTitle>ショット遷移マトリクス</SectionTitle>
+                <SectionTitle>{t('auto.DashboardAdvancedPage.k6')}</SectionTitle>
                 <EvidenceBadge
                   tier="advanced"
                   evidenceLevel={(transitionMeta?.evidence_level as any) ?? 'practical_candidate'}
@@ -329,7 +329,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
               <div className={`${card} rounded-lg p-4`}>
                 <div className="flex items-center justify-between mb-3">
                   <SectionTitle>{t('observation_analytics.title', '補助観察インサイト')}</SectionTitle>
-                  <span className={`text-[9px] border rounded px-1.5 py-0.5 ${badge}`}>参考傾向</span>
+                  <span className={`text-[9px] border rounded px-1.5 py-0.5 ${badge}`}>{t('auto.DashboardAdvancedPage.k7')}</span>
                 </div>
                 <PreMatchObservationAnalytics playerId={playerId} />
               </div>
@@ -347,7 +347,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
             {/* ペアモードトグル */}
             {sortedPlayers.filter((p) => p.is_target).length >= 2 && (
               <div className={`flex items-center gap-3 ${card} rounded-lg px-4 py-3`}>
-                <span className={`text-xs ${textSecondary}`}>ペアモード</span>
+                <span className={`text-xs ${textSecondary}`}>{t('auto.DashboardAdvancedPage.k8')}</span>
                 <button
                   onClick={() => { setPairMode((v) => !v); setPartnerPlayerId(null) }}
                   className={`relative w-10 h-5 rounded-full transition-colors ${pairMode ? 'bg-blue-500' : (isLight ? 'bg-gray-300' : 'bg-gray-600')}`}
@@ -360,7 +360,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                     value={partnerPlayerId ?? ''}
                     onChange={(e) => setPartnerPlayerId(e.target.value ? Number(e.target.value) : null)}
                   >
-                    <option value="">パートナーを選択</option>
+                    <option value="">{t('auto.DashboardAdvancedPage.k9')}</option>
                     {sortedPlayers.filter((p) => p.is_target && p.id !== playerId).map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}

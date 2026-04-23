@@ -74,9 +74,9 @@ const TREND_LABEL: Record<string, string> = {
 type TabKey = 'overview' | 'loss' | 'shots'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: '概要' },
-  { key: 'loss',     label: '失点' },
-  { key: 'shots',    label: 'ショット' },
+  { key: 'overview', label: t('auto.SetIntervalSummary.k4') },
+  { key: 'loss',     label: t('auto.SetIntervalSummary.k5') },
+  { key: 'shots',    label: t('auto.SetIntervalSummary.k6') },
 ]
 
 export function SetIntervalSummary({
@@ -209,15 +209,15 @@ export function SetIntervalSummary({
               {activeTab === 'overview' && (
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-gray-700/50 rounded p-2">
-                    <div className="text-[10px] text-gray-500 mb-0.5">ラリー数</div>
+                    <div className="text-[10px] text-gray-500 mb-0.5">{t('auto.SetIntervalSummary.k1')}</div>
                     <div className="text-lg font-bold text-white">{data.total_rallies}</div>
                   </div>
                   <div className="bg-gray-700/50 rounded p-2">
-                    <div className="text-[10px] text-gray-500 mb-0.5">平均球数</div>
+                    <div className="text-[10px] text-gray-500 mb-0.5">{t('auto.SetIntervalSummary.k2')}</div>
                     <div className="text-lg font-bold text-white">{data.avg_rally_length}</div>
                   </div>
                   <div className="bg-gray-700/50 rounded p-2">
-                    <div className="text-[10px] text-gray-500 mb-0.5">ラリー傾向</div>
+                    <div className="text-[10px] text-gray-500 mb-0.5">{t('auto.SetIntervalSummary.k3')}</div>
                     <div className="text-xs font-semibold text-white">{TREND_LABEL[data.rally_length_trend]?.split('（')[0]}</div>
                   </div>
                 </div>

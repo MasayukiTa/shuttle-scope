@@ -4,6 +4,7 @@
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, CartesianGrid,
@@ -39,6 +40,8 @@ interface Props {
 }
 
 function CustomTooltip({ active, payload }: any) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload as RallyPoint
@@ -51,12 +54,14 @@ function CustomTooltip({ active, payload }: any) {
     <div style={{ backgroundColor: bg, border: `1px solid ${border}`, borderRadius: 6, color, fontSize: 12, padding: '6px 10px' }}>
       <p className="font-semibold mb-0.5">ラリー {d.rally_num}</p>
       <p style={{ color: WIN }}>A: {d.score_a} &nbsp; <span style={{ color: LOSS }}>B: {d.score_b}</span></p>
-      <p className="text-[10px] mt-0.5" style={{ color: hintColor }}>クリックで選択</p>
+      <p className="text-[10px] mt-0.5" style={{ color: hintColor }}>{t('auto.RallyPickerModal.k1')}</p>
     </div>
   )
 }
 
 export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRallyNum, onSelect, onClear, onClose }: Props) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   const [activeSet, setActiveSet] = useState(initialSet)
 
@@ -119,9 +124,9 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
 
           {/* グラフ */}
           {isLoading ? (
-            <p className="text-sm text-gray-500 py-6 text-center">読み込み中...</p>
+            <p className="text-sm text-gray-500 py-6 text-center">{t('auto.RallyPickerModal.k2')}</p>
           ) : chartData.length === 0 ? (
-            <p className="text-sm text-gray-500 py-6 text-center">データがありません</p>
+            <p className="text-sm text-gray-500 py-6 text-center">{t('auto.RallyPickerModal.k3')}</p>
           ) : (
             <>
               <p className="text-xs" style={{ color: isLight ? '#64748b' : '#94a3b8' }}>

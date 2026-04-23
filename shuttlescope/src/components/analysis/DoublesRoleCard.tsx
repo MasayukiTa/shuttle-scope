@@ -5,6 +5,7 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
+import { useTranslation } from 'react-i18next'
 
 // ─── CV ロール照合型 ──────────────────────────────────────────────────────────
 
@@ -133,6 +134,8 @@ function pct(v: number) {
 }
 
 function RatioBar({ front, back, neutral }: { front: number; back: number; neutral: number }) {
+  const { t } = useTranslation()
+
   return (
     <div className="flex h-2 w-full rounded-full overflow-hidden gap-px">
       <div className="bg-sky-600" style={{ width: `${front * 100}%` }} title={`フロント ${pct(front)}`} />
@@ -143,6 +146,8 @@ function RatioBar({ front, back, neutral }: { front: number; back: number; neutr
 }
 
 export function DoublesRoleCard({ playerId, filters }: Props) {
+  const { t } = useTranslation()
+
   const { card, cardInner, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, loading, isLight } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -198,7 +203,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
   return (
     <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className={`text-sm font-semibold ${textHeading}`}>ダブルスロール推定（DB-1/2）</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.DoublesRoleCard.k1')}</h3>
         <EvidenceBadge
           tier="research"
           evidenceLevel="exploratory"
@@ -214,22 +219,22 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
       />
 
       {isLoading ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>計算中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.DoublesRoleCard.k2')}</p>
       ) : !roleData ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>ダブルスデータが不足しています</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.DoublesRoleCard.k3')}</p>
       ) : (
         <div className="space-y-3">
           {/* メインロール表示 */}
           <div className={`${cardInner} rounded px-3 py-2 space-y-2`}>
             <div className="flex items-center justify-between">
               <div>
-                <span className={`text-xs ${textSecondary}`}>推定ロール: </span>
+                <span className={`text-xs ${textSecondary}`}>{t('auto.DoublesRoleCard.k4')} </span>
                 <span className={`text-sm font-semibold ${getRoleColor(roleData.inferred_role, isLight)}`}>
                   {ROLE_LABELS[roleData.inferred_role] ?? roleData.inferred_role}
                 </span>
               </div>
               <div className="text-right">
-                <span className={`text-[10px] ${textMuted}`}>信頼スコア: </span>
+                <span className={`text-[10px] ${textMuted}`}>{t('auto.DoublesRoleCard.k5')} </span>
                 <span className={`text-xs font-medium ${roleData.confidence_score >= 0.7 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : roleData.confidence_score >= 0.5 ? (isLight ? 'text-amber-600' : 'text-yellow-400') : (isLight ? 'text-orange-600' : 'text-orange-400')}`}>
                   {pct(roleData.confidence_score)}
                 </span>
@@ -262,7 +267,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
           {/* フェーズ別内訳 */}
           {(roleData.phase_breakdown ?? []).length > 0 && (
             <div className="space-y-1">
-              <p className={`text-[10px] ${textMuted}`}>スコアフェーズ別ロール</p>
+              <p className={`text-[10px] ${textMuted}`}>{t('auto.DoublesRoleCard.k6')}</p>
               {(roleData.phase_breakdown ?? []).map((ph, i) => (
                 <div key={i} className="flex items-center gap-2 text-[10px]">
                   <span className={`w-12 shrink-0 ${textMuted}`}>
@@ -312,8 +317,8 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
                 </span>
               </div>
               <div className={`flex items-center gap-3 text-[10px] ${textMuted}`}>
-                <span>CV陣形: <span className={textSecondary}>{cvRoleSignal.cv_formation_style}</span></span>
-                <span>照合スコア: <span className={textSecondary}>{Math.round(cvRoleSignal.agreement_score * 100)}%</span></span>
+                <span>{t('auto.DoublesRoleCard.k7')} <span className={textSecondary}>{cvRoleSignal.cv_formation_style}</span></span>
+                <span>{t('auto.DoublesRoleCard.k8')} <span className={textSecondary}>{Math.round(cvRoleSignal.agreement_score * 100)}%</span></span>
               </div>
               {(cvRoleSignal.player_a_cv_role_hint || cvRoleSignal.player_b_cv_role_hint) && (
                 <div className={`flex gap-3 text-[10px] ${textFaint}`}>
@@ -335,7 +340,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
           {stability && stability.n_matches_analyzed > 0 && (
             <div className={`${cardInnerAlt} rounded px-3 py-2 space-y-1.5`}>
               <div className="flex items-center justify-between">
-                <p className={`text-[10px] font-medium ${textSecondary}`}>ロール安定性（DB-3）</p>
+                <p className={`text-[10px] font-medium ${textSecondary}`}>{t('auto.DoublesRoleCard.k9')}</p>
                 <span className={`text-[10px] font-semibold ${getConsistencyColor(stability.consistency_label, isLight)}`}>
                   {CONSISTENCY_LABELS[stability.consistency_label] ?? stability.consistency_label}
                 </span>

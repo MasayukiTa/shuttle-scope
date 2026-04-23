@@ -63,13 +63,13 @@ interface Props {
 
 const SET_PATH_OPTIONS = ['', '2-0', '2-1', '1-2', '0-2']
 const ROLE_OPTIONS = [
-  { value: 'coach', label: 'コーチ' },
-  { value: 'analyst', label: 'アナリスト' },
+  { value: 'coach', label: t('auto.HumanForecastPanel.k10') },
+  { value: 'analyst', label: t('auto.HumanForecastPanel.k11') },
 ]
 const CONFIDENCE_OPTIONS = [
-  { value: 'high', label: '高い' },
-  { value: 'medium', label: '中程度' },
-  { value: 'low', label: '低い' },
+  { value: 'high', label: t('auto.HumanForecastPanel.k12') },
+  { value: 'medium', label: t('auto.HumanForecastPanel.k13') },
+  { value: 'low', label: t('auto.HumanForecastPanel.k14') },
 ]
 
 // ── フォームセクション ────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
         </select>
         <input
           className={`${inputClass} flex-1`}
-          placeholder="名前（任意）"
+          placeholder={t('auto.HumanForecastPanel.k8')}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -157,7 +157,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
       {/* セットパス + 勝率見込み */}
       <div className="flex gap-2">
         <select value={setPath} onChange={(e) => setSetPath(e.target.value)} className={inputClass}>
-          <option value="">セットパス（任意）</option>
+          <option value="">{t('auto.HumanForecastPanel.k1')}</option>
           {SET_PATH_OPTIONS.filter(Boolean).map((o) => (
             <option key={o} value={o}>{o}</option>
           ))}
@@ -167,7 +167,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
           min={0}
           max={100}
           className={`${inputClass} w-24`}
-          placeholder="勝率%"
+          placeholder={t('auto.HumanForecastPanel.k9')}
           value={prob}
           onChange={(e) => setProb(e.target.value)}
         />
@@ -195,7 +195,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
         {save.isPending ? '保存中...' : t('prediction.human_forecast_save')}
       </button>
       {save.isError && (
-        <p className="text-xs" style={{ color: LOSS }}>保存に失敗しました</p>
+        <p className="text-xs" style={{ color: LOSS }}>{t('auto.HumanForecastPanel.k2')}</p>
       )}
     </div>
   )
@@ -237,11 +237,11 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ color: subText }}>
-                  <th className="text-left py-1 pr-3">ロール</th>
-                  <th className="text-right pr-3">正解率(人)</th>
-                  <th className="text-right pr-3">正解率(モデル)</th>
-                  <th className="text-right pr-3">Brier(人)</th>
-                  <th className="text-right">Brier(モデル)</th>
+                  <th className="text-left py-1 pr-3">{t('auto.HumanForecastPanel.k3')}</th>
+                  <th className="text-right pr-3">{t('auto.HumanForecastPanel.k4')}</th>
+                  <th className="text-right pr-3">{t('auto.HumanForecastPanel.k5')}</th>
+                  <th className="text-right pr-3">{t('auto.HumanForecastPanel.k6')}</th>
+                  <th className="text-right">{t('auto.HumanForecastPanel.k7')}</th>
                 </tr>
               </thead>
               <tbody>

@@ -1,4 +1,5 @@
 import { Component, ReactNode } from 'react'
+import i18n from '@/i18n'
 
 interface Props {
   children: ReactNode
@@ -81,16 +82,16 @@ export class ErrorBoundary extends Component<Props, State> {
       }
       return (
         <div className="p-6 bg-gray-900 min-h-full flex flex-col gap-3">
-          <p className="text-red-400 font-semibold text-base">⚠ 表示エラーが発生しました</p>
+          <p className="text-red-400 font-semibold text-base">{i18n.t('error_boundary.title')}</p>
           <div className="bg-gray-800 rounded p-3 flex flex-col gap-2">
-            <p className="text-xs text-gray-400 font-semibold">エラーメッセージ</p>
+            <p className="text-xs text-gray-400 font-semibold">{i18n.t('error_boundary.error_message_label')}</p>
             <pre className="text-sm text-yellow-300 whitespace-pre-wrap break-all">
-              {this.state.message || '(詳細なし)'}
+              {this.state.message || i18n.t('error_boundary.no_detail')}
             </pre>
           </div>
           {this.state.stack && (
             <div className="bg-gray-800 rounded p-3 flex flex-col gap-2">
-              <p className="text-xs text-gray-400 font-semibold">スタックトレース</p>
+              <p className="text-xs text-gray-400 font-semibold">{i18n.t('error_boundary.stack_trace_label')}</p>
               <pre className="text-xs text-gray-300 overflow-auto max-h-48 whitespace-pre-wrap break-all">
                 {this.state.stack}
               </pre>
@@ -101,17 +102,17 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={this.copyReport}
               className="text-xs px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors"
             >
-              {this.state.copied ? 'コピーしました ✓' : 'エラー内容をコピー'}
+              {this.state.copied ? i18n.t('error_boundary.copied') : i18n.t('error_boundary.copy_button')}
             </button>
             <button
               onClick={() => window.location.reload()}
               className="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
             >
-              ページを再読み込み
+              {i18n.t('error_boundary.reload_button')}
             </button>
           </div>
           <p className="text-xs text-gray-600">
-            「エラー内容をコピー」して開発者に送付してください。
+            {i18n.t('error_boundary.footer_hint')}
           </p>
         </div>
       )

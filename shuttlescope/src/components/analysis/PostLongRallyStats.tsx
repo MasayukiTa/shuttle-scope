@@ -36,21 +36,23 @@ function ComparisonCard({
   stats: StatSummary
   highlight: 'normal' | 'post_long'
 }) {
+  const { t } = useTranslation()
+
   const accentColor = highlight === 'normal' ? BAR : LINE
   return (
     <div className="bg-gray-700/50 rounded-lg p-3 border-l-4" style={{ borderLeftColor: accentColor }}>
       <p className="text-xs font-semibold mb-2" style={{ color: accentColor }}>{label}</p>
       <div className="space-y-1.5">
         <div className="flex justify-between text-xs">
-          <span className="text-gray-400">勝率</span>
+          <span className="text-gray-400">{t('auto.PostLongRallyStats.k1')}</span>
           <span className="text-gray-100 font-semibold">{(stats.win_rate * 100).toFixed(1)}%</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-gray-400">平均ラリー長</span>
+          <span className="text-gray-400">{t('auto.PostLongRallyStats.k2')}</span>
           <span className="text-gray-100">{stats.avg_rally_length.toFixed(1)}</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-gray-400">ラリー数</span>
+          <span className="text-gray-400">{t('auto.PostLongRallyStats.k3')}</span>
           <span className="text-gray-300">{stats.count}</span>
         </div>
       </div>
@@ -107,7 +109,7 @@ export function PostLongRallyStats({ playerId, filters = DEFAULT_FILTERS }: Post
 
       {/* 差分表示 */}
       <div className="text-center text-sm">
-        <span className="text-gray-400">長ラリー後の勝率差: </span>
+        <span className="text-gray-400">{t('auto.PostLongRallyStats.k4')} </span>
         <span className="font-semibold" style={{ color: isPositive ? WIN : LOSS }}>
           {isPositive ? '+' : ''}{diffPct}%
         </span>

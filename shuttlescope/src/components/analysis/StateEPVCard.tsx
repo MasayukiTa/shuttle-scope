@@ -5,6 +5,7 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
+import { useTranslation } from 'react-i18next'
 
 interface StateRow {
   state_key: string
@@ -25,6 +26,8 @@ const ROLE_LABELS: Record<string, string> = { server: 'サーバー', receiver: 
 function pct(v: number) { return `${(v * 100).toFixed(1)}%` }
 
 export function StateEPVCard({ playerId, filters }: Props) {
+  const { t } = useTranslation()
+
   const { card, textHeading, textSecondary, textMuted, textFaint, tableHeader, rowBorder, rowHover, loading } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -50,7 +53,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
   return (
     <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className={`text-sm font-semibold ${textHeading}`}>状態ベース EPV マップ</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.StateEPVCard.k1')}</h3>
         <EvidenceBadge tier="research" evidenceLevel="directional" sampleSize={meta?.sample_size} recommendationAllowed={false} />
       </div>
       <ResearchNotice
@@ -59,9 +62,9 @@ export function StateEPVCard({ playerId, filters }: Props) {
         promotionCriteria="状態ごとN≥50・CI幅0.2以内・クロス大会安定性"
       />
       {isLoading ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>計算中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.StateEPVCard.k2')}</p>
       ) : reliableRows.length === 0 ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>十分なデータがありません（各状態で最低10ラリー以上が必要です）</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.StateEPVCard.k3')}</p>
       ) : (
         <>
           {/* ── モバイル: カード形式 ──────────────────────── */}
@@ -113,13 +116,13 @@ export function StateEPVCard({ playerId, filters }: Props) {
             <table className="w-full text-xs">
               <thead>
                 <tr className={tableHeader}>
-                  <th className="text-left py-1.5 pr-3">スコアフェーズ</th>
-                  <th className="text-left py-1.5 pr-3">ラリー長</th>
-                  <th className="text-left py-1.5 pr-3">サーブ側</th>
+                  <th className="text-left py-1.5 pr-3">{t('auto.StateEPVCard.k4')}</th>
+                  <th className="text-left py-1.5 pr-3">{t('auto.StateEPVCard.k5')}</th>
+                  <th className="text-left py-1.5 pr-3">{t('auto.StateEPVCard.k6')}</th>
                   <th className="text-right py-1.5 pr-3">N</th>
-                  <th className="text-right py-1.5 pr-3">勝率</th>
+                  <th className="text-right py-1.5 pr-3">{t('auto.StateEPVCard.k7')}</th>
                   <th className="text-right py-1.5 pr-3">CI</th>
-                  <th className="text-left py-1.5">上位EPVショット</th>
+                  <th className="text-left py-1.5">{t('auto.StateEPVCard.k8')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,7 +152,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
           </div>
         </>
       )}
-      <p className={`text-[10px] ${textFaint}`}>信頼性 ≥ 50% の状態のみ表示。CI幅が広い行は解釈に注意してください。</p>
+      <p className={`text-[10px] ${textFaint}`}>{t('auto.StateEPVCard.k9')}</p>
     </div>
   )
 }
