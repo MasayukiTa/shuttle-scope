@@ -122,8 +122,12 @@ function Sidebar() {
 
   return (
     <>
-      <div className={clsx('hidden md:flex w-16 flex-col items-center py-4 border-r', sidebarBg, isAnnotatorPage && 'md:hidden')}>
-        <div className="text-blue-500 text-xs font-bold mb-4">SS</div>
+      <div className={clsx('hidden md:flex w-16 flex-col items-center border-r', sidebarBg, isAnnotatorPage && 'md:hidden')}>
+        {/* ロゴ帯: favicon 画像が白背景のため、ダークモードでも常に白背景を維持する */}
+        <div className="w-full flex items-center justify-center py-2 bg-white border-b border-gray-200">
+          <img src="/favicon.png" alt="ShuttleScope" className="w-10 h-10 object-contain" />
+        </div>
+        <div className="pt-4" />
         {navItems.map(({ to, label, shortLabel, icon: Icon, badge }) => (
           <NavLink
             key={to}
