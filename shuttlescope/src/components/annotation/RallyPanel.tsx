@@ -13,14 +13,7 @@ interface RallyPanelProps {
   isActive: boolean
 }
 
-const END_TYPES = [
-  { value: 'ace', label: 'エース' },
-  { value: 'forced_error', label: '強制エラー' },
-  { value: 'unforced_error', label: '自滅' },
-  { value: 'net', label: 'ネット' },
-  { value: 'out', label: 'アウト' },
-  { value: 'cant_reach', label: '届かず' },
-]
+const END_TYPE_VALUES = ['ace', 'forced_error', 'unforced_error', 'net', 'out', 'cant_reach'] as const
 
 export function RallyPanel({
   setNum,
@@ -55,23 +48,23 @@ export function RallyPanel({
       {/* ラリー確定パネル（アクティブ時のみ表示） */}
       {isActive && (
         <div className="border border-gray-600 rounded p-2">
-          <div className="text-xs text-gray-400 mb-2">得点者と終了種別を選択:</div>
+          <div className="text-xs text-gray-400 mb-2">{t('annotator.rally_end_select_hint')}</div>
 
           {/* 得点者 × 終了種別 */}
           <div className="grid grid-cols-2 gap-2 mb-2">
             {[
-              { winner: 'player_a' as const, label: `${playerAName} 得点` },
-              { winner: 'player_b' as const, label: `${playerBName} 得点` },
+              { winner: 'player_a' as const, label: `${playerAName} ${t('annotator.rally_point_suffix')}` },
+              { winner: 'player_b' as const, label: `${playerBName} ${t('annotator.rally_point_suffix')}` },
             ].map(({ winner, label }) => (
               <div key={winner} className="flex flex-col gap-1">
                 <div className="text-xs text-gray-300 font-medium text-center">{label}</div>
-                {END_TYPES.map(({ value, label: endLabel }) => (
+                {END_TYPE_VALUES.map((value) => (
                   <button
                     key={value}
                     onClick={() => onConfirmRally(winner, value)}
                     className="px-2 py-1 bg-gray-700 hover:bg-blue-700 text-gray-200 rounded text-xs transition-colors"
                   >
-                    {endLabel}
+                    {t(`end_types.${value}`)}
                   </button>
                 ))}
               </div>
