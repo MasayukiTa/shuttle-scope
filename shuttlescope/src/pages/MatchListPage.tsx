@@ -128,7 +128,7 @@ function PlayerCombobox({
               {p.team && (
                 <span className="text-xs text-blue-300 bg-blue-900/30 px-1.5 rounded shrink-0">{p.team}</span>
               )}
-              {p.needs_review && <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">暫定</span>}
+              {p.needs_review && <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">{t('match.list.tentative')}</span>}
             </button>
           ))}
           <button
@@ -657,7 +657,7 @@ export function MatchListPage() {
             onChange={(e) => setFilterLevel(e.target.value)}
             className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-800 border-gray-700'} border rounded px-2 py-1.5 text-sm`}
           >
-            <option value="">全大会レベル</option>
+            <option value="">{t('match.list.level_all')}</option>
             {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
               <option key={l} value={l}>{l}</option>
             ))}
@@ -668,11 +668,11 @@ export function MatchListPage() {
               checked={filterIncompleteOnly}
               onChange={(e) => setFilterIncompleteOnly(e.target.checked)}
             />
-            <span className={textSecondary}>未完了のみ</span>
+            <span className={textSecondary}>{t('match.list.only_unfinished')}</span>
           </label>
           <div className={`ml-auto flex items-center gap-2 text-sm ${textMuted}`}>
             <Download size={13} />
-            <span>画質:</span>
+            <span>{t('match.list.quality')}</span>
             <select
               value={downloadQuality}
               onChange={(e) => setDownloadQuality(e.target.value)}
@@ -680,9 +680,9 @@ export function MatchListPage() {
             >
               <option value="360">360p</option>
               <option value="480">480p</option>
-              <option value="720">720p (推奨)</option>
+              <option value="720">{t('match.list.quality_720')}</option>
               <option value="1080">1080p</option>
-              <option value="best">最高画質</option>
+              <option value="best">{t('match.list.quality_best')}</option>
             </select>
             <select
               value={downloadCookieBrowser}
@@ -690,7 +690,7 @@ export function MatchListPage() {
               className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded px-2 py-1 text-sm`}
               title="ログイン必須サイトのCookieを取得するブラウザ"
             >
-              <option value="">Cookie: なし</option>
+              <option value="">{t('match.list.cookie_none')}</option>
               <option value="chrome">Chrome</option>
               <option value="edge">Edge</option>
               <option value="firefox">Firefox</option>
@@ -804,7 +804,7 @@ export function MatchListPage() {
               onChange={(e) => setFilterLevel(e.target.value)}
               className={`${isLight ? 'bg-white border-gray-300' : 'bg-gray-800 border-gray-700'} border rounded px-2 py-1.5 text-sm`}
             >
-              <option value="">全大会レベル</option>
+              <option value="">{t('match.list.level_all')}</option>
               {['IC', 'IS', 'SJL', '全日本', '国内', 'その他'].map((l) => (
                 <option key={l} value={l}>{l}</option>
               ))}
@@ -815,7 +815,7 @@ export function MatchListPage() {
                 checked={filterIncompleteOnly}
                 onChange={(e) => setFilterIncompleteOnly(e.target.checked)}
               />
-              <span className={textSecondary}>未完了のみ</span>
+              <span className={textSecondary}>{t('match.list.only_unfinished')}</span>
             </label>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -887,7 +887,7 @@ export function MatchListPage() {
                       {m.partner_b?.name && ` / ${m.partner_b.name}`}
                     </span>
                     {m.player_b?.needs_review && (
-                      <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">暫定</span>
+                      <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">{t('match.list.tentative')}</span>
                     )}
                     {m.final_score && (
                       <span className={`text-xs ${textMuted} ml-auto shrink-0`}>{m.final_score}</span>
@@ -1021,9 +1021,9 @@ export function MatchListPage() {
                         : <ChevronsUpDown size={12} className="opacity-30" />}
                     </span>
                   </th>
-                  <th className="text-left py-2 pr-4">レベル</th>
-                  <th className="text-left py-2 pr-4">形式</th>
-                  <th className="text-left py-2 pr-4">対戦相手</th>
+                  <th className="text-left py-2 pr-4">{t('match.list.col_level')}</th>
+                  <th className="text-left py-2 pr-4">{t('match.list.col_format')}</th>
+                  <th className="text-left py-2 pr-4">{t('match.list.col_opponent')}</th>
                   {/* ソート可能: 結果 */}
                   <th
                     className="text-left py-2 pr-4 cursor-pointer select-none hover:opacity-80 whitespace-nowrap"
@@ -1080,7 +1080,7 @@ export function MatchListPage() {
                       )}
                     </div>
                   </th>
-                  <th className="text-left py-2">操作</th>
+                  <th className="text-left py-2">{t('match.list.col_actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1284,10 +1284,10 @@ export function MatchListPage() {
                     onChange={(e) => setForm({ ...form, format: e.target.value as MatchFormat })}
                     className={`w-full ${inputClass}`}
                   >
-                    <option value="singles">シングルス</option>
-                    <option value="mens_doubles">男子ダブルス</option>
-                    <option value="womens_doubles">女子ダブルス</option>
-                    <option value="mixed_doubles">混合ダブルス</option>
+                    <option value="singles">{t('match.list.format_singles')}</option>
+                    <option value="mens_doubles">{t('match.list.format_mens_doubles')}</option>
+                    <option value="womens_doubles">{t('match.list.format_womens_doubles')}</option>
+                    <option value="mixed_doubles">{t('match.list.format_mixed_doubles')}</option>
                   </select>
                 </div>
 
@@ -1405,10 +1405,10 @@ export function MatchListPage() {
                     onChange={(e) => setForm({ ...form, result: e.target.value as MatchResult })}
                     className={`w-full ${inputClass}`}
                   >
-                    <option value="win">勝ち</option>
-                    <option value="loss">負け</option>
-                    <option value="walkover">不戦勝</option>
-                    <option value="unfinished">未完了</option>
+                    <option value="win">{t('match.list.result_win')}</option>
+                    <option value="loss">{t('match.list.result_loss')}</option>
+                    <option value="walkover">{t('match.list.result_walkover')}</option>
+                    <option value="unfinished">{t('match.list.result_unfinished')}</option>
                   </select>
                 </div>
                 <div>
@@ -1423,7 +1423,7 @@ export function MatchListPage() {
 
                 {/* 動画 */}
                 <div className="col-span-2">
-                  <label className={`block text-sm ${textSecondary} mb-1`}>動画（任意）</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.list.video_optional')}</label>
                   <div className="flex gap-2 items-center">
                     {window.shuttlescope?.openVideoFile && (
                       <button
@@ -1458,7 +1458,7 @@ export function MatchListPage() {
 
                 {/* 先サーブ / アナリスト視点 */}
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>先サーブ</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.list.first_serve')}</label>
                   <div className="flex gap-2">
                     {([
                       { value: 'player_a', label: 'A側（自チーム）' },
@@ -1482,7 +1482,7 @@ export function MatchListPage() {
                   </div>
                 </div>
                 <div>
-                  <label className={`block text-sm ${textSecondary} mb-1`}>アナリスト視点</label>
+                  <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.list.analyst_view')}</label>
                   <div className="flex gap-2">
                     {([
                       { value: 'bottom' as const, label: '⬇ 画面下（手前）' },

@@ -881,6 +881,33 @@
       "全日本": "全日本",
       "国内": "国内",
       "その他": "その他"
+    },
+    "list": {
+      "level_all": "全大会レベル",
+      "only_unfinished": "未完了のみ",
+      "quality": "画質:",
+      "quality_720": "720p (推奨)",
+      "quality_best": "最高画質",
+      "cookie_none": "Cookie: なし",
+      "col_level": "レベル",
+      "col_format": "形式",
+      "col_opponent": "対戦相手",
+      "col_actions": "操作",
+      "format_singles": "シングルス",
+      "format_mens_doubles": "男子ダブルス",
+      "format_womens_doubles": "女子ダブルス",
+      "format_mixed_doubles": "混合ダブルス",
+      "result_win": "勝ち",
+      "result_loss": "負け",
+      "result_walkover": "不戦勝",
+      "result_unfinished": "未完了",
+      "video_optional": "動画（任意）",
+      "first_serve": "先サーブ",
+      "analyst_view": "アナリスト視点",
+      "tentative": "暫定",
+      "registered": "登録済",
+      "duplicate_hint": "（同姓同名の識別に使用）",
+      "existing_team_hint": "既存選手のチーム（変更可）"
     }
   },
   "player": {
