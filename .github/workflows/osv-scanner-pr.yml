@@ -1,0 +1,98 @@
+# This workflow keeps the PR-only OSV check separate from push/schedule scans.
+# Keeping it separate prevents the push workflow from showing a skipped `scan-pr` job.
+
+name: OSV-Scanner PR
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  merge_group:
+    branches: [ "main" ]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  # Read commit contents
+  contents: read
+  # Read pull request metadata for the PR diff scan
+  pull-requests: read
+  # Upload SARIF results to the Security tab
+  security-events: write
+
+jobs:
+  scan-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Checkout target branch
+        run: git checkout "$GITHUB_BASE_REF"
+
+      - name: Run scanner on existing code
+        uses: google/osv-scanner-action/osv-scanner-action@v1.7.1
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=json
+            --output=old-results.json
+            -r
+            --skip-git
+            ./
+
+      - name: Checkout current branch
+        run: git checkout "$GITHUB_SHA"
+
+      - name: Run scanner on new code
+        uses: google/osv-scanner-action/osv-scanner-action@v1.7.1
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=json
+            --output=new-results.json
+            -r
+            --skip-git
+            ./
+
+      - name: Generate PR SARIF report
+        uses: google/osv-scanner-action/osv-reporter-action@v1.7.1
+        with:
+          scan-args: |-
+            --output=results.sarif
+            --old=old-results.json
+            --new=new-results.json
+            --gh-annotations=true
+            --fail-on-vuln=true
+
+      - name: Upload SARIF artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: osv-pr-sarif
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload old scan json results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: old-json-results
+          path: old-results.json
+          retention-days: 5
+
+      - name: Upload new scan json results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: new-json-results
+          path: new-results.json
+          retention-days: 5
+
+      - name: Upload to code-scanning
+        if: ${{ !cancelled() }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
