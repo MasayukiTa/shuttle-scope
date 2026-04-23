@@ -916,6 +916,9 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         team = (ctx.team_name or "").strip()
         if not team or (user.team_name or "").strip() != team:
             raise HTTPException(status_code=403, detail="自チームのユーザーのみ編集できます")
+        # coach は admin / analyst を編集できない（team_name 一致のみでの権限昇格を塞ぐ）
+        if user.role in ("admin", "analyst"):
+            raise HTTPException(status_code=403, detail="管理者/analyst は編集できません")
     elif ctx.is_player:
         if ctx.user_id != target_id:
             raise HTTPException(status_code=403, detail="自分自身のみ編集できます")
@@ -931,7 +934,9 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         if existing:
             raise HTTPException(status_code=409, detail="login_id is already in use")
         user.username = login_id
-    if body.team_name is not None and (ctx.is_admin or ctx.is_analyst or ctx.is_coach):
+    # team_name の変更は admin / analyst のみ可能
+    # coach が自分や他人の team_name を書換えて別チームへ「瞬間移動」することを防ぐ
+    if body.team_name is not None and (ctx.is_admin or ctx.is_analyst):
         user.team_name = body.team_name
     if body.player_id is not None and (ctx.is_admin or ctx.is_analyst):
         user.player_id = body.player_id

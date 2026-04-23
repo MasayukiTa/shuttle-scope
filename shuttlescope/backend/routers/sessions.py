@@ -29,9 +29,18 @@ from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import Match, SharedSession, SessionParticipant, LiveSource
+from backend.utils.auth import require_match_scope as _require_match_scope
 from backend.utils.source_quality import compute_suitability
 
 router = APIRouter()
+
+
+def _require_session_scope(request: Request, session: SharedSession, db: Session):
+    """session → match → scope 検証のヘルパー"""
+    match = db.get(Match, session.match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    return _require_match_scope(request, match, db)
 
 
 # ─── パスワードユーティリティ ────────────────────────────────────────────────
@@ -155,11 +164,15 @@ class SetRoleBody(BaseModel):
 # ─── エンドポイント ───────────────────────────────────────────────────────────
 
 @router.post("/sessions", status_code=201)
-def create_session(body: SessionCreate, db: Session = Depends(get_db)):
+def create_session(body: SessionCreate, request: Request, db: Session = Depends(get_db)):
     """試合に対する共有セッションを作成。既存アクティブセッションがあれば再利用。"""
     match = db.get(Match, body.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    ctx = _require_match_scope(request, match, db)
+    # player はセッション作成不可（コーチ/アナリスト用の操作）
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="セッション作成権限がありません")
 
     # 既存アクティブセッション確認
     existing = (
@@ -218,8 +231,12 @@ def my_server_info():
 
 
 @router.get("/sessions/match/{match_id}")
-def sessions_for_match(match_id: int, db: Session = Depends(get_db)):
+def sessions_for_match(match_id: int, request: Request, db: Session = Depends(get_db)):
     """試合に紐づくアクティブセッション一覧"""
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _require_match_scope(request, match, db)
     sessions = (
         db.query(SharedSession)
         .filter(SharedSession.match_id == match_id, SharedSession.is_active.is_(True))
@@ -229,16 +246,17 @@ def sessions_for_match(match_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/sessions/{code}")
-def get_session(code: str, db: Session = Depends(get_db)):
+def get_session(code: str, request: Request, db: Session = Depends(get_db)):
     """セッション情報取得"""
     session = db.query(SharedSession).filter(SharedSession.session_code == code).first()
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    _require_session_scope(request, session, db)
     return {"success": True, "data": _session_to_dict(session, db)}
 
 
 @router.get("/sessions/{code}/state")
-def session_state(code: str, db: Session = Depends(get_db)):
+def session_state(code: str, request: Request, db: Session = Depends(get_db)):
     """コーチビュー初期化用のライブスナップショット（REST版）"""
     from backend.ws.live import _build_session_snapshot
 
@@ -249,6 +267,7 @@ def session_state(code: str, db: Session = Depends(get_db)):
     )
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つからないか終了しています")
+    _require_session_scope(request, session, db)
 
     snapshot = _build_session_snapshot(session, db)
     return {"success": True, "data": snapshot}
@@ -388,7 +407,7 @@ def _release_stale_active_cameras(session_id: int, db: Session) -> int:
 # ─── デバイス管理エンドポイント ──────────────────────────────────────────────
 
 @router.get("/sessions/{code}/devices")
-def list_devices(code: str, db: Session = Depends(get_db)):
+def list_devices(code: str, request: Request, db: Session = Depends(get_db)):
     """接続デバイス（参加者）一覧を返す。
     取得前にステールな active_camera を自動降格する。"""
     session = (
@@ -398,6 +417,7 @@ def list_devices(code: str, db: Session = Depends(get_db)):
     )
     if not session:
         raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    _require_session_scope(request, session, db)
 
     _release_stale_active_cameras(session.id, db)
 

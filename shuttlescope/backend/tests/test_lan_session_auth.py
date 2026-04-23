@@ -39,7 +39,7 @@ def _make_match(db) -> Match:
 @pytest.fixture
 def lan_client(db_session):
     app.dependency_overrides[get_db] = lambda: db_session
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-Role": "analyst"})
     yield client
     app.dependency_overrides.clear()
 
@@ -48,7 +48,7 @@ def lan_client(db_session):
 def lan_client_with_session(db_session):
     """セッション作成済みクライアント"""
     app.dependency_overrides[get_db] = lambda: db_session
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-Role": "analyst"})
 
     match = _make_match(db_session)
     db_session.commit()

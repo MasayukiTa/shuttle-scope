@@ -981,6 +981,23 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
     webhook = (settings.ss_notify_webhook_url or "").strip()
     if not webhook:
         return
+    # SSRF 対策: https スキームのみ許可。file:// / ftp:// / 内部ネットワーク probe を塞ぐ。
+    # 仕様上 Slack / Discord / Teams 等の公開 webhook は必ず https。
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(webhook)
+    except Exception:
+        logger.warning("public inquiry webhook has invalid URL; skipping")
+        return
+    if parsed.scheme != "https" or not parsed.hostname:
+        logger.warning("public inquiry webhook rejected: non-https scheme or missing host")
+        return
+    # 内部/ループバック/メタデータサービス宛を拒否（設定ミス/改竄時の保険）
+    host = parsed.hostname.lower()
+    _blocked_hosts = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "169.254.169.254", "metadata.google.internal"}
+    if host in _blocked_hosts or host.endswith(".local") or host.endswith(".internal"):
+        logger.warning("public inquiry webhook rejected: blocked host %s", host)
+        return
     payload = {
         "text": (
             "New ShuttleScope inquiry\n"

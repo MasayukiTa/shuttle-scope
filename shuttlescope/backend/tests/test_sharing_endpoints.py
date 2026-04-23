@@ -38,7 +38,8 @@ def sharing_client(db_session):
     match = _make_match(db_session, pa, pb)
 
     app.dependency_overrides[get_db] = lambda: db_session
-    client = TestClient(app)
+    # Electron ローカル起動を模倣：X-Role=analyst を既定で送る（loopback 互換パス）
+    client = TestClient(app, headers={"X-Role": "analyst"})
     yield client, match.id, pa.id
     app.dependency_overrides.clear()
 

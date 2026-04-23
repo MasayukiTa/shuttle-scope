@@ -42,7 +42,7 @@ def _make_match(db) -> Match:
 def source_client_with_session(db_session):
     """セッション + オペレーター参加済みクライアント"""
     app.dependency_overrides[get_db] = lambda: db_session
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-Role": "analyst"})
 
     match = _make_match(db_session)
     db_session.commit()

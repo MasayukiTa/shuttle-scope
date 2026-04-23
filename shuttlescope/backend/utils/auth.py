@@ -177,6 +177,33 @@ def filter_matches_for_user(ctx: AuthCtx, matches: list[Match]) -> list[Match]:
     return matches
 
 
+def require_match_scope(request: Request, match: Match, db: Session) -> "AuthCtx":
+    """match に対するアクセス権を検証する（共通ヘルパー）。
+    - analyst / admin: 無条件許可
+    - player: 出場試合のみ
+    - coach: 同チーム所属選手が参加する試合のみ（team_name 必須）
+    - 未ロール: 拒否
+
+    comments / bookmarks / sessions ルータで共通利用する。"""
+    ctx = get_auth(request)
+    if ctx.is_admin or ctx.is_analyst:
+        return ctx
+    if ctx.is_player:
+        if not user_can_access_match(ctx, match):
+            raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
+        return ctx
+    if ctx.is_coach:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            raise HTTPException(status_code=403, detail="team_name 未設定")
+        pids = _match_player_ids(match)
+        players = db.query(Player).filter(Player.id.in_(pids)).all() if pids else []
+        if not any((p.team or "").strip() == team for p in players):
+            raise HTTPException(status_code=403, detail="この試合はあなたのチームではありません")
+        return ctx
+    raise HTTPException(status_code=403, detail="ロール未設定です")
+
+
 def require_match_access(
     match_id: int,
     request: Request,
