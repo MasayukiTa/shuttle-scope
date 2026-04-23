@@ -43,6 +43,24 @@ class RevokedToken(Base):
     revoked_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class RefreshToken(Base):
+    """Refresh token の永続化テーブル。平文ではなく SHA256 ハッシュを保存する。
+
+    rotation 方式: 使用するたびに新発行 + 使用済み側を revoke。
+    reuse detection: revoked_at 有り行を再提示された場合、同 user の全 chain を revoke する。
+    """
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    jti: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    replaced_by_jti: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+
+
 class PlayerPageAccess(Base):
     """選手ユーザーへのページアクセス付与。
     user_id が設定されていれば個人付与、team_name のみなら同チーム全選手への付与。

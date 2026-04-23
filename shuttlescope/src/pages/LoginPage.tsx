@@ -52,6 +52,7 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
     const data = await res.json()
     return {
       token: data.access_token,
+      refreshToken: data.refresh_token ?? null,
       role: data.role as UserRole,
       userId: data.user_id,
       playerId: data.player_id ?? null,

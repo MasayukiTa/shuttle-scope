@@ -4,6 +4,7 @@ import { UserRole } from '@/types'
 const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
 const STORAGE_KEY = 'shuttlescope_token'
+const STORAGE_KEY_REFRESH = 'shuttlescope_refresh_token'
 const STORAGE_KEY_ROLE = 'shuttlescope_role'
 const STORAGE_KEY_PLAYER_ID = 'shuttlescope_player_id'
 const STORAGE_KEY_TEAM_NAME = 'shuttlescope_team_name'
@@ -60,6 +61,7 @@ function getStoredPlayerId(): number | null {
 
 export interface AuthSession {
   token: string
+  refreshToken?: string | null
   role: UserRole
   userId: number
   playerId: number | null
@@ -110,6 +112,11 @@ export function useAuth() {
 
   const setSession = useCallback((session: AuthSession) => {
     writeStorage(STORAGE_KEY, session.token)
+    if (session.refreshToken) {
+      writeStorage(STORAGE_KEY_REFRESH, session.refreshToken)
+    } else {
+      removeStorage(STORAGE_KEY_REFRESH)
+    }
     writeStorage(STORAGE_KEY_ROLE, session.role)
     writeStorage(STORAGE_KEY_USER_ID, String(session.userId))
     if (session.playerId != null) {
@@ -141,6 +148,7 @@ export function useAuth() {
 
   const clearRole = useCallback(() => {
     removeStorage(STORAGE_KEY)
+    removeStorage(STORAGE_KEY_REFRESH)
     removeStorage(STORAGE_KEY_ROLE)
     removeStorage(STORAGE_KEY_PLAYER_ID)
     removeStorage(STORAGE_KEY_TEAM_NAME)
