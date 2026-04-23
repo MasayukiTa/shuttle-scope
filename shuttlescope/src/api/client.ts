@@ -181,6 +181,40 @@ export function setTeamPageAccess(teamName: string, pageKeys: string[]): Promise
   return apiPut(`/auth/teams/${encodeURIComponent(teamName)}/page-access`, { page_keys: pageKeys })
 }
 
+export function authChangePassword(current_password: string, new_password: string): Promise<{ success: boolean }> {
+  return apiPost('/auth/password', { current_password, new_password })
+}
+
+export function authAdminResetPassword(userId: number): Promise<{ temporary_password: string }> {
+  return apiPost(`/auth/users/${userId}/reset-password`, {})
+}
+
+export interface AuditLogEntry {
+  id: number
+  user_id: number | null
+  username: string | null
+  action: string
+  resource_type: string | null
+  resource_id: number | null
+  details: string | null
+  ip_addr: string | null
+  created_at: string
+}
+
+export function authAuditLogs(params?: {
+  action?: string
+  user_id?: number
+  since?: string
+  limit?: number
+}): Promise<{ success: boolean; data: AuditLogEntry[] }> {
+  const p: Record<string, string | number> = {}
+  if (params?.action) p.action = params.action
+  if (params?.user_id != null) p.user_id = params.user_id
+  if (params?.since) p.since = params.since
+  if (params?.limit != null) p.limit = params.limit
+  return apiGet('/auth/audit-logs', p)
+}
+
 export function authLogout(): Promise<{ success: boolean }> {
   const rt = (() => { try { return sessionStorage.getItem(REFRESH_KEY) } catch { return null } })()
   return apiPost<{ success: boolean }>('/auth/logout', rt ? { refresh_token: rt } : {})

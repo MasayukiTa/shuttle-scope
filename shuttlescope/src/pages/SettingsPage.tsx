@@ -12,6 +12,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
 import { ClusterSettingsPanel } from '@/components/cluster/ClusterSettingsPanel'
+import { PasswordChangeCard } from '@/components/auth/PasswordChangeCard'
 import { DeviceSelector } from '@/components/benchmark/DeviceSelector'
 import { TargetSelector } from '@/components/benchmark/TargetSelector'
 import { ResultMatrix } from '@/components/benchmark/ResultMatrix'
@@ -2565,6 +2566,9 @@ export function SettingsPage() {
                 </p>
               </div>
             </section>
+
+            {/* パスワード変更 (ログイン済みユーザ全員) */}
+            <PasswordChangeCard isLight={isLight} />
 
             {/* アプリ再起動 (admin only) */}
             {role === 'admin' && (
