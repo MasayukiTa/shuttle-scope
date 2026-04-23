@@ -38,9 +38,20 @@ Read it together with:
   - `pytest` `>=8.0.0` → `>=8.4.0` (CVE-2025-71176)
   - `python-jose[cryptography]` `>=3.3.0` → `>=3.4.0` (CVE-2024-33663 / CVE-2024-33664)
 
+### Bandit / DevSkim Total Triage (Phase 2c + Phase 3)
+
+- Dismissed 37 Bandit warning / DevSkim error alerts per-alert with explicit rationale:
+  - Bandit warnings (29): `B310` x13 (maintenance-script hardcoded URLs), `B608` x7 (SQL strings use introspected table names / PRAGMA, no external input), `B601` x4 (paramiko shell with pre-validated cluster IPs — same policy as already-dismissed paramiko findings), `B507` x4 (same paramiko policy), `B104` x1 (`0.0.0.0` bind gated by `LAN_MODE`), `B324` x1 (SHA1 used as non-security cache key).
+  - DevSkim errors (8): `DS126858` x3 (SHA1 is RFC 6238 TOTP mandate in `auth.py`; SHA1 in `response_cache.py` is a cache key), `DS148264` x4 (random used in test data generators and seed scripts, not crypto), `DS187371` x1 (flagged line in `electron/main.ts` is a DRM permission-handler comment, not cipher code).
+- Bulk-dismissed ~1608 Bandit note / DevSkim note alerts covering prototype noise tiers (`B101` assert, `B110` / `B112` try-pass/continue, `B311` test-data random, `B603` / `B404` / `B607` subprocess, `B105` sample strings, `DS162092` HTTP URL, `DS137138`, `DS176209`).
+- Added scanner configuration to prevent the note tier from reappearing on new code:
+  - `.bandit` at repo root with `skips = B101,B110,B311,B603,B404,B607,B105,B112` and `exclude` covering `tests`, `.venv`, `node_modules`, `out`.
+  - `.devskim.json` at repo root with `ignores` for `DS162092` / `DS137138` / `DS176209`.
+  - `.github/workflows/bandit.yml` updated to pass `skips` and `excluded_paths` to `shundor/python-bandit-scan` so the workflow matches local behavior.
+
 ### Validation
 
-- Recorded the full triage and scope decisions in `shuttlescope/docs/validation/security-code-scanning-2026-04-23.md`, which also tracks what is intentionally left for later phases (Bandit warnings, Bandit `note`-level noise, and time-based Scorecard checks).
+- Recorded the full triage and scope decisions in `shuttlescope/docs/validation/security-code-scanning-2026-04-23.md`, which tracks each dismissed rule with rationale and the remaining Scorecard / paramiko / electron-websecurity risks that stay intentionally accepted.
 
 ## 2026-04-22
 
