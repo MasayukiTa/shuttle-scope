@@ -531,6 +531,12 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   </div>
 </nav>
 
+<div class="en en-lang-notice" style="max-width:1160px;margin:76px auto 0;padding:12px 40px 0;font-size:13px;color:var(--t2);line-height:1.6">
+  <div style="border:1px solid var(--bdr2);border-left:4px solid #b33f3f;background:rgba(179,63,63,0.05);border-radius:6px;padding:12px 16px">
+    <strong style="color:var(--t1)">Please note:</strong> The ShuttleScope product is currently available in Japanese only. An English-language product interface is planned for a future release.
+  </div>
+</div>
+
 <nav class="mobile-menu" id="mmenu">
   <a href="#features"><span class="ja">機能</span><span class="en">Features</span></a>
   <a href="#usecases"><span class="ja">利用シーン</span><span class="en">Use Cases</span></a>
@@ -847,12 +853,14 @@ def _render_contact_str(request: Request, *, preview: bool = False) -> str:
       <section class="panel" style="margin-bottom:20px;">
         <h1>お問い合わせ</h1>
         <p>
-          導入相談・機能確認・障害報告・その他 ShuttleScope に関する連絡は、以下のフォームから送信できます。
-          返信が必要な場合は、連絡先欄に希望する連絡手段を記入してください。
+          ShuttleScope に関するお問い合わせは、下記フォームよりご送信ください。
+          導入のご相談、機能に関するご質問、不具合のご報告、その他ご意見・ご要望を承ります。
+          ご返信をご希望の場合は、連絡先欄に希望される連絡手段をご記入ください。
         </p>
         <div class="notice">
-          現在ベータ版として限定提供中です。試してみたい方はメッセージと連絡先を送ってください。内容を確認のうえ返事します。
-          <br>このフォームはメール送信ではなく、管理画面で確認する形式です。
+          現在 ShuttleScope はベータ版として限定提供を行っております。
+          お寄せいただいた内容を確認のうえ、必要に応じて担当よりご連絡いたします。
+          <br>本フォームはメール送信ではなく、管理画面にて受付・管理する形式となっております。
         </div>
       </section>
 
@@ -920,7 +928,7 @@ def _render_contact_str(request: Request, *, preview: bool = False) -> str:
             throw new Error(data.detail || '送信に失敗しました。');
           }}
           form.reset();
-          result.textContent = 'お問い合わせを受け付けました。内容を確認のうえ対応します。';
+          result.textContent = 'お問い合わせを受け付けました。内容を確認のうえ、必要に応じてご連絡いたします。';
         }} catch (error) {{
           result.textContent = error.message || '送信に失敗しました。時間をおいて再度お試しください。';
         }}
@@ -1058,12 +1066,20 @@ def _base_layout_str_en(title: str, body: str, *, canonical_path: str = "/en", n
     textarea {{ min-height:180px; resize:vertical; }}
     .form-grid {{ display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }}
     .notice {{ border-left:4px solid var(--accent); background:rgba(13,123,131,.07); padding:14px 16px; border-radius:12px; margin:16px 0; }}
+    .lang-notice {{ max-width:1120px; margin:0 auto; padding:12px 24px 0; }}
+    .lang-notice-inner {{ border:1px solid var(--line); border-left:4px solid var(--danger); background:rgba(179,63,63,.06); padding:12px 16px; border-radius:12px; color:var(--muted); font-size:.92rem; line-height:1.7; }}
+    .lang-notice-inner strong {{ color:var(--text); }}
     .hidden-field {{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }}
     .result {{ margin-top:16px; font-size:.95rem; }}
     @media(max-width:720px) {{ .shell{{padding:16px}} .hero{{padding:22px;border-radius:20px}} .topbar{{align-items:flex-start;flex-direction:column}} }}
   </style>
 </head>
 <body>
+<div class="lang-notice">
+  <div class="lang-notice-inner">
+    <strong>Please note:</strong> The ShuttleScope product is currently available in Japanese only. An English-language product interface is planned for a future release.
+  </div>
+</div>
 {body}
 </body>
 </html>"""
@@ -1194,14 +1210,21 @@ def _render_contact_str_en(request: Request) -> str:
       {_public_nav_en(login_href, lang_href="/contact")}
       <section class="panel" style="margin-bottom:20px;">
         <h1>Contact</h1>
+        <div class="notice" style="border-left-color:#b33f3f;background:rgba(179,63,63,.08);">
+          <strong>Please note:</strong> The ShuttleScope product is currently available in Japanese only.
+          An English-language product interface is planned for a future release.
+        </div>
         <p>
-          Use this form for inquiries about ShuttleScope — introduction consultations, feature questions,
-          or feedback about the public site. If you need a reply, please include your preferred contact method
-          in the message or the contact field below.
+          For inquiries regarding ShuttleScope, please submit your message via the form below.
+          We welcome consultations on adoption, questions about features, bug reports, and other
+          feedback or requests. If you require a reply, please indicate your preferred contact
+          method in the field below.
         </p>
         <div class="notice">
-          This form does not send email directly. Your message will be saved as an inquiry and reviewed
-          by the ShuttleScope team.
+          ShuttleScope is currently provided as a limited-availability beta release.
+          We will review your inquiry and, where appropriate, a team member will respond.
+          <br>This form does not send email directly; submissions are received and managed through
+          an internal administration interface.
         </div>
       </section>
 
