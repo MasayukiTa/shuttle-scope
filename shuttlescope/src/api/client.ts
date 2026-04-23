@@ -8,10 +8,14 @@ const BASE_URL = (() => {
   return 'http://localhost:8765/api'
 })()
 
+const TOKEN_KEY = 'shuttlescope_token'
+const REFRESH_KEY = 'shuttlescope_refresh_token'
+const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
+
 function authHeaders(): Record<string, string> {
   const h: Record<string, string> = {}
   try {
-    const token = sessionStorage.getItem('shuttlescope_token')
+    const token = sessionStorage.getItem(TOKEN_KEY)
     if (token) {
       h['Authorization'] = `Bearer ${token}`
     } else {
@@ -34,6 +38,53 @@ function httpError(status: number, text: string): Error {
   return err
 }
 
+// ── Refresh token 自動更新（同時多発 401 を 1 本にまとめる） ─────────────
+let _refreshInflight: Promise<boolean> | null = null
+
+async function tryRefreshToken(): Promise<boolean> {
+  if (_refreshInflight) return _refreshInflight
+  _refreshInflight = (async () => {
+    try {
+      const rt = sessionStorage.getItem(REFRESH_KEY)
+      if (!rt) return false
+      const res = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt }),
+      })
+      if (!res.ok) {
+        sessionStorage.removeItem(TOKEN_KEY)
+        sessionStorage.removeItem(REFRESH_KEY)
+        try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
+        return false
+      }
+      const data: { access_token: string; refresh_token: string } = await res.json()
+      sessionStorage.setItem(TOKEN_KEY, data.access_token)
+      sessionStorage.setItem(REFRESH_KEY, data.refresh_token)
+      try { window.dispatchEvent(new Event(AUTH_CHANGED_EVENT)) } catch {}
+      return true
+    } catch {
+      return false
+    } finally {
+      // 次の 401 バッチに備えて解放（成功時の値は短命キャッシュしない）
+      setTimeout(() => { _refreshInflight = null }, 0)
+    }
+  })()
+  return _refreshInflight
+}
+
+async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<Response> {
+  const res = await fetch(input, init)
+  if (res.status !== 401) return res
+  // /auth/refresh 自体が 401 の場合は再試行しない
+  if (input.includes('/auth/refresh') || input.includes('/auth/login')) return res
+  const ok = await tryRefreshToken()
+  if (!ok) return res
+  // 新 access token で再送
+  const headers = { ...(init.headers as Record<string, string>), ...authHeaders() }
+  return fetch(input, { ...init, headers })
+}
+
 export async function apiGet<T>(
   path: string,
   params?: Record<string, string | number | boolean>
@@ -42,7 +93,7 @@ export async function apiGet<T>(
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
   }
-  const res = await fetch(url.toString(), { headers: authHeaders() })
+  const res = await fetchWithAutoRefresh(url.toString(), { headers: authHeaders() })
   if (!res.ok) {
     const text = await res.text()
     throw httpError(res.status, text)
@@ -51,7 +102,7 @@ export async function apiGet<T>(
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(BASE_URL + path, {
+  const res = await fetchWithAutoRefresh(BASE_URL + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
@@ -64,7 +115,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(BASE_URL + path, {
+  const res = await fetchWithAutoRefresh(BASE_URL + path, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
@@ -77,7 +128,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(BASE_URL + path, {
+  const res = await fetchWithAutoRefresh(BASE_URL + path, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
@@ -90,7 +141,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
-  const res = await fetch(BASE_URL + path, {
+  const res = await fetchWithAutoRefresh(BASE_URL + path, {
     method: 'DELETE',
     headers: authHeaders(),
   })
@@ -131,7 +182,8 @@ export function setTeamPageAccess(teamName: string, pageKeys: string[]): Promise
 }
 
 export function authLogout(): Promise<{ success: boolean }> {
-  return apiPost<{ success: boolean }>('/auth/logout', {})
+  const rt = (() => { try { return sessionStorage.getItem(REFRESH_KEY) } catch { return null } })()
+  return apiPost<{ success: boolean }>('/auth/logout', rt ? { refresh_token: rt } : {})
 }
 
 export interface PublicInquiryRow {

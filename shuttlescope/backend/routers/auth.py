@@ -220,7 +220,13 @@ def _get_page_access(user_id: int, user: User, db: Session) -> list[str]:
 
 
 from backend.utils.access_log import log_access
-from backend.utils.jwt_utils import create_access_token
+from backend.utils.jwt_utils import (
+    create_access_token,
+    create_refresh_token,
+    persist_refresh_token,
+    rotate_refresh_token,
+    revoke_refresh_token_by_plain,
+)
 
 # ── Pydantic スキーマ ─────────────────────────────────────────────────────────
 
@@ -244,6 +250,30 @@ class LoginResponse(BaseModel):
     display_name: Optional[str] = None
     mfa_required: bool = False
     mfa_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class RefreshResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+def _issue_refresh_for(user_id: int) -> Optional[str]:
+    """user_id 用の refresh token を発行して DB に hash 保存し、平文を返す。
+    user_id=0（ロール無し select ログイン）は対象外。"""
+    if not user_id:
+        return None
+    try:
+        raw, jti, exp = create_refresh_token(user_id)
+        persist_refresh_token(user_id, raw, jti, exp)
+        return raw
+    except Exception:
+        return None
 
 
 class BootstrapStatusResponse(BaseModel):
@@ -363,6 +393,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             player_id=user.player_id,
             team_name=user.team_name,
             display_name=user.display_name or user.username,
+            refresh_token=_issue_refresh_for(user.id),
         )
 
     if req.grant_type == "password":
@@ -386,6 +417,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             player_id=user.player_id,
             team_name=user.team_name,
             display_name=user.display_name or user.username,
+            refresh_token=_issue_refresh_for(user.id),
         )
 
     if req.grant_type == "select":
@@ -415,6 +447,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             player_id=user.player_id,
             team_name=user.team_name,
             display_name=user.display_name or user.username,
+            refresh_token=_issue_refresh_for(user.id),
         )
 
     if req.grant_type == "pin":
@@ -439,6 +472,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             player_id=user.player_id,
             team_name=user.team_name,
             display_name=user.display_name or user.username,
+            refresh_token=_issue_refresh_for(user.id),
         )
 
     raise HTTPException(status_code=422, detail=f"unsupported grant_type: {req.grant_type}")
@@ -464,6 +498,7 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
     log_access(db, "login_mfa_ok", user_id=user.id, ip_addr=ip)
     return LoginResponse(
         access_token=token,
+        refresh_token=_issue_refresh_for(user.id),
         role=user.role,
         user_id=user.id,
         player_id=user.player_id,
@@ -550,10 +585,22 @@ def bootstrap_status(db: Session = Depends(get_db)):
 
 # ── ログアウト（JWTブラックリスト登録） ──────────────────────────────────────
 
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
 @router.post("/logout")
-def logout(request: Request, db: Session = Depends(get_db)):
+def logout(
+    request: Request,
+    body: Optional[LogoutRequest] = None,
+    db: Session = Depends(get_db),
+):
     from backend.utils.auth import get_auth
     from backend.utils.jwt_utils import revoke_token
+
+    # 先に refresh token を revoke（access token が無効でも対応できるように）
+    if body and body.refresh_token:
+        revoke_refresh_token_by_plain(body.refresh_token)
 
     auth_header = request.headers.get("Authorization", "")
     # Bearer が無い / 形式不正 → 何もせず 200 を返す（audit_logs スパム防止）
@@ -578,6 +625,27 @@ def logout(request: Request, db: Session = Depends(get_db)):
 
     log_access(db, "logout", user_id=getattr(ctx, "user_id", None))
     return {"success": True}
+
+
+# ── Refresh token による access token 再発行 ────────────────────────────────
+
+@router.post("/refresh", response_model=RefreshResponse)
+def refresh(req: RefreshRequest, request: Request, db: Session = Depends(get_db)):
+    """refresh token を rotation しつつ新しい access token を返す。
+
+    - 使用された refresh token は即 revoke し新しい refresh を発行
+    - revoke 済み refresh の再提示は reuse とみなし chain 全体を revoke
+    """
+    rotated = rotate_refresh_token(req.refresh_token)
+    if not rotated:
+        raise HTTPException(status_code=401, detail="refresh token invalid or expired")
+    user = db.get(User, rotated["user_id"])
+    if not user:
+        raise HTTPException(status_code=401, detail="user not found")
+    access = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name)
+    ip = _get_ip(request)
+    log_access(db, "token_refresh", user_id=user.id, ip_addr=ip)
+    return RefreshResponse(access_token=access, refresh_token=rotated["new_token"])
 
 
 # ── /me ──────────────────────────────────────────────────────────────────────
