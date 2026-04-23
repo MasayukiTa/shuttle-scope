@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Info, CheckCircle2, RefreshCw } from 'lucide-react'
 import { getQuickSummary, SummaryCard } from '@/api/review'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { useTranslation } from 'react-i18next'
 
 const LEVEL_CONFIG = {
   warn: {
@@ -52,6 +53,8 @@ const LEVEL_CONFIG_LIGHT = {
 }
 
 function CardItem({ card, isLight }: { card: SummaryCard; isLight: boolean }) {
+  const { t } = useTranslation()
+
   const cfg = isLight ? LEVEL_CONFIG_LIGHT[card.level] : LEVEL_CONFIG[card.level]
   const Icon = cfg.icon
   return (
@@ -74,6 +77,8 @@ interface Props {
 }
 
 export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'player_a' }: Props) {
+  const { t } = useTranslation()
+
   const { textMuted, border, isLight } = useCardTheme()
 
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -109,7 +114,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          title="再取得"
+          title={t('auto.QuickSummaryCard.k2')}
           className={`p-1 rounded transition-colors ${
             isLight ? 'text-gray-400 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700'
           } disabled:opacity-40`}
@@ -119,7 +124,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
       </div>
       <div className="px-4 py-3 space-y-2">
         {isLoading && (
-          <p className={`text-sm text-center py-2 ${textMuted}`}>読み込み中...</p>
+          <p className={`text-sm text-center py-2 ${textMuted}`}>{t('auto.QuickSummaryCard.k1')}</p>
         )}
         {!isLoading && cards.map((card, i) => (
           <CardItem key={i} card={card} isLight={isLight} />

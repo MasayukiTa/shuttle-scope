@@ -119,12 +119,12 @@ function computePlayerASide(
 // 内部コード値は backward-compat のため ace のまま維持
 
 const END_TYPES = [
-  { value: 'ace', label: 'ウィナー' },
-  { value: 'forced_error', label: '強制エラー' },
-  { value: 'unforced_error', label: '自滅' },
-  { value: 'net', label: 'ネット' },
-  { value: 'out', label: 'アウト' },
-  { value: 'cant_reach', label: '届かず' },
+  { value: 'ace', label: t('auto.AnnotatorPage.k31') },
+  { value: 'forced_error', label: t('auto.AnnotatorPage.k32') },
+  { value: 'unforced_error', label: t('auto.AnnotatorPage.k33') },
+  { value: 'net', label: t('auto.AnnotatorPage.k34') },
+  { value: 'out', label: t('auto.AnnotatorPage.k35') },
+  { value: 'cant_reach', label: t('auto.AnnotatorPage.k36') },
 ]
 
 // B-2: エンドタイプと最終打者から勝者を推定
@@ -1712,7 +1712,7 @@ export function AnnotatorPage() {
                   className={`ml-1 px-1 py-0.5 rounded text-[9px] font-medium transition-colors ${
                     isLight ? 'bg-red-200 text-red-700 hover:bg-red-300' : 'bg-red-900/60 text-red-300 hover:bg-red-800/80'
                   }`}
-                  title="現在のラリー完了後に停止（再開可能）"
+                  title={t('auto.AnnotatorPage.k3')}
                 >
                   停止
                 </button>
@@ -1729,7 +1729,7 @@ export function AnnotatorPage() {
                   className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
                     isLight ? 'bg-purple-50 text-purple-500 hover:bg-purple-100 border border-purple-200' : 'bg-purple-900/20 text-purple-400 hover:bg-purple-900/40 border border-purple-800/50'
                   }`}
-                  title="解析済みラリーをスキップして途中から再開"
+                  title={t('auto.AnnotatorPage.k4')}
                 >
                   再開
                 </button>
@@ -1774,7 +1774,7 @@ export function AnnotatorPage() {
                     className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
                       isLight ? 'bg-purple-50 text-purple-500 hover:bg-purple-100 border border-purple-200' : 'bg-purple-900/20 text-purple-400 hover:bg-purple-900/40 border border-purple-800/50'
                     }`}
-                    title="解析済みラリーをスキップして途中から再開"
+                    title={t('auto.AnnotatorPage.k4')}
                   >
                     再開
                   </button>
@@ -1808,7 +1808,7 @@ export function AnnotatorPage() {
                     className={`ml-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors ${
                       isLight ? 'bg-red-200 text-red-700 hover:bg-red-300' : 'bg-red-900/60 text-red-300 hover:bg-red-800/80'
                     }`}
-                    title="現在のフレームを保存して停止（再開可能）"
+                    title={t('auto.AnnotatorPage.k5')}
                   >
                     停止
                   </button>
@@ -1825,7 +1825,7 @@ export function AnnotatorPage() {
                     className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
                       isLight ? 'bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200' : 'bg-blue-900/20 text-blue-400 hover:bg-blue-900/40 border border-blue-800/50'
                     }`}
-                    title="既存フレームをスキップして途中から再開"
+                    title={t('auto.AnnotatorPage.k6')}
                   >
                     再開
                   </button>
@@ -1843,7 +1843,7 @@ export function AnnotatorPage() {
                     className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
                       isLight ? 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/50'
                     }`}
-                    title="既存の人物検出結果を削除してリセット"
+                    title={t('auto.AnnotatorPage.k7')}
                   >
                     🗑
                   </button>
@@ -1898,7 +1898,7 @@ export function AnnotatorPage() {
                       className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
                         isLight ? 'bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200' : 'bg-blue-900/20 text-blue-400 hover:bg-blue-900/40 border border-blue-800/50'
                       }`}
-                      title="既存フレームをスキップして途中から再開"
+                      title={t('auto.AnnotatorPage.k6')}
                     >
                       再開
                     </button>
@@ -1918,7 +1918,7 @@ export function AnnotatorPage() {
                       className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
                         isLight ? 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/50'
                       }`}
-                      title="既存の人物検出結果を削除してリセット"
+                      title={t('auto.AnnotatorPage.k7')}
                     >
                       🗑
                     </button>
@@ -1929,7 +1929,7 @@ export function AnnotatorPage() {
                       className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
                         isLight ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200' : 'bg-amber-900/20 text-amber-400 hover:bg-amber-900/40 border border-amber-700/50'
                       }`}
-                      title="ROIが拡張された部分のみ追加検出してマージ"
+                      title={t('auto.AnnotatorPage.k8')}
                     >
                       差分更新
                     </button>
@@ -1949,22 +1949,22 @@ export function AnnotatorPage() {
                     <button
                       onClick={() => seekRel(-5)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
-                      title="5秒戻る"
+                      title={t('auto.AnnotatorPage.k9')}
                     >⏮-5s</button>
                     <button
                       onClick={() => stepFrame(-1)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
-                      title="1フレーム戻る (←)"
+                      title={t('auto.AnnotatorPage.k10')}
                     >-1f</button>
                     <button
                       onClick={() => stepFrame(1)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
-                      title="1フレーム進む (→)"
+                      title={t('auto.AnnotatorPage.k11')}
                     >+1f</button>
                     <button
                       onClick={() => seekRel(5)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
-                      title="5秒進む"
+                      title={t('auto.AnnotatorPage.k12')}
                     >+5s⏭</button>
                     <span className={`mx-0.5 ${isLight ? 'text-gray-300' : 'text-gray-600'}`}>|</span>
                     <button
@@ -1975,7 +1975,7 @@ export function AnnotatorPage() {
                     <button
                       onClick={skipCurrentSample}
                       className={`px-1.5 py-0.5 rounded text-[10px] ${isLight ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60'}`}
-                      title="このサンプルをスキップ"
+                      title={t('auto.AnnotatorPage.k13')}
                     >{t('annotator.ui.skip')}</button>
                     {samplerIdx < samplerSamples.length - 1 ? (
                       <button
@@ -1993,7 +1993,7 @@ export function AnnotatorPage() {
                     <button
                       onClick={cancelSampler}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-gray-700'}`}
-                      title="識別をキャンセル"
+                      title={t('auto.AnnotatorPage.k14')}
                     >✕</button>
                   </div>
                 ) : taggingMode ? (
@@ -2127,7 +2127,7 @@ export function AnnotatorPage() {
                       ? isLight ? 'bg-green-200 text-green-800' : 'bg-green-700/60 text-green-200'
                       : isLight ? 'bg-gray-200 text-gray-500 hover:bg-green-100' : 'bg-gray-700 text-gray-500 hover:bg-green-900/40'
                   }`}
-                  title="人物・軌跡を両方同時に切り替え"
+                  title={t('auto.AnnotatorPage.k15')}
                 >
                   {yoloOverlayVisible && shuttleOverlayVisible ? '◉' : '○'} 両方
                 </button>
@@ -2164,7 +2164,7 @@ export function AnnotatorPage() {
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
                       isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
                     }`}
-                    title="高確信度（auto_filled）のみ着地ゾーン・打者を適用"
+                    title={t('auto.AnnotatorPage.k16')}
                   >
                     高確信度適用
                   </button>
@@ -2174,7 +2174,7 @@ export function AnnotatorPage() {
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
                       isLight ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/60'
                     }`}
-                    title="高確信度の着地ゾーンのみ適用"
+                    title={t('auto.AnnotatorPage.k17')}
                   >
                     着地のみ
                   </button>
@@ -2184,7 +2184,7 @@ export function AnnotatorPage() {
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
                       isLight ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-indigo-900/40 text-indigo-300 hover:bg-indigo-800/60'
                     }`}
-                    title="高確信度の打者のみ適用"
+                    title={t('auto.AnnotatorPage.k18')}
                   >
                     打者のみ
                   </button>
@@ -2194,7 +2194,7 @@ export function AnnotatorPage() {
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
                       isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
                     }`}
-                    title="高確信度 + 候補（suggested）を適用"
+                    title={t('auto.AnnotatorPage.k19')}
                   >
                     候補も含む
                   </button>
@@ -2209,7 +2209,7 @@ export function AnnotatorPage() {
                       ? isLight ? 'bg-purple-200 text-purple-800' : 'bg-purple-700/60 text-purple-200'
                       : isLight ? 'bg-gray-200 text-gray-500 hover:bg-purple-100' : 'bg-gray-700 text-gray-500 hover:bg-purple-900/40'
                   }`}
-                  title="CV補助パネルを表示"
+                  title={t('auto.AnnotatorPage.k20')}
                 >
                   {showCVAssistPanel ? '◉' : '○'} CV詳細
                 </button>
@@ -2223,7 +2223,7 @@ export function AnnotatorPage() {
                       ? isLight ? 'bg-amber-200 text-amber-800' : 'bg-amber-700/60 text-amber-200'
                       : isLight ? 'bg-amber-100 text-amber-700' : 'bg-amber-900/40 text-amber-300'
                   }`}
-                  title="CV要確認ラリーを表示"
+                  title={t('auto.AnnotatorPage.k21')}
                 >
                   ⚠ {cvReviewQueue.filter(i => i.review_status !== 'completed').length}
                 </button>
@@ -2338,7 +2338,7 @@ export function AnnotatorPage() {
                 isLight ? 'bg-gray-200 text-gray-700' : 'bg-black/30 text-gray-300'
               }`}
               onClick={() => setShowDeviceManager(true)}
-              title="リモート接続状態（クリックでデバイス管理を開く）"
+              title={t('auto.AnnotatorPage.k22')}
             >
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                 remoteHealth.wsConnected ? 'bg-green-500' : 'bg-amber-400 animate-pulse'
@@ -2666,7 +2666,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => setUseWebView(true)}
                     className="text-xs text-gray-500 hover:text-blue-400 text-left px-1 flex items-center gap-1"
-                    title="DRM保護コンテンツ（yt-dlpでダウンロードできない場合）はこちら"
+                    title={t('auto.AnnotatorPage.k23')}
                   >
                     🔒 DRM保護コンテンツ／ログイン必須サイトはブラウザ内視聴モードを使用
                   </button>
@@ -2722,7 +2722,7 @@ export function AnnotatorPage() {
               <button
                 onClick={handleFileOpen}
                 className="flex items-center gap-1 px-2 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded whitespace-nowrap"
-                title="ローカルファイルを選択"
+                title={t('auto.AnnotatorPage.k24')}
               >
                 <FolderOpen size={12} />
                 ファイルを開く
@@ -2732,7 +2732,7 @@ export function AnnotatorPage() {
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleUrlSave() }}
-                placeholder="YouTube URL / 動画URL"
+                placeholder={t('auto.AnnotatorPage.k28')}
                 className="flex-1 px-2 py-1.5 bg-gray-700 text-gray-200 rounded border border-gray-600 focus:border-blue-500 outline-none min-w-0"
               />
               <button
@@ -2847,15 +2847,15 @@ export function AnnotatorPage() {
                     </div>
                   )
                 })}
-                <p className="text-xs text-gray-500 mt-1"><span className="text-blue-400">■</span> 青=A　<span className="text-orange-400">■</span> 橙=B</p>
+                <p className="text-xs text-gray-500 mt-1"><span className="text-blue-400">■</span> {t('auto.AnnotatorPage.k1')}　<span className="text-orange-400">■</span> {t('auto.AnnotatorPage.k2')}</p>
 
                 {/* 先サーブ変更 */}
                 <div className="pt-1.5 border-t border-gray-700 space-y-1">
                   <p className="text-xs text-gray-400 font-medium">{t('annotator.ui.first_serve')}</p>
                   <div className="flex gap-1">
                     {([
-                      { v: 'player_a' as const, label: 'A側' },
-                      { v: 'player_b' as const, label: 'B側' },
+                      { v: 'player_a' as const, label: t('auto.AnnotatorPage.k37') },
+                      { v: 'player_b' as const, label: t('auto.AnnotatorPage.k38') },
                     ]).map(({ v, label }) => (
                       <button
                         key={v}
@@ -2875,8 +2875,8 @@ export function AnnotatorPage() {
                   <p className="text-xs text-gray-400 font-medium pt-0.5">{t('annotator.ui.analyst_view')}</p>
                   <div className="flex gap-1">
                     {([
-                      { v: 'bottom' as const, label: '⬇ 手前' },
-                      { v: 'top'    as const, label: '⬆ 奥側' },
+                      { v: 'bottom' as const, label: t('auto.AnnotatorPage.k39') },
+                      { v: 'top'    as const, label: t('auto.AnnotatorPage.k40') },
                     ]).map(({ v, label }) => (
                       <button
                         key={v}
@@ -2902,7 +2902,7 @@ export function AnnotatorPage() {
           <div
             onMouseDown={handleResizeDragStart}
             className="w-1 shrink-0 cursor-col-resize bg-gray-700 hover:bg-gray-500 transition-colors active:bg-gray-400"
-            title="ドラッグで幅を変更"
+            title={t('auto.AnnotatorPage.k25')}
           />
         )}
 
@@ -2923,7 +2923,7 @@ export function AnnotatorPage() {
               <button
                 onClick={() => setShowLegendOverlay((v) => !v)}
                 className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
-                title="キーボードショートカット凡例"
+                title={t('auto.AnnotatorPage.k26')}
               >
                 <Keyboard size={12} />
               </button>
@@ -3885,7 +3885,7 @@ export function AnnotatorPage() {
                     'bg-gray-700 hover:bg-gray-600 border border-gray-600 text-gray-200',
                     useLargeTouch ? 'py-2.5 text-sm' : 'py-1.5 text-xs'
                   )}
-                  title="今すぐ一時保存（自動保存の補完）"
+                  title={t('auto.AnnotatorPage.k27')}
                 >
                   💾 一時保存
                   {lastAutoSaveTime && (
@@ -4041,7 +4041,7 @@ export function AnnotatorPage() {
                 value={inMatchOrganization}
                 onChange={(e) => setInMatchOrganization(e.target.value)}
                 className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs"
-                placeholder="チーム・所属"
+                placeholder={t('auto.AnnotatorPage.k29')}
               />
             </div>
             {/* メモ */}
@@ -4052,7 +4052,7 @@ export function AnnotatorPage() {
                 onChange={(e) => setInMatchScoutingNotes(e.target.value)}
                 rows={2}
                 className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs resize-none"
-                placeholder="気づいたこと、プレースタイルなど"
+                placeholder={t('auto.AnnotatorPage.k30')}
               />
             </div>
             {/* 保存 */}

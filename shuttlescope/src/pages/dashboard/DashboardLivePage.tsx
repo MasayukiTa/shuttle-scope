@@ -79,7 +79,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
             <SectionTitle>{t('analysis.flash.title')}</SectionTitle>
             <div className="flex flex-wrap gap-3 mt-3">
               <div className="flex flex-col gap-1 min-w-[180px] flex-1">
-                <label className={`text-xs ${textMuted}`}>試合</label>
+                <label className={`text-xs ${textMuted}`}>{t('auto.DashboardLivePage.k1')}</label>
                 <SearchableSelect
                   options={matches.map((m) => {
                     const scoreStr = m.set_scores?.map(
@@ -99,7 +99,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                     setFlashRallyNum('')
                   }}
                   emptyLabel={t('analysis.flash.no_match')}
-                  placeholder="日付・対戦相手で検索..."
+                  placeholder={t('auto.DashboardLivePage.k4')}
                 />
               </div>
 
@@ -192,12 +192,12 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                 value={selectedMatchId}
                 onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
                 emptyLabel="— 試合を選択 —"
-                placeholder="日付・対戦相手で検索..."
+                placeholder={t('auto.DashboardLivePage.k4')}
                 className="max-w-[260px]"
               />
               {selectedMatchId && (
                 <>
-                  <label className={`text-xs ${textMuted}`}>完了セット:</label>
+                  <label className={`text-xs ${textMuted}`}>{t('auto.DashboardLivePage.k2')}</label>
                   <input
                     type="number"
                     min={1}
@@ -213,7 +213,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
           {selectedMatchId ? (
             <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
           ) : (
-            <p className={`text-sm text-center py-6 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>試合を選択するとインターバルレポートが表示されます</p>
+            <p className={`text-sm text-center py-6 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.DashboardLivePage.k3')}</p>
           )}
         </div>
       </ErrorBoundary>

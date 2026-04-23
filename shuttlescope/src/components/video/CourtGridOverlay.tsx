@@ -19,6 +19,7 @@
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
 import { MousePointer2 } from 'lucide-react'
 import { apiGet, apiPost } from '@/api/client'
+import { useTranslation } from 'react-i18next'
 
 // ─── 型 ─────────────────────────────────────────────────────────────────────
 
@@ -391,7 +392,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
               onClick={() => postToBackend(points)}
               className="flex items-center gap-0.5 bg-yellow-900/70 rounded px-1 py-0.5 hover:bg-yellow-800/80 transition-colors"
               style={{ color: '#fde68a', fontSize: 8, lineHeight: 1.4 }}
-              title="ローカルのみ保存（バックエンド未保存）。クリックしてDBに同期"
+              title={t('auto.CourtGridOverlay.k3')}
             >
               ⚠ ローカルのみ → 同期
             </button>
@@ -441,8 +442,8 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
             style={{ color: '#e5e7eb' }}
           >
             <MousePointer2 size={20} className="text-cyan-400" />
-            <span>コートグリッドを設定</span>
-            <span className="text-xs" style={{ color: '#9ca3af' }}>4コーナーとネット支柱2点をクリックして設定</span>
+            <span>{t('auto.CourtGridOverlay.k1')}</span>
+            <span className="text-xs" style={{ color: '#9ca3af' }}>{t('auto.CourtGridOverlay.k2')}</span>
           </button>
         </div>
       )}

@@ -17,6 +17,7 @@ import { useParams, useLocation } from 'react-router-dom'
 import { Eye, WifiOff, Loader2, CheckCircle2, XCircle, Video } from 'lucide-react'
 import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
+import { useTranslation } from 'react-i18next'
 
 type ViewerState = 'join' | 'connecting' | 'waiting' | 'receiving' | 'error'
 
@@ -237,8 +238,8 @@ export function ViewerPage() {
           <Eye size={24} />
           <span className="text-lg font-bold">ShuttleScope</span>
         </div>
-        <p className="text-gray-400 text-sm">リモートビューワー</p>
-        <p className="text-gray-600 text-xs mt-1">タブレット・PC で最適な映像視聴が可能です</p>
+        <p className="text-gray-400 text-sm">{t('auto.ViewerPage.k1')}</p>
+        <p className="text-gray-600 text-xs mt-1">{t('auto.ViewerPage.k2')}</p>
       </div>
 
       {/* ─── State: join ── */}
@@ -246,7 +247,7 @@ export function ViewerPage() {
         <div className="w-full max-w-sm bg-gray-800 rounded-xl p-5 shadow-2xl">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">セッションコード</label>
+              <label className="block text-xs text-gray-400 mb-1">{t('auto.ViewerPage.k3')}</label>
               <input
                 type="text"
                 value={form.sessionCode}
@@ -257,7 +258,7 @@ export function ViewerPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">パスワード</label>
+              <label className="block text-xs text-gray-400 mb-1">{t('auto.ViewerPage.k4')}</label>
               <input
                 type="password"
                 value={form.password}
@@ -266,12 +267,12 @@ export function ViewerPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">ビューワー名</label>
+              <label className="block text-xs text-gray-400 mb-1">{t('auto.ViewerPage.k5')}</label>
               <input
                 type="text"
                 value={form.viewerName}
                 onChange={(e) => setForm((f) => ({ ...f, viewerName: e.target.value }))}
-                placeholder="例: コーチPC"
+                placeholder={t('auto.ViewerPage.k8')}
                 className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -310,7 +311,7 @@ export function ViewerPage() {
           <div className="w-16 h-16 rounded-full bg-blue-900/50 flex items-center justify-center mx-auto mb-4">
             <Eye size={28} className="text-blue-400" />
           </div>
-          <p className="text-lg font-semibold mb-2">映像待機中</p>
+          <p className="text-lg font-semibold mb-2">{t('auto.ViewerPage.k6')}</p>
           <p className="text-gray-400 text-sm leading-relaxed">
             オペレーターが映像を開始するまでお待ちください。
           </p>
@@ -344,7 +345,7 @@ export function ViewerPage() {
           </div>
           <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
             <Video size={12} />
-            <span>受信中</span>
+            <span>{t('auto.ViewerPage.k7')}</span>
             {activeSessionCode && (
               <span className="font-mono text-gray-500">#{activeSessionCode}</span>
             )}

@@ -77,7 +77,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
           <thead>
             <tr className="text-gray-400 border-b border-gray-700">
               <th className="text-left py-1.5 pr-3">{t('analysis.first_return.zone')}</th>
-              <th className="text-center py-1.5 pr-3">件数</th>
+              <th className="text-center py-1.5 pr-3">{t('auto.FirstReturnAnalysis.k1')}</th>
               <th className="text-center py-1.5 pr-3">{t('analysis.first_return.freq_rate')}</th>
               <th className="text-right py-1.5 pr-2">{t('analysis.first_return.win_rate')}</th>
             </tr>

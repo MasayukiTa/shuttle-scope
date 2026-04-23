@@ -94,7 +94,7 @@ export function PairCombinedView({
           className="flex-1 rounded-lg p-3 text-center"
           style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <p className="text-xs" style={{ color: labelColor }}>ペア勝率</p>
+          <p className="text-xs" style={{ color: labelColor }}>{t('auto.PairCombinedView.k1')}</p>
           <p className="text-2xl font-bold mt-0.5" style={{ color: winColor }}>
             {winRate != null ? `${(winRate * 100).toFixed(0)}%` : '—'}
           </p>
@@ -103,7 +103,7 @@ export function PairCombinedView({
           className="flex-1 rounded-lg p-3 text-center"
           style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <p className="text-xs" style={{ color: labelColor }}>共通出場試合</p>
+          <p className="text-xs" style={{ color: labelColor }}>{t('auto.PairCombinedView.k2')}</p>
           <p className="text-2xl font-bold mt-0.5" style={{ color: isLight ? '#1e293b' : '#e2e8f0' }}>
             {d.pair_match_count}
           </p>
@@ -112,7 +112,7 @@ export function PairCombinedView({
 
       {/* ストローク分担 */}
       <div>
-        <p className="text-xs mb-1" style={{ color: labelColor }}>ストローク分担</p>
+        <p className="text-xs mb-1" style={{ color: labelColor }}>{t('auto.PairCombinedView.k3')}</p>
         <div className="flex items-center gap-2">
           <span className="text-xs w-20 truncate" style={{ color: nameColor }}>{playerAName}</span>
           <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ backgroundColor: trackBg }}>
@@ -135,21 +135,21 @@ export function PairCombinedView({
           className="rounded p-2.5"
           style={{ backgroundColor: 'rgba(59,130,246,0.08)', border: `1px solid ${WIN}` }}
         >
-          <p className="text-[10px] mb-1" style={{ color: labelColor }}>共通の得点ショット</p>
+          <p className="text-[10px] mb-1" style={{ color: labelColor }}>{t('auto.PairCombinedView.k4')}</p>
           <p className="text-sm font-semibold" style={{ color: WIN }}>{shotJa(d.common_win_shot)}</p>
         </div>
         <div
           className="rounded p-2.5"
           style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: `1px solid ${LOSS}` }}
         >
-          <p className="text-[10px] mb-1" style={{ color: labelColor }}>共通の失点ショット</p>
+          <p className="text-[10px] mb-1" style={{ color: labelColor }}>{t('auto.PairCombinedView.k5')}</p>
           <p className="text-sm font-semibold" style={{ color: LOSS }}>{shotJa(d.common_loss_pattern)}</p>
         </div>
       </div>
 
       {/* ペア別勝率推移 */}
       <div>
-        <p className="text-xs mb-2" style={{ color: labelColor }}>ペア勝率推移</p>
+        <p className="text-xs mb-2" style={{ color: labelColor }}>{t('auto.PairCombinedView.k6')}</p>
         <PartnerTimeline
           playerId={playerAId}
           partnerId={playerBId}

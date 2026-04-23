@@ -87,7 +87,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
           <ConfidenceBadge sampleSize={sampleSize} />
           <button
             onClick={() => { setInitialZone(null); setModalOpen(true) }}
-            title="最大化して詳細表示"
+            title={t('auto.EffectiveDistributionMap.k4')}
             className={`p-1 rounded transition-colors ${isLight ? 'text-gray-400 hover:bg-gray-100 hover:text-gray-600' : 'text-gray-500 hover:bg-gray-700 hover:text-gray-300'}`}
           >
             <Maximize2 size={14} />
@@ -105,7 +105,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
 
         {/* ゾーングリッド（クリック可能） */}
         <div className="space-y-0.5">
-          <p className="text-[10px] text-gray-500 text-center mb-1">相手コート（着地点）</p>
+          <p className="text-[10px] text-gray-500 text-center mb-1">{t('auto.EffectiveDistributionMap.k1')}</p>
           {ZONE_GRID.map((row, ri) => (
             <div key={ri} className="flex gap-0.5">
               {row.map((zone) => {
@@ -150,7 +150,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
             </div>
           ))}
           <p className="text-[10px] text-gray-500 text-center mt-1">
-            自コート（打点）　<span className="opacity-60">ゾーンをクリックで詳細</span>
+            自コート（打点）　<span className="opacity-60">{t('auto.EffectiveDistributionMap.k2')}</span>
           </p>
         </div>
 
@@ -161,7 +161,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
               <thead>
                 <tr className="text-gray-400 border-b border-gray-700">
                   <th className="text-left py-1.5 pr-3">{t('analysis.effective_map.zone')}</th>
-                  <th className="text-center py-1.5 pr-3">得点数</th>
+                  <th className="text-center py-1.5 pr-3">{t('auto.EffectiveDistributionMap.k3')}</th>
                   <th className="text-center py-1.5 pr-3">{t('analysis.effective_map.win_rate')}</th>
                   <th className="text-right py-1.5">{t('analysis.effective_map.effectiveness')}</th>
                 </tr>

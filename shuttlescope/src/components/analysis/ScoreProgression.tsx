@@ -70,6 +70,8 @@ interface ScoreProgressionResponse {
 }
 
 function CustomTooltip({ active, payload }: any) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload as RallyPoint
@@ -126,7 +128,7 @@ export function RallyDetailBanner({
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-300 text-sm leading-none px-1"
-            title="閉じる"
+            title={t('auto.ScoreProgression.k5')}
           >✕</button>
         )}
         <div className="flex gap-0.5">
@@ -134,13 +136,13 @@ export function RallyDetailBanner({
             onClick={onPrev}
             disabled={!hasPrev}
             className="px-1.5 py-0.5 rounded text-[11px] leading-none transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-gray-600 hover:bg-gray-500 text-gray-200"
-            title="前のラリー"
+            title={t('auto.ScoreProgression.k6')}
           >←</button>
           <button
             onClick={onNext}
             disabled={!hasNext}
             className="px-1.5 py-0.5 rounded text-[11px] leading-none transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-gray-600 hover:bg-gray-500 text-gray-200"
-            title="次のラリー"
+            title={t('auto.ScoreProgression.k7')}
           >→</button>
         </div>
       </div>
@@ -163,11 +165,11 @@ export function RallyDetailBanner({
 
       {/* ストローク列 — 横スクロールで多球数ラリーに対応 */}
       {rally.rally_id == null ? (
-        <p className="text-gray-500">ストロークデータなし</p>
+        <p className="text-gray-500">{t('auto.ScoreProgression.k1')}</p>
       ) : isLoading ? (
-        <p className="text-gray-500">読み込み中...</p>
+        <p className="text-gray-500">{t('auto.ScoreProgression.k2')}</p>
       ) : strokes.length === 0 ? (
-        <p className="text-gray-500">ストロークデータが記録されていません</p>
+        <p className="text-gray-500">{t('auto.ScoreProgression.k3')}</p>
       ) : (
         <div className="overflow-x-auto pb-1">
           <div className="flex gap-1 items-center w-max">
@@ -315,7 +317,7 @@ export function ScoreProgression({ matchId, onSetPointClick, initialSet }: Score
           <span className="inline-block w-3 h-0.5 bg-yellow-500" style={{ borderTop: '1px dashed' }} />
           流れの変化点
         </span>
-        {onSetPointClick && <span className="text-blue-400">クリックでラリー詳細</span>}
+        {onSetPointClick && <span className="text-blue-400">{t('auto.ScoreProgression.k4')}</span>}
       </div>
     </div>
   )

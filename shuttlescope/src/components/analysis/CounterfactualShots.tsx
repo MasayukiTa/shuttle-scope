@@ -7,6 +7,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { perfColor, WIN } from '@/styles/colors'
+import { useTranslation } from 'react-i18next'
 
 interface CounterfactualShotsProps {
   playerId: number
@@ -35,6 +36,8 @@ interface Response {
 }
 
 function ChoiceBar({ choice, recommended }: { choice: ShotChoice; recommended: string }) {
+  const { t } = useTranslation()
+
   const isRec = choice.shot_type === recommended
   const pct = Math.round(choice.win_rate * 100)
   return (
@@ -65,6 +68,8 @@ function ChoiceBar({ choice, recommended }: { choice: ShotChoice; recommended: s
 }
 
 function ComparisonAccordion({ comp }: { comp: Comparison }) {
+  const { t } = useTranslation()
+
   const [open, setOpen] = useState(false)
   return (
     <div className="border border-gray-700 rounded-lg overflow-hidden">
@@ -98,6 +103,8 @@ function ComparisonAccordion({ comp }: { comp: Comparison }) {
 }
 
 function Inner({ playerId }: { playerId: number }) {
+  const { t } = useTranslation()
+
   const { slice: bundled, loading: bundleLoading, provided } = useResearchBundleSlice<Response>('counterfactual_shots')
   const indiv = useQuery({
     queryKey: ['analysis-counterfactual-shots', playerId],
@@ -108,7 +115,7 @@ function Inner({ playerId }: { playerId: number }) {
   const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">読み込み中...</div>
+    return <div className="text-gray-500 text-sm py-4 text-center">{t('auto.CounterfactualShots.k1')}</div>
   }
 
   const comparisons = resp?.data?.comparisons ?? []
@@ -121,7 +128,7 @@ function Inner({ playerId }: { playerId: number }) {
   return (
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} />
-      <p className="text-xs text-gray-400">各状況でどの返球が最も効果的かを比較します</p>
+      <p className="text-xs text-gray-400">{t('auto.CounterfactualShots.k2')}</p>
       <div className="space-y-2">
         {comparisons.map((c, i) => (
           <ComparisonAccordion key={i} comp={c} />
@@ -132,10 +139,12 @@ function Inner({ playerId }: { playerId: number }) {
 }
 
 export function CounterfactualShots({ playerId }: CounterfactualShotsProps) {
+  const { t } = useTranslation()
+
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']}>
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">反事実的ショット比較</h3>
+        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.CounterfactualShots.k3')}</h3>
         <Inner playerId={playerId} />
       </div>
     </RoleGuard>

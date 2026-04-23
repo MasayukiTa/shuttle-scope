@@ -103,7 +103,7 @@ export function TargetSelector({
       {/* n_frames スライダー */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-3 text-xs">
-          <span className="text-gray-400 shrink-0">フレーム数</span>
+          <span className="text-gray-400 shrink-0">{t('auto.TargetSelector.k1')}</span>
           <div className="flex items-center gap-1.5 ml-auto">
             {/* 数値直接入力 */}
             <input

@@ -17,6 +17,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Download, AlertCircle, CheckCircle, Loader2, Film, Cookie, ChevronDown, WifiOff } from 'lucide-react'
 import { apiGet, apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useTranslation } from 'react-i18next'
 
 interface StreamingDownloadPanelProps {
   /** 配信URL（表示 + ダウンロード元） */
@@ -45,13 +46,13 @@ interface Capabilities {
 const QUALITY_OPTIONS = [
   { value: '360', label: '360p' },
   { value: '480', label: '480p' },
-  { value: '720', label: '720p（推奨）' },
+  { value: '720', label: t('auto.StreamingDownloadPanel.k11') },
   { value: '1080', label: '1080p' },
-  { value: 'best', label: '最高画質' },
+  { value: 'best', label: t('auto.StreamingDownloadPanel.k12') },
 ]
 
 const COOKIE_BROWSER_OPTIONS = [
-  { value: '', label: 'なし（公開動画）' },
+  { value: '', label: t('auto.StreamingDownloadPanel.k13') },
   { value: 'chrome', label: 'Chrome' },
   { value: 'edge', label: 'Edge' },
   { value: 'firefox', label: 'Firefox' },
@@ -202,7 +203,7 @@ export function StreamingDownloadPanel({
       <div className="flex items-center gap-2 flex-wrap">
         <Film size={16} className="text-blue-400 shrink-0" />
         <span className={`text-sm font-semibold ${siteColor}`}>{siteName}</span>
-        <span className={`text-xs ${muteColor}`}>配信URL</span>
+        <span className={`text-xs ${muteColor}`}>{t('auto.StreamingDownloadPanel.k1')}</span>
       </div>
 
       <div
@@ -217,7 +218,7 @@ export function StreamingDownloadPanel({
         <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerWarn}`}>
           <WifiOff size={13} className="shrink-0 mt-0.5" />
           <span>
-            <strong>ffmpegが未インストール</strong> のため、画質が制限される場合があります。
+            <strong>{t('auto.StreamingDownloadPanel.k2')}</strong> のため、画質が制限される場合があります。
             高画質が必要な場合は <code className={`px-1 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'}`}>winget install ffmpeg</code> でインストール後アプリを再起動してください。
           </span>
         </div>
@@ -236,7 +237,7 @@ export function StreamingDownloadPanel({
       {dlState === 'complete' && (
         <div className={`flex items-center gap-2 text-sm rounded p-3 ${bannerSuccess}`}>
           <CheckCircle size={16} />
-          <span>ダウンロード完了！再生を開始します...</span>
+          <span>{t('auto.StreamingDownloadPanel.k3')}</span>
         </div>
       )}
 
@@ -302,7 +303,7 @@ export function StreamingDownloadPanel({
           <div className="flex items-center gap-2">
             {/* 品質選択 */}
             <div className="flex items-center gap-1 min-w-0">
-              <label className={`text-xs shrink-0 ${labelColor}`}>画質</label>
+              <label className={`text-xs shrink-0 ${labelColor}`}>{t('auto.StreamingDownloadPanel.k4')}</label>
               <select
                 value={quality}
                 onChange={(e) => setQuality(e.target.value)}
@@ -319,7 +320,7 @@ export function StreamingDownloadPanel({
                 ))}
               </select>
               {ffmpegMissing && (
-                <span className="text-[10px] text-orange-400" title="ffmpeg未インストールのため画質制限あり">*制限あり</span>
+                <span className="text-[10px] text-orange-400" title={t('auto.StreamingDownloadPanel.k10')}>{t('auto.StreamingDownloadPanel.k5')}</span>
               )}
             </div>
 
@@ -351,9 +352,9 @@ export function StreamingDownloadPanel({
           {/* Cookie 使用時の注意 */}
           {cookieBrowser && (
             <div className={`text-xs rounded px-2 py-1.5 space-y-0.5 ${bannerBlue}`}>
-              <div><strong>{COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label}</strong> のCookieをディスクから直接読み取ります。</div>
-              <div className={isLight ? 'text-blue-600' : 'text-blue-400'}>ブラウザの起動は不要です。事前にそのブラウザでサイトへログインしておくだけでOKです。</div>
-              <div className={`font-medium ${isLight ? 'text-orange-600' : 'text-orange-300'}`}>注意: ダウンロード前にそのブラウザをすべて閉じてください。起動中はDBがロックされCookieが読めません（Edge・Chromeは特に注意）。</div>
+              <div><strong>{COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label}</strong> {t('auto.StreamingDownloadPanel.k6')}</div>
+              <div className={isLight ? 'text-blue-600' : 'text-blue-400'}>{t('auto.StreamingDownloadPanel.k7')}</div>
+              <div className={`font-medium ${isLight ? 'text-orange-600' : 'text-orange-300'}`}>{t('auto.StreamingDownloadPanel.k8')}</div>
             </div>
           )}
 
@@ -364,7 +365,7 @@ export function StreamingDownloadPanel({
           >
             <Download size={15} />
             ダウンロードして再生
-            {ffmpegMissing && <span className="text-xs text-blue-300 ml-1">（低画質モード）</span>}
+            {ffmpegMissing && <span className="text-xs text-blue-300 ml-1">{t('auto.StreamingDownloadPanel.k9')}</span>}
           </button>
         </div>
       )}

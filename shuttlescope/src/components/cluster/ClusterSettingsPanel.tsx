@@ -104,6 +104,8 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function GaugeBar({ value, limit, label }: { value: number; limit: number; label: string }) {
+  const { t } = useTranslation()
+
   const pct = Math.min(100, Math.round(value))
   const over = value >= limit
   return (
@@ -602,7 +604,7 @@ export function ClusterSettingsPanel() {
                         </span>
                       : null
                   }
-                  <button onClick={() => pingWorker(w.ip, i)} className={`${textMuted} hover:text-white`} title="疎通確認">
+                  <button onClick={() => pingWorker(w.ip, i)} className={`${textMuted} hover:text-white`} title={t('auto.ClusterSettingsPanel.k3')}>
                     <Network size={10} />
                   </button>
                   <button
@@ -670,9 +672,9 @@ export function ClusterSettingsPanel() {
             <div className="space-y-2">
               <div className={`flex items-center gap-2 p-2 rounded border ${border}`}>
                 <span className={`text-[11px] ${textMuted} shrink-0`}>SSH</span>
-                <input className={`${inputCls} w-28 text-[11px]`} placeholder="ユーザー名"
+                <input className={`${inputCls} w-28 text-[11px]`} placeholder={t('auto.ClusterSettingsPanel.k8')}
                   value={sshUser} onChange={e => setSshUser(e.target.value)} />
-                <input type="password" className={`${inputCls} w-28 text-[11px]`} placeholder="パスワード"
+                <input type="password" className={`${inputCls} w-28 text-[11px]`} placeholder={t('auto.ClusterSettingsPanel.k9')}
                   value={sshPass} onChange={e => setSshPass(e.target.value)} />
               </div>
               {workerCmds.map((w, idx) => (
@@ -811,7 +813,7 @@ export function ClusterSettingsPanel() {
           </div>
 
           {workers.length === 0 && (
-            <p className={`text-xs ${textMuted}`}>ワーカーノードがありません</p>
+            <p className={`text-xs ${textMuted}`}>{t('auto.ClusterSettingsPanel.k1')}</p>
           )}
 
           {workers.map((w, i) => {
@@ -844,7 +846,7 @@ export function ClusterSettingsPanel() {
                     onClick={() => pingWorker(w.ip, i)}
                     disabled={!w.ip}
                     className="text-xs text-blue-400 hover:text-blue-300 shrink-0"
-                    title="疎通確認 (ICMP / Ray)"
+                    title={t('auto.ClusterSettingsPanel.k4')}
                   >
                     {pr === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Network size={12} />}
                   </button>
@@ -906,7 +908,7 @@ export function ClusterSettingsPanel() {
                     onClick={() => wakeWorker(w.ip, i)}
                     disabled={wakeLoading[i] || !w.ip}
                     className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-yellow-700 hover:bg-yellow-600 text-white disabled:opacity-50 shrink-0"
-                    title="Wake-on-LAN: BIOSでWOLを有効にしている必要があります"
+                    title={t('auto.ClusterSettingsPanel.k5')}
                   >
                     {wakeLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Power size={11} />}
                     Wake (WOL)
@@ -915,7 +917,7 @@ export function ClusterSettingsPanel() {
                     onClick={() => disableWorkerSleep(w.ip, i)}
                     disabled={sleepDisableLoading[i] || !w.ip}
                     className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-slate-600 hover:bg-slate-500 text-white disabled:opacity-50 shrink-0"
-                    title="SSH経由でスリープ無効化 (powercfg)"
+                    title={t('auto.ClusterSettingsPanel.k6')}
                   >
                     {sleepDisableLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Moon size={11} />}
                     スリープ無効化
@@ -924,7 +926,7 @@ export function ClusterSettingsPanel() {
                     onClick={() => restartWorkerRay(w.ip, i)}
                     disabled={rayRestartLoading[i] || !w.ip}
                     className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-emerald-700 hover:bg-emerald-600 text-white disabled:opacity-50 shrink-0"
-                    title="SSH経由で ray-restart.bat を実行 (cluster.config.yaml の ssh_user/ssh_password/ray_restart_bat が必要)"
+                    title={t('auto.ClusterSettingsPanel.k7')}
                   >
                     {rayRestartLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
                     Ray 再起動
@@ -1137,7 +1139,7 @@ export function ClusterSettingsPanel() {
             </div>
           </div>
         ) : (
-          <p className={`text-xs ${textMuted}`}>ステータス取得中...</p>
+          <p className={`text-xs ${textMuted}`}>{t('auto.ClusterSettingsPanel.k2')}</p>
         )}
       </section>
 

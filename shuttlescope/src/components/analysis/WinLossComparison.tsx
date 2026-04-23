@@ -82,7 +82,7 @@ function ComparisonContent({ playerId, filters = DEFAULT_FILTERS }: { playerId: 
         <table className="w-full text-sm">
           <thead>
             <tr className="text-gray-300 border-b border-gray-600">
-              <th className="text-left py-2 pr-4 font-medium text-gray-400">項目</th>
+              <th className="text-left py-2 pr-4 font-medium text-gray-400">{t('auto.WinLossComparison.k1')}</th>
               <th className="text-center py-2 pr-4 font-medium" style={{ color: WIN }}>
                 {t('analysis.win_loss_comparison.win_matches')} ({winStats?.count ?? 0}試合)
               </th>

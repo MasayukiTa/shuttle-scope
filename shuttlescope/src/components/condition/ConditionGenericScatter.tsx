@@ -358,7 +358,7 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
                 <span className="inline-flex items-center gap-2">
                   <span>{t('condition.generic_scatter.legend_value')}:</span>
                   <span style={{ width: 120, height: 10, background: 'linear-gradient(to right, hsl(210,70%,50%), hsl(0,70%,50%))', border: `1px solid ${isLight ? '#e5e7eb' : '#4b5563'}` }} />
-                  <span>低 → 高</span>
+                  <span>{t('auto.ConditionGenericScatter.k1')}</span>
                 </span>
               )}
             </div>

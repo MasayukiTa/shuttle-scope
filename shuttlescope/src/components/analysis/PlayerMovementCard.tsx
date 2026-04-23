@@ -14,6 +14,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/api/client'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { useTranslation } from 'react-i18next'
 
 // ─── 型定義 ───────────────────────────────────────────────────────────────────
 
@@ -81,9 +82,9 @@ const PLAYER_COLORS: Record<string, { line: string; bg: string; text: string }> 
 }
 
 const DIR_COLORS = {
-  lateral:  { bar: 'bg-teal-500',   label: '横方向' },
-  diagonal: { bar: 'bg-purple-500', label: '斜め' },
-  depth:    { bar: 'bg-blue-500',   label: '前後' },
+  lateral:  { bar: 'bg-teal-500',   label: t('auto.PlayerMovementCard.k9') },
+  diagonal: { bar: 'bg-purple-500', label: t('auto.PlayerMovementCard.k10') },
+  depth:    { bar: 'bg-blue-500',   label: t('auto.PlayerMovementCard.k11') },
 }
 
 const CONF_COLORS = {
@@ -113,6 +114,8 @@ function MiniCourtHeatmap({
   playerKey: string
   isLight: boolean
 }) {
+  const { t } = useTranslation()
+
   const maxVisit = Math.max(1, ...Object.values(zoneVisits))
   const color = PLAYER_COLORS[playerKey]?.line ?? '#6b7280'
 
@@ -129,7 +132,7 @@ function MiniCourtHeatmap({
       width={totalW}
       height={totalH}
       style={{ display: 'block' }}
-      title="ゾーン別滞在頻度（濃いほど多い）"
+      title={t('auto.PlayerMovementCard.k8')}
     >
       {/* コート外枠 */}
       <rect x={0} y={0} width={totalW} height={totalH}
@@ -208,6 +211,8 @@ function CumulativeDistanceChart({
   playerNames: Record<string, string>
   isLight: boolean
 }) {
+  const { t } = useTranslation()
+
   const W = 280
   const H = 80
   const PAD = { t: 8, r: 8, b: 20, l: 40 }
@@ -301,6 +306,8 @@ function CumulativeDistanceChart({
 // ─── メインコンポーネント ──────────────────────────────────────────────────────
 
 export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerNames, isLight, calibSource, onOpenGrid, onSyncGridFromLocal }: Props) {
+  const { t } = useTranslation()
+
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
   const { card, cardInner, textHeading, textSecondary, textMuted, textFaint } = useCardTheme()
@@ -317,7 +324,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
   if (isLoading) {
     return (
       <div className={`${card} rounded-lg p-4`}>
-        <div className={`text-xs ${textMuted} animate-pulse`}>移動距離を計算中…</div>
+        <div className={`text-xs ${textMuted} animate-pulse`}>{t('auto.PlayerMovementCard.k1')}</div>
       </div>
     )
   }
@@ -326,7 +333,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
   if (!stats?.available) {
     return (
       <div className={`${card} rounded-lg p-4 space-y-1`}>
-        <h3 className={`text-sm font-semibold ${textHeading}`}>選手移動距離</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PlayerMovementCard.k2')}</h3>
         <p className={`text-xs ${textMuted}`}>
           {stats?.reason ?? '選手識別トラックがありません。「+ 識別」でトラッキングを実行してください。'}
         </p>
@@ -343,7 +350,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
       {/* ── ヘッダー ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h3 className={`text-sm font-semibold ${textHeading}`}>選手移動距離</h3>
+          <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PlayerMovementCard.k2')}</h3>
           <p className={`text-[10px] ${textFaint}`}>
             コート: {stats.court_length_m}m × {stats.court_width_m}m
             {!stats.has_calibration && ' ※キャリブ未設定・相対値'}
@@ -401,7 +408,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
                     {syncing ? '同期中...' : 'クリックして DB へ同期'}
                   </button>
                 ) : canClick ? (
-                  <span className="underline ml-1">ここをクリックしてグリッドを開き同期してください。</span>
+                  <span className="underline ml-1">{t('auto.PlayerMovementCard.k3')}</span>
                 ) : null}
                 {syncResult && (
                   <div className="mt-1 text-[11px]" style={{ color: '#fff' }}>{syncResult}</div>
@@ -410,7 +417,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
             ) : (
               <span>
                 ⚠ コートキャリブレーションが未設定のため相対値表示です。
-                {canClick && <span className="underline ml-1">ここをクリックしてグリッドを設定してください。</span>}
+                {canClick && <span className="underline ml-1">{t('auto.PlayerMovementCard.k4')}</span>}
               </span>
             )}
           </Wrapper>
@@ -439,11 +446,11 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
               {/* 3指標グリッド */}
               <div className="grid grid-cols-3 gap-1">
                 {[
-                  { label: '総移動距離', value: p.total_distance_m >= 1000
+                  { label: t('auto.PlayerMovementCard.k12'), value: p.total_distance_m >= 1000
                       ? `${(p.total_distance_m / 1000).toFixed(2)}km`
                       : `${fmt1(p.total_distance_m)}m` },
-                  { label: '平均速度', value: `${speedKmh(p.avg_speed_m_per_s)}km/h` },
-                  { label: '最大瞬間速度', value: `${speedKmh(p.max_speed_m_per_s)}km/h` },
+                  { label: t('auto.PlayerMovementCard.k13'), value: `${speedKmh(p.avg_speed_m_per_s)}km/h` },
+                  { label: t('auto.PlayerMovementCard.k14'), value: `${speedKmh(p.max_speed_m_per_s)}km/h` },
                 ].map(({ label, value }) => (
                   <div key={label} className={`${isLight ? 'bg-gray-100' : 'bg-gray-800'} rounded p-1.5 text-center`}>
                     <div className={`text-[9px] ${textFaint} leading-none mb-0.5`}>{label}</div>
@@ -454,7 +461,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
 
               {/* 方向内訳バー */}
               <div>
-                <div className={`text-[9px] ${textFaint} mb-1`}>方向内訳</div>
+                <div className={`text-[9px] ${textFaint} mb-1`}>{t('auto.PlayerMovementCard.k5')}</div>
                 <div className="flex h-2 w-full rounded overflow-hidden gap-px">
                   {dir.lateral_pct > 0 && (
                     <div
@@ -493,7 +500,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
       {playerKeys.length > 0 && (
         <div className={`${cardInner} rounded p-3 space-y-2`}>
           <div className="flex items-center justify-between">
-            <span className={`text-xs font-medium ${textSecondary}`}>累積移動距離（時系列）</span>
+            <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.PlayerMovementCard.k6')}</span>
             <div className="flex gap-2">
               {playerKeys.map((key) => (
                 <span key={key} className={`text-[10px] ${textFaint} flex items-center gap-1`}>
@@ -517,7 +524,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
       {/* ── ゾーンヒートマップ ───────────────────────────────────────────── */}
       {playerKeys.length > 0 && (
         <div className={`${cardInner} rounded p-3 space-y-2`}>
-          <span className={`text-xs font-medium ${textSecondary}`}>ゾーン別滞在頻度</span>
+          <span className={`text-xs font-medium ${textSecondary}`}>{t('auto.PlayerMovementCard.k7')}</span>
           <div className="flex flex-wrap gap-4">
             {playerKeys.map((key) => {
               const p = players[key]

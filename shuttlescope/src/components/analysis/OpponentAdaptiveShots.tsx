@@ -6,6 +6,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { perfColor, BAR, AXIS_TICK } from '@/styles/colors'
+import { useTranslation } from 'react-i18next'
 
 interface OpponentAdaptiveShotsProps {
   playerId: number
@@ -36,6 +37,8 @@ interface Response {
 }
 
 function ShotBar({ label, winRate, lift, count }: { label: string; winRate: number; lift: number; count: number }) {
+  const { t } = useTranslation()
+
   const pct = Math.round(winRate * 100)
   const liftPositive = lift >= 0
   return (
@@ -59,6 +62,8 @@ function ShotBar({ label, winRate, lift, count }: { label: string; winRate: numb
 }
 
 function Inner({ playerId }: { playerId: number }) {
+  const { t } = useTranslation()
+
   const [selected, setSelected] = useState<number | null>(null)
 
   const { data: resp, isLoading } = useQuery({
@@ -68,7 +73,7 @@ function Inner({ playerId }: { playerId: number }) {
   })
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">読み込み中...</div>
+    return <div className="text-gray-500 text-sm py-4 text-center">{t('auto.OpponentAdaptiveShots.k1')}</div>
   }
 
   const opponents = resp?.data?.opponents ?? []
@@ -107,7 +112,7 @@ function Inner({ playerId }: { playerId: number }) {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
             <span>ショット種別 勝率 vs {activeOpp.opponent_name}</span>
-            <span className="text-gray-500">lift=全体比</span>
+            <span className="text-gray-500">{t('auto.OpponentAdaptiveShots.k2')}</span>
           </div>
           {activeOpp.shot_effectiveness.length === 0 ? (
             <NoDataMessage sampleSize={0} minRequired={3} unit="回" />
@@ -129,10 +134,12 @@ function Inner({ playerId }: { playerId: number }) {
 }
 
 export function OpponentAdaptiveShots({ playerId }: OpponentAdaptiveShotsProps) {
+  const { t } = useTranslation()
+
   return (
     <RoleGuard allowedRoles={['analyst', 'coach']}>
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">対戦相手別ショット有効性</h3>
+        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.OpponentAdaptiveShots.k3')}</h3>
         <Inner playerId={playerId} />
       </div>
     </RoleGuard>

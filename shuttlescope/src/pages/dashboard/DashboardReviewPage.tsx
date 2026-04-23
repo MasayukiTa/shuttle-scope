@@ -136,14 +136,14 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
                 value={selectedMatchId}
                 onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
                 emptyLabel="— 試合を選択 —"
-                placeholder="日付・対戦相手で検索..."
+                placeholder={t('auto.DashboardReviewPage.k4')}
                 className="max-w-[260px]"
               />
             </div>
             {selectedMatchId ? (
               <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
             ) : (
-              <p className="text-gray-500 text-sm text-center py-4">試合を選択するとスコア推移が表示されます</p>
+              <p className="text-gray-500 text-sm text-center py-4">{t('auto.DashboardReviewPage.k1')}</p>
             )}
           </div>
         </div>
@@ -163,7 +163,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
             />
           ) : (
             <div className="bg-gray-800 rounded-lg p-4">
-              <p className="text-gray-500 text-sm text-center py-2">試合を選択するとラリー動画ジャンプが使えます</p>
+              <p className="text-gray-500 text-sm text-center py-2">{t('auto.DashboardReviewPage.k2')}</p>
             </div>
           )}
         </div>
@@ -176,7 +176,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
             {t('analysis.review.section_sets', 'STEP 4 — セット別変化点')}
           </p>
           <div className="bg-gray-800 rounded-lg p-4">
-            <SectionTitle>セット別パフォーマンス</SectionTitle>
+            <SectionTitle>{t('auto.DashboardReviewPage.k3')}</SectionTitle>
             <SetComparison playerId={playerId} filters={filters} />
           </div>
         </div>

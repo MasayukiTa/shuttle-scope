@@ -5,6 +5,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { perfColor, lightSafe, WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { useTranslation } from 'react-i18next'
 
 interface PressurePerformanceProps {
   playerId: number
@@ -44,6 +45,8 @@ function SegmentCard({
   highlight?: boolean
   isLight: boolean
 }) {
+  const { t } = useTranslation()
+
   const barWidth = `${Math.min(segment.win_rate * 100, 100).toFixed(1)}%`
   const color = lightSafe(perfColor(segment.win_rate), !isLight)
   return (
@@ -71,6 +74,8 @@ function SegmentCard({
 }
 
 export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: PressurePerformanceProps) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   const fp = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -90,7 +95,7 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
 
   if (isLoading) {
     return (
-      <div className="text-gray-500 text-sm py-8 text-center">読み込み中...</div>
+      <div className="text-gray-500 text-sm py-8 text-center">{t('auto.PressurePerformance.k1')}</div>
     )
   }
 

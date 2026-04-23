@@ -60,6 +60,8 @@ function CoachCandidateView({
   result: LineupResult
   isLight: boolean
 }) {
+  const { t } = useTranslation()
+
   const subText = isLight ? '#64748b' : '#9ca3af'
   const neutral = isLight ? '#334155' : '#d1d5db'
 
@@ -141,7 +143,7 @@ function CoachCandidateView({
               {/* 勝率レンジ + 安定性 + サンプル数 */}
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px]" style={{ color: subText }}>勝率</span>
+                  <span className="text-[10px]" style={{ color: subText }}>{t('auto.LineupOptimizerPanel.k1')}</span>
                   <span className="text-sm font-bold" style={{ color: neutral }}>
                     {lo}–{hi}%
                   </span>
@@ -152,7 +154,7 @@ function CoachCandidateView({
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px]" style={{ color: subText }}>安定性:</span>
+                  <span className="text-[10px]" style={{ color: subText }}>{t('auto.LineupOptimizerPanel.k2')}</span>
                   <span className="text-[10px] font-medium" style={{ color: stabilityColor }}>
                     {stability}
                   </span>
@@ -422,7 +424,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               type="text"
               value={nameFilter}
               onChange={(e) => setNameFilter(e.target.value)}
-              placeholder="選手名で絞り込み..."
+              placeholder={t('auto.LineupOptimizerPanel.k6')}
               className="flex-1 bg-transparent text-xs outline-none min-w-0"
               style={{ color: isLight ? '#1e293b' : '#e2e8f0' }}
             />
@@ -445,7 +447,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
                 color: isLight ? '#1e293b' : '#e2e8f0',
               }}
             >
-              <option value="">全チーム</option>
+              <option value="">{t('auto.LineupOptimizerPanel.k3')}</option>
               {teamOptions.map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
@@ -464,8 +466,8 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               }}
             >
               {allFilteredSelected
-                ? <><CheckSquare size={11} /> 全解除</>
-                : <><Square size={11} /> 全選択</>
+                ? <><CheckSquare size={11} /> {t('auto.LineupOptimizerPanel.k4')}</>
+                : <><Square size={11} /> {t('auto.LineupOptimizerPanel.k5')}</>
               }
               {nameFilter || teamFilter ? '（絞り込み中）' : ''}
             </button>
@@ -530,7 +532,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
             value={opponentId}
             onChange={(v) => { setOpponentId(v != null ? Number(v) : null); setEnabled(false) }}
             emptyLabel={`${t('prediction.lineup_vs_opponent')}（任意）`}
-            placeholder="対戦相手を検索..."
+            placeholder={t('auto.LineupOptimizerPanel.k7')}
           />
         </div>
         <select

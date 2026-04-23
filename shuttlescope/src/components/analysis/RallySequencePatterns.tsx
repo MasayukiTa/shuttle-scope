@@ -5,6 +5,7 @@ import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { WIN, LOSS, perfColor } from '@/styles/colors'
+import { useTranslation } from 'react-i18next'
 
 interface RallySequencePatternsProps {
   playerId: number
@@ -29,6 +30,8 @@ interface Response {
 }
 
 function SequencePill({ labels, winRate }: { labels: string[]; winRate: number }) {
+  const { t } = useTranslation()
+
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {labels.map((label, i) => (
@@ -49,13 +52,15 @@ function SequencePill({ labels, winRate }: { labels: string[]; winRate: number }
 }
 
 function SequenceList({ sequences, accent, title }: { sequences: SequenceEntry[]; accent: string; title: string }) {
+  const { t } = useTranslation()
+
   return (
     <div className="flex-1 min-w-0">
       <h4 className="text-xs font-semibold mb-2 pb-1 border-b border-gray-700" style={{ color: accent }}>
         {title}
       </h4>
       {sequences.length === 0 ? (
-        <p className="text-xs text-gray-500 py-2">データなし</p>
+        <p className="text-xs text-gray-500 py-2">{t('auto.RallySequencePatterns.k1')}</p>
       ) : (
         <div className="space-y-2">
           {sequences.map((s, i) => (
@@ -74,6 +79,8 @@ function SequenceList({ sequences, accent, title }: { sequences: SequenceEntry[]
 }
 
 export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) {
+  const { t } = useTranslation()
+
   // bundle 提供時はスライスを使用
   const { slice: bundled, loading: bundleLoading, provided } = useReviewBundleSlice<Response>('rally_sequence_patterns')
   const indiv = useQuery({
@@ -85,7 +92,7 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
   const isLoading = provided ? bundleLoading : indiv.isLoading
 
   if (isLoading) {
-    return <div className="text-gray-500 text-sm py-4 text-center">読み込み中...</div>
+    return <div className="text-gray-500 text-sm py-4 text-center">{t('auto.RallySequencePatterns.k2')}</div>
   }
 
   const winSeqs = resp?.data?.win_sequences ?? []
@@ -96,7 +103,7 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
   if (winSeqs.length === 0 && lossSeqs.length === 0) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">ラリー3連ショットパターン</h3>
+        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.RallySequencePatterns.k3')}</h3>
         <NoDataMessage sampleSize={totalRallies} minRequired={20} unit="ラリー" />
       </div>
     )
@@ -104,13 +111,13 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
 
   return (
     <div className="bg-gray-800 rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-200 mb-1">ラリー3連ショットパターン</h3>
+      <h3 className="text-sm font-semibold text-gray-200 mb-1">{t('auto.RallySequencePatterns.k3')}</h3>
       <p className="text-xs text-gray-500 mb-3">分析ラリー数: {totalRallies}</p>
       <ConfidenceBadge sampleSize={sampleSize} />
       <div className="flex gap-4 mt-3">
-        <SequenceList sequences={winSeqs} accent={WIN} title="勝ちパターン" />
+        <SequenceList sequences={winSeqs} accent={WIN} title={t('auto.RallySequencePatterns.k4')} />
         <div className="w-px bg-gray-700 self-stretch" />
-        <SequenceList sequences={lossSeqs} accent={LOSS} title="負けパターン" />
+        <SequenceList sequences={lossSeqs} accent={LOSS} title={t('auto.RallySequencePatterns.k5')} />
       </div>
     </div>
   )

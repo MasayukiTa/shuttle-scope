@@ -4,6 +4,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { seqBlue } from '@/styles/colors'
+import { useTranslation } from 'react-i18next'
 
 interface SpatialDensityMapProps {
   playerId: number
@@ -25,6 +26,8 @@ const SVG_W = 180
 const SVG_H = 360
 
 export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
+  const { t } = useTranslation()
+
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-spatial-density', playerId],
     queryFn: () => apiGet<Response>('/analysis/spatial_density', { player_id: playerId }),
@@ -34,8 +37,8 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
   if (isLoading) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">コート密度マップ</h3>
-        <div className="text-gray-500 text-sm py-4 text-center">読み込み中...</div>
+        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
+        <div className="text-gray-500 text-sm py-4 text-center">{t('auto.SpatialDensityMap.k2')}</div>
       </div>
     )
   }
@@ -46,7 +49,7 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
   if (!d || sampleSize === 0) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-3">コート密度マップ</h3>
+        <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
         <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ストローク" />
       </div>
     )
@@ -71,7 +74,7 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
 
   return (
     <div className="bg-gray-800 rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-200 mb-3">コート密度マップ</h3>
+      <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
       <ConfidenceBadge sampleSize={sampleSize} />
 
       <div className="mt-3 flex gap-4 items-start">
@@ -111,14 +114,14 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
             <line x1={SVG_W * 2 / 3} y1={0} x2={SVG_W * 2 / 3} y2={SVG_H} stroke="#374151" strokeWidth={0.5} strokeDasharray="4,4" />
 
             {/* ラベル */}
-            <text x={SVG_W / 2} y={SVG_H / 4} textAnchor="middle" fill="#6b7280" fontSize={9}>遠端</text>
-            <text x={SVG_W / 2} y={SVG_H * 3 / 4} textAnchor="middle" fill="#6b7280" fontSize={9}>近端</text>
+            <text x={SVG_W / 2} y={SVG_H / 4} textAnchor="middle" fill="#6b7280" fontSize={9}>{t('auto.SpatialDensityMap.k3')}</text>
+            <text x={SVG_W / 2} y={SVG_H * 3 / 4} textAnchor="middle" fill="#6b7280" fontSize={9}>{t('auto.SpatialDensityMap.k4')}</text>
           </svg>
         </div>
 
         {/* ゾーン別カウント */}
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-gray-400 mb-2">ゾーン別打球数</p>
+          <p className="text-xs text-gray-400 mb-2">{t('auto.SpatialDensityMap.k5')}</p>
           <div className="space-y-1">
             {Object.entries(zone_counts)
               .sort(([, a], [, b]) => b - a)
@@ -143,14 +146,14 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
 
       {/* カラースケール凡例 */}
       <div className="mt-3 flex items-center gap-2">
-        <span className="text-xs text-gray-500">低</span>
+        <span className="text-xs text-gray-500">{t('auto.SpatialDensityMap.k6')}</span>
         <div
           className="flex-1 h-2 rounded"
           style={{
             background: `linear-gradient(to right, ${seqBlue(0)}, ${seqBlue(0.5)}, ${seqBlue(1)})`,
           }}
         />
-        <span className="text-xs text-gray-500">高</span>
+        <span className="text-xs text-gray-500">{t('auto.SpatialDensityMap.k7')}</span>
       </div>
     </div>
   )

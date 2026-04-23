@@ -387,6 +387,7 @@ interface DeviceRowProps {
 }
 
 function DeviceRow({ p, isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, t }: DeviceRowProps) {
+
   const isStaleCamera = p.connection_role === 'active_camera' && p.last_heartbeat
     ? (Date.now() - new Date(p.last_heartbeat).getTime()) / 1000 > 60
     : false
@@ -402,10 +403,10 @@ function DeviceRow({ p, isLight, titleColor, subColor, rowBg, onApprove, onRejec
             </span>
             <ApprovalBadge status={p.approval_status} />
             {(p.device_type === 'iphone' || p.device_type === 'ipad') && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-purple-900/40 text-purple-400">リモート</span>
+              <span className="text-[9px] px-1 py-0.5 rounded bg-purple-900/40 text-purple-400">{t('auto.DeviceManagerPanel.k1')}</span>
             )}
             {p.device_type === 'pc' && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-gray-700/60 text-gray-500">ローカル</span>
+              <span className="text-[9px] px-1 py-0.5 rounded bg-gray-700/60 text-gray-500">{t('auto.DeviceManagerPanel.k2')}</span>
             )}
             {isStaleCamera && (
               <span className="text-[9px] px-1 py-0.5 rounded bg-amber-900/40 text-amber-400 flex items-center gap-0.5">
@@ -416,7 +417,7 @@ function DeviceRow({ p, isLight, titleColor, subColor, rowBg, onApprove, onRejec
         </div>
         <button
           onClick={() => onDeleteDevice(p)}
-          title="このデバイスを削除"
+          title={t('auto.DeviceManagerPanel.k11')}
           className="shrink-0 text-gray-600 hover:text-red-400 transition-colors"
         >
           <Trash2 size={12} />
@@ -747,7 +748,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         <div className="flex items-center gap-2">
           <button
             onClick={handlePurgeDisconnected}
-            title="切断済みデバイスを一括削除"
+            title={t('auto.DeviceManagerPanel.k12')}
             className={`${subColor} hover:text-red-400`}
           >
             <Trash2 size={14} />
@@ -776,12 +777,12 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
       {/* ─── リモート診断パネル ── */}
       <div className={`mb-3 rounded-lg px-3 py-2 space-y-1 text-[10px] ${isLight ? 'bg-gray-50 border border-gray-200' : 'bg-gray-900/60 border border-gray-700'}`}>
-        <p className={`text-[9px] font-semibold uppercase tracking-wider mb-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>リモート診断</p>
+        <p className={`text-[9px] font-semibold uppercase tracking-wider mb-1.5 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.DeviceManagerPanel.k3')}</p>
 
         {/* シグナリング (WS) */}
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${wsConnected ? 'bg-green-400' : wsReconnecting ? 'bg-amber-400 animate-pulse' : 'bg-gray-500'}`} />
-          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>シグナリング:</span>
+          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.DeviceManagerPanel.k4')}</span>
           <span className={wsConnected ? 'text-green-400' : wsReconnecting ? 'text-amber-400' : 'text-gray-500'}>
             {wsConnected ? '接続中' : wsReconnecting ? `再接続中 (${wsReconnectCount}/5)` : '未接続'}
           </span>
@@ -795,7 +796,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
             : connectionState === 'connecting' ? 'bg-amber-400 animate-pulse'
             : 'bg-gray-500'
           }`} />
-          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>映像 (WebRTC):</span>
+          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.DeviceManagerPanel.k5')}</span>
           <span className={
             connectionState === 'connected' ? 'text-green-400'
             : connectionState === 'failed' ? 'text-red-400'
@@ -807,7 +808,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         {iceGatheringState && (
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-gray-500" />
-            <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>ICE 収集:</span>
+            <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.DeviceManagerPanel.k6')}</span>
             <span className="text-gray-400">{iceGatheringState}</span>
           </div>
         )}
@@ -815,12 +816,12 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
         {/* TURN 使用状況 */}
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${turnInUse === true ? 'bg-blue-400' : 'bg-gray-500'}`} />
-          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>TURN リレー:</span>
+          <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.DeviceManagerPanel.k7')}</span>
           {turnInUse === null
-            ? <span className="text-gray-500">未接続</span>
+            ? <span className="text-gray-500">{t('auto.DeviceManagerPanel.k8')}</span>
             : turnInUse
-              ? <span className="text-blue-400">使用中</span>
-              : <span className="text-gray-400">不使用（P2P直接）</span>
+              ? <span className="text-blue-400">{t('auto.DeviceManagerPanel.k9')}</span>
+              : <span className="text-gray-400">{t('auto.DeviceManagerPanel.k10')}</span>
           }
         </div>
       </div>
@@ -844,7 +845,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
                     ? 'border-gray-300 text-gray-600 hover:border-gray-400'
                     : 'border-gray-600 text-gray-400 hover:border-gray-500'
               }`}
-              title="このPCのみで動作。タブレット等には影響しません"
+              title={t('auto.DeviceManagerPanel.k13')}
             >
               リアルタイムYOLO {realtimeYoloOn ? 'ON' : 'OFF'}
               {realtimeYoloOn && realtimeYolo.inferMs != null && (

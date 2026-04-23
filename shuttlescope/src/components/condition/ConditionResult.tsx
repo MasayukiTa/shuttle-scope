@@ -99,7 +99,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
       {/* 因子別ラベル（全ロール） */}
       {factors.length > 0 && (
         <section className={`rounded-lg border p-4 ${panelCls}`}>
-          <div className="text-sm font-semibold mb-3">因子別</div>
+          <div className="text-sm font-semibold mb-3">{t('auto.ConditionResult.k1')}</div>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
             {factors.map((f) => (
               <div key={f.factor} className={`border rounded p-2 ${labelColor(f.label, isLight)}`}>
@@ -127,7 +127,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
       {/* coach 以上: 生数値表示 */}
       {showCoach && (
         <section className={`rounded-lg border p-4 ${panelCls}`}>
-          <div className="text-sm font-semibold mb-3">詳細スコア</div>
+          <div className="text-sm font-semibold mb-3">{t('auto.ConditionResult.k2')}</div>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
             {(['f1', 'f2', 'f3', 'f4', 'f5'] as const).map((k) => (
               <div key={k} className={`border rounded px-2 py-1 ${isLight ? 'border-gray-300' : 'border-gray-600'}`}>
@@ -158,7 +158,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
       {/* analyst: validity_score, flags, questionnaire_json */}
       {showAnalyst && (
         <section className={`rounded-lg border p-4 ${panelCls}`}>
-          <div className="text-sm font-semibold mb-2">Analyst 詳細</div>
+          <div className="text-sm font-semibold mb-2">{t('auto.ConditionResult.k3')}</div>
           {result.validity_score != null && (
             <div className="text-xs mb-1">
               validity_score: <span className="font-mono">{result.validity_score.toFixed(3)}</span>

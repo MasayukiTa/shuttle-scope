@@ -5,6 +5,7 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
+import { useTranslation } from 'react-i18next'
 
 interface BestActionRow {
   state: { score_phase: string; set_phase: string; rally_bucket: string; player_role: string }
@@ -23,6 +24,8 @@ const RALLY_BUCKET_LABELS: Record<string, string> = { short: '短', medium: '中
 const ROLE_LABELS: Record<string, string> = { server: 'Sv', receiver: 'Rv' }
 
 export function StateActionValueCard({ playerId, filters }: Props) {
+  const { t } = useTranslation()
+
   const { card, textHeading, textSecondary, textMuted, textFaint, tableHeader, rowBorder, rowHover, loading } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -46,7 +49,7 @@ export function StateActionValueCard({ playerId, filters }: Props) {
   return (
     <div className={`${card} rounded-lg p-4 space-y-3`}>
       <div className="flex items-center justify-between">
-        <h3 className={`text-sm font-semibold ${textHeading}`}>状態-行動価値（Q値）最善手</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.StateActionValueCard.k1')}</h3>
         <EvidenceBadge tier="research" evidenceLevel="exploratory" sampleSize={meta?.sample_size} recommendationAllowed={false} />
       </div>
       <ResearchNotice
@@ -55,17 +58,17 @@ export function StateActionValueCard({ playerId, filters }: Props) {
         promotionCriteria="状態×行動ごとN≥30・CI幅0.3以内"
       />
       {isLoading ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>計算中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.StateActionValueCard.k2')}</p>
       ) : rows.length === 0 ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>十分なデータがありません</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.StateActionValueCard.k3')}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className={tableHeader}>
-                <th className="text-left py-1.5 pr-2">状態</th>
-                <th className="text-left py-1.5 pr-2">最善ショット</th>
-                <th className="text-right py-1.5 pr-2">Q値</th>
+                <th className="text-left py-1.5 pr-2">{t('auto.StateActionValueCard.k4')}</th>
+                <th className="text-left py-1.5 pr-2">{t('auto.StateActionValueCard.k5')}</th>
+                <th className="text-right py-1.5 pr-2">{t('auto.StateActionValueCard.k6')}</th>
                 <th className="text-right py-1.5">CI [95%]</th>
               </tr>
             </thead>
@@ -92,7 +95,7 @@ export function StateActionValueCard({ playerId, filters }: Props) {
           </table>
         </div>
       )}
-      <p className={`text-[10px] ${textFaint}`}>Q値 = 状態内最善ショット勝率 - 状態ベースライン勝率。CI幅が大きい場合は統計的根拠が弱いです。</p>
+      <p className={`text-[10px] ${textFaint}`}>{t('auto.StateActionValueCard.k7')}</p>
     </div>
   )
 }

@@ -56,7 +56,7 @@ export function ScorelineHistogram({ data }: ScorelineHistogramProps) {
             <span className="text-gray-600 w-6 text-right shrink-0">{entry.count}</span>
             {/* セットスコア: details で折り畳み */}
             <details className="shrink-0">
-              <summary className="text-blue-500 cursor-pointer list-none text-[10px] leading-none">詳細</summary>
+              <summary className="text-blue-500 cursor-pointer list-none text-[10px] leading-none">{t('auto.ScorelineHistogram.k1')}</summary>
               <div className="text-gray-500 text-[10px] mt-0.5 whitespace-nowrap">{entry.scoreline}</div>
             </details>
           </div>

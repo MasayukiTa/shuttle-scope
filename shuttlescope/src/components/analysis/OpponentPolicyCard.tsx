@@ -6,6 +6,7 @@ import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
 import { RefreshCw, WifiOff, ServerCrash, HelpCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface PolicyEntry {
   dominant_shot: string
@@ -124,6 +125,8 @@ function formatUpdatedAt(ts: number): string {
 // ─── EntropyBar ──────────────────────────────────────────────────────────────
 
 function EntropyBar({ entropy, maxEntropy = 2.5, isLight }: { entropy: number | undefined; maxEntropy?: number; isLight: boolean }) {
+  const { t } = useTranslation()
+
   const safeEntropy = entropy ?? 0
   const ratio = Math.min(safeEntropy / maxEntropy, 1)
   return (
@@ -142,6 +145,8 @@ function EntropyBar({ entropy, maxEntropy = 2.5, isLight }: { entropy: number | 
 // ─── メインコンポーネント ─────────────────────────────────────────────────────
 
 export function OpponentPolicyCard({ playerId, filters }: Props) {
+  const { t } = useTranslation()
+
   const { card, cardInner, cardInnerAlt, textHeading, textSecondary, textMuted, textFaint, loading, isLight } = useCardTheme()
   const filterApiParams = {
     ...(filters.result !== 'all' ? { result: filters.result } : {}),
@@ -175,7 +180,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
     <div className={`${card} rounded-lg p-4 space-y-3`} data-testid="opponent-policy-card">
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
-        <h3 className={`text-sm font-semibold ${textHeading}`}>対戦相手ポリシー分析</h3>
+        <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.OpponentPolicyCard.k1')}</h3>
         <div className="flex items-center gap-2">
           <EvidenceBadge
             tier="research"
@@ -186,7 +191,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
           <button
             onClick={() => refetch()}
             disabled={isFetching}
-            title="再取得"
+            title={t('auto.OpponentPolicyCard.k10')}
             data-testid="refetch-button"
             className={`p-1 rounded transition-colors disabled:opacity-40 ${isLight ? 'hover:bg-gray-100 text-gray-500' : 'hover:bg-gray-700 text-gray-500'}`}
           >
@@ -225,11 +230,11 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
       />
 
       {isLoading ? (
-        <p className={`text-sm text-center py-4 ${loading}`} data-testid="loading-state">計算中...</p>
+        <p className={`text-sm text-center py-4 ${loading}`} data-testid="loading-state">{t('auto.OpponentPolicyCard.k2')}</p>
       ) : !global ? (
         /* 空データ状態: エラーではなくデータ不足 */
         <div className={`text-center py-6 space-y-1`} data-testid="empty-state">
-          <p className={`text-sm ${textMuted}`}>対戦ストロークデータが不足しています</p>
+          <p className={`text-sm ${textMuted}`}>{t('auto.OpponentPolicyCard.k3')}</p>
           <p className={`text-[10px] ${textFaint}`}>
             アノテーションが増えるとポリシー分析が表示されます
             {meta?.sample_size != null && meta.sample_size > 0 && (
@@ -242,14 +247,14 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
           {/* 全体ポリシー */}
           <div className={`${cardInner} rounded px-3 py-2 space-y-1.5`}>
             <div className="flex items-center justify-between">
-              <span className={`text-[11px] ${textSecondary}`}>全体ポリシー</span>
+              <span className={`text-[11px] ${textSecondary}`}>{t('auto.OpponentPolicyCard.k4')}</span>
               <span className={`text-[10px] ${textFaint}`}>
                 N={policyData?.total_strokes ?? 0} ストローク（フィルター適用後）
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <div>
-                <span className={`text-xs ${textMuted}`}>主要ショット: </span>
+                <span className={`text-xs ${textMuted}`}>{t('auto.OpponentPolicyCard.k5')} </span>
                 <span className={`text-xs font-medium ${textHeading}`}>{global.dominant_shot}</span>
                 <span className={`text-[10px] ml-1 ${textFaint}`}>({pct(global.dominant_freq)})</span>
               </div>
@@ -257,14 +262,14 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
                 className="flex items-center gap-1"
                 title={PREDICTABILITY_HINTS[global.predictability] ?? ''}
               >
-                <span className={`text-xs ${textMuted}`}>予測性:</span>
+                <span className={`text-xs ${textMuted}`}>{t('auto.OpponentPolicyCard.k6')}</span>
                 <span className={`text-xs font-medium ${getPredictabilityColor(global.predictability, isLight)}`}>
                   {PREDICTABILITY_LABELS[global.predictability] ?? global.predictability}
                 </span>
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <span className={`text-[10px] ${textMuted}`}>エントロピー:</span>
+              <span className={`text-[10px] ${textMuted}`}>{t('auto.OpponentPolicyCard.k7')}</span>
               <EntropyBar entropy={global.entropy} isLight={isLight} />
             </div>
           </div>
@@ -306,8 +311,8 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
 
           {/* 解釈補足 */}
           <div className={`space-y-0.5 text-[10px] ${textFaint}`}>
-            <p>エントロピー高 = ショット選択が多様（予測困難）。エントロピー低 = 特定ショットに集中（予測可能）。</p>
-            <p>予測可能 ▶ 返球パターンを絞りやすい。予測困難 ▶ 配球の多様性に注意。</p>
+            <p>{t('auto.OpponentPolicyCard.k8')}</p>
+            <p>{t('auto.OpponentPolicyCard.k9')}</p>
           </div>
 
           {/* 横連携ヒント */}

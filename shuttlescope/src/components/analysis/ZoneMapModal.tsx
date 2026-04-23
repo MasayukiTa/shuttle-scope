@@ -98,6 +98,8 @@ export function ZoneMapModal({
   initialZone = null,
   onClose,
 }: ZoneMapModalProps) {
+  const { t } = useTranslation()
+
   const { card, textHeading, textMuted, textFaint, isLight } = useCardTheme()
   const [selectedZone, setSelectedZone] = useState<string | null>(initialZone)
 
@@ -196,7 +198,7 @@ export function ZoneMapModal({
         <button
           onClick={onClose}
           className={`p-1.5 rounded transition-colors ${isLight ? 'text-gray-500 hover:bg-gray-100 hover:text-gray-700' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
-          title="閉じる (Esc)"
+          title={t('auto.ZoneMapModal.k5')}
         >
           <X size={18} />
         </button>
@@ -244,7 +246,7 @@ export function ZoneMapModal({
             <p className={`text-[10px] ${textFaint}`}>
               {type === 'effective' ? '← 自コート（打点）' : '← 相手コート（打点）'}
             </p>
-            <p className={`text-[10px] ${textFaint}`}>ゾーンをクリックで詳細表示</p>
+            <p className={`text-[10px] ${textFaint}`}>{t('auto.ZoneMapModal.k1')}</p>
           </div>
 
           {/* 右: ゾーン詳細パネル */}
@@ -257,7 +259,7 @@ export function ZoneMapModal({
               </div>
             ) : loadingDetail ? (
               <div className={`flex items-center justify-center h-full min-h-[200px] rounded-lg ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
-                <p className={`text-sm ${textMuted}`}>読み込み中...</p>
+                <p className={`text-sm ${textMuted}`}>{t('auto.ZoneMapModal.k2')}</p>
               </div>
             ) : detailData ? (
               <ZoneDetailPanel
@@ -326,7 +328,7 @@ function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, te
         <div className="grid grid-cols-3 gap-3 text-center">
           <div>
             <p className={`text-2xl font-bold ${textHeading}`}>{data.total_count}</p>
-            <p className={`text-[11px] ${textMuted}`}>総ストローク数</p>
+            <p className={`text-[11px] ${textMuted}`}>{t('auto.ZoneMapModal.k3')}</p>
           </div>
           <div>
             <p className="text-2xl font-bold" style={{ color: accentColor }}>
@@ -393,7 +395,7 @@ function ZoneDetailPanel({ type, data, isLight, card, textHeading, textMuted, te
       )}
 
       {data.total_count === 0 && (
-        <p className={`text-sm text-center py-4 ${textMuted}`}>このゾーンのデータがありません</p>
+        <p className={`text-sm text-center py-4 ${textMuted}`}>{t('auto.ZoneMapModal.k4')}</p>
       )}
     </div>
   )
