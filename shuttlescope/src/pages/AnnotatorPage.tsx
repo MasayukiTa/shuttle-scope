@@ -1545,7 +1545,7 @@ export function AnnotatorPage() {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
         <div className="text-center">
-          <div className="text-red-400 text-lg mb-2">初期化エラー</div>
+          <div className="text-red-400 text-lg mb-2">{t('annotator.ui.init_error')}</div>
           <div className="text-gray-400 text-sm mb-4">{initError}</div>
           <button onClick={() => navigate('/matches')} className="px-4 py-2 bg-blue-600 rounded text-sm">
             戻る
@@ -1971,18 +1971,18 @@ export function AnnotatorPage() {
                       onClick={prevSample}
                       disabled={samplerIdx <= 0}
                       className={`px-1.5 py-0.5 rounded text-[10px] disabled:opacity-40 ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'}`}
-                    >戻る</button>
+                    >{t('app.back')}</button>
                     <button
                       onClick={skipCurrentSample}
                       className={`px-1.5 py-0.5 rounded text-[10px] ${isLight ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60'}`}
                       title="このサンプルをスキップ"
-                    >スキップ</button>
+                    >{t('annotator.ui.skip')}</button>
                     {samplerIdx < samplerSamples.length - 1 ? (
                       <button
                         onClick={nextSample}
                         disabled={trackingLoading}
                         className={`px-1.5 py-0.5 rounded text-[10px] font-medium disabled:opacity-50 ${isLight ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-purple-600 text-white hover:bg-purple-500'}`}
-                      >次へ</button>
+                      >{t('annotator.ui.next')}</button>
                     ) : (
                       <button
                         onClick={finishSampler}
@@ -2581,7 +2581,7 @@ export function AnnotatorPage() {
                         }`}
                         title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
                       >
-                        {isRecording ? <><Square size={11} className="fill-current" /> 停止</> : <><Video size={11} /> 録画</>}
+                        {isRecording ? <><Square size={11} className="fill-current" /> {t('annotator.ui.record_stop')}</> : <><Video size={11} /> {t('annotator.ui.record_start')}</>}
                       </button>
                     </div>
                   </div>
@@ -2610,7 +2610,7 @@ export function AnnotatorPage() {
                         }`}
                         title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
                       >
-                        {isRecording ? <><Square size={11} className="fill-current" /> 停止</> : <><Video size={11} /> 録画</>}
+                        {isRecording ? <><Square size={11} className="fill-current" /> {t('annotator.ui.record_stop')}</> : <><Video size={11} /> {t('annotator.ui.record_start')}</>}
                       </button>
                     </div>
                   </div>
@@ -2619,8 +2619,8 @@ export function AnnotatorPage() {
               return (
                 <div className="w-full" style={{ aspectRatio: '16/9' }}>
                 <div className="w-full h-full flex items-center justify-center bg-gray-800 rounded text-gray-400 text-sm border-2 border-dashed border-gray-600 text-center gap-2 flex-col">
-                  <span>カメラ映像待機中...</span>
-                  <span className="text-xs text-gray-600">デバイス管理でカメラを起動してください</span>
+                  <span>{t('annotator.ui.camera_waiting')}</span>
+                  <span className="text-xs text-gray-600">{t('annotator.ui.camera_start_hint')}</span>
                 </div>
                 </div>
               )
@@ -2629,8 +2629,8 @@ export function AnnotatorPage() {
             if (!videoSrc) {
               return (
                 <div className="flex items-center justify-center bg-gray-800 rounded text-gray-500 text-sm border-2 border-dashed border-gray-700 py-6 px-4 text-center gap-2 flex-col">
-                  <span>動画が設定されていません</span>
-                  <span className="text-xs text-gray-600">下の「ファイルを開く」またはURLを設定してください</span>
+                  <span>{t('annotator.ui.video_not_set')}</span>
+                  <span className="text-xs text-gray-600">{t('annotator.ui.video_set_hint')}</span>
                 </div>
               )
             }
@@ -2717,7 +2717,7 @@ export function AnnotatorPage() {
 
           {/* 動画ソース設定 */}
           <div className="bg-gray-800 rounded p-2 text-xs shrink-0">
-            <div className="text-gray-400 font-medium mb-1.5">動画ソース</div>
+            <div className="text-gray-400 font-medium mb-1.5">{t('annotator.ui.video_source')}</div>
             <div className="flex gap-1.5 items-center">
               <button
                 onClick={handleFileOpen}
@@ -2777,31 +2777,31 @@ export function AnnotatorPage() {
 
           {/* ショートカットガイド */}
           <div className="bg-gray-800 rounded p-3 text-gray-300 shrink-0">
-            <div className="font-semibold text-gray-200 mb-2 text-sm">キーボードショートカット</div>
+            <div className="font-semibold text-gray-200 mb-2 text-sm">{t('annotator.ui.shortcuts_title')}</div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Space</kbd> 再生/停止</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">←/→</kbd> 1フレーム</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Shift+←/→</kbd> 10秒</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> ラリー開始/終了</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">N/C/P…G</kbd> ショット入力</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Q/W/E</kbd> BH/RH/NET属性</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> 戻す</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> キャンセル</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">1–6</kbd> エンドタイプ</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">A/B</kbd> 勝者確定</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">K</kbd> 見逃しラリー</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Backspace</kbd> 落点キャンセル</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Space</kbd> {t('annotator.ui.sc_play_pause')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">←/→</kbd> {t('annotator.ui.sc_frame')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Shift+←/→</kbd> {t('annotator.ui.sc_ten_sec')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> {t('annotator.ui.sc_rally_toggle')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">N/C/P…G</kbd> {t('annotator.ui.sc_shot_input')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Q/W/E</kbd> {t('annotator.ui.sc_attr')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> {t('annotator.ui.sc_undo')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> {t('annotator.ui.sc_cancel')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">1–6</kbd> {t('annotator.ui.sc_end_type')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">A/B</kbd> {t('annotator.ui.sc_winner')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">K</kbd> {t('annotator.ui.sc_missed')}</span>
+              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Backspace</kbd> {t('annotator.ui.sc_land_cancel')}</span>
             </div>
           </div>
 
           {/* テンキーガイド */}
           <div className="bg-gray-800 rounded p-3 text-gray-300 shrink-0">
-            <div className="font-semibold text-gray-200 mb-2 text-sm">落点入力（land_zone中のみ）</div>
+            <div className="font-semibold text-gray-200 mb-2 text-sm">{t('annotator.ui.numpad_title_desktop')}</div>
             <div className="flex gap-4 items-start">
               {/* ゾーンキー */}
               <div className="space-y-1 flex-1">
                 {/* テンキー落点（主） */}
-                <div className="text-[10px] text-gray-300 mb-0.5 font-medium">テンキー（推奨）</div>
+                <div className="text-[10px] text-gray-300 mb-0.5 font-medium">{t('annotator.ui.numpad_recommended')}</div>
                 <div className="grid grid-cols-3 gap-1">
                   {[
                     { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
@@ -2814,9 +2814,9 @@ export function AnnotatorPage() {
                     </div>
                   ))}
                 </div>
-                <div className="text-[11px] text-gray-500 mt-0.5">0/Num0 = スキップ　Esc/BS = キャンセル</div>
+                <div className="text-[11px] text-gray-500 mt-0.5">{t('annotator.ui.numpad_hint')}</div>
                 {/* 文字キー落点（副・ノートPC向け） */}
-                <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">文字キー（ノートPC向け）</div>
+                <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">{t('annotator.ui.letters_laptop')}</div>
                 <div className="grid grid-cols-3 gap-1">
                   {[
                     { k: 'U', zone: 'BL' }, { k: 'I', zone: 'BC' }, { k: 'O', zone: 'BR' },
@@ -2835,7 +2835,7 @@ export function AnnotatorPage() {
               </div>
               {/* コートチェンジ情報 + 先サーブ/視点変更 */}
               <div className="flex-1 border-l border-gray-700 pl-3 space-y-1.5">
-                <p className="text-xs text-gray-400 font-medium">コートチェンジ</p>
+                <p className="text-xs text-gray-400 font-medium">{t('annotator.ui.court_change')}</p>
                 {[1, 2, 3].map((sn) => {
                   const isCurrent = store.currentSetNum === sn
                   const aPos = computePlayerASide(playerAStart, sn, sn === store.currentSetNum ? store.scoreA : 0, sn === store.currentSetNum ? store.scoreB : 0)
@@ -2851,7 +2851,7 @@ export function AnnotatorPage() {
 
                 {/* 先サーブ変更 */}
                 <div className="pt-1.5 border-t border-gray-700 space-y-1">
-                  <p className="text-xs text-gray-400 font-medium">先サーブ</p>
+                  <p className="text-xs text-gray-400 font-medium">{t('annotator.ui.first_serve')}</p>
                   <div className="flex gap-1">
                     {([
                       { v: 'player_a' as const, label: 'A側' },
@@ -2872,7 +2872,7 @@ export function AnnotatorPage() {
                   </div>
 
                   {/* 視点変更 */}
-                  <p className="text-xs text-gray-400 font-medium pt-0.5">アナリスト視点</p>
+                  <p className="text-xs text-gray-400 font-medium pt-0.5">{t('annotator.ui.analyst_view')}</p>
                   <div className="flex gap-1">
                     {([
                       { v: 'bottom' as const, label: '⬇ 手前' },
@@ -2941,7 +2941,7 @@ export function AnnotatorPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold text-gray-200">キーボードショートカット</span>
+                  <span className="text-sm font-semibold text-gray-200">{t('annotator.ui.shortcuts_title')}</span>
                   <button
                     onClick={() => setShowLegendOverlay(false)}
                     className="text-gray-500 hover:text-white text-lg leading-none"
@@ -2950,24 +2950,24 @@ export function AnnotatorPage() {
                   </button>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-300">
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Space</kbd> 再生/停止</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">←/→</kbd> 1フレーム</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Shift+←/→</kbd> 10秒</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> ラリー開始/終了</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">N/C/P…G</kbd> ショット入力</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Q/W/E</kbd> BH/RH/NET属性</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> 戻す</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> キャンセル</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">1–6</kbd> エンドタイプ</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">A/B</kbd> 勝者確定</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">K</kbd> 見逃しラリー</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Backspace</kbd> 落点キャンセル</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Space</kbd> {t('annotator.ui.sc_play_pause')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">←/→</kbd> {t('annotator.ui.sc_frame')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Shift+←/→</kbd> {t('annotator.ui.sc_ten_sec')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> {t('annotator.ui.sc_rally_toggle')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">N/C/P…G</kbd> {t('annotator.ui.sc_shot_input')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Q/W/E</kbd> {t('annotator.ui.sc_attr')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> {t('annotator.ui.sc_undo')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> {t('annotator.ui.sc_cancel')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">1–6</kbd> {t('annotator.ui.sc_end_type')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">A/B</kbd> {t('annotator.ui.sc_winner')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">K</kbd> {t('annotator.ui.sc_missed')}</span>
+                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Backspace</kbd> {t('annotator.ui.sc_land_cancel')}</span>
                 </div>
                 <div className="border-t border-gray-700 pt-3">
-                  <div className="font-semibold text-gray-200 mb-2 text-xs">落点入力テンキー（land_zone中）</div>
+                  <div className="font-semibold text-gray-200 mb-2 text-xs">{t('annotator.ui.numpad_title_mobile')}</div>
                   <div className="flex gap-4 items-start">
                     <div className="space-y-1 flex-1">
-                      <div className="text-[10px] text-gray-400 mb-0.5">テンキー（推奨）</div>
+                      <div className="text-[10px] text-gray-400 mb-0.5">{t('annotator.ui.numpad_recommended')}</div>
                       <div className="grid grid-cols-3 gap-1">
                         {[
                           { k: '7', zone: 'BL' }, { k: '8', zone: 'BC' }, { k: '9', zone: 'BR' },
@@ -2980,8 +2980,8 @@ export function AnnotatorPage() {
                           </div>
                         ))}
                       </div>
-                      <div className="text-[11px] text-gray-500 mt-0.5">0/Num0 = スキップ　Esc/BS = キャンセル</div>
-                      <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">文字キー（ノートPC向け）</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">{t('annotator.ui.numpad_hint')}</div>
+                      <div className="text-[10px] text-gray-500 mt-1.5 mb-0.5">{t('annotator.ui.letters_laptop')}</div>
                       <div className="grid grid-cols-3 gap-1">
                         {[
                           { k: 'U', zone: 'BL' }, { k: 'I', zone: 'BC' }, { k: 'O', zone: 'BR' },
@@ -2996,7 +2996,7 @@ export function AnnotatorPage() {
                       </div>
                     </div>
                     <div className="flex-1 border-l border-gray-700 pl-3 space-y-1.5">
-                      <p className="text-xs text-gray-400 font-medium">コートチェンジ</p>
+                      <p className="text-xs text-gray-400 font-medium">{t('annotator.ui.court_change')}</p>
                       {[1, 2, 3].map((sn) => {
                         const isCurrent = store.currentSetNum === sn
                         const aPos = computePlayerASide(playerAStart, sn, sn === store.currentSetNum ? store.scoreA : 0, sn === store.currentSetNum ? store.scoreB : 0)
@@ -3011,7 +3011,7 @@ export function AnnotatorPage() {
                     </div>
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-600 text-center">背景クリックで閉じる</p>
+                <p className="text-[10px] text-gray-600 text-center">{t('annotator.ui.bg_click_close')}</p>
               </div>
             </div>
           )}
@@ -3121,7 +3121,7 @@ export function AnnotatorPage() {
                     ✓ 自動保存済 {new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 ) : (
-                  <span className="text-yellow-500 animate-pulse">● 未保存</span>
+                  <span className="text-yellow-500 animate-pulse">{t('annotator.ui.unsaved')}</span>
                 )
               ) : (
                 <span className="text-gray-600">—</span>
@@ -3264,7 +3264,7 @@ export function AnnotatorPage() {
                             {!isMobile && <span className="absolute top-0.5 right-1.5 text-[9px] font-mono opacity-60">{key}</span>}
                             {label} 得点
                             {suggested && pendingEndType && (
-                              <span className="block text-[9px] opacity-70">← 推定</span>
+                              <span className="block text-[9px] opacity-70">{t('annotator.ui.estimated_arrow')}</span>
                             )}
                           </button>
                         )
@@ -3417,7 +3417,7 @@ export function AnnotatorPage() {
                 >
                   {t('annotator.land_zone_skip')}
                   {isBasicMode && (
-                    <span className="ml-1 text-[10px] text-gray-600">（後から補完可能）</span>
+                    <span className="ml-1 text-[10px] text-gray-600">{t('annotator.ui.complete_later')}</span>
                   )}
                 </button>
                 {/* 打点（自動推定済み） */}
@@ -3909,7 +3909,7 @@ export function AnnotatorPage() {
                 <div className="text-gray-400 mb-1.5 font-medium flex items-center gap-1.5">
                   管理操作
                   {store.isRallyActive && (
-                    <span className="text-[10px] text-gray-600">（ラリー中は使用不可）</span>
+                    <span className="text-[10px] text-gray-600">{t('annotator.ui.unavailable_rally')}</span>
                   )}
                 </div>
 
@@ -4226,7 +4226,7 @@ export function AnnotatorPage() {
               </div>
             </div>
             <div className="px-4 pb-4 flex gap-2">
-              <button onClick={() => setShowScoreCorrection(false)} className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">キャンセル</button>
+              <button onClick={() => setShowScoreCorrection(false)} className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">{t('app.cancel')}</button>
               <button onClick={handleScoreCorrection} className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium">{t('skip_rally.apply')}</button>
             </div>
           </div>
@@ -4293,7 +4293,7 @@ export function AnnotatorPage() {
               </div>
             </div>
             <div className="px-4 pb-4 flex gap-2">
-              <button onClick={() => setShowForceSetEnd(false)} className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">キャンセル</button>
+              <button onClick={() => setShowForceSetEnd(false)} className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm">{t('app.cancel')}</button>
               <button onClick={handleForceSetEnd} className="flex-1 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-medium">{t('skip_rally.confirm_end')}</button>
             </div>
           </div>
