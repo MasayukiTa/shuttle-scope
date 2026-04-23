@@ -80,3 +80,43 @@
 - `python -c "import backend.main; ..."` → OK
 
 残: `paramiko-missing-host-key-validation` x4、`disabling-electron-websecurity` x2 は引き続き既知リスク許容。
+
+---
+
+## 追加対応: CI の失敗修正 + Scorecard TokenPermissions (同日, 後半)
+
+advanced CodeQL workflow と GitHub default setup が競合していたため、advanced workflow を正式に動かす決定。これに伴い CI 失敗 2 件 + Scorecard 関連の high 8 件を対応。
+
+### CI 失敗の修正
+| Workflow | 原因 | 対応 |
+|----------|------|------|
+| CodeQL Advanced | default setup と競合 (`cannot be processed when the default setup is enabled`) | `gh api --method PATCH repos/.../code-scanning/default-setup -f state=not-configured` で default setup 無効化 |
+| Microsoft Defender For Devops | SARIF upload 時に `Resource not accessible by integration` | `defender-for-devops.yml` の MSDO ジョブに `permissions: contents: read / security-events: write / actions: read` を追加 |
+
+### Scorecard TokenPermissionsID (high x8)
+advanced CodeQL が有効化されたことで Scorecard 由来の high alert が大量に可視化された。top-level permissions の欠落が主因。
+
+| Workflow | 対応 |
+|----------|------|
+| `bandit.yml` | top-level に `permissions: contents: read` 追加（job レベル write は SARIF upload に必須のため維持） |
+| `codeql.yml` | 同上 |
+| `defender-for-devops.yml` | 同上 |
+| `devskim.yml` | 同上 |
+| `eslint.yml` | 同上 |
+| `osv-scanner.yml` | top-level の `security-events: write` を job レベルへ移動、top-level は `contents: read` のみ |
+| `osv-scanner-pr.yml` | 同上（`pull-requests: read` も job レベルへ） |
+
+### 継続対応保留 (high)
+| Alert | 理由 |
+|-------|------|
+| `VulnerabilitiesID` x1 | Scorecard 集計値。xmldom bump 等で漸次減少。時間解決 |
+| `BranchProtectionID` x1 | リポジトリ設定 (main 保護ブランチ) の問題。GitHub UI で対応すべき |
+| `CodeReviewID` x1 | 過去 30 コミットの approval 率。PR ベース運用で漸次改善 |
+| `MaintainedID` x1 | リポジトリ作成から 90 日未満。時間解決 |
+| `bandit.yml:30` job-level `security-events: write` | SARIF upload 必須のため除去不可。Scorecard は write permission があるだけで flag するため本質的に解消不能 |
+| `paramiko` x4, `electron-websecurity` x2 | 既知リスク（前述） |
+
+### 次回 CI 実行時の期待
+- CodeQL Advanced: success
+- MS Defender For Devops: success
+- Scorecard: 継続 failure（high 残数は減少するが Branch/Code/Maintained で score 0 は不可避）

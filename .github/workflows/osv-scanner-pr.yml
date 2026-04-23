@@ -12,17 +12,17 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Scorecard TokenPermissions: top-level は read のみ、write は job レベル
 permissions:
-  # Read commit contents
   contents: read
-  # Read pull request metadata for the PR diff scan
-  pull-requests: read
-  # Upload SARIF results to the Security tab
-  security-events: write
 
 jobs:
   scan-pr:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      security-events: write
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v6

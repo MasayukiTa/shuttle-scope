@@ -16,6 +16,10 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Scorecard TokenPermissions: top-level は最小 read、write は job レベル
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: DevSkim
