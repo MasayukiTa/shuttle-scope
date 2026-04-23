@@ -23,6 +23,7 @@ import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
 import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
+import { AuditLogPage } from '@/pages/AuditLogPage'
 import { useTheme } from '@/hooks/useTheme'
 import { authLogout, authMe, checkHealth, publicInquiryUnreadCount } from '@/api/client'
 
@@ -241,6 +242,7 @@ function MainLayout() {
             <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerAnnotatePage /></PageAccessRoute>} />
             <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
+            <Route path="/audit-logs" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </ErrorBoundary>

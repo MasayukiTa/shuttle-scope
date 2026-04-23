@@ -107,6 +107,42 @@
       "login_failed": "ログインに失敗しました",
       "select_player": "選手を選択してください",
       "select_coach": "コーチを選択してください"
+    },
+    "password_change": {
+      "title": "パスワード変更",
+      "hint": "現在のパスワードと新しいパスワードを入力してください。変更後は他の端末のセッションは自動的にログアウトされます。",
+      "current": "現在のパスワード",
+      "new": "新しいパスワード",
+      "confirm": "新しいパスワード (確認)",
+      "submit": "パスワードを変更",
+      "submitting": "変更中...",
+      "mismatch": "新しいパスワードが一致しません",
+      "success": "パスワードを変更しました",
+      "requirements": "12 文字以上で、大文字・小文字・数字・記号を含めてください"
+    },
+    "admin_reset": {
+      "title": "パスワード強制リセット",
+      "hint": "選択したユーザのパスワードを一時的なものに差し替えます。リセット後は本人に安全な方法で伝達してください。",
+      "button": "一時パスワードを発行",
+      "submitting": "発行中...",
+      "result_title": "一時パスワード",
+      "copy": "クリップボードにコピー",
+      "copied": "コピーしました",
+      "close": "閉じる"
+    },
+    "audit_log": {
+      "title": "監査ログ",
+      "hint": "認証・アカウント操作の履歴を表示します (admin のみ)。",
+      "filter_action": "action フィルタ",
+      "filter_user": "user_id",
+      "limit": "件数",
+      "refresh": "再読込",
+      "column_time": "時刻",
+      "column_action": "アクション",
+      "column_user": "ユーザ",
+      "column_ip": "IP",
+      "column_details": "詳細",
+      "empty": "該当するログがありません"
     }
   },
   "condition": {

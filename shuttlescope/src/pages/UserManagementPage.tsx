@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check } from 'lucide-react'
+import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
-import { apiDelete, apiGet, apiPost, apiPut, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess } from '@/api/client'
+import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
@@ -108,6 +109,25 @@ export function UserManagementPage() {
 
   const { role: myRole } = useAuth()
   const isLight = useIsLightMode()
+  const { t } = useTranslation()
+  const [resetResult, setResetResult] = useState<{ username: string; password: string } | null>(null)
+  const [resetBusyId, setResetBusyId] = useState<number | null>(null)
+  const [copyDone, setCopyDone] = useState(false)
+
+  const handleResetPassword = async (u: UserRow) => {
+    if (!window.confirm(`${u.display_name || u.username} のパスワードを一時値にリセットしますか？`)) return
+    setResetBusyId(u.id)
+    setCopyDone(false)
+    try {
+      const res = await authAdminResetPassword(u.id)
+      setResetResult({ username: u.username, password: res.temporary_password })
+    } catch (err) {
+      const e = err as Error
+      window.alert(e.message || 'error')
+    } finally {
+      setResetBusyId(null)
+    }
+  }
 
   const [users, setUsers] = useState<UserRow[]>([])
   const [players, setPlayers] = useState<PlayerOption[]>([])
@@ -547,6 +567,16 @@ export function UserManagementPage() {
                         <button onClick={() => openEdit(u)} className={`${textMuted} hover:text-blue-500`}>
                           <Pencil size={14} />
                         </button>
+                        {myRole === 'admin' && (
+                          <button
+                            onClick={() => handleResetPassword(u)}
+                            disabled={resetBusyId === u.id}
+                            title={t('auth.admin_reset.title')}
+                            className={`${textMuted} hover:text-amber-500 disabled:opacity-50`}
+                          >
+                            <KeyRound size={14} />
+                          </button>
+                        )}
                         {canDelete && (
                           <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-red-500`}>
                             <Trash2 size={14} />
@@ -568,6 +598,39 @@ export function UserManagementPage() {
           </div>
         )}
       </div>
+
+      {resetResult && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className={`w-full max-w-md rounded-lg p-5 ${isLight ? 'bg-white text-gray-900' : 'bg-gray-800 text-white'}`}>
+            <h3 className="text-lg font-semibold mb-2">{t('auth.admin_reset.result_title')}</h3>
+            <p className={`text-xs mb-3 ${textMuted}`}>
+              {resetResult.username}
+            </p>
+            <div className={`font-mono text-sm break-all rounded px-3 py-2 mb-3 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
+              {resetResult.password}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(resetResult.password)
+                    setCopyDone(true)
+                  } catch { /* ignore */ }
+                }}
+                className={`px-3 py-1.5 rounded text-sm ${isLight ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-blue-700 text-white hover:bg-blue-600'}`}
+              >
+                {copyDone ? t('auth.admin_reset.copied') : t('auth.admin_reset.copy')}
+              </button>
+              <button
+                onClick={() => { setResetResult(null); setCopyDone(false) }}
+                className={`px-3 py-1.5 rounded text-sm ${isLight ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'}`}
+              >
+                {t('auth.admin_reset.close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
