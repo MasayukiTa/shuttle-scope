@@ -6,7 +6,9 @@
 # ─────────────────────────────────────────────────────────────
 
 # ── Ray クラスタ ──────────────────────────────────────────────
-ray[default]>=2.9
+ray[default]>=2.54.0         # GHSA-w4rh-fgx7-q63m / q279-jhrf-cc6v / q5fh-2hc8-f6rq 修正。
+                             # 未修正 CVE (GHSA-gx77-xgc2-4888 / 6wgj-66m2-xxp2) は
+                             # trusted network 内での運用前提でリスク受容（backend/osv-scanner.toml 参照）
 
 # ── ONNX 推論 (CPU のみ) ──────────────────────────────────────
 onnxruntime>=1.17.0

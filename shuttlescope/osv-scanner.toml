@@ -1,0 +1,18 @@
+# OSV-Scanner ignore 設定 (K10 worker ノード向け requirements_worker.txt 用)
+# backend/osv-scanner.toml と同じ方針。ray cluster を trusted network 内で運用する前提で
+# 未修正 CVE のリスクを受容する。
+
+[[IgnoredVulns]]
+id = "GHSA-gx77-xgc2-4888"
+reason = """
+Ray の新トークン認証がデフォルト無効な問題。
+ray cluster を trusted network 内 (Tailscale / プライベートサブネット等) に閉じて
+運用するため、外部からの未認証アクセスは不可。修正版が出たら再評価。
+"""
+
+[[IgnoredVulns]]
+id = "GHSA-6wgj-66m2-xxp2"
+reason = """
+Ray の jobs submission API 経由の任意コード実行問題（設計的制約）。
+dashboard / jobs submission API を外部に露出させない運用で無害化。
+"""
