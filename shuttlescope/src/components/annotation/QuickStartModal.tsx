@@ -16,15 +16,15 @@ interface Props {
   onStarted: (matchId: number) => void
 }
 
-const COMPETITION_TYPES = [
-  { value: 'official', label: '公式戦' },
-  { value: 'practice_match', label: '練習試合' },
-  { value: 'open_practice', label: '公開練習' },
-  { value: 'unknown', label: '不明' },
-] as const
-
 export function QuickStartModal({ onClose, onStarted }: Props) {
   const { t } = useTranslation()
+
+  const COMPETITION_TYPES = [
+    { value: 'official', label: t('quick_start.competition_official') },
+    { value: 'practice_match', label: t('quick_start.competition_practice_match') },
+    { value: 'open_practice', label: t('quick_start.competition_open_practice') },
+    { value: 'unknown', label: t('quick_start.competition_unknown') },
+  ] as const
 
   // 自チーム選手
   const [playerAId, setPlayerAId] = useState<number | ''>('')
@@ -164,12 +164,12 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                 label: p.name,
                 searchText: p.team ?? '',
                 prefix: p.is_target ? '★' : undefined,
-                suffix: p.team ? `（${p.team}）` : undefined,
+                suffix: p.team ? t('quick_start.team_suffix', { team: p.team }) : undefined,
               }))}
               value={playerAId === '' ? null : playerAId}
               onChange={(v) => setPlayerAId(v != null ? Number(v) : '')}
               emptyLabel={t('quick_start.select_player')}
-              placeholder="選手名で検索..."
+              placeholder={t('quick_start.player_search_placeholder')}
             />
           </div>
 
@@ -220,11 +220,11 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                             <span className="text-xs text-blue-300 bg-blue-900/30 px-1.5 rounded shrink-0">{p.team}</span>
                           )}
                           {p.needs_review && (
-                            <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">暫定</span>
+                            <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">{t('quick_start.provisional')}</span>
                           )}
                         </span>
                         {p.match_count ? (
-                          <span className="text-xs text-gray-400 shrink-0 ml-1">{p.match_count}試合</span>
+                          <span className="text-xs text-gray-400 shrink-0 ml-1">{t('quick_start.match_count', { count: p.match_count })}</span>
                         ) : null}
                       </button>
                     ))}
@@ -235,7 +235,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                         className="w-full text-left px-3 py-2 hover:bg-blue-700/30 text-sm flex items-center gap-2 text-blue-300 border-t border-gray-600"
                       >
                         <UserPlus size={12} className="shrink-0" />
-                        <span>「{opponentQuery.trim()}」を暫定登録して開始</span>
+                        <span>{t('quick_start.provisional_register_and_start', { name: opponentQuery.trim() })}</span>
                       </button>
                     )}
                   </>
@@ -248,14 +248,14 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
           {(opponentQuery.trim().length >= 1) && (
             <div>
               <label className="block text-sm text-gray-400 mb-1">
-                相手チーム名
-                <span className="ml-1 text-gray-600 text-xs">（同姓同名の識別に使用）</span>
+                {t('quick_start.opponent_team')}
+                <span className="ml-1 text-gray-600 text-xs">{t('quick_start.opponent_team_hint')}</span>
               </label>
               <input
                 list="opponent-teams-list"
                 value={opponentTeam}
                 onChange={(e) => setOpponentTeam(e.target.value)}
-                placeholder="例: ○○クラブ、△△大学"
+                placeholder={t('quick_start.opponent_team_placeholder')}
                 className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
                 autoComplete="off"
               />
@@ -265,7 +265,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                 ))}
               </datalist>
               {opponentId !== null && opponentTeam && (
-                <p className="text-[11px] text-blue-400 mt-0.5">既存選手のチーム（変更可）</p>
+                <p className="text-[11px] text-blue-400 mt-0.5">{t('quick_start.existing_team_editable')}</p>
               )}
             </div>
           )}
@@ -298,12 +298,12 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
           {/* アナリスト視点（コートのどちら側が自選手か） */}
           <div>
             <label className="block text-sm text-gray-400 mb-1">
-              セット1開始時の自選手の位置
+              {t('quick_start.analyst_side_label')}
             </label>
             <div className="flex gap-2">
               {[
-                { value: 'bottom' as const, label: '⬇ 画面下（アナリスト手前）', hint: '一般的な配置' },
-                { value: 'top' as const, label: '⬆ 画面上（奥側）' , hint: '' },
+                { value: 'bottom' as const, label: t('quick_start.analyst_side_bottom'), hint: t('quick_start.analyst_side_bottom_hint') },
+                { value: 'top' as const, label: t('quick_start.analyst_side_top'), hint: '' },
               ].map((opt) => (
                 <button
                   key={opt.value}

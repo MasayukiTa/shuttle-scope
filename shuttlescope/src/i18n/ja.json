@@ -955,7 +955,46 @@
     "start_now": "解析開始 ▶",
     "starting": "開始中...",
     "error": "試合開始に失敗しました。再度お試しください。",
-    "button": "リアルタイム解析"
+    "button": "リアルタイム解析",
+    "player_search_placeholder": "選手名で検索...",
+    "provisional": "暫定",
+    "match_count": "{{count}}試合",
+    "provisional_register_and_start": "「{{name}}」を暫定登録して開始",
+    "opponent_team": "相手チーム名",
+    "opponent_team_hint": "（同姓同名の識別に使用）",
+    "opponent_team_placeholder": "例: ○○クラブ、△△大学",
+    "existing_team_editable": "既存選手のチーム（変更可）",
+    "analyst_side_label": "セット1開始時の自選手の位置",
+    "analyst_side_bottom": "⬇ 画面下（アナリスト手前）",
+    "analyst_side_bottom_hint": "一般的な配置",
+    "analyst_side_top": "⬆ 画面上（奥側）",
+    "competition_official": "公式戦",
+    "competition_practice_match": "練習試合",
+    "competition_open_practice": "公開練習",
+    "competition_unknown": "不明",
+    "team_suffix": "（{{team}}）"
+  },
+  "review_queue": {
+    "title": "要確認ラリー",
+    "count_items": "{{count}} 件",
+    "none": "要確認なし",
+    "jump_title": "このラリーに移動",
+    "jump_btn": "移動",
+    "mark_complete_title": "レビュー完了としてマーク",
+    "mark_complete_btn": "完了",
+    "completed_section": "完了済み {{count}} 件",
+    "data_label": "データ:",
+    "quality_label": "品質:",
+    "land_pill": "着地",
+    "hitter_pill": "打者",
+    "reason": {
+      "low_frame_coverage": "フレーム不足",
+      "alignment_missing": "アライメントなし",
+      "landing_zone_ambiguous": "着地ゾーン不明確",
+      "hitter_undetected": "打者不明",
+      "multiple_near_players": "打者候補競合",
+      "role_state_unstable": "ロール不安定"
+    }
   },
   "review": {
     "title": "要レビュー",
@@ -1000,6 +1039,11 @@
     "below_net": "ネット下",
     "net_unknown": "不明",
     "recent_strokes": "直近ストローク",
+    "stroke_none": "ストローク未記録",
+    "team_tooltip_prefix": "所属:",
+    "missing_land_zone": "着地点なし",
+    "rally_end_select_hint": "得点者と終了種別を選択:",
+    "rally_point_suffix": "得点",
     "score": "スコア",
     "set": "セット",
     "rally": "ラリー",
@@ -1405,7 +1449,44 @@
     "stability": "安定度",
     "land_zone_fill_rate": "着地ゾーン補完率",
     "hitter_fill_rate": "打者補完率",
-    "avg_confidence": "平均信頼度"
+    "avg_confidence": "平均信頼度",
+    "panel": {
+      "land_zone": "着地",
+      "hitter": "打者",
+      "position": "ポジション",
+      "position_estimate": "ポジション推定",
+      "pos_front_short": "前",
+      "pos_back_short": "後",
+      "pos_unknown": "?",
+      "no_candidates_stroke": "候補なし",
+      "no_candidates_rally": "CV 候補なし",
+      "no_strokes": "このラリーにストローク候補がありません",
+      "review_title": "要確認理由",
+      "review_data": "データ:",
+      "review_quality": "品質:",
+      "avg_confidence_label": "平均信頼度",
+      "stability_label": "安定度",
+      "confidence_score_title": "信頼度スコア: {{score}}",
+      "show_reason_codes": "理由コードを表示",
+      "accept": "承認",
+      "accept_land_zone": "この着地ゾーンを承認",
+      "accept_hitter": "この打者候補を承認",
+      "reason_label": {
+        "low_frame_coverage": "フレーム数不足",
+        "alignment_missing": "アライメントデータなし",
+        "landing_zone_ambiguous": "着地ゾーン不明確",
+        "hitter_undetected": "打者検出不可",
+        "multiple_near_players": "打者候補競合",
+        "role_state_unstable": "ロール状態不安定",
+        "track_present_high_confidence": "高確信度トラック"
+      },
+      "source_title": {
+        "tracknet": "TrackNet シャトル軌跡",
+        "yolo": "YOLO プレイヤー検出",
+        "alignment": "YOLO+TrackNet アライメント",
+        "fusion": "YOLO+TrackNet 融合推定"
+      }
+    }
   },
   "download": {
     "start": "ダウンロード開始",
@@ -1552,7 +1633,11 @@
     "value_self_condition_poor": "不調",
     "value_self_timing_sharp": "切れている",
     "value_self_timing_normal": "普通",
-    "value_self_timing_off": "乱れ"
+    "value_self_timing_off": "乱れ",
+    "team_a": "チームA",
+    "team_b": "チームB",
+    "saving": "保存中…",
+    "save_failed": "保存に失敗しました"
   },
   "prediction": {
     "title": "試合予測",
@@ -1724,7 +1809,23 @@
     "group_active_camera": "アクティブカメラ",
     "group_camera_candidates": "カメラ候補",
     "group_remote_viewers": "リモートビューワー",
-    "group_other_devices": "その他"
+    "group_other_devices": "その他",
+    "share_modal_title": "セッション共有",
+    "share_modal_code_label": "コード:",
+    "share_modal_coach_view": "コーチビュー",
+    "share_modal_no_url": "URLなし",
+    "share_modal_copied": "コピー済",
+    "share_modal_same_pc_label": "同一PC用:",
+    "share_modal_password_unset": "未設定",
+    "share_modal_password_note": "参加デバイスはセッションコードとパスワードの両方が必要です",
+    "share_modal_camera_qr_hint": "iPhoneでQRを読み取るとパスワード不要で参加できます",
+    "share_modal_viewer_qr_hint": "PC・タブレットでQRを読み取ると映像受信できます"
+  },
+  "player_tracking": {
+    "bbox_cycle_title": "クリックで役割切り替え",
+    "detect_error_pill": "検出エラー（3秒後に閉じます）",
+    "no_person_detected": "人物が検出されませんでした（3秒後に自動で閉じます）",
+    "lost_suffix": "(ロスト)"
   },
   "camera_sender": {
     "state_a_title": "PCから開始指示を待っています",

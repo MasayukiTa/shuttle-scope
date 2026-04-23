@@ -26,7 +26,7 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
   if (recent.length === 0) {
     return (
       <div className="text-xs text-gray-500 italic text-center py-2">
-        ストローク未記録
+        {t('annotator.stroke_none')}
       </div>
     )
   }
@@ -42,8 +42,8 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
   }
 
   function resolveTeamTooltip(player: string): string | undefined {
-    if (player === 'player_a' || player === 'partner_a') return playerATeam ? `所属: ${playerATeam}` : undefined
-    if (player === 'player_b' || player === 'partner_b') return playerBTeam ? `所属: ${playerBTeam}` : undefined
+    if (player === 'player_a' || player === 'partner_a') return playerATeam ? `${t('annotator.team_tooltip_prefix')} ${playerATeam}` : undefined
+    if (player === 'player_b' || player === 'partner_b') return playerBTeam ? `${t('annotator.team_tooltip_prefix')} ${playerBTeam}` : undefined
     return undefined
   }
 
@@ -67,7 +67,7 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
           >
             <span title={teamTooltip}>{num}{playerLabel}:{shotLabel}{hitLabel}{landLabel}</span>
             {missingLand && (
-              <span className="text-[9px] text-yellow-700/80 border border-yellow-700/30 rounded px-1 shrink-0">着地点なし</span>
+              <span className="text-[9px] text-yellow-700/80 border border-yellow-700/30 rounded px-1 shrink-0">{t('annotator.missing_land_zone')}</span>
             )}
           </div>
         )

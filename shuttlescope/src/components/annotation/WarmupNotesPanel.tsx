@@ -291,7 +291,7 @@ export function WarmupNotesPanel({
       setSaved(true)
       setTimeout(() => onClose(), 800)
     } catch (err: any) {
-      setError(err?.message ?? '保存に失敗しました')
+      setError(err?.message ?? t('warmup.save_failed'))
       setSaving(false)
     }
   }
@@ -371,8 +371,8 @@ export function WarmupNotesPanel({
             ))}
           </div>
           <div className="flex justify-between text-[9px] text-gray-600 px-0.5">
-            <span>チームA</span>
-            <span>チームB</span>
+            <span>{t('warmup.team_a')}</span>
+            <span>{t('warmup.team_b')}</span>
           </div>
         </div>
       ) : (
@@ -545,7 +545,7 @@ export function WarmupNotesPanel({
               saving && 'opacity-60 cursor-not-allowed',
             )}
           >
-            {saving ? '保存中…' : saved ? `✓ ${t('warmup.saved')}` : t('warmup.save')}
+            {saving ? t('warmup.saving') : saved ? `✓ ${t('warmup.saved')}` : t('warmup.save')}
           </button>
           <button
             onClick={onClose}

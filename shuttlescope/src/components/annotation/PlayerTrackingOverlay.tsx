@@ -6,6 +6,7 @@
  *   tagging=true  (タグ付け): 1フレーム検出結果を表示し、クリックで選手を割り当てる。
  */
 import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 
 // ── 型定義 ────────────────────────────────────────────────────────────────────
@@ -103,6 +104,7 @@ export function PlayerTrackingOverlay({
   frameDetectError,
   frameDetectDebug,
 }: Props) {
+  const { t } = useTranslation()
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
 
   const nearestFrame = tagging ? null : findNearest(trackFrames, currentSec)
@@ -158,7 +160,7 @@ export function PlayerTrackingOverlay({
               onClick={(e) => { e.stopPropagation(); cycleAssign(i) }}
               onMouseEnter={() => setHoveredIdx(i)}
               onMouseLeave={() => setHoveredIdx(null)}
-              title="クリックで役割切り替え"
+              title={t('player_tracking.bbox_cycle_title')}
             >
               {/* 番号バッジ + 割当名 */}
               <div
@@ -179,7 +181,7 @@ export function PlayerTrackingOverlay({
               {frameDetectError ? (
                 <>
                   <span className="bg-red-900/90 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fca5a5' }}>
-                    検出エラー（3秒後に閉じます）
+                    {t('player_tracking.detect_error_pill')}
                   </span>
                   <span className="bg-black/80 text-[10px] px-2 py-1 rounded" style={{ color: '#fca5a5' }}>
                     {frameDetectError}
@@ -187,7 +189,7 @@ export function PlayerTrackingOverlay({
                 </>
               ) : (
                 <span className="bg-black/80 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fff' }}>
-                  人物が検出されませんでした（3秒後に自動で閉じます）
+                  {t('player_tracking.no_person_detected')}
                 </span>
               )}
               {/* 診断情報（検出ゼロ時のみ表示） */}
@@ -270,7 +272,7 @@ export function PlayerTrackingOverlay({
               >
                 <span className="w-2 h-2 rounded-full inline-block mr-1 align-middle" style={{ backgroundColor: color }} />
                 {displayName}
-                {p.lost && <span className="ml-1 opacity-60 text-[9px]">(ロスト)</span>}
+                {p.lost && <span className="ml-1 opacity-60 text-[9px]">{t('player_tracking.lost_suffix')}</span>}
               </div>
             )}
 

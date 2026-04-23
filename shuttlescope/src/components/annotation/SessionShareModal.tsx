@@ -141,9 +141,9 @@ export function SessionShareModal({
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className={`text-sm font-semibold ${titleColor}`}>セッション共有</p>
+            <p className={`text-sm font-semibold ${titleColor}`}>{t('lan_session.share_modal_title')}</p>
             <p className={`text-xs mt-0.5 ${subColor}`}>
-              コード:{' '}
+              {t('lan_session.share_modal_code_label')}{' '}
               <span className={`font-mono font-bold ${codeColor}`}>{sessionCode}</span>
             </p>
           </div>
@@ -153,13 +153,13 @@ export function SessionShareModal({
         </div>
 
         {/* ─── コーチ URL / QR ─────────────────── */}
-        <p className={`text-xs mb-2 ${sectionTitle}`}>コーチビュー</p>
+        <p className={`text-xs mb-2 ${sectionTitle}`}>{t('lan_session.share_modal_coach_view')}</p>
         {coachUrl ? (
           <div className="flex justify-center mb-3 bg-slate-100 rounded-lg p-2">
             <canvas ref={canvasRef} />
           </div>
         ) : (
-          <p className={`text-xs text-center mb-3 ${noteColor}`}>URLなし</p>
+          <p className={`text-xs text-center mb-3 ${noteColor}`}>{t('lan_session.share_modal_no_url')}</p>
         )}
         {coachUrl && (
           <div className="flex items-center gap-1.5 mb-2">
@@ -171,14 +171,14 @@ export function SessionShareModal({
               className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
             >
               {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? 'コピー済' : t('lan_session.password_copy')}
+              {copied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
             </button>
           </div>
         )}
         {/* 同一PC用 localhost URL（他デバイスへの QR とは別に常に表示） */}
         {localCoachUrl && (
           <div className="flex items-center gap-1.5 mb-4">
-            <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>同一PC用:</p>
+            <p className={`text-[10px] ${noteColor} whitespace-nowrap`}>{t('lan_session.share_modal_same_pc_label')}</p>
             <a
               href={localCoachUrl}
               target="_blank"
@@ -198,7 +198,7 @@ export function SessionShareModal({
               <span className={`flex-1 text-xs font-mono ${urlColor}`}>
                 {sessionPassword
                   ? showPassword ? sessionPassword : '••••••••'
-                  : <span className={noteColor}>未設定</span>
+                  : <span className={noteColor}>{t('lan_session.share_modal_password_unset')}</span>
                 }
               </span>
               {sessionPassword && (
@@ -216,7 +216,7 @@ export function SessionShareModal({
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
               >
                 {passwordCopied ? <Check size={12} /> : <Copy size={12} />}
-                {passwordCopied ? 'コピー済' : t('lan_session.password_copy')}
+                {passwordCopied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
               </button>
             )}
             <button
@@ -229,7 +229,7 @@ export function SessionShareModal({
             </button>
           </div>
           <p className={`text-[10px] mt-1 ${noteColor}`}>
-            参加デバイスはセッションコードとパスワードの両方が必要です
+            {t('lan_session.share_modal_password_note')}
           </p>
         </div>
 
@@ -252,11 +252,11 @@ export function SessionShareModal({
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
               >
                 {cameraUrlCopied ? <Check size={12} /> : <Copy size={12} />}
-                {cameraUrlCopied ? 'コピー済' : t('lan_session.password_copy')}
+                {cameraUrlCopied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
               </button>
             </div>
             <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
-              iPhoneでQRを読み取るとパスワード不要で参加できます
+              {t('lan_session.share_modal_camera_qr_hint')}
             </p>
           </div>
         )}
@@ -280,11 +280,11 @@ export function SessionShareModal({
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
               >
                 {viewerUrlCopied ? <Check size={12} /> : <Copy size={12} />}
-                {viewerUrlCopied ? 'コピー済' : t('lan_session.password_copy')}
+                {viewerUrlCopied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
               </button>
             </div>
             <p className={`text-[10px] text-center mt-2 ${noteColor}`}>
-              PC・タブレットでQRを読み取ると映像受信できます
+              {t('lan_session.share_modal_viewer_qr_hint')}
             </p>
           </div>
         )}

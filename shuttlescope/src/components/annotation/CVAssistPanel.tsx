@@ -23,34 +23,13 @@ interface Props {
   className?: string
 }
 
-// ── ラベル定義 ─────────────────────────────────────────────────────────────────
-
-const REASON_LABELS: Record<string, string> = {
-  low_frame_coverage:           'フレーム数不足',
-  alignment_missing:            'アライメントデータなし',
-  landing_zone_ambiguous:       '着地ゾーン不明確',
-  hitter_undetected:            '打者検出不可',
-  multiple_near_players:        '打者候補競合',
-  role_state_unstable:          'ロール状態不安定',
-  track_present_high_confidence:'高確信度トラック',
-}
+// ── ラベル定義（source はソート済みの短縮文字列のため非翻訳） ─────────────────
 
 const SOURCE_LABELS: Record<CVSource, string> = {
   tracknet:  'TN',
   yolo:      'YOLO',
   alignment: 'ALN',
   fusion:    'FUS',
-}
-
-const SOURCE_TITLES: Record<CVSource, string> = {
-  tracknet:  'TrackNet シャトル軌跡',
-  yolo:      'YOLO プレイヤー検出',
-  alignment: 'YOLO+TrackNet アライメント',
-  fusion:    'YOLO+TrackNet 融合推定',
-}
-
-function reasonLabel(code: string): string {
-  return REASON_LABELS[code] ?? code
 }
 
 // ── CVFieldChip: 単一フィールドの値・信頼度・ソース・バッジ ───────────────────
@@ -66,9 +45,10 @@ function CVFieldChip({
   onAccept?: () => void
   acceptTitle?: string
 }) {
+  const { t } = useTranslation()
   const confPct = Math.round(field.confidence_score * 100)
   const srcLabel = SOURCE_LABELS[field.source as CVSource] ?? field.source
-  const srcTitle = SOURCE_TITLES[field.source as CVSource] ?? field.source
+  const srcTitle = t(`cv_assist.panel.source_title.${field.source}`, { defaultValue: field.source })
 
   return (
     <div className="flex items-center gap-1 flex-wrap">
@@ -81,7 +61,7 @@ function CVFieldChip({
           'text-[9px] font-mono tabular-nums',
           confPct >= 72 ? 'text-emerald-400' : confPct >= 48 ? 'text-blue-400' : 'text-amber-400'
         )}
-        title={`信頼度スコア: ${field.confidence_score.toFixed(3)}`}
+        title={t('cv_assist.panel.confidence_score_title', { score: field.confidence_score.toFixed(3) })}
       >
         {confPct}%
       </span>
@@ -97,7 +77,7 @@ function CVFieldChip({
         <button
           onClick={onAccept}
           className="text-[9px] px-1 py-0.5 rounded bg-blue-500/30 hover:bg-blue-500/50 text-blue-200 transition-colors"
-          title={acceptTitle ?? '承認'}
+          title={acceptTitle ?? t('cv_assist.panel.accept')}
         >
           ✓
         </button>
@@ -122,6 +102,9 @@ function StrokeRow({
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
 
+  const reasonLabel = (code: string): string =>
+    t(`cv_assist.panel.reason_label.${code}`, { defaultValue: code })
+
   const hasAny = sc.land_zone || sc.hitter
   const allReasonCodes = [
     ...(sc.land_zone?.reason_codes ?? []),
@@ -130,6 +113,11 @@ function StrokeRow({
 
   // ユニーク理由コードのみ表示
   const uniqueReasons = [...new Set(allReasonCodes)]
+
+  const roleShort = (v: string) =>
+    v === 'front' ? t('cv_assist.panel.pos_front_short')
+      : v === 'back' ? t('cv_assist.panel.pos_back_short')
+      : t('cv_assist.panel.pos_unknown')
 
   return (
     <div
@@ -148,23 +136,23 @@ function StrokeRow({
 
         <div className="flex flex-col gap-0.5 flex-1 min-w-0">
           {!hasAny && (
-            <span className="text-slate-500 text-[10px]">候補なし</span>
+            <span className="text-slate-500 text-[10px]">{t('cv_assist.panel.no_candidates_stroke')}</span>
           )}
 
           {/* 着地ゾーン */}
           {sc.land_zone && (
             <CVFieldChip
-              label="着地"
+              label={t('cv_assist.panel.land_zone')}
               field={sc.land_zone}
               onAccept={onAcceptLandZone ? () => onAcceptLandZone(sc.stroke_num, sc.land_zone!.value) : undefined}
-              acceptTitle="この着地ゾーンを承認"
+              acceptTitle={t('cv_assist.panel.accept_land_zone')}
             />
           )}
 
           {/* 打者 */}
           {sc.hitter && (
             <CVFieldChip
-              label="打者"
+              label={t('cv_assist.panel.hitter')}
               field={{
                 ...sc.hitter,
                 value: sc.hitter.value === 'player_a'
@@ -172,16 +160,16 @@ function StrokeRow({
                   : t('annotator.player_b_label', 'B'),
               }}
               onAccept={onAcceptHitter ? () => onAcceptHitter(sc.stroke_num, sc.hitter!.value) : undefined}
-              acceptTitle="この打者候補を承認"
+              acceptTitle={t('cv_assist.panel.accept_hitter')}
             />
           )}
 
           {/* ダブルスロール */}
           {sc.front_back_role && (sc.front_back_role.player_a !== 'unclear' || sc.front_back_role.player_b !== 'unclear') && (
             <div className="text-[9px] text-slate-500 flex items-center gap-1 mt-0.5">
-              <span>ポジション</span>
-              <span>A:{sc.front_back_role.player_a === 'front' ? '前' : sc.front_back_role.player_a === 'back' ? '後' : '?'}</span>
-              <span>B:{sc.front_back_role.player_b === 'front' ? '前' : sc.front_back_role.player_b === 'back' ? '後' : '?'}</span>
+              <span>{t('cv_assist.panel.position')}</span>
+              <span>A:{roleShort(sc.front_back_role.player_a)}</span>
+              <span>B:{roleShort(sc.front_back_role.player_b)}</span>
               <span className="text-slate-600">
                 ({Math.round(sc.front_back_role.confidence * 100)}%)
               </span>
@@ -194,7 +182,7 @@ function StrokeRow({
           <button
             onClick={() => setExpanded((v) => !v)}
             className="text-amber-400/70 hover:text-amber-400 shrink-0 mt-0.5"
-            title="理由コードを表示"
+            title={t('cv_assist.panel.show_reason_codes')}
           >
             {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
           </button>
@@ -224,11 +212,16 @@ export function CVAssistPanel({
   onAcceptHitter,
   className,
 }: Props) {
+  const { t } = useTranslation()
+
+  const reasonLabel = (code: string): string =>
+    t(`cv_assist.panel.reason_label.${code}`, { defaultValue: code })
+
   if (!rallyCandidates) {
     return (
       <div className={clsx('text-slate-500 text-xs text-center py-3', className)}>
         <Info size={14} className="inline mr-1 opacity-50" />
-        CV 候補なし
+        {t('cv_assist.panel.no_candidates_rally')}
       </div>
     )
   }
@@ -245,13 +238,18 @@ export function CVAssistPanel({
     ['landing_zone_ambiguous', 'hitter_undetected', 'multiple_near_players', 'role_state_unstable'].includes(c)
   )
 
+  const dominantLabel = (v: string) =>
+    v === 'front' ? t('cv_assist.position_front')
+      : v === 'back' ? t('cv_assist.position_back')
+      : t('cv_assist.position_mixed')
+
   return (
     <div className={clsx('flex flex-col gap-1.5', className)}>
       {/* ─ サマリーバー ─ */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1 text-[10px] text-slate-400">
           <Zap size={11} className="text-emerald-400" />
-          <span>着地ゾーン</span>
+          <span>{t('cv_assist.panel.land_zone')}</span>
           <span className={clsx(
             'font-semibold ml-0.5',
             summary.land_zone_fill_rate >= 0.7 ? 'text-emerald-300' :
@@ -262,7 +260,7 @@ export function CVAssistPanel({
         </div>
         <div className="flex items-center gap-1 text-[10px] text-slate-400">
           <Zap size={11} className="text-blue-400" />
-          <span>打者</span>
+          <span>{t('cv_assist.panel.hitter')}</span>
           <span className={clsx(
             'font-semibold ml-0.5',
             summary.hitter_fill_rate >= 0.7 ? 'text-emerald-300' :
@@ -273,7 +271,7 @@ export function CVAssistPanel({
         </div>
         {summary.avg_confidence > 0 && (
           <div className="text-[10px] text-slate-500 ml-auto tabular-nums">
-            平均信頼度 {Math.round(summary.avg_confidence * 100)}%
+            {t('cv_assist.panel.avg_confidence_label')} {Math.round(summary.avg_confidence * 100)}%
           </div>
         )}
       </div>
@@ -281,26 +279,24 @@ export function CVAssistPanel({
       {/* ─ ダブルスロールシグナル ─ */}
       {rallyCandidates.front_back_role_signal && (
         <div className="text-[10px] text-slate-400 bg-white/5 rounded px-2 py-1 flex items-center gap-2 flex-wrap">
-          <span className="text-slate-500 shrink-0">ポジション推定</span>
+          <span className="text-slate-500 shrink-0">{t('cv_assist.panel.position_estimate')}</span>
           <span>
             A:
             <span className="font-semibold ml-0.5">
-              {rallyCandidates.front_back_role_signal.player_a_dominant === 'front' ? '前衛' :
-               rallyCandidates.front_back_role_signal.player_a_dominant === 'back'  ? '後衛' : '混合'}
+              {dominantLabel(rallyCandidates.front_back_role_signal.player_a_dominant)}
             </span>
           </span>
           <span>
             B:
             <span className="font-semibold ml-0.5">
-              {rallyCandidates.front_back_role_signal.player_b_dominant === 'front' ? '前衛' :
-               rallyCandidates.front_back_role_signal.player_b_dominant === 'back'  ? '後衛' : '混合'}
+              {dominantLabel(rallyCandidates.front_back_role_signal.player_b_dominant)}
             </span>
           </span>
           <span className={clsx(
             'ml-auto text-[9px] tabular-nums',
             rallyCandidates.front_back_role_signal.stability >= 0.65 ? 'text-emerald-400/70' : 'text-amber-400/70'
           )}>
-            安定度 {Math.round(rallyCandidates.front_back_role_signal.stability * 100)}%
+            {t('cv_assist.panel.stability_label')} {Math.round(rallyCandidates.front_back_role_signal.stability * 100)}%
           </span>
         </div>
       )}
@@ -310,17 +306,17 @@ export function CVAssistPanel({
         <div className="flex flex-col gap-0.5 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1">
           <div className="flex items-center gap-1 mb-0.5">
             <AlertTriangle size={10} className="text-amber-400 shrink-0" />
-            <span className="text-[9px] text-amber-400 font-semibold">要確認理由</span>
+            <span className="text-[9px] text-amber-400 font-semibold">{t('cv_assist.panel.review_title')}</span>
           </div>
           {dataAvailabilityReasons.length > 0 && (
             <div className="text-[9px] text-amber-300/80">
-              <span className="text-slate-500 mr-1">データ:</span>
+              <span className="text-slate-500 mr-1">{t('cv_assist.panel.review_data')}</span>
               {dataAvailabilityReasons.map(reasonLabel).join(' · ')}
             </div>
           )}
           {qualityReasons.length > 0 && (
             <div className="text-[9px] text-amber-300/80">
-              <span className="text-slate-500 mr-1">品質:</span>
+              <span className="text-slate-500 mr-1">{t('cv_assist.panel.review_quality')}</span>
               {qualityReasons.map(reasonLabel).join(' · ')}
             </div>
           )}
@@ -342,7 +338,7 @@ export function CVAssistPanel({
         </div>
       ) : (
         <div className="text-slate-500 text-[10px] text-center py-1">
-          このラリーにストローク候補がありません
+          {t('cv_assist.panel.no_strokes')}
         </div>
       )}
     </div>
