@@ -470,6 +470,10 @@ def set_auto_vacuum_mode(target_mode: int, eng=None) -> dict:
         return {"supported": False, "message": "SQLite 以外は対象外"}
 
     url_str = str(bind.url)
+    if ":memory:" in url_str:
+        # インメモリ DB は VACUUM/dispose するとテーブルが消えるため no-op
+        return {"supported": False, "message": "in-memory DB は対象外"}
+
     db_path = url_str.replace("sqlite:///", "").replace("sqlite://", "")
 
     mode_labels = {0: "OFF", 1: "FULL", 2: "INCREMENTAL"}
