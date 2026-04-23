@@ -37,4 +37,8 @@ def db_set_auto_vacuum(body: SetAutoVacuumBody):
     result = set_auto_vacuum_mode(mode_map[body.mode])
     if not result.get("supported"):
         raise HTTPException(status_code=400, detail="SQLite 以外は対象外です")
+    # Stack-trace-exposure 防止: 内部例外文字列を除去
+    if isinstance(result, dict):
+        for _k in ("error", "exception", "traceback"):
+            result.pop(_k, None)
     return result

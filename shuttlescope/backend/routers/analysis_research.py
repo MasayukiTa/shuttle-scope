@@ -1,5 +1,8 @@
 """analysis_research.py — research tier 解析エンドポイント"""
+import logging
 import math
+
+logger = logging.getLogger(__name__)
 from collections import defaultdict, Counter
 from datetime import date as DateType
 from typing import Optional
@@ -326,20 +329,33 @@ def get_interval_report(
 ):
     """H-001: セット間速報レポートをベイズ推定で生成する"""
     analyzer = BayesianRealTimeAnalyzer()
-    result = analyzer.generate_interval_report(match_id, completed_set_num, db)
+    try:
+        result = analyzer.generate_interval_report(match_id, completed_set_num, db)
+    except Exception:
+        logger.exception("interval_report generation failed")
+        return {"success": False, "error": "レポート生成に失敗しました"}
 
     if not result.get("success"):
-        return result
+        # Stack-trace-exposure 防止: 内部エラー詳細は返さない
+        logger.warning("interval_report returned failure")
+        return {"success": False, "error": "レポート生成に失敗しました"}
 
     # sample_size を計算して meta に付与
-    total_rallies = sum(
-        s.get("rally_count", 0) for s in result.get("data", {}).get("sets", [])
-    )
+    _sets = result.get("data", {}).get("sets", [])
+    total_rallies = sum(s.get("rally_count", 0) for s in _sets)
     confidence = check_confidence("descriptive_basic", total_rallies)
 
+    # Stack-trace-exposure 防止: 返却 data を必要フィールドのみに再構築
+    _data = result.get("data", {})
+    safe_data = {
+        "sets": _sets,
+        "summary": _data.get("summary"),
+        "match_id": _data.get("match_id"),
+        "completed_set_num": _data.get("completed_set_num"),
+    }
     return {
         "success": True,
-        "data": result["data"],
+        "data": safe_data,
         "meta": {"sample_size": total_rallies, "confidence": confidence},
     }
 

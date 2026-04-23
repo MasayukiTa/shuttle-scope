@@ -114,13 +114,18 @@ def tracknet_status():
     # ロード未試行の場合はここで試みる（ステータス確認時に初期化）
     if available and not loaded:
         loaded = inf.load()
+    # Stack-trace-exposure 防止: 例外テキストをそのまま返さず、汎用メッセージに置換
+    _load_err_detail = inf.get_load_error() if not loaded else None
+    if _load_err_detail:
+        import logging as _lg
+        _lg.getLogger(__name__).warning("tracknet load_error (sanitized): %s", _load_err_detail)
     return {
         "success": True,
         "data": {
             "available": available,
             "backend": inf.backend_name() if loaded else None,
             "loaded": loaded,
-            "load_error": inf.get_load_error() if not loaded else None,
+            "load_error": "モデルの読み込みに失敗しました" if _load_err_detail else None,
         },
     }
 

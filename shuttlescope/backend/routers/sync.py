@@ -30,6 +30,18 @@ from backend.routers.settings import _load_all as _load_settings
 import shutil
 from pathlib import Path
 
+import logging
+logger = logging.getLogger(__name__)
+
+def _sanitize_errors(errors):
+    """Stack-trace-exposure 防止: summary.errors 内の例外文字列を除去し、件数のみ返す。"""
+    if not errors:
+        return []
+    for e in errors:
+        logger.warning("import error (sanitized): %s", e)
+    return [f"{len(errors)} 件の内部エラーが発生しました"]
+
+
 from backend.db.models import SyncConflict, Match
 from backend.utils.auth import (
     get_auth,
@@ -234,7 +246,7 @@ async def preview_package(
                 "conflicts": summary.conflicts,
                 "conflict_log": summary.conflict_log,
             },
-            "errors": summary.errors,
+            "errors": _sanitize_errors(summary.errors),
         },
     }
 
@@ -267,7 +279,7 @@ async def import_package_endpoint(
             "deleted": summary.deleted,
             "conflicts": summary.conflicts,
             "conflict_log": summary.conflict_log,
-            "errors": summary.errors,
+            "errors": _sanitize_errors(summary.errors),
         },
     }
 
@@ -412,7 +424,7 @@ def import_from_cloud_path(
             "deleted": summary.deleted,
             "conflicts": summary.conflicts,
             "conflict_log": summary.conflict_log,
-            "errors": summary.errors,
+            "errors": _sanitize_errors(summary.errors),
         },
     }
 
@@ -426,6 +438,10 @@ async def validate_only(file: UploadFile = File(...), _ctx=Depends(require_analy
     if len(raw) > _MAX_IMPORT_BYTES:
         raise HTTPException(status_code=413, detail=f"ファイルサイズが上限（{_MAX_IMPORT_BYTES // 1024 // 1024} MB）を超えています")
     result = validate_package(raw)
+    # Stack-trace-exposure 防止: 例外文字列 (error) を汎用化
+    if isinstance(result, dict) and not result.get("valid") and "error" in result:
+        logger.warning("package validation failed (sanitized): %s", result.get("error"))
+        result = {**result, "error": "パッケージ検証に失敗しました"}
     return {"success": result["valid"], "data": result}
 
 
