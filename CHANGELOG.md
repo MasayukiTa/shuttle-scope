@@ -16,6 +16,45 @@ Read it together with:
 
 ## 2026-04-23
 
+### Phase B Authentication (B-1 〜 B-5) と Frontend 認証 UI
+
+- Refresh token rotation + reuse 検知 + chain revoke (`POST /api/auth/refresh`, `/logout`)。access token は短命 (15分) 化し、refresh token は一度使用で revoke される rotation 方式。reuse 検出時は該当ユーザの全 refresh token を chain revoke。
+- 15 分無操作による自動ログアウト (B-2) をフロント側に実装。
+- Self-service のパスワード変更 (`POST /api/auth/password`) と admin による強制リセット (`POST /api/auth/admin/reset-password`)。リセット時は一時パスワード発行 + 既存 refresh token 全 revoke。
+- 管理者向け audit log 一覧 API (`GET /api/auth/audit-logs`) と、フロント側の監査ログ閲覧ページ。
+- 認証 UI (パスワード変更画面 / admin リセット / 監査ログページ) を追加。
+
+### Router 単体テスト拡充 (Phase C2 / C3 / C4)
+
+- `db_maintenance` / `settings` / `network_diag` ルーターに対する unit test を追加 (計 20+ ケース)。TestClient ベースで lifespan・依存注入を含む実環境に近いパスを検証。
+
+### テスト安定化 (test pollution 根本対策)
+
+- `backend/db/database.py::set_auto_vacuum_mode()` がインメモリ DB 上で `bind.dispose()` を呼んで StaticPool を破壊する問題を修正 (`:memory:` URL を no-op で早期 return)。これにより `test_db_maintenance` 以降の 103 errors / 30 failures が解消。
+- `backend/config.settings` の singleton 差し替え (`cfg_mod.settings = cfg_mod.Settings()`) が `from backend.config import settings` を import 時にキャプチャしている router 群 (auth / network_diag 等) を古い instance に固定し、後続テストで BOOTSTRAP_ADMIN 関連の pollution を起こしていた問題を修正。`backend/benchmark/runner.py` と `backend/tests/test_benchmark_runner.py` を instance 置換から **in-place attribute 更新** に切り替え、`test_cv_factory` の `importlib.reload(backend.config)` も撤廃。
+- `backend/routers/settings.py` の import 時 `engine` キャプチャと `create_settings_table()` 実行が `conftest.py::test_engine` fixture の engine patch より前に走っていた問題を修正。各リクエストで `_ensure_settings_table(db)` を冪等実行する方式に変更。
+- `backend/routers/network_diag.py` を `_get_settings()` 経由の動的参照に書き換え、settings instance 差し替え時も LAN_MODE 切替が一貫するようにした。
+- `backend/main.py` の lifespan を `bootstrap_database(None, app_settings.DATABASE_URL)` に変更し、`db_module.engine` を動的解決。
+- 最終結果: `DATABASE_URL=sqlite:///:memory: pytest backend/tests/` が **670 passed, 4 skipped, 0 failed** (作業前: 30 failed + 103 errors)。CI (ubuntu-latest / windows-latest) 両方 green。
+
+### OSV 依存脆弱性対応 (Scorecard #1773)
+
+- `pytest>=8.4.0` → `>=9.0.3` (GHSA-6w46-j5rx-g56g)
+- `yt-dlp>=2025.1.15` → `>=2026.02.21` (GHSA-g3gw-q23r-pgqm netrc command injection)
+- `ray>=2.9` コメント pin → `>=2.54.0` に更新 (GHSA-w4rh-fgx7-q63m / q279-jhrf-cc6v / q5fh-2hc8-f6rq の 3 件を production install 時に回避)
+- ray の未修正 CVE 2 件 (GHSA-gx77-xgc2-4888 token auth デフォルト無効 / GHSA-6wgj-66m2-xxp2 jobs API RCE) は `shuttlescope/backend/osv-scanner.toml` を新設して trusted network 運用前提で ignore 登録。運用要件 (dashboard / jobs API を外部公開しない等) は `docs/validation/fix-osv-dependency-vulnerabilities.md` に明文化。
+
+### i18n 移行 (B1 / B2a / B3 / B4 / B5 相当)
+
+- `AnnotatorPage`, `SettingsPage` (~35 箇所), `MatchListPage`, `UserManagementPage`, `CourtHeatModal`, `DoublesAnalysis` のハードコーディング日本語を `src/i18n/ja.json` のキーに移行。
+- キー命名は `match.list.*`, `users.manage.*` など領域別に整理。
+
+### Validation ドキュメント
+
+- `shuttlescope/docs/validation/fix-set-auto-vacuum-memory-safe.md`
+- `shuttlescope/docs/validation/fix-test-pollution-settings-singleton.md`
+- `shuttlescope/docs/validation/fix-osv-dependency-vulnerabilities.md`
+
 ### Security Code Scanning Triage (Phase 1)
 
 - Dismissed 25 CodeQL alerts with explicit rationale after verifying mitigations or accepting residual risk.
