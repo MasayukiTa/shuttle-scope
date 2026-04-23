@@ -15,8 +15,8 @@ If you discover a security vulnerability in ShuttleScope, please **do not** open
 
 Instead, report it privately via one of:
 
-1. **GitHub Security Advisory** — preferred. Use the "Report a vulnerability" button on the repository's Security tab.
-2. **Email** — send details to the maintainer listed on the repository profile.
+1. **GitHub Security Advisory** — preferred. Submit via https://github.com/MasayukiTa/shuttle-scope/security/advisories/new (or click "Report a vulnerability" on the repository's Security tab).
+2. **Email** — send details to the maintainer contact listed on the GitHub profile: https://github.com/MasayukiTa
 
 Please include:
 
