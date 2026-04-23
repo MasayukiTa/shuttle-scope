@@ -7,8 +7,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 const PAGE_ACCESS_OPTIONS = [
-  { key: 'prediction', label: '予測・分析' },
-  { key: 'expert_labeler', label: '専門家ラベル' },
+  { key: 'prediction', labelKey: 'users.manage.page_access_prediction' },
+  { key: 'expert_labeler', labelKey: 'users.manage.page_access_expert_labeler' },
 ] as const
 
 interface UserRow {
@@ -37,11 +37,11 @@ interface FormState {
   team_name: string
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: '管理者',
-  analyst: 'アナリスト',
-  coach: 'コーチ',
-  player: '選手',
+const ROLE_KEYS: Record<string, string> = {
+  admin: 'users.manage.role.admin',
+  analyst: 'users.manage.role.analyst',
+  coach: 'users.manage.role.coach',
+  player: 'users.manage.role.player',
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -72,6 +72,7 @@ function SecretField(props: {
   textMuted: string
   inputCls: string
 }) {
+  const { t } = useTranslation()
   const [visible, setVisible] = useState(false)
 
   return (
@@ -93,8 +94,8 @@ function SecretField(props: {
           className={`absolute inset-y-0 right-0 flex items-center px-3 ${
             props.isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'
           }`}
-          title={visible ? '非表示' : '表示'}
-          aria-label={visible ? 'パスワードを隠す' : 'パスワードを表示'}
+          title={visible ? t('users.manage.pw_hide') : t('users.manage.pw_show')}
+          aria-label={visible ? t('users.manage.pw_aria_hide') : t('users.manage.pw_aria_show')}
         >
           {visible ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
@@ -115,7 +116,7 @@ export function UserManagementPage() {
   const [copyDone, setCopyDone] = useState(false)
 
   const handleResetPassword = async (u: UserRow) => {
-    if (!window.confirm(`${u.display_name || u.username} のパスワードを一時値にリセットしますか？`)) return
+    if (!window.confirm(t('users.manage.reset_confirm', { name: u.display_name || u.username }))) return
     setResetBusyId(u.id)
     setCopyDone(false)
     try {
@@ -155,10 +156,10 @@ export function UserManagementPage() {
 
   const credentialLabel = useMemo(() => {
     if (isPlayerRole) {
-      return editId != null ? 'パスワード / PIN を更新' : 'パスワード / PIN'
+      return editId != null ? t('users.manage.credential_player_update') : t('users.manage.credential_player_new')
     }
-    return editId != null ? 'パスワードを更新' : 'パスワード'
-  }, [editId, isPlayerRole])
+    return editId != null ? t('users.manage.credential_update') : t('users.manage.credential_new')
+  }, [editId, isPlayerRole, t])
 
   const filteredUsers = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase()
@@ -202,7 +203,7 @@ export function UserManagementPage() {
   const isSelfOnly = myRole === 'player'
 
   if (!myRole || myRole === '') {
-    return <div className="p-8 text-center text-gray-500">ユーザー管理の権限がありません</div>
+    return <div className="p-8 text-center text-gray-500">{t('users.manage.no_permission')}</div>
   }
 
   const openCreate = () => {
@@ -244,11 +245,11 @@ export function UserManagementPage() {
 
   const handleSave = async () => {
     if (!form.display_name.trim()) {
-      setError('表示名を入力してください')
+      setError(t('users.manage.validate_display_name'))
       return
     }
     if (!form.username.trim()) {
-      setError('ログインIDを入力してください')
+      setError(t('users.manage.validate_username'))
       return
     }
 
@@ -295,7 +296,7 @@ export function UserManagementPage() {
 
   const handleDelete = async (u: UserRow) => {
     const targetName = u.display_name ?? u.username
-    if (!window.confirm(`${targetName} を削除しますか？`)) return
+    if (!window.confirm(t('users.manage.delete_confirm', { name: targetName }))) return
     try {
       await apiDelete(`/auth/users/${u.id}`)
       await load()
@@ -308,12 +309,12 @@ export function UserManagementPage() {
     <div className="flex flex-col h-full">
       <div className={`shrink-0 px-6 py-4 border-b ${border} ${panelBg} flex items-center justify-between`}>
         <div>
-          <h1 className={`text-base font-semibold ${textMain}`}>ユーザー管理</h1>
+          <h1 className={`text-base font-semibold ${textMain}`}>{t('users.manage.title')}</h1>
           {isSelfOnly && (
-            <p className={`text-xs mt-0.5 ${textMuted}`}>自分のプロフィールを編集できます</p>
+            <p className={`text-xs mt-0.5 ${textMuted}`}>{t('users.manage.self_only_hint')}</p>
           )}
           {myRole === 'coach' && (
-            <p className={`text-xs mt-0.5 ${textMuted}`}>チームメンバーのみ表示・編集できます</p>
+            <p className={`text-xs mt-0.5 ${textMuted}`}>{t('users.manage.coach_hint')}</p>
           )}
         </div>
         {canCreate && (
@@ -322,7 +323,7 @@ export function UserManagementPage() {
             className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg"
           >
             <Plus size={14} />
-            ユーザー追加
+            {t('users.manage.add_user')}
           </button>
         )}
       </div>
@@ -337,24 +338,24 @@ export function UserManagementPage() {
         <div className={`mb-4 ${panelBg} border ${border} rounded-xl p-4`}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <div>
-              <label className={`block text-xs font-medium mb-1 ${textMuted}`}>検索</label>
+              <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.search')}</label>
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className={inputCls}
-                placeholder="表示名・ログインID・選手名で検索"
+                placeholder={t('users.manage.search_placeholder')}
               />
             </div>
             <div>
-              <label className={`block text-xs font-medium mb-1 ${textMuted}`}>並び順</label>
+              <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.sort')}</label>
               <select
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as SortKey)}
                 className={inputCls}
               >
-                <option value="display_name">表示名順</option>
-                <option value="username">ログインID順</option>
-                <option value="player_name">選手名順</option>
+                <option value="display_name">{t('users.manage.sort_display_name')}</option>
+                <option value="username">{t('users.manage.sort_username')}</option>
+                <option value="player_name">{t('users.manage.sort_player_name')}</option>
               </select>
             </div>
           </div>
@@ -364,7 +365,7 @@ export function UserManagementPage() {
           <div className={`mb-6 ${panelBg} border ${border} rounded-xl p-5`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-sm font-semibold ${textMain}`}>
-                {editId != null ? 'ユーザー編集' : '新規ユーザー追加'}
+                {editId != null ? t('users.manage.edit_title') : t('users.manage.create_title')}
               </h2>
               <button onClick={() => setShowForm(false)} className={textMuted}>
                 <X size={16} />
@@ -374,7 +375,7 @@ export function UserManagementPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {editId == null && canCreate ? (
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>ロール</label>
+                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.role_label')}</label>
                   <select
                     value={form.role}
                     onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
@@ -382,7 +383,7 @@ export function UserManagementPage() {
                   >
                     {['admin', 'analyst', 'coach', 'player'].map((r) => (
                       <option key={r} value={r}>
-                        {ROLE_LABELS[r]}
+                        {t(ROLE_KEYS[r])}
                       </option>
                     ))}
                   </select>
@@ -390,27 +391,27 @@ export function UserManagementPage() {
               ) : null}
 
               <div>
-                <label className={`block text-xs font-medium mb-1 ${textMuted}`}>表示名 *</label>
+                <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.display_name')}</label>
                 <input
                   value={form.display_name}
                   onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
                   className={inputCls}
-                  placeholder="山田 太郎"
+                  placeholder={t('users.manage.display_name_placeholder')}
                 />
               </div>
 
               {!isSelfOnly && (
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>ログインID *</label>
+                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.username_label')}</label>
                   <input
                     value={form.username}
                     onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
                     className={inputCls}
-                    placeholder="admin001"
+                    placeholder={t('users.manage.username_placeholder')}
                     disabled={isSelfOnly}
                   />
                   <p className={`mt-1 text-xs ${textMuted}`}>
-                    6文字以上20文字未満。英数字、`-`、`_` が使えます。
+                    {t('users.manage.username_hint')}
                   </p>
                 </div>
               )}
@@ -419,14 +420,14 @@ export function UserManagementPage() {
                 label={credentialLabel}
                 value={form.credential}
                 onChange={(value) => setForm((f) => ({ ...f, credential: value }))}
-                placeholder={isPlayerRole ? '例: 2468 または strong-pass' : '新しいパスワード'}
+                placeholder={isPlayerRole ? t('users.manage.credential_placeholder_player') : t('users.manage.credential_placeholder_default')}
                 autoComplete="new-password"
                 inputMode={isPlayerRole ? 'text' : undefined}
                 hint={
                   editId != null
-                    ? '空欄なら変更しません'
+                    ? t('users.manage.credential_hint_update')
                     : isPlayerRole
-                      ? '選手も通常のパスワードとして設定できます'
+                      ? t('users.manage.credential_hint_player_new')
                       : undefined
                 }
                 isLight={isLight}
@@ -436,25 +437,25 @@ export function UserManagementPage() {
 
               {isCoachRole ? (
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>チーム名</label>
+                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.team_name')}</label>
                   <input
                     value={form.team_name}
                     onChange={(e) => setForm((f) => ({ ...f, team_name: e.target.value }))}
                     className={inputCls}
-                    placeholder="ACT SAIKYO"
+                    placeholder={t('users.manage.team_name_placeholder')}
                   />
                 </div>
               ) : null}
 
               {isPlayerRole ? (
                 <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>選手紐付け</label>
+                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.player_link')}</label>
                   <select
                     value={form.player_id}
                     onChange={(e) => setForm((f) => ({ ...f, player_id: e.target.value }))}
                     className={inputCls}
                   >
-                    <option value="">未選択</option>
+                    <option value="">{t('users.manage.player_unselected')}</option>
                     {players.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -467,14 +468,14 @@ export function UserManagementPage() {
 
             {isPlayerRole && editId != null && !isSelfOnly ? (
               <div className={`mt-4 pt-4 border-t ${border}`}>
-                <p className={`text-xs font-semibold mb-2 ${textMain}`}>ページアクセス</p>
+                <p className={`text-xs font-semibold mb-2 ${textMain}`}>{t('users.manage.page_access')}</p>
                 <div className="space-y-3">
-                  {PAGE_ACCESS_OPTIONS.map(({ key, label }) => {
+                  {PAGE_ACCESS_OPTIONS.map(({ key, labelKey }) => {
                     const indiv = editPageAccess.includes(key)
                     const team = editTeamPageAccess.includes(key)
                     return (
                       <div key={key} className="flex flex-col gap-1">
-                        <span className={`text-xs font-medium ${textMuted}`}>{label}</span>
+                        <span className={`text-xs font-medium ${textMuted}`}>{t(labelKey)}</span>
                         <div className="flex flex-wrap gap-3">
                           <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
                             <input
@@ -486,7 +487,7 @@ export function UserManagementPage() {
                                 )
                               }
                             />
-                            個人
+                            {t('users.manage.individual')}
                           </label>
                           {editingTeamName ? (
                             <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
@@ -499,7 +500,7 @@ export function UserManagementPage() {
                                   )
                                 }
                               />
-                              チーム全体（{editingTeamName}）
+                              {t('users.manage.team_whole', { team: editingTeamName })}
                             </label>
                           ) : null}
                         </div>
@@ -517,31 +518,31 @@ export function UserManagementPage() {
                 className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded-lg"
               >
                 <Check size={14} />
-                {saving ? '保存中...' : '保存'}
+                {saving ? t('users.manage.saving') : t('users.manage.save')}
               </button>
               <button
                 onClick={() => setShowForm(false)}
                 className={`text-sm px-4 py-1.5 rounded-lg border ${border} ${textMuted}`}
               >
-                キャンセル
+                {t('users.manage.cancel')}
               </button>
             </div>
           </div>
         ) : null}
 
         {loading ? (
-          <div className={`text-sm ${textMuted}`}>読み込み中...</div>
+          <div className={`text-sm ${textMuted}`}>{t('users.manage.loading')}</div>
         ) : (
           <div className={`${panelBg} border ${border} rounded-xl overflow-hidden`}>
             <table className="w-full text-sm">
               <thead>
                 <tr className={`border-b ${border} text-left`}>
-                  <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>ロール</th>
-                  <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>表示名</th>
+                  <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>{t('users.manage.col_role')}</th>
+                  <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>{t('users.manage.col_display_name')}</th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>
-                    ログインID / チーム / 選手
+                    {t('users.manage.col_account')}
                   </th>
-                  <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>認証</th>
+                  <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>{t('users.manage.col_credential')}</th>
                   <th className="px-4 py-2.5" />
                 </tr>
               </thead>
@@ -550,17 +551,17 @@ export function UserManagementPage() {
                   <tr key={u.id} className={`border-b last:border-0 ${border} ${rowHover}`}>
                     <td className="px-4 py-2.5">
                       <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[u.role] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {ROLE_LABELS[u.role] ?? u.role}
+                        {ROLE_KEYS[u.role] ? t(ROLE_KEYS[u.role]) : u.role}
                       </span>
                     </td>
                     <td className={`px-4 py-2.5 font-medium ${textMain}`}>{u.display_name ?? '—'}</td>
                     <td className={`px-4 py-2.5 ${textMuted} text-xs hidden sm:table-cell`}>
                       <div>{u.username || '—'}</div>
-                      {u.role === 'coach' ? <div>Team: {u.team_name || '—'}</div> : null}
-                      {u.role === 'player' ? <div>Player: {u.player_name || '—'}</div> : null}
+                      {u.role === 'coach' ? <div>{t('users.manage.team_prefix')}: {u.team_name || '—'}</div> : null}
+                      {u.role === 'player' ? <div>{t('users.manage.player_prefix')}: {u.player_name || '—'}</div> : null}
                     </td>
                     <td className={`px-4 py-2.5 text-xs ${textMuted} hidden sm:table-cell`}>
-                      {u.has_credential ? '設定済み' : '未設定'}
+                      {u.has_credential ? t('users.manage.credential_set') : t('users.manage.credential_unset')}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2 justify-end">
@@ -589,7 +590,7 @@ export function UserManagementPage() {
                 {filteredUsers.length === 0 ? (
                   <tr>
                     <td colSpan={5} className={`px-4 py-8 text-center ${textMuted} text-sm`}>
-                      {searchTerm.trim() ? '該当するユーザーが見つかりません' : 'ユーザーが登録されていません'}
+                      {searchTerm.trim() ? t('users.manage.empty_search') : t('users.manage.empty_all')}
                     </td>
                   </tr>
                 ) : null}
