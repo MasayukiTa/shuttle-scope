@@ -19,6 +19,7 @@ import { PredictionPage } from '@/pages/PredictionPage'
 import { ExpertLabelerPage } from '@/pages/ExpertLabelerPage'
 import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import { useAuth } from '@/hooks/useAuth'
+import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
 import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
@@ -261,9 +262,20 @@ function ThemeApplier({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+const IDLE_LOGOUT_MS = 15 * 60 * 1000
+
 function ProtectedMainRoute() {
   const { token, role, setSession, clearRole } = useAuth()
   const [checkingAuth, setCheckingAuth] = useState(true)
+
+  useIdleLogout({
+    enabled: !!token,
+    timeoutMs: IDLE_LOGOUT_MS,
+    onIdle: () => {
+      authLogout().catch(() => { /* ignore */ })
+      clearRole()
+    },
+  })
 
   useEffect(() => {
     let cancelled = false
