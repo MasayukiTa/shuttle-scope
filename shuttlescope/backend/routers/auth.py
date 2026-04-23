@@ -226,6 +226,7 @@ from backend.utils.jwt_utils import (
     persist_refresh_token,
     rotate_refresh_token,
     revoke_refresh_token_by_plain,
+    revoke_all_refresh_tokens_for_user,
 )
 
 # ── Pydantic スキーマ ─────────────────────────────────────────────────────────
@@ -646,6 +647,81 @@ def refresh(req: RefreshRequest, request: Request, db: Session = Depends(get_db)
     ip = _get_ip(request)
     log_access(db, "token_refresh", user_id=user.id, ip_addr=ip)
     return RefreshResponse(access_token=access, refresh_token=rotated["new_token"])
+
+
+# ── パスワード変更 / 管理者リセット ───────────────────────────────────────────
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class PasswordResetResponse(BaseModel):
+    temporary_password: str
+
+
+def _generate_temp_password() -> str:
+    """ポリシーを満たす一時パスワードを生成 (12 文字以上、英大小/数字/記号を含む)。"""
+    import secrets as _secrets
+    symbols = "!@#$%^&*-_=+"
+    alphabet_lower = "abcdefghijklmnopqrstuvwxyz"
+    alphabet_upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    digits = "0123456789"
+    # 各カテゴリから最低 1 文字ずつ
+    pick = [
+        _secrets.choice(alphabet_lower),
+        _secrets.choice(alphabet_upper),
+        _secrets.choice(digits),
+        _secrets.choice(symbols),
+    ]
+    pool = alphabet_lower + alphabet_upper + digits + symbols
+    pick += [_secrets.choice(pool) for _ in range(9)]  # 計 13 文字
+    _secrets.SystemRandom().shuffle(pick)
+    return "".join(pick)
+
+
+@router.post("/password")
+def change_password(req: PasswordChangeRequest, request: Request, db: Session = Depends(get_db)):
+    """認証済みユーザが自身のパスワードを変更する。current_password の検証必須。"""
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not ctx.role or not ctx.user_id:
+        raise HTTPException(status_code=401, detail="not logged in")
+
+    user = db.get(User, ctx.user_id)
+    if not user or not user.hashed_credential:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    if not _verify_password(req.current_password, user.hashed_credential):
+        ip = _get_ip(request)
+        log_access(db, "password_change_failed", user_id=user.id, ip_addr=ip,
+                   details={"reason": "current_password_mismatch"})
+        raise HTTPException(status_code=401, detail="現在のパスワードが正しくありません")
+
+    _validate_password_strength(req.new_password)
+    user.hashed_credential = _hash_password(req.new_password)
+    db.commit()
+    # 既存 refresh token を全失効させ、再ログインを要求
+    revoke_all_refresh_tokens_for_user(user.id)
+    log_access(db, "password_changed", user_id=user.id, ip_addr=_get_ip(request))
+    return {"success": True}
+
+
+@router.post("/users/{target_id}/reset-password", response_model=PasswordResetResponse)
+def admin_reset_password(target_id: int, request: Request, db: Session = Depends(get_db)):
+    """管理者が指定ユーザの一時パスワードを発行する。ログイン後の速やかな変更が前提。"""
+    _require_admin(request)
+    user = db.get(User, target_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    temp = _generate_temp_password()
+    user.hashed_credential = _hash_password(temp)
+    user.failed_attempts = 0
+    user.locked_until = None
+    db.commit()
+    revoke_all_refresh_tokens_for_user(user.id)
+    log_access(db, "password_reset_by_admin", details={"target_user_id": target_id})
+    return PasswordResetResponse(temporary_password=temp)
 
 
 # ── /me ──────────────────────────────────────────────────────────────────────
