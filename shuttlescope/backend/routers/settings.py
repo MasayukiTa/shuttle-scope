@@ -5,16 +5,38 @@ TrackNet設定など再起動後も保持すべき設定に使用。
 import json
 import socket
 import uuid as _uuid_mod
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.db import database as _db_module
 from backend.db.database import get_db
-from backend.utils.auth import require_analyst
+from backend.utils.auth import require_analyst, get_auth
 
 router = APIRouter()
+
+# 機密扱いの設定キー。admin / analyst 以外には値を返さない。
+# (ngrok/TURN 認証情報、Webhook URL 等が player / coach の画面で参照できると
+#  アカウント情報漏洩・SSRF 原資になる)
+_SENSITIVE_SETTING_KEYS = {
+    "ngrok_authtoken",
+    "turn_credential",
+    "turn_username",
+    "turn_url",
+    "ss_notify_webhook_url",
+}
+
+
+def _redact_sensitive(data: dict, ctx) -> dict:
+    """admin / analyst 以外には機密キーを隠す（空文字に差し替え）"""
+    if ctx.is_admin or ctx.is_analyst:
+        return data
+    redacted = dict(data)
+    for k in _SENSITIVE_SETTING_KEYS:
+        if k in redacted and redacted[k]:
+            redacted[k] = ""
+    return redacted
 
 
 # 設定テーブル DDL（app_settings）。import 時に engine を固定してしまうと、
@@ -87,8 +109,14 @@ def _load_all(db: Session) -> dict:
 
 
 @router.get("/settings")
-def get_settings(db: Session = Depends(get_db)):
-    """全設定を返す（未設定キーはデフォルト値）"""
+def get_settings(request: Request, db: Session = Depends(get_db)):
+    """全設定を返す（未設定キーはデフォルト値）。
+
+    機密キー（認証情報・Webhook URL 等）は admin / analyst 以外には
+    空文字で返す（値の存在自体は DEFAULT_SETTINGS で公開されるが、
+    実値は漏らさない）。
+    """
+    ctx = get_auth(request)
     _ensure_settings_table(db)
     data = _load_all(db)
     # sync_device_id が未設定なら自動生成して永続化
@@ -100,7 +128,7 @@ def get_settings(db: Session = Depends(get_db)):
         )
         db.commit()
         data["sync_device_id"] = new_id
-    return {"success": True, "data": data}
+    return {"success": True, "data": _redact_sensitive(data, ctx)}
 
 
 @router.put("/settings")

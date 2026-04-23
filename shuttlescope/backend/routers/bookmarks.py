@@ -10,17 +10,22 @@
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import EventBookmark, Match
+from backend.utils.auth import require_match_scope as _require_match_scope
 from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 
 router = APIRouter()
 
 VALID_TYPES = {"manual", "coach_request", "auto_stat", "clip_request"}
+# coach_request はコーチのみ（WebSocket ブロードキャスト発火権限を制限）
+_COACH_ONLY_TYPES = {"coach_request"}
+# auto_stat は解析バックエンド（analyst/admin）のみが自動生成で付ける
+_ANALYST_ONLY_TYPES = {"auto_stat"}
 
 
 class BookmarkCreate(BaseModel):
@@ -33,12 +38,23 @@ class BookmarkCreate(BaseModel):
 
 
 @router.post("/bookmarks", status_code=201)
-def create_bookmark(body: BookmarkCreate, db: Session = Depends(get_db)):
+def create_bookmark(body: BookmarkCreate, request: Request, db: Session = Depends(get_db)):
     """ブックマーク追加"""
-    if not db.get(Match, body.match_id):
+    match = db.get(Match, body.match_id)
+    if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     if body.bookmark_type not in VALID_TYPES:
         raise HTTPException(status_code=422, detail=f"bookmark_type は {VALID_TYPES} のいずれかを指定してください")
+
+    ctx = _require_match_scope(request, match, db)
+    # coach_request は coach / analyst / admin のみ（WS ブロードキャスト発火の悪用を防ぐ）。
+    # analyst も許可するのは、ローカル Electron のアナリストがコーチ視点の
+    # クリップ要求を代行投入できるようにするため。
+    if body.bookmark_type in _COACH_ONLY_TYPES and not (ctx.is_coach or ctx.is_analyst or ctx.is_admin):
+        raise HTTPException(status_code=403, detail="coach_request はコーチ / analyst のみ作成できます")
+    # auto_stat は analyst / admin のみ（自動統計ラベルのなりすまし防止）
+    if body.bookmark_type in _ANALYST_ONLY_TYPES and not (ctx.is_analyst or ctx.is_admin):
+        raise HTTPException(status_code=403, detail="auto_stat は analyst のみ作成できます")
 
     bm = EventBookmark(**body.model_dump())
     db.add(bm)
@@ -73,12 +89,17 @@ def create_bookmark(body: BookmarkCreate, db: Session = Depends(get_db)):
 @router.get("/bookmarks")
 def list_bookmarks(
     match_id: int,
+    request: Request,
     bookmark_type: Optional[str] = None,
     reviewed_only: bool = False,
     unreviewed_only: bool = False,
     db: Session = Depends(get_db),
 ):
     """ブックマーク一覧（レビューキューとして使用）"""
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _require_match_scope(request, match, db)
     q = db.query(EventBookmark).filter(EventBookmark.match_id == match_id, EventBookmark.deleted_at.is_(None))
     if bookmark_type:
         q = q.filter(EventBookmark.bookmark_type == bookmark_type)
@@ -91,11 +112,15 @@ def list_bookmarks(
 
 
 @router.patch("/bookmarks/{bookmark_id}/reviewed")
-def mark_reviewed(bookmark_id: int, db: Session = Depends(get_db)):
+def mark_reviewed(bookmark_id: int, request: Request, db: Session = Depends(get_db)):
     """確認済みマーク"""
     bm = db.get(EventBookmark, bookmark_id)
     if not bm:
         raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
+    match = db.get(Match, bm.match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _require_match_scope(request, match, db)
     bm.is_reviewed = True
     touch_sync_metadata(bm, device_id=get_device_id(db))
     db.commit()
@@ -103,10 +128,18 @@ def mark_reviewed(bookmark_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/bookmarks/{bookmark_id}")
-def delete_bookmark(bookmark_id: int, db: Session = Depends(get_db)):
+def delete_bookmark(bookmark_id: int, request: Request, db: Session = Depends(get_db)):
     bm = db.get(EventBookmark, bookmark_id)
     if not bm or bm.deleted_at is not None:
         raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
+    match = db.get(Match, bm.match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    ctx = _require_match_scope(request, match, db)
+    # player は削除不可（他者の自動統計等を消すのを防ぐ）。coach は削除可だが
+    # analyst / admin 以外は自チームスコープ内のみ（_require_match_scope で確認済み）。
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="このブックマークを削除する権限がありません")
     from datetime import datetime
     bm.deleted_at = datetime.utcnow()
     touch_sync_metadata(bm, device_id=get_device_id(db))

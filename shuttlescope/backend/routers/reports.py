@@ -3,12 +3,13 @@ import io
 from collections import defaultdict
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Match, GameSet, Rally, Stroke, Player
+from backend.utils.auth import check_export_player_scope, get_auth
 from backend.utils.confidence import check_confidence
 
 # matplotlib は使用時に遅延ロード（起動時間短縮のため）
@@ -140,8 +141,11 @@ def _player_role_in_match(match: Match, player_id: int) -> str | None:
 # ---------------------------------------------------------------------------
 
 @router.get("/reports/scouting")
-def get_scouting_report(player_id: int, db: Session = Depends(get_db)):
-    """I-001: スカウティングレポートを生成する（reportlab があればPDF）"""
+def get_scouting_report(player_id: int, request: Request, db: Session = Depends(get_db)):
+    """I-001: スカウティングレポートを生成する（reportlab があればPDF）。
+    player は自分のみ、coach は同チーム選手のみ閲覧可能（analyst / admin は無制限）。"""
+    ctx = get_auth(request)
+    check_export_player_scope(ctx, player_id, db)
     player = db.get(Player, player_id)
     if not player:
         return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
@@ -331,8 +335,11 @@ def get_scouting_report(player_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @router.get("/reports/player_growth")
-def get_player_growth_report(player_id: int, db: Session = Depends(get_db)):
-    """I-002: 選手向けの成長レポートを生成する（禁止ワードをサニタイズ済み）"""
+def get_player_growth_report(player_id: int, request: Request, db: Session = Depends(get_db)):
+    """I-002: 選手向けの成長レポートを生成する（禁止ワードをサニタイズ済み）。
+    player は自分のみ、coach は同チーム選手のみ閲覧可能。"""
+    ctx = get_auth(request)
+    check_export_player_scope(ctx, player_id, db)
     player = db.get(Player, player_id)
     if not player:
         return {"success": False, "error": f"選手ID {player_id} が見つかりません"}

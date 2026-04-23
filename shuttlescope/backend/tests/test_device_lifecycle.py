@@ -44,7 +44,7 @@ def _make_match(db) -> Match:
 def lifecycle_client(db_session):
     """セッション作成済みクライアント"""
     app.dependency_overrides[get_db] = lambda: db_session
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-Role": "analyst"})
 
     match = _make_match(db_session)
     db_session.commit()

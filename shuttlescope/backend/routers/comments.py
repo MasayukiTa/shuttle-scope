@@ -5,12 +5,13 @@
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Comment, Match
+from backend.utils.auth import get_auth, require_match_scope as _require_match_scope
 from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 
 router = APIRouter()
@@ -19,7 +20,6 @@ router = APIRouter()
 class CommentCreate(BaseModel):
     match_id: int
     text: str
-    author_role: str = "analyst"
     session_id: Optional[int] = None
     set_id: Optional[int] = None
     rally_id: Optional[int] = None
@@ -28,14 +28,21 @@ class CommentCreate(BaseModel):
 
 
 @router.post("/comments", status_code=201)
-def create_comment(body: CommentCreate, db: Session = Depends(get_db)):
-    """コメント投稿"""
-    if not db.get(Match, body.match_id):
+def create_comment(body: CommentCreate, request: Request, db: Session = Depends(get_db)):
+    """コメント投稿。author_role はサーバ側で JWT から決定しクライアント入力を無視する。"""
+    match = db.get(Match, body.match_id)
+    if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    ctx = _require_match_scope(request, match, db)
 
-    comment = Comment(**body.model_dump())
+    # author_role は必ず認証済みコンテキストから決定する（なりすまし防止）
+    author_role = ctx.role or "unknown"
+    data = body.model_dump()
+    data["author_role"] = author_role
+
+    comment = Comment(**data)
     db.add(comment)
-    payload = {"match_id": body.match_id, "text": body.text, "author_role": body.author_role}
+    payload = {"match_id": body.match_id, "text": body.text, "author_role": author_role}
     touch_sync_metadata(comment, payload_like=payload, device_id=get_device_id(db))
     db.commit()
     db.refresh(comment)
@@ -68,11 +75,16 @@ def create_comment(body: CommentCreate, db: Session = Depends(get_db)):
 @router.get("/comments")
 def list_comments(
     match_id: int,
+    request: Request,
     rally_id: Optional[int] = None,
     flagged_only: bool = False,
     db: Session = Depends(get_db),
 ):
-    """コメント一覧（match_id 必須）"""
+    """コメント一覧（match_id 必須）。match スコープ認可を適用する。"""
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _require_match_scope(request, match, db)
     q = db.query(Comment).filter(Comment.match_id == match_id, Comment.deleted_at.is_(None))
     if rally_id is not None:
         q = q.filter(Comment.rally_id == rally_id)
@@ -83,11 +95,18 @@ def list_comments(
 
 
 @router.patch("/comments/{comment_id}/flag")
-def toggle_flag(comment_id: int, db: Session = Depends(get_db)):
-    """重要フラグのトグル"""
+def toggle_flag(comment_id: int, request: Request, db: Session = Depends(get_db)):
+    """重要フラグのトグル。match スコープ認可を適用する。"""
     comment = db.get(Comment, comment_id)
     if not comment:
         raise HTTPException(status_code=404, detail="コメントが見つかりません")
+    match = db.get(Match, comment.match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    ctx = _require_match_scope(request, match, db)
+    # player は他人のコメントを flag できない
+    if ctx.is_player and comment.author_role != "player":
+        raise HTTPException(status_code=403, detail="このコメントを変更する権限がありません")
     comment.is_flagged = not comment.is_flagged
     touch_sync_metadata(comment, device_id=get_device_id(db))
     db.commit()
@@ -95,10 +114,18 @@ def toggle_flag(comment_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/comments/{comment_id}")
-def delete_comment(comment_id: int, db: Session = Depends(get_db)):
+def delete_comment(comment_id: int, request: Request, db: Session = Depends(get_db)):
     comment = db.get(Comment, comment_id)
     if not comment or comment.deleted_at is not None:
         raise HTTPException(status_code=404, detail="コメントが見つかりません")
+    match = db.get(Match, comment.match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    ctx = _require_match_scope(request, match, db)
+    # player / coach は自分（同ロール）のコメントのみ削除可能、analyst / admin は全て削除可能
+    if not (ctx.is_admin or ctx.is_analyst):
+        if comment.author_role != ctx.role:
+            raise HTTPException(status_code=403, detail="このコメントを削除する権限がありません")
     from datetime import datetime
     comment.deleted_at = datetime.utcnow()
     touch_sync_metadata(comment, device_id=get_device_id(db))
