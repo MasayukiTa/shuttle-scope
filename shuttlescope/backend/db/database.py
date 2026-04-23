@@ -193,6 +193,9 @@ def add_columns_if_missing(eng) -> None:
         ("users", "locked_until",    "TEXT"),
         ("users", "totp_secret",     "VARCHAR(64)"),
         ("users", "totp_enabled",    "INTEGER DEFAULT 0"),
+        # 監査ログ改ざん検知: ハッシュチェーン
+        ("access_logs", "prev_hash", "VARCHAR(64)"),
+        ("access_logs", "row_hash",  "VARCHAR(64)"),
     ]
     with eng.connect() as conn:
         for table, col, col_type in new_cols:

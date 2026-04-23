@@ -1054,6 +1054,15 @@ def list_audit_logs(
     return {"success": True, "data": [e.model_dump() for e in entries]}
 
 
+@router.get("/audit-logs/verify")
+def verify_audit_logs(request: Request, db: Session = Depends(get_db)):
+    """admin のみ。access_logs のハッシュチェーンを再計算し整合性を返す。"""
+    _require_admin(request)
+    from backend.utils.access_log import verify_chain
+    result = verify_chain(db)
+    return {"success": True, "data": result}
+
+
 # ── ページアクセス付与管理 ───────────────────────────────────────────────────
 
 class PageAccessBody(BaseModel):
