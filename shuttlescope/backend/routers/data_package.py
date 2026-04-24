@@ -210,11 +210,18 @@ def export_package(match_id: int, request: Request, db: Session = Depends(get_db
     opp_name = (opp.name if opp else "opponent").replace(" ", "_").replace("/", "-")[:20]
     filename = f"match_{date_str}_vs_{opp_name}.json"
 
+    # HTTP ヘッダは latin-1 限定なので RFC 5987 形式で UTF-8 ファイル名を提供する。
+    # ASCII フォールバック名と filename*=UTF-8''... の両方を含めて旧・新ブラウザ両対応。
+    from urllib.parse import quote as _urlquote
+    ascii_fallback = filename.encode("ascii", errors="replace").decode("ascii").replace("?", "_")
+    encoded = _urlquote(filename, safe="")
+    disposition = f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
+
     body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
     return Response(
         content=body,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": disposition},
     )
 
 
