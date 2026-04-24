@@ -265,6 +265,339 @@ class TestSafePath:
             safe_path(tmp_path, "/etc/passwd")
 
 
+# ─── 権限昇格防御: player による mass assignment / silent drop の拒否 ─────────
+
+class TestPrivEscalationBlock:
+    def _player_token(self, db_session):
+        from backend.routers.auth import _hash_password
+        u = User(
+            id=50, username="escpl", role="player",
+            display_name="p", hashed_credential=_hash_password("x"),
+            player_id=1,
+        )
+        db_session.add(u)
+        db_session.commit()
+        return _make_token("player", user_id=50, player_id=1)
+
+    def test_player_cannot_send_role_field(self, db_session):
+        """player が PUT /users/{self} で role フィールドを送ると 422 (extra=forbid)。"""
+        db_session.query(User).filter(User.id == 50).delete()
+        db_session.commit()
+        token = self._player_token(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.put(
+                "/api/auth/users/50",
+                json={"role": "admin", "display_name": "x"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 422, f"expected 422 extra=forbid, got {resp.status_code}: {resp.text[:300]}"
+            assert "extra" in resp.text.lower() or "role" in resp.text.lower()
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_player_cannot_change_privileged_fields(self, db_session):
+        """player が username / team_name / player_id を送ると 403。"""
+        db_session.query(User).filter(User.id == 50).delete()
+        db_session.commit()
+        token = self._player_token(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            for body in [
+                {"username": "hijacked"},
+                {"team_name": "TeamOther"},
+                {"player_id": 99},
+            ]:
+                resp = client.put(
+                    "/api/auth/users/50",
+                    json=body,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                assert resp.status_code == 403, f"body={body} expected 403, got {resp.status_code}: {resp.text[:200]}"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_player_can_change_own_display_name(self, db_session):
+        """player が自分の display_name を変えるのは許可される。"""
+        db_session.query(User).filter(User.id == 50).delete()
+        db_session.commit()
+        token = self._player_token(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.put(
+                "/api/auth/users/50",
+                json={"display_name": "new name"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_player_cannot_access_db_status(self, db_session):
+        """player は /api/db/status にアクセス不可。"""
+        db_session.query(User).filter(User.id == 50).delete()
+        db_session.commit()
+        token = self._player_token(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.get(
+                "/api/db/status",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            # 403 admin required が期待 (401 は unauth, 404 は router なし)
+            assert resp.status_code == 403, f"expected 403, got {resp.status_code}: {resp.text[:200]}"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_player_cannot_list_analysts(self, db_session):
+        """player は /api/auth/analysts にアクセス不可 (Cloudflare 経由想定)。"""
+        db_session.query(User).filter(User.id == 50).delete()
+        db_session.commit()
+        token = self._player_token(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            # loopback をスキップして検証するため PUBLIC_MODE=True をシミュレート
+            import pytest
+            monkeypatch = pytest.MonkeyPatch()
+            monkeypatch.setattr(settings, "PUBLIC_MODE", True, raising=False)
+            try:
+                client = TestClient(app, raise_server_exceptions=False)
+                resp = client.get(
+                    "/api/auth/analysts",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "CF-Connecting-IP": "203.0.113.50",
+                    },
+                )
+                assert resp.status_code == 403, f"expected 403, got {resp.status_code}: {resp.text[:200]}"
+            finally:
+                monkeypatch.undo()
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_player_cannot_access_conditions_of_others(self, db_session):
+        """player は他 player の conditions を見ることができない。"""
+        from backend.routers.auth import _hash_password
+        db_session.query(User).filter(User.id == 50).delete()
+        db_session.commit()
+        token = self._player_token(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.get(
+                "/api/conditions?player_id=99",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 403, f"expected 403 (other player), got {resp.status_code}: {resp.text[:200]}"
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ─── 422 input エコーの長大 string / XML / バイナリマスク ────────────────────
+
+class TestValidationInputSanitization:
+    def test_xml_body_is_masked(self, db_session):
+        """XML body を投げた時、応答の input にそのまま反映されないこと。"""
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            xml_body = b'<?xml version="1.0"?><!DOCTYPE root [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><root><name>&xxe;</name></root>'
+            resp = client.post(
+                "/api/public/contact",
+                content=xml_body,
+                headers={"Content-Type": "application/xml"},
+            )
+            body = resp.text
+            assert "file:///etc/passwd" not in body, f"XML payload leaked: {body[:300]}"
+            assert "<!ENTITY" not in body, f"XML ENTITY leaked: {body[:300]}"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_long_string_is_truncated(self):
+        """200 文字超の string input は `***(truncated)` に置換される（ユニットテスト）。"""
+        from backend.main import _mask_sensitive
+        long_val = "A" * 500
+        result = _mask_sensitive(long_val)
+        assert result == "***(truncated)"
+
+    def test_short_string_passes_through(self):
+        from backend.main import _mask_sensitive
+        assert _mask_sensitive("hello") == "hello"
+
+    def test_xml_string_is_masked(self):
+        from backend.main import _mask_sensitive
+        xml = '<?xml version="1.0"?><root>x</root>'
+        assert _mask_sensitive(xml) == "***(xml/html)"
+
+    def test_bytes_is_summarized(self):
+        from backend.main import _mask_sensitive
+        result = _mask_sensitive(b"\x80\x04binary")
+        assert result.startswith("***(bytes,")
+
+
+# ─── audit log HMAC 鍵のデフォルト文字列フォールバック禁止 ───────────────────
+
+class TestAuditLogHmacKey:
+    def test_empty_secret_does_not_fall_back_to_known_default(self, monkeypatch):
+        """SECRET_KEY が空でも audit log HMAC 鍵は `development-secret-key` に
+        フォールバックしないこと（既知鍵での audit 偽造を阻止）。"""
+        from backend.utils import access_log as al
+        from backend.config import settings as s
+        monkeypatch.setattr(s, "SECRET_KEY", "", raising=False)
+        key = al._secret_bytes()
+        assert key != b"development-secret-key"
+        assert len(key) >= 16  # SHA256 派生鍵 ≥ 16 バイト
+
+    def test_configured_secret_is_used(self, monkeypatch):
+        """SECRET_KEY が設定されている場合はその値がそのまま HMAC 鍵として使われる。"""
+        from backend.utils import access_log as al
+        from backend.config import settings as s
+        monkeypatch.setattr(s, "SECRET_KEY", "super_strong_key_abcdef_1234567890", raising=False)
+        key = al._secret_bytes()
+        assert key == b"super_strong_key_abcdef_1234567890"
+
+
+# ─── 多層防御: loopback 判定の空文字/testclient 制限 ─────────────────────────
+
+class TestLoopbackHardening:
+    def test_production_mode_rejects_empty_client(self, monkeypatch):
+        """PUBLIC_MODE=True では空文字・testclient を loopback 扱いしない。"""
+        from backend.utils import control_plane as cp
+        from backend.config import settings as s
+        from unittest.mock import MagicMock
+        monkeypatch.setattr(s, "PUBLIC_MODE", True, raising=False)
+        req = MagicMock()
+        req.headers = {}
+        req.client = None  # client None → _client_ip は ""
+        assert cp.is_loopback_request(req) is False
+        # testclient も拒否
+        req.client = MagicMock()
+        req.client.host = "testclient"
+        assert cp.is_loopback_request(req) is False
+
+    def test_development_allows_testclient(self, monkeypatch):
+        """開発環境では testclient / 空文字を loopback 扱い（テスト互換）。"""
+        from backend.utils import control_plane as cp
+        from backend.config import settings as s
+        from unittest.mock import MagicMock
+        monkeypatch.setattr(s, "PUBLIC_MODE", False, raising=False)
+        monkeypatch.setattr(s, "ENVIRONMENT", "development", raising=False)
+        req = MagicMock()
+        req.headers = {}
+        req.client = MagicMock()
+        req.client.host = "testclient"
+        assert cp.is_loopback_request(req) is True
+
+    def test_127_always_loopback(self, monkeypatch):
+        """127.0.0.1 / ::1 / localhost は常に loopback。"""
+        from backend.utils import control_plane as cp
+        from backend.config import settings as s
+        monkeypatch.setattr(s, "PUBLIC_MODE", True, raising=False)
+        from unittest.mock import MagicMock
+        req = MagicMock()
+        req.headers = {}
+        for ip in ("127.0.0.1", "::1", "localhost"):
+            req.client = MagicMock()
+            req.client.host = ip
+            assert cp.is_loopback_request(req) is True, f"{ip} should be loopback"
+
+
+# ─── Mass assignment 防御: PublicInquiryCreate は extra field を拒否 ──────────
+
+class TestMassAssignmentDefense:
+    def test_public_contact_rejects_extra_fields(self, db_session):
+        """is_admin/role/status 等の余分なフィールドは 422 で拒否される。"""
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post(
+                "/api/public/contact",
+                json={
+                    "name": "x", "email": "a@b.c",
+                    "message": "valid message 12345",
+                    "organization": "x",
+                    "is_admin": True,
+                    "role": "admin",
+                    "id": 9999,
+                    "status": "closed",
+                },
+            )
+            assert resp.status_code == 422, f"expected 422, got {resp.status_code}: {resp.text[:300]}"
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ─── CWE-204: login タイミング側チャネル（ユーザ名列挙）対策 ─────────────────
+
+class TestLoginTimingSideChannel:
+    def test_user_not_found_executes_padding_write(self, db_session, monkeypatch):
+        """user_not_found パスで _timing_padding_db_write が呼ばれることを検証。"""
+        from backend.routers import auth as auth_mod
+        called = {"n": 0}
+        orig = auth_mod._timing_padding_db_write
+        def wrapped(db):
+            called["n"] += 1
+            return orig(db)
+        monkeypatch.setattr(auth_mod, "_timing_padding_db_write", wrapped)
+
+        db_session.query(User).delete()
+        db_session.commit()
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post(
+                "/api/auth/login",
+                json={"grant_type": "password", "username": "nonexistent_zzz", "password": "x"},
+            )
+            assert resp.status_code == 401
+            # user_not_found 経路で padding が呼ばれている
+            assert called["n"] >= 1, f"_timing_padding_db_write was not called (n={called['n']})"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_padding_write_does_not_modify_data(self, db_session):
+        """padding の UPDATE WHERE id=-1 は 0 行にマッチで副作用がない。"""
+        from backend.routers.auth import _timing_padding_db_write
+        # 既存ユーザ
+        db_session.query(User).delete()
+        u = User(
+            id=1, username="pivot", role="admin",
+            display_name="P", hashed_credential=_hash_password("x"),
+            failed_attempts=0,
+        )
+        db_session.add(u)
+        db_session.commit()
+        _timing_padding_db_write(db_session)
+        # failed_attempts が変化していないこと
+        u2 = db_session.query(User).filter(User.id == 1).first()
+        assert u2.failed_attempts == 0
+
+
+# ─── 422 バリデーションエラーの password マスク ──────────────────────────────
+
+class TestValidationErrorMasking:
+    def test_password_masked_in_422_login(self, db_session):
+        """login に壊れた body を送って 422 を誘発し、password が返却されないことを確認。"""
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            # grant_type を欠落させて 422 を誘発、password を含む body
+            resp = client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "s3cretPW!"},
+            )
+            assert resp.status_code == 422
+            body_text = resp.text
+            # パスワード平文が応答に含まれていないこと
+            assert "s3cretPW!" not in body_text, f"password leaked in 422 response: {body_text}"
+        finally:
+            app.dependency_overrides.clear()
+
+
 # ─── V-07: HIDE_STACK_TRACES フラグ ──────────────────────────────────────────
 
 class TestHideStackTraces:

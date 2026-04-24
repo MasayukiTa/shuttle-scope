@@ -174,6 +174,26 @@ def _check_lockout(user: User) -> None:
         )
 
 
+def _timing_padding_db_write(db: Session) -> None:
+    """user_not_found 経路でも存在ユーザ経路と同等の DB write コストを発生させる。
+
+    存在ユーザ失敗時の _on_login_failure は users テーブルへの UPDATE + commit を
+    追加で実施するため、未存在ユーザより ~30ms 早く応答してしまい、
+    タイミング側チャネルでユーザ名列挙が可能になる (CWE-204)。
+    ここで 0 行にマッチする UPDATE + commit を実行して時間を揃える。
+    """
+    from sqlalchemy import text
+    try:
+        db.execute(text("UPDATE users SET failed_attempts = failed_attempts WHERE id = -1"))
+        db.commit()
+    except Exception:
+        # いかなる理由でも失敗しても認証側の挙動を変えない
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def _on_login_failure(user: User, db: Session, ip: Optional[str], reason: str) -> None:
     from backend.utils.access_log import log_access
     user.failed_attempts = (user.failed_attempts or 0) + 1
@@ -370,6 +390,8 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             # ユーザー不在時もダミーbcryptを実行してタイミング差を消す
             _verify_password(secret, _DUMMY_BCRYPT_HASH)
             log_access(db, "login_failed", details={"reason": "user_not_found", "identifier": identifier}, ip_addr=ip)
+            # 存在ユーザ経路の _on_login_failure の UPDATE+commit と等価のダミー書き込み
+            _timing_padding_db_write(db)
             raise HTTPException(status_code=401, detail="login failed")
 
         _check_lockout(user)
@@ -404,6 +426,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         if not user or not user.hashed_credential:
             _verify_password(req.password, _DUMMY_BCRYPT_HASH)
             log_access(db, "login_failed", details={"reason": "user_not_found", "username": req.username}, ip_addr=ip)
+            _timing_padding_db_write(db)
             raise HTTPException(status_code=401, detail="login failed")
         _check_lockout(user)
         if not _verify_password(req.password, user.hashed_credential):
@@ -459,6 +482,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             # 不存在 or 非playerロール時もダミーbcryptを実行してタイミング差を消す
             _verify_password(req.pin or "", _DUMMY_BCRYPT_HASH)
             log_access(db, "login_failed", details={"reason": "user_not_found", "user_id": req.user_id}, ip_addr=ip)
+            _timing_padding_db_write(db)
             raise HTTPException(status_code=401, detail="login failed")
         _check_lockout(user)
         if user.hashed_credential and not _verify_password(req.pin or "", user.hashed_credential):
@@ -758,8 +782,22 @@ def me(request: Request, db: Session = Depends(get_db)):
 
 # ── 選手・コーチ・アナリスト一覧（要認証） ───────────────────────────────────
 
+def _allow_user_listing(request: Request) -> None:
+    """ユーザ列挙系エンドポイント (/players, /coaches, /analysts) の認可。
+    select login 用に設計されたため loopback では誰でも OK。Cloudflare 公開時は
+    admin/analyst のみ許可する（player/coach による他ユーザ列挙を防ぐ）。"""
+    from backend.utils.control_plane import is_loopback_request
+    if is_loopback_request(request):
+        return
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not (ctx.is_admin or ctx.is_analyst):
+        raise HTTPException(status_code=403, detail="ユーザ一覧は admin/analyst のみ参照可能です")
+
+
 @router.get("/players")
-def list_players_for_login(db: Session = Depends(get_db)):
+def list_players_for_login(request: Request, db: Session = Depends(get_db)):
+    _allow_user_listing(request)
     users = db.query(User).filter(User.role == "player").all()
     result = []
     for user in users:
@@ -776,7 +814,8 @@ def list_players_for_login(db: Session = Depends(get_db)):
 
 
 @router.get("/coaches")
-def list_coaches_for_login(db: Session = Depends(get_db)):
+def list_coaches_for_login(request: Request, db: Session = Depends(get_db)):
+    _allow_user_listing(request)
     users = db.query(User).filter(User.role == "coach").all()
     return {
         "success": True,
@@ -785,7 +824,8 @@ def list_coaches_for_login(db: Session = Depends(get_db)):
 
 
 @router.get("/analysts")
-def list_analysts_for_login(db: Session = Depends(get_db)):
+def list_analysts_for_login(request: Request, db: Session = Depends(get_db)):
+    _allow_user_listing(request)
     users = db.query(User).filter(User.role.in_(["analyst", "admin"])).all()
     return {
         "success": True,
@@ -816,6 +856,10 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    # 未知フィールドを silent drop せず 422 で拒否する。`role` `is_admin` `id` 等の
+    # 権限関連を body に混入させる mass assignment 攻撃を検出・遮断する。
+    model_config = {"extra": "forbid"}
+
     display_name: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
@@ -926,6 +970,13 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     elif ctx.is_player:
         if ctx.user_id != target_id:
             raise HTTPException(status_code=403, detail="自分自身のみ編集できます")
+        # player が権限関連フィールド (username / team_name / player_id) を送ってきたら
+        # silent drop ではなく 403 で明示拒否する (silent success は攻撃検出を困難にする)
+        if any(v is not None for v in (body.username, body.team_name, body.player_id)):
+            raise HTTPException(
+                status_code=403,
+                detail="player ロールは username / team_name / player_id を変更できません",
+            )
         body = UserUpdate(display_name=body.display_name, password=body.password, pin=body.pin)
     else:
         raise HTTPException(status_code=403, detail="編集権限がありません")

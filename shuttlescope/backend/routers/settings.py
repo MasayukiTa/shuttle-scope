@@ -114,8 +114,11 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
 
     機密キー（認証情報・Webhook URL 等）は admin / analyst 以外には
     空文字で返す（値の存在自体は DEFAULT_SETTINGS で公開されるが、
-    実値は漏らさない）。
+    実値は漏らさない）。設定値そのものはアプリ内部構成情報 (sync_device_id,
+    tracknet_backend 等) を含むため player ロールには一切返さない。
     """
+    from backend.utils.auth import require_non_player
+    require_non_player(request)
     ctx = get_auth(request)
     _ensure_settings_table(db)
     data = _load_all(db)
@@ -149,13 +152,13 @@ def update_settings(
 
 
 @router.get("/settings/devices")
-def get_devices():
+def get_devices(request: Request):
     """利用可能なコンピュートデバイス一覧を返す。
 
-    cuda_devices: CUDA GPU リスト（名前・VRAM）
-    openvino_devices: OpenVINO で利用可能なデバイス文字列リスト
-    onnx_providers: ONNX Runtime の利用可能プロバイダーリスト
+    GPU/CPU 型番・ドライババージョン・VRAM が含まれるため admin/analyst 限定。
     """
+    from backend.utils.auth import require_admin_or_analyst
+    require_admin_or_analyst(request)
     cuda_devices = []
     try:
         import torch

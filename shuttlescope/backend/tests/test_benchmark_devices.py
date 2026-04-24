@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from backend.utils.jwt_utils import create_access_token
+
+_ADMIN_HEADERS3 = {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
 
 
 # ─── probe_all() ユニットテスト ────────────────────────────────────────────────
@@ -95,7 +98,7 @@ def client(test_engine):
 class TestBenchmarkAPI:
     def test_get_devices_returns_list(self, client):
         """GET /api/v1/benchmark/devices が配列を返すこと"""
-        resp = client.get("/api/v1/benchmark/devices")
+        resp = client.get("/api/v1/benchmark/devices", headers=_ADMIN_HEADERS3)
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -103,7 +106,7 @@ class TestBenchmarkAPI:
 
     def test_get_devices_cpu_present(self, client):
         """CPU デバイスが含まれること"""
-        resp = client.get("/api/v1/benchmark/devices")
+        resp = client.get("/api/v1/benchmark/devices", headers=_ADMIN_HEADERS3)
         assert resp.status_code == 200
         data = resp.json()
         cpu_devices = [d for d in data if d.get("device_type") == "cpu"]
@@ -112,13 +115,13 @@ class TestBenchmarkAPI:
     def test_post_run_returns_job_id(self, client):
         """POST /api/v1/benchmark/run が job_id を返すこと"""
         # まずデバイス一覧を取得して device_id を特定する
-        resp = client.get("/api/v1/benchmark/devices")
+        resp = client.get("/api/v1/benchmark/devices", headers=_ADMIN_HEADERS3)
         assert resp.status_code == 200
         devices = resp.json()
         device_id = devices[0]["device_id"]
 
         # ジョブ実行リクエスト
-        resp = client.post("/api/v1/benchmark/run", json={
+        resp = client.post("/api/v1/benchmark/run", headers=_ADMIN_HEADERS3, json={
             "device_ids": [device_id],
             "targets": ["statistics"],
             "n_frames": 5,
@@ -131,10 +134,10 @@ class TestBenchmarkAPI:
     def test_get_job_status(self, client):
         """GET /api/v1/benchmark/jobs/{job_id} がジョブ状態を返すこと"""
         # ジョブを作成
-        resp = client.get("/api/v1/benchmark/devices")
+        resp = client.get("/api/v1/benchmark/devices", headers=_ADMIN_HEADERS3)
         device_id = resp.json()[0]["device_id"]
 
-        run_resp = client.post("/api/v1/benchmark/run", json={
+        run_resp = client.post("/api/v1/benchmark/run", headers=_ADMIN_HEADERS3, json={
             "device_ids": [device_id],
             "targets": ["statistics"],
             "n_frames": 3,
@@ -142,7 +145,7 @@ class TestBenchmarkAPI:
         job_id = run_resp.json()["job_id"]
 
         # ジョブ状態を確認
-        status_resp = client.get(f"/api/v1/benchmark/jobs/{job_id}")
+        status_resp = client.get(f"/api/v1/benchmark/jobs/{job_id}", headers=_ADMIN_HEADERS3)
         assert status_resp.status_code == 200
         job_data = status_resp.json()
         assert job_data["job_id"] == job_id

@@ -63,10 +63,19 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # 起動時に弱い秘密鍵を検出して警告・拒否
+# 本番意図のフラグ（PUBLIC_MODE / HIDE_API_DOCS / HIDE_STACK_TRACES）が1つでも
+# 有効なら弱鍵のままでは起動させない（開発意図との混在を防止・多層防御）。
+_PRODUCTION_INTENT = (
+    settings.PUBLIC_MODE
+    or settings.HIDE_API_DOCS
+    or settings.HIDE_STACK_TRACES
+    or (settings.ENVIRONMENT == "production")
+)
 if settings.SECRET_KEY in _WEAK_KEYS:
-    if settings.PUBLIC_MODE:
+    if _PRODUCTION_INTENT:
         raise RuntimeError(
-            "PUBLIC_MODE=True で SECRET_KEY がデフォルト値または空です。\n"
+            "本番モード（PUBLIC_MODE/HIDE_API_DOCS/HIDE_STACK_TRACES/ENVIRONMENT=production）で\n"
+            "SECRET_KEY がデフォルト値または空です。\n"
             "環境変数 SECRET_KEY に十分なランダム文字列を設定してください:\n"
             "  python -c \"import secrets; print(secrets.token_hex(32))\""
         )

@@ -214,8 +214,11 @@ def create_session(body: SessionCreate, request: Request, db: Session = Depends(
 
 
 @router.get("/sessions/my-info")
-def my_server_info():
-    """LAN IP / ポート情報を返す（コーチへの共有URL生成用）"""
+def my_server_info(request: Request):
+    """LAN IP / ポート情報を返す（コーチへの共有URL生成用）。
+    player は自 LAN 情報を知る必要がないため、admin/analyst/coach のみ許可。"""
+    from backend.utils.auth import require_non_player
+    require_non_player(request)
     lan_ips = _get_lan_ips()
     port = settings.API_PORT
     lan_mode = settings.LAN_MODE

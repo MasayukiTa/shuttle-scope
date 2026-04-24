@@ -426,12 +426,24 @@ def create_condition(body: ConditionCreate, db: Session = Depends(get_db)):
 
 @router.get("")
 def list_conditions(
+    request: Request,
     player_id: Optional[int] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
     since: Optional[_date] = Query(None),
     role: str = Depends(resolve_role),
     db: Session = Depends(get_db),
 ):
+    # player ロールは自分の player_id のみ閲覧可能。他 player のコンディション生データ
+    # (ccs_score / delta / personal_range 等) はプライバシー情報であり漏洩を防ぐ。
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        if not ctx.player_id:
+            raise HTTPException(status_code=403, detail="player_id 未設定")
+        if player_id is not None and player_id != ctx.player_id:
+            raise HTTPException(status_code=403, detail="他選手のコンディションは参照できません")
+        player_id = ctx.player_id
+
     q = db.query(Condition)
     if player_id is not None:
         q = q.filter(Condition.player_id == player_id)

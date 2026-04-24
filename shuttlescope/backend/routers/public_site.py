@@ -32,6 +32,10 @@ _PUBLIC_ASSETS_DIR = Path(__file__).resolve().parent.parent / "public"
 
 
 class PublicInquiryCreate(BaseModel):
+    # extra フィールドを拒否して mass assignment 攻撃（is_admin/role/status 等の
+    # 不正なフィールド混入）を防ぐ。
+    model_config = {"extra": "forbid"}
+
     name: str = Field(min_length=1, max_length=120)
     organization: Optional[str] = Field(default=None, max_length=160)
     role: Optional[str] = Field(default=None, max_length=80)
@@ -969,12 +973,17 @@ def _client_ip(request: Request) -> str:
 def _enforce_contact_rate_limit(request: Request) -> None:
     ip = _client_ip(request)
     now = datetime.utcnow()
-    window = now - timedelta(minutes=15)
-    recent = [ts for ts in _recent_contact_requests.get(ip, []) if ts >= window]
-    if len(recent) >= 5:
+    # 短期（15分窓）と長期（24時間窓）の二段階レート制限
+    short_window = now - timedelta(minutes=15)
+    long_window = now - timedelta(hours=24)
+    all_recent = [ts for ts in _recent_contact_requests.get(ip, []) if ts >= long_window]
+    short_recent = [ts for ts in all_recent if ts >= short_window]
+    if len(short_recent) >= 2:
         raise HTTPException(status_code=429, detail="too many inquiries from the same address")
-    recent.append(now)
-    _recent_contact_requests[ip] = recent
+    if len(all_recent) >= 5:
+        raise HTTPException(status_code=429, detail="too many inquiries from the same address")
+    all_recent.append(now)
+    _recent_contact_requests[ip] = all_recent
 
 
 def _notify_inquiry(inquiry: PublicInquiry) -> None:
