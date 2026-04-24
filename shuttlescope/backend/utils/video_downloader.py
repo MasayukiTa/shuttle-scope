@@ -195,6 +195,7 @@ class VideoDownloader:
         job_id: str,
         quality: str = "720",
         cookie_browser: str = "",
+        cookies_file: str = "",
     ) -> None:
         """非同期でダウンロードを開始。進捗は job_id で管理。
 
@@ -202,9 +203,9 @@ class VideoDownloader:
             url:            ダウンロード対象URL
             job_id:         進捗管理用UUID
             quality:        "360" / "480" / "720" / "1080" / "best"
-            cookie_browser: 使用するブラウザ名（"" = Cookie不使用）
-                            "chrome" / "edge" / "firefox" / "brave" /
-                            "opera" / "vivaldi" / "chromium" / "safari"
+            cookie_browser: （Electron 互換用 / Web では使用禁止）使用するブラウザ名
+            cookies_file:   yt-dlp 形式 cookies.txt の絶対パス（優先）
+                            ジョブ完了後に呼び出し元で削除する責務。
         """
         if not YT_DLP_AVAILABLE:
             self.active_downloads[job_id] = {
@@ -253,20 +254,23 @@ class VideoDownloader:
             yt_opts["merge_output_format"] = "mp4"
 
         # ── Cookie 設定 ──────────────────────────────────────────────────────
-        # ログイン必須サイトでは指定したブラウザの Cookie を自動取得する
-        # yt-dlp が対応していないブラウザ名はスキップ（エラー防止）
-        browser = cookie_browser.strip().lower()
+        # 1. cookies_file (ユーザが UI からアップロードした cookies.txt) 最優先
+        #    - 一時ファイル、ジョブ終了で呼び出し元が削除
+        #    - ネットワーク経由は HTTPS (TLS 1.3) + Cloudflare Tunnel で傍受対策
+        # 2. cookie_browser (Electron 経由・本番環境の chrome cookie 直接読出し)
+        #    - 現在は廃止予定。cookies_file が優先される
         unlocked_profile: str | None = None
-        if browser and browser in SUPPORTED_BROWSERS:
-            if browser in _CHROMIUM_BROWSERS:
-                # Windows では WebView2 等が常駐していても Cookie DB が読めるよう
-                # immutable モードで事前コピーし、yt-dlp にそのコピーを渡す
-                unlocked_profile = _make_unlocked_profile_copy(browser)
-            if unlocked_profile:
-                # (ブラウザ名, プロファイルdir, キーリング, コンテナ)
-                yt_opts["cookiesfrombrowser"] = (browser, unlocked_profile, None, None)
-            else:
-                yt_opts["cookiesfrombrowser"] = (browser,)
+        if cookies_file and os.path.isfile(cookies_file):
+            yt_opts["cookiefile"] = cookies_file
+        else:
+            browser = cookie_browser.strip().lower()
+            if browser and browser in SUPPORTED_BROWSERS:
+                if browser in _CHROMIUM_BROWSERS:
+                    unlocked_profile = _make_unlocked_profile_copy(browser)
+                if unlocked_profile:
+                    yt_opts["cookiesfrombrowser"] = (browser, unlocked_profile, None, None)
+                else:
+                    yt_opts["cookiesfrombrowser"] = (browser,)
 
         try:
             await asyncio.get_event_loop().run_in_executor(

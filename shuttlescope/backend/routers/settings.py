@@ -137,10 +137,25 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
 @router.put("/settings")
 def update_settings(
     body: SettingsUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     _ctx=Depends(require_analyst),
 ):
-    """設定を部分更新（指定したキーのみ上書き）"""
+    """設定を部分更新（指定したキーのみ上書き）。
+
+    sensitive keys (ngrok_authtoken / turn_* / ss_notify_webhook_url) は
+    admin のみ書換可能。analyst が書換えると SSRF 原資や credential 盗難に発展する。
+    """
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        # analyst が sensitive key を書換えようとしていたら 403
+        bad = [k for k in body.settings.keys() if k in _SENSITIVE_SETTING_KEYS]
+        if bad:
+            raise HTTPException(
+                status_code=403,
+                detail=f"以下のキーは admin のみ変更可能です: {bad}",
+            )
     _ensure_settings_table(db)
     for key, value in body.settings.items():
         db.execute(

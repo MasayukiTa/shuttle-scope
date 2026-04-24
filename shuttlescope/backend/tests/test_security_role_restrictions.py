@@ -265,6 +265,369 @@ class TestSafePath:
             safe_path(tmp_path, "/etc/passwd")
 
 
+# ─── 動画 DL: SSRF 防御 + cookies.txt セキュア扱い ───────────────────────────
+
+class TestVideoDownloadSSRF:
+    def test_validate_external_url_blocks_loopback(self):
+        from backend.utils.safe_path import validate_external_url
+        from fastapi import HTTPException
+        import pytest as _pt
+        for bad in [
+            "http://127.0.0.1/x",
+            "http://localhost/x",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.0.0.1/",
+            "http://192.168.1.1/",
+            "http://172.16.0.5/",
+            "file:///etc/passwd",
+            "ftp://example.com/f",
+            "gopher://x/y",
+            "javascript:alert(1)",
+        ]:
+            with _pt.raises(HTTPException) as exc_info:
+                validate_external_url(bad)
+            assert exc_info.value.status_code in (422,), f"{bad} not rejected"
+
+    def test_validate_external_url_accepts_public(self):
+        from backend.utils.safe_path import validate_external_url
+        # 公開 DNS 名。DNS 失敗しても host 名自体が block list に無ければ通す
+        # (yt-dlp が名前解決失敗すれば別途エラー)
+        for ok in [
+            "https://www.youtube.com/watch?v=abc",
+            "https://vimeo.com/12345",
+            "https://twitter.com/x/status/1",
+        ]:
+            validate_external_url(ok)  # raise しなければ OK
+
+    def test_cookie_browser_blocked_from_non_loopback(self, db_session, monkeypatch):
+        """Web リクエスト (Cloudflare 経由) で cookie_browser 指定は 403。"""
+        from backend.routers.auth import _hash_password
+        from backend.db.models import Match as _Match, Player as _P
+        from backend.config import settings as _s
+        monkeypatch.setattr(_s, "PUBLIC_MODE", True, raising=False)
+        db_session.query(User).delete()
+        db_session.query(_Match).delete()
+        db_session.query(_P).delete()
+        db_session.add(_P(id=600, name="X", name_normalized="x"))
+        db_session.add(_P(id=601, name="Y", name_normalized="y"))
+        db_session.add(_Match(
+            id=600, tournament="T", tournament_level="国内", round="QF",
+            date=date(2026, 4, 24), format="singles", result="unknown",
+            player_a_id=600, player_b_id=601, video_url="https://youtube.com/watch?v=1",
+        ))
+        db_session.add(User(id=600, username="analy", role="analyst",
+                            display_name="A", hashed_credential=_hash_password("x")))
+        db_session.commit()
+        token = _make_token("analyst", user_id=600)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            # 非 loopback 想定で CF-Connecting-IP を与える
+            resp = client.post(
+                "/api/matches/600/download",
+                json={"quality": "720", "cookie_browser": "chrome"},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "CF-Connecting-IP": "203.0.113.50",
+                },
+            )
+            assert resp.status_code == 403, f"expected 403 when cookie_browser from web, got {resp.status_code}"
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ─── Exfil rate limit (認証後の大量 GET / データ吸出し防御) ──────────────────
+
+class TestExfilRateLimit:
+    def test_analyst_exceeds_request_count_returns_429(self, db_session, monkeypatch):
+        """analyst が短時間で多数リクエストすると 429。"""
+        from backend.main import ExfilRateLimitMiddleware
+        monkeypatch.setattr(ExfilRateLimitMiddleware, "_max_requests_per_window", 5, raising=True)
+        monkeypatch.setattr(ExfilRateLimitMiddleware, "_max_bytes_per_window", 100 * 1024 * 1024, raising=True)
+        from backend.routers.auth import _hash_password
+        db_session.query(User).delete()
+        db_session.add(User(id=400, username="anax", role="analyst",
+                            display_name="A", hashed_credential=_hash_password("x")))
+        db_session.commit()
+        token = _make_token("analyst", user_id=400)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            codes = []
+            for _ in range(10):
+                r = client.get("/api/players", headers={"Authorization": f"Bearer {token}"})
+                codes.append(r.status_code)
+            assert 429 in codes, f"expected 429 after exceeding limit, got {codes}"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_admin_is_exempt_from_exfil_limit(self, db_session, monkeypatch):
+        """admin は exfil 制限対象外 (業務上の大量アクセスを許容)。"""
+        from backend.main import ExfilRateLimitMiddleware
+        monkeypatch.setattr(ExfilRateLimitMiddleware, "_max_requests_per_window", 3, raising=True)
+        from backend.routers.auth import _hash_password
+        db_session.query(User).delete()
+        db_session.add(User(id=401, username="admx", role="admin",
+                            display_name="A", hashed_credential=_hash_password("x")))
+        db_session.commit()
+        token = _make_token("admin", user_id=401)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            codes = []
+            for _ in range(8):
+                r = client.get("/api/players", headers={"Authorization": f"Bearer {token}"})
+                codes.append(r.status_code)
+            assert 429 not in codes, f"admin should be exempt, got {codes}"
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ─── sync/export エラーメッセージの sanitize ─────────────────────────────────
+
+class TestSyncExportErrorSanitize:
+    def test_sync_export_error_no_leak(self, db_session):
+        """sync/export の 500 エラーで内部例外文字列がクライアントに返らない。"""
+        from backend.routers.auth import _hash_password
+        db_session.query(User).delete()
+        db_session.add(User(id=500, username="anay", role="analyst",
+                            display_name="A", hashed_credential=_hash_password("x")))
+        db_session.commit()
+        token = _make_token("analyst", user_id=500)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            # 存在しない player_ids で 404/500 どちらでも内部例外は漏れない
+            r = client.get(
+                "/api/sync/export/conditions?player_ids=99999",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            # 404 or 500 どちらでも OK。500 の場合 detail に内部 python エラー文字列が入っていないこと
+            if r.status_code == 500:
+                assert "Object of type" not in r.text
+                assert "JSON serializable" not in r.text
+                assert "Traceback" not in r.text
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ─── APT 対策: JWT iat/exp sanity / display_name 制御文字 / UserCreate extra ─
+
+class TestAPTHardening:
+    def test_jwt_rejects_future_iat(self, monkeypatch):
+        """iat が 5 分以上未来の JWT は拒否。"""
+        from backend.utils.jwt_utils import verify_token
+        from backend.config import settings as s
+        from jose import jwt as jose_jwt
+        import time as _t
+        future_iat = int(_t.time()) + 3600
+        tok = jose_jwt.encode(
+            {"sub": "1", "role": "admin", "iat": future_iat, "exp": future_iat + 600, "jti": "x"},
+            s.SECRET_KEY, algorithm="HS256",
+        )
+        assert verify_token(tok) is None
+
+    def test_jwt_rejects_long_lifetime(self, monkeypatch):
+        """exp - iat が 2 日以上の JWT は拒否 (forged super-long-lived token 対策)。"""
+        from backend.utils.jwt_utils import verify_token
+        from backend.config import settings as s
+        from jose import jwt as jose_jwt
+        import time as _t
+        iat = int(_t.time())
+        tok = jose_jwt.encode(
+            {"sub": "1", "role": "admin", "iat": iat, "exp": iat + 86400 * 10, "jti": "x"},
+            s.SECRET_KEY, algorithm="HS256",
+        )
+        assert verify_token(tok) is None
+
+    def test_display_name_rejects_control_chars(self):
+        """display_name に CRLF / null byte / BIDI override を入れたら 422。"""
+        from backend.routers.auth import _reject_control_chars
+        from fastapi import HTTPException
+        import pytest as _pt
+        for bad in ["hello\r\nX-Injected: 1", "hello\x00suffix", "hello‮reverse", "hello​ZWSP"]:
+            with _pt.raises(HTTPException) as exc_info:
+                _reject_control_chars(bad, "display_name")
+            assert exc_info.value.status_code == 422
+
+    def test_display_name_allows_normal_unicode(self):
+        """通常の日本語/英数字は通過する。"""
+        from backend.routers.auth import _reject_control_chars
+        for ok in ["山田太郎", "TaroYamada", "Player A", "テスト 1", None]:
+            assert _reject_control_chars(ok, "display_name") == ok
+
+    def test_usercreate_extra_forbid(self, db_session):
+        """UserCreate に extra フィールド is_admin/hashed_credential 混入で 422。"""
+        from backend.routers.auth import _hash_password
+        db_session.query(User).delete()
+        db_session.add(User(id=100, username="adm", role="admin", display_name="A", hashed_credential=_hash_password("x")))
+        db_session.commit()
+        token = _make_token("admin", user_id=100)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post(
+                "/api/auth/users",
+                json={"role": "player", "display_name": "x", "username": "xuser99", "password": "Xyz12345!", "is_admin": True},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 422, f"expected 422 extra=forbid, got {resp.status_code}: {resp.text[:200]}"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_conditions_post_player_scope(self, db_session):
+        """player は他 player の condition を作成できない。"""
+        from backend.routers.auth import _hash_password
+        from backend.db.models import Player as _Player
+        db_session.query(User).delete()
+        db_session.query(_Player).delete()
+        db_session.add(_Player(id=300, name="P300", name_normalized="p300"))
+        db_session.add(_Player(id=301, name="P301", name_normalized="p301"))
+        db_session.add(User(id=200, username="plr", role="player", display_name="P",
+                            hashed_credential=_hash_password("x"), player_id=300))
+        db_session.commit()
+        token = _make_token("player", user_id=200, player_id=300)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            # 他 player (id=301) の condition 作成を試みる → 403
+            resp = client.post(
+                "/api/conditions",
+                json={"player_id": 301, "measured_at": "2026-04-24", "condition_type": "weekly", "ccs_score": 0.5},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 403, f"expected 403, got {resp.status_code}: {resp.text[:200]}"
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ─── 全ロールの権限昇格経路を塞ぐ (analyst → admin、coach → *) ──────────────
+
+class TestAllTiersPrivEsc:
+    def _seed_users(self, db_session):
+        from backend.routers.auth import _hash_password
+        db_session.query(User).delete()
+        users = [
+            User(id=100, username="adminu", role="admin", display_name="A", hashed_credential=_hash_password("x")),
+            User(id=101, username="playeru", role="player", display_name="P", hashed_credential=_hash_password("x"), player_id=None),
+            User(id=102, username="coachu", role="coach", display_name="C", hashed_credential=_hash_password("x"), team_name="T1"),
+            User(id=103, username="analystu", role="analyst", display_name="An", hashed_credential=_hash_password("x")),
+            User(id=104, username="targetplayer", role="player", display_name="TP", hashed_credential=_hash_password("x"), player_id=None),
+        ]
+        db_session.add_all(users)
+        db_session.commit()
+
+    def test_analyst_cannot_promote_player_to_admin(self, db_session):
+        """analyst が PUT /users/{player} role=admin で 403。"""
+        self._seed_users(db_session)
+        token = _make_token("analyst", user_id=103)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.put(
+                "/api/auth/users/104",
+                json={"role": "admin"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 403, f"expected 403, got {resp.status_code}: {resp.text[:200]}"
+            # DB で実際に書換わってないことも確認
+            db_session.expire_all()
+            u = db_session.get(User, 104)
+            assert u.role == "player"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_analyst_cannot_self_promote(self, db_session):
+        """analyst が PUT /users/{self} role=admin で 403。"""
+        self._seed_users(db_session)
+        token = _make_token("analyst", user_id=103)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.put(
+                "/api/auth/users/103",
+                json={"role": "admin"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 403
+            db_session.expire_all()
+            u = db_session.get(User, 103)
+            assert u.role == "analyst"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_analyst_cannot_overwrite_others_password(self, db_session):
+        """analyst が PUT /users/{player} password=x で 403 (アカウント乗っ取り防止)。"""
+        self._seed_users(db_session)
+        orig_hash = db_session.get(User, 104).hashed_credential
+        token = _make_token("analyst", user_id=103)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.put(
+                "/api/auth/users/104",
+                json={"password": "NewPwn12345!"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 403
+            db_session.expire_all()
+            assert db_session.get(User, 104).hashed_credential == orig_hash
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_analyst_cannot_change_team_name(self, db_session):
+        """analyst が team_name を書換えて tenant 破壊不可。"""
+        self._seed_users(db_session)
+        token = _make_token("analyst", user_id=103)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.put(
+                "/api/auth/users/102",
+                json={"team_name": "HackedTeam"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 403
+            db_session.expire_all()
+            assert db_session.get(User, 102).team_name == "T1"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_coach_cannot_promote_self(self, db_session):
+        """coach が自己 role 書換不可。"""
+        self._seed_users(db_session)
+        token = _make_token("coach", user_id=102)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.put(
+                "/api/auth/users/102",
+                json={"role": "admin"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 403
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_admin_can_change_role(self, db_session):
+        """admin は role を書換可能 (正常系)。"""
+        self._seed_users(db_session)
+        token = _make_token("admin", user_id=100)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.put(
+                "/api/auth/users/101",
+                json={"role": "coach"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200
+            db_session.expire_all()
+            assert db_session.get(User, 101).role == "coach"
+        finally:
+            app.dependency_overrides.clear()
+
+
 # ─── 権限昇格防御: player による mass assignment / silent drop の拒否 ─────────
 
 class TestPrivEscalationBlock:
@@ -280,7 +643,7 @@ class TestPrivEscalationBlock:
         return _make_token("player", user_id=50, player_id=1)
 
     def test_player_cannot_send_role_field(self, db_session):
-        """player が PUT /users/{self} で role フィールドを送ると 422 (extra=forbid)。"""
+        """player が PUT /users/{self} で role=admin を送ると 403 で拒否される。"""
         db_session.query(User).filter(User.id == 50).delete()
         db_session.commit()
         token = self._player_token(db_session)
@@ -292,8 +655,27 @@ class TestPrivEscalationBlock:
                 json={"role": "admin", "display_name": "x"},
                 headers={"Authorization": f"Bearer {token}"},
             )
-            assert resp.status_code == 422, f"expected 422 extra=forbid, got {resp.status_code}: {resp.text[:300]}"
-            assert "extra" in resp.text.lower() or "role" in resp.text.lower()
+            # role 書換は admin のみ → 403 で明示拒否
+            assert resp.status_code == 403, f"expected 403, got {resp.status_code}: {resp.text[:300]}"
+            db_session.expire_all()
+            assert db_session.get(User, 50).role == "player"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_player_unknown_field_rejected(self, db_session):
+        """未知フィールド (is_admin 等) は extra=forbid で 422。"""
+        db_session.query(User).filter(User.id == 50).delete()
+        db_session.commit()
+        token = self._player_token(db_session)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.put(
+                "/api/auth/users/50",
+                json={"is_admin": True, "display_name": "x"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 422, f"expected 422 extra=forbid, got {resp.status_code}: {resp.text[:200]}"
         finally:
             app.dependency_overrides.clear()
 
