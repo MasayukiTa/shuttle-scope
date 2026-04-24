@@ -228,3 +228,38 @@ class TestControlPlane:
         assert cp.allow_seed_admin(r_local) is True
         assert cp.allow_local_file_control(r_local) is True
         assert cp.allow_local_file_control(r_ext) is False
+
+    def test_require_local_operator_or_admin_allows_loopback(self):
+        cp.require_local_operator_or_admin(_mk_request(client_host="127.0.0.1"))
+
+    def test_require_local_operator_or_admin_allows_operator_token(self, monkeypatch):
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "tok")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        cp.require_local_operator_or_admin(
+            _mk_request({"X-Operator-Token": "tok"}, client_host="8.8.8.8")
+        )
+
+    def test_require_local_operator_or_admin_allows_admin_jwt(self, monkeypatch):
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        monkeypatch.setattr(cp, "_is_admin_jwt", lambda _req: True)
+        cp.require_local_operator_or_admin(_mk_request(client_host="8.8.8.8"))
+
+    def test_require_local_operator_or_admin_rejects_non_admin_jwt(self, monkeypatch):
+        from fastapi import HTTPException
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        monkeypatch.setattr(cp, "_is_admin_jwt", lambda _req: False)
+        with pytest.raises(HTTPException) as exc:
+            cp.require_local_operator_or_admin(_mk_request(client_host="8.8.8.8"))
+        assert exc.value.status_code == 403
+
+    def test_require_local_or_operator_token_still_rejects_admin_jwt(self, monkeypatch):
+        """require_local_or_operator_token は admin JWT を許可しない（旧来の厳格ポリシー）。"""
+        from fastapi import HTTPException
+        monkeypatch.setattr(cp, "_OPERATOR_TOKEN", "")
+        monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", [])
+        monkeypatch.setattr(cp, "_is_admin_jwt", lambda _req: True)
+        with pytest.raises(HTTPException) as exc:
+            cp.require_local_or_operator_token(_mk_request(client_host="8.8.8.8"))
+        assert exc.value.status_code == 403

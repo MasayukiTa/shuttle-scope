@@ -7,6 +7,7 @@
   - loopback (127.0.0.1 / ::1) → 無条件で許可
   - 信頼済みクラスタサブネット (SS_TRUSTED_SUBNETS) → require_local_or_operator_token で許可
   - SS_OPERATOR_TOKEN が設定されかつ X-Operator-Token ヘッダが一致 → 許可
+  - 有効な admin JWT (Authorization: Bearer) → require_local_operator_or_admin で許可
   - 上記いずれも満たさない → 403
 """
 from __future__ import annotations
@@ -87,6 +88,39 @@ def allow_select_login(request: Request) -> bool:
 def allow_seed_admin(request: Request) -> bool:
     """bootstrap admin 自動作成を許可するか。loopback のみ許可。"""
     return is_loopback_request(request)
+
+
+def _is_admin_jwt(request: Request) -> bool:
+    """Bearer JWT が有効かつ role=admin であれば True。"""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    token = auth[7:]
+    from backend.utils.jwt_utils import verify_token
+    payload = verify_token(token)
+    return bool(payload and payload.get("role") == "admin")
+
+
+def require_local_operator_or_admin(request: Request) -> None:
+    """クラスタ制御操作のアクセスポリシー。
+
+    loopback・信頼済みサブネット・operator token に加えて
+    有効な admin JWT からの外部アクセスも許可する。
+    ローカルファイル実行など loopback 限定にすべき操作には
+    require_local_or_operator_token を引き続き使用すること。
+    """
+    if is_loopback_request(request):
+        return
+    if is_trusted_cluster_request(request):
+        return
+    if _has_valid_operator_token(request):
+        return
+    if _is_admin_jwt(request):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="この操作はローカル・信頼済みネットワーク・管理者ログインのいずれかが必要です",
+    )
 
 
 def allow_local_file_control(request: Request) -> bool:

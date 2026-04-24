@@ -1,0 +1,19 @@
+# ~/.ssh/config に追記するテンプレート
+# （クライアント PC — 外出先の Mac / Windows 側に設定する）
+#
+# 前提: cloudflared がクライアント PC にインストール済み
+#   Mac:     brew install cloudflare/cloudflare/cloudflared
+#   Windows: winget install Cloudflare.cloudflared
+
+Host shuttlescope-home
+    HostName ssh.shuttle-scope.com
+    User M118A8586
+    ProxyCommand cloudflared access ssh --hostname %h
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+
+# 接続コマンド（設定後）:
+#   ssh shuttlescope-home
+#
+# デプロイ実行例:
+#   ssh shuttlescope-home "powershell -ExecutionPolicy Bypass -File C:\Users\M118A8586\Desktop\50repo\github_lab\shuttle-scope\shuttlescope\scripts\deploy.ps1"
