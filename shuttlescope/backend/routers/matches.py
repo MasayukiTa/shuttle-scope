@@ -175,7 +175,7 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             raise HTTPException(status_code=422, detail=f"{fname} contains control characters")
     # video_url の制御文字拒否 (CR/LF/Tab 埋め込みで header injection / shell 攻撃経路)
     vu = getattr(body, "video_url", None)
-    if vu is not None and isinstance(vu, str):
+    if vu is not None and isinstance(vu, str) and vu != "":
         if len(vu) > 2000:
             raise HTTPException(status_code=422, detail="video_url too long (max 2000)")
         import re as _re_vu
@@ -183,6 +183,25 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             raise HTTPException(status_code=422, detail="video_url contains control characters")
         if vu.strip() != vu:
             raise HTTPException(status_code=422, detail="video_url must not have leading/trailing whitespace")
+        # URL スキーム検証: javascript: / data: / about: / mailto: / file: / ftp:
+        # 等の stored XSS 経路や SSRF 原資を PUT/POST 時点で拒否する。
+        # validate_external_url は download 時のみ呼ばれるため、DB には格納されてしまう。
+        # React が href に出力する際の XSS を防ぐため、ここで URL scheme をチェック。
+        low = vu.lower().lstrip()
+        for bad_scheme in ("javascript:", "data:", "vbscript:", "file:", "about:", "mailto:",
+                           "tel:", "jar:", "feed:", "view-source:", "chrome:", "chrome-extension:",
+                           "resource:", "ms-appx:", "ms-appdata:", "blob:", "filesystem:"):
+            if low.startswith(bad_scheme):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"video_url scheme {bad_scheme!r} is not allowed",
+                )
+        # http/https 以外を拒否
+        if not (low.startswith("http://") or low.startswith("https://")):
+            raise HTTPException(
+                status_code=422,
+                detail="video_url must start with http:// or https://",
+            )
     # video_local_path の path traversal 防御
     # `server://{upload_id}` または絶対 / 相対パスのいずれでも、`..` / null / 制御文字を拒否
     vlp = getattr(body, "video_local_path", None)
@@ -198,12 +217,17 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
         # 受理する形式は `server://{uuid}{ext}` または `localfile://...` のみ (プロトコル以外はアプリ実装で未使用)
         if not (vlp.startswith("server://") or vlp.startswith("localfile://") or vlp == ""):
             raise HTTPException(status_code=422, detail="video_local_path must be server:// or localfile:// scheme")
-    # notes の HTML タグ / script 拒否 (stored XSS 対策)
-    notes = getattr(body, "notes", None)
-    if notes is not None and isinstance(notes, str):
-        import re as _re_n
-        if _re_n.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]", notes, _re_n.IGNORECASE):
-            raise HTTPException(status_code=422, detail="notes contains disallowed HTML tags")
+    # notes / final_score / tournament / venue の HTML タグ / script 拒否 (stored XSS 対策)
+    # 試合表示画面で出力される文字列は全て HTML タグをブロック
+    import re as _re_xss_m
+    _XSS_RE = _re_xss_m.compile(
+        r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]",
+        _re_xss_m.IGNORECASE,
+    )
+    for fname in ("notes", "final_score", "tournament", "venue", "round", "tournament_grade", "exception_reason"):
+        v = getattr(body, fname, None)
+        if v is not None and isinstance(v, str) and _XSS_RE.search(v):
+            raise HTTPException(status_code=422, detail=f"{fname} contains disallowed HTML tags")
 
 
 def _effective_status(
@@ -335,6 +359,10 @@ def list_matches(
     role=player 時は X-Player-Id に関与する試合のみを返す（ダブルスの partner も含む4役）。
     ID 書き換えで他選手データを覗く攻撃に対する多層防御。
     """
+    # player_id が指定された場合、実在する player か事前確認 (9999999 等の適当 ID で
+    # 「該当なし」結果を取得して内部構造を推測される攻撃を早期 422 で閉じる)
+    if player_id is not None and not db.get(Player, player_id):
+        raise HTTPException(status_code=422, detail=f"player_id={player_id} does not exist")
     ctx = get_auth(request)
     query = db.query(Match)
 
