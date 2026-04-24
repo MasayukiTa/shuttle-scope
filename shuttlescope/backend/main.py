@@ -287,10 +287,11 @@ async def lifespan(app: FastAPI):
             pass
 
 
-# PUBLIC_MODE=True ではドキュメントエンドポイントを無効化（API 構造の漏洩防止）
-_docs_url    = None if app_settings.PUBLIC_MODE else "/docs"
-_redoc_url   = None if app_settings.PUBLIC_MODE else "/redoc"
-_openapi_url = None if app_settings.PUBLIC_MODE else "/openapi.json"
+# PUBLIC_MODE=True または HIDE_API_DOCS=True ではドキュメントエンドポイントを無効化
+_hide_docs   = app_settings.PUBLIC_MODE or app_settings.HIDE_API_DOCS
+_docs_url    = None if _hide_docs else "/docs"
+_redoc_url   = None if _hide_docs else "/redoc"
+_openapi_url = None if _hide_docs else "/openapi.json"
 
 app = FastAPI(
     title="ShuttleScope API",
@@ -405,9 +406,8 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
             if payload:
                 role = payload.get("role")
                 pid_raw = str(payload.get("player_id", "")) if payload.get("player_id") else ""
-        if not role:
-            role = request.headers.get("X-Role")
-        # player 以外は素通し（analyst/coach は現時点で制約なし）
+        # X-Role ヘッダーによるフォールバックは削除（攻撃者が任意ロールを偽称できるため）
+        # JWT にロールがない場合は player 制限を適用しない（非 player 扱い）
         if role != "player":
             return await call_next(request)
 
@@ -691,6 +691,29 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(GlobalAuthMiddleware)
+
+
+# ─── グローバル例外ハンドラ（PUBLIC_MODE / HIDE_STACK_TRACES でスタックトレースを隠す） ─
+import traceback as _traceback
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: StarletteRequest, exc: Exception):
+    _logger = logging.getLogger("shuttlescope.unhandled")
+    _logger.error("Unhandled exception %s %s", request.method, request.url.path, exc_info=exc)
+    if app_settings.PUBLIC_MODE or app_settings.HIDE_STACK_TRACES:
+        return StarletteResponse(
+            '{"detail":"内部エラーが発生しました"}',
+            status_code=500,
+            media_type="application/json",
+        )
+    # 開発時はトレースバックをレスポンスに含める
+    tb = _traceback.format_exc()
+    import json as _json
+    return StarletteResponse(
+        _json.dumps({"detail": str(exc), "traceback": tb}),
+        status_code=500,
+        media_type="application/json",
+    )
 
 
 # ─── セキュリティヘッダーミドルウェア ─────────────────────────────────────────

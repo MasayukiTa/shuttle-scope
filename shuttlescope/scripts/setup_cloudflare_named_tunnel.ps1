@@ -66,14 +66,22 @@ $configText = $configText.Replace("app.shuttle-scope.com", $Hostname)
 $configPath = Join-Path $cfHome "config.yml"
 Set-Content -Path $configPath -Value $configText -Encoding UTF8
 
-Write-Step "Routing DNS"
+Write-Step "Routing DNS (app)"
 & $cf.Source tunnel route dns $TunnelName $Hostname
+
+Write-Step "Routing DNS (ssh)"
+$sshHostname = "ssh.shuttle-scope.com"
+& $cf.Source tunnel route dns $TunnelName $sshHostname
 
 Write-Step "Done"
 Write-Host "Config: $configPath" -ForegroundColor Green
 Write-Host "Tunnel: $TunnelName ($uuid)" -ForegroundColor Green
-Write-Host "Hostname: https://$Hostname" -ForegroundColor Green
+Write-Host "App  : https://$Hostname" -ForegroundColor Green
+Write-Host "SSH  : $sshHostname (Cloudflare Tunnel 経由)" -ForegroundColor Green
 Write-Host ""
 Write-Host "次のどちらかで起動してください:"
 Write-Host "  1. cloudflared tunnel --config `"$configPath`" run"
 Write-Host "  2. cloudflared service install"
+Write-Host ""
+Write-Host "SSH 接続前に OpenSSH Server のセットアップも必要:"
+Write-Host "  管理者 PS で: .\infra\ssh\server-setup.ps1"

@@ -24,6 +24,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
+from backend.utils.auth import get_auth
 from backend.utils.control_plane import allow_local_file_control
 
 logger = logging.getLogger(__name__)
@@ -128,15 +129,21 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks,
 
 
 @router.get("/video_import/list")
-def list_jobs():
+def list_jobs(request: Request):
     """全ジョブ一覧（最新順）"""
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     jobs = sorted(_jobs.values(), key=lambda j: j.get("started_at") or 0, reverse=True)
     return {"success": True, "data": jobs}
 
 
 @router.get("/video_import/{job_id}")
-def get_job(job_id: str):
+def get_job(job_id: str, request: Request):
     """ジョブ進捗取得"""
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")

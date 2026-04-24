@@ -250,8 +250,11 @@ def list_matches(
 
 
 @router.post("/matches", status_code=201)
-def create_match(body: MatchCreate, db: Session = Depends(get_db)):
+def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_db)):
     """試合登録"""
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     match = Match(**body.model_dump())
     touch(match)
     db.add(match)
@@ -297,8 +300,11 @@ def get_match(match_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/matches/{match_id}")
-def update_match(match_id: int, body: MatchUpdate, db: Session = Depends(get_db)):
+def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session = Depends(get_db)):
     """試合更新"""
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -315,8 +321,11 @@ def update_match(match_id: int, body: MatchUpdate, db: Session = Depends(get_db)
 
 
 @router.delete("/matches/{match_id}")
-def delete_match(match_id: int, db: Session = Depends(get_db)):
+def delete_match(match_id: int, request: Request, db: Session = Depends(get_db)):
     """試合削除"""
+    ctx = get_auth(request)
+    if not (ctx.is_admin or ctx.is_analyst):
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -347,8 +356,11 @@ def _normalize_name(name: str) -> str:
 
 
 @router.post("/matches/quick-start", status_code=201)
-def quick_start_match(body: QuickStartBody, db: Session = Depends(get_db)):
+def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depends(get_db)):
     """クイックスタート: 相手選手auto-create + 試合作成を一括実行（V4）"""
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     # 自チーム選手確認
     player_a = db.get(Player, body.player_a_id)
     if not player_a:
