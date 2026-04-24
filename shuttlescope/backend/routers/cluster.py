@@ -341,7 +341,8 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
             try:
                 import paramiko  # type: ignore
                 client = paramiko.SSHClient()
-                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                client.load_system_host_keys()
+                client.set_missing_host_key_policy(paramiko.RejectPolicy())
                 client.connect(wip, username=user, password=pwd, timeout=10)
                 _, stdout, stderr = client.exec_command(f'cmd /c "{bat}"', timeout=120)
                 stdout.channel.recv_exit_status()

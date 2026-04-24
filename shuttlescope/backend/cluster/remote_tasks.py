@@ -308,7 +308,8 @@ def _run_benchmark_clip(n_iters: int) -> dict:
         import time
         import numpy as np
 
-        video_path = tempfile.mktemp(suffix=".mp4")
+        _fd, video_path = tempfile.mkstemp(suffix=".mp4")
+        os.close(_fd)
         ret = subprocess.run(
             ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=5:size=1280x720:rate=60",
              "-c:v", "libx264", "-preset", "ultrafast", video_path],
@@ -318,7 +319,8 @@ def _run_benchmark_clip(n_iters: int) -> dict:
 
         latencies = []
         for i in range(n_iters):
-            out_path = tempfile.mktemp(suffix=f"_clip_{i}.mp4")
+            _fd2, out_path = tempfile.mkstemp(suffix=f"_clip_{i}.mp4")
+            os.close(_fd2)
             t0 = time.perf_counter()
             r = subprocess.run(
                 ["ffmpeg", "-y", "-ss", "0", "-i", video_path, "-t", "1", "-c", "copy", out_path],
@@ -862,7 +864,8 @@ import numpy as np
 
 n_iters = {n_iters}
 
-video_path = tempfile.mktemp(suffix=".mp4")
+_fd, video_path = tempfile.mkstemp(suffix=".mp4")
+os.close(_fd)
 ret = subprocess.run(
     ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=5:size=1280x720:rate=60",
      "-c:v", "libx264", "-preset", "ultrafast", video_path],
@@ -872,7 +875,8 @@ if ret.returncode != 0:
 
 lats = []
 for i in range(n_iters):
-    out_path = tempfile.mktemp(suffix=f"_clip_{{i}}.mp4")
+    _fd2, out_path = tempfile.mkstemp(suffix=f"_clip_{{i}}.mp4")
+    os.close(_fd2)
     t0 = time.perf_counter()
     r = subprocess.run(
         ["ffmpeg", "-y", "-ss", "0", "-i", video_path, "-t", "1", "-c", "copy", out_path],

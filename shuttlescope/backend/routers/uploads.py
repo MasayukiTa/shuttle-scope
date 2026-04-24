@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shutil
 import time
 import uuid
@@ -34,6 +35,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Match, UploadSession
 from backend.utils.auth import AuthCtx, get_auth
+from backend.utils.safe_path import safe_path
 
 
 router = APIRouter(prefix="/v1/uploads", tags=["uploads"])
@@ -85,16 +87,25 @@ async def _get_upload_lock(upload_id: str) -> asyncio.Lock:
         return lock
 
 
+_UPLOAD_ID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+
+
 def _part_path(upload_id: str) -> Path:
-    return UPLOAD_DIR / f"{upload_id}.part"
+    if not _UPLOAD_ID_RE.match(upload_id):
+        raise HTTPException(status_code=422, detail="無効なアップロードID")
+    safe_upload_id = str(uuid.UUID(upload_id))
+    return safe_path(UPLOAD_DIR, f"{safe_upload_id}.part")
 
 
 def _final_path(upload_id: str, filename: str) -> Path:
+    if not _UPLOAD_ID_RE.match(upload_id):
+        raise HTTPException(status_code=422, detail="無効なアップロードID")
+    safe_upload_id = str(uuid.UUID(upload_id))
     ext = Path(filename).suffix.lower() or ".mp4"
     # 拡張子ホワイトリスト（実行可能形式を弾く）
     if ext not in {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mpg", ".mpeg"}:
         ext = ".mp4"
-    return UPLOAD_DIR / f"{upload_id}{ext}"
+    return safe_path(UPLOAD_DIR, f"{safe_upload_id}{ext}")
 
 
 def _require_writer(ctx: AuthCtx) -> None:
@@ -420,7 +431,6 @@ def stream_video_for_match(
         raise HTTPException(status_code=404, detail="サーバ保管動画が設定されていません")
     # server://{upload_id}{ext} → ファイル解決
     rest = vlp[len("server://"):]
-    from backend.utils.safe_path import safe_path
     file = safe_path(UPLOAD_DIR, rest)
     if not file.exists():
         raise HTTPException(status_code=404, detail="動画ファイルが見つかりません")
