@@ -962,7 +962,8 @@ def _ssh_run_python_script(host: str, username: str, password: str,
     python_exe = f"C:/Users/{username}/AppData/Local/Programs/Python/Python312/python.exe"
 
     ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.load_system_host_keys()
+    ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     try:
         ssh.connect(host, username=username, password=password, timeout=10)
 

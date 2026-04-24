@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -23,9 +24,20 @@ from backend.cluster import bootstrap as _bootstrap
 from backend.cluster.load_guard import load_guard
 from backend.cluster import topology
 from backend.utils.auth import get_auth
-from backend.utils.control_plane import require_local_or_operator_token
+from backend.utils.control_plane import require_local_operator_or_admin
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_cluster_ip(ip: str) -> str:
+    """プライベート / リンクローカル IP のみ許可（SSRF対策）。"""
+    try:
+        addr = ipaddress.ip_address(ip.strip())
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"無効なIPアドレス: {ip}")
+    if not (addr.is_private or addr.is_loopback or addr.is_link_local):
+        raise HTTPException(status_code=422, detail="プライベートIPアドレスのみ指定可能です")
+    return str(addr)
 
 
 def _require_admin_dep(request: Request) -> None:
@@ -130,7 +142,7 @@ def get_cluster_config() -> Dict[str, Any]:
 @router.post("/cluster/config")
 def save_cluster_config(body: ConfigSaveRequest, request: Request) -> Dict[str, Any]:
     """cluster.config.yaml を更新する。"""
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     try:
         # UI に返した際にマスクされた "***" を受け取った場合は既存値を維持する。
         incoming = body.config or {}
@@ -213,7 +225,7 @@ def start_ray(request: Request) -> Dict[str, Any]:
     subprocess で ray status を実行してクラスタ稼働を確認する方式を採用する。
     確認完了後は /cluster/status の ray.status が "running" に変わる。
     """
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     import threading
 
     if _bootstrap.is_ray_connected():
@@ -248,7 +260,7 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
 
     既存の Ray プロセスは先に停止してから起動する。
     """
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     import subprocess, sys, os, ipaddress
 
     # Command-injection 防止: 入力値を厳格に正規化
@@ -365,7 +377,7 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
 @router.post("/cluster/ray/stop")
 def stop_ray(request: Request) -> Dict[str, Any]:
     """Ray 接続フラグをクリアする（ray.shutdown() は呼ばない）。"""
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     try:
         _bootstrap.shutdown_ray()
         return {"ok": True, "message": "Ray 接続をクリアしました"}
@@ -381,7 +393,7 @@ def detect_worker_hardware(worker_ip: str, request: Request) -> Dict[str, Any]:
     取得成功後は cluster.config.yaml のワーカー設定を自動更新する。
     worker_ip はパスパラメータ（ドット → アンダースコア変換不要、そのまま渡す）。
     """
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     actual_ip = worker_ip.replace("_", ".")
 
     from backend.cluster.remote_tasks import dispatch_hardware_detect
@@ -423,7 +435,7 @@ def get_arp_devices(request: Request) -> List[Dict[str, Any]]:
     Windows: arp -a、Linux/Mac: arp -a で解析する。
     このノード自身の全インターフェース IP は除外する。
     """
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     import subprocess, sys, re
 
     kw: dict = {"capture_output": True, "text": True, "errors": "replace", "timeout": 10}
@@ -605,7 +617,7 @@ def wake_worker_node(worker_ip: str, request: Request) -> Dict[str, Any]:
     2. NIC ドライバの省電力設定で WOL を許可
     が必要。
     """
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     actual_ip = worker_ip.replace("_", ".")
     wake_result = topology.wake_worker(actual_ip)
     # Stack-trace-exposure 防止: 内部例外文字列を除去
@@ -626,13 +638,13 @@ def disable_worker_sleep(worker_ip: str, body: SleepDisableRequest, request: Req
     Windows の電源設定を変更し、AC 電源接続中はスリープしないようにする。
     K10 側で OpenSSH Server が有効になっている必要がある。
     """
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     try:
         import paramiko  # type: ignore
     except ImportError:
         raise HTTPException(500, "paramiko が必要です: pip install paramiko")
 
-    actual_ip = worker_ip.replace("_", ".")
+    actual_ip = _validate_cluster_ip(worker_ip.replace("_", "."))
 
     # スリープ無効化コマンド（AC 電源接続中のスタンバイタイムアウトを 0 = 無効）
     cmds = [
@@ -643,7 +655,8 @@ def disable_worker_sleep(worker_ip: str, body: SleepDisableRequest, request: Req
 
     try:
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.load_system_host_keys()
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
         client.connect(actual_ip, username=body.username, password=body.password, timeout=10)
         results = []
         for cmd in cmds:
@@ -668,13 +681,14 @@ def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest, request: Request
     paramiko が必要: pip install paramiko
     K10 側で OpenSSH Server が有効になっている必要がある。
     """
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     try:
         import paramiko  # type: ignore
     except ImportError:
         raise HTTPException(500, "paramiko が必要です: pip install paramiko")
 
-    actual_ip = worker_ip.replace("_", ".")
+    actual_ip = _validate_cluster_ip(worker_ip.replace("_", "."))
+    head_ip = _validate_cluster_ip(body.head_ip)
 
     # ワーカー設定から num_cpus / num_gpus を補完
     num_cpus = body.num_cpus
@@ -689,7 +703,7 @@ def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest, request: Request
                     num_gpus = w.get("num_gpus", 0)
                 break
 
-    cmd = f"ray start --address={body.head_ip}:{body.port} --node-ip-address={actual_ip}"
+    cmd = f"ray start --address={head_ip}:{body.port} --node-ip-address={actual_ip}"
     if num_cpus is not None:
         cmd += f" --num-cpus={num_cpus}"
     if num_gpus:
@@ -697,7 +711,8 @@ def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest, request: Request
 
     try:
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.load_system_host_keys()
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
         client.connect(actual_ip, username=body.username, password=body.password, timeout=10)
         _, stdout, stderr = client.exec_command(cmd, timeout=30)
         out = stdout.read().decode(errors="replace")
@@ -718,13 +733,13 @@ def remote_ray_restart(worker_ip: str, request: Request) -> Dict[str, Any]:
     cluster.config.yaml の workers[] に ssh_user / ssh_password / ray_restart_bat が
     設定されている必要がある。
     """
-    require_local_or_operator_token(request)
+    require_local_operator_or_admin(request)
     try:
         import paramiko  # type: ignore
     except ImportError:
         raise HTTPException(500, "paramiko が必要です: pip install paramiko")
 
-    actual_ip = worker_ip.replace("_", ".")
+    actual_ip = _validate_cluster_ip(worker_ip.replace("_", "."))
 
     cfg = topology.load_config()
     worker: Optional[Dict[str, Any]] = None
@@ -747,7 +762,8 @@ def remote_ray_restart(worker_ip: str, request: Request) -> Dict[str, Any]:
     cmd = f'cmd /c "{bat_path}"'
     try:
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.load_system_host_keys()
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
         client.connect(actual_ip, username=user, password=password, timeout=10)
         _, stdout, stderr = client.exec_command(cmd, timeout=120)
         raw_out = stdout.read()
