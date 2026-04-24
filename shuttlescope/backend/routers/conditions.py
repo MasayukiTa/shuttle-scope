@@ -72,7 +72,11 @@ def resolve_role(
 class ConditionCreate(BaseModel):
     """直接入力（InBody/Hooper/RPE/補助）。
     f1-f5 / total / ccs / validity / deviation は質問票経由でのみ書き込み可。
+
+    id / created_by / created_at / updated_at 等の内部フィールドを body で指定して
+    mass assignment する攻撃を extra=forbid で 422 拒否する。
     """
+    model_config = {"extra": "forbid"}
     player_id: int
     measured_at: _date
     condition_type: str = "weekly"

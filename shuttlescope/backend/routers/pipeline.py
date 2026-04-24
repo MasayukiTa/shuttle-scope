@@ -36,6 +36,9 @@ def _require_analyst_or_coach(ctx: AuthCtx = Depends(get_auth)) -> AuthCtx:
 # ─── スキーマ ────────────────────────────────────────────────────────────────
 
 class RunRequest(BaseModel):
+    # job_type 等のフィールドを任意指定させない + extra フィールド禁止
+    # worker 側の未知 job_type 実行による RCE/DoS 経路を遮断する
+    model_config = {"extra": "forbid"}
     match_id: int
     job_type: str = "full_pipeline"
 
@@ -70,6 +73,19 @@ def _to_out(j: AnalysisJob) -> JobOut:
 
 # ─── エンドポイント ─────────────────────────────────────────────────────────
 
+# 許容する job_type 列挙 (worker 側で解釈可能なもののみ)
+_ALLOWED_JOB_TYPES = {"full_pipeline"}
+
+# Per-user pipeline run rate limit (CPU/GPU DoS 対策)
+# 1 ユーザあたり 10 分に最大 5 job 投入。analyst/coach の業務では十分。
+import threading as _th_pipe
+import time as _t_pipe
+_pipeline_run_counters: dict[int, list[float]] = {}
+_pipeline_run_lock = _th_pipe.Lock()
+_PIPELINE_WINDOW_SEC = 600
+_PIPELINE_MAX_JOBS_PER_WINDOW = 5
+
+
 @router.post("/run", response_model=JobOut)
 def run_pipeline_endpoint(
     body: RunRequest,
@@ -77,6 +93,23 @@ def run_pipeline_endpoint(
     _ctx: AuthCtx = Depends(_require_analyst_or_coach),
 ):
     """指定試合の解析パイプラインを enqueue する。"""
+    # job_type enum 検証 (mass assignment 防御)
+    if body.job_type not in _ALLOWED_JOB_TYPES:
+        raise HTTPException(status_code=422, detail=f"invalid job_type: {body.job_type!r}")
+    # Per-user rate limit (DoS 防御)
+    if _ctx.user_id:
+        now = _t_pipe.time()
+        with _pipeline_run_lock:
+            ts_list = _pipeline_run_counters.setdefault(_ctx.user_id, [])
+            # 窓外を除去
+            cutoff = now - _PIPELINE_WINDOW_SEC
+            ts_list[:] = [t for t in ts_list if t >= cutoff]
+            if len(ts_list) >= _PIPELINE_MAX_JOBS_PER_WINDOW:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"パイプライン実行は {_PIPELINE_WINDOW_SEC // 60} 分に {_PIPELINE_MAX_JOBS_PER_WINDOW} 件までです",
+                )
+            ts_list.append(now)
     if not db.get(Match, body.match_id):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     job = enqueue(db, body.match_id, job_type=body.job_type)

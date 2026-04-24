@@ -265,6 +265,100 @@ class TestSafePath:
             safe_path(tmp_path, "/etc/passwd")
 
 
+# ─── ラウンド15: pipeline DoS + mass assignment + cookies null byte ────────
+
+class TestPipelineMassAssignmentAndRate:
+    def _seed(self, db_session):
+        from backend.routers.auth import _hash_password
+        from backend.db.models import Match as _M, Player as _P
+        db_session.query(User).delete()
+        db_session.query(_M).delete()
+        db_session.query(_P).delete()
+        db_session.add(_P(id=700, name="X", name_normalized="x"))
+        db_session.add(_P(id=701, name="Y", name_normalized="y"))
+        db_session.add(_M(
+            id=700, tournament="T", tournament_level="国内", round="QF",
+            date=date(2026, 4, 24), format="singles", result="unknown",
+            player_a_id=700, player_b_id=701,
+        ))
+        db_session.add(User(id=700, username="ana700", role="analyst",
+                            display_name="A", hashed_credential=_hash_password("x")))
+        db_session.commit()
+
+    def test_pipeline_run_rejects_unknown_job_type(self, db_session):
+        self._seed(db_session)
+        token = _make_token("analyst", user_id=700)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post(
+                "/api/v1/pipeline/run",
+                json={"match_id": 700, "job_type": "admin_dump"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 422, f"expected 422, got {resp.status_code}: {resp.text[:200]}"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_pipeline_run_rejects_extra_fields(self, db_session):
+        self._seed(db_session)
+        token = _make_token("analyst", user_id=700)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post(
+                "/api/v1/pipeline/run",
+                json={"match_id": 700, "priority": "high", "cpu_limit": 999},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 422, f"expected 422 extra forbid, got {resp.status_code}: {resp.text[:200]}"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_pipeline_run_rate_limit(self, db_session, monkeypatch):
+        from backend.routers import pipeline as _pl
+        monkeypatch.setattr(_pl, "_PIPELINE_MAX_JOBS_PER_WINDOW", 3, raising=True)
+        _pl._pipeline_run_counters.clear()
+        self._seed(db_session)
+        token = _make_token("analyst", user_id=700)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            codes = []
+            for _ in range(5):
+                r = client.post(
+                    "/api/v1/pipeline/run",
+                    json={"match_id": 700, "job_type": "full_pipeline"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                codes.append(r.status_code)
+            assert 429 in codes, f"expected 429, got {codes}"
+        finally:
+            app.dependency_overrides.clear()
+            _pl._pipeline_run_counters.clear()
+
+
+class TestPasswordChangeExtraForbid:
+    def test_password_change_rejects_user_id_field(self, db_session):
+        from backend.routers.auth import _hash_password
+        db_session.query(User).delete()
+        db_session.add(User(id=800, username="pw", role="analyst",
+                            display_name="P", hashed_credential=_hash_password("OldPass12345!")))
+        db_session.commit()
+        token = _make_token("analyst", user_id=800)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post(
+                "/api/auth/password",
+                json={"current_password": "OldPass12345!", "new_password": "NewPass12345!", "user_id": 1},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 422, f"expected 422 extra forbid, got {resp.status_code}: {resp.text[:200]}"
+        finally:
+            app.dependency_overrides.clear()
+
+
 # ─── 動画 DL: SSRF 防御 + cookies.txt セキュア扱い ───────────────────────────
 
 class TestVideoDownloadSSRF:

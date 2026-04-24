@@ -544,6 +544,13 @@ async def start_download(
         cookies_content = body.cookies_txt
         if len(cookies_content) > 1024 * 1024:  # 1MB 上限
             raise HTTPException(status_code=413, detail="cookies.txt が大きすぎます (max 1MB)")
+        # null byte を含む cookies.txt は拒否 (ファイル system / yt-dlp パーサ攻撃経路)
+        if "\x00" in cookies_content:
+            raise HTTPException(status_code=422, detail="cookies.txt に null byte が含まれています")
+        # 制御文字 (タブ/改行以外) を拒否
+        import re as _re_cc
+        if _re_cc.search(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]", cookies_content):
+            raise HTTPException(status_code=422, detail="cookies.txt に不正な制御文字が含まれています")
         # 先頭行のサニティチェック: yt-dlp の Netscape HTTP Cookie File 形式か
         first_line = cookies_content.splitlines()[0].strip() if cookies_content.strip() else ""
         if not (first_line.startswith("#") or first_line.startswith("# Netscape HTTP Cookie")
