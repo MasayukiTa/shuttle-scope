@@ -31,6 +31,28 @@ try:
 except ImportError:
     YT_DLP_AVAILABLE = False
 
+
+def _resolve_deno_path() -> str | None:
+    """deno 実行ファイルのフルパスを探索する。
+
+    yt-dlp は自プロセスの PATH から deno を探すが、Electron/bat 起動時に
+    PATH が古いキャッシュを使っていると WinGet Links が含まれない。
+    明示的にフルパスを渡すことで回避する。
+    """
+    found = shutil.which("deno")
+    if found:
+        return found
+    # Windows: winget が symlink を置くデフォルト場所
+    if platform.system() == "Windows":
+        home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+        candidate = os.path.join(home, r"AppData\Local\Microsoft\WinGet\Links\deno.exe")
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+_DENO_PATH = _resolve_deno_path()
+
 # yt-dlp が対応しているブラウザ名
 SUPPORTED_BROWSERS = {"chrome", "edge", "firefox", "brave", "opera", "vivaldi", "chromium", "safari"}
 
@@ -247,6 +269,11 @@ class VideoDownloader:
             # カスタムロガー: cookie DB コピー失敗の stderr 出力を抑制
             "logger": _YtDlpLogger(),
         }
+
+        # JS ランタイム（YouTube 抽出に必要）。deno が PATH 解決できない環境向けに
+        # 明示的にフルパスを渡す（winget install 直後のキャッシュ問題回避）。
+        if _DENO_PATH:
+            yt_opts["js_runtimes"] = {"deno": {"path": _DENO_PATH}}
 
         # ffmpeg がある場合のみ merge_output_format を指定
         # （指定すると ffmpeg がない環境で強制マージが走りエラーになる）
