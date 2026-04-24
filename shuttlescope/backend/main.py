@@ -693,6 +693,66 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(GlobalAuthMiddleware)
 
 
+# ─── 422 バリデーションエラーの input エコー時に機密フィールドをマスク ────────
+# FastAPI デフォルトはリクエストボディをそのまま返すため、パスワードがログや
+# プロキシに残るリスクがある。password/token/secret 系をマスクしてから返す。
+from fastapi.exceptions import RequestValidationError as _ReqValidationError
+from fastapi.responses import JSONResponse as _JSONResp
+
+_SENSITIVE_FIELD_NAMES = frozenset({
+    "password", "new_password", "old_password", "current_password",
+    "token", "access_token", "refresh_token", "secret", "api_key",
+    "totp", "totp_code", "mfa_code", "otp", "hashed_credential",
+})
+
+
+# バリデーションエラー input の長大 string 閾値。ここを超える文字列は `***(truncated)`
+# に置換する。XML/バイナリ/巨大ペイロードがログやプロキシに生で載らないようにする。
+_INPUT_STRING_MAX_LEN = 200
+
+
+def _mask_sensitive(value, depth: int = 0):
+    if depth > 4:
+        return "***"
+    if isinstance(value, dict):
+        return {
+            k: ("***" if k.lower() in _SENSITIVE_FIELD_NAMES else _mask_sensitive(v, depth + 1))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_mask_sensitive(v, depth + 1) for v in value[:20]]
+    if isinstance(value, str):
+        # 長大な文字列 / バイナリっぽい文字列はマスク
+        if len(value) > _INPUT_STRING_MAX_LEN:
+            return "***(truncated)"
+        # XML/HTML/ SQL っぽいペイロードはマスク
+        lowered = value.lstrip().lower()
+        if lowered.startswith(("<?xml", "<!doctype", "<html", "<script")):
+            return "***(xml/html)"
+        return value
+    if isinstance(value, bytes):
+        return f"***(bytes,len={len(value)})"
+    return value
+
+
+@app.exception_handler(_ReqValidationError)
+async def _validation_error_handler(request: StarletteRequest, exc: _ReqValidationError):
+    errs = []
+    for e in exc.errors():
+        e2 = dict(e)
+        # loc に機密フィールドが含まれる場合は input 全体をマスク
+        loc = e2.get("loc", ())
+        if any(isinstance(seg, str) and seg.lower() in _SENSITIVE_FIELD_NAMES for seg in loc):
+            e2["input"] = "***"
+        else:
+            e2["input"] = _mask_sensitive(e2.get("input"))
+        # ctx (Pydantic が検証詳細を入れる) にも機密が混じる可能性があるのでマスク
+        if "ctx" in e2:
+            e2["ctx"] = _mask_sensitive(e2.get("ctx"))
+        errs.append(e2)
+    return _JSONResp({"detail": errs}, status_code=422)
+
+
 # ─── グローバル例外ハンドラ（PUBLIC_MODE / HIDE_STACK_TRACES でスタックトレースを隠す） ─
 import traceback as _traceback
 
@@ -1136,8 +1196,12 @@ async def system_capabilities():
 
 @app.get("/api/version")
 async def version():
-    """バージョン情報"""
-    return {"version": "1.0.0", "environment": app_settings.ENVIRONMENT}
+    """バージョン情報。
+
+    バージョンは SPA フッターで使う可能性があるため公開。
+    ただし environment (production/development) は攻撃面情報を漏らすため返さない。
+    """
+    return {"version": "1.0.0"}
 
 
 # ─── React SPA 配信（LAN / トンネルブラウザアクセス用）───────────────────────

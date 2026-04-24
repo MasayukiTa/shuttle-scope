@@ -26,7 +26,7 @@ import time
 import urllib.request
 from typing import Optional, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -360,7 +360,10 @@ def _start_ngrok(port: int, authtoken: str = "") -> subprocess.Popen:
 # ─── エンドポイント ──────────────────────────────────────────────────────────
 
 @router.get("/tunnel/status")
-def tunnel_status():
+def tunnel_status(request: Request):
+    # config_path に絶対パス (Windows ユーザ名を含む) が入るため admin 限定。
+    from backend.utils.auth import require_admin
+    require_admin(request)
     cf_avail = _cloudflare_available()
     ngrok_avail = _ngrok_available()
     cf_named = _cloudflare_named_tunnel_info()

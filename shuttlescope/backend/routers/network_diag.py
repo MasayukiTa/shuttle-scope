@@ -20,7 +20,7 @@ import socket
 import time
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from backend import config as _config_module
 
@@ -150,7 +150,10 @@ def _transport_recommendations(env: str, proxy: dict, lan_ips: list) -> list[str
 # ─── エンドポイント ───────────────────────────────────────────────────────────
 
 @router.get("/network/diagnostics")
-async def network_diagnostics():
+async def network_diagnostics(request: Request):
+    # hostname / OS バージョン / LAN IP 等を含むため admin/analyst のみ。
+    from backend.utils.auth import require_admin_or_analyst
+    require_admin_or_analyst(request)
     """
     Q-002/Q-008: ネットワーク環境診断
 

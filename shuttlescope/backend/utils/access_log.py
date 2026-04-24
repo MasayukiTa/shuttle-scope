@@ -20,9 +20,22 @@ _CHAIN_LOCK = threading.Lock()
 
 
 def _secret_bytes() -> bytes:
-    """HMAC 鍵を動的に参照（設定差し替えテストに追従）"""
+    """HMAC 鍵を動的に参照（設定差し替えテストに追従）。
+
+    SECRET_KEY が空の場合でも既知のデフォルト文字列にフォールバックしない。
+    既知キーへのフォールバックは監査ログのハッシュチェーンを
+    公開鍵で偽造可能にするため、セキュリティ上許容できない。
+    """
     from backend.config import settings as _s
-    return (_s.SECRET_KEY or "development-secret-key").encode("utf-8")
+    key = (_s.SECRET_KEY or "").encode("utf-8")
+    if not key:
+        # 空キー時は起動不能にしない（開発時のテスト容易性を保つ）が、
+        # 監査チェーンは hostname+pid ベースのランダム派生キーで運用する。
+        # これにより「既知デフォルト鍵で署名された audit log を信じる」事態を防ぐ。
+        import os, socket
+        fallback = f"ss_audit_fallback::{socket.gethostname()}::{os.getpid()}".encode("utf-8")
+        return hashlib.sha256(fallback).digest()
+    return key
 
 
 def _canonical(

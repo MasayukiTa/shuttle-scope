@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.benchmark.devices import probe_all, ComputeDevice
@@ -91,10 +91,12 @@ class JobResponse(BaseModel):
 # ─── エンドポイント ────────────────────────────────────────────────────────────
 
 @router.get("/devices", response_model=List[DeviceSchema])
-async def get_devices() -> List[DeviceSchema]:
+async def get_devices(request: Request) -> List[DeviceSchema]:
     """利用可能な計算デバイス一覧を返す（TTL 60秒キャッシュ）。
-    pynvml / openvino / ray が未インストールでも CPU は必ず含まれる。
+    GPU/CPU モデル名・ドライババージョン・VRAM を含むため admin 限定。
     """
+    from backend.utils.auth import require_admin
+    require_admin(request)
     devices = probe_all()
     return [DeviceSchema.from_compute_device(d) for d in devices]
 

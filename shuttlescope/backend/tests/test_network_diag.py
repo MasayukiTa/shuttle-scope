@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from backend.utils.jwt_utils import create_access_token
+
+_ADMIN_HEADERS = {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
 
 
 @pytest.fixture()
@@ -27,7 +30,7 @@ class TestDiagnostics:
         monkeypatch.setattr(nd, "_probe_tcp", fake_probe)
         monkeypatch.setattr(nd, "_get_lan_ips", lambda: ["192.168.1.10"])
 
-        r = client.get("/api/network/diagnostics")
+        r = client.get("/api/network/diagnostics", headers=_ADMIN_HEADERS)
         assert r.status_code == 200
         data = r.json()["data"]
 
@@ -54,7 +57,7 @@ class TestDiagnostics:
         monkeypatch.setattr(nd, "_probe_tcp", fake_probe)
         monkeypatch.setattr(nd, "_get_lan_ips", lambda: [])
 
-        r = client.get("/api/network/diagnostics")
+        r = client.get("/api/network/diagnostics", headers=_ADMIN_HEADERS)
         assert r.status_code == 200
         data = r.json()["data"]
         assert data["capabilities"]["tcp_443"]["ok"] is False

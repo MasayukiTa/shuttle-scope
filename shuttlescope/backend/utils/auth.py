@@ -177,6 +177,30 @@ def filter_matches_for_user(ctx: AuthCtx, matches: list[Match]) -> list[Match]:
     return matches
 
 
+def require_admin(request: Request) -> "AuthCtx":
+    """admin ロールのみ許可。player/coach/analyst は 403。"""
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin role required")
+    return ctx
+
+
+def require_admin_or_analyst(request: Request) -> "AuthCtx":
+    """admin または analyst のみ許可。player/coach は 403。"""
+    ctx = get_auth(request)
+    if not (ctx.is_admin or ctx.is_analyst):
+        raise HTTPException(status_code=403, detail="admin または analyst のみアクセス可能です")
+    return ctx
+
+
+def require_non_player(request: Request) -> "AuthCtx":
+    """player 以外 (admin/analyst/coach) のみ許可。"""
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この情報は player ロールでは参照できません")
+    return ctx
+
+
 def require_match_scope(request: Request, match: Match, db: Session) -> "AuthCtx":
     """match に対するアクセス権を検証する（共通ヘルパー）。
     - analyst / admin: 無条件許可

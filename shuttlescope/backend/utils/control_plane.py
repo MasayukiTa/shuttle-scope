@@ -37,12 +37,27 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
+# PUBLIC_MODE=True または ENVIRONMENT=production では空文字・testclient を
+# loopback 扱いしない（Cloudflare で CF-Connecting-IP が剥がれるような異常経路
+# や設定ミスで攻撃者が loopback バイパスを得るのを阻止する・多層防御）。
+def _is_production_mode() -> bool:
+    from backend.config import settings as _s
+    return bool(getattr(_s, "PUBLIC_MODE", False)) or (getattr(_s, "ENVIRONMENT", "") == "production")
+
+
 def is_loopback_request(request: Request) -> bool:
-    """リクエスト元が loopback アドレスかどうかを返す。"""
+    """リクエスト元が loopback アドレスかどうかを返す。
+
+    本番環境（PUBLIC_MODE=True または ENVIRONMENT=production）では
+    `""` や `"testclient"` を loopback 扱いしない。開発/テスト時のみ許容する。
+    """
     ip = _client_ip(request)
-    # FastAPI/Starlette TestClient reports the client host as "testclient".
-    # Treat it as loopback-equivalent so local-only compatibility paths stay testable in CI.
-    return ip in ("127.0.0.1", "::1", "localhost", "", "testclient")
+    if ip in ("127.0.0.1", "::1", "localhost"):
+        return True
+    # 開発・テスト環境のみ空文字と "testclient" を loopback 扱い
+    if not _is_production_mode():
+        return ip in ("", "testclient")
+    return False
 
 
 def is_trusted_cluster_request(request: Request) -> bool:

@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from backend.utils.jwt_utils import create_access_token
+
+_ADMIN_HEADERS2 = {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
 
 
 ADMIN_USER = "admin_settings"
@@ -103,7 +106,7 @@ class TestPutSettings:
 
 class TestGetDevices:
     def test_returns_expected_keys(self, client):
-        r = client.get("/api/settings/devices")
+        r = client.get("/api/settings/devices", headers=_ADMIN_HEADERS2)
         assert r.status_code == 200
         j = r.json()
         assert j["success"] is True
