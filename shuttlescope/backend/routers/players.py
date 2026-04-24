@@ -4,7 +4,7 @@ import re
 import unicodedata
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -17,22 +17,23 @@ router = APIRouter()
 
 
 class PlayerCreate(BaseModel):
-    name: str
-    name_en: Optional[str] = None
-    team: Optional[str] = None
-    nationality: Optional[str] = None
-    dominant_hand: Optional[str] = "unknown"    # R / L / unknown（未確認時はunknown）
-    birth_year: Optional[int] = None
-    world_ranking: Optional[int] = None
+    # extra フィールド禁止 + 長さ/形式検証
+    model_config = {"extra": "forbid"}
+    name: str = Field(..., min_length=1, max_length=120)
+    name_en: Optional[str] = Field(default=None, max_length=120)
+    team: Optional[str] = Field(default=None, max_length=100)
+    nationality: Optional[str] = Field(default=None, max_length=60)
+    dominant_hand: Optional[str] = "unknown"
+    birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
+    world_ranking: Optional[int] = Field(default=None, ge=1, le=99999)
     is_target: bool = False
-    notes: Optional[str] = None
-    # V4: プロフィール確定度・暫定作成管理
+    notes: Optional[str] = Field(default=None, max_length=5000)
     profile_status: Optional[str] = "verified"
     needs_review: bool = False
     created_via_quick_start: bool = False
-    organization: Optional[str] = None
+    organization: Optional[str] = Field(default=None, max_length=200)
     aliases: Optional[list[str]] = None
-    scouting_notes: Optional[str] = None
+    scouting_notes: Optional[str] = Field(default=None, max_length=5000)
 
 
 class TeamHistoryEntry(BaseModel):
@@ -42,22 +43,22 @@ class TeamHistoryEntry(BaseModel):
 
 
 class PlayerUpdate(BaseModel):
-    name: Optional[str] = None
-    name_en: Optional[str] = None
-    team: Optional[str] = None
-    nationality: Optional[str] = None
+    # extra フィールド禁止 + 長さ/形式検証
+    model_config = {"extra": "forbid"}
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    name_en: Optional[str] = Field(default=None, max_length=120)
+    team: Optional[str] = Field(default=None, max_length=100)
+    nationality: Optional[str] = Field(default=None, max_length=60)
     dominant_hand: Optional[str] = None
-    birth_year: Optional[int] = None
-    world_ranking: Optional[int] = None
+    birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
+    world_ranking: Optional[int] = Field(default=None, ge=1, le=99999)
     is_target: Optional[bool] = None
-    notes: Optional[str] = None
-    # V4
+    notes: Optional[str] = Field(default=None, max_length=5000)
     profile_status: Optional[str] = None
     needs_review: Optional[bool] = None
-    organization: Optional[str] = None
+    organization: Optional[str] = Field(default=None, max_length=200)
     aliases: Optional[list[str]] = None
-    scouting_notes: Optional[str] = None
-    # 所属履歴（手動上書き用。通常は team 変更時に自動追記される）
+    scouting_notes: Optional[str] = Field(default=None, max_length=5000)
     team_history: Optional[list[TeamHistoryEntry]] = None
 
 

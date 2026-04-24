@@ -30,6 +30,16 @@ class CommentCreate(BaseModel):
     is_flagged: bool = False
 
 
+# Per-user comment post rate limit (DoS / spam 対策)
+# 60 秒に 1 user あたり最大 20 コメント (analyst の業務で十分、50 連投を防ぐ)
+import threading as _th_c
+import time as _t_c
+_comment_post_counters: dict[int, list[float]] = {}
+_comment_post_lock = _th_c.Lock()
+_COMMENT_WINDOW_SEC = 60
+_COMMENT_MAX_PER_WINDOW = 20
+
+
 @router.post("/comments", status_code=201)
 def create_comment(body: CommentCreate, request: Request, db: Session = Depends(get_db)):
     """コメント投稿。author_role はサーバ側で JWT から決定しクライアント入力を無視する。"""
@@ -37,6 +47,16 @@ def create_comment(body: CommentCreate, request: Request, db: Session = Depends(
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     ctx = _require_match_scope(request, match, db)
+    # DoS 対策: user あたり 60 秒に 20 comment 上限
+    if ctx.user_id:
+        now = _t_c.time()
+        with _comment_post_lock:
+            ts = _comment_post_counters.setdefault(ctx.user_id, [])
+            cutoff = now - _COMMENT_WINDOW_SEC
+            ts[:] = [t for t in ts if t >= cutoff]
+            if len(ts) >= _COMMENT_MAX_PER_WINDOW:
+                raise HTTPException(status_code=429, detail="コメント投稿が多すぎます。しばらく待ってから再試行してください。")
+            ts.append(now)
 
     # author_role は必ず認証済みコンテキストから決定する（なりすまし防止）
     author_role = ctx.role or "unknown"
@@ -133,6 +153,15 @@ def delete_comment(comment_id: int, request: Request, db: Session = Depends(get_
     comment.deleted_at = datetime.utcnow()
     touch_sync_metadata(comment, device_id=get_device_id(db))
     db.commit()
+    # audit log: 他 user のコメントを analyst/admin が削除した場合 forensic 用に記録
+    try:
+        from backend.utils.access_log import log_access as _log
+        _log(db, "comment_deleted", user_id=ctx.user_id,
+             resource_type="comment", resource_id=comment_id,
+             details={"actor_role": ctx.role, "author_role": comment.author_role,
+                      "match_id": comment.match_id})
+    except Exception:
+        pass
     return {"success": True}
 
 

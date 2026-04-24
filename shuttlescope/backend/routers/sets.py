@@ -1,7 +1,7 @@
 """セット管理API（/api/sets）"""
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -15,14 +15,18 @@ router = APIRouter()
 
 
 class SetCreate(BaseModel):
+    # extra フィールド禁止 + set_num は 1-5 に制限 (ベスト 3 of 5 相当)
+    # これは badminton の公式ルールに従う。99 等の不正値を 422 で弾く
+    model_config = {"extra": "forbid"}
     match_id: int
-    set_num: int
+    set_num: int = Field(..., ge=1, le=5)
 
 
 class SetEnd(BaseModel):
-    winner: str      # player_a / player_b
-    score_a: int
-    score_b: int
+    model_config = {"extra": "forbid"}
+    winner: str = Field(..., pattern="^(player_a|player_b)$")
+    score_a: int = Field(..., ge=0, le=40)  # デュース含め 30 前後が最大、40 で余裕
+    score_b: int = Field(..., ge=0, le=40)
 
 
 def set_to_dict(s: GameSet) -> dict:
