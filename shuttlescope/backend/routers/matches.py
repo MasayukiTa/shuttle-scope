@@ -6,7 +6,7 @@ import unicodedata
 import uuid
 from datetime import date as _date
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -99,6 +99,22 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
         v = getattr(body, fname, None)
         if v is not None and isinstance(v, str) and len(v) > maxlen:
             raise HTTPException(status_code=422, detail=f"{fname} too long (max {maxlen})")
+    # video_url の制御文字拒否 (CR/LF/Tab 埋め込みで header injection / shell 攻撃経路)
+    vu = getattr(body, "video_url", None)
+    if vu is not None and isinstance(vu, str):
+        if len(vu) > 2000:
+            raise HTTPException(status_code=422, detail="video_url too long (max 2000)")
+        import re as _re_vu
+        if _re_vu.search(r"[\x00-\x1f\x7f]", vu):
+            raise HTTPException(status_code=422, detail="video_url contains control characters")
+        if vu.strip() != vu:
+            raise HTTPException(status_code=422, detail="video_url must not have leading/trailing whitespace")
+    # notes の HTML タグ / script 拒否 (stored XSS 対策)
+    notes = getattr(body, "notes", None)
+    if notes is not None and isinstance(notes, str):
+        import re as _re_n
+        if _re_n.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]", notes, _re_n.IGNORECASE):
+            raise HTTPException(status_code=422, detail="notes contains disallowed HTML tags")
 
 
 def _effective_status(
@@ -215,13 +231,17 @@ def _bulk_match_context(matches: list, db: Session) -> dict:
 @router.get("/matches")
 def list_matches(
     request: Request,
-    player_id: Optional[int] = None,
-    tournament_level: Optional[str] = None,
-    year: Optional[int] = None,
+    player_id: Optional[int] = Query(default=None, ge=1, le=2**31 - 1),
+    tournament_level: Optional[str] = Query(default=None, max_length=50),
+    year: Optional[int] = Query(default=None, ge=1900, le=2100),
     incomplete_only: bool = False,
+    limit: int = Query(default=500, ge=1, le=2000),
     db: Session = Depends(get_db),
 ):
-    """試合一覧（フィルタ付き）
+    """試合一覧（フィルタ付き）。
+
+    Query バリデーション (year 1900-2100 / limit 1-2000 / player_id positive int)
+    で `year=-1` 等の 500 エラーと `limit=-1` の全件取得 exfil を遮断する。
 
     role=player 時は X-Player-Id に関与する試合のみを返す（ダブルスの partner も含む4役）。
     ID 書き換えで他選手データを覗く攻撃に対する多層防御。
@@ -263,7 +283,7 @@ def list_matches(
         query = query.filter(Match.date >= date(year, 1, 1), Match.date <= date(year, 12, 31))
     if incomplete_only:
         query = query.filter(Match.annotation_status != "complete")
-    matches = query.order_by(Match.date.desc()).all()
+    matches = query.order_by(Match.date.desc()).limit(limit).all()
     ctx_bulk = _bulk_match_context(matches, db)
 
     def _result_for(m: Match) -> str | None:

@@ -275,6 +275,7 @@ class LoginResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
+    model_config = {"extra": "forbid"}
     refresh_token: str
 
 
@@ -615,6 +616,7 @@ def bootstrap_status(db: Session = Depends(get_db)):
 # ── ログアウト（JWTブラックリスト登録） ──────────────────────────────────────
 
 class LogoutRequest(BaseModel):
+    model_config = {"extra": "forbid"}
     refresh_token: Optional[str] = None
 
 
