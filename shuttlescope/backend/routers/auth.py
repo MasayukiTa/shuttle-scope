@@ -680,6 +680,10 @@ def refresh(req: RefreshRequest, request: Request, db: Session = Depends(get_db)
 # ── パスワード変更 / 管理者リセット ───────────────────────────────────────────
 
 class PasswordChangeRequest(BaseModel):
+    # user_id / target_user_id / sub / id を body で送って他ユーザ password を変えようとする
+    # IDOR 類似攻撃を 422 で明示拒否する (実際には JWT の user_id しか使わないが、
+    # silent drop で 200 を返すと攻撃者に成功と誤認させる)
+    model_config = {"extra": "forbid"}
     current_password: str
     new_password: str
 
