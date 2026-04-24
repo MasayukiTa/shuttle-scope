@@ -131,7 +131,7 @@ function GaugeBar({ value, limit, label }: { value: number; limit: number; label
 export function ClusterSettingsPanel() {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
-  const { cardBg, border, textMuted } = useCardTheme()
+  const { card: cardBg, border, textMuted } = useCardTheme()
 
   // ── ローカル状態 ──────────────────────────────────────────────────────────
   const [cfg, setCfg] = useState<ClusterConfig>({ mode: 'single' })
@@ -598,7 +598,7 @@ export function ClusterSettingsPanel() {
                   <span>{w.label || w.ip}</span>
                   {pr === 'loading'
                     ? <Loader2 size={10} className="animate-spin text-blue-400" />
-                    : pr && pr !== 'loading'
+                    : pr
                       ? <span className={pr.reachable ? 'text-green-400' : 'text-gray-500'}>
                           {pr.reachable ? `${pr.via === 'ray' ? 'Ray' : 'ICMP'} ${pr.latency_ms}ms` : 'NG'}
                         </span>

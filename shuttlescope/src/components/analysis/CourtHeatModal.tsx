@@ -20,8 +20,8 @@ import type { LandZone } from '@/types'
 interface MatchSummary {
   match_id: number
   opponent: string
-  date: string
-  result: 'win' | 'loss' | string
+  date: string | null
+  result: 'win' | 'loss' | string | null
 }
 
 interface CourtHeatModalProps {
@@ -375,7 +375,7 @@ function ZoneDetailPanel({
 }: {
   detail: ZoneDetailResponse['data']
   mode: 'hit' | 'land'
-  t: (key: string, fallback?: string) => string
+  t: ReturnType<typeof useTranslation>['t']
   isLight: boolean
 }) {
   const zoneName = ZONE_KEYS.includes(detail.zone as typeof ZONE_KEYS[number])

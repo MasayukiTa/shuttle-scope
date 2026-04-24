@@ -409,10 +409,21 @@ class TrackNetInference:
 
         # ── DirectML（AMD/NVIDIA Windows）──────────────────────────────────────
         if effective_backend in ("auto", "directml"):
-            if onnx_model_gpu is not None:
+            if onnx_model_gpu is None:
+                if effective_backend == "directml":
+                    tried.append("directml: ONNXファイルが見つかりません（自動フォールバック）")
+                    effective_backend = "auto"
+            else:
                 try:
                     import onnxruntime as ort
-                    if "DmlExecutionProvider" in ort.get_available_providers():
+                    _dml_available = "DmlExecutionProvider" in ort.get_available_providers()
+                    if not _dml_available:
+                        # onnxruntime-directml が未インストール（メイン venv は ONNX CPU 版のみ）
+                        # → 他バックエンドへフォールバック可能にする
+                        if effective_backend == "directml":
+                            tried.append("directml: DmlExecutionProvider が onnxruntime に含まれていません (pip install onnxruntime-directml が必要)")
+                            effective_backend = "auto"
+                    if _dml_available:
                         providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
                         sess = ort.InferenceSession(str(onnx_model_gpu), providers=providers)
                         input_name = sess.get_inputs()[0].name

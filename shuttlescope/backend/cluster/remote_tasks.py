@@ -647,25 +647,27 @@ def _measure(fn, n):
     arr = np.array(lats)*1000
     return round(1000/float(np.mean(arr)),2), round(float(np.mean(arr)),2), round(float(np.percentile(arr,95)),2)
 
-# OpenVINO 試行（use_gpu フラグ問わず常に試みる）
-if use_gpu:
+# OpenVINO 試行（use_gpu フラグに応じてデバイス優先順位を変更）
+try:
+    import openvino as ov
     xml_path = model_path.replace(".onnx", ".xml")
-    try:
-        import openvino as ov
-        core = ov.Core()
-        model = core.read_model(xml_path if os.path.exists(xml_path) else model_path)
-        model.reshape({{model.input(0).any_name: SHAPE}})
-        for dev in ("GPU", "CPU"):
-            if dev not in core.available_devices: continue
-            try:
-                compiled = core.compile_model(model, dev, {{"PERFORMANCE_HINT": "LATENCY"}})
-                req = compiled.create_infer_request()
-                iname = compiled.input(0).any_name
-                fps, avg, p95 = _measure(lambda: req.infer({{iname: dummy}}), n_iters)
-                print(json.dumps({{"fps": fps, "avg_ms": avg, "p95_ms": p95, "provider": "openvino:" + dev}}))
-                sys.exit(0)
-            except Exception: continue
-    except Exception: pass
+    core = ov.Core()
+    if not os.path.exists(xml_path) and not os.path.exists(model_path):
+        print(json.dumps({{"error": "model not found: " + model_path}})); sys.exit(0)
+    model = core.read_model(xml_path if os.path.exists(xml_path) else model_path)
+    model.reshape({{model.input(0).any_name: SHAPE}})
+    dev_order = ("GPU", "CPU") if use_gpu else ("CPU",)
+    for dev in dev_order:
+        if dev not in core.available_devices: continue
+        try:
+            compiled = core.compile_model(model, dev, {{"PERFORMANCE_HINT": "LATENCY"}})
+            req = compiled.create_infer_request()
+            iname = compiled.input(0).any_name
+            fps, avg, p95 = _measure(lambda: req.infer({{iname: dummy}}), n_iters)
+            print(json.dumps({{"fps": fps, "avg_ms": avg, "p95_ms": p95, "provider": "openvino:" + dev}}))
+            sys.exit(0)
+        except Exception: continue
+except Exception: pass
 
 # ONNX フォールバック
 try:
@@ -864,14 +866,19 @@ import numpy as np
 
 n_iters = {n_iters}
 
-_fd, video_path = tempfile.mkstemp(suffix=".mp4")
-os.close(_fd)
-ret = subprocess.run(
-    ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=5:size=1280x720:rate=60",
-     "-c:v", "libx264", "-preset", "ultrafast", video_path],
-    capture_output=True, timeout=60)
-if ret.returncode != 0:
-    print(json.dumps({{"error": "ffmpeg unavailable"}})); sys.exit(0)
+try:
+    _fd, video_path = tempfile.mkstemp(suffix=".mp4")
+    os.close(_fd)
+    ret = subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=5:size=1280x720:rate=60",
+         "-c:v", "libx264", "-preset", "ultrafast", video_path],
+        capture_output=True, timeout=60)
+    if ret.returncode != 0:
+        print(json.dumps({{"error": "ffmpeg 生成失敗 (code=" + str(ret.returncode) + ")"}})); sys.exit(0)
+except FileNotFoundError:
+    print(json.dumps({{"error": "ffmpeg 未インストール (K10 の PATH に ffmpeg が必要)"}})); sys.exit(0)
+except Exception as e:
+    print(json.dumps({{"error": "ffmpeg 実行失敗: " + str(e)}})); sys.exit(0)
 
 lats = []
 for i in range(n_iters):
@@ -1028,7 +1035,7 @@ def dispatch_benchmark_ssh(fn_name: str, worker_ip: str, username: str, password
             n_iters=kwargs.get("n_iters", 5),
             use_gpu=kwargs.get("use_gpu", False),
         )
-        timeout = 300
+        timeout = 600
     elif fn_name == "_run_benchmark_pose":
         # K10向けにモデルファイルを C:\ss-models\ に配置
         task_path_k10 = r"C:\ss-models\pose_landmarker_lite.task"

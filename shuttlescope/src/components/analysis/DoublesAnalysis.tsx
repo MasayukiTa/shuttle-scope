@@ -25,8 +25,8 @@ import { useIsLightMode } from '@/hooks/useIsLightMode'
 interface MatchItem {
   match_id: number
   opponent: string
-  date: string
-  result: string
+  date: string | null
+  result: string | null
   format: string
 }
 
@@ -425,7 +425,7 @@ export function DoublesAnalysis({ playerId, allMatches }: DoublesAnalysisProps) 
                 options={doublesMatches.map((m) => ({
                   value: m.match_id,
                   label: `${m.date} vs ${m.opponent}`,
-                  suffix: m.result === 'win' ? t('doubles_analysis.result_win_short') : m.result === 'loss' ? t('doubles_analysis.result_loss_short') : m.result,
+                  suffix: (m.result === 'win' ? t('doubles_analysis.result_win_short') : m.result === 'loss' ? t('doubles_analysis.result_loss_short') : m.result) ?? undefined,
                   searchText: `${m.date} ${m.opponent}`,
                 }))}
                 value={selectedDoubleMatchId}

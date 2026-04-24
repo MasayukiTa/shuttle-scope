@@ -467,7 +467,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                   sameLevelCount={d.prediction_drivers.same_level_count}
                   allCount={d.prediction_drivers.all_count}
                   hasObservations={d.prediction_drivers.has_observations}
-                  drivers={d.prediction_drivers.drivers}
+                  drivers={d.prediction_drivers.drivers as unknown as Parameters<typeof PredictionDriversBlock>[0]['drivers']}
                 />
                 {meta?.confidence.warning && (
                   <p className="text-[11px] mt-2" style={{ color: subText }}>
@@ -621,8 +621,8 @@ function ObservationContextBlock({
 
   return (
     <div className="space-y-3">
-      {context.opponent && renderSection('相手', context.opponent as Record<string, { value: string; confidence: string }>)}
-      {context.self && renderSection('自分', context.self as Record<string, { value: string; confidence: string }>)}
+      {context.opponent ? renderSection('相手', context.opponent as Record<string, { value: string; confidence: string }>) : null}
+      {context.self ? renderSection('自分', context.self as Record<string, { value: string; confidence: string }>) : null}
     </div>
   )
 }

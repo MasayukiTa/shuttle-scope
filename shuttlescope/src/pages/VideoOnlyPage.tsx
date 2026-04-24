@@ -186,6 +186,7 @@ export function VideoOnlyPage() {
               playerOptions={[]}
               onAssign={noop}
               assignments={{}}
+              isLight={false}
             />
           </div>
         )}

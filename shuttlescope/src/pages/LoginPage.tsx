@@ -46,6 +46,7 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
         playerId: null,
         teamName: null,
         displayName: null,
+        pageAccess: [],
         error: errorMessage,
       }
     }
@@ -58,6 +59,7 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
       playerId: data.player_id ?? null,
       teamName: data.team_name ?? null,
       displayName: data.display_name ?? null,
+      pageAccess: (data.page_access ?? []) as string[],
     }
   } catch (e) {
     return {
@@ -67,6 +69,7 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
       playerId: null,
       teamName: null,
       displayName: null,
+      pageAccess: [],
       error: String(e),
     }
   }

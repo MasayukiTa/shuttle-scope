@@ -855,7 +855,7 @@ export function SettingsPage() {
               }`}
             >
               {tab.label}
-              {'badge' in tab && tab.badge > 0 && (
+              {'badge' in tab && (tab.badge ?? 0) > 0 && (
                 <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] bg-orange-500 text-white rounded-full">
                   {tab.badge}
                 </span>

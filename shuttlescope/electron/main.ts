@@ -1,4 +1,5 @@
 import electron from 'electron'
+import type { BrowserWindow as BrowserWindowInstance } from 'electron'
 import { spawn, execSync, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as http from 'http'
@@ -27,9 +28,9 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 let pythonProcess: ChildProcess | null = null
-let mainWindow: BrowserWindow | null = null
-let splashWindow: BrowserWindow | null = null
-let videoWindow: BrowserWindow | null = null
+let mainWindow: BrowserWindowInstance | null = null
+let splashWindow: BrowserWindowInstance | null = null
+let videoWindow: BrowserWindowInstance | null = null
 
 // バックエンドログバッファ（最新 500 行まで保持、レンダラーに push する）
 const BACKEND_LOG_MAX = 500
@@ -460,7 +461,7 @@ function createWindow(): void {
     'http://localhost:8765',
     'http://127.0.0.1:8765',
   ])
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  mainWindow.webContents.on('will-navigate', (event: Electron.Event, url: string) => {
     try {
       const u = new URL(url)
       if (u.protocol === 'file:' || u.protocol === 'localfile:') return
@@ -475,7 +476,7 @@ function createWindow(): void {
       event.preventDefault()
     }
   })
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
     try {
       const u = new URL(url)
       if (u.protocol === 'http:' || u.protocol === 'https:') {
@@ -485,7 +486,8 @@ function createWindow(): void {
     return { action: 'deny' }
   })
   // webview へ不審な webPreferences を差し込ませない
-  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(mainWindow.webContents as any).on('will-attach-webview', (_event: Electron.Event, webPreferences: Record<string, unknown>) => {
     delete (webPreferences as any).preload
     ;(webPreferences as any).nodeIntegration = false
     ;(webPreferences as any).contextIsolation = true
@@ -576,18 +578,18 @@ async function startApp(): Promise<void> {
       .catch((err) => console.error('[Main] Backend startup warning:', err.message))
 
     // ── DRM / EME 権限ハンドラー ──────────────────────────────────────────────
-    mainWindow.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+    mainWindow.webContents.session.setPermissionRequestHandler((_webContents: unknown, permission: string, callback: (granted: boolean) => void) => {
       const allowed = new Set(['media', 'mediaKeySystem', 'geolocation'])
       callback(allowed.has(permission))
     })
 
-    mainWindow.webContents.session.setPermissionCheckHandler((_webContents, permission) => {
+    mainWindow.webContents.session.setPermissionCheckHandler((_webContents: unknown, permission: string) => {
       const allowed = new Set(['media', 'mediaKeySystem'])
       return allowed.has(permission)
     })
 
     // YouTube / 外部コンテンツを iframe で読み込めるよう CSP を設定
-    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    mainWindow.webContents.session.webRequest.onHeadersReceived((details: Electron.OnHeadersReceivedListenerDetails, callback: (response: Electron.HeadersReceivedResponse) => void) => {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
@@ -613,7 +615,7 @@ async function startApp(): Promise<void> {
           'https://*.ytimg.com/*',
         ],
       },
-      (details, callback) => {
+      (details: Electron.OnBeforeSendHeadersListenerDetails, callback: (response: Electron.BeforeSendResponse) => void) => {
         callback({
           requestHeaders: {
             ...details.requestHeaders,

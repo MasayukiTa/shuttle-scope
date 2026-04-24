@@ -148,9 +148,10 @@ const END_TYPES = [
 // forced_error/unforced_error → 文脈依存のため手動選択
 function getSuggestedWinner(
   endType: string | null,
-  lastStriker: 'player_a' | 'player_b' | undefined
+  lastStriker: string | undefined
 ): 'player_a' | 'player_b' | null {
   if (!endType || !lastStriker) return null
+  if (lastStriker !== 'player_a' && lastStriker !== 'player_b') return null
   const opponent = lastStriker === 'player_a' ? 'player_b' : 'player_a'
   if (endType === 'out' || endType === 'net') return opponent
   if (endType === 'cant_reach' || endType === 'ace') return lastStriker
@@ -161,7 +162,7 @@ function getSuggestedWinner(
 function isWinnerBlocked(
   winner: 'player_a' | 'player_b',
   endType: string | null,
-  lastStriker: 'player_a' | 'player_b' | undefined
+  lastStriker: string | undefined
 ): boolean {
   if (!endType || !lastStriker) return false
   // 打者自身がアウト/ネット → 打者は勝てない
@@ -3755,7 +3756,7 @@ export function AnnotatorPage() {
             {/* 総移動距離・コートヒートマップカード（トラッキング済みの場合のみ表示） */}
             {!isMobile && trackFrames.length > 0 && matchId && (
               <PlayerMovementCard
-                matchId={matchId}
+                matchId={Number(matchId)}
                 matchFormat={match?.format ?? 'singles'}
                 playerNames={{
                   player_a: match?.player_a?.name ?? 'A',
@@ -4173,7 +4174,7 @@ export function AnnotatorPage() {
             <button
               onClick={() => {
                 updateOpponent.mutate({
-                  dominant_hand: inMatchDominantHand || undefined,
+                  dominant_hand: (inMatchDominantHand || undefined) as 'R' | 'L' | 'unknown' | undefined,
                   organization: inMatchOrganization || undefined,
                   scouting_notes: inMatchScoutingNotes || undefined,
                   profile_status: 'partial',
