@@ -22,6 +22,7 @@ router = APIRouter()
 
 
 class MatchCreate(BaseModel):
+    model_config = {"extra": "forbid"}
     tournament: str
     tournament_level: str
     tournament_grade: Optional[str] = None
@@ -42,9 +43,13 @@ class MatchCreate(BaseModel):
     competition_type: Optional[str] = "unknown"
     created_via_quick_start: bool = False
     metadata_status: Optional[str] = "minimal"
+    annotation_status: Optional[str] = None
 
 
 class MatchUpdate(BaseModel):
+    # 未知フィールドの silent drop を禁止 (id / created_at / updated_at 等の内部
+    # フィールドを body 注入する mass assignment を明示拒否)
+    model_config = {"extra": "forbid"}
     tournament: Optional[str] = None
     tournament_level: Optional[str] = None
     tournament_grade: Optional[str] = None
@@ -67,6 +72,33 @@ class MatchUpdate(BaseModel):
     competition_type: Optional[str] = None
     metadata_status: Optional[str] = None
     exception_reason: Optional[str] = None
+
+
+# ビジネスロジック用 enum (config.py で定義された値と一致)
+_MATCH_RESULT_ALLOWED = {"win", "loss", "draw", "unknown"}
+_MATCH_FORMAT_ALLOWED = {"singles", "doubles", "mixed"}
+_MATCH_TOURNAMENT_LEVELS = {"IC", "IS", "SJL", "全日本", "国内", "その他"}
+_MATCH_ANNOTATION_STATUS = {"not_started", "in_progress", "complete", "reviewed"}
+
+
+def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
+    """match の enum フィールドに不正な値が入っていないか検証。
+
+    DB 整合性破壊 (result=long string, tournament_level=invalid など) を 422 で拒否する。
+    """
+    if body.result is not None and body.result not in _MATCH_RESULT_ALLOWED:
+        raise HTTPException(status_code=422, detail=f"invalid result: {body.result!r}")
+    if body.format is not None and body.format not in _MATCH_FORMAT_ALLOWED:
+        raise HTTPException(status_code=422, detail=f"invalid format: {body.format!r}")
+    if body.tournament_level is not None and body.tournament_level not in _MATCH_TOURNAMENT_LEVELS:
+        raise HTTPException(status_code=422, detail=f"invalid tournament_level: {body.tournament_level!r}")
+    if getattr(body, "annotation_status", None) is not None and body.annotation_status not in _MATCH_ANNOTATION_STATUS:
+        raise HTTPException(status_code=422, detail=f"invalid annotation_status: {body.annotation_status!r}")
+    # 文字列フィールドの長さ上限 (DoS 対策)
+    for fname, maxlen in (("tournament", 200), ("round", 100), ("venue", 200), ("notes", 5000), ("final_score", 200)):
+        v = getattr(body, fname, None)
+        if v is not None and isinstance(v, str) and len(v) > maxlen:
+            raise HTTPException(status_code=422, detail=f"{fname} too long (max {maxlen})")
 
 
 def _effective_status(
@@ -256,6 +288,7 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
     ctx = get_auth(request)
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    _validate_match_enums(body)
     match = Match(**body.model_dump())
     touch(match)
     db.add(match)
@@ -309,6 +342,7 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     ctx = get_auth(request)
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    _validate_match_enums(body)
     # audit log: 変更前の値と変更後の値を記録 (match データ改竄の forensic 用)
     from backend.utils.access_log import log_access as _log
     _log(db, "match_updated", user_id=ctx.user_id,

@@ -99,7 +99,6 @@ class TestComments:
         resp = client.post("/api/comments", json={
             "match_id": match_id,
             "text": "テストコメントです",
-            "author_role": "analyst",
         })
         assert resp.status_code == 201
         body = resp.json()
@@ -109,10 +108,10 @@ class TestComments:
     def test_get_comments_for_match(self, sharing_client):
         client, match_id, *_ = sharing_client
         client.post("/api/comments", json={
-            "match_id": match_id, "text": "1件目", "author_role": "analyst",
+            "match_id": match_id, "text": "1件目",
         })
         client.post("/api/comments", json={
-            "match_id": match_id, "text": "2件目", "author_role": "coach",
+            "match_id": match_id, "text": "2件目",
         })
         resp = client.get(f"/api/comments?match_id={match_id}")
         assert resp.status_code == 200
@@ -125,7 +124,6 @@ class TestComments:
         resp = client.post("/api/comments", json={
             "match_id": match_id,
             "text": "このラリー重要",
-            "author_role": "analyst",
             "rally_id": None,
             "is_flagged": True,
         })
@@ -136,7 +134,7 @@ class TestComments:
         """PATCH /comments/{id}/flag がコメントにフラグを立てること"""
         client, match_id, *_ = sharing_client
         create_resp = client.post("/api/comments", json={
-            "match_id": match_id, "text": "要フラグ", "author_role": "analyst",
+            "match_id": match_id, "text": "要フラグ",
         })
         comment_id = create_resp.json()["data"]["id"]
         flag_resp = client.patch(f"/api/comments/{comment_id}/flag")
@@ -145,7 +143,7 @@ class TestComments:
     def test_delete_comment(self, sharing_client):
         client, match_id, *_ = sharing_client
         create_resp = client.post("/api/comments", json={
-            "match_id": match_id, "text": "削除対象", "author_role": "analyst",
+            "match_id": match_id, "text": "削除対象",
         })
         comment_id = create_resp.json()["data"]["id"]
         del_resp = client.delete(f"/api/comments/{comment_id}")

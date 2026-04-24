@@ -148,4 +148,26 @@ def get_job(
     j = db.get(AnalysisJob, job_id)
     if j is None:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    # coach は自チーム match のジョブのみ閲覧可能 (BOLA/IDOR 防御)
+    if ctx.role == "coach":
+        match = db.get(Match, j.match_id)
+        if match is not None:
+            from backend.utils.auth import require_match_scope
+            try:
+                require_match_scope(None, match, db) if False else None  # noqa
+                # 実コールは下で
+            except Exception:
+                pass
+        # coach の場合は match 経由でスコープチェック
+        from backend.db.models import Player as _P
+        if match is not None:
+            team = (ctx.team_name or "").strip()
+            pids = {match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id}
+            pids.discard(None)
+            if team and pids:
+                players = db.query(_P).filter(_P.id.in_(pids)).all()
+                if not any((p.team or "").strip() == team for p in players):
+                    raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+            else:
+                raise HTTPException(status_code=404, detail="ジョブが見つかりません")
     return _to_out(j)

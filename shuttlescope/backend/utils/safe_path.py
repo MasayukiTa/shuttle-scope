@@ -50,12 +50,35 @@ def validate_external_url(url: str, *, field_name: str = "url") -> str:
     if not host:
         raise HTTPException(status_code=422, detail=f"{field_name}: missing host")
 
-    # 既知の危険ホスト名
+    # 数値/octal/hex 表記のホスト (例: 2130706433, 0x7f000001, 0177.0.0.1) を拒否。
+    # socket.getaddrinfo は int を IP として解釈するが ipaddress.ip_address は
+    # string としてしか扱わないため、数字だけ / 0x / 08 octal プレフィックスは
+    # SSRF bypass 経路になるため明示的に拒否する。
+    import re as _re_ip
+    # 完全に数字のみのホスト (decimal 表記)
+    if _re_ip.fullmatch(r"[0-9]+", host):
+        raise HTTPException(status_code=422, detail=f"{field_name}: numeric host representation is not allowed")
+    # 0x プレフィックスの hex host
+    if host.startswith("0x") or _re_ip.fullmatch(r"0[0-9]*(\.0[0-9]*)*(\.[0-9]+)?", host):
+        raise HTTPException(status_code=422, detail=f"{field_name}: hex/octal host representation is not allowed")
+    # IP パートに octal (先頭 0 始まり) が含まれる (例: 0177.0.0.1)
+    parts = host.split(".")
+    if len(parts) == 4 and all(p.isdigit() or (p.startswith("0") and len(p) > 1) for p in parts):
+        for p in parts:
+            if p.startswith("0") and len(p) > 1:
+                raise HTTPException(status_code=422, detail=f"{field_name}: octal host representation is not allowed")
+
+    # 既知の危険ホスト名 + DNS wildcard サービス (nip.io/xip.io/sslip.io 等)
     blocked_names = {
         "localhost", "metadata.google.internal", "metadata.aws.amazon.com",
         "169.254.169.254", "169.254.170.2",  # AWS/GCP metadata
     }
-    if host in blocked_names or host.endswith(".local") or host.endswith(".internal"):
+    blocked_suffixes = (
+        ".local", ".internal",
+        ".localdomain",  # /etc/hosts の localhost alias
+        ".nip.io", ".xip.io", ".sslip.io",  # wildcard DNS で任意 IP を解決するサービス
+    )
+    if host in blocked_names or any(host.endswith(s) for s in blocked_suffixes):
         raise HTTPException(status_code=422, detail=f"{field_name}: blocked host")
 
     # IP アドレスとして解釈可能か (短縮 / hex / decimal もここで正規化される)

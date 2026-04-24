@@ -6,7 +6,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -18,8 +18,11 @@ router = APIRouter()
 
 
 class CommentCreate(BaseModel):
+    # extra フィールド (author_role / user_id 等) の silent drop を禁止
+    model_config = {"extra": "forbid"}
     match_id: int
-    text: str
+    # text 長さ制限 (DoS 対策、10万文字を容認した実例を塞ぐ)
+    text: str = Field(..., min_length=1, max_length=5000)
     session_id: Optional[int] = None
     set_id: Optional[int] = None
     rally_id: Optional[int] = None

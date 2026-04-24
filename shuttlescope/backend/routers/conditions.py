@@ -109,6 +109,9 @@ class ConditionCreate(BaseModel):
 
 
 class ConditionUpdate(BaseModel):
+    # 未知フィールドの silent drop を禁止 (id/created_at/player_id 等の改竄を防ぐ)
+    # 特に player_id 書換による tenant 越境/なりすましを 422 で明示拒否する
+    model_config = {"extra": "forbid"}
     measured_at: Optional[_date] = None
     condition_type: Optional[str] = None
 
