@@ -276,12 +276,13 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
     if sys.platform == "win32":
         kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
 
-    # 既存プロセスをクリーンアップ
+    # 既存プロセスをクリーンアップ（batと同様に stop → 2秒待ち → start）
     try:
         subprocess.run([ray_cmd, "stop", "--force"], **kw)
         _bootstrap.unmark_ray_connected()
     except Exception:
         pass
+    import time as _time; _time.sleep(2)
 
     # ray start --head
     cmd = [
@@ -307,8 +308,9 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
         # 起動確認
         import time; time.sleep(2)
         status = _bootstrap.subprocess_ray_status()
-        if status["running"]:
-            _bootstrap.mark_ray_connected()
+        if not status["running"]:
+            return {"ok": False, "message": f"Ray プロセスは終了しましたが起動を確認できませんでした。{status.get('error', '')}"}
+        _bootstrap.mark_ray_connected()
         # workers config から join コマンドを生成（ワーカーごと）
         workers = topology.get_workers()
         worker_cmds = []
@@ -320,6 +322,35 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
             if wgpus:
                 cmd_str += f" --num-gpus={wgpus}"
             worker_cmds.append({"label": w.get("label", wip), "ip": wip, "cmd": cmd_str})
+
+        # SSH 認証情報と ray_restart_bat が設定されているワーカーは自動で bat を実行する
+        import threading
+        def _trigger_worker_restart(wip: str, user: str, pwd: str, bat: str) -> None:
+            try:
+                import paramiko  # type: ignore
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                client.connect(wip, username=user, password=pwd, timeout=10)
+                _, stdout, stderr = client.exec_command(f'cmd /c "{bat}"', timeout=120)
+                stdout.channel.recv_exit_status()
+                client.close()
+                logger.info("worker ray-restart 完了: %s", wip)
+            except Exception as exc:
+                logger.warning("worker ray-restart 失敗 %s: %s", wip, exc)
+
+        for w in workers:
+            wip = w.get("ip", "")
+            user = w.get("ssh_user")
+            pwd = w.get("ssh_password")
+            bat = w.get("ray_restart_bat")
+            if wip and user and pwd and bat:
+                logger.info("SSH 経由でワーカー ray-restart をトリガー: %s", wip)
+                threading.Thread(
+                    target=_trigger_worker_restart,
+                    args=(wip, user, pwd, bat),
+                    daemon=True,
+                ).start()
+
         # 後方互換: 最初のワーカーコマンドを worker_cmd として返す
         first_cmd = worker_cmds[0]["cmd"] if worker_cmds else f"ray start --address={body.node_ip}:{body.port} --node-ip-address=<WORKER_IP> --num-cpus=16 --num-gpus=1"
         return {"ok": True, "message": "Ray head started", "status": "running",
