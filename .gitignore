@@ -19,6 +19,7 @@ shuttlescope/backend/.venv/
 shuttlescope/backend/.venv-directml/
 shuttlescope/**/__pycache__/
 shuttlescope/**/*.pyc
+shuttlescope/.coverage
 
 # Local-only runtime diagnostics
 kernel.errors.txt
