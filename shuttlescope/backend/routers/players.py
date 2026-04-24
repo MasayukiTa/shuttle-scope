@@ -3,7 +3,7 @@ import json
 import re
 import unicodedata
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,20 @@ from backend.utils.sync_meta import touch
 from backend.utils import response_cache
 
 router = APIRouter()
+
+
+def _reject_html_in_field(value: Optional[str], field_name: str) -> None:
+    """HTML タグや制御文字を player 名前/チーム等のフィールドから拒否する。
+    React 側で自動エスケープされるが、多層防御として API 受け入れ時点で弾く。
+    """
+    if value is None:
+        return
+    import re as _r
+    if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]", value, _r.IGNORECASE):
+        raise HTTPException(status_code=422, detail=f"{field_name} contains disallowed HTML tags")
+    # 制御文字 (CR/LF/null/BEL 等) 拒否
+    if _r.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", value):
+        raise HTTPException(status_code=422, detail=f"{field_name} contains control characters")
 
 
 class PlayerCreate(BaseModel):
@@ -139,12 +153,16 @@ def list_players(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/players/search")
-def search_players(q: str = "", db: Session = Depends(get_db)):
+def search_players(q: str = Query(default="", max_length=100), db: Session = Depends(get_db)):
     """選手名検索（正規化・alias対応）クイックスタート用"""
     if not q or not q.strip():
         return {"success": True, "data": []}
 
     q_norm = normalize_name(q.strip())
+    # normalize 後に空 or 1 文字のみになる query は全件マッチに近づくため空配列を返す。
+    # 例: q="_" "%" "*" "<script>" 等の特殊記号のみのクエリによる全件露出を防ぐ。
+    if len(q_norm) < 2:
+        return {"success": True, "data": []}
     all_players = db.query(Player).order_by(Player.name).all()
 
     exact: list[Player] = []
@@ -226,6 +244,14 @@ def create_player(
     _ctx=Depends(require_analyst),
 ):
     """選手登録"""
+    # HTML タグ / 制御文字の注入を拒否 (stored XSS 対策・多層防御)
+    _reject_html_in_field(body.name, "name")
+    _reject_html_in_field(body.name_en, "name_en")
+    _reject_html_in_field(body.team, "team")
+    _reject_html_in_field(body.nationality, "nationality")
+    _reject_html_in_field(body.organization, "organization")
+    _reject_html_in_field(body.notes, "notes")
+    _reject_html_in_field(body.scouting_notes, "scouting_notes")
     data = body.model_dump()
     aliases = data.pop("aliases", None)
     aliases_json = json.dumps(aliases, ensure_ascii=False) if aliases else None
@@ -263,6 +289,14 @@ def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # HTML タグ / 制御文字の注入を拒否
+    _reject_html_in_field(body.name, "name")
+    _reject_html_in_field(body.name_en, "name_en")
+    _reject_html_in_field(body.team, "team")
+    _reject_html_in_field(body.nationality, "nationality")
+    _reject_html_in_field(body.organization, "organization")
+    _reject_html_in_field(body.notes, "notes")
+    _reject_html_in_field(body.scouting_notes, "scouting_notes")
     # exclude_unset=True: クライアントが明示的に送ったフィールドのみ更新する
     # （exclude_none=True だと null 送信時に「クリア」ができない）
     data = body.model_dump(exclude_unset=True)
