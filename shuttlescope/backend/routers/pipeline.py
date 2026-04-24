@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -39,7 +39,8 @@ class RunRequest(BaseModel):
     # job_type 等のフィールドを任意指定させない + extra フィールド禁止
     # worker 側の未知 job_type 実行による RCE/DoS 経路を遮断する
     model_config = {"extra": "forbid"}
-    match_id: int
+    # match_id は 32bit 正整数に制限 (2**63 等の overflow による 500 回避)
+    match_id: int = Field(..., ge=1, le=2**31 - 1)
     job_type: str = "full_pipeline"
 
 

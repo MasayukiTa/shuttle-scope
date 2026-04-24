@@ -75,37 +75,43 @@ class ConditionCreate(BaseModel):
 
     id / created_by / created_at / updated_at 等の内部フィールドを body で指定して
     mass assignment する攻撃を extra=forbid で 422 拒否する。
+    各数値フィールドは人体として現実的な範囲に制限 (APT による偽データ捏造対策)。
     """
     model_config = {"extra": "forbid"}
     player_id: int
     measured_at: _date
     condition_type: str = "weekly"
 
-    weight_kg: Optional[float] = None
-    muscle_mass_kg: Optional[float] = None
-    body_fat_pct: Optional[float] = None
-    body_fat_mass_kg: Optional[float] = None
-    lean_mass_kg: Optional[float] = None
-    ecw_ratio: Optional[float] = None
-    arm_l_muscle_kg: Optional[float] = None
-    arm_r_muscle_kg: Optional[float] = None
-    leg_l_muscle_kg: Optional[float] = None
-    leg_r_muscle_kg: Optional[float] = None
-    trunk_muscle_kg: Optional[float] = None
-    bmr_kcal: Optional[float] = None
+    # InBody 体組成: 人体の現実的範囲
+    weight_kg: Optional[float] = Field(default=None, ge=20, le=200)
+    muscle_mass_kg: Optional[float] = Field(default=None, ge=0, le=150)
+    body_fat_pct: Optional[float] = Field(default=None, ge=0, le=80)
+    body_fat_mass_kg: Optional[float] = Field(default=None, ge=0, le=100)
+    lean_mass_kg: Optional[float] = Field(default=None, ge=0, le=150)
+    ecw_ratio: Optional[float] = Field(default=None, ge=0.3, le=0.5)
+    arm_l_muscle_kg: Optional[float] = Field(default=None, ge=0, le=10)
+    arm_r_muscle_kg: Optional[float] = Field(default=None, ge=0, le=10)
+    leg_l_muscle_kg: Optional[float] = Field(default=None, ge=0, le=30)
+    leg_r_muscle_kg: Optional[float] = Field(default=None, ge=0, le=30)
+    trunk_muscle_kg: Optional[float] = Field(default=None, ge=0, le=40)
+    bmr_kcal: Optional[float] = Field(default=None, ge=500, le=5000)
 
-    hooper_sleep: Optional[int] = None
-    hooper_soreness: Optional[int] = None
-    hooper_stress: Optional[int] = None
-    hooper_fatigue: Optional[int] = None
+    # Hooper スケールは通常 1-7 (7 段階 Likert)
+    hooper_sleep: Optional[int] = Field(default=None, ge=1, le=7)
+    hooper_soreness: Optional[int] = Field(default=None, ge=1, le=7)
+    hooper_stress: Optional[int] = Field(default=None, ge=1, le=7)
+    hooper_fatigue: Optional[int] = Field(default=None, ge=1, le=7)
 
-    session_rpe: Optional[int] = None
-    session_duration_min: Optional[int] = None
+    # Session RPE は Borg CR-10 スケール (0-10)
+    session_rpe: Optional[int] = Field(default=None, ge=0, le=10)
+    # 1 セッション 0-480 分 (8 時間) まで
+    session_duration_min: Optional[int] = Field(default=None, ge=0, le=480)
 
-    sleep_hours: Optional[float] = None
-    injury_notes: Optional[str] = None
-    general_comment: Optional[str] = None
-    match_id: Optional[int] = None
+    # 睡眠時間 0-24 時間
+    sleep_hours: Optional[float] = Field(default=None, ge=0, le=24)
+    injury_notes: Optional[str] = Field(default=None, max_length=2000)
+    general_comment: Optional[str] = Field(default=None, max_length=2000)
+    match_id: Optional[int] = Field(default=None, ge=1, le=2**31 - 1)
 
 
 class ConditionUpdate(BaseModel):
@@ -115,31 +121,32 @@ class ConditionUpdate(BaseModel):
     measured_at: Optional[_date] = None
     condition_type: Optional[str] = None
 
-    weight_kg: Optional[float] = None
-    muscle_mass_kg: Optional[float] = None
-    body_fat_pct: Optional[float] = None
-    body_fat_mass_kg: Optional[float] = None
-    lean_mass_kg: Optional[float] = None
-    ecw_ratio: Optional[float] = None
-    arm_l_muscle_kg: Optional[float] = None
-    arm_r_muscle_kg: Optional[float] = None
-    leg_l_muscle_kg: Optional[float] = None
-    leg_r_muscle_kg: Optional[float] = None
-    trunk_muscle_kg: Optional[float] = None
-    bmr_kcal: Optional[float] = None
+    # 各数値フィールドは人体として現実的な範囲 (ConditionCreate と同じ)
+    weight_kg: Optional[float] = Field(default=None, ge=20, le=200)
+    muscle_mass_kg: Optional[float] = Field(default=None, ge=0, le=150)
+    body_fat_pct: Optional[float] = Field(default=None, ge=0, le=80)
+    body_fat_mass_kg: Optional[float] = Field(default=None, ge=0, le=100)
+    lean_mass_kg: Optional[float] = Field(default=None, ge=0, le=150)
+    ecw_ratio: Optional[float] = Field(default=None, ge=0.3, le=0.5)
+    arm_l_muscle_kg: Optional[float] = Field(default=None, ge=0, le=10)
+    arm_r_muscle_kg: Optional[float] = Field(default=None, ge=0, le=10)
+    leg_l_muscle_kg: Optional[float] = Field(default=None, ge=0, le=30)
+    leg_r_muscle_kg: Optional[float] = Field(default=None, ge=0, le=30)
+    trunk_muscle_kg: Optional[float] = Field(default=None, ge=0, le=40)
+    bmr_kcal: Optional[float] = Field(default=None, ge=500, le=5000)
 
-    hooper_sleep: Optional[int] = None
-    hooper_soreness: Optional[int] = None
-    hooper_stress: Optional[int] = None
-    hooper_fatigue: Optional[int] = None
+    hooper_sleep: Optional[int] = Field(default=None, ge=1, le=7)
+    hooper_soreness: Optional[int] = Field(default=None, ge=1, le=7)
+    hooper_stress: Optional[int] = Field(default=None, ge=1, le=7)
+    hooper_fatigue: Optional[int] = Field(default=None, ge=1, le=7)
 
-    session_rpe: Optional[int] = None
-    session_duration_min: Optional[int] = None
+    session_rpe: Optional[int] = Field(default=None, ge=0, le=10)
+    session_duration_min: Optional[int] = Field(default=None, ge=0, le=480)
 
-    sleep_hours: Optional[float] = None
-    injury_notes: Optional[str] = None
-    general_comment: Optional[str] = None
-    match_id: Optional[int] = None
+    sleep_hours: Optional[float] = Field(default=None, ge=0, le=24)
+    injury_notes: Optional[str] = Field(default=None, max_length=2000)
+    general_comment: Optional[str] = Field(default=None, max_length=2000)
+    match_id: Optional[int] = Field(default=None, ge=1, le=2**31 - 1)
 
 
 class AuxiliaryInput(BaseModel):
@@ -417,8 +424,24 @@ def submit_questionnaire(body: QuestionnaireSubmit, db: Session = Depends(get_db
 from backend.utils.access_log import log_access as _log_acc_cond
 
 
+def _reject_xss_condition_text(value: Optional[str], field: str) -> None:
+    """condition のテキストフィールドに HTML タグ / 制御文字を仕込まれるのを拒否。"""
+    if value is None:
+        return
+    import re as _r
+    if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]", value, _r.IGNORECASE):
+        raise HTTPException(status_code=422, detail=f"{field} contains disallowed HTML tags")
+    if _r.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", value):
+        raise HTTPException(status_code=422, detail=f"{field} contains control characters")
+    if len(value) > 2000:
+        raise HTTPException(status_code=422, detail=f"{field} too long (max 2000)")
+
+
 @router.post("", status_code=201)
 def create_condition(body: ConditionCreate, request: Request, db: Session = Depends(get_db)):
+    # XSS/制御文字/長さ検証 (stored XSS 対策・多層防御)
+    _reject_xss_condition_text(body.injury_notes, "injury_notes")
+    _reject_xss_condition_text(body.general_comment, "general_comment")
     # measured_at の範囲検証 (1900-01-01 / 3000-01-01 等の偽データ投入を防止)
     # 実測: 今日 ± 5 年の範囲に限定。未来/過去 100 年のデータ混入攻撃を遮断。
     from datetime import date as _date_cc, timedelta as _td_cc
@@ -504,6 +527,9 @@ def update_condition(condition_id: int, body: ConditionUpdate, request: Request,
     if not cond:
         raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
     _require_condition_access(request, cond)
+    # XSS/制御文字/長さ検証
+    _reject_xss_condition_text(body.injury_notes, "injury_notes")
+    _reject_xss_condition_text(body.general_comment, "general_comment")
     # audit log (forensic): 誰がどの player の condition を編集したか
     try:
         from backend.utils.auth import get_auth as _ga

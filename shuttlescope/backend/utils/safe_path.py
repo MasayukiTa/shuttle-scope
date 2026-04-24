@@ -72,6 +72,11 @@ def validate_external_url(url: str, *, field_name: str = "url") -> str:
     blocked_names = {
         "localhost", "metadata.google.internal", "metadata.aws.amazon.com",
         "169.254.169.254", "169.254.170.2",  # AWS/GCP metadata
+        # URL shortener: yt-dlp が redirect 追跡で内部 IP に到達する経路を遮断
+        # (validate_external_url の事前検証だけでは redirect 後の IP を止められないため
+        #  redirect の起点となる shortener を丸ごと拒否する)
+        "bit.ly", "t.co", "tinyurl.com", "goo.gl", "is.gd", "buff.ly", "ow.ly",
+        "adf.ly", "shorturl.at", "bl.ink", "rebrand.ly", "soo.gd", "cutt.ly",
     }
     blocked_suffixes = (
         ".local", ".internal",

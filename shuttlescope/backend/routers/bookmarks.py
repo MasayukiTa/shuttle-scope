@@ -11,7 +11,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -35,8 +35,10 @@ class BookmarkCreate(BaseModel):
     rally_id: Optional[int] = None
     stroke_id: Optional[int] = None
     bookmark_type: str = "manual"
-    video_timestamp_sec: Optional[float] = None
-    note: Optional[str] = None
+    # 動画タイムスタンプ: 0 秒 〜 24 時間以内に限定 (負数・10 年後を拒否)
+    video_timestamp_sec: Optional[float] = Field(default=None, ge=0, le=86400)
+    # note: 長さ制限 (DoS 対策、2500 文字通過していた実績を塞ぐ)
+    note: Optional[str] = Field(default=None, max_length=2000)
 
 
 @router.post("/bookmarks", status_code=201)

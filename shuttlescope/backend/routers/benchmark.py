@@ -101,11 +101,21 @@ async def get_devices(request: Request) -> List[DeviceSchema]:
     return [DeviceSchema.from_compute_device(d) for d in devices]
 
 
+def _require_admin_for_benchmark(request: Request) -> None:
+    """benchmark 実行は GPU/CPU を数分占有するため admin 限定。
+    analyst が大量投入して計算資源 DoS するのを防ぐ。
+    """
+    from backend.utils.auth import require_admin
+    require_admin(request)
+
+
 @router.post("/run", response_model=RunResponse, status_code=202)
-async def run_benchmark(req: RunRequest) -> RunResponse:
+async def run_benchmark(req: RunRequest, request: Request) -> RunResponse:
     """ベンチマークジョブを作成してバックグラウンド実行を開始する。
     job_id を即座に返すため UI はブロックされない。
+    analyst が benchmark 大量投入で GPU/CPU 占有 DoS するのを防ぐため admin 限定。
     """
+    _require_admin_for_benchmark(request)
     job = create_job(
         device_ids=req.device_ids,
         targets=req.targets,
@@ -138,8 +148,9 @@ async def run_benchmark(req: RunRequest) -> RunResponse:
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job_status(job_id: str) -> JobResponse:
-    """ジョブの現在状態（status / progress / results）を返す。"""
+async def get_job_status(job_id: str, request: Request) -> JobResponse:
+    """ジョブの現在状態（status / progress / results）を返す。admin 限定。"""
+    _require_admin_for_benchmark(request)
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"job_id={job_id} が見つかりません")

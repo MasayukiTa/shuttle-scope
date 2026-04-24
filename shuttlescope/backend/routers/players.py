@@ -16,13 +16,16 @@ from backend.utils import response_cache
 router = APIRouter()
 
 
-def _reject_html_in_field(value: Optional[str], field_name: str) -> None:
+def _reject_html_in_field(value: Optional[str], field_name: str, *, require_non_empty: bool = False) -> None:
     """HTML タグや制御文字を player 名前/チーム等のフィールドから拒否する。
     React 側で自動エスケープされるが、多層防御として API 受け入れ時点で弾く。
+    require_non_empty=True なら空白のみも拒否 (意味のない空 player 対策)。
     """
     if value is None:
         return
     import re as _r
+    if require_non_empty and not value.strip():
+        raise HTTPException(status_code=422, detail=f"{field_name} must not be empty or whitespace only")
     if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]", value, _r.IGNORECASE):
         raise HTTPException(status_code=422, detail=f"{field_name} contains disallowed HTML tags")
     # 制御文字 (CR/LF/null/BEL 等) 拒否
@@ -245,7 +248,7 @@ def create_player(
 ):
     """選手登録"""
     # HTML タグ / 制御文字の注入を拒否 (stored XSS 対策・多層防御)
-    _reject_html_in_field(body.name, "name")
+    _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")
     _reject_html_in_field(body.team, "team")
     _reject_html_in_field(body.nationality, "nationality")
@@ -290,7 +293,7 @@ def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
     # HTML タグ / 制御文字の注入を拒否
-    _reject_html_in_field(body.name, "name")
+    _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")
     _reject_html_in_field(body.team, "team")
     _reject_html_in_field(body.nationality, "nationality")

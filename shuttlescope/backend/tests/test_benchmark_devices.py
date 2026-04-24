@@ -154,5 +154,5 @@ class TestBenchmarkAPI:
 
     def test_get_nonexistent_job_returns_404(self, client):
         """存在しない job_id は 404 を返すこと"""
-        resp = client.get("/api/v1/benchmark/jobs/nonexistent-job-id-12345")
+        resp = client.get("/api/v1/benchmark/jobs/nonexistent-job-id-12345", headers=_ADMIN_HEADERS3)
         assert resp.status_code == 404
