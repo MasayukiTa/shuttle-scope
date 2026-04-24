@@ -419,6 +419,14 @@ from backend.utils.access_log import log_access as _log_acc_cond
 
 @router.post("", status_code=201)
 def create_condition(body: ConditionCreate, request: Request, db: Session = Depends(get_db)):
+    # measured_at の範囲検証 (1900-01-01 / 3000-01-01 等の偽データ投入を防止)
+    # 実測: 今日 ± 5 年の範囲に限定。未来/過去 100 年のデータ混入攻撃を遮断。
+    from datetime import date as _date_cc, timedelta as _td_cc
+    today = _date_cc.today()
+    if body.measured_at > today + _td_cc(days=7):  # 1 週間先までは予定入力を許容
+        raise HTTPException(status_code=422, detail="measured_at が未来すぎます")
+    if body.measured_at < today - _td_cc(days=365 * 5):  # 5 年より古い日付は拒否
+        raise HTTPException(status_code=422, detail="measured_at が過去すぎます (5 年以内)")
     # player ロールは自 player_id のコンディションのみ作成可能。
     # 他 player のコンディションをでっち上げる「偽データ混入」攻撃を遮断。
     from backend.utils.auth import get_auth

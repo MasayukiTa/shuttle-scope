@@ -81,6 +81,21 @@ _MATCH_TOURNAMENT_LEVELS = {"IC", "IS", "SJL", "全日本", "国内", "その他
 _MATCH_ANNOTATION_STATUS = {"not_started", "in_progress", "complete", "reviewed"}
 
 
+def _validate_match_player_refs(body: "MatchUpdate | MatchCreate", db: Session) -> None:
+    """match の player_a/b_id, partner_a/b_id が実在する player を指しているか検証。
+
+    referential integrity 破壊 (0/-1/存在しない ID の注入) を 422 で拒否する。
+    """
+    for field in ("player_a_id", "player_b_id", "partner_a_id", "partner_b_id"):
+        pid = getattr(body, field, None)
+        if pid is None:
+            continue
+        if pid <= 0:
+            raise HTTPException(status_code=422, detail=f"{field} must be a positive integer")
+        if not db.get(Player, pid):
+            raise HTTPException(status_code=422, detail=f"{field}={pid} does not exist")
+
+
 def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
     """match の enum フィールドに不正な値が入っていないか検証。
 
@@ -309,6 +324,7 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     _validate_match_enums(body)
+    _validate_match_player_refs(body, db)
     match = Match(**body.model_dump())
     touch(match)
     db.add(match)
@@ -363,6 +379,7 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     _validate_match_enums(body)
+    _validate_match_player_refs(body, db)
     # audit log: 変更前の値と変更後の値を記録 (match データ改竄の forensic 用)
     from backend.utils.access_log import log_access as _log
     _log(db, "match_updated", user_id=ctx.user_id,
