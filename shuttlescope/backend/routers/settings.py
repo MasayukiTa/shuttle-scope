@@ -5,7 +5,7 @@ TrackNet設定など再起動後も保持すべき設定に使用。
 import json
 import socket
 import uuid as _uuid_mod
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -97,6 +97,58 @@ class SettingsUpdate(BaseModel):
     settings: dict
 
 
+# 文字列値の最大長（ストレージ汚染・DoS 対策）
+_MAX_STRING_VALUE_LEN = 4096
+
+
+def _validate_settings_payload(payload: dict) -> dict:
+    """PUT /settings のボディを検証する。
+
+    - DEFAULT_SETTINGS に定義されていないキーは 400（ホワイトリスト）
+    - 値の型が DEFAULT_SETTINGS と一致しない場合は 400（型 coercion は bool/int 間で許容）
+    - 文字列は _MAX_STRING_VALUE_LEN を超えたら 400
+    戻り値: 正規化済み dict
+    """
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="settings は dict である必要があります")
+
+    cleaned: dict = {}
+    for k, v in payload.items():
+        if not isinstance(k, str):
+            raise HTTPException(status_code=422, detail=f"キーは文字列である必要があります: {k!r}")
+        if k not in DEFAULT_SETTINGS:
+            raise HTTPException(status_code=400, detail=f"未知の設定キーです: {k}")
+        expected = DEFAULT_SETTINGS[k]
+        expected_type = type(expected)
+        # bool は int のサブクラスだが別物として扱う
+        if expected_type is bool:
+            if not isinstance(v, bool):
+                raise HTTPException(status_code=422, detail=f"{k} は bool が必要です")
+        elif expected_type is int:
+            if isinstance(v, bool) or not isinstance(v, int):
+                raise HTTPException(status_code=422, detail=f"{k} は int が必要です")
+        elif expected_type is str:
+            if not isinstance(v, str):
+                raise HTTPException(status_code=422, detail=f"{k} は str が必要です")
+            if len(v) > _MAX_STRING_VALUE_LEN:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"{k} の値が長すぎます（上限 {_MAX_STRING_VALUE_LEN} 文字）",
+                )
+        elif expected_type is float:
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise HTTPException(status_code=422, detail=f"{k} は数値が必要です")
+        else:
+            # dict/list などは現状 DEFAULT_SETTINGS に無いが、念のため厳密一致
+            if not isinstance(v, expected_type):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{k} の型が不正です（期待: {expected_type.__name__}）",
+                )
+        cleaned[k] = v
+    return cleaned
+
+
 def _load_all(db: Session) -> dict:
     rows = db.execute(text("SELECT key, value FROM app_settings")).fetchall()
     result = dict(DEFAULT_SETTINGS)
@@ -146,24 +198,26 @@ def update_settings(
     sensitive keys (ngrok_authtoken / turn_* / ss_notify_webhook_url) は
     admin のみ書換可能。analyst が書換えると SSRF 原資や credential 盗難に発展する。
     """
-    from backend.utils.auth import get_auth
     ctx = get_auth(request)
+    # 1) ホワイトリスト + 型検証
+    cleaned = _validate_settings_payload(body.settings)
+    # 2) sensitive キーは admin のみ
     if not ctx.is_admin:
-        # analyst が sensitive key を書換えようとしていたら 403
-        bad = [k for k in body.settings.keys() if k in _SENSITIVE_SETTING_KEYS]
+        bad = [k for k in cleaned.keys() if k in _SENSITIVE_SETTING_KEYS]
         if bad:
             raise HTTPException(
                 status_code=403,
                 detail=f"以下のキーは admin のみ変更可能です: {bad}",
             )
     _ensure_settings_table(db)
-    for key, value in body.settings.items():
+    for key, value in cleaned.items():
         db.execute(
             text("INSERT OR REPLACE INTO app_settings(key, value) VALUES(:k, :v)"),
             {"k": key, "v": json.dumps(value)},
         )
     db.commit()
-    return {"success": True, "data": _load_all(db)}
+    # 3) レスポンスも redact（将来 admin-only キーが追加された際の漏洩を予防）
+    return {"success": True, "data": _redact_sensitive(_load_all(db), ctx)}
 
 
 @router.get("/settings/devices")
