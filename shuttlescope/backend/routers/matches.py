@@ -81,19 +81,39 @@ _MATCH_TOURNAMENT_LEVELS = {"IC", "IS", "SJL", "全日本", "国内", "その他
 _MATCH_ANNOTATION_STATUS = {"not_started", "in_progress", "complete", "reviewed"}
 
 
-def _validate_match_player_refs(body: "MatchUpdate | MatchCreate", db: Session) -> None:
+def _validate_match_player_refs(body: "MatchUpdate | MatchCreate", db: Session, *, match: Optional[Match] = None) -> None:
     """match の player_a/b_id, partner_a/b_id が実在する player を指しているか検証。
 
     referential integrity 破壊 (0/-1/存在しない ID の注入) を 422 で拒否する。
+    さらに論理整合性: A 側と B 側が同じ player / partner 重複も拒否。
     """
     for field in ("player_a_id", "player_b_id", "partner_a_id", "partner_b_id"):
         pid = getattr(body, field, None)
         if pid is None:
             continue
-        if pid <= 0:
-            raise HTTPException(status_code=422, detail=f"{field} must be a positive integer")
+        if not isinstance(pid, int):
+            raise HTTPException(status_code=422, detail=f"{field} must be an integer")
+        if pid <= 0 or pid > 2**31 - 1:
+            raise HTTPException(status_code=422, detail=f"{field} out of range")
         if not db.get(Player, pid):
             raise HTTPException(status_code=422, detail=f"{field}={pid} does not exist")
+
+    # 論理整合性: 同じ player が A 側と B 側に両方現れない
+    # (既存レコードとマージした最終値で判定)
+    final_a = getattr(body, "player_a_id", None) or (match.player_a_id if match else None)
+    final_b = getattr(body, "player_b_id", None) or (match.player_b_id if match else None)
+    final_pa = getattr(body, "partner_a_id", None) or (match.partner_a_id if match else None)
+    final_pb = getattr(body, "partner_b_id", None) or (match.partner_b_id if match else None)
+    a_side = {p for p in (final_a, final_pa) if p}
+    b_side = {p for p in (final_b, final_pb) if p}
+    overlap = a_side & b_side
+    if overlap:
+        raise HTTPException(status_code=422, detail=f"same player on both sides: {sorted(overlap)}")
+    # 同サイド内重複 (player_a == partner_a 等)
+    if final_a and final_pa and final_a == final_pa:
+        raise HTTPException(status_code=422, detail="player_a_id and partner_a_id must differ")
+    if final_b and final_pb and final_b == final_pb:
+        raise HTTPException(status_code=422, detail="player_b_id and partner_b_id must differ")
 
 
 def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
@@ -122,13 +142,37 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
         raise HTTPException(status_code=422, detail=f"invalid format: {body.format!r}")
     if body.tournament_level is not None and body.tournament_level not in _MATCH_TOURNAMENT_LEVELS:
         raise HTTPException(status_code=422, detail=f"invalid tournament_level: {body.tournament_level!r}")
+    # date の範囲検証 (0001-01-01 / 9999-12-31 等の無意味な値を拒否)
+    # バドミントン BWF は 1934 年設立、選手の出場年月日が記録されるのは 1970 年以降
+    # 未来は 2 年先まで (次シーズンのスケジュール登録用)
+    from datetime import date as _d_m, timedelta as _td_m
+    if body.date is not None:
+        today = _d_m.today()
+        if body.date < _d_m(1970, 1, 1) or body.date > today + _td_m(days=365 * 2):
+            raise HTTPException(
+                status_code=422,
+                detail=f"date out of range (1970-01-01 to {today + _td_m(days=365*2)})",
+            )
     if getattr(body, "annotation_status", None) is not None and body.annotation_status not in _MATCH_ANNOTATION_STATUS:
         raise HTTPException(status_code=422, detail=f"invalid annotation_status: {body.annotation_status!r}")
-    # 文字列フィールドの長さ上限 (DoS 対策)
-    for fname, maxlen in (("tournament", 200), ("round", 100), ("venue", 200), ("notes", 5000), ("final_score", 200)):
+    # 文字列フィールドの長さ上限 + 制御文字 (CR/LF/NUL) 拒否
+    # null byte / CRLF 埋め込みはログ偽装・DB 処理バグ・UI 表示汚染経路
+    import re as _re_ctl
+    for fname, maxlen in (
+        ("tournament", 200), ("tournament_grade", 100), ("round", 100),
+        ("venue", 200), ("notes", 5000), ("final_score", 200),
+        ("initial_server", 50), ("competition_type", 50),
+        ("metadata_status", 50), ("exception_reason", 500),
+    ):
         v = getattr(body, fname, None)
-        if v is not None and isinstance(v, str) and len(v) > maxlen:
+        if v is None:
+            continue
+        if not isinstance(v, str):
+            continue
+        if len(v) > maxlen:
             raise HTTPException(status_code=422, detail=f"{fname} too long (max {maxlen})")
+        if _re_ctl.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", v):
+            raise HTTPException(status_code=422, detail=f"{fname} contains control characters")
     # video_url の制御文字拒否 (CR/LF/Tab 埋め込みで header injection / shell 攻撃経路)
     vu = getattr(body, "video_url", None)
     if vu is not None and isinstance(vu, str):
@@ -139,6 +183,21 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             raise HTTPException(status_code=422, detail="video_url contains control characters")
         if vu.strip() != vu:
             raise HTTPException(status_code=422, detail="video_url must not have leading/trailing whitespace")
+    # video_local_path の path traversal 防御
+    # `server://{upload_id}` または絶対 / 相対パスのいずれでも、`..` / null / 制御文字を拒否
+    vlp = getattr(body, "video_local_path", None)
+    if vlp is not None and isinstance(vlp, str):
+        if len(vlp) > 1000:
+            raise HTTPException(status_code=422, detail="video_local_path too long (max 1000)")
+        import re as _re_vlp
+        if _re_vlp.search(r"[\x00-\x1f\x7f]", vlp):
+            raise HTTPException(status_code=422, detail="video_local_path contains control characters")
+        # path traversal 拒否: `..` `//` `\\..\\` 等
+        if ".." in vlp or "\\.." in vlp or "/.." in vlp:
+            raise HTTPException(status_code=422, detail="video_local_path contains path traversal")
+        # 受理する形式は `server://{uuid}{ext}` または `localfile://...` のみ (プロトコル以外はアプリ実装で未使用)
+        if not (vlp.startswith("server://") or vlp.startswith("localfile://") or vlp == ""):
+            raise HTTPException(status_code=422, detail="video_local_path must be server:// or localfile:// scheme")
     # notes の HTML タグ / script 拒否 (stored XSS 対策)
     notes = getattr(body, "notes", None)
     if notes is not None and isinstance(notes, str):
@@ -376,8 +435,16 @@ def list_needs_review_matches(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/matches/{match_id}")
-def get_match(match_id: int, request: Request, db: Session = Depends(get_db)):
-    """試合詳細 (BOLA/IDOR: ロール別スコープ検証)"""
+def get_match(
+    match_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """試合詳細 (BOLA/IDOR: ロール別スコープ検証)。
+    match_id は 32bit 正整数に制限 (int overflow で 500 が返る経路を遮断)。
+    """
+    if match_id <= 0 or match_id > 2**31 - 1:
+        raise HTTPException(status_code=422, detail="match_id out of range")
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -394,15 +461,16 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     _validate_match_enums(body)
-    _validate_match_player_refs(body, db)
+    # 既存レコードを取得してから player refs を検証 (merged state で論理整合性確認)
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _validate_match_player_refs(body, db, match=match)
     # audit log: 変更前の値と変更後の値を記録 (match データ改竄の forensic 用)
     from backend.utils.access_log import log_access as _log
     _log(db, "match_updated", user_id=ctx.user_id,
          resource_type="match", resource_id=match_id,
          details={"actor_role": ctx.role, "fields": list(body.model_dump(exclude_unset=True).keys())})
-    match = db.get(Match, match_id)
-    if not match:
-        raise HTTPException(status_code=404, detail="試合が見つかりません")
     # 更新前の関与選手を退避（選手差し替えの場合、旧選手のキャッシュも無効化が必要）
     pre_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     from backend.utils.db_update import apply_update
