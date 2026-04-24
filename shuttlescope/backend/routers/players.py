@@ -325,8 +325,8 @@ def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_
     # name 変更時に name_normalized を更新
     if "name" in data:
         data["name_normalized"] = normalize_name(data["name"])
-    for key, value in data.items():
-        setattr(player, key, value)
+    from backend.utils.db_update import apply_update
+    apply_update(player, data)
     touch(player)
     db.commit()
     # 選手単位で無効化 + team 変更はコーチ可視範囲に影響するためグローバルも無効化

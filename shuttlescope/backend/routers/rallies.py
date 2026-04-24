@@ -80,8 +80,8 @@ def update_rally(rally_id: int, body: RallyUpdate, db: Session = Depends(get_db)
     rally = db.get(Rally, rally_id)
     if not rally:
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
-    for key, value in body.model_dump(exclude_unset=True).items():
-        setattr(rally, key, value)
+    from backend.utils.db_update import apply_update
+    apply_update(rally, body.model_dump(exclude_unset=True))
     touch(rally)
     db.commit()
     # 対象 rally の試合の関与選手のみ無効化

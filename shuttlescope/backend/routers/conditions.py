@@ -520,8 +520,8 @@ def update_condition(condition_id: int, body: ConditionUpdate, request: Request,
     if "match_id" in data and data["match_id"] is not None:
         if not db.get(Match, data["match_id"]):
             raise HTTPException(status_code=404, detail="試合が見つかりません")
-    for key, value in data.items():
-        setattr(cond, key, value)
+    from backend.utils.db_update import apply_update
+    apply_update(cond, data)
     _recompute(cond)
     db.commit()
     db.refresh(cond)
