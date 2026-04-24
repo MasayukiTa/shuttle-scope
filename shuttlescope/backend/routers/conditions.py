@@ -411,6 +411,9 @@ def submit_questionnaire(body: QuestionnaireSubmit, db: Session = Depends(get_db
 
 # ─── 直接入力 CRUD ───────────────────────────────────────────────────────────
 
+from backend.utils.access_log import log_access as _log_acc_cond
+
+
 @router.post("", status_code=201)
 def create_condition(body: ConditionCreate, request: Request, db: Session = Depends(get_db)):
     # player ロールは自 player_id のコンディションのみ作成可能。
@@ -442,6 +445,16 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
     db.add(cond)
     db.commit()
     db.refresh(cond)
+    # audit log: 誰がどの player の condition を登録したか forensic 追跡用
+    try:
+        _log_acc_cond(
+            db, "condition_created", user_id=ctx.user_id,
+            resource_type="condition", resource_id=cond.id,
+            details={"actor_role": ctx.role, "target_player_id": body.player_id,
+                     "condition_type": body.condition_type},
+        )
+    except Exception:
+        pass
     return {"success": True, "data": _full_dict(cond)}
 
 
@@ -480,6 +493,18 @@ def update_condition(condition_id: int, body: ConditionUpdate, request: Request,
     if not cond:
         raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
     _require_condition_access(request, cond)
+    # audit log (forensic): 誰がどの player の condition を編集したか
+    try:
+        from backend.utils.auth import get_auth as _ga
+        _ctx = _ga(request)
+        _log_acc_cond(
+            db, "condition_updated", user_id=_ctx.user_id,
+            resource_type="condition", resource_id=condition_id,
+            details={"actor_role": _ctx.role, "target_player_id": cond.player_id,
+                     "fields": list(body.model_dump(exclude_unset=True).keys())},
+        )
+    except Exception:
+        pass
     data = body.model_dump(exclude_unset=True)
     if "match_id" in data and data["match_id"] is not None:
         if not db.get(Match, data["match_id"]):
