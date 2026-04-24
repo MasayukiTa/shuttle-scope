@@ -118,15 +118,21 @@ def _run_directml_worker(params: dict) -> dict:
     try:
         proc = subprocess.run(
             [python, str(worker)],
-            input=json.dumps(params, ensure_ascii=False),
+            input=json.dumps(params, ensure_ascii=False).encode("utf-8"),
             capture_output=True,
-            text=True,
             timeout=180,
         )
+        def _decode(b: bytes) -> str:
+            for enc in ("utf-8", "cp932"):
+                try:
+                    return b.decode(enc)
+                except (UnicodeDecodeError, AttributeError):
+                    continue
+            return b.decode("utf-8", errors="replace")
         if proc.returncode != 0:
-            stderr = (proc.stderr or "").strip()[-600:]
+            stderr = _decode(proc.stderr or b"").strip()[-600:]
             return {"error": f"ワーカー終了コード {proc.returncode}: {stderr}"}
-        out = (proc.stdout or "").strip()
+        out = _decode(proc.stdout or b"").strip()
         if not out:
             return {"error": "ワーカーが空の出力を返しました"}
         return json.loads(out)
@@ -411,10 +417,13 @@ class BenchmarkRunner:
                 TARGET_TRACKNET: self._bench_ray_tracknet,
                 TARGET_POSE: self._bench_ray_pose,
                 TARGET_YOLO: self._bench_ray_yolo,
+                TARGET_PIPELINE_FULL: self._bench_ray_pipeline_full,
+                TARGET_CLIP_EXTRACT: self._bench_ray_clip_extract,
+                TARGET_STATISTICS: self._bench_ray_statistics,
             }
             bench_fn = ray_dispatch.get(target)
             if bench_fn is None:
-                return {"error": f"Ray ワーカーでは未対応のターゲット: {target}"}
+                return {"error": "device unavailable"}
             try:
                 return bench_fn(device, n_frames)
             except Exception as exc:
@@ -1287,23 +1296,23 @@ class BenchmarkRunner:
 
     # ── Ray ワーカーベンチマーク ──────────────────────────────────────────────
 
+    def _get_ray_worker_ip(self, device: ComputeDevice) -> str:
+        """デバイスの specs.ip またはデバイスIDからワーカーIPを復元する。"""
+        ip = (device.specs or {}).get("ip", "")
+        if not ip:
+            raw = device.device_id
+            for prefix in ("ray_igpu_", "ray_cpu_", "ssh_igpu_", "ssh_cpu_", "ray_", "ssh_"):
+                if raw.startswith(prefix):
+                    raw = raw[len(prefix):]
+                    break
+            ip = raw.replace("_", ".")
+        return ip
+
     def _get_ray_worker_model_base(self, device: ComputeDevice) -> str:
         """デバイス IP から cluster.config.yaml の model_base を取得する。"""
         try:
             from backend.cluster.topology import get_worker_model_base
-            # device_id の形式: ray_cpu_169_254_140_146 / ray_igpu_169_254_140_146
-            # specs.ip があればそちらを使う
-            ip = device.specs.get("ip", "")
-            if not ip:
-                # device_id から IP 復元を試みる (ray_cpu_ / ray_igpu_ プレフィックスを除去)
-                raw = device.device_id
-                for prefix in ("ray_igpu_", "ray_cpu_", "ray_"):
-                    if raw.startswith(prefix):
-                        raw = raw[len(prefix):]
-                        break
-                # アンダースコアをドットに変換して IP を復元
-                ip = raw.replace("_", ".")
-            return get_worker_model_base(ip)
+            return get_worker_model_base(self._get_ray_worker_ip(device))
         except Exception:
             return "C:\\ss-models"
 
@@ -1337,8 +1346,10 @@ class BenchmarkRunner:
         if not bootstrap.is_ray_connected():
             return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
 
+        ip = self._get_ray_worker_ip(device)
         results = remote_tasks.dispatch_benchmark(
             "_run_benchmark_tracknet",
+            target_ip=ip,
             model_path=model_path,
             n_iters=n_iters,
             use_gpu=use_gpu,
@@ -1373,8 +1384,10 @@ class BenchmarkRunner:
         if not bootstrap.is_ray_connected():
             return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
 
+        ip = self._get_ray_worker_ip(device)
         results = remote_tasks.dispatch_benchmark(
             "_run_benchmark_pose",
+            target_ip=ip,
             n_iters=n_iters,
         )
         if isinstance(results, dict) and "error" not in results:
@@ -1406,6 +1419,7 @@ class BenchmarkRunner:
         if not bootstrap.is_ray_connected():
             return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
 
+        ip = self._get_ray_worker_ip(device)
         logger.info(
             "[runner/ray] YOLO ベンチマーク: device=%s model=%s use_gpu=%s n_iters=%d",
             device.device_id, model_path, use_gpu, n_iters,
@@ -1413,9 +1427,104 @@ class BenchmarkRunner:
 
         results = remote_tasks.dispatch_benchmark(
             "_run_benchmark_yolo",
+            target_ip=ip,
             model_path=model_path,
             n_iters=n_iters,
             use_gpu=use_gpu,
+        )
+        if isinstance(results, dict) and "error" not in results:
+            for v in results.values():
+                return v
+        return results if isinstance(results, dict) else {"error": str(results)}
+
+    def _bench_ray_pipeline_full(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
+        """SSH / Ray ワーカーでパイプラインベンチマークを実行する。"""
+        from backend.cluster import bootstrap
+        from backend.cluster import remote_tasks
+
+        model_base = self._get_ray_worker_model_base(device)
+        ip = self._get_ray_worker_ip(device)
+        n_iters = min(n_frames, 3)
+
+        if device.backend == "ssh" and ip:
+            creds = remote_tasks._get_worker_ssh_creds(ip)
+            if creds:
+                return remote_tasks.dispatch_benchmark_ssh(
+                    "_run_benchmark_pipeline",
+                    creds["host"], creds["username"], creds["password"],
+                    model_base=model_base, n_iters=n_iters,
+                )
+
+        if not bootstrap.is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
+
+        results = remote_tasks.dispatch_benchmark(
+            "_run_benchmark_pipeline",
+            target_ip=ip,
+            tracknet_model_path=model_base + "\\tracknet.onnx",
+            pose_task_path="C:\\ss-models\\pose_landmarker_lite.task",
+            n_iters=n_iters,
+            use_gpu=False,
+        )
+        if isinstance(results, dict) and "error" not in results:
+            for v in results.values():
+                return v
+        return results if isinstance(results, dict) else {"error": str(results)}
+
+    def _bench_ray_clip_extract(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
+        """SSH / Ray ワーカーでクリップ抽出ベンチマークを実行する。"""
+        from backend.cluster import bootstrap
+        from backend.cluster import remote_tasks
+
+        ip = self._get_ray_worker_ip(device)
+        n_iters = min(n_frames, 5)
+
+        if device.backend == "ssh" and ip:
+            creds = remote_tasks._get_worker_ssh_creds(ip)
+            if creds:
+                return remote_tasks.dispatch_benchmark_ssh(
+                    "_run_benchmark_clip",
+                    creds["host"], creds["username"], creds["password"],
+                    n_iters=n_iters,
+                )
+
+        if not bootstrap.is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
+
+        results = remote_tasks.dispatch_benchmark(
+            "_run_benchmark_clip",
+            target_ip=ip,
+            n_iters=n_iters,
+        )
+        if isinstance(results, dict) and "error" not in results:
+            for v in results.values():
+                return v
+        return results if isinstance(results, dict) else {"error": str(results)}
+
+    def _bench_ray_statistics(self, device: ComputeDevice, n_frames: int) -> Dict[str, Any]:
+        """SSH / Ray ワーカーで統計ベンチマークを実行する。"""
+        from backend.cluster import bootstrap
+        from backend.cluster import remote_tasks
+
+        ip = self._get_ray_worker_ip(device)
+        n_iters = min(n_frames, 50)
+
+        if device.backend == "ssh" and ip:
+            creds = remote_tasks._get_worker_ssh_creds(ip)
+            if creds:
+                return remote_tasks.dispatch_benchmark_ssh(
+                    "_run_benchmark_stats",
+                    creds["host"], creds["username"], creds["password"],
+                    n_iters=n_iters,
+                )
+
+        if not bootstrap.is_ray_connected():
+            return {"error": "Ray未接続 — 先にRay起動ボタンを押してください"}
+
+        results = remote_tasks.dispatch_benchmark(
+            "_run_benchmark_stats",
+            target_ip=ip,
+            n_iters=n_iters,
         )
         if isinstance(results, dict) and "error" not in results:
             for v in results.values():

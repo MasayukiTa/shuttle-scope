@@ -17,7 +17,11 @@ network:
     num_cpus: 16
     num_gpus: 1
     gpu_label: AMD Radeon 780M Graphics
-    model_base: "C:\\ss-models"
+    model_base: C:\ss-models
+    mac: 84:47:09:52:84:cd
+    ssh_user: M.Takeuchi
+    ssh_password: m1$1Takeuchi
+    ray_restart_bat: C:\Users\M.Takeuchi\Desktop\ray-restart.bat
 ray:
   head_address: 169.254.96.137:6379
   dashboard_port: 8265

@@ -233,6 +233,164 @@ def _run_benchmark_yolo(model_path: str, n_iters: int, use_gpu: bool) -> dict:
         return {"error": str(exc)}
 
 
+def _run_benchmark_pipeline(tracknet_model_path: str, pose_task_path: str,
+                             n_iters: int, use_gpu: bool = False) -> dict:
+    """パイプライン（TrackNet + Pose）ベンチマーク。K10 上でローカル実行される。"""
+    try:
+        import numpy as np
+        import time
+        import os
+
+        N_FRAMES = 10
+        dummy_tracknet = np.zeros([1, 3, 288, 512], dtype=np.float32)
+        dummy_frame = np.zeros((270, 480, 3), dtype=np.uint8)
+
+        if not os.path.exists(tracknet_model_path):
+            return {"error": f"モデル未配置: {tracknet_model_path}"}
+
+        import onnxruntime as ort
+        sess = ort.InferenceSession(tracknet_model_path, providers=["CPUExecutionProvider"])
+        iname = sess.get_inputs()[0].name
+
+        pose_lm = None
+        mp_img = None
+        try:
+            import mediapipe as mp
+            from mediapipe.tasks import python as mp_python
+            from mediapipe.tasks.python import vision as mp_vision
+            if os.path.exists(pose_task_path):
+                opts = mp_vision.PoseLandmarkerOptions(
+                    base_options=mp_python.BaseOptions(model_asset_path=pose_task_path),
+                    running_mode=mp_vision.RunningMode.IMAGE)
+                pose_lm = mp_vision.PoseLandmarker.create_from_options(opts)
+                mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=dummy_frame)
+        except Exception:
+            pose_lm = None
+
+        def _run():
+            sess.run(None, {iname: dummy_tracknet})
+            if pose_lm:
+                pose_lm.detect(mp_img)
+
+        for _ in range(2):
+            _run()
+        latencies = []
+        for _ in range(n_iters):
+            t0 = time.perf_counter()
+            _run()
+            latencies.append(time.perf_counter() - t0)
+        if pose_lm:
+            try:
+                pose_lm.close()
+            except Exception:
+                pass
+
+        arr = np.array(latencies) * 1000.0
+        avg_ms = float(np.mean(arr))
+        fps = N_FRAMES * 1000.0 / avg_ms if avg_ms > 0 else 0.0
+        return {
+            "fps": round(fps, 2),
+            "avg_ms": round(avg_ms / N_FRAMES, 2),
+            "p95_ms": round(float(np.percentile(arr, 95)) / N_FRAMES, 2),
+            "iters": len(latencies),
+            "batch": N_FRAMES,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _run_benchmark_clip(n_iters: int) -> dict:
+    """ffmpeg クリップ抽出ベンチマーク。K10 上でローカル実行される。"""
+    try:
+        import subprocess
+        import tempfile
+        import os
+        import time
+        import numpy as np
+
+        video_path = tempfile.mktemp(suffix=".mp4")
+        ret = subprocess.run(
+            ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=5:size=1280x720:rate=60",
+             "-c:v", "libx264", "-preset", "ultrafast", video_path],
+            capture_output=True, timeout=60)
+        if ret.returncode != 0:
+            return {"error": "ffmpeg unavailable"}
+
+        latencies = []
+        for i in range(n_iters):
+            out_path = tempfile.mktemp(suffix=f"_clip_{i}.mp4")
+            t0 = time.perf_counter()
+            r = subprocess.run(
+                ["ffmpeg", "-y", "-ss", "0", "-i", video_path, "-t", "1", "-c", "copy", out_path],
+                capture_output=True, timeout=30)
+            latencies.append(time.perf_counter() - t0)
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
+            if r.returncode != 0:
+                try:
+                    os.remove(video_path)
+                except OSError:
+                    pass
+                return {"error": f"ffmpeg clip 失敗 (code={r.returncode})"}
+        try:
+            os.remove(video_path)
+        except OSError:
+            pass
+
+        arr = np.array(latencies) * 1000.0
+        return {
+            "fps": round(1000.0 / float(np.mean(arr)), 2),
+            "avg_ms": round(float(np.mean(arr)), 2),
+            "p95_ms": round(float(np.percentile(arr, 95)), 2),
+            "iters": len(latencies),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _run_benchmark_stats(n_iters: int) -> dict:
+    """numpy/scipy 統計ベンチマーク。K10 上でローカル実行される。"""
+    try:
+        import time
+        import numpy as np
+
+        try:
+            from scipy import stats as scipy_stats
+        except ImportError:
+            scipy_stats = None
+
+        rng = np.random.default_rng(123)
+
+        def _run():
+            data = rng.standard_normal((200, 10))
+            np.corrcoef(data.T)
+            w = np.exp(data[:, 0])
+            w /= w.sum()
+            float(np.dot(w, data[:, 1]))
+            if scipy_stats is not None:
+                scipy_stats.linregress(data[:, 0], data[:, 1])
+
+        for _ in range(5):
+            _run()
+        latencies = []
+        for _ in range(n_iters):
+            t0 = time.perf_counter()
+            _run()
+            latencies.append(time.perf_counter() - t0)
+
+        arr = np.array(latencies) * 1000.0
+        return {
+            "fps": round(1000.0 / float(np.mean(arr)), 2),
+            "avg_ms": round(float(np.mean(arr)), 2),
+            "p95_ms": round(float(np.percentile(arr, 95)), 2),
+            "iters": len(latencies),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 def _infer_tracknet_frames(model_path: str, frames_npy: bytes) -> bytes:
     """TrackNet 推論をシリアライズされた numpy フレームに対して実行する。
 
@@ -640,6 +798,136 @@ except Exception as e:
     print(json.dumps({{"error": str(e)}}))
 '''
 
+_SSH_BENCH_PIPELINE_SCRIPT = '''\
+import sys, os, time, json
+import numpy as np
+
+tracknet_model_path = {tracknet_model_path!r}
+pose_task_path = {pose_task_path!r}
+n_iters = {n_iters}
+N_FRAMES = 10
+dummy_tracknet = np.zeros([1, 3, 288, 512], dtype=np.float32)
+dummy_frame = np.zeros((270, 480, 3), dtype=np.uint8)
+
+try:
+    import onnxruntime as ort
+    if not os.path.exists(tracknet_model_path):
+        print(json.dumps({{"error": "モデル未配置: " + tracknet_model_path}})); sys.exit(0)
+    sess = ort.InferenceSession(tracknet_model_path, providers=["CPUExecutionProvider"])
+    iname = sess.get_inputs()[0].name
+except Exception as e:
+    print(json.dumps({{"error": "tracknet load: " + str(e)}})); sys.exit(0)
+
+pose_lm = None
+mp_img = None
+try:
+    import mediapipe as mp
+    from mediapipe.tasks import python as mp_python
+    from mediapipe.tasks.python import vision as mp_vision
+    if os.path.exists(pose_task_path):
+        opts = mp_vision.PoseLandmarkerOptions(
+            base_options=mp_python.BaseOptions(model_asset_path=pose_task_path),
+            running_mode=mp_vision.RunningMode.IMAGE)
+        pose_lm = mp_vision.PoseLandmarker.create_from_options(opts)
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=dummy_frame)
+except Exception:
+    pose_lm = None
+
+def _run():
+    sess.run(None, {{iname: dummy_tracknet}})
+    if pose_lm:
+        pose_lm.detect(mp_img)
+
+for _ in range(2): _run()
+lats = []
+for _ in range(n_iters):
+    t0 = time.perf_counter(); _run(); lats.append(time.perf_counter() - t0)
+if pose_lm:
+    try: pose_lm.close()
+    except: pass
+
+arr = np.array(lats) * 1000
+fps = round(N_FRAMES * 1000 / float(np.mean(arr)), 2) if np.mean(arr) > 0 else 0.0
+print(json.dumps({{
+    "fps": fps,
+    "avg_ms": round(float(np.mean(arr)) / N_FRAMES, 2),
+    "p95_ms": round(float(np.percentile(arr, 95)) / N_FRAMES, 2),
+    "iters": len(lats), "batch": N_FRAMES
+}}))
+'''
+
+_SSH_BENCH_CLIP_SCRIPT = '''\
+import sys, os, time, json, subprocess, tempfile
+import numpy as np
+
+n_iters = {n_iters}
+
+video_path = tempfile.mktemp(suffix=".mp4")
+ret = subprocess.run(
+    ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=5:size=1280x720:rate=60",
+     "-c:v", "libx264", "-preset", "ultrafast", video_path],
+    capture_output=True, timeout=60)
+if ret.returncode != 0:
+    print(json.dumps({{"error": "ffmpeg unavailable"}})); sys.exit(0)
+
+lats = []
+for i in range(n_iters):
+    out_path = tempfile.mktemp(suffix=f"_clip_{{i}}.mp4")
+    t0 = time.perf_counter()
+    r = subprocess.run(
+        ["ffmpeg", "-y", "-ss", "0", "-i", video_path, "-t", "1", "-c", "copy", out_path],
+        capture_output=True, timeout=30)
+    lats.append(time.perf_counter() - t0)
+    try: os.remove(out_path)
+    except: pass
+    if r.returncode != 0:
+        print(json.dumps({{"error": f"ffmpeg clip 失敗 (code={{r.returncode}})"}})); sys.exit(0)
+try: os.remove(video_path)
+except: pass
+
+arr = np.array(lats) * 1000
+print(json.dumps({{
+    "fps": round(1000/float(np.mean(arr)), 2),
+    "avg_ms": round(float(np.mean(arr)), 2),
+    "p95_ms": round(float(np.percentile(arr, 95)), 2),
+    "iters": len(lats)
+}}))
+'''
+
+_SSH_BENCH_STATS_SCRIPT = '''\
+import time, json
+import numpy as np
+
+n_iters = {n_iters}
+try:
+    from scipy import stats as scipy_stats
+except ImportError:
+    scipy_stats = None
+
+rng = np.random.default_rng(123)
+
+def _run():
+    data = rng.standard_normal((200, 10))
+    np.corrcoef(data.T)
+    w = np.exp(data[:, 0]); w /= w.sum()
+    float(np.dot(w, data[:, 1]))
+    if scipy_stats is not None:
+        scipy_stats.linregress(data[:, 0], data[:, 1])
+
+for _ in range(5): _run()
+lats = []
+for _ in range(n_iters):
+    t0 = time.perf_counter(); _run(); lats.append(time.perf_counter() - t0)
+
+arr = np.array(lats) * 1000
+print(json.dumps({{
+    "fps": round(1000/float(np.mean(arr)), 2),
+    "avg_ms": round(float(np.mean(arr)), 2),
+    "p95_ms": round(float(np.percentile(arr, 95)), 2),
+    "iters": len(lats)
+}}))
+'''
+
 
 def _get_worker_ssh_creds(worker_ip: str) -> Optional[Dict[str, str]]:
     """cluster.config.yaml から指定 IP のワーカーの SSH 認証情報を取得する。"""
@@ -752,6 +1040,24 @@ def dispatch_benchmark_ssh(fn_name: str, worker_ip: str, username: str, password
             use_gpu=kwargs.get("use_gpu", False),
         )
         timeout = 300
+    elif fn_name == "_run_benchmark_pipeline":
+        model_base = kwargs.get("model_base", r"C:\ss-models")
+        script = _SSH_BENCH_PIPELINE_SCRIPT.format(
+            tracknet_model_path=model_base + r"\tracknet.onnx",
+            pose_task_path=r"C:\ss-models\pose_landmarker_lite.task",
+            n_iters=kwargs.get("n_iters", 3),
+        )
+        timeout = 300
+    elif fn_name == "_run_benchmark_clip":
+        script = _SSH_BENCH_CLIP_SCRIPT.format(
+            n_iters=kwargs.get("n_iters", 5),
+        )
+        timeout = 120
+    elif fn_name == "_run_benchmark_stats":
+        script = _SSH_BENCH_STATS_SCRIPT.format(
+            n_iters=kwargs.get("n_iters", 50),
+        )
+        timeout = 60
     else:
         return {"error": f"SSH 未対応のベンチマーク: {fn_name}"}
 
@@ -762,7 +1068,7 @@ def dispatch_benchmark_ssh(fn_name: str, worker_ip: str, username: str, password
 # ディスパッチ関数（ray は遅延インポート）
 # ────────────────────────────────────────────────────────────────────────────
 
-def dispatch_benchmark(fn_name: str, **kwargs) -> Dict[str, Any]:
+def dispatch_benchmark(fn_name: str, target_ip: str = "", **kwargs) -> Dict[str, Any]:
     """ベンチマーク関数をワーカーノードに dispatch する。
 
     SSH 認証情報が cluster.config.yaml に設定されているワーカーは SSH 経由で実行。
@@ -803,7 +1109,10 @@ def dispatch_benchmark(fn_name: str, **kwargs) -> Dict[str, Any]:
             logger.info("dispatch_benchmark: SSH 経由で %s に %s を実行", wip, fn_name)
             result = dispatch_benchmark_ssh(fn_name, wip, user, pwd, **bench_kwargs)
             results[f"ssh_{wip}"] = result
-            ssh_handled_ips.add(wip)
+            # SSH が成功した場合のみ Ray フォールバックから除外する
+            # 失敗した場合は Ray 経由で再試行できるようにする
+            if "error" not in result:
+                ssh_handled_ips.add(wip)
 
     except Exception as exc:
         logger.warning("dispatch_benchmark SSH フェーズ失敗: %s", exc)
@@ -845,6 +1154,9 @@ def dispatch_benchmark(fn_name: str, **kwargs) -> Dict[str, Any]:
         "_run_benchmark_tracknet": _run_benchmark_tracknet,
         "_run_benchmark_pose": _run_benchmark_pose,
         "_run_benchmark_yolo": _run_benchmark_yolo,
+        "_run_benchmark_pipeline": _run_benchmark_pipeline,
+        "_run_benchmark_clip": _run_benchmark_clip,
+        "_run_benchmark_stats": _run_benchmark_stats,
     }
     fn = fn_map.get(fn_name)
     if fn is None:
@@ -863,6 +1175,7 @@ def dispatch_benchmark(fn_name: str, **kwargs) -> Dict[str, Any]:
             if n.get("Alive")
             and n.get("NodeManagerAddress", "") != head_ip
             and n.get("NodeManagerAddress", "") not in ssh_handled_ips
+            and (not target_ip or n.get("NodeManagerAddress", "") == target_ip)
         ]
 
         if not worker_nodes:
