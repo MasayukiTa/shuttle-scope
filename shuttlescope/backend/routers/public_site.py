@@ -1003,23 +1003,28 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
     webhook = (settings.ss_notify_webhook_url or "").strip()
     if not webhook:
         return
-    # SSRF 対策: https スキームのみ許可。file:// / ftp:// / 内部ネットワーク probe を塞ぐ。
-    # 仕様上 Slack / Discord / Teams 等の公開 webhook は必ず https。
+    # SSRF 対策を `validate_external_url` で統一:
+    #  - http/https のみ (file://, ftp://, gopher:// 拒否)
+    #  - 10/8, 172.16/12, 192.168/16, 127/8, 169.254/16 全プライベート IP 拒否
+    #  - IPv4-mapped IPv6、短縮形 (127.1)、hex (0x7f000001)、decimal (2130706433) も
+    #    DNS 解決と ipaddress 正規化で全て検出
+    # 以前のブロックリストは個別ホスト名のみを見ていたため `10.0.0.1` / `127.1` が
+    # すり抜け SSRF 可能だった (ラウンド16 で実確認)。
+    from urllib.parse import urlparse
+    parsed = urlparse(webhook)
+    if parsed.scheme != "https":
+        logger.warning("public inquiry webhook rejected: non-https scheme")
+        return
     try:
-        from urllib.parse import urlparse
-        parsed = urlparse(webhook)
-    except Exception:
-        logger.warning("public inquiry webhook has invalid URL; skipping")
+        from backend.utils.safe_path import validate_external_url
+        validate_external_url(webhook, field_name="ss_notify_webhook_url")
+    except HTTPException as _exc:
+        logger.warning("public inquiry webhook rejected: %s", _exc.detail)
         return
-    if parsed.scheme != "https" or not parsed.hostname:
-        logger.warning("public inquiry webhook rejected: non-https scheme or missing host")
+    except Exception as _exc:
+        logger.warning("public inquiry webhook rejected: %s", _exc)
         return
-    # 内部/ループバック/メタデータサービス宛を拒否（設定ミス/改竄時の保険）
-    host = parsed.hostname.lower()
-    _blocked_hosts = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "169.254.169.254", "metadata.google.internal"}
-    if host in _blocked_hosts or host.endswith(".local") or host.endswith(".internal"):
-        logger.warning("public inquiry webhook rejected: blocked host %s", host)
-        return
+    host = (parsed.hostname or "").lower()
     payload = {
         "text": (
             "New ShuttleScope inquiry\n"

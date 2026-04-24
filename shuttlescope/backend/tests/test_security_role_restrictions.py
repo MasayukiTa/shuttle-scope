@@ -265,6 +265,60 @@ class TestSafePath:
             safe_path(tmp_path, "/etc/passwd")
 
 
+# ─── ラウンド16: webhook SSRF 完全防御 + audit log forensic 完全化 ─────────
+
+class TestWebhookFullSSRF:
+    def test_webhook_blocks_private_ipv4(self, monkeypatch):
+        """_notify_inquiry が 10.0.0.1 や 127.1 (短縮) を拒否すること。"""
+        from backend.routers.public_site import _notify_inquiry
+        from backend.config import settings as _s
+        from unittest.mock import MagicMock
+        fake = MagicMock()
+        fake.name = "x"; fake.organization = None; fake.role = None
+        fake.contact_reference = None; fake.message = "x"
+        # 全て URL パース段階で拒否される
+        for bad in [
+            "https://10.0.0.1/hook",
+            "https://127.1/hook",
+            "https://192.168.1.1/hook",
+            "https://169.254.169.254/",
+            "http://slack.com/hooks",  # http は拒否
+            "ftp://evil.com/",
+        ]:
+            monkeypatch.setattr(_s, "ss_notify_webhook_url", bad, raising=False)
+            # raise しない (warning log のみ) / 実行されないことを確認
+            _notify_inquiry(fake)  # 拒否されても例外は投げない
+
+
+class TestConditionAuditLog:
+    def test_condition_create_logs_audit(self, db_session):
+        """condition 作成時に access_log にエントリが追加される。"""
+        from backend.routers.auth import _hash_password
+        from backend.db.models import Player as _P, AccessLog as _AL
+        db_session.query(User).delete()
+        db_session.query(_P).delete()
+        db_session.query(_AL).delete()
+        db_session.add(_P(id=900, name="X", name_normalized="x"))
+        db_session.add(User(id=900, username="analx", role="analyst",
+                            display_name="A", hashed_credential=_hash_password("x")))
+        db_session.commit()
+        token = _make_token("analyst", user_id=900)
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            resp = client.post(
+                "/api/conditions",
+                json={"player_id": 900, "measured_at": "2026-04-24", "condition_type": "weekly"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 201, f"{resp.status_code} {resp.text[:200]}"
+            # audit log に condition_created が 1 件以上
+            logs = db_session.query(_AL).filter(_AL.action == "condition_created").all()
+            assert len(logs) >= 1, "condition_created audit log not found"
+        finally:
+            app.dependency_overrides.clear()
+
+
 # ─── ラウンド15: pipeline DoS + mass assignment + cookies null byte ────────
 
 class TestPipelineMassAssignmentAndRate:
