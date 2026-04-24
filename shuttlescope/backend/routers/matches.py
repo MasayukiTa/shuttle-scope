@@ -101,9 +101,24 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
 
     DB 整合性破壊 (result=long string, tournament_level=invalid など) を 422 で拒否する。
     """
-    if body.result is not None and body.result not in _MATCH_RESULT_ALLOWED:
+    # result / format は DB 側 NOT NULL なので MatchUpdate でも
+    # 明示的な null は 422 で拒否する（フィールド未指定は exclude_unset=True で
+    # setattr をスキップできるが、明示 null は setattr(match.result, None) で
+    # DB IntegrityError になる）
+    is_update = isinstance(body, MatchUpdate)
+    if "result" in body.model_fields_set:
+        if body.result is None:
+            raise HTTPException(status_code=422, detail="result は null にできません")
+        if body.result not in _MATCH_RESULT_ALLOWED:
+            raise HTTPException(status_code=422, detail=f"invalid result: {body.result!r}")
+    elif not is_update and body.result not in _MATCH_RESULT_ALLOWED:
         raise HTTPException(status_code=422, detail=f"invalid result: {body.result!r}")
-    if body.format is not None and body.format not in _MATCH_FORMAT_ALLOWED:
+    if "format" in body.model_fields_set:
+        if body.format is None:
+            raise HTTPException(status_code=422, detail="format は null にできません")
+        if body.format not in _MATCH_FORMAT_ALLOWED:
+            raise HTTPException(status_code=422, detail=f"invalid format: {body.format!r}")
+    elif not is_update and body.format not in _MATCH_FORMAT_ALLOWED:
         raise HTTPException(status_code=422, detail=f"invalid format: {body.format!r}")
     if body.tournament_level is not None and body.tournament_level not in _MATCH_TOURNAMENT_LEVELS:
         raise HTTPException(status_code=422, detail=f"invalid tournament_level: {body.tournament_level!r}")
@@ -390,8 +405,8 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     # 更新前の関与選手を退避（選手差し替えの場合、旧選手のキャッシュも無効化が必要）
     pre_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
-    for key, value in body.model_dump(exclude_unset=True).items():
-        setattr(match, key, value)
+    from backend.utils.db_update import apply_update
+    apply_update(match, body.model_dump(exclude_unset=True))
     touch(match)
     db.commit()
     post_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]

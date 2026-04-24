@@ -243,8 +243,8 @@ def update_stroke(stroke_id: int, body: StrokeData, db: Session = Depends(get_db
     stroke = db.get(Stroke, stroke_id)
     if not stroke:
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
-    for key, value in body.model_dump().items():
-        setattr(stroke, key, value)
+    from backend.utils.db_update import apply_update
+    apply_update(stroke, body.model_dump())
     touch(stroke)
     db.commit()
     # 対象 stroke の rally 経由で関与選手のみ無効化
