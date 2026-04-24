@@ -408,7 +408,24 @@ def submit_questionnaire(body: QuestionnaireSubmit, db: Session = Depends(get_db
 # ─── 直接入力 CRUD ───────────────────────────────────────────────────────────
 
 @router.post("", status_code=201)
-def create_condition(body: ConditionCreate, db: Session = Depends(get_db)):
+def create_condition(body: ConditionCreate, request: Request, db: Session = Depends(get_db)):
+    # player ロールは自 player_id のコンディションのみ作成可能。
+    # 他 player のコンディションをでっち上げる「偽データ混入」攻撃を遮断。
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        if not ctx.player_id or body.player_id != ctx.player_id:
+            raise HTTPException(status_code=403, detail="自分のコンディションのみ登録できます")
+    elif ctx.is_coach:
+        # coach は自チーム選手のコンディションのみ登録可能
+        team = (ctx.team_name or "").strip()
+        if not team:
+            raise HTTPException(status_code=403, detail="team_name 未設定のため登録できません")
+        target_player = db.get(Player, body.player_id)
+        if not target_player or (target_player.team or "").strip() != team:
+            raise HTTPException(status_code=403, detail="自チーム選手のみ登録できます")
+    # analyst / admin は全選手に登録可能
+
     player = db.get(Player, body.player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
@@ -454,10 +471,11 @@ def list_conditions(
 
 
 @router.patch("/{condition_id}")
-def update_condition(condition_id: int, body: ConditionUpdate, db: Session = Depends(get_db)):
+def update_condition(condition_id: int, body: ConditionUpdate, request: Request, db: Session = Depends(get_db)):
     cond = db.get(Condition, condition_id)
     if not cond:
         raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
+    _require_condition_access(request, cond)
     data = body.model_dump(exclude_unset=True)
     if "match_id" in data and data["match_id"] is not None:
         if not db.get(Match, data["match_id"]):
@@ -669,23 +687,46 @@ def get_insights(
     }
 
 
+def _require_condition_access(request: Request, cond: Condition) -> None:
+    """BOLA/IDOR 対策: player は自 player_id の condition のみ参照可能。"""
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        if not ctx.player_id or cond.player_id != ctx.player_id:
+            # 存在の有無も漏らさないため 404 を返す
+            raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
+
+
 @router.get("/{condition_id}")
 def get_condition(
     condition_id: int,
+    request: Request,
     role: str = Depends(resolve_role),
     db: Session = Depends(get_db),
 ):
     cond = db.get(Condition, condition_id)
     if not cond:
         raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
+    _require_condition_access(request, cond)
     return {"success": True, "data": _serialize(cond, role)}
 
 
 @router.delete("/{condition_id}")
-def delete_condition(condition_id: int, db: Session = Depends(get_db)):
+def delete_condition(condition_id: int, request: Request, db: Session = Depends(get_db)):
     cond = db.get(Condition, condition_id)
     if not cond:
         raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
+    _require_condition_access(request, cond)
+    # audit log (forensic): 誰がどの player の condition を削除したか残す
+    try:
+        from backend.utils.auth import get_auth as _ga
+        from backend.utils.access_log import log_access as _log
+        _ctx = _ga(request)
+        _log(db, "condition_deleted", user_id=_ctx.user_id,
+             resource_type="condition", resource_id=condition_id,
+             details={"actor_role": _ctx.role, "target_player_id": cond.player_id})
+    except Exception:
+        pass
     db.delete(cond)
     db.commit()
     return {"success": True, "data": {"id": condition_id}}

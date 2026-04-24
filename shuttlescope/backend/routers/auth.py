@@ -845,7 +845,39 @@ def _require_admin(request: Request) -> None:
         raise HTTPException(status_code=403, detail="admin role required")
 
 
+def _reject_control_chars(value: Optional[str], field_name: str, max_len: int = 200) -> Optional[str]:
+    """制御文字 / BIDI override / 長大値を拒否する共通バリデータ。
+
+    CRLF injection（ログ偽装）、null byte（バックエンド処理バグ）、
+    Unicode BIDI override（UI なりすまし）、長大値（ストレージ攻撃）を防ぐ。
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise HTTPException(status_code=422, detail=f"{field_name} must be a string")
+    if len(value) > max_len:
+        raise HTTPException(status_code=422, detail=f"{field_name} too long (max {max_len})")
+    # C0 制御文字 + LRO/RLO/PDF 等の BIDI override + ZWSP/ZWNJ/ZWJ
+    DISALLOWED = set(chr(i) for i in range(32)) | {
+        "​", "‌", "‍", " ", " ",
+        "‪", "‫", "‬", "‭", "‮",
+        "⁦", "⁧", "⁨", "⁩", "﻿",
+        "",
+    }
+    for ch in value:
+        if ch in DISALLOWED:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{field_name} contains disallowed control/format character (U+{ord(ch):04X})",
+            )
+    return value
+
+
 class UserCreate(BaseModel):
+    # mass assignment 防御: is_admin / hashed_credential / failed_attempts /
+    # locked_until 等の内部フィールドを body 経由で設定させない。
+    model_config = {"extra": "forbid"}
+
     role: str
     display_name: str
     username: str
@@ -856,7 +888,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    # 未知フィールドを silent drop せず 422 で拒否する。`role` `is_admin` `id` 等の
+    # 未知フィールドを silent drop せず 422 で拒否する。`is_admin` `id` 等の
     # 権限関連を body に混入させる mass assignment 攻撃を検出・遮断する。
     model_config = {"extra": "forbid"}
 
@@ -866,6 +898,9 @@ class UserUpdate(BaseModel):
     pin: Optional[str] = None
     team_name: Optional[str] = None
     player_id: Optional[int] = None
+    # role は admin のみが書換可能。analyst/coach/player が role を送ってきた場合
+    # 403 で明示拒否する（silent drop にするとサイレント昇格攻撃を検出困難にする）。
+    role: Optional[str] = None
 
 
 def _user_to_dict(user: User, db: Session) -> dict:
@@ -915,8 +950,12 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     if not (ctx.is_admin or ctx.is_analyst):
         raise HTTPException(status_code=403, detail="ユーザー作成は admin / analyst のみ可能です")
     allowed_roles = {"admin", "analyst", "coach", "player"}
-    if body.role not in allowed_roles:
-        raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
+    # role は string の完全一致のみ許可（list/空白混入/enum-bypass を遮断）
+    if not isinstance(body.role, str) or body.role not in allowed_roles:
+        raise HTTPException(status_code=422, detail=f"invalid role: {body.role!r}")
+    # display_name / team_name の制御文字 / BIDI override を拒否
+    _reject_control_chars(body.display_name, "display_name", max_len=120)
+    _reject_control_chars(body.team_name, "team_name", max_len=80)
     # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
     if ctx.is_analyst and body.role in ("admin", "analyst"):
         raise HTTPException(status_code=403, detail="admin/analyst アカウントは admin のみ作成できます")
@@ -954,6 +993,42 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
 
+    # ── role 書換は admin 限定 ────────────────────────────────────────────
+    # 以下の権限昇格経路を完全遮断:
+    #   - analyst が player/coach を admin に書換（ラウンド10 検出）
+    #   - analyst が自分を admin に書換（自己昇格）
+    #   - coach が自分や他人を analyst/admin に書換
+    #   - player が自分を昇格
+    if body.role is not None and not ctx.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="role の変更は admin のみ可能です",
+        )
+
+    # ── password 上書きは admin または自分自身のみ ─────────────────────────
+    # analyst が他ユーザ (player/coach) の password を書換えてアカウント乗っ取る
+    # 経路を遮断（ラウンド10 検出）。password 変更は /api/auth/password で
+    # current_password 検証を通す想定。
+    if body.password is not None and not ctx.is_admin and ctx.user_id != target_id:
+        raise HTTPException(
+            status_code=403,
+            detail="他ユーザのパスワード変更は admin のみ可能です",
+        )
+    if body.pin is not None and not ctx.is_admin and ctx.user_id != target_id:
+        raise HTTPException(
+            status_code=403,
+            detail="他ユーザの PIN 変更は admin のみ可能です",
+        )
+
+    # ── team_name の書換は admin のみ ────────────────────────────────────
+    # analyst が player の team_name を書換えて tenant 破壊する攻撃を遮断。
+    # 業務で必要なら admin に依頼する運用とする。
+    if body.team_name is not None and not ctx.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="team_name の変更は admin のみ可能です",
+        )
+
     if ctx.is_admin:
         pass
     elif ctx.is_analyst:
@@ -981,6 +1056,9 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     else:
         raise HTTPException(status_code=403, detail="編集権限がありません")
 
+    # display_name / team_name の制御文字 / BIDI override を拒否
+    _reject_control_chars(body.display_name, "display_name", max_len=120)
+    _reject_control_chars(body.team_name, "team_name", max_len=80)
     if body.display_name is not None:
         user.display_name = body.display_name
     if body.username is not None and (ctx.is_admin or ctx.is_analyst):
@@ -989,11 +1067,15 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         if existing:
             raise HTTPException(status_code=409, detail="login_id is already in use")
         user.username = login_id
-    # team_name の変更は admin / analyst のみ可能
-    # coach が自分や他人の team_name を書換えて別チームへ「瞬間移動」することを防ぐ
-    if body.team_name is not None and (ctx.is_admin or ctx.is_analyst):
+    # role は admin のみ書換可能 (上で既にガード済なのでここでは admin 限定で適用)
+    if body.role is not None and ctx.is_admin:
+        if body.role not in ("admin", "analyst", "coach", "player"):
+            raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
+        user.role = body.role
+    # team_name / player_id は admin のみ書換可能 (上でガード済)
+    if body.team_name is not None and ctx.is_admin:
         user.team_name = body.team_name
-    if body.player_id is not None and (ctx.is_admin or ctx.is_analyst):
+    if body.player_id is not None and ctx.is_admin:
         user.player_id = body.player_id
 
     password = (body.password or "").strip()
@@ -1004,7 +1086,22 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     if hashed:
         user.hashed_credential = hashed
     db.commit()
-    log_access(db, "user_updated", user_id=user.id)
+    # 重要度の高い変更 (role/password/pin/team_name/username) は action を分けて
+    # audit log に残し、検知/アラートで優先度を上げられるようにする。
+    changed = body.model_dump(exclude_unset=True)
+    high_risk_changed = [k for k in ("role", "password", "pin", "team_name", "username") if k in changed]
+    action = "user_updated"
+    if high_risk_changed:
+        action = "user_updated_high_risk"
+    log_access(
+        db, action, user_id=ctx.user_id,
+        details={
+            "target_user_id": target_id,
+            "fields": list(changed.keys()),
+            "high_risk_fields": high_risk_changed,
+            "actor_role": ctx.role,
+        },
+    )
     return {"success": True}
 
 

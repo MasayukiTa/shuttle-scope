@@ -558,6 +558,96 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
 app.add_middleware(PlayerAccessControlMiddleware)
 
 
+# ─── Exfil 異常検知: 大量データ要求を閾値超過で警告ログ + 極端時のみブロック ──
+# 設計方針: 正当な analyst 業務（全選手コンディション分析、match 一括レビュー、
+# レポート生成等）を妨害してはならない。よって以下の 2 段階設計:
+#   1. 通常閾値 (60s で 50MB / 600req) を超えたら WARNING ログを出して通す
+#      → SIEM/ログ監視側で検知・人間による判断を可能にする
+#   2. 極端閾値 (60s で 500MB / 6000req) を超えたら 429 でブロック
+#      → 人間では到達し得ない機械的 exfil のみを止める
+# role=admin はいずれも除外（運用上の大量アクセス・DB メンテを許容）。
+class ExfilRateLimitMiddleware(BaseHTTPMiddleware):
+    _window_sec = 60
+    # ALERT: WARNING ログを吐く閾値 (正当業務の上限付近)
+    _alert_bytes = 50 * 1024 * 1024     # 50 MB/60s
+    _alert_requests = 600               # 600 req/60s
+    # HARD BLOCK: 人間では到達し得ない閾値 (APT の機械 exfil のみを止める)
+    _max_bytes_per_window = 500 * 1024 * 1024   # 500 MB/60s
+    _max_requests_per_window = 6000             # 6000 req/60s
+
+    def __init__(self, app):
+        super().__init__(app)
+        import threading as _th
+        self._lock = _th.Lock()
+        self._state: dict[int, list] = {}  # {user_id: [ts_start, bytes, count, alerted]}
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        path = request.url.path
+        if not path.startswith("/api/") or path.startswith("/api/auth/login") or path.startswith("/api/health") or path.startswith("/api/public"):
+            return await call_next(request)
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return await call_next(request)
+        from backend.utils.jwt_utils import verify_token
+        payload = verify_token(auth[7:])
+        if not payload:
+            return await call_next(request)
+        role = payload.get("role")
+        # admin は exfil 制限完全除外 (運用・メンテ業務)
+        if role == "admin":
+            return await call_next(request)
+        try:
+            uid = int(payload.get("sub", 0))
+        except (ValueError, TypeError):
+            return await call_next(request)
+        if uid <= 0:
+            return await call_next(request)
+
+        import time as _t
+        import logging as _lg
+        _logger = _lg.getLogger("shuttlescope.exfil")
+        now = _t.time()
+        with self._lock:
+            st = self._state.get(uid)
+            if not st or now - st[0] > self._window_sec:
+                st = [now, 0, 0, False]  # start_ts, bytes, count, alerted
+                self._state[uid] = st
+            st[2] += 1
+
+            # HARD BLOCK: 機械的 exfil のみ止める
+            if st[2] > self._max_requests_per_window or st[1] > self._max_bytes_per_window:
+                _logger.error(
+                    "exfil HARD BLOCK user_id=%s role=%s bytes=%s req=%s path=%s",
+                    uid, role, st[1], st[2], path,
+                )
+                return StarletteResponse(
+                    '{"detail":"短時間に極端に大量のリクエストを検出しました。しばらくしてから再試行してください。"}',
+                    status_code=429,
+                    media_type="application/json",
+                )
+            # ALERT: 通常業務の上限付近で WARNING ログ出力 (ブロックしない)
+            if not st[3] and (st[2] > self._alert_requests or st[1] > self._alert_bytes):
+                _logger.warning(
+                    "exfil ALERT user_id=%s role=%s bytes=%s req=%s path=%s (not blocked)",
+                    uid, role, st[1], st[2], path,
+                )
+                st[3] = True
+
+        response = await call_next(request)
+        try:
+            cl = int(response.headers.get("content-length", "0") or 0)
+        except (ValueError, TypeError):
+            cl = 0
+        with self._lock:
+            st = self._state.get(uid)
+            if st:
+                st[1] += cl
+        return response
+
+
+app.add_middleware(ExfilRateLimitMiddleware)
+
+
 # ─── /api/analysis/* GET レスポンスキャッシュミドルウェア ────────────────────
 # 読み専用エンドポイントをプロセス内メモリにキャッシュし、解析タブの
 # 再描画を高速化する。認証ヘッダ（X-Role / X-Player-Id / X-Team-Name）を

@@ -167,13 +167,37 @@ def user_can_access_player(ctx: AuthCtx, player_id: int) -> bool:
     return True
 
 
-def filter_matches_for_user(ctx: AuthCtx, matches: list[Match]) -> list[Match]:
-    """試合一覧をロールに応じて絞り込む。"""
+def filter_matches_for_user(ctx: AuthCtx, matches: list[Match], db: Optional[Session] = None) -> list[Match]:
+    """試合一覧をロールに応じて絞り込む。
+
+    - admin / analyst: 全件許可
+    - player: 自 player_id が参加する試合のみ
+    - coach: 自 team_name に所属する player が参加する試合のみ
+      (team_name 未設定の coach は空配列 — 全件露出を防ぐ)
+    """
     if ctx.is_player:
         if not ctx.player_id:
             return []
         pid = ctx.player_id
         return [m for m in matches if pid in _match_player_ids(m)]
+    if ctx.is_coach:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            return []  # team_name 未設定 coach は閲覧不可 (全件露出 IDOR を防止)
+        if db is None:
+            # db が渡されない呼び出し元では保守的に空配列
+            return []
+        # 対象 matches に登場する player_id を一括で取得し、team 一致を確認
+        pids = set()
+        for m in matches:
+            pids.update(_match_player_ids(m))
+        if not pids:
+            return []
+        team_player_ids = {
+            p.id for p in db.query(Player).filter(Player.id.in_(pids), Player.team == team).all()
+        }
+        return [m for m in matches if _match_player_ids(m) & team_player_ids]
+    # admin / analyst は全件
     return matches
 
 

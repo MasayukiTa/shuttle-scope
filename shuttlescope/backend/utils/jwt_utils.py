@@ -182,13 +182,42 @@ def revoke_all_refresh_tokens_for_user(user_id: int) -> int:
 
 
 def verify_token(token: str) -> Optional[dict]:
-    """トークンを検証してペイロードを返す。無効・失効済みの場合は None。"""
+    """トークンを検証してペイロードを返す。無効・失効済みの場合は None。
+
+    APT 対策として以下の追加検証を行う:
+    - iat が未来 (時計ずれ > 5 分) の JWT は拒否（偽造時計攻撃）
+    - iat と exp の差が想定有効期間を超える JWT は拒否（forge した超長寿命 JWT 対策）
+    """
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         jti = payload.get("jti")
         if jti and _is_token_revoked(jti):
             logger.debug("JWT rejected: token has been revoked jti=%s", jti)
             return None
+
+        # iat sanity check (5 分の時計ずれのみ許容)
+        import time as _time
+        now = int(_time.time())
+        iat = payload.get("iat")
+        if iat is not None:
+            try:
+                iat_i = int(iat)
+                if iat_i > now + 300:
+                    logger.warning("JWT rejected: iat in future iat=%s now=%s", iat_i, now)
+                    return None
+                # exp - iat が想定有効期限（24時間 = 86400秒）を大幅超過していれば拒否
+                exp = payload.get("exp")
+                if exp is not None:
+                    try:
+                        exp_i = int(exp)
+                        if exp_i - iat_i > 86400 * 2:
+                            logger.warning("JWT rejected: exp-iat too long exp=%s iat=%s", exp_i, iat_i)
+                            return None
+                    except (ValueError, TypeError):
+                        pass
+            except (ValueError, TypeError):
+                return None
+
         return payload
     except JWTError as e:
         logger.debug("JWT verification failed: %s", e)

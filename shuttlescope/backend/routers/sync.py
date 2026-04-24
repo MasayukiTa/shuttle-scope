@@ -100,7 +100,8 @@ def export_match_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"エクスポートエラー: {e}")
+        logger.warning("sync export failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="エクスポート処理に失敗しました")
 
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"shuttlescope_match_{ts}.sspkg"
@@ -131,7 +132,8 @@ def export_player_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"エクスポートエラー: {e}")
+        logger.warning("sync export failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="エクスポート処理に失敗しました")
 
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"shuttlescope_player{player_id}_{ts}.sspkg"
@@ -173,7 +175,8 @@ def export_conditions_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"エクスポートエラー: {e}")
+        logger.warning("sync export failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="エクスポート処理に失敗しました")
 
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"shuttlescope_conditions_{ts}.sspkg"
@@ -195,7 +198,8 @@ def export_change_set_endpoint(
     try:
         pkg_bytes = export_change_set(db, since, device_id=_get_device_id(db, device_id))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"エクスポートエラー: {e}")
+        logger.warning("sync export failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="エクスポート処理に失敗しました")
 
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"shuttlescope_changeset_{ts}.sspkg"

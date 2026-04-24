@@ -3,6 +3,7 @@ import asyncio
 import json
 import re
 import unicodedata
+import uuid
 from datetime import date as _date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
@@ -291,20 +292,28 @@ def list_needs_review_matches(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/matches/{match_id}")
-def get_match(match_id: int, db: Session = Depends(get_db)):
-    """試合詳細"""
+def get_match(match_id: int, request: Request, db: Session = Depends(get_db)):
+    """試合詳細 (BOLA/IDOR: ロール別スコープ検証)"""
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # player/coach は require_match_scope で自分/自チームに関わる試合のみ許可
+    from backend.utils.auth import require_match_scope
+    require_match_scope(request, match, db)
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
 
 @router.put("/matches/{match_id}")
 def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session = Depends(get_db)):
-    """試合更新"""
+    """試合更新 (admin/analyst/coach)。全変更を audit log に記録する。"""
     ctx = get_auth(request)
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    # audit log: 変更前の値と変更後の値を記録 (match データ改竄の forensic 用)
+    from backend.utils.access_log import log_access as _log
+    _log(db, "match_updated", user_id=ctx.user_id,
+         resource_type="match", resource_id=match_id,
+         details={"actor_role": ctx.role, "fields": list(body.model_dump(exclude_unset=True).keys())})
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -326,6 +335,11 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     ctx = get_auth(request)
     if not (ctx.is_admin or ctx.is_analyst):
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    # audit log: 削除は forensic 上特に重要
+    from backend.utils.access_log import log_access as _log
+    _log(db, "match_deleted", user_id=ctx.user_id,
+         resource_type="match", resource_id=match_id,
+         details={"actor_role": ctx.role})
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -420,11 +434,13 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
 
 
 @router.get("/matches/{match_id}/rallies")
-def get_match_rallies(match_id: int, db: Session = Depends(get_db)):
-    """試合のラリー一覧"""
+def get_match_rallies(match_id: int, request: Request, db: Session = Depends(get_db)):
+    """試合のラリー一覧 (BOLA/IDOR: ロール別スコープ検証)"""
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    from backend.utils.auth import require_match_scope
+    require_match_scope(request, match, db)
     sets = db.query(GameSet).filter(GameSet.match_id == match_id).order_by(GameSet.set_num).all()
     result = []
     for s in sets:
@@ -447,8 +463,45 @@ def get_match_rallies(match_id: int, db: Session = Depends(get_db)):
 
 
 class DownloadRequest(BaseModel):
-    quality: str = "720"        # "360" / "480" / "720" / "1080" / "best"
-    cookie_browser: str = ""    # "" / "chrome" / "edge" / "firefox" / "brave" / "opera" / ...
+    model_config = {"extra": "forbid"}
+    quality: str = "720"            # "360" / "480" / "720" / "1080" / "best"
+    # Electron 限定互換フィールド。Web からは使用不可（下で 403）。
+    cookie_browser: str = ""
+    # cookies.txt 本文（ユーザが UI からアップロード）。
+    # HTTPS + Cloudflare Tunnel 経由のため傍受されない前提。
+    # ジョブ完了 or タイムアウト 10 分でサーバ上から即削除する。
+    cookies_txt: Optional[str] = None
+
+
+# 同時 DL 並列数 (800Mbps 想定: 3 並列 × 260Mbps/job)
+_DL_SEMAPHORE_SIZE = 3
+import asyncio as _asyncio_dl
+_dl_semaphore: Optional[_asyncio_dl.Semaphore] = None
+
+def _get_dl_semaphore() -> _asyncio_dl.Semaphore:
+    global _dl_semaphore
+    if _dl_semaphore is None:
+        _dl_semaphore = _asyncio_dl.Semaphore(_DL_SEMAPHORE_SIZE)
+    return _dl_semaphore
+
+
+async def _run_download_with_cookie(
+    url: str, job_id: str, quality: str, cookies_file_path: str,
+):
+    """cookies.txt を使って DL し、完了/失敗問わず cookies.txt を即削除する。"""
+    import os as _os
+    try:
+        async with _get_dl_semaphore():
+            await video_downloader.start_download(
+                url=url, job_id=job_id, quality=quality,
+                cookie_browser="", cookies_file=cookies_file_path,
+            )
+    finally:
+        try:
+            if cookies_file_path and _os.path.isfile(cookies_file_path):
+                _os.remove(cookies_file_path)
+        except Exception:
+            pass
 
 
 @router.post("/matches/{match_id}/download")
@@ -456,25 +509,93 @@ async def start_download(
     match_id: int,
     body: DownloadRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    """配信動画ダウンロード開始（yt-dlp）
-    cookie_browser を指定するとそのブラウザの Cookie を使ってログイン認証を通過する。
+    """配信動画ダウンロード開始（yt-dlp + 任意の cookies.txt）。
+
+    - player/coach/analyst/admin 全員が実行可能
+    - cookies.txt は一時ファイル保存 + ジョブ完了時に即削除 + chmod 600
+    - `cookie_browser` (サーバ側ブラウザ cookie 代理使用) は Web リクエストでは禁止
+      (kiyus さんの Chrome cookie を第三者が代理使用する経路を遮断)
     """
+    ctx = get_auth(request)
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     if not match.video_url:
         raise HTTPException(status_code=400, detail="動画URLが設定されていません")
+    from backend.utils.safe_path import validate_external_url
+    validated_url = validate_external_url(match.video_url, field_name="video_url")
+
+    # cookie_browser (サーバ側 chrome cookie 代理) は Electron のローカルリクエスト限定
+    # Cloudflare 経由 (CF-Connecting-IP が attacker IP) の場合は 403 で拒否
+    if body.cookie_browser:
+        from backend.utils.control_plane import is_loopback_request
+        if not is_loopback_request(request):
+            raise HTTPException(
+                status_code=403,
+                detail="cookie_browser はローカル実行時 (Electron) のみ利用可能です。Web ブラウザからは cookies_txt を指定してください。",
+            )
+
+    # cookies_txt アップロード処理
+    cookies_file_path = ""
+    if body.cookies_txt:
+        cookies_content = body.cookies_txt
+        if len(cookies_content) > 1024 * 1024:  # 1MB 上限
+            raise HTTPException(status_code=413, detail="cookies.txt が大きすぎます (max 1MB)")
+        # 先頭行のサニティチェック: yt-dlp の Netscape HTTP Cookie File 形式か
+        first_line = cookies_content.splitlines()[0].strip() if cookies_content.strip() else ""
+        if not (first_line.startswith("#") or first_line.startswith("# Netscape HTTP Cookie")
+                or "\t" in cookies_content[:500]):
+            raise HTTPException(
+                status_code=422,
+                detail="cookies.txt は Netscape HTTP Cookie File 形式である必要があります",
+            )
+        # 一時ファイルに保存 (ジョブ完了で即削除、chmod 600)
+        import os as _os, tempfile as _tf, stat as _stat
+        cookies_dir = _os.path.join(_tf.gettempdir(), "ss_cookies")
+        try:
+            _os.makedirs(cookies_dir, mode=0o700, exist_ok=True)
+        except Exception:
+            pass
+        job_id_tmp = uuid.uuid4().hex
+        cookies_file_path = _os.path.join(cookies_dir, f"{job_id_tmp}.txt")
+        with open(cookies_file_path, "w", encoding="utf-8") as _f:
+            _f.write(cookies_content)
+        try:
+            _os.chmod(cookies_file_path, _stat.S_IRUSR | _stat.S_IWUSR)  # 0o600
+        except Exception:
+            pass
 
     job_id = video_downloader.create_job_id()
-    background_tasks.add_task(
-        video_downloader.start_download,
-        match.video_url,
-        job_id,
-        body.quality,
-        body.cookie_browser,
-    )
+    # audit log: DL 開始 (actor_role + cookies_txt 使用フラグ + host)
+    from backend.utils.access_log import log_access as _log
+    from urllib.parse import urlparse as _up
+    _host = _up(validated_url).hostname or ""
+    _log(db, "video_dl_started", user_id=ctx.user_id,
+         resource_type="match", resource_id=match_id,
+         details={
+             "actor_role": ctx.role,
+             "host": _host,
+             "cookies_used": bool(cookies_file_path),
+             "quality": body.quality,
+         })
+
+    if cookies_file_path:
+        background_tasks.add_task(
+            _run_download_with_cookie,
+            validated_url, job_id, body.quality, cookies_file_path,
+        )
+    else:
+        # cookies 不要 DL も semaphore で並列数制限
+        async def _run_no_cookie():
+            async with _get_dl_semaphore():
+                await video_downloader.start_download(
+                    url=validated_url, job_id=job_id, quality=body.quality,
+                    cookie_browser=body.cookie_browser,
+                )
+        background_tasks.add_task(_run_no_cookie)
     return {"success": True, "data": {"job_id": job_id}}
 
 
