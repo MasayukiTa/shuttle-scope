@@ -515,10 +515,13 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
     if not payload or payload.get("role") != "mfa_pending":
         raise HTTPException(status_code=401, detail="MFAトークンが無効または期限切れです")
     user_id = int(payload.get("sub", 0))
+    # MFA brute force 防御 (10 分 10 回上限) — mfa_confirm と共通カウンタ
+    _check_mfa_brute_limit(user_id)
     user = db.get(User, user_id)
     if not user or not user.totp_enabled or not user.totp_secret:
         raise HTTPException(status_code=401, detail="MFAが有効化されていません")
     if not _verify_totp(user.totp_secret, req.code):
+        _record_mfa_failure(user_id)
         raise HTTPException(status_code=401, detail="認証コードが無効です")
     token = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name)
     log_access(db, "login_mfa_ok", user_id=user.id, ip_addr=ip)
@@ -551,6 +554,40 @@ def mfa_setup(request: Request, db: Session = Depends(get_db)):
     return MfaSetupResponse(secret=secret, otpauth_uri=_totp_uri(secret, user.username))
 
 
+# MFA confirm/login brute force 防御: user_id ごとに失敗カウントをメモリ保持
+# 10 分窓で 10 回連続失敗で 15 分ロック (6 桁 = 10^6 だが 10/分で 10万分 ≒ 約 70 日必要)
+import threading as _th_mfa
+import time as _t_mfa
+_mfa_failures: dict[int, list[float]] = {}
+_mfa_lock = _th_mfa.Lock()
+_MFA_WINDOW_SEC = 600
+_MFA_MAX_FAILURES = 10
+
+
+def _check_mfa_brute_limit(user_id: int) -> None:
+    """MFA コード推測に対する rate limit。"""
+    if not user_id:
+        return
+    now = _t_mfa.time()
+    with _mfa_lock:
+        arr = _mfa_failures.get(user_id, [])
+        cutoff = now - _MFA_WINDOW_SEC
+        arr = [t for t in arr if t >= cutoff]
+        _mfa_failures[user_id] = arr
+        if len(arr) >= _MFA_MAX_FAILURES:
+            raise HTTPException(
+                status_code=429,
+                detail=f"MFA 失敗が多すぎます。{_MFA_WINDOW_SEC // 60} 分後に再試行してください。",
+            )
+
+
+def _record_mfa_failure(user_id: int) -> None:
+    if not user_id:
+        return
+    with _mfa_lock:
+        _mfa_failures.setdefault(user_id, []).append(_t_mfa.time())
+
+
 @router.post("/mfa/confirm")
 def mfa_confirm(req: MfaCodeRequest, request: Request, db: Session = Depends(get_db)):
     """TOTPコードを検証してMFAを有効化する。"""
@@ -558,10 +595,13 @@ def mfa_confirm(req: MfaCodeRequest, request: Request, db: Session = Depends(get
     ctx = get_auth(request)
     if not ctx.user_id:
         raise HTTPException(status_code=401, detail="認証が必要です")
+    # MFA brute force 防御 (10 分 10 回上限)
+    _check_mfa_brute_limit(ctx.user_id)
     user = db.get(User, ctx.user_id)
     if not user or not user.totp_secret:
         raise HTTPException(status_code=400, detail="MFAセットアップが未完了です（/mfa/setup を先に呼んでください）")
     if not _verify_totp(user.totp_secret, req.code):
+        _record_mfa_failure(ctx.user_id)
         raise HTTPException(status_code=400, detail="認証コードが無効です")
     user.totp_enabled = True
     db.commit()
@@ -962,6 +1002,12 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     # display_name / team_name の制御文字 / BIDI override を拒否
     _reject_control_chars(body.display_name, "display_name", max_len=120)
     _reject_control_chars(body.team_name, "team_name", max_len=80)
+    # display_name 空文字/空白のみ拒否 + HTML タグ拒否 (stored XSS 対策)
+    if not body.display_name or not body.display_name.strip():
+        raise HTTPException(status_code=422, detail="display_name must not be empty or whitespace only")
+    import re as _re_dn
+    if _re_dn.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]", body.display_name, _re_dn.IGNORECASE):
+        raise HTTPException(status_code=422, detail="display_name contains disallowed HTML tags")
     # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
     if ctx.is_analyst and body.role in ("admin", "analyst"):
         raise HTTPException(status_code=403, detail="admin/analyst アカウントは admin のみ作成できます")
@@ -969,6 +1015,19 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     existing = db.query(User).filter(User.username == login_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="login_id is already in use")
+    # player_id の一意性検証 (1 player に複数 user を紐付けると なりすまし経路になる)
+    if body.player_id is not None:
+        if body.player_id <= 0 or body.player_id > 2**31 - 1:
+            raise HTTPException(status_code=422, detail="player_id out of range")
+        # 対象 player の存在 + 他 user との重複を 409 で拒否
+        if not db.get(Player, body.player_id):
+            raise HTTPException(status_code=422, detail=f"player_id={body.player_id} does not exist")
+        dup = db.query(User).filter(User.player_id == body.player_id).first()
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail=f"player_id={body.player_id} is already linked to user_id={dup.id}",
+            )
 
     password = (body.password or "").strip()
     if password:
@@ -1033,6 +1092,17 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         raise HTTPException(
             status_code=403,
             detail="team_name の変更は admin のみ可能です",
+        )
+
+    # ── player_id の書換は admin のみ ────────────────────────────────────
+    # analyst が自 user の player_id を他 player に書換えて「なりすまし」する経路を
+    # 遮断する (player ロール以外でも player_id は PlayerAccessControlMiddleware で
+    # データ可視範囲を決定する重要フィールド)。
+    # 新規ユーザ作成時の player 紐付けは admin が実施する運用とする。
+    if body.player_id is not None and not ctx.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="player_id の変更は admin のみ可能です",
         )
 
     if ctx.is_admin:
