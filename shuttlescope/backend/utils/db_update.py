@@ -13,6 +13,21 @@ from fastapi import HTTPException
 from sqlalchemy.inspection import inspect as _sa_inspect
 
 
+# SQLite INTEGER の範囲 (int64)
+SQLITE_INT_MIN = -(2 ** 63)
+SQLITE_INT_MAX = 2 ** 63 - 1
+
+
+def _check_int_overflow(key: str, value: Any) -> None:
+    """int 値が SQLite INTEGER 範囲外なら 422 を投げる。"""
+    if isinstance(value, int) and not isinstance(value, bool):
+        if value < SQLITE_INT_MIN or value > SQLITE_INT_MAX:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{key} の値が許容範囲を超えています (SQLite INTEGER は ±2^63)",
+            )
+
+
 _NOT_NULL_CACHE: dict[type, frozenset[str]] = {}
 
 
@@ -48,4 +63,5 @@ def apply_update(obj: Any, payload: dict[str, Any], *, model_cls: type | None = 
                 status_code=422,
                 detail=f"{key} は null にできません（NOT NULL 制約）",
             )
+        _check_int_overflow(key, value)
         setattr(obj, key, value)

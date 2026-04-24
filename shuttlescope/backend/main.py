@@ -846,6 +846,38 @@ async def _validation_error_handler(request: StarletteRequest, exc: _ReqValidati
 # ─── グローバル例外ハンドラ（PUBLIC_MODE / HIDE_STACK_TRACES でスタックトレースを隠す） ─
 import traceback as _traceback
 
+
+# SQLite INTEGER オーバーフロー（int64 範囲外）を 422 に変換する。
+# 攻撃者が `{"player_a_id": 99999999999999999999}` のような巨大整数を送ると
+# sqlite3 ドライバが OverflowError を投げて 500 を返すため、422 で明示的に拒否する。
+@app.exception_handler(OverflowError)
+async def _overflow_handler(request: StarletteRequest, exc: OverflowError):
+    _logger = logging.getLogger("shuttlescope.unhandled")
+    _logger.warning("OverflowError on %s %s: %s", request.method, request.url.path, exc)
+    return _JSONResp(
+        {"detail": "数値が許容範囲を超えています (SQLite INTEGER は ±2^63 の範囲内)"},
+        status_code=422,
+    )
+
+
+# SQLAlchemy の DataError / StatementError 内でラップされた OverflowError にも対応。
+from sqlalchemy.exc import StatementError as _SAStatementError
+
+@app.exception_handler(_SAStatementError)
+async def _sa_statement_handler(request: StarletteRequest, exc: _SAStatementError):
+    # 内部原因が OverflowError なら 422、それ以外はグローバルハンドラへ伝播させる
+    cause = getattr(exc, "orig", None)
+    if isinstance(cause, OverflowError):
+        _logger = logging.getLogger("shuttlescope.unhandled")
+        _logger.warning("SQLAlchemy OverflowError on %s %s", request.method, request.url.path)
+        return _JSONResp(
+            {"detail": "数値が許容範囲を超えています (SQLite INTEGER は ±2^63 の範囲内)"},
+            status_code=422,
+        )
+    # それ以外は raise して下段のグローバルハンドラへ
+    raise exc
+
+
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: StarletteRequest, exc: Exception):
     _logger = logging.getLogger("shuttlescope.unhandled")
