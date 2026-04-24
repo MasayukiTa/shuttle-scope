@@ -41,7 +41,13 @@ def _measure(sess, input_name: str, x: np.ndarray, warmup: int,
         if len(lats) >= min_iters and (time.perf_counter() - t_start) >= budget_sec:
             break
         t0 = time.perf_counter()
-        sess.run(None, {input_name: x})
+        try:
+            sess.run(None, {input_name: x})
+        except UnicodeDecodeError as exc:
+            # DirectML プロバイダのエラーメッセージが SHIFT-JIS を含む場合に発生
+            raise RuntimeError(
+                f"DirectML実行エラー（文字コード）: byte={exc.object[exc.start]:02x} pos={exc.start}"
+            ) from None
         lats.append(time.perf_counter() - t0)
     return lats
 
@@ -129,7 +135,18 @@ def main() -> None:
     shape[0] = chosen_batch
     x = np.zeros(shape, dtype=dtype)
 
-    lats = _measure(sess, input_name, x, warmup, min_iters, budget_sec, max_iters)
+    try:
+        lats = _measure(sess, input_name, x, warmup, min_iters, budget_sec, max_iters)
+    except Exception as exc:
+        # DirectML 実行失敗 → CPUExecutionProvider でフォールバック
+        try:
+            sess_cpu = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+            input_name_cpu = sess_cpu.get_inputs()[0].name
+            lats = _measure(sess_cpu, input_name_cpu, x, warmup, min_iters, budget_sec, max_iters)
+            actual_providers = ["CPUExecutionProvider(DML_fallback)"]
+        except Exception as exc2:
+            print(json.dumps({"error": f"DML失敗({exc}), CPUフォールバックも失敗: {exc2}"}))
+            return
 
     print(json.dumps({
         "latencies": lats,
