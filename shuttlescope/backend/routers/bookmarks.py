@@ -29,6 +29,8 @@ _ANALYST_ONLY_TYPES = {"auto_stat"}
 
 
 class BookmarkCreate(BaseModel):
+    # extra (created_by_user_id 等) の silent drop を禁止
+    model_config = {"extra": "forbid"}
     match_id: int
     rally_id: Optional[int] = None
     stroke_id: Optional[int] = None
