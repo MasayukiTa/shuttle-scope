@@ -49,6 +49,19 @@ class PublicInquiryUpdate(BaseModel):
     admin_note: Optional[str] = Field(default=None, max_length=4000)
 
 
+class PublicInquiryBulkDelete(BaseModel):
+    """一括削除リクエスト。少なくとも 1 つのフィルタ条件を指定する必要がある。
+
+    - ids: 指定 ID の通知を削除（選択削除）
+    - statuses: 指定ステータス（例 ["resolved"]）に該当する通知を削除
+    - created_before / created_after: ISO8601 日時。期間指定削除用
+    """
+    ids: Optional[list[int]] = Field(default=None, max_length=1000)
+    statuses: Optional[list[str]] = Field(default=None, max_length=3)
+    created_before: Optional[str] = Field(default=None, max_length=40)
+    created_after: Optional[str] = Field(default=None, max_length=40)
+
+
 class PublicInquiryOut(BaseModel):
     id: int
     name: str
@@ -1487,3 +1500,91 @@ async def update_public_inquiry(inquiry_id: int, body: PublicInquiryUpdate, requ
     inquiry.admin_note = (body.admin_note or "").strip() or None
     db.commit()
     return {"success": True}
+
+
+@router.delete("/api/public/inquiries/{inquiry_id}")
+async def delete_public_inquiry(inquiry_id: int, request: Request, db: Session = Depends(get_db)):
+    """単体削除。admin 専用。access_logs に削除を記録する。"""
+    from backend.utils.access_log import log_access
+    _require_admin(request)
+    ctx = get_auth(request)
+    inquiry = db.get(PublicInquiry, inquiry_id)
+    if not inquiry:
+        raise HTTPException(status_code=404, detail="inquiry not found")
+    snapshot = {"id": inquiry.id, "name": inquiry.name, "status": inquiry.status}
+    db.delete(inquiry)
+    db.commit()
+    log_access(
+        db, "public_inquiry_deleted",
+        user_id=ctx.user_id,
+        resource_type="public_inquiry",
+        resource_id=inquiry_id,
+        details=snapshot,
+        ip_addr=_client_ip(request),
+    )
+    return {"success": True, "data": {"deleted": 1}}
+
+
+@router.post("/api/public/inquiries/bulk-delete")
+async def bulk_delete_public_inquiries(
+    body: PublicInquiryBulkDelete, request: Request, db: Session = Depends(get_db),
+):
+    """admin 専用。フィルタ条件に合致する通知を一括削除する。
+
+    フィルタは AND で結合。少なくとも 1 つの条件（ids / statuses / 期間）が必要。
+    """
+    from backend.utils.access_log import log_access
+    _require_admin(request)
+    ctx = get_auth(request)
+
+    q = db.query(PublicInquiry)
+    has_filter = False
+
+    if body.ids:
+        q = q.filter(PublicInquiry.id.in_(body.ids))
+        has_filter = True
+    if body.statuses:
+        allowed = {"new", "reviewed", "resolved"}
+        invalid = [s for s in body.statuses if s not in allowed]
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"invalid status: {invalid}")
+        q = q.filter(PublicInquiry.status.in_(body.statuses))
+        has_filter = True
+
+    def _parse(dt_str: str) -> datetime:
+        try:
+            d = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            if d.tzinfo is not None:
+                d = d.astimezone(tz=None).replace(tzinfo=None)
+            return d
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"invalid datetime: {dt_str}")
+
+    if body.created_before:
+        q = q.filter(PublicInquiry.created_at < _parse(body.created_before))
+        has_filter = True
+    if body.created_after:
+        q = q.filter(PublicInquiry.created_at >= _parse(body.created_after))
+        has_filter = True
+
+    if not has_filter:
+        raise HTTPException(status_code=422, detail="at least one filter is required")
+
+    rows = q.all()
+    deleted_ids = [r.id for r in rows]
+    for r in rows:
+        db.delete(r)
+    db.commit()
+
+    log_access(
+        db, "public_inquiry_bulk_deleted",
+        user_id=ctx.user_id,
+        resource_type="public_inquiry",
+        details={
+            "deleted_count": len(deleted_ids),
+            "deleted_ids": deleted_ids[:100],  # 巨大リストは切り詰める
+            "filter": body.model_dump(exclude_none=True),
+        },
+        ip_addr=_client_ip(request),
+    )
+    return {"success": True, "data": {"deleted": len(deleted_ids), "ids": deleted_ids}}

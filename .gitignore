@@ -4,6 +4,7 @@ shuttlescope/docs/validation/
 # DB ファイル（backend/db/ 配下に統一）
 shuttlescope/backend/db/shuttlescope.db
 shuttlescope/shuttlescope.db
+shuttlescope/backend/db/*.db.bak_*
 
 # 動画ファイル
 shuttlescope/videos/

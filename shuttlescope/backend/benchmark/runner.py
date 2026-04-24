@@ -1043,15 +1043,24 @@ class BenchmarkRunner:
 
         tracknet = factory.get_tracknet()
         pose = factory.get_pose()
-        video_path = make_video_file(n=_POSE_FRAMES)
+        # 合成フレームを事前生成して video I/O を排除（純粋な推論性能を計測）
+        pose_frames = list(make_frames(_POSE_FRAMES, 480, 270))
+        tracknet_frames = list(make_frames(FRAME_STACK, 512, 288))
+        video_path = None
+        needs_video = not (hasattr(tracknet, 'run_frames') and hasattr(pose, 'run_frames'))
+        if needs_video:
+            video_path = make_video_file(n=_POSE_FRAMES)
         t_wall0 = time.perf_counter()
 
         def _run_once() -> None:
             if hasattr(tracknet, 'run_frames'):
-                tracknet.run_frames(list(make_frames(FRAME_STACK, 512, 288)))
+                tracknet.run_frames(tracknet_frames)
             else:
                 tracknet.run(video_path)
-            pose_samples = pose.run(video_path)
+            if hasattr(pose, 'run_frames'):
+                pose_samples = pose.run_frames(pose_frames)
+            else:
+                pose_samples = pose.run(video_path)
             landmarks_batch = [s.landmarks for s in pose_samples]
             compute_cog_batch(landmarks_batch)
 
@@ -1065,10 +1074,11 @@ class BenchmarkRunner:
                 progress_cb=(lambda f: progress_cb(round(f * n_frames)) if progress_cb else None),
             )
         finally:
-            try:
-                os.remove(video_path)
-            except OSError:
-                pass
+            if video_path is not None:
+                try:
+                    os.remove(video_path)
+                except OSError:
+                    pass
 
         if not latencies:
             return {"error": "キャンセルされました"}

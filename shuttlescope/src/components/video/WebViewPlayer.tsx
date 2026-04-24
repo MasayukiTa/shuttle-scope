@@ -229,8 +229,7 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
         src={url}
         partition="persist:streaming"
         useragent={BROWSER_UA}
-        disablewebsecurity="true"
-        allowpopups="true"
+        {...({ disablewebsecurity: 'true', allowpopups: 'true' } as Record<string, string>)}
         style={{ flex: 1, width: '100%' }}
       />
     </div>

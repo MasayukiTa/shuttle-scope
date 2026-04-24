@@ -161,7 +161,7 @@ export function useConditions(
       // backend: ccs_score / f1_physical / f2_stress / f3_mood / f4_motivation / f5_sleep_life
       // frontend 既存コンポ: ccs / f1 / f2 / f3 / f4 / f5
       return rows.map((r) => {
-        const rec = r as Record<string, unknown>
+        const rec = r as unknown as Record<string, unknown>
         return {
           ...(r as ConditionRecord),
           ccs: (rec.ccs ?? rec.ccs_score) as number | null | undefined,

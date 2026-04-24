@@ -272,7 +272,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       stroke_num: state.currentStrokeNum,
       player: state.isDoubles ? state.currentHitter : state.currentPlayer,
       shot_type: state.pendingStroke.shot_type,
-      hit_zone: autoHitZone,
+      hit_zone: autoHitZone as StrokeInput['hit_zone'],
       land_zone: undefined,
       is_backhand: state.pendingStroke.is_backhand,
       is_around_head: state.pendingStroke.is_around_head,

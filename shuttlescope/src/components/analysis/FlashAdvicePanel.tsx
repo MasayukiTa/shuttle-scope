@@ -88,7 +88,7 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
   const { t } = useTranslation()
   const isLight = useIsLightMode()
 
-  const params: Record<string, unknown> = {
+  const params: Record<string, string | number | boolean | null | undefined> = {
     match_id: matchId,
     as_of_set: asOfSet,
     player_id: playerId,

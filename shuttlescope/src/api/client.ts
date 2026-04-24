@@ -93,11 +93,14 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
 
 export async function apiGet<T>(
   path: string,
-  params?: Record<string, string | number | boolean>
+  params?: Record<string, string | number | boolean | null | undefined>
 ): Promise<T> {
   const url = new URL(BASE_URL + path)
   if (params) {
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
+    Object.entries(params).forEach(([k, v]) => {
+      if (v === undefined || v === null) return
+      url.searchParams.set(k, String(v))
+    })
   }
   const res = await fetchWithAutoRefresh(url.toString(), { headers: authHeaders() })
   if (!res.ok) {
@@ -251,6 +254,21 @@ export function publicInquiryUpdate(
   body: { status: 'new' | 'reviewed' | 'resolved'; admin_note?: string | null }
 ): Promise<{ success: boolean }> {
   return apiPatch(`/public/inquiries/${inquiryId}`, body)
+}
+
+export function publicInquiryDelete(
+  inquiryId: number,
+): Promise<{ success: boolean; data: { deleted: number } }> {
+  return apiDelete(`/public/inquiries/${inquiryId}`)
+}
+
+export function publicInquiryBulkDelete(body: {
+  ids?: number[]
+  statuses?: Array<'new' | 'reviewed' | 'resolved'>
+  created_before?: string
+  created_after?: string
+}): Promise<{ success: boolean; data: { deleted: number; ids: number[] } }> {
+  return apiPost('/public/inquiries/bulk-delete', body)
 }
 
 export interface AnalysisJobDTO {

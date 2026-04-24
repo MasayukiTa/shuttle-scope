@@ -211,7 +211,7 @@ export function ConditionPage() {
           <div className={`${textMuted} text-sm`}>{t('auto.ConditionPage.k1')}</div>
         ) : subtab === 'history' ? (
           <HistoryView
-            list={historyList}
+            list={historyList as unknown as Array<Record<string, unknown>>}
             isLight={isLight}
             canDelete={role !== 'player'}
             onSelect={(r) => {

@@ -133,8 +133,9 @@ function MiniCourtHeatmap({
       width={totalW}
       height={totalH}
       style={{ display: 'block' }}
-      title={t('auto.PlayerMovementCard.k8')}
+      aria-label={t('auto.PlayerMovementCard.k8')}
     >
+      <title>{t('auto.PlayerMovementCard.k8')}</title>
       {/* コート外枠 */}
       <rect x={0} y={0} width={totalW} height={totalH}
         fill="none" stroke={isLight ? '#d1d5db' : '#374151'} strokeWidth={1} />

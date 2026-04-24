@@ -510,8 +510,8 @@ export function MatchListPage() {
         cmp = a.tournament.localeCompare(b.tournament, 'ja')
       } else if (matchSortKey === 'result') {
         // win > draw > loss の順
-        const order = { win: 0, draw: 1, loss: 2 }
-        cmp = (order[a.result] ?? 3) - (order[b.result] ?? 3)
+        const order: Record<string, number> = { win: 0, draw: 1, loss: 2 }
+        cmp = (order[a.result as string] ?? 3) - (order[b.result as string] ?? 3)
       } else if (matchSortKey === 'status') {
         if (statusSortTarget) {
           // 選択ステータスを先頭に、それ以外はデフォルト順
@@ -1427,7 +1427,7 @@ export function MatchListPage() {
                 <div className="col-span-2">
                   <label className={`block text-sm ${textSecondary} mb-1`}>{t('match.list.video_optional')}</label>
                   <div className="flex gap-2 items-center">
-                    {window.shuttlescope?.openVideoFile && (
+                    {typeof window.shuttlescope?.openVideoFile === 'function' && (
                       <button
                         type="button"
                         onClick={handlePickVideoFile}

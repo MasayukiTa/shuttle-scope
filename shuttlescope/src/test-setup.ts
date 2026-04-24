@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom'
+import { vi } from 'vitest'
 
 // Electron API のモック（Electron 環境外で実行するため）
 Object.defineProperty(window, 'shuttlescope', {

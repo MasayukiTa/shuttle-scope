@@ -202,7 +202,7 @@ export function UserManagementPage() {
   const canDelete = myRole === 'admin'
   const isSelfOnly = myRole === 'player'
 
-  if (!myRole || myRole === '') {
+  if (!myRole) {
     return <div className="p-8 text-center text-gray-500">{t('users.manage.no_permission')}</div>
   }
 
