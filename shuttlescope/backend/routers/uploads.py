@@ -420,7 +420,8 @@ def stream_video_for_match(
         raise HTTPException(status_code=404, detail="サーバ保管動画が設定されていません")
     # server://{upload_id}{ext} → ファイル解決
     rest = vlp[len("server://"):]
-    file = UPLOAD_DIR / rest
+    from backend.utils.safe_path import safe_path
+    file = safe_path(UPLOAD_DIR, rest)
     if not file.exists():
         raise HTTPException(status_code=404, detail="動画ファイルが見つかりません")
 

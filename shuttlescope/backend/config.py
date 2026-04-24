@@ -1,9 +1,15 @@
 """ShuttleScope バックエンド設定・定数定義"""
 import pathlib
+import warnings
 from pydantic_settings import BaseSettings
 
 # プロジェクトルート（shuttlescope/）を絶対パスで特定
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+_WEAK_KEYS = frozenset({
+    "", "development-secret-key", "secret", "changeme",
+    "password", "admin", "shuttlescope", "your-secret-key",
+})
 
 
 class Settings(BaseSettings):
@@ -18,6 +24,12 @@ class Settings(BaseSettings):
     LAN_MODE: bool = False
     # 公開モード: SS_PUBLIC_MODE=1 でクラスタ/ベンチマーク/DB保守ルーターをマウント除外
     PUBLIC_MODE: bool = False
+    # API ドキュメント非表示: SS_HIDE_API_DOCS=1 で /docs /redoc /openapi.json を無効化
+    # PUBLIC_MODE=True でも同様に無効化されるが、クラスタルーターを残したまま docs だけ消したい場合に使う
+    HIDE_API_DOCS: bool = False
+    # スタックトレース隠蔽: SS_HIDE_STACK_TRACES=1 で 500 エラーの詳細をクライアントに返さない
+    # PUBLIC_MODE=True でも同様に隠蔽されるが、PUBLIC_MODE を使わず本番運用する場合に使う
+    HIDE_STACK_TRACES: bool = False
     # ngrok 認証トークン（環境変数 NGROK_AUTHTOKEN から自動読み込み）
     NGROK_AUTHTOKEN: str = ""
     # Cloudflare Tunnel (named tunnel) 設定
@@ -49,6 +61,19 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# 起動時に弱い秘密鍵を検出して警告・拒否
+if settings.SECRET_KEY in _WEAK_KEYS:
+    if settings.PUBLIC_MODE:
+        raise RuntimeError(
+            "PUBLIC_MODE=True で SECRET_KEY がデフォルト値または空です。\n"
+            "環境変数 SECRET_KEY に十分なランダム文字列を設定してください:\n"
+            "  python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    warnings.warn(
+        "SECRET_KEY がデフォルト値です。本番公開前に必ず変更してください。",
+        stacklevel=2,
+    )
 
 # ショット種別定義
 SHOT_TYPES = [

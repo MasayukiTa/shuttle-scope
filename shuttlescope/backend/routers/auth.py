@@ -581,7 +581,11 @@ def mfa_status(request: Request, db: Session = Depends(get_db)):
 @router.get("/bootstrap-status", response_model=BootstrapStatusResponse)
 def bootstrap_status(db: Session = Depends(get_db)):
     """Expose initial-admin bootstrap readiness without revealing secrets."""
-    return _bootstrap_admin_status(db)
+    status = _bootstrap_admin_status(db)
+    # 初期化済みの場合は has_admin のみ返す（設定状態の詳細を隠す）
+    if status.has_admin:
+        return BootstrapStatusResponse(has_admin=True, bootstrap_configured=False)
+    return status
 
 
 # ── ログアウト（JWTブラックリスト登録） ──────────────────────────────────────
