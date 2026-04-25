@@ -912,8 +912,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if app_settings.PUBLIC_MODE:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         # 認証 Bearer 付きの API レスポンスは機密扱い — 中間キャッシュ禁止
+        # /api/auth/* はログイン時に access/refresh token を返すが、初回呼び出しには
+        # Authorization ヘッダがないため Bearer 条件では拾えない。トークンが共有
+        # HTTP キャッシュ (CDN / プロキシ) に残らないよう /api/auth/ も明示的に
+        # no-store にする (CWE-525 / OWASP A05)。
         path = request.url.path
-        if request.headers.get("Authorization", "").startswith("Bearer ") and path.startswith("/api/"):
+        is_auth_path = path.startswith("/api/auth/")
+        has_bearer = request.headers.get("Authorization", "").startswith("Bearer ")
+        if (has_bearer and path.startswith("/api/")) or is_auth_path:
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
         # CSP: API/JSON 応答には厳格なポリシーを設定（レンダラーは default-src 'none' で十分）

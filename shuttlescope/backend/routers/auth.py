@@ -16,7 +16,7 @@ from typing import Optional
 
 import bcrypt as _bcrypt_lib
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -252,13 +252,18 @@ from backend.utils.jwt_utils import (
 # ── Pydantic スキーマ ─────────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):
-    grant_type: str
-    username: Optional[str] = None
-    identifier: Optional[str] = None
-    password: Optional[str] = None
+    # 任意フィールドの混入を遮断 (mass assignment / 監査ログ汚染対策)。
+    # 各フィールドの max_length は audit_logs.details に巨大文字列が
+    # 蓄積される storage DoS を防ぐためのもの。
+    model_config = {"extra": "forbid"}
+
+    grant_type: str = Field(..., max_length=32)
+    username: Optional[str] = Field(default=None, max_length=64)
+    identifier: Optional[str] = Field(default=None, max_length=64)
+    password: Optional[str] = Field(default=None, max_length=256)
     user_id: Optional[int] = None
-    pin: Optional[str] = None
-    role: Optional[str] = None
+    pin: Optional[str] = Field(default=None, max_length=128)
+    role: Optional[str] = Field(default=None, max_length=32)
 
 
 class LoginResponse(BaseModel):
@@ -311,12 +316,18 @@ class MfaSetupResponse(BaseModel):
 
 
 class MfaCodeRequest(BaseModel):
-    code: str
+    model_config = {"extra": "forbid"}
+    # TOTP は 6 桁数字。緩めの 16 文字までで上限を切って巨大値による
+    # 文字列処理コスト攻撃を遮断する。
+    code: str = Field(..., max_length=16)
 
 
 class MfaLoginRequest(BaseModel):
-    mfa_token: str
-    code: str
+    model_config = {"extra": "forbid"}
+    # 短命 JWT (mfa_pending) を想定。署名込み JWT は 200〜400 byte 程度なので
+    # 1024 で十分。code は 6 桁数字。
+    mfa_token: str = Field(..., max_length=1024)
+    code: str = Field(..., max_length=16)
 
 
 # ── ブートストラップ ─────────────────────────────────────────────────────────

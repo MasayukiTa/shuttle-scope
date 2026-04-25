@@ -10,13 +10,22 @@
 - 切断時は自動除去（例外 catch で dead socket を drop）
 """
 import asyncio
+import json as _json
 import logging
+import time as _time
 from datetime import datetime
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
+
+# ─── DoS 対策上限 ────────────────────────────────────────────────────────────
+# 受信メッセージは ping/pong/role 通知のみ想定なので 4 KB あれば十分。
+# 攻撃者が巨大 JSON を送り込んでサーバメモリを膨らませる経路を遮断する。
+_MAX_WS_MESSAGE_BYTES = 4 * 1024
+# 1 接続あたりの 1 秒間メッセージ流量 (受信側 flood DoS 対策)。
+_MAX_WS_MESSAGES_PER_SEC = 30
 
 
 class ConnectionManager:
@@ -99,6 +108,10 @@ async def ws_live_handler(session_code: str, websocket: WebSocket, db) -> None:
 
     await manager.connect(session_code, websocket)
 
+    # 受信メッセージ数のバースト制限カウンタ (1 秒窓)
+    _msg_window_start = _time.monotonic()
+    _msg_count = 0
+
     try:
         # 接続直後: 現在スナップショットを送信
         snapshot = _build_session_snapshot(session, db)
@@ -107,9 +120,30 @@ async def ws_live_handler(session_code: str, websocket: WebSocket, db) -> None:
         # keepalive ループ（ping / 切断検知）
         while True:
             try:
-                # クライアントからのメッセージを受け付ける（ping や role 送信）
-                data = await asyncio.wait_for(websocket.receive_json(), timeout=30.0)
-                if data.get("type") == "ping":
+                # 受信は text として読み出してサイズチェック → 自前で JSON parse する。
+                # WebSocket.receive_json() は内部で全文をバッファするため、巨大 frame を
+                # 投げられるとメモリを食い尽くす経路がある (CWE-770)。
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                if len(raw) > _MAX_WS_MESSAGE_BYTES:
+                    logger.warning("WS oversized message session=%s len=%d", session_code, len(raw))
+                    await websocket.close(code=1009, reason="message too large")
+                    return
+                # 受信レート制限 (flood DoS 対策)
+                now = _time.monotonic()
+                if now - _msg_window_start >= 1.0:
+                    _msg_window_start = now
+                    _msg_count = 0
+                _msg_count += 1
+                if _msg_count > _MAX_WS_MESSAGES_PER_SEC:
+                    logger.warning("WS message flood session=%s", session_code)
+                    await websocket.close(code=1008, reason="rate limit exceeded")
+                    return
+                try:
+                    data = _json.loads(raw)
+                except (ValueError, TypeError):
+                    # 不正 JSON は黙って無視（接続は維持）
+                    continue
+                if isinstance(data, dict) and data.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
             except asyncio.TimeoutError:
                 # タイムアウト時は keepalive ping を送る

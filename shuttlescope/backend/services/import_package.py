@@ -24,6 +24,15 @@ from backend.db.models import (
 )
 from datetime import date as _date
 
+# ─── 解凍爆弾 (CWE-409) 対策の上限値 ───────────────────────────────────────────
+# .sspkg は通常数 MB〜数百 MB 想定。攻撃者が巨大膨張率の ZIP を投げて
+# サーバメモリを枯渇させる zip bomb を遮断するため、解凍後合計サイズ・
+# メンバー数・単一メンバーサイズを保守的に制限する。
+_MAX_TOTAL_UNCOMPRESSED = 1 * 1024 * 1024 * 1024   # 1 GB
+_MAX_PER_MEMBER         = 256 * 1024 * 1024        # 256 MB / file
+_MAX_MEMBER_COUNT       = 5000
+_MAX_COMPRESSION_RATIO  = 100                       # uncompressed/compressed 上限
+
 # ─── インポートサマリー ────────────────────────────────────────────────────────
 
 @dataclass
@@ -162,6 +171,33 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False) -> ImportSumm
     try:
         buf = io.BytesIO(raw)
         with zipfile.ZipFile(buf, "r") as zf:
+            # ── zip bomb 事前チェック ────────────────────────────────────────
+            infos = zf.infolist()
+            if len(infos) > _MAX_MEMBER_COUNT:
+                summary.errors.append(
+                    f"パッケージのメンバー数が上限 ({_MAX_MEMBER_COUNT}) を超えています"
+                )
+                return summary
+            total_uncompressed = 0
+            for info in infos:
+                if info.file_size > _MAX_PER_MEMBER:
+                    summary.errors.append(
+                        f"メンバー {info.filename} のサイズが上限 ({_MAX_PER_MEMBER} byte) を超えています"
+                    )
+                    return summary
+                # 単一メンバーの圧縮率が異常に高い場合も zip bomb として拒否
+                if info.compress_size > 0 and info.file_size // max(info.compress_size, 1) > _MAX_COMPRESSION_RATIO:
+                    summary.errors.append(
+                        f"メンバー {info.filename} の圧縮率が異常です (zip bomb の可能性)"
+                    )
+                    return summary
+                total_uncompressed += info.file_size
+                if total_uncompressed > _MAX_TOTAL_UNCOMPRESSED:
+                    summary.errors.append(
+                        f"パッケージの解凍後合計サイズが上限 ({_MAX_TOTAL_UNCOMPRESSED} byte) を超えています"
+                    )
+                    return summary
+
             names = set(zf.namelist())
 
             # テーブル順に処理（依存関係: Player → Match → Set → Rally → Stroke）
