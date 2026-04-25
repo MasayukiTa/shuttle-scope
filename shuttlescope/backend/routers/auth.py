@@ -25,7 +25,7 @@ from backend.db.models import Player, PlayerPageAccess, User
 
 GRANTABLE_PAGES = {"prediction", "expert_labeler"}
 
-_MAX_FAILED_ATTEMPTS = 5
+_MAX_FAILED_ATTEMPTS = 3
 _LOCKOUT_MINUTES = 30
 _PASSWORD_MIN_LENGTH = 12
 # bcrypt は入力 password を 72 byte で silent truncate する (CVE-class CWE-521)。
@@ -177,13 +177,26 @@ def _get_ip(request: Request) -> Optional[str]:
 # ── アカウントロックアウト ────────────────────────────────────────────────────
 
 def _check_lockout(user: User) -> None:
-    """ロック中ならHTTPException(429)を送出。"""
+    """ロック中ならHTTPException(429)を送出。
+    ロック期間が経過していたら failed_attempts を 0 に戻し、解除直後の 1 回失敗で
+    再ロックされる挙動を防ぐ (新規 _MAX_FAILED_ATTEMPTS=3 回まで失敗を許容する)。
+    """
     if user.locked_until and user.locked_until > datetime.utcnow():
         remaining = max(1, int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1)
         raise HTTPException(
             status_code=429,
             detail=f"アカウントがロックされています。約{remaining}分後に再試行してください。",
         )
+    # ロック期間が経過 (locked_until が past or None) で failed_attempts が残っているなら
+    # カウンタをリセットしてフレッシュな失敗回数枠を与える。これがないと、3 → 1 で
+    # すぐ再ロックされる UX 上の問題を生む。SQLAlchemy session に attached なら
+    # 後続の commit で永続化されるが、明示 commit はしない (呼び出し元の login flow
+    # が _on_login_success/failure で commit するため)。
+    if (user.failed_attempts or 0) > 0 and (
+        user.locked_until is None or user.locked_until <= datetime.utcnow()
+    ):
+        user.failed_attempts = 0
+        user.locked_until = None
 
 
 def _timing_padding_db_write(db: Session) -> None:
@@ -477,15 +490,22 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=422, detail=f"select grant supports only {sorted(allowed)}")
         if req.user_id:
             user = db.get(User, req.user_id)
-            allowed_roles = {role, "admin"} if role == "analyst" else {role}
-            if not user or user.role not in allowed_roles:
+            # Z1 fix: select grant では「指定 role」と完全一致するユーザのみ許可。
+            # 以前は role=analyst リクエストが admin user とも一致してしまい、
+            # パスワード/lockout 不要で admin JWT を発行する経路があった (privilege escalation)。
+            if not user or user.role != role:
                 raise HTTPException(status_code=404, detail="user not found")
+            # Z2 fix: select 経路でも lockout を尊重する。
+            # ローカル限定でも lockout 機構を完全無効化する経路は disable する。
+            _check_lockout(user)
         else:
             user = db.query(User).filter(User.role == role).first()
             if not user:
                 token = create_access_token(0, role)
                 log_access(db, "login", details={"role": role, "method": "select"}, ip_addr=ip)
                 return LoginResponse(access_token=token, role=role, user_id=0)
+            # ユーザを暗黙選択した場合も lockout を尊重する
+            _check_lockout(user)
         token = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name)
         log_access(db, "login", user_id=user.id, ip_addr=ip)
         return LoginResponse(
@@ -543,6 +563,10 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
     user = db.get(User, user_id)
     if not user or not user.totp_enabled or not user.totp_secret:
         raise HTTPException(status_code=401, detail="MFAが有効化されていません")
+    # Z3 fix: lockout 中のユーザに対して MFA 経路で JWT を発行しない。
+    # mfa_token は credential 経路の pre-auth で発行されるが、その後 lockout が
+    # 確定した場合 (パスワード正解直後にロック等) に MFA 経路で素通りされる懸念を遮断。
+    _check_lockout(user)
     if not _verify_totp(user.totp_secret, req.code):
         _record_mfa_failure(user_id)
         raise HTTPException(status_code=401, detail="認証コードが無効です")
@@ -772,6 +796,10 @@ def refresh(req: RefreshRequest, request: Request, db: Session = Depends(get_db)
     user = db.get(User, rotated["user_id"])
     if not user:
         raise HTTPException(status_code=401, detail="user not found")
+    # Z4 fix: lockout 中のユーザに refresh 経路で新規 access token を発行しない。
+    # 攻撃者が lockout 直前に refresh_token を奪取していた場合、
+    # この経路で lockout を完全に無視して新規 JWT 発行できてしまう。
+    _check_lockout(user)
     access = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name)
     ip = _get_ip(request)
     log_access(db, "token_refresh", user_id=user.id, ip_addr=ip)
