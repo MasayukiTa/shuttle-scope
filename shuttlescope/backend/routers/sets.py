@@ -1,6 +1,6 @@
 """セット管理API（/api/sets）"""
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -12,6 +12,15 @@ from backend.utils import response_cache
 from backend.utils.match_players import players_for_match
 
 router = APIRouter()
+
+
+def _set_require_match_scope(request: Request, db: Session, match: Match) -> None:
+    """match に対する player 書込み拒否 + analyst/coach の team scope 検証"""
+    from backend.utils.auth import require_match_scope, get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    require_match_scope(request, match, db)
 
 
 class SetCreate(BaseModel):
@@ -51,11 +60,12 @@ def get_sets(match_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/sets", status_code=201)
-def create_set(body: SetCreate, db: Session = Depends(get_db)):
+def create_set(body: SetCreate, request: Request, db: Session = Depends(get_db)):
     """セット作成（重複チェックあり）"""
     match = db.get(Match, body.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _set_require_match_scope(request, db, match)
 
     # 既に同じセット番号が存在する場合はそれを返す
     existing = db.query(GameSet).filter(
@@ -76,11 +86,14 @@ def create_set(body: SetCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/sets/{set_id}/end")
-def end_set(set_id: int, body: SetEnd, db: Session = Depends(get_db)):
+def end_set(set_id: int, body: SetEnd, request: Request, db: Session = Depends(get_db)):
     """セット終了（スコア・勝者確定）"""
     game_set = db.get(GameSet, set_id)
     if not game_set:
         raise HTTPException(status_code=404, detail="セットが見つかりません")
+    match = db.get(Match, game_set.match_id)
+    if match:
+        _set_require_match_scope(request, db, match)
 
     game_set.winner = body.winner
     game_set.score_a = body.score_a

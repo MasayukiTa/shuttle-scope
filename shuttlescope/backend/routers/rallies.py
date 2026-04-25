@@ -1,6 +1,6 @@
 """ラリー管理API（/api/rallies）"""
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,23 @@ from backend.utils.match_players import players_for_set, players_for_rally
 router = APIRouter()
 
 
+def _rally_require_scope(request: Request, db: Session, set_id: int) -> Match:
+    """rally が属する match を取得し、analyst/coach の team scope を検証する。
+    admin 無条件許可、player は参加試合のみ。"""
+    gs = db.get(GameSet, set_id)
+    if not gs:
+        raise HTTPException(status_code=404, detail="セットが見つかりません")
+    match = db.get(Match, gs.match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    from backend.utils.auth import require_match_scope
+    require_match_scope(request, match, db)
+    return match
+
+
 class RallyCreate(BaseModel):
+    # 未知フィールド禁止 (mass assignment 防御)
+    model_config = {"extra": "forbid"}
     set_id: int
     rally_num: int
     server: str
@@ -29,6 +45,7 @@ class RallyCreate(BaseModel):
 
 
 class RallyUpdate(BaseModel):
+    model_config = {"extra": "forbid"}
     winner: Optional[str] = None
     end_type: Optional[str] = None
     rally_length: Optional[int] = None
@@ -59,11 +76,14 @@ def rally_to_dict(r: Rally) -> dict:
 
 
 @router.post("/rallies", status_code=201)
-def create_rally(body: RallyCreate, db: Session = Depends(get_db)):
+def create_rally(body: RallyCreate, request: Request, db: Session = Depends(get_db)):
     """ラリー作成"""
-    game_set = db.get(GameSet, body.set_id)
-    if not game_set:
-        raise HTTPException(status_code=404, detail="セットが見つかりません")
+    # player 書込み拒否 + analyst/coach の team scope 検証
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    _rally_require_scope(request, db, body.set_id)
     rally = Rally(**body.model_dump())
     touch(rally)
     db.add(rally)
@@ -75,11 +95,16 @@ def create_rally(body: RallyCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/rallies/{rally_id}")
-def update_rally(rally_id: int, body: RallyUpdate, db: Session = Depends(get_db)):
+def update_rally(rally_id: int, body: RallyUpdate, request: Request, db: Session = Depends(get_db)):
     """ラリー更新"""
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     rally = db.get(Rally, rally_id)
     if not rally:
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
+    _rally_require_scope(request, db, rally.set_id)
     from backend.utils.db_update import apply_update
     apply_update(rally, body.model_dump(exclude_unset=True))
     touch(rally)
@@ -91,11 +116,16 @@ def update_rally(rally_id: int, body: RallyUpdate, db: Session = Depends(get_db)
 
 
 @router.delete("/rallies/{rally_id}")
-def delete_rally(rally_id: int, db: Session = Depends(get_db)):
+def delete_rally(rally_id: int, request: Request, db: Session = Depends(get_db)):
     """ラリー削除（アンドゥ用）"""
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     rally = db.get(Rally, rally_id)
     if not rally:
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
+    _rally_require_scope(request, db, rally.set_id)
     # 削除前に関与選手を控える
     affected_players = players_for_set(db, rally.set_id)
     db.delete(rally)

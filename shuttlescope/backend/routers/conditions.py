@@ -513,6 +513,20 @@ def list_conditions(
         player_id = ctx.player_id
 
     q = db.query(Condition)
+    # coach / analyst は自チーム選手の conditions のみ (cross-team 漏洩防止)
+    if ctx.is_coach or ctx.is_analyst:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                return {"success": True, "data": []}
+            # loopback dev/test では全件
+        else:
+            from backend.db.models import Player as _P
+            team_player_ids = [p.id for p in db.query(_P.id).filter(_P.team == team).all()]
+            if not team_player_ids:
+                return {"success": True, "data": []}
+            q = q.filter(Condition.player_id.in_(team_player_ids))
     if player_id is not None:
         q = q.filter(Condition.player_id == player_id)
     if since is not None:

@@ -55,7 +55,8 @@ def mode_client(db_session):
     game_set = _make_set(db_session, match)
 
     app.dependency_overrides[get_db] = lambda: db_session
-    client = TestClient(app)
+    # analyst 権限でテスト (新しい team scope ガードを通すため X-Role 付与)
+    client = TestClient(app, headers={"X-Role": "analyst"})
     yield client, game_set.id
     app.dependency_overrides.clear()
 

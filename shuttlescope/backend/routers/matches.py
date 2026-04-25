@@ -158,6 +158,8 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
     # 文字列フィールドの長さ上限 + 制御文字 (CR/LF/NUL) 拒否
     # null byte / CRLF 埋め込みはログ偽装・DB 処理バグ・UI 表示汚染経路
     import re as _re_ctl
+    # tournament / round は業務上必須 (空/空白のみ禁止)。無意味な DB 肥大を防ぐ。
+    _non_empty_required = {"tournament", "round"}
     for fname, maxlen in (
         ("tournament", 200), ("tournament_grade", 100), ("round", 100),
         ("venue", 200), ("notes", 5000), ("final_score", 200),
@@ -173,6 +175,8 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             raise HTTPException(status_code=422, detail=f"{fname} too long (max {maxlen})")
         if _re_ctl.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", v):
             raise HTTPException(status_code=422, detail=f"{fname} contains control characters")
+        if fname in _non_empty_required and not v.strip():
+            raise HTTPException(status_code=422, detail=f"{fname} must not be empty or whitespace only")
     # video_url の制御文字拒否 (CR/LF/Tab 埋め込みで header injection / shell 攻撃経路)
     vu = getattr(body, "video_url", None)
     if vu is not None and isinstance(vu, str) and vu != "":
