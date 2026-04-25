@@ -86,7 +86,7 @@ class TestSelectGrantAdminEscalation:
                 return Q()
 
         class FakeReq:
-            class client: host = "127.0.0.1"
+            class client: host = "127.0.0.1"  # DevSkim: ignore DS162092 — loopback is required to satisfy is_loopback_request()
             headers = {}
 
         # patch helper
@@ -145,7 +145,7 @@ class TestSelectGrantLockout:
                 return Q()
 
         class FakeReq:
-            class client: host = "127.0.0.1"
+            class client: host = "127.0.0.1"  # DevSkim: ignore DS162092 — loopback is required to satisfy is_loopback_request()
             headers = {}
 
         from backend.utils import control_plane as cp
