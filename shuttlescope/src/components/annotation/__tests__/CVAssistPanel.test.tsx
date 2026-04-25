@@ -17,12 +17,11 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { CVAssistPanel } from '../CVAssistPanel'
 import type { RallyCVCandidate } from '@/types/cv'
 
-// react-i18next モック（StrokeRow 内で useTranslation を使用）
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback: string) => fallback,
-  }),
-}))
+// 注: 以前は `useTranslation` を fallback 文字列のみ返すスタブで mock していたが、
+// `b505952 Migrate annotation UI labels to i18n` 以降コンポーネントが
+// `t(key)` (fallback 引数なし) を呼ぶようになり、mock が undefined を返して
+// 空 DOM になり全テストが落ちる状態になっていた。test-setup.ts で i18n を
+// 初期化しているため、ここでは mock を外して実際の翻訳を使う。
 
 // ── テストデータ ─────────────────────────────────────────────────────────────
 
