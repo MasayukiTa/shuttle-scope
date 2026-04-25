@@ -548,6 +548,14 @@ def mfa_setup(request: Request, db: Session = Depends(get_db)):
     user = db.get(User, ctx.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    # 既に MFA 有効なユーザに対する setup は拒否する。
+    # (トークン奪取者が secret を再生成して正規ユーザをロックアウトする攻撃経路を遮断)
+    # MFA を再生成したい場合は /mfa/disable で既存コード検証後に改めて setup すること。
+    if getattr(user, "totp_enabled", False):
+        raise HTTPException(
+            status_code=409,
+            detail="MFA は既に有効です。再設定する場合は /mfa/disable で無効化後にセットアップしてください。",
+        )
     secret = _totp_generate_secret()
     user.totp_secret = secret
     db.commit()
@@ -971,13 +979,19 @@ def list_users(request: Request, db: Session = Depends(get_db)):
     from backend.utils.auth import get_auth
     ctx = get_auth(request)
 
-    if ctx.is_admin or ctx.is_analyst:
+    if ctx.is_admin:
         users = db.query(User).order_by(User.id).all()
         return {"success": True, "data": [_user_to_dict(u, db) for u in users]}
 
-    if ctx.is_coach:
+    if ctx.is_analyst or ctx.is_coach:
+        # analyst も自チームのみ (cross-team 情報漏洩防止)
         team = (ctx.team_name or "").strip()
         if not team:
+            # loopback dev/test では admin 同等で全件返す
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if allow_legacy_header_auth(request):
+                users = db.query(User).order_by(User.id).all()
+                return {"success": True, "data": [_user_to_dict(u, db) for u in users]}
             return {"success": True, "data": []}
         users = db.query(User).filter(User.team_name == team).order_by(User.id).all()
         return {"success": True, "data": [_user_to_dict(u, db) for u in users]}
@@ -1011,6 +1025,15 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
     if ctx.is_analyst and body.role in ("admin", "analyst"):
         raise HTTPException(status_code=403, detail="admin/analyst アカウントは admin のみ作成できます")
+    # analyst/coach/player は team_name 必須 (cross-team 漏洩防止)。
+    # admin のみ team_name=None を許容（システム横断管理者として扱う）。
+    if body.role != "admin":
+        team = (body.team_name or "").strip()
+        if not team:
+            raise HTTPException(
+                status_code=422,
+                detail=f"team_name is required for role={body.role}",
+            )
     login_id = _validate_login_id(body.username)
     existing = db.query(User).filter(User.username == login_id).first()
     if existing:
@@ -1135,7 +1158,17 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     # display_name / team_name の制御文字 / BIDI override を拒否
     _reject_control_chars(body.display_name, "display_name", max_len=120)
     _reject_control_chars(body.team_name, "team_name", max_len=80)
+    # display_name HTML タグ拒否 (stored XSS 対策、create_user と同じルール)
     if body.display_name is not None:
+        if not body.display_name.strip():
+            raise HTTPException(status_code=422, detail="display_name must not be empty or whitespace only")
+        import re as _re_dn_upd
+        if _re_dn_upd.search(
+            r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]",
+            body.display_name,
+            _re_dn_upd.IGNORECASE,
+        ):
+            raise HTTPException(status_code=422, detail="display_name contains disallowed HTML tags")
         user.display_name = body.display_name
     if body.username is not None and (ctx.is_admin or ctx.is_analyst):
         login_id = _validate_login_id(body.username)
@@ -1153,6 +1186,15 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         user.team_name = body.team_name
     if body.player_id is not None and ctx.is_admin:
         user.player_id = body.player_id
+
+    # 最終 role が admin 以外なら team_name は必須 (空文字化を防止)
+    final_role = user.role
+    if final_role != "admin":
+        if not (user.team_name or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail=f"team_name is required for role={final_role}",
+            )
 
     password = (body.password or "").strip()
     if password:

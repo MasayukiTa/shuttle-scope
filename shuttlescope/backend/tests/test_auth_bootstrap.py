@@ -100,6 +100,7 @@ def test_credential_login_supports_player_password_by_login_id(db_session, monke
         role="player",
         display_name="Player One",
         player_id=12,
+        team_name="Team A",
         hashed_credential=_hash_password("2468"),
     )
     db_session.add(player)
@@ -181,6 +182,7 @@ def test_admin_can_update_player_password_via_password_field(db_session, monkeyp
         role="player",
         display_name="Player Two",
         player_id=55,
+        team_name="Team A",
     )
     db_session.add_all([admin, player])
     db_session.commit()
@@ -236,6 +238,7 @@ def test_create_user_rejects_short_login_id(db_session, monkeypatch):
                 "display_name": "Coach Bad",
                 "username": "abc",
                 "password": "CoachPass#2026",
+                "team_name": "Team Bad",
             },
         )
         assert resp.status_code == 422

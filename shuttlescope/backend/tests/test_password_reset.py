@@ -125,6 +125,7 @@ class TestAdminResetPassword:
                 "role": "analyst",
                 "display_name": "Target",
                 "password": "TargetPass1!",
+                "team_name": "TestTeam",
             },
             headers={"Authorization": f"Bearer {access}"},
         )
