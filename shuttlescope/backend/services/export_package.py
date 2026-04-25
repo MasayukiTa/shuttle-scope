@@ -370,6 +370,14 @@ def validate_package(raw: bytes) -> dict:
     try:
         buf = io.BytesIO(raw)
         with zipfile.ZipFile(buf, "r") as zf:
+            # zip bomb 事前チェック。`/api/sync/validate` と
+            # `/api/sync/preview` 双方が validate_package を経由するため、
+            # ここで上限を強制しないと import_package 側の防御を素通りされる。
+            from backend.services.import_package import check_zip_bomb_caps
+            bomb_err = check_zip_bomb_caps(zf)
+            if bomb_err:
+                return {"valid": False, "error": bomb_err}
+
             names = zf.namelist()
             required = {"manifest.json", "matches.json", "players.json"}
             missing = required - set(names)

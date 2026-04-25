@@ -90,6 +90,11 @@ def rotate_refresh_token(presented_token: str) -> Optional[dict]:
 
     reuse detection: 既に revoked_at が入っている行が一致した場合、同 user の
     全 refresh token を revoke する（漏洩の可能性が高い）。
+
+    並行実行時の race condition (TOCTOU, CWE-367) 対策として、revoke は
+    `UPDATE ... WHERE revoked_at IS NULL` の atomic な UPDATE で行い、影響行数
+    (rowcount) を見て勝者を判定する。これにより同一 refresh token を同時に提示する
+    複数リクエストのうち 1 件のみが新 token を受け取り、残りは reuse 経路に流れる。
     """
     from backend.db.database import SessionLocal
     from backend.db.models import RefreshToken
@@ -117,7 +122,33 @@ def rotate_refresh_token(presented_token: str) -> Optional[dict]:
                 logger.warning("refresh token reuse detected user_id=%s, revoked chain", row.user_id)
                 return None
 
-            # rotation: 新しい refresh を発行して旧 refresh を revoke
+            # rotation: 旧 refresh を atomic に revoke する。
+            # WHERE revoked_at IS NULL を条件にしているため同時に rotate を試みる
+            # 並行リクエストのうち rowcount=1 を返す唯一の勝者だけが続行する。
+            updated = (
+                db.query(RefreshToken)
+                .filter(
+                    RefreshToken.id == row.id,
+                    RefreshToken.revoked_at.is_(None),
+                )
+                .update({"revoked_at": now}, synchronize_session=False)
+            )
+            if not updated:
+                # 並行 rotate に負けた / 直前で revoke された。
+                # reuse 検知扱いで chain ごと revoke する (token 漏洩の可能性が高い)。
+                (
+                    db.query(RefreshToken)
+                    .filter(RefreshToken.user_id == row.user_id, RefreshToken.revoked_at.is_(None))
+                    .update({"revoked_at": now}, synchronize_session=False)
+                )
+                db.commit()
+                logger.warning(
+                    "refresh token rotation race detected user_id=%s, revoked chain",
+                    row.user_id,
+                )
+                return None
+
+            # 新しい refresh を発行する
             new_raw, new_jti, new_exp = create_refresh_token(row.user_id)
             db.add(RefreshToken(
                 jti=new_jti,
@@ -125,8 +156,12 @@ def rotate_refresh_token(presented_token: str) -> Optional[dict]:
                 token_hash=_hash_refresh_token(new_raw),
                 expires_at=new_exp,
             ))
-            row.revoked_at = now
-            row.replaced_by_jti = new_jti
+            # replaced_by_jti は既に確定した勝者行へひも付ける
+            (
+                db.query(RefreshToken)
+                .filter(RefreshToken.id == row.id)
+                .update({"replaced_by_jti": new_jti}, synchronize_session=False)
+            )
             db.commit()
             return {
                 "user_id": row.user_id,

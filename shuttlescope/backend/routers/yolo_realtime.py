@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 _MAX_INFLIGHT = 1
 # 1 接続あたりの最大 JPEG バイト数（640x480 JPEG 0.5 ~ 30KB 目安）
 _MAX_FRAME_BYTES = 500 * 1024
+# 制御テキストメッセージ (ping 等) の最大サイズ。
+# bytes フレーム経路には _MAX_FRAME_BYTES のチェックがあるが、text 経路にも
+# 巨大ペイロードによるメモリ DoS を防ぐためのチェックを入れる (CWE-770)。
+_MAX_TEXT_BYTES = 2 * 1024
 
 
 async def ws_realtime_yolo_handler(session_code: str, websocket: WebSocket) -> None:
@@ -59,6 +63,9 @@ async def ws_realtime_yolo_handler(session_code: str, websocket: WebSocket) -> N
                 # テキスト（ping 等）は単純に ack
                 text = msg.get("text")
                 if text:
+                    if len(text) > _MAX_TEXT_BYTES:
+                        await websocket.close(code=1009, reason="message too large")
+                        return
                     try:
                         obj = json.loads(text)
                     except Exception:

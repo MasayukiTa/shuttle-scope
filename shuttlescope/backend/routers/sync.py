@@ -456,8 +456,10 @@ class ConflictResolveBody(_BaseModel):
 
 
 @router.get("/conflicts")
-def list_conflicts(db: Session = Depends(get_db)):
-    """未解決の競合レコード一覧を返す"""
+def list_conflicts(db: Session = Depends(get_db), _ctx=Depends(require_analyst)):
+    """未解決の競合レコード一覧を返す。
+    incoming_snapshot に他チーム/他選手のレコードが含まれ得るため analyst/admin のみ。
+    """
     conflicts = (
         db.query(SyncConflict)
         .filter(SyncConflict.resolution.is_(None))
@@ -487,13 +489,18 @@ def resolve_conflict(
     conflict_id: int,
     body: ConflictResolveBody,
     db: Session = Depends(get_db),
+    _ctx=Depends(require_analyst),
 ):
     """
-    競合を解決する。
+    競合を解決する (analyst/admin のみ)。
 
     resolution:
       - keep_local: ローカルレコードをそのまま維持
       - use_incoming: incoming スナップショットでローカルを上書き
+
+    use_incoming は他者からの incoming 任意 JSON で対象テーブルの
+    既存レコードを直接更新する経路を持つため、role を持たないユーザに
+    開放すると Player/Match の任意改ざんに繋がる。analyst/admin に限定する。
     """
     conflict = db.get(SyncConflict, conflict_id)
     if not conflict:
