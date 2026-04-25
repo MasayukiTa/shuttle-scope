@@ -19,6 +19,9 @@ import os
 import secrets
 import socket
 import string
+import threading
+import time as _time
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -276,22 +279,61 @@ def session_state(code: str, request: Request, db: Session = Depends(get_db)):
     return {"success": True, "data": snapshot}
 
 
+# ─── join 試行レート制限 (PBKDF2 / セッションパスワード brute force 対策) ─────
+# session_code 単位で 60 秒窓内の認証失敗回数を制限する。攻撃者が同一セッション
+# コードに対してパスワード総当たりを行う経路と、PBKDF2 (100k iterations) の
+# CPU コストを連鎖呼び出しでサーバ枯渇させる経路を遮断する (CWE-307 / CWE-770)。
+_JOIN_RATE_LOCK    = threading.Lock()
+_JOIN_FAILURES: dict[str, list[float]] = defaultdict(list)
+_JOIN_RATE_WINDOW  = 60      # 秒
+_JOIN_RATE_LIMIT   = 10      # 同一 code への 60 秒以内 10 失敗で拒否
+
+
+def _check_join_rate_limit(code: str) -> None:
+    if not code:
+        return
+    now = _time.time()
+    cutoff = now - _JOIN_RATE_WINDOW
+    with _JOIN_RATE_LOCK:
+        arr = [t for t in _JOIN_FAILURES[code] if t > cutoff]
+        _JOIN_FAILURES[code] = arr
+        if len(arr) >= _JOIN_RATE_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"認証失敗が多すぎます。{_JOIN_RATE_WINDOW}秒後に再試行してください。",
+            )
+
+
+def _record_join_failure(code: str) -> None:
+    if not code:
+        return
+    with _JOIN_RATE_LOCK:
+        _JOIN_FAILURES[code].append(_time.time())
+
+
 @router.post("/sessions/{code}/join")
 def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)):
     """参加者登録（コーチ・ビューワーが接続時に呼ぶ）。パスワードが設定されている場合は検証する。"""
+    # PBKDF2 検証へ流す前に session_code 単位の rate limit を適用する。
+    _check_join_rate_limit(code)
+
     session = (
         db.query(SharedSession)
         .filter(SharedSession.session_code == code, SharedSession.is_active.is_(True))
         .first()
     )
     if not session:
+        # 存在しない code への brute-force もカウントして探索コストを上げる
+        _record_join_failure(code)
         raise HTTPException(status_code=404, detail="セッションが見つからないか終了しています")
 
     # パスワード検証
     if session.password_hash:
         if not body.session_password:
+            _record_join_failure(code)
             raise HTTPException(status_code=401, detail="パスワードが必要です")
         if not _verify_password(body.session_password, session.password_hash):
+            _record_join_failure(code)
             raise HTTPException(status_code=401, detail="パスワードが正しくありません")
 
     # デバイスタイプから source_capability / device_class を推定

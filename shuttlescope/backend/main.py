@@ -379,6 +379,61 @@ _PLAYER_ID_PATTERNS = [
 ]
 
 
+# ─── player ロールに対する research / weakness / 対戦相手解析の禁止 ─────────
+# CLAUDE.md 非交渉ルール:
+#   - "Never show player-facing screens direct EPV or direct weakness summaries"
+#   - research-tier 出力は player ロールに絶対に露出させない
+#   - PLAYER_SENSITIVE_KEYS = {win_rate_vs_opponent, epv, weakness_zones,
+#     rival_comparison, bottom_patterns}
+# 自己 player_id へのリクエストでもブロックする (own EPV / own weakness も対象外)。
+#
+# 構成:
+#  1. analysis_research / analysis_spine / analysis_bundle に登録された全ルート
+#     (research tier + research spine + cross-tier research bundle)
+#  2. analysis_advanced / analysis_stable のうち weakness / 対戦相手 / 直接比較
+#     系の specific paths
+#
+# advanced-tier の中立 stat (pressure_performance, transition, temporal,
+# growth_*, court_coverage_split 等) は player に露出しても問題ないため除外。
+def _build_player_forbidden_analysis_paths() -> frozenset[str]:
+    forbidden: set[str] = set()
+    # 1) research / spine / bundle/research 全部
+    try:
+        from backend.routers import (
+            analysis_research as _r,
+            analysis_spine as _sp,
+            analysis_bundle as _b,
+        )
+        for sub in (_r.router, _sp.router, _b.router):
+            for route in getattr(sub, "routes", []):
+                p = getattr(route, "path", None)
+                if p:
+                    forbidden.add(f"/api{p}")
+    except Exception:
+        pass
+    # 2) PLAYER_SENSITIVE_KEYS にマッチする individual paths (advanced + stable)
+    forbidden.update({
+        # weakness / vulnerability
+        "/api/analysis/received_vulnerability",
+        "/api/analysis/received_vulnerability/zone_detail",
+        "/api/analysis/opponent_vulnerability",
+        # 対戦相手スカウティング (rival_comparison)
+        "/api/analysis/opponent_card",
+        "/api/analysis/opponent_stats",
+        # 直接 win_rate vs opponent
+        "/api/analysis/win_loss_comparison",
+        "/api/analysis/partner_comparison",
+        # advanced-tier opponent 系 (analysis_advanced.py)
+        "/api/analysis/opponent_type_affinity",
+        "/api/analysis/opponent_adaptive_shots",
+        "/api/analysis/opponent_policy",
+    })
+    return frozenset(forbidden)
+
+
+_PLAYER_FORBIDDEN_ANALYSIS_PATHS = _build_player_forbidden_analysis_paths()
+
+
 def _extract_id(path: str, patterns) -> int | None:
     for pat in patterns:
         m = pat.match(path)
@@ -391,12 +446,18 @@ def _extract_id(path: str, patterns) -> int | None:
 
 
 class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
-    """role=player のリクエストに対し、対象リソースへのアクセス可否を DB 検証する。"""
+    """role=player と role=coach のリクエストに対し、対象リソースへのアクセス可否を DB 検証する。
+
+    - player: 自 player_id の対戦/解析/コンディションのみ
+    - coach: 自 team_name の player のみ (他チーム scouting は opponent_id 経由で
+      OK だが、`?player_id=X` に他チーム player を渡すのは scope leak とみなす)
+    """
 
     async def dispatch(self, request: StarletteRequest, call_next):
         # JWT 優先、フォールバックは X-Role
         role = None
         pid_raw = ""
+        team_name = ""
         payload = None
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
@@ -406,6 +467,55 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
             if payload:
                 role = payload.get("role")
                 pid_raw = str(payload.get("player_id", "")) if payload.get("player_id") else ""
+                team_name = payload.get("team_name", "") or ""
+
+        # ── coach: クエリ ?player_id= に対する team scope 強制 ──
+        # CLAUDE.md "coach: 自チーム所属選手" の原則を analysis / conditions /
+        # reports / human_forecast / warmup に貫徹する。
+        # round 4 の live attack で coach が他チーム player の EPV/heatmap/insights
+        # を取得できる scope leak を確認したため middleware で塞ぐ。
+        if role == "coach":
+            path_co = request.url.path
+            if (
+                path_co.startswith("/api/analysis/")
+                or path_co.startswith("/api/reports/")
+                or path_co.startswith("/api/conditions/")
+                or path_co.startswith("/api/conditions")
+                or path_co.startswith("/api/human_forecast/")
+                or path_co.startswith("/api/warmup/")
+            ):
+                qp_pids = request.query_params.getlist("player_id")
+                if qp_pids:
+                    coach_team = (team_name or "").strip()
+                    if not coach_team:
+                        return StarletteResponse(
+                            "team_name 未設定の coach はこの解析にアクセスできません",
+                            status_code=403,
+                        )
+                    from backend.db.database import SessionLocal as _SL_co
+                    from backend.db.models import Player as _P_co
+                    with _SL_co() as _db_co:
+                        for qp_pid_raw in qp_pids:
+                            try:
+                                qp_pid = int(qp_pid_raw)
+                            except (ValueError, TypeError):
+                                continue
+                            if qp_pid <= 0:
+                                continue
+                            p = _db_co.get(_P_co, qp_pid)
+                            if p is None or (p.team or "").strip() != coach_team:
+                                try:
+                                    from backend.utils.access_log import log_access as _la
+                                    with _SL_co() as _log_db:
+                                        _la(_log_db, "access_denied_coach_scope",
+                                            details={"path": path_co, "player_id": qp_pid})
+                                except Exception:
+                                    pass
+                                return StarletteResponse(
+                                    "この選手データはあなたのチームに所属していません",
+                                    status_code=403,
+                                )
+
         # X-Role ヘッダーによるフォールバックは削除（攻撃者が任意ロールを偽称できるため）
         # JWT にロールがない場合は player 制限を適用しない（非 player 扱い）
         if role != "player":
@@ -522,9 +632,20 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
             )
 
         # ── player_id クエリパラメータ（解析系 IDOR 対策） ──
-        # /api/analysis/* は player_id をクエリパラメータで受け取るため
+        # /api/analysis/*, /api/reports/*, /api/conditions/*, /api/human_forecast/*,
+        # /api/warmup/* は player_id をクエリパラメータで受け取るため
         # パスパターンでは捕捉できない。クエリパラメータを直接検証する。
-        if path.startswith("/api/analysis/") or path.startswith("/api/reports/"):
+        # (`/api/conditions/insights` や `/api/conditions/best_profile` で他選手の
+        #  ?player_id を指定すると 200 が返る IDOR を round 4 で検出。
+        #  middleware 側で広めに塞ぐ。)
+        if (
+            path.startswith("/api/analysis/")
+            or path.startswith("/api/reports/")
+            or path.startswith("/api/conditions/")
+            or path.startswith("/api/conditions")
+            or path.startswith("/api/human_forecast/")
+            or path.startswith("/api/warmup/")
+        ):
             # HPP 対策: ?player_id=12&player_id=5 のような重複指定は、
             # どれか 1 つでも自分の player_id と異なる値が含まれていれば拒否する。
             qp_pids_raw = request.query_params.getlist("player_id")
@@ -551,6 +672,22 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
                     "この選手データへのアクセス権限がありません",
                     status_code=403,
                 )
+
+        # ── research / advanced / weakness 解析の player ロール禁止 ──
+        # 自己 player_id を渡されたケースでも、CLAUDE.md 非交渉ルールに従い
+        # 直接 EPV / 弱点サマリ / research-tier の生データを player に露出させない。
+        if path in _PLAYER_FORBIDDEN_ANALYSIS_PATHS:
+            try:
+                from backend.utils.access_log import log_access
+                from backend.db.database import SessionLocal
+                with SessionLocal() as _log_db:
+                    log_access(_log_db, "access_denied_research", details={"path": path})
+            except Exception:
+                pass
+            return StarletteResponse(
+                "この解析は player ロールでは参照できません",
+                status_code=403,
+            )
 
         return await call_next(request)
 
@@ -912,8 +1049,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if app_settings.PUBLIC_MODE:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         # 認証 Bearer 付きの API レスポンスは機密扱い — 中間キャッシュ禁止
+        # /api/auth/* はログイン時に access/refresh token を返すが、初回呼び出しには
+        # Authorization ヘッダがないため Bearer 条件では拾えない。トークンが共有
+        # HTTP キャッシュ (CDN / プロキシ) に残らないよう /api/auth/ も明示的に
+        # no-store にする (CWE-525 / OWASP A05)。
         path = request.url.path
-        if request.headers.get("Authorization", "").startswith("Bearer ") and path.startswith("/api/"):
+        is_auth_path = path.startswith("/api/auth/")
+        has_bearer = request.headers.get("Authorization", "").startswith("Bearer ")
+        if (has_bearer and path.startswith("/api/")) or is_auth_path:
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
         # CSP: API/JSON 応答には厳格なポリシーを設定（レンダラーは default-src 'none' で十分）

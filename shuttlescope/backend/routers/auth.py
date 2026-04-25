@@ -16,7 +16,7 @@ from typing import Optional
 
 import bcrypt as _bcrypt_lib
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -28,6 +28,11 @@ GRANTABLE_PAGES = {"prediction", "expert_labeler"}
 _MAX_FAILED_ATTEMPTS = 5
 _LOCKOUT_MINUTES = 30
 _PASSWORD_MIN_LENGTH = 12
+# bcrypt は入力 password を 72 byte で silent truncate する (CVE-class CWE-521)。
+# `pw[:72] + X` と `pw[:72] + Y` が同じハッシュにマッチしてしまうため、
+# 部分漏洩した password でログインできる経路を塞ぐ目的で 72 byte を上限とする。
+# 文字数ではなく UTF-8 バイト数で制限する点に注意 (日本語は 1 文字 3 byte)。
+_PASSWORD_MAX_BYTES = 72
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -85,6 +90,13 @@ def _validate_password_strength(password: str) -> None:
     """パスワード強度を検証する。不足の場合 HTTPException(422) を送出。"""
     if len(password) < _PASSWORD_MIN_LENGTH:
         raise HTTPException(422, f"パスワードは{_PASSWORD_MIN_LENGTH}文字以上が必要です")
+    # bcrypt 72-byte truncation 対策。文字数ではなく UTF-8 バイト数で計測する。
+    if len(password.encode("utf-8")) > _PASSWORD_MAX_BYTES:
+        raise HTTPException(
+            422,
+            f"パスワードは {_PASSWORD_MAX_BYTES} バイト以下にしてください "
+            f"(英数記号 {_PASSWORD_MAX_BYTES} 文字 / 日本語 ~24 文字)",
+        )
     if not _re.search(r'[a-z]', password):
         raise HTTPException(422, "パスワードに小文字を含めてください")
     if not _re.search(r'[A-Z]', password):
@@ -252,13 +264,18 @@ from backend.utils.jwt_utils import (
 # ── Pydantic スキーマ ─────────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):
-    grant_type: str
-    username: Optional[str] = None
-    identifier: Optional[str] = None
-    password: Optional[str] = None
+    # 任意フィールドの混入を遮断 (mass assignment / 監査ログ汚染対策)。
+    # 各フィールドの max_length は audit_logs.details に巨大文字列が
+    # 蓄積される storage DoS を防ぐためのもの。
+    model_config = {"extra": "forbid"}
+
+    grant_type: str = Field(..., max_length=32)
+    username: Optional[str] = Field(default=None, max_length=64)
+    identifier: Optional[str] = Field(default=None, max_length=64)
+    password: Optional[str] = Field(default=None, max_length=256)
     user_id: Optional[int] = None
-    pin: Optional[str] = None
-    role: Optional[str] = None
+    pin: Optional[str] = Field(default=None, max_length=128)
+    role: Optional[str] = Field(default=None, max_length=32)
 
 
 class LoginResponse(BaseModel):
@@ -311,12 +328,18 @@ class MfaSetupResponse(BaseModel):
 
 
 class MfaCodeRequest(BaseModel):
-    code: str
+    model_config = {"extra": "forbid"}
+    # TOTP は 6 桁数字。緩めの 16 文字までで上限を切って巨大値による
+    # 文字列処理コスト攻撃を遮断する。
+    code: str = Field(..., max_length=16)
 
 
 class MfaLoginRequest(BaseModel):
-    mfa_token: str
-    code: str
+    model_config = {"extra": "forbid"}
+    # 短命 JWT (mfa_pending) を想定。署名込み JWT は 200〜400 byte 程度なので
+    # 1024 で十分。code は 6 桁数字。
+    mfa_token: str = Field(..., max_length=1024)
+    code: str = Field(..., max_length=16)
 
 
 # ── ブートストラップ ─────────────────────────────────────────────────────────
@@ -647,10 +670,15 @@ def mfa_disable(req: MfaCodeRequest, request: Request, db: Session = Depends(get
     ctx = get_auth(request)
     if not ctx.user_id:
         raise HTTPException(status_code=401, detail="認証が必要です")
+    # MFA brute force 防御: 漏洩した access token を持つ攻撃者が 6 桁の TOTP を
+    # 総当たりして MFA を無効化する経路を遮断する (mfa_confirm / mfa/login と
+    # 共通のレートリミットを使用する)。
+    _check_mfa_brute_limit(ctx.user_id)
     user = db.get(User, ctx.user_id)
     if not user or not user.totp_enabled or not user.totp_secret:
         raise HTTPException(status_code=400, detail="MFAは有効化されていません")
     if not _verify_totp(user.totp_secret, req.code):
+        _record_mfa_failure(ctx.user_id)
         raise HTTPException(status_code=400, detail="認証コードが無効です")
     user.totp_secret = None
     user.totp_enabled = False

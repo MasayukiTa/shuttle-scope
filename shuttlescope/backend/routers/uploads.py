@@ -29,7 +29,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -142,11 +142,16 @@ def _bitmap_complete(bitmap: bytes, total_chunks: int) -> bool:
 # ─── スキーマ ─────────────────────────────────────────────────────────────────
 
 class InitRequest(BaseModel):
+    # extra フィールドの silent drop を遮断 (mass-assignment 防御)。
+    model_config = {"extra": "forbid"}
     match_id: Optional[int] = None
-    filename: str
+    # filename は表示・DB 保存用。実ファイル名は upload_id ベースに正規化されるため
+    # path traversal の直接被害は無いが、CRLF / 制御文字を入れて DB に保存して
+    # 後続の表示やログを汚染する経路を塞ぐ。長さは 255 byte (DB column 上限) 想定。
+    filename: str = Field(..., min_length=1, max_length=255)
     total_size: int
     chunk_size: int = DEFAULT_CHUNK_SIZE
-    mime_type: Optional[str] = None
+    mime_type: Optional[str] = Field(default=None, max_length=128)
 
 
 class InitResponse(BaseModel):
@@ -180,6 +185,13 @@ def init_upload(
     ctx: AuthCtx = Depends(get_auth),
 ):
     _require_writer(ctx)
+
+    # filename に NUL / CR / LF / その他制御文字が混入すると、後続の表示・
+    # ログ出力・Content-Disposition ヘッダ生成等で破壊的に振る舞う可能性がある。
+    # path traversal そのものは upload_id ベースの保存と suffix 白リストで防げているが、
+    # 文字種は事前に絞っておく (defense in depth, CWE-93 / CWE-138)。
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in body.filename):
+        raise HTTPException(status_code=422, detail="filename に制御文字を含めることはできません")
 
     if body.total_size <= 0 or body.total_size > MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=400, detail=f"ファイルサイズは 1〜{MAX_UPLOAD_SIZE} byte の範囲で指定してください")
@@ -421,10 +433,12 @@ def stream_video_for_match(
     m = db.get(Match, match_id)
     if m is None:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    # アクセス権（既存のロール制約に任せる簡易版）
-    from backend.utils.auth import user_can_access_match
-    if not user_can_access_match(ctx, m):
-        raise HTTPException(status_code=403, detail="この試合へのアクセス権がありません")
+    # アクセス権チェック: 動画は機微なメディアなので team scope (require_match_scope)
+    # まで厳格化する。これまでの `user_can_access_match` は coach/analyst を素通りさせ、
+    # cross-team で他チームの動画ストリームを抜ける scope leak が成立していた。
+    # comments/sessions/reports と同じ scope ヘルパに統一する。
+    from backend.utils.auth import require_match_scope as _require_match_scope
+    _require_match_scope(request, m, db)
 
     vlp = m.video_local_path or ""
     if not vlp.startswith("server://"):

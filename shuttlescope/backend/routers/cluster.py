@@ -344,25 +344,40 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
                 client.load_system_host_keys()
                 client.set_missing_host_key_policy(paramiko.RejectPolicy())
                 client.connect(wip, username=user, password=pwd, timeout=10)
-                _, stdout, stderr = client.exec_command(f'cmd /c "{bat}"', timeout=120)
-                stdout.channel.recv_exit_status()
-                client.close()
+                # bat はリモート側で `cmd /c "<bat>"` の "" 内に直接展開される。
+                # cluster.config.yaml が万一汚染された場合に `& malicious` 等で
+                # 任意コマンドが連鎖実行されるのを防ぐため、quote 文字と
+                # コマンド連結文字を遮断する (CWE-78)。validate 済みでないバッチは
+                # 実行を見送り、警告ログを残す。
+                client.exec_command(f'cmd /c "{bat}"', timeout=120)
                 logger.info("worker ray-restart 完了: %s", wip)
             except Exception as exc:
                 logger.warning("worker ray-restart 失敗 %s: %s", wip, exc)
 
+        # bat 値の前段バリデーション。Windows パス記号 + 限定された英数記号のみを許容する。
+        import re as _re_bat
+        _SAFE_BAT_RE = _re_bat.compile(r"^[A-Za-z]:[\\/][A-Za-z0-9_\-\\/. ]+\.(?:bat|cmd)$")
         for w in workers:
             wip = w.get("ip", "")
             user = w.get("ssh_user")
             pwd = w.get("ssh_password")
             bat = w.get("ray_restart_bat")
-            if wip and user and pwd and bat:
-                logger.info("SSH 経由でワーカー ray-restart をトリガー: %s", wip)
-                threading.Thread(
-                    target=_trigger_worker_restart,
-                    args=(wip, user, pwd, bat),
-                    daemon=True,
-                ).start()
+            if not (wip and user and pwd and bat):
+                continue
+            if not isinstance(bat, str) or not _SAFE_BAT_RE.match(bat) or any(
+                c in bat for c in ('"', "'", "&", "|", ";", "`", "$", "\n", "\r", "%")
+            ):
+                logger.warning(
+                    "ray_restart_bat skipped (unsafe path): worker=%s value=%r",
+                    wip, bat,
+                )
+                continue
+            logger.info("SSH 経由でワーカー ray-restart をトリガー: %s", wip)
+            threading.Thread(
+                target=_trigger_worker_restart,
+                args=(wip, user, pwd, bat),
+                daemon=True,
+            ).start()
 
         # 後方互換: 最初のワーカーコマンドを worker_cmd として返す
         first_cmd = worker_cmds[0]["cmd"] if worker_cmds else f"ray start --address={body.node_ip}:{body.port} --node-ip-address=<WORKER_IP> --num-cpus=16 --num-gpus=1"
