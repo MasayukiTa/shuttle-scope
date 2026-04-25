@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 # INSERT の race による prev_hash 取り違えを防ぐためのプロセス内ロック
 _CHAIN_LOCK = threading.Lock()
 
+# audit log 行 1 件あたりの details 上限 (CWE-770 storage DoS 対策)。
+# 通常 details は数百 byte。攻撃者が個別エンドポイント経由で巨大 JSON を
+# details に詰めるのを防ぐため、log_access 側で防御的に切り詰める。
+# 切り詰めた場合は末尾に "...(truncated)" を付ける。
+_MAX_DETAILS_BYTES = 4 * 1024
+
 
 def _secret_bytes() -> bytes:
     """HMAC 鍵を動的に参照（設定差し替えテストに追従）。
@@ -81,6 +87,13 @@ def log_access(
     try:
         from backend.db.models import AccessLog
         details_str = json.dumps(details, ensure_ascii=False) if details else None
+        # storage DoS 対策: 個別 callsite の制限を貫通しても audit log 行が
+        # 巨大化しないよう防御的に切り詰める。
+        if details_str is not None and len(details_str.encode("utf-8")) > _MAX_DETAILS_BYTES:
+            # UTF-8 ベースで切り詰めると multi-byte の途中で切れることがあるため
+            # encode → 切断 → decode(errors="ignore") で末端を綺麗に丸める。
+            truncated = details_str.encode("utf-8")[:_MAX_DETAILS_BYTES].decode("utf-8", "ignore")
+            details_str = truncated + "...(truncated)"
         created_at = datetime.utcnow()
         with _CHAIN_LOCK:
             prev = (
