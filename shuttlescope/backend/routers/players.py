@@ -247,10 +247,29 @@ def list_teams(db: Session = Depends(get_db)):
 @router.post("/players", status_code=201)
 def create_player(
     body: PlayerCreate,
+    request: Request,
     db: Session = Depends(get_db),
     _ctx=Depends(require_analyst),
 ):
     """選手登録"""
+    # analyst は自チーム以外の選手を登録不可 (cross-team データ汚染防止)
+    from backend.utils.auth import get_auth as _ga
+    _actor = _ga(request)
+    if _actor.is_analyst and not _actor.is_admin:
+        actor_team = (_actor.team_name or "").strip()
+        body_team = (body.team or "").strip()
+        if not actor_team:
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                raise HTTPException(status_code=403, detail="team_name 未設定")
+        elif not body_team or body_team != actor_team:
+            raise HTTPException(
+                status_code=403,
+                detail=f"自チーム ({actor_team}) 以外の選手は登録できません",
+            )
+    # team 必須 (空文字/whitespace 拒否)
+    if not body.team or not body.team.strip():
+        raise HTTPException(status_code=422, detail="team must not be empty or whitespace only")
     # HTML タグ / 制御文字の注入を拒否 (stored XSS 対策・多層防御)
     _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")
@@ -280,22 +299,63 @@ def create_player(
     return {"success": True, "data": player_to_dict(player)}
 
 
+def _player_scope_check(request: Request, player) -> None:
+    """analyst/coach は自チームの player のみ閲覧/編集可能 (cross-team 漏洩・改竄防止)。
+    admin / player は呼び出し元のロジックで別途処理。"""
+    from backend.utils.auth import get_auth as _ga
+    ctx = _ga(request)
+    if ctx.is_admin:
+        return
+    if ctx.is_analyst or ctx.is_coach:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                raise HTTPException(status_code=403, detail="team_name 未設定")
+            return
+        if (player.team or "").strip() != team:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+
+
 @router.get("/players/{player_id}")
-def get_player(player_id: int, db: Session = Depends(get_db)):
+def get_player(player_id: int, request: Request, db: Session = Depends(get_db)):
     """選手詳細"""
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # player ロールは自分のレコードのみ
+    from backend.utils.auth import get_auth as _ga
+    ctx = _ga(request)
+    if ctx.is_player:
+        if not ctx.player_id or ctx.player_id != player_id:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+    else:
+        _player_scope_check(request, player)
     return {"success": True, "data": player_to_dict(player)}
 
 
 @router.put("/players/{player_id}")
-def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_db)):
+def update_player(player_id: int, body: PlayerUpdate, request: Request, db: Session = Depends(get_db)):
     """選手更新"""
     from datetime import date as _date
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # analyst/coach は自チームの選手のみ更新可能。player 書込み拒否。
+    from backend.utils.auth import get_auth as _ga_upd
+    _ctx_upd = _ga_upd(request)
+    if _ctx_upd.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    _player_scope_check(request, player)
+    # analyst が他チームへ team を変更しようとするのも遮断
+    if (not _ctx_upd.is_admin) and body.team is not None:
+        actor_team = (_ctx_upd.team_name or "").strip()
+        new_team = (body.team or "").strip()
+        if actor_team and new_team and new_team != actor_team:
+            raise HTTPException(
+                status_code=403,
+                detail=f"team を自チーム ({actor_team}) 以外に変更することはできません",
+            )
     # HTML タグ / 制御文字の注入を拒否
     _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")
@@ -346,6 +406,7 @@ def update_player(player_id: int, body: PlayerUpdate, db: Session = Depends(get_
 @router.delete("/players/{player_id}")
 def delete_player(
     player_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     _ctx=Depends(require_analyst),
 ):
@@ -353,6 +414,8 @@ def delete_player(
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # analyst は自チームの選手のみ削除可能 (cross-team 改竄防止)
+    _player_scope_check(request, player)
     # 試合に紐づいているか確認
     ref_count = db.query(Match).filter(
         (Match.player_a_id == player_id) |

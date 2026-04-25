@@ -438,6 +438,24 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     _validate_match_enums(body)
     _validate_match_player_refs(body, db)
+    # analyst/coach は自チーム選手が含まれる試合のみ作成可能 (cross-team データ汚染防止)
+    if not ctx.is_admin:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                raise HTTPException(status_code=403, detail="team_name 未設定")
+        else:
+            pids = [p for p in (body.player_a_id, body.player_b_id,
+                                getattr(body, "partner_a_id", None),
+                                getattr(body, "partner_b_id", None)) if p]
+            if pids:
+                team_players = db.query(Player).filter(Player.id.in_(pids)).all()
+                if not any((p.team or "").strip() == team for p in team_players):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"自チーム ({team}) の選手が含まれない試合は作成できません",
+                    )
     match = Match(**body.model_dump())
     touch(match)
     db.add(match)

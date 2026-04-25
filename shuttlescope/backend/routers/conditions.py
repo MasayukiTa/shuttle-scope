@@ -768,13 +768,33 @@ def get_insights(
 
 
 def _require_condition_access(request: Request, cond: Condition) -> None:
-    """BOLA/IDOR 対策: player は自 player_id の condition のみ参照可能。"""
+    """BOLA/IDOR 対策:
+    - player は自 player_id の condition のみ参照/編集可能
+    - analyst/coach は自チーム選手の condition のみ参照/編集可能 (cross-team 漏洩防止)
+    - admin は全件
+    """
     from backend.utils.auth import get_auth
     ctx = get_auth(request)
+    if ctx.is_admin:
+        return
     if ctx.is_player:
         if not ctx.player_id or cond.player_id != ctx.player_id:
-            # 存在の有無も漏らさないため 404 を返す
             raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
+        return
+    if ctx.is_analyst or ctx.is_coach:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                raise HTTPException(status_code=403, detail="team_name 未設定")
+            return
+        from backend.db.models import Player as _P
+        from backend.db.database import SessionLocal
+        with SessionLocal() as _db:
+            p = _db.get(_P, cond.player_id)
+            if not p or (p.team or "").strip() != team:
+                raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
+        return
 
 
 @router.get("/{condition_id}")
