@@ -38,11 +38,19 @@ WebRTC シグナリングを中継する。映像データは流れない（SDP/
 """
 import json
 import logging
+import time as _time
 from typing import Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
+
+# ─── DoS 対策上限 ────────────────────────────────────────────────────────────
+# WebRTC SDP は通常 5〜20 KB、ICE candidate も 1 KB 未満。
+# 64 KB あれば全プロトコルメッセージを許容しつつ巨大 frame DoS を遮断できる。
+_MAX_WS_MESSAGE_BYTES = 64 * 1024
+# 1 接続あたりの 1 秒間メッセージ流量 (シグナリング想定で十分なバッファ)。
+_MAX_WS_MESSAGES_PER_SEC = 60
 
 
 class CameraSignalingManager:
@@ -215,14 +223,35 @@ async def ws_camera_handler(
         await websocket.close(code=4000)
         return
 
+    # 受信メッセージ数のバースト制限カウンタ (1 秒窓)
+    _msg_window_start = _time.monotonic()
+    _msg_count = 0
+
     try:
         while True:
             raw = await websocket.receive_text()
+            # 巨大メッセージによるメモリ DoS (CWE-770) を遮断する。
+            if len(raw) > _MAX_WS_MESSAGE_BYTES:
+                logger.warning("camera WS oversized message session=%s len=%d", session_code, len(raw))
+                await websocket.close(code=1009, reason="message too large")
+                return
+            # flood DoS 対策: 1 秒あたりメッセージ数を制限
+            now = _time.monotonic()
+            if now - _msg_window_start >= 1.0:
+                _msg_window_start = now
+                _msg_count = 0
+            _msg_count += 1
+            if _msg_count > _MAX_WS_MESSAGES_PER_SEC:
+                logger.warning("camera WS message flood session=%s", session_code)
+                await websocket.close(code=1008, reason="rate limit exceeded")
+                return
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
 
+            if not isinstance(msg, dict):
+                continue
             msg_type = msg.get("type", "")
 
             if is_operator:

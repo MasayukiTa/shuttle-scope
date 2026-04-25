@@ -373,12 +373,32 @@ def export_labels(
         "posture_collapse", "weight_distribution", "shot_timing",
         "confidence", "comment", "updated_at",
     ]
+    # CSV/Formula injection (CWE-1236) 対策: 先頭が =, +, -, @, TAB, CR の文字列値は
+    # Excel/Sheets で式として実行されるため、先頭にシングルクォートを付与して無効化する。
+    # OWASP "CSV Injection" 推奨パターン。
+    safe_records = [{k: _csv_safe(v) for k, v in rec.items()} for rec in records]
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()
-    for rec in records:
+    for rec in safe_records:
         writer.writerow(rec)
     return Response(
         content=buf.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="expert_labels_match{match_id}.csv"'},
     )
+
+
+_CSV_DANGEROUS_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """CSV/Formula injection 対策: Excel/Sheets が式として解釈する先頭文字を無効化する。
+
+    str 以外（int/float/None など）はそのまま返す。
+    str 値の先頭が =, +, -, @, TAB, CR のいずれかなら ' を前置する。
+    """
+    if not isinstance(value, str) or not value:
+        return value
+    if value[0] in _CSV_DANGEROUS_PREFIXES:
+        return "'" + value
+    return value
