@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { setLanguage, SUPPORTED_LANGS, type SupportedLang } from '@/i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut, ScrollText } from 'lucide-react'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
 import { Player, TeamHistoryEntry, SharedSession, NetworkDiagnostics } from '@/types'
@@ -2020,6 +2020,24 @@ export function SettingsPage() {
                 </div>
               </div>
             </section>}
+
+            {/* ── 監査ログ (admin only) ────────────────────────── */}
+            {role === 'admin' && (
+              <section className={`${card} rounded-lg p-5 space-y-3`}>
+                <div className="flex items-center gap-2">
+                  <ScrollText size={16} className="text-amber-400" />
+                  <h2 className="text-base font-semibold">{t('settings.ui.audit_logs_title')}</h2>
+                </div>
+                <p className="text-xs text-gray-400">{t('settings.ui.audit_logs_desc')}</p>
+                <button
+                  onClick={() => navigate('/audit-logs')}
+                  className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium px-3 py-2 rounded-lg"
+                >
+                  <ScrollText size={14} />
+                  {t('settings.ui.audit_logs_open')}
+                </button>
+              </section>
+            )}
 
             {/* ── エクスポート ──────────────────────────────── */}
             <section className={`${card} rounded-lg p-5 space-y-4`}>

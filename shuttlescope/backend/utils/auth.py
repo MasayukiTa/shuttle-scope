@@ -227,22 +227,31 @@ def require_non_player(request: Request) -> "AuthCtx":
 
 def require_match_scope(request: Request, match: Match, db: Session) -> "AuthCtx":
     """match に対するアクセス権を検証する（共通ヘルパー）。
-    - analyst / admin: 無条件許可
-    - player: 出場試合のみ
+    - admin: 無条件許可
+    - analyst: 同チーム所属選手が参加する試合のみ（team_name 必須）
     - coach: 同チーム所属選手が参加する試合のみ（team_name 必須）
+    - player: 出場試合のみ
     - 未ロール: 拒否
 
-    comments / bookmarks / sessions ルータで共通利用する。"""
+    comments / bookmarks / sessions ルータで共通利用する。
+
+    なお、loopback (Electron 同居/テスト) 経由の X-Role analyst で team_name 未設定の
+    場合のみ、後方互換のため admin 同等扱いとする。production (JWT 必須) では
+    必ず JWT 内の team_name で scope 判定される。"""
     ctx = get_auth(request)
-    if ctx.is_admin or ctx.is_analyst:
+    if ctx.is_admin:
         return ctx
     if ctx.is_player:
         if not user_can_access_match(ctx, match):
             raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
         return ctx
-    if ctx.is_coach:
+    if ctx.is_analyst or ctx.is_coach:
         team = (ctx.team_name or "").strip()
         if not team:
+            # loopback (X-Role 互換) で team_name 未設定なら dev/test 用途として通す
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if allow_legacy_header_auth(request):
+                return ctx
             raise HTTPException(status_code=403, detail="team_name 未設定")
         pids = _match_player_ids(match)
         players = db.query(Player).filter(Player.id.in_(pids)).all() if pids else []

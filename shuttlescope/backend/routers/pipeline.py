@@ -113,6 +113,21 @@ def run_pipeline_endpoint(
             ts_list.append(now)
     if not db.get(Match, body.match_id):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # 同一 match の非終端 job (queued/running) が存在する場合は重複投入を拒否
+    # (ワーカ GPU/CPU の重複消費による DoS 防御)
+    existing = (
+        db.query(AnalysisJob)
+        .filter(
+            AnalysisJob.match_id == body.match_id,
+            AnalysisJob.status.in_(["queued", "running"]),
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"この試合の解析ジョブは既に実行中です (job_id={existing.id}, status={existing.status})",
+        )
     job = enqueue(db, body.match_id, job_type=body.job_type)
     return _to_out(job)
 

@@ -77,7 +77,8 @@ class TestAuditLogList:
         resp = client.post(
             "/api/auth/users",
             json={"username": "analyst1", "role": "analyst",
-                  "display_name": "A1", "password": "AnalystPass1!"},
+                  "display_name": "A1", "password": "AnalystPass1!",
+                  "team_name": "TestTeam"},
             headers={"Authorization": f"Bearer {admin_access}"},
         )
         assert resp.status_code in (200, 201)
@@ -161,7 +162,8 @@ class TestAuditLogHashChain:
         client.post(
             "/api/auth/users",
             json={"username": "analyst_v", "role": "analyst",
-                  "display_name": "AV", "password": "AnalystPass1!"},
+                  "display_name": "AV", "password": "AnalystPass1!",
+                  "team_name": "TestTeam"},
             headers={"Authorization": f"Bearer {admin['access_token']}"},
         )
         analyst = _login(client, "analyst_v", "AnalystPass1!")

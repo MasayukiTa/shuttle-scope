@@ -123,7 +123,8 @@ def mark_reviewed(bookmark_id: int, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
     match = db.get(Match, bm.match_id)
     if match is None:
-        raise HTTPException(status_code=404, detail="試合が見つかりません")
+        # 存在列挙防止: ブックマーク不在と同じエラーメッセージに統一
+        raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
     _require_match_scope(request, match, db)
     bm.is_reviewed = True
     touch_sync_metadata(bm, device_id=get_device_id(db))
@@ -138,7 +139,8 @@ def delete_bookmark(bookmark_id: int, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
     match = db.get(Match, bm.match_id)
     if match is None:
-        raise HTTPException(status_code=404, detail="試合が見つかりません")
+        # 存在列挙防止: ブックマーク不在と同じエラーメッセージに統一
+        raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
     ctx = _require_match_scope(request, match, db)
     # player は削除不可（他者の自動統計等を消すのを防ぐ）。coach は削除可だが
     # analyst / admin 以外は自チームスコープ内のみ（_require_match_scope で確認済み）。

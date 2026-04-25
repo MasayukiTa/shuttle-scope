@@ -29,8 +29,9 @@ _SENSITIVE_SETTING_KEYS = {
 
 
 def _redact_sensitive(data: dict, ctx) -> dict:
-    """admin / analyst 以外には機密キーを隠す（空文字に差し替え）"""
-    if ctx.is_admin or ctx.is_analyst:
+    """admin 以外には機密キーを隠す（空文字に差し替え）。
+    analyst は team scope に絞ったため、システム横断の secrets は admin のみ参照可能。"""
+    if ctx.is_admin:
         return data
     redacted = dict(data)
     for k in _SENSITIVE_SETTING_KEYS:

@@ -657,10 +657,10 @@ class TestAllTiersPrivEsc:
         db_session.query(User).delete()
         users = [
             User(id=100, username="adminu", role="admin", display_name="A", hashed_credential=_hash_password("x")),
-            User(id=101, username="playeru", role="player", display_name="P", hashed_credential=_hash_password("x"), player_id=None),
+            User(id=101, username="playeru", role="player", display_name="P", hashed_credential=_hash_password("x"), player_id=None, team_name="T1"),
             User(id=102, username="coachu", role="coach", display_name="C", hashed_credential=_hash_password("x"), team_name="T1"),
-            User(id=103, username="analystu", role="analyst", display_name="An", hashed_credential=_hash_password("x")),
-            User(id=104, username="targetplayer", role="player", display_name="TP", hashed_credential=_hash_password("x"), player_id=None),
+            User(id=103, username="analystu", role="analyst", display_name="An", hashed_credential=_hash_password("x"), team_name="T1"),
+            User(id=104, username="targetplayer", role="player", display_name="TP", hashed_credential=_hash_password("x"), player_id=None, team_name="T1"),
         ]
         db_session.add_all(users)
         db_session.commit()
@@ -784,7 +784,7 @@ class TestPrivEscalationBlock:
         u = User(
             id=50, username="escpl", role="player",
             display_name="p", hashed_credential=_hash_password("x"),
-            player_id=1,
+            player_id=1, team_name="EscTeam",
         )
         db_session.add(u)
         db_session.commit()

@@ -252,6 +252,11 @@ export function UserManagementPage() {
       setError(t('users.manage.validate_username'))
       return
     }
+    // analyst/coach/player は team_name 必須 (admin のみ team 跨ぎ可能)
+    if (form.role !== 'admin' && !form.team_name.trim()) {
+      setError(t('users.manage.validate_team_name'))
+      return
+    }
 
     setSaving(true)
     setError(null)

@@ -377,19 +377,26 @@ def list_matches(
             Match.player_b_id  == pid,
             Match.partner_b_id == pid,
         ))
-    # role=coach → 自チーム選手がどちらかのサイドに登録されている試合のみ
-    elif ctx.is_coach:
+    # role=coach / analyst → 自チーム選手がどちらかのサイドに登録されている試合のみ
+    # (admin は全件閲覧可、analyst は team scope を強制して cross-team 閲覧を遮断)
+    elif ctx.is_coach or ctx.is_analyst:
         if not ctx.team_name:
-            return {"success": True, "data": []}
-        team_player_ids = [p.id for p in db.query(Player.id).filter(Player.team == ctx.team_name).all()]
-        if not team_player_ids:
-            return {"success": True, "data": []}
-        query = query.filter(or_(
-            Match.player_a_id.in_(team_player_ids),
-            Match.partner_a_id.in_(team_player_ids),
-            Match.player_b_id.in_(team_player_ids),
-            Match.partner_b_id.in_(team_player_ids),
-        ))
+            # loopback (X-Role 互換) で team 未設定なら dev/test 用途として全件返す
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if allow_legacy_header_auth(request):
+                pass  # フィルタ無し（admin 同等）
+            else:
+                return {"success": True, "data": []}
+        else:
+            team_player_ids = [p.id for p in db.query(Player.id).filter(Player.team == ctx.team_name).all()]
+            if not team_player_ids:
+                return {"success": True, "data": []}
+            query = query.filter(or_(
+                Match.player_a_id.in_(team_player_ids),
+                Match.partner_a_id.in_(team_player_ids),
+                Match.player_b_id.in_(team_player_ids),
+                Match.partner_b_id.in_(team_player_ids),
+            ))
     elif player_id:
         query = query.filter(
             (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
@@ -455,6 +462,23 @@ def list_needs_review_matches(request: Request, db: Session = Depends(get_db)):
             Match.player_b_id  == pid,
             Match.partner_b_id == pid,
         ))
+    elif ctx.is_coach or ctx.is_analyst:
+        # analyst も自チーム scope を強制 (cross-team 漏洩防止)
+        if not ctx.team_name:
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                return {"success": True, "data": []}
+            # loopback dev/test では全件返す
+        else:
+            team_player_ids = [p.id for p in db.query(Player.id).filter(Player.team == ctx.team_name).all()]
+            if not team_player_ids:
+                return {"success": True, "data": []}
+            q = q.filter(or_(
+                Match.player_a_id.in_(team_player_ids),
+                Match.partner_a_id.in_(team_player_ids),
+                Match.player_b_id.in_(team_player_ids),
+                Match.partner_b_id.in_(team_player_ids),
+            ))
     matches = q.order_by(Match.created_at.desc()).all()
     ctx_bulk = _bulk_match_context(matches, db)
     return {"success": True, "data": [
@@ -493,6 +517,9 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # analyst/coach は自チーム scope のみ更新可 (cross-team 改竄防止)
+    from backend.utils.auth import require_match_scope as _rms
+    _rms(request, match, db)
     _validate_match_player_refs(body, db, match=match)
     # audit log: 変更前の値と変更後の値を記録 (match データ改竄の forensic 用)
     from backend.utils.access_log import log_access as _log
@@ -517,14 +544,28 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     ctx = get_auth(request)
     if not (ctx.is_admin or ctx.is_analyst):
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # analyst は自チームの試合のみ削除可 (cross-team 改竄防止)。admin は全試合可。
+    if ctx.is_analyst:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                raise HTTPException(status_code=403, detail="team_name 未設定")
+            # loopback dev/test では admin 同等
+        else:
+            from backend.db.models import Player as _P
+            pids = [p for p in (match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id) if p]
+            players = db.query(_P).filter(_P.id.in_(pids)).all() if pids else []
+            if not any((p.team or "").strip() == team for p in players):
+                raise HTTPException(status_code=403, detail="この試合はあなたのチームではありません")
     # audit log: 削除は forensic 上特に重要
     from backend.utils.access_log import log_access as _log
     _log(db, "match_deleted", user_id=ctx.user_id,
          resource_type="match", resource_id=match_id,
          details={"actor_role": ctx.role})
-    match = db.get(Match, match_id)
-    if not match:
-        raise HTTPException(status_code=404, detail="試合が見つかりません")
     # 削除前に関与選手を控えておく（削除後は辿れないため）
     affected_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     db.delete(match)

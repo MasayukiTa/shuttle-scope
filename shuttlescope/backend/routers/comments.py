@@ -125,7 +125,7 @@ def toggle_flag(comment_id: int, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="コメントが見つかりません")
     match = db.get(Match, comment.match_id)
     if match is None:
-        raise HTTPException(status_code=404, detail="試合が見つかりません")
+        raise HTTPException(status_code=404, detail="コメントが見つかりません")
     ctx = _require_match_scope(request, match, db)
     # player は他人のコメントを flag できない
     if ctx.is_player and comment.author_role != "player":
@@ -143,7 +143,7 @@ def delete_comment(comment_id: int, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="コメントが見つかりません")
     match = db.get(Match, comment.match_id)
     if match is None:
-        raise HTTPException(status_code=404, detail="試合が見つかりません")
+        raise HTTPException(status_code=404, detail="コメントが見つかりません")
     ctx = _require_match_scope(request, match, db)
     # player / coach は自分（同ロール）のコメントのみ削除可能、analyst / admin は全て削除可能
     if not (ctx.is_admin or ctx.is_analyst):
