@@ -137,13 +137,17 @@ def list_players(request: Request, db: Session = Depends(get_db)):
             query = query.filter(Player.id == ctx.player_id)
         else:
             return {"success": True, "data": []}
-    elif ctx.is_coach:
-        # コーチは自チームの選手のみ
+    elif ctx.is_coach or ctx.is_analyst:
+        # coach / analyst は自チームの選手のみ (cross-team 漏洩防止)
         team = (ctx.team_name or "").strip()
         if not team:
-            return {"success": True, "data": []}
-        query = query.filter(Player.team == team)
-    # admin / analyst は全選手
+            # loopback dev/test では admin 同等で全件返す
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                return {"success": True, "data": []}
+        else:
+            query = query.filter(Player.team == team)
+    # admin は全選手
 
     players = query.all()
     result = []

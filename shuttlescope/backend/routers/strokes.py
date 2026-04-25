@@ -1,6 +1,6 @@
 """ストローク管理API（/api/strokes）"""
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,25 @@ from backend.utils import response_cache
 from backend.utils.match_players import players_for_match, players_for_rally
 
 router = APIRouter()
+
+
+def _stroke_require_scope(request: Request, db: Session, rally_id: int) -> Match:
+    """stroke が属する match を辿り team scope を検証する。"""
+    rally = db.get(Rally, rally_id)
+    if not rally:
+        raise HTTPException(status_code=404, detail="ラリーが見つかりません")
+    gs = db.get(GameSet, rally.set_id)
+    if not gs:
+        raise HTTPException(status_code=404, detail="セットが見つかりません")
+    match = db.get(Match, gs.match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    from backend.utils.auth import require_match_scope, get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    require_match_scope(request, match, db)
+    return match
 
 
 class StrokeData(BaseModel):
@@ -112,12 +131,19 @@ def stroke_to_dict(s: Stroke) -> dict:
 
 
 @router.post("/strokes/batch", status_code=201)
-def batch_save_rally(body: BatchSaveRequest, db: Session = Depends(get_db)):
+def batch_save_rally(body: BatchSaveRequest, request: Request, db: Session = Depends(get_db)):
     """ラリー確定時の一括保存（個別保存より効率的）"""
-    # セット存在確認
+    # セット存在確認 + team scope
+    from backend.utils.auth import get_auth, require_match_scope
+    ctx = get_auth(request)
+    if ctx.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     game_set = db.get(GameSet, body.rally.set_id)
     if not game_set:
         raise HTTPException(status_code=404, detail="セットが見つかりません")
+    match = db.get(Match, game_set.match_id)
+    if match:
+        require_match_scope(request, match, db)
 
     # ラリー整合性チェック
     stroke_dicts = [s.model_dump() for s in body.strokes]
@@ -214,11 +240,9 @@ def batch_save_rally(body: BatchSaveRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/strokes", status_code=201)
-def create_stroke(rally_id: int, body: StrokeData, db: Session = Depends(get_db)):
+def create_stroke(rally_id: int, body: StrokeData, request: Request, db: Session = Depends(get_db)):
     """ストローク記録（個別）"""
-    rally = db.get(Rally, rally_id)
-    if not rally:
-        raise HTTPException(status_code=404, detail="ラリーが見つかりません")
+    _stroke_require_scope(request, db, rally_id)
 
     valid, error = validate_stroke(body.model_dump())
     if not valid:
@@ -238,11 +262,12 @@ def create_stroke(rally_id: int, body: StrokeData, db: Session = Depends(get_db)
 
 
 @router.put("/strokes/{stroke_id}")
-def update_stroke(stroke_id: int, body: StrokeData, db: Session = Depends(get_db)):
+def update_stroke(stroke_id: int, body: StrokeData, request: Request, db: Session = Depends(get_db)):
     """ストローク更新"""
     stroke = db.get(Stroke, stroke_id)
     if not stroke:
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
+    _stroke_require_scope(request, db, stroke.rally_id)
     from backend.utils.db_update import apply_update
     apply_update(stroke, body.model_dump())
     touch(stroke)
@@ -254,11 +279,12 @@ def update_stroke(stroke_id: int, body: StrokeData, db: Session = Depends(get_db
 
 
 @router.delete("/strokes/{stroke_id}")
-def delete_stroke(stroke_id: int, db: Session = Depends(get_db)):
+def delete_stroke(stroke_id: int, request: Request, db: Session = Depends(get_db)):
     """ストローク削除（アンドゥ用）"""
     stroke = db.get(Stroke, stroke_id)
     if not stroke:
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")
+    _stroke_require_scope(request, db, stroke.rally_id)
     # 削除前に関与選手を控える
     affected_players = players_for_rally(db, stroke.rally_id)
     db.delete(stroke)

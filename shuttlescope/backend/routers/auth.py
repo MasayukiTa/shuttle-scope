@@ -538,6 +538,16 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
 
 # ── MFA セットアップ ─────────────────────────────────────────────────────────
 
+# MFA setup 連投による DB write amplification / secret rotation 乱用を防ぐための rate limit
+# 1 user あたり 10 分間に最大 5 回まで
+import threading as _th_setup
+import time as _t_setup
+_mfa_setup_counters: dict[int, list[float]] = {}
+_mfa_setup_lock = _th_setup.Lock()
+_MFA_SETUP_WINDOW_SEC = 600
+_MFA_SETUP_MAX = 5
+
+
 @router.post("/mfa/setup", response_model=MfaSetupResponse)
 def mfa_setup(request: Request, db: Session = Depends(get_db)):
     """TOTPシークレットを生成してユーザーに返す（まだ有効化しない）。"""
@@ -545,6 +555,19 @@ def mfa_setup(request: Request, db: Session = Depends(get_db)):
     ctx = get_auth(request)
     if not ctx.user_id:
         raise HTTPException(status_code=401, detail="認証が必要です")
+    # Per-user rate limit (DB write amplification 防御)
+    now = _t_setup.time()
+    with _mfa_setup_lock:
+        arr = _mfa_setup_counters.get(ctx.user_id, [])
+        cutoff = now - _MFA_SETUP_WINDOW_SEC
+        arr = [t for t in arr if t >= cutoff]
+        _mfa_setup_counters[ctx.user_id] = arr
+        if len(arr) >= _MFA_SETUP_MAX:
+            raise HTTPException(
+                status_code=429,
+                detail=f"MFA セットアップ試行が多すぎます。{_MFA_SETUP_WINDOW_SEC // 60} 分後に再試行してください。",
+            )
+        arr.append(now)
     user = db.get(User, ctx.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
@@ -849,10 +872,27 @@ def _allow_user_listing(request: Request) -> None:
         raise HTTPException(status_code=403, detail="ユーザ一覧は admin/analyst のみ参照可能です")
 
 
+def _scope_user_listing(request: Request, db: Session, base_query):
+    """認証済み analyst/coach に対しては自チームのみ列挙する (cross-team 漏洩防止)。
+    loopback (PIN ログイン画面) / admin では全件返す。"""
+    from backend.utils.control_plane import is_loopback_request
+    if is_loopback_request(request):
+        return base_query
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.is_admin:
+        return base_query
+    # analyst / coach は自チームのみ
+    team = (ctx.team_name or "").strip()
+    if not team:
+        return base_query.filter(User.id == -1)  # empty
+    return base_query.filter(User.team_name == team)
+
+
 @router.get("/players")
 def list_players_for_login(request: Request, db: Session = Depends(get_db)):
     _allow_user_listing(request)
-    users = db.query(User).filter(User.role == "player").all()
+    users = _scope_user_listing(request, db, db.query(User).filter(User.role == "player")).all()
     result = []
     for user in users:
         player = db.get(Player, user.player_id) if user.player_id else None
@@ -870,7 +910,7 @@ def list_players_for_login(request: Request, db: Session = Depends(get_db)):
 @router.get("/coaches")
 def list_coaches_for_login(request: Request, db: Session = Depends(get_db)):
     _allow_user_listing(request)
-    users = db.query(User).filter(User.role == "coach").all()
+    users = _scope_user_listing(request, db, db.query(User).filter(User.role == "coach")).all()
     return {
         "success": True,
         "data": [{"user_id": user.id, "display_name": user.display_name or user.username} for user in users],
@@ -880,7 +920,10 @@ def list_coaches_for_login(request: Request, db: Session = Depends(get_db)):
 @router.get("/analysts")
 def list_analysts_for_login(request: Request, db: Session = Depends(get_db)):
     _allow_user_listing(request)
-    users = db.query(User).filter(User.role.in_(["analyst", "admin"])).all()
+    # admin は全 role、analyst/coach は team scope 内の analyst のみ (admin は scope で見せない)
+    users = _scope_user_listing(
+        request, db, db.query(User).filter(User.role.in_(["analyst", "admin"]))
+    ).all()
     return {
         "success": True,
         "data": [
