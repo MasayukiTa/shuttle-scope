@@ -421,10 +421,12 @@ def stream_video_for_match(
     m = db.get(Match, match_id)
     if m is None:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    # アクセス権（既存のロール制約に任せる簡易版）
-    from backend.utils.auth import user_can_access_match
-    if not user_can_access_match(ctx, m):
-        raise HTTPException(status_code=403, detail="この試合へのアクセス権がありません")
+    # アクセス権チェック: 動画は機微なメディアなので team scope (require_match_scope)
+    # まで厳格化する。これまでの `user_can_access_match` は coach/analyst を素通りさせ、
+    # cross-team で他チームの動画ストリームを抜ける scope leak が成立していた。
+    # comments/sessions/reports と同じ scope ヘルパに統一する。
+    from backend.utils.auth import require_match_scope as _require_match_scope
+    _require_match_scope(request, m, db)
 
     vlp = m.video_local_path or ""
     if not vlp.startswith("server://"):

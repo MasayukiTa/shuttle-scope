@@ -28,6 +28,11 @@ GRANTABLE_PAGES = {"prediction", "expert_labeler"}
 _MAX_FAILED_ATTEMPTS = 5
 _LOCKOUT_MINUTES = 30
 _PASSWORD_MIN_LENGTH = 12
+# bcrypt は入力 password を 72 byte で silent truncate する (CVE-class CWE-521)。
+# `pw[:72] + X` と `pw[:72] + Y` が同じハッシュにマッチしてしまうため、
+# 部分漏洩した password でログインできる経路を塞ぐ目的で 72 byte を上限とする。
+# 文字数ではなく UTF-8 バイト数で制限する点に注意 (日本語は 1 文字 3 byte)。
+_PASSWORD_MAX_BYTES = 72
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -85,6 +90,13 @@ def _validate_password_strength(password: str) -> None:
     """パスワード強度を検証する。不足の場合 HTTPException(422) を送出。"""
     if len(password) < _PASSWORD_MIN_LENGTH:
         raise HTTPException(422, f"パスワードは{_PASSWORD_MIN_LENGTH}文字以上が必要です")
+    # bcrypt 72-byte truncation 対策。文字数ではなく UTF-8 バイト数で計測する。
+    if len(password.encode("utf-8")) > _PASSWORD_MAX_BYTES:
+        raise HTTPException(
+            422,
+            f"パスワードは {_PASSWORD_MAX_BYTES} バイト以下にしてください "
+            f"(英数記号 {_PASSWORD_MAX_BYTES} 文字 / 日本語 ~24 文字)",
+        )
     if not _re.search(r'[a-z]', password):
         raise HTTPException(422, "パスワードに小文字を含めてください")
     if not _re.search(r'[A-Z]', password):
@@ -658,10 +670,15 @@ def mfa_disable(req: MfaCodeRequest, request: Request, db: Session = Depends(get
     ctx = get_auth(request)
     if not ctx.user_id:
         raise HTTPException(status_code=401, detail="認証が必要です")
+    # MFA brute force 防御: 漏洩した access token を持つ攻撃者が 6 桁の TOTP を
+    # 総当たりして MFA を無効化する経路を遮断する (mfa_confirm / mfa/login と
+    # 共通のレートリミットを使用する)。
+    _check_mfa_brute_limit(ctx.user_id)
     user = db.get(User, ctx.user_id)
     if not user or not user.totp_enabled or not user.totp_secret:
         raise HTTPException(status_code=400, detail="MFAは有効化されていません")
     if not _verify_totp(user.totp_secret, req.code):
+        _record_mfa_failure(ctx.user_id)
         raise HTTPException(status_code=400, detail="認証コードが無効です")
     user.totp_secret = None
     user.totp_enabled = False
