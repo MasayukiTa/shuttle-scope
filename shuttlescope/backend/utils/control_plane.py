@@ -91,18 +91,46 @@ def require_local_or_operator_token(request: Request) -> None:
 
 
 def allow_legacy_header_auth(request: Request) -> bool:
-    """X-Role ヘッダーフォールバックを許可するか。loopback のみ許可。"""
-    return is_loopback_request(request)
+    """X-Role ヘッダーフォールバックを許可するか。
+    SS_OPERATOR_TOKEN が設定されている場合は loopback **かつ** token 一致を要求する。
+    未設定 (dev) では loopback のみ許可 (後方互換)。
+    """
+    if not is_loopback_request(request):
+        return False
+    if _OPERATOR_TOKEN:
+        return _has_valid_operator_token(request)
+    return True
 
 
 def allow_select_login(request: Request) -> bool:
-    """grant_type=select ログインを許可するか。loopback のみ許可。"""
-    return is_loopback_request(request)
+    """grant_type=select ログインを許可するか。
+    backend が動作するホストへ SSH ラテラルムーブメント等で侵入した攻撃者が
+    loopback だけを根拠に admin/analyst JWT を発行できないよう、SS_OPERATOR_TOKEN
+    を併用した二要素ガードを採用する。
+
+    - SS_OPERATOR_TOKEN 未設定 (dev): loopback のみ許可 (Electron PIN 選択 UX 維持)
+    - SS_OPERATOR_TOKEN 設定済 (production 推奨): loopback **かつ** X-Operator-Token 一致
+
+    Electron 側は backend 起動時の .env から SS_OPERATOR_TOKEN を読み、
+    `X-Operator-Token` ヘッダで自動付与する。攻撃者は backend ホストの
+    .env ファイル読み取り権限まで掌握しない限り token を知り得ない。
+    """
+    if not is_loopback_request(request):
+        return False
+    if _OPERATOR_TOKEN:
+        return _has_valid_operator_token(request)
+    return True
 
 
 def allow_seed_admin(request: Request) -> bool:
-    """bootstrap admin 自動作成を許可するか。loopback のみ許可。"""
-    return is_loopback_request(request)
+    """bootstrap admin 自動作成を許可するか。
+    select login と同じく、SS_OPERATOR_TOKEN が設定済みなら token 一致も要求する。
+    """
+    if not is_loopback_request(request):
+        return False
+    if _OPERATOR_TOKEN:
+        return _has_valid_operator_token(request)
+    return True
 
 
 def _is_admin_jwt(request: Request) -> bool:
