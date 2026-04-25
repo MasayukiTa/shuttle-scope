@@ -624,6 +624,27 @@ async function startApp(): Promise<void> {
         })
       }
     )
+
+    // ─── X-Operator-Token 自動付与 ────────────────────────────────────────────
+    // 同一ホストへの SSH lateral movement / ローカルマルウェアによる
+    // localhost:8765 への select grant 経由 admin/analyst 奪取を防ぐため、
+    // backend が SS_OPERATOR_TOKEN を有効化している場合に Electron 経由の
+    // 全 API 呼び出しに `X-Operator-Token` を自動付与する。
+    // 攻撃者は backend ホストの env (`.env`) を読み取らない限り token を知り得ない。
+    const operatorToken = (process.env.SS_OPERATOR_TOKEN || '').trim()
+    if (operatorToken) {
+      mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+        { urls: ['http://localhost:8765/*', 'http://127.0.0.1:8765/*'] },
+        (details: Electron.OnBeforeSendHeadersListenerDetails, callback: (response: Electron.BeforeSendResponse) => void) => {
+          callback({
+            requestHeaders: {
+              ...details.requestHeaders,
+              'X-Operator-Token': operatorToken,
+            },
+          })
+        }
+      )
+    }
   } catch (err) {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close()
