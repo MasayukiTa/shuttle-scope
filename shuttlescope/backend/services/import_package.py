@@ -33,6 +33,32 @@ _MAX_PER_MEMBER         = 256 * 1024 * 1024        # 256 MB / file
 _MAX_MEMBER_COUNT       = 5000
 _MAX_COMPRESSION_RATIO  = 100                       # uncompressed/compressed 上限
 
+
+def check_zip_bomb_caps(zf: zipfile.ZipFile) -> Optional[str]:
+    """ZIP メンバーが zip bomb の上限を超えているか検査する。
+
+    解凍前に呼び出すこと。違反があればエラーメッセージ (str) を返し、
+    無ければ None を返す。``import_package`` と ``validate_package`` の
+    両方から呼ぶ共通防御点。
+
+    `validate_package` 側にも同等のチェックがないと、攻撃者が
+    `/api/sync/validate` 経由で `import_package` を経由せず zip bomb を
+    炸裂させる経路 (V2 のバイパス) が成立するため、共通化している。
+    """
+    infos = zf.infolist()
+    if len(infos) > _MAX_MEMBER_COUNT:
+        return f"パッケージのメンバー数が上限 ({_MAX_MEMBER_COUNT}) を超えています"
+    total_uncompressed = 0
+    for info in infos:
+        if info.file_size > _MAX_PER_MEMBER:
+            return f"メンバー {info.filename} のサイズが上限 ({_MAX_PER_MEMBER} byte) を超えています"
+        if info.compress_size > 0 and info.file_size // max(info.compress_size, 1) > _MAX_COMPRESSION_RATIO:
+            return f"メンバー {info.filename} の圧縮率が異常です (zip bomb の可能性)"
+        total_uncompressed += info.file_size
+        if total_uncompressed > _MAX_TOTAL_UNCOMPRESSED:
+            return f"パッケージの解凍後合計サイズが上限 ({_MAX_TOTAL_UNCOMPRESSED} byte) を超えています"
+    return None
+
 # ─── インポートサマリー ────────────────────────────────────────────────────────
 
 @dataclass
@@ -171,32 +197,11 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False) -> ImportSumm
     try:
         buf = io.BytesIO(raw)
         with zipfile.ZipFile(buf, "r") as zf:
-            # ── zip bomb 事前チェック ────────────────────────────────────────
-            infos = zf.infolist()
-            if len(infos) > _MAX_MEMBER_COUNT:
-                summary.errors.append(
-                    f"パッケージのメンバー数が上限 ({_MAX_MEMBER_COUNT}) を超えています"
-                )
+            # zip bomb 事前チェック (validate_package と共通の防御)
+            bomb_err = check_zip_bomb_caps(zf)
+            if bomb_err:
+                summary.errors.append(bomb_err)
                 return summary
-            total_uncompressed = 0
-            for info in infos:
-                if info.file_size > _MAX_PER_MEMBER:
-                    summary.errors.append(
-                        f"メンバー {info.filename} のサイズが上限 ({_MAX_PER_MEMBER} byte) を超えています"
-                    )
-                    return summary
-                # 単一メンバーの圧縮率が異常に高い場合も zip bomb として拒否
-                if info.compress_size > 0 and info.file_size // max(info.compress_size, 1) > _MAX_COMPRESSION_RATIO:
-                    summary.errors.append(
-                        f"メンバー {info.filename} の圧縮率が異常です (zip bomb の可能性)"
-                    )
-                    return summary
-                total_uncompressed += info.file_size
-                if total_uncompressed > _MAX_TOTAL_UNCOMPRESSED:
-                    summary.errors.append(
-                        f"パッケージの解凍後合計サイズが上限 ({_MAX_TOTAL_UNCOMPRESSED} byte) を超えています"
-                    )
-                    return summary
 
             names = set(zf.namelist())
 
