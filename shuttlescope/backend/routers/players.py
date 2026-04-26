@@ -146,7 +146,11 @@ def list_players(request: Request, db: Session = Depends(get_db)):
             if not allow_legacy_header_auth(request):
                 return {"success": True, "data": []}
         else:
-            query = query.filter(Player.team == team)
+            # Phase B-15+: team 文字列撤去後は teams.name JOIN で解決
+            from backend.db.models import Team as _Team
+            query = query.join(_Team, _Team.id == Player.team_id).filter(
+                _Team.name == team, _Team.deleted_at.is_(None)
+            )
     # admin は全選手
 
     players = query.all()
@@ -233,11 +237,14 @@ def list_needs_review(db: Session = Depends(get_db)):
 @router.get("/players/teams")
 def list_teams(db: Session = Depends(get_db)):
     """DBに登録済みの全チーム名を重複なしで返す（同姓同名識別・入力補完用）"""
-    from sqlalchemy import distinct
+    # Phase B-15+: Player.team 文字列撤去後は teams テーブル直接読みに切替
+    from backend.db.models import Team as _Team
     rows = (
-        db.query(distinct(Player.team))
-        .filter(Player.team.isnot(None), Player.team != "")
-        .order_by(Player.team)
+        db.query(_Team.name)
+        .join(Player, Player.team_id == _Team.id)
+        .filter(_Team.deleted_at.is_(None), _Team.name.isnot(None), _Team.name != "")
+        .distinct()
+        .order_by(_Team.name)
         .all()
     )
     teams = [row[0] for row in rows if row[0]]
@@ -284,8 +291,37 @@ def create_player(
     # 正規化名を自動生成
     name_normalized = normalize_name(data["name"])
 
+    # Phase B-15+: team 文字列 → team_id への翻訳。team カラムは撤去済みなので
+    # data から取り除き、teams テーブルで lookup する（無ければ作成）。
+    team_str = data.pop("team", None)
+    team_id_resolved: Optional[int] = None
+    if team_str and team_str.strip():
+        from backend.db.models import Team as _Team
+        from datetime import datetime as _dt
+        from uuid import uuid4 as _uuid4
+        existing = db.query(_Team).filter(
+            _Team.name == team_str.strip(),
+            _Team.deleted_at.is_(None),
+        ).first()
+        if existing:
+            team_id_resolved = existing.id
+        else:
+            # 自動作成（admin / analyst が新規チーム選手を登録した場合）
+            now = _dt.utcnow()
+            new_team = _Team(
+                uuid=str(_uuid4()),
+                name=team_str.strip(),
+                is_independent=False,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(new_team)
+            db.flush()
+            team_id_resolved = new_team.id
+
     player = Player(
         **data,
+        team_id=team_id_resolved,
         aliases=aliases_json,
         name_normalized=name_normalized,
     )
@@ -369,16 +405,42 @@ def update_player(player_id: int, body: PlayerUpdate, request: Request, db: Sess
     data = body.model_dump(exclude_unset=True)
 
     # team 変更時: 旧チームを team_history に自動追記
-    new_team = data.get("team")
-    old_team = player.team
-    if new_team is not None and old_team and old_team != new_team:
+    # Phase B-15+: team 文字列カラム撤去後は team_id 経由で名前を解決。
+    # PlayerUpdate.team は文字列入力 → team_id へ翻訳して書き込む。
+    new_team_str = data.pop("team", None)  # data から消す（Player に直接 setattr しない）
+    old_team = player.team  # @property 経由で teams.name を返す
+    if new_team_str is not None and old_team and old_team != new_team_str:
         history = _parse_json_list(player.team_history)
         until_str = _date.today().strftime("%Y-%m")
-        # 同じチーム・同じ until の重複追記を防ぐ
         already = any(h.get("team") == old_team and h.get("until") == until_str for h in history)
         if not already:
             history.append({"team": old_team, "until": until_str, "note": ""})
         player.team_history = json.dumps(history, ensure_ascii=False)
+    if new_team_str is not None:
+        from backend.db.models import Team as _Team
+        from datetime import datetime as _dt
+        from uuid import uuid4 as _uuid4
+        if not new_team_str.strip():
+            data["team_id"] = None
+        else:
+            existing = db.query(_Team).filter(
+                _Team.name == new_team_str.strip(),
+                _Team.deleted_at.is_(None),
+            ).first()
+            if existing:
+                data["team_id"] = existing.id
+            else:
+                now = _dt.utcnow()
+                new_team = _Team(
+                    uuid=str(_uuid4()),
+                    name=new_team_str.strip(),
+                    is_independent=False,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(new_team)
+                db.flush()
+                data["team_id"] = new_team.id
 
     # aliases をJSON化
     if "aliases" in data:

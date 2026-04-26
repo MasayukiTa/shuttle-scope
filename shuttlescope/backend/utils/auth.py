@@ -351,8 +351,13 @@ def filter_matches_for_user(ctx: AuthCtx, matches: list[Match], db: Optional[Ses
             pids.update(_match_player_ids(m))
         if not pids:
             return []
+        # Phase B-15+: team 文字列カラム撤去後は teams.name JOIN で解決
+        from backend.db.models import Team as _Team
         team_player_ids = {
-            p.id for p in db.query(Player).filter(Player.id.in_(pids), Player.team == team).all()
+            p.id for p in db.query(Player)
+                .join(_Team, _Team.id == Player.team_id)
+                .filter(Player.id.in_(pids), _Team.name == team, _Team.deleted_at.is_(None))
+                .all()
         }
         return [m for m in matches if _match_player_ids(m) & team_player_ids]
     # admin / analyst は全件

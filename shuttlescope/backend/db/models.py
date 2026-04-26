@@ -116,11 +116,30 @@ class Player(Base):
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)           # 選手名（日本語対応）
     name_en: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 英語名（BWF検索用）
-    team: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    # Phase B-4: 所属チーム（正規化）。team 文字列は表示用に残す
+    # Phase B-15+: team 文字列カラムは削除済み (migration 0014)。
+    # 後方互換のため @property として team_id 経由で teams.name を返す shim を提供。
+    # Phase B-4: 所属チーム（正規化）。team_id を SoT とする。
     team_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("teams.id"), nullable=True, index=True
     )
+
+    @property
+    def team(self) -> Optional[str]:
+        """後方互換: team 文字列を team_id から動的に解決する。
+        N+1 を避けたい場合は呼び出し側で eager load (joinedload) すること。
+        """
+        from backend.db.models import Team  # 自己参照回避
+        if self.team_id is None:
+            return None
+        try:
+            from sqlalchemy.orm import object_session
+            sess = object_session(self)
+            if sess is None:
+                return None
+            t = sess.get(Team, self.team_id)
+            return t.name if t and t.deleted_at is None else None
+        except Exception:
+            return None
     nationality: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     dominant_hand: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default=None)  # R / L / unknown / null
     birth_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

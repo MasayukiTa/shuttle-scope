@@ -1377,8 +1377,6 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
                     "new_team_name": team.name,
                 },
             )
-                },
-            )
         user.team_id = team.id
         user.team_name = team.name
     if body.player_id is not None and ctx.is_admin:

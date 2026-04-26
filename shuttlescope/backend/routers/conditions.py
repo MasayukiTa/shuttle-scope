@@ -522,8 +522,14 @@ def list_conditions(
                 return {"success": True, "data": []}
             # loopback dev/test では全件
         else:
-            from backend.db.models import Player as _P
-            team_player_ids = [p.id for p in db.query(_P.id).filter(_P.team == team).all()]
+            # Phase B-15+: team 文字列撤去後は teams.name JOIN で解決
+            from backend.db.models import Player as _P, Team as _Team
+            team_player_ids = [
+                p.id for p in db.query(_P.id)
+                    .join(_Team, _Team.id == _P.team_id)
+                    .filter(_Team.name == team, _Team.deleted_at.is_(None))
+                    .all()
+            ]
             if not team_player_ids:
                 return {"success": True, "data": []}
             q = q.filter(Condition.player_id.in_(team_player_ids))
