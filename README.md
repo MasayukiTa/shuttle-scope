@@ -17,6 +17,7 @@ If someone opens ShuttleScope today, the parts they can realistically expect to 
 
 - create and edit matches, players, and doubles pairings
 - sign in with role-aware local auth flows for admin / analyst / coach / player
+- manage teams and team-owned access boundaries for coach / analyst / player workflows
 - annotate rallies stroke by stroke
 - review rallies with comments, bookmarks, review-later markers, and warm-up notes
 - run badminton-specific dashboard analysis across matches
@@ -82,6 +83,7 @@ Prediction, CV-assisted annotation, remote camera support, and research views ar
 - searchable player selectors in match creation
 - provisional player creation during match setup
 - team-aware player registration flow
+- normalized team records with team ID ownership for users, players, and matches
 - user management for role-aware local access control
 - match editing after creation
 - player deletion guard when the player is still referenced by matches
@@ -141,6 +143,7 @@ These areas are useful for development and internal testing, but CV quality stil
 - role-aware local login flow for admin / analyst / coach / player
 - JWT-backed local auth session handling
 - user management page with role-scoped editing (admin sees all, coach sees own team, player sees self)
+- team management page for admin / coach-facing team metadata workflows
 - access logging groundwork for auth and sensitive data access
 - condition views filtered by audience and field sensitivity
 - public landing site at shuttle-scope.com with v7 design and light / dark theme toggle
@@ -205,7 +208,8 @@ It should not be read as a finished commercial product yet.
 - Zustand
 - TanStack Query
 - FastAPI
-- SQLite
+- PostgreSQL as the current development database target
+- SQLite legacy / fallback support for older local setups and selected test fixtures
 - Alembic
 - Recharts / D3
 - NumPy / SciPy / scikit-learn
@@ -346,9 +350,11 @@ The default backend URL is `http://127.0.0.1:8765`.
 ### Authentication Notes
 
 - ShuttleScope now includes a local role-aware login flow with separate paths for admin, analyst, coach, and player access.
+- Current development configuration uses PostgreSQL by default (`DATABASE_URL` in `shuttlescope/.env.development`).
 - Player access is designed around player-linked accounts and PIN-style entry, while admin access uses password login.
-- Coach and analyst views are intended for internal workflows and do not expose the same condition-detail surface as player self-view or privileged admin flows.
+- Coach and analyst views are intended for internal workflows and are scoped to their assigned team unless the backend explicitly treats the data as public / cross-team accessible.
 - Sensitive access now depends on backend auth context rather than only frontend role selection.
+- Users, players, matches, and derived records are being normalized around team IDs rather than free-form team strings.
 - The first admin user is no longer created with a hard-coded password. For a fresh environment, set `BOOTSTRAP_ADMIN_PASSWORD` before the first admin login.
 - Optional bootstrap knobs are `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_DISPLAY_NAME`; if omitted, the first admin defaults to username `admin`.
 
@@ -417,7 +423,7 @@ Recent CI hardening:
 ## Local Data
 
 - current development configuration points `DATABASE_URL` to local PostgreSQL by default
-- SQLite is still available as a fallback / legacy local mode for some setups and older data
+- SQLite is still available as a fallback / legacy local mode for some setups, older data, and selected tests, but it is no longer the primary development target
 - `shuttlescope/.env.development` is the practical source of truth for the active local DB target
 - `private_docs/` is ignored
 - `shuttlescope/docs/validation/` is committed and used as implementation / verification history

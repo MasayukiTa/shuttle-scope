@@ -9,7 +9,15 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Player, Match
-from backend.utils.auth import get_auth, require_analyst
+from backend.utils.auth import get_auth, require_analyst, AuthCtx
+from fastapi import HTTPException as _HTTPException
+
+
+def _require_auth(request: Request) -> AuthCtx:
+    ctx = get_auth(request)
+    if ctx.role is None:
+        raise _HTTPException(status_code=401, detail="認証が必要です")
+    return ctx
 from backend.utils.sync_meta import touch
 from backend.utils import response_cache
 
@@ -127,7 +135,8 @@ def player_to_dict(p: Player, match_count: int = 0) -> dict:
 
 
 @router.get("/players")
-def list_players(request: Request, db: Session = Depends(get_db)):
+def list_players(request: Request, db: Session = Depends(get_db),
+                 _auth: AuthCtx = Depends(_require_auth)):
     """選手一覧（試合数付き）。ロールに応じて閲覧範囲を制限する。"""
     ctx = get_auth(request)
     query = db.query(Player).order_by(Player.name)
@@ -164,7 +173,9 @@ def list_players(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/players/search")
-def search_players(q: str = Query(default="", max_length=100), db: Session = Depends(get_db)):
+def search_players(request: Request, q: str = Query(default="", max_length=100),
+                   db: Session = Depends(get_db),
+                   _auth: AuthCtx = Depends(_require_auth)):
     """選手名検索（正規化・alias対応）クイックスタート用"""
     if not q or not q.strip():
         return {"success": True, "data": []}
@@ -222,7 +233,8 @@ def search_players(q: str = Query(default="", max_length=100), db: Session = Dep
 
 
 @router.get("/players/needs_review")
-def list_needs_review(db: Session = Depends(get_db)):
+def list_needs_review(request: Request, db: Session = Depends(get_db),
+                      _auth: AuthCtx = Depends(_require_auth)):
     """要レビュー選手一覧（V4-U-003）"""
     players = db.query(Player).filter(Player.needs_review == True).order_by(Player.created_at.desc()).all()  # noqa: E712
     result = []
@@ -235,7 +247,8 @@ def list_needs_review(db: Session = Depends(get_db)):
 
 
 @router.get("/players/teams")
-def list_teams(db: Session = Depends(get_db)):
+def list_teams(request: Request, db: Session = Depends(get_db),
+               _auth: AuthCtx = Depends(_require_auth)):
     """DBに登録済みの全チーム名を重複なしで返す（同姓同名識別・入力補完用）"""
     # Phase B-15+: Player.team 文字列撤去後は teams テーブル直接読みに切替
     from backend.db.models import Team as _Team
@@ -354,7 +367,8 @@ def _player_scope_check(request: Request, player) -> None:
 
 
 @router.get("/players/{player_id}")
-def get_player(player_id: int, request: Request, db: Session = Depends(get_db)):
+def get_player(player_id: int, request: Request, db: Session = Depends(get_db),
+               _auth: AuthCtx = Depends(_require_auth)):
     """選手詳細"""
     player = db.get(Player, player_id)
     if not player:
@@ -371,7 +385,9 @@ def get_player(player_id: int, request: Request, db: Session = Depends(get_db)):
 
 
 @router.put("/players/{player_id}")
-def update_player(player_id: int, body: PlayerUpdate, request: Request, db: Session = Depends(get_db)):
+def update_player(player_id: int, body: PlayerUpdate, request: Request,
+                  db: Session = Depends(get_db),
+                  _auth: AuthCtx = Depends(_require_auth)):
     """選手更新"""
     from datetime import date as _date
     player = db.get(Player, player_id)
@@ -499,7 +515,8 @@ def delete_player(
 
 
 @router.get("/players/{player_id}/matches")
-def get_player_matches(player_id: int, db: Session = Depends(get_db)):
+def get_player_matches(player_id: int, request: Request, db: Session = Depends(get_db),
+                       _auth: AuthCtx = Depends(_require_auth)):
     """選手の試合一覧"""
     player = db.get(Player, player_id)
     if not player:
@@ -521,7 +538,8 @@ def get_player_matches(player_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/players/{player_id}/stats")
-def get_player_stats(player_id: int, db: Session = Depends(get_db)):
+def get_player_stats(player_id: int, request: Request, db: Session = Depends(get_db),
+                     _auth: AuthCtx = Depends(_require_auth)):
     """選手の基礎スタッツ"""
     player = db.get(Player, player_id)
     if not player:

@@ -34,7 +34,7 @@ def test_bootstrap_fresh_db_creates_schema_and_stamps_head():
         dominant_hand = _fetchall(path, "PRAGMA table_info(players)")
         indexes = _fetchall(path, "PRAGMA index_list(players)")
 
-        assert version == [("0012",)]
+        assert version == [("0014",)]
         assert any(col[1] == "dominant_hand" and col[2] == "VARCHAR(10)" and col[3] == 0 for col in dominant_hand)
         assert any(idx[1] == "uix_players_uuid" for idx in indexes)
     finally:
@@ -60,7 +60,7 @@ def test_bootstrap_legacy_db_runs_compatibility_and_migration():
         version = _fetchall(path, "SELECT version_num FROM alembic_version")
         dominant_hand = _fetchall(path, "PRAGMA table_info(players)")
 
-        assert version == [("0012",)]
+        assert version == [("0014",)]
         assert any(col[1] == "dominant_hand" and col[2] == "VARCHAR(10)" and col[3] == 0 for col in dominant_hand)
         assert any(col[1] == "uuid" for col in dominant_hand)
     finally:
@@ -78,7 +78,7 @@ def test_bootstrap_versioned_db_is_idempotent_on_repeated_startup():
         eng.dispose()
 
         version = _fetchall(path, "SELECT version_num FROM alembic_version")
-        assert version == [("0012",)]
+        assert version == [("0014",)]
     finally:
         eng.dispose()
         if os.path.exists(path):

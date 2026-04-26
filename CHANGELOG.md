@@ -14,6 +14,29 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-26
+
+### Team Scoping / PostgreSQL Migration Rollout
+
+- Added first-class team ownership for users, players, matches, comments, bookmarks, forecasts, warm-up notes, and related analysis data.
+- Introduced the `teams` table and the Phase B migration chain (`0009` through `0014`) for moving from name/string-based team handling toward ID-based PostgreSQL-backed scoping.
+- Made `matches.owner_team_id` part of the match ownership model and restored the NOT NULL migration as an explicit rollout step after earlier opt-in staging.
+- Dropped the legacy player team string column after backfilling player `team_id`, keeping team lookup on the normalized team table instead of free-form text.
+- Tightened auth context and JWT payloads so coach / analyst / player requests carry `team_id` and are scoped against owned or permitted team data.
+
+### Team Management UI and Access Control
+
+- Added `TeamManagementPage` and frontend API helpers for listing, creating, and updating teams.
+- Extended user management so admin workflows can assign users to teams by ID, while non-admin views remain scoped to their own team boundary.
+- Updated match creation and match list flows to carry owner team information and preserve team-aware filtering.
+- Improved the audit log UI with richer filtering / presentation for team-scoped security events.
+- Added team-scoping regression tests covering match access boundaries, user creation rules, and database bootstrap behavior.
+
+### Validation Notes
+
+- Added Phase B validation documents under `docs/validation/` for the team-scoping rollout, frontend follow-up, and remaining production hardening notes.
+- Verified the focused backend auth/team test set (`test_security_role_restrictions.py`, `test_auth_bootstrap.py`, `test_attack_hardening_v43.py`) and frontend Vitest suite during the rollout. Full backend pytest remains heavier than the normal local loop and was handled with targeted verification.
+
 ## 2026-04-23
 
 ### Phase B Authentication (B-1 〜 B-5) と Frontend 認証 UI

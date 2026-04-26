@@ -515,7 +515,20 @@ def check_export_player_scope(
     ctx: AuthCtx, player_id: int, db: Session
 ) -> None:
     """選手エクスポートの権限チェック。"""
-    if ctx.is_analyst or ctx.is_admin:
+    if ctx.is_admin:
+        return
+    if ctx.is_analyst:
+        # team_id 未設定（移行期のみ）は通す
+        if ctx.team_id is None:
+            return
+        p = db.get(Player, player_id)
+        if not p:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+        if p.team_id != ctx.team_id:
+            raise HTTPException(
+                status_code=403,
+                detail="この選手はあなたのチームに所属していません",
+            )
         return
     if ctx.is_player:
         if ctx.player_id != player_id:
