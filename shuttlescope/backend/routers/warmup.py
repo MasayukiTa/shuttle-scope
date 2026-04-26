@@ -7,7 +7,15 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import PreMatchObservation, Match, Player
-from backend.utils.auth import get_auth
+from backend.utils.auth import get_auth, AuthCtx
+from fastapi import HTTPException as _HTTPException
+
+
+def _require_auth(request: Request) -> AuthCtx:
+    ctx = get_auth(request)
+    if ctx.role is None:
+        raise _HTTPException(status_code=401, detail="認証が必要です")
+    return ctx
 from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 
 router = APIRouter()
@@ -59,7 +67,8 @@ def obs_to_dict(o: PreMatchObservation) -> dict:
 
 
 @router.get("/warmup/observations/{match_id}")
-def get_warmup_observations(match_id: int, request: Request, db: Session = Depends(get_db)):
+def get_warmup_observations(match_id: int, request: Request, db: Session = Depends(get_db),
+                             _auth: AuthCtx = Depends(_require_auth)):
     """試合の全ウォームアップ観察を取得"""
     match = db.get(Match, match_id)
     if not match:

@@ -30,7 +30,7 @@ def warmup_client(db_session):
     db_session.flush()
 
     app.dependency_overrides[get_db] = lambda: db_session
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-Role": "admin"})
     yield client, match.id, player_a.id, player_b.id
     app.dependency_overrides.clear()
 

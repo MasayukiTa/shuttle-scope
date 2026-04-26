@@ -15,7 +15,15 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import HumanForecast, Match, Player
-from backend.utils.auth import get_auth
+from backend.utils.auth import get_auth, AuthCtx
+from fastapi import HTTPException as _HTTPException
+
+
+def _require_auth(request: Request) -> AuthCtx:
+    ctx = get_auth(request)
+    if ctx.role is None:
+        raise _HTTPException(status_code=401, detail="認証が必要です")
+    return ctx
 from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 from backend.analysis.prediction_engine import (
     get_matches_for_player,
@@ -103,6 +111,7 @@ def get_human_forecasts(
     request: Request,
     player_id: Optional[int] = None,
     db: Session = Depends(get_db),
+    _auth: AuthCtx = Depends(_require_auth),
 ):
     """特定試合の人間予測一覧を返す"""
     ctx = get_auth(request)
@@ -124,6 +133,7 @@ def delete_human_forecast(
     forecast_id: int,
     request: Request,
     db: Session = Depends(get_db),
+    _auth: AuthCtx = Depends(_require_auth),
 ):
     """人間予測を論理削除する（tombstone）"""
     f = db.get(HumanForecast, forecast_id)
@@ -149,7 +159,9 @@ def delete_human_forecast(
 @router.get("/prediction/benchmark/{player_id}")
 def get_prediction_benchmark(
     player_id: int,
+    request: Request,
     db: Session = Depends(get_db),
+    _auth: AuthCtx = Depends(_require_auth),
 ):
     """
     プレイヤー別のヒューマン vs モデル ベンチマーク集計。

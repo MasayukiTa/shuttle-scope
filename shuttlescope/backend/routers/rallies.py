@@ -135,10 +135,20 @@ def delete_rally(rally_id: int, request: Request, db: Session = Depends(get_db))
 
 
 @router.get("/annotation/{match_id}/state")
-def get_annotation_state(match_id: int, db: Session = Depends(get_db)):
+def get_annotation_state(match_id: int, request: Request, db: Session = Depends(get_db)):
     """アノテーション現在状態（再開用）"""
+    from backend.utils.auth import get_auth as _ga
+    from fastapi import HTTPException as _HE
+    _ctx = _ga(request)
+    if _ctx.role is None:
+        from backend.utils.control_plane import allow_legacy_header_auth
+        if not allow_legacy_header_auth(request):
+            raise _HE(status_code=401, detail="認証が必要です")
     match = db.get(Match, match_id)
     if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    from backend.utils.auth import user_can_access_match
+    if not _ctx.is_admin and not user_can_access_match(_ctx, match):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
 
     # 最後のセットと最後のラリーを取得
@@ -187,10 +197,21 @@ def get_annotation_state(match_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/annotation/{match_id}/undo")
-def undo_last_stroke(match_id: int, db: Session = Depends(get_db)):
+def undo_last_stroke(match_id: int, request: Request, db: Session = Depends(get_db)):
     """最後のストロークを取り消し"""
+    from backend.utils.auth import get_auth as _ga, user_can_access_match
+    from fastapi import HTTPException as _HE
+    _ctx = _ga(request)
+    if _ctx.role is None:
+        from backend.utils.control_plane import allow_legacy_header_auth
+        if not allow_legacy_header_auth(request):
+            raise _HE(status_code=401, detail="認証が必要です")
+    if _ctx.is_player:
+        raise _HE(status_code=403, detail="この操作を行う権限がありません")
     match = db.get(Match, match_id)
     if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if not _ctx.is_admin and not user_can_access_match(_ctx, match):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
 
     last_set = db.query(GameSet).filter(

@@ -47,7 +47,9 @@ def resolve_role(
     x_role: Optional[str] = Header(None, alias="X-Role"),
     role: Optional[str] = Query(None),
 ) -> str:
-    """JWT → X-Role ヘッダ → ?role= の優先順でロールを解決する。"""
+    """JWT → X-Role ヘッダ → ?role= の優先順でロールを解決する。
+    JWT なし + 非ローカル接続は 401 を返す（ロールクエリパラ昇格防止）。
+    """
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
@@ -59,6 +61,10 @@ def resolve_role(
                 r = "analyst"
             if r in ALLOWED_ROLES:
                 return r
+    # JWT なし: loopback（Electron/テスト）のみ X-Role/クエリパラを受け付ける
+    from backend.utils.control_plane import allow_legacy_header_auth
+    if not allow_legacy_header_auth(request):
+        raise HTTPException(status_code=401, detail="認証が必要です")
     r = (x_role or role or "analyst").strip().lower()
     if r == "admin":
         r = "analyst"
@@ -321,7 +327,13 @@ def get_questionnaire_master(
 # ─── 質問票 submit ───────────────────────────────────────────────────────────
 
 @router.post("/questionnaire", status_code=201)
-def submit_questionnaire(body: QuestionnaireSubmit, db: Session = Depends(get_db)):
+def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Session = Depends(get_db)):
+    from backend.utils.auth import get_auth as _ga_q
+    from backend.utils.control_plane import allow_legacy_header_auth as _allow_q
+    _ctx_q = _ga_q(request)
+    if _ctx_q.role is None and not _allow_q(request):
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
     player = db.get(Player, body.player_id)
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
@@ -453,7 +465,10 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
     # player ロールは自 player_id のコンディションのみ作成可能。
     # 他 player のコンディションをでっち上げる「偽データ混入」攻撃を遮断。
     from backend.utils.auth import get_auth
+    from backend.utils.control_plane import allow_legacy_header_auth
     ctx = get_auth(request)
+    if ctx.role is None and not allow_legacy_header_auth(request):
+        raise HTTPException(status_code=401, detail="認証が必要です")
     if ctx.is_player:
         if not ctx.player_id or body.player_id != ctx.player_id:
             raise HTTPException(status_code=403, detail="自分のコンディションのみ登録できます")
@@ -778,9 +793,14 @@ def _require_condition_access(request: Request, cond: Condition) -> None:
     - player は自 player_id の condition のみ参照/編集可能
     - analyst/coach は自チーム選手の condition のみ参照/編集可能 (cross-team 漏洩防止)
     - admin は全件
+    - 未認証 (role=None) は 401
     """
     from backend.utils.auth import get_auth
     ctx = get_auth(request)
+    if ctx.role is None:
+        from backend.utils.control_plane import allow_legacy_header_auth
+        if not allow_legacy_header_auth(request):
+            raise HTTPException(status_code=401, detail="認証が必要です")
     if ctx.is_admin:
         return
     if ctx.is_player:

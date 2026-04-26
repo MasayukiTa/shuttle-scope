@@ -131,8 +131,8 @@ def seeded_match(db_session):
 
     team = _seed_team(db_session)
 
-    pa = Player(name="Player A", name_normalized="playera", team=team.name, team_id=team.id)
-    pb = Player(name="Player B", name_normalized="playerb", team="TeamB")
+    pa = Player(name="Player A", name_normalized="playera", team_id=team.id)
+    pb = Player(name="Player B", name_normalized="playerb")
     db_session.add_all([pa, pb])
     db_session.flush()
 
@@ -361,7 +361,7 @@ class TestPipelineMassAssignmentAndRate:
         db_session.query(_M).delete()
         db_session.query(_P).delete()
         team = _seed_team(db_session, 9700, "Pipeline Test Team")
-        db_session.add(_P(id=700, name="X", name_normalized="x", team=team.name, team_id=team.id))
+        db_session.add(_P(id=700, name="X", name_normalized="x", team_id=team.id))
         db_session.add(_P(id=701, name="Y", name_normalized="y"))
         db_session.add(_M(
             id=700, tournament="T", tournament_level="国内", round="QF",
@@ -492,7 +492,7 @@ class TestVideoDownloadSSRF:
         db_session.query(_Match).delete()
         db_session.query(_P).delete()
         team = _seed_team(db_session, 9600, "Video Test Team")
-        db_session.add(_P(id=600, name="X", name_normalized="x", team=team.name, team_id=team.id))
+        db_session.add(_P(id=600, name="X", name_normalized="x", team_id=team.id))
         db_session.add(_P(id=601, name="Y", name_normalized="y"))
         db_session.add(_Match(
             id=600, tournament="T", tournament_level="国内", round="QF",
