@@ -1099,26 +1099,32 @@ def _resolve_team_for_user_create(
 ) -> Team:
     """登録時のチーム解決。
 
-    - independent=True: 無所属チーム（INDEP-xxxx）を新規作成
     - team_id 指定: 既存チームを返す（存在チェック）
-    - どちらも無い場合: 422
+    - independent=True もしくは team_id 未指定（デフォルト）: 無所属チーム
+      （INDEP-xxxx, is_independent=True）を新規作成。display_name_hint があれば
+      表示名のサフィックスに使う
     """
-    if independent:
-        for _ in range(5):
-            display_id = f"INDEP-{_short_uuid_suffix()}"
-            existing = db.query(Team).filter(Team.display_id == display_id).first()
-            if not existing:
-                team = Team(
-                    display_id=display_id,
-                    name="無所属",
-                    is_independent=True,
-                )
-                db.add(team)
-                db.flush()
-                return team
-        raise HTTPException(status_code=500, detail="無所属チーム ID の生成に失敗しました")
-    if team_id is None:
-        raise HTTPException(status_code=422, detail="team_id または independent のいずれかを指定してください")
+    if team_id is not None:
+        team = db.get(Team, team_id)
+        if not team or team.deleted_at is not None:
+            raise HTTPException(status_code=404, detail="指定された team_id が存在しません")
+        return team
+    # team_id 未指定 → independent=True 扱いで新規作成（互換挙動）
+    for _ in range(5):
+        display_id = f"INDEP-{_short_uuid_suffix()}"
+        existing = db.query(Team).filter(Team.display_id == display_id).first()
+        if not existing:
+            label = "無所属" if not display_name_hint else f"無所属（{display_name_hint}）"
+            team = Team(
+                display_id=display_id,
+                name=label,
+                is_independent=True,
+            )
+            db.add(team)
+            db.flush()
+            return team
+    raise HTTPException(status_code=500, detail="無所属チーム ID の生成に失敗しました")
+    # 旧コード（unreachable）: team_id 由来の解決
     team = db.get(Team, team_id)
     if not team or team.deleted_at is not None:
         raise HTTPException(status_code=404, detail="指定された team_id が存在しません")
@@ -1176,14 +1182,16 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
     if ctx.is_analyst and body.role in ("admin", "analyst"):
         raise HTTPException(status_code=403, detail="admin/analyst アカウントは admin のみ作成できます")
-    # analyst/coach/player は team_name 必須 (cross-team 漏洩防止)。
-    # admin のみ team_name=None を許容（システム横断管理者として扱う）。
+    # analyst/coach/player は team 必須 (cross-team 漏洩防止)。
+    # admin のみ team 未指定を許容（システム横断管理者として扱う）。
+    # Phase B-2: team_name もしくは team_id もしくは independent=True で OK。
     if body.role != "admin":
-        team = (body.team_name or "").strip()
-        if not team:
+        has_team_name = bool((body.team_name or "").strip())
+        has_team_id = body.team_id is not None
+        if not (has_team_name or has_team_id or body.independent):
             raise HTTPException(
                 status_code=422,
-                detail=f"team_name is required for role={body.role}",
+                detail=f"team_name / team_id / independent のいずれかが必要です (role={body.role})",
             )
     login_id = _validate_login_id(body.username)
     existing = db.query(User).filter(User.username == login_id).first()
@@ -1351,6 +1359,20 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         team = db.get(Team, body.team_id)
         if not team or team.deleted_at is not None:
             raise HTTPException(status_code=404, detail="指定された team_id が存在しません")
+        # 監査ログ: team_id 変更（誰が誰のチームをどこからどこへ変えたか）
+        prev_team_id = user.team_id
+        if prev_team_id != team.id:
+            log_access(
+                db, "user_team_id_changed",
+                user_id=ctx.user_id, resource_type="user", resource_id=user.id,
+                details={
+                    "actor_role": ctx.role,
+                    "target_user_id": user.id,
+                    "from_team_id": prev_team_id,
+                    "to_team_id": team.id,
+                    "to_team_display_id": team.display_id,
+                },
+            )
         user.team_id = team.id
         user.team_name = team.name
     if body.player_id is not None and ctx.is_admin:

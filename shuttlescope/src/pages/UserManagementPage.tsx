@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess } from '@/api/client'
+import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess, listTeams, type TeamDTO } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
@@ -17,6 +17,10 @@ interface UserRow {
   role: string
   display_name: string | null
   team_name: string | null
+  team_id: number | null
+  team_display_id: string | null
+  team_display_name: string | null
+  team_is_independent: boolean | null
   player_id: number | null
   player_name: string | null
   has_credential: boolean
@@ -35,6 +39,7 @@ interface FormState {
   credential: string
   player_id: string
   team_name: string
+  team_id: string  // admin のみ変更可。空文字は「変更なし」
 }
 
 const ROLE_KEYS: Record<string, string> = {
@@ -58,6 +63,7 @@ const emptyForm = (): FormState => ({
   credential: '',
   player_id: '',
   team_name: '',
+  team_id: '',
 })
 
 function SecretField(props: {
@@ -143,6 +149,8 @@ export function UserManagementPage() {
   const [editPageAccess, setEditPageAccess] = useState<string[]>([])
   const [editTeamPageAccess, setEditTeamPageAccess] = useState<string[]>([])
   const [editingTeamName, setEditingTeamName] = useState<string | null>(null)
+  // Phase B-2: チーム選択（admin のみ team_id を変更可）
+  const [teams, setTeams] = useState<TeamDTO[]>([])
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const border = isLight ? 'border-gray-200' : 'border-gray-700'
@@ -181,12 +189,14 @@ export function UserManagementPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const [ur, pr] = await Promise.all([
+      const [ur, pr, tr] = await Promise.all([
         apiGet<{ success: boolean; data: UserRow[] }>('/auth/users'),
         apiGet<{ success: boolean; data: { id: number; name: string }[] }>('/players?limit=500'),
+        listTeams().catch(() => ({ success: false, data: [] as TeamDTO[] })),
       ])
       setUsers(ur.data ?? [])
       setPlayers(pr.data ?? [])
+      setTeams(tr?.data ?? [])
     } catch (e) {
       setError(String(e))
     } finally {
@@ -221,6 +231,7 @@ export function UserManagementPage() {
       credential: '',
       player_id: u.player_id ? String(u.player_id) : '',
       team_name: u.team_name ?? '',
+      team_id: u.team_id ? String(u.team_id) : '',
     })
     setEditId(u.id)
     setError(null)
@@ -271,6 +282,10 @@ export function UserManagementPage() {
           body.team_name = form.team_name || undefined
           body.player_id = form.player_id ? parseInt(form.player_id, 10) : undefined
         }
+        // Phase B-2: team_id 変更は admin のみ（バックエンドでも 403）
+        if (myRole === 'admin' && form.team_id.trim()) {
+          body.team_id = parseInt(form.team_id, 10)
+        }
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPut(`/auth/users/${editId}`, body)
         if (form.role === 'player' && !isSelfOnly) {
@@ -286,6 +301,11 @@ export function UserManagementPage() {
           username: form.username.trim(),
           team_name: form.team_name.trim() || undefined,
           player_id: form.player_id ? parseInt(form.player_id, 10) : undefined,
+        }
+        // Phase B-2: 既存チーム選択（admin が team_id を設定したらそちらを優先、
+        // 未指定なら独立チームが自動生成される）
+        if (myRole === 'admin' && form.team_id.trim()) {
+          body.team_id = parseInt(form.team_id, 10)
         }
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPost('/auth/users', body)
@@ -452,6 +472,28 @@ export function UserManagementPage() {
                 </div>
               ) : null}
 
+              {/* Phase B-2: 所属チーム（teams テーブル）。admin のみ変更可 */}
+              {myRole === 'admin' ? (
+                <div className="col-span-2">
+                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>所属チーム（team_id）</label>
+                  <select
+                    value={form.team_id}
+                    onChange={(e) => setForm((f) => ({ ...f, team_id: e.target.value }))}
+                    className={inputCls}
+                  >
+                    <option value="">— 変更なし / 新規時は独立チーム自動生成 —</option>
+                    {teams.map((tm) => (
+                      <option key={tm.id} value={tm.id}>
+                        {tm.name} {tm.display_id ? `(${tm.display_id})` : ''} {tm.is_independent ? '［無所属］' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className={`mt-1 text-[11px] ${textMuted}`}>
+                    既存ユーザーの team_id を変更する場合、ここで選択してください。チーム編集は <a href="/teams" className="text-blue-500 underline">/teams</a> から。
+                  </p>
+                </div>
+              ) : null}
+
               {isPlayerRole ? (
                 <div>
                   <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.player_link')}</label>
@@ -562,7 +604,11 @@ export function UserManagementPage() {
                     <td className={`px-4 py-2.5 font-medium ${textMain}`}>{u.display_name ?? '—'}</td>
                     <td className={`px-4 py-2.5 ${textMuted} text-xs hidden sm:table-cell`}>
                       <div>{u.username || '—'}</div>
-                      {u.role === 'coach' ? <div>{t('users.manage.team_prefix')}: {u.team_name || '—'}</div> : null}
+                      <div>
+                        team: {u.team_display_name || u.team_name || '—'}
+                        {u.team_display_id ? ` (${u.team_display_id})` : ''}
+                        {u.team_is_independent ? ' ［無所属］' : ''}
+                      </div>
                       {u.role === 'player' ? <div>{t('users.manage.player_prefix')}: {u.player_name || '—'}</div> : null}
                     </td>
                     <td className={`px-4 py-2.5 text-xs ${textMuted} hidden sm:table-cell`}>

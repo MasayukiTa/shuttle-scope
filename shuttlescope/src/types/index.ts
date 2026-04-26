@@ -160,6 +160,13 @@ export interface Match {
   competition_type?: CompetitionType
   created_via_quick_start?: boolean
   metadata_status?: MetadataStatus
+  // Phase B: チーム境界
+  owner_team_id?: number | null
+  is_public_pool?: boolean
+  home_team_id?: number | null
+  away_team_id?: number | null
+  owner_team_display_id?: string | null
+  owner_team_display_name?: string | null
 }
 
 export interface GameSet {

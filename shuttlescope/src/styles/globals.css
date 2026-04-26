@@ -182,12 +182,62 @@ html[data-theme="light"] {
 /* ─── 2b. モバイル・iOS 修正 ────────────────────────────────────── */
 
 /*
- * iOS 自動ズーム防止: font-size < 16px のフォーム要素をタップすると
- * iOS Safari が画面を自動ズームする。font-size を 16px に強制して防止。
- * 見た目は padding/height で調整する。
+ * モバイル（iOS / iPadOS / Android）の自動拡大を防止する複合対策。
+ *
+ * 1) viewport meta（src/index.html）で `maximum-scale=1.0, user-scalable=no`
+ *    を指定。これが最強の拡大防止策で、iOS/iPadOS/Android 全てに効く。
+ *
+ * 2) フォーム要素の font-size を 16px に強制：
+ *    iOS Safari は font-size < 16px のフォーム要素にフォーカスした瞬間に
+ *    自動ズームを発生させる。font-size を 16px 以上に固定することで
+ *    viewport 固定が効かない一部条件下でもズームを防ぐ。
+ *
+ * 3) touch-action: manipulation で double-tap zoom を抑止。
+ *
+ * 4) -webkit-text-size-adjust で iOS の自動テキスト拡大を防止。
+ *
+ * 5) input/select/textarea のみならず contenteditable / button(combobox)
+ *    も対象に含める。
  */
-input, select, textarea {
+
+/* ── 4) iOS の Auto text-size adjust を OFF（横向き⇄縦向き切替時の拡大防止） */
+html {
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ── 2) フォーム要素の font-size 強制 16px（iOS focus zoom 防止） */
+/*    Tailwind の `text-xs` `text-sm` 等を上書きするため !important が必要 */
+input,
+select,
+textarea,
+[contenteditable="true"],
+[contenteditable=""],
+button[role="combobox"] {
   font-size: 16px !important;
+  /* 3) double-tap zoom 抑止 */
+  touch-action: manipulation;
+}
+
+/* iOS Safari 限定の二重適用（@supports でディスパッチ） */
+@supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea,
+  [contenteditable="true"],
+  [contenteditable=""] {
+    font-size: 16px !important;
+  }
+}
+
+/* Android Chrome 等で「viewport 固定が無効化された時」の保険 */
+@media (max-width: 1024px) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1rem) !important;
+  }
 }
 
 /*

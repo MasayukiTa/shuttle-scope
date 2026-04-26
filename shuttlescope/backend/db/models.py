@@ -28,7 +28,7 @@ class Team(Base):
     display_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     short_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    is_independent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    is_independent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -205,12 +205,14 @@ class Match(Base):
     # owner_team_id: 試合を登録したチーム（データ所有・閲覧主体）
     # is_public_pool: True で全チーム参照可能（admin による BWF 等の登録）
     # home_team_id / away_team_id: 試合参加チーム（owner とは独立）
-    # 0012 で NOT NULL 化済み。アプリ側でも non-Optional として扱う。
-    owner_team_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("teams.id"), nullable=False, index=True
+    # Phase B-3: チーム所有。production の admin オペで全試合に owner 割当が
+    # 完了した後、migration 0013 を opt-in で適用すれば NOT NULL になる。
+    # それまではアプリ層（resolve_owner_team_for_match_create）で必須化を担保する。
+    owner_team_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("teams.id"), nullable=True, index=True
     )
     is_public_pool: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="0", index=True
+        Boolean, default=False, nullable=False, server_default="false", index=True
     )
     home_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
     away_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
