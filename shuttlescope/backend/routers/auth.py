@@ -504,13 +504,10 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=422, detail=f"select grant supports only {sorted(allowed)}")
         if req.user_id:
             user = db.get(User, req.user_id)
-            # Z1 fix: select grant では「指定 role」と完全一致するユーザのみ許可。
-            # 以前は role=analyst リクエストが admin user とも一致してしまい、
-            # パスワード/lockout 不要で admin JWT を発行する経路があった (privilege escalation)。
+            # Select grants must match the requested role exactly.
             if not user or user.role != role:
                 raise HTTPException(status_code=404, detail="user not found")
-            # Z2 fix: select 経路でも lockout を尊重する。
-            # ローカル限定でも lockout 機構を完全無効化する経路は disable する。
+            # Local select login still honors lockout state.
             _check_lockout(user)
         else:
             user = db.query(User).filter(User.role == role).first()
@@ -577,9 +574,7 @@ def mfa_login(req: MfaLoginRequest, request: Request, db: Session = Depends(get_
     user = db.get(User, user_id)
     if not user or not user.totp_enabled or not user.totp_secret:
         raise HTTPException(status_code=401, detail="MFAが有効化されていません")
-    # Z3 fix: lockout 中のユーザに対して MFA 経路で JWT を発行しない。
-    # mfa_token は credential 経路の pre-auth で発行されるが、その後 lockout が
-    # 確定した場合 (パスワード正解直後にロック等) に MFA 経路で素通りされる懸念を遮断。
+    # MFA completion must re-check lockout state before issuing a token.
     _check_lockout(user)
     if not _verify_totp(user.totp_secret, req.code):
         _record_mfa_failure(user_id)
@@ -810,9 +805,7 @@ def refresh(req: RefreshRequest, request: Request, db: Session = Depends(get_db)
     user = db.get(User, rotated["user_id"])
     if not user:
         raise HTTPException(status_code=401, detail="user not found")
-    # Z4 fix: lockout 中のユーザに refresh 経路で新規 access token を発行しない。
-    # 攻撃者が lockout 直前に refresh_token を奪取していた場合、
-    # この経路で lockout を完全に無視して新規 JWT 発行できてしまう。
+    # Refresh must re-check lockout state before issuing a token.
     _check_lockout(user)
     access = create_access_token(user.id, user.role, user.player_id, team_name=user.team_name)
     ip = _get_ip(request)
