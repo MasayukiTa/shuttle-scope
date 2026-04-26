@@ -35,13 +35,54 @@ Read it together with:
 ### Validation Notes
 
 - Added Phase B validation documents under `docs/validation/` for the team-scoping rollout, frontend follow-up, and remaining production hardening notes.
-- Verified the focused backend auth/team test set (`test_security_role_restrictions.py`, `test_auth_bootstrap.py`, `test_attack_hardening_v43.py`) and frontend Vitest suite during the rollout. Full backend pytest remains heavier than the normal local loop and was handled with targeted verification.
+- Verified the focused backend auth/team test set and frontend Vitest suite during the rollout. Full backend pytest remains heavier than the normal local loop and was handled with targeted verification.
 
 ### Attack-Driven Hardening
 
 - Ran several days of adversarial validation against authentication, team boundaries, player access, condition records, sharing endpoints, and warm-up observation flows.
-- Converted the findings into regression coverage rather than leaving them as one-off manual notes, including the newer `test_attack_hardening_v44.py` checks for unauthenticated access and cross-team scope consistency.
+- Converted the findings into source-level hardening and high-level validation notes rather than publishing replayable cases.
 - Kept public notes intentionally high-level: the changelog records the security posture improvement and tested areas, while exploit mechanics, payload details, and replayable attack paths are omitted.
+
+## 2026-04-25
+
+### Live Adversarial Validation and Auth Hardening
+
+- Spent the day validating authentication, MFA, refresh, local-login, operator-only, and lockout behavior under hostile conditions.
+- Hardened auth and match input checks, tightened lockout enforcement across token refresh and MFA paths, and blocked role/scope confusion in local and development-only flows.
+- Required stronger operator or admin proof for sensitive select, seed, and legacy paths so local-only endpoints do not rely on network placement as their main defense.
+
+### Scope and Boundary Enforcement
+
+- Enforced team, player, condition, annotation, sharing, and match scope more consistently across read and write paths.
+- Tightened coach, analyst, player, and admin boundaries so cross-team access fails closed instead of depending on caller-provided identifiers.
+- Added guardrails against invalid identifiers, oversized values, integer edge cases, unsafe package/import behavior, and sync/upload/export misuse.
+
+### Regression and Merge Follow-Through
+
+- Converted validated issue classes into defensive source changes and focused regression coverage while keeping replayable mechanics out of the public changelog.
+- Merged and reconciled the hardening branches into `main`, accounting for places where the same underlying risk had been fixed by more than one implementation path.
+- Updated repository guidance so future work stays aligned with PostgreSQL-backed production assumptions rather than local SQLite shortcuts.
+
+## 2026-04-24
+
+### Production Access and Code Scanning Hardening
+
+- Reworked public and production gates around documentation, stack traces, cluster/control-plane routes, DB maintenance, network diagnostics, settings, tunnel, and admin-only operations.
+- Addressed high-priority code scanning findings in SSH/remote task handling, temporary file creation, upload path handling, and URL/path validation.
+- Added stronger access checks around sensitive local and control-plane paths while preserving the local development workflow.
+
+### Input Validation and Data Integrity
+
+- Tightened request schemas across auth, matches, players, comments/bookmarks, conditions, pipeline jobs, settings updates, sync/import/export, and sharing endpoints.
+- Added stricter URL/path normalization, UTF-8 package filename support, safer browser/video download path handling, and clearer rejection of malformed payloads.
+- Centralized ORM update safety so unknown or null writes cannot silently overwrite protected fields.
+- Added audit logging and bounded request behavior for condition, webhook, pipeline, and public inquiry flows.
+
+### Cluster, Upload, and Benchmark Readiness
+
+- Added browser chunked video upload support.
+- Added admin cluster controls, deployment scripts, benchmark resilience improvements, and i18n script updates.
+- Cleaned up cluster configuration comments and kept the deployment/benchmark notes closer to the current architecture.
 
 ## 2026-04-23
 
