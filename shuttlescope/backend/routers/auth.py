@@ -10,6 +10,7 @@ import struct
 import threading
 import time
 import urllib.parse
+import uuid as _uuid_mod
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
@@ -87,7 +88,14 @@ def _hash_user_credential(password: Optional[str], pin: Optional[str]) -> Option
 
 
 def _validate_password_strength(password: str) -> None:
-    """パスワード強度を検証する。不足の場合 HTTPException(422) を送出。"""
+    """パスワード強度を検証する。不足の場合 HTTPException(422) を送出。
+
+    ポリシー:
+    - 最低長 (_PASSWORD_MIN_LENGTH) 以上
+    - bcrypt 72-byte 制限以下
+    - 文字種 4 区分 (大文字 / 小文字 / 数字 / 記号) のうち **少なくとも 3 種類** を含む
+      （player を含む全ロール共通。覚えやすさと強度のバランス）
+    """
     if len(password) < _PASSWORD_MIN_LENGTH:
         raise HTTPException(422, f"パスワードは{_PASSWORD_MIN_LENGTH}文字以上が必要です")
     # bcrypt 72-byte truncation 対策。文字数ではなく UTF-8 バイト数で計測する。
@@ -97,14 +105,20 @@ def _validate_password_strength(password: str) -> None:
             f"パスワードは {_PASSWORD_MAX_BYTES} バイト以下にしてください "
             f"(英数記号 {_PASSWORD_MAX_BYTES} 文字 / 日本語 ~24 文字)",
         )
-    if not _re.search(r'[a-z]', password):
-        raise HTTPException(422, "パスワードに小文字を含めてください")
-    if not _re.search(r'[A-Z]', password):
-        raise HTTPException(422, "パスワードに大文字を含めてください")
-    if not _re.search(r'\d', password):
-        raise HTTPException(422, "パスワードに数字を含めてください")
-    if not _re.search(r'[!@#$%^&*()\-_=+\[\]{}|;:,.<>?/~`]', password):
-        raise HTTPException(422, "パスワードに記号を含めてください (!@#$% 等)")
+    classes = 0
+    if _re.search(r'[a-z]', password):
+        classes += 1
+    if _re.search(r'[A-Z]', password):
+        classes += 1
+    if _re.search(r'\d', password):
+        classes += 1
+    if _re.search(r'[!@#$%^&*()\-_=+\[\]{}|;:,.<>?/~`]', password):
+        classes += 1
+    if classes < 3:
+        raise HTTPException(
+            422,
+            "パスワードは大文字 / 小文字 / 数字 / 記号 のうち少なくとも 3 種類を含めてください",
+        )
 
 
 # ── TOTP（標準ライブラリのみ実装、pyotp 不要） ───────────────────────────────
@@ -1060,17 +1074,16 @@ class UserUpdate(BaseModel):
     team_id: Optional[int] = None  # admin のみ変更可
 
 
-def _user_to_dict(user: User, db: Session) -> dict:
+def _user_to_dict(user: User, db: Session, *, for_admin: bool = False) -> dict:
     player = db.get(Player, user.player_id) if user.player_id else None
     team = db.get(Team, user.team_id) if user.team_id else None
-    return {
+    out = {
         "id": user.id,
         "username": user.username,
         "role": user.role,
         "display_name": user.display_name,
         "team_name": user.team_name,
         "team_id": user.team_id,
-        "team_display_id": team.display_id if team else None,
         "team_display_name": team.name if team else None,
         "team_is_independent": bool(team.is_independent) if team else None,
         "player_id": user.player_id,
@@ -1080,6 +1093,9 @@ def _user_to_dict(user: User, db: Session) -> dict:
         "mfa_enabled": bool(user.totp_enabled),
         "locked": bool(user.locked_until and user.locked_until > datetime.utcnow()),
     }
+    if for_admin:
+        out["team_display_id"] = team.display_id if team else None
+    return out
 
 
 # ── B-2: チーム解決ヘルパ ─────────────────────────────────────────────────────
@@ -1095,19 +1111,40 @@ def _resolve_team_for_user_create(
     *,
     team_id: Optional[int],
     independent: bool,
+    team_name: Optional[str] = None,
     display_name_hint: Optional[str] = None,
 ) -> Team:
     """登録時のチーム解決。
 
-    - team_id 指定: 既存チームを返す（存在チェック）
-    - independent=True もしくは team_id 未指定（デフォルト）: 無所属チーム
-      （INDEP-xxxx, is_independent=True）を新規作成。display_name_hint があれば
-      表示名のサフィックスに使う
+    優先順:
+    1. team_id 指定: 既存チームを返す（存在チェック）
+    2. team_name 指定: 同名チームがあれば再利用、なければ自動作成
+    3. independent=True もしくは team_id/team_name 未指定: 無所属チーム
+       （INDEP-xxxx, is_independent=True）を新規作成
     """
     if team_id is not None:
         team = db.get(Team, team_id)
         if not team or team.deleted_at is not None:
             raise HTTPException(status_code=404, detail="指定された team_id が存在しません")
+        return team
+    # team_name 指定 → 既存チーム lookup or 新規作成
+    if team_name and team_name.strip():
+        norm = team_name.strip()
+        existing = db.query(Team).filter(
+            Team.name == norm, Team.deleted_at.is_(None)
+        ).first()
+        if existing:
+            return existing
+        # 新規作成（display_id は付けず、admin が後から /teams で付与）
+        team = Team(
+            uuid=str(_uuid_mod.uuid4()),
+            name=norm,
+            is_independent=False,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(team)
+        db.flush()
         return team
     # team_id 未指定 → independent=True 扱いで新規作成（互換挙動）
     for _ in range(5):
@@ -1138,7 +1175,7 @@ def list_users(request: Request, db: Session = Depends(get_db)):
 
     if ctx.is_admin:
         users = db.query(User).order_by(User.id).all()
-        return {"success": True, "data": [_user_to_dict(u, db) for u in users]}
+        return {"success": True, "data": [_user_to_dict(u, db, for_admin=True) for u in users]}
 
     if ctx.is_analyst or ctx.is_coach:
         # analyst も自チームのみ (cross-team 情報漏洩防止)
@@ -1148,7 +1185,7 @@ def list_users(request: Request, db: Session = Depends(get_db)):
             from backend.utils.control_plane import allow_legacy_header_auth
             if allow_legacy_header_auth(request):
                 users = db.query(User).order_by(User.id).all()
-                return {"success": True, "data": [_user_to_dict(u, db) for u in users]}
+                return {"success": True, "data": [_user_to_dict(u, db, for_admin=True) for u in users]}
             return {"success": True, "data": []}
         users = db.query(User).filter(User.team_name == team).order_by(User.id).all()
         return {"success": True, "data": [_user_to_dict(u, db) for u in users]}
@@ -1216,10 +1253,12 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
         _validate_password_strength(password)
 
     # B-2: チーム必須化（admin/analyst のみ create するので必ず指定 or independent）
+    # team_name を渡せば同名チームを lookup or 自動作成する
     team = _resolve_team_for_user_create(
         db,
         team_id=body.team_id,
         independent=body.independent,
+        team_name=body.team_name,
         display_name_hint=body.display_name,
     )
 
@@ -1350,8 +1389,58 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
             raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
         user.role = body.role
     # team_name / player_id は admin のみ書換可能 (上でガード済)
+    # admin が team_name のみ送ってきた場合は teams テーブルで lookup or 自動作成して team_id も更新
     if body.team_name is not None and ctx.is_admin:
-        user.team_name = body.team_name
+        norm = body.team_name.strip()
+        if norm and body.team_id is None:
+            # 既存チーム lookup
+            existing = db.query(Team).filter(
+                Team.name == norm, Team.deleted_at.is_(None)
+            ).first()
+            if existing:
+                if user.team_id != existing.id:
+                    log_access(
+                        db, "user_team_changed", user_id=ctx.user_id,
+                        resource_type="user", resource_id=user.id,
+                        details={
+                            "actor_role": ctx.role,
+                            "target_user_id": user.id,
+                            "from_team_id": user.team_id,
+                            "to_team_id": existing.id,
+                            "to_team_name": existing.name,
+                            "via": "team_name_lookup",
+                        },
+                    )
+                user.team_id = existing.id
+                user.team_name = existing.name
+            else:
+                # 新規 team 自動作成
+                new_team = Team(
+                    uuid=str(_uuid_mod.uuid4()),
+                    name=norm,
+                    is_independent=False,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                db.add(new_team)
+                db.flush()
+                log_access(
+                    db, "user_team_changed", user_id=ctx.user_id,
+                    resource_type="user", resource_id=user.id,
+                    details={
+                        "actor_role": ctx.role,
+                        "target_user_id": user.id,
+                        "from_team_id": user.team_id,
+                        "to_team_id": new_team.id,
+                        "to_team_name": new_team.name,
+                        "via": "team_name_create",
+                    },
+                )
+                user.team_id = new_team.id
+                user.team_name = new_team.name
+        else:
+            # 互換: team_id 同時送信 or 空文字。下流の team_id 処理に任せる
+            user.team_name = body.team_name
     # B-2: team_id 変更は admin のみ。coach/analyst/player は変更不可
     if body.team_id is not None:
         if not ctx.is_admin:
@@ -1619,18 +1708,25 @@ class TeamPatch(BaseModel):
     notes: Optional[str] = None
 
 
-def _team_to_dict(team: Team) -> dict:
-    return {
+def _team_to_dict(team: Team, *, for_admin: bool = False) -> dict:
+    """チーム情報を dict 化する。
+
+    display_id / notes は内部運用情報のため admin 限定で開示する。
+    coach / analyst / player には UI 表示用の name のみ返す。
+    """
+    base = {
         "id": team.id,
         "uuid": team.uuid,
-        "display_id": team.display_id,
         "name": team.name,
         "short_name": team.short_name,
         "is_independent": bool(team.is_independent),
-        "notes": team.notes,
         "created_at": team.created_at.isoformat() if team.created_at else None,
         "updated_at": team.updated_at.isoformat() if team.updated_at else None,
     }
+    if for_admin:
+        base["display_id"] = team.display_id
+        base["notes"] = team.notes
+    return base
 
 
 @router.get("/teams")
@@ -1649,7 +1745,7 @@ def list_teams(request: Request, db: Session = Depends(get_db)):
         if ctx.team_id is None:
             return {"success": True, "data": []}
         teams = q.filter(Team.id == ctx.team_id).all()
-    return {"success": True, "data": [_team_to_dict(t) for t in teams]}
+    return {"success": True, "data": [_team_to_dict(t, for_admin=ctx.is_admin) for t in teams]}
 
 
 @router.post("/teams", status_code=201)
@@ -1675,7 +1771,7 @@ def create_team(body: TeamBody, request: Request, db: Session = Depends(get_db))
     db.commit()
     db.refresh(team)
     log_access(db, "team_created", details={"team_id": team.id, "display_id": team.display_id})
-    return {"success": True, "data": _team_to_dict(team)}
+    return {"success": True, "data": _team_to_dict(team, for_admin=True)}
 
 
 @router.patch("/teams/{team_id}")
@@ -1703,6 +1799,9 @@ def patch_team(team_id: int, body: TeamPatch, request: Request, db: Session = De
             raise HTTPException(status_code=422, detail="name は空にできません")
         team.name = name
     if body.display_id is not None:
+        # display_id は内部運用情報なので admin のみ変更可
+        if not ctx.is_admin:
+            raise HTTPException(status_code=403, detail="display_id の変更は admin のみ可能です")
         new_display = body.display_id.strip() or None
         if new_display and new_display != team.display_id:
             dup = db.query(Team).filter(Team.display_id == new_display, Team.id != team_id).first()
@@ -1715,4 +1814,4 @@ def patch_team(team_id: int, body: TeamPatch, request: Request, db: Session = De
         team.notes = body.notes or None
     db.commit()
     log_access(db, "team_updated", details={"team_id": team.id})
-    return {"success": True, "data": _team_to_dict(team)}
+    return {"success": True, "data": _team_to_dict(team, for_admin=ctx.is_admin)}
