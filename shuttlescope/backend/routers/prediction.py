@@ -448,10 +448,19 @@ def _upsert_prematch_prediction(
     sample_size: int, h2h_count: int,
     win_probability, set_dist, scorelines, score_volatility,
     confidence, match_narrative,
+    team_id: Optional[int] = None,
 ) -> None:
-    """prematch_predictions に upsert する（既存あれば上書き）"""
+    """prematch_predictions に upsert する（既存あれば上書き）
+
+    Phase B-12: team_id を受け取り、既存行のチームスコープを指定してフィルタする。
+    team_id=None の場合は admin 互換扱い（全スコープ更新）。
+    """
     from datetime import datetime as _dt
-    existing = db.query(PrematchPrediction).filter_by(match_id=match_id, player_id=player_id).first()
+    from sqlalchemy import or_ as _or
+    q = db.query(PrematchPrediction).filter_by(match_id=match_id, player_id=player_id)
+    if team_id is not None:
+        q = q.filter(_or(PrematchPrediction.team_id.is_(None), PrematchPrediction.team_id == team_id))
+    existing = q.first()
     if existing:
         existing.opponent_id          = opponent_id
         existing.cutoff_date          = cutoff_date
@@ -465,6 +474,8 @@ def _upsert_prematch_prediction(
         existing.confidence           = confidence
         existing.match_narrative      = json.dumps(match_narrative) if match_narrative else None
         existing.computed_at          = _dt.utcnow()
+        if existing.team_id is None and team_id is not None:
+            existing.team_id = team_id
     else:
         rec = PrematchPrediction(
             match_id=match_id, player_id=player_id, opponent_id=opponent_id,
@@ -477,6 +488,7 @@ def _upsert_prematch_prediction(
             confidence=confidence,
             match_narrative=json.dumps(match_narrative) if match_narrative else None,
             computed_at=_dt.utcnow(),
+            team_id=team_id,
         )
         db.add(rec)
     db.commit()

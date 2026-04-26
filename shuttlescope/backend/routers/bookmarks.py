@@ -12,11 +12,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import EventBookmark, Match
-from backend.utils.auth import require_match_scope as _require_match_scope
+from backend.utils.auth import get_auth, require_match_scope as _require_match_scope
 from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 
 router = APIRouter()
@@ -52,15 +53,16 @@ def create_bookmark(body: BookmarkCreate, request: Request, db: Session = Depend
 
     ctx = _require_match_scope(request, match, db)
     # coach_request は coach / analyst / admin のみ（WS ブロードキャスト発火の悪用を防ぐ）。
-    # analyst も許可するのは、ローカル Electron のアナリストがコーチ視点の
-    # クリップ要求を代行投入できるようにするため。
     if body.bookmark_type in _COACH_ONLY_TYPES and not (ctx.is_coach or ctx.is_analyst or ctx.is_admin):
         raise HTTPException(status_code=403, detail="coach_request はコーチ / analyst のみ作成できます")
     # auto_stat は analyst / admin のみ（自動統計ラベルのなりすまし防止）
     if body.bookmark_type in _ANALYST_ONLY_TYPES and not (ctx.is_analyst or ctx.is_admin):
         raise HTTPException(status_code=403, detail="auto_stat は analyst のみ作成できます")
 
-    bm = EventBookmark(**body.model_dump())
+    # Phase B-12: 書き込みチームを ctx から強制注入（リーク防止）
+    bm_payload = body.model_dump()
+    bm_payload["team_id"] = ctx.team_id
+    bm = EventBookmark(**bm_payload)
     db.add(bm)
     payload = {"match_id": body.match_id, "bookmark_type": body.bookmark_type, "rally_id": body.rally_id}
     touch_sync_metadata(bm, payload_like=payload, device_id=get_device_id(db))
@@ -103,8 +105,10 @@ def list_bookmarks(
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    _require_match_scope(request, match, db)
+    ctx = _require_match_scope(request, match, db)
     q = db.query(EventBookmark).filter(EventBookmark.match_id == match_id, EventBookmark.deleted_at.is_(None))
+    if not ctx.is_admin:
+        q = q.filter(or_(EventBookmark.team_id.is_(None), EventBookmark.team_id == ctx.team_id))
     if bookmark_type:
         q = q.filter(EventBookmark.bookmark_type == bookmark_type)
     if reviewed_only:

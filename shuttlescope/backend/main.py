@@ -785,6 +785,78 @@ class ExfilRateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(ExfilRateLimitMiddleware)
 
 
+# ─── チーム境界アクセス制御ミドルウェア（Phase B-6） ─────────────────────────
+# coach/analyst のリクエストに対し、対象 match_id がチーム境界内（owner_team_id 一致 /
+# is_public_pool / 自チーム選手登場）であるかを DB 検証する。
+# admin / player は本ミドルウェアでは素通し（player は PlayerAccessControlMiddleware で処理済み）。
+class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if not request.url.path.startswith("/api/"):
+            return await call_next(request)
+        # JWT 必須（GlobalAuthMiddleware で先に弾かれるが念のため）
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return await call_next(request)
+        from backend.utils.jwt_utils import verify_token
+        payload = verify_token(auth_header[7:])
+        if not payload:
+            return await call_next(request)
+        role = payload.get("role")
+        # admin / player はスキップ（admin は全許可、player は別ミドルウェアで処理）
+        if role not in ("coach", "analyst"):
+            return await call_next(request)
+        team_id_raw = payload.get("team_id")
+        try:
+            team_id = int(team_id_raw) if team_id_raw is not None else None
+        except (ValueError, TypeError):
+            team_id = None
+
+        path = request.url.path
+        mid = _extract_id(path, _MATCH_ID_PATTERNS)
+        if mid is None:
+            return await call_next(request)
+
+        from backend.db.database import SessionLocal
+        from backend.db.models import Match, Player
+        try:
+            with SessionLocal() as _db:
+                m = _db.get(Match, mid)
+                if m is None:
+                    return StarletteResponse("試合が見つかりません", status_code=404)
+                # 1) public プール
+                if bool(getattr(m, "is_public_pool", False)):
+                    return await call_next(request)
+                # 2) 自チームが owner
+                if team_id is not None and getattr(m, "owner_team_id", None) == team_id:
+                    return await call_next(request)
+                # 3) 自チーム選手が登場
+                if team_id is not None:
+                    pids = [m.player_a_id, m.player_b_id, m.partner_a_id, m.partner_b_id]
+                    pids = [p for p in pids if p]
+                    if pids:
+                        hit = (
+                            _db.query(Player.id)
+                            .filter(Player.id.in_(pids), Player.team_id == team_id)
+                            .first()
+                        )
+                        if hit is not None:
+                            return await call_next(request)
+                # いずれにも該当しない → 存在を隠して 404
+                try:
+                    from backend.utils.access_log import log_access
+                    log_access(_db, "access_denied",
+                               details={"path": path, "match_id": mid, "team_id": team_id})
+                except Exception:
+                    pass
+                return StarletteResponse("試合が見つかりません", status_code=404)
+        except Exception:
+            # 例外時は安全側に倒し、後段の DB エラーに委ねる
+            return await call_next(request)
+
+
+app.add_middleware(TeamScopeAccessControlMiddleware)
+
+
 # ─── /api/analysis/* GET レスポンスキャッシュミドルウェア ────────────────────
 # 読み専用エンドポイントをプロセス内メモリにキャッシュし、解析タブの
 # 再描画を高速化する。認証ヘッダ（X-Role / X-Player-Id / X-Team-Name）を
@@ -804,6 +876,7 @@ class AnalysisCacheMiddleware(BaseHTTPMiddleware):
         jwt_role = ""
         jwt_pid = ""
         jwt_team = ""
+        jwt_team_id = ""
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             from backend.utils.jwt_utils import verify_token
@@ -812,11 +885,15 @@ class AnalysisCacheMiddleware(BaseHTTPMiddleware):
                 jwt_role = _payload.get("role", "")
                 jwt_pid = str(_payload.get("player_id", "")) if _payload.get("player_id") else ""
                 jwt_team = _payload.get("team_name", "") or ""
+                _tid = _payload.get("team_id")
+                jwt_team_id = str(_tid) if _tid is not None else ""
         params = {
             "q": query,
             "role": jwt_role,
             "pid": jwt_pid,
             "team": jwt_team,
+            # Phase B-8: チーム ID をキャッシュキーに含めることで他チーム閲覧結果の漏出を防ぐ
+            "team_id": jwt_team_id,
         }
         key = response_cache.build_key(path, params)
         cached = response_cache.get(key)

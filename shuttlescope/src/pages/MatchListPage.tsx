@@ -31,6 +31,8 @@ interface MatchFormData {
   video_url: string
   video_local_path: string
   notes: string
+  // Phase B-13: admin のみ操作可能。「全チームから閲覧可能な公開プール試合」として登録するか
+  is_public_pool: boolean
 }
 
 const defaultForm = (): MatchFormData => ({
@@ -49,6 +51,7 @@ const defaultForm = (): MatchFormData => ({
   video_url: '',
   video_local_path: '',
   notes: '',
+  is_public_pool: false,
 })
 
 // ─── 選手コンボボックス（名前検索 + 暫定登録対応）────────────────────────────
@@ -459,6 +462,8 @@ export function MatchListPage() {
     if (form.video_url) body.video_url = form.video_url
     if (form.video_local_path) body.video_local_path = form.video_local_path
     if (form.notes) body.notes = form.notes
+    // Phase B-13: 公開プール（admin 限定）。サーバ側でも admin 以外の指定は無視される
+    if (form.is_public_pool) body.is_public_pool = true
 
     if (editingMatchId !== null) {
       console.log('[updateMatch] body:', JSON.stringify(body, null, 2))
@@ -1518,6 +1523,20 @@ export function MatchListPage() {
                     className={`w-full ${inputClass}`}
                   />
                 </div>
+
+                {/* Phase B-13: 公開プール（admin 限定）— 全チーム閲覧可能 */}
+                {role === 'admin' && (
+                  <div className="col-span-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={form.is_public_pool}
+                        onChange={(e) => setForm({ ...form, is_public_pool: e.target.checked })}
+                      />
+                      <span>全チーム共有（公開プール: BWF などの公開試合用。チェックすると全チームから閲覧可）</span>
+                    </label>
+                  </div>
+                )}
               </div>
               <div className="flex gap-3 pt-2">
                 <button

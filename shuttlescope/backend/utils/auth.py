@@ -47,7 +47,7 @@ def filter_by_role(data: dict, role: str) -> dict:
 
 class AuthCtx:
     """リクエストから抽出した現在ユーザーのロール/ID。"""
-    __slots__ = ("role", "player_id", "team_name", "user_id")
+    __slots__ = ("role", "player_id", "team_name", "team_id", "user_id")
 
     def __init__(
         self,
@@ -55,10 +55,12 @@ class AuthCtx:
         player_id: Optional[int],
         team_name: Optional[str] = None,
         user_id: Optional[int] = None,
+        team_id: Optional[int] = None,
     ):
         self.role = role
         self.player_id = player_id
         self.team_name = team_name
+        self.team_id = team_id
         self.user_id = user_id
 
     @property
@@ -109,10 +111,18 @@ def get_auth(request: Request) -> AuthCtx:
                     uid = n if n > 0 else None
                 except (ValueError, TypeError):
                     uid = None
-            # team_name は JWT ペイロードから直接取得
+            # team_name / team_id は JWT ペイロードから直接取得
             tn = payload.get("team_name")
             team_name: Optional[str] = tn.strip() if isinstance(tn, str) and tn.strip() else None
-            return AuthCtx(role, pid, team_name, user_id=uid)
+            tid_raw = payload.get("team_id")
+            team_id: Optional[int] = None
+            if tid_raw is not None:
+                try:
+                    n = int(tid_raw)
+                    team_id = n if n > 0 else None
+                except (ValueError, TypeError):
+                    team_id = None
+            return AuthCtx(role, pid, team_name, user_id=uid, team_id=team_id)
 
     # ── フォールバック: X-Role ヘッダ（ローカルのみ互換）────────────────────
     # loopback 以外からの X-Role ヘッダは信用しない。
@@ -151,13 +161,161 @@ def _match_player_ids(m: Match) -> set[int]:
 
 
 def user_can_access_match(ctx: AuthCtx, m: Match) -> bool:
-    """現在のユーザーがこの試合にアクセスしてよいか。"""
+    """現在のユーザーがこの試合にアクセスしてよいか。
+
+    Phase B-6: チーム境界で遮断する。
+    - admin: 全試合可
+    - player: 自分が登場する試合のみ
+    - coach/analyst: owner_team_id 一致 OR is_public_pool OR 自チーム選手が登場
+    """
+    if ctx.is_admin:
+        return True
     if ctx.is_player:
         if not ctx.player_id:
             return False
         return ctx.player_id in _match_player_ids(m)
-    # analyst / coach / 未ロールは現時点で全試合可（将来チーム制約で絞る）
-    return True
+    # coach / analyst（または未ロール扱いの内部呼び出し含む）
+    owner_id = getattr(m, "owner_team_id", None)
+    is_public = bool(getattr(m, "is_public_pool", False))
+    if ctx.team_id is not None and owner_id is not None and owner_id == ctx.team_id:
+        return True
+    if is_public:
+        return True
+    # public でない場合に「自チーム選手が登場」する場合も閲覧可（解析対象として）
+    if ctx.team_id is not None:
+        from backend.db.database import SessionLocal
+        from backend.db.models import Player
+        ids = _match_player_ids(m)
+        if not ids:
+            return False
+        try:
+            with SessionLocal() as _db:
+                hit = (
+                    _db.query(Player.id)
+                    .filter(Player.id.in_(ids), Player.team_id == ctx.team_id)
+                    .first()
+                )
+            return hit is not None
+        except Exception:
+            return False
+    return False
+
+
+def apply_match_team_scope(query, ctx: AuthCtx):
+    """Match クエリにチーム境界フィルタを適用する。
+
+    admin は素通し。それ以外は次のいずれかを満たすもののみ:
+      - owner_team_id == ctx.team_id
+      - is_public_pool == True
+      - 試合参加選手のいずれかが Player.team_id == ctx.team_id
+
+    player ロールはより厳しく、自分が登場する試合のみ。
+    """
+    from sqlalchemy import or_, exists
+    from backend.db.models import Match, Player
+    if ctx.is_admin:
+        return query
+    if ctx.is_player:
+        if not ctx.player_id:
+            return query.filter(False)
+        pid = ctx.player_id
+        return query.filter(
+            or_(
+                Match.player_a_id == pid,
+                Match.player_b_id == pid,
+                Match.partner_a_id == pid,
+                Match.partner_b_id == pid,
+            )
+        )
+    # coach / analyst
+    if ctx.team_id is None:
+        # チーム未所属（移行期のみ）: public プールのみ
+        return query.filter(Match.is_public_pool.is_(True))
+    team_player_subq = (
+        exists().where(
+            (Player.team_id == ctx.team_id)
+            & Player.id.in_(
+                [Match.player_a_id, Match.player_b_id, Match.partner_a_id, Match.partner_b_id]
+            )
+        )
+    )
+    return query.filter(
+        or_(
+            Match.owner_team_id == ctx.team_id,
+            Match.is_public_pool.is_(True),
+            team_player_subq,
+        )
+    )
+
+
+def require_match_access(match_id: int, request, db) -> "Match":
+    """指定 match_id にアクセス可能か検証して Match を返す。
+
+    アクセス不可の場合は 404 を返す（存在自体を隠してリーク防止）。
+    """
+    from fastapi import HTTPException
+    from backend.db.models import Match as _Match
+    ctx = get_auth(request)
+    m = db.get(_Match, match_id)
+    if not m or not user_can_access_match(ctx, m):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    return m
+
+
+def can_access_player(ctx: AuthCtx, player_id: int, db) -> bool:
+    """選手データへのアクセス可否（Phase B-6 拡張版）。
+
+    - admin: 全可
+    - player: 自分のみ
+    - coach/analyst: 自チーム所属 player（Player.team_id == ctx.team_id）
+      または「自チームから可視な試合に登場する player」
+    """
+    if ctx.is_admin:
+        return True
+    if ctx.is_player:
+        return ctx.player_id is not None and ctx.player_id == player_id
+    if ctx.team_id is None:
+        return False
+    from backend.db.models import Player, Match
+    p = db.get(Player, player_id)
+    if not p:
+        return False
+    if p.team_id is not None and p.team_id == ctx.team_id:
+        return True
+    # 自チームから見える match に登場するか
+    q = db.query(Match.id).filter(
+        (Match.player_a_id == player_id)
+        | (Match.player_b_id == player_id)
+        | (Match.partner_a_id == player_id)
+        | (Match.partner_b_id == player_id)
+    )
+    q = apply_match_team_scope(q, ctx)
+    return q.first() is not None
+
+
+def resolve_owner_team_for_match_create(
+    ctx: AuthCtx,
+    *,
+    requested_team_id: Optional[int] = None,
+    requested_is_public_pool: bool = False,
+) -> tuple[int, bool]:
+    """試合登録時の owner_team_id と is_public_pool を決定する。
+
+    - admin: requested_team_id を尊重（指定なしなら ctx.team_id）、is_public_pool 設定可
+    - coach/analyst: ctx.team_id を強制注入、is_public_pool は無視（False）
+    - その他ロール: 403
+    """
+    from fastapi import HTTPException
+    if ctx.is_admin:
+        team_id = requested_team_id if requested_team_id is not None else ctx.team_id
+        if team_id is None:
+            raise HTTPException(status_code=422, detail="owner_team_id を指定してください")
+        return int(team_id), bool(requested_is_public_pool)
+    if ctx.is_coach or ctx.is_analyst:
+        if ctx.team_id is None:
+            raise HTTPException(status_code=403, detail="チーム未所属のユーザは試合を登録できません")
+        return int(ctx.team_id), False
+    raise HTTPException(status_code=403, detail="この操作の権限がありません")
 
 
 def user_can_access_player(ctx: AuthCtx, player_id: int) -> bool:

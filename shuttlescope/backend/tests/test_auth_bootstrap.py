@@ -2,7 +2,7 @@
 
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import User
+from backend.db.models import Team, User
 from backend.main import app
 from backend.routers.auth import _hash_password
 from backend.utils.jwt_utils import create_access_token
@@ -128,13 +128,15 @@ def test_credential_login_supports_player_password_by_login_id(db_session, monke
 
 def test_admin_can_create_coach_with_password_credential(db_session, monkeypatch):
     db_session.query(User).delete()
+    team = Team(display_id="COACH-T2", name="Team B")
     admin = User(
         username="admin",
         role="admin",
         display_name="Admin",
         hashed_credential=_hash_password("secret"),
     )
-    db_session.add(admin)
+    db_session.add_all([team, admin])
+    db_session.flush()
     db_session.commit()
     monkeypatch.setattr(settings, "BOOTSTRAP_ADMIN_PASSWORD", "", raising=False)
     app.dependency_overrides[get_db] = lambda: db_session
@@ -151,6 +153,7 @@ def test_admin_can_create_coach_with_password_credential(db_session, monkeypatch
                 "username": "coach002",
                 "password": "CoachPass#2026",
                 "team_name": "Team B",
+                "team_id": team.id,
             },
         )
         assert resp.status_code == 201

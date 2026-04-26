@@ -11,22 +11,49 @@ from fastapi.testclient import TestClient
 
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import User, Player, Match
+from backend.db.models import User, Player, Match, Team
 from backend.main import app
 from backend.routers.auth import _hash_password
 from backend.utils.jwt_utils import create_access_token
 
 _PLAYER_USER_ID = 10
+_TEST_TEAM_ID = 9001
 
 
 # ─── フィクスチャ ─────────────────────────────────────────────────────────────
 
-def _make_token(role: str, user_id: int = 99, player_id: int | None = None) -> str:
-    return create_access_token(user_id=user_id, role=role, player_id=player_id)
+def _make_token(
+    role: str,
+    user_id: int = 99,
+    player_id: int | None = None,
+    team_id: int | None = None,
+    team_name: str | None = None,
+) -> str:
+    if role in {"analyst", "coach", "player"} and team_id is None:
+        team_id = _TEST_TEAM_ID
+    if role in {"analyst", "coach", "player"} and team_name is None:
+        team_name = "Test Team"
+    return create_access_token(
+        user_id=user_id,
+        role=role,
+        player_id=player_id,
+        team_name=team_name,
+        team_id=team_id,
+    )
 
 
 def _auth(role: str, **kw) -> dict:
     return {"Authorization": f"Bearer {_make_token(role, **kw)}"}
+
+
+def _seed_team(db_session, team_id: int = _TEST_TEAM_ID, name: str = "Test Team") -> Team:
+    team = db_session.get(Team, team_id)
+    if team:
+        return team
+    team = Team(id=team_id, display_id=f"TEST-{team_id}", name=name)
+    db_session.add(team)
+    db_session.flush()
+    return team
 
 
 # ─── V-08: bootstrap-status 情報漏洩制限 ─────────────────────────────────────
@@ -102,7 +129,9 @@ def seeded_match(db_session):
     db_session.query(User).filter(User.role == "player").delete()
     db_session.commit()
 
-    pa = Player(name="Player A", name_normalized="playera", team="TeamA")
+    team = _seed_team(db_session)
+
+    pa = Player(name="Player A", name_normalized="playera", team=team.name, team_id=team.id)
     pb = Player(name="Player B", name_normalized="playerb", team="TeamB")
     db_session.add_all([pa, pb])
     db_session.flush()
@@ -113,9 +142,11 @@ def seeded_match(db_session):
         username="player_test",
         role="player",
         display_name="Test Player",
-        hashed_credential=_hash_password("pw"),
-        player_id=pa.id,
-    )
+            hashed_credential=_hash_password("pw"),
+            player_id=pa.id,
+            team_name=team.name,
+            team_id=team.id,
+        )
     db_session.add(pu)
     db_session.flush()
 
@@ -128,6 +159,7 @@ def seeded_match(db_session):
         result="unknown",
         player_a_id=pa.id,
         player_b_id=pb.id,
+        owner_team_id=team.id,
     )
     db_session.add(m)
     db_session.commit()
@@ -328,20 +360,23 @@ class TestPipelineMassAssignmentAndRate:
         db_session.query(User).delete()
         db_session.query(_M).delete()
         db_session.query(_P).delete()
-        db_session.add(_P(id=700, name="X", name_normalized="x"))
+        team = _seed_team(db_session, 9700, "Pipeline Test Team")
+        db_session.add(_P(id=700, name="X", name_normalized="x", team=team.name, team_id=team.id))
         db_session.add(_P(id=701, name="Y", name_normalized="y"))
         db_session.add(_M(
             id=700, tournament="T", tournament_level="国内", round="QF",
             date=date(2026, 4, 24), format="singles", result="unknown",
             player_a_id=700, player_b_id=701,
+            owner_team_id=team.id,
         ))
         db_session.add(User(id=700, username="ana700", role="analyst",
-                            display_name="A", hashed_credential=_hash_password("x")))
+                            display_name="A", hashed_credential=_hash_password("x"),
+                            team_name=team.name, team_id=team.id))
         db_session.commit()
 
     def test_pipeline_run_rejects_unknown_job_type(self, db_session):
         self._seed(db_session)
-        token = _make_token("analyst", user_id=700)
+        token = _make_token("analyst", user_id=700, team_id=9700, team_name="Pipeline Test Team")
         app.dependency_overrides[get_db] = lambda: db_session
         try:
             client = TestClient(app, raise_server_exceptions=False)
@@ -356,7 +391,7 @@ class TestPipelineMassAssignmentAndRate:
 
     def test_pipeline_run_rejects_extra_fields(self, db_session):
         self._seed(db_session)
-        token = _make_token("analyst", user_id=700)
+        token = _make_token("analyst", user_id=700, team_id=9700, team_name="Pipeline Test Team")
         app.dependency_overrides[get_db] = lambda: db_session
         try:
             client = TestClient(app, raise_server_exceptions=False)
@@ -374,7 +409,7 @@ class TestPipelineMassAssignmentAndRate:
         monkeypatch.setattr(_pl, "_PIPELINE_MAX_JOBS_PER_WINDOW", 3, raising=True)
         _pl._pipeline_run_counters.clear()
         self._seed(db_session)
-        token = _make_token("analyst", user_id=700)
+        token = _make_token("analyst", user_id=700, team_id=9700, team_name="Pipeline Test Team")
         app.dependency_overrides[get_db] = lambda: db_session
         try:
             client = TestClient(app, raise_server_exceptions=False)
@@ -456,17 +491,20 @@ class TestVideoDownloadSSRF:
         db_session.query(User).delete()
         db_session.query(_Match).delete()
         db_session.query(_P).delete()
-        db_session.add(_P(id=600, name="X", name_normalized="x"))
+        team = _seed_team(db_session, 9600, "Video Test Team")
+        db_session.add(_P(id=600, name="X", name_normalized="x", team=team.name, team_id=team.id))
         db_session.add(_P(id=601, name="Y", name_normalized="y"))
         db_session.add(_Match(
             id=600, tournament="T", tournament_level="国内", round="QF",
             date=date(2026, 4, 24), format="singles", result="unknown",
             player_a_id=600, player_b_id=601, video_url="https://youtube.com/watch?v=1",
+            owner_team_id=team.id,
         ))
         db_session.add(User(id=600, username="analy", role="analyst",
-                            display_name="A", hashed_credential=_hash_password("x")))
+                            display_name="A", hashed_credential=_hash_password("x"),
+                            team_name=team.name, team_id=team.id))
         db_session.commit()
-        token = _make_token("analyst", user_id=600)
+        token = _make_token("analyst", user_id=600, team_id=team.id, team_name=team.name)
         app.dependency_overrides[get_db] = lambda: db_session
         try:
             client = TestClient(app, raise_server_exceptions=False)
@@ -1164,6 +1202,7 @@ class TestAdminCanDoEverything:
                     "date": "2026-01-01", "format": "singles", "result": "unknown",
                     "player_a_id": seeded_match.player_a_id,
                     "player_b_id": seeded_match.player_b_id,
+                    "owner_team_id": seeded_match.owner_team_id,
                 },
                 headers=_auth("admin", user_id=1),
             )
