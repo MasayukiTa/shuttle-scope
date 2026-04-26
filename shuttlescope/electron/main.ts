@@ -118,7 +118,10 @@ function startPythonBackend(): ChildProcess {
       API_PORT: '8765',
       // LAN_MODE=true で 0.0.0.0 バインド → iOS / 同一 LAN デバイスからアクセス可能
       LAN_MODE: 'true',
-      DATABASE_URL: `sqlite:///${path.join(appPath, 'backend', 'db', 'shuttlescope.db')}`,
+      // DATABASE_URL は .env.development を尊重するため Electron 側からの上書きはしない。
+      // .env.development が postgresql/sqlite を切り替える SoT。
+      // 旧コード（参考）:
+      //   DATABASE_URL: `sqlite:///${path.join(appPath, 'backend', 'db', 'shuttlescope.db')}`,
       // watchfiles の自動リロードを無効化（起動時間を 10s → 1s に短縮）
       ENVIRONMENT: 'production',
       // Python の stdout/stderr バッファリングを無効化 → ログが即時流れる
