@@ -14,6 +14,27 @@ def _new_uuid() -> str:
     return str(uuid4())
 
 
+class Team(Base):
+    """チーム（試合所有・データ境界）。
+
+    display_id は表示用の任意識別子（admin/coach が任意文字列を設定）、
+    UI では name を表示するが、内部参照は id（int）/ uuid を使う。
+    is_independent=True のチームは個人ユーザの「無所属」用。
+    """
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    uuid: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True, default=_new_uuid)
+    display_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    short_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    is_independent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -24,7 +45,11 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     hashed_credential: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # 旧: 表示名ベース。Phase B-1 以降は team_id を正とする（移行期間中のみ併存）
     team_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    team_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("teams.id"), nullable=True, index=True
+    )
     # セキュリティ強化カラム
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -92,6 +117,10 @@ class Player(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)           # 選手名（日本語対応）
     name_en: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 英語名（BWF検索用）
     team: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # Phase B-4: 所属チーム（正規化）。team 文字列は表示用に残す
+    team_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("teams.id"), nullable=True, index=True
+    )
     nationality: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     dominant_hand: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default=None)  # R / L / unknown / null
     birth_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -172,6 +201,19 @@ class Match(Base):
     metadata_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="minimal")  # minimal/partial/verified
     # 途中終了: retired_a（自棄権）/ retired_b（相手棄権）/ abandoned（外的中断）
     exception_reason: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    # ── Phase B-3: チーム境界 ────────────────────────────────────────────────
+    # owner_team_id: 試合を登録したチーム（データ所有・閲覧主体）
+    # is_public_pool: True で全チーム参照可能（admin による BWF 等の登録）
+    # home_team_id / away_team_id: 試合参加チーム（owner とは独立）
+    # 0012 で NOT NULL 化済み。アプリ側でも non-Optional として扱う。
+    owner_team_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("teams.id"), nullable=False, index=True
+    )
+    is_public_pool: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0", index=True
+    )
+    home_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
+    away_team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
 
     # リレーション
     player_a: Mapped["Player"] = relationship("Player", foreign_keys=[player_a_id], back_populates="matches_as_a")
@@ -445,6 +487,8 @@ class Comment(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     is_flagged: Mapped[bool] = mapped_column(Boolean, default=False)  # 重要フラグ
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Phase B-7: 書き込みチーム
+    team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
 
     session: Mapped[Optional["SharedSession"]] = relationship("SharedSession", back_populates="comments")
 
@@ -472,6 +516,8 @@ class EventBookmark(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Phase B-7: 書き込みチーム
+    team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
 
 
 # ─── G3: 試合前ウォームアップ観察 ────────────────────────────────────────────
@@ -504,6 +550,8 @@ class PreMatchObservation(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     created_by: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # analyst role identifier
+    # Phase B-7: 書き込みチーム
+    team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
 
 
 class HumanForecast(Base):
@@ -536,6 +584,8 @@ class HumanForecast(Base):
     confidence_level: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # 'high'|'medium'|'low'
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Phase B-7: 書き込みチーム
+    team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
 
 
 
@@ -631,6 +681,8 @@ class PrematchPrediction(Base):
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     match_narrative: Mapped[Optional[str]] = mapped_column(Text, nullable=True)     # JSON
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Phase B-7: 書き込みチーム
+    team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
 
 
 # ─── コンディション（体調）Phase 1 ──────────────────────────────────────────────
@@ -760,6 +812,8 @@ class ExpertLabel(Base):
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Phase B-7: 書き込みチーム
+    team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
 
 
 class ClipCache(Base):
@@ -777,6 +831,8 @@ class ClipCache(Base):
     start_frame: Mapped[int] = mapped_column(Integer, nullable=False)
     end_frame: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Phase B-7: 書き込みチーム
+    team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
 
 
 # ─── INFRA Phase B: 解析パイプライン ────────────────────────────────────────

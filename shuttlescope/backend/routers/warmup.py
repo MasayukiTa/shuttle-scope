@@ -1,11 +1,13 @@
 """G3: 試合前ウォームアップ観察 API（/api/warmup）"""
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import PreMatchObservation, Match, Player
+from backend.utils.auth import get_auth
 from backend.utils.sync_meta import touch_sync_metadata, get_device_id
 
 router = APIRouter()
@@ -57,17 +59,16 @@ def obs_to_dict(o: PreMatchObservation) -> dict:
 
 
 @router.get("/warmup/observations/{match_id}")
-def get_warmup_observations(match_id: int, db: Session = Depends(get_db)):
+def get_warmup_observations(match_id: int, request: Request, db: Session = Depends(get_db)):
     """試合の全ウォームアップ観察を取得"""
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    obs = (
-        db.query(PreMatchObservation)
-        .filter(PreMatchObservation.match_id == match_id)
-        .order_by(PreMatchObservation.created_at)
-        .all()
-    )
+    ctx = get_auth(request)
+    q = db.query(PreMatchObservation).filter(PreMatchObservation.match_id == match_id)
+    if not ctx.is_admin:
+        q = q.filter(or_(PreMatchObservation.team_id.is_(None), PreMatchObservation.team_id == ctx.team_id))
+    obs = q.order_by(PreMatchObservation.created_at).all()
     return {"success": True, "data": [obs_to_dict(o) for o in obs]}
 
 
@@ -75,12 +76,14 @@ def get_warmup_observations(match_id: int, db: Session = Depends(get_db)):
 def save_warmup_observations(
     match_id: int,
     body: BatchObservationsIn,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """ウォームアップ観察を一括保存（既存データは observation_type + player_id 単位で上書き）"""
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    ctx = get_auth(request)
 
     saved = []
     for item in body.observations:
@@ -97,16 +100,15 @@ def save_warmup_observations(
             )
 
         device_id = get_device_id(db)
-        # 既存エントリを上書き
-        existing = (
-            db.query(PreMatchObservation)
-            .filter(
-                PreMatchObservation.match_id == match_id,
-                PreMatchObservation.player_id == item.player_id,
-                PreMatchObservation.observation_type == item.observation_type,
-            )
-            .first()
+        # Phase B-12: 自チームの書き込みのみ上書き（他チーム所有の観察を踏まないため）
+        eq = db.query(PreMatchObservation).filter(
+            PreMatchObservation.match_id == match_id,
+            PreMatchObservation.player_id == item.player_id,
+            PreMatchObservation.observation_type == item.observation_type,
         )
+        if not ctx.is_admin:
+            eq = eq.filter(or_(PreMatchObservation.team_id.is_(None), PreMatchObservation.team_id == ctx.team_id))
+        existing = eq.first()
         payload = {
             "match_id": match_id,
             "player_id": item.player_id,
@@ -119,6 +121,8 @@ def save_warmup_observations(
             existing.confidence_level = item.confidence_level
             existing.note = item.note
             existing.created_by = item.created_by
+            if existing.team_id is None:
+                existing.team_id = ctx.team_id
             touch_sync_metadata(existing, payload_like=payload, device_id=device_id)
             saved.append(existing)
         else:
@@ -131,6 +135,7 @@ def save_warmup_observations(
                 source="warmup",
                 note=item.note,
                 created_by=item.created_by,
+                team_id=ctx.team_id,
             )
             db.add(obs)
             touch_sync_metadata(obs, payload_like=payload, device_id=device_id)

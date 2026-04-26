@@ -23,6 +23,7 @@ def create_access_token(
     role: str,
     player_id: Optional[int] = None,
     team_name: Optional[str] = None,
+    team_id: Optional[int] = None,
     hours: Optional[float] = None,
     minutes: Optional[float] = None,
 ) -> str:
@@ -45,6 +46,8 @@ def create_access_token(
         payload["player_id"] = player_id
     if team_name:
         payload["team_name"] = team_name
+    if team_id is not None:
+        payload["team_id"] = team_id
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 

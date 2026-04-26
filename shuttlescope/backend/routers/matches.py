@@ -16,7 +16,12 @@ from backend.db.models import Match, Player, GameSet, Rally, MatchCVArtifact
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 from backend.utils.sync_meta import touch
-from backend.utils.auth import get_auth
+from backend.utils.auth import (
+    get_auth,
+    apply_match_team_scope,
+    user_can_access_match,
+    resolve_owner_team_for_match_create,
+)
 
 router = APIRouter()
 
@@ -44,6 +49,12 @@ class MatchCreate(BaseModel):
     created_via_quick_start: bool = False
     metadata_status: Optional[str] = "minimal"
     annotation_status: Optional[str] = None
+    # Phase B-5: チーム境界（admin のみ owner_team_id/is_public_pool を指定可能。
+    # coach/analyst の指定はサーバ側で無視され、ctx.team_id が強制される）
+    owner_team_id: Optional[int] = None
+    is_public_pool: bool = False
+    home_team_id: Optional[int] = None
+    away_team_id: Optional[int] = None
 
 
 class MatchUpdate(BaseModel):
@@ -72,6 +83,11 @@ class MatchUpdate(BaseModel):
     competition_type: Optional[str] = None
     metadata_status: Optional[str] = None
     exception_reason: Optional[str] = None
+    # Phase B-5: admin のみ変更可
+    owner_team_id: Optional[int] = None
+    is_public_pool: Optional[bool] = None
+    home_team_id: Optional[int] = None
+    away_team_id: Optional[int] = None
 
 
 # ビジネスロジック用 enum (config.py で定義された値と一致)
@@ -370,38 +386,11 @@ def list_matches(
     ctx = get_auth(request)
     query = db.query(Match)
 
-    # role=player → 自身が関与する試合のみに強制的に絞り込み
-    if ctx.is_player:
-        if not ctx.player_id:
-            return {"success": True, "data": []}
-        pid = ctx.player_id
-        query = query.filter(or_(
-            Match.player_a_id  == pid,
-            Match.partner_a_id == pid,
-            Match.player_b_id  == pid,
-            Match.partner_b_id == pid,
-        ))
-    # role=coach / analyst → 自チーム選手がどちらかのサイドに登録されている試合のみ
-    # (admin は全件閲覧可、analyst は team scope を強制して cross-team 閲覧を遮断)
-    elif ctx.is_coach or ctx.is_analyst:
-        if not ctx.team_name:
-            # loopback (X-Role 互換) で team 未設定なら dev/test 用途として全件返す
-            from backend.utils.control_plane import allow_legacy_header_auth
-            if allow_legacy_header_auth(request):
-                pass  # フィルタ無し（admin 同等）
-            else:
-                return {"success": True, "data": []}
-        else:
-            team_player_ids = [p.id for p in db.query(Player.id).filter(Player.team == ctx.team_name).all()]
-            if not team_player_ids:
-                return {"success": True, "data": []}
-            query = query.filter(or_(
-                Match.player_a_id.in_(team_player_ids),
-                Match.partner_a_id.in_(team_player_ids),
-                Match.player_b_id.in_(team_player_ids),
-                Match.partner_b_id.in_(team_player_ids),
-            ))
-    elif player_id:
+    # Phase B-6: チーム境界フィルタを統一適用（admin は素通し、player は自身関与のみ、
+    # coach/analyst は owner / public / 自チーム選手登場 のいずれか）
+    query = apply_match_team_scope(query, ctx)
+
+    if player_id and not ctx.is_player:
         query = query.filter(
             (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
         )
@@ -432,7 +421,11 @@ def list_matches(
 
 @router.post("/matches", status_code=201)
 def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_db)):
-    """試合登録"""
+    """試合登録
+
+    Phase B-5: owner_team_id / is_public_pool は admin のみ自由設定可。
+    coach/analyst の場合は ctx.team_id を強制注入し、is_public_pool は False に。
+    """
     ctx = get_auth(request)
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
@@ -456,7 +449,16 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
                         status_code=403,
                         detail=f"自チーム ({team}) の選手が含まれない試合は作成できません",
                     )
-    match = Match(**body.model_dump())
+    # Phase B-5: owner_team_id / is_public_pool を解決
+    owner_id, is_public = resolve_owner_team_for_match_create(
+        ctx,
+        requested_team_id=body.owner_team_id,
+        requested_is_public_pool=body.is_public_pool,
+    )
+    payload = body.model_dump()
+    payload["owner_team_id"] = owner_id
+    payload["is_public_pool"] = is_public
+    match = Match(**payload)
     touch(match)
     db.add(match)
     db.commit()
@@ -474,33 +476,8 @@ def list_needs_review_matches(request: Request, db: Session = Depends(get_db)):
     """要レビュー試合一覧（V4-U-003）— {match_id} より前に定義が必要"""
     ctx = get_auth(request)
     q = db.query(Match).filter(Match.metadata_status != "verified")
-    if ctx.is_player:
-        if not ctx.player_id:
-            return {"success": True, "data": []}
-        pid = ctx.player_id
-        q = q.filter(or_(
-            Match.player_a_id  == pid,
-            Match.partner_a_id == pid,
-            Match.player_b_id  == pid,
-            Match.partner_b_id == pid,
-        ))
-    elif ctx.is_coach or ctx.is_analyst:
-        # analyst も自チーム scope を強制 (cross-team 漏洩防止)
-        if not ctx.team_name:
-            from backend.utils.control_plane import allow_legacy_header_auth
-            if not allow_legacy_header_auth(request):
-                return {"success": True, "data": []}
-            # loopback dev/test では全件返す
-        else:
-            team_player_ids = [p.id for p in db.query(Player.id).filter(Player.team == ctx.team_name).all()]
-            if not team_player_ids:
-                return {"success": True, "data": []}
-            q = q.filter(or_(
-                Match.player_a_id.in_(team_player_ids),
-                Match.partner_a_id.in_(team_player_ids),
-                Match.player_b_id.in_(team_player_ids),
-                Match.partner_b_id.in_(team_player_ids),
-            ))
+    # Phase B-6: チーム境界フィルタを統一適用
+    q = apply_match_team_scope(q, ctx)
     matches = q.order_by(Match.created_at.desc()).all()
     ctx_bulk = _bulk_match_context(matches, db)
     return {"success": True, "data": [
@@ -514,13 +491,15 @@ def get_match(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """試合詳細 (BOLA/IDOR: ロール別スコープ検証)。
+    """試合詳細 (BOLA/IDOR: ロール別スコープ検証 + Phase B-6 チーム境界)。
     match_id は 32bit 正整数に制限 (int overflow で 500 が返る経路を遮断)。
     """
     if match_id <= 0 or match_id > 2**31 - 1:
         raise HTTPException(status_code=422, detail="match_id out of range")
+    ctx = get_auth(request)
     match = db.get(Match, match_id)
-    if not match:
+    if not match or not user_can_access_match(ctx, match):
+        # 存在自体を隠す（403 ではなく 404）
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     # player/coach は require_match_scope で自分/自チームに関わる試合のみ許可
     from backend.utils.auth import require_match_scope
@@ -537,21 +516,27 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     _validate_match_enums(body)
     # 既存レコードを取得してから player refs を検証 (merged state で論理整合性確認)
     match = db.get(Match, match_id)
-    if not match:
+    if not match or not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     # analyst/coach は自チーム scope のみ更新可 (cross-team 改竄防止)
     from backend.utils.auth import require_match_scope as _rms
     _rms(request, match, db)
     _validate_match_player_refs(body, db, match=match)
+    # Phase B-5: owner / public / home / away の変更は admin のみ
+    payload = body.model_dump(exclude_unset=True)
+    privileged_keys = {"owner_team_id", "is_public_pool", "home_team_id", "away_team_id"}
+    if any(k in payload for k in privileged_keys) and not ctx.is_admin:
+        for k in list(privileged_keys):
+            payload.pop(k, None)
     # audit log: 変更前の値と変更後の値を記録 (match データ改竄の forensic 用)
     from backend.utils.access_log import log_access as _log
     _log(db, "match_updated", user_id=ctx.user_id,
          resource_type="match", resource_id=match_id,
-         details={"actor_role": ctx.role, "fields": list(body.model_dump(exclude_unset=True).keys())})
+         details={"actor_role": ctx.role, "fields": list(payload.keys())})
     # 更新前の関与選手を退避（選手差し替えの場合、旧選手のキャッシュも無効化が必要）
     pre_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     from backend.utils.db_update import apply_update
-    apply_update(match, body.model_dump(exclude_unset=True))
+    apply_update(match, payload)
     touch(match)
     db.commit()
     post_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
@@ -567,8 +552,14 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     if not (ctx.is_admin or ctx.is_analyst):
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     match = db.get(Match, match_id)
-    if not match:
+    if not match or not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # Phase B-5/B-6: 公開プール / 他チーム所有試合の削除は admin のみ
+    if not ctx.is_admin:
+        if bool(getattr(match, "is_public_pool", False)):
+            raise HTTPException(status_code=403, detail="公開プール試合の削除は admin のみ可能です")
+        if match.owner_team_id is not None and match.owner_team_id != ctx.team_id:
+            raise HTTPException(status_code=404, detail="試合が見つかりません")
     # analyst は自チームの試合のみ削除可 (cross-team 改竄防止)。admin は全試合可。
     if ctx.is_analyst:
         team = (ctx.team_name or "").strip()
@@ -620,6 +611,7 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
     ctx = get_auth(request)
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    owner_id, is_public = resolve_owner_team_for_match_create(ctx)
     # 自チーム選手確認
     player_a = db.get(Player, body.player_a_id)
     if not player_a:
@@ -661,6 +653,8 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
         created_via_quick_start=True,
         metadata_status="minimal",
         annotation_status="in_progress",
+        owner_team_id=owner_id,
+        is_public_pool=is_public,
     )
     db.add(match)
     db.commit()
@@ -680,9 +674,10 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
 
 @router.get("/matches/{match_id}/rallies")
 def get_match_rallies(match_id: int, request: Request, db: Session = Depends(get_db)):
-    """試合のラリー一覧 (BOLA/IDOR: ロール別スコープ検証)"""
+    """試合のラリー一覧 (BOLA/IDOR: ロール別スコープ検証 + Phase B-6)"""
+    ctx = get_auth(request)
     match = db.get(Match, match_id)
-    if not match:
+    if not match or not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     from backend.utils.auth import require_match_scope
     require_match_scope(request, match, db)

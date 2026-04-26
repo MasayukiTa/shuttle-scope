@@ -229,6 +229,40 @@ export function authLogout(): Promise<{ success: boolean }> {
   return apiPost<{ success: boolean }>('/auth/logout', rt ? { refresh_token: rt } : {})
 }
 
+// ── Phase B: チーム管理 ───────────────────────────────────────────────────
+export interface TeamDTO {
+  id: number
+  uuid: string
+  display_id: string | null
+  name: string
+  short_name: string | null
+  is_independent: boolean
+  notes: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export function listTeams(): Promise<{ success: boolean; data: TeamDTO[] }> {
+  return apiGet('/auth/teams')
+}
+
+export function createTeam(body: {
+  name: string
+  display_id?: string | null
+  short_name?: string | null
+  notes?: string | null
+  is_independent?: boolean
+}): Promise<{ success: boolean; data: TeamDTO }> {
+  return apiPost('/auth/teams', body)
+}
+
+export function patchTeam(
+  teamId: number,
+  body: { name?: string; display_id?: string | null; short_name?: string | null; notes?: string | null },
+): Promise<{ success: boolean; data: TeamDTO }> {
+  return apiPatch(`/auth/teams/${teamId}`, body)
+}
+
 export interface PublicInquiryRow {
   id: number
   name: string

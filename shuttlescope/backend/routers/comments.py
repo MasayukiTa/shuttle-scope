@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -62,6 +63,8 @@ def create_comment(body: CommentCreate, request: Request, db: Session = Depends(
     author_role = ctx.role or "unknown"
     data = body.model_dump()
     data["author_role"] = author_role
+    # Phase B-12: 書き込みチームを ctx から強制注入（リーク防止）
+    data["team_id"] = ctx.team_id
 
     comment = Comment(**data)
     db.add(comment)
@@ -103,12 +106,14 @@ def list_comments(
     flagged_only: bool = False,
     db: Session = Depends(get_db),
 ):
-    """コメント一覧（match_id 必須）。match スコープ認可を適用する。"""
+    """コメント一覧（match_id 必須）。match スコープ認可 + Phase B-12 チーム境界を適用。"""
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    _require_match_scope(request, match, db)
+    ctx = _require_match_scope(request, match, db)
     q = db.query(Comment).filter(Comment.match_id == match_id, Comment.deleted_at.is_(None))
+    if not ctx.is_admin:
+        q = q.filter(or_(Comment.team_id.is_(None), Comment.team_id == ctx.team_id))
     if rally_id is not None:
         q = q.filter(Comment.rally_id == rally_id)
     if flagged_only:

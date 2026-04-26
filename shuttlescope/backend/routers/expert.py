@@ -257,6 +257,9 @@ def upsert_label(
         existing.confidence = body.confidence
         existing.comment = body.comment
         existing.updated_at = datetime.utcnow()
+        # Phase B-12: 旧 NULL から書き込み主体に確定させる
+        if existing.team_id is None:
+            existing.team_id = _ctx.team_id
         label = existing
     else:
         label = ExpertLabel(
@@ -268,6 +271,7 @@ def upsert_label(
             shot_timing=body.shot_timing,
             confidence=body.confidence,
             comment=body.comment,
+            team_id=_ctx.team_id,
         )
         db.add(label)
     db.commit()
@@ -283,7 +287,11 @@ def list_labels(
     _ctx: AuthCtx = Depends(require_labeler_role),
 ):
     """指定試合（任意で role 絞り込み）のラベル一覧。"""
+    from sqlalchemy import or_ as _or
     q = db.query(ExpertLabel).filter(ExpertLabel.match_id == match_id)
+    # Phase B-12: 自チームの書き込み + NULL（互換）のみ。admin は全件
+    if not _ctx.is_admin:
+        q = q.filter(_or(ExpertLabel.team_id.is_(None), ExpertLabel.team_id == _ctx.team_id))
     if annotator_role:
         q = q.filter(ExpertLabel.annotator_role == annotator_role)
     return q.all()
