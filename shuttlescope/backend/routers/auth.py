@@ -1541,7 +1541,8 @@ class AuditLogEntry(BaseModel):
     resource_id: Optional[int]
     details: Optional[str]
     ip_addr: Optional[str]
-    created_at: str
+    # datetime 型で保持 → UTCJSONResponse が ISO+"Z" にシリアライズ
+    created_at: Optional[datetime]
 
 
 @router.get("/audit-logs")
@@ -1599,7 +1600,9 @@ def list_audit_logs(
             resource_id=r.resource_id,
             details=r.details,
             ip_addr=r.ip_addr,
-            created_at=r.created_at.isoformat() if r.created_at else "",
+            # backend.main.UTCJSONResponse がグローバルに naive datetime を
+            # ISO + "Z" 形式に変換するため、datetime オブジェクトをそのまま渡す
+            created_at=r.created_at,
         )
         for r in rows
     ]

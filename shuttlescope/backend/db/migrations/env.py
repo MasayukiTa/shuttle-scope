@@ -24,8 +24,10 @@ from backend.db.database import Base
 
 config = context.config
 
-# alembic.ini の sqlalchemy.url を settings の値で上書き（絶対パス対応）
-configured_url = config.get_main_option("sqlalchemy.url") or settings.DATABASE_URL
+# settings.DATABASE_URL を優先（.env で SQLite ↔ PostgreSQL を切替できるように）
+# 旧コードは ini の sqlalchemy.url を優先していたが、ini はテンプレ既定値で
+# 実 DB を反映していないため、settings 側 (.env 読込済み) を SoT にする。
+configured_url = settings.DATABASE_URL or config.get_main_option("sqlalchemy.url")
 config.set_main_option("sqlalchemy.url", configured_url)
 
 if config.config_file_name is not None:

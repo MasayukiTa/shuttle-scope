@@ -5,6 +5,7 @@ shuttlescope/docs/validation/
 shuttlescope/backend/db/shuttlescope.db
 shuttlescope/shuttlescope.db
 shuttlescope/backend/db/*.db.bak_*
+shuttlescope/backend/db/*.db.sqlite-backup-*
 
 # 動画ファイル
 shuttlescope/videos/

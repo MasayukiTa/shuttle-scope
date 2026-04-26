@@ -569,6 +569,7 @@ def bootstrap_database(eng=None, db_url: str | None = None) -> None:
     """Initialize the database safely across fresh, legacy, and versioned states."""
     bind = eng or engine
     url = db_url or settings.DATABASE_URL
+    is_sqlite = "sqlite" in url
 
     if ":memory:" in url:
         create_tables(bind)
@@ -583,7 +584,8 @@ def bootstrap_database(eng=None, db_url: str | None = None) -> None:
         _ensure_unique_indexes(bind)
         _ensure_analytics_indexes(bind)
         stamp_db_head(url)
-        _ensure_auto_vacuum_incremental(bind)
+        if is_sqlite:
+            _ensure_auto_vacuum_incremental(bind)
         return
 
     if has_version_table:
@@ -591,12 +593,16 @@ def bootstrap_database(eng=None, db_url: str | None = None) -> None:
         run_db_migrations(url)
         _ensure_unique_indexes(bind)
         _ensure_analytics_indexes(bind)
-        _ensure_auto_vacuum_incremental(bind)
+        if is_sqlite:
+            _ensure_auto_vacuum_incremental(bind)
         return
 
     create_tables(bind)
-    add_columns_if_missing(bind)
+    # add_columns_if_missing は SQLite の type-loose ALTER 前提のため SQLite 限定
+    if is_sqlite:
+        add_columns_if_missing(bind)
     run_db_migrations(url)
     _ensure_unique_indexes(bind)
     _ensure_analytics_indexes(bind)
-    _ensure_auto_vacuum_incremental(bind)
+    if is_sqlite:
+        _ensure_auto_vacuum_incremental(bind)

@@ -293,6 +293,27 @@ _docs_url    = None if _hide_docs else "/docs"
 _redoc_url   = None if _hide_docs else "/redoc"
 _openapi_url = None if _hide_docs else "/openapi.json"
 
+
+# ─── タイムゾーン整合: naive datetime を UTC として ISO+"Z" で返す ─────────────
+# backend は datetime.utcnow() で naive UTC 値を保存している。フロントの
+# JavaScript Date() が "Z" suffix を見て自動で local TZ (JST 等) に変換できるよう、
+# JSON シリアライズ時にすべての naive datetime に UTC 識別子を付与する。
+#
+# FastAPI は response 作成前に fastapi.encoders.jsonable_encoder を呼ぶため、
+# ENCODERS_BY_TYPE のグローバルマップを上書きすることで全エンドポイントに
+# 影響を与える。Pydantic v2 のモデル経由でも、最終的に jsonable_encoder を
+# 通すため共通的に適用される。
+from datetime import datetime as _dt_iso
+from fastapi.encoders import ENCODERS_BY_TYPE as _FA_ENCODERS
+
+def _serialize_datetime(value):
+    if value.tzinfo is None:
+        return value.isoformat() + "Z"
+    return value.isoformat()
+
+_FA_ENCODERS[_dt_iso] = _serialize_datetime
+
+
 app = FastAPI(
     title="ShuttleScope API",
     version="1.0.0",
