@@ -57,12 +57,17 @@ def create_human_forecast(
 ):
     """試合前の人間予測を保存する"""
     # 試合存在確認
-    if not db.get(Match, body.match_id):
+    m = db.get(Match, body.match_id)
+    if not m:
         raise HTTPException(status_code=404, detail="Match not found")
     if not db.get(Player, body.player_id):
         raise HTTPException(status_code=404, detail="Player not found")
 
     ctx = get_auth(request)
+    # Phase B: チーム境界チェック (4-1)
+    from backend.utils.auth import user_can_access_match
+    if not user_can_access_match(ctx, m):
+        raise HTTPException(status_code=404, detail="Match not found")
     forecast = HumanForecast(
         match_id=body.match_id,
         player_id=body.player_id,
@@ -117,14 +122,25 @@ def get_human_forecasts(
 @router.delete("/prediction/human_forecast/{forecast_id}")
 def delete_human_forecast(
     forecast_id: int,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """人間予測を論理削除する（tombstone）"""
     f = db.get(HumanForecast, forecast_id)
     if not f or f.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Forecast not found")
-    from datetime import datetime
-    f.deleted_at = datetime.utcnow()
+    # Phase B: チーム境界チェック (4-1)
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        # 自チーム作成（team_id 一致）か、互換 NULL のみ削除可
+        if f.team_id is not None and f.team_id != ctx.team_id:
+            raise HTTPException(status_code=404, detail="Forecast not found")
+        m = db.get(Match, f.match_id)
+        if m is None:
+            raise HTTPException(status_code=404, detail="Forecast not found")
+        from backend.utils.auth import user_can_access_match
+        if not user_can_access_match(ctx, m):
+            raise HTTPException(status_code=404, detail="Forecast not found")
     touch_sync_metadata(f, device_id=get_device_id(db))
     db.commit()
     return {"success": True}

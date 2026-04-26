@@ -48,6 +48,10 @@ def create_comment(body: CommentCreate, request: Request, db: Session = Depends(
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     ctx = _require_match_scope(request, match, db)
+    # Phase B: 多層防御 — team_id ベースのアクセス制御を追加 (4-1)
+    from backend.utils.auth import user_can_access_match
+    if not user_can_access_match(ctx, match):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
     # DoS 対策: user あたり 60 秒に 20 comment 上限
     if ctx.user_id:
         now = _t_c.time()

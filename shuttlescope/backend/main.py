@@ -111,23 +111,23 @@ async def _stale_device_cleanup():
     while True:
         await asyncio.sleep(30)
         try:
-            db = SessionLocal()
-            cutoff = datetime.utcnow() - timedelta(seconds=60)
-            stale = (
-                db.query(SessionParticipant)
-                .filter(
-                    SessionParticipant.is_connected.is_(True),
-                    SessionParticipant.last_heartbeat.isnot(None),
-                    SessionParticipant.last_heartbeat < cutoff,
+            # try/finally で確実にセッションを返却（30秒毎ループでの蓄積リーク防止）
+            with SessionLocal() as db:
+                cutoff = datetime.utcnow() - timedelta(seconds=60)
+                stale = (
+                    db.query(SessionParticipant)
+                    .filter(
+                        SessionParticipant.is_connected.is_(True),
+                        SessionParticipant.last_heartbeat.isnot(None),
+                        SessionParticipant.last_heartbeat < cutoff,
+                    )
+                    .all()
                 )
-                .all()
-            )
-            for p in stale:
-                p.is_connected = False
-                logger.debug("stale device disconnected: participant_id=%d", p.id)
-            if stale:
-                db.commit()
-            db.close()
+                for p in stale:
+                    p.is_connected = False
+                    logger.debug("stale device disconnected: participant_id=%d", p.id)
+                if stale:
+                    db.commit()
         except Exception as exc:
             logger.warning("stale cleanup error: %s", exc)
 

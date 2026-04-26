@@ -1363,14 +1363,20 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         prev_team_id = user.team_id
         if prev_team_id != team.id:
             log_access(
-                db, "user_team_id_changed",
-                user_id=ctx.user_id, resource_type="user", resource_id=user.id,
+                db,
+                "user_team_changed",
+                user_id=ctx.user_id,
+                resource_type="user",
+                resource_id=user.id,
                 details={
                     "actor_role": ctx.role,
                     "target_user_id": user.id,
                     "from_team_id": prev_team_id,
                     "to_team_id": team.id,
                     "to_team_display_id": team.display_id,
+                    "new_team_name": team.name,
+                },
+            )
                 },
             )
         user.team_id = team.id

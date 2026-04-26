@@ -24,8 +24,8 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     cols = {c["name"] for c in inspector.get_columns("players")}
     if "team_id" not in cols:
-        with op.batch_alter_table("players") as batch:
-            batch.add_column(sa.Column(
+        with op.batch_alter_table("players") as batch_op:
+            batch_op.add_column(sa.Column(
                 "team_id", sa.Integer(),
                 sa.ForeignKey("teams.id", name="fk_players_team_id_teams"),
                 nullable=True,
