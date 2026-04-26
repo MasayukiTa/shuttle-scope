@@ -118,7 +118,7 @@
       "submitting": "Changing...",
       "mismatch": "New passwords do not match",
       "success": "Password changed",
-      "requirements": "Use at least 12 characters including uppercase, lowercase, digits and symbols"
+      "requirements": "Use at least 12 characters including at least 3 of: uppercase, lowercase, digits, symbols"
     },
     "admin_reset": {
       "title": "Force password reset",
@@ -2312,7 +2312,7 @@
       "empty_all": "No users registered",
       "validate_display_name": "Please enter a display name",
       "validate_username": "Please enter a login ID",
-      "validate_team_name": "Please enter a team name (required for non-admin roles)",
+      "validate_team_name": "Select a team or enter a team name (required for non-admin roles)",
       "delete_confirm": "Delete {{name}}?",
       "reset_confirm": "Reset {{name}}'s password to a temporary value?",
       "pw_show": "Show",

@@ -118,7 +118,7 @@
       "submitting": "変更中...",
       "mismatch": "新しいパスワードが一致しません",
       "success": "パスワードを変更しました",
-      "requirements": "12 文字以上で、大文字・小文字・数字・記号を含めてください"
+      "requirements": "12 文字以上で、大文字・小文字・数字・記号 のうち少なくとも 3 種類を含めてください"
     },
     "admin_reset": {
       "title": "パスワード強制リセット",
@@ -2312,7 +2312,7 @@
       "empty_all": "ユーザーが登録されていません",
       "validate_display_name": "表示名を入力してください",
       "validate_username": "ログインIDを入力してください",
-      "validate_team_name": "チーム名を入力してください（admin 以外は必須）",
+      "validate_team_name": "所属チームを選択するかチーム名を入力してください（admin 以外は必須）",
       "delete_confirm": "{{name}} を削除しますか？",
       "reset_confirm": "{{name}} のパスワードを一時値にリセットしますか？",
       "pw_show": "表示",

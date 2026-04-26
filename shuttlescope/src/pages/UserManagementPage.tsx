@@ -161,6 +161,8 @@ export function UserManagementPage() {
 
   const isPlayerRole = form.role === 'player'
   const isCoachRole = form.role === 'coach'
+  // 非 admin は team が必須。team_name 入力 or team_id 選択のいずれかでよい
+  const needsTeam = form.role !== 'admin'
 
   const credentialLabel = useMemo(() => {
     if (isPlayerRole) {
@@ -263,8 +265,10 @@ export function UserManagementPage() {
       setError(t('users.manage.validate_username'))
       return
     }
-    // analyst/coach/player は team_name 必須 (admin のみ team 跨ぎ可能)
-    if (form.role !== 'admin' && !form.team_name.trim()) {
+    // analyst/coach/player は team 必須 (admin のみ team 跨ぎ可能)。
+    // Phase B-2 以降は team_id（既存チーム選択）でも OK。team_name 入力か
+    // 既存チームから team_id 選択のいずれかで通す。
+    if (form.role !== 'admin' && !form.team_name.trim() && !form.team_id.trim()) {
       setError(t('users.manage.validate_team_name'))
       return
     }
@@ -460,7 +464,49 @@ export function UserManagementPage() {
                 inputCls={inputCls}
               />
 
-              {isCoachRole ? (
+              {/* Phase B-2: 所属チーム選択 — 既存チームから選択 or 新規作成
+                  admin: 既存 team_id 選択 + team_name 自由入力（新規）両対応
+                  非 admin (coach 編集等): team_name 入力欄のみ */}
+              {needsTeam && myRole === 'admin' ? (
+                <div className="col-span-2">
+                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>所属チーム</label>
+                  <select
+                    value={form.team_id}
+                    onChange={(e) => {
+                      const tid = e.target.value
+                      const selected = teams.find((tt) => String(tt.id) === tid)
+                      setForm((f) => ({
+                        ...f,
+                        team_id: tid,
+                        // 既存チーム選択時は team_name もそのチーム名で同期（送信時に整合）
+                        team_name: selected ? selected.name : f.team_name,
+                      }))
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">— 既存チームから選択（または下に新規名を入力）—</option>
+                    {teams.map((tm) => (
+                      <option key={tm.id} value={tm.id}>
+                        {tm.name} {tm.is_independent ? '［無所属］' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={form.team_name}
+                    onChange={(e) => setForm((f) => ({
+                      ...f,
+                      team_name: e.target.value,
+                      // 自由入力モードに切替 → team_id 選択をクリア
+                      team_id: e.target.value && f.team_id ? '' : f.team_id,
+                    }))}
+                    className={`${inputCls} mt-2`}
+                    placeholder={t('users.manage.team_name_placeholder')}
+                  />
+                  <p className={`mt-1 text-[11px] ${textMuted}`}>
+                    既存チームから選択するか、上にない新規チーム名を入力してください（自動作成）。
+                  </p>
+                </div>
+              ) : needsTeam ? (
                 <div>
                   <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.team_name')}</label>
                   <input
@@ -469,28 +515,6 @@ export function UserManagementPage() {
                     className={inputCls}
                     placeholder={t('users.manage.team_name_placeholder')}
                   />
-                </div>
-              ) : null}
-
-              {/* Phase B-2: 所属チーム（teams テーブル）。admin のみ変更可 */}
-              {myRole === 'admin' ? (
-                <div className="col-span-2">
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>所属チーム（team_id）</label>
-                  <select
-                    value={form.team_id}
-                    onChange={(e) => setForm((f) => ({ ...f, team_id: e.target.value }))}
-                    className={inputCls}
-                  >
-                    <option value="">— 変更なし / 新規時は独立チーム自動生成 —</option>
-                    {teams.map((tm) => (
-                      <option key={tm.id} value={tm.id}>
-                        {tm.name} {tm.display_id ? `(${tm.display_id})` : ''} {tm.is_independent ? '［無所属］' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <p className={`mt-1 text-[11px] ${textMuted}`}>
-                    既存ユーザーの team_id を変更する場合、ここで選択してください。チーム編集は <a href="/teams" className="text-blue-500 underline">/teams</a> から。
-                  </p>
                 </div>
               ) : null}
 
