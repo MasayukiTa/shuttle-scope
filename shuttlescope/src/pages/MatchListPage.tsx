@@ -1105,6 +1105,16 @@ export function MatchListPage() {
                     <td className="py-2 pr-4">{m.tournament}</td>
                     <td className="py-2 pr-4">
                       <span className={`px-1.5 py-0.5 rounded text-xs ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-700'}`}>{m.tournament_level}</span>
+                      {m.is_public_pool && (
+                        <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400" title="全チームから閲覧可能な公開プール試合">
+                          共有
+                        </span>
+                      )}
+                      {m.owner_team_display_id && (
+                        <span className={`ml-1 text-[10px] ${textSecondary}`} title={`登録チーム: ${m.owner_team_display_name ?? ''}`}>
+                          [{m.owner_team_display_id}]
+                        </span>
+                      )}
                     </td>
                     <td className={`py-2 pr-4 ${textSecondary}`}>{t(`match.formats.${m.format}`)}</td>
                     <td className="py-2 pr-4">

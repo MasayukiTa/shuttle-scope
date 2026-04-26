@@ -1,8 +1,16 @@
-import { useEffect, useState } from 'react'
-import { Pencil, Plus, X, Check } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Pencil, Plus, X, Check, Users } from 'lucide-react'
 
-import { listTeams, createTeam, patchTeam, type TeamDTO } from '@/api/client'
+import { listTeams, createTeam, patchTeam, apiGet, type TeamDTO } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
+
+interface UserBrief {
+  id: number
+  username: string
+  display_name: string | null
+  role: string
+  team_id: number | null
+}
 
 interface FormState {
   name: string
@@ -24,12 +32,21 @@ export function TeamManagementPage() {
   const [form, setForm] = useState<FormState>(emptyForm())
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<FormState>(emptyForm())
+  // メンバー一覧（admin: 全 user / coach: 自チーム）
+  const [users, setUsers] = useState<UserBrief[]>([])
+  const [expandedTeamId, setExpandedTeamId] = useState<number | null>(null)
 
   const load = async () => {
     setLoading(true)
     try {
-      const res = await listTeams()
-      setTeams(res.data || [])
+      const [tres, ures] = await Promise.all([
+        listTeams(),
+        apiGet<{ success: boolean; data: UserBrief[] }>('/auth/users').catch(
+          () => ({ success: false, data: [] as UserBrief[] }),
+        ),
+      ])
+      setTeams(tres.data || [])
+      setUsers(ures.data || [])
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'チーム一覧の取得に失敗しました')
@@ -37,6 +54,16 @@ export function TeamManagementPage() {
       setLoading(false)
     }
   }
+
+  const usersByTeam = useMemo(() => {
+    const map: Record<number, UserBrief[]> = {}
+    for (const u of users) {
+      if (u.team_id == null) continue
+      if (!map[u.team_id]) map[u.team_id] = []
+      map[u.team_id].push(u)
+    }
+    return map
+  }, [users])
 
   useEffect(() => {
     load()
@@ -234,32 +261,68 @@ export function TeamManagementPage() {
                     )}
                   </td>
                   <td className="py-2 text-right">
-                    {editing ? (
-                      <div className="flex gap-1 justify-end">
+                    <div className="flex gap-1 justify-end items-center">
+                      {!editing && (
                         <button
-                          onClick={() => handleSave(t.id)}
-                          className="p-1 text-green-600 hover:bg-green-50 rounded"
-                          title="保存"
+                          onClick={() => setExpandedTeamId((cur) => (cur === t.id ? null : t.id))}
+                          className="p-1 text-gray-600 hover:bg-gray-100 rounded inline-flex items-center gap-1"
+                          title="メンバー一覧を表示"
                         >
-                          <Check size={16} />
+                          <Users size={14} />
+                          <span className="text-xs">{(usersByTeam[t.id] || []).length}</span>
                         </button>
+                      )}
+                      {editing ? (
+                        <>
+                          <button
+                            onClick={() => handleSave(t.id)}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                            title="保存"
+                          >
+                            <Check size={16} />
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="p-1 text-gray-500 hover:bg-gray-50 rounded"
+                            title="キャンセル"
+                          >
+                            <X size={16} />
+                          </button>
+                        </>
+                      ) : canEdit || isCoach ? (
                         <button
-                          onClick={() => setEditingId(null)}
-                          className="p-1 text-gray-500 hover:bg-gray-50 rounded"
-                          title="キャンセル"
+                          onClick={() => startEdit(t)}
+                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                          title="編集"
                         >
-                          <X size={16} />
+                          <Pencil size={16} />
                         </button>
-                      </div>
-                    ) : canEdit || isCoach ? (
-                      <button
-                        onClick={() => startEdit(t)}
-                        className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                        title="編集"
-                      >
-                        <Pencil size={16} />
-                      </button>
-                    ) : null}
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+            {teams.map((t) => {
+              if (expandedTeamId !== t.id) return null
+              const members = usersByTeam[t.id] || []
+              return (
+                <tr key={`${t.id}-members-row`} className="bg-gray-50/60">
+                  <td colSpan={6} className="px-4 py-2">
+                    <div className="text-xs text-gray-500 mb-1">「{t.name}」のメンバー（{members.length} 名）</div>
+                    {members.length === 0 ? (
+                      <div className="text-xs text-gray-400">所属ユーザーはいません。</div>
+                    ) : (
+                      <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1 text-sm">
+                        {members.map((u) => (
+                          <li key={u.id} className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-200 text-gray-700">{u.role}</span>
+                            <span>{u.display_name || u.username}</span>
+                            <span className="text-xs text-gray-400">@{u.username}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </td>
                 </tr>
               )

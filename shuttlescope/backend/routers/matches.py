@@ -322,7 +322,19 @@ def match_to_dict(
         "created_via_quick_start": bool(m.created_via_quick_start),
         "metadata_status": m.metadata_status or "minimal",
         "exception_reason": m.exception_reason,
+        # Phase B: チーム境界情報
+        "owner_team_id": m.owner_team_id,
+        "is_public_pool": bool(getattr(m, "is_public_pool", False)),
+        "home_team_id": getattr(m, "home_team_id", None),
+        "away_team_id": getattr(m, "away_team_id", None),
     }
+    # owner team の display_id / 表示名を補助フィールドとして添える
+    if db is not None and m.owner_team_id is not None:
+        from backend.db.models import Team as _Team
+        ot = db.get(_Team, m.owner_team_id)
+        if ot is not None:
+            d["owner_team_display_id"] = ot.display_id
+            d["owner_team_display_name"] = ot.name
     if include_players and (db or player_map is not None):
         def _lookup(pid):
             if pid is None:
@@ -533,6 +545,14 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     _log(db, "match_updated", user_id=ctx.user_id,
          resource_type="match", resource_id=match_id,
          details={"actor_role": ctx.role, "fields": list(payload.keys())})
+    # Phase B 監査: チーム境界に関わる変更は専用イベントを別途残す
+    for k in ("owner_team_id", "is_public_pool", "home_team_id", "away_team_id"):
+        if k in payload and getattr(match, k, None) != payload[k]:
+            _log(db, f"match_{k}_changed", user_id=ctx.user_id,
+                 resource_type="match", resource_id=match_id,
+                 details={"actor_role": ctx.role,
+                          "from": getattr(match, k, None),
+                          "to": payload[k]})
     # 更新前の関与選手を退避（選手差し替えの場合、旧選手のキャッシュも無効化が必要）
     pre_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     from backend.utils.db_update import apply_update

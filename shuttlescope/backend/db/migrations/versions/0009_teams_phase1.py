@@ -37,7 +37,7 @@ def upgrade() -> None:
             sa.Column("display_id",  sa.String(64),   nullable=True),
             sa.Column("name",        sa.String(100),  nullable=False),
             sa.Column("short_name",  sa.String(50),   nullable=True),
-            sa.Column("is_independent", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+            sa.Column("is_independent", sa.Boolean(), nullable=False, server_default=sa.false()),
             sa.Column("notes",       sa.Text(),       nullable=True),
             sa.Column("created_at",  sa.DateTime(),   nullable=False),
             sa.Column("updated_at",  sa.DateTime(),   nullable=False),
@@ -71,13 +71,18 @@ def upgrade() -> None:
             )
         )
 
-    # ── users.team_id 列追加 ──────────────────────────────────────────────────
+    # ── users.team_id 列追加（SQLite 互換のため batch_alter_table を使用） ──
     user_cols = {c["name"] for c in inspector.get_columns("users")}
     if "team_id" not in user_cols:
-        op.add_column(
-            "users",
-            sa.Column("team_id", sa.Integer(), sa.ForeignKey("teams.id"), nullable=True),
-        )
+        with op.batch_alter_table("users") as batch:
+            batch.add_column(
+                sa.Column(
+                    "team_id",
+                    sa.Integer(),
+                    sa.ForeignKey("teams.id", name="fk_users_team_id_teams"),
+                    nullable=True,
+                ),
+            )
         op.create_index("ix_users_team_id", "users", ["team_id"])
 
     # ── testtest ユーザを testチーム に紐付け ────────────────────────────────

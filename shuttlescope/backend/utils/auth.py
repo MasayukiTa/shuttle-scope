@@ -404,13 +404,16 @@ def require_match_scope(request: Request, match: Match, db: Session) -> "AuthCtx
             raise HTTPException(status_code=403, detail="この試合へのアクセス権限がありません")
         return ctx
     if ctx.is_analyst or ctx.is_coach:
+        # Phase B: 公開プール / owner 一致 / 自チーム選手登場 のいずれかを満たせば許可
+        if user_can_access_match(ctx, match):
+            return ctx
         team = (ctx.team_name or "").strip()
         if not team:
-            # loopback (X-Role 互換) で team_name 未設定なら dev/test 用途として通す
             from backend.utils.control_plane import allow_legacy_header_auth
             if allow_legacy_header_auth(request):
                 return ctx
             raise HTTPException(status_code=403, detail="team_name 未設定")
+        # 旧ロジック（team_name 文字列ベース）も併用
         pids = _match_player_ids(match)
         players = db.query(Player).filter(Player.id.in_(pids)).all() if pids else []
         if not any((p.team or "").strip() == team for p in players):

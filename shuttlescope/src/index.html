@@ -2,7 +2,10 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- iOS Safari の input/select フォーカス時の自動ズームを抑止する。
+         maximum-scale=1.0 + user-scalable=no が iOS 拡大防止のために必要。
+         アプリは Electron / モバイル Web 両対応で、モバイル時のみ意味を持つ。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>ShuttleScope</title>
     <meta name="description" content="バドミントン試合映像の注釈・分析デスクトップアプリ" />
     <link rel="icon" type="image/png" href="/favicon.png" />
