@@ -548,11 +548,18 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     # Phase B 監査: チーム境界に関わる変更は専用イベントを別途残す
     for k in ("owner_team_id", "is_public_pool", "home_team_id", "away_team_id"):
         if k in payload and getattr(match, k, None) != payload[k]:
-            _log(db, f"match_{k}_changed", user_id=ctx.user_id,
-                 resource_type="match", resource_id=match_id,
-                 details={"actor_role": ctx.role,
-                          "from": getattr(match, k, None),
-                          "to": payload[k]})
+            _log(
+                db,
+                f"match_{k}_changed",
+                user_id=ctx.user_id,
+                resource_type="match",
+                resource_id=match_id,
+                details={
+                    "actor_role": ctx.role,
+                    "from": getattr(match, k, None),
+                    "to": payload[k],
+                },
+            )
     # 更新前の関与選手を退避（選手差し替えの場合、旧選手のキャッシュも無効化が必要）
     pre_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     from backend.utils.db_update import apply_update

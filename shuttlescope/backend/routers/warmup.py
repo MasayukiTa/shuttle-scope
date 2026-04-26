@@ -84,6 +84,10 @@ def save_warmup_observations(
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     ctx = get_auth(request)
+    # Phase B: チーム境界チェック (4-1)
+    from backend.utils.auth import user_can_access_match
+    if not user_can_access_match(ctx, match):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
 
     saved = []
     for item in body.observations:

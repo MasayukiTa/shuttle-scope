@@ -237,7 +237,12 @@ def upsert_label(
     if body.shot_timing not in VALID_TIMING:
         raise HTTPException(status_code=422, detail="shot_timing invalid")
 
-    if not db.get(Match, body.match_id):
+    m = db.get(Match, body.match_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # Phase B: チーム境界チェック (4-1)
+    from backend.utils.auth import user_can_access_match
+    if not user_can_access_match(_ctx, m):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     if not db.get(Stroke, body.stroke_id):
         raise HTTPException(status_code=404, detail="ストロークが見つかりません")

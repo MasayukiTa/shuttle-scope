@@ -26,30 +26,38 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     cols = {c["name"] for c in inspector.get_columns("matches")}
 
-    # ── 列追加（SQLite 互換のため batch_alter_table を使用） ──────────────────
-    needed = [c for c in ("owner_team_id", "home_team_id", "away_team_id", "is_public_pool") if c not in cols]
-    if needed:
-        with op.batch_alter_table("matches") as batch:
-            if "owner_team_id" not in cols:
-                batch.add_column(sa.Column(
-                    "owner_team_id", sa.Integer(),
+    # ── 列追加 ───────────────────────────────────────────────────────────────
+    # SQLite で ADD COLUMN with FK は batch_alter_table が必要
+    with op.batch_alter_table("matches") as batch_op:
+        if "owner_team_id" not in cols:
+            batch_op.add_column(
+                sa.Column(
+                    "owner_team_id",
+                    sa.Integer(),
                     sa.ForeignKey("teams.id", name="fk_matches_owner_team_id_teams"),
                     nullable=True,
-                ))
-            if "is_public_pool" not in cols:
-                batch.add_column(sa.Column("is_public_pool", sa.Boolean(), nullable=False, server_default=sa.false()))
-            if "home_team_id" not in cols:
-                batch.add_column(sa.Column(
-                    "home_team_id", sa.Integer(),
+                )
+            )
+        if "is_public_pool" not in cols:
+            batch_op.add_column(sa.Column("is_public_pool", sa.Boolean(), nullable=False, server_default=sa.text("0")))
+        if "home_team_id" not in cols:
+            batch_op.add_column(
+                sa.Column(
+                    "home_team_id",
+                    sa.Integer(),
                     sa.ForeignKey("teams.id", name="fk_matches_home_team_id_teams"),
                     nullable=True,
-                ))
-            if "away_team_id" not in cols:
-                batch.add_column(sa.Column(
-                    "away_team_id", sa.Integer(),
+                )
+            )
+        if "away_team_id" not in cols:
+            batch_op.add_column(
+                sa.Column(
+                    "away_team_id",
+                    sa.Integer(),
                     sa.ForeignKey("teams.id", name="fk_matches_away_team_id_teams"),
                     nullable=True,
-                ))
+                )
+            )
 
     # ── 既存試合を testチームへ一括割当 ─────────────────────────────────────
     test_team = bind.execute(sa.text("SELECT id FROM teams WHERE display_id = :d"), {"d": "TEST-0001"}).fetchone()

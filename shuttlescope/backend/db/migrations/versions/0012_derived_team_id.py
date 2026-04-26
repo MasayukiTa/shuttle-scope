@@ -53,13 +53,14 @@ def upgrade() -> None:
             continue
         cols = {c["name"] for c in inspector.get_columns(tbl)}
         if "team_id" not in cols:
-            with op.batch_alter_table(tbl) as batch:
-                batch.add_column(
+            with op.batch_alter_table(tbl) as batch_op:
+                batch_op.add_column(
                     sa.Column(
-                        "team_id", sa.Integer(),
+                        "team_id",
+                        sa.Integer(),
                         sa.ForeignKey("teams.id", name=f"fk_{tbl}_team_id_teams"),
                         nullable=True,
-                    ),
+                    )
                 )
             try:
                 op.create_index(f"ix_{tbl}_team_id", tbl, ["team_id"])

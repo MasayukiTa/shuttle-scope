@@ -14,11 +14,17 @@ class Base(DeclarativeBase):
 
 
 # SQLite（POC）とPostgreSQL（本番）を環境変数で切替
+# pool_size=20 / max_overflow=30: 複数 middleware + 背景タスク + WebSocket が
+# 同時に DB を保持するためデフォルト (5+10) では不足する場合がある
 engine = create_engine(
     settings.DATABASE_URL,
     # SQLiteの場合のみ check_same_thread=False が必要
     # timeout=15: ロック競合時に最大15秒待機してからエラー（デフォルトは無限待ち）
     connect_args={"check_same_thread": False, "timeout": 15} if "sqlite" in settings.DATABASE_URL else {},
+    pool_size=20,
+    max_overflow=30,
+    pool_recycle=1800,        # 30分で接続をリサイクル（長時間 idle 接続のクリーンアップ）
+    pool_pre_ping=True,        # チェックアウト前に接続生存確認（切断検知）
 )
 
 

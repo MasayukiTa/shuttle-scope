@@ -71,11 +71,12 @@ def upgrade() -> None:
             )
         )
 
-    # ── users.team_id 列追加（SQLite 互換のため batch_alter_table を使用） ──
+    # ── users.team_id 列追加 ──────────────────────────────────────────────────
+    # SQLite は ADD COLUMN with FK 制約をサポートしないため batch_alter_table を使う
     user_cols = {c["name"] for c in inspector.get_columns("users")}
     if "team_id" not in user_cols:
-        with op.batch_alter_table("users") as batch:
-            batch.add_column(
+        with op.batch_alter_table("users") as batch_op:
+            batch_op.add_column(
                 sa.Column(
                     "team_id",
                     sa.Integer(),
