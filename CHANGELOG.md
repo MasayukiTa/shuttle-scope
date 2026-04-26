@@ -37,6 +37,12 @@ Read it together with:
 - Added Phase B validation documents under `docs/validation/` for the team-scoping rollout, frontend follow-up, and remaining production hardening notes.
 - Verified the focused backend auth/team test set (`test_security_role_restrictions.py`, `test_auth_bootstrap.py`, `test_attack_hardening_v43.py`) and frontend Vitest suite during the rollout. Full backend pytest remains heavier than the normal local loop and was handled with targeted verification.
 
+### Attack-Driven Hardening
+
+- Ran several days of adversarial validation against authentication, team boundaries, player access, condition records, sharing endpoints, and warm-up observation flows.
+- Converted the findings into regression coverage rather than leaving them as one-off manual notes, including the newer `test_attack_hardening_v44.py` checks for unauthenticated access and cross-team scope consistency.
+- Kept public notes intentionally high-level: the changelog records the security posture improvement and tested areas, while exploit mechanics, payload details, and replayable attack paths are omitted.
+
 ## 2026-04-23
 
 ### Phase B Authentication (B-1 〜 B-5) と Frontend 認証 UI
