@@ -24,10 +24,19 @@ from backend.db.database import Base
 
 config = context.config
 
-# settings.DATABASE_URL を優先（.env で SQLite ↔ PostgreSQL を切替できるように）
-# 旧コードは ini の sqlalchemy.url を優先していたが、ini はテンプレ既定値で
-# 実 DB を反映していないため、settings 側 (.env 読込済み) を SoT にする。
-configured_url = settings.DATABASE_URL or config.get_main_option("sqlalchemy.url")
+# URL 優先順位:
+#   1. stamp_db_head / run_db_migrations が set_main_option で明示設定した URL
+#      （alembic.ini のデフォルト値と異なる場合）
+#   2. settings.DATABASE_URL (.env で SQLite ↔ PostgreSQL を切替)
+#   3. alembic.ini の sqlalchemy.url（フォールバック）
+# alembic.ini のデフォルト値を直接使うと本番 DB と一致しないため、
+# Python コードで明示設定された URL のみ settings より優先する。
+_ini_default = "sqlite:///./backend/db/shuttlescope.db"
+_config_url = config.get_main_option("sqlalchemy.url") or ""
+if _config_url and _config_url != _ini_default:
+    configured_url = _config_url  # 明示的に set_main_option で上書きされた値を使う
+else:
+    configured_url = settings.DATABASE_URL or _config_url
 config.set_main_option("sqlalchemy.url", configured_url)
 
 if config.config_file_name is not None:
