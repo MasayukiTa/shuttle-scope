@@ -636,6 +636,20 @@ class BenchmarkRunner:
         metrics["backend"] = bname
         if _is_aggressive():
             metrics["aggressive"] = True
+
+        # Phase-0: ステージ別タイミング（SS_TRACKNET_PROFILE=1 で収集済みの場合）
+        _inner = getattr(inferencer, '_impl', inferencer)
+        if hasattr(_inner, 'get_stage_timings'):
+            stage = _inner.get_stage_timings()
+            if stage.get("n_chunks", 0) > 0:
+                metrics["stage_timings"] = stage
+                logger.info(
+                    "[bench/tracknet] ステージ別 avg: preprocess=%.2fms stack=%.2fms "
+                    "infer=%.2fms postproc=%.2fms",
+                    stage["preprocess_ms"], stage["stack_ms"],
+                    stage["infer_ms"], stage["postproc_ms"],
+                )
+
         return metrics
 
     def _bench_pose(self, device: ComputeDevice, n_frames: int,

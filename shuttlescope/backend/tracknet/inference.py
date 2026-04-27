@@ -12,14 +12,159 @@ Runtime priority (auto モード):
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Phase-0: ステージタイマー & NVTX 計装
+# ---------------------------------------------------------------------------
+
+def _nvtx_push(name: str) -> None:
+    """NVTX レンジ開始。nvtx / torch.cuda.nvtx どちらかを使う。利用不可なら無視。"""
+    try:
+        import torch.cuda.nvtx as nvtx  # type: ignore
+        nvtx.range_push(name)
+    except Exception:
+        pass
+
+
+def _nvtx_pop() -> None:
+    try:
+        import torch.cuda.nvtx as nvtx  # type: ignore
+        nvtx.range_pop()
+    except Exception:
+        pass
+
+
+@contextlib.contextmanager
+def _nvtx_range(name: str):
+    _nvtx_push(name)
+    try:
+        yield
+    finally:
+        _nvtx_pop()
+
+
+class _StageTimings:
+    """_predict_frames_batch() の各ステージ累積時間（秒）を保持する。
+
+    SS_TRACKNET_PROFILE=1 のときのみ計測する。
+    reset() で次回計測に備えてクリアする。
+    """
+
+    __slots__ = ("preprocess", "stack", "infer", "postproc", "n_chunks")
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self.preprocess = 0.0
+        self.stack = 0.0
+        self.infer = 0.0
+        self.postproc = 0.0
+        self.n_chunks = 0
+
+    def to_ms_dict(self) -> dict:
+        denom = max(self.n_chunks, 1)
+        return {
+            "preprocess_ms": round(self.preprocess / denom * 1000, 2),
+            "stack_ms": round(self.stack / denom * 1000, 2),
+            "infer_ms": round(self.infer / denom * 1000, 2),
+            "postproc_ms": round(self.postproc / denom * 1000, 2),
+            "n_chunks": self.n_chunks,
+        }
+
+
+_PROFILE_ENABLED: bool = os.environ.get("SS_TRACKNET_PROFILE", "0") not in ("", "0", "false")
+
+
+def _profile_enabled() -> bool:
+    """実行時に SS_TRACKNET_PROFILE を再確認する（sweep スクリプトが起動後に設定可能）。"""
+    if _PROFILE_ENABLED:
+        return True
+    return os.environ.get("SS_TRACKNET_PROFILE", "0") not in ("", "0", "false")
+
+
+# ---------------------------------------------------------------------------
+# Phase-4: Confidence-Based Adaptive Skip
+# ---------------------------------------------------------------------------
+
+# SS_TRACKNET_SKIP_THRESHOLD: これ以上の confidence が出た次フレームをスキップ
+#   1.1 (>1.0) = 無効（デフォルト）、0.92 が推奨開始値
+_SKIP_THRESHOLD_DEFAULT: float = 1.1
+
+# SS_TRACKNET_MAX_SKIP: 連続スキップの最大数
+_MAX_SKIP_DEFAULT: int = 2
+
+
+def _skip_config() -> tuple[float, int]:
+    """実行時に skip 設定を取得する。"""
+    try:
+        th = float(os.environ.get("SS_TRACKNET_SKIP_THRESHOLD", str(_SKIP_THRESHOLD_DEFAULT)))
+    except (ValueError, TypeError):
+        th = _SKIP_THRESHOLD_DEFAULT
+    try:
+        ms = int(os.environ.get("SS_TRACKNET_MAX_SKIP", str(_MAX_SKIP_DEFAULT)))
+    except (ValueError, TypeError):
+        ms = _MAX_SKIP_DEFAULT
+    return th, ms
+
+
+def _extrapolate_position(
+    prev: dict, pprev: Optional[dict], frame_idx: int
+) -> dict:
+    """速度ベクトルで次フレームのシャトル位置を外挿する。
+
+    前2フレームの (x_norm, y_norm) から速度を算出し次フレーム位置を予測する。
+    pprev が None または座標が欠損している場合は prev をそのままコピーして返す。
+    confidence は毎フレーム 0.85 倍に減衰する（外挿の不確かさを反映）。
+    """
+    from backend.tracknet.zone_mapper import coords_to_zone
+
+    conf_decay = round((prev.get("confidence") or 0.0) * 0.85, 3)
+
+    px = prev.get("x_norm")
+    py = prev.get("y_norm")
+    if px is None or py is None or pprev is None:
+        return {
+            "frame_idx": frame_idx,
+            "zone": prev.get("zone"),
+            "confidence": conf_decay,
+            "x_norm": px,
+            "y_norm": py,
+            "skipped": True,
+        }
+
+    qx = pprev.get("x_norm")
+    qy = pprev.get("y_norm")
+    if qx is None or qy is None:
+        return {
+            "frame_idx": frame_idx,
+            "zone": prev.get("zone"),
+            "confidence": conf_decay,
+            "x_norm": round(px, 4),
+            "y_norm": round(py, 4),
+            "skipped": True,
+        }
+
+    nx = max(0.0, min(1.0, px + (px - qx)))
+    ny = max(0.0, min(1.0, py + (py - qy)))
+    return {
+        "frame_idx": frame_idx,
+        "zone": coords_to_zone(nx, ny),
+        "confidence": conf_decay,
+        "x_norm": round(nx, 4),
+        "y_norm": round(ny, 4),
+        "skipped": True,
+    }
 
 
 def _register_cuda_dll_dirs() -> None:
@@ -166,6 +311,25 @@ class TrackNetInference:
         self._gpu_load_error: Optional[str] = None
         # バックエンド初期化後に設定される最大バッチサイズ
         self._max_batch: int = 4
+        # Phase-0: ステージタイマー（SS_TRACKNET_PROFILE=1 で収集）
+        self._stage_timings = _StageTimings()
+        # Phase-1: GPU 前処理 + IOBinding
+        self._gpu_preproc: bool = False          # torch.cuda 前処理が有効か
+        self._cuda_device_obj: Optional[object] = None  # torch.device
+        self._sess_onnx_cuda: Optional[object] = None   # IOBinding 用セッション参照
+        self._io_binding: Optional[object] = None       # ort.IOBinding
+        self._iob_input_name: str = ""
+        self._iob_output_name: str = ""
+        # Phase-3: CUDA Stream 非同期プリフェッチ
+        self._preproc_stream: Optional[object] = None   # torch.cuda.Stream
+
+    def get_stage_timings(self) -> dict:
+        """最後の predict_frames() 呼び出しのステージ別平均時間を ms 単位で返す。"""
+        return self._stage_timings.to_ms_dict()
+
+    def reset_stage_timings(self) -> None:
+        """ステージタイマーをリセットする（計測開始前に呼ぶ）。"""
+        self._stage_timings.reset()
 
     def get_load_error(self) -> Optional[str]:
         """ロード失敗時の具体的な理由を返す。成功時または未試行時は None。"""
@@ -392,10 +556,14 @@ class TrackNetInference:
                                 _ep_short = "trt" if any("Tensorrt" in e for e in actual_eps) else "cuda"
                                 self._backend_name = f"onnx_{_ep_short}:{self._cuda_device_index}"
                                 self._load_error = None
+                                # Phase-1: GPU 前処理 + IOBinding を試みる
+                                self._sess_onnx_cuda = sess
+                                self._init_gpu_preproc(sess, input_name, self._cuda_device_index)
                                 logger.info(
-                                    "TrackNet loaded via %s (device=%d, model=%s, max_batch=%d, eps=%s)",
+                                    "TrackNet loaded via %s (device=%d, model=%s, max_batch=%d, eps=%s, gpu_preproc=%s)",
                                     self._backend_name, self._cuda_device_index,
                                     onnx_model_gpu.name, self._max_batch, actual_eps,
+                                    self._gpu_preproc,
                                 )
                                 return True
                     elif effective_backend in ("cuda", "onnx_cuda"):
@@ -606,6 +774,9 @@ class TrackNetInference:
         # バッチ対応バックエンド（ONNX CUDA/DML/CPU・TF）は全トリプレットを
         # 1 回の sess.run() で処理 → OCLink/PCIe 往復を N 回 → 1 回に削減
         if self._batch_infer_fn is not None:
+            # Phase-1: GPU 前処理 + IOBinding が有効ならフル GPU パスで実行
+            if self._gpu_preproc:
+                return self._predict_frames_batch_gpu(frames, n_triplets)
             return self._predict_frames_batch(frames, n_triplets)
         return self._predict_frames_serial(frames, n_triplets)
 
@@ -624,48 +795,101 @@ class TrackNetInference:
         # フレームキャッシュ: インデックス → 前処理済み (H, W) float32
         frame_cache: dict[int, np.ndarray] = {}
 
+        # Phase-4: adaptive skip state
+        skip_threshold, max_skip = _skip_config()
+        skip_enabled = skip_threshold <= 1.0
+        prev_result: Optional[dict] = None
+        pprev_result: Optional[dict] = None
+        skip_count = 0
+
+        _profile = _profile_enabled()
+        _st = self._stage_timings
+        if _profile:
+            _st.reset()
+
         while chunk_start < n_triplets:
             chunk_end = min(chunk_start + chunk_size, n_triplets)
 
-            # このチャンクで必要なフレームを前処理（未キャッシュ分のみ）
-            needed_end = min(chunk_end + FRAME_STACK - 1, len(frames))
-            for fi in range(chunk_start, needed_end):
-                if fi not in frame_cache:
-                    frame_cache[fi] = self._preprocess_frame(frames[fi])
-            # 不要になった古いエントリを解放
-            for fi in list(frame_cache):
-                if fi < chunk_start:
-                    del frame_cache[fi]
+            # ── preprocess ──────────────────────────────────────────────────
+            with _nvtx_range("tracknet/preprocess"):
+                _t0 = time.perf_counter() if _profile else 0.0
+                needed_end = min(chunk_end + FRAME_STACK - 1, len(frames))
+                for fi in range(chunk_start, needed_end):
+                    if fi not in frame_cache:
+                        frame_cache[fi] = self._preprocess_frame(frames[fi])
+                for fi in list(frame_cache):
+                    if fi < chunk_start:
+                        del frame_cache[fi]
+                if _profile:
+                    _st.preprocess += time.perf_counter() - _t0
 
-            batch_inp = np.stack(
-                [
-                    np.stack([frame_cache[i + j] for j in range(FRAME_STACK)], axis=0)
-                    for i in range(chunk_start, chunk_end)
-                ],
-                axis=0,
-            ).astype(np.float32)  # (chunk, 3, H, W)
+            # ── stack ────────────────────────────────────────────────────────
+            with _nvtx_range("tracknet/stack"):
+                _t0 = time.perf_counter() if _profile else 0.0
+                batch_inp = np.stack(
+                    [
+                        np.stack([frame_cache[i + j] for j in range(FRAME_STACK)], axis=0)
+                        for i in range(chunk_start, chunk_end)
+                    ],
+                    axis=0,
+                ).astype(np.float32)  # (chunk, 3, H, W)
+                if _profile:
+                    _st.stack += time.perf_counter() - _t0
 
-            try:
-                heatmaps = self._batch_infer_fn(batch_inp)  # (chunk, H, W)
-            except Exception as exc:
-                err_msg = str(exc).lower()
-                if chunk_size > 1 and ("memory" in err_msg or "alloc" in err_msg or "oom" in err_msg):
-                    chunk_size = max(1, chunk_size // 2)
-                    self._max_batch = chunk_size
-                    logger.warning(
-                        "TrackNet batch OOM — バッチサイズを %d に削減して再試行", chunk_size
-                    )
-                    continue
-                raise
-            for j, heatmap in enumerate(heatmaps):
-                zone, conf, coords = heatmap_to_zone(heatmap)
-                results.append({
-                    "frame_idx": chunk_start + j + 1,
-                    "zone": zone,
-                    "confidence": round(conf, 3),
-                    "x_norm": round(coords[0], 4) if coords else None,
-                    "y_norm": round(coords[1], 4) if coords else None,
-                })
+            # ── infer ────────────────────────────────────────────────────────
+            with _nvtx_range("tracknet/infer"):
+                _t0 = time.perf_counter() if _profile else 0.0
+                try:
+                    heatmaps = self._batch_infer_fn(batch_inp)  # (chunk, H, W)
+                except Exception as exc:
+                    err_msg = str(exc).lower()
+                    if chunk_size > 1 and ("memory" in err_msg or "alloc" in err_msg or "oom" in err_msg):
+                        chunk_size = max(1, chunk_size // 2)
+                        self._max_batch = chunk_size
+                        logger.warning(
+                            "TrackNet batch OOM — バッチサイズを %d に削減して再試行", chunk_size
+                        )
+                        continue
+                    raise
+                if _profile:
+                    _st.infer += time.perf_counter() - _t0
+
+            # ── postproc ─────────────────────────────────────────────────────
+            with _nvtx_range("tracknet/postproc"):
+                _t0 = time.perf_counter() if _profile else 0.0
+                for j, heatmap in enumerate(heatmaps):
+                    zone, conf, coords = heatmap_to_zone(heatmap)
+                    results.append({
+                        "frame_idx": chunk_start + j + 1,
+                        "zone": zone,
+                        "confidence": round(conf, 3),
+                        "x_norm": round(coords[0], 4) if coords else None,
+                        "y_norm": round(coords[1], 4) if coords else None,
+                    })
+                # Phase-4: prev/pprev を実推論結果で更新
+                if results:
+                    pprev_result = prev_result
+                    prev_result = results[-1]
+                if _profile:
+                    _st.postproc += time.perf_counter() - _t0
+
+            # ── Phase-4: confidence-based adaptive skip ──────────────────────
+            if skip_enabled and prev_result is not None:
+                while (
+                    chunk_end < n_triplets
+                    and (prev_result.get("confidence") or 0.0) >= skip_threshold
+                    and skip_count < max_skip
+                ):
+                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + 1)
+                    results.append(extra)
+                    pprev_result = prev_result
+                    prev_result = extra
+                    skip_count += 1
+                    chunk_end += 1
+            skip_count = 0  # 実推論後はリセット
+
+            if _profile:
+                _st.n_chunks += 1
             chunk_start = chunk_end
         return results
 
@@ -719,6 +943,304 @@ class TrackNetInference:
         """バッチ TF 推論: (N, 3, H, W) → (N, H, W)。"""
         out = model(batch_inp, training=False).numpy()  # (N, 1, H, W)
         return out[:, 0]  # (N, H, W)
+
+    # ── Phase-1: GPU 前処理 + IOBinding ─────────────────────────────────────
+
+    def _init_gpu_preproc(self, sess, input_name: str, device_idx: int) -> None:
+        """torch.cuda 前処理と ONNX Runtime IOBinding を初期化する。
+
+        初期化に失敗しても self._gpu_preproc = False のまま CPU パスにフォールバックする。
+        SS_DISABLE_GPU_PREPROC=1 で強制無効化（デバッグ用）。
+        """
+        if os.environ.get("SS_DISABLE_GPU_PREPROC", "0") in ("1", "true", "True"):
+            logger.info("TrackNet: SS_DISABLE_GPU_PREPROC=1 — GPU前処理を無効化")
+            return
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                logger.info("TrackNet: torch.cuda 不可 — GPU前処理を無効化")
+                return
+            self._cuda_device_obj = torch.device(f"cuda:{device_idx}")
+            # IOBinding の動作確認（ダミー推論）
+            iob = sess.io_binding()
+            dummy = torch.zeros(
+                (1, FRAME_STACK, INPUT_H, INPUT_W),
+                dtype=torch.float32,
+                device=self._cuda_device_obj,
+            ).contiguous()
+            output_name = sess.get_outputs()[0].name
+            iob.bind_input(
+                name=input_name,
+                device_type="cuda",
+                device_id=device_idx,
+                element_type=np.float32,
+                shape=(1, FRAME_STACK, INPUT_H, INPUT_W),
+                buffer_ptr=dummy.data_ptr(),
+            )
+            iob.bind_output(
+                name=output_name,
+                device_type="cuda",
+                device_id=device_idx,
+            )
+            sess.run_with_iobinding(iob)
+            # 確認 OK → 本番用 IOBinding をセット
+            self._io_binding = sess.io_binding()
+            self._iob_input_name = input_name
+            self._iob_output_name = output_name
+            self._gpu_preproc = True
+            # Phase-3: 前処理専用 CUDA Stream を作成（推論の default stream と独立）
+            self._preproc_stream = torch.cuda.Stream(device=self._cuda_device_obj)
+            logger.info(
+                "TrackNet: GPU前処理 (torch.cuda) + IOBinding + CUDA Stream 有効 (device=cuda:%d)",
+                device_idx,
+            )
+        except Exception as exc:
+            logger.warning("TrackNet: GPU前処理初期化失敗 — CPU前処理にフォールバック: %s", exc)
+            self._gpu_preproc = False
+
+    def _preprocess_batch_gpu(
+        self, frames: list, indices: list[int]
+    ):
+        """numpy uint8 BGR フレームを GPU で一括前処理する。
+
+        resize + BGR→Gray + normalize を torch.cuda 上で実行し
+        (N, INPUT_H, INPUT_W) float32 CUDA tensor を返す。
+        CPU 前処理と等価: cv2.resize(BGR2GRAY) / 255.0
+        """
+        import torch
+        import torch.nn.functional as F
+
+        raw = np.stack([frames[i] for i in indices], axis=0)  # (N, H, W, 3) uint8
+        # numpy → CUDA tensor (non_blocking H2D)
+        t = torch.from_numpy(raw).to(self._cuda_device_obj, non_blocking=True)
+        # (N, H, W, 3) → (N, 3, H, W)、float に変換
+        t = t.permute(0, 3, 1, 2).float()
+        # GPU resize (bilinear)
+        t = F.interpolate(
+            t, size=(INPUT_H, INPUT_W), mode="bilinear", align_corners=False
+        )  # (N, 3, INPUT_H, INPUT_W)
+        # BGR → Gray: 0.299*R + 0.587*G + 0.114*B (B=ch0, G=ch1, R=ch2)
+        gray = (0.114 * t[:, 0] + 0.587 * t[:, 1] + 0.299 * t[:, 2]) / 255.0
+        return gray  # (N, INPUT_H, INPUT_W) float32 CUDA
+
+    def _run_onnx_batch_iobinding(self, batch_tensor):
+        """IOBinding で CUDA tensor を直接 ONNX Runtime に渡す。
+
+        batch_tensor: (N, FRAME_STACK, H, W) float32 CUDA tensor
+        戻り値: (N, H, W) float32 CUDA tensor（Phase-2 GPU argmax 用）
+               DLPack 非対応環境は numpy を torch tensor に変換して返す。
+        """
+        import torch
+        batch_tensor = batch_tensor.contiguous()
+        iob = self._io_binding
+        iob.bind_input(
+            name=self._iob_input_name,
+            device_type="cuda",
+            device_id=self._cuda_device_index,
+            element_type=np.float32,
+            shape=tuple(batch_tensor.shape),
+            buffer_ptr=batch_tensor.data_ptr(),
+        )
+        iob.bind_output(
+            name=self._iob_output_name,
+            device_type="cuda",
+            device_id=self._cuda_device_index,
+        )
+        self._sess_onnx_cuda.run_with_iobinding(iob)
+        out_ort = iob.get_outputs()[0]
+        try:
+            # DLPack 経由: D2H なしで CUDA tensor に変換（Phase-2 GPU argmax 用）
+            out_tensor = torch.from_dlpack(out_ort.to_dlpack())  # (N, 1, H, W) CUDA
+            return out_tensor[:, 0].contiguous()  # (N, H, W) CUDA
+        except Exception:
+            # to_dlpack() 未対応 → numpy 経由（D2H 1 回）→ GPU に戻す
+            out_np = out_ort.numpy()  # (N, 1, H, W)
+            return torch.from_numpy(out_np[:, 0]).to(self._cuda_device_obj)
+
+    def _preprocess_chunk_to_cache(
+        self,
+        frames: list,
+        frame_cache_gpu: dict,
+        chunk_start: int,
+        chunk_end: int,
+    ) -> None:
+        """chunk_start..chunk_end のトリプレットに必要なフレームを前処理してキャッシュする。
+
+        呼び出し元が torch.cuda.stream() コンテキストを制御する（Stream 非同期化のため）。
+        """
+        needed_end = min(chunk_end + FRAME_STACK - 1, len(frames))
+        uncached = [fi for fi in range(chunk_start, needed_end) if fi not in frame_cache_gpu]
+        if uncached:
+            gpu_tensors = self._preprocess_batch_gpu(frames, uncached)
+            for k, fi in enumerate(uncached):
+                frame_cache_gpu[fi] = gpu_tensors[k]
+
+    def _predict_frames_batch_gpu(
+        self, frames: list, n_triplets: int
+    ) -> list[dict]:
+        """フル GPU パス: torch.cuda 前処理 + IOBinding 推論 + CUDA Stream プリフェッチ。
+
+        Phase-3 パイプライン:
+          preproc_stream: [PRE_0]      [PRE_1]        [PRE_2] …
+          default stream:      [INF_0]       [INF_1]        …
+          CPU:                       [POST_0]      [POST_1]  …
+
+        PRE_{N+1} が INF_N と同時に実行されるため前処理オーバーヘッドが隠蔽される。
+        _preproc_stream が None (CUDA なし) の場合は同期版にフォールバックする。
+        IOBinding 非対応時は _batch_infer_fn で numpy 経由に fallback する。
+        OOM 時はバッチサイズを半減して再試行する（最小 1）。
+        """
+        import torch
+        from backend.tracknet.zone_mapper import batch_heatmap_argmax
+
+        chunk_size = max(1, self._max_batch)
+        results: list[dict] = []
+        chunk_start = 0
+        frame_cache_gpu: dict[int, object] = {}
+
+        # Phase-4: adaptive skip state
+        skip_threshold, max_skip = _skip_config()
+        skip_enabled = skip_threshold <= 1.0
+        prev_result: Optional[dict] = None
+        pprev_result: Optional[dict] = None
+        skip_count = 0
+
+        _profile = _profile_enabled()
+        _st = self._stage_timings
+        if _profile:
+            _st.reset()
+
+        preproc_stream = self._preproc_stream  # None → 同期フォールバック
+        default_stream = (
+            torch.cuda.default_stream(self._cuda_device_obj)
+            if preproc_stream is not None else None
+        )
+
+        # ── Phase-3: 最初のチャンクを preproc_stream で先行投入 ─────────────
+        with _nvtx_range("tracknet/preprocess"):
+            _t0 = time.perf_counter() if _profile else 0.0
+            first_end = min(chunk_size, n_triplets)
+            if preproc_stream is not None:
+                with torch.cuda.stream(preproc_stream):
+                    self._preprocess_chunk_to_cache(frames, frame_cache_gpu, 0, first_end)
+                # default stream が最初の推論を開始する前に preproc 完了を待つ
+                default_stream.wait_stream(preproc_stream)
+            else:
+                self._preprocess_chunk_to_cache(frames, frame_cache_gpu, 0, first_end)
+            if _profile:
+                _st.preprocess += time.perf_counter() - _t0
+
+        while chunk_start < n_triplets:
+            chunk_end = min(chunk_start + chunk_size, n_triplets)
+            next_start = chunk_end
+            next_end = min(next_start + chunk_size, n_triplets)
+
+            # 古いキャッシュエントリを解放
+            for fi in list(frame_cache_gpu):
+                if fi < chunk_start:
+                    del frame_cache_gpu[fi]
+
+            # ── stack (GPU default stream) ───────────────────────────────────
+            with _nvtx_range("tracknet/stack"):
+                _t0 = time.perf_counter() if _profile else 0.0
+                batch_tensor = torch.stack(
+                    [
+                        torch.stack(
+                            [frame_cache_gpu[i + j] for j in range(FRAME_STACK)], dim=0
+                        )
+                        for i in range(chunk_start, chunk_end)
+                    ],
+                    dim=0,
+                ).contiguous()  # (chunk, FRAME_STACK, H, W) CUDA float32
+                if _profile:
+                    _st.stack += time.perf_counter() - _t0
+
+            # ── Phase-3: 次チャンクを preproc_stream で先行投入（infer と並走）─
+            with _nvtx_range("tracknet/preprocess"):
+                _t0 = time.perf_counter() if _profile else 0.0
+                if next_start < n_triplets:
+                    if preproc_stream is not None:
+                        with torch.cuda.stream(preproc_stream):
+                            self._preprocess_chunk_to_cache(
+                                frames, frame_cache_gpu, next_start, next_end
+                            )
+                    else:
+                        self._preprocess_chunk_to_cache(
+                            frames, frame_cache_gpu, next_start, next_end
+                        )
+                if _profile:
+                    _st.preprocess += time.perf_counter() - _t0
+
+            # ── infer (IOBinding, default stream) ────────────────────────────
+            with _nvtx_range("tracknet/infer"):
+                _t0 = time.perf_counter() if _profile else 0.0
+                try:
+                    if self._io_binding is not None:
+                        heatmaps = self._run_onnx_batch_iobinding(batch_tensor)
+                    else:
+                        heatmaps = self._batch_infer_fn(batch_tensor.cpu().numpy())
+                except Exception as exc:
+                    err_msg = str(exc).lower()
+                    if chunk_size > 1 and (
+                        "memory" in err_msg or "alloc" in err_msg or "oom" in err_msg
+                    ):
+                        chunk_size = max(1, chunk_size // 2)
+                        self._max_batch = chunk_size
+                        logger.warning(
+                            "TrackNet GPU batch OOM — バッチサイズを %d に削減して再試行", chunk_size
+                        )
+                        continue
+                    raise
+                if _profile:
+                    _st.infer += time.perf_counter() - _t0
+
+            # ── postproc: GPU argmax + CPU zone 分類 ─────────────────────────
+            # この CPU ブロック中に preproc_stream 上の次チャンク前処理が進行する
+            with _nvtx_range("tracknet/postproc"):
+                _t0 = time.perf_counter() if _profile else 0.0
+                zone_results = batch_heatmap_argmax(heatmaps)
+                for j, (zone, conf, coords) in enumerate(zone_results):
+                    results.append({
+                        "frame_idx": chunk_start + j + 1,
+                        "zone": zone,
+                        "confidence": round(conf, 3),
+                        "x_norm": round(coords[0], 4) if coords else None,
+                        "y_norm": round(coords[1], 4) if coords else None,
+                    })
+                # Phase-4: prev/pprev を実推論結果で更新
+                if zone_results:
+                    pprev_result = prev_result
+                    prev_result = results[-1]
+                if _profile:
+                    _st.postproc += time.perf_counter() - _t0
+
+            # ── Phase-4: confidence-based adaptive skip ──────────────────────
+            # prev_result の confidence が skip_threshold 以上なら次のトリプレットを
+            # 推論スキップし、速度外挿で位置を予測する。chunk_end を進めることで
+            # while ループの次イテレーションがスキップ済みトリプレットを飛ばす。
+            if skip_enabled and prev_result is not None:
+                while (
+                    chunk_end < n_triplets
+                    and (prev_result.get("confidence") or 0.0) >= skip_threshold
+                    and skip_count < max_skip
+                ):
+                    extra = _extrapolate_position(prev_result, pprev_result, chunk_end + 1)
+                    results.append(extra)
+                    pprev_result = prev_result
+                    prev_result = extra
+                    skip_count += 1
+                    chunk_end += 1
+            skip_count = 0  # 実推論後はリセット
+
+            # ── Phase-3: 次イテレーションの infer 前に preproc 完了を保証 ────
+            if preproc_stream is not None and next_start < n_triplets:
+                with _nvtx_range("tracknet/stream_sync"):
+                    default_stream.wait_stream(preproc_stream)
+
+            if _profile:
+                _st.n_chunks += 1
+            chunk_start = chunk_end
+        return results
 
 
 _instance: Optional[TrackNetInference] = None
