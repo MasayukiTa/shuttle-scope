@@ -3,10 +3,11 @@
 試合 / セット / ラリー / ストロークへのコメントを付与する。
 セッション参加者全員が閲覧・投稿できる。重要フラグ付きコメントはセット間サマリーへ集約される。
 """
+import re as _re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -29,6 +30,16 @@ class CommentCreate(BaseModel):
     rally_id: Optional[int] = None
     stroke_id: Optional[int] = None
     is_flagged: bool = False
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _sanitize_text(cls, v):
+        if v is None:
+            return v
+        v = str(v)
+        v = v.replace("\x00", "")
+        v = _re.sub(r"<[^>]*>", "", v)
+        return v
 
 
 # Per-user comment post rate limit (DoS / spam 対策)

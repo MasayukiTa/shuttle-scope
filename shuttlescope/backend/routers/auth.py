@@ -1366,16 +1366,15 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     # display_name / team_name の制御文字 / BIDI override を拒否
     _reject_control_chars(body.display_name, "display_name", max_len=120)
     _reject_control_chars(body.team_name, "team_name", max_len=80)
-    # display_name HTML タグ拒否 (stored XSS 対策、create_user と同じルール)
+    # display_name / team_name HTML タグ拒否 (stored XSS 対策)
+    _HTML_TAG_RE = _re.compile(
+        r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]",
+        _re.IGNORECASE,
+    )
     if body.display_name is not None:
         if not body.display_name.strip():
             raise HTTPException(status_code=422, detail="display_name must not be empty or whitespace only")
-        import re as _re_dn_upd
-        if _re_dn_upd.search(
-            r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]",
-            body.display_name,
-            _re_dn_upd.IGNORECASE,
-        ):
+        if _HTML_TAG_RE.search(body.display_name):
             raise HTTPException(status_code=422, detail="display_name contains disallowed HTML tags")
         user.display_name = body.display_name
     if body.username is not None and (ctx.is_admin or ctx.is_analyst):
@@ -1392,6 +1391,8 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     # team_name / player_id は admin のみ書換可能 (上でガード済)
     # admin が team_name のみ送ってきた場合は teams テーブルで lookup or 自動作成して team_id も更新
     if body.team_name is not None and ctx.is_admin:
+        if _HTML_TAG_RE.search(body.team_name):
+            raise HTTPException(status_code=422, detail="team_name contains disallowed HTML tags")
         norm = body.team_name.strip()
         if norm and body.team_id is None:
             # 既存チーム lookup
