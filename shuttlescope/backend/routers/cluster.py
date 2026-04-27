@@ -321,7 +321,9 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
         import time; time.sleep(2)
         status = _bootstrap.subprocess_ray_status()
         if not status["running"]:
-            return {"ok": False, "message": f"Ray プロセスは終了しましたが起動を確認できませんでした。{status.get('error', '')}"}
+            if status.get("error"):
+                logger.error("Ray status error detail: %s", status["error"])
+            return {"ok": False, "message": "Ray プロセスは終了しましたが起動を確認できませんでした"}
         _bootstrap.mark_ray_connected()
         # workers config から join コマンドを生成（ワーカーごと）
         workers = topology.get_workers()
@@ -349,7 +351,7 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
                 # 任意コマンドが連鎖実行されるのを防ぐため、quote 文字と
                 # コマンド連結文字を遮断する (CWE-78)。validate 済みでないバッチは
                 # 実行を見送り、警告ログを残す。
-                client.exec_command(f'cmd /c "{bat}"', timeout=120)
+                client.exec_command(f'cmd /c "{bat}"', timeout=120)  # nosec B601 -- bat validated by _SAFE_BAT_RE + deny-list before thread spawn
                 logger.info("worker ray-restart 完了: %s", wip)
             except Exception as exc:
                 logger.warning("worker ray-restart 失敗 %s: %s", wip, exc)

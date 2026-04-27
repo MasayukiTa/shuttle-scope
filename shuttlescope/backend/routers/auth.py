@@ -844,7 +844,9 @@ def _generate_temp_password() -> str:
     ]
     pool = alphabet_lower + alphabet_upper + digits + symbols
     pick += [_secrets.choice(pool) for _ in range(9)]  # 計 13 文字
-    _secrets.SystemRandom().shuffle(pick)
+    for _i in range(len(pick) - 1, 0, -1):
+        _j = _secrets.randbelow(_i + 1)
+        pick[_i], pick[_j] = pick[_j], pick[_i]
     return "".join(pick)
 
 
@@ -1019,10 +1021,10 @@ def _reject_control_chars(value: Optional[str], field_name: str, max_len: int = 
         raise HTTPException(status_code=422, detail=f"{field_name} too long (max {max_len})")
     # C0 制御文字 + LRO/RLO/PDF 等の BIDI override + ZWSP/ZWNJ/ZWJ
     DISALLOWED = set(chr(i) for i in range(32)) | {
-        "​", "‌", "‍", " ", " ",
-        "‪", "‫", "‬", "‭", "‮",
-        "⁦", "⁧", "⁨", "⁩", "﻿",
-        "",
+        "​", "‌", "‍", " ", " ",  # ZWSP/ZWNJ/ZWJ/LS/PS
+        "‪", "‫", "‬", "‭", "‮",  # LRE/RLE/PDF/LRO/RLO
+        "⁦", "⁧", "⁨", "⁩", "﻿",  # LRI/RLI/FSI/PDI/BOM
+        "",  # DEL
     }
     for ch in value:
         if ch in DISALLOWED:
@@ -1207,7 +1209,7 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     if not body.display_name or not body.display_name.strip():
         raise HTTPException(status_code=422, detail="display_name must not be empty or whitespace only")
     import re as _re_dn
-    if _re_dn.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]", body.display_name, _re_dn.IGNORECASE):
+    if _re_dn.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]", body.display_name, _re_dn.IGNORECASE):
         raise HTTPException(status_code=422, detail="display_name contains disallowed HTML tags")
     # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
     if ctx.is_analyst and body.role in ("admin", "analyst"):
@@ -1364,7 +1366,7 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
             raise HTTPException(status_code=422, detail="display_name must not be empty or whitespace only")
         import re as _re_dn_upd
         if _re_dn_upd.search(
-            r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]",
+            r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]",
             body.display_name,
             _re_dn_upd.IGNORECASE,
         ):
