@@ -98,8 +98,8 @@ def create_bookmark(body: BookmarkCreate, request: Request, db: Session = Depend
 
 @router.get("/bookmarks")
 def list_bookmarks(
-    match_id: int = Query(..., ge=1, le=2_147_483_647),
     request: Request,
+    match_id: int = Query(..., ge=1, le=2_147_483_647),
     bookmark_type: Optional[str] = None,
     reviewed_only: bool = False,
     unreviewed_only: bool = False,
