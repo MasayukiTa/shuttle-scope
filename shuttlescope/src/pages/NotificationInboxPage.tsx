@@ -267,7 +267,7 @@ export function NotificationInboxPage() {
                       <div className={`text-xs mt-1 ${textMuted} truncate`}>{item.organization || '所属未記入'}</div>
                       <div className={`text-xs mt-2 line-clamp-2 ${textMuted}`}>{item.message}</div>
                       <div className={`text-[10px] mt-1 ${textMuted}`}>
-                        {new Date(item.created_at).toLocaleString('ja-JP')}
+                        {new Date(item.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                       </div>
                     </button>
                     {!selectionMode && (

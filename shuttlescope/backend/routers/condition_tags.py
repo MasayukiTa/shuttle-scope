@@ -9,25 +9,43 @@ import re
 from datetime import date as _date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import ConditionTag, Player
+from backend.utils.auth import get_auth, AuthCtx
 
 router = APIRouter(prefix="/api/condition_tags", tags=["condition_tags"])
 
 
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+_HTML_TAG_RE = re.compile(r"<[^>]*>?")
+
+
+def _require_auth(request: Request) -> AuthCtx:
+    ctx = get_auth(request)
+    if ctx.role is None:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    return ctx
 
 
 class ConditionTagCreate(BaseModel):
-    player_id: int
+    player_id: int = Field(..., ge=1, le=2_147_483_647)
     label: str = Field(..., min_length=1, max_length=100)
     start_date: _date
     end_date: Optional[_date] = None
     color: str = Field(default="#3b82f6")
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def _sanitize_label(cls, v: str) -> str:
+        if v is None:
+            return v
+        v = str(v).replace("\x00", "")
+        v = _HTML_TAG_RE.sub("", v)
+        return v
 
     @field_validator("color")
     @classmethod
@@ -42,6 +60,15 @@ class ConditionTagUpdate(BaseModel):
     start_date: Optional[_date] = None
     end_date: Optional[_date] = None
     color: Optional[str] = None
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def _sanitize_label(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = str(v).replace("\x00", "")
+        v = _HTML_TAG_RE.sub("", v)
+        return v
 
     @field_validator("color")
     @classmethod
@@ -67,8 +94,9 @@ def _serialize(t: ConditionTag) -> dict:
 
 @router.get("")
 def list_condition_tags(
-    player_id: int = Query(...),
+    player_id: int = Query(..., ge=1, le=2_147_483_647),
     db: Session = Depends(get_db),
+    _auth: AuthCtx = Depends(_require_auth),
 ):
     if not db.get(Player, player_id):
         raise HTTPException(status_code=404, detail="選手が見つかりません")
@@ -82,7 +110,12 @@ def list_condition_tags(
 
 
 @router.post("", status_code=201)
-def create_condition_tag(body: ConditionTagCreate, db: Session = Depends(get_db)):
+def create_condition_tag(
+    body: ConditionTagCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    _auth: AuthCtx = Depends(_require_auth),
+):
     if not db.get(Player, body.player_id):
         raise HTTPException(status_code=404, detail="選手が見つかりません")
     if body.end_date is not None and body.end_date < body.start_date:
@@ -102,7 +135,11 @@ def create_condition_tag(body: ConditionTagCreate, db: Session = Depends(get_db)
 
 @router.put("/{tag_id}")
 def update_condition_tag(
-    tag_id: int, body: ConditionTagUpdate, db: Session = Depends(get_db)
+    tag_id: int,
+    body: ConditionTagUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    _auth: AuthCtx = Depends(_require_auth),
 ):
     tag = db.get(ConditionTag, tag_id)
     if not tag:
@@ -118,7 +155,12 @@ def update_condition_tag(
 
 
 @router.delete("/{tag_id}")
-def delete_condition_tag(tag_id: int, db: Session = Depends(get_db)):
+def delete_condition_tag(
+    tag_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    _auth: AuthCtx = Depends(_require_auth),
+):
     tag = db.get(ConditionTag, tag_id)
     if not tag:
         raise HTTPException(status_code=404, detail="タグが見つかりません")
