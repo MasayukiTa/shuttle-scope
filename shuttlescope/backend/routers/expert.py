@@ -32,6 +32,7 @@ from backend.db.models import (
     Player,
     Rally,
     Stroke,
+    ShotTypeAnnotation,
 )
 from backend.services.clip_generator import (
     DEFAULT_FPS,
@@ -45,16 +46,27 @@ router = APIRouter(prefix="/v1/expert", tags=["expert-labeler"])
 
 # ─── ロールガード ───────────────────────────────────────────────────────────
 
-ALLOWED_ROLES = {"analyst", "coach"}
+ALLOWED_ROLES = {"analyst", "coach", "admin"}
 
 
 def require_labeler_role(request: Request) -> AuthCtx:
-    """analyst / coach のみ許可する依存性。"""
+    """analyst / coach / admin のみ許可する依存性。"""
     ctx = get_auth(request)
     if ctx.role not in ALLOWED_ROLES:
         raise HTTPException(
             status_code=403,
             detail="この操作は analyst または coach ロールでのみ実行できます",
+        )
+    return ctx
+
+
+def require_admin_role(request: Request) -> AuthCtx:
+    """admin のみ許可する依存性。"""
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="この操作は admin ロールでのみ実行できます",
         )
     return ctx
 
@@ -398,6 +410,142 @@ def export_labels(
         content=buf.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="expert_labels_match{match_id}.csv"'},
+    )
+
+
+# ─── ショット種別アノテーション（admin 専用） ───────────────────────────────────
+
+class ShotAnnotationPayload(BaseModel):
+    match_id: int
+    stroke_id: int
+    shot_type: str
+    confidence: int = Field(default=2, ge=1, le=3)
+    comment: str = ""
+
+
+class ShotAnnotationOut(BaseModel):
+    id: int
+    match_id: int
+    stroke_id: int
+    shot_type: str
+    confidence: int
+    comment: Optional[str]
+    annotator_user_id: Optional[int]
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@router.post("/shot_labels", response_model=ShotAnnotationOut)
+def upsert_shot_label(
+    body: ShotAnnotationPayload,
+    db: Session = Depends(get_db),
+    ctx: AuthCtx = Depends(require_admin_role),
+):
+    """ショット種別アノテーション UPSERT（admin のみ）。
+
+    shot_type は canonical 形式に変換して保存する。
+    stroke_id ごとに1件。上書き可能。
+    """
+    from backend.analysis.shot_taxonomy import CANONICAL_SHOTS, canonicalize
+    canonical = canonicalize(body.shot_type)
+    if canonical not in CANONICAL_SHOTS:
+        raise HTTPException(status_code=422, detail=f"shot_type '{body.shot_type}' は認識できません")
+
+    m = db.get(Match, body.match_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if not db.get(Stroke, body.stroke_id):
+        raise HTTPException(status_code=404, detail="ストロークが見つかりません")
+
+    existing = (
+        db.query(ShotTypeAnnotation)
+        .filter(ShotTypeAnnotation.stroke_id == body.stroke_id)
+        .one_or_none()
+    )
+    if existing:
+        existing.shot_type = canonical
+        existing.confidence = body.confidence
+        existing.comment = body.comment
+        existing.annotator_user_id = ctx.user_id
+        existing.updated_at = datetime.utcnow()
+        row = existing
+    else:
+        row = ShotTypeAnnotation(
+            match_id=body.match_id,
+            stroke_id=body.stroke_id,
+            shot_type=canonical,
+            confidence=body.confidence,
+            comment=body.comment,
+            annotator_user_id=ctx.user_id,
+        )
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get("/shot_labels", response_model=list[ShotAnnotationOut])
+def list_shot_labels(
+    match_id: int = Query(...),
+    db: Session = Depends(get_db),
+    _ctx: AuthCtx = Depends(require_admin_role),
+):
+    """指定試合のショット種別アノテーション一覧（admin のみ）。"""
+    return (
+        db.query(ShotTypeAnnotation)
+        .filter(ShotTypeAnnotation.match_id == match_id)
+        .order_by(ShotTypeAnnotation.stroke_id.asc())
+        .all()
+    )
+
+
+@router.get("/shot_labels/export")
+def export_shot_labels(
+    match_id: int = Query(...),
+    fmt: Literal["csv", "json"] = Query("json"),
+    db: Session = Depends(get_db),
+    _ctx: AuthCtx = Depends(require_admin_role),
+):
+    """ショット種別アノテーション CSV / JSON エクスポート（admin のみ）。"""
+    if not db.get(Match, match_id):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    rows = (
+        db.query(ShotTypeAnnotation)
+        .filter(ShotTypeAnnotation.match_id == match_id)
+        .order_by(ShotTypeAnnotation.stroke_id.asc())
+        .all()
+    )
+    records = [
+        {
+            "id": r.id,
+            "match_id": r.match_id,
+            "stroke_id": r.stroke_id,
+            "shot_type": r.shot_type,
+            "confidence": r.confidence,
+            "comment": r.comment or "",
+            "annotator_user_id": r.annotator_user_id,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else "",
+        }
+        for r in rows
+    ]
+    if fmt == "json":
+        return {"match_id": match_id, "shot_labels": records}
+    buf = io.StringIO()
+    fieldnames = list(records[0].keys()) if records else [
+        "id", "match_id", "stroke_id", "shot_type", "confidence", "comment",
+        "annotator_user_id", "updated_at",
+    ]
+    safe_records = [{k: _csv_safe(v) for k, v in rec.items()} for rec in records]
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    for rec in safe_records:
+        writer.writerow(rec)
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="shot_labels_match{match_id}.csv"'},
     )
 
 
