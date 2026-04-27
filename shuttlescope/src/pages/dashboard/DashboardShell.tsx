@@ -114,6 +114,20 @@ export function DashboardShell() {
   const { theme } = useTheme()
   const isLight = theme === 'light'
 
+  const dlReport = (path: string, filename: string) => {
+    const token = sessionStorage.getItem('shuttlescope_token')
+    fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => r.blob())
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+      })
+  }
+
   // ── 共有状態 ──
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null)
   const [filterResult, setFilterResult] = useState<'all' | 'win' | 'loss'>('all')
@@ -288,31 +302,27 @@ export function DashboardShell() {
               <div className="flex flex-wrap items-center justify-end gap-1.5">
                 <FileDown size={13} className={textMuted} />
                 {(role === 'admin' || role === 'analyst' || role === 'coach') && (
-                  <a
-                    href={`/api/reports/scouting?player_id=${selectedPlayerId}`}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    onClick={() => dlReport(`/api/reports/scouting?player_id=${selectedPlayerId}`, `scouting_${selectedPlayerId}.pdf`)}
                     className={`text-xs px-2.5 py-1 rounded border transition-colors ${
                       isLight
                         ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
                         : 'border-gray-600 text-gray-300 hover:bg-gray-700'
                     }`}
                   >
-                    スカウティング PDF
-                  </a>
+                    PDF
+                  </button>
                 )}
-                <a
-                  href={`/api/reports/player_growth?player_id=${selectedPlayerId}`}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  onClick={() => dlReport(`/api/reports/player_growth?player_id=${selectedPlayerId}`, `growth_${selectedPlayerId}.json`)}
                   className={`text-xs px-2.5 py-1 rounded border transition-colors ${
                     isLight
                       ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
                       : 'border-gray-600 text-gray-300 hover:bg-gray-700'
                   }`}
                 >
-                  成長レポート JSON
-                </a>
+                  JSON
+                </button>
               </div>
             </div>
 

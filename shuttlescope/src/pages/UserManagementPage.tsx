@@ -112,7 +112,7 @@ function SecretField(props: {
 }
 
 export function UserManagementPage() {
-  type SortKey = 'display_name' | 'username' | 'player_name'
+  type SortKey = 'display_name' | 'username' | 'player_name' | 'team_name'
 
   const { role: myRole } = useAuth()
   const isLight = useIsLightMode()
@@ -584,6 +584,7 @@ export function UserManagementPage() {
                 <option value="display_name">{t('users.manage.sort_display_name')}</option>
                 <option value="username">{t('users.manage.sort_username')}</option>
                 <option value="player_name">{t('users.manage.sort_player_name')}</option>
+                <option value="team_name">{t('users.manage.sort_team_name')}</option>
               </select>
             </div>
           </div>

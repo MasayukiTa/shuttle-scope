@@ -2297,6 +2297,7 @@
       "sort_display_name": "表示名順",
       "sort_username": "ログインID順",
       "sort_player_name": "選手名順",
+      "sort_team_name": "チーム名順",
       "edit_title": "ユーザー編集",
       "create_title": "新規ユーザー追加",
       "role_label": "ロール",

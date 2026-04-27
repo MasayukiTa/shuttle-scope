@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Heart, User, Trash2 } from 'lucide-react'
+import { Heart, User, Trash2, FileDown } from 'lucide-react'
 import { apiGet, apiDelete } from '@/api/client'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -137,6 +137,20 @@ export function ConditionPage() {
     setSuccessMsg(t('condition.saved'))
   }
 
+  const dlReport = (path: string, filename: string) => {
+    const token = sessionStorage.getItem('shuttlescope_token')
+    fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => r.blob())
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+      })
+  }
+
   const cardBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'
@@ -183,6 +197,25 @@ export function ConditionPage() {
           </div>
         )}
       </div>
+
+      {/* ダウンロードボタン */}
+      {effectivePlayerId && (
+        <div className={`px-6 py-2 flex items-center justify-end gap-1.5 border-b ${borderColor}`}>
+          <FileDown size={13} className={textMuted} />
+          <button
+            onClick={() => dlReport(`/api/reports/condition_pdf?player_id=${effectivePlayerId}`, `condition_${effectivePlayerId}.pdf`)}
+            className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
+          >
+            PDF
+          </button>
+          <button
+            onClick={() => dlReport(`/api/reports/condition?player_id=${effectivePlayerId}`, `condition_${effectivePlayerId}.json`)}
+            className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
+          >
+            JSON
+          </button>
+        </div>
+      )}
 
       {/* サブタブ */}
       <div className={`border-b ${borderColor} px-4`}>
