@@ -1,4 +1,4 @@
-"""Authentication and user-management routes."""
+﻿"""Authentication and user-management routes."""
 
 import base64
 import hashlib
@@ -1021,10 +1021,10 @@ def _reject_control_chars(value: Optional[str], field_name: str, max_len: int = 
         raise HTTPException(status_code=422, detail=f"{field_name} too long (max {max_len})")
     # C0 制御文字 + LRO/RLO/PDF 等の BIDI override + ZWSP/ZWNJ/ZWJ
     DISALLOWED = set(chr(i) for i in range(32)) | {
-        "​", "‌", "‍", " ", " ",  # ZWSP/ZWNJ/ZWJ/LS/PS
-        "‪", "‫", "‬", "‭", "‮",  # LRE/RLE/PDF/LRO/RLO
-        "⁦", "⁧", "⁨", "⁩", "﻿",  # LRI/RLI/FSI/PDI/BOM
-        "",  # DEL
+        "\u200b", "\u200c", "\u200d", "\u2028", "\u2029",  # ZWSP/ZWNJ/ZWJ/LS/PS
+        "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",  # LRE/RLE/PDF/LRO/RLO
+        "\u2066", "\u2067", "\u2068", "\u2069", "\ufeff",  # LRI/RLI/FSI/PDI/BOM
+        "\x7f",  # DEL
     }
     for ch in value:
         if ch in DISALLOWED:
