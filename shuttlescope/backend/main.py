@@ -1100,13 +1100,23 @@ from sqlalchemy.exc import StatementError as _SAStatementError
 
 @app.exception_handler(_SAStatementError)
 async def _sa_statement_handler(request: StarletteRequest, exc: _SAStatementError):
-    # 内部原因が OverflowError なら 422、それ以外はグローバルハンドラへ伝播させる
+    # 内部原因が OverflowError / NumericValueOutOfRange / DataError(数値範囲) なら 422
+    # それ以外はグローバルハンドラへ伝播させる
     cause = getattr(exc, "orig", None)
-    if isinstance(cause, OverflowError):
+    cause_cls_name = type(cause).__name__ if cause is not None else ""
+    is_numeric_overflow = (
+        isinstance(cause, OverflowError)
+        or cause_cls_name == "NumericValueOutOfRange"   # psycopg.errors.NumericValueOutOfRange
+        or "out of range" in str(cause).lower()
+    )
+    if is_numeric_overflow:
         _logger = logging.getLogger("shuttlescope.unhandled")
-        _logger.warning("SQLAlchemy OverflowError on %s %s", request.method, request.url.path)
+        _logger.warning(
+            "SQLAlchemy numeric overflow on %s %s (cause=%s)",
+            request.method, request.url.path, cause_cls_name,
+        )
         return _JSONResp(
-            {"detail": "数値が許容範囲を超えています (SQLite INTEGER は ±2^63 の範囲内)"},
+            {"detail": "数値が許容範囲を超えています (INTEGER は ±2^31)"},
             status_code=422,
         )
     # それ以外は raise して下段のグローバルハンドラへ
