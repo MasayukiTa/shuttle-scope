@@ -1,4 +1,4 @@
-"""セキュリティ修正のロール制限テスト (2026-04-24)
+﻿"""セキュリティ修正のロール制限テスト (2026-04-24)
 
 V-01 weak key guard, V-03/V-11 matches role, V-07 HIDE_STACK_TRACES,
 V-08 bootstrap-status, V-09 X-Role removal, admin 全操作疎通をカバーする。
@@ -631,7 +631,7 @@ class TestAPTHardening:
         from backend.routers.auth import _reject_control_chars
         from fastapi import HTTPException
         import pytest as _pt
-        for bad in ["hello\r\nX-Injected: 1", "hello\x00suffix", "hello‮reverse", "hello​ZWSP"]:
+        for bad in ["hello\r\nX-Injected: 1", "hello\x00suffix", "hello\u202ereverse", "hello\u200bZWSP"]:
             with _pt.raises(HTTPException) as exc_info:
                 _reject_control_chars(bad, "display_name")
             assert exc_info.value.status_code == 422
