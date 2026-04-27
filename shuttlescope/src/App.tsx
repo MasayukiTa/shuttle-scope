@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart, ClipboardCheck, Users, LogOut, Bell, Activity } from 'lucide-react'
+import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart, ClipboardCheck, Users, LogOut, Bell } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import '@/i18n'
@@ -18,7 +18,6 @@ import { ViewerPage } from '@/pages/ViewerPage'
 import { PredictionPage } from '@/pages/PredictionPage'
 import { ExpertLabelerPage } from '@/pages/ExpertLabelerPage'
 import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
-import { CoGDetectionPage } from '@/pages/CoGDetectionPage'
 import { useAuth } from '@/hooks/useAuth'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
@@ -103,7 +102,6 @@ function Sidebar() {
     ...(role === 'admin'
       ? [
           { to: '/notifications', label: t('auto.App.k2'), shortLabel: '通知', icon: Bell, badge: unreadCount > 0 ? unreadCount : null },
-          { to: '/cog-detection', label: t('cog_detection.title'), shortLabel: 'CoG', icon: Activity },
           { to: '/users', label: t('nav.users'), icon: Users },
         ]
       : []),
@@ -253,8 +251,7 @@ function MainLayout() {
             <Route path="/prediction" element={<PageAccessRoute pageKey="prediction"><PredictionPage /></PageAccessRoute>} />
             <Route path="/expert-labeler" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerPage /></PageAccessRoute>} />
             <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerAnnotatePage /></PageAccessRoute>} />
-            <Route path="/cog-detection" element={<AdminRoute><CoGDetectionPage /></AdminRoute>} />
-            <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
+<Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
             <Route path="/audit-logs" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
             <Route path="/teams" element={<TeamManagementPage />} />

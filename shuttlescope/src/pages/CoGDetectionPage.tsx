@@ -16,7 +16,7 @@ interface CoGResponse {
   points: CoGPoint[]
 }
 
-export function CoGDetectionPage() {
+export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
   const { t } = useTranslation()
   const { theme } = useTheme()
   const navigate = useNavigate()
@@ -64,7 +64,7 @@ export function CoGDetectionPage() {
             className={`px-4 py-2 rounded text-sm border ${
               isLight ? 'border-gray-300 hover:bg-gray-100' : 'border-gray-600 hover:bg-gray-700'
             }`}
-            onClick={() => navigate(-1)}
+            onClick={() => onBack ? onBack() : navigate(-1)}
           >
             ← {t('cog_detection.back')}
           </button>

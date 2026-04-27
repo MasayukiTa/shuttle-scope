@@ -2003,6 +2003,7 @@
     "no_clips": "クリップがありません",
     "required_fields": "必須項目を選択してください",
     "shortcut_hint": "ショートカット: ←→ 前後 / K 再生停止 / 1-3 確信度 / S スキップ / Enter 保存",
+    "tab_matches": "試合一覧",
     "tab_labeling": "重心ズレ検出",
     "tab_annotation": "アノテーション改善",
     "shot_type_section": "ショット種別（AI学習用）",
