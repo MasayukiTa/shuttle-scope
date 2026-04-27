@@ -502,7 +502,16 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 
 .mob-bar{display:none}
 
+.beta-banner{background:linear-gradient(135deg,#0a4d8c 0%,#0c6e6e 100%);padding:14px 40px}
+.beta-banner-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;text-align:center}
+.beta-badge{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,0.92);background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.24);border-radius:4px;padding:3px 10px;white-space:nowrap;flex-shrink:0}
+.beta-text{font-size:13px;color:rgba(255,255,255,0.86);line-height:1.7;margin:0}
+.beta-text strong{color:#ffffff;font-weight:700}
+.beta-text a{color:#a8d8f8;text-decoration:none;border-bottom:1px solid rgba(168,216,248,0.38);transition:color .15s,border-color .15s}
+.beta-text a:hover{color:#fff;border-bottom-color:rgba(255,255,255,0.55)}
+
 @media(max-width:767px){
+  .beta-banner{padding:12px 16px}.beta-text{font-size:12px}
   nav{padding:0 16px}.nav-links{display:none}.btn-login{display:none}.hamburger{display:flex}
   .hero{padding:76px 20px 96px}.hero-inner{grid-template-columns:1fr;gap:0}.hero-panel{display:none}
   h1.hero-h1{font-size:clamp(26px,7.5vw,36px)}.hero-tagline{font-size:clamp(16px,5vw,22px)}
@@ -548,12 +557,6 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   </div>
 </nav>
 
-<div class="en en-lang-notice" style="max-width:1160px;margin:76px auto 0;padding:12px 40px 0;font-size:13px;color:var(--t2);line-height:1.6">
-  <div style="border:1px solid var(--bdr2);border-left:4px solid #b33f3f;background:rgba(179,63,63,0.05);border-radius:6px;padding:12px 16px">
-    <strong style="color:var(--t1)">Please note:</strong> The ShuttleScope product is currently available in Japanese only. An English-language product interface is planned for a future release.
-  </div>
-</div>
-
 <nav class="mobile-menu" id="mmenu">
   <a href="#features"><span class="ja">機能</span><span class="en">Features</span></a>
   <a href="#usecases"><span class="ja">利用シーン</span><span class="en">Use Cases</span></a>
@@ -561,6 +564,16 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   <a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
   <a href="https://app.shuttle-scope.com/login" style="color:var(--blue);font-weight:700"><span class="ja">ログイン →</span><span class="en">Login →</span></a>
 </nav>
+
+<div class="beta-banner">
+  <div class="beta-banner-inner">
+    <span class="beta-badge"><span class="ja">β 版</span><span class="en">BETA</span></span>
+    <p class="beta-text">
+      <span class="ja">ShuttleScope は <strong>2026年中、無償</strong>にてご利用いただけます。現在、β版にご協力いただける方を募集しております。ご賛同いただける方は、<a href="/contact">お問い合わせフォーム</a>よりご連絡ください。</span>
+      <span class="en">ShuttleScope is available <strong>free of charge throughout 2026</strong>. We are currently seeking participants for our beta programme. If you are interested in joining, please reach out via the <a href="/en/contact">contact form</a>.</span>
+    </p>
+  </div>
+</div>
 
 <section class="hero">
   <div class="hero-inner">
@@ -1109,21 +1122,13 @@ def _base_layout_str_en(title: str, body: str, *, canonical_path: str = "/en", n
     input,textarea,select {{ width:100%; border:1px solid var(--line); border-radius:14px; background:white; padding:12px 14px; font:inherit; color:var(--text); }}
     textarea {{ min-height:180px; resize:vertical; }}
     .form-grid {{ display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }}
-    .notice {{ border-left:4px solid var(--accent); background:rgba(13,123,131,.07); padding:14px 16px; border-radius:12px; margin:16px 0; }}
-    .lang-notice {{ max-width:1120px; margin:0 auto; padding:12px 24px 0; }}
-    .lang-notice-inner {{ border:1px solid var(--line); border-left:4px solid var(--danger); background:rgba(179,63,63,.06); padding:12px 16px; border-radius:12px; color:var(--muted); font-size:.92rem; line-height:1.7; }}
-    .lang-notice-inner strong {{ color:var(--text); }}
+    .notice {{ background:rgba(13,123,131,.10); border:1px solid rgba(13,123,131,.18); padding:14px 16px; border-radius:12px; margin:16px 0; }}
     .hidden-field {{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }}
     .result {{ margin-top:16px; font-size:.95rem; }}
     @media(max-width:720px) {{ .shell{{padding:16px}} .hero{{padding:22px;border-radius:20px}} .topbar{{align-items:flex-start;flex-direction:column}} }}
   </style>
 </head>
 <body>
-<div class="lang-notice">
-  <div class="lang-notice-inner">
-    <strong>Please note:</strong> The ShuttleScope product is currently available in Japanese only. An English-language product interface is planned for a future release.
-  </div>
-</div>
 {body}
 </body>
 </html>"""
@@ -1254,10 +1259,6 @@ def _render_contact_str_en(request: Request) -> str:
       {_public_nav_en(login_href, lang_href="/contact")}
       <section class="panel" style="margin-bottom:20px;">
         <h1>Contact</h1>
-        <div class="notice" style="border-left-color:#b33f3f;background:rgba(179,63,63,.08);">
-          <strong>Please note:</strong> The ShuttleScope product is currently available in Japanese only.
-          An English-language product interface is planned for a future release.
-        </div>
         <p>
           For inquiries regarding ShuttleScope, please submit your message via the form below.
           We welcome consultations on adoption, questions about features, bug reports, and other
