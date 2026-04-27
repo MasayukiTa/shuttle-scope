@@ -837,6 +837,31 @@ class ExpertLabel(Base):
     team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True, index=True)
 
 
+class ShotTypeAnnotation(Base):
+    """管理者によるショット種別アノテーション（AI学習データ収集用）。
+
+    admin 権限者のみが書き込み可能。stroke_id ごとに1件（UPSERT対象）。
+    """
+    __tablename__ = "shot_type_annotations"
+    __table_args__ = (
+        UniqueConstraint("stroke_id", name="uq_shot_type_annotation_stroke"),
+        Index("ix_shot_type_annotations_match_id", "match_id"),
+        Index("ix_shot_type_annotations_stroke_id", "stroke_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer, ForeignKey("matches.id"), nullable=False)
+    stroke_id: Mapped[int] = mapped_column(Integer, ForeignKey("strokes.id"), nullable=False)
+    shot_type: Mapped[str] = mapped_column(String(30), nullable=False)   # canonical shot type
+    confidence: Mapped[int] = mapped_column(Integer, default=2)          # 1-3
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default="")
+    annotator_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class ClipCache(Base):
     """ミスストロークのクリップ切り出しキャッシュ。"""
     __tablename__ = "clip_cache"

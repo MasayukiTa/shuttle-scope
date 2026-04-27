@@ -2002,7 +2002,32 @@
     "back_to_list": "Back to list",
     "no_clips": "No clips",
     "required_fields": "Please select the required fields",
-    "shortcut_hint": "Shortcuts: ←→ prev/next / K play-pause / 1-3 confidence / S skip / Enter save"
+    "shortcut_hint": "Shortcuts: ←→ prev/next / K play-pause / 1-3 confidence / S skip / Enter save",
+    "tab_labeling": "CoG Deviation",
+    "tab_annotation": "Annotation Improvement",
+    "shot_type_section": "Shot Type (AI Training Data)",
+    "shot_type_label": "Shot Type",
+    "shot_type_placeholder": "Select shot type...",
+    "shot_type_save": "Save",
+    "shot_type_saved": "Shot type saved",
+    "shot_type_save_error": "Failed to save",
+    "shot_type_required": "Please select a shot type",
+    "shot_type_admin_only": "This feature is available to admins only",
+    "shot_type_hint": "Annotated shot types will be used as AI model training data (Terms of Use, Section 9)"
+  },
+  "cog_detection": {
+    "title": "CoG Deviation Detection",
+    "subtitle": "Visualise player weight transfer and CoG stability",
+    "no_data": "No CoG data for this stroke",
+    "loading": "Loading...",
+    "back": "Back",
+    "side_label": "Court side",
+    "stability": "Stability score",
+    "left_weight": "Left weight",
+    "right_weight": "Right weight",
+    "forward_lean": "Forward lean",
+    "select_stroke": "Please select a stroke",
+    "sample_warning": "Small sample — treat as indicative only"
   },
   "pipeline": {
     "status": {

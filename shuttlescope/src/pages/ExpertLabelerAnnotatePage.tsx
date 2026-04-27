@@ -12,6 +12,20 @@ type PostureCollapse = 'none' | 'minor' | 'major'
 type WeightDistribution = 'left' | 'right' | 'center' | 'floating'
 type ShotTiming = 'early' | 'optimal' | 'late'
 type Confidence = 1 | 2 | 3
+type ActiveTab = 'labeling' | 'annotation'
+
+interface ShotAnnotation {
+  stroke_id: number
+  shot_type: string
+  confidence: Confidence
+  comment: string
+}
+
+const CANONICAL_SHOTS = [
+  'short_service','long_service','net_shot','clear','push_rush','smash',
+  'defensive','drive','lob','drop','cross_net','slice','around_head',
+  'cant_reach','flick','half_smash','block','other',
+]
 
 interface ExpertClip {
   stroke_id: number
@@ -111,6 +125,18 @@ function AnnotateContent() {
     enabled: !!matchId,
   })
 
+  // ショット種別アノテーション取得（admin のみ）
+  const shotLabelsQuery = useQuery<ShotAnnotation[]>({
+    queryKey: ['expert', 'shot_labels', matchId],
+    queryFn: () => apiGet<ShotAnnotation[]>('/v1/expert/shot_labels', { match_id: matchId! }),
+    enabled: !!matchId && role === 'admin',
+  })
+  const shotLabelByStroke = useMemo(() => {
+    const m = new Map<number, ShotAnnotation>()
+    ;(shotLabelsQuery.data ?? []).forEach((a) => m.set(a.stroke_id, a))
+    return m
+  }, [shotLabelsQuery.data])
+
   const clips = clipsQuery.data?.clips ?? []
   const labels = labelsQuery.data?.labels ?? []
 
@@ -124,6 +150,12 @@ function AnnotateContent() {
   const [index, setIndex] = useState(0)
   const [form, setForm] = useState<FormState>(emptyForm())
   const [toast, setToast] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<ActiveTab>('labeling')
+  const [shotAnnotation, setShotAnnotation] = useState<Omit<ShotAnnotation, 'stroke_id'>>({
+    shot_type: '',
+    confidence: 2,
+    comment: '',
+  })
   const videoRef = useRef<HTMLVideoElement>(null)
 
   const currentClip = clips[index]
@@ -154,7 +186,18 @@ function AnnotateContent() {
     } else {
       setForm(emptyForm())
     }
-  }, [currentClip?.stroke_id, labelByStroke])
+    // ショット種別アノテーションも prefill
+    const existingShot = shotLabelByStroke.get(currentClip.stroke_id)
+    if (existingShot) {
+      setShotAnnotation({
+        shot_type: existingShot.shot_type,
+        confidence: (existingShot.confidence as Confidence) || 2,
+        comment: existingShot.comment || '',
+      })
+    } else {
+      setShotAnnotation({ shot_type: '', confidence: 2, comment: '' })
+    }
+  }, [currentClip?.stroke_id, labelByStroke, shotLabelByStroke])
 
   // 保存
   const saveMutation = useMutation({
@@ -189,6 +232,31 @@ function AnnotateContent() {
     },
   })
 
+  // ショット種別アノテーション保存
+  const saveShotMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentClip || !matchId) throw new Error('no clip')
+      if (!shotAnnotation.shot_type) throw new Error('no shot_type')
+      return apiPost('/v1/expert/shot_labels', {
+        match_id: Number(matchId),
+        stroke_id: currentClip.stroke_id,
+        shot_type: shotAnnotation.shot_type,
+        confidence: shotAnnotation.confidence,
+        comment: shotAnnotation.comment,
+      })
+    },
+    onSuccess: () => {
+      setToast(t('expert_labeler.shot_type_saved'))
+      queryClient.invalidateQueries({ queryKey: ['expert', 'shot_labels', matchId] })
+      setIndex((i) => Math.min(i + 1, clips.length - 1))
+      window.setTimeout(() => setToast(null), 1500)
+    },
+    onError: () => {
+      setToast(t('expert_labeler.shot_type_save_error'))
+      window.setTimeout(() => setToast(null), 2000)
+    },
+  })
+
   const handleSave = useCallback(() => {
     // 必須項目未選択時は保存不可
     if (!form.posture_collapse || !form.weight_distribution || !form.shot_timing) {
@@ -198,6 +266,15 @@ function AnnotateContent() {
     }
     saveMutation.mutate({ skip: false })
   }, [form, saveMutation, t])
+
+  const handleSaveShot = useCallback(() => {
+    if (!shotAnnotation.shot_type) {
+      setToast(t('expert_labeler.shot_type_required'))
+      window.setTimeout(() => setToast(null), 1500)
+      return
+    }
+    saveShotMutation.mutate()
+  }, [shotAnnotation, saveShotMutation, t])
 
   const handleSkip = useCallback(() => {
     saveMutation.mutate({ skip: true })
@@ -386,6 +463,31 @@ function AnnotateContent() {
           />
         </div>
 
+        {/* タブ切替（admin のみ「アノテーション改善」タブを表示） */}
+        {role === 'admin' && (
+          <div className="flex gap-1 mb-4">
+            {(['labeling', 'annotation'] as ActiveTab[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 rounded-t text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab
+                    ? isLight
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-blue-400 text-blue-400'
+                    : isLight
+                    ? 'border-transparent text-gray-500 hover:text-gray-700'
+                    : 'border-transparent text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                {tab === 'labeling'
+                  ? t('expert_labeler.tab_labeling')
+                  : t('expert_labeler.tab_annotation')}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* 動画領域 */}
           <div className={`rounded-lg border p-3 ${panelBg}`}>
@@ -413,7 +515,8 @@ function AnnotateContent() {
             </div>
           </div>
 
-          {/* ラベル入力パネル */}
+          {/* ─ 重心ズレ検出タブ（デフォルト） ─ */}
+          {activeTab === 'labeling' && (
           <div className={`rounded-lg border p-4 ${panelBg}`}>
             {renderRadioGroup(
               'expert_labeler.posture_collapse',
@@ -522,6 +625,140 @@ function AnnotateContent() {
               </button>
             </div>
           </div>
+          )}
+
+          {/* ─ アノテーション改善タブ（admin のみ） ─ */}
+          {activeTab === 'annotation' && role === 'admin' && (
+          <div className={`rounded-lg border p-4 ${panelBg}`}>
+            <div className="text-sm font-semibold mb-3">
+              {t('expert_labeler.shot_type_section')}
+            </div>
+            <p className={`text-xs mb-4 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+              {t('expert_labeler.shot_type_hint')}
+            </p>
+
+            {/* ショット種別選択 */}
+            <div className="mb-4">
+              <label className="text-sm font-semibold mb-2 block">
+                {t('expert_labeler.shot_type_label')}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {CANONICAL_SHOTS.map((shot) => {
+                  const selected = shotAnnotation.shot_type === shot
+                  return (
+                    <button
+                      type="button"
+                      key={shot}
+                      onClick={() => setShotAnnotation((s) => ({ ...s, shot_type: shot }))}
+                      className={`${btnLarge} border text-xs ${
+                        selected
+                          ? 'bg-green-500 border-green-500 text-white'
+                          : isLight
+                          ? 'bg-white border-gray-300 text-gray-800'
+                          : 'bg-gray-800 border-gray-600 text-gray-100'
+                      }`}
+                      style={{ minHeight: '40px', minWidth: '56px' }}
+                    >
+                      {t(`shot_types.${shot}`) || shot}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 確信度 */}
+            <div className="mb-4">
+              <div className="text-sm font-semibold mb-2">
+                {t('expert_labeler.confidence')}
+              </div>
+              <div className="flex gap-2">
+                {[1, 2, 3].map((c) => {
+                  const selected = shotAnnotation.confidence === c
+                  const keyMap: Record<number, string> = {
+                    1: 'expert_labeler.confidence_low',
+                    2: 'expert_labeler.confidence_mid',
+                    3: 'expert_labeler.confidence_high',
+                  }
+                  return (
+                    <button
+                      type="button"
+                      key={c}
+                      onClick={() => setShotAnnotation((s) => ({ ...s, confidence: c as Confidence }))}
+                      className={`${btnLarge} border ${
+                        selected
+                          ? 'bg-yellow-500 border-yellow-500 text-white'
+                          : isLight
+                          ? 'bg-white border-gray-300 text-gray-800'
+                          : 'bg-gray-800 border-gray-600 text-gray-100'
+                      }`}
+                      style={{ minHeight: '48px', minWidth: '72px' }}
+                    >
+                      {c} ({t(keyMap[c])})
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* コメント */}
+            <div className="mb-4">
+              <label className="text-sm font-semibold mb-2 block">
+                {t('expert_labeler.comment')}
+              </label>
+              <textarea
+                value={shotAnnotation.comment}
+                onChange={(e) => setShotAnnotation((s) => ({ ...s, comment: e.target.value }))}
+                placeholder={t('expert_labeler.comment_placeholder') as string}
+                rows={2}
+                className={`w-full rounded border px-3 py-2 ${
+                  isLight
+                    ? 'bg-white border-gray-300 text-gray-900'
+                    : 'bg-gray-900 border-gray-600 text-gray-100'
+                }`}
+              />
+            </div>
+
+            {/* 操作ボタン */}
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button
+                className={`${btnLarge} ${btnSecondary}`}
+                onClick={goPrev}
+                disabled={index <= 0}
+                style={{ minHeight: '56px' }}
+              >
+                ← {t('expert_labeler.prev')}
+              </button>
+              <button
+                className={`${btnLarge} ${btnSecondary}`}
+                onClick={goNext}
+                disabled={index >= clips.length - 1}
+                style={{ minHeight: '56px' }}
+              >
+                {t('expert_labeler.next')} →
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href={`/api/v1/expert/shot_labels/export?match_id=${matchId}&fmt=csv`}
+                target="_blank"
+                rel="noreferrer"
+                className={`flex items-center justify-center ${btnLarge} border ${
+                  isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                }`}
+                style={{ minHeight: '56px' }}
+              >
+                CSV
+              </a>
+              <button
+                className={`${btnLarge} bg-green-600 hover:bg-green-700 text-white`}
+                onClick={handleSaveShot}
+                style={{ minHeight: '56px' }}
+              >
+                {t('expert_labeler.shot_type_save')}
+              </button>
+            </div>
+          </div>
+          )}
         </div>
 
         {/* トースト通知 */}
