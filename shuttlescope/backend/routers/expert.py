@@ -418,9 +418,9 @@ def export_labels(
 class ShotAnnotationPayload(BaseModel):
     match_id: int
     stroke_id: int
-    shot_type: str
+    shot_type: str = Field(..., min_length=1, max_length=64)
     confidence: int = Field(default=2, ge=1, le=3)
-    comment: str = ""
+    comment: str = Field(default="", max_length=2000)
 
 
 class ShotAnnotationOut(BaseModel):
