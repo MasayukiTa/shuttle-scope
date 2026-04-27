@@ -10,8 +10,9 @@
 """
 from typing import Optional
 
+import re as _re
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -38,8 +39,20 @@ class BookmarkCreate(BaseModel):
     bookmark_type: str = "manual"
     # 動画タイムスタンプ: 0 秒 〜 24 時間以内に限定 (負数・10 年後を拒否)
     video_timestamp_sec: Optional[float] = Field(default=None, ge=0, le=86400)
-    # note: 長さ制限 (DoS 対策、2500 文字通過していた実績を塞ぐ)
+    # note: 長さ制限 + null byte / スクリプトタグ除去
     note: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _sanitize_note(cls, v):
+        if v is None:
+            return v
+        v = str(v)
+        # null byte 除去
+        v = v.replace("\x00", "")
+        # HTML タグ除去（Stored XSS 対策）
+        v = _re.sub(r"<[^>]*>", "", v)
+        return v
 
 
 @router.post("/bookmarks", status_code=201)
