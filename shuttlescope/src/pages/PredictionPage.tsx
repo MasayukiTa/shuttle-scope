@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
-import { User, TrendingUp, Swords } from 'lucide-react'
+import { User, TrendingUp, Swords, FileDown } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
@@ -48,6 +48,20 @@ export function PredictionPage() {
   const [tournamentLevel, setTournamentLevel] = useState<string>('')
 
   const LEVEL_OPTIONS = ['IC', 'IS', 'SJL', '全日本', '国内', 'その他']
+
+  const dlReport = (path: string, filename: string) => {
+    const token = sessionStorage.getItem('shuttlescope_token')
+    fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => r.blob())
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+      })
+  }
 
   // URL パラメータ変化に追従
   useEffect(() => {
@@ -202,6 +216,25 @@ export function PredictionPage() {
             </button>
           ))}
         </div>
+
+        {/* ダウンロードボタン */}
+        {selectedPlayerId && (
+          <div className={`flex items-center justify-end gap-1.5 px-6 py-2 border-b shrink-0 ${isLight ? 'border-gray-200 bg-white' : 'border-gray-800 bg-gray-900'}`}>
+            <FileDown size={13} className={textMuted} />
+            <button
+              onClick={() => dlReport(`/api/reports/prediction_pdf?player_id=${selectedPlayerId}`, `prediction_${selectedPlayerId}.pdf`)}
+              className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
+            >
+              PDF
+            </button>
+            <button
+              onClick={() => dlReport(`/api/reports/prediction?player_id=${selectedPlayerId}`, `prediction_${selectedPlayerId}.json`)}
+              className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
+            >
+              JSON
+            </button>
+          </div>
+        )}
 
         {/* コンテンツ */}
         <div className="flex-1 overflow-y-auto px-6 py-5">

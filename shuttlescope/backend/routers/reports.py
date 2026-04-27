@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Match, GameSet, Rally, Stroke, Player
+from backend.db.models import Match, GameSet, Rally, Stroke, Player, Condition
 from backend.utils.auth import check_export_player_scope, get_auth
 from backend.utils.confidence import check_confidence
 
@@ -520,3 +520,427 @@ def get_interval_flash_report(
         },
         "meta": {"sample_size": total_rallies, "confidence": confidence},
     }
+
+
+# ---------------------------------------------------------------------------
+# I-004: 体調レポート JSON
+# ---------------------------------------------------------------------------
+
+@router.get("/reports/condition")
+def get_condition_report(
+    player_id: int = Query(..., ge=1, le=2_147_483_647),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    """I-004: 選手の体調データをJSON形式でエクスポートする。"""
+    ctx = get_auth(request)
+    check_export_player_scope(ctx, player_id, db)
+    player = db.get(Player, player_id)
+    if not player:
+        return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
+
+    conditions = (
+        db.query(Condition)
+        .filter(Condition.player_id == player_id)
+        .order_by(Condition.measured_at.desc())
+        .limit(120)
+        .all()
+    )
+
+    rows = [
+        {
+            "measured_at": str(c.measured_at),
+            "condition_type": c.condition_type,
+            "ccs_score": c.ccs_score,
+            "hooper_index": c.hooper_index,
+            "session_rpe": c.session_rpe,
+            "sleep_hours": c.sleep_hours,
+            "weight_kg": c.weight_kg,
+            "f1_physical": c.f1_physical,
+            "f2_stress": c.f2_stress,
+            "f3_mood": c.f3_mood,
+            "f4_motivation": c.f4_motivation,
+            "f5_sleep_life": c.f5_sleep_life,
+        }
+        for c in conditions
+    ]
+
+    def _avg(vals):
+        v = [x for x in vals if x is not None]
+        return round(sum(v) / len(v), 2) if v else None
+
+    summary = {
+        "record_count": len(rows),
+        "date_from": rows[-1]["measured_at"] if rows else None,
+        "date_to": rows[0]["measured_at"] if rows else None,
+        "avg_ccs": _avg([r["ccs_score"] for r in rows]),
+        "avg_hooper": _avg([r["hooper_index"] for r in rows]),
+        "avg_rpe": _avg([r["session_rpe"] for r in rows]),
+        "avg_sleep_h": _avg([r["sleep_hours"] for r in rows]),
+    }
+
+    return {
+        "success": True,
+        "data": {
+            "player_name": player.name,
+            "summary": summary,
+            "records": rows,
+            "disclaimer": DISCLAIMER_JA,
+        },
+        "meta": {"sample_size": len(rows), "confidence": check_confidence("descriptive_basic", len(rows))},
+    }
+
+
+# ---------------------------------------------------------------------------
+# I-005: 体調レポート PDF
+# ---------------------------------------------------------------------------
+
+@router.get("/reports/condition_pdf")
+def get_condition_report_pdf(
+    player_id: int = Query(..., ge=1, le=2_147_483_647),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    """I-005: 選手の体調サマリーをPDF形式でエクスポートする。"""
+    ctx = get_auth(request)
+    check_export_player_scope(ctx, player_id, db)
+    player = db.get(Player, player_id)
+    if not player:
+        return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
+
+    conditions = (
+        db.query(Condition)
+        .filter(Condition.player_id == player_id)
+        .order_by(Condition.measured_at.desc())
+        .limit(60)
+        .all()
+    )
+
+    def _avg(vals):
+        v = [x for x in vals if x is not None]
+        return round(sum(v) / len(v), 2) if v else None
+
+    avg_ccs = _avg([c.ccs_score for c in conditions])
+    avg_hooper = _avg([c.hooper_index for c in conditions])
+    avg_rpe = _avg([c.session_rpe for c in conditions])
+    avg_sleep = _avg([c.sleep_hours for c in conditions])
+    date_from = str(conditions[-1].measured_at) if conditions else "—"
+    date_to = str(conditions[0].measured_at) if conditions else "—"
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20*mm, bottomMargin=20*mm)
+        try:
+            pdfmetrics.registerFont(TTFont("Meiryo", "C:/Windows/Fonts/meiryo.ttc"))
+            jp = "Meiryo"
+        except Exception:
+            jp = "Helvetica"
+
+        title_s = ParagraphStyle("T", fontName=jp, fontSize=16, spaceAfter=8)
+        body_s = ParagraphStyle("B", fontName=jp, fontSize=10, spaceAfter=5)
+        footer_s = ParagraphStyle("F", fontName=jp, fontSize=8, textColor=colors.grey)
+
+        content = [
+            Paragraph(f"体調レポート: {player.name}", title_s),
+            Paragraph(f"集計期間: {date_from} 〜 {date_to}　記録数: {len(conditions)}", body_s),
+            Spacer(1, 5*mm),
+            Paragraph("■ 平均指標", body_s),
+        ]
+        tbl = Table(
+            [
+                ["指標", "平均値"],
+                ["CCS スコア", str(avg_ccs) if avg_ccs is not None else "—"],
+                ["Hooper Index", str(avg_hooper) if avg_hooper is not None else "—"],
+                ["セッション RPE", str(avg_rpe) if avg_rpe is not None else "—"],
+                ["睡眠時間 (h)", str(avg_sleep) if avg_sleep is not None else "—"],
+            ],
+            colWidths=[80*mm, 60*mm],
+        )
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e40af")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, -1), jp),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f4ff")]),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        content.append(tbl)
+
+        if conditions:
+            content.append(Spacer(1, 5*mm))
+            content.append(Paragraph("■ 直近20件の記録", body_s))
+            rec_data = [["測定日", "種別", "CCS", "Hooper", "RPE", "睡眠(h)"]]
+            for c in conditions[:20]:
+                rec_data.append([
+                    str(c.measured_at), c.condition_type or "—",
+                    f"{c.ccs_score:.1f}" if c.ccs_score is not None else "—",
+                    str(c.hooper_index) if c.hooper_index is not None else "—",
+                    str(c.session_rpe) if c.session_rpe is not None else "—",
+                    f"{c.sleep_hours:.1f}" if c.sleep_hours is not None else "—",
+                ])
+            rec_tbl = Table(rec_data, colWidths=[30*mm, 25*mm, 22*mm, 22*mm, 20*mm, 20*mm])
+            rec_tbl.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0891b2")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, -1), jp),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0fdfa")]),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]))
+            content.append(rec_tbl)
+
+        content.append(Spacer(1, 8*mm))
+        content.append(Paragraph(DISCLAIMER_JA, footer_s))
+        content.append(Paragraph(f"生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M')}", footer_s))
+        doc.build(content)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=condition_{player_id}.pdf"},
+        )
+
+    except Exception:
+        return {
+            "success": True,
+            "data": {
+                "player_name": player.name,
+                "summary": {
+                    "record_count": len(conditions), "date_from": date_from, "date_to": date_to,
+                    "avg_ccs": avg_ccs, "avg_hooper": avg_hooper, "avg_rpe": avg_rpe, "avg_sleep_h": avg_sleep,
+                },
+                "disclaimer": DISCLAIMER_JA,
+            },
+        }
+
+
+# ---------------------------------------------------------------------------
+# I-006: 予測レポート JSON
+# ---------------------------------------------------------------------------
+
+@router.get("/reports/prediction")
+def get_prediction_report(
+    player_id: int = Query(..., ge=1, le=2_147_483_647),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    """I-006: 選手の予測データをJSON形式でエクスポートする。"""
+    ctx = get_auth(request)
+    check_export_player_scope(ctx, player_id, db)
+    player = db.get(Player, player_id)
+    if not player:
+        return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
+
+    matches = (
+        db.query(Match)
+        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .order_by(Match.date.desc())
+        .limit(30)
+        .all()
+    )
+    match_ids = [m.id for m in matches]
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all() if match_ids else []
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_ids = [s.id for s in sets]
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
+
+    total = len(rallies)
+    wins = sum(1 for r in rallies if r.winner == role_by_match.get(set_to_match.get(r.set_id)))
+    win_rate = round(wins / total, 3) if total else None
+
+    levels: dict = {}
+    for m in matches:
+        lv = m.tournament_level or "不明"
+        role = role_by_match[m.id]
+        m_ids = {r.id for r in rallies if set_to_match.get(r.set_id) == m.id}
+        m_wins = sum(1 for r in rallies if r.id in m_ids and r.winner == role)
+        if lv not in levels:
+            levels[lv] = {"wins": 0, "total": 0}
+        levels[lv]["wins"] += m_wins
+        levels[lv]["total"] += len(m_ids)
+
+    recent_conditions = (
+        db.query(Condition)
+        .filter(Condition.player_id == player_id)
+        .order_by(Condition.measured_at.desc())
+        .limit(4)
+        .all()
+    )
+    hoopers = [c.hooper_index for c in recent_conditions if c.hooper_index is not None]
+    fatigue = round(sum(hoopers) / len(hoopers), 1) if hoopers else None
+
+    return {
+        "success": True,
+        "data": {
+            "player_name": player.name,
+            "overall": {"total_matches": len(matches), "total_rallies": total, "win_rate": win_rate},
+            "by_level": [
+                {"level": lv, "win_rate": round(v["wins"] / v["total"], 3) if v["total"] else None, "rallies": v["total"]}
+                for lv, v in levels.items()
+            ],
+            "fatigue_hooper_avg_recent4": fatigue,
+            "disclaimer": DISCLAIMER_JA,
+        },
+        "meta": {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# I-007: 予測レポート PDF
+# ---------------------------------------------------------------------------
+
+@router.get("/reports/prediction_pdf")
+def get_prediction_report_pdf(
+    player_id: int = Query(..., ge=1, le=2_147_483_647),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    """I-007: 選手の予測サマリーをPDF形式でエクスポートする。"""
+    ctx = get_auth(request)
+    check_export_player_scope(ctx, player_id, db)
+    player = db.get(Player, player_id)
+    if not player:
+        return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
+
+    matches = (
+        db.query(Match)
+        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
+        .order_by(Match.date.desc())
+        .limit(30)
+        .all()
+    )
+    match_ids = [m.id for m in matches]
+    sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all() if match_ids else []
+    set_to_match = {s.id: s.match_id for s in sets}
+    set_ids = [s.id for s in sets]
+    rallies = db.query(Rally).filter(Rally.set_id.in_(set_ids)).all() if set_ids else []
+    role_by_match = {m.id: _player_role_in_match(m, player_id) for m in matches}
+
+    total = len(rallies)
+    wins = sum(1 for r in rallies if r.winner == role_by_match.get(set_to_match.get(r.set_id)))
+    win_rate_pct = round(wins / total * 100, 1) if total else None
+
+    levels: dict = {}
+    for m in matches:
+        lv = m.tournament_level or "不明"
+        role = role_by_match[m.id]
+        m_ids = {r.id for r in rallies if set_to_match.get(r.set_id) == m.id}
+        m_wins = sum(1 for r in rallies if r.id in m_ids and r.winner == role)
+        if lv not in levels:
+            levels[lv] = {"wins": 0, "total": 0}
+        levels[lv]["wins"] += m_wins
+        levels[lv]["total"] += len(m_ids)
+
+    recent_conditions = (
+        db.query(Condition)
+        .filter(Condition.player_id == player_id)
+        .order_by(Condition.measured_at.desc())
+        .limit(4)
+        .all()
+    )
+    hoopers = [c.hooper_index for c in recent_conditions if c.hooper_index is not None]
+    fatigue = round(sum(hoopers) / len(hoopers), 1) if hoopers else None
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20*mm, bottomMargin=20*mm)
+        try:
+            pdfmetrics.registerFont(TTFont("Meiryo", "C:/Windows/Fonts/meiryo.ttc"))
+            jp = "Meiryo"
+        except Exception:
+            jp = "Helvetica"
+
+        title_s = ParagraphStyle("T", fontName=jp, fontSize=16, spaceAfter=8)
+        body_s = ParagraphStyle("B", fontName=jp, fontSize=10, spaceAfter=5)
+        footer_s = ParagraphStyle("F", fontName=jp, fontSize=8, textColor=colors.grey)
+
+        content = [
+            Paragraph(f"予測レポート: {player.name}", title_s),
+            Paragraph(f"直近 {len(matches)} 試合 / {total} ラリー 分析", body_s),
+            Spacer(1, 5*mm),
+            Paragraph("■ 総合成績", body_s),
+        ]
+        overall_tbl = Table(
+            [
+                ["項目", "値"],
+                ["試合数", str(len(matches))],
+                ["ラリー数", str(total)],
+                ["ラリー勝率", f"{win_rate_pct}%" if win_rate_pct is not None else "—"],
+                ["疲労 Hooper (直近4回平均)", str(fatigue) if fatigue is not None else "—"],
+            ],
+            colWidths=[80*mm, 60*mm],
+        )
+        overall_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e40af")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, -1), jp),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f4ff")]),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        content.append(overall_tbl)
+
+        if levels:
+            content.append(Spacer(1, 5*mm))
+            content.append(Paragraph("■ 大会レベル別勝率", body_s))
+            lv_data = [["大会レベル", "ラリー勝率", "ラリー数"]]
+            for lv, v in sorted(levels.items()):
+                wr = round(v["wins"] / v["total"] * 100, 1) if v["total"] else None
+                lv_data.append([lv, f"{wr}%" if wr is not None else "—", str(v["total"])])
+            lv_tbl = Table(lv_data, colWidths=[60*mm, 45*mm, 35*mm])
+            lv_tbl.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0891b2")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, -1), jp),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0fdfa")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            content.append(lv_tbl)
+
+        content.append(Spacer(1, 8*mm))
+        content.append(Paragraph(DISCLAIMER_JA, footer_s))
+        content.append(Paragraph(f"生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M')}", footer_s))
+        doc.build(content)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=prediction_{player_id}.pdf"},
+        )
+
+    except Exception:
+        return {
+            "success": True,
+            "data": {
+                "player_name": player.name,
+                "total_matches": len(matches),
+                "total_rallies": total,
+                "win_rate_pct": win_rate_pct,
+                "fatigue_hooper_avg_recent4": fatigue,
+                "disclaimer": DISCLAIMER_JA,
+            },
+        }

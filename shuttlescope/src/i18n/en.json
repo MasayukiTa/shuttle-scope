@@ -2297,6 +2297,7 @@
       "sort_display_name": "By display name",
       "sort_username": "By login ID",
       "sort_player_name": "By player name",
+      "sort_team_name": "By team name",
       "edit_title": "Edit user",
       "create_title": "Add new user",
       "role_label": "Role",
