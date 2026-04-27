@@ -122,3 +122,54 @@ unless a separate written agreement states otherwise:
 The developer may update these Terms from time to time. Updated Terms apply on a
 prospective basis after posting or other reasonable notice, except where a
 different effective-date rule is required by law.
+
+## 14. Beta Period Data Use (2026)
+
+This section applies exclusively to participants in the ShuttleScope beta programme
+during the 2026 calendar year.
+
+### 14.1 Scope of Data
+
+By registering for or continuing to use the beta service, you agree that
+ShuttleScope may use the following data for AI model research and improvement:
+
+**Included:**
+- Annotated match clips — short rally-level video segments (typically 5–60 seconds)
+  extracted from footage processed within the application
+- Associated label data — shot type, court position, player action, formation,
+  and other structured annotations you create within the application
+
+**Excluded:**
+- Full match video files (source footage is not collected or retained by the
+  developer in its entirety)
+- Directly identifying personal information such as full names, facial recognition
+  data, or contact details
+
+### 14.2 Purposes
+
+Data covered under this section will be used solely to:
+
+- improve badminton-specific player detection and shot-classification AI models;
+- enhance racket and shuttle detection accuracy; and
+- develop automated annotation assistance features within ShuttleScope.
+
+### 14.3 Retention and Continued Use
+
+Data collected during the 2026 beta period may continue to be used for the
+purposes described in 14.2 after the beta period ends. The beta designation refers
+to the collection window, not to the duration of use.
+
+### 14.4 Confidentiality and No Sale
+
+- Clips and label data will be handled with reasonable security measures.
+- Data will not be sold, licensed, or otherwise provided to third parties for
+  commercial purposes unrelated to ShuttleScope's own model development.
+- Individual clips are processed to minimize the presence of directly identifying
+  personal information before use in model training.
+
+### 14.5 Opt-Out
+
+If you do not wish your annotated clips and label data to be used under this
+section, please notify the developer via the contact form at
+https://shuttle-scope.com/contact. Reasonable opt-out requests will be
+accommodated on an individual basis within a reasonable period after receipt.
