@@ -241,7 +241,7 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
     # 試合表示画面で出力される文字列は全て HTML タグをブロック
     import re as _re_xss_m
     _XSS_RE = _re_xss_m.compile(
-        r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]",
+        r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]",
         _re_xss_m.IGNORECASE,
     )
     for fname in ("notes", "final_score", "tournament", "venue", "round", "tournament_grade", "exception_reason"):

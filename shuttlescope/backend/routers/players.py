@@ -34,7 +34,7 @@ def _reject_html_in_field(value: Optional[str], field_name: str, *, require_non_
     import re as _r
     if require_non_empty and not value.strip():
         raise HTTPException(status_code=422, detail=f"{field_name} must not be empty or whitespace only")
-    if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]", value, _r.IGNORECASE):
+    if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]", value, _r.IGNORECASE):
         raise HTTPException(status_code=422, detail=f"{field_name} contains disallowed HTML tags")
     # 制御文字 (CR/LF/null/BEL 等) 拒否
     if _r.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", value):

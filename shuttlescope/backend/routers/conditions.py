@@ -441,7 +441,7 @@ def _reject_xss_condition_text(value: Optional[str], field: str) -> None:
     if value is None:
         return
     import re as _r
-    if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img[^>]*on\w+)[\s>/]", value, _r.IGNORECASE):
+    if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]", value, _r.IGNORECASE):
         raise HTTPException(status_code=422, detail=f"{field} contains disallowed HTML tags")
     if _r.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", value):
         raise HTTPException(status_code=422, detail=f"{field} contains control characters")
