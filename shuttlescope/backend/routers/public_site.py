@@ -7,13 +7,13 @@ import json
 import logging
 import re
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -42,6 +42,16 @@ class PublicInquiryCreate(BaseModel):
     contact_reference: Optional[str] = Field(default=None, max_length=200)
     message: str = Field(min_length=10, max_length=4000)
     website: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("name", "organization", "role", "contact_reference", "message", mode="before")
+    @classmethod
+    def _sanitize_field(cls, v):
+        if v is None:
+            return v
+        v = str(v).replace("\x00", "")
+        # HTML タグ除去 (Stored XSS 対策 / admin 管理画面での安全表示)
+        v = re.sub(r"<[^>]*>?", "", v)
+        return v
 
 
 class PublicInquiryUpdate(BaseModel):
@@ -1097,9 +1107,32 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
         logger.warning("public inquiry webhook rejected: %s", _exc)
         return
     host = (parsed.hostname or "").lower()
+    # 受信時刻を JST (UTC+9) で表示
+    _JST = timezone(timedelta(hours=9))
+    received_jst = datetime.now(tz=timezone.utc).astimezone(_JST).strftime("%Y-%m-%d %H:%M:%S JST")
+    # GeoIP: ipapi.co (外部 API、失敗時は省略)
+    ip_str = inquiry.ip_address or "unknown"
+    geo_str = ""
+    try:
+        geo_req = urllib.request.Request(
+            f"https://ipapi.co/{ip_str}/json/",
+            headers={"User-Agent": "ShuttleScope/1.0"},
+            method="GET",
+        )
+        geo_raw = urllib.request.urlopen(geo_req, timeout=3).read()
+        geo = json.loads(geo_raw)
+        country = geo.get("country_name", "")
+        region = geo.get("region", "")
+        org = geo.get("org", "")
+        geo_str = f"\ncountry: {country} / {region}\norg/ISP: {org}"
+    except Exception:
+        pass
     payload = {
         "text": (
-            "New ShuttleScope inquiry\n"
+            f"[{received_jst}] New ShuttleScope inquiry\n"
+            f"IP: {ip_str}{geo_str}\n"
+            f"UA: {(inquiry.user_agent or '-')[:120]}\n"
+            "---\n"
             f"name: {inquiry.name}\n"
             f"organization: {inquiry.organization or '-'}\n"
             f"role: {inquiry.role or '-'}\n"
@@ -1604,7 +1637,12 @@ async def list_public_inquiries(request: Request, db: Session = Depends(get_db))
                 message=item.message,
                 status=item.status,
                 admin_note=item.admin_note,
-                created_at=item.created_at.isoformat() if item.created_at else "",
+                created_at=(
+                    item.created_at.replace(tzinfo=timezone.utc)
+                    .astimezone(timezone(timedelta(hours=9)))
+                    .isoformat()
+                    if item.created_at else ""
+                ),
             ).model_dump()
             for item in items
         ],

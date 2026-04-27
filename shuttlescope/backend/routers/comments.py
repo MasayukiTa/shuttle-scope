@@ -22,13 +22,13 @@ router = APIRouter()
 class CommentCreate(BaseModel):
     # extra フィールド (author_role / user_id 等) の silent drop を禁止
     model_config = {"extra": "forbid"}
-    match_id: int
+    match_id: int = Field(..., ge=1, le=2_147_483_647)
     # text 長さ制限 (DoS 対策、10万文字を容認した実例を塞ぐ)
     text: str = Field(..., min_length=1, max_length=5000)
-    session_id: Optional[int] = None
-    set_id: Optional[int] = None
-    rally_id: Optional[int] = None
-    stroke_id: Optional[int] = None
+    session_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
+    set_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
+    rally_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
+    stroke_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
     is_flagged: bool = False
 
     @field_validator("text", mode="before")
@@ -38,7 +38,8 @@ class CommentCreate(BaseModel):
             return v
         v = str(v)
         v = v.replace("\x00", "")
-        v = _re.sub(r"<[^>]*>", "", v)
+        # 閉じタグなし (<img src=x onerror=... の末尾 > 省略) も除去するため > を optional に
+        v = _re.sub(r"<[^>]*>?", "", v)
         return v
 
 

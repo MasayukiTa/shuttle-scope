@@ -11,7 +11,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { User, TrendingUp, Swords, FileDown } from 'lucide-react'
-import { apiGet } from '@/api/client'
+import { apiGet, API_BASE_URL } from '@/api/client'
 import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
 import { LineupOptimizerPanel } from '@/components/analysis/LineupOptimizerPanel'
@@ -51,7 +51,8 @@ export function PredictionPage() {
 
   const dlReport = (path: string, filename: string) => {
     const token = sessionStorage.getItem('shuttlescope_token')
-    fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')
+    fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((r) => r.blob())
       .then((blob) => {
         const url = URL.createObjectURL(blob)

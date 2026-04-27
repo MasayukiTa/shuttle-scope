@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { BarChart2, User, Award, Activity, TrendingUp, Target, FileDown } from 'lucide-react'
-import { apiGet } from '@/api/client'
+import { apiGet, API_BASE_URL } from '@/api/client'
 import { Player, AnalysisFilters } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -116,7 +116,8 @@ export function DashboardShell() {
 
   const dlReport = (path: string, filename: string) => {
     const token = sessionStorage.getItem('shuttlescope_token')
-    fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')
+    fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((r) => r.blob())
       .then((blob) => {
         const url = URL.createObjectURL(blob)

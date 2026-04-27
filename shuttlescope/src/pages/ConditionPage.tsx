@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Heart, User, Trash2, FileDown } from 'lucide-react'
-import { apiGet, apiDelete } from '@/api/client'
+import { apiGet, apiDelete, API_BASE_URL } from '@/api/client'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -139,7 +139,8 @@ export function ConditionPage() {
 
   const dlReport = (path: string, filename: string) => {
     const token = sessionStorage.getItem('shuttlescope_token')
-    fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')
+    fetch(fullUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((r) => r.blob())
       .then((blob) => {
         const url = URL.createObjectURL(blob)

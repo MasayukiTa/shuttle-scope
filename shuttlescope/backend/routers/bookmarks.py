@@ -51,7 +51,7 @@ class BookmarkCreate(BaseModel):
         # null byte 除去
         v = v.replace("\x00", "")
         # HTML タグ除去（Stored XSS 対策）
-        v = _re.sub(r"<[^>]*>", "", v)
+        v = _re.sub(r"<[^>]*>?", "", v)
         return v
 
 
