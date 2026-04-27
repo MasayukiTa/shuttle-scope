@@ -687,6 +687,8 @@ def _run_batch(
             _jobs[job_id]["status"] = JobStatus.ERROR
             _jobs[job_id]["error"] = "モデルロードに失敗しました。pip install ultralytics を実行してください。"
             return
+        # バッチ開始時に ByteTrack をリセット（前のジョブの状態を引き継がない）
+        inf.reset_tracker()
 
         # 既存アーティファクト読み込み（再開・差分処理用）
         # 最新アーティファクトを取得するため created_at 降順
@@ -1483,11 +1485,9 @@ def _track_identities(
                     if g:
                         gallery_list.append(list(g))
             # ── 次元整合性チェック ──
-            # seed が旧形式(12-bin Hue)、検出が新形式(315-d)の場合、cos_sim は中立 0.5 を返し
-            # ハードゲートで全候補を棄却してしまうため、ギャラリー自体を無効化して IoU 主体にする。
-            # ユーザには + 識別(10) の再取得を促す（ログ）。
+            # seed が旧形式(12-bin Hue)、検出が新形式(315-d)の場合のように次元が異なる場合、
+            # 無効次元のエントリのみ除去し、有効エントリは残す（全廃棄しない）。
             if gallery_list and yolo_frames:
-                # 先頭フレームで hist が付いている最初の detection を探す
                 sample_hist_len = 0
                 for f in yolo_frames[:10]:
                     for p in f.get("players", []):
@@ -1497,36 +1497,46 @@ def _track_identities(
                             break
                     if sample_hist_len:
                         break
-                gallery_len = len(gallery_list[0]) if gallery_list[0] else 0
-                if sample_hist_len and gallery_len and sample_hist_len != gallery_len:
-                    logger.warning(
-                        "_track_identities: feature dim mismatch seed=%d det=%d → gallery disabled (please re-run + 識別(10))",
-                        gallery_len, sample_hist_len,
-                    )
-                    gallery_list = []
+                if sample_hist_len:
+                    valid = [g for g in gallery_list if len(g) == sample_hist_len]
+                    if len(valid) < len(gallery_list):
+                        logger.warning(
+                            "_track_identities: feature dim mismatch: dropped %d/%d gallery entries "
+                            "(expected dim=%d); re-run + 識別(10) to rebuild",
+                            len(gallery_list) - len(valid), len(gallery_list), sample_hist_len,
+                        )
+                    gallery_list = valid
             state[pk] = {
-                "bbox":       bbox,
-                "cx_n":       cx,
-                "cy_n":       cy,
-                "vel_cx":     0.0,   # 正規化座標での1フレームあたりの速度
-                "vel_cy":     0.0,
-                "lost_count": 0,
-                "gallery":    gallery_list,  # マルチサンプル外観ギャラリー
-                "seed_h":     seed_h,                     # 基準 bbox 高さ（体格）
+                "bbox":        bbox,
+                "cx_n":        cx,
+                "cy_n":        cy,
+                "vel_cx":      0.0,
+                "vel_cy":      0.0,
+                "lost_count":  0,
+                "gallery":     gallery_list,
+                "seed_h":      seed_h,
+                "bt_track_id": None,  # ByteTrack の時系列 track_id（あれば強一致に利用）
             }
 
         result: dict[int, dict] = {}
+        # ネガティブギャラリー: マッチしなかった検出の外観を蓄積し観客・審判との混同を防ぐ
+        neg_gallery: list[list[float]] = []
 
         # 定数（フレーム外に定数化）
-        VEL_MAX       = 0.03
-        VEL_DECAY     = 0.85
-        REACQ_THRESH  = 15
-        REACQ_MAX_R   = 0.45
-        REACQ_MIN_SIM = 0.70
-        PERM_LOST     = 60
-        GALLERY_MAX   = 25
-        UPDATE_SIM_TH = 0.75
-        INF_COST      = 1e6
+        VEL_MAX        = 0.05   # 正規化座標/フレーム（旧 0.03 → 高速移動対応で拡大）
+        VEL_DECAY      = 0.85
+        REACQ_THRESH   = 15
+        REACQ_MAX_R    = 0.45
+        REACQ_MIN_SIM  = 0.70
+        PERM_LOST      = 300    # 60fps × 5秒（旧 60 = 1秒では再捕捉できなかった）
+        GALLERY_MAX    = 25
+        UPDATE_SIM_TH  = 0.75
+        INF_COST       = 1e6
+        # ネガティブギャラリー定数（観客・コーチ・審判との混同防止）
+        NEG_GALLERY_MAX  = 120  # 保持するネガティブ外観数
+        NEG_SIM_THRESH   = 0.82 # これ以上似ていたら非選手とみなす
+        # ByteTrack 完全一致コスト
+        BT_MATCH_COST  = 0.001
 
         try:
             from scipy.optimize import linear_sum_assignment as _lsa  # type: ignore
@@ -1570,13 +1580,33 @@ def _track_identities(
             track_sims:  list[list[float]] = [[0.5] * max(D, 1) for _ in range(max(T, 1))]
             track_ious:  list[list[float]] = [[0.0] * max(D, 1) for _ in range(max(T, 1))]
 
+            # ネガティブギャラリーによる事前フィルタリング:
+            # 観客・審判に似た検出は全トラックとのマッチを禁止する
+            neg_blocked: set[int] = set()
+            if neg_gallery:
+                neg_dim = len(neg_gallery[0])
+                for di, p in enumerate(curr):
+                    ph = p.get("hist") or []
+                    if ph and len(ph) == neg_dim:
+                        if _cos_sim_gallery(neg_gallery, ph) >= NEG_SIM_THRESH:
+                            neg_blocked.add(di)
+
             for ti, pk in enumerate(track_keys):
                 st = state[pk]
                 pred_cx, pred_cy, search_r = preds[pk]
                 min_sim_local = REACQ_MIN_SIM if st["lost_count"] >= REACQ_THRESH else _REID_MIN_SIM
                 for di, p in enumerate(curr):
+                    if di in neg_blocked:
+                        continue  # 観客/審判と判定された候補は全トラックにマッチさせない
                     pb = p.get("bbox", [])
                     if not _foot_in_roi(pb, court_roi):
+                        continue
+                    # ByteTrack track_id が一致する場合は最優先（コスト ≒ 0）
+                    p_bt_id = p.get("track_id")
+                    if p_bt_id is not None and st.get("bt_track_id") == p_bt_id:
+                        track_costs[ti][di] = BT_MATCH_COST
+                        track_sims[ti][di] = 1.0
+                        track_ious[ti][di] = 1.0
                         continue
                     iou = _bbox_iou(st["bbox"], pb)
                     if len(pb) == 4:
@@ -1657,6 +1687,9 @@ def _track_identities(
                     st["cy_n"] = new_cy
                     st["bbox"] = list(pb) if len(pb) == 4 else st["bbox"]
                     st["lost_count"] = 0
+                    # ByteTrack track_id を継承（次フレームの強一致に利用）
+                    if p.get("track_id") is not None:
+                        st["bt_track_id"] = p["track_id"]
                     # オンラインギャラリー更新
                     p_hist = p.get("hist") or []
                     iou_mv = track_ious[ti][di]
@@ -1698,6 +1731,25 @@ def _track_identities(
                         "cy_n":  pred_cy,
                         "lost":  True,
                     })
+
+            # ── Phase 5: ネガティブギャラリー蓄積 ──
+            # どのトラックにもマッチしなかった検出 = 選手以外（観客・審判・コーチ等）
+            # その外観を neg_gallery に蓄積し、次フレーム以降の混同を防ぐ
+            matched_det_indices = set(track_to_det.values())
+            neg_dim = len(neg_gallery[0]) if neg_gallery else 0
+            for di, p in enumerate(curr):
+                if di in matched_det_indices:
+                    continue
+                ph = p.get("hist") or []
+                if not ph:
+                    continue
+                if neg_gallery and len(ph) != neg_dim:
+                    continue  # 次元不一致のエントリは追加しない
+                neg_gallery.append(list(ph))
+                if not neg_dim:
+                    neg_dim = len(ph)
+            if len(neg_gallery) > NEG_GALLERY_MAX:
+                neg_gallery = neg_gallery[-NEG_GALLERY_MAX:]
 
             result[frame["frame_idx"]] = {
                 "frame_idx":     frame["frame_idx"],

@@ -747,7 +747,7 @@ def _render_terms_str(request: Request) -> str:
       {_public_nav(login_href, lang_href="/en/terms")}
       <section class="panel">
         <h1>ShuttleScope 利用規約</h1>
-        <p class="small">最終更新日: 2026-04-21</p>
+        <p class="small">最終更新日: 2026-04-27</p>
         <p>本規約は、ShuttleScope の提供条件および利用に関する基本事項を定めるものです。</p>
 
         <h2>1. 適用</h2>
@@ -795,7 +795,53 @@ def _render_terms_str(request: Request) -> str:
         <h2>8. 規約変更</h2>
         <p>本規約は必要に応じて改定されることがあります。改定後の規約は、本サイトまたは関連画面で公表された時点から適用されます。</p>
 
-        <h2>9. お問い合わせ</h2>
+        <h2 id="beta">9. β版提供期間中のデータ利用について（2026年）</h2>
+        <div class="notice" style="margin:18px 0;">
+          <strong>β版協力者の方への重要なご説明</strong>
+        </div>
+        <p>
+          ShuttleScope は 2026年中をβ版提供期間とし、この期間に限り、以下の条件でアノテーションデータを
+          AI モデルの研究・改善目的に利用させていただきます。
+        </p>
+
+        <h3>利用するデータの範囲</h3>
+        <ul>
+          <li>
+            <strong>対象</strong>:
+            本サービスでアノテーションされた試合クリップ（ラリー単位の映像断片、概ね 5〜60 秒）
+            および付随するラベルデータ（球種、コート位置、選手行動等）
+          </li>
+          <li>
+            <strong>対象外</strong>:
+            試合映像の全体ファイル、氏名・顔情報等の個人を直接特定できる情報
+          </li>
+        </ul>
+
+        <h3>利用目的</h3>
+        <ul>
+          <li>バドミントン特化の選手検出・球種分類 AI モデルの精度向上</li>
+          <li>ラケット・シャトル検出モデルの改善</li>
+          <li>自動アノテーション補助機能の開発</li>
+        </ul>
+
+        <h3>データの取扱い</h3>
+        <ul>
+          <li>β期間中に収集したデータは、β期間終了後も継続してモデル改善に利用することがあります。</li>
+          <li>クリップ映像は個人を直接特定できる情報を最小化した上で処理します。</li>
+          <li>収集したデータを第三者へ販売・提供することは行いません。</li>
+        </ul>
+
+        <h3>オプトアウト</h3>
+        <p>
+          データの利用を希望されない場合は、<a href="/contact">お問い合わせフォーム</a> よりお申し出ください。
+          合理的な範囲で個別に対応いたします。
+        </p>
+        <p class="small" style="color:var(--muted);">
+          β版への登録・継続利用をもって、本条（第9条）に同意いただいたものとみなします。
+          本条はβ期間（2026年中）に限り適用されます。
+        </p>
+
+        <h2>10. お問い合わせ</h2>
         <p>本サービスに関するお問い合わせは、<a href="/contact">お問い合わせフォーム</a> から受け付けます。</p>
       </section>
     </div>
@@ -814,7 +860,7 @@ def _render_privacy_str(request: Request) -> str:
       {_public_nav(login_href, lang_href="/en/privacy")}
       <section class="panel">
         <h1>ShuttleScope プライバシーポリシー</h1>
-        <p class="small">最終更新日: 2026-04-21</p>
+        <p class="small">最終更新日: 2026-04-27</p>
         <p>本ポリシーは、ShuttleScope における情報の取扱いについて定めるものです。</p>
 
         <h2>1. 取得する情報</h2>
@@ -832,6 +878,12 @@ def _render_privacy_str(request: Request) -> str:
           <li>障害対応、セキュリティ確保、不正利用防止のため</li>
           <li>お問い合わせへの対応および連絡のため</li>
           <li>サービス改善、品質向上、機能検討のため</li>
+          <li>
+            <strong>β版期間中（2026年）</strong>:
+            アノテーション済みの試合クリップ（ラリー単位の映像断片）およびラベルデータを、
+            バドミントン特化 AI モデル（選手検出・球種分類等）の学習・改善のために利用する場合があります。
+            詳細は <a href="/terms#beta">利用規約 第9条</a> をご確認ください。
+          </li>
         </ul>
 
         <h2>3. 第三者提供</h2>
@@ -891,6 +943,13 @@ def _render_contact_str(request: Request, *, preview: bool = False) -> str:
           現在 ShuttleScope はベータ版として限定提供を行っております。
           お寄せいただいた内容を確認のうえ、必要に応じて担当よりご連絡いたします。
           <br>本フォームはメール送信ではなく、管理画面にて受付・管理する形式となっております。
+        </div>
+        <div class="notice" style="margin-top:12px;background:rgba(15,94,168,.07);border-color:rgba(15,94,168,.18);">
+          <strong>β版データ利用について（2026年）</strong><br>
+          β版をご利用いただく場合、アノテーションされた試合クリップおよびラベルデータを
+          バドミントン特化 AI モデルの改善目的に利用させていただくことがあります。
+          詳細および利用を希望されない場合のオプトアウト方法は
+          <a href="/terms#beta">利用規約 第9条</a> をご確認ください。
         </div>
       </section>
 
@@ -1141,7 +1200,7 @@ def _render_terms_str_en(request: Request) -> str:
       {_public_nav_en(login_href, lang_href="/terms")}
       <section class="panel">
         <h1>ShuttleScope Terms of Use</h1>
-        <p class="small" style="color:var(--muted);font-size:.88rem;">Last updated: 2026-04-21</p>
+        <p class="small" style="color:var(--muted);font-size:.88rem;">Last updated: 2026-04-27</p>
         <p>These Terms govern your use of ShuttleScope and its related features.</p>
 
         <h2>1. Scope</h2>
@@ -1182,7 +1241,56 @@ def _render_terms_str_en(request: Request) -> str:
         <h2>8. Amendments</h2>
         <p>These Terms may be revised as needed. Amended Terms become effective upon publication on this site or within the application.</p>
 
-        <h2>9. Contact</h2>
+        <h2 id="beta">9. Beta Period Data Use (2026)</h2>
+        <div class="notice" style="margin:18px 0;">
+          <strong>Important Notice for Beta Participants</strong>
+        </div>
+        <p>
+          During the 2026 beta period, ShuttleScope may use annotated data contributed by beta participants
+          for the purpose of improving badminton-specific AI models, subject to the conditions below.
+        </p>
+
+        <h3>Scope of Data</h3>
+        <ul>
+          <li>
+            <strong>Included:</strong>
+            Annotated match clips — short rally-level video segments (typically 5–60 seconds)
+            extracted from footage processed within the application — and associated label data
+            (shot type, court position, player action, formation, etc.)
+          </li>
+          <li>
+            <strong>Excluded:</strong>
+            Full match video files; directly identifying personal information such as full names
+            or facial recognition data
+          </li>
+        </ul>
+
+        <h3>Purposes</h3>
+        <ul>
+          <li>Improving badminton-specific player detection and shot-classification AI models</li>
+          <li>Enhancing racket and shuttle detection accuracy</li>
+          <li>Developing automated annotation assistance features within ShuttleScope</li>
+        </ul>
+
+        <h3>Data Handling</h3>
+        <ul>
+          <li>Data collected during the beta period may continue to be used for model improvement after the beta period ends.</li>
+          <li>Clips are processed to minimise the presence of directly identifying personal information before use in model training.</li>
+          <li>Data will not be sold or provided to third parties for commercial purposes unrelated to ShuttleScope's model development.</li>
+        </ul>
+
+        <h3>Opt-Out</h3>
+        <p>
+          If you do not wish your annotated clips and label data to be used under this section,
+          please notify us via the <a href="/en/contact">Contact form</a>.
+          Reasonable opt-out requests will be accommodated on an individual basis.
+        </p>
+        <p class="small" style="color:var(--muted);">
+          Continued registration and use of the beta service constitutes acceptance of this section (Article 9).
+          This section applies during the beta period (throughout 2026).
+        </p>
+
+        <h2>10. Contact</h2>
         <p>For inquiries regarding this service, please use the <a href="/en/contact">Contact form</a>.</p>
       </section>
       <div class="footer">
@@ -1201,7 +1309,7 @@ def _render_privacy_str_en(request: Request) -> str:
       {_public_nav_en(login_href, lang_href="/privacy")}
       <section class="panel">
         <h1>ShuttleScope Privacy Policy</h1>
-        <p style="color:var(--muted);font-size:.88rem;">Last updated: 2026-04-21</p>
+        <p style="color:var(--muted);font-size:.88rem;">Last updated: 2026-04-27</p>
         <p>This Privacy Policy describes how ShuttleScope handles information we collect.</p>
 
         <h2>1. Information We Collect</h2>
@@ -1219,6 +1327,13 @@ def _render_privacy_str_en(request: Request) -> str:
           <li>Responding to incidents, ensuring security, and preventing unauthorized use</li>
           <li>Responding to inquiries and communicating with users</li>
           <li>Improving service quality and evaluating new features</li>
+          <li>
+            <strong>Beta period (2026):</strong>
+            Annotated match clips (short rally-level video segments) and associated label data
+            may be used to train and improve badminton-specific AI models (player detection,
+            shot classification, etc.). See <a href="/en/terms#beta">Terms of Use, Section 9</a>
+            for full details and opt-out information.
+          </li>
         </ul>
 
         <h2>3. Sharing with Third Parties</h2>
@@ -1270,6 +1385,13 @@ def _render_contact_str_en(request: Request) -> str:
           We will review your inquiry and, where appropriate, a team member will respond.
           <br>This form does not send email directly; submissions are received and managed through
           an internal administration interface.
+        </div>
+        <div class="notice" style="margin-top:12px;background:rgba(15,94,168,.07);border-color:rgba(15,94,168,.18);">
+          <strong>Beta Period Data Use (2026)</strong><br>
+          By participating in the beta programme, annotated match clips and label data you create
+          may be used to improve badminton-specific AI models.
+          For full details and opt-out instructions, see
+          <a href="/en/terms#beta">Terms of Use, Section 9</a>.
         </div>
       </section>
 

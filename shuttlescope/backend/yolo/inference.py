@@ -8,20 +8,25 @@
 出力フォーマット（predict_frame）:
   [
     {
-      "label": "player_a" | "player_b" | "player_other",
+      "label": "player_a" | "player_b" | "player_c" | "player_d" | "player_other",
       "confidence": float,
       "bbox": [x1_n, y1_n, x2_n, y2_n],  # 正規化座標 0-1
       "centroid": [cx_n, cy_n],
       "foot_point": [fx_n, fy_n],          # bbox 下辺中央（足元推定）
       "court_side": "left" | "right",
       "depth_band": "front" | "mid" | "back",
+      "track_id": int | (なし),            # ByteTrack 有効時のみ付与
     },
     ...
   ]
 
-ラベル付け戦略:
+ラベル付け戦略（_assign_player_labels）:
   - ultralytics は COCO class 0 (person) のみ使用
-  - x 座標が小さい方を player_a、大きい方を player_b に割り当て
+  - 信頼度降順で上位 4 名を選手候補として選択
+  - y 座標の中央値でコート奥側(player_a/b)・手前側(player_c/d)に分類
+  - 同一ハーフ内は x 昇順（左 → 右）で a/b または c/d を割り当て
+  - 5 人以上の余剰は player_other（観客・審判等）
+  - ByteTrack 有効時（SS_YOLO_BYTETRACK=1）は track_id も付与
   - カスタム ONNX は cls=0/1/2 を player_a/player_b/shuttle として扱う
 """
 
@@ -51,6 +56,9 @@ MIN_CONF = 0.15
 class YOLOInference:
     """YOLO プレイヤー検出ラッパー"""
 
+    # ByteTrack 設定ファイルパス
+    _BT_YAML = Path(__file__).parent / "bytetrack.yaml"
+
     def __init__(self, cuda_device_index: int = 0, openvino_device: str = "GPU") -> None:
         self._loaded = False
         self._model = None
@@ -61,6 +69,9 @@ class YOLOInference:
         self._load_error: Optional[str] = None
         self._last_debug: dict = {}
         self._lock = threading.Lock()
+        # ByteTrack: SS_YOLO_BYTETRACK=1 で有効化（デフォルト無効）
+        import os as _os
+        self._bt_enabled: bool = _os.environ.get("SS_YOLO_BYTETRACK", "0") == "1"
 
     # ─── 可用性確認 ─────────────────────────────────────────────────────
 
@@ -372,8 +383,16 @@ class YOLOInference:
         return detections
 
     def _predict_ultralytics(self, frame) -> list[dict]:
-        """ultralytics YOLOv8 で person クラスのみ検出"""
-        results = self._model(frame, verbose=False, classes=[0], device=self._ul_device)  # 0 = person
+        """ultralytics YOLOv8 で person クラスのみ検出。
+        SS_YOLO_BYTETRACK=1 の場合は ByteTrack で時系列 track_id を付与する。
+        """
+        if self._bt_enabled and self._BT_YAML.exists():
+            results = self._model.track(
+                frame, verbose=False, classes=[0], device=self._ul_device,
+                persist=True, tracker=str(self._BT_YAML),
+            )
+        else:
+            results = self._model(frame, verbose=False, classes=[0], device=self._ul_device)
         if not results:
             return []
 
@@ -385,14 +404,15 @@ class YOLOInference:
         top5 = sorted(all_confs, reverse=True)[:5]
         above = sum(1 for c in all_confs if c >= MIN_CONF)
         logger.info(
-            "YOLO ultralytics: total_boxes=%d top5_conf=%s above_threshold=%d (thresh=%.2f)",
-            len(all_confs), top5, above, MIN_CONF,
+            "YOLO ultralytics: total_boxes=%d top5_conf=%s above_threshold=%d (thresh=%.2f) bytetrack=%s",
+            len(all_confs), top5, above, MIN_CONF, self._bt_enabled,
         )
         self._last_debug.update({
             "total_raw_boxes": len(all_confs),
             "person_score_top5": [round(v, 3) for v in top5],
             "person_score_max": round(top5[0], 3) if top5 else 0.0,
             "anchors_above_threshold": above,
+            "bytetrack_enabled": self._bt_enabled,
         })
 
         for box in result.boxes:
@@ -404,14 +424,29 @@ class YOLOInference:
             x2_n, y2_n = x2 / w, y2 / h
             cx_n = (x1_n + x2_n) / 2
             cy_n = (y1_n + y2_n) / 2
-            fy_n = y2_n  # foot_point = bbox 下辺中央
-            detections.append(self._make_entry(
+            fy_n = y2_n
+            entry = self._make_entry(
                 "person", conf,
                 [x1_n, y1_n, x2_n, y2_n],
                 cx_n, cy_n, cx_n, fy_n,
-            ))
+            )
+            # ByteTrack が有効なら track_id を付与（_track_identities での強一致に利用）
+            if self._bt_enabled and box.id is not None:
+                entry["track_id"] = int(box.id[0])
+            detections.append(entry)
 
         return detections
+
+    def reset_tracker(self) -> None:
+        """ByteTrack の状態をリセットする（バッチ処理開始時に呼び出す）。"""
+        if not self._bt_enabled:
+            return
+        try:
+            if self._model is not None and hasattr(self._model, "predictor") and self._model.predictor is not None:
+                self._model.predictor = None
+                logger.info("YOLO ByteTrack: tracker reset")
+        except Exception as exc:
+            logger.warning("YOLO ByteTrack reset failed: %s", exc)
 
     def _predict_onnx(self, frame) -> list[dict]:
         """カスタム ONNX（YOLOv5/v8 形式）で検出"""
@@ -478,21 +513,43 @@ class YOLOInference:
             ),
         }
 
+    # ダブルス対応: 最大 4 選手まで名前付きラベルを割り当て
+    _PLAYER_LABELS = ["player_a", "player_b", "player_c", "player_d"]
+
     def _assign_player_labels(self, detections: list[dict]) -> list[dict]:
-        """ultralytics の 'person' ラベルを player_a / player_b に割り当て。
-        x 座標昇順: 左 = player_a、右 = player_b。
-        3 人以上は player_other。
+        """ultralytics の 'person' ラベルを player_a〜player_d に割り当て。
+
+        ダブルス（最大 4 名）対応。
+        - 1〜4 人: 信頼度降順に上位 4 名を選択し、y 座標（奥→手前）→ x 座標の順でソート。
+                   奥コート側（y 小）の 2 名が player_a/b、手前側（y 大）が player_c/d。
+                   同じハーフ内は x 昇順（左→右）で a/b, c/d を割り当て。
+        - 5 人以上: 低信頼の余剰分は player_other。
         既にカスタムラベル（player_a 等）がついている場合はそのまま。
         """
         persons = [d for d in detections if d["label"] == "person"]
-        others = [d for d in detections if d["label"] != "person"]
+        others  = [d for d in detections if d["label"] != "person"]
 
-        persons_sorted = sorted(persons, key=lambda d: d["centroid"][0])
-        labels = ["player_a", "player_b"]
-        for i, p in enumerate(persons_sorted):
-            p["label"] = labels[i] if i < len(labels) else "player_other"
+        # 信頼度降順で最大 4 名を「選手候補」として選ぶ
+        persons_sorted_conf = sorted(persons, key=lambda d: d.get("confidence", 0.0), reverse=True)
+        named = persons_sorted_conf[:4]
+        extra = persons_sorted_conf[4:]
 
-        return persons_sorted + others
+        # y 座標の中央値で奥コート / 手前コートに二分
+        if named:
+            ys = [d["centroid"][1] for d in named]
+            y_mid = sum(ys) / len(ys)
+            far  = sorted([d for d in named if d["centroid"][1] <= y_mid], key=lambda d: d["centroid"][0])
+            near = sorted([d for d in named if d["centroid"][1]  > y_mid], key=lambda d: d["centroid"][0])
+            ordered = far + near  # 奥側2名 → 手前側2名
+        else:
+            ordered = []
+
+        for i, p in enumerate(ordered):
+            p["label"] = self._PLAYER_LABELS[i]
+        for p in extra:
+            p["label"] = "player_other"
+
+        return ordered + extra + others
 
 
 # ─── シングルトン ────────────────────────────────────────────────────────
