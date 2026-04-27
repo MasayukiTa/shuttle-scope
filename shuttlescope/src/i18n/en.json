@@ -2003,6 +2003,7 @@
     "no_clips": "No clips",
     "required_fields": "Please select the required fields",
     "shortcut_hint": "Shortcuts: ←→ prev/next / K play-pause / 1-3 confidence / S skip / Enter save",
+    "tab_matches": "Match List",
     "tab_labeling": "CoG Deviation",
     "tab_annotation": "Annotation Improvement",
     "shot_type_section": "Shot Type (AI Training Data)",

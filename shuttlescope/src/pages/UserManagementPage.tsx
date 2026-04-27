@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess, listTeams, type TeamDTO } from '@/api/client'
@@ -39,7 +39,7 @@ interface FormState {
   credential: string
   player_id: string
   team_name: string
-  team_id: string  // admin のみ変更可。空文字は「変更なし」
+  team_id: string
 }
 
 const ROLE_KEYS: Record<string, string> = {
@@ -139,7 +139,9 @@ export function UserManagementPage() {
   const [users, setUsers] = useState<UserRow[]>([])
   const [players, setPlayers] = useState<PlayerOption[]>([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
+  // showCreateForm: true = 新規作成パネルを表示
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  // editId: インライン展開中のユーザーID（null = 展開なし）
   const [editId, setEditId] = useState<number | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm())
   const [error, setError] = useState<string | null>(null)
@@ -149,7 +151,6 @@ export function UserManagementPage() {
   const [editPageAccess, setEditPageAccess] = useState<string[]>([])
   const [editTeamPageAccess, setEditTeamPageAccess] = useState<string[]>([])
   const [editingTeamName, setEditingTeamName] = useState<string | null>(null)
-  // Phase B-2: チーム選択（admin のみ team_id を変更可）
   const [teams, setTeams] = useState<TeamDTO[]>([])
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
@@ -158,10 +159,9 @@ export function UserManagementPage() {
   const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
   const rowHover = isLight ? 'hover:bg-gray-50' : 'hover:bg-gray-700/50'
   const inputCls = `w-full border ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-700'} rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${textMain}`
+  const inlinePanelBg = isLight ? 'bg-blue-50 border-blue-100' : 'bg-gray-750 border-blue-900/40'
 
   const isPlayerRole = form.role === 'player'
-  const isCoachRole = form.role === 'coach'
-  // 非 admin は team が必須。team_name 入力 or team_id 選択のいずれかでよい
   const needsTeam = form.role !== 'admin'
 
   const credentialLabel = useMemo(() => {
@@ -173,14 +173,12 @@ export function UserManagementPage() {
 
   const filteredUsers = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase()
-
     const filtered = keyword
       ? users.filter((user) => {
           const values = [user.display_name, user.username, user.player_name]
           return values.some((value) => (value ?? '').toLowerCase().includes(keyword))
         })
       : users
-
     return [...filtered].sort((a, b) => {
       const aValue = (a[sortKey] ?? '').toString().toLowerCase()
       const bValue = (b[sortKey] ?? '').toString().toLowerCase()
@@ -218,14 +216,26 @@ export function UserManagementPage() {
     return <div className="p-8 text-center text-gray-500">{t('users.manage.no_permission')}</div>
   }
 
+  const closeAll = () => {
+    setShowCreateForm(false)
+    setEditId(null)
+    setError(null)
+  }
+
   const openCreate = () => {
     setForm(emptyForm())
     setEditId(null)
     setError(null)
-    setShowForm(true)
+    setShowCreateForm(true)
   }
 
   const openEdit = async (u: UserRow) => {
+    // 同じ行を再度クリックしたら閉じる（トグル）
+    if (editId === u.id) {
+      setEditId(null)
+      return
+    }
+    setShowCreateForm(false)
     setForm({
       role: u.role,
       display_name: u.display_name ?? '',
@@ -253,7 +263,6 @@ export function UserManagementPage() {
         } catch { /* ignore */ }
       }
     }
-    setShowForm(true)
   }
 
   const handleSave = async () => {
@@ -265,9 +274,6 @@ export function UserManagementPage() {
       setError(t('users.manage.validate_username'))
       return
     }
-    // analyst/coach/player は team 必須 (admin のみ team 跨ぎ可能)。
-    // Phase B-2 以降は team_id（既存チーム選択）でも OK。team_name 入力か
-    // 既存チームから team_id 選択のいずれかで通す。
     if (form.role !== 'admin' && !form.team_name.trim() && !form.team_id.trim()) {
       setError(t('users.manage.validate_team_name'))
       return
@@ -286,7 +292,6 @@ export function UserManagementPage() {
           body.team_name = form.team_name || undefined
           body.player_id = form.player_id ? parseInt(form.player_id, 10) : undefined
         }
-        // Phase B-2: team_id 変更は admin のみ（バックエンドでも 403）
         if (myRole === 'admin' && form.team_id.trim()) {
           body.team_id = parseInt(form.team_id, 10)
         }
@@ -306,15 +311,13 @@ export function UserManagementPage() {
           team_name: form.team_name.trim() || undefined,
           player_id: form.player_id ? parseInt(form.player_id, 10) : undefined,
         }
-        // Phase B-2: 既存チーム選択（admin が team_id を設定したらそちらを優先、
-        // 未指定なら独立チームが自動生成される）
         if (myRole === 'admin' && form.team_id.trim()) {
           body.team_id = parseInt(form.team_id, 10)
         }
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPost('/auth/users', body)
       }
-      setShowForm(false)
+      closeAll()
       await load()
     } catch (e) {
       setError(String(e))
@@ -333,6 +336,208 @@ export function UserManagementPage() {
       setError(String(e))
     }
   }
+
+  // フォームフィールド群（新規作成・インライン編集の両方で共用）
+  const renderFormFields = () => (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {editId == null && canCreate ? (
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.role_label')}</label>
+            <select
+              value={form.role}
+              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+              className={inputCls}
+            >
+              {['admin', 'analyst', 'coach', 'player'].map((r) => (
+                <option key={r} value={r}>
+                  {t(ROLE_KEYS[r])}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
+        <div>
+          <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.display_name')}</label>
+          <input
+            value={form.display_name}
+            onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
+            className={inputCls}
+            placeholder={t('users.manage.display_name_placeholder')}
+          />
+        </div>
+
+        {!isSelfOnly && (
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.username_label')}</label>
+            <input
+              value={form.username}
+              onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+              className={inputCls}
+              placeholder={t('users.manage.username_placeholder')}
+              disabled={isSelfOnly}
+            />
+            <p className={`mt-1 text-xs ${textMuted}`}>{t('users.manage.username_hint')}</p>
+          </div>
+        )}
+
+        <SecretField
+          label={credentialLabel}
+          value={form.credential}
+          onChange={(value) => setForm((f) => ({ ...f, credential: value }))}
+          placeholder={isPlayerRole ? t('users.manage.credential_placeholder_player') : t('users.manage.credential_placeholder_default')}
+          autoComplete="new-password"
+          inputMode={isPlayerRole ? 'text' : undefined}
+          hint={
+            editId != null
+              ? t('users.manage.credential_hint_update')
+              : isPlayerRole
+                ? t('users.manage.credential_hint_player_new')
+                : undefined
+          }
+          isLight={isLight}
+          textMuted={textMuted}
+          inputCls={inputCls}
+        />
+
+        {needsTeam && myRole === 'admin' ? (
+          <div className="col-span-2">
+            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>所属チーム</label>
+            <select
+              value={form.team_id}
+              onChange={(e) => {
+                const tid = e.target.value
+                const selected = teams.find((tt) => String(tt.id) === tid)
+                setForm((f) => ({
+                  ...f,
+                  team_id: tid,
+                  team_name: selected ? selected.name : f.team_name,
+                }))
+              }}
+              className={inputCls}
+            >
+              <option value="">— 既存チームから選択（または下に新規名を入力）—</option>
+              {teams.map((tm) => (
+                <option key={tm.id} value={tm.id}>
+                  {tm.name} {tm.is_independent ? '［無所属］' : ''}
+                </option>
+              ))}
+            </select>
+            <input
+              value={form.team_name}
+              onChange={(e) => setForm((f) => ({
+                ...f,
+                team_name: e.target.value,
+                team_id: e.target.value && f.team_id ? '' : f.team_id,
+              }))}
+              className={`${inputCls} mt-2`}
+              placeholder={t('users.manage.team_name_placeholder')}
+            />
+            <p className={`mt-1 text-[11px] ${textMuted}`}>
+              既存チームから選択するか、上にない新規チーム名を入力してください（自動作成）。
+            </p>
+          </div>
+        ) : needsTeam ? (
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.team_name')}</label>
+            <input
+              value={form.team_name}
+              onChange={(e) => setForm((f) => ({ ...f, team_name: e.target.value }))}
+              className={inputCls}
+              placeholder={t('users.manage.team_name_placeholder')}
+            />
+          </div>
+        ) : null}
+
+        {isPlayerRole ? (
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.player_link')}</label>
+            <select
+              value={form.player_id}
+              onChange={(e) => setForm((f) => ({ ...f, player_id: e.target.value }))}
+              className={inputCls}
+            >
+              <option value="">{t('users.manage.player_unselected')}</option>
+              {players.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+      </div>
+
+      {isPlayerRole && editId != null && !isSelfOnly ? (
+        <div className={`mt-4 pt-4 border-t ${border}`}>
+          <p className={`text-xs font-semibold mb-2 ${textMain}`}>{t('users.manage.page_access')}</p>
+          <div className="space-y-3">
+            {PAGE_ACCESS_OPTIONS.map(({ key, labelKey }) => {
+              const indiv = editPageAccess.includes(key)
+              const team = editTeamPageAccess.includes(key)
+              return (
+                <div key={key} className="flex flex-col gap-1">
+                  <span className={`text-xs font-medium ${textMuted}`}>{t(labelKey)}</span>
+                  <div className="flex flex-wrap gap-3">
+                    <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
+                      <input
+                        type="checkbox"
+                        checked={indiv}
+                        onChange={(e) =>
+                          setEditPageAccess((prev) =>
+                            e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
+                          )
+                        }
+                      />
+                      {t('users.manage.individual')}
+                    </label>
+                    {editingTeamName ? (
+                      <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
+                        <input
+                          type="checkbox"
+                          checked={team}
+                          onChange={(e) =>
+                            setEditTeamPageAccess((prev) =>
+                              e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
+                            )
+                          }
+                        />
+                        {t('users.manage.team_whole', { team: editingTeamName })}
+                      </label>
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="mt-3 bg-red-50 border border-red-200 text-red-600 text-xs rounded px-3 py-2">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded-lg"
+        >
+          <Check size={14} />
+          {saving ? t('users.manage.saving') : t('users.manage.save')}
+        </button>
+        <button
+          onClick={closeAll}
+          className={`text-sm px-4 py-1.5 rounded-lg border ${border} ${textMuted}`}
+        >
+          {t('users.manage.cancel')}
+        </button>
+      </div>
+    </>
+  )
 
   return (
     <div className="flex flex-col h-full">
@@ -358,12 +563,6 @@ export function UserManagementPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {error ? (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-2">
-            {error}
-          </div>
-        ) : null}
-
         <div className={`mb-4 ${panelBg} border ${border} rounded-xl p-4`}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <div>
@@ -390,214 +589,16 @@ export function UserManagementPage() {
           </div>
         </div>
 
-        {showForm ? (
+        {/* 新規作成フォーム（上部パネル） */}
+        {showCreateForm ? (
           <div className={`mb-6 ${panelBg} border ${border} rounded-xl p-5`}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className={`text-sm font-semibold ${textMain}`}>
-                {editId != null ? t('users.manage.edit_title') : t('users.manage.create_title')}
-              </h2>
-              <button onClick={() => setShowForm(false)} className={textMuted}>
+              <h2 className={`text-sm font-semibold ${textMain}`}>{t('users.manage.create_title')}</h2>
+              <button onClick={closeAll} className={textMuted}>
                 <X size={16} />
               </button>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {editId == null && canCreate ? (
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.role_label')}</label>
-                  <select
-                    value={form.role}
-                    onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                    className={inputCls}
-                  >
-                    {['admin', 'analyst', 'coach', 'player'].map((r) => (
-                      <option key={r} value={r}>
-                        {t(ROLE_KEYS[r])}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-
-              <div>
-                <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.display_name')}</label>
-                <input
-                  value={form.display_name}
-                  onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
-                  className={inputCls}
-                  placeholder={t('users.manage.display_name_placeholder')}
-                />
-              </div>
-
-              {!isSelfOnly && (
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.username_label')}</label>
-                  <input
-                    value={form.username}
-                    onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-                    className={inputCls}
-                    placeholder={t('users.manage.username_placeholder')}
-                    disabled={isSelfOnly}
-                  />
-                  <p className={`mt-1 text-xs ${textMuted}`}>
-                    {t('users.manage.username_hint')}
-                  </p>
-                </div>
-              )}
-
-              <SecretField
-                label={credentialLabel}
-                value={form.credential}
-                onChange={(value) => setForm((f) => ({ ...f, credential: value }))}
-                placeholder={isPlayerRole ? t('users.manage.credential_placeholder_player') : t('users.manage.credential_placeholder_default')}
-                autoComplete="new-password"
-                inputMode={isPlayerRole ? 'text' : undefined}
-                hint={
-                  editId != null
-                    ? t('users.manage.credential_hint_update')
-                    : isPlayerRole
-                      ? t('users.manage.credential_hint_player_new')
-                      : undefined
-                }
-                isLight={isLight}
-                textMuted={textMuted}
-                inputCls={inputCls}
-              />
-
-              {/* Phase B-2: 所属チーム選択 — 既存チームから選択 or 新規作成
-                  admin: 既存 team_id 選択 + team_name 自由入力（新規）両対応
-                  非 admin (coach 編集等): team_name 入力欄のみ */}
-              {needsTeam && myRole === 'admin' ? (
-                <div className="col-span-2">
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>所属チーム</label>
-                  <select
-                    value={form.team_id}
-                    onChange={(e) => {
-                      const tid = e.target.value
-                      const selected = teams.find((tt) => String(tt.id) === tid)
-                      setForm((f) => ({
-                        ...f,
-                        team_id: tid,
-                        // 既存チーム選択時は team_name もそのチーム名で同期（送信時に整合）
-                        team_name: selected ? selected.name : f.team_name,
-                      }))
-                    }}
-                    className={inputCls}
-                  >
-                    <option value="">— 既存チームから選択（または下に新規名を入力）—</option>
-                    {teams.map((tm) => (
-                      <option key={tm.id} value={tm.id}>
-                        {tm.name} {tm.is_independent ? '［無所属］' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    value={form.team_name}
-                    onChange={(e) => setForm((f) => ({
-                      ...f,
-                      team_name: e.target.value,
-                      // 自由入力モードに切替 → team_id 選択をクリア
-                      team_id: e.target.value && f.team_id ? '' : f.team_id,
-                    }))}
-                    className={`${inputCls} mt-2`}
-                    placeholder={t('users.manage.team_name_placeholder')}
-                  />
-                  <p className={`mt-1 text-[11px] ${textMuted}`}>
-                    既存チームから選択するか、上にない新規チーム名を入力してください（自動作成）。
-                  </p>
-                </div>
-              ) : needsTeam ? (
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.team_name')}</label>
-                  <input
-                    value={form.team_name}
-                    onChange={(e) => setForm((f) => ({ ...f, team_name: e.target.value }))}
-                    className={inputCls}
-                    placeholder={t('users.manage.team_name_placeholder')}
-                  />
-                </div>
-              ) : null}
-
-              {isPlayerRole ? (
-                <div>
-                  <label className={`block text-xs font-medium mb-1 ${textMuted}`}>{t('users.manage.player_link')}</label>
-                  <select
-                    value={form.player_id}
-                    onChange={(e) => setForm((f) => ({ ...f, player_id: e.target.value }))}
-                    className={inputCls}
-                  >
-                    <option value="">{t('users.manage.player_unselected')}</option>
-                    {players.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-            </div>
-
-            {isPlayerRole && editId != null && !isSelfOnly ? (
-              <div className={`mt-4 pt-4 border-t ${border}`}>
-                <p className={`text-xs font-semibold mb-2 ${textMain}`}>{t('users.manage.page_access')}</p>
-                <div className="space-y-3">
-                  {PAGE_ACCESS_OPTIONS.map(({ key, labelKey }) => {
-                    const indiv = editPageAccess.includes(key)
-                    const team = editTeamPageAccess.includes(key)
-                    return (
-                      <div key={key} className="flex flex-col gap-1">
-                        <span className={`text-xs font-medium ${textMuted}`}>{t(labelKey)}</span>
-                        <div className="flex flex-wrap gap-3">
-                          <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
-                            <input
-                              type="checkbox"
-                              checked={indiv}
-                              onChange={(e) =>
-                                setEditPageAccess((prev) =>
-                                  e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
-                                )
-                              }
-                            />
-                            {t('users.manage.individual')}
-                          </label>
-                          {editingTeamName ? (
-                            <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${textMuted}`}>
-                              <input
-                                type="checkbox"
-                                checked={team}
-                                onChange={(e) =>
-                                  setEditTeamPageAccess((prev) =>
-                                    e.target.checked ? [...prev, key] : prev.filter((k) => k !== key)
-                                  )
-                                }
-                              />
-                              {t('users.manage.team_whole', { team: editingTeamName })}
-                            </label>
-                          ) : null}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded-lg"
-              >
-                <Check size={14} />
-                {saving ? t('users.manage.saving') : t('users.manage.save')}
-              </button>
-              <button
-                onClick={() => setShowForm(false)}
-                className={`text-sm px-4 py-1.5 rounded-lg border ${border} ${textMuted}`}
-              >
-                {t('users.manage.cancel')}
-              </button>
-            </div>
+            {renderFormFields()}
           </div>
         ) : null}
 
@@ -619,48 +620,75 @@ export function UserManagementPage() {
               </thead>
               <tbody>
                 {filteredUsers.map((u) => (
-                  <tr key={u.id} className={`border-b last:border-0 ${border} ${rowHover}`}>
-                    <td className="px-4 py-2.5">
-                      <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[u.role] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {ROLE_KEYS[u.role] ? t(ROLE_KEYS[u.role]) : u.role}
-                      </span>
-                    </td>
-                    <td className={`px-4 py-2.5 font-medium ${textMain}`}>{u.display_name ?? '—'}</td>
-                    <td className={`px-4 py-2.5 ${textMuted} text-xs hidden sm:table-cell`}>
-                      <div>{u.username || '—'}</div>
-                      <div>
-                        team: {u.team_display_name || u.team_name || '—'}
-                        {u.team_display_id ? ` (${u.team_display_id})` : ''}
-                        {u.team_is_independent ? ' ［無所属］' : ''}
-                      </div>
-                      {u.role === 'player' ? <div>{t('users.manage.player_prefix')}: {u.player_name || '—'}</div> : null}
-                    </td>
-                    <td className={`px-4 py-2.5 text-xs ${textMuted} hidden sm:table-cell`}>
-                      {u.has_credential ? t('users.manage.credential_set') : t('users.manage.credential_unset')}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2 justify-end">
-                        <button onClick={() => openEdit(u)} className={`${textMuted} hover:text-blue-500`}>
-                          <Pencil size={14} />
-                        </button>
-                        {myRole === 'admin' && (
+                  <>
+                    <tr key={u.id} className={`border-b last:border-0 ${border} ${editId === u.id ? (isLight ? 'bg-blue-50/60' : 'bg-blue-900/10') : rowHover}`}>
+                      <td className="px-4 py-2.5">
+                        <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${ROLE_COLORS[u.role] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {ROLE_KEYS[u.role] ? t(ROLE_KEYS[u.role]) : u.role}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-2.5 font-medium ${textMain}`}>{u.display_name ?? '—'}</td>
+                      <td className={`px-4 py-2.5 ${textMuted} text-xs hidden sm:table-cell`}>
+                        <div>{u.username || '—'}</div>
+                        <div>
+                          team: {u.team_display_name || u.team_name || '—'}
+                          {u.team_display_id ? ` (${u.team_display_id})` : ''}
+                          {u.team_is_independent ? ' ［無所属］' : ''}
+                        </div>
+                        {u.role === 'player' ? <div>{t('users.manage.player_prefix')}: {u.player_name || '—'}</div> : null}
+                      </td>
+                      <td className={`px-4 py-2.5 text-xs ${textMuted} hidden sm:table-cell`}>
+                        {u.has_credential ? t('users.manage.credential_set') : t('users.manage.credential_unset')}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2 justify-end">
                           <button
-                            onClick={() => handleResetPassword(u)}
-                            disabled={resetBusyId === u.id}
-                            title={t('auth.admin_reset.title')}
-                            className={`${textMuted} hover:text-amber-500 disabled:opacity-50`}
+                            onClick={() => openEdit(u)}
+                            className={`flex items-center gap-0.5 transition-colors ${
+                              editId === u.id ? 'text-blue-500' : `${textMuted} hover:text-blue-500`
+                            }`}
+                            title={t('users.manage.edit_title')}
                           >
-                            <KeyRound size={14} />
+                            <Pencil size={14} />
+                            <ChevronDown
+                              size={12}
+                              className={`transition-transform ${editId === u.id ? 'rotate-180' : ''}`}
+                            />
                           </button>
-                        )}
-                        {canDelete && (
-                          <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-red-500`}>
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                          {myRole === 'admin' && (
+                            <button
+                              onClick={() => handleResetPassword(u)}
+                              disabled={resetBusyId === u.id}
+                              title={t('auth.admin_reset.title')}
+                              className={`${textMuted} hover:text-amber-500 disabled:opacity-50`}
+                            >
+                              <KeyRound size={14} />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-red-500`}>
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* インライン編集フォーム（行の直下に展開） */}
+                    {editId === u.id && (
+                      <tr key={`edit-${u.id}`}>
+                        <td colSpan={5} className={`px-4 py-4 border-b ${border} ${isLight ? 'bg-blue-50/60' : 'bg-blue-900/10'}`}>
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className={`text-xs font-semibold ${textMain}`}>{t('users.manage.edit_title')}: {u.display_name || u.username}</h3>
+                            <button onClick={closeAll} className={`${textMuted} hover:text-red-400`}>
+                              <X size={14} />
+                            </button>
+                          </div>
+                          {renderFormFields()}
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
                 {filteredUsers.length === 0 ? (
                   <tr>
