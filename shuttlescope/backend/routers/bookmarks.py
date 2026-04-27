@@ -10,7 +10,7 @@
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -32,9 +32,9 @@ _ANALYST_ONLY_TYPES = {"auto_stat"}
 class BookmarkCreate(BaseModel):
     # extra (created_by_user_id 等) の silent drop を禁止
     model_config = {"extra": "forbid"}
-    match_id: int
-    rally_id: Optional[int] = None
-    stroke_id: Optional[int] = None
+    match_id: int = Field(..., ge=1, le=2_147_483_647)
+    rally_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
+    stroke_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
     bookmark_type: str = "manual"
     # 動画タイムスタンプ: 0 秒 〜 24 時間以内に限定 (負数・10 年後を拒否)
     video_timestamp_sec: Optional[float] = Field(default=None, ge=0, le=86400)
@@ -98,7 +98,7 @@ def create_bookmark(body: BookmarkCreate, request: Request, db: Session = Depend
 
 @router.get("/bookmarks")
 def list_bookmarks(
-    match_id: int,
+    match_id: int = Query(..., ge=1, le=2_147_483_647),
     request: Request,
     bookmark_type: Optional[str] = None,
     reviewed_only: bool = False,

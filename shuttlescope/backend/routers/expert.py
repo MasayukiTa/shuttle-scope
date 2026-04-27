@@ -79,8 +79,8 @@ VALID_TIMING = {"early", "optimal", "late"}
 
 
 class LabelPayload(BaseModel):
-    match_id: int
-    stroke_id: int
+    match_id: int = Field(..., ge=1, le=2_147_483_647)
+    stroke_id: int = Field(..., ge=1, le=2_147_483_647)
     annotator_role: Literal["coach", "analyst"]
     posture_collapse: str
     weight_distribution: str
@@ -186,7 +186,7 @@ def list_videos(
 
 @router.get("/clips", response_model=list[ClipInfo])
 def list_clips(
-    match_id: int = Query(...),
+    match_id: int = Query(..., ge=1, le=2_147_483_647),
     db: Session = Depends(get_db),
     _ctx: AuthCtx = Depends(require_labeler_role),
 ):
@@ -298,7 +298,7 @@ def upsert_label(
 
 @router.get("/labels", response_model=list[LabelOut])
 def list_labels(
-    match_id: int = Query(...),
+    match_id: int = Query(..., ge=1, le=2_147_483_647),
     annotator_role: Optional[Literal["coach", "analyst"]] = Query(None),
     db: Session = Depends(get_db),
     _ctx: AuthCtx = Depends(require_labeler_role),
@@ -360,7 +360,7 @@ def get_progress(
 
 @router.get("/export")
 def export_labels(
-    match_id: int = Query(...),
+    match_id: int = Query(..., ge=1, le=2_147_483_647),
     fmt: Literal["csv", "json"] = Query("json"),
     db: Session = Depends(get_db),
     _ctx: AuthCtx = Depends(require_labeler_role),
@@ -416,8 +416,8 @@ def export_labels(
 # ─── ショット種別アノテーション（admin 専用） ───────────────────────────────────
 
 class ShotAnnotationPayload(BaseModel):
-    match_id: int
-    stroke_id: int
+    match_id: int = Field(..., ge=1, le=2_147_483_647)
+    stroke_id: int = Field(..., ge=1, le=2_147_483_647)
     shot_type: str = Field(..., min_length=1, max_length=64)
     confidence: int = Field(default=2, ge=1, le=3)
     comment: str = Field(default="", max_length=2000)
@@ -488,7 +488,7 @@ def upsert_shot_label(
 
 @router.get("/shot_labels", response_model=list[ShotAnnotationOut])
 def list_shot_labels(
-    match_id: int = Query(...),
+    match_id: int = Query(..., ge=1, le=2_147_483_647),
     db: Session = Depends(get_db),
     _ctx: AuthCtx = Depends(require_admin_role),
 ):
@@ -503,7 +503,7 @@ def list_shot_labels(
 
 @router.get("/shot_labels/export")
 def export_shot_labels(
-    match_id: int = Query(...),
+    match_id: int = Query(..., ge=1, le=2_147_483_647),
     fmt: Literal["csv", "json"] = Query("json"),
     db: Session = Depends(get_db),
     _ctx: AuthCtx = Depends(require_admin_role),

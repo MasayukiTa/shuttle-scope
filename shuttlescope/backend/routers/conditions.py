@@ -510,7 +510,7 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
 @router.get("")
 def list_conditions(
     request: Request,
-    player_id: Optional[int] = Query(None),
+    player_id: Optional[int] = Query(None, ge=1, le=2_147_483_647),
     limit: int = Query(100, ge=1, le=1000),
     since: Optional[_date] = Query(None),
     role: str = Depends(resolve_role),
