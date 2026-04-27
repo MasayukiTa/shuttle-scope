@@ -1336,6 +1336,12 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         # analyst は admin / analyst アカウントを編集できない（権限昇格・乗っ取り防止）
         if user.role in ("admin", "analyst") and ctx.user_id != target_id:
             raise HTTPException(status_code=403, detail="他の管理者/analyst を編集する権限がありません")
+        # analyst は自チーム内のユーザーのみ編集可（cross-team IDOR 防止）
+        if ctx.user_id != target_id:
+            analyst_team = (ctx.team_name or "").strip()
+            target_team  = (user.team_name or "").strip()
+            if not analyst_team or analyst_team != target_team:
+                raise HTTPException(status_code=403, detail="自チームのユーザーのみ編集できます")
     elif ctx.is_coach:
         team = (ctx.team_name or "").strip()
         if not team or (user.team_name or "").strip() != team:

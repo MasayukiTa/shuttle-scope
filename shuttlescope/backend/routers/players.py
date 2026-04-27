@@ -2,8 +2,8 @@
 import json
 import re
 import unicodedata
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from typing import Annotated, Optional
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -367,7 +367,7 @@ def _player_scope_check(request: Request, player) -> None:
 
 
 @router.get("/players/{player_id}")
-def get_player(player_id: int, request: Request, db: Session = Depends(get_db),
+def get_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], request: Request, db: Session = Depends(get_db),
                _auth: AuthCtx = Depends(_require_auth)):
     """選手詳細"""
     player = db.get(Player, player_id)
@@ -385,7 +385,7 @@ def get_player(player_id: int, request: Request, db: Session = Depends(get_db),
 
 
 @router.put("/players/{player_id}")
-def update_player(player_id: int, body: PlayerUpdate, request: Request,
+def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body: PlayerUpdate, request: Request,
                   db: Session = Depends(get_db),
                   _auth: AuthCtx = Depends(_require_auth)):
     """選手更新"""
@@ -483,7 +483,7 @@ def update_player(player_id: int, body: PlayerUpdate, request: Request,
 
 @router.delete("/players/{player_id}")
 def delete_player(
-    player_id: int,
+    player_id: Annotated[int, Path(ge=1, le=2_147_483_647)],
     request: Request,
     db: Session = Depends(get_db),
     _ctx=Depends(require_analyst),
@@ -515,7 +515,7 @@ def delete_player(
 
 
 @router.get("/players/{player_id}/matches")
-def get_player_matches(player_id: int, request: Request, db: Session = Depends(get_db),
+def get_player_matches(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], request: Request, db: Session = Depends(get_db),
                        _auth: AuthCtx = Depends(_require_auth)):
     """選手の試合一覧"""
     player = db.get(Player, player_id)
@@ -538,7 +538,7 @@ def get_player_matches(player_id: int, request: Request, db: Session = Depends(g
 
 
 @router.get("/players/{player_id}/stats")
-def get_player_stats(player_id: int, request: Request, db: Session = Depends(get_db),
+def get_player_stats(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], request: Request, db: Session = Depends(get_db),
                      _auth: AuthCtx = Depends(_require_auth)):
     """選手の基礎スタッツ"""
     player = db.get(Player, player_id)
