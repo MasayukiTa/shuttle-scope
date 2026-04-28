@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     ss_notify_webhook_url: str = ""
     # ループバック専用オペレーション用トークン（未設定時は無効）
     ss_operator_token: str = ""
+    # クリップ抽出並列度 (0=自動: cpu_count に応じて決定)
+    ss_clip_workers: int = 0
+    # ffmpeg 内部スレッド数/プロセス (0=自動: cpu_count // workers)
+    ss_clip_ffmpeg_threads: int = 0
 
     class Config:
         # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）

@@ -14,6 +14,51 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-27
+
+### Shot Annotation and Centre-of-Gravity Detection
+
+- Added shot type annotation support via the expert labeler workflow, including a new `shot_labels` endpoint, `ShotAnnotation` model, and Alembic migration 0015.
+- Added two ML pipeline stubs — a CLIP-based and an LSTM-based shot classifier — ready to connect to the expert annotation flow.
+- Integrated CoG (centre-of-gravity) detection as a first-class panel in the expert labeling UI, linking motion analysis directly into the labeling session rather than keeping it as a separate standalone page.
+
+### YOLO ByteTrack and TrackNet Profiling
+
+- Added ByteTrack multi-object tracking configuration (`backend/yolo/bytetrack.yaml`) to support persistent player ID continuity across frames.
+- Extended YOLO inference to integrate ByteTrack so player tracking is more stable over long video segments.
+- Improved TrackNet frame-profiling instrumentation and zone-mapper zone-boundary precision so inference timing data is more actionable for performance tuning.
+- Added a Pareto-sweep benchmark script for systematic throughput / accuracy trade-off exploration.
+
+### Condition and Prediction Report Exports
+
+- Added PDF export endpoints for condition reports and prediction reports under `/api/reports/condition` and `/api/reports/prediction`.
+- Extended the frontend ConditionPage, PredictionPage, and UserManagementPage with export buttons and download flows.
+- Updated DashboardShell to route the new report download actions through absolute `API_BASE_URL` to avoid Electron fetch failures.
+- Added i18n strings for the new export UI elements in both English and Japanese localization files.
+
+### Beta Terms and Public Site Updates
+
+- Updated `TERMS_OF_SERVICE.md` with beta-specific usage terms.
+- Added a beta notice banner to the public landing site with corrected spacing to avoid overlap with the fixed navigation bar.
+
+### Input Validation and Sanitization
+
+- Tightened integer bounds across auth, bookmarks, conditions, expert, players, and public-site routers.
+- Added payload length validation for shot annotation fields.
+- Added text field sanitizers to bookmark and comment inputs.
+- Fixed BiDi literal character warnings flagged by Bandit B613 in auth and security test source files.
+
+### Infrastructure and Test Stabilization
+
+- Fixed Alembic `env.py` URL priority so `stamp_db_head` resolves correctly when `DATABASE_URL` is set via environment variable, restoring test isolation in CI.
+- Updated bootstrap tests to cover migration 0015.
+- Updated `package-lock.json` for a minor postcss dependency update.
+
+### Attack-Driven Hardening
+
+- Ran adversarial validation against free-text fields, integer boundary handling, authentication surfaces, public-facing endpoints, and expert labeler scope enforcement.
+- Converted findings into source-level fixes and database cleanup. 
+
 ## 2026-04-26
 
 ### Team Scoping / PostgreSQL Migration Rollout
