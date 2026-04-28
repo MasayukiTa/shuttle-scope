@@ -2839,8 +2839,7 @@ export function AnnotatorPage() {
             </div>
             {hasVideo(match) && (
               <div className="mt-1 text-gray-500 truncate">
-                {getVideoLabel(match)
-                  : `🔗 ${match?.video_url}`}
+                {getVideoLabel(match) || `🔗 ${match?.video_url}`}
               </div>
             )}
             {uploadProgress && (
