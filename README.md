@@ -456,3 +456,20 @@ The biggest areas still under active validation are:
 - operator-facing polish and failure recovery
 
 This repository should be read as an active internal product prototype with many working features, not as a finished public release announcement.
+
+## Runtime Environment Variables (not committed)
+
+`shuttlescope/.env.development` is machine-local and not tracked by git. Key settings to add manually on each machine:
+
+```env
+# GPU inference / clip extraction (0=CPU only, 1=enable NVENC/QSV auto-detection)
+SS_USE_GPU=1
+
+# Clip extraction parallelism (0=auto based on cpu_count)
+SS_CLIP_WORKERS=0
+SS_CLIP_FFMPEG_THREADS=0
+```
+
+- Main machine (RTX 5060 Ti): set `SS_USE_GPU=1` to enable NVDEC+NVENC pipeline
+- GMKtec K10 (Intel Xe): set `SS_USE_GPU=1` to enable QSV decode+encode
+- AMD iGPU / CPU-only machines: leave `SS_USE_GPU=0` (default)

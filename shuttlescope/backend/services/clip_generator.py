@@ -99,18 +99,17 @@ def generate_miss_clip(
     if not ffmpeg_bin:
         raise ClipGenerationError("ffmpeg が PATH に見つかりません")
 
-    cmd = [
-        ffmpeg_bin,
-        "-y",
-        "-ss", f"{start_sec:.3f}",
-        "-i", str(video_path),
-        "-t", f"{duration_sec:.3f}",
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-an",
-        str(out_path),
-    ]
-    logger.info("ffmpeg clip: match=%s stroke=%s %s", match_id, stroke_id, " ".join(cmd))
+    from backend.pipeline.clips import _video_encoder, _build_cmd
+    encoder, hw_args, enc_args = _video_encoder()
+    cmd = _build_cmd(
+        ffmpeg_bin, video_path, start_sec, duration_sec, out_path,
+        encoder, hw_args, enc_args, ff_threads=4,
+    )
+    # -an で音声除去 (Expert Labeler クリップは映像のみ)
+    if "-c:a" in cmd:
+        idx = cmd.index("-c:a")
+        cmd[idx:idx+2] = ["-an"]
+    logger.info("ffmpeg clip: match=%s stroke=%s encoder=%s", match_id, stroke_id, encoder)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         logger.error("ffmpeg failed: %s", proc.stderr[-2000:] if proc.stderr else "")
