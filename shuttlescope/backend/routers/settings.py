@@ -179,7 +179,12 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
     if not data.get("sync_device_id"):
         new_id = _default_device_id()
         db.execute(
-            text("INSERT OR REPLACE INTO app_settings(key, value) VALUES(:k, :v)"),
+            # SQLite (3.24+) と PostgreSQL 両対応の UPSERT。
+            # 旧 "INSERT OR REPLACE" は SQLite 専用構文のため PG では構文エラー。
+            text(
+                "INSERT INTO app_settings(key, value) VALUES(:k, :v) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+            ),
             {"k": "sync_device_id", "v": json.dumps(new_id)},
         )
         db.commit()
@@ -213,7 +218,12 @@ def update_settings(
     _ensure_settings_table(db)
     for key, value in cleaned.items():
         db.execute(
-            text("INSERT OR REPLACE INTO app_settings(key, value) VALUES(:k, :v)"),
+            # SQLite (3.24+) と PostgreSQL 両対応の UPSERT。
+            # 旧 "INSERT OR REPLACE" は SQLite 専用構文のため PG では構文エラー。
+            text(
+                "INSERT INTO app_settings(key, value) VALUES(:k, :v) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+            ),
             {"k": key, "v": json.dumps(value)},
         )
     db.commit()

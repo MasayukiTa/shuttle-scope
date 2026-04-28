@@ -406,6 +406,9 @@ class TrackNetInference:
                         sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
                         sess_opts.enable_mem_pattern = True
                         sess_opts.enable_mem_reuse = True
+                        # TensorRT EP の良性 WARNING (例: roi__186 unused initializer)
+                        # を ERROR レベルに昇格させて抑止。0=VERBOSE/1=INFO/2=WARN/3=ERROR/4=FATAL
+                        sess_opts.log_severity_level = 3
 
                         # TensorRT EP を最優先で試みる（エンジンキャッシュがあれば高速ロード）。
                         # 初回はエンジンコンパイルに数分かかるが 2 回目以降はキャッシュから即ロード。
