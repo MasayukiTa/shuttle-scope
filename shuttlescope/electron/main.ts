@@ -6,7 +6,7 @@ import * as http from 'http'
 import { existsSync, statSync, createReadStream } from 'fs'
 import { Readable } from 'stream'
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, screen, shell } = electron
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, screen, shell, desktopCapturer, session } = electron
 
 // YouTube が Electron UA を検知してブロックするのを回避するための汎用ブラウザ UA
 const BROWSER_UA =
@@ -412,6 +412,161 @@ ipcMain.handle('relaunch-app', () => {
 
 // バックエンドログ取得（初期ロード用）
 ipcMain.handle('get-backend-log', () => backendLogBuffer.slice())
+
+// ─── YouTube Live DRM キャプチャ ─────────────────────────────────────────────
+// castLabs Electron (Widevine 内蔵) でのみ DRM 保護コンテンツを再生できる。
+// 非 DRM の場合はバックエンドが HLS 方式で録画するため、ここには到達しない。
+//
+// castLabs Electron への切り替え方法:
+//   package.json の "electron" を以下のように変更する:
+//   "electron": "github:castlabs/electron-releases#<最新バージョン>"
+//   最新バージョンは https://github.com/castlabs/electron-releases/releases で確認する。
+//   (例: v33.3.4+wvcus — バージョン番号は本リリースに合わせて更新すること)
+
+let _ytLiveWindow: BrowserWindowInstance | null = null
+let _ytRecorderWindow: BrowserWindowInstance | null = null
+let _ytDrmJobId: string | null = null
+let _ytDrmToken: string | null = null
+
+ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: string, token: string) => {
+  _ytDrmJobId = jobId
+  _ytDrmToken = token
+
+  // 1. YouTube を表示するウィンドウを開く（ユーザーが視聴しながら録画できる）
+  _ytLiveWindow = new BrowserWindow({
+    width: 1280,
+    height: 720,
+    title: 'YouTube Live — ShuttleScope',
+    webPreferences: {
+      webSecurity: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  _ytLiveWindow.webContents.setUserAgent(BROWSER_UA)
+  _ytLiveWindow.loadURL(url)
+  _ytLiveWindow.on('closed', () => { _ytLiveWindow = null })
+
+  // YouTube が読み込まれるまで待機
+  await new Promise<void>((resolve) => {
+    _ytLiveWindow!.webContents.once('did-finish-load', () => resolve())
+    setTimeout(resolve, 5000) // タイムアウト保険
+  })
+
+  // 2. desktopCapturer で YouTube ウィンドウのソース ID を取得
+  const sources = await desktopCapturer.getSources({
+    types: ['window'],
+    thumbnailSize: { width: 0, height: 0 },
+  })
+  const ytTitle = _ytLiveWindow?.isDestroyed() ? '' : _ytLiveWindow?.getTitle() ?? ''
+  const source =
+    sources.find((s) => s.name === ytTitle) ??
+    sources.find((s) => s.name.toLowerCase().includes('youtube')) ??
+    sources.find((s) => s.name.toLowerCase().includes('shuttlescope'))
+
+  if (!source) {
+    throw new Error('YouTube ウィンドウが desktopCapturer で見つかりません')
+  }
+
+  // 3. 隠しウィンドウで MediaRecorder による webm キャプチャを開始
+  _ytRecorderWindow = new BrowserWindow({
+    show: false,
+    width: 1,
+    height: 1,
+    webPreferences: {
+      // 内部専用ウィンドウのみ nodeIntegration を使用する
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  })
+
+  // スクリーンキャプチャ権限を許可
+  _ytRecorderWindow.webContents.session.setPermissionRequestHandler(
+    (_wc, permission, callback) => {
+      callback(permission === 'media' || permission === 'display-capture')
+    },
+  )
+
+  _ytRecorderWindow.loadURL('data:text/html,<html><body></body></html>')
+  await _ytRecorderWindow.webContents.executeJavaScript(`
+    (async () => {
+      const { ipcRenderer } = require('electron')
+      const sourceId = ${JSON.stringify(source.id)}
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: sourceId,
+              maxWidth: 1920,
+              maxHeight: 1080,
+              maxFrameRate: 30,
+            }
+          }
+        })
+      } catch (err) {
+        ipcRenderer.send('youtube-drm-error', String(err))
+        return
+      }
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm;codecs=vp8'
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 })
+      recorder.ondataavailable = async (e) => {
+        if (e.data && e.data.size > 0) {
+          const buf = await e.data.arrayBuffer()
+          ipcRenderer.send('youtube-drm-chunk', buf)
+        }
+      }
+      recorder.onerror = (e) => ipcRenderer.send('youtube-drm-error', String(e.error))
+      recorder.start(2000) // 2 秒ごとにチャンクを送出
+      ipcRenderer.on('youtube-drm-stop', () => {
+        recorder.stop()
+        stream.getTracks().forEach((t) => t.stop())
+      })
+    })()
+  `)
+
+  return { sourceId: source.id, sourceName: source.name }
+})
+
+// レコーダーウィンドウから webm チャンクを受信してバックエンドへ転送
+ipcMain.on('youtube-drm-chunk', (_event, chunk: ArrayBuffer) => {
+  const jobId = _ytDrmJobId
+  const token = _ytDrmToken
+  if (!jobId) return
+  fetch(`http://localhost:8765/api/youtube_live/${jobId}/chunk`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: chunk,
+  }).catch((err) => console.error('[yt-drm] chunk upload failed:', err))
+})
+
+// レコーダーウィンドウのエラーをコンソールに記録
+ipcMain.on('youtube-drm-error', (_event, msg: string) => {
+  console.error('[yt-drm] capture error:', msg)
+})
+
+ipcMain.handle('youtube-live-drm-stop', async () => {
+  // レコーダーに停止シグナルを送信
+  if (_ytRecorderWindow && !_ytRecorderWindow.isDestroyed()) {
+    _ytRecorderWindow.webContents.send('youtube-drm-stop')
+    await new Promise<void>((r) => setTimeout(r, 1500)) // 最終チャンク送出を待機
+    _ytRecorderWindow.close()
+    _ytRecorderWindow = null
+  }
+  if (_ytLiveWindow && !_ytLiveWindow.isDestroyed()) {
+    _ytLiveWindow.close()
+    _ytLiveWindow = null
+  }
+  _ytDrmJobId = null
+  _ytDrmToken = null
+})
 
 // ─── スプラッシュウィンドウ作成（即時表示用） ─────────────────────────────────
 

@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld('shuttlescope', {
   restartApp: (): Promise<void> =>
     ipcRenderer.invoke('relaunch-app'),
 
+  // ─── YouTube Live DRM キャプチャ ──────────────────────────────────────────
+  // castLabs Electron でのみ有効。標準 Electron では DRM 保護コンテンツのキャプチャ不可。
+  youtubeLiveDrmStart: (url: string, jobId: string, token: string): Promise<{ sourceId: string; sourceName: string }> =>
+    ipcRenderer.invoke('youtube-live-drm-start', url, jobId, token),
+  youtubeLiveDrmStop: (): Promise<void> =>
+    ipcRenderer.invoke('youtube-live-drm-stop'),
+
   // ─── バックエンドログ ─────────────────────────────────────────────────────────
   getBackendLog: (): Promise<string[]> =>
     ipcRenderer.invoke('get-backend-log'),

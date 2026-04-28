@@ -3008,5 +3008,26 @@
       "k7": "受信中",
       "k8": "例: コーチPC"
     }
+  },
+  "youtubeLive": {
+    "title": "YouTube Live 録画",
+    "urlLabel": "YouTube URL",
+    "urlPlaceholder": "https://www.youtube.com/watch?v=...",
+    "startRecording": "録画開始",
+    "stopRecording": "録画停止",
+    "probing": "接続確認中（最大 30 秒）...",
+    "recording": "録画中",
+    "stopped": "停止済み",
+    "error": "エラー",
+    "methodHls": "HLS（直接取得）",
+    "methodDrm": "DRM（Electron キャプチャ）",
+    "methodDrmPending": "DRM 確認中",
+    "methodDrmRequired": "DRM 保護を検出 — Electron キャプチャを開始中...",
+    "fileSize": "ファイルサイズ",
+    "elapsed": "経過時間",
+    "noElectron": "Electron 環境外では DRM キャプチャは利用できません",
+    "drmCapturing": "Electron で YouTube を開き録画中",
+    "outPath": "保存先",
+    "jobId": "ジョブ ID"
   }
 }
