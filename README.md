@@ -473,3 +473,32 @@ SS_CLIP_FFMPEG_THREADS=0
 - NVIDIA GPU machine: set `SS_USE_GPU=1` — selects NVDEC+NVENC when `nvidia-smi` is detected
 - Intel Xe / QSV machine (no NVIDIA): set `SS_USE_GPU=1` — skips NVENC (no `nvidia-smi`) and selects QSV
 - AMD iGPU / CPU-only: leave `SS_USE_GPU=0` (default)
+
+```env
+# YouTube Live archive destination on external HDD (do NOT set to the drive root or any other folder)
+# Only this exact subdirectory is accessible from the app — all other paths on the same drive are blocked.
+# Example: SS_LIVE_ARCHIVE_ROOT=E:\shuttlescope_archive
+SS_LIVE_ARCHIVE_ROOT=
+```
+
+- Set `SS_LIVE_ARCHIVE_ROOT` to a dedicated subdirectory on the HDD, not the drive root (`E:\`)
+- Paths on the same drive outside this root are hard-blocked at the Electron protocol layer
+- Leave empty to keep recordings on the SSD (`backend/data/youtube_live/`)
+
+```env
+# Phase A: Data protection keys (rotate independently — purpose-isolated)
+# A1: Field-level transparent encryption (Fernet, AES-128-CBC + HMAC-SHA256)
+# Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+SS_FIELD_ENCRYPTION_KEY=
+
+# A2: Backup ZIP AES-256 passphrase
+# Generate: python -c "import secrets; print(secrets.token_hex(32))"
+SS_BACKUP_PASSPHRASE=
+
+# A3: Export package HMAC-SHA256 signing key
+# Generate: python -c "import secrets; print(secrets.token_hex(32))"
+SS_EXPORT_SIGNING_KEY=
+```
+
+- Without these keys, the system falls back to plaintext for backward compatibility but logs warnings.
+- Production deployments MUST set all three. They are isolated by purpose so a single compromise does not expose all data.

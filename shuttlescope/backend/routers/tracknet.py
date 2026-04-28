@@ -166,6 +166,12 @@ def start_batch(
     video_path = match.video_local_path or match.video_url
     if not video_path:
         raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
+    # path_jail: ローカルパスは許可ルート内であることを確認（HDD ドローン映像等への CV 誤起動防止）
+    from backend.utils.path_jail import assert_match_video_path_allowed
+    try:
+        assert_match_video_path_allowed(match.video_local_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
     cuda_idx, ov_device = _load_device_settings(db)
     inf = get_inference(body.backend, cuda_device_index=cuda_idx, openvino_device=ov_device)

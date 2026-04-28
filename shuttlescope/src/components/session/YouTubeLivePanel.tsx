@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+﻿import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '../../api/client'
 
 interface JobStatus {
   job_id: string
   status: 'probing' | 'recording' | 'stopped' | 'error'
-  method: 'hls' | 'drm_pending' | 'drm' | 'drm_required'
+  method: 'hls' | 'hls_ytdlp' | 'drm_pending' | 'drm' | 'drm_required'
   file_size: number
   elapsed: number
   error: string | null
   out_path: string
 }
+
+const COOKIE_BROWSERS = ['chrome', 'firefox', 'edge', 'brave', 'opera', 'vivaldi'] as const
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -24,9 +26,10 @@ function formatElapsed(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-export function YouTubeLivePanel() {
+export function YouTubeLivePanel({ matchId }: { matchId?: number } = {}) {
   const { t } = useTranslation()
   const [url, setUrl] = useState('')
+  const [cookieBrowser, setCookieBrowser] = useState('')
   const [job, setJob] = useState<JobStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -40,20 +43,21 @@ export function YouTubeLivePanel() {
     }
   }, [])
 
-  const startPoll = useCallback((jobId: string) => {
-    stopPoll()
-    pollRef.current = setInterval(async () => {
-      try {
-        const status = await apiGet<JobStatus>(`/youtube_live/${jobId}/status`)
-        setJob(status)
-        if (status.status === 'stopped' || status.status === 'error') {
-          stopPoll()
+  const startPoll = useCallback(
+    (jobId: string) => {
+      stopPoll()
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await apiGet<JobStatus>(`/youtube_live/${jobId}/status`)
+          setJob(status)
+          if (status.status === 'stopped' || status.status === 'error') stopPoll()
+        } catch {
+          // polling error ignored
         }
-      } catch {
-        // ポーリングエラーは無視（次のタイミングで再試行）
-      }
-    }, 2000)
-  }, [stopPoll])
+      }, 2000)
+    },
+    [stopPoll],
+  )
 
   useEffect(() => () => stopPoll(), [stopPoll])
 
@@ -62,13 +66,16 @@ export function YouTubeLivePanel() {
     setLoading(true)
     setErrorMsg(null)
     setJob(null)
-
     try {
-      const result = await apiPost<JobStatus>('/youtube_live/start', { url: url.trim(), quality: 'best' })
+      const result = await apiPost<JobStatus>('/youtube_live/start', {
+        url: url.trim(),
+        quality: 'best',
+        cookie_browser: cookieBrowser || null,
+        match_id: matchId ?? null,
+      })
       setJob(result)
 
       if (result.method === 'drm_required') {
-        // DRM 保護: Electron desktopCapturer fallback
         if (!isElectron) {
           setErrorMsg(t('youtubeLive.noElectron'))
           setLoading(false)
@@ -77,7 +84,6 @@ export function YouTubeLivePanel() {
         const ss = (window as any).shuttlescope
         const token = sessionStorage.getItem('shuttlescope_token') ?? ''
         await ss.youtubeLiveDrmStart(url.trim(), result.job_id, token)
-        // DRM job の status を drm に更新（チャンクが届くと自動更新される）
         setJob({ ...result, method: 'drm', status: 'recording' })
       }
 
@@ -93,7 +99,6 @@ export function YouTubeLivePanel() {
     if (!job) return
     setLoading(true)
     try {
-      // DRM の場合は Electron 側も停止する
       if (job.method === 'drm' && isElectron) {
         await (window as any).shuttlescope.youtubeLiveDrmStop()
       }
@@ -111,6 +116,7 @@ export function YouTubeLivePanel() {
 
   const methodLabel = (method: string) => {
     if (method === 'hls') return t('youtubeLive.methodHls')
+    if (method === 'hls_ytdlp') return `${t('youtubeLive.methodHls')} (yt-dlp)`
     if (method === 'drm' || method === 'drm_pending') return t('youtubeLive.methodDrm')
     if (method === 'drm_required') return t('youtubeLive.methodDrmRequired')
     return method
@@ -122,7 +128,6 @@ export function YouTubeLivePanel() {
         {t('youtubeLive.title')}
       </h3>
 
-      {/* URL 入力 */}
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           {t('youtubeLive.urlLabel')}
@@ -140,7 +145,31 @@ export function YouTubeLivePanel() {
         />
       </div>
 
-      {/* 操作ボタン */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          {t('youtubeLive.cookieBrowserLabel')}
+        </label>
+        <select
+          value={cookieBrowser}
+          onChange={(e) => setCookieBrowser(e.target.value)}
+          disabled={isRecording || loading}
+          className="rounded-md border border-gray-300 dark:border-gray-600
+                     bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
+                     px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500
+                     disabled:opacity-50"
+        >
+          <option value="">{t('youtubeLive.cookieBrowserNone')}</option>
+          {COOKIE_BROWSERS.map((b) => (
+            <option key={b} value={b}>
+              {b.charAt(0).toUpperCase() + b.slice(1)}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {t('youtubeLive.cookieBrowserHint')}
+        </p>
+      </div>
+
       <div className="flex gap-2">
         {!isRecording ? (
           <button
@@ -163,14 +192,12 @@ export function YouTubeLivePanel() {
         )}
       </div>
 
-      {/* エラー表示 */}
       {errorMsg && (
         <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
           <p className="text-sm text-red-700 dark:text-red-400">{errorMsg}</p>
         </div>
       )}
 
-      {/* ステータス表示 */}
       {job && (
         <div className="rounded-md border border-gray-200 dark:border-gray-700
                         bg-gray-50 dark:bg-gray-800/50 p-4 space-y-2">
@@ -179,10 +206,13 @@ export function YouTubeLivePanel() {
               <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             )}
             <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              {job.status === 'recording' ? t('youtubeLive.recording')
-                : job.status === 'probing' ? t('youtubeLive.probing')
-                : job.status === 'stopped' ? t('youtubeLive.stopped')
-                : t('youtubeLive.error')}
+              {job.status === 'recording'
+                ? t('youtubeLive.recording')
+                : job.status === 'probing'
+                  ? t('youtubeLive.probing')
+                  : job.status === 'stopped'
+                    ? t('youtubeLive.stopped')
+                    : t('youtubeLive.error')}
             </span>
             <span className="text-xs text-gray-500 dark:text-gray-400">
               — {methodLabel(job.method)}

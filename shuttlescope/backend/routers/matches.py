@@ -250,6 +250,17 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             raise HTTPException(status_code=422, detail=f"{fname} contains disallowed HTML tags")
 
 
+def _video_filename(m: Match) -> Optional[str]:
+    """video_local_path からファイル名のみを抽出する（パスは露出しない）。"""
+    if not m.video_local_path:
+        return None
+    raw = m.video_local_path
+    if raw.startswith("localfile:///"):
+        raw = raw[len("localfile:///"):]
+    from pathlib import Path as _P
+    return _P(raw).name or None
+
+
 def _effective_status(
     m: Match,
     db: Optional[Session],
@@ -307,7 +318,11 @@ def match_to_dict(
         "result": m.result,
         "final_score": m.final_score,
         "video_url": m.video_url,
-        "video_local_path": m.video_local_path,
+        # 生のローカルパスは API レスポンスに含めない（Phase 1 セキュリティ要件）。
+        # 再生は video_token を使い /api/videos/{token}/stream か app://video/{token} 経由で行う。
+        "video_token": m.video_token,
+        "video_filename": _video_filename(m),
+        "has_video_local": bool(m.video_local_path),
         "video_quality": m.video_quality,
         "camera_angle": m.camera_angle,
         "annotator_id": m.annotator_id,
@@ -471,6 +486,10 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
     payload["owner_team_id"] = owner_id
     payload["is_public_pool"] = is_public
     match = Match(**payload)
+    # video_local_path が指定されていれば不透明トークンを付与する
+    if payload.get("video_local_path"):
+        from backend.utils.video_token import new_token as _new_video_token
+        match.video_token = _new_video_token()
     touch(match)
     db.add(match)
     db.commit()
@@ -564,6 +583,11 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     pre_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
     from backend.utils.db_update import apply_update
     apply_update(match, payload)
+    # video_local_path が新たに設定された / 変更された場合に video_token を発行する。
+    # 既存トークンがあれば再利用する（再生 URL を不変に保つため）。
+    if "video_local_path" in payload and match.video_local_path and not match.video_token:
+        from backend.utils.video_token import new_token as _new_video_token
+        match.video_token = _new_video_token()
     touch(match)
     db.commit()
     post_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
@@ -574,8 +598,24 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
 
 @router.delete("/matches/{match_id}")
 def delete_match(match_id: int, request: Request, db: Session = Depends(get_db)):
-    """試合削除"""
+    """試合削除
+
+    Phase B2: X-Idempotency-Key ヘッダで二重削除防止。
+              同じキーでの 2 回目以降は前回のレスポンスを返す。
+    """
     ctx = get_auth(request)
+
+    # 冪等性チェック (削除実行前)
+    idem_key = request.headers.get("X-Idempotency-Key", "").strip()
+    endpoint_id = f"delete_match:{match_id}"
+    if idem_key:
+        from backend.utils.idempotency import is_valid_key, get_cached, replay_response
+        if not is_valid_key(idem_key):
+            raise HTTPException(status_code=400, detail="X-Idempotency-Key の形式が不正です")
+        cached = get_cached(idem_key, ctx.user_id, endpoint_id)
+        if cached is not None:
+            return replay_response(cached)
+
     if not (ctx.is_admin or ctx.is_analyst):
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     match = db.get(Match, match_id)
@@ -611,7 +651,12 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     db.delete(match)
     db.commit()
     response_cache.bump_players(affected_players)
-    return {"success": True, "data": {"id": match_id}}
+    response = {"success": True, "data": {"id": match_id}}
+    # idempotency キャッシュへ保存
+    if idem_key:
+        from backend.utils.idempotency import store
+        store(idem_key, ctx.user_id, endpoint_id, response, status_code=200)
+    return response
 
 
 class QuickStartBody(BaseModel):

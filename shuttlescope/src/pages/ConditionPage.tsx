@@ -472,7 +472,7 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
     if (!window.confirm(t('condition.history.delete_confirm') as string)) return
     setDeletingId(id)
     try {
-      await apiDelete(`/conditions/${id}`)
+      await apiDelete(`/conditions/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() })
       qc.invalidateQueries({ queryKey: ['conditions'] })
     } finally {
       setDeletingId(null)

@@ -74,9 +74,20 @@ def generate_miss_clip(
         raise ClipGenerationError(f"match_id={match_id} が存在しません")
     if not match.video_local_path:
         raise ClipGenerationError(f"match_id={match_id} に video_local_path がありません")
-    video_path = Path(match.video_local_path)
+    # localfile:/// プレフィックスを剥がす（DB 保存形式から OS パスへ）
+    raw = match.video_local_path
+    if raw.startswith("localfile:///"):
+        raw = raw[len("localfile:///"):]
+    video_path = Path(raw)
     if not video_path.exists():
         raise ClipGenerationError(f"動画ファイルが存在しません: {video_path}")
+    # path_jail: HDD 上の許可外データ（ドローン映像等）への解析誤起動を遮断
+    from backend.utils.path_jail import is_allowed_video_path, allowed_video_roots
+    if not is_allowed_video_path(video_path):
+        roots = [str(r) for r in allowed_video_roots()]
+        raise ClipGenerationError(
+            f"動画パスが許可ルート外です: {video_path}. 許可ルート: {roots}"
+        )
 
     stroke = db.get(Stroke, stroke_id)
     if not stroke:

@@ -330,7 +330,7 @@ export function UserManagementPage() {
     const targetName = u.display_name ?? u.username
     if (!window.confirm(t('users.manage.delete_confirm', { name: targetName }))) return
     try {
-      await apiDelete(`/auth/users/${u.id}`)
+      await apiDelete(`/auth/users/${u.id}`, { 'X-Idempotency-Key': newIdempotencyKey() })
       await load()
     } catch (e) {
       setError(String(e))

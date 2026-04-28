@@ -230,6 +230,18 @@ export function LoginPage({ onLogin }: Props) {
           >
             {loading ? t('auth.logging_in') : t('auth.login_button')}
           </button>
+
+          {/* M-A6: 自己サービス導線 */}
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-2 text-xs pt-2">
+            <a href="#/register"
+               className={`${isLight ? 'text-blue-600 hover:text-blue-800' : 'text-blue-400 hover:text-blue-300'} hover:underline`}>
+              {t('auth.register.title')}
+            </a>
+            <a href="#/password/reset"
+               className={`${isLight ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-gray-200'} hover:underline`}>
+              {t('auth.password_reset_request.title')}
+            </a>
+          </div>
         </div>
         <div className="mt-6 text-center">
           <a

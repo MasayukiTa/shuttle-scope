@@ -306,7 +306,7 @@ export function useCVJobs({
     prevRoi?: RoiRect | null
   } = {}) => {
     if (!matchId) return
-    const hasVideo = !!(match?.video_local_path || match?.video_url)
+    const hasVideo = !!(match?.video_token || match?.video_url || match?.has_video_local)
     if (!hasVideo) {
       alert(i18n.t('tracknet.batch_no_video'))
       return
@@ -401,7 +401,7 @@ export function useCVJobs({
     prevRoi?: RoiRect | null
   } = {}) => {
     if (!matchId) return
-    const hasVideo = !!(match?.video_local_path || match?.video_url)
+    const hasVideo = !!(match?.video_token || match?.video_url || match?.has_video_local)
     if (!hasVideo) {
       alert(i18n.t('yolo.batch_no_video'))
       return

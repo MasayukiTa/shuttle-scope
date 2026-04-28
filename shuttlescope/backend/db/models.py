@@ -8,6 +8,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
+# Phase A1: 機密フィールドの透過暗号化型
+from backend.utils.field_crypto import EncryptedText as _EncryptedText  # noqa: F401
 
 
 def _new_uuid() -> str:
@@ -55,6 +57,10 @@ class User(Base):
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     totp_secret: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    # M-A2: メールアドレス（任意、ユニーク）。register / password reset / invite で使用。
+    # 既存 username ログインとの併用 (username または email でログイン可能)。
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class RevokedToken(Base):
@@ -204,7 +210,11 @@ class Match(Base):
     result: Mapped[str] = mapped_column(String(20), nullable=False)  # win/loss/walkover/unfinished
     final_score: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # "21-15, 18-21, 21-19"
     video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # video_local_path: 内部利用のみ。フロント / API レスポンスには露出させないこと。
+    # ユーザーへ動画を提供するには video_token を使い /api/videos/{video_token}/stream 経由で配信する。
     video_local_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # video_token: 不透明トークン。ストリーミング API のキー。生パスを露出せず動画にアクセスする手段。
+    video_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, unique=True, index=True)
     video_quality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # 720p/1080p/4k/other
     camera_angle: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     annotator_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
@@ -774,8 +784,10 @@ class Condition(Base):
 
     # 補助
     sleep_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    injury_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    general_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Phase A1: 要配慮個人情報の自由記述フィールドは Fernet 透過暗号化
+    # DB ファイル奪取時に平文露出しないよう EncryptedText 型を使用する
+    injury_notes: Mapped[Optional[str]] = mapped_column(_EncryptedText, nullable=True)
+    general_comment: Mapped[Optional[str]] = mapped_column(_EncryptedText, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1086,3 +1098,83 @@ class UploadSession(Base):
     final_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ─── Phase A3: Export パッケージ nonce 重複排除テーブル ─────────────────────
+class ConsumedExportNonce(Base):
+    """Export パッケージの nonce を消費済みとして記録し、二重インポートを防ぐ。
+
+    1 つの export パッケージは 1 回のみ import 可能。
+    定期的に古いレコード (> 30 日) はクリーンアップする。
+    """
+    __tablename__ = "consumed_export_nonces"
+    __table_args__ = (
+        Index("ix_consumed_export_nonces_consumed_at", "consumed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nonce: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    consumed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+
+# ─── M-A2: メール認証 / パスワードリセット / 招待トークン ────────────────────
+# 設計:
+#   - トークン本体は DB に保存しない。HMAC ハッシュのみ保存 (DB 漏洩時の悪用防止)。
+#   - 1 回利用 (consumed_at) + 期限 (expires_at) + スコープ別テーブル
+#   - 同一ユーザーの複数発行は許容するが、verify 時は最新の未消費を使用
+
+
+class EmailVerificationToken(Base):
+    """メールアドレス検証トークン (新規登録 / メール変更時)。"""
+    __tablename__ = "email_verification_tokens"
+    __table_args__ = (
+        Index("ix_evt_user_id", "user_id"),
+        Index("ix_evt_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # トークンの HMAC-SHA256 ハッシュ (hex 64 文字)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)  # 検証対象メール
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class PasswordResetToken(Base):
+    """パスワードリセットトークン。"""
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        Index("ix_prt_user_id", "user_id"),
+        Index("ix_prt_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    requested_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class InvitationToken(Base):
+    """招待トークン (admin/coach がメール経由でユーザーを招待)。"""
+    __tablename__ = "invitation_tokens"
+    __table_args__ = (
+        Index("ix_invt_email", "email"),
+        Index("ix_invt_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="analyst")
+    team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("teams.id"), nullable=True)
+    inviter_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    consumed_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

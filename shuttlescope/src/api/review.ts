@@ -21,7 +21,9 @@ export interface PlaylistRally {
 export interface PlaylistResponse {
   success: boolean
   has_timestamps: boolean
-  video_local_path: string | null
+  // Phase 1: 生パスは削除済み。video_token を app://video/{token} で再生する。
+  video_token: string | null
+  video_url: string | null
   rallies: PlaylistRally[]
 }
 

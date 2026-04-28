@@ -110,10 +110,10 @@ export async function apiGet<T>(
   return res.json()
 }
 
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+export async function apiPost<T>(path: string, body: unknown, extraHeaders?: Record<string, string>): Promise<T> {
   const res = await fetchWithAutoRefresh(BASE_URL + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(extraHeaders ?? {}) },
     body: JSON.stringify(body),
   })
   if (!res.ok) {
@@ -121,6 +121,18 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
     throw httpError(res.status, text)
   }
   return res.json()
+}
+
+/**
+ * 安全なランダム idempotency key を生成する。
+ * Phase B2: 重要操作 (reissue, delete, export) で同じキーを送ると
+ * バックエンドが 24h 以内の重複を 1 回分扱いに統合する。
+ */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID().replace(/-/g, '')
+  }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
@@ -149,10 +161,10 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   return res.json()
 }
 
-export async function apiDelete<T>(path: string): Promise<T> {
+export async function apiDelete<T>(path: string, extraHeaders?: Record<string, string>): Promise<T> {
   const res = await fetchWithAutoRefresh(BASE_URL + path, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: { ...authHeaders(), ...(extraHeaders ?? {}) },
   })
   if (!res.ok) {
     const text = await res.text()

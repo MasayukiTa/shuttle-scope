@@ -77,3 +77,8 @@ jobs:
 
       - name: Python bytecode smoke
         run: python -m compileall backend
+
+      - name: Frontend security conventions check
+        # Phase B/C: localfile:/// 直接構築、video_local_path 漏洩、idempotency なし
+        # 等の規約違反を grep で検出する
+        run: python scripts/check_security_conventions.py

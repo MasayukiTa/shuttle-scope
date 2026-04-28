@@ -26,6 +26,8 @@ class StartRequest(BaseModel):
     # 認証あり配信用: ブラウザ名 ("chrome","firefox","edge","brave") またはクッキーファイルパス
     cookie_browser: Optional[str] = Field(None, pattern=r"^(chrome|firefox|edge|brave|opera|vivaldi|safari)$")
     cookie_file: Optional[str] = Field(None, max_length=500)
+    # 紐付け試合 ID（指定するとアーカイブ完了時に Match.video_local_path が自動更新される）
+    match_id: Optional[int] = Field(None, ge=1, le=2_147_483_647)
 
 
 def _job_status(job) -> Dict[str, Any]:
@@ -55,10 +57,10 @@ def start_recording(body: StartRequest, request: Request):
 
     viable = probe_hls(body.url, body.cookie_browser, body.cookie_file)
     if viable:
-        job = start_hls_recording(body.url, body.cookie_browser, body.cookie_file)
+        job = start_hls_recording(body.url, body.cookie_browser, body.cookie_file, body.match_id)
         return _job_status(job)
     else:
-        job = create_drm_job(body.url)
+        job = create_drm_job(body.url, body.match_id)
         resp = _job_status(job)
         resp["method"] = "drm_required"
         return resp

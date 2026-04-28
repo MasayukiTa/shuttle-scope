@@ -1,5 +1,23 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+// ─── Phase B4: Preload API セキュリティレビュー ────────────────────────────
+//
+// このファイルは renderer (信頼境界の外) からアクセス可能な API を全て定義する。
+// 公開している API は以下のカテゴリのみ:
+//   1. ユーザーが明示的にトリガする操作 (ファイル選択、録画保存)
+//   2. 表示のみ (ディスプレイ一覧、バックエンドログ参照)
+//   3. ウィンドウ間メッセージング (mirror-broadcast)
+//   4. YouTube Live DRM キャプチャ (Phase 1 で追加、token 認可付き)
+//
+// 公開してはならないもの:
+//   - 任意のシェルコマンド実行
+//   - 任意のファイルシステム読み書き (open-video-file は dialog 必須)
+//   - 任意の URL fetch (CSP / CORS バイパスになる)
+//   - シークレット (SS_OPERATOR_TOKEN 等) の取得
+//   - app.getPath('userData') 等の絶対パス情報
+//
+// 入力検証は main 側 (electron/main.ts) で行うこと。preload は単なる橋渡し。
+
 contextBridge.exposeInMainWorld('shuttlescope', {
   version: process.env.npm_package_version ?? '1.0.0',
   platform: process.platform,

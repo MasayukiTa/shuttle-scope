@@ -91,7 +91,52 @@
       "player": "Player"
     },
     "username": "Username",
-    "password": "Password",
+    "username_or_email": "Username or Email",
+    "email": "Email address",
+    "back_to_login": "Back to Login",
+    "register": {
+      "title": "Sign Up",
+      "username": "Username (3-64 characters)",
+      "email": "Email address",
+      "password": "Password (8 characters or more)",
+      "password_hint": "Include at least 3 of: uppercase, lowercase, digits, symbols",
+      "display_name_optional": "Display name (optional)",
+      "submit": "Create account",
+      "success_title": "Verification email sent",
+      "success_body": "A verification link has been sent to your email address. Please click the link to complete the verification.",
+      "have_account": "Already have an account? Log in",
+      "back_to_login": "Back to login",
+      "unavailable_banner_title": "Sign-up is currently unavailable",
+      "unavailable_banner_body": "This feature is temporarily disabled while the system is being prepared. If you wish to use ShuttleScope, please contact us via the official inquiry form. We will respond in due course.",
+      "unavailable_banner_contact": "Go to the contact form"
+    },
+    "verify": {
+      "title": "Email Verification",
+      "missing_token": "Token is not specified",
+      "success": "Email address verified",
+      "failed": "Verification failed",
+      "go_login": "Go to Login"
+    },
+    "password_reset_request": {
+      "title": "Password Reset",
+      "description": "Enter your registered email address. We will send you a reset link.",
+      "submit": "Send reset email",
+      "sent_message": "Request received. If the address is registered, an email will arrive (valid for 15 minutes)."
+    },
+    "password_reset_confirm": {
+      "title": "Set a new password",
+      "new_password": "New password",
+      "confirm_password": "Confirm (re-enter)",
+      "mismatch": "Passwords do not match",
+      "submit": "Change password",
+      "done": "Password changed. Redirecting to login..."
+    },
+    "invitation": {
+      "title": "Accept Invitation",
+      "role": "Role",
+      "accept": "Create account",
+      "invalid": "Invitation token is invalid or expired"
+    },
     "pin": "PIN",
     "pin_optional": "Leave blank if not set",
     "select_player": "Select a player",

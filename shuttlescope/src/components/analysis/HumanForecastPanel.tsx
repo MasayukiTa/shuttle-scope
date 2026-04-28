@@ -10,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
-import { apiGet, apiPost, apiDelete } from '@/api/client'
+import { apiGet, apiPost, apiDelete, newIdempotencyKey } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { WIN, LOSS } from '@/styles/colors'
 
@@ -332,7 +332,8 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
   const forecasts = forecastsResp?.data ?? []
 
   const remove = useMutation({
-    mutationFn: (id: number) => apiDelete(`/prediction/human_forecast/${id}`),
+    mutationFn: (id: number) =>
+      apiDelete(`/prediction/human_forecast/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['human-forecasts', matchId, playerId] })
       qc.invalidateQueries({ queryKey: ['human-benchmark', playerId] })

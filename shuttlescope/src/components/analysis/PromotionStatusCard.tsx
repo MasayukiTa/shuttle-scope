@@ -221,7 +221,7 @@ function OverrideForm({
   const handleDelete = async () => {
     setSaving(true)
     try {
-      await apiDelete(`/analysis/meta/promotion_override/${analysisType}`)
+      await apiDelete(`/analysis/meta/promotion_override/${analysisType}`, { 'X-Idempotency-Key': newIdempotencyKey() })
       await qc.invalidateQueries({ queryKey: ['promotion-overrides'] })
       onClose()
     } finally {

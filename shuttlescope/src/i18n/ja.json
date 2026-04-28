@@ -91,6 +91,52 @@
       "player": "選手"
     },
     "username": "ユーザ名",
+    "username_or_email": "ユーザ名 または メール",
+    "email": "メールアドレス",
+    "back_to_login": "ログインに戻る",
+    "register": {
+      "title": "新規登録",
+      "username": "ユーザ名 (3〜64 文字)",
+      "email": "メールアドレス",
+      "password": "パスワード (8 文字以上)",
+      "password_hint": "大文字・小文字・数字・記号 から少なくとも 3 種類を含めてください",
+      "display_name_optional": "表示名 (任意)",
+      "submit": "登録する",
+      "success_title": "確認メールを送信しました",
+      "success_body": "登録したメールアドレスに確認リンクをお送りしました。リンクをクリックして確認を完了してください。",
+      "have_account": "既にアカウントをお持ちですか？ログインへ",
+      "back_to_login": "ログインへ戻る",
+      "unavailable_banner_title": "現在、新規登録は受付を停止しております",
+      "unavailable_banner_body": "システム整備中のため、本機能は一時的にご利用いただけません。ご利用を希望される方は、お手数ですが公式サイトのお問い合わせフォームよりご連絡ください。順次ご案内いたします。",
+      "unavailable_banner_contact": "お問い合わせフォームへ"
+    },
+    "verify": {
+      "title": "メール確認",
+      "missing_token": "トークンが指定されていません",
+      "success": "メールアドレスを確認しました",
+      "failed": "確認に失敗しました",
+      "go_login": "ログインページへ"
+    },
+    "password_reset_request": {
+      "title": "パスワードリセット",
+      "description": "登録済みメールアドレスを入力してください。リセット用リンクをお送りします。",
+      "submit": "リセットメールを送信",
+      "sent_message": "リクエストを受け付けました。該当アドレスが登録されていればメールが届きます (15 分有効)。"
+    },
+    "password_reset_confirm": {
+      "title": "新しいパスワードを設定",
+      "new_password": "新しいパスワード",
+      "confirm_password": "確認用 (再入力)",
+      "mismatch": "パスワードが一致しません",
+      "submit": "パスワードを変更",
+      "done": "パスワードを変更しました。ログインページへ移動します..."
+    },
+    "invitation": {
+      "title": "招待を受け入れる",
+      "role": "ロール",
+      "accept": "アカウントを作成",
+      "invalid": "招待トークンが無効または期限切れです"
+    },
     "password": "パスワード",
     "pin": "PIN",
     "pin_optional": "未設定の場合は空欄",
@@ -902,6 +948,15 @@
       "result_walkover": "不戦勝",
       "result_unfinished": "未完了",
       "video_optional": "動画（任意）",
+      "reissue_video_token": "動画リンクを再発行",
+      "reissue_video_token_hint": "動画 URL（app://video/...）を新しい UUID に置換します",
+      "reissue_video_token_hint_short": "漏洩した URL は即座に無効化されます",
+      "reissue_video_token_confirm": "動画リンクを再発行します。旧 URL を共有していた場合、それらは即座に再生不可になります。続行しますか？",
+      "reissue_video_token_done": "再発行しました。新しいリンクで再生してください。",
+      "reissue_video_token_failed": "再発行に失敗しました",
+      "copy_share_link": "共有リンクをコピー",
+      "copy_share_link_done": "クリップボードにコピーしました",
+      "copy_share_link_warn": "このリンクは認証必須です。第三者へ送らないでください。漏洩時は『動画リンクを再発行』で即座に無効化できます。",
       "first_serve": "先サーブ",
       "analyst_view": "アナリスト視点",
       "tentative": "暫定",
@@ -3026,8 +3081,11 @@
     "fileSize": "ファイルサイズ",
     "elapsed": "経過時間",
     "noElectron": "Electron 環境外では DRM キャプチャは利用できません",
-    "drmCapturing": "Electron で YouTube を開き録画中",
+    "drmCapturing": "Electron で映像を開き録画中",
     "outPath": "保存先",
-    "jobId": "ジョブ ID"
+    "jobId": "ジョブ ID",
+    "cookieBrowserLabel": "認証クッキー（ログイン必須配信のみ）",
+    "cookieBrowserNone": "なし（認証不要）",
+    "cookieBrowserHint": "NHK+・ニコ生など要ログイン配信は、ログイン済みブラウザを選択してください"
   }
 }

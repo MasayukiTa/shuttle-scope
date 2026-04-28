@@ -635,14 +635,14 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
 
   const handlePurgeDisconnected = async () => {
     try {
-      await apiDelete(`/sessions/${sessionCode}/devices`)
+      await apiDelete(`/sessions/${sessionCode}/devices`, { 'X-Idempotency-Key': newIdempotencyKey() })
     } catch { /* 失敗は無視 */ }
     fetchDevices()
   }
 
   const handleDeleteDevice = async (p: SessionParticipant) => {
     try {
-      await apiDelete(`/sessions/${sessionCode}/devices/${p.id}`)
+      await apiDelete(`/sessions/${sessionCode}/devices/${p.id}`, { 'X-Idempotency-Key': newIdempotencyKey() })
     } catch { /* 失敗は無視 */ }
     fetchDevices()
   }
