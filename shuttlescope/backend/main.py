@@ -96,6 +96,7 @@ from backend.routers import cluster as cluster_router
 from backend.routers import auth as auth_router
 from backend.routers import public_site
 from backend.routers import uploads as uploads_router
+from backend.routers import youtube_live as youtube_live_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -1248,6 +1249,7 @@ if not app_settings.PUBLIC_MODE:
     app.include_router(cluster_router.router, prefix="/api")
 # Phase A: 認証
 app.include_router(auth_router.router, prefix="/api")
+app.include_router(youtube_live_router.router, prefix="/api")
 app.include_router(public_site.router)
 
 

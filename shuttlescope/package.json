@@ -47,6 +47,7 @@
     "autoprefixer": "^10.4.17",
     "cross-env": "^10.1.0",
     "electron": "^39.8.5",
+    "_castlabs_drm_note": "DRM サポートが必要な場合は上の electron を以下に置き換える: github:castlabs/electron-releases#<VERSION>+wvcus — 利用可能バージョンは https://github.com/castlabs/electron-releases/releases で確認。現在の Electron 39.x に対応するバージョンが存在しない場合、ダウングレードが必要。",
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "eslint": "^8.57.0",
