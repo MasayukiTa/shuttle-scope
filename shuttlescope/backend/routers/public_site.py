@@ -232,6 +232,7 @@ def _public_nav(login_href: str, lang_href: str = "/en") -> str:
         <a href="/terms">利用規約</a>
         <a href="/privacy">プライバシーポリシー</a>
         <a href="/contact">お問い合わせ</a>
+        <a href="https://app.shuttle-scope.com/#/register">新規登録</a>
         <a href="{login_href}">ログイン</a>
         <a href="{lang_href}" style="font-size:.8rem;opacity:.65;letter-spacing:.04em">EN</a>
       </div>
@@ -248,6 +249,7 @@ def _public_nav_en(login_href: str, lang_href: str = "/") -> str:
         <a href="/en/terms">Terms of Use</a>
         <a href="/en/privacy">Privacy Policy</a>
         <a href="/en/contact">Contact</a>
+        <a href="https://app.shuttle-scope.com/#/register">Register</a>
         <a href="{login_href}">Login</a>
         <a href="{lang_href}" style="font-size:.8rem;opacity:.65;letter-spacing:.04em">JP</a>
       </div>
@@ -407,8 +409,8 @@ html[lang=ja] .en{display:none}
 .hamburger.open span:nth-child(1){transform:translateY(5.5px) rotate(45deg)}
 .hamburger.open span:nth-child(2){opacity:0}
 .hamburger.open span:nth-child(3){transform:translateY(-5.5px) rotate(-45deg)}
-.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;background:rgba(255,255,255,0.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 4px 16px rgba(0,0,0,0.12)}
-[data-theme="dark"] .mobile-menu{background:rgba(7,16,29,0.88)}
+.mobile-menu{display:none;position:fixed;top:58px;left:0;right:0;z-index:190;background:#ffffff;border-bottom:1px solid var(--bdr);flex-direction:column;box-shadow:0 4px 16px rgba(0,0,0,0.12)}
+[data-theme="dark"] .mobile-menu{background:#0b1422}
 .mobile-menu.open{display:flex}
 .mobile-menu a{font-size:14px;color:var(--t2);text-decoration:none;padding:14px 24px;border-bottom:1px solid var(--bdr);transition:color .15s,background .15s}
 .mobile-menu a:hover{color:var(--t1);background:var(--blue-lt)}
@@ -572,6 +574,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
   <a href="#usecases"><span class="ja">利用シーン</span><span class="en">Use Cases</span></a>
   <a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a>
   <a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a>
+  <a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a>
   <a href="https://app.shuttle-scope.com/login" style="color:var(--blue);font-weight:700"><span class="ja">ログイン →</span><span class="en">Login →</span></a>
 </nav>
 
@@ -701,6 +704,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
     <li><a href="/terms"><span class="ja">利用規約</span><span class="en">Terms</span></a></li>
     <li><a href="/privacy"><span class="ja">プライバシーポリシー</span><span class="en">Privacy Policy</span></a></li>
     <li><a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a></li>
+    <li><a href="https://app.shuttle-scope.com/#/register"><span class="ja">新規登録</span><span class="en">Register</span></a></li>
   </ul>
   <span class="footer-copy">© 2026 ShuttleScope</span>
 </footer>

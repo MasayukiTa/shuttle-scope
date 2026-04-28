@@ -21,6 +21,12 @@ import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import { useAuth } from '@/hooks/useAuth'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
+// M-A6: Self-service auth pages (register / verify / password reset / invitation)
+import RegisterPage from '@/pages/RegisterPage'
+import EmailVerifyPage from '@/pages/EmailVerifyPage'
+import PasswordResetRequestPage from '@/pages/PasswordResetRequestPage'
+import PasswordResetConfirmPage from '@/pages/PasswordResetConfirmPage'
+import InvitationAcceptPage from '@/pages/InvitationAcceptPage'
 import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
 import { AuditLogPage } from '@/pages/AuditLogPage'
@@ -376,6 +382,12 @@ function App() {
             <Route path="/camera" element={<CameraSenderPage />} />
             <Route path="/viewer/:sessionCode" element={<ViewerPage />} />
             <Route path="/viewer" element={<ViewerPage />} />
+            {/* M-A6: 自己サービス認証経路 (ログイン不要) */}
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/verify" element={<EmailVerifyPage />} />
+            <Route path="/password/reset" element={<PasswordResetRequestPage />} />
+            <Route path="/password/reset-confirm" element={<PasswordResetConfirmPage />} />
+            <Route path="/invite" element={<InvitationAcceptPage />} />
             <Route path="/*" element={<ProtectedMainRoute />} />
           </Routes>
         </HashRouter>

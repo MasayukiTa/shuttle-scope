@@ -253,6 +253,15 @@ def verify_token(token: str) -> Optional[dict]:
                             return None
                     except (ValueError, TypeError):
                         pass
+
+                # Phase C2: mass-revoke sentinel チェック
+                # admin が POST /api/admin/security/revoke_all_tokens を呼んだ後、
+                # その時刻より前に発行された JWT は全て失効扱いにする
+                mass_revoke_at = _get_mass_revoke_timestamp()
+                if mass_revoke_at is not None and iat_i < mass_revoke_at:
+                    logger.info("JWT rejected: mass-revoked iat=%s mass_revoke_at=%s",
+                                iat_i, mass_revoke_at)
+                    return None
             except (ValueError, TypeError):
                 return None
 
@@ -291,6 +300,50 @@ def _is_token_revoked(jti: str) -> bool:
     except Exception as exc:
         logger.warning("Blacklist check failed jti=%s: %s", jti, exc)
         return False
+
+
+# Phase C2: mass-revoke sentinel キャッシュ (60 秒 TTL で DB ヒット削減)
+_MASS_REVOKE_CACHE: dict = {"ts": 0.0, "value": None}
+_MASS_REVOKE_CACHE_TTL = 60.0
+
+
+def _get_mass_revoke_timestamp() -> Optional[int]:
+    """admin が一斉失効を実行した最新時刻 (epoch sec) を返す。なければ None。
+
+    sentinel jti は "__mass_revoke_<isoformat>" の形式で
+    revoked_tokens テーブルに記録されている。
+    キャッシュを使い 60 秒に 1 回だけ DB を見る。
+    """
+    import time as _time
+    now = _time.time()
+    if now - _MASS_REVOKE_CACHE["ts"] < _MASS_REVOKE_CACHE_TTL:
+        return _MASS_REVOKE_CACHE["value"]
+
+    from backend.db.database import SessionLocal
+    from backend.db.models import RevokedToken
+    try:
+        with SessionLocal() as db:
+            row = (
+                db.query(RevokedToken)
+                .filter(RevokedToken.jti.like("__mass_revoke_%"))
+                .order_by(RevokedToken.id.desc())
+                .first()
+            )
+            if row is None:
+                _MASS_REVOKE_CACHE.update({"ts": now, "value": None})
+                return None
+            iso = row.jti[len("__mass_revoke_"):]
+            try:
+                ts = int(datetime.fromisoformat(iso).timestamp())
+            except (ValueError, TypeError):
+                _MASS_REVOKE_CACHE.update({"ts": now, "value": None})
+                return None
+            _MASS_REVOKE_CACHE.update({"ts": now, "value": ts})
+            return ts
+    except Exception as exc:
+        logger.warning("[jwt] mass_revoke check failed: %s", exc)
+        _MASS_REVOKE_CACHE.update({"ts": now, "value": None})
+        return None
 
 
 def cleanup_expired_revoked_tokens() -> int:

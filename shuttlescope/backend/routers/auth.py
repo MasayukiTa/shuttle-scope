@@ -1,4 +1,4 @@
-﻿"""Authentication and user-management routes."""
+"""Authentication and user-management routes."""
 
 import base64
 import hashlib
@@ -435,7 +435,12 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         if not identifier or not secret:
             raise HTTPException(status_code=422, detail="identifier and password are required")
 
-        user = db.query(User).filter(User.username == identifier).first()
+        # M-A4: identifier は username または email のいずれでも受け付ける
+        # ('@' を含むなら email として、それ以外は username として検索)
+        if "@" in identifier:
+            user = db.query(User).filter(User.email == identifier).first()
+        else:
+            user = db.query(User).filter(User.username == identifier).first()
 
         if not user or not user.hashed_credential:
             # ユーザー不在時もダミーbcryptを実行してタイミング差を消す

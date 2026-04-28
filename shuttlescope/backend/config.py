@@ -58,6 +58,48 @@ class Settings(BaseSettings):
     ss_clip_workers: int = 0
     # ffmpeg 内部スレッド数/プロセス (0=自動: cpu_count // workers)
     ss_clip_ffmpeg_threads: int = 0
+    # YouTube Live 録画アーカイブ先（HDD 上の専用サブディレクトリ）
+    # 例: SS_LIVE_ARCHIVE_ROOT=E:\shuttlescope_archive
+    # 未設定時はアーカイブなし（SSD 上に留まる）
+    # 重要: HDD のルートや別用途フォルダを指定しないこと。
+    #       このパス以外の同一ドライブへのアクセスは Electron 側で封鎖される。
+    ss_live_archive_root: str = ""
+    # 動画パスジェイルの追加許可ディレクトリ（; 区切り）
+    # ユーザーが ss_video_root 以外の場所から動画をインポートする場合、
+    # ここに明示的に列挙したディレクトリのみ許可される。
+    # 例: SS_VIDEO_EXTRA_ROOTS=D:\my_videos;F:\backup\matches
+    # 未列挙のパス（特に HDD のドローン映像等）はバックエンド側で拒否される。
+    ss_video_extra_roots: str = ""
+    # ── Phase A: データ保護鍵 (3 つを用途分離) ─────────────────────────────
+    # A1: フィールドレベル透過暗号化用 Fernet 鍵 (32 bytes base64)
+    # 生成: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # 未設定時は警告ログ + 平文保存にフォールバック (本番では必ず設定すること)
+    ss_field_encryption_key: str = ""
+    # A2: バックアップ ZIP の AES-256 パスフレーズ
+    # 生成: python -c "import secrets; print(secrets.token_hex(32))"
+    ss_backup_passphrase: str = ""
+    # A3: Export パッケージ HMAC-SHA256 署名鍵
+    # 生成: python -c "import secrets; print(secrets.token_hex(32))"
+    ss_export_signing_key: str = ""
+    # ── M-A: メール / Turnstile / 招待 ───────────────────────────────────
+    # M-A1: メール送信バックエンド ("console" / "mailchannels_worker" / "noop")
+    ss_mail_backend: str = "console"
+    ss_mail_from: str = "no-reply@shuttle-scope.com"
+    ss_mail_from_name: str = "ShuttleScope"
+    ss_mailchannels_worker_url: str = ""
+    ss_mailchannels_worker_auth_token: str = ""
+    # M-A: アプリ公開 URL (検証メール本文のリンクで使う)
+    ss_app_base_url: str = "https://app.shuttle-scope.com"
+    # M-A3: メール経由トークンの HMAC 鍵 (Phase A の鍵とは独立)
+    # 生成: python -c "import secrets; print(secrets.token_hex(32))"
+    ss_email_token_hmac_key: str = ""
+    ss_email_token_ttl_minutes: int = 15
+    ss_invite_token_ttl_hours: int = 72
+    # M-A5: Cloudflare Turnstile
+    ss_turnstile_site_key: str = ""
+    ss_turnstile_secret_key: str = ""
+    # 1=Turnstile 必須、0=未設定時はスキップ可能 (dev 用)
+    ss_turnstile_required: int = 0
 
     class Config:
         # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）

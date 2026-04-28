@@ -139,6 +139,12 @@ def start_yolo_batch(
     video_path = match.video_local_path or match.video_url
     if not video_path:
         raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
+    # path_jail: ローカルパスは許可ルート内であることを確認（HDD ドローン映像等への誤起動防止）
+    from backend.utils.path_jail import assert_match_video_path_allowed
+    try:
+        assert_match_video_path_allowed(match.video_local_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
     cuda_idx, ov_device = _load_device_settings(db)
     inf = get_yolo_inference(cuda_device_index=cuda_idx, openvino_device=ov_device)
@@ -909,6 +915,12 @@ def detect_single_frame(
     path = match.video_local_path or match.video_url
     if not path:
         raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
+    # path_jail: 二箇所目の YOLO 起動経路にも適用
+    from backend.utils.path_jail import assert_match_video_path_allowed
+    try:
+        assert_match_video_path_allowed(match.video_local_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     if path.startswith("localfile:///"):
         path = path[len("localfile:///"):]
 

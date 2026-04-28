@@ -97,6 +97,9 @@ from backend.routers import auth as auth_router
 from backend.routers import public_site
 from backend.routers import uploads as uploads_router
 from backend.routers import youtube_live as youtube_live_router
+from backend.routers import videos as videos_router
+from backend.routers import admin_security as admin_security_router
+from backend.routers import auth_email as auth_email_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -1250,6 +1253,9 @@ if not app_settings.PUBLIC_MODE:
 # Phase A: 認証
 app.include_router(auth_router.router, prefix="/api")
 app.include_router(youtube_live_router.router, prefix="/api")
+app.include_router(videos_router.router, prefix="/api")
+app.include_router(admin_security_router.router, prefix="/api")
+app.include_router(auth_email_router.router, prefix="/api")
 app.include_router(public_site.router)
 
 

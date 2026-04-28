@@ -6,38 +6,44 @@
   3. 出力が _PROBE_MIN_BYTES 以上 → HLS 方式で続行
   4. 以下 → DRM 保護と判定 → Electron desktopCapturer fallback
 
-HLS 録画（認証なし）:
-  ffmpeg -i <hls_url> -c copy -movflags +faststart <output.mp4>
-  ※ yt-dlp -g が返す URL はプリサインド済みのため Cookie 不要
-
-HLS 録画（認証あり: cookie_browser 指定時）:
-  yt-dlp --live-from-start --cookies-from-browser <browser> -o <output> <url>
-  ※ HLS セグメントも Cookie 付きで取得するため yt-dlp に任せる
-
-DRM 録画 (Electron 経由):
-  - Electron が MediaRecorder webm チャンクを受け取り、
-    POST /api/youtube_live/{job_id}/chunk でバックエンドへ転送
-  - stop 時に ffmpeg で webm → mp4 remux
+アーカイブ:
+  録画停止後、SS_LIVE_ARCHIVE_ROOT が設定されていれば
+  バックグラウンドで SSD の backend/data/youtube_live/ から
+  HDD の archive_root/youtube_live/ へ移動する。
+  path_jail により HDD 上の他データへの書き込みは封鎖される。
 """
 from __future__ import annotations
 
 import logging
 import shutil
 import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from backend.utils.path_jail import resolve_within, is_within
+
 logger = logging.getLogger(__name__)
 
 _RECORD_ROOT = Path(__file__).resolve().parent.parent / "data" / "youtube_live"
 _PROBE_SECS = 8
-_PROBE_MIN_BYTES = 100_000  # 100 KB 未満 = DRM または取得失敗と判定
+_PROBE_MIN_BYTES = 100_000
 
-# yt-dlp --cookies-from-browser で受け付けるブラウザ名
 SUPPORTED_BROWSERS = ("chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari")
+
+
+def _archive_root() -> Optional[Path]:
+    """設定から HDD アーカイブルートを取得する。未設定なら None。"""
+    try:
+        from backend.config import settings
+        val = getattr(settings, "ss_live_archive_root", "").strip()
+    except Exception:
+        import os
+        val = os.environ.get("SS_LIVE_ARCHIVE_ROOT", "").strip()
+    return Path(val) if val else None
 
 
 @dataclass
@@ -45,10 +51,11 @@ class RecordJob:
     job_id: str
     url: str
     out_path: Path
-    method: str   # "hls" | "hls_ytdlp" | "drm_pending" | "drm"
-    status: str   # "probing" | "recording" | "stopped" | "error"
+    method: str
+    status: str
     started_at: float = field(default_factory=time.time)
     error: Optional[str] = None
+    match_id: Optional[int] = None  # 紐付け試合 ID（アーカイブ完了時に DB を自動更新）
     _proc: Optional[subprocess.Popen] = field(default=None, repr=False)
 
     def file_size(self) -> int:
@@ -81,7 +88,6 @@ def list_jobs() -> list[RecordJob]:
 
 
 def _cookie_args(cookie_browser: Optional[str], cookie_file: Optional[str]) -> List[str]:
-    """yt-dlp 用のクッキー引数を組み立てる。"""
     if cookie_browser and cookie_browser in SUPPORTED_BROWSERS:
         return ["--cookies-from-browser", cookie_browser]
     if cookie_file:
@@ -94,7 +100,6 @@ def _get_hls_url(
     cookie_browser: Optional[str] = None,
     cookie_file: Optional[str] = None,
 ) -> Optional[str]:
-    """yt-dlp -g で HLS URL を取得。認証ありサービスにはクッキーを渡す。"""
     ytdlp = _ytdlp()
     if not ytdlp:
         return None
@@ -118,11 +123,6 @@ def probe_hls(
     cookie_browser: Optional[str] = None,
     cookie_file: Optional[str] = None,
 ) -> bool:
-    """HLS で _PROBE_SECS 秒試し録画し、DRM 非保護かどうかを返す。
-
-    認証ありサービスでも yt-dlp がプリサインド URL を返せば ffmpeg でプローブ可能。
-    ffmpeg が 403 などで失敗する場合、サイズ 0 → DRM と同等に扱い Electron fallback に委ねる。
-    """
     ffmpeg = _ffmpeg_bin()
     hls_url = _get_hls_url(url, cookie_browser, cookie_file)
     if not hls_url or not ffmpeg:
@@ -131,7 +131,8 @@ def probe_hls(
 
     probe_dir = _RECORD_ROOT / "probe"
     probe_dir.mkdir(parents=True, exist_ok=True)
-    probe_path = probe_dir / f"probe_{uuid.uuid4().hex[:8]}.mp4"
+    probe_name = f"probe_{uuid.uuid4().hex[:8]}.mp4"
+    probe_path = resolve_within(probe_dir / probe_name, _RECORD_ROOT)
     size = 0
 
     try:
@@ -145,7 +146,7 @@ def probe_hls(
         proc.kill()
         proc.wait()
     except Exception as exc:
-        logger.warning("[yt_live] probe subprocess error: %s", exc)
+        logger.warning("[yt_live] probe error: %s", exc)
     finally:
         size = probe_path.stat().st_size if probe_path.exists() else 0
         probe_path.unlink(missing_ok=True)
@@ -159,96 +160,61 @@ def start_hls_recording(
     url: str,
     cookie_browser: Optional[str] = None,
     cookie_file: Optional[str] = None,
+    match_id: Optional[int] = None,
 ) -> RecordJob:
-    """HLS 方式で録画を開始する。
-
-    cookie_browser / cookie_file が指定されている場合:
-      yt-dlp を直接使って録画する。
-      理由: CDN がセグメント配信時にも Cookie を要求するサービス（NHK+、ニコ生等）では
-            ffmpeg は HLS URL が取れても 403 になるため、yt-dlp に認証を委ねる。
-
-    指定がない場合:
-      yt-dlp -g → HLS URL → ffmpeg -c copy（コピーのみ、再エンコードなし）
-    """
     job_id = uuid.uuid4().hex
     _RECORD_ROOT.mkdir(parents=True, exist_ok=True)
-    out_path = _RECORD_ROOT / f"{job_id}.mp4"
+    out_path = resolve_within(_RECORD_ROOT / f"{job_id}.mp4", _RECORD_ROOT)
 
-    uses_cookies = bool(cookie_browser or cookie_file)
-
-    if uses_cookies:
-        return _start_ytdlp_recording(job_id, url, out_path, cookie_browser, cookie_file)
+    if cookie_browser or cookie_file:
+        job = _start_ytdlp_recording(job_id, url, out_path, cookie_browser, cookie_file)
     else:
-        return _start_ffmpeg_recording(job_id, url, out_path)
+        job = _start_ffmpeg_recording(job_id, url, out_path)
+    job.match_id = match_id
+    return job
 
 
 def _start_ffmpeg_recording(job_id: str, url: str, out_path: Path) -> RecordJob:
-    """ffmpeg -c copy で直接 HLS 録画（認証なし用）。"""
     hls_url = _get_hls_url(url)
     ffmpeg = _ffmpeg_bin()
-
     if not hls_url or not ffmpeg:
-        job = RecordJob(
-            job_id=job_id, url=url, out_path=out_path,
-            method="hls", status="error",
-            error="yt-dlp または ffmpeg が利用できません",
-        )
+        job = RecordJob(job_id=job_id, url=url, out_path=out_path,
+                        method="hls", status="error",
+                        error="yt-dlp または ffmpeg が利用できません")
         _jobs[job_id] = job
         return job
-
     proc = subprocess.Popen(
         [ffmpeg, "-y", "-i", hls_url,
          "-c", "copy", "-movflags", "+faststart", str(out_path)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-    job = RecordJob(
-        job_id=job_id, url=url, out_path=out_path,
-        method="hls", status="recording",
-    )
+    job = RecordJob(job_id=job_id, url=url, out_path=out_path,
+                    method="hls", status="recording")
     job._proc = proc
     _jobs[job_id] = job
-    logger.info("[yt_live] ffmpeg HLS recording started: job=%s", job_id)
+    logger.info("[yt_live] ffmpeg HLS started: job=%s", job_id)
     return job
 
 
 def _start_ytdlp_recording(
-    job_id: str,
-    url: str,
-    out_path: Path,
-    cookie_browser: Optional[str],
-    cookie_file: Optional[str],
+    job_id: str, url: str, out_path: Path,
+    cookie_browser: Optional[str], cookie_file: Optional[str],
 ) -> RecordJob:
-    """yt-dlp に直接録画させる（認証あり用）。
-
-    Cookie を yt-dlp が保持したまま HLS セグメントを取得するため、
-    CDN がセグメントにも認証を要求するサービスで正しく動作する。
-    """
     ytdlp = _ytdlp()
     if not ytdlp:
-        job = RecordJob(
-            job_id=job_id, url=url, out_path=out_path,
-            method="hls_ytdlp", status="error",
-            error="yt-dlp が利用できません",
-        )
+        job = RecordJob(job_id=job_id, url=url, out_path=out_path,
+                        method="hls_ytdlp", status="error",
+                        error="yt-dlp が利用できません")
         _jobs[job_id] = job
         return job
-
-    cmd = [
-        ytdlp,
-        "--live-from-start",
-        "--no-playlist",
-        "-f", "best",
-        "--merge-output-format", "mp4",
-        "-o", str(out_path),
-    ]
+    cmd = [ytdlp, "--live-from-start", "--no-playlist",
+           "-f", "best", "--merge-output-format", "mp4",
+           "-o", str(out_path)]
     cmd += _cookie_args(cookie_browser, cookie_file)
     cmd.append(url)
-
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    job = RecordJob(
-        job_id=job_id, url=url, out_path=out_path,
-        method="hls_ytdlp", status="recording",
-    )
+    job = RecordJob(job_id=job_id, url=url, out_path=out_path,
+                    method="hls_ytdlp", status="recording")
     job._proc = proc
     _jobs[job_id] = job
     logger.info("[yt_live] yt-dlp recording started: job=%s cookie_browser=%s",
@@ -256,29 +222,27 @@ def _start_ytdlp_recording(
     return job
 
 
-def create_drm_job(url: str) -> RecordJob:
-    """DRM fallback 用の job を作成する（Electron が chunk を送ってくる前の予約）。"""
+def create_drm_job(url: str, match_id: Optional[int] = None) -> RecordJob:
     job_id = uuid.uuid4().hex
     _RECORD_ROOT.mkdir(parents=True, exist_ok=True)
-    out_path = _RECORD_ROOT / f"{job_id}.webm"
-    job = RecordJob(
-        job_id=job_id, url=url, out_path=out_path,
-        method="drm_pending", status="probing",
-    )
+    out_path = resolve_within(_RECORD_ROOT / f"{job_id}.webm", _RECORD_ROOT)
+    job = RecordJob(job_id=job_id, url=url, out_path=out_path,
+                    method="drm_pending", status="probing", match_id=match_id)
     _jobs[job_id] = job
-    logger.info("[yt_live] DRM job created: job=%s", job_id)
+    logger.info("[yt_live] DRM job created: job=%s match_id=%s", job_id, match_id)
     return job
 
 
 def receive_drm_chunk(job_id: str, chunk: bytes) -> bool:
-    """Electron desktopCapturer の webm チャンクを out_path に追記する。"""
     job = _jobs.get(job_id)
     if not job:
+        return False
+    if not is_within(job.out_path, _RECORD_ROOT):
+        logger.error("[yt_live] chunk rejected: path outside record root: %s", job.out_path)
         return False
     if job.method == "drm_pending":
         job.method = "drm"
         job.status = "recording"
-        logger.info("[yt_live] DRM recording started: job=%s", job_id)
     try:
         with open(job.out_path, "ab") as fh:
             fh.write(chunk)
@@ -289,11 +253,13 @@ def receive_drm_chunk(job_id: str, chunk: bytes) -> bool:
 
 
 def _remux_webm_to_mp4(job: RecordJob) -> None:
-    """webm → mp4 remux。成功すれば out_path を更新し webm を削除。"""
     ffmpeg = _ffmpeg_bin()
     if not ffmpeg or not job.out_path.exists():
         return
     mp4_path = job.out_path.with_suffix(".mp4")
+    if not is_within(mp4_path, _RECORD_ROOT):
+        logger.error("[yt_live] remux rejected: outside record root")
+        return
     try:
         result = subprocess.run(
             [ffmpeg, "-y", "-i", str(job.out_path), "-c", "copy", str(mp4_path)],
@@ -309,8 +275,101 @@ def _remux_webm_to_mp4(job: RecordJob) -> None:
         logger.error("[yt_live] remux error: %s", exc)
 
 
+def _path_to_localfile_url(p: Path) -> str:
+    """ファイルパスを localfile:/// 形式の URL に変換する（DB 保存形式）。"""
+    return "localfile:///" + str(p).replace("\\", "/")
+
+
+def _update_match_video_path(old_path: Path, new_path: Path, match_id: Optional[int]) -> int:
+    """SSD パスから HDD パスへ Match.video_local_path を更新する。
+
+    更新ターゲット:
+      1. job に紐付けられた match_id（指定されていれば）
+      2. video_local_path が old_path / old_url と一致する全 Match
+         （ユーザーが job 開始後に手動で紐付けた場合に対応）
+
+    返り値: 更新された行数。
+    """
+    try:
+        from backend.db.database import SessionLocal
+        from backend.db.models import Match
+    except Exception as exc:
+        logger.error("[yt_live] DB import failed for archive update: %s", exc)
+        return 0
+
+    old_url = _path_to_localfile_url(old_path)
+    old_str = str(old_path)
+    new_url = _path_to_localfile_url(new_path)
+
+    n = 0
+    with SessionLocal() as db:
+        # 1. match_id 指定の場合は明示更新（古いパスと一致しなくても）
+        if match_id is not None:
+            m = db.get(Match, match_id)
+            if m is not None and (m.video_local_path or "") != new_url:
+                m.video_local_path = new_url
+                n += 1
+                logger.info("[yt_live] DB updated: match_id=%s → %s", match_id, new_url)
+        # 2. 古いパスと一致するレコードを全て更新
+        n += (
+            db.query(Match)
+            .filter(Match.video_local_path.in_([old_url, old_str]))
+            .update({"video_local_path": new_url}, synchronize_session=False)
+        )
+        db.commit()
+    return n
+
+
+def _archive_async(job: RecordJob, archive_root: Path) -> None:
+    """SSD 上の録画ファイルを HDD アーカイブルート内の youtube_live/ へ移動する。
+
+    保証:
+      - path_jail により archive_root 以外への書き込みは構造上不可能
+      - 移動完了時に Match.video_local_path を新パスに自動更新
+      - status 遷移: "archiving" → "stopped"（最終状態）
+      - 失敗時: SSD 上にファイルが残り、status="stopped" でリトライ可能
+    """
+    if not job.out_path.exists():
+        logger.warning("[yt_live] archive skip: file not found: %s", job.out_path)
+        job.status = "stopped"
+        return
+
+    dest_dir = archive_root / "youtube_live"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / job.out_path.name
+
+    # path_jail の二重確認（dest が archive_root 内に収まることを保証）
+    try:
+        resolve_within(dest, archive_root)
+    except ValueError as exc:
+        logger.error("[yt_live] archive blocked by path_jail: %s", exc)
+        job.status = "stopped"
+        job.error = f"archive blocked: {exc}"
+        return
+
+    old_path = job.out_path
+    logger.info("[yt_live] archiving: %s → %s", old_path.name, dest)
+    try:
+        shutil.move(str(old_path), str(dest))
+        job.out_path = dest
+        # DB の Match.video_local_path を自動更新（旧 SSD パス → 新 HDD パス）
+        try:
+            updated = _update_match_video_path(old_path, dest, job.match_id)
+            if updated:
+                logger.info("[yt_live] match link updated: %d row(s)", updated)
+        except Exception as exc:
+            logger.error("[yt_live] DB update failed (file already moved): %s", exc)
+            job.error = f"archive ok but DB update failed: {exc}"
+        job.status = "stopped"
+        logger.info("[yt_live] archived ok: job=%s size=%d", job.job_id, job.file_size())
+    except Exception as exc:
+        logger.error("[yt_live] archive move failed: %s", exc)
+        job.status = "stopped"
+        job.error = f"archive failed: {exc}"
+
+
 def stop_recording(job_id: str) -> Optional[RecordJob]:
-    """録画を停止し、DRM の場合は webm → mp4 remux を行う。"""
+    """録画停止 → DRM remux → HDD アーカイブ（非同期）。"""
     job = _jobs.get(job_id)
     if not job:
         return None
@@ -328,5 +387,14 @@ def stop_recording(job_id: str) -> Optional[RecordJob]:
 
     if job.method == "drm" and job.out_path.suffix == ".webm":
         _remux_webm_to_mp4(job)
+
+    archive = _archive_root()
+    if archive:
+        # フェイルセーフ: アーカイブ開始前に "archiving" に遷移させる。
+        # フロントが "stopped" を最終状態として扱えるようにするため。
+        job.status = "archiving"
+        threading.Thread(
+            target=_archive_async, args=(job, archive), daemon=True,
+        ).start()
 
     return job

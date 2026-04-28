@@ -159,6 +159,28 @@ def export_package(match_id: int, request: Request, db: Session = Depends(get_db
     }
     """
     ctx = get_auth(request)
+
+    # Phase B2: X-Idempotency-Key ヘッダで二重 export 防止 + access_log の重複記録防止
+    # 同じキーでの 2 回目以降は前回の署名済みパッケージをそのまま返す（nonce 再利用なし）
+    idem_key = request.headers.get("X-Idempotency-Key", "").strip()
+    endpoint_id = f"export_package:{match_id}"
+    if idem_key:
+        from backend.utils.idempotency import is_valid_key, get_cached, replay_response
+        if not is_valid_key(idem_key):
+            raise HTTPException(status_code=400, detail="X-Idempotency-Key の形式が不正です")
+        cached = get_cached(idem_key, ctx.user_id, endpoint_id)
+        if cached is not None:
+            cached_payload = replay_response(cached)
+            cached_body = json.dumps(cached_payload, ensure_ascii=False, indent=2).encode("utf-8")
+            return Response(
+                content=cached_body,
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": "attachment; filename=\"replay.json\"",
+                    "X-Idempotent-Replay": "1",
+                },
+            )
+
     match = db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -204,6 +226,28 @@ def export_package(match_id: int, request: Request, db: Session = Depends(get_db
         "strokes": [_stroke_dict(s) for s in strokes],
     }
 
+    # Phase A3: HMAC 署名 + 有効期限 24h + nonce を埋め込み、改ざん検知 + 1回利用化
+    from backend.utils.export_signing import sign_package
+    payload = sign_package(payload)
+
+    # access_log に記録（漏洩追跡用）
+    try:
+        from backend.utils.access_log import log_access
+        log_access(
+            db, "export_package_created",
+            user_id=ctx.user_id,
+            resource_type="match",
+            resource_id=match_id,
+            details={
+                "actor_role": ctx.role,
+                "nonce": payload.get("_nonce"),
+                "expires_at": payload.get("_expires_at"),
+            },
+        )
+    except Exception as exc:
+        import logging as _lg
+        _lg.getLogger(__name__).warning("[export] access_log failed: %s", exc)
+
     # ファイル名: match_YYYYMMDD_vs_opponent.json
     date_str = match.date.strftime("%Y%m%d") if match.date else "unknown"
     opp = db.get(Player, match.player_b_id)
@@ -218,6 +262,12 @@ def export_package(match_id: int, request: Request, db: Session = Depends(get_db
     disposition = f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
 
     body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+    # idempotency キャッシュへ保存（同じキーでの再要求は同じパッケージを返す）
+    if idem_key:
+        from backend.utils.idempotency import store
+        store(idem_key, ctx.user_id, endpoint_id, payload, status_code=200)
+
     return Response(
         content=body,
         media_type="application/json",
@@ -250,6 +300,19 @@ async def import_package_endpoint(request: Request, db: Session = Depends(get_db
             status_code=422,
             detail=f"パッケージバージョン '{pkg.get('version')}' に対応していません（期待値: {PACKAGE_VERSION}）",
         )
+
+    # Phase A3: HMAC 署名 + 有効期限 + nonce 重複の検証
+    from backend.utils.export_signing import verify_package, consume_nonce
+    ok, reason = verify_package(pkg, db)
+    if not ok:
+        raise HTTPException(
+            status_code=403,
+            detail=f"パッケージ検証失敗: {reason}",
+        )
+    # 検証成功後に nonce を消費（二重インポート防止）
+    nonce = pkg.get("_nonce")
+    if nonce:
+        consume_nonce(db, nonce)
 
     match_data = pkg.get("match")
     if not match_data:

@@ -112,6 +112,21 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks,
     if not path.is_file():
         raise HTTPException(status_code=400, detail="ファイルパスを指定してください（ディレクトリ不可）")
 
+    # path_jail: 動画パスが許可されたルート（backend/data, ss_video_root,
+    # ss_live_archive_root, ss_video_extra_roots）の中にあることを確認する。
+    # HDD 上の他用途データ（ドローン映像等）への解析誤起動をここで遮断する。
+    from backend.utils.path_jail import is_allowed_video_path, allowed_video_roots
+    if not is_allowed_video_path(path):
+        roots = [str(r) for r in allowed_video_roots()]
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"動画パスが許可ルート外です: {path}. "
+                f"許可ルート: {roots}. "
+                f"必要であれば SS_VIDEO_EXTRA_ROOTS に追加してください。"
+            ),
+        )
+
     file_size = path.stat().st_size
     if file_size > _MAX_VIDEO_BYTES:
         raise HTTPException(

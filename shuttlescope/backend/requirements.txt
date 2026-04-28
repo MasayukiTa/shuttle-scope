@@ -69,3 +69,5 @@ nvidia-ml-py>=12.0               # NVIDIA GPU 監視（旧 pynvml の後継）
 ultralytics>=8.0
 python-jose[cryptography]>=3.4.0  # JWT トークン生成・検証 / CVE-2024-33663 / CVE-2024-33664 修正
 bcrypt>=4.0.0                     # パスワードハッシュ（passlib は bcrypt 4+ 非互換のため直接使用）
+pyzipper>=0.3.6                   # Phase A2: バックアップ ZIP の AES-256 暗号化
+hypothesis>=6.0                   # Phase B1: Security Invariants property-based テスト

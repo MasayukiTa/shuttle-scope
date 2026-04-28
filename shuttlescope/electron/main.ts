@@ -3,7 +3,7 @@ import type { BrowserWindow as BrowserWindowInstance } from 'electron'
 import { spawn, execSync, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as http from 'http'
-import { existsSync, statSync, createReadStream } from 'fs'
+import { existsSync, statSync, createReadStream, realpathSync } from 'fs'
 import { Readable } from 'stream'
 
 const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, screen, shell, desktopCapturer, session } = electron
@@ -25,12 +25,116 @@ protocol.registerSchemesAsPrivileged([
       corsEnabled: true,
     },
   },
+  // app://video/{token} 経由でバックエンドの /api/videos/{token}/stream へプロキシする。
+  // これによりレンダラーは生のファイルパスを一切知ることなく動画を再生できる。
+  {
+    scheme: 'app',
+    privileges: {
+      secure: true,
+      standard: true,
+      stream: true,
+      bypassCSP: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
 ])
 
 let pythonProcess: ChildProcess | null = null
 let mainWindow: BrowserWindowInstance | null = null
 let splashWindow: BrowserWindowInstance | null = null
 let videoWindow: BrowserWindowInstance | null = null
+
+// ─── localfile:// パスジェイル ────────────────────────────────────────────────
+//
+// HDD に別用途データ（ドローン映像等）が存在する環境で、
+// アプリが HDD 上の許可領域（SS_LIVE_ARCHIVE_ROOT）以外にアクセスしないことを保証する。
+//
+// 隔離ルール:
+//   1. アプリディレクトリ（appPath）内のパス → 常に許可
+//   2. SS_LIVE_ARCHIVE_ROOT と同一ドライブのパス → archive root 内のみ許可、それ以外は 403
+//   3. それ以外のドライブのパス → ユーザーがダイアログで明示選択したパスのみ許可
+//
+// この設計により:
+//   - E:\shuttlescope_archive\... → 許可
+//   - E:\drone_footage\...        → 403 (同一ドライブでも archive root 外)
+//   - C:\Users\...\video.mp4      → ダイアログ選択済みなら許可
+
+// ユーザーがダイアログで明示的に選択したパスのセッション内ホワイトリスト
+const _userSelectedPaths = new Set<string>()
+
+function _resolveRealPath(filePath: string): string {
+  // realpathSync でシンボリックリンク/ジャンクションを実体パスに解決する。
+  // 失敗時（ファイル未作成等）は path.resolve() にフォールバックするが、
+  // 後段の statSync チェックでブロックされるため安全。
+  try {
+    return realpathSync(filePath)
+  } catch {
+    return path.resolve(filePath)
+  }
+}
+
+function _isAllowedVideoPath(filePath: string): boolean {
+  // CRITICAL: シンボリックリンク経由の HDD 漏洩を防ぐため realpathSync を使用する。
+  // path.resolve() だけだと appPath/data/link_to_drone のようなリンクが appPath 内と
+  // 誤判定されてしまう。
+  const resolved = _resolveRealPath(filePath)
+  const appPath = path.resolve(app.getAppPath())
+
+  // 1. アプリディレクトリ内は常に許可（backend/data/, videos/, out/ 等）
+  if (resolved === appPath || resolved.startsWith(appPath + path.sep)) return true
+
+  // 2. SS_LIVE_ARCHIVE_ROOT が設定されている場合のドライブ隔離
+  //    HDD と同じドライブ上のパスは archive root 配下以外すべて拒否する。
+  const archiveRootRaw = (process.env.SS_LIVE_ARCHIVE_ROOT || '').trim()
+  if (archiveRootRaw) {
+    const archiveRoot = path.resolve(archiveRootRaw)
+    const archiveDrive = path.parse(archiveRoot).root.toLowerCase()
+    const fileDrive = path.parse(resolved).root.toLowerCase()
+
+    if (fileDrive === archiveDrive) {
+      const lower = resolved.toLowerCase()
+      const archLower = archiveRoot.toLowerCase()
+      const withinArchive = lower === archLower || lower.startsWith(archLower + path.sep)
+      if (!withinArchive) {
+        console.warn('[localfile] BLOCKED: path on HDD but outside archive root:', resolved)
+      }
+      return withinArchive
+    }
+  }
+
+  // 3. ss_video_root が別ドライブに設定されている場合は許可
+  const videoRootRaw = (process.env.SS_VIDEO_ROOT || path.join(appPath, 'videos')).trim()
+  const videoRoot = path.resolve(videoRootRaw)
+  if (resolved === videoRoot || resolved.startsWith(videoRoot + path.sep)) return true
+
+  // 4. SS_VIDEO_EXTRA_ROOTS（; 区切り）に含まれる場合は許可
+  const extraRoots = (process.env.SS_VIDEO_EXTRA_ROOTS || '').split(';').map((s) => s.trim()).filter(Boolean)
+  for (const r of extraRoots) {
+    const root = path.resolve(r)
+    if (resolved === root || resolved.startsWith(root + path.sep)) return true
+  }
+
+  // 5. ユーザーがダイアログで明示選択したファイル
+  //    （realpath 後の値で比較するため、_userSelectedPaths も realpath で格納する）
+  if (_userSelectedPaths.has(resolved)) return true
+
+  console.warn('[localfile] BLOCKED: path not in any allowed root:', resolved)
+  return false
+}
+
+// 起動時のフェイルセーフログ。アーカイブ設定の有無を明示する。
+function _logArchiveStatus(): void {
+  const archiveRoot = (process.env.SS_LIVE_ARCHIVE_ROOT || '').trim()
+  if (archiveRoot) {
+    console.log('[localfile] HDD drive isolation ENABLED for archive root:', archiveRoot)
+  } else {
+    console.warn(
+      '[localfile] SS_LIVE_ARCHIVE_ROOT is NOT set — HDD drive isolation is DISABLED. ' +
+      'If you connect an external HDD with sensitive data, set SS_LIVE_ARCHIVE_ROOT in .env.development.'
+    )
+  }
+}
 
 // バックエンドログバッファ（最新 500 行まで保持、レンダラーに push する）
 const BACKEND_LOG_MAX = 500
@@ -199,6 +303,14 @@ function registerLocalFileProtocol(): void {
       return new Response(null, { status: 403, statusText: 'Forbidden: not a video file' })
     }
 
+    // パスジェイル: HDD 上の許可領域以外へのアクセスを封鎖する
+    // SS_LIVE_ARCHIVE_ROOT と同一ドライブのパスは archive root 内のみ許可。
+    // ドローン映像等の別データへの誤アクセスをここで防ぐ。
+    if (!_isAllowedVideoPath(filePath)) {
+      console.error('[localfile] Path jail: access denied:', filePath)
+      return new Response(null, { status: 403, statusText: 'Forbidden: path outside allowed video roots' })
+    }
+
     // ファイル存在確認
     let fileStat: ReturnType<typeof statSync>
     try {
@@ -265,6 +377,62 @@ function registerLocalFileProtocol(): void {
         'Accept-Ranges': 'bytes',
       },
     })
+  })
+}
+
+// ─── app://video/{token} プロトコル ──────────────────────────────────────────
+//
+// レンダラーが <video src="app://video/{token}"> として参照すると、
+// バックエンドの /api/videos/{token}/stream へプロキシして配信する。
+//
+// セキュリティ:
+//   - レンダラーは生のファイルパスを一切知らない（video_token のみ）
+//   - 認証ヘッダ X-Operator-Token は main プロセスが付与する
+//   - Range ヘッダはそのまま転送して <video> シーク再生を維持
+
+const _BACKEND_BASE = 'http://127.0.0.1:8765'
+
+function registerAppProtocol(): void {
+  protocol.handle('app', async (request) => {
+    try {
+      const url = new URL(request.url)
+      // app://video/{token}  → host = "video", pathname = "/{token}"
+      if (url.host !== 'video') {
+        return new Response(null, { status: 404, statusText: 'Unknown app:// route' })
+      }
+      const token = url.pathname.replace(/^\//, '')
+      if (!/^[a-f0-9]{32}$/.test(token)) {
+        return new Response(null, { status: 400, statusText: 'Invalid token format' })
+      }
+
+      const headers: Record<string, string> = {}
+      const range = request.headers.get('range')
+      if (range) headers['Range'] = range
+      const operatorToken = (process.env.SS_OPERATOR_TOKEN || '').trim()
+      if (operatorToken) headers['X-Operator-Token'] = operatorToken
+
+      const upstream = await fetch(`${_BACKEND_BASE}/api/videos/${token}/stream`, {
+        method: request.method,
+        headers,
+      })
+      // レスポンスヘッダから不要・不正なものを除去しつつ転送
+      const passthrough = new Headers()
+      for (const [k, v] of upstream.headers) {
+        const kl = k.toLowerCase()
+        if (kl === 'content-length' || kl === 'content-range' ||
+            kl === 'content-type' || kl === 'accept-ranges') {
+          passthrough.set(k, v)
+        }
+      }
+      return new Response(upstream.body, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: passthrough,
+      })
+    } catch (err) {
+      console.error('[app://] proxy error:', err)
+      return new Response(null, { status: 502, statusText: 'Backend unreachable' })
+    }
   })
 }
 
@@ -398,8 +566,12 @@ ipcMain.handle('open-video-file', async () => {
     ],
   })
   if (result.canceled || result.filePaths.length === 0) return null
-  // Windows パスを localfile:// プロトコル URL に変換（バックスラッシュをフォワードスラッシュへ）
-  const normalized = result.filePaths[0].replace(/\\/g, '/')
+  const selectedPath = result.filePaths[0]
+  // realpath 後のパスをホワイトリストに格納する（_isAllowedVideoPath が realpath で比較するため）。
+  // ただし HDD 上のドローン映像をユーザーが誤選択しても、後段の _isAllowedVideoPath で
+  // ドライブ隔離チェックが優先されるためブロックされる（ホワイトリストでもバイパス不可）。
+  _userSelectedPaths.add(_resolveRealPath(selectedPath))
+  const normalized = selectedPath.replace(/\\/g, '/')
   return `localfile:///${normalized}`
 })
 
@@ -533,10 +705,20 @@ ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: stri
 })
 
 // レコーダーウィンドウから webm チャンクを受信してバックエンドへ転送
+// Phase B4: チャンクサイズ上限を設けて memory exhaustion 攻撃を防ぐ
+const _DRM_CHUNK_MAX_BYTES = 50 * 1024 * 1024 // 50 MB / chunk (現状 2 秒チャンクで通常 1〜5 MB)
 ipcMain.on('youtube-drm-chunk', (_event, chunk: ArrayBuffer) => {
   const jobId = _ytDrmJobId
   const token = _ytDrmToken
   if (!jobId) return
+  if (!chunk || !(chunk instanceof ArrayBuffer)) {
+    console.warn('[yt-drm] invalid chunk type')
+    return
+  }
+  if (chunk.byteLength > _DRM_CHUNK_MAX_BYTES) {
+    console.error('[yt-drm] chunk too large (rejected):', chunk.byteLength)
+    return
+  }
   fetch(`http://localhost:8765/api/youtube_live/${jobId}/chunk`, {
     method: 'POST',
     headers: {
@@ -724,6 +906,10 @@ async function startApp(): Promise<void> {
 
     // localfile:// プロトコルハンドラーを登録（ウィンドウ作成前に必要）
     registerLocalFileProtocol()
+    // app://video/{token} プロトコルハンドラを登録（バックエンドストリームへのプロキシ）
+    registerAppProtocol()
+    // パスジェイル設定の状態をログに出力（HDD 隔離が有効か警告するため）
+    _logArchiveStatus()
 
     // メインウィンドウをバックグラウンドでロード
     createWindow()
@@ -752,11 +938,13 @@ async function startApp(): Promise<void> {
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
-            "default-src 'self' 'unsafe-inline' 'unsafe-eval' localfile: blob: data: http://localhost:*;" +
-              " media-src 'self' localfile: blob: data: https:;" +
+            // app: は Phase 1 で追加した不透明トークン経由の動画ストリーム用プロトコル。
+            // localfile: は既存ファイル選択用 (将来的に廃止予定)。
+            "default-src 'self' 'unsafe-inline' 'unsafe-eval' localfile: app: blob: data: http://localhost:*;" +
+              " media-src 'self' localfile: app: blob: data: https:;" +
               " script-src 'self' 'unsafe-inline' 'unsafe-eval';" +
               " frame-src *;" +
-              " img-src 'self' localfile: blob: data: https:;" +
+              " img-src 'self' localfile: app: blob: data: https:;" +
               " connect-src 'self' http://localhost:* ws://localhost:* https:;",
           ],
         },

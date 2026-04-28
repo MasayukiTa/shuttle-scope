@@ -55,7 +55,9 @@ def get_playlist(
         return {
             "success": True,
             "has_timestamps": False,
-            "video_local_path": match.video_local_path,
+            # Phase 1: 生パスは露出させず、不透明トークンと URL のみ返す
+            "video_token": match.video_token,
+            "video_url": match.video_url,
             "rallies": [],
         }
 
@@ -78,7 +80,9 @@ def get_playlist(
     return {
         "success": True,
         "has_timestamps": has_timestamps,
-        "video_local_path": match.video_local_path,
+        # Phase 1: 生パスは露出させず、不透明トークンと URL のみ返す
+        "video_token": match.video_token,
+        "video_url": match.video_url,
         "rallies": [_rally_to_playlist_item(r, set_map) for r in rallies],
     }
 

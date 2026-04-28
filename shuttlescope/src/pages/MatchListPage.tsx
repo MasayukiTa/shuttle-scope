@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Play, Trash2, Download, Filter, AlertCircle, Search, UserPlus, User, FolderOpen, TrendingUp, Pencil, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { clsx } from 'clsx'
-import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
+import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS } from '@/types'
 import { QuickStartModal } from '@/components/annotation/QuickStartModal'
 import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
@@ -173,6 +173,8 @@ export function MatchListPage() {
   const [showQuickStart, setShowQuickStart] = useState(false)
   const [editingMatchId, setEditingMatchId] = useState<number | null>(null)
   const [form, setForm] = useState<MatchFormData>(defaultForm())
+  // Phase 1: 編集モードで既存動画のファイル名のみ表示する（パスは露出しない）
+  const [editingVideoFilename, setEditingVideoFilename] = useState<string>('')
   const [analystSide, setAnalystSide] = useState<'top' | 'bottom'>('bottom')
   const [filterPlayer, setFilterPlayer] = useState<string>(() => searchParams.get('player_id') ?? '')
   const [filterLevel, setFilterLevel] = useState<string>('')
@@ -328,7 +330,8 @@ export function MatchListPage() {
 
   // 試合削除
   const deleteMatch = useMutation({
-    mutationFn: (id: number) => apiDelete(`/matches/${id}`),
+    mutationFn: (id: number) =>
+      apiDelete(`/matches/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches'] }),
     onError: (err: any) => {
       let detail = ''
@@ -381,9 +384,14 @@ export function MatchListPage() {
       result: m.result,
       final_score: m.final_score ?? '',
       video_url: m.video_url ?? '',
-      video_local_path: m.video_local_path ?? '',
+      // Phase 1: API レスポンスから video_local_path は除去された。
+      // 空のまま編集を開始 → 動画変更なしなら PUT に含まれず DB の値は保持される。
+      // 既存ファイル名は m.video_filename / m.has_video_local で表示する。
+      video_local_path: '',
       notes: m.notes ?? '',
     })
+    // 編集中の試合の既存動画ファイル名（パスは含まない、表示専用）
+    setEditingVideoFilename(m.video_filename ?? (m.has_video_local ? '(動画登録済み)' : ''))
     setPlayerAQuery(m.player_a?.name ?? '')
     setPlayerBQuery(m.player_b?.name ?? '')
     setPlayerATeam(m.player_a?.team ?? '')
@@ -938,7 +946,7 @@ export function MatchListPage() {
                         <TrendingUp size={16} />
                       </button>
                     )}
-                    {m.video_url && !m.video_local_path && (
+                    {m.video_url && !m.has_video_local && (
                       <button
                         onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
                         className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
@@ -1170,7 +1178,7 @@ export function MatchListPage() {
                             <TrendingUp size={14} />
                           </button>
                         )}
-                        {m.video_url && !m.video_local_path && (
+                        {m.video_url && !m.has_video_local && (
                           <button
                             onClick={() => startDownload.mutate({
                               matchId: m.id,
@@ -1468,8 +1476,47 @@ export function MatchListPage() {
                       >✕</button>
                     )}
                   </div>
-                  {form.video_local_path && (
-                    <div className={`text-[10px] ${textMuted} mt-0.5 truncate`}>📁 {form.video_local_path}</div>
+                  {/* 編集中: 新規選択ファイル名 or 既存ファイル名（パスは露出しない） */}
+                  {(form.video_local_path || editingVideoFilename) && (
+                    <div className={`text-[10px] ${textMuted} mt-0.5 truncate`}>
+                      📁 {form.video_local_path
+                        ? form.video_local_path.split(/[/\\]/).pop()
+                        : editingVideoFilename}
+                    </div>
+                  )}
+                  {/* 動画リンク再発行（漏洩時の即時無効化用） */}
+                  {editingMatchId != null && editingVideoFilename && (
+                    <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(t('match.list.reissue_video_token_confirm'))) return
+                          try {
+                            // Phase B2: 二度押し / 通信再送による二重発行を防ぐ
+                            const idemKey = newIdempotencyKey()
+                            await apiPost<{ success: boolean; data: { video_token: string } }>(
+                              `/matches/${editingMatchId}/reissue_video_token`, {},
+                              { 'X-Idempotency-Key': idemKey },
+                            )
+                            queryClient.invalidateQueries({ queryKey: ['matches'] })
+                            alert(t('match.list.reissue_video_token_done'))
+                          } catch (err: any) {
+                            alert(t('match.list.reissue_video_token_failed') + ': ' + (err?.message ?? String(err)))
+                          }
+                        }}
+                        className={`text-xs px-3 py-1.5 rounded border ${
+                          isLight
+                            ? 'border-amber-300 text-amber-700 hover:bg-amber-50'
+                            : 'border-amber-700 text-amber-300 hover:bg-amber-900/20'
+                        }`}
+                        title={t('match.list.reissue_video_token_hint')}
+                      >
+                        🔄 {t('match.list.reissue_video_token')}
+                      </button>
+                      <span className={`text-[10px] ${textMuted}`}>
+                        {t('match.list.reissue_video_token_hint_short')}
+                      </span>
+                    </div>
                   )}
                 </div>
 

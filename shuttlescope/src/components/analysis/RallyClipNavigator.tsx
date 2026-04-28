@@ -64,7 +64,11 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
   })
 
   const rallies = data?.rallies ?? []
-  const videoPath = data?.video_local_path
+  // Phase 1: 生パス video_local_path はバックエンドが返さない。
+  // 不透明トークン video_token を app://video/{token} に組み立てる。
+  const videoToken = data?.video_token
+  const videoUrl = data?.video_url
+  const videoPath = videoToken ? `app://video/${videoToken}` : (videoUrl || undefined)
   const hasVideo = !!videoPath
   const hasTimestamps = data?.has_timestamps ?? false
 
@@ -166,7 +170,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
         <div className={`px-4 pt-3 pb-1`}>
           <video
             ref={videoRef}
-            src={videoPath.startsWith('localfile://') ? videoPath : `localfile://${videoPath}`}
+            src={videoPath}
             controls
             className="w-full rounded max-h-56 bg-black"
             style={{ outline: 'none' }}

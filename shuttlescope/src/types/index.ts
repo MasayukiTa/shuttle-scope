@@ -140,7 +140,14 @@ export interface Match {
   result: MatchResult
   final_score?: string
   video_url?: string
+  /** @deprecated Phase 1 で API レスポンスから除去済み。書き込み時のみ使用（PUT 時に video_token が自動発行される）。 */
   video_local_path?: string
+  /** バックエンドが発行する不透明トークン。再生は app://video/{video_token} で行う。 */
+  video_token?: string
+  /** ローカル動画のファイル名（パスは含まない、表示用）。 */
+  video_filename?: string
+  /** ローカル動画が登録済みかどうか（has_video_local 互換）。 */
+  has_video_local?: boolean
   video_quality?: string
   camera_angle?: string
   annotator_id?: number

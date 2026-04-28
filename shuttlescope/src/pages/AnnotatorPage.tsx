@@ -7,6 +7,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
 import { VideoPlayer } from '@/components/video/VideoPlayer'
+import { getVideoSrc, hasVideo, getVideoLabel } from '@/utils/videoSrc'
 import { StreamingDownloadPanel } from '@/components/video/StreamingDownloadPanel'
 import { WebViewPlayer } from '@/components/video/WebViewPlayer'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
@@ -1250,7 +1251,7 @@ export function AnnotatorPage() {
 
   // アノテーター離脱時: バックグラウンド解析をキックして遷移
   const handleLeaveMatch = useCallback(() => {
-    const videoPath = match?.video_local_path || match?.video_url || ''
+    const videoPath = getVideoSrc(match)
     // localfile:/// プレフィックスを除去してファイルパスに変換
     const resolvedPath = videoPath.startsWith('localfile:///')
       ? videoPath.replace('localfile:///', '')
@@ -1446,7 +1447,7 @@ export function AnnotatorPage() {
 
   // P4: 別モニタで動画を開く
   const handleOpenVideoWindow = useCallback(() => {
-    const rawSrc = match?.video_local_path || match?.video_url || ''
+    const rawSrc = getVideoSrc(match)
     const src = normalizeVideoPath(rawSrc, matchId)
     if (!src || !window.shuttlescope?.openVideoWindow) return
     // selectedDisplayId が未設定の場合は非プライマリの先頭にフォールバック
@@ -1473,7 +1474,7 @@ export function AnnotatorPage() {
     const send = window.shuttlescope?.sendMirror
     const subscribe = window.shuttlescope?.onMirror
     if (!send || !subscribe) return
-    const rawSrc = match?.video_local_path || match?.video_url || ''
+    const rawSrc = getVideoSrc(match)
     const pushData = () => {
       send({
         type: 'data',
@@ -1519,7 +1520,7 @@ export function AnnotatorPage() {
   useEffect(() => {
     if (!matchData?.data) return
     const m = matchData.data
-    const rawSrc = m.video_local_path || m.video_url || ''
+    const rawSrc = getVideoSrc(m)
     if (!rawSrc) {
       setVideoSourceMode('none')
     } else {
@@ -1527,7 +1528,7 @@ export function AnnotatorPage() {
     // レンダリング側の streamingSiteName チェックで StreamingDownloadPanel / WebViewPlayer を表示。
     setVideoSourceMode('local')
     }
-  }, [matchData?.data?.video_local_path, matchData?.data?.video_url])
+  }, [matchData?.data?.video_token, matchData?.data?.video_url])
 
   // P2: タイムスタンプ取得（モードによって切替）
   const getTimestamp = useCallback((): number => {
@@ -1695,7 +1696,7 @@ export function AnnotatorPage() {
             </button>
           )}
           {/* P4: デュアルモニター */}
-          {displays.length >= 2 && match && (match.video_local_path || match.video_url) && (
+          {displays.length >= 2 && match && hasVideo(match) && (
             videoWindowOpen ? (
               <button
                 onClick={handleCloseVideoWindow}
@@ -1779,7 +1780,7 @@ export function AnnotatorPage() {
             {t('annotator.match_day_mode')}
           </button>
           {/* P3: TrackNet バッチ解析ボタン */}
-          {appSettings.tracknet_enabled && (match?.video_local_path || match?.video_url) && (
+          {appSettings.tracknet_enabled && hasVideo(match) && (
             tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') ? (
               <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
                 isLight ? 'bg-purple-100 text-purple-700' : 'bg-purple-900/40 text-purple-300'
@@ -1862,7 +1863,7 @@ export function AnnotatorPage() {
             )
           )}
           {/* CV オーバーレイグループ（YOLO + TrackNet） */}
-          {appSettings.yolo_enabled && (match?.video_local_path || match?.video_url) && (
+          {appSettings.yolo_enabled && hasVideo(match) && (
             <div className={`flex items-center gap-1 px-1.5 py-1 rounded border ${
               isLight ? 'border-gray-300 bg-gray-50' : 'border-gray-700 bg-gray-800/60'
             }`}>
@@ -2017,7 +2018,7 @@ export function AnnotatorPage() {
               )}
 
               {/* 選手識別: taggingMode 中はサンプラーフッター表示、それ以外は識別ボタン */}
-              {!!(match?.video_local_path || match?.video_url) && (
+              {!!hasVideo(match) && (
                 samplerActive ? (
                   <div className={`flex items-center gap-1 flex-wrap px-1.5 py-0.5 rounded ${
                     isLight ? 'bg-purple-50 border border-purple-200' : 'bg-purple-900/20 border border-purple-700/40'
@@ -2629,7 +2630,7 @@ export function AnnotatorPage() {
             }
 
             // 動画ソース決定（旧形式の Windows パスを normalizeVideoPath で変換）
-            const rawSrc = match?.video_local_path || match?.video_url || ''
+            const rawSrc = getVideoSrc(match)
             const videoSrc = normalizeVideoPath(rawSrc, matchId)
             const streamingSiteName = videoSrc ? detectStreamingSite(videoSrc) : null
 
@@ -2836,10 +2837,9 @@ export function AnnotatorPage() {
                 設定
               </button>
             </div>
-            {(match?.video_local_path || match?.video_url) && (
+            {hasVideo(match) && (
               <div className="mt-1 text-gray-500 truncate">
-                {match?.video_local_path
-                  ? `📁 ${match.video_local_path.split(/[/\\]/).pop()?.replace('localfile:///', '') ?? match.video_local_path}`
+                {getVideoLabel(match)
                   : `🔗 ${match?.video_url}`}
               </div>
             )}

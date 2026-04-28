@@ -5,7 +5,7 @@ import { setLanguage, SUPPORTED_LANGS, type SupportedLang } from '@/i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut, ScrollText } from 'lucide-react'
 import QRCode from 'qrcode'
-import { apiGet, apiPost, apiPut, apiDelete } from '@/api/client'
+import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { Player, TeamHistoryEntry, SharedSession, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
@@ -615,7 +615,8 @@ export function SettingsPage() {
 
   // 選手削除
   const deletePlayer = useMutation({
-    mutationFn: (id: number) => apiDelete(`/players/${id}`),
+    mutationFn: (id: number) =>
+      apiDelete(`/players/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['players'] }),
     onError: (err: any, playerId: number) => {
       // err.message はサーバーが返したJSONテキスト ("{"detail":"..."}") or プレーンテキスト
