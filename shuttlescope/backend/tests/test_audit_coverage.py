@@ -36,10 +36,20 @@ EXPECTED_EVENTS = {
 
 
 def _extract_log_event_names(content: str) -> set[str]:
-    """log_access(db, "<event>", ...) の event 名を抽出する。"""
+    """log_access(db, "<event>", ...) の event 名を抽出する。
+
+    `from backend.utils.access_log import log_access as _log` のような
+    エイリアスにも対応する。
+    """
     names = set()
+    # log_access 直接呼び出し
     for m in re.finditer(r'log_access\s*\(\s*[^,]+,\s*["\']([^"\']+)["\']', content):
         names.add(m.group(1))
+    # エイリアス: log_access as <alias> → <alias>(...) を検出
+    for alias_match in re.finditer(r'from\s+backend\.utils\.access_log\s+import\s+log_access\s+as\s+(\w+)', content):
+        alias = alias_match.group(1)
+        for m in re.finditer(rf'\b{re.escape(alias)}\s*\(\s*[^,]+,\s*["\']([^"\']+)["\']', content):
+            names.add(m.group(1))
     return names
 
 
@@ -83,19 +93,38 @@ def test_no_orphan_event_names():
         "emergency_reissue_all_video_tokens",
         # Phase B3: 認可失敗ログ
         "video_stream_access_denied",
-        # 認証系の追加イベント
+        # M-A4: メール認証 / 招待 / register
+        "register",
+        "register_duplicate",
+        "email_verified",
+        "email_verify_resend",
+        "password_reset_requested",
+        "password_reset_completed",
+        "password_reset_unknown_email",
+        "password_reset_by_admin",
+        "invitation_created",
+        "invitation_accepted",
+        # 認証系
         "login_mfa_required",
+        "login_mfa_ok",
         "login_pin",
         "login_select",
         "logout",
         "refresh_token",
+        "token_refresh",
         "password_changed",
-        "password_reset_requested",
-        # ユーザ管理
+        "password_change_failed",
+        "mfa_enabled",
+        "mfa_disabled",
+        "account_unlocked",
+        # ユーザ管理 / チーム
         "user_created",
         "user_updated",
         "user_deleted",
         "user_role_changed",
+        "user_team_changed",
+        "team_created",
+        "team_updated",
         # 試合 / 選手
         "match_created",
         "match_deleted",
@@ -106,12 +135,21 @@ def test_no_orphan_event_names():
         "team_changed",
         "owner_changed",
         "is_public_pool_changed",
+        # public inquiry
+        "public_inquiry_deleted",
+        "public_inquiry_bulk_deleted",
         # クラスタ / 同期
         "cluster_op",
         "sync_op",
         # 削除復活
         "soft_delete",
         "soft_undelete",
+        # コメント / コンディション / 動画
+        "comment_deleted",
+        "condition_created",
+        "condition_updated",
+        "condition_deleted",
+        "video_dl_started",
     }
     idx = _all_routers_event_index()
     all_events = set()

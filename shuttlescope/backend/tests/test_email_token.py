@@ -27,10 +27,13 @@ def test_generate_plain_uniqueness():
 
 
 def test_different_keys_yield_different_hashes(monkeypatch):
+    """_hash_token は settings.ss_email_token_hmac_key を読むため、
+    そちらを差し替えて検証する。"""
     from backend.utils import email_token as et
+    import backend.config as cfg
     plain = "fixed_plain_token_value_for_test"
-    monkeypatch.setenv("SS_EMAIL_TOKEN_HMAC_KEY", "key_alpha_xxxxxxxxxxxxxxxxxxxxx")
+    monkeypatch.setattr(cfg.settings, "ss_email_token_hmac_key", "key_alpha_xxxxxxxxxxxxxxxxxxxxx")
     h1 = et._hash_token(plain)
-    monkeypatch.setenv("SS_EMAIL_TOKEN_HMAC_KEY", "key_beta_yyyyyyyyyyyyyyyyyyyyyy")
+    monkeypatch.setattr(cfg.settings, "ss_email_token_hmac_key", "key_beta_yyyyyyyyyyyyyyyyyyyyyy")
     h2 = et._hash_token(plain)
     assert h1 != h2, "鍵が異なればハッシュは異なる"

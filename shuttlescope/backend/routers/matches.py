@@ -237,6 +237,25 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
         # 受理する形式は `server://{uuid}{ext}` または `localfile://...` のみ (プロトコル以外はアプリ実装で未使用)
         if not (vlp.startswith("server://") or vlp.startswith("localfile://") or vlp == ""):
             raise HTTPException(status_code=422, detail="video_local_path must be server:// or localfile:// scheme")
+        # Phase A 連動: localfile:/// は path_jail 許可ルート内に限定する。
+        # HDD のドローン映像や OS ファイル等への登録を PUT 時点で遮断する。
+        if vlp.startswith("localfile://"):
+            from backend.utils.path_jail import is_allowed_video_path, allowed_video_roots
+            from pathlib import Path as _P
+            _raw = vlp[len("localfile:///"):]
+            try:
+                if not is_allowed_video_path(_P(_raw)):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            f"video_local_path が許可ルート外です: {_raw}. "
+                            f"許可ルート: {[str(r) for r in allowed_video_roots()]}"
+                        ),
+                    )
+            except HTTPException:
+                raise
+            except Exception as _exc:
+                raise HTTPException(status_code=422, detail=f"video_local_path 検証エラー: {_exc}")
     # notes / final_score / tournament / venue の HTML タグ / script 拒否 (stored XSS 対策)
     # 試合表示画面で出力される文字列は全て HTML タグをブロック
     import re as _re_xss_m

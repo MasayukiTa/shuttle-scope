@@ -304,6 +304,9 @@ def backup_now(
         }
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except NotImplementedError as e:
+        # PostgreSQL 環境では SQLite ベースのバックアップは不可
+        raise HTTPException(status_code=501, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"バックアップエラー: {e}")
 

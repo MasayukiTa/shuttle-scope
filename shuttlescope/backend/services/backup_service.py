@@ -28,7 +28,21 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_BACKUP_DIR = Path(settings.DATABASE_URL.replace("sqlite:///", "")).parent / "backups"
+def _resolve_backup_dir() -> Path:
+    """バックアップ保存ディレクトリを返す。
+
+    SQLite なら DB ファイル隣接の backups/、それ以外 (PostgreSQL 等) は
+    backend/data/backups/ にフォールバックする。
+    """
+    db_url = settings.DATABASE_URL
+    if db_url.startswith("sqlite:///"):
+        db_path = Path(db_url[len("sqlite:///"):])
+        return db_path.parent / "backups"
+    # PostgreSQL 等: backend/data/backups
+    return Path(__file__).resolve().parent.parent / "data" / "backups"
+
+
+_DEFAULT_BACKUP_DIR = _resolve_backup_dir()
 
 
 def _passphrase() -> Optional[bytes]:
@@ -59,7 +73,13 @@ def create_backup(label: Optional[str] = None, max_generations: int = 10) -> Pat
     パスフレーズ未設定時は平文 ZIP にフォールバック（警告ログを必ず出す）。
     本番運用では SS_BACKUP_PASSPHRASE を必ず設定すること。
     """
-    db_path = Path(settings.DATABASE_URL.replace("sqlite:///", ""))
+    # SQLite 専用: PostgreSQL 等は外部の pg_dump で別途バックアップする運用
+    if not settings.DATABASE_URL.startswith("sqlite:///"):
+        raise NotImplementedError(
+            "create_backup は SQLite 専用です。PostgreSQL 環境では pg_dump を使用してください。"
+            f" 現在の DATABASE_URL: {settings.DATABASE_URL.split('@')[-1]}"
+        )
+    db_path = Path(settings.DATABASE_URL[len("sqlite:///"):])
     if not db_path.exists():
         raise FileNotFoundError(f"DB ファイルが見つかりません: {db_path}")
 

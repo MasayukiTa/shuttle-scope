@@ -20,9 +20,18 @@ import secrets
 
 import pytest
 
-# 鍵を事前にセット（テスト用）
+# 鍵を事前にセット（テスト用）— pydantic settings は import 時に値を読むので、
+# モジュール import 前に直接 settings 値も上書きする
 os.environ.setdefault("SS_FIELD_ENCRYPTION_KEY", "")
-os.environ.setdefault("SS_EXPORT_SIGNING_KEY", secrets.token_hex(32))
+_SIGNING_KEY = secrets.token_hex(32)
+os.environ.setdefault("SS_EXPORT_SIGNING_KEY", _SIGNING_KEY)
+# settings シングルトンを直接更新 (環境変数は import 時にしか効かないため)
+try:
+    from backend.config import settings as _settings
+    if not getattr(_settings, "ss_export_signing_key", ""):
+        _settings.ss_export_signing_key = _SIGNING_KEY
+except Exception:
+    pass
 
 from hypothesis import given, settings, strategies as st
 
