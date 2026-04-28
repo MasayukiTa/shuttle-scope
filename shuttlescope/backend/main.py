@@ -988,12 +988,19 @@ app.add_middleware(AnalysisCacheMiddleware)
 
 # ─── グローバル認証ミドルウェア ────────────────────────────────────────────────
 # 全 /api/ ルートに Bearer JWT を必須とする。
-# 除外: /api/auth/login, /api/auth/logout, /api/auth/bootstrap-status のみ
-#       （/api/auth/analysts, /api/auth/players 等は要認証）
-# loopback (Electron ローカル起動) は X-Role フォールバックを維持するため除外。
-# CORS preflight (OPTIONS) も除外。
+# 除外:
+#   - /api/auth/login, /api/auth/logout, /api/auth/bootstrap-status (既存)
+#   - /api/auth/register (M-A: 新規登録)
+#   - /api/auth/email/verify (M-A: メール検証リンク)
+#   - /api/auth/password/request_reset (M-A: パスワードリセット申請)
+#   - /api/auth/password/reset (M-A: パスワードリセット実行)
+#   - /api/auth/invitation/peek (M-A: 招待トークン情報取得)
+#   - /api/auth/invitation/accept (M-A: 招待受領)
+# 注: /api/auth/email/resend_verification と /api/auth/invitation/create は要認証
 _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
-    r"^/api/(auth/(login|logout|bootstrap-status)|health|public(/.*)?)"
+    r"^/api/(auth/(login|logout|bootstrap-status|register|email/verify|"
+    r"password/(request_reset|reset)|invitation/(peek|accept))"
+    r"|health|public(/.*)?)"
 )
 
 
