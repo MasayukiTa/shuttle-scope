@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+from threading import Lock
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -45,6 +46,58 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth_email"])
 
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_\-.]{3,64}$")
+
+
+# ─── M-A レート制限 (IP + email 単位) ────────────────────────────────────
+# 既存 ExfilRateLimitMiddleware は authenticated 用なので、unauthenticated な
+# self-service 系エンドポイントには別途 in-memory rate limiter を被せる。
+#
+# 制限値:
+#   register:        IP 単位 5 req / 15min, email 単位 3 req / 24h
+#   request_reset:   IP 単位 5 req / 15min, email 単位 3 req / 1h
+#
+# in-memory 実装の制約:
+#   - プロセス再起動でリセット (本番複数プロセスは想定外、単一プロセス前提)
+#   - 1 プロセスのメモリ内のみ → IP 偽装は別 layer (CF) で防御
+
+_RATE_LOCK = Lock()
+_RATE_BUCKETS: dict[str, list[datetime]] = {}
+
+
+def _rate_limit_check(bucket_key: str, max_count: int, window_seconds: int) -> bool:
+    """bucket_key の試行回数が制限以内か確認。True=許可, False=制限超過。"""
+    now = datetime.utcnow()
+    cutoff = now - timedelta(seconds=window_seconds)
+    with _RATE_LOCK:
+        history = [ts for ts in _RATE_BUCKETS.get(bucket_key, []) if ts >= cutoff]
+        if len(history) >= max_count:
+            _RATE_BUCKETS[bucket_key] = history
+            return False
+        history.append(now)
+        _RATE_BUCKETS[bucket_key] = history
+        # 古いバケットを GC (1000 個超えたら最古から削除)
+        if len(_RATE_BUCKETS) > 1000:
+            oldest = sorted(_RATE_BUCKETS.items(),
+                            key=lambda kv: max(kv[1]) if kv[1] else now)[0][0]
+            del _RATE_BUCKETS[oldest]
+    return True
+
+
+def _enforce_rate_limit(ip: str, email: str, scope: str,
+                        ip_max: int, ip_window_s: int,
+                        email_max: int, email_window_s: int) -> None:
+    """IP 単位 + email 単位の 2 段制限を適用。違反時は 429 を投げる。"""
+    if not _rate_limit_check(f"{scope}:ip:{ip}", ip_max, ip_window_s):
+        raise HTTPException(
+            status_code=429,
+            detail=f"短時間に多くの試行があります。しばらく待ってから再度お試しください。",
+        )
+    email_key = (email or "").lower()
+    if email_key and not _rate_limit_check(f"{scope}:email:{email_key}", email_max, email_window_s):
+        raise HTTPException(
+            status_code=429,
+            detail=f"このメールアドレスへの試行回数が上限に達しました。",
+        )
 
 
 # ─── スキーマ ───────────────────────────────────────────────────────────────
@@ -127,6 +180,13 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     - email_verified_at は None (検証メールリンク踏むまで未検証)
     """
     ip = _client_ip(request)
+    # M-A レート制限: IP 単位 5/15min + email 単位 3/24h
+    _enforce_rate_limit(
+        ip, body.email, scope="register",
+        ip_max=5, ip_window_s=15 * 60,
+        email_max=3, email_window_s=24 * 60 * 60,
+    )
+
     ok, reason = verify_turnstile(body.turnstile_token, ip)
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
@@ -228,6 +288,13 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
     列挙防御: email 存在に関わらず同じレスポンスを返す。
     """
     ip = _client_ip(request)
+    # M-A レート制限: IP 単位 5/15min + email 単位 3/1h
+    _enforce_rate_limit(
+        ip, body.email, scope="reset",
+        ip_max=5, ip_window_s=15 * 60,
+        email_max=3, email_window_s=60 * 60,
+    )
+
     ok, reason = verify_turnstile(body.turnstile_token, ip)
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
