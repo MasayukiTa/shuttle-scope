@@ -50,6 +50,11 @@ def _check_encoder(name: str) -> bool:
 def _check_nvenc() -> bool:
     global _nvenc_available
     if _nvenc_available is None:
+        # nvidia-smi が存在しない = NVIDIA GPU なし → ffmpeg が NVENC を持っていても使えない
+        if not shutil.which("nvidia-smi"):
+            _nvenc_available = False
+            logger.info("[clips] NVENC: False (nvidia-smi not found)")
+            return False
         _nvenc_available = _check_encoder("h264_nvenc")
         logger.info("[clips] NVENC: %s", _nvenc_available)
     return _nvenc_available

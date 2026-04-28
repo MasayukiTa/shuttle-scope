@@ -470,6 +470,6 @@ SS_CLIP_WORKERS=0
 SS_CLIP_FFMPEG_THREADS=0
 ```
 
-- Main machine (RTX 5060 Ti): set `SS_USE_GPU=1` to enable NVDEC+NVENC pipeline
-- GMKtec K10 (Intel Xe): set `SS_USE_GPU=1` to enable QSV decode+encode
-- AMD iGPU / CPU-only machines: leave `SS_USE_GPU=0` (default)
+- NVIDIA GPU machine: set `SS_USE_GPU=1` — selects NVDEC+NVENC when `nvidia-smi` is detected
+- Intel Xe / QSV machine (no NVIDIA): set `SS_USE_GPU=1` — skips NVENC (no `nvidia-smi`) and selects QSV
+- AMD iGPU / CPU-only: leave `SS_USE_GPU=0` (default)
