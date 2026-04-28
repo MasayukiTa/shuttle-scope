@@ -14,9 +14,9 @@ network:
   - id: pc2
     ip: 169.254.140.146
     label: GMKtec K10
-    num_cpus: 16
+    num_cpus: 20
     num_gpus: 1
-    gpu_label: AMD Radeon 780M Graphics
+    gpu_label: Intel(R) Iris(R) Xe Graphics
     model_base: C:\ss-models
     mac: 84:47:09:52:84:cd
     ssh_user: M.Takeuchi
