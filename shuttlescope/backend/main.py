@@ -15,6 +15,17 @@ if sys.platform == "win32":
 # Windows マルチノード Ray クラスタを有効化
 os.environ.setdefault("RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER", "1")
 
+# ONNX Runtime のグローバルログレベルを ERROR に上げる（TensorRT EP の良性 WARNING を抑止）。
+# - 例: WeightsContext.cpp:469 "Empty initializer roi__186 was provided with non-empty data"
+# - これは ONNX グラフ最適化後の未使用 initializer に対する TRT 通知で、推論結果に影響なし
+# - TRT 内部ロガーは UTC ハードコードなのでタイムスタンプ表示も含めて消したい
+# 0=VERBOSE / 1=INFO / 2=WARN / 3=ERROR / 4=FATAL
+try:
+    import onnxruntime as _ort_init
+    _ort_init.set_default_logger_severity(3)
+except Exception:
+    pass
+
 # `python backend/main.py` で直接実行された場合でも
 # shuttlescope/ をルートとしてimportできるようパスを追加
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

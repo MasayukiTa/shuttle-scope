@@ -252,6 +252,48 @@ class StartHeadRequest(BaseModel):
     port: int = 6379
     num_cpus: Optional[int] = None
     num_gpus: Optional[int] = None
+    # force=True で「既に起動中でも強制再起動」。デフォルトは冪等動作（既に
+    # 全ノード alive なら no-op で 200 を返す）。連打によるゴーストノード増殖防止。
+    force: bool = False
+
+
+def _ray_cluster_alive_state() -> tuple[bool, set[str], set[str]]:
+    """現在の Ray クラスタ状態をチェック。
+
+    Returns:
+        (head_alive, alive_worker_ips, dead_worker_ips_recent)
+    """
+    try:
+        if not _bootstrap.is_ray_connected():
+            return False, set(), set()
+        import ray  # type: ignore
+        if not ray.is_initialized():
+            try:
+                _bootstrap.ensure_ray_initialized(timeout=3)
+            except Exception:
+                return False, set(), set()
+        try:
+            head_ip = topology.get_primary_ip()
+        except Exception:
+            head_ip = ""
+        alive_ips: set[str] = set()
+        dead_ips: set[str] = set()
+        head_alive = False
+        for n in ray.nodes():
+            ip = n.get("NodeManagerAddress", "")
+            if not ip:
+                continue
+            is_alive = bool(n.get("Alive"))
+            if ip == head_ip:
+                head_alive = head_alive or is_alive
+            else:
+                if is_alive:
+                    alive_ips.add(ip)
+                else:
+                    dead_ips.add(ip)
+        return head_alive, alive_ips, dead_ips
+    except Exception:
+        return False, set(), set()
 
 
 @router.post("/cluster/ray/start-head")
@@ -283,18 +325,49 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="num_gpus が不正です")
 
+    # ── 冪等化: 既にクラスタが健全なら何もしない（連打対策／ゴーストノード防止）
+    # head が alive かつ全ワーカーが alive なら早期リターン。
+    # body.force=True なら従来通り強制再起動。
+    head_alive, alive_workers, _dead_workers = _ray_cluster_alive_state()
+    workers_cfg = topology.get_workers()
+    expected_worker_ips = {w.get("ip") for w in workers_cfg if w.get("ip")}
+    if (not body.force) and head_alive and expected_worker_ips.issubset(alive_workers):
+        logger.info("start_ray_head: 既に全ノード alive — no-op (force=false)")
+        # 冪等な情報応答を返す
+        worker_cmds = [
+            {"label": w.get("label", w.get("ip", "")), "ip": w.get("ip", ""),
+             "cmd": f"ray start --address={body.node_ip}:{body.port} --node-ip-address={w.get('ip','')} --num-cpus={w.get('num_cpus',16)}"
+                    + (f" --num-gpus={w.get('num_gpus',0)}" if w.get('num_gpus') else "")}
+            for w in workers_cfg
+        ]
+        first_cmd = worker_cmds[0]["cmd"] if worker_cmds else ""
+        return {
+            "ok": True,
+            "message": "Ray クラスタは既に全ノード alive — 起動不要",
+            "status": "already-running",
+            "worker_cmd": first_cmd,
+            "worker_cmds": worker_cmds,
+        }
+
     ray_cmd = _bootstrap._find_ray_cmd()
     kw: dict = {"capture_output": True, "text": True, "errors": "replace", "timeout": 30}
     if sys.platform == "win32":
         kw["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
 
-    # 既存プロセスをクリーンアップ（batと同様に stop → 2秒待ち → start）
-    try:
-        subprocess.run([ray_cmd, "stop", "--force"], **kw)
-        _bootstrap.unmark_ray_connected()
-    except Exception:
-        pass
-    import time as _time; _time.sleep(2)
+    # head が既に alive かつ force=False なら head 再起動は skip。
+    # ワーカーで落ちているものだけ SSH 経由で再起動する（部分復旧モード）。
+    skip_head_restart = head_alive and not body.force
+    if not skip_head_restart:
+        # 既存プロセスをクリーンアップ（batと同様に stop → 2秒待ち → start）
+        try:
+            subprocess.run([ray_cmd, "stop", "--force"], **kw)
+            _bootstrap.unmark_ray_connected()
+        except Exception:
+            pass
+        import time as _time; _time.sleep(2)
+    else:
+        logger.info("start_ray_head: head=alive、ワーカー %s のみ部分再起動",
+                    sorted(expected_worker_ips - alive_workers))
 
     # ray start --head
     cmd = [
@@ -314,17 +387,18 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
     kw["env"] = env
 
     try:
-        result = subprocess.run(cmd, **kw)
-        if result.returncode != 0:
-            return {"ok": False, "message": result.stderr or result.stdout}
-        # 起動確認
-        import time; time.sleep(2)
-        status = _bootstrap.subprocess_ray_status()
-        if not status["running"]:
-            if status.get("error"):
-                logger.error("Ray status error detail: %s", status["error"])
-            return {"ok": False, "message": "Ray プロセスは終了しましたが起動を確認できませんでした"}
-        _bootstrap.mark_ray_connected()
+        if not skip_head_restart:
+            result = subprocess.run(cmd, **kw)
+            if result.returncode != 0:
+                return {"ok": False, "message": result.stderr or result.stdout}
+            # 起動確認
+            import time; time.sleep(2)
+            status = _bootstrap.subprocess_ray_status()
+            if not status["running"]:
+                if status.get("error"):
+                    logger.error("Ray status error detail: %s", status["error"])
+                return {"ok": False, "message": "Ray プロセスは終了しましたが起動を確認できませんでした"}
+            _bootstrap.mark_ray_connected()
         # workers config から join コマンドを生成（ワーカーごと）
         workers = topology.get_workers()
         worker_cmds = []
@@ -359,12 +433,19 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
         # bat 値の前段バリデーション。Windows パス記号 + 限定された英数記号のみを許容する。
         import re as _re_bat
         _SAFE_BAT_RE = _re_bat.compile(r"^[A-Za-z]:[\\/][A-Za-z0-9_\-\\/. ]+\.(?:bat|cmd)$")
+        # head 部分再起動モードでは alive な worker は触らない（連打時の不要な
+        # K10 ray restart を防いでゴーストノード増殖を抑える）。
+        # head 完全再起動モード（force or head 落ち）では全 worker を再起動する。
         for w in workers:
             wip = w.get("ip", "")
             user = w.get("ssh_user")
             pwd = w.get("ssh_password")
             bat = w.get("ray_restart_bat")
             if not (wip and user and pwd and bat):
+                continue
+            # 部分再起動モードで既に alive な worker は skip
+            if skip_head_restart and wip in alive_workers:
+                logger.info("worker=%s は alive のため SSH 再起動 skip", wip)
                 continue
             if not isinstance(bat, str) or not _SAFE_BAT_RE.match(bat) or any(
                 c in bat for c in ('"', "'", "&", "|", ";", "`", "$", "\n", "\r", "%")
