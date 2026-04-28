@@ -8,6 +8,8 @@ starlette>=1.0.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.26
 pydantic-settings==2.1.0
+# pydantic.EmailStr 用バリデータ（pydantic[email] と同等）
+email-validator>=2.0
 
 # ── データベース ──────────────────────────────────────────────────
 sqlalchemy==2.0.27

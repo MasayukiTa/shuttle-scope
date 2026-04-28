@@ -158,7 +158,9 @@ def get_audit_log(
     cutoff = datetime.utcnow() - timedelta(hours=since_hours)
     q = db.query(AccessLog).filter(AccessLog.created_at >= cutoff)
     if event:
-        q = q.filter(AccessLog.event.startswith(event))
+        # AccessLog の列名は "action" (login/logout/export/deny 等)。"event" 互換のため
+        # フィルタ引数名は維持しつつ、参照は action に揃える。
+        q = q.filter(AccessLog.action.startswith(event))
     if user_id:
         q = q.filter(AccessLog.user_id == user_id)
     rows = q.order_by(AccessLog.created_at.desc()).limit(limit).all()
@@ -168,13 +170,14 @@ def get_audit_log(
         "data": [
             {
                 "id": r.id,
-                "event": r.event,
+                # API 互換のため UI 側に "event" として返す（実体は action 列）
+                "event": r.action,
                 "user_id": r.user_id,
                 "resource_type": getattr(r, "resource_type", None),
                 "resource_id": getattr(r, "resource_id", None),
                 "ip_addr": getattr(r, "ip_addr", None),
                 "details": getattr(r, "details", None),
-                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "created_at": r.created_at,  # UTCJSONResponse + ENCODERS_BY_TYPE が ISO+"Z" 化
             }
             for r in rows
         ],
