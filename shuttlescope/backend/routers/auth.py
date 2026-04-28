@@ -924,6 +924,9 @@ def me(request: Request, db: Session = Depends(get_db)):
         "display_name": (user.display_name or user.username) if user else None,
         "page_access": page_access,
         "mfa_enabled": bool(user.totp_enabled) if user else False,
+        # M-A: 自分の email と検証状態 (フロントの「再送」UI 等で参照)
+        "email": getattr(user, "email", None) if user else None,
+        "email_verified": bool(getattr(user, "email_verified_at", None)) if user else False,
     }
 
 
@@ -1092,6 +1095,9 @@ def _user_to_dict(user: User, db: Session, *, for_admin: bool = False) -> dict:
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "mfa_enabled": bool(user.totp_enabled),
         "locked": bool(user.locked_until and user.locked_until > datetime.utcnow()),
+        # M-A: メールアドレス + 検証状態 (admin のみ実値、player には返さない)
+        "email": getattr(user, "email", None),
+        "email_verified": bool(getattr(user, "email_verified_at", None)),
     }
     if for_admin:
         out["team_display_id"] = team.display_id if team else None
