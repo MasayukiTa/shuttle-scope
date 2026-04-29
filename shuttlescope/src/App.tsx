@@ -30,6 +30,10 @@ import InvitationAcceptPage from '@/pages/InvitationAcceptPage'
 import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
 import PendingUsersPage from '@/pages/PendingUsersPage'
+// Phase Pay-1: 課金 UI (VITE_SS_BILLING_UI_ENABLED=false の間は各ページが <Navigate to="/"> で空遷移)
+import AccountOrdersPage from '@/pages/AccountOrdersPage'
+import AdminBillingPage from '@/pages/AdminBillingPage'
+import CommerceLawPage from '@/pages/CommerceLawPage'
 import { AuditLogPage } from '@/pages/AuditLogPage'
 import { TeamManagementPage } from '@/pages/TeamManagementPage'
 import { useTheme } from '@/hooks/useTheme'
@@ -261,6 +265,10 @@ function MainLayout() {
 <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
             <Route path="/users/pending" element={<AdminRoute><PendingUsersPage /></AdminRoute>} />
+            {/* Phase Pay-1: 課金 UI ルート。各ページは内部で BILLING_UI_ENABLED チェック */}
+            <Route path="/account/orders" element={<AccountOrdersPage />} />
+            <Route path="/admin/billing" element={<AdminRoute><AdminBillingPage /></AdminRoute>} />
+            <Route path="/legal/commerce" element={<CommerceLawPage />} />
             <Route path="/audit-logs" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
             <Route path="/teams" element={<TeamManagementPage />} />
             <Route path="/settings" element={<SettingsPage />} />

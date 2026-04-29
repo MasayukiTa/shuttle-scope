@@ -79,10 +79,19 @@ def _cloudflare_named_tunnel_info() -> dict:
         "tunnel_name": settings.CLOUDFLARE_TUNNEL_NAME,
         "named_ready": False,
         "reason": "config not found",
+        # 設定の出所を区別する: "config_yml" / "dashboard_managed" / null
+        "managed_by": None,
     }
 
     config_path = next((p for p in _cloudflare_config_candidates() if p and os.path.isfile(p)), None)
     if not config_path:
+        # ダッシュボード管理 / トークン方式に移行済の場合、config.yml は存在しない。
+        # この場合は CLOUDFLARE_TUNNEL_HOSTNAME が設定されていて cloudflared が
+        # 利用可能なら named_ready=True とみなす (実生存確認は別経路)。
+        if (settings.CLOUDFLARE_TUNNEL_HOSTNAME or "").strip() and shutil.which("cloudflared"):
+            info["named_ready"] = True
+            info["reason"] = "dashboard-managed (config.yml なし、env CLOUDFLARE_TUNNEL_HOSTNAME を信頼)"
+            info["managed_by"] = "dashboard_managed"
         return info
 
     info["config_path"] = config_path
@@ -116,6 +125,7 @@ def _cloudflare_named_tunnel_info() -> dict:
 
     info["named_ready"] = True
     info["reason"] = "ready"
+    info["managed_by"] = "config_yml"
     return info
 def _find_ngrok() -> Optional[str]:
     """ngrok バイナリのパスを返す。見つからない場合は None。
@@ -374,6 +384,9 @@ def tunnel_status(request: Request):
         # Stack-trace-exposure 防止: stderr 生ログは返さず件数と直近マスク済みシグナルのみ
         _raw_recent = list(_stderr_lines[-10:])
         recent_log = [f"{len(_raw_recent)} 件のログを受信済み"] if _raw_recent else []
+        # named tunnel 設定の reason をフロントに伝える (UI で「config を直して」表示用)
+        if not cf_named.get("named_ready") and cf_named.get("reason"):
+            recent_log.insert(0, f"named tunnel: {cf_named['reason']}")
         provider = _active_provider if running else None
 
     return {

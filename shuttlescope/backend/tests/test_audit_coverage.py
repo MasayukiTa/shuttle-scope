@@ -107,6 +107,20 @@ def test_no_orphan_event_names():
         # M-A: 保留ユーザー承認 / 拒否
         "user_approved",
         "user_rejected",
+        # Phase Pay-1: 課金 / 決済 (フロント非公開)
+        "billing_order_created",
+        "billing_order_canceled",
+        "billing_refunded",
+        "billing_admin_grant",
+        "billing_product_created",
+        "billing_webhook_invalid_signature",
+        "billing_webhook_payment_succeeded",
+        "billing_webhook_payment_authorized",
+        "billing_webhook_payment_failed",
+        "billing_webhook_payment_canceled",
+        "billing_webhook_session_expired",
+        "billing_webhook_refund_created",
+        "billing_receipt_downloaded",
         # 認証系
         "login_mfa_required",
         "login_mfa_ok",

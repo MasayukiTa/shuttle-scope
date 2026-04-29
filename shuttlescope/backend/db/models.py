@@ -1101,6 +1101,9 @@ class UploadSession(Base):
     received_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="uploading")  # uploading/completed/aborted/expired
     final_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # R-1: MediaRecorder 等で事前に total_size が確定しない経路向け。
+    # True の場合、chunk を append し finalize 時にファイルサイズを確定する。
+    streaming: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -1182,4 +1185,136 @@ class InvitationToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     consumed_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+# ─── Phase Pay-1: 課金 / 決済 (billing) ─────────────────────────────────────
+# フロント完全非公開。表に出すのは Phase Pay-2 (有償切替時)。
+# 3 プロバイダ並列: Stripe (カード/Apple Pay/Google Pay) + KOMOJU (PayPay/メルペイ等)
+# + Univapay (d払い/au PAY、Phase Pay-3 で本実装)
+
+
+class BillingProduct(Base):
+    """課金可能な商品マスタ。code は不変識別子 (例: "report_full")。"""
+    __tablename__ = "billing_products"
+    __table_args__ = (
+        Index("ix_billing_products_code", "code", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 税込価格を整数円で保持 (浮動小数誤差回避)
+    price_jpy: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, server_default="1")
+    extra_metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BillingOrder(Base):
+    """個別注文。public_id (UUID) のみ外部露出する。"""
+    __tablename__ = "billing_orders"
+    __table_args__ = (
+        Index("ix_billing_orders_user_id", "user_id"),
+        Index("ix_billing_orders_status", "status"),
+        Index("ix_billing_orders_public_id", "public_id", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, default=_new_uuid)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    product_id: Mapped[int] = mapped_column(Integer, ForeignKey("billing_products.id"), nullable=False)
+    # 注文時点の価格 (商品マスタが後で値上げされても履歴を保持)
+    amount_jpy: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="JPY", server_default="JPY")
+    # pending / authorized / paid / failed / refunded / canceled / expired
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    # credit_card / apple_pay / google_pay / paypay / merpay / rakuten_pay / linepay / konbini / bank_transfer / d_barai / au_pay
+    payment_method: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    provider: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # stripe / komoju / univapay
+    provider_session_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    provider_payment_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # 注文紐付けの match_id 等の追加情報
+    extra_metadata: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    return_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    cancel_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class BillingWebhookEvent(Base):
+    """Webhook イベントの監査ログ + 二重処理防止。
+
+    event_id は各プロバイダ固有 ID で UNIQUE。
+    """
+    __tablename__ = "billing_webhook_events"
+    __table_args__ = (
+        Index("ix_billing_webhook_events_provider_event", "provider", "event_id", unique=True),
+        Index("ix_billing_webhook_events_processed_at", "processed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    raw_payload: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    signature_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    related_order_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("billing_orders.id"), nullable=True)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class BillingEntitlement(Base):
+    """購入により得た権利 (レポート閲覧 / ダウンロード 等)。"""
+    __tablename__ = "billing_entitlements"
+    __table_args__ = (
+        Index("ix_billing_entitlements_user_id", "user_id"),
+        Index("ix_billing_entitlements_resource", "resource_type", "resource_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    order_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("billing_orders.id"), nullable=True)
+    # "report_view" / "report_download" / "subscription_team" 等
+    entitlement_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    resource_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    resource_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    valid_from: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    valid_to: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # NULL = 無期限
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    granted_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+# ─── R-1: サーバ集約録画アーティファクト ──────────────────────────────────
+# Sender (iOS/Android) → サーバ自動録画。
+# UploadSession 完了で生成され、Match.video_local_path に紐付く。
+class ServerVideoArtifact(Base):
+    """Sender からの自動録画ストリームのサーバ側成果物。"""
+    __tablename__ = "server_video_artifacts"
+    __table_args__ = (
+        Index("ix_sva_match_id", "match_id"),
+        Index("ix_sva_started_at", "started_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("matches.id"), nullable=True)
+    upload_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    sender_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    duration_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    finalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # CV/Worker 解析向け同期状態 (R-3 連携)
+    worker_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

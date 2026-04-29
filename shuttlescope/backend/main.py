@@ -111,6 +111,8 @@ from backend.routers import youtube_live as youtube_live_router
 from backend.routers import videos as videos_router
 from backend.routers import admin_security as admin_security_router
 from backend.routers import auth_email as auth_email_router
+from backend.routers import billing as billing_router
+from backend.routers import internal_videos as internal_videos_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -1000,7 +1002,13 @@ app.add_middleware(AnalysisCacheMiddleware)
 _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     r"^/api/(auth/(login|logout|bootstrap-status|register|email/verify|"
     r"password/(request_reset|reset)|invitation/(peek|accept))"
-    r"|health|public(/.*)?)"
+    r"|health|public(/.*)?"
+    # Phase Pay-1: Webhook は認証なし。プロバイダ側の署名検証で正当性確認。
+    r"|_internal/billing/webhooks/(stripe|komoju|univapay)"
+    # Phase Pay-1: 法的情報 (特商法表示用、公開情報)
+    r"|_internal/billing/legal_info"
+    # R-3: Worker 共有 API は X-Worker-Token で独自認証、JWT 不要
+    r"|_internal/videos/.*)"
 )
 
 # 承認待ち (awaiting_admin_approval=True) ユーザでも到達可能なエンドポイント。
@@ -1234,12 +1242,28 @@ _cors_origins = (
     else ["*"]
 )
 app.add_middleware(SecurityHeadersMiddleware)
+# A-2 (DNS rebinding 対策): Host ヘッダ検証
+# PUBLIC_MODE 時は CF tunnel ホスト + localhost のみ許可。
+# LAN モード時は LAN IP の Host を許容する必要があるため広めに (192.168/* / 10/* / 172.16/*)。
+from starlette.middleware.trustedhost import TrustedHostMiddleware as _THM
+_trusted_hosts: list[str] = []
+if app_settings.PUBLIC_MODE:
+    _trusted_hosts = [
+        app_settings.CLOUDFLARE_TUNNEL_HOSTNAME,
+        "localhost",
+        "127.0.0.1",
+    ]
+else:
+    # LAN モード: ホスト名なし IP 直アクセスを許容するため wildcard
+    _trusted_hosts = ["*"]
+if "*" not in _trusted_hosts:
+    app.add_middleware(_THM, allowed_hosts=_trusted_hosts)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "Authorization", "X-Session-Token", "X-Role", "X-Player-Id", "X-Team-Name"],
+    allow_headers=["Content-Type", "Accept", "Authorization", "X-Session-Token", "X-Role", "X-Player-Id", "X-Team-Name", "X-Worker-Token", "X-Idempotency-Key"],
 )
 
 # ルーター登録
@@ -1303,6 +1327,10 @@ app.include_router(youtube_live_router.router, prefix="/api")
 app.include_router(videos_router.router, prefix="/api")
 app.include_router(admin_security_router.router, prefix="/api")
 app.include_router(auth_email_router.router, prefix="/api")
+# Phase Pay-1: 課金 (フロント完全非公開、include_in_schema=False)
+app.include_router(billing_router.router, prefix="/api")
+# R-3: Worker 共有 (HTTP only、予備実装、X-Worker-Token 認証)
+app.include_router(internal_videos_router.router, prefix="/api")
 app.include_router(public_site.router)
 
 
