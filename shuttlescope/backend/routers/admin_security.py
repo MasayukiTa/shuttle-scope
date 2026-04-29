@@ -55,7 +55,10 @@ def revoke_all_tokens(request: Request, db: Session = Depends(get_db)):
 
         # システム全体の mass_revoke_at を更新（JWT 検証時にこのタイムスタンプより
         # 古い iat を持つトークンは全て失効扱い）
-        sentinel_jti = f"__mass_revoke_{datetime.utcnow().isoformat()}"
+        # ⚠️ RevokedToken.jti は VARCHAR(36)。
+        #    `__mass_revoke_` (14) + isoformat 微秒付き (26) = 40 文字 → 切り詰め失敗の事故あり (round92 発見)。
+        #    microsecond を削って `2026-04-30T16:30:00` (19) → 計 33 文字に収める。
+        sentinel_jti = f"__mass_revoke_{datetime.utcnow().replace(microsecond=0).isoformat()}"
         try:
             r = RevokedToken(jti=sentinel_jti, expires_at=datetime.utcnow() + timedelta(days=365))
             db.add(r)
@@ -63,7 +66,8 @@ def revoke_all_tokens(request: Request, db: Session = Depends(get_db)):
             revoked_count = 1
         except Exception as exc:
             db.rollback()
-            logger.warning("[admin_security] revoke sentinel insert failed: %s", exc)
+            logger.error("[admin_security] revoke sentinel insert failed: %s", exc)
+            raise HTTPException(status_code=500, detail=f"sentinel 挿入に失敗: {exc}")
 
         log_access(
             db, "emergency_revoke_all_tokens",
