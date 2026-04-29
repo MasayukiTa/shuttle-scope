@@ -47,9 +47,15 @@ function Spawn-Backend {
   $psi.Environment["API_PORT"]         = "$port"
   $psi.Environment["LAN_MODE"]         = "true"
   $psi.Environment["ENVIRONMENT"]      = "production"
-  $psi.Environment["PYTHONUNBUFFERED"] = "1"
-  $psi.Environment["PYTHONUTF8"]       = "1"
-  $psi.Environment["PYTHONIOENCODING"] = "utf-8"
+  # PUBLIC_MODE=1: CORS allow_origins を tunnel host のみに絞る、
+  #               TrustedHostMiddleware を有効化、docs/openapi 隠蔽、
+  #               cluster/benchmark/db_maintenance router をマウント除外
+  $psi.Environment["PUBLIC_MODE"]       = "1"
+  $psi.Environment["HIDE_API_DOCS"]     = "1"
+  $psi.Environment["HIDE_STACK_TRACES"] = "1"
+  $psi.Environment["PYTHONUNBUFFERED"]  = "1"
+  $psi.Environment["PYTHONUTF8"]        = "1"
+  $psi.Environment["PYTHONIOENCODING"]  = "utf-8"
 
   $proc = New-Object System.Diagnostics.Process
   $proc.StartInfo = $psi
