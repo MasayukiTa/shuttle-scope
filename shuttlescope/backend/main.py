@@ -1797,9 +1797,14 @@ async def spa_catch_all(path: str, request: StarletteRequest):
     公開サイトホストの場合は 404 を返す。"""
     if public_site.should_serve_public_site(request):
         raise HTTPException(status_code=404)
+    # API namespace に存在しないパスは 404 を返す。SPA hash redirect は SPA path 用なので、
+    # /api/ 配下を redirect すると round60/63 で観測したように
+    # 「存在しない API endpoint が 302 → SPA HTML 200」と混乱を招く挙動になる。
+    safe_path = path.lstrip("/").lstrip("\\")
+    if safe_path.startswith("api/") or safe_path == "api" or safe_path.startswith("ws/"):
+        raise HTTPException(status_code=404, detail="Not Found")
     from fastapi.responses import RedirectResponse
     # Open-redirect 防止: スキーム/プロトコル相対 URL/逆スラッシュを禁止し、英数と一部記号のみ許容
-    safe_path = path.lstrip("/").lstrip("\\")
     if "://" in safe_path or safe_path.startswith(("/", "\\")) or "\\" in safe_path:
         raise HTTPException(status_code=404)
     if not _re_acl.match(r"^[A-Za-z0-9_\-./]*$", safe_path):
