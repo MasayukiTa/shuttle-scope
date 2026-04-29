@@ -334,7 +334,12 @@ def _get_mass_revoke_timestamp() -> Optional[int]:
                 return None
             iso = row.jti[len("__mass_revoke_"):]
             try:
-                ts = int(datetime.fromisoformat(iso).timestamp())
+                # ⚠️ 重要: revoke_all_tokens は datetime.utcnow() (naive UTC) を isoformat にしているため、
+                # ここで素朴に fromisoformat().timestamp() すると naive datetime が **local 時刻** とみなされ、
+                # JST 環境では epoch が 9 時間ズレて mass_revoke_at が早くなる → token 拒否が機能しない
+                # (round92 で発見した致命バグ)。明示的に UTC として解釈する。
+                from datetime import timezone as _tz
+                ts = int(datetime.fromisoformat(iso).replace(tzinfo=_tz.utc).timestamp())
             except (ValueError, TypeError):
                 _MASS_REVOKE_CACHE.update({"ts": now, "value": None})
                 return None
