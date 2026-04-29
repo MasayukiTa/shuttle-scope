@@ -421,16 +421,21 @@ def _seed_admin_if_needed(db: Session) -> None:
 
 # ── ログイン ──────────────────────────────────────────────────────────────────
 
-# Round62 で 104ms のタイミング差が観測されたため、login 処理全体を最小総時間 (≥1.2s)
-# まで pad することで bcrypt + DB I/O の差分を観測不能にする (CWE-204 対策の固定時間化)。
-# 1.2s は P99 で実測される実成功・失敗いずれの時間より長くなるよう設定。
-_LOGIN_MIN_RESPONSE_SEC = 1.2
+# Round62 で 104ms、Round62 v2 で 58ms のタイミング差が観測されたため、login 失敗系の
+# 処理全体を最小総時間まで pad することで bcrypt + DB I/O の差分を観測不能にする
+# (CWE-204 対策)。実測 P99 ~2.0s を上回る 2.5s を採用し、確実にパディングが発火するようにする。
+# また 0〜150ms のランダム jitter を加えて統計的解析を困難にする。
+_LOGIN_MIN_RESPONSE_SEC = 2.5
+_LOGIN_JITTER_MAX_SEC = 0.15
 
 def _login_constant_time_pad(start_ts: float) -> None:
-    """login 処理開始からの経過時間が _LOGIN_MIN_RESPONSE_SEC 未満なら sleep で補う."""
+    """login 処理開始からの経過時間が _LOGIN_MIN_RESPONSE_SEC + jitter 未満なら sleep で補う."""
     import time as _t
+    import secrets as _s
+    jitter = _s.randbelow(int(_LOGIN_JITTER_MAX_SEC * 1000)) / 1000.0
+    target = _LOGIN_MIN_RESPONSE_SEC + jitter
     elapsed = _t.perf_counter() - start_ts
-    remaining = _LOGIN_MIN_RESPONSE_SEC - elapsed
+    remaining = target - elapsed
     if remaining > 0:
         _t.sleep(remaining)
 
