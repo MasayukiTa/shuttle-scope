@@ -476,12 +476,17 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         )
 
     if req.grant_type == "password":
-        if not req.username or not req.password:
+        # M-A4: identifier も username もどちらも受け付け、'@' を含めば email 検索
+        identifier_pw = (req.identifier or req.username or "").strip()
+        if not identifier_pw or not req.password:
             raise HTTPException(status_code=422, detail="username and password are required")
-        user = db.query(User).filter(User.username == req.username).first()
+        if "@" in identifier_pw:
+            user = db.query(User).filter(User.email == identifier_pw).first()
+        else:
+            user = db.query(User).filter(User.username == identifier_pw).first()
         if not user or not user.hashed_credential:
             _verify_password(req.password, _DUMMY_BCRYPT_HASH)
-            log_access(db, "login_failed", details={"reason": "user_not_found", "username": req.username}, ip_addr=ip)
+            log_access(db, "login_failed", details={"reason": "user_not_found", "username": identifier_pw}, ip_addr=ip)
             _timing_padding_db_write(db)
             raise HTTPException(status_code=401, detail="login failed")
         _check_lockout(user)
@@ -1098,6 +1103,8 @@ def _user_to_dict(user: User, db: Session, *, for_admin: bool = False) -> dict:
         # M-A: メールアドレス + 検証状態 (admin のみ実値、player には返さない)
         "email": getattr(user, "email", None),
         "email_verified": bool(getattr(user, "email_verified_at", None)),
+        # M-A 承認待ちフラグ (admin の保留ユーザー一覧で利用)
+        "awaiting_admin_approval": bool(getattr(user, "awaiting_admin_approval", False)),
     }
     if for_admin:
         out["team_display_id"] = team.display_id if team else None

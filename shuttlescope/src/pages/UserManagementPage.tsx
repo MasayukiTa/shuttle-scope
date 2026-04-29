@@ -550,6 +550,12 @@ export function UserManagementPage() {
           {myRole === 'coach' && (
             <p className={`text-xs mt-0.5 ${textMuted}`}>{t('users.manage.coach_hint')}</p>
           )}
+          {myRole === 'admin' && (
+            <a href="#/users/pending"
+               className="inline-block mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300">
+              → 保留中ユーザー一覧 (admin 承認待ち)
+            </a>
+          )}
         </div>
         {canCreate && (
           <button

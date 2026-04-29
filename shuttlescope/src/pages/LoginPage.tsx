@@ -106,6 +106,10 @@ export function LoginPage({ onLogin }: Props) {
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // セッション期限切れリダイレクト時の通知バナー
+  const sessionExpired =
+    typeof window !== 'undefined' &&
+    (window.location.hash || '').includes('session_expired=1')
 
   useEffect(() => {
     fetchBootstrapStatus().then((status) => {
@@ -172,6 +176,16 @@ export function LoginPage({ onLogin }: Props) {
             {bootstrapStatus.bootstrap_configured
               ? '初回管理者アカウントは、設定済みのログインIDとパスワードで作成されます。'
               : '初回管理者パスワードが未設定です。BOOTSTRAP_ADMIN_PASSWORD を backend 環境変数に設定してください。'}
+          </div>
+        )}
+
+        {sessionExpired && (
+          <div className={`mb-4 px-4 py-3 rounded text-sm ${
+            isLight
+              ? 'bg-amber-50 border border-amber-200 text-amber-800'
+              : 'bg-amber-900/20 border border-amber-800 text-amber-200'
+          }`}>
+            セッションの有効期限が切れました。再度ログインしてください。
           </div>
         )}
 

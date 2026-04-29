@@ -16,8 +16,17 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  // 現状 register API は無効化されている (SS_REGISTRATION_ENABLED=0 で 503 を返す)。
+  // フロントでも送信ボタンを disabled にして混乱を避ける。
+  // メール配信が整ったら DISABLED=false に切り替え可能。
+  const REGISTRATION_DISABLED = true
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (REGISTRATION_DISABLED) {
+      setError('現在、新規登録は受付を停止しております。')
+      return
+    }
     if (loading) return
     setLoading(true)
     setError(null)
@@ -115,7 +124,7 @@ export default function RegisterPage() {
 
         {error && <div className="text-sm text-red-600">{error}</div>}
 
-        <button type="submit" disabled={loading}
+        <button type="submit" disabled={loading || REGISTRATION_DISABLED}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded disabled:opacity-50">
           {loading ? t('app.loading') : t('auth.register.submit')}
         </button>
