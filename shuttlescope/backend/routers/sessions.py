@@ -375,6 +375,7 @@ def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)
                 "role": existing.role,
                 "connection_role": existing.connection_role,
                 "reconnected": True,
+                "match_id": session.match_id,
             },
         }
 
@@ -405,6 +406,8 @@ def join_session(code: str, body: ParticipantJoin, db: Session = Depends(get_db)
             "session_code": code,
             "role": participant.role,
             "connection_role": participant.connection_role,
+            # R-1: Sender 側で MediaRecorder 自動録画を開始するため match_id を返す
+            "match_id": session.match_id,
         },
     }
 
@@ -827,23 +830,58 @@ def _source_to_dict(s: LiveSource) -> dict:
     }
 
 
+def _named_tunnel_url() -> Optional[str]:
+    """Cloudflare named tunnel が設定済 + config 認識済なら https URL を返す。
+
+    判定ロジック:
+      - settings.CLOUDFLARE_TUNNEL_HOSTNAME が空でない
+      - 共通ヘルパ _cloudflare_named_tunnel_info() が named_ready=True を返す
+        (config.yml 存在 + プレースホルダ未残 + 必須キー揃い)
+    返り値: "https://app.shuttle-scope.com" など。条件未充足時は None。
+    """
+    try:
+        host = (settings.CLOUDFLARE_TUNNEL_HOSTNAME or "").strip()
+        if not host:
+            return None
+        from backend.routers.tunnel import _cloudflare_named_tunnel_info
+        info = _cloudflare_named_tunnel_info()
+        if info.get("named_ready"):
+            return f"https://{info.get('hostname', host)}"
+    except Exception:
+        pass
+    return None
+
+
 def _session_to_dict(session: SharedSession, db: Session) -> dict:
     from backend.ws.live import manager
     lan_ips = _get_lan_ips()
     port = settings.API_PORT
     lan_mode = settings.LAN_MODE
 
-    # コーチ向けアクセスURL
-    coach_urls = []
-    camera_sender_urls = []
+    # 共有 URL の優先順位:
+    #   1. Cloudflare named tunnel (https://app.shuttle-scope.com) — 全世界アクセス可
+    #   2. LAN IP (http://192.168.x.x:8765) — 同一 LAN
+    #   3. localhost (http://localhost:8765) — 同一 PC
+    coach_urls: list[str] = []
+    camera_sender_urls: list[str] = []
+    ws_templates: list[str] = []
+
+    tunnel_url = _named_tunnel_url()
+    if tunnel_url:
+        coach_urls.append(f"{tunnel_url}/#/annotator/{session.match_id}")
+        camera_sender_urls.append(f"{tunnel_url}/#/camera/{session.session_code}")
+        # WSS は Cloudflare が自動 upgrade、ポート不要
+        wss_host = tunnel_url.replace("https://", "")
+        ws_templates.append(f"wss://{wss_host}/ws/live/{session.session_code}")
+
     if lan_mode and lan_ips:
         for ip in lan_ips:
             coach_urls.append(f"http://{ip}:{port}/#/annotator/{session.match_id}")
             camera_sender_urls.append(f"http://{ip}:{port}/#/camera/{session.session_code}")
-    # localhost URL を末尾に追加（同一デバイスでの確実なアクセス用）
-    # LAN_MODE 無効時でも同一PCからのアクセスは常に可能
+    # localhost (同一デバイスでの確実なアクセス用、最後の fallback)
     coach_urls.append(f"http://localhost:{port}/#/annotator/{session.match_id}")
     camera_sender_urls.append(f"http://localhost:{port}/#/camera/{session.session_code}")
+    ws_templates.append(f"ws://{{LAN_IP}}:{port}/ws/live/{session.session_code}")
 
     return {
         "id": session.id,
@@ -855,6 +893,11 @@ def _session_to_dict(session: SharedSession, db: Session) -> dict:
         "ws_connected": manager.connection_count(session.session_code),
         "coach_urls": coach_urls,
         "camera_sender_urls": camera_sender_urls,
-        "ws_url_template": f"ws://{{LAN_IP}}:{port}/ws/live/{session.session_code}",
+        # 後方互換のため単一テンプレートも残す (既存 UI が参照)。先頭は WSS 優先
+        "ws_url_template": ws_templates[0],
+        "ws_url_templates": ws_templates,
         "has_password": session.password_hash is not None,
+        # named tunnel が起動していれば true。フロント UI が「外部公開済」表示に使う
+        "named_tunnel_active": tunnel_url is not None,
+        "named_tunnel_url": tunnel_url,
     }

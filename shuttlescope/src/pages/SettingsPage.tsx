@@ -1714,7 +1714,7 @@ export function SettingsPage() {
                       <div className="mt-1 font-mono break-all">
                         {tunnelStatus.data.providers.cloudflare.hostname
                           ? `https://${tunnelStatus.data.providers.cloudflare.hostname}`
-                          : 'https://app.shuttle-scope.com'}
+                          : (import.meta.env.VITE_SS_APP_URL ?? 'https://app.shuttle-scope.com')}
                       </div>
                       <div className={`mt-1 ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
                         {tunnelStatus.data.providers.cloudflare.named_ready

@@ -21,6 +21,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
+import { useServerSideRecording } from '@/hooks/session/useServerSideRecording'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
 
@@ -122,6 +123,12 @@ export function CameraSenderPage() {
   const [participantId, setParticipantId] = useState<number | null>(null)
   const [activeSessionCode, setActiveSessionCode] = useState<string>(paramCode ?? '')
   const [reconnectCount, setReconnectCount] = useState(0)
+  // R-1: サーバ自動録画用 match_id (session join のレスポンスから取得)
+  const [recordingMatchId, setRecordingMatchId] = useState<number | null>(null)
+  const serverRecorder = useServerSideRecording({
+    matchId: recordingMatchId,
+    sessionCode: paramCode,
+  })
   const [battery, setBattery] = useState<{ level: number; charging: boolean } | null>(null)
   const [rttMs, setRttMs] = useState<number | null>(null)
 
@@ -230,9 +237,9 @@ export function CameraSenderPage() {
       wsRef.current = null
     }
 
-    // Electron(file:) → ws://localhost:8765
-    // LAN直接(http:)  → ws://192.168.x.x:8765
-    // Cloudflareトンネル(https:) → wss://xxxx.trycloudflare.com (ポートなし)
+    // Electron(file:)                  → ws://localhost:8765
+    // LAN 直接(http:)                   → ws://192.168.x.x:8765
+    // Cloudflare named tunnel(https:)   → wss://app.shuttle-scope.com (ポートなし、Cloudflare が自動 WS upgrade)
     const isElectron = window.location.protocol === 'file:'
     const isHttps = window.location.protocol === 'https:'
     const wsProto = isHttps ? 'wss' : 'ws'
@@ -261,6 +268,7 @@ export function CameraSenderPage() {
           setSenderState('state_b')
         } else if (msg.type === 'camera_deactivate') {
           // オペレーターから待機に戻す指示
+          void serverRecorder.stop()
           localStreamRef.current?.getTracks().forEach((t) => t.stop())
           localStreamRef.current = null
           pcRef.current?.close()
@@ -305,7 +313,10 @@ export function CameraSenderPage() {
     try {
       const res = await apiPost<{
         success: boolean
-        data: { participant_id: number; session_code: string; role: string; connection_role: string }
+        data: {
+          participant_id: number; session_code: string; role: string;
+          connection_role: string; match_id?: number | null
+        }
       }>(`/sessions/${code}/join`, {
         role: 'viewer',
         device_name: resolvedName,
@@ -317,6 +328,10 @@ export function CameraSenderPage() {
       setParticipantId(pid)
       savedPidRef.current = pid
       setActiveSessionCode(code)
+      // R-1: サーバ自動録画用 match_id を保存
+      if (res.data.match_id != null) {
+        setRecordingMatchId(res.data.match_id)
+      }
       reconnectCountRef.current = 0
       connectWs(code, pid)
     } catch (err: any) {
@@ -372,6 +387,11 @@ export function CameraSenderPage() {
         previewRef.current.srcObject = stream
       }
 
+      // R-1: サーバ自動録画 (match_id 取得済 + 自動録画 ON 時)
+      if (recordingMatchId != null) {
+        void serverRecorder.start(stream).catch(() => { /* noop */ })
+      }
+
       const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
       startRttPolling(pc)
@@ -412,6 +432,8 @@ export function CameraSenderPage() {
   // ─── 配信停止 ─────────────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
     stopRttPolling()
+    // R-1: サーバ録画があれば finalize して artifact を確定させる
+    void serverRecorder.stop()
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     localStreamRef.current = null
     pcRef.current?.close()
@@ -421,7 +443,7 @@ export function CameraSenderPage() {
       participant_id: participantId,
     }))
     setSenderState('state_a')
-  }, [participantId, stopRttPolling])
+  }, [participantId, stopRttPolling, serverRecorder])
 
   // ─── Page Visibility API（iOS バックグラウンド復帰対応） ────────────────────
   useEffect(() => {

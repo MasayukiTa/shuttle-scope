@@ -106,6 +106,48 @@ class Settings(BaseSettings):
     ss_registration_enabled: int = 0
     # M-A: password reset API の有効化フラグ。同上の理由でデフォルト 0。
     ss_password_reset_enabled: int = 0
+    # ── Phase Pay-1: 課金 / 決済 ────────────────────────────────────────
+    # フロント完全非公開、API も SS_BILLING_ENABLED=0 の間は 503。
+    # 2027 年の有償切替時に 1 へ。
+    ss_billing_enabled: int = 0
+    ss_billing_report_price_jpy: int = 500
+    ss_billing_return_url: str = "https://app.shuttle-scope.com/billing/done"
+    ss_billing_cancel_url: str = "https://app.shuttle-scope.com/billing/cancel"
+    # Stripe (カード / Apple Pay / Google Pay / 国際カード)
+    ss_stripe_public_key: str = ""
+    ss_stripe_secret_key: str = ""
+    ss_stripe_webhook_secret: str = ""
+    # KOMOJU (PayPay / メルペイ / 楽天ペイ / LINE Pay / コンビニ / 銀行振込)
+    ss_komoju_public_key: str = ""
+    ss_komoju_secret_key: str = ""
+    ss_komoju_webhook_secret: str = ""
+    ss_komoju_api_base: str = "https://komoju.com/api/v1"
+    # Univapay (d 払い / au PAY) — Phase Pay-3 で本実装
+    ss_univapay_app_token: str = ""
+    ss_univapay_app_secret: str = ""
+    ss_univapay_webhook_secret: str = ""
+    # ── Phase Pay-1 法的情報 (env で完全管理、コード/git に重要情報を一切置かない) ──
+    # 表示は VITE_SS_BILLING_UI_ENABLED=true でフロントが ON にしたとき + 値が設定されたとき。
+    ss_legal_company_name: str = ""          # 事業者名 (法人名 or 個人事業主氏名)
+    ss_legal_representative: str = ""        # 代表者氏名
+    ss_legal_address: str = ""               # 所在地
+    ss_legal_phone: str = ""                 # 電話番号 (「請求があれば遅滞なく開示」で省略可)
+    ss_legal_phone_disclosure_policy: str = "請求があった場合は遅滞なく開示します"
+    ss_legal_email: str = "support@shuttle-scope.com"
+    ss_legal_business_hours: str = "平日 10:00〜18:00 (土日祝休業)"
+    ss_legal_extra_fees: str = "決済手数料はお客様負担なし"
+    ss_legal_payment_timing: str = "ご注文時に即時"
+    ss_legal_delivery_timing: str = "ご決済完了後、即時提供 (デジタル配信)"
+    ss_legal_refund_policy: str = "デジタル商品の性質上、提供開始後の返金はお受けできません。決済不具合等は support までご連絡ください。"
+    # インボイス制度 (適格請求書) 登録番号 "T" + 13 桁。未取得時は空文字。
+    ss_invoice_registration_number: str = ""
+    # 消費税率 (デジタル販売は標準税率 10%、軽減税率対象外)
+    ss_consumption_tax_rate: float = 0.10
+    # ── R-3: Worker 共有 (HTTP only、予備実装) ────────────────────────
+    # SS_WORKER_AUTH_TOKEN が空なら Worker 機能は完全 OFF (503)。
+    # 値があれば /api/_internal/videos/* が X-Worker-Token ヘッダで認証受付。
+    # 現地 Worker PC が持ち込めない場合のクラウド/オフサイト Worker 用。
+    ss_worker_auth_token: str = ""
 
     class Config:
         # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）

@@ -45,7 +45,8 @@ router = APIRouter(prefix="/v1/uploads", tags=["uploads"])
 UPLOAD_DIR = Path(os.path.abspath("./videos"))
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-MAX_UPLOAD_SIZE = 5 * 1024 * 1024 * 1024          # 5GB/ファイル
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024 * 1024         # 50GB/ファイル (高性能カメラの長時間録画想定)
+MAX_RECORDING_DURATION_MIN = int((__import__("os").environ.get("SS_SENDER_MAX_RECORDING_DURATION_MIN") or 180))
 MIN_CHUNK_SIZE = 64 * 1024                         # 64KB 下限（極端な細分化を防ぐ）
 MAX_CHUNK_SIZE = 8 * 1024 * 1024                   # 8MB 上限（Cloudflare 100s タイムアウト余裕）
 DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024               # 2MB（クライアントのデフォルト目安）
@@ -152,6 +153,10 @@ class InitRequest(BaseModel):
     total_size: int
     chunk_size: int = DEFAULT_CHUNK_SIZE
     mime_type: Optional[str] = Field(default=None, max_length=128)
+    # R-1: MediaRecorder のように事前にファイルサイズが分からない経路では True。
+    # chunk は append モードで受領し、finalize 時にサイズを確定する。
+    # streaming=True の場合、total_size は上限 (5GB 等) として扱われる。
+    streaming: bool = False
 
 
 class InitResponse(BaseModel):
@@ -192,8 +197,21 @@ def init_upload(
     # 文字種は事前に絞っておく (defense in depth, CWE-93 / CWE-138)。
     if any(ord(c) < 0x20 or ord(c) == 0x7F for c in body.filename):
         raise HTTPException(status_code=422, detail="filename に制御文字を含めることはできません")
+    # B-2 強化: HTML タグ / Path Traversal / 危険な文字 を拒否 (Stored XSS + path traversal)
+    _BAD_FNAME_CHARS = ("<", ">", "\"", "'", "&", "\\", "/", "..", "\x00")
+    if any(c in body.filename for c in _BAD_FNAME_CHARS):
+        raise HTTPException(status_code=422, detail="filename に許可されない文字が含まれています")
+    # 拡張子ホワイトリスト (B-3, B-6)
+    _ALLOWED_VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v", ".ts", ".mts"}
+    from pathlib import Path as _P
+    if _P(body.filename).suffix.lower() not in _ALLOWED_VIDEO_EXTS:
+        raise HTTPException(status_code=422, detail=f"動画ファイル拡張子のみ許可: {_ALLOWED_VIDEO_EXTS}")
 
-    if body.total_size <= 0 or body.total_size > MAX_UPLOAD_SIZE:
+    # streaming モードでは total_size は上限値として扱う (確定サイズではない)。
+    if body.streaming:
+        if body.total_size <= 0 or body.total_size > MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=400, detail=f"streaming 経路でも total_size 上限は 1〜{MAX_UPLOAD_SIZE} byte")
+    elif body.total_size <= 0 or body.total_size > MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=400, detail=f"ファイルサイズは 1〜{MAX_UPLOAD_SIZE} byte の範囲で指定してください")
     if not (MIN_CHUNK_SIZE <= body.chunk_size <= MAX_CHUNK_SIZE):
         raise HTTPException(status_code=400, detail=f"chunk_size は {MIN_CHUNK_SIZE}〜{MAX_CHUNK_SIZE} byte")
@@ -224,10 +242,15 @@ def init_upload(
     total_chunks = (body.total_size + body.chunk_size - 1) // body.chunk_size
     upload_id = str(uuid.uuid4())
     part = _part_path(upload_id)
-    # sparse file 確保。truncate で total_size を確定。
     try:
-        with open(part, "wb") as f:
-            f.truncate(body.total_size)
+        if body.streaming:
+            # streaming は append モード。空ファイルだけ作る。
+            with open(part, "wb") as f:
+                pass
+        else:
+            # sparse file 確保。truncate で total_size を確定。
+            with open(part, "wb") as f:
+                f.truncate(body.total_size)
     except OSError as e:
         raise HTTPException(status_code=500, detail=f".part ファイル確保に失敗: {e}")
 
@@ -243,6 +266,7 @@ def init_upload(
         received_bitmap=b"",
         received_count=0,
         status="uploading",
+        streaming=body.streaming,
     )
     db.add(session)
     db.commit()
@@ -255,8 +279,36 @@ def init_upload(
     )
 
 
+_VIDEO_MAGIC_BYTES = {
+    # mp4 / m4v / mov: ftyp box at offset 4
+    b"ftyp": (4, "mp4/mov"),
+    # webm / mkv: EBML header
+    b"\x1a\x45\xdf\xa3": (0, "webm/mkv"),
+    # mpegts: 0x47 sync byte at offset 0 (188 byte cycle)
+    b"\x47": (0, "mpegts"),
+    # avi: RIFF
+    b"RIFF": (0, "avi/wav"),
+}
+
+
+def _looks_like_video(first_bytes: bytes) -> bool:
+    """先頭バイトから動画らしさを判定 (B-3 magic bytes 検証)。"""
+    if len(first_bytes) < 16:
+        return False
+    if first_bytes[4:8] == b"ftyp":
+        return True
+    if first_bytes[:4] == b"\x1a\x45\xdf\xa3":  # webm/mkv
+        return True
+    if first_bytes[:4] == b"RIFF":
+        return True
+    if first_bytes[0:1] == b"\x47" and len(first_bytes) >= 188 and first_bytes[188:189] in (b"\x47", b""):
+        return True
+    return False
+
+
 @router.post("/video/chunk")
 async def upload_chunk(
+    request: Request,
     upload_id: str = Form(...),
     chunk_index: int = Form(...),
     chunk: UploadFile = File(...),
@@ -264,6 +316,11 @@ async def upload_chunk(
     ctx: AuthCtx = Depends(get_auth),
 ):
     _require_writer(ctx)
+
+    # B-8: Content-Encoding 制限 (gzip/br/deflate decompress bomb 防御)
+    enc = (request.headers.get("content-encoding") or "").strip().lower()
+    if enc and enc not in ("identity", ""):
+        raise HTTPException(status_code=415, detail=f"Content-Encoding={enc} は許可されません")
 
     sem = _get_global_sem()
     async with sem:
@@ -274,39 +331,90 @@ async def upload_chunk(
                 raise HTTPException(status_code=404, detail="アップロードセッションが見つかりません")
             if session.status != "uploading":
                 raise HTTPException(status_code=409, detail=f"セッションは {session.status} 状態です")
-            # 所有者チェック
+            # 所有者チェック (D-2 強化、毎 chunk で必ず確認)
             if session.user_id is not None and ctx.user_id is not None and session.user_id != ctx.user_id:
                 raise HTTPException(status_code=403, detail="このアップロードへの権限がありません")
-            if chunk_index < 0 or chunk_index >= session.total_chunks:
+            if chunk_index < 0:
                 raise HTTPException(status_code=400, detail="chunk_index が範囲外です")
+            is_streaming = bool(getattr(session, "streaming", False))
+            if not is_streaming and chunk_index >= session.total_chunks:
+                raise HTTPException(status_code=400, detail="chunk_index が範囲外です")
+            if is_streaming and chunk_index >= 65535:
+                # streaming でも上限を設けて DoS 抑制
+                raise HTTPException(status_code=400, detail="streaming chunk_index 上限超過")
+
+            # B-3 強化: magic bytes バイパス防御。
+            # chunk_index=0 が先に届く前に他 chunk を受け付けると、攻撃者が後から
+            # 偽の mp4 ヘッダだけ送って type 検証をすり抜けられる。先頭が来るまで他は拒否。
+            if chunk_index != 0 and not _bitmap_get(session.received_bitmap, 0):
+                raise HTTPException(
+                    status_code=409,
+                    detail="先頭 chunk (index=0) を最初に送信してください (magic bytes 検証のため)",
+                )
 
             # 既に受領済みならスキップ（冪等）
             if _bitmap_get(session.received_bitmap, chunk_index):
                 return {"success": True, "already_received": True, "received_count": session.received_count}
 
-            # チャンクを読む。最終チャンクは chunk_size 未満でも可
+            # チャンクを読む。
             data = await chunk.read()
             if not data:
                 raise HTTPException(status_code=400, detail="空チャンクは拒否")
-            expected = session.chunk_size
-            is_last = chunk_index == session.total_chunks - 1
-            if is_last:
-                expected = session.total_size - chunk_index * session.chunk_size
-            if len(data) != expected:
-                raise HTTPException(status_code=400, detail=f"チャンクサイズ不一致 (expected={expected}, got={len(data)})")
 
-            # 絶対オフセット書き込み（pwrite 相当）。同一 upload_id 内は lock で直列。
-            part = _part_path(upload_id)
-            offset = chunk_index * session.chunk_size
+            # B-3 magic bytes 検証 (chunk_index=0 のとき先頭バイトを動画判定)
+            if chunk_index == 0:
+                if not _looks_like_video(data[:256]):
+                    raise HTTPException(
+                        status_code=415,
+                        detail="先頭バイトが動画フォーマットと一致しません (mp4/webm/mkv/mov/avi/ts のみ許可)",
+                    )
+            if is_streaming:
+                # streaming: chunk は append。順序は chunk_index 順を強制。
+                if chunk_index != session.received_count:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"streaming は順次送信必須 (expected={session.received_count}, got={chunk_index})",
+                    )
+                if len(data) > session.chunk_size:
+                    raise HTTPException(status_code=400, detail=f"chunk_size 上限超過 ({len(data)} > {session.chunk_size})")
+                # 累積上限チェック (DoS 防御)
+                running_total = (session.total_size or 0)
+                # streaming では total_size は上限 (init 時)。ここでは別途 final size を追跡しない。
+                # ファイルサイズ自体で確認する。
+                part = _part_path(upload_id)
+                try:
+                    cur_size = part.stat().st_size if part.exists() else 0
+                except OSError:
+                    cur_size = 0
+                if cur_size + len(data) > MAX_UPLOAD_SIZE:
+                    raise HTTPException(status_code=413, detail="streaming 累積サイズが MAX_UPLOAD_SIZE を超過")
 
-            def _write() -> None:
-                with open(part, "r+b") as f:
-                    f.seek(offset)
-                    f.write(data)
+                def _append() -> None:
+                    with open(part, "ab") as f:
+                        f.write(data)
 
-            await asyncio.get_event_loop().run_in_executor(None, _write)
+                await asyncio.get_event_loop().run_in_executor(None, _append)
+            else:
+                expected = session.chunk_size
+                is_last = chunk_index == session.total_chunks - 1
+                if is_last:
+                    expected = session.total_size - chunk_index * session.chunk_size
+                if len(data) != expected:
+                    raise HTTPException(status_code=400, detail=f"チャンクサイズ不一致 (expected={expected}, got={len(data)})")
 
-            session.received_bitmap = _bitmap_set(session.received_bitmap, chunk_index, session.total_chunks)
+                # 絶対オフセット書き込み（pwrite 相当）。同一 upload_id 内は lock で直列。
+                part = _part_path(upload_id)
+                offset = chunk_index * session.chunk_size
+
+                def _write() -> None:
+                    with open(part, "r+b") as f:
+                        f.seek(offset)
+                        f.write(data)
+
+                await asyncio.get_event_loop().run_in_executor(None, _write)
+
+            bitmap_size = max(session.total_chunks, chunk_index + 1)
+            session.received_bitmap = _bitmap_set(session.received_bitmap, chunk_index, bitmap_size)
             session.received_count = session.received_count + 1
             session.updated_at = datetime.utcnow()
             db.commit()
@@ -360,9 +468,22 @@ async def finalize_upload(
                                     final_path=session.final_path or "", match_id=session.match_id)
         if session.status != "uploading":
             raise HTTPException(status_code=409, detail=f"セッションは {session.status} 状態です")
-        if not _bitmap_complete(session.received_bitmap, session.total_chunks):
+        is_streaming = bool(getattr(session, "streaming", False))
+        if is_streaming:
+            # streaming は順次 append 済み。最低 1 chunk 必要。
+            if session.received_count <= 0:
+                raise HTTPException(status_code=409, detail="streaming に chunk が 1 つも届いていません")
+        elif not _bitmap_complete(session.received_bitmap, session.total_chunks):
             missing = [i for i in range(session.total_chunks) if not _bitmap_get(session.received_bitmap, i)]
             raise HTTPException(status_code=409, detail=f"未受領チャンクがあります ({len(missing)} 件)")
+        # E-3: 録画開始からの経過時間が上限を超えたら拒否 (DoS 防止)
+        if session.created_at:
+            elapsed_min = (datetime.utcnow() - session.created_at).total_seconds() / 60
+            if elapsed_min > MAX_RECORDING_DURATION_MIN:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"録画時間が上限 ({MAX_RECORDING_DURATION_MIN} 分) を超えています",
+                )
 
         part = _part_path(upload_id)
         final = _final_path(upload_id, session.filename)
@@ -374,6 +495,12 @@ async def finalize_upload(
         session.status = "completed"
         session.final_path = str(final.resolve())
         session.updated_at = datetime.utcnow()
+        # streaming は実ファイルサイズで total_size を確定
+        if is_streaming:
+            try:
+                session.total_size = final.stat().st_size
+            except OSError:
+                pass
 
         # match_id があれば video_local_path を設定
         if session.match_id is not None:
@@ -382,6 +509,29 @@ async def finalize_upload(
                 # サーバ保管の URL スキームとして server:// を使う（Electron localfile:// と区別）
                 m.video_local_path = f"server://{upload_id}{final.suffix}"
                 m.video_url = ""
+                # video_token がなければ発行 (Phase 1 の app://video/{token} 経路用)
+                from backend.utils.video_token import new_token as _new_video_token
+                if not getattr(m, "video_token", None):
+                    m.video_token = _new_video_token()
+
+        # R-1: ServerVideoArtifact を生成 (Sender からの自動録画ストリームの記録)
+        try:
+            from backend.db.models import ServerVideoArtifact as _SVA
+            file_size = final.stat().st_size if final.exists() else None
+            artifact = _SVA(
+                match_id=session.match_id,
+                upload_id=upload_id,
+                sender_user_id=ctx.user_id,
+                file_path=str(final.resolve()),
+                file_size_bytes=file_size,
+                mime_type=session.mime_type,
+                started_at=session.created_at,
+                finalized_at=datetime.utcnow(),
+            )
+            db.add(artifact)
+        except Exception as exc:
+            import logging as _lg
+            _lg.getLogger(__name__).warning("[uploads] artifact create failed: %s", exc)
 
         db.commit()
 

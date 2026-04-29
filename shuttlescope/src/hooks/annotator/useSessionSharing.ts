@@ -38,7 +38,16 @@ interface TunnelData {
   running: boolean
   url: string | null
   active_provider: TunnelProvider | null
-  providers: { cloudflare: { available: boolean }; ngrok: { available: boolean } }
+  providers: {
+    cloudflare: {
+      available: boolean
+      named_ready?: boolean
+      hostname?: string
+      config_path?: string | null
+      reason?: string | null
+    }
+    ngrok: { available: boolean }
+  }
   recent_log: string[]
 }
 
@@ -130,11 +139,18 @@ export function useSessionSharing({
   })
 
   const tunnelRunning = tunnelStatus?.data?.running ?? false
-  const tunnelBase = tunnelRunning && tunnelStatus?.data?.url
-    ? tunnelStatus.data.url
-    : null
+  // tunnelBase の優先順位:
+  //   1. backend で起動中の trycloudflare quick tunnel URL
+  //   2. named tunnel が config レベルで ready なら hostname (Windows サービスで常駐想定)
+  //   3. なし
+  const cfNamed = tunnelStatus?.data?.providers?.cloudflare
+  const namedReadyHost = cfNamed?.named_ready ? cfNamed.hostname : null
+  const tunnelBase: string | null =
+    (tunnelRunning && tunnelStatus?.data?.url) ||
+    (namedReadyHost ? `https://${namedReadyHost}` : null) ||
+    null
   // trueのとき: トンネル起動中だがURLがまだ取得できていない（ポーリング待機中）
-  const tunnelPending = tunnelRunning && !tunnelBase
+  const tunnelPending = tunnelRunning && !tunnelStatus?.data?.url && !namedReadyHost
   // 直近のエラーログ（タイムアウト・認証失敗などのエラーメッセージ）
   const tunnelLastError: string | null = (() => {
     const log = tunnelStatus?.data?.recent_log ?? []

@@ -180,9 +180,9 @@ function useWebRTCReceiver(sessionCode: string) {
       }
     } catch { /* バックエンド未起動時はデフォルト STUN を使用 */ }
 
-    // Electron(file:) → ws://localhost:8765
-    // LAN直接(http:)  → ws://192.168.x.x:8765
-    // Cloudflareトンネル(https:) → wss://xxxx.trycloudflare.com (ポートなし)
+    // Electron(file:)                  → ws://localhost:8765
+    // LAN 直接(http:)                   → ws://192.168.x.x:8765
+    // Cloudflare named tunnel(https:)   → wss://app.shuttle-scope.com (ポートなし、Cloudflare が自動 WS upgrade)
     const isElectron = window.location.protocol === 'file:'
     const isHttps = window.location.protocol === 'https:'
     const wsProto = isHttps ? 'wss' : 'ws'
