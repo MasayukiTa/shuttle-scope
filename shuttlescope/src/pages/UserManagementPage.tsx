@@ -41,6 +41,10 @@ interface LimitInfo {
   exfil_requests: number
   exfil_alerted: boolean
   exfil_near_hard_block: boolean
+  failed_attempts: number
+  is_locked: boolean
+  locked_until: string | null
+  near_lock: boolean
   is_limited: boolean
 }
 
@@ -725,15 +729,47 @@ export function UserManagementPage() {
                       {myRole === 'admin' && (
                         <>
                           <td className="px-3 py-2.5 hidden md:table-cell">
-                            {limits[u.id]?.is_limited ? (
-                              <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700" title={
-                                `active=${limits[u.id]?.active_uploads}/2  alerted=${limits[u.id]?.exfil_alerted}  near_block=${limits[u.id]?.exfil_near_hard_block}`
-                              }>
-                                <AlertTriangle size={11} /> 制限中
-                              </span>
-                            ) : (
-                              <span className={`text-xs ${textMuted}`}>—</span>
-                            )}
+                            {(() => {
+                              const L = limits[u.id]
+                              if (!L) return <span className={`text-xs ${textMuted}`}>—</span>
+                              const badges: React.ReactElement[] = []
+                              if (L.is_locked) {
+                                badges.push(
+                                  <span key="lock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700" title={
+                                    `アカウントロック中  failed=${L.failed_attempts}  until=${L.locked_until ?? '—'}`
+                                  }>
+                                    🔒 ロック
+                                  </span>,
+                                )
+                              } else if (L.near_lock) {
+                                badges.push(
+                                  <span key="nearlock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700" title={
+                                    `ログイン失敗 ${L.failed_attempts}/3  あと ${3 - L.failed_attempts} 回でロック`
+                                  }>
+                                    ⚠ 失敗{L.failed_attempts}
+                                  </span>,
+                                )
+                              }
+                              if (L.active_uploads >= 2) {
+                                badges.push(
+                                  <span key="ul" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700" title="同時アップロード上限 (2/2) 到達">
+                                    UL満杯
+                                  </span>,
+                                )
+                              }
+                              if (L.exfil_alerted || L.exfil_near_hard_block) {
+                                badges.push(
+                                  <span key="exfil" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700" title={
+                                    `exfil  req=${L.exfil_requests}  bytes=${L.exfil_bytes}  alerted=${L.exfil_alerted}  near_block=${L.exfil_near_hard_block}`
+                                  }>
+                                    EXFIL
+                                  </span>,
+                                )
+                              }
+                              return badges.length > 0
+                                ? <div className="flex flex-wrap gap-1">{badges}</div>
+                                : <span className={`text-xs ${textMuted}`}>—</span>
+                            })()}
                           </td>
                           <td className={`px-3 py-2.5 text-xs hidden md:table-cell ${
                             (limits[u.id]?.active_uploads ?? 0) >= 2 ? 'text-red-600 font-semibold' : textMuted

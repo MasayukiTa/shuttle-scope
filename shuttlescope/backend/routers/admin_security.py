@@ -217,10 +217,16 @@ def get_user_limits(request: Request, db: Session = Depends(get_db)):
     # 現在の全ユーザを取得 (制限値が 0 でも一覧表示するため)
     users = db.query(User).order_by(User.id.asc()).all()
 
+    now = datetime.utcnow()
     out = []
     for u in users:
         uid = u.id
         ex = exfil_snap.get(uid, {})
+        failed = int(getattr(u, "failed_attempts", 0) or 0)
+        locked_until = getattr(u, "locked_until", None)
+        is_locked = bool(locked_until and locked_until > now)
+        # lockout 閾値 (auth.py の _MAX_FAILED_ATTEMPTS と一致)
+        near_lock = failed >= 2  # 3 で lock なので 2 に達したら警告
         out.append({
             "user_id": uid,
             "username": u.username,
@@ -235,11 +241,17 @@ def get_user_limits(request: Request, db: Session = Depends(get_db)):
                 ex.get("near_hard_block_req", False)
                 or ex.get("near_hard_block_bytes", False)
             ),
+            "failed_attempts": failed,
+            "is_locked": is_locked,
+            "locked_until": locked_until.isoformat() + "Z" if locked_until else None,
+            "near_lock": near_lock and not is_locked,
             "is_limited": (
                 active_per_user.get(uid, 0) >= 2
                 or ex.get("alerted", False)
                 or ex.get("near_hard_block_req", False)
                 or ex.get("near_hard_block_bytes", False)
+                or is_locked
+                or near_lock
             ),
         })
     return {"success": True, "data": out, "meta": {"count": len(out)}}
@@ -258,7 +270,7 @@ def reset_user_limits(user_id: int, request: Request, db: Session = Depends(get_
     """
     ctx = _require_admin(request)
     from backend.main import ExfilRateLimitMiddleware  # type: ignore
-    from backend.db.models import UploadSession
+    from backend.db.models import UploadSession, User
 
     exfil_cleared = ExfilRateLimitMiddleware.reset_user(user_id)
 
@@ -269,7 +281,20 @@ def reset_user_limits(user_id: int, request: Request, db: Session = Depends(get_
     )
     for s in expired_sessions:
         s.status = "expired"
-    if expired_sessions:
+
+    # ログイン失敗カウンタ + ロックアウトもクリア
+    user = db.get(User, user_id)
+    cleared_failed = 0
+    cleared_lock = False
+    if user is not None:
+        if (user.failed_attempts or 0) > 0:
+            cleared_failed = int(user.failed_attempts)
+            user.failed_attempts = 0
+        if getattr(user, "locked_until", None) is not None:
+            user.locked_until = None
+            cleared_lock = True
+
+    if expired_sessions or cleared_failed or cleared_lock:
         db.commit()
 
     # ベストエフォート監査ログ
@@ -280,7 +305,10 @@ def reset_user_limits(user_id: int, request: Request, db: Session = Depends(get_
             action="admin_reset_user_limits",
             resource_type="user",
             resource_id=str(user_id),
-            details=f"exfil_cleared={exfil_cleared} sessions_expired={len(expired_sessions)}",
+            details=(
+                f"exfil_cleared={exfil_cleared} sessions_expired={len(expired_sessions)} "
+                f"failed_attempts_cleared={cleared_failed} lock_cleared={cleared_lock}"
+            ),
         ))
         db.commit()
     except Exception as exc:
@@ -292,5 +320,7 @@ def reset_user_limits(user_id: int, request: Request, db: Session = Depends(get_
             "user_id": user_id,
             "exfil_cleared": exfil_cleared,
             "sessions_expired": len(expired_sessions),
+            "failed_attempts_cleared": cleared_failed,
+            "lock_cleared": cleared_lock,
         },
     }
