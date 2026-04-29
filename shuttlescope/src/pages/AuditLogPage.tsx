@@ -248,7 +248,23 @@ export function AuditLogPage() {
             ) : (
               sortedRows.map((r) => (
                 <tr key={r.id} className={`border-t ${borderLine}`}>
-                  <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`}>{r.created_at.replace('T', ' ').slice(0, 19)}</td>
+                  <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`} title={r.created_at}>
+                    {(() => {
+                      // backend は UTC+Z を返す。JST (Asia/Tokyo) で表示する
+                      try {
+                        const d = new Date(r.created_at)
+                        if (!isNaN(d.getTime())) {
+                          return d.toLocaleString('ja-JP', {
+                            timeZone: 'Asia/Tokyo',
+                            year: 'numeric', month: '2-digit', day: '2-digit',
+                            hour: '2-digit', minute: '2-digit', second: '2-digit',
+                            hour12: false,
+                          })
+                        }
+                      } catch { /* fall through */ }
+                      return r.created_at.replace('T', ' ').slice(0, 19)
+                    })()}
+                  </td>
                   <td className={`px-3 py-2 whitespace-nowrap ${textHeading}`}>{r.action}</td>
                   <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`}>
                     {r.username ? `${r.username} (#${r.user_id})` : (r.user_id ? `#${r.user_id}` : '—')}
