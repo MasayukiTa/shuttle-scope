@@ -171,6 +171,25 @@ def _send_email_safe(to: str, subject: str, body: str, tag: str) -> None:
 
 # ─── 1. Register ─────────────────────────────────────────────────────────────
 
+def _registration_enabled() -> bool:
+    """SS_REGISTRATION_ENABLED が 1 のときのみ True。"""
+    try:
+        from backend.config import settings
+        return bool(int(getattr(settings, "ss_registration_enabled", 0) or 0))
+    except Exception:
+        import os
+        return os.environ.get("SS_REGISTRATION_ENABLED", "0") == "1"
+
+
+def _password_reset_enabled() -> bool:
+    try:
+        from backend.config import settings
+        return bool(int(getattr(settings, "ss_password_reset_enabled", 0) or 0))
+    except Exception:
+        import os
+        return os.environ.get("SS_PASSWORD_RESET_ENABLED", "0") == "1"
+
+
 @router.post("/auth/register", status_code=201)
 def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     """新規ユーザー登録。
@@ -178,7 +197,18 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     - username + email + password + Turnstile
     - 即座にメール検証トークン発行 → メール送信
     - email_verified_at は None (検証メールリンク踏むまで未検証)
+
+    SS_REGISTRATION_ENABLED=1 が必須。デフォルト無効 (503)。
+    メール配信が確実な環境でのみ有効化すること。
     """
+    if not _registration_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "現在、新規登録は受付を停止しております。"
+                "ご利用希望の方は shuttle-scope.com の問い合わせフォームよりご連絡ください。"
+            ),
+        )
     ip = _client_ip(request)
     # M-A レート制限: IP 単位 5/15min + email 単位 3/24h
     _enforce_rate_limit(
@@ -212,7 +242,10 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
         email=body.email,
         hashed_credential=hashed,
         display_name=body.display_name,
-        role="analyst",  # デフォルト role (admin が後で変更可)
+        # 公開 register は player ロール + admin 承認待ち。
+        # admin が「保留中ユーザー一覧」から承認するまで全 API 403 になる。
+        role="player",
+        awaiting_admin_approval=True,
     )
     db.add(user)
     db.commit()
@@ -286,7 +319,17 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
     """パスワードリセットメールを送信する。
 
     列挙防御: email 存在に関わらず同じレスポンスを返す。
+
+    SS_PASSWORD_RESET_ENABLED=1 が必須。デフォルト無効 (503)。
     """
+    if not _password_reset_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "現在、パスワードリセットは受付を停止しております。"
+                "管理者までお問い合わせください。"
+            ),
+        )
     ip = _client_ip(request)
     # M-A レート制限: IP 単位 5/15min + email 単位 3/1h
     _enforce_rate_limit(
@@ -430,3 +473,123 @@ def accept_invitation(body: InvitationAcceptRequest, request: Request,
     log_access(db, "invitation_accepted", user_id=user.id,
                details={"role": rec.role, "inviter_user_id": rec.inviter_user_id})
     return {"success": True, "data": {"user_id": user.id, "role": user.role}}
+
+
+# ─── 5. 保留中ユーザー管理 (admin only) ────────────────────────────────────
+
+class PendingApprovalRequest(BaseModel):
+    """admin が保留ユーザーを承認する際のロール / チーム指定。"""
+    role: str = Field("player", pattern=r"^(analyst|coach|player)$")
+    team_id: Optional[int] = Field(None, ge=1, le=2_147_483_647)
+    team_name: Optional[str] = Field(None, max_length=100)
+
+
+@router.get("/auth/users/pending")
+def list_pending_users(request: Request, db: Session = Depends(get_db)):
+    """awaiting_admin_approval=True のユーザー一覧を返す (admin only)。
+
+    self-register したユーザーが管理者の承認を待っている。
+    admin が UI で個別に承認 + ロール / team_id 割り当てを行う想定。
+    """
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin ロールが必要です")
+    users = (
+        db.query(User)
+        .filter(User.awaiting_admin_approval.is_(True))
+        .order_by(User.created_at.desc())
+        .all()
+    )
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": getattr(u, "email", None),
+                "email_verified": bool(getattr(u, "email_verified_at", None)),
+                "display_name": u.display_name,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+            }
+            for u in users
+        ],
+    }
+
+
+@router.post("/auth/users/{user_id}/approve")
+def approve_pending_user(
+    user_id: int, body: PendingApprovalRequest,
+    request: Request, db: Session = Depends(get_db),
+):
+    """保留中ユーザーを admin が承認する。同時にロールと所属チームを設定する。
+
+    動作:
+      - awaiting_admin_approval = False に更新
+      - role / team_id (または team_name) を引数で指定
+      - 既に承認済 (awaiting=False) のユーザーへの POST は 409
+    """
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin ロールが必要です")
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    if not bool(getattr(user, "awaiting_admin_approval", False)):
+        raise HTTPException(status_code=409, detail="このユーザーは既に承認済みです")
+
+    user.role = body.role
+    user.awaiting_admin_approval = False
+    if body.team_id is not None:
+        user.team_id = body.team_id
+    if body.team_name is not None:
+        user.team_name = body.team_name.strip() or None
+    db.commit()
+    db.refresh(user)
+
+    log_access(
+        db, "user_approved",
+        user_id=ctx.user_id,
+        resource_type="user",
+        resource_id=user_id,
+        details={
+            "approved_role": body.role,
+            "approved_team_id": body.team_id,
+            "approved_team_name": body.team_name,
+        },
+    )
+    return {
+        "success": True,
+        "data": {
+            "user_id": user.id,
+            "role": user.role,
+            "team_id": user.team_id,
+            "team_name": user.team_name,
+            "awaiting_admin_approval": False,
+        },
+    }
+
+
+@router.post("/auth/users/{user_id}/reject")
+def reject_pending_user(
+    user_id: int, request: Request, db: Session = Depends(get_db),
+):
+    """保留中ユーザーを admin が拒否 (削除) する。"""
+    ctx = get_auth(request)
+    if not ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin ロールが必要です")
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    if not bool(getattr(user, "awaiting_admin_approval", False)):
+        raise HTTPException(status_code=409, detail="承認済みユーザーは拒否できません (admin 経由で削除してください)")
+
+    log_access(
+        db, "user_rejected",
+        user_id=ctx.user_id,
+        resource_type="user",
+        resource_id=user_id,
+        details={"username": user.username, "email": getattr(user, "email", None)},
+    )
+    db.delete(user)
+    db.commit()
+    return {"success": True, "data": {"user_id": user_id, "deleted": True}}

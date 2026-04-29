@@ -1003,6 +1003,15 @@ _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     r"|health|public(/.*)?)"
 )
 
+# 承認待ち (awaiting_admin_approval=True) ユーザでも到達可能なエンドポイント。
+# - /api/auth/me: 自分の承認状態 / email_verified の確認
+# - /api/auth/logout: ログアウト
+# - /api/auth/email/resend_verification: 検証メール再送
+# それ以外は admin が承認するまで全 403 を返す。
+_PENDING_APPROVAL_ALLOW = _re_acl.compile(
+    r"^/api/auth/(me|logout|email/resend_verification)$"
+)
+
 
 class GlobalAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
@@ -1034,6 +1043,26 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 media_type="application/json",
             )
+        # 承認待ちユーザーの API 制限
+        # JWT に awaiting フラグは入れていないため DB を引いて確認する。
+        # 軽量化のためパスが既に許可リストならスキップ。
+        if not _PENDING_APPROVAL_ALLOW.match(request.url.path):
+            user_id = payload.get("sub")
+            if user_id is not None:
+                try:
+                    from backend.db.database import SessionLocal
+                    from backend.db.models import User
+                    with SessionLocal() as _db:
+                        u = _db.get(User, int(user_id))
+                        if u is not None and bool(getattr(u, "awaiting_admin_approval", False)):
+                            return StarletteResponse(
+                                '{"detail":"アカウントは管理者の承認待ちです。承認後に利用可能になります。"}',
+                                status_code=403,
+                                media_type="application/json",
+                            )
+                except Exception:
+                    # DB 障害時はフェイルオープン (機能停止より継続を優先、ログは別 layer)
+                    pass
         return await call_next(request)
 
 

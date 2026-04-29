@@ -29,6 +29,7 @@ import PasswordResetConfirmPage from '@/pages/PasswordResetConfirmPage'
 import InvitationAcceptPage from '@/pages/InvitationAcceptPage'
 import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
+import PendingUsersPage from '@/pages/PendingUsersPage'
 import { AuditLogPage } from '@/pages/AuditLogPage'
 import { TeamManagementPage } from '@/pages/TeamManagementPage'
 import { useTheme } from '@/hooks/useTheme'
@@ -259,6 +260,7 @@ function MainLayout() {
             <Route path="/expert-labeler/:matchId" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerAnnotatePage /></PageAccessRoute>} />
 <Route path="/notifications" element={<AdminRoute><NotificationInboxPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
+            <Route path="/users/pending" element={<AdminRoute><PendingUsersPage /></AdminRoute>} />
             <Route path="/audit-logs" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
             <Route path="/teams" element={<TeamManagementPage />} />
             <Route path="/settings" element={<SettingsPage />} />

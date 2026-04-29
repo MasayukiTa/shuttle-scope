@@ -79,13 +79,60 @@ async function tryRefreshToken(): Promise<boolean> {
   return _refreshInflight
 }
 
+// セッション完全失効時に画面リダイレクトするためのフラグ (連続 401 で多重発火しないよう保護)
+let _sessionExpiredRedirecting = false
+
+/**
+ * セッション完全失効時の処理:
+ *   1. 認証情報を sessionStorage から消す
+ *   2. /login へリダイレクト (HashRouter なので window.location.hash を更新)
+ *   3. 既に未認証ページ (login/register/verify/camera 等) に居るならスキップ
+ *
+ * これにより、無操作タイムアウト後に「データが空で表示される」混乱を防ぎ、
+ * 即座にログイン画面が表示される。
+ */
+function _handleSessionExpired(): void {
+  if (typeof window === 'undefined' || _sessionExpiredRedirecting) return
+  _sessionExpiredRedirecting = true
+  try {
+    sessionStorage.removeItem('shuttlescope_token')
+    sessionStorage.removeItem(REFRESH_KEY)
+    sessionStorage.removeItem('shuttlescope_role')
+    sessionStorage.removeItem('shuttlescope_player_id')
+    sessionStorage.removeItem('shuttlescope_team_name')
+  } catch {
+    /* noop */
+  }
+  // 既に未認証ページにいるならリダイレクト不要
+  const currentHash = (window.location.hash || '').slice(1).split('?')[0]
+  const SKIP_PATHS = [
+    '/login', '/register', '/verify',
+    '/password/reset', '/password/reset-confirm', '/invite',
+    '/video-only', '/camera', '/viewer',
+  ]
+  const isOnPublicPage = SKIP_PATHS.some((p) => currentHash === p || currentHash.startsWith(p + '/'))
+  if (!isOnPublicPage) {
+    // HashRouter なので hash を変えるだけで遷移する。
+    // クエリ session_expired=1 で LoginPage 側に「セッション切れの旨」を表示できる。
+    window.location.hash = '/login?session_expired=1'
+    // App ルート側が token/role を見て未ログイン状態を検出するため、
+    // hash 変更だけで <LoginPage /> がレンダリングされる。
+  }
+  // 数秒後にフラグをリセット (再ログイン後のリクエストを通常通り扱うため)
+  setTimeout(() => { _sessionExpiredRedirecting = false }, 3000)
+}
+
 async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<Response> {
   const res = await fetch(input, init)
   if (res.status !== 401) return res
   // /auth/refresh 自体が 401 の場合は再試行しない
   if (input.includes('/auth/refresh') || input.includes('/auth/login')) return res
   const ok = await tryRefreshToken()
-  if (!ok) return res
+  if (!ok) {
+    // refresh も失敗 = 完全失効 → 自動でログイン画面へ
+    _handleSessionExpired()
+    return res
+  }
   // 新 access token で再送
   const headers = { ...(init.headers as Record<string, string>), ...authHeaders() }
   return fetch(input, { ...init, headers })

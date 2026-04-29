@@ -104,6 +104,9 @@ def test_no_orphan_event_names():
         "password_reset_by_admin",
         "invitation_created",
         "invitation_accepted",
+        # M-A: 保留ユーザー承認 / 拒否
+        "user_approved",
+        "user_rejected",
         # 認証系
         "login_mfa_required",
         "login_mfa_ok",

@@ -3087,5 +3087,21 @@
     "cookieBrowserLabel": "認証クッキー（ログイン必須配信のみ）",
     "cookieBrowserNone": "なし（認証不要）",
     "cookieBrowserHint": "NHK+・ニコ生など要ログイン配信は、ログイン済みブラウザを選択してください"
+  },
+  "pendingUsers": {
+    "title": "保留中ユーザー（管理者承認待ち）",
+    "description": "公開登録されたユーザーは、管理者がロールと所属チームを割り当てるまでサービスを利用できません。",
+    "empty": "現在、承認待ちのユーザーはいません。",
+    "approve": "承認",
+    "reject": "拒否（削除）",
+    "approve_confirm": "このユーザーを承認しますか？指定したロールと所属チームで利用可能になります。",
+    "reject_confirm": "このユーザーを拒否（削除）しますか？取り消せません。",
+    "team_id_placeholder": "team_id（数値、任意）",
+    "team_name_placeholder": "team_name（文字列、任意）",
+    "role": {
+      "player": "選手 (player)",
+      "coach": "コーチ (coach)",
+      "analyst": "アナリスト (analyst)"
+    }
   }
 }

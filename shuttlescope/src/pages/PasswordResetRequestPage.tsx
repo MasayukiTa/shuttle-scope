@@ -12,8 +12,15 @@ export default function PasswordResetRequestPage() {
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // 現状 password reset API は無効化されている (SS_PASSWORD_RESET_ENABLED=0 で 503)
+  const RESET_DISABLED = true
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (RESET_DISABLED) {
+      setError('現在、パスワードリセットは受付を停止しております。管理者までお問い合わせください。')
+      return
+    }
     if (loading) return
     setLoading(true)
     setError(null)
@@ -56,7 +63,7 @@ export default function PasswordResetRequestPage() {
             {t('auth.password_reset_request.sent_message')}
           </div>
         ) : (
-          <button type="submit" disabled={loading}
+          <button type="submit" disabled={loading || RESET_DISABLED}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded disabled:opacity-50">
             {loading ? t('app.loading') : t('auth.password_reset_request.submit')}
           </button>

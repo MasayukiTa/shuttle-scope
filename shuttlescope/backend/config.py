@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     ss_turnstile_secret_key: str = ""
     # 1=Turnstile 必須、0=未設定時はスキップ可能 (dev 用)
     ss_turnstile_required: int = 0
+    # M-A: register API の有効化フラグ。デフォルト 0 = 無効 (503 を返す)。
+    # メール配信が確実に動作する環境 (Cloudflare Worker 設定済) でのみ 1 に設定する。
+    # 無効時はフロントから「現在は問い合わせ経由のみ」と案内し、admin が invitation を発行する運用。
+    ss_registration_enabled: int = 0
+    # M-A: password reset API の有効化フラグ。同上の理由でデフォルト 0。
+    ss_password_reset_enabled: int = 0
 
     class Config:
         # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）

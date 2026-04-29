@@ -61,6 +61,11 @@ class User(Base):
     # 既存 username ログインとの併用 (username または email でログイン可能)。
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
     email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # M-A 公開 register 経由の自己作成ユーザは admin 承認まで全 API 403。
+    # admin が「保留中ユーザー一覧」から承認 → role/team_id を割り当て + フラグを False に。
+    awaiting_admin_approval: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
 
 
 class RevokedToken(Base):
