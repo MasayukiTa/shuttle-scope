@@ -1244,24 +1244,52 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        # camera=(self): R-1 sender 機能で getUserMedia() を許可するために必要 (空 () だと拒否される)
+        # microphone=(self): 将来的な録音機能のため self 許可 (現状未使用だが将来需要見越し)
+        # geolocation=(): 位置情報は使わないので明示的拒否
+        response.headers["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=()"
+        # Cross-Origin-* (Spectre 対策 / 強い isolation)
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        # COOP は popup/window.opener を切り離す。SPA のため same-origin で十分
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         if app_settings.PUBLIC_MODE:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         # 認証 Bearer 付きの API レスポンスは機密扱い — 中間キャッシュ禁止
-        # /api/auth/* はログイン時に access/refresh token を返すが、初回呼び出しには
-        # Authorization ヘッダがないため Bearer 条件では拾えない。トークンが共有
-        # HTTP キャッシュ (CDN / プロキシ) に残らないよう /api/auth/ も明示的に
-        # no-store にする (CWE-525 / OWASP A05)。
         path = request.url.path
         is_auth_path = path.startswith("/api/auth/")
         has_bearer = request.headers.get("Authorization", "").startswith("Bearer ")
         if (has_bearer and path.startswith("/api/")) or is_auth_path:
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
-        # CSP: API/JSON 応答には厳格なポリシーを設定（レンダラーは default-src 'none' で十分）
+        # CSP: パス・コンテントタイプ別に分けて適用
         ctype = response.headers.get("content-type", "")
         if path.startswith("/api/") and "application/json" in ctype:
+            # API JSON: 何もロードしない最厳ポリシー
             response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+        elif "text/html" in ctype:
+            # SPA HTML: XSS 防御の主戦場。
+            # - script-src 'self' のみ (inline 除外で stored XSS 影響範囲縮小)
+            # - connect-src で API + WebSocket + tunnel host に限定
+            # - frame-ancestors 'none' で iframe 埋込み拒否 (X-Frame-Options のバックアップ)
+            # - object-src 'none' で Flash/プラグイン経由攻撃排除
+            # - base-uri 'self' で base 改竄 XSS 排除
+            # - form-action 'self' でフォーム送信先制限
+            # - upgrade-insecure-requests で http→https 強制
+            csp_parts = [
+                "default-src 'self'",
+                "script-src 'self'",
+                "style-src 'self' 'unsafe-inline'",  # Tailwind 等の inline style 必要
+                "img-src 'self' data: blob:",
+                "media-src 'self' blob: app:",  # app://video/ プロトコル + MediaRecorder blob
+                "connect-src 'self' wss: https:",
+                "font-src 'self' data:",
+                "object-src 'none'",
+                "base-uri 'self'",
+                "form-action 'self'",
+                "frame-ancestors 'none'",
+                "upgrade-insecure-requests",
+            ]
+            response.headers["Content-Security-Policy"] = "; ".join(csp_parts)
         return response
 
 
