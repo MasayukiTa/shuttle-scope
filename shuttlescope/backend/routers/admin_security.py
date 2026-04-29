@@ -257,40 +257,75 @@ def get_user_limits(request: Request, db: Session = Depends(get_db)):
     return {"success": True, "data": out, "meta": {"count": len(out)}}
 
 
+from pydantic import BaseModel  # noqa: E402
+
+
+class ResetUserLimitsRequest(BaseModel):
+    """admin 側で「何をリセットするか」を明示的に選択するためのフラグ.
+
+    全フラグ未指定 (None) または body 未送信時は **後方互換のため全部 True 扱い**.
+    """
+    model_config = {"extra": "forbid"}
+    exfil: Optional[bool] = None
+    uploads: Optional[bool] = None
+    failed_attempts: Optional[bool] = None
+    lock: Optional[bool] = None
+
+
 @router.post("/admin/security/user_limits/{user_id}/reset")
-def reset_user_limits(user_id: int, request: Request, db: Session = Depends(get_db)):
-    """指定 user の exfil rate state をクリア + active uploads を expire する.
+def reset_user_limits(
+    user_id: int,
+    request: Request,
+    body: Optional[ResetUserLimitsRequest] = None,
+    db: Session = Depends(get_db),
+):
+    """指定 user の制限をリセット (種類別に選択可).
 
-    動作:
-      1. ExfilRateLimitMiddleware の in-memory state から user_id を削除
-      2. UploadSession (status=uploading & user_id=user_id) を status=expired に更新
+    Body (オプション、すべて省略可):
+      {
+        "exfil": true/false,            # ExfilRateLimitMiddleware in-memory state
+        "uploads": true/false,          # UploadSession status='uploading' を expired に
+        "failed_attempts": true/false,  # User.failed_attempts を 0 に
+        "lock": true/false              # User.locked_until を None に
+      }
 
-    監査:
-      AccessLog に "admin_reset_user_limits" を記録 (ベストエフォート)
+    body 全部未指定 / 空 / 全 None なら **全部 True** (後方互換).
     """
     ctx = _require_admin(request)
     from backend.main import ExfilRateLimitMiddleware  # type: ignore
     from backend.db.models import UploadSession, User
 
-    exfil_cleared = ExfilRateLimitMiddleware.reset_user(user_id)
+    # フラグ解釈: 1 つでも明示的に指定があればその通り、全部 None なら全 True
+    if body is None or all(v is None for v in (body.exfil, body.uploads, body.failed_attempts, body.lock)):
+        do_exfil = do_uploads = do_failed = do_lock = True
+    else:
+        do_exfil = bool(body.exfil)
+        do_uploads = bool(body.uploads)
+        do_failed = bool(body.failed_attempts)
+        do_lock = bool(body.lock)
 
-    expired_sessions = (
-        db.query(UploadSession)
-        .filter(UploadSession.user_id == user_id, UploadSession.status == "uploading")
-        .all()
-    )
-    for s in expired_sessions:
-        s.status = "expired"
+    exfil_cleared = False
+    if do_exfil:
+        exfil_cleared = ExfilRateLimitMiddleware.reset_user(user_id)
 
-    # ログイン失敗カウンタ + ロックアウトもクリア
+    expired_sessions: list = []
+    if do_uploads:
+        expired_sessions = (
+            db.query(UploadSession)
+            .filter(UploadSession.user_id == user_id, UploadSession.status == "uploading")
+            .all()
+        )
+        for s in expired_sessions:
+            s.status = "expired"
+
     user = db.get(User, user_id)
     cleared_failed = 0
     cleared_lock = False
     if user is not None:
-        if (user.failed_attempts or 0) > 0:
+        if do_failed and (user.failed_attempts or 0) > 0:
             cleared_failed = int(user.failed_attempts)
             user.failed_attempts = 0
-        if getattr(user, "locked_until", None) is not None:
+        if do_lock and getattr(user, "locked_until", None) is not None:
             user.locked_until = None
             cleared_lock = True
 

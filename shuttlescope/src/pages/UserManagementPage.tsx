@@ -245,11 +245,22 @@ export function UserManagementPage() {
     }
   }
 
-  const handleResetLimits = async (u: UserRow) => {
-    if (!window.confirm(`${u.display_name || u.username} の rate-limit / active uploads をリセットしますか？`)) return
+  type LimitKind = 'all' | 'exfil' | 'uploads' | 'failed_attempts' | 'lock'
+  const handleResetLimits = async (u: UserRow, kind: LimitKind = 'all') => {
+    const labels: Record<LimitKind, string> = {
+      all: '全部 (exfil / uploads / 失敗回数 / ロック)',
+      exfil: 'EXFIL レート状態のみ',
+      uploads: '進行中アップロードのみ',
+      failed_attempts: 'ログイン失敗カウンタのみ',
+      lock: 'アカウントロック解除のみ',
+    }
+    if (!window.confirm(`${u.display_name || u.username}: ${labels[kind]} をリセットしますか？`)) return
     setLimitResetBusyId(u.id)
     try {
-      await apiPost(`/admin/security/user_limits/${u.id}/reset`, {})
+      const body = kind === 'all'
+        ? {}
+        : { exfil: kind === 'exfil', uploads: kind === 'uploads', failed_attempts: kind === 'failed_attempts', lock: kind === 'lock' }
+      await apiPost(`/admin/security/user_limits/${u.id}/reset`, body)
       await load()
     } catch (err) {
       window.alert((err as Error).message || 'reset error')
@@ -786,14 +797,28 @@ export function UserManagementPage() {
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2 justify-end">
                           {myRole === 'admin' && limits[u.id]?.is_limited && (
-                            <button
-                              onClick={() => handleResetLimits(u)}
-                              disabled={limitResetBusyId === u.id}
-                              title="rate-limit / active uploads をリセット"
-                              className={`${textMuted} hover:text-emerald-500 disabled:opacity-50`}
-                            >
-                              <RotateCcw size={14} />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              {limits[u.id]?.is_locked && (
+                                <button onClick={() => handleResetLimits(u, 'lock')} disabled={limitResetBusyId === u.id}
+                                  title="アカウントロックのみ解除" className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>🔒</button>
+                              )}
+                              {(limits[u.id]?.failed_attempts ?? 0) > 0 && (
+                                <button onClick={() => handleResetLimits(u, 'failed_attempts')} disabled={limitResetBusyId === u.id}
+                                  title="ログイン失敗カウンタのみ 0 に" className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>失敗</button>
+                              )}
+                              {(limits[u.id]?.active_uploads ?? 0) >= 2 && (
+                                <button onClick={() => handleResetLimits(u, 'uploads')} disabled={limitResetBusyId === u.id}
+                                  title="進行中アップロードのみ expire" className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>UL</button>
+                              )}
+                              {(limits[u.id]?.exfil_alerted || limits[u.id]?.exfil_near_hard_block) && (
+                                <button onClick={() => handleResetLimits(u, 'exfil')} disabled={limitResetBusyId === u.id}
+                                  title="EXFIL レート状態のみクリア" className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>EX</button>
+                              )}
+                              <button onClick={() => handleResetLimits(u, 'all')} disabled={limitResetBusyId === u.id}
+                                title="全部リセット (確認あり)" className={`${textMuted} hover:text-emerald-500 disabled:opacity-50`}>
+                                <RotateCcw size={14} />
+                              </button>
+                            </div>
                           )}
                           <button
                             onClick={() => openEdit(u)}
