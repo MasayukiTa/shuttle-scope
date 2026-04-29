@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound, ChevronDown } from 'lucide-react'
+import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound, ChevronDown, RotateCcw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess, listTeams, type TeamDTO } from '@/api/client'
@@ -30,6 +30,18 @@ interface UserRow {
 interface PlayerOption {
   id: number
   name: string
+}
+
+interface LimitInfo {
+  user_id: number
+  active_uploads: number
+  max_concurrent_uploads: number
+  exfil_window_age_sec: number
+  exfil_bytes: number
+  exfil_requests: number
+  exfil_alerted: boolean
+  exfil_near_hard_block: boolean
+  is_limited: boolean
 }
 
 interface FormState {
@@ -112,13 +124,15 @@ function SecretField(props: {
 }
 
 export function UserManagementPage() {
-  type SortKey = 'display_name' | 'username' | 'player_name' | 'team_name'
+  type SortKey = 'display_name' | 'username' | 'player_name' | 'team_name' | 'active_uploads' | 'exfil_requests' | 'is_limited'
 
   const { role: myRole } = useAuth()
   const isLight = useIsLightMode()
   const { t } = useTranslation()
   const [resetResult, setResetResult] = useState<{ username: string; password: string } | null>(null)
   const [resetBusyId, setResetBusyId] = useState<number | null>(null)
+  const [limits, setLimits] = useState<Record<number, LimitInfo>>({})
+  const [limitResetBusyId, setLimitResetBusyId] = useState<number | null>(null)
   const [copyDone, setCopyDone] = useState(false)
 
   const handleResetPassword = async (u: UserRow) => {
@@ -180,11 +194,23 @@ export function UserManagementPage() {
         })
       : users
     return [...filtered].sort((a, b) => {
-      const aValue = (a[sortKey] ?? '').toString().toLowerCase()
-      const bValue = (b[sortKey] ?? '').toString().toLowerCase()
+      // 数値ソート (limit 列): is_limited 降順 → active_uploads 降順 → exfil_requests 降順
+      if (sortKey === 'is_limited') {
+        const al = limits[a.id]?.is_limited ? 1 : 0
+        const bl = limits[b.id]?.is_limited ? 1 : 0
+        return bl - al
+      }
+      if (sortKey === 'active_uploads') {
+        return (limits[b.id]?.active_uploads ?? 0) - (limits[a.id]?.active_uploads ?? 0)
+      }
+      if (sortKey === 'exfil_requests') {
+        return (limits[b.id]?.exfil_requests ?? 0) - (limits[a.id]?.exfil_requests ?? 0)
+      }
+      const aValue = ((a as unknown as Record<string, unknown>)[sortKey] ?? '').toString().toLowerCase()
+      const bValue = ((b as unknown as Record<string, unknown>)[sortKey] ?? '').toString().toLowerCase()
       return aValue.localeCompare(bValue, 'ja')
     })
-  }, [searchTerm, sortKey, users])
+  }, [searchTerm, sortKey, users, limits])
 
   const load = async () => {
     setLoading(true)
@@ -201,6 +227,30 @@ export function UserManagementPage() {
       setError(String(e))
     } finally {
       setLoading(false)
+    }
+    // admin 限定: rate-limit 状態を別途 fetch (失敗しても本体は壊さない)
+    if (myRole === 'admin') {
+      try {
+        const lr = await apiGet<{ success: boolean; data: LimitInfo[] }>('/admin/security/user_limits')
+        const map: Record<number, LimitInfo> = {}
+        for (const r of lr.data ?? []) map[r.user_id] = r
+        setLimits(map)
+      } catch {
+        // backend 旧版で endpoint が無い場合は無視 (UI 側は欠損として処理)
+      }
+    }
+  }
+
+  const handleResetLimits = async (u: UserRow) => {
+    if (!window.confirm(`${u.display_name || u.username} の rate-limit / active uploads をリセットしますか？`)) return
+    setLimitResetBusyId(u.id)
+    try {
+      await apiPost(`/admin/security/user_limits/${u.id}/reset`, {})
+      await load()
+    } catch (err) {
+      window.alert((err as Error).message || 'reset error')
+    } finally {
+      setLimitResetBusyId(null)
     }
   }
 
@@ -622,6 +672,31 @@ export function UserManagementPage() {
                     {t('users.manage.col_account')}
                   </th>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted} hidden sm:table-cell`}>{t('users.manage.col_credential')}</th>
+                  {myRole === 'admin' && (
+                    <>
+                      <th
+                        className={`px-3 py-2.5 text-xs font-medium ${textMuted} hidden md:table-cell cursor-pointer select-none`}
+                        title="rate-limit がかかっているユーザを一目で確認 (クリックで降順ソート)"
+                        onClick={() => setSortKey('is_limited')}
+                      >
+                        制限
+                      </th>
+                      <th
+                        className={`px-3 py-2.5 text-xs font-medium ${textMuted} hidden md:table-cell cursor-pointer select-none`}
+                        title="進行中アップロード件数 (上限 2)"
+                        onClick={() => setSortKey('active_uploads')}
+                      >
+                        UL
+                      </th>
+                      <th
+                        className={`px-3 py-2.5 text-xs font-medium ${textMuted} hidden lg:table-cell cursor-pointer select-none`}
+                        title="直近 60 秒の API リクエスト数 (exfil rate)"
+                        onClick={() => setSortKey('exfil_requests')}
+                      >
+                        req/60s
+                      </th>
+                    </>
+                  )}
                   <th className="px-4 py-2.5" />
                 </tr>
               </thead>
@@ -647,8 +722,43 @@ export function UserManagementPage() {
                       <td className={`px-4 py-2.5 text-xs ${textMuted} hidden sm:table-cell`}>
                         {u.has_credential ? t('users.manage.credential_set') : t('users.manage.credential_unset')}
                       </td>
+                      {myRole === 'admin' && (
+                        <>
+                          <td className="px-3 py-2.5 hidden md:table-cell">
+                            {limits[u.id]?.is_limited ? (
+                              <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700" title={
+                                `active=${limits[u.id]?.active_uploads}/2  alerted=${limits[u.id]?.exfil_alerted}  near_block=${limits[u.id]?.exfil_near_hard_block}`
+                              }>
+                                <AlertTriangle size={11} /> 制限中
+                              </span>
+                            ) : (
+                              <span className={`text-xs ${textMuted}`}>—</span>
+                            )}
+                          </td>
+                          <td className={`px-3 py-2.5 text-xs hidden md:table-cell ${
+                            (limits[u.id]?.active_uploads ?? 0) >= 2 ? 'text-red-600 font-semibold' : textMuted
+                          }`}>
+                            {limits[u.id]?.active_uploads ?? 0}
+                          </td>
+                          <td className={`px-3 py-2.5 text-xs hidden lg:table-cell ${
+                            limits[u.id]?.exfil_alerted ? 'text-amber-600 font-semibold' : textMuted
+                          }`}>
+                            {limits[u.id]?.exfil_requests ?? 0}
+                          </td>
+                        </>
+                      )}
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2 justify-end">
+                          {myRole === 'admin' && limits[u.id]?.is_limited && (
+                            <button
+                              onClick={() => handleResetLimits(u)}
+                              disabled={limitResetBusyId === u.id}
+                              title="rate-limit / active uploads をリセット"
+                              className={`${textMuted} hover:text-emerald-500 disabled:opacity-50`}
+                            >
+                              <RotateCcw size={14} />
+                            </button>
+                          )}
                           <button
                             onClick={() => openEdit(u)}
                             className={`flex items-center gap-0.5 transition-colors ${
@@ -684,7 +794,7 @@ export function UserManagementPage() {
                     {/* インライン編集フォーム（行の直下に展開） */}
                     {editId === u.id && (
                       <tr key={`edit-${u.id}`}>
-                        <td colSpan={5} className={`px-4 py-4 border-b ${border} ${isLight ? 'bg-blue-50/60' : 'bg-blue-900/10'}`}>
+                        <td colSpan={myRole === 'admin' ? 8 : 5} className={`px-4 py-4 border-b ${border} ${isLight ? 'bg-blue-50/60' : 'bg-blue-900/10'}`}>
                           <div className="flex items-center justify-between mb-3">
                             <h3 className={`text-xs font-semibold ${textMain}`}>{t('users.manage.edit_title')}: {u.display_name || u.username}</h3>
                             <button onClick={closeAll} className={`${textMuted} hover:text-red-400`}>
@@ -699,7 +809,7 @@ export function UserManagementPage() {
                 ))}
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className={`px-4 py-8 text-center ${textMuted} text-sm`}>
+                    <td colSpan={myRole === 'admin' ? 8 : 5} className={`px-4 py-8 text-center ${textMuted} text-sm`}>
                       {searchTerm.trim() ? t('users.manage.empty_search') : t('users.manage.empty_all')}
                     </td>
                   </tr>

@@ -183,3 +183,114 @@ def get_audit_log(
         ],
         "meta": {"count": len(rows), "since_hours": since_hours, "limit": limit},
     }
+
+
+# ─── Rate-limit 状態の閲覧 + admin によるリセット ───────────────────────
+# 連休等の長期運用中、admin が「制限がかかっているユーザを一目で把握 → 必要なら
+# リセット」できるようにする。可視化対象は ExfilRateLimitMiddleware の状態と、
+# UploadSession の uploading 件数 (per-user concurrent 制限)。
+@router.get("/admin/security/user_limits")
+def get_user_limits(request: Request, db: Session = Depends(get_db)):
+    """ユーザ別の rate-limit 状態を一覧で返す.
+
+    含む情報:
+      - exfil: 直近 60 秒の bytes / requests / alerted
+      - active_uploads: 進行中 UploadSession 件数 (per-user 上限 = 2)
+    """
+    _require_admin(request)
+    from backend.main import ExfilRateLimitMiddleware  # type: ignore
+    from backend.db.models import User, UploadSession
+
+    exfil_snap = ExfilRateLimitMiddleware.snapshot()
+
+    # active uploads を user_id 別に集計
+    rows = (
+        db.query(UploadSession.user_id, UploadSession.id)
+        .filter(UploadSession.status == "uploading")
+        .all()
+    )
+    active_per_user: dict[int, int] = {}
+    for r in rows:
+        if r[0] is not None:
+            active_per_user[int(r[0])] = active_per_user.get(int(r[0]), 0) + 1
+
+    # 現在の全ユーザを取得 (制限値が 0 でも一覧表示するため)
+    users = db.query(User).order_by(User.id.asc()).all()
+
+    out = []
+    for u in users:
+        uid = u.id
+        ex = exfil_snap.get(uid, {})
+        out.append({
+            "user_id": uid,
+            "username": u.username,
+            "role": u.role,
+            "active_uploads": active_per_user.get(uid, 0),
+            "max_concurrent_uploads": 2,
+            "exfil_window_age_sec": ex.get("window_age_sec", 0.0),
+            "exfil_bytes": ex.get("bytes", 0),
+            "exfil_requests": ex.get("requests", 0),
+            "exfil_alerted": ex.get("alerted", False),
+            "exfil_near_hard_block": (
+                ex.get("near_hard_block_req", False)
+                or ex.get("near_hard_block_bytes", False)
+            ),
+            "is_limited": (
+                active_per_user.get(uid, 0) >= 2
+                or ex.get("alerted", False)
+                or ex.get("near_hard_block_req", False)
+                or ex.get("near_hard_block_bytes", False)
+            ),
+        })
+    return {"success": True, "data": out, "meta": {"count": len(out)}}
+
+
+@router.post("/admin/security/user_limits/{user_id}/reset")
+def reset_user_limits(user_id: int, request: Request, db: Session = Depends(get_db)):
+    """指定 user の exfil rate state をクリア + active uploads を expire する.
+
+    動作:
+      1. ExfilRateLimitMiddleware の in-memory state から user_id を削除
+      2. UploadSession (status=uploading & user_id=user_id) を status=expired に更新
+
+    監査:
+      AccessLog に "admin_reset_user_limits" を記録 (ベストエフォート)
+    """
+    ctx = _require_admin(request)
+    from backend.main import ExfilRateLimitMiddleware  # type: ignore
+    from backend.db.models import UploadSession
+
+    exfil_cleared = ExfilRateLimitMiddleware.reset_user(user_id)
+
+    expired_sessions = (
+        db.query(UploadSession)
+        .filter(UploadSession.user_id == user_id, UploadSession.status == "uploading")
+        .all()
+    )
+    for s in expired_sessions:
+        s.status = "expired"
+    if expired_sessions:
+        db.commit()
+
+    # ベストエフォート監査ログ
+    try:
+        from backend.db.models import AccessLog
+        db.add(AccessLog(
+            user_id=ctx.user_id,
+            action="admin_reset_user_limits",
+            resource_type="user",
+            resource_id=str(user_id),
+            details=f"exfil_cleared={exfil_cleared} sessions_expired={len(expired_sessions)}",
+        ))
+        db.commit()
+    except Exception as exc:
+        logger.warning("audit log skipped: %s", exc)
+
+    return {
+        "success": True,
+        "data": {
+            "user_id": user_id,
+            "exfil_cleared": exfil_cleared,
+            "sessions_expired": len(expired_sessions),
+        },
+    }

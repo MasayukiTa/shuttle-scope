@@ -750,11 +750,43 @@ class ExfilRateLimitMiddleware(BaseHTTPMiddleware):
     _max_bytes_per_window = 500 * 1024 * 1024   # 500 MB/60s
     _max_requests_per_window = 6000             # 6000 req/60s
 
+    # クラスレベルで保持して admin endpoint からも参照できるようにする
+    # (admin による「制限リセット」機能が backend/routers/admin_security.py から
+    #  ExfilRateLimitMiddleware.reset_user(uid) で利用される)
+    import threading as _th_cls_init
+    _state_lock = _th_cls_init.Lock()
+    _state: dict[int, list] = {}  # {user_id: [ts_start, bytes, count, alerted]}
+
     def __init__(self, app):
         super().__init__(app)
-        import threading as _th
-        self._lock = _th.Lock()
-        self._state: dict[int, list] = {}  # {user_id: [ts_start, bytes, count, alerted]}
+        # インスタンス側のロック/state はクラス側を共有
+        self._lock = type(self)._state_lock
+
+    @classmethod
+    def snapshot(cls) -> dict:
+        """admin UI 用の現在状態スナップショット (user_id 別)."""
+        import time as _t
+        now = _t.time()
+        out: dict[int, dict] = {}
+        with cls._state_lock:
+            for uid, st in cls._state.items():
+                # st = [ts_start, bytes, count, alerted]
+                age = max(0.0, now - st[0]) if st else 0
+                out[uid] = {
+                    "window_age_sec": round(age, 1),
+                    "bytes": int(st[1]),
+                    "requests": int(st[2]),
+                    "alerted": bool(st[3]),
+                    "near_hard_block_req": st[2] > cls._max_requests_per_window * 0.5,
+                    "near_hard_block_bytes": st[1] > cls._max_bytes_per_window * 0.5,
+                }
+        return out
+
+    @classmethod
+    def reset_user(cls, user_id: int) -> bool:
+        """指定 user の exfil rate state をクリア."""
+        with cls._state_lock:
+            return cls._state.pop(int(user_id), None) is not None
 
     async def dispatch(self, request: StarletteRequest, call_next):
         path = request.url.path
