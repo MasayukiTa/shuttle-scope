@@ -421,8 +421,41 @@ def _seed_admin_if_needed(db: Session) -> None:
 
 # ── ログイン ──────────────────────────────────────────────────────────────────
 
+# Round62 で 104ms のタイミング差が観測されたため、login 処理全体を最小総時間 (≥1.2s)
+# まで pad することで bcrypt + DB I/O の差分を観測不能にする (CWE-204 対策の固定時間化)。
+# 1.2s は P99 で実測される実成功・失敗いずれの時間より長くなるよう設定。
+_LOGIN_MIN_RESPONSE_SEC = 1.2
+
+def _login_constant_time_pad(start_ts: float) -> None:
+    """login 処理開始からの経過時間が _LOGIN_MIN_RESPONSE_SEC 未満なら sleep で補う."""
+    import time as _t
+    elapsed = _t.perf_counter() - start_ts
+    remaining = _LOGIN_MIN_RESPONSE_SEC - elapsed
+    if remaining > 0:
+        _t.sleep(remaining)
+
+
+def _pad_and_raise(start_ts: float, status_code: int, detail: str) -> None:
+    """指定ステータスを raise する前に固定時間パディングを行う."""
+    _login_constant_time_pad(start_ts)
+    raise HTTPException(status_code=status_code, detail=detail)
+
+
 @router.post("/login", response_model=LoginResponse)
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    import time as _t_login
+    _login_t0 = _t_login.perf_counter()
+    try:
+        return _login_impl(req, request, db, _login_t0)
+    except HTTPException as e:
+        # 認証失敗系 (401/429) のみ固定時間パディングを適用してから再 raise
+        # 成功 (200) は user 経験を損なわないようパッドしない
+        if e.status_code in (401, 422, 429):
+            _login_constant_time_pad(_login_t0)
+        raise
+
+
+def _login_impl(req: "LoginRequest", request: Request, db: Session, _login_t0: float):
     ip = _get_ip(request)
     _check_ip_rate_limit(ip)
     from backend.utils.control_plane import allow_seed_admin, allow_select_login
