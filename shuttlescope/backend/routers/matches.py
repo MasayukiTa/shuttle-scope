@@ -222,6 +222,39 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
                 status_code=422,
                 detail="video_url must start with http:// or https://",
             )
+        # round65 発見: SSRF 候補 IP / loopback / link-local / private は保存時点で拒否
+        # (download 時の validate_external_url が redirect で迂回される可能性も塞ぐため
+        #  PUT/POST 段階でも host 名解決をチェックする)
+        try:
+            from urllib.parse import urlparse as _urlparse
+            import ipaddress as _ipa
+            _parsed = _urlparse(vu)
+            _host = (_parsed.hostname or "").strip()
+            # IP 直接指定の SSRF を拒否
+            if _host:
+                try:
+                    _ip = _ipa.ip_address(_host)
+                    if (_ip.is_loopback or _ip.is_private or _ip.is_link_local
+                            or _ip.is_reserved or _ip.is_multicast or _ip.is_unspecified):
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"video_url host {_host} は内部/予約 IP のため保存できません",
+                        )
+                except ValueError:
+                    # IP ではなくホスト名 → 通す (download 時に validate_external_url が再検証)
+                    pass
+                # ホスト名でも `localhost` 系は明示的に拒否
+                _hl = _host.lower()
+                if _hl in ("localhost", "localhost.localdomain", "ip6-localhost"):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="video_url に localhost は指定できません",
+                    )
+        except HTTPException:
+            raise
+        except Exception:
+            # parse 失敗 = フォーマット異常、422 で返す
+            raise HTTPException(status_code=422, detail="video_url のパースに失敗しました")
     # video_local_path の path traversal 防御
     # `server://{upload_id}` または絶対 / 相対パスのいずれでも、`..` / null / 制御文字を拒否
     vlp = getattr(body, "video_local_path", None)
