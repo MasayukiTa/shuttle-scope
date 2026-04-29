@@ -902,7 +902,15 @@ async function startApp(): Promise<void> {
     }
   }
 
-  pythonProcess = startPythonBackend()
+  // SKIP_BACKEND_SPAWN=1 のときは backend 起動を Electron 外 (Scheduled Task 等) に委譲する。
+  // 遠隔運用 (連休中など) で SSH からのみ backend を再起動可能にするためのフック。
+  if (process.env.SKIP_BACKEND_SPAWN === '1' || process.env.SKIP_BACKEND_SPAWN === 'true') {
+    console.log('[Python] SKIP_BACKEND_SPAWN set; expecting external supervisor on port 8765')
+    pushBackendLog('[Python] SKIP_BACKEND_SPAWN set; not spawning python from Electron')
+    pythonProcess = null
+  } else {
+    pythonProcess = startPythonBackend()
+  }
 
     // localfile:// プロトコルハンドラーを登録（ウィンドウ作成前に必要）
     registerLocalFileProtocol()
