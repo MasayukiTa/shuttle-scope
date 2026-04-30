@@ -14,6 +14,138 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-04-30
+
+### CI Restoration on Windows and Linux
+
+- Removed an invalid `_castlabs_drm_note` pseudo-package from `package.json` that was crashing `npm ci` with `EINVALIDPACKAGENAME` on both Windows and Linux runners. The Japanese explanatory note about the castlabs Electron build was relocated to `shuttlescope/docs/electron-drm.md`.
+- Made `test_database_bootstrap` read the latest Alembic head dynamically from the `versions/` directory instead of hard-coding a revision string, so future migrations no longer require test edits.
+- Converted module-level `_ADMIN_HEADERS = create_access_token(...)` constants in `test_db_maintenance`, `test_benchmark_devices`, `test_network_diag`, and `test_settings_router` to per-test `admin_headers` fixtures. The module-level form was being evaluated at import time, before pytest fixtures wired the in-memory DB, and was producing tokens that the running app rejected as `403 admin role required` for the rest of the suite.
+- Added a UTF-8 stdout wrapper to `scripts/check_security_conventions.py` so its Japanese log lines no longer break Windows CI under cp1252.
+- Backend tests, frontend tests, build, and security-conventions check now pass on both `ubuntu-latest` and `windows-latest` runners.
+
+### Code Scanning Cleanup (Critical and High)
+
+- Closed both Critical `py/command-line-injection` findings in `services/youtube_live_recorder.py`. Added a `_validate_url_for_subprocess` helper that rejects non-`http(s)://`, control characters, and any loopback / private / link-local / reserved / multicast / unspecified IP host before the URL ever reaches `yt-dlp` or `ffmpeg`. The yt-dlp invocations were also rewritten to insert `["--", url]` so a URL like `--exec=evil` cannot be reinterpreted as a yt-dlp flag, and the ffmpeg `-i` paths now require `http(s)://` URLs explicitly.
+- Closed the High `py/path-injection` finding in `routers/video_import.py` by reordering the `path_jail` check to run before any `Path.exists()` / `Path.is_file()` filesystem probe. Previously the filesystem state could be queried via differential response codes before the jail rejected an out-of-jail path.
+- Reviewed the remaining High and Medium findings (HMAC-SHA256 audit-chain hashing, `path_jail.py` self-resolve, Electron `webSecurity:false` on the YouTube live preview window) and either fixed or formally dismissed them with rationale recorded on the alert.
+- Removed `webSecurity: false` from the YouTube live preview `BrowserWindow` so Same-Origin and CSP enforcement remain on; the window is captured at the OS level via `desktopCapturer` so cross-origin DOM access was never required.
+
+### Emergency Token Revocation Restored
+
+- Fixed two compounding bugs that had silently disabled `POST /api/admin/security/revoke_all_tokens`. First, the sentinel marker stored in `revoked_tokens.jti` (`"__mass_revoke_<isoformat>"`) overran `VARCHAR(36)` because the ISO timestamp included microseconds, so the row never persisted (`revoked_marker_added: false`). Second, the recovery path read the timestamp back via naive `datetime.fromisoformat(...).timestamp()`, which on a JST host treated the naive datetime as local time and produced an epoch value 9 hours earlier than the actual revoke moment, allowing tokens issued in the preceding 9 hours to keep authenticating.
+- After the fixes the emergency revoke now persists a sentinel that fits the column, recovers it as UTC, and rejects every token with `iat < mass_revoke_at` exactly as documented in the incident-response runbook. The behaviour was verified end-to-end against the live tunnel: an old admin token returned 401 within the 60s sentinel-cache TTL, and a fresh re-login worked.
+
+### SSRF Hardening on Stored Video URLs
+
+- `PUT /api/matches/{id}` previously accepted a `video_url` like `http://169.254.169.254/...` (cloud metadata), `http://127.0.0.1/...`, `http://[::1]:.../`, or `http://localhost/...` and persisted it. The actual SSRF surface was at download time, but storing those URLs left them ready to fire if any future code path read them less carefully.
+- Added an `ipaddress`-based early reject at the router so the value never reaches the database when its host resolves to a loopback, private, link-local, reserved, multicast, or unspecified IP, or to a `localhost`-family hostname. Public hostnames continue to be accepted; download-time validation still applies as the second layer.
+
+### Security Headers Tightened
+
+- Added a full `Content-Security-Policy` to `text/html` responses (HTML pages had no CSP previously, only the `application/json` API responses did). The policy is `default-src 'self'`-based with `script-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`, and `upgrade-insecure-requests`.
+- Changed `Permissions-Policy` for `camera` and `microphone` from `()` (deny all) to `(self)` so the R-1 sender flow's `getUserMedia()` actually works; `geolocation` stays fully denied.
+- Added `Cross-Origin-Resource-Policy: same-origin` and `Cross-Origin-Opener-Policy: same-origin` for additional Spectre and popup isolation.
+- Made the SPA hash-redirect catch-all return `404` for `api/*` and `ws/*` paths instead of redirecting to `/#/...` and ultimately serving the SPA HTML, which had been creating a 302 confusion on non-existent API endpoints (round60 J-1a / round63 Z-1).
+- Forced `PUBLIC_MODE=1`, `HIDE_API_DOCS=1`, and `HIDE_STACK_TRACES=1` from the backend supervisor's spawn environment so production hardening is on regardless of `.env.development`. As a result CORS no longer answers `Access-Control-Allow-Origin: *` on authenticated origins; only the configured tunnel host is allowed and arbitrary origins are rejected at preflight with 400.
+
+### Login Timing Channel Closed
+
+- Wrapped `POST /api/auth/login` so failure-class responses (401 / 422 / 429) are padded to a constant minimum of 2.5 seconds plus 0–150 ms of jitter. Earlier rounds had observed a roughly 100 ms difference between an existing-user-wrong-password path and an unknown-user path because `_on_login_failure` performed an extra DB write that the dummy-bcrypt sanity path did not. The padding compresses the relative difference to about 3.5 percent and buries the residual in the random jitter, making practical username enumeration via login timing infeasible.
+
+### Admin Visibility for Per-User Limits
+
+- Added two admin-only endpoints under `admin_security`:
+  - `GET /admin/security/user_limits` returns each user's current `active_uploads`, `exfil_window` counters, `failed_attempts`, lockout state, and a derived `is_limited` flag.
+  - `POST /admin/security/user_limits/{user_id}/reset` clears the chosen subset of state. The body now accepts `exfil`, `uploads`, `failed_attempts`, and `lock` flags so admins can clear a single category instead of resetting everything (the old all-or-nothing behaviour is preserved as the default when no flags are passed).
+- `ExfilRateLimitMiddleware` exposes class-level `snapshot()` and `reset_user()` methods used by the new endpoints. The exfil counters are now visible from the admin UI rather than hidden in process memory.
+- The user list in `UserManagementPage.tsx` gained four chip badges — 🔒 lock, ⚠ failed-attempts, UL-saturated, EXFIL — plus per-category reset buttons and a separate "all" reset under `RotateCcw`. The columns are sortable so a saturated user is easy to spot at a glance.
+- The admin audit log now renders `created_at` in `Asia/Tokyo` via `toLocaleString` while keeping the raw UTC ISO string in the `title` attribute for traceability.
+
+### R-1 Streaming Upload, Magic-Bytes Bypass Defence, and 50 GB Cap
+
+- Added a `streaming` flag to `UploadSession` (Alembic `0022`) so MediaRecorder-style chunk uploads — which never know the final file size in advance — can be accepted. With `streaming=true`, init creates an empty `.part`, chunks are appended in strict `chunk_index == received_count` order, and the final file size is determined at finalize time. Non-streaming uploads keep the original sparse-file pre-allocation flow.
+- Tightened the chunk handler so an out-of-order chunk for `chunk_index > 0` is rejected with 409 unless chunk 0 has already been received. Without this, an attacker could push HTML or other payloads as chunks 1..N and then send a valid mp4 header at chunk 0, slipping past the existing magic-bytes verification on the first byte.
+- Raised `MAX_UPLOAD_SIZE` from 5 GB to 50 GB so high-bitrate camera output is realistic. The streaming path enforces the same upper bound as a running-total cap during chunk receipt rather than as a precise pre-allocation.
+- Updated `useServerSideRecording.ts` to send `streaming: true` and to use a real `multipart/form-data` chunk body (the previous `Content-Type: application/octet-stream` send was incompatible with the FastAPI `Form/File` endpoint and would have failed in production).
+
+### Unattended Operation Plumbing for the Connect Holiday
+
+- Introduced `backend_supervisor.ps1`, a Global-Mutex-protected daemon that supervises the `.venv` Python with the same six environment variables Electron passes (`API_PORT`, `LAN_MODE`, `ENVIRONMENT=production`, `PYTHONUNBUFFERED`, `PYTHONUTF8`, `PYTHONIOENCODING`), redirects stdout / stderr to log files with 10 MB rotation, and restarts the backend with exponential backoff (5 / 10 / 30 / 60 / 120 / 300 s) on crash. `install_supervisor.ps1` registers it as a Scheduled Task with `/SC ONSTART /RU SYSTEM /RL HIGHEST` so it survives logoff and reboots.
+- Reinstalled `cloudflared` as a real Windows service (`cloudflared --config <path> service install`) with `sc.exe failure cloudflared reset= 86400 actions= restart/5000/restart/15000/restart/60000`. The previous setup had `cloudflared.exe` registered as a service binary but with no arguments, while the actual tunnel was being run by a separate `Start-Process` child of `start.bat`; killing that process cut the tunnel and confirmed the service shim was inert.
+- Verified end-to-end that killing the live tunnel-run process makes the SCM-managed instance take over within a single SSH reconnect window, so a tunnel crash during the connect-holiday absence will self-heal in tens of seconds.
+- Added `electron/main.ts` support for a `SKIP_BACKEND_SPAWN=1` env so the desktop app can intentionally not spawn its own Python child, letting an external supervisor own port 8765 instead of fighting the Electron-spawned process for the same port.
+
+### Security Verification Rounds 58 to 105
+
+- Recorded a long sweep of attack rounds against the live tunnel:
+  - 58 (R-1/2/3 critical 1–7), 59 + 59b (chunk-0 enforcement, streaming, Content-Encoding, chunk_index OOB, empty chunk),
+  - 60 (JWT alg=none / exp / jti tampering, mass-assignment, CSRF, worker traversal, session-code guessing),
+  - 61 (static-file leak probes, CORS preflight, internal-API exposure),
+  - 62 (login user-enumeration timing — found and fixed),
+  - 63 (concurrent finalize / abort race, JWT replay),
+  - 66 + 66b (WebSocket outer-rejection layer with and without a real session),
+  - 67 (auth-timing horizontal sweep),
+  - 68 (CSP / Permissions / COOP / CORP audit — found and fixed), 69 (stored-injection survey),
+  - 71 (account recovery, approval, email-enum), 78 (`npm audit` and `pip-audit`, surfaced `CVE-2026-3219` in pip),
+  - 86 (RBAC matrix on admin endpoints), 89 / 90 (cache-poisoning regression, surface confirmed empty),
+  - 92 (mass_revoke — found two compounding critical bugs documented above),
+  - 95 (stored-log injection, confirmed JSON-escaped on save),
+  - 105 (DNS authentication audit — `SPF ~all` / `DMARC` missing, deferred to Cloudflare DNS).
+
+## 2026-04-29
+
+### Image-Heavy Round Bundles 58 / 59 / 59b / 60
+
+- The dedicated security verification rounds are documented under `2026-04-30` above; the same day's commit history pushed several round scripts and validation MD entries that this changelog folds into the higher-level summary rather than reproducing line-by-line.
+
+### R-1 Sender-Side Server Recording
+
+- Added `useServerSideRecording.ts` and `CameraSenderPage.tsx` plumbing so the camera sender records to the server through `/v1/uploads/video/init|chunk|finalize` rather than only producing a P2P WebRTC stream that disappears at session end. The on-stop and `camera_deactivate` paths now finalise the upload deterministically.
+- Added a `ServerVideoArtifact` table and finalize-time creation so each completed sender upload is enumerable for downstream worker / archive processing.
+
+### R-2 LAN-First Endpoint Resolution
+
+- Added `src/utils/preferredEndpoint.ts` which races configured candidate hosts (LAN IPs versus the Cloudflare tunnel) with a 1 s timeout and a 30 s cache, so a sender on the same Wi-Fi as the operator PC uses a `192.168.*` direct path instead of round-tripping through Cloudflare.
+
+### R-3 Worker HTTP File Sharing (Preliminary)
+
+- Added a worker token authentication helper, an `internal_videos.py` router with three endpoints (`list_artifacts`, `stream_artifact` with HTTP Range, `mark_synced`), an in-memory IP rate limit, and `is_allowed_video_path` enforcement so a remote worker can pull the persisted sender uploads. The whole router is `include_in_schema=False` and gated by the worker token; it is shipped as the preliminary HTTP-only design since on-site worker hardware is not yet a given.
+
+### Cloudflare Named Tunnel Support
+
+- Updated `routers/sessions.py` so `coach_urls`, `camera_sender_urls`, and `ws_url_template[s]` return `https://app.shuttle-scope.com/...` (or `wss://`) URLs first when the named tunnel is active.
+- Added a `dashboard_managed` fallback path to `routers/tunnel.py` for setups where the tunnel is configured purely from the Cloudflare Zero Trust dashboard rather than from a local `config.yml`.
+
+### Phase Pay-1 Billing Foundation
+
+- Wired up Stripe Checkout, KOMOJU Hosted Sessions, and a Univapay stub provider behind a feature flag (`VITE_SS_BILLING_UI_ENABLED`, off by default for now). Receipt PDFs are generated with a Heisei Kaku Gothic CID font, invoice numbers, and legal information sourced entirely from environment variables (`SS_LEGAL_*`, `SS_INVOICE_REGISTRATION_NUMBER`, etc.). All billing endpoints are `include_in_schema=False`.
+
+### Phase M-A Email Authentication Foundation
+
+- Implemented register / verify / password-reset / invitation flows around a `Mailer` abstraction that defaults to the Cloudflare Worker + MailChannels backend documented in `private_docs/2026-04-28_mail_auth_phase_b_to_d_manual_runbook.md`. Email login (`if "@" in identifier`) is supported alongside username login.
+- Added the `awaiting_admin_approval` flag and a `PendingUsersPage` admin UI so a self-registered user lands as `role="player"` with `awaiting_admin_approval=True` until reviewed.
+- `SS_REGISTRATION_ENABLED=0` is the default so the public registration flow is closed unless explicitly opted in.
+
+### Phase A / B / C Data Protection
+
+- Added Fernet-based field encryption, a `pyzipper` AES-256 backup pathway, an HMAC-signed export package format with a `consumed_export_nonces` replay-defence table, an admin emergency-revoke API, and the `incident_response/` runbook set.
+
+## 2026-04-28
+
+### YouTube Live Recording Workflow
+
+- Added a YouTube live recording flow with castlabs Electron / DRM detection and cookie-based auth so paywalled streams (e.g. NHK+ / niconico live) can be captured. Implementation lives in `services/youtube_live_recorder.py`.
+- Added `routers/youtube_live.py`, a `_RECORD_ROOT` job model, `RecordJob` lifecycle, and the path-jail-aware HDD archive flow. The HDD archive root is chosen by `SS_LIVE_ARCHIVE_ROOT` and stays inside `is_allowed_video_path` for all writes so unrelated drone footage on the same drive cannot be touched accidentally.
+
+### HDD Archive and Path Jail
+
+- Added `backend/utils/path_jail.py` and a related `is_allowed_video_path` / `assert_allowed_video_path` API used across `youtube_live_recorder`, `video_import`, `internal_videos`, and the matches PUT endpoint. The jail accepts only paths under `backend/data`, `SS_VIDEO_ROOT`, `SS_LIVE_ARCHIVE_ROOT`, or `SS_VIDEO_EXTRA_ROOTS`, with realpath canonicalisation to defeat symlink and `..` games.
+
+### Phase 1 Video Token Privacy
+
+- Replaced the raw `video_local_path` exposure in API responses with an opaque `video_token` UUID, an `app://video/{token}` Electron protocol handler, and a `user_can_access_match`-gated lookup so accessing a video requires both the token and the team-scope authorisation that already gates match access. The previous design allowed a coach with a stale URL to keep playing a match they had been moved off of.
+
 ## 2026-04-27
 
 ### Shot Annotation and Centre-of-Gravity Detection

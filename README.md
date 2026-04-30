@@ -153,6 +153,13 @@ These areas are useful for development and internal testing, but CV quality stil
 - device manager and camera sender pages
 - viewer page and grouped device / handoff UX groundwork
 - tunnel-provider selection and remote health status groundwork
+- Cloudflare named tunnel deployment at `https://app.shuttle-scope.com` with SSH-via-tunnel for unattended remote operation
+- email-based authentication (register / verify / password reset / invitation) backed by a Cloudflare Worker + MailChannels mailer abstraction; admin approval gates self-registered users
+- sender-side server recording (R-1) so iOS / Android camera senders persist video to the server through chunked upload rather than only producing a P2P stream
+- LAN-first endpoint resolution (R-2) on the sender so devices on the same Wi-Fi take a `192.168.*` direct path instead of round-tripping through Cloudflare
+- worker HTTP file-sharing endpoints (R-3, preliminary) so an out-of-band worker can pull persisted sender uploads via authenticated HTTP Range
+- supervisor + Scheduled Task + cloudflared Windows service stack for unattended operation across long absences (auto-restart on crash, automatic startup on boot)
+- admin user-limit visibility chips (lock / failed-attempts / upload-saturated / exfil-rate) with per-category reset, and an audit log rendered in JST
 
 Remote and browser-based video workflows exist, but they should still be treated as experimental compared with the core local workflow.
 
