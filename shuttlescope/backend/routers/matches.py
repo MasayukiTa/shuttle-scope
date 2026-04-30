@@ -255,8 +255,18 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
         except Exception:
             # parse 失敗 = フォーマット異常、422 で返す
             raise HTTPException(status_code=422, detail="video_url のパースに失敗しました")
-    # video_local_path の path traversal 防御
-    # `server://{upload_id}` または絶対 / 相対パスのいずれでも、`..` / null / 制御文字を拒否
+    # video_local_path の検証
+    # 攻撃モデル: 別ユーザがアップロードした動画 (server://X.mp4) を自分の match に
+    # PUT で差し替えると、本来の team scope を迂回してその動画を再生できる
+    # (confused-deputy)。`server://` のみがこの経路に該当するため厳格に禁止する。
+    #
+    # 受理する形式:
+    #   - 空文字 ""           : video link をクリア (URL 切替時など、元動画ファイルは試合削除で消える)
+    #   - "localfile://..."   : Electron デスクトップアプリで PC ローカルファイルを参照 (server には
+    #                           ファイルが置かれず、サーバ側 confused-deputy は成立しない。
+    #                           path_jail で許可ルート内に限定する)
+    #   - "server://..."      : **PUT 禁止**。finalize_upload が match_id 指定時に内部設定する
+    #                           正規経路のみ受け付ける。差し替えは試合削除 → 新規アップロードで行う。
     vlp = getattr(body, "video_local_path", None)
     if vlp is not None and isinstance(vlp, str):
         if len(vlp) > 1000:
@@ -264,14 +274,25 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
         import re as _re_vlp
         if _re_vlp.search(r"[\x00-\x1f\x7f]", vlp):
             raise HTTPException(status_code=422, detail="video_local_path contains control characters")
-        # path traversal 拒否: `..` `//` `\\..\\` 等
         if ".." in vlp or "\\.." in vlp or "/.." in vlp:
             raise HTTPException(status_code=422, detail="video_local_path contains path traversal")
-        # 受理する形式は `server://{uuid}{ext}` または `localfile://...` のみ (プロトコル以外はアプリ実装で未使用)
-        if not (vlp.startswith("server://") or vlp.startswith("localfile://") or vlp == ""):
-            raise HTTPException(status_code=422, detail="video_local_path must be server:// or localfile:// scheme")
-        # Phase A 連動: localfile:/// は path_jail 許可ルート内に限定する。
-        # HDD のドローン映像や OS ファイル等への登録を PUT 時点で遮断する。
+        # server:// は finalize 内部のみが書ける。PUT 経由は confused-deputy になるので禁止。
+        if vlp.startswith("server://"):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "video_local_path の server:// 直書き込みは禁止されています "
+                    "(confused-deputy 防止)。動画追加は /v1/uploads 経由、"
+                    "差し替えは試合削除 → 新規アップロードで行ってください。"
+                ),
+            )
+        # それ以外は localfile:// または空文字のみ
+        if not (vlp.startswith("localfile://") or vlp == ""):
+            raise HTTPException(
+                status_code=422,
+                detail="video_local_path は空文字 または localfile:// のみ受理されます",
+            )
+        # localfile:// は path_jail 許可ルート内に限定
         if vlp.startswith("localfile://"):
             from backend.utils.path_jail import is_allowed_video_path, allowed_video_roots
             from pathlib import Path as _P
@@ -700,6 +721,91 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
          details={"actor_role": ctx.role})
     # 削除前に関与選手を控えておく（削除後は辿れないため）
     affected_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
+
+    # ─── 動画ファイルの cascade 削除 ─────────────────────────────────────
+    # 試合削除 = 紐づく動画も削除する設計 (confused-deputy 防御の前提として、
+    # match と video_local_path は 1:1 で生まれて 1:1 で消える運用に統一する)。
+    # 対象:
+    #   - server://{uid}.mp4 → backend/videos/{uid}.mp4 を削除 + UploadSession 行を expired に
+    #   - server_video_artifacts → match_id 紐づきレコードを削除 + 実ファイルも削除
+    #   - localfile:///... は外部参照なので削除しない (Electron 配下のユーザ所有ファイルへの誤削除回避)
+    deleted_files: list[str] = []
+    deletion_errors: list[str] = []
+    try:
+        from backend.routers.uploads import _part_path, _final_path  # type: ignore
+        from backend.routers.uploads import UPLOAD_DIR as _UPLOAD_DIR  # type: ignore
+        from backend.utils.safe_path import safe_path as _safe_path
+        from backend.db.models import UploadSession as _US
+        from pathlib import Path as _P
+        import re as _re_uid
+
+        vlp = (match.video_local_path or "").strip()
+        if vlp.startswith("server://"):
+            rest = vlp[len("server://"):]
+            # rest = "{uid}{ext}" 形式想定
+            m_uid = _re_uid.match(r"^([0-9a-f-]{36})(\.[A-Za-z0-9]+)?$", rest)
+            if m_uid:
+                uid = m_uid.group(1)
+                # 確定ファイル削除 (safe_path で UPLOAD_DIR 外を防ぐ)
+                try:
+                    final_p = _safe_path(_UPLOAD_DIR, rest)
+                    if final_p.exists():
+                        final_p.unlink()
+                        deleted_files.append(str(final_p))
+                except Exception as exc:
+                    deletion_errors.append(f"final unlink: {exc}")
+                # .part 残骸も削除
+                try:
+                    part_p = _UPLOAD_DIR / f"{uid}.part"
+                    if part_p.exists():
+                        part_p.unlink()
+                        deleted_files.append(str(part_p))
+                except Exception as exc:
+                    deletion_errors.append(f"part unlink: {exc}")
+                # UploadSession 行を aborted に (FK 整合性 / GC 対象化)
+                try:
+                    us = db.get(_US, uid)
+                    if us is not None:
+                        us.status = "aborted"
+                except Exception as exc:
+                    deletion_errors.append(f"upload_session: {exc}")
+
+        # ServerVideoArtifact (R-1 sender 録画) の cascade 削除
+        try:
+            from backend.db.models import ServerVideoArtifact as _SVA
+            arts = db.query(_SVA).filter(_SVA.match_id == match_id).all()
+            for art in arts:
+                fp = (art.file_path or "").strip()
+                if fp:
+                    try:
+                        p = _P(fp)
+                        # path_jail で UPLOAD_DIR or videos 配下に限定 (誤削除防止)
+                        if _UPLOAD_DIR in p.resolve().parents or p.resolve() == _UPLOAD_DIR:
+                            if p.exists() and p.is_file():
+                                p.unlink()
+                                deleted_files.append(str(p))
+                    except Exception as exc:
+                        deletion_errors.append(f"sva file: {exc}")
+                db.delete(art)
+        except Exception as exc:
+            deletion_errors.append(f"sva query: {exc}")
+    except Exception as exc:
+        # cascade 削除での失敗は試合削除そのものを止めない (試合 DB レコードは消す)
+        deletion_errors.append(f"cascade outer: {exc}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    # cascade 削除を audit log に記録
+    if deleted_files or deletion_errors:
+        _log(db, "match_video_cascade_deleted", user_id=ctx.user_id,
+             resource_type="match", resource_id=match_id,
+             details={
+                 "deleted_files": deleted_files,
+                 "errors": deletion_errors,
+             })
+
     db.delete(match)
     db.commit()
     response_cache.bump_players(affected_players)
