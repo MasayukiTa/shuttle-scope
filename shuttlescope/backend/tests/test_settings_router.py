@@ -12,7 +12,11 @@ import pytest
 from fastapi.testclient import TestClient
 from backend.utils.jwt_utils import create_access_token
 
-_ADMIN_HEADERS2 = {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
+# Module-level constant replaced by lazy fixture (CI 403 fix)
+@pytest.fixture()
+def admin_headers():
+    """Per-test fresh admin token (lazy fixture pattern, see test_db_maintenance.py)."""
+    return {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
 
 
 ADMIN_USER = "admin_settings"
@@ -105,8 +109,8 @@ class TestPutSettings:
 
 
 class TestGetDevices:
-    def test_returns_expected_keys(self, client):
-        r = client.get("/api/settings/devices", headers=_ADMIN_HEADERS2)
+    def test_returns_expected_keys(self, client, admin_headers):
+        r = client.get("/api/settings/devices", headers=admin_headers)
         assert r.status_code == 200
         j = r.json()
         assert j["success"] is True

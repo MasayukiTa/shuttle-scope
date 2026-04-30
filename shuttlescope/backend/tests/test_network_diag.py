@@ -10,7 +10,11 @@ import pytest
 from fastapi.testclient import TestClient
 from backend.utils.jwt_utils import create_access_token
 
-_ADMIN_HEADERS = {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
+# Module-level constant replaced by lazy fixture (CI 403 fix)
+@pytest.fixture()
+def admin_headers():
+    """Per-test fresh admin token (lazy fixture pattern, see test_db_maintenance.py)."""
+    return {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
 
 
 @pytest.fixture()
@@ -21,7 +25,7 @@ def client(test_engine):
 
 
 class TestDiagnostics:
-    def test_returns_expected_shape(self, client, monkeypatch):
+    def test_returns_expected_shape(self, client, monkeypatch, admin_headers):
         from backend.routers import network_diag as nd
 
         async def fake_probe(host, port, timeout=3.0):
@@ -30,7 +34,7 @@ class TestDiagnostics:
         monkeypatch.setattr(nd, "_probe_tcp", fake_probe)
         monkeypatch.setattr(nd, "_get_lan_ips", lambda: ["192.168.1.10"])
 
-        r = client.get("/api/network/diagnostics", headers=_ADMIN_HEADERS)
+        r = client.get("/api/network/diagnostics", headers=admin_headers)
         assert r.status_code == 200
         data = r.json()["data"]
 
@@ -48,7 +52,7 @@ class TestDiagnostics:
         assert isinstance(data["transport_ladder"], list)
         assert "probe_duration_ms" in data
 
-    def test_failed_tcp_is_reported(self, client, monkeypatch):
+    def test_failed_tcp_is_reported(self, client, monkeypatch, admin_headers):
         from backend.routers import network_diag as nd
 
         async def fake_probe(host, port, timeout=3.0):
@@ -57,7 +61,7 @@ class TestDiagnostics:
         monkeypatch.setattr(nd, "_probe_tcp", fake_probe)
         monkeypatch.setattr(nd, "_get_lan_ips", lambda: [])
 
-        r = client.get("/api/network/diagnostics", headers=_ADMIN_HEADERS)
+        r = client.get("/api/network/diagnostics", headers=admin_headers)
         assert r.status_code == 200
         data = r.json()["data"]
         assert data["capabilities"]["tcp_443"]["ok"] is False
