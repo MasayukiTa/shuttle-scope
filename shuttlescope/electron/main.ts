@@ -605,12 +605,15 @@ ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: stri
   _ytDrmToken = token
 
   // 1. YouTube を表示するウィンドウを開く（ユーザーが視聴しながら録画できる）
+  // この Window は YouTube ページを描画して desktopCapturer で OS-level に
+  // キャプチャするだけ。DOM/CSP cross-origin アクセスは行わないので、
+  // webSecurity を default (=true) のままにすることで Same-Origin / CSP 防御を維持する
+  // (CodeQL js/disabling-electron-websecurity 対策)。
   _ytLiveWindow = new BrowserWindow({
     width: 1280,
     height: 720,
     title: 'YouTube Live — ShuttleScope',
     webPreferences: {
-      webSecurity: false,
       contextIsolation: true,
       nodeIntegration: false,
     },
