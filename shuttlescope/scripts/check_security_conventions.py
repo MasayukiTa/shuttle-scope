@@ -16,9 +16,16 @@ CI への組み込み例 (.github/workflows/ci.yml):
 from __future__ import annotations
 
 import argparse
+import io
 import re
 import sys
 from pathlib import Path
+
+# Windows CI (cp1252) で日本語 print が UnicodeEncodeError を起こすため強制 UTF-8
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+if sys.stderr.encoding and sys.stderr.encoding.lower() != "utf-8":
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
 ROOT = Path(__file__).resolve().parent.parent / "src"
 
