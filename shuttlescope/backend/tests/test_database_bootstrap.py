@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import tempfile
+from pathlib import Path
 
 from sqlalchemy import create_engine
 
@@ -22,6 +24,23 @@ def _fetchall(path: str, query: str):
         con.close()
 
 
+# 新しい migration を追加するたびにテストの hard-coded version を更新するのは
+# メンテナンス漏れの温床なので、versions/ ディレクトリを実走査して最新 head を求める。
+def _alembic_head_revision() -> str:
+    versions_dir = Path(__file__).resolve().parent.parent / "db" / "migrations" / "versions"
+    nums = []
+    for p in versions_dir.glob("*.py"):
+        m = re.match(r"^(\d{4})_", p.name)
+        if m:
+            nums.append(m.group(1))
+    if not nums:
+        raise RuntimeError(f"no migration files found under {versions_dir}")
+    return max(nums)
+
+
+HEAD = _alembic_head_revision()
+
+
 def test_bootstrap_fresh_db_creates_schema_and_stamps_head():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
@@ -34,7 +53,7 @@ def test_bootstrap_fresh_db_creates_schema_and_stamps_head():
         dominant_hand = _fetchall(path, "PRAGMA table_info(players)")
         indexes = _fetchall(path, "PRAGMA index_list(players)")
 
-        assert version == [("0015",)]
+        assert version == [(HEAD,)]
         assert any(col[1] == "dominant_hand" and col[2] == "VARCHAR(10)" and col[3] == 0 for col in dominant_hand)
         assert any(idx[1] == "uix_players_uuid" for idx in indexes)
     finally:
@@ -60,7 +79,7 @@ def test_bootstrap_legacy_db_runs_compatibility_and_migration():
         version = _fetchall(path, "SELECT version_num FROM alembic_version")
         dominant_hand = _fetchall(path, "PRAGMA table_info(players)")
 
-        assert version == [("0015",)]
+        assert version == [(HEAD,)]
         assert any(col[1] == "dominant_hand" and col[2] == "VARCHAR(10)" and col[3] == 0 for col in dominant_hand)
         assert any(col[1] == "uuid" for col in dominant_hand)
     finally:
@@ -78,7 +97,7 @@ def test_bootstrap_versioned_db_is_idempotent_on_repeated_startup():
         eng.dispose()
 
         version = _fetchall(path, "SELECT version_num FROM alembic_version")
-        assert version == [("0015",)]
+        assert version == [(HEAD,)]
     finally:
         eng.dispose()
         if os.path.exists(path):
