@@ -12,7 +12,11 @@ import pytest
 from fastapi.testclient import TestClient
 from backend.utils.jwt_utils import create_access_token
 
-_ADMIN_HEADERS3 = {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
+# Module-level constant replaced by lazy fixture (CI 403 fix)
+@pytest.fixture()
+def admin_headers():
+    """Per-test fresh admin token (lazy fixture pattern, see test_db_maintenance.py)."""
+    return {"Authorization": f"Bearer {create_access_token(user_id=1, role='admin')}"}
 
 
 # ─── probe_all() ユニットテスト ────────────────────────────────────────────────
@@ -96,32 +100,32 @@ def client(test_engine):
 
 
 class TestBenchmarkAPI:
-    def test_get_devices_returns_list(self, client):
+    def test_get_devices_returns_list(self, client, admin_headers):
         """GET /api/v1/benchmark/devices が配列を返すこと"""
-        resp = client.get("/api/v1/benchmark/devices", headers=_ADMIN_HEADERS3)
+        resp = client.get("/api/v1/benchmark/devices", headers=admin_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
         assert len(data) >= 1
 
-    def test_get_devices_cpu_present(self, client):
+    def test_get_devices_cpu_present(self, client, admin_headers):
         """CPU デバイスが含まれること"""
-        resp = client.get("/api/v1/benchmark/devices", headers=_ADMIN_HEADERS3)
+        resp = client.get("/api/v1/benchmark/devices", headers=admin_headers)
         assert resp.status_code == 200
         data = resp.json()
         cpu_devices = [d for d in data if d.get("device_type") == "cpu"]
         assert len(cpu_devices) >= 1
 
-    def test_post_run_returns_job_id(self, client):
+    def test_post_run_returns_job_id(self, client, admin_headers):
         """POST /api/v1/benchmark/run が job_id を返すこと"""
         # まずデバイス一覧を取得して device_id を特定する
-        resp = client.get("/api/v1/benchmark/devices", headers=_ADMIN_HEADERS3)
+        resp = client.get("/api/v1/benchmark/devices", headers=admin_headers)
         assert resp.status_code == 200
         devices = resp.json()
         device_id = devices[0]["device_id"]
 
         # ジョブ実行リクエスト
-        resp = client.post("/api/v1/benchmark/run", headers=_ADMIN_HEADERS3, json={
+        resp = client.post("/api/v1/benchmark/run", headers=admin_headers, json={
             "device_ids": [device_id],
             "targets": ["statistics"],
             "n_frames": 5,
@@ -131,13 +135,13 @@ class TestBenchmarkAPI:
         assert "job_id" in data, f"job_id がレスポンスに含まれない: {data}"
         assert data["job_id"], "job_id が空"
 
-    def test_get_job_status(self, client):
+    def test_get_job_status(self, client, admin_headers):
         """GET /api/v1/benchmark/jobs/{job_id} がジョブ状態を返すこと"""
         # ジョブを作成
-        resp = client.get("/api/v1/benchmark/devices", headers=_ADMIN_HEADERS3)
+        resp = client.get("/api/v1/benchmark/devices", headers=admin_headers)
         device_id = resp.json()[0]["device_id"]
 
-        run_resp = client.post("/api/v1/benchmark/run", headers=_ADMIN_HEADERS3, json={
+        run_resp = client.post("/api/v1/benchmark/run", headers=admin_headers, json={
             "device_ids": [device_id],
             "targets": ["statistics"],
             "n_frames": 3,
@@ -145,14 +149,14 @@ class TestBenchmarkAPI:
         job_id = run_resp.json()["job_id"]
 
         # ジョブ状態を確認
-        status_resp = client.get(f"/api/v1/benchmark/jobs/{job_id}", headers=_ADMIN_HEADERS3)
+        status_resp = client.get(f"/api/v1/benchmark/jobs/{job_id}", headers=admin_headers)
         assert status_resp.status_code == 200
         job_data = status_resp.json()
         assert job_data["job_id"] == job_id
         assert job_data["status"] in ("pending", "running", "done", "failed")
         assert 0.0 <= job_data["progress"] <= 1.0
 
-    def test_get_nonexistent_job_returns_404(self, client):
+    def test_get_nonexistent_job_returns_404(self, client, admin_headers):
         """存在しない job_id は 404 を返すこと"""
-        resp = client.get("/api/v1/benchmark/jobs/nonexistent-job-id-12345", headers=_ADMIN_HEADERS3)
+        resp = client.get("/api/v1/benchmark/jobs/nonexistent-job-id-12345", headers=admin_headers)
         assert resp.status_code == 404
