@@ -107,14 +107,12 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks,
     # 再度拡張子チェック（シンボリックリンク越し対策）
     if path.suffix.lower() not in ALLOWED_VIDEO_EXTS:
         raise HTTPException(status_code=400, detail="動画ファイル以外は処理できません")
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="ファイルが存在しません")
-    if not path.is_file():
-        raise HTTPException(status_code=400, detail="ファイルパスを指定してください（ディレクトリ不可）")
 
-    # path_jail: 動画パスが許可されたルート（backend/data, ss_video_root,
-    # ss_live_archive_root, ss_video_extra_roots）の中にあることを確認する。
-    # HDD 上の他用途データ（ドローン映像等）への解析誤起動をここで遮断する。
+    # ⚠️ path_jail を **存在/種別チェックより前に** 実行する (CodeQL py/path-injection 対策)。
+    # exists() / is_file() を許可ルート外で呼ぶと、任意パスの存在情報を attacker が
+    # プローブできる side-channel になる (response code 差異)。
+    # backend/data, ss_video_root, ss_live_archive_root, ss_video_extra_roots 配下に
+    # 限定してから filesystem を触る。
     from backend.utils.path_jail import is_allowed_video_path, allowed_video_roots
     if not is_allowed_video_path(path):
         roots = [str(r) for r in allowed_video_roots()]
@@ -126,6 +124,12 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks,
                 f"必要であれば SS_VIDEO_EXTRA_ROOTS に追加してください。"
             ),
         )
+
+    # この時点で path は jail 内が保証されている → 安全に存在/種別チェック
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="ファイルが存在しません")
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail="ファイルパスを指定してください（ディレクトリ不可）")
 
     file_size = path.stat().st_size
     if file_size > _MAX_VIDEO_BYTES:
