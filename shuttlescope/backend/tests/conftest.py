@@ -11,6 +11,22 @@ from backend.db.database import Base
 from backend.utils import response_cache
 
 
+@pytest.fixture(autouse=True)
+def _reset_jwt_caches():
+    """各テストで JWT 関連のグローバル cache をクリアする。
+    test_database_bootstrap 等で同一プロセス内 DB 切替が起きると、
+    `_MASS_REVOKE_CACHE` に過去 DB のスナップショットが残って
+    後続テストの token を `mass-revoked` 扱いで 401 にする事故が観測されたため。
+    """
+    try:
+        from backend.utils.jwt_utils import _MASS_REVOKE_CACHE
+        _MASS_REVOKE_CACHE["ts"] = 0.0
+        _MASS_REVOKE_CACHE["value"] = None
+    except Exception:
+        pass
+    yield
+
+
 @pytest.fixture(scope="session")
 def test_engine():
     """Create one shared in-memory SQLite engine for the backend test session."""
