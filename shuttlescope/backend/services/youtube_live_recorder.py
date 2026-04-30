@@ -35,6 +35,46 @@ _PROBE_MIN_BYTES = 100_000
 SUPPORTED_BROWSERS = ("chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari")
 
 
+def _validate_url_for_subprocess(url: str) -> str:
+    """subprocess に渡す URL を厳格検証 (CodeQL py/command-line-injection 対策).
+
+    yt-dlp/ffmpeg はコマンド末尾の引数を URL として扱うが、`--exec=evil` 等の
+    flag-like な文字列を渡されると引数として解釈し任意コマンド実行に至る。
+    list-style subprocess + `--` 区切りで shell expansion は防げるが、yt-dlp 自身が
+    `--<flag>` を解釈する経路が残るため、URL 自体を http(s):// で始まる形式に制限し、
+    ハイフン始まりを排除する (multi-layer defense)。
+    """
+    if not isinstance(url, str):
+        raise ValueError("url must be string")
+    s = url.strip()
+    if not (s.startswith("http://") or s.startswith("https://")):
+        raise ValueError(f"url must start with http:// or https:// : {s[:50]!r}")
+    # 制御文字 / 改行を拒否
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in s):
+        raise ValueError("url contains control character")
+    # 内部 IP / localhost への SSRF を拒否 (round65 で routers/matches.py に追加した防御を本層にも適用)
+    try:
+        from urllib.parse import urlparse
+        import ipaddress as _ipa
+        parsed = urlparse(s)
+        host = (parsed.hostname or "").strip().lower()
+        if host in ("localhost", "localhost.localdomain", "ip6-localhost"):
+            raise ValueError(f"url host {host!r} not allowed")
+        if host:
+            try:
+                ip = _ipa.ip_address(host)
+                if (ip.is_loopback or ip.is_private or ip.is_link_local
+                        or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                    raise ValueError(f"url host {host!r} is internal/reserved IP")
+            except ValueError:
+                pass  # ホスト名 → public DNS 解決対象
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError("url parse failed")
+    return s
+
+
 def _archive_root() -> Optional[Path]:
     """設定から HDD アーカイブルートを取得する。未設定なら None。"""
     try:
@@ -103,9 +143,11 @@ def _get_hls_url(
     ytdlp = _ytdlp()
     if not ytdlp:
         return None
+    safe_url = _validate_url_for_subprocess(url)
+    # CodeQL py/command-line-injection 対策: `--` で残り引数を positional 扱いに固定
     cmd = [ytdlp, "-g", "--no-playlist", "--live-from-start"]
     cmd += _cookie_args(cookie_browser, cookie_file)
-    cmd.append(url)
+    cmd += ["--", safe_url]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
@@ -135,6 +177,10 @@ def probe_hls(
     probe_path = resolve_within(probe_dir / probe_name, _RECORD_ROOT)
     size = 0
 
+    # ffmpeg `-i <url>` の url が `-` 始まりだと flag として誤解釈されうるため弾く
+    if not (hls_url.startswith("http://") or hls_url.startswith("https://")):
+        logger.warning("[yt_live] probe rejected: hls_url not http(s)")
+        return False
     try:
         proc = subprocess.Popen(
             [ffmpeg, "-y", "-i", hls_url,
@@ -183,6 +229,13 @@ def _start_ffmpeg_recording(job_id: str, url: str, out_path: Path) -> RecordJob:
                         error="yt-dlp または ffmpeg が利用できません")
         _jobs[job_id] = job
         return job
+    # ffmpeg `-i <url>` の url 検証 (CodeQL py/command-line-injection 対策)
+    if not (hls_url.startswith("http://") or hls_url.startswith("https://")):
+        job = RecordJob(job_id=job_id, url=url, out_path=out_path,
+                        method="hls", status="error",
+                        error="hls_url が http(s):// で始まりません")
+        _jobs[job_id] = job
+        return job
     proc = subprocess.Popen(
         [ffmpeg, "-y", "-i", hls_url,
          "-c", "copy", "-movflags", "+faststart", str(out_path)],
@@ -207,11 +260,13 @@ def _start_ytdlp_recording(
                         error="yt-dlp が利用できません")
         _jobs[job_id] = job
         return job
+    safe_url = _validate_url_for_subprocess(url)
     cmd = [ytdlp, "--live-from-start", "--no-playlist",
            "-f", "best", "--merge-output-format", "mp4",
            "-o", str(out_path)]
     cmd += _cookie_args(cookie_browser, cookie_file)
-    cmd.append(url)
+    # CodeQL py/command-line-injection 対策: `--` 区切りで positional 扱いに固定
+    cmd += ["--", safe_url]
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     job = RecordJob(job_id=job_id, url=url, out_path=out_path,
                     method="hls_ytdlp", status="recording")
