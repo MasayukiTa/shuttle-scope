@@ -472,13 +472,33 @@ def check_export_match_scope(
 ) -> None:
     """試合エクスポートの権限チェック。
 
-    - analyst: 無制限
+    - admin:   無制限
+    - analyst: 自チーム選手が含まれる試合のみ (round126 V-5: 元実装は無制限で他チーム漏洩)
     - player:  対象試合すべてに自分の player_id が含まれる必要あり
     - coach:   対象試合に参加する全選手のうち 1 人以上が自チーム所属であれば可
                (対戦相手はチーム外でも許可する — コーチは自チームの試合を抜く)
     - role未設定: 拒否
     """
-    if ctx.is_analyst or ctx.is_admin:
+    if ctx.is_admin:
+        return
+    if ctx.is_analyst:
+        # round126 V-5 fix: analyst にも team scope を強制
+        team = (ctx.team_name or "").strip()
+        if not team:
+            raise HTTPException(status_code=403, detail="team_name 未設定")
+        for m in matches:
+            pids = _match_player_ids(m)
+            if not pids:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"試合 id={m.id} に選手情報がありません",
+                )
+            players = db.query(Player).filter(Player.id.in_(pids)).all()
+            if not any(_team_of(p) == team for p in players):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"試合 id={m.id} はあなたのチームの試合ではありません",
+                )
         return
     if ctx.is_player:
         if not ctx.player_id:
