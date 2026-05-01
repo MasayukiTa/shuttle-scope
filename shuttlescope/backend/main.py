@@ -1214,6 +1214,34 @@ async def _sa_statement_handler(request: StarletteRequest, exc: _SAStatementErro
     raise exc
 
 
+from json import JSONDecodeError as _JSONDecodeError
+
+
+@app.exception_handler(_JSONDecodeError)
+async def _json_decode_handler(request: StarletteRequest, exc: _JSONDecodeError):
+    """F-7 (round115) 周辺: 入力 JSON が Infinity/NaN 等で parse 失敗した場合は
+    400 で reject する。globally 5xx に流すと意図せず DoS シグナルになる。"""
+    return StarletteResponse(
+        '{"detail":"JSON 形式が不正です"}',
+        status_code=400,
+        media_type="application/json",
+    )
+
+
+@app.exception_handler(ValueError)
+async def _value_error_handler(request: StarletteRequest, exc: ValueError):
+    """JSON parse の orjson は ValueError を投げる経路もあるため同様に 400 化。"""
+    msg = str(exc)
+    if "json" in msg.lower() or "infinity" in msg.lower() or "nan" in msg.lower():
+        return StarletteResponse(
+            '{"detail":"JSON 形式が不正です (Infinity/NaN を含む)"}',
+            status_code=400,
+            media_type="application/json",
+        )
+    # 他の ValueError はグローバルハンドラに任せる
+    return await _global_exception_handler(request, exc)
+
+
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: StarletteRequest, exc: Exception):
     _logger = logging.getLogger("shuttlescope.unhandled")
