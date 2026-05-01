@@ -1,0 +1,9 @@
+name: "ShuttleScope CodeQL config"
+
+# Exclude attack-test scripts from analysis. These intentionally use weak
+# TLS / DES / unverified contexts / forged JWTs to verify the server REJECTS
+# them. CodeQL flags them as vulnerabilities, which is a false positive for
+# this kind of red-team test code.
+paths-ignore:
+  - "shuttlescope/scripts/security_ci/**"
+  - "**/test_security_ci_*.py"
