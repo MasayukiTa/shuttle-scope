@@ -764,20 +764,18 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         deletion_errors.append(f"server_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
     # 1.5) この match を指す全 UploadSession の match_id を null 化 (FK 切断)
-    # SQLAlchemy の identity-map と session-state によって ORM 経由の代入だと
-    # 再 query 時に既に None として見えて UPDATE が発行されないケースがあったため、
-    # 直接 `Query.update({...}, synchronize_session=False)` で SQL を即時 emit する。
+    # ORM 経由ではなく Core SQL UPDATE を直接実行 + 即時 flush して
+    # 後続の DELETE matches までに DB 上で確実に反映させる。
     try:
-        from backend.db.models import UploadSession as _US_all
-        n_us = (
-            db.query(_US_all)
-            .filter(_US_all.match_id == match_id)
-            .update({_US_all.match_id: None}, synchronize_session=False)
+        from sqlalchemy import text as _sa_text
+        result = db.execute(
+            _sa_text("UPDATE upload_sessions SET match_id = NULL WHERE match_id = :mid"),
+            {"mid": match_id},
         )
+        n_us = getattr(result, "rowcount", 0) or 0
         if n_us:
             deleted_files.append(f"upload_sessions match_id null: {n_us} rows")
-        # session の identity map を expire しておく (後続の SVA delete と整合させるため)
-        db.expire_all()
+        db.flush()  # UPDATE を確実にコミット前 flush に乗せる
     except Exception as exc:
         deletion_errors.append(f"upload_sessions_bulk: {type(exc).__name__}: {str(exc)[:80]}")
 
