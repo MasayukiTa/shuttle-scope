@@ -1518,6 +1518,53 @@ export function MatchListPage() {
                         : editingVideoFilename}
                     </div>
                   )}
+                  {/* DL 進捗表示 (編集中の試合に進行中ジョブがあれば) */}
+                  {editingMatchId != null && dlByMatch[String(editingMatchId)] && (() => {
+                    const dl = dlByMatch[String(editingMatchId)]
+                    const pctNum = Math.max(0, Math.min(100, parseFloat(dl.percent ?? '0') || 0))
+                    return (
+                      <div
+                        className={`mt-2 p-2.5 rounded border ${
+                          isLight
+                            ? 'border-blue-200 bg-blue-50'
+                            : 'border-blue-800 bg-blue-900/20'
+                        }`}
+                      >
+                        {/* PC: 横並び / モバイル: 縦並び */}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs mb-1.5">
+                          <span className={`flex items-center gap-1.5 font-medium ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>
+                            <Download size={13} className="animate-pulse shrink-0" />
+                            <span className="truncate">
+                              {dl.status === 'queued' && '待機中…'}
+                              {dl.status === 'pending' && '準備中…'}
+                              {dl.status === 'downloading' && `ダウンロード中 ${dl.percent ?? ''}`}
+                              {dl.status === 'processing' && '変換中…'}
+                              {dl.status === 'starting' && '開始中…'}
+                            </span>
+                          </span>
+                          <span className={`flex items-center gap-2 ${textMuted} text-[11px] flex-wrap`}>
+                            {dl.speed && <span className="whitespace-nowrap">{dl.speed}</span>}
+                            {dl.eta && dl.status === 'downloading' && (
+                              <span className="whitespace-nowrap">残り {dl.eta}</span>
+                            )}
+                          </span>
+                        </div>
+                        {/* progress bar (mobile でも視認しやすい高さ 8px) */}
+                        <div className={`h-2 rounded-full overflow-hidden ${isLight ? 'bg-blue-200/60' : 'bg-blue-950'}`}>
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              dl.status === 'downloading'
+                                ? (isLight ? 'bg-blue-500' : 'bg-blue-400')
+                                : (isLight ? 'bg-blue-300 animate-pulse' : 'bg-blue-700 animate-pulse')
+                            }`}
+                            style={dl.status === 'downloading'
+                              ? { width: `${pctNum}%` }
+                              : { width: dl.status === 'processing' ? '100%' : '15%' }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })()}
                   {/* 動画リンク再発行（漏洩時の即時無効化用） */}
                   {editingMatchId != null && editingVideoFilename && (
                     <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
