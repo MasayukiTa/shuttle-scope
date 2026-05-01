@@ -248,7 +248,7 @@ class LiveFrameHintRequest(BaseModel):
     # F-7 (round115): float 系に Inf/NaN を入れると 500 を引くため明示拒否
     model_config = {"extra": "forbid"}
     session_code: str
-    frame_b64: str          # base64 JPEG/PNG（JS の canvas.toDataURL から）
+    frame_b64: str = Field(..., max_length=2_000_000)  # base64 JPEG/PNG
     frame_width: int = Field(default=512, ge=1, le=4096)
     frame_height: int = Field(default=288, ge=1, le=4096)
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0, allow_inf_nan=False)
@@ -315,9 +315,10 @@ def live_frame_hint(body: LiveFrameHintRequest):
 class FrameHintRequest(BaseModel):
     """Base64エンコードされた1フレーム（PNG/JPEG）を受け取る"""
     model_config = {"extra": "forbid"}
-    frame_b64: str          # 中央フレーム
-    frame_prev_b64: str     # 1フレーム前
-    frame_next_b64: str     # 1フレーム後
+    # round136 D-5: 5MB 入力で 500 → 各 base64 に max_length=2MB (decode 後 ~1.5MB)
+    frame_b64: str = Field(..., max_length=2_000_000)
+    frame_prev_b64: str = Field(..., max_length=2_000_000)
+    frame_next_b64: str = Field(..., max_length=2_000_000)
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0, allow_inf_nan=False)
 
 @router.post("/tracknet/frame_hint")
