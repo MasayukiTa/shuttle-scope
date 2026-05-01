@@ -437,12 +437,16 @@ from backend.utils.access_log import log_access as _log_acc_cond
 
 
 def _reject_xss_condition_text(value: Optional[str], field: str) -> None:
-    """condition のテキストフィールドに HTML タグ / 制御文字を仕込まれるのを拒否。"""
+    """condition のテキストフィールドに HTML タグ / 制御文字を仕込まれるのを拒否。
+
+    round130 Y-3: 元の deny-list (script/iframe/...) は `<%= ... %>` 等の非標準
+    タグを通していた。任意の `<...>` を含む入力は全て reject に変更。
+    """
     if value is None:
         return
     import re as _r
-    if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]", value, _r.IGNORECASE):
-        raise HTTPException(status_code=422, detail=f"{field} contains disallowed HTML tags")
+    if "<" in value or ">" in value:
+        raise HTTPException(status_code=422, detail=f"{field} contains '<' or '>' (disallowed)")
     if _r.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", value):
         raise HTTPException(status_code=422, detail=f"{field} contains control characters")
     if len(value) > 2000:
