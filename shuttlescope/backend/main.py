@@ -1333,13 +1333,15 @@ _cors_origins = (
 )
 app.add_middleware(SecurityHeadersMiddleware)
 # A-2 (DNS rebinding 対策): Host ヘッダ検証
-# PUBLIC_MODE 時は CF tunnel ホスト + localhost のみ許可。
+# PUBLIC_MODE 時は CF tunnel ホスト + apex (LP 用) + localhost のみ許可。
 # LAN モード時は LAN IP の Host を許容する必要があるため広めに (192.168/* / 10/* / 172.16/*)。
 from starlette.middleware.trustedhost import TrustedHostMiddleware as _THM
 _trusted_hosts: list[str] = []
 if app_settings.PUBLIC_MODE:
     _trusted_hosts = [
-        app_settings.CLOUDFLARE_TUNNEL_HOSTNAME,
+        app_settings.CLOUDFLARE_TUNNEL_HOSTNAME,    # app.shuttle-scope.com (アプリ)
+        "shuttle-scope.com",                          # apex (公開 LP — public_site.py)
+        "www.shuttle-scope.com",                      # www LP
         "localhost",
         "127.0.0.1",
     ]
