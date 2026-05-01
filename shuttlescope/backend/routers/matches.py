@@ -813,8 +813,10 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         try: db.rollback()
         except Exception: pass
         logger_local = __import__("logging").getLogger(__name__)
-        logger_local.error("[delete_match] commit failed: %s", exc)
-        raise HTTPException(status_code=500, detail=f"試合削除の commit に失敗: {type(exc).__name__}")
+        logger_local.error("[delete_match] commit failed: %s | cascade_errors=%s", exc, deletion_errors)
+        # admin にのみ詳細メッセージを返却 (DB 内部構造を露出させないため)
+        msg = str(exc)[:300] if ctx.is_admin else type(exc).__name__
+        raise HTTPException(status_code=500, detail=f"試合削除の commit に失敗: {msg}")
 
     # 4) commit 成功後に audit log 2 件を書く (log_access は内部で別 commit するので順次)
     try:
