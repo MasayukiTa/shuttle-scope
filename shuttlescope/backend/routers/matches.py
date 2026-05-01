@@ -753,8 +753,11 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
                 try:
                     from backend.db.models import UploadSession as _US
                     us = db.get(_US, uid)
-                    if us is not None and us.status != "completed":
-                        us.status = "aborted"
+                    if us is not None:
+                        if us.status != "completed":
+                            us.status = "aborted"
+                        # FK match_id を null 化して match 削除時の制約違反を避ける
+                        us.match_id = None
                 except Exception as exc:
                     deletion_errors.append(f"upload_session: {type(exc).__name__}")
     except Exception as exc:
