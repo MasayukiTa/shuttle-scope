@@ -163,9 +163,37 @@ class _YtDlpLogger:
         print(f"[yt-dlp ERROR] {msg}", file=sys.stderr)
 
 
+def _resolve_ffmpeg() -> str | None:
+    """ffmpeg のフルパスを返す。
+
+    Backend が SYSTEM 権限の Scheduled Task として走る環境では
+    user の PATH (WinGet Links 等) が継承されないので、shutil.which では
+    見つからない。kiyus user / 一般的なインストール先も明示的に走査する。
+    """
+    p = shutil.which("ffmpeg")
+    if p:
+        return p
+    candidates = []
+    home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    if home:
+        candidates += [
+            os.path.join(home, "AppData", "Local", "Microsoft", "WinGet", "Links", "ffmpeg.exe"),
+        ]
+    # 既知のサーバユーザ (kiyus) の WinGet パスもフォールバックで見る
+    candidates += [
+        r"C:\Users\kiyus\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe",
+        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+        r"C:\ffmpeg\bin\ffmpeg.exe",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
+
+
 def _check_ffmpeg() -> bool:
-    """ffmpegがPATH上に存在するか確認する"""
-    return shutil.which("ffmpeg") is not None
+    """ffmpegが利用可能か確認する"""
+    return _resolve_ffmpeg() is not None
 
 
 class VideoDownloader:
@@ -279,6 +307,11 @@ class VideoDownloader:
         # （指定すると ffmpeg がない環境で強制マージが走りエラーになる）
         if self.ffmpeg_available:
             yt_opts["merge_output_format"] = "mp4"
+            # SYSTEM Scheduled Task では PATH に WinGet/Links が無いため、
+            # yt-dlp が subprocess で ffmpeg を起動するときフルパスを渡す。
+            ff = _resolve_ffmpeg()
+            if ff:
+                yt_opts["ffmpeg_location"] = ff
 
         # ── Cookie 設定 ──────────────────────────────────────────────────────
         # 1. cookies_file (ユーザが UI からアップロードした cookies.txt) 最優先

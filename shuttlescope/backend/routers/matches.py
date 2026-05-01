@@ -1158,19 +1158,54 @@ async def start_download(
              "quality": body.quality,
          })
 
+    # DL 完了後に match.video_local_path を確実に更新するヘルパー。
+    # 元実装は frontend が /download/status を polling した時に DB を書く設計だったが、
+    # frontend が /downloads/active にしか polling しない場合 DB が更新されず、
+    # 動画ファイルは存在するのに UI で再生不能になる事故が発生した。
+    # backend 完結で DB を更新することで、frontend の polling 経路に依存しない。
+    def _persist_completion(target_match_id: int, target_job_id: str) -> None:
+        from backend.db.database import SessionLocal
+        progress = video_downloader.get_progress(target_job_id)
+        if progress.get("status") != "complete":
+            return
+        fp = progress.get("filepath")
+        if not fp:
+            return
+        s = SessionLocal()
+        try:
+            m = s.get(Match, target_match_id)
+            if m is None:
+                return
+            m.video_local_path = fp
+            s.commit()
+        except Exception as exc:
+            try: s.rollback()
+            except Exception: pass
+            import logging as _lg
+            _lg.getLogger(__name__).warning(
+                "[download] persist completion failed match=%s job=%s: %s",
+                target_match_id, target_job_id, exc,
+            )
+        finally:
+            s.close()
+
     if cookies_file_path:
-        background_tasks.add_task(
-            _run_download_with_cookie,
-            validated_url, job_id, body.quality, cookies_file_path,
-        )
+        async def _run_with_cookie_then_persist():
+            try:
+                await _run_download_with_cookie(
+                    validated_url, job_id, body.quality, cookies_file_path,
+                )
+            finally:
+                _persist_completion(match_id, job_id)
+        background_tasks.add_task(_run_with_cookie_then_persist)
     else:
-        # cookies 不要 DL も semaphore で並列数制限
         async def _run_no_cookie():
             async with _get_dl_semaphore():
                 await video_downloader.start_download(
                     url=validated_url, job_id=job_id, quality=body.quality,
                     cookie_browser=body.cookie_browser,
                 )
+            _persist_completion(match_id, job_id)
         background_tasks.add_task(_run_no_cookie)
     return {"success": True, "data": {"job_id": job_id}}
 
