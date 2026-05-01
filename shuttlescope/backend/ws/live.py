@@ -31,11 +31,21 @@ _MAX_WS_MESSAGES_PER_SEC = 30
 class ConnectionManager:
     """セッションコード → WebSocket 接続リスト のインメモリ管理"""
 
+    # T-9 (round124): 1 セッションあたりの最大接続数 (memory bloat 防止)
+    MAX_CONN_PER_SESSION = 20
+
     def __init__(self):
         # { session_code: [WebSocket, ...] }
         self._connections: dict[str, list[WebSocket]] = {}
 
     async def connect(self, session_code: str, ws: WebSocket) -> None:
+        existing = len(self._connections.get(session_code, []))
+        if existing >= self.MAX_CONN_PER_SESSION:
+            # 上限超過: accept 前に close (1013 = try again later)
+            await ws.close(code=1013, reason="too many connections for this session")
+            logger.warning("WS reject: session=%s exceeds max %d",
+                           session_code, self.MAX_CONN_PER_SESSION)
+            return
         await ws.accept()
         self._connections.setdefault(session_code, []).append(ws)
         logger.info("WS connected: session=%s total=%d", session_code,
@@ -107,6 +117,9 @@ async def ws_live_handler(session_code: str, websocket: WebSocket, db) -> None:
         return
 
     await manager.connect(session_code, websocket)
+    # T-9 (round124): connect 上限超過時は接続が close されているので即終了
+    if websocket not in manager._connections.get(session_code, []):
+        return
 
     # 受信メッセージ数のバースト制限カウンタ (1 秒窓)
     _msg_window_start = _time.monotonic()
