@@ -764,13 +764,22 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         deletion_errors.append(f"server_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
     # 1.5) この match を指す全 UploadSession の match_id を null 化 (FK 切断)
-    # (vlp 対応の 1 件だけでなく、過去の中断・期限切れ session も含めて全件処理)
+    # SQLAlchemy の identity-map と session-state によって ORM 経由の代入だと
+    # 再 query 時に既に None として見えて UPDATE が発行されないケースがあったため、
+    # 直接 `Query.update({...}, synchronize_session=False)` で SQL を即時 emit する。
     try:
         from backend.db.models import UploadSession as _US_all
-        for u in db.query(_US_all).filter(_US_all.match_id == match_id).all():
-            u.match_id = None
+        n_us = (
+            db.query(_US_all)
+            .filter(_US_all.match_id == match_id)
+            .update({_US_all.match_id: None}, synchronize_session=False)
+        )
+        if n_us:
+            deleted_files.append(f"upload_sessions match_id null: {n_us} rows")
+        # session の identity map を expire しておく (後続の SVA delete と整合させるため)
+        db.expire_all()
     except Exception as exc:
-        deletion_errors.append(f"upload_sessions_bulk: {type(exc).__name__}")
+        deletion_errors.append(f"upload_sessions_bulk: {type(exc).__name__}: {str(exc)[:80]}")
 
     # 2) ServerVideoArtifact 関連レコード + 実ファイル (queue)
     try:
