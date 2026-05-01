@@ -37,17 +37,26 @@ class ConnectionManager:
     def __init__(self):
         # { session_code: [WebSocket, ...] }
         self._connections: dict[str, list[WebSocket]] = {}
+        # T-9 (round124): cap check の race を防ぐ per-session lock
+        self._cap_locks: dict[str, "asyncio.Lock"] = {}
+
+    def _lock(self, session_code: str) -> "asyncio.Lock":
+        import asyncio as _aio
+        if session_code not in self._cap_locks:
+            self._cap_locks[session_code] = _aio.Lock()
+        return self._cap_locks[session_code]
 
     async def connect(self, session_code: str, ws: WebSocket) -> None:
-        existing = len(self._connections.get(session_code, []))
-        if existing >= self.MAX_CONN_PER_SESSION:
-            # 上限超過: accept 前に close (1013 = try again later)
-            await ws.close(code=1013, reason="too many connections for this session")
-            logger.warning("WS reject: session=%s exceeds max %d",
-                           session_code, self.MAX_CONN_PER_SESSION)
-            return
-        await ws.accept()
-        self._connections.setdefault(session_code, []).append(ws)
+        async with self._lock(session_code):
+            existing = len(self._connections.get(session_code, []))
+            if existing >= self.MAX_CONN_PER_SESSION:
+                # 上限超過: accept 前に close (1013 = try again later)
+                await ws.close(code=1013, reason="too many connections for this session")
+                logger.warning("WS reject: session=%s exceeds max %d",
+                               session_code, self.MAX_CONN_PER_SESSION)
+                return
+            await ws.accept()
+            self._connections.setdefault(session_code, []).append(ws)
         logger.info("WS connected: session=%s total=%d", session_code,
                     len(self._connections[session_code]))
 
