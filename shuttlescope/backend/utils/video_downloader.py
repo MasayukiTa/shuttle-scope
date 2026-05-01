@@ -166,28 +166,45 @@ class _YtDlpLogger:
 def _resolve_ffmpeg() -> str | None:
     """ffmpeg のフルパスを返す。
 
-    Backend が SYSTEM 権限の Scheduled Task として走る環境では
-    user の PATH (WinGet Links 等) が継承されないので、shutil.which では
-    見つからない。kiyus user / 一般的なインストール先も明示的に走査する。
+    解決順序:
+      1. shutil.which("ffmpeg") — PATH 経由
+      2. imageio_ffmpeg が venv に入っていればその bundled binary
+      3. 既知のシステム配置
+      4. WinGet Links のシム (※ AppX shim は SYSTEM 権限から os.path.exists で
+         False になることが確認されているので **最後の手段**)
+
+    Backend が SYSTEM 権限で走る環境を考慮 (PATH に WinGet/Links が無い、
+    AppX shim を解決できない、等)。
     """
+    # 1. PATH
     p = shutil.which("ffmpeg")
     if p:
         return p
-    candidates = []
-    home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
-    if home:
-        candidates += [
-            os.path.join(home, "AppData", "Local", "Microsoft", "WinGet", "Links", "ffmpeg.exe"),
-        ]
-    # 既知のサーバユーザ (kiyus) の WinGet パスもフォールバックで見る
-    candidates += [
-        r"C:\Users\kiyus\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe",
+
+    # 2. imageio_ffmpeg bundled binary (推奨経路 — 環境非依存)
+    try:
+        import imageio_ffmpeg as _iio
+        bundled = _iio.get_ffmpeg_exe()
+        if bundled and os.path.isfile(bundled):
+            return bundled
+    except Exception:
+        pass
+
+    # 3. 既知の配置先
+    candidates = [
         r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+        r"C:\ProgramData\chocolatey\bin\ffmpeg.exe",
         r"C:\ffmpeg\bin\ffmpeg.exe",
     ]
+    home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    if home:
+        candidates.append(os.path.join(home, "AppData", "Local", "Microsoft", "WinGet", "Links", "ffmpeg.exe"))
     for c in candidates:
-        if os.path.exists(c):
-            return c
+        try:
+            if os.path.isfile(c):
+                return c
+        except OSError:
+            continue
     return None
 
 

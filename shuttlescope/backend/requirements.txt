@@ -30,6 +30,7 @@ fpdf2>=2.7.0                 # PDF 代替ライブラリ
 
 # ── 動画・ネットワーク ─────────────────────────────────────────────
 yt-dlp>=2026.02.21           # CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785 / GHSA-g3gw-q23r-pgqm (netrc command injection) 修正
+imageio-ffmpeg>=0.6.0         # bundled ffmpeg (SYSTEM サービスから WinGet AppX shim が解決できない問題の回避)
 httpx==0.26.0
 
 # ── クラスタ / システム監視 ────────────────────────────────────────
