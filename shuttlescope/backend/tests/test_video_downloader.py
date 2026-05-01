@@ -286,13 +286,20 @@ class TestStartDownloadCookieBrowser:
         assert "2160" in opts["format"]
 
     def test_complete_status_set_after_download(self, tmp_path):
+        # NOTE: filepath format changed from "localfile:///<abs path>" to
+        # "server://<basename>" so that browser <video> can stream via
+        # /api/v1/uploads/video/by_match/{id}/stream (Electron-only localfile://
+        # was unplayable in plain browsers).
         dl, _ = self._run_with_mock_ydl(
             tmp_path, "https://example.com/video", "job-complete", "720", ""
         )
         result = dl.active_downloads.get("job-complete", {})
         assert result["status"] == "complete"
         assert "filepath" in result
-        assert result["filepath"].startswith("localfile:///")
+        assert result["filepath"].startswith("server://")
+        # absolute path must NOT leak into the response
+        assert "C:" not in result["filepath"]
+        assert str(tmp_path) not in result["filepath"]
 
     def test_filepath_uses_forward_slashes(self, tmp_path):
         dl, _ = self._run_with_mock_ydl(
