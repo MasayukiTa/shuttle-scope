@@ -846,6 +846,23 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         # commit 失敗 (FK 制約等) は致命なので 500 を返す前に rollback してログ
         try: db.rollback()
         except Exception: pass
+        # X-4 race fix (round129): commit 失敗時に並列 DELETE が先に削除済かを再確認。
+        # 既に削除済みなら本リクエストは idempotent に成功扱い (200) で返す。
+        try:
+            from sqlalchemy import text as _sa_text3
+            still_exists = db.execute(
+                _sa_text3("SELECT 1 FROM matches WHERE id = :mid"),
+                {"mid": match_id},
+            ).scalar()
+            if not still_exists:
+                # 別 transaction が削除完了 → こちらは何もせず 200
+                response = {"success": True, "data": {"id": match_id}, "deduped": True}
+                if idem_key:
+                    from backend.utils.idempotency import store
+                    store(idem_key, ctx.user_id, endpoint_id, response, status_code=200)
+                return response
+        except Exception:
+            pass
         logger_local = __import__("logging").getLogger(__name__)
         logger_local.error("[delete_match] commit failed: %s | cascade_errors=%s", exc, deletion_errors)
         # admin にのみ詳細メッセージを返却 (DB 内部構造を露出させないため)
