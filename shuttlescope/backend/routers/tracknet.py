@@ -268,16 +268,28 @@ def live_frame_hint(body: LiveFrameHintRequest):
         return {"success": True, "data": {"zone": None, "confidence": 0.0, "available": False}}
 
     # フレームデコード
+    # round147 N-1/N-2 fix: cv2.imdecode は巨大画像/zip-bomb で SIGABRT 級の
+    # 例外/メモリ消費を起こす。decode 後に dimension/byte をチェックし上限を超えたら拒否。
+    _MAX_FRAME_W = 4096
+    _MAX_FRAME_H = 4096
+    _MAX_FRAME_BYTES = 8 * 1024 * 1024  # decoded raw bytes 上限
     try:
         # data URI の場合はヘッダー除去
         b64 = body.frame_b64
         if "," in b64:
             b64 = b64.split(",", 1)[1]
         img_bytes = base64.b64decode(b64)
+        if len(img_bytes) > 1_500_000:
+            return {"success": False, "error": "画像サイズが大きすぎます (1.5MB 以下)"}
         arr = np.frombuffer(img_bytes, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if frame is None:
             raise ValueError("decode failed")
+        h, w = frame.shape[:2]
+        if w > _MAX_FRAME_W or h > _MAX_FRAME_H:
+            return {"success": False, "error": f"画像解像度が上限超過 ({w}x{h} > {_MAX_FRAME_W}x{_MAX_FRAME_H})"}
+        if frame.nbytes > _MAX_FRAME_BYTES:
+            return {"success": False, "error": "decoded frame が大きすぎます"}
     except Exception:
         return {"success": False, "error": "フレームデコードに失敗しました"}
 
