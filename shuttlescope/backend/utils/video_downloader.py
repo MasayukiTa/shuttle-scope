@@ -343,12 +343,16 @@ class VideoDownloader:
             if f.suffix not in {".part", ".ytdl", ".tmp"}
         )
         if output_files:
-            abs_path = str(output_files[0].resolve())
-            # Windows パスのバックスラッシュを変換して localfile:// URL を生成
-            localfile_url = "localfile:///" + abs_path.replace("\\", "/")
+            # ブラウザ <video> から /api/v1/uploads/video/by_match/{id}/stream で
+            # 配信するため、server://{filename} 形式で記録する。
+            # download_dir == UPLOAD_DIR (./videos) なのでそのまま stream endpoint が解決する。
+            # 過去は localfile:/// 絶対パスを返していたが Electron 専用で
+            # ブラウザでは再生不能だった。
+            fname = output_files[0].name
+            server_url = f"server://{fname}"
             self.active_downloads[job_id] = {
                 "status": "complete",
-                "filepath": localfile_url,
+                "filepath": server_url,
             }
         else:
             self.active_downloads[job_id] = {
