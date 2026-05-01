@@ -206,6 +206,12 @@ def init_upload(
     from pathlib import Path as _P
     if _P(body.filename).suffix.lower() not in _ALLOWED_VIDEO_EXTS:
         raise HTTPException(status_code=422, detail=f"動画ファイル拡張子のみ許可: {_ALLOWED_VIDEO_EXTS}")
+    # K-1 (round143): Windows 予約名拒否 (CON/PRN/AUX/NUL/COM[0-9]/LPT[0-9])
+    # ファイル作成時に OS が拒否するか device に書き込んでしまう恐れがある。
+    _stem = _P(body.filename).stem.upper()
+    _RESERVED = {"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(0, 10)} | {f"LPT{i}" for i in range(0, 10)}
+    if _stem in _RESERVED:
+        raise HTTPException(status_code=422, detail=f"filename '{body.filename}' は Windows 予約名のため使用できません")
 
     # streaming モードでは total_size は上限値として扱う (確定サイズではない)。
     if body.streaming:
