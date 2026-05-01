@@ -201,14 +201,11 @@ def _check_lockout(user: User) -> None:
             status_code=429,
             detail=f"アカウントがロックされています。約{remaining}分後に再試行してください。",
         )
-    # ロック期間が経過 (locked_until が past or None) で failed_attempts が残っているなら
-    # カウンタをリセットしてフレッシュな失敗回数枠を与える。これがないと、3 → 1 で
-    # すぐ再ロックされる UX 上の問題を生む。SQLAlchemy session に attached なら
-    # 後続の commit で永続化されるが、明示 commit はしない (呼び出し元の login flow
-    # が _on_login_success/failure で commit するため)。
-    if (user.failed_attempts or 0) > 0 and (
-        user.locked_until is None or user.locked_until <= datetime.utcnow()
-    ):
+    # round155 fix: 元実装は `locked_until is None` でもリセットしてしまい
+    # 通常の連続失敗時に failed_attempts が永遠に 0 に戻り続けて lockout が
+    # 一度も発動しなかった。ロック解除「後」のみカウンタを 0 に戻す。
+    # (locked_until が past = ロック明け、None = まだ一度もロックされていない)
+    if (user.failed_attempts or 0) > 0 and user.locked_until is not None and user.locked_until <= datetime.utcnow():
         user.failed_attempts = 0
         user.locked_until = None
 
