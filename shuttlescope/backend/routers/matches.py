@@ -714,17 +714,15 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
             players = db.query(_P).filter(_P.id.in_(pids)).all() if pids else []
             if not any((p.team or "").strip() == team for p in players):
                 raise HTTPException(status_code=403, detail="この試合はあなたのチームではありません")
-    # audit log: 削除は forensic 上特に重要
     from backend.utils.access_log import log_access as _log
-    _log(db, "match_deleted", user_id=ctx.user_id,
-         resource_type="match", resource_id=match_id,
-         details={"actor_role": ctx.role})
     # 削除前に関与選手を控えておく（削除後は辿れないため）
     affected_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
 
-    # ─── 動画ファイルの cascade 削除 ─────────────────────────────────────
-    # 試合削除 = 紐づく動画も削除する設計。
-    # 例外で match 削除自体は絶対に止めない (cascade はベストエフォート)。
+    # ─── 動画ファイル cascade + match 削除を 1 トランザクションで処理 ──────
+    # 重要: audit log の log_access は内部で db.commit() するため、トランザクション
+    # 中で呼ぶと cascade 用 SVA 削除が中途 commit され、その後 db.delete(match) 時に
+    # FK 制約違反で match の削除が失敗する 500 を引き起こす。よって audit log は
+    # **最終 commit の後**にまとめて書く。
     deleted_files: list[str] = []
     deletion_errors: list[str] = []
 
@@ -736,7 +734,7 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         except Exception as exc:
             deletion_errors.append(f"unlink {p}: {type(exc).__name__}")
 
-    # 1) server://{uid}.mp4 のファイル + UploadSession 行
+    # 1) server://{uid}.mp4 の物理ファイル削除 + UploadSession 状態更新 (queue)
     try:
         from backend.routers.uploads import UPLOAD_DIR as _UPLOAD_DIR
         from backend.utils.safe_path import safe_path as _safe_path
@@ -748,14 +746,10 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
             m_uid = _re_uid.match(r"^([0-9a-f-]{36})(\.[A-Za-z0-9]+)?$", rest)
             if m_uid:
                 uid = m_uid.group(1)
-                try:
-                    _try_unlink(_safe_path(_UPLOAD_DIR, rest))
-                except Exception as exc:
-                    deletion_errors.append(f"final safe_path: {type(exc).__name__}")
-                try:
-                    _try_unlink(_UPLOAD_DIR / f"{uid}.part")
-                except Exception as exc:
-                    deletion_errors.append(f"part: {type(exc).__name__}")
+                try: _try_unlink(_safe_path(_UPLOAD_DIR, rest))
+                except Exception as exc: deletion_errors.append(f"final safe_path: {type(exc).__name__}")
+                try: _try_unlink(_UPLOAD_DIR / f"{uid}.part")
+                except Exception as exc: deletion_errors.append(f"part: {type(exc).__name__}")
                 try:
                     from backend.db.models import UploadSession as _US
                     us = db.get(_US, uid)
@@ -766,7 +760,7 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     except Exception as exc:
         deletion_errors.append(f"server_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
-    # 2) ServerVideoArtifact (R-1 sender) の関連レコード + 実ファイル
+    # 2) ServerVideoArtifact 関連レコード + 実ファイル (queue)
     try:
         from backend.db.models import ServerVideoArtifact as _SVA
         from pathlib import Path as _P
@@ -777,12 +771,10 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
             if fp:
                 try:
                     p = _P(fp).resolve()
-                    # UPLOAD_DIR 配下のみ削除 (path_jail)
                     try:
                         p.relative_to(_UPLOAD_DIR2)
                         _try_unlink(p)
                     except ValueError:
-                        # UPLOAD_DIR 外 → 削除しない
                         deletion_errors.append(f"sva outside upload_dir: {p}")
                 except Exception as exc:
                     deletion_errors.append(f"sva path: {type(exc).__name__}")
@@ -793,20 +785,30 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     except Exception as exc:
         deletion_errors.append(f"sva_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
-    # cascade 結果を audit log に書く (ベストエフォート、失敗しても続行)
+    # 3) match 自身の削除を queue → 全てを 1 commit で flush
+    db.delete(match)
+    try:
+        db.commit()
+    except Exception as exc:
+        # commit 失敗 (FK 制約等) は致命なので 500 を返す前に rollback してログ
+        try: db.rollback()
+        except Exception: pass
+        logger_local = __import__("logging").getLogger(__name__)
+        logger_local.error("[delete_match] commit failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"試合削除の commit に失敗: {type(exc).__name__}")
+
+    # 4) commit 成功後に audit log 2 件を書く (log_access は内部で別 commit するので順次)
+    try:
+        _log(db, "match_deleted", user_id=ctx.user_id,
+             resource_type="match", resource_id=match_id,
+             details={"actor_role": ctx.role})
+    except Exception: pass
     if deleted_files or deletion_errors:
         try:
             _log(db, "match_video_cascade_deleted", user_id=ctx.user_id,
                  resource_type="match", resource_id=match_id,
-                 details={
-                     "deleted_files": deleted_files[:20],  # 巨大配列回避
-                     "errors": deletion_errors[:20],
-                 })
-        except Exception:
-            pass  # audit が失敗しても match 削除は続行
-
-    db.delete(match)
-    db.commit()
+                 details={"deleted_files": deleted_files[:20], "errors": deletion_errors[:20]})
+        except Exception: pass
     response_cache.bump_players(affected_players)
     response = {"success": True, "data": {"id": match_id}}
     # idempotency キャッシュへ保存
