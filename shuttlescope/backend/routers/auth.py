@@ -1588,8 +1588,36 @@ def delete_user(target_id: int, request: Request, db: Session = Depends(get_db))
     user = db.get(User, target_id)
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
-    db.delete(user)
-    db.commit()
+    # round155 fix: User には access_log / refresh_token / shared_session 等の
+    # FK 子レコードが多数あり、生 db.delete(user) は IntegrityError → 500 になる。
+    # FK 持ち子テーブルを user_id=NULL or 削除してから本体を削除。
+    from sqlalchemy import text as _sa_text
+    cleanup_stmts = [
+        ("UPDATE access_log SET user_id = NULL WHERE user_id = :uid", "access_log"),
+        ("DELETE FROM refresh_tokens WHERE user_id = :uid", "refresh_tokens"),
+        ("DELETE FROM email_verification_tokens WHERE user_id = :uid", "email_verification_tokens"),
+        ("DELETE FROM password_reset_tokens WHERE user_id = :uid", "password_reset_tokens"),
+        ("DELETE FROM user_invitations WHERE created_by_user_id = :uid", "user_invitations_cb"),
+        ("UPDATE shared_sessions SET created_by_user_id = NULL WHERE created_by_user_id = :uid", "shared_sessions"),
+        ("UPDATE upload_sessions SET user_id = NULL WHERE user_id = :uid", "upload_sessions"),
+        ("UPDATE server_video_artifacts SET sender_user_id = NULL WHERE sender_user_id = :uid", "server_video_artifacts"),
+    ]
+    for stmt, label in cleanup_stmts:
+        try:
+            db.execute(_sa_text(stmt), {"uid": target_id})
+        except Exception:
+            # テーブル不在等は黙って続行 (defense in depth)
+            db.rollback()
+            continue
+    try:
+        db.execute(_sa_text("DELETE FROM users WHERE id = :uid"), {"uid": target_id})
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"ユーザ削除に失敗しました (FK 制約等): {type(exc).__name__}",
+        )
     log_access(db, "user_deleted", details={"deleted_user_id": target_id})
     return {"success": True}
 
