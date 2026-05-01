@@ -245,6 +245,16 @@ export function MatchListPage() {
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
   })
 
+  // 動画 DL ジョブ一覧 (5 秒間隔 polling) — 試合一覧で「DL 中」バッジを表示するため
+  type DownloadInfo = { job_id: string; status: string; percent?: string; speed?: string; eta?: string }
+  const { data: activeDownloads } = useQuery({
+    queryKey: ['matches', 'downloads', 'active'],
+    queryFn: () => apiGet<{ success: boolean; data: Record<string, DownloadInfo> }>('/matches/downloads/active'),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+  })
+  const dlByMatch = activeDownloads?.data ?? {}
+
   // 選手検索（各フィールド）
   const { data: playerASearchData } = useQuery({
     queryKey: ['players-search-a', playerAQuery],
@@ -946,7 +956,19 @@ export function MatchListPage() {
                         <TrendingUp size={16} />
                       </button>
                     )}
-                    {m.video_url && !m.has_video_local && (
+                    {/* 動画 DL バッジ: 進行中なら percent + eta を表示。完了済み・未設定は出さない */}
+                    {dlByMatch[String(m.id)] && (
+                      <span
+                        className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${
+                          isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/40 text-blue-300'
+                        }`}
+                        title={`DL中 ${dlByMatch[String(m.id)].percent ?? ''} (残り ${dlByMatch[String(m.id)].eta ?? '?'})`}
+                      >
+                        <Download size={12} className="animate-pulse" />
+                        {dlByMatch[String(m.id)].percent ?? 'DL中'}
+                      </span>
+                    )}
+                    {m.video_url && !m.has_video_local && !dlByMatch[String(m.id)] && (
                       <button
                         onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
                         className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
@@ -1178,7 +1200,19 @@ export function MatchListPage() {
                             <TrendingUp size={14} />
                           </button>
                         )}
-                        {m.video_url && !m.has_video_local && (
+                        {/* 動画 DL バッジ: 進行中なら percent を表示 */}
+                        {dlByMatch[String(m.id)] && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${
+                              isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/40 text-blue-300'
+                            }`}
+                            title={`DL中 ${dlByMatch[String(m.id)].percent ?? ''} (残り ${dlByMatch[String(m.id)].eta ?? '?'})`}
+                          >
+                            <Download size={12} className="animate-pulse" />
+                            {dlByMatch[String(m.id)].percent ?? 'DL中'}
+                          </span>
+                        )}
+                        {m.video_url && !m.has_video_local && !dlByMatch[String(m.id)] && (
                           <button
                             onClick={() => startDownload.mutate({
                               matchId: m.id,
