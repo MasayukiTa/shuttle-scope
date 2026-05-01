@@ -291,6 +291,117 @@ _VIDEO_MAGIC_BYTES = {
 }
 
 
+def _validate_video_container(path) -> tuple[bool, str]:
+    """C-5/C-6 防御 (round112): ファイル全体のコンテナ構造を validate する。
+
+    優先順:
+      1) ffprobe があれば --show_streams で codec_type=video を確認 (最も堅牢)
+      2) Python で MP4 atom (ftyp + moov + mdat) / EBML (Segment) / RIFF (AVI) を確認
+
+    Returns (ok, reason)
+    """
+    import shutil as _sh, subprocess as _sp
+    p = path
+    try:
+        size = p.stat().st_size
+    except OSError as e:
+        return False, f"stat: {e}"
+    if size < 32:
+        return False, "ファイルが小さすぎます"
+
+    # 1) ffprobe 経由
+    ffprobe = _sh.which("ffprobe")
+    if ffprobe:
+        try:
+            proc = _sp.run(
+                [ffprobe, "-v", "error", "-print_format", "json",
+                 "-show_format", "-show_streams", "--", str(p)],
+                capture_output=True, timeout=30, shell=False,
+            )
+            if proc.returncode != 0:
+                return False, "ffprobe rc!=0"
+            import json as _json
+            info = _json.loads(proc.stdout or b"{}")
+            if any(s.get("codec_type") == "video" for s in info.get("streams", [])):
+                return True, "ffprobe ok"
+            return False, "no video stream"
+        except Exception as e:
+            # fall through to Python parser
+            pass
+
+    # 2) Python parser fallback
+    try:
+        with open(p, "rb") as f:
+            head = f.read(16)
+            # MP4 / MOV: top-level atoms (ftyp が先頭、moov/mdat のいずれか必須)
+            if head[4:8] == b"ftyp":
+                return _validate_mp4_atoms(p, size)
+            # EBML (Matroska / WebM)
+            if head[:4] == b"\x1a\x45\xdf\xa3":
+                # EBML ヘッダ後に Segment ID (0x18538067) を確認
+                f.seek(0)
+                blob = f.read(min(size, 4096))
+                if b"\x18\x53\x80\x67" in blob:
+                    return True, "ebml ok"
+                return False, "no ebml segment"
+            # AVI (RIFF + AVI signature)
+            if head[:4] == b"RIFF" and head[8:12] == b"AVI ":
+                return True, "avi ok"
+            # mpegts (sync byte every 188 bytes)
+            if head[:1] == b"\x47":
+                f.seek(188)
+                if f.read(1) == b"\x47":
+                    return True, "mpegts ok"
+                return False, "mpegts sync mismatch"
+            return False, "unknown container"
+    except Exception as e:
+        return False, f"parse error: {type(e).__name__}"
+
+
+def _validate_mp4_atoms(path, file_size: int) -> tuple[bool, str]:
+    """MP4 / MOV: ftyp 直後の top-level atom を順に walk して moov / mdat の存在を確認。
+
+    各 atom は [size:4][type:4][...]; size==1 なら直後 8 byte が 64bit size。
+    size==0 は EOF までを意味する (mdat の末尾)。
+    任意のオフセットで size が 0/8 未満 / file_size 超過なら corrupt と判定。
+    """
+    seen_types: set[bytes] = set()
+    try:
+        with open(path, "rb") as f:
+            offset = 0
+            steps = 0
+            while offset + 8 <= file_size and steps < 200:
+                f.seek(offset)
+                hdr = f.read(8)
+                if len(hdr) < 8:
+                    break
+                box_size = int.from_bytes(hdr[:4], "big")
+                box_type = hdr[4:8]
+                if box_size == 1:
+                    # 64bit largesize
+                    big = f.read(8)
+                    if len(big) < 8:
+                        return False, "truncated 64bit size"
+                    box_size = int.from_bytes(big, "big")
+                elif box_size == 0:
+                    # EOF まで
+                    box_size = file_size - offset
+                if box_size < 8 or offset + box_size > file_size:
+                    return False, f"corrupt atom {box_type!r} at {offset}"
+                seen_types.add(box_type)
+                offset += box_size
+                steps += 1
+            if b"ftyp" not in seen_types:
+                return False, "no ftyp"
+            if b"moov" not in seen_types:
+                return False, "no moov atom (動画メタデータが欠落)"
+            if b"mdat" not in seen_types:
+                return False, "no mdat atom (メディアデータが欠落)"
+            return True, "mp4 atoms ok"
+    except Exception as e:
+        return False, f"mp4 walk error: {type(e).__name__}"
+
+
 def _looks_like_video(first_bytes: bytes) -> bool:
     """先頭バイトから動画らしさを判定 (B-3 magic bytes 検証)。"""
     if len(first_bytes) < 16:
@@ -492,46 +603,26 @@ async def finalize_upload(
         except OSError as e:
             raise HTTPException(status_code=500, detail=f"ファイルのリネームに失敗: {e}")
 
-        # C-5/C-6 防御 (round112): magic bytes は先頭 256 byte しか見ていないため
-        # ftypisom + 任意 byte sequence (HTML / shell script) が通過してしまう。
-        # finalize 時に ffprobe で再 validate し、まともな動画コンテナか確認する。
-        # ffprobe 不在 / 解析失敗時はファイル削除 + 422。
+        # C-5/C-6 防御 (round112): 先頭 256 byte の magic bytes だけでは ftypisom +
+        # 任意の HTML / shell script を通してしまう。finalize 時にコンテナ構造を再 validate する。
+        # 1) ffprobe があればそれを使う (堅牢)
+        # 2) なければ Python で MP4 atom / EBML / RIFF をパースして moov/mdat 等の存在を確認
         try:
-            import shutil as _sh, subprocess as _sp
-            ffprobe = _sh.which("ffprobe")
-            if ffprobe:
-                proc = _sp.run(
-                    [ffprobe, "-v", "error", "-print_format", "json",
-                     "-show_format", "-show_streams", "--", str(final)],
-                    capture_output=True, timeout=30, shell=False,
+            valid, reason = _validate_video_container(final)
+            if not valid:
+                try: final.unlink(missing_ok=True)
+                except Exception: pass
+                session.status = "aborted"
+                db.commit()
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"動画として無効です (コンテナ検証失敗: {reason})",
                 )
-                ok = (proc.returncode == 0)
-                if ok:
-                    import json as _json
-                    try:
-                        info = _json.loads(proc.stdout or b"{}")
-                        streams = info.get("streams", [])
-                        has_video = any(s.get("codec_type") == "video" for s in streams)
-                        if not has_video:
-                            ok = False
-                    except Exception:
-                        ok = False
-                if not ok:
-                    # 不正動画 → ファイル削除 + session abort
-                    try: final.unlink(missing_ok=True)
-                    except Exception: pass
-                    session.status = "aborted"
-                    db.commit()
-                    raise HTTPException(
-                        status_code=422,
-                        detail="動画として無効です (ffprobe 検証失敗 — 破損または偽装ファイル)",
-                    )
         except HTTPException:
             raise
         except Exception as _ffex:
-            # ffprobe 不在 / タイムアウト等は warn のみで通す (運用継続性優先)
             import logging as _lg
-            _lg.getLogger(__name__).warning("[uploads] ffprobe validate skipped: %s", _ffex)
+            _lg.getLogger(__name__).warning("[uploads] container validate skipped: %s", _ffex)
 
         session.status = "completed"
         session.final_path = str(final.resolve())
