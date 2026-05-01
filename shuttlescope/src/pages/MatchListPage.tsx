@@ -246,7 +246,14 @@ export function MatchListPage() {
   })
 
   // 動画 DL ジョブ一覧 (5 秒間隔 polling) — 試合一覧で「DL 中」バッジを表示するため
-  type DownloadInfo = { job_id: string; status: string; percent?: string; speed?: string; eta?: string }
+  type DownloadInfo = {
+    job_id: string
+    status: string  // queued | pending | downloading | processing | starting | error
+    percent?: string
+    speed?: string
+    eta?: string
+    error?: string
+  }
   const { data: activeDownloads } = useQuery({
     queryKey: ['matches', 'downloads', 'active'],
     queryFn: () => apiGet<{ success: boolean; data: Record<string, DownloadInfo> }>('/matches/downloads/active'),
@@ -956,8 +963,22 @@ export function MatchListPage() {
                         <TrendingUp size={16} />
                       </button>
                     )}
-                    {/* 動画 DL バッジ: 進行中なら percent + eta を表示。完了済み・未設定は出さない */}
-                    {dlByMatch[String(m.id)] && (
+                    {/* 動画 DL バッジ: 進行中なら percent + eta、error なら赤バッジ + 再試行 */}
+                    {dlByMatch[String(m.id)] && dlByMatch[String(m.id)].status === 'error' && (
+                      <button
+                        type="button"
+                        onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
+                        className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${
+                          isLight ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-900/60'
+                        }`}
+                        title={`DL 失敗: ${dlByMatch[String(m.id)].error ?? ''}\nクリックで再試行`}
+                        disabled={startDownload.isPending}
+                      >
+                        <AlertCircle size={12} />
+                        失敗・再試行
+                      </button>
+                    )}
+                    {dlByMatch[String(m.id)] && dlByMatch[String(m.id)].status !== 'error' && (
                       <span
                         className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${
                           isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/40 text-blue-300'
@@ -1518,19 +1539,51 @@ export function MatchListPage() {
                         : editingVideoFilename}
                     </div>
                   )}
-                  {/* DL 進捗表示 (編集中の試合に進行中ジョブがあれば) */}
+                  {/* DL 進捗表示 (編集中の試合に進行中 / error ジョブがあれば) */}
                   {editingMatchId != null && dlByMatch[String(editingMatchId)] && (() => {
                     const dl = dlByMatch[String(editingMatchId)]
+                    const isErr = dl.status === 'error'
                     const pctNum = Math.max(0, Math.min(100, parseFloat(dl.percent ?? '0') || 0))
+                    if (isErr) {
+                      return (
+                        <div
+                          className={`mt-2 p-2.5 rounded border ${
+                            isLight ? 'border-red-200 bg-red-50' : 'border-red-800 bg-red-900/20'
+                          }`}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                            <div className={`flex items-start gap-1.5 text-xs flex-1 min-w-0 ${isLight ? 'text-red-700' : 'text-red-300'}`}>
+                              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                              <div className="min-w-0">
+                                <div className="font-medium">ダウンロード失敗</div>
+                                {dl.error && (
+                                  <div className={`text-[11px] mt-0.5 break-words ${textMuted}`}>{dl.error}</div>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => editingMatchId != null && startDownload.mutate({ matchId: editingMatchId, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
+                              disabled={startDownload.isPending}
+                              className={`shrink-0 inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-medium ${
+                                isLight
+                                  ? 'bg-red-600 hover:bg-red-700 text-white disabled:bg-red-400'
+                                  : 'bg-red-700 hover:bg-red-600 text-white disabled:bg-red-900'
+                              }`}
+                            >
+                              <Download size={12} />
+                              再試行
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    }
                     return (
                       <div
                         className={`mt-2 p-2.5 rounded border ${
-                          isLight
-                            ? 'border-blue-200 bg-blue-50'
-                            : 'border-blue-800 bg-blue-900/20'
+                          isLight ? 'border-blue-200 bg-blue-50' : 'border-blue-800 bg-blue-900/20'
                         }`}
                       >
-                        {/* PC: 横並び / モバイル: 縦並び */}
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs mb-1.5">
                           <span className={`flex items-center gap-1.5 font-medium ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>
                             <Download size={13} className="animate-pulse shrink-0" />
@@ -1549,7 +1602,6 @@ export function MatchListPage() {
                             )}
                           </span>
                         </div>
-                        {/* progress bar (mobile でも視認しやすい高さ 8px) */}
                         <div className={`h-2 rounded-full overflow-hidden ${isLight ? 'bg-blue-200/60' : 'bg-blue-950'}`}>
                           <div
                             className={`h-full transition-all duration-300 ${
