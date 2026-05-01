@@ -230,16 +230,16 @@ class VideoDownloader:
                             ジョブ完了後に呼び出し元で削除する責務。
         """
         if not YT_DLP_AVAILABLE:
-            self.active_downloads[job_id] = {
+            self._set_status(job_id, {
                 "status": "error",
                 "error": "yt-dlp がインストールされていません（pip install yt-dlp）",
-            }
+            })
             return
 
-        self.active_downloads[job_id] = {
+        self._set_status(job_id, {
             "status": "pending",
             "ffmpeg_available": self.ffmpeg_available,
-        }
+        })
 
         height = quality if quality != "best" else "2160"
 
@@ -304,10 +304,10 @@ class VideoDownloader:
                 None, lambda: self._download_sync(url, yt_opts, job_id)
             )
         except Exception as e:
-            self.active_downloads[job_id] = {
+            self._set_status(job_id, {
                 "status": "error",
                 "error": self._format_error(str(e)),
-            }
+            })
         finally:
             if unlocked_profile:
                 shutil.rmtree(unlocked_profile, ignore_errors=True)
@@ -350,15 +350,15 @@ class VideoDownloader:
             # ブラウザでは再生不能だった。
             fname = output_files[0].name
             server_url = f"server://{fname}"
-            self.active_downloads[job_id] = {
+            self._set_status(job_id, {
                 "status": "complete",
                 "filepath": server_url,
-            }
+            })
         else:
-            self.active_downloads[job_id] = {
+            self._set_status(job_id, {
                 "status": "error",
                 "error": "ダウンロード後に出力ファイルが見つかりません",
-            }
+            })
 
     def _update_progress(self, job_id: str, d: dict) -> None:
         """yt-dlp 進捗フック（500ms スロットリング付き）"""
@@ -370,20 +370,20 @@ class VideoDownloader:
             if now - last < self._PROGRESS_THROTTLE_SEC:
                 return
             self._progress_last_update[job_id] = now
-            self.active_downloads[job_id] = {
+            self._set_status(job_id, {
                 "status": "downloading",
                 "percent": d.get("_percent_str", "0%").strip(),
                 "speed": d.get("_speed_str", "").strip(),
                 "eta": d.get("_eta_str", "").strip(),
-            }
+            })
         elif d["status"] == "finished":
             # 個別ストリームのダウンロード完了（マージ処理がある場合はまだ続く）
-            self.active_downloads[job_id] = {
+            self._set_status(job_id, {
                 "status": "processing",
                 "percent": "100%",
                 "speed": "",
                 "eta": "",
-            }
+            })
 
     @staticmethod
     def _format_error(raw: str) -> str:
@@ -491,9 +491,51 @@ class VideoDownloader:
 
         return msg
 
+    def _set_status(self, job_id: str, payload: dict) -> None:
+        """active_downloads[job_id] を上書きしつつ match_id を保持する。
+        各 progress hook / finalize / error path から呼ぶことで、UI 用の
+        match_id 関連付けが消えないようにする。
+        """
+        prev_mid = (self.active_downloads.get(job_id) or {}).get("match_id")
+        if prev_mid is not None:
+            payload = {**payload, "match_id": prev_mid}
+        self.active_downloads[job_id] = payload
+
     def get_progress(self, job_id: str) -> dict:
         """ダウンロード進捗を取得"""
         return self.active_downloads.get(job_id, {"status": "unknown"})
+
+    def attach_match_id(self, job_id: str, match_id: int) -> None:
+        """ジョブと match を関連付ける (UI が match 単位で進捗を表示するため)。
+        まだ start_download が呼ばれていないタイミングで呼ぶことを許容するため、
+        entry が無ければ "queued" status で先に作る。後で start_download が
+        "pending"/"downloading" に上書きする。
+        """
+        info = self.active_downloads.get(job_id)
+        if info is None:
+            self.active_downloads[job_id] = {"status": "queued", "match_id": int(match_id)}
+        else:
+            info["match_id"] = int(match_id)
+
+    def active_jobs_by_match(self) -> dict[int, dict]:
+        """進行中 (downloading/pending) のジョブを match_id でグループ化して返す。
+        UI が試合一覧で「DL 中」バッジを出すための index。
+        """
+        out: dict[int, dict] = {}
+        for jid, info in self.active_downloads.items():
+            mid = info.get("match_id")
+            if not isinstance(mid, int):
+                continue
+            st = info.get("status", "")
+            if st in ("queued", "pending", "downloading", "processing", "starting"):
+                out[mid] = {
+                    "job_id": jid,
+                    "status": st,
+                    "percent": info.get("percent"),
+                    "speed": info.get("speed"),
+                    "eta": info.get("eta"),
+                }
+        return out
 
 
 # シングルトン
