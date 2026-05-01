@@ -1143,6 +1143,8 @@ async def start_download(
             pass
 
     job_id = video_downloader.create_job_id()
+    # UI が試合一覧で「DL 中」バッジを出すため、job_id に match_id を関連付ける
+    video_downloader.attach_match_id(job_id, match_id)
     # audit log: DL 開始 (actor_role + cookies_txt 使用フラグ + host)
     from backend.utils.access_log import log_access as _log
     from urllib.parse import urlparse as _up
@@ -1171,6 +1173,21 @@ async def start_download(
                 )
         background_tasks.add_task(_run_no_cookie)
     return {"success": True, "data": {"job_id": job_id}}
+
+
+@router.get("/matches/downloads/active")
+def list_active_downloads(request: Request):
+    """進行中の動画 DL ジョブを match_id でグループ化して返す。
+    フロントエンドの試合一覧が 5 秒間隔で polling し「DL 中」バッジを描画する。
+
+    レスポンス:
+        {"success": true, "data": {"<match_id>": {"job_id": "...", "status": "downloading",
+                                                    "percent": "42.5%", "speed": "...", "eta": "..."}}}
+    """
+    ctx = get_auth(request)
+    if ctx.role is None:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    return {"success": True, "data": video_downloader.active_jobs_by_match()}
 
 
 @router.get("/matches/{match_id}/download/status")
