@@ -157,7 +157,29 @@ def list_videos(
     # 権限外の閲覧者には空配列を返す（UI が隠れる前に一瞬呼ばれるケースで 403 を出さない）
     if ctx.role not in ALLOWED_ROLES:
         return []
-    matches = db.query(Match).filter(Match.deleted_at.is_(None)).all()
+    q = db.query(Match).filter(Match.deleted_at.is_(None))
+    # round127 V-W4 fix: admin 以外は team scope で絞る (cross-team 漏洩防止)
+    if not ctx.is_admin:
+        team = (getattr(ctx, "team_name", "") or "").strip()
+        if not team:
+            return []
+        from backend.db.models import Player as _P, Team as _Team
+        team_player_ids = [
+            p.id for p in db.query(_P.id)
+                .join(_Team, _Team.id == _P.team_id)
+                .filter(_Team.name == team, _Team.deleted_at.is_(None))
+                .all()
+        ]
+        if not team_player_ids:
+            return []
+        from sqlalchemy import or_ as _or
+        q = q.filter(_or(
+            Match.player_a_id.in_(team_player_ids),
+            Match.player_b_id.in_(team_player_ids),
+            Match.partner_a_id.in_(team_player_ids),
+            Match.partner_b_id.in_(team_player_ids),
+        ))
+    matches = q.all()
     out: list[VideoSummary] = []
     for m in matches:
         miss_rows = iter_miss_strokes(db, m.id)
