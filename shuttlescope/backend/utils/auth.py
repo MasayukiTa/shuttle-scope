@@ -298,6 +298,7 @@ def resolve_owner_team_for_match_create(
     *,
     requested_team_id: Optional[int] = None,
     requested_is_public_pool: bool = False,
+    db: Optional[Session] = None,
 ) -> tuple[int, bool]:
     """試合登録時の owner_team_id と is_public_pool を決定する。
 
@@ -310,6 +311,15 @@ def resolve_owner_team_for_match_create(
         team_id = requested_team_id if requested_team_id is not None else ctx.team_id
         if team_id is None:
             raise HTTPException(status_code=422, detail="owner_team_id を指定してください")
+        # round131 fix: admin が指定した team_id が存在しないと FK 違反で 500
+        if db is not None:
+            from backend.db.models import Team as _Team
+            if not db.query(_Team.id).filter(_Team.id == int(team_id),
+                                              _Team.deleted_at.is_(None)).first():
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"owner_team_id={team_id} は存在しないか削除済みです",
+                )
         return int(team_id), bool(requested_is_public_pool)
     if ctx.is_coach or ctx.is_analyst:
         if ctx.team_id is None:

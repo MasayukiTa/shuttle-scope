@@ -551,6 +551,7 @@ def create_match(body: MatchCreate, request: Request, db: Session = Depends(get_
         ctx,
         requested_team_id=body.owner_team_id,
         requested_is_public_pool=body.is_public_pool,
+        db=db,
     )
     payload = body.model_dump()
     payload["owner_team_id"] = owner_id
@@ -629,6 +630,18 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
     if any(k in payload for k in privileged_keys) and not ctx.is_admin:
         for k in list(privileged_keys):
             payload.pop(k, None)
+    # round131 fix: admin が指定した team_id の存在 check (FK 違反 → 500 を防ぐ)
+    if ctx.is_admin:
+        from backend.db.models import Team as _Team_chk
+        for k in ("owner_team_id", "home_team_id", "away_team_id"):
+            v = payload.get(k)
+            if v is not None and not db.query(_Team_chk.id).filter(
+                _Team_chk.id == int(v), _Team_chk.deleted_at.is_(None)
+            ).first():
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{k}={v} は存在しないか削除済みです",
+                )
     # audit log: 変更前の値と変更後の値を記録 (match データ改竄の forensic 用)
     from backend.utils.access_log import log_access as _log
     _log(db, "match_updated", user_id=ctx.user_id,
