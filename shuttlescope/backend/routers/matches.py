@@ -779,28 +779,37 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     except Exception as exc:
         deletion_errors.append(f"upload_sessions_bulk: {type(exc).__name__}: {str(exc)[:80]}")
 
-    # 2) ServerVideoArtifact 関連レコード + 実ファイル (queue)
+    # 2) ServerVideoArtifact 関連レコード + 実ファイル
+    # ORM の dirty-state 不整合を避けるため、ファイル削除はループで、DB 削除は Core SQL。
     try:
-        from backend.db.models import ServerVideoArtifact as _SVA
         from pathlib import Path as _P
         from backend.routers.uploads import UPLOAD_DIR as _UPLOAD_DIR2
-        arts = db.query(_SVA).filter(_SVA.match_id == match_id).all()
-        for art in arts:
-            fp = (art.file_path or "").strip()
-            if fp:
-                try:
-                    p = _P(fp).resolve()
-                    try:
-                        p.relative_to(_UPLOAD_DIR2)
-                        _try_unlink(p)
-                    except ValueError:
-                        deletion_errors.append(f"sva outside upload_dir: {p}")
-                except Exception as exc:
-                    deletion_errors.append(f"sva path: {type(exc).__name__}")
+        from sqlalchemy import text as _sa_text2
+        rows = db.execute(
+            _sa_text2("SELECT file_path FROM server_video_artifacts WHERE match_id = :mid"),
+            {"mid": match_id},
+        ).fetchall()
+        for (fp,) in rows:
+            fp = (fp or "").strip()
+            if not fp:
+                continue
             try:
-                db.delete(art)
+                p = _P(fp).resolve()
+                try:
+                    p.relative_to(_UPLOAD_DIR2)
+                    _try_unlink(p)
+                except ValueError:
+                    deletion_errors.append(f"sva outside upload_dir: {p}")
             except Exception as exc:
-                deletion_errors.append(f"sva delete: {type(exc).__name__}")
+                deletion_errors.append(f"sva path: {type(exc).__name__}")
+        result_sva = db.execute(
+            _sa_text2("DELETE FROM server_video_artifacts WHERE match_id = :mid"),
+            {"mid": match_id},
+        )
+        n_sva = getattr(result_sva, "rowcount", 0) or 0
+        if n_sva:
+            deleted_files.append(f"server_video_artifacts: {n_sva} rows")
+        db.flush()
     except Exception as exc:
         deletion_errors.append(f"sva_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
