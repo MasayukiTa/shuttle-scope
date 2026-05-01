@@ -1310,7 +1310,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "img-src 'self' data: blob:",
                 "media-src 'self' blob: app:",  # app://video/ プロトコル + MediaRecorder blob
                 "connect-src 'self' wss: https:",
-                "font-src 'self' data:",
+                "font-src 'self' data: https:",  # CSP report ノイズ抑止 (Google Fonts 等の sub-resource)
                 "object-src 'none'",
                 "base-uri 'self'",
                 "form-action 'self'",
