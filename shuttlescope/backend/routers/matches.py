@@ -314,10 +314,18 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
     # 試合表示画面で出力される文字列は全て HTML タグをブロック
     # round130 Y-1: 元の deny-list は `<%= ... %>` 等の非標準タグを通していた。
     # ASCII の `<` / `>` を含むだけで reject する厳しめポリシーに変更。
+    # round140 H-3: 改行・NUL・制御文字も拒否 (audit log injection 防御)
+    import re as _re_ctrl_m
+    _CTRL_RE = _re_ctrl_m.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
     for fname in ("notes", "final_score", "tournament", "venue", "round", "tournament_grade", "exception_reason"):
         v = getattr(body, fname, None)
-        if v is not None and isinstance(v, str) and ("<" in v or ">" in v):
-            raise HTTPException(status_code=422, detail=f"{fname} contains '<' or '>' (disallowed)")
+        if v is not None and isinstance(v, str):
+            if "<" in v or ">" in v:
+                raise HTTPException(status_code=422, detail=f"{fname} contains '<' or '>' (disallowed)")
+            if "\r" in v or "\n" in v:
+                raise HTTPException(status_code=422, detail=f"{fname} contains line breaks (disallowed)")
+            if _CTRL_RE.search(v):
+                raise HTTPException(status_code=422, detail=f"{fname} contains control characters")
 
 
 def _video_filename(m: Match) -> Optional[str]:
