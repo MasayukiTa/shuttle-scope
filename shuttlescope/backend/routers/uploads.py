@@ -492,6 +492,47 @@ async def finalize_upload(
         except OSError as e:
             raise HTTPException(status_code=500, detail=f"ファイルのリネームに失敗: {e}")
 
+        # C-5/C-6 防御 (round112): magic bytes は先頭 256 byte しか見ていないため
+        # ftypisom + 任意 byte sequence (HTML / shell script) が通過してしまう。
+        # finalize 時に ffprobe で再 validate し、まともな動画コンテナか確認する。
+        # ffprobe 不在 / 解析失敗時はファイル削除 + 422。
+        try:
+            import shutil as _sh, subprocess as _sp
+            ffprobe = _sh.which("ffprobe")
+            if ffprobe:
+                proc = _sp.run(
+                    [ffprobe, "-v", "error", "-print_format", "json",
+                     "-show_format", "-show_streams", "--", str(final)],
+                    capture_output=True, timeout=30, shell=False,
+                )
+                ok = (proc.returncode == 0)
+                if ok:
+                    import json as _json
+                    try:
+                        info = _json.loads(proc.stdout or b"{}")
+                        streams = info.get("streams", [])
+                        has_video = any(s.get("codec_type") == "video" for s in streams)
+                        if not has_video:
+                            ok = False
+                    except Exception:
+                        ok = False
+                if not ok:
+                    # 不正動画 → ファイル削除 + session abort
+                    try: final.unlink(missing_ok=True)
+                    except Exception: pass
+                    session.status = "aborted"
+                    db.commit()
+                    raise HTTPException(
+                        status_code=422,
+                        detail="動画として無効です (ffprobe 検証失敗 — 破損または偽装ファイル)",
+                    )
+        except HTTPException:
+            raise
+        except Exception as _ffex:
+            # ffprobe 不在 / タイムアウト等は warn のみで通す (運用継続性優先)
+            import logging as _lg
+            _lg.getLogger(__name__).warning("[uploads] ffprobe validate skipped: %s", _ffex)
+
         session.status = "completed"
         session.final_path = str(final.resolve())
         session.updated_at = datetime.utcnow()

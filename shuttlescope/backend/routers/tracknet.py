@@ -7,7 +7,7 @@ import threading
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 import json
@@ -184,6 +184,14 @@ def start_batch(
             ),
         )
 
+    # F-4 防御 (round115): 同一 match_id に並列 batch 起動を禁止 (GPU 占有 DoS 防止)
+    for jid, jinfo in _jobs.items():
+        if jinfo.get("match_id") == match_id and jinfo.get("status") in (BatchJobStatus.PENDING, BatchJobStatus.RUNNING):
+            raise HTTPException(
+                status_code=409,
+                detail=f"この試合は既に TrackNet バッチ処理中です (job_id={jid})。",
+            )
+
     job_id = str(uuid.uuid4())[:8]
     _jobs[job_id] = {
         "status": BatchJobStatus.PENDING,
@@ -237,11 +245,13 @@ _live_frame_buffers: dict[str, deque] = {}
 
 class LiveFrameHintRequest(BaseModel):
     """ライブストリームから 1 フレームを受け取る。3 フレーム揃ったら推論。"""
+    # F-7 (round115): float 系に Inf/NaN を入れると 500 を引くため明示拒否
+    model_config = {"extra": "forbid"}
     session_code: str
     frame_b64: str          # base64 JPEG/PNG（JS の canvas.toDataURL から）
-    frame_width: int = 512
-    frame_height: int = 288
-    confidence_threshold: float = 0.5
+    frame_width: int = Field(default=512, ge=1, le=4096)
+    frame_height: int = Field(default=288, ge=1, le=4096)
+    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0, allow_inf_nan=False)
 
 
 @router.post("/tracknet/live_frame_hint")
@@ -304,10 +314,11 @@ def live_frame_hint(body: LiveFrameHintRequest):
 
 class FrameHintRequest(BaseModel):
     """Base64エンコードされた1フレーム（PNG/JPEG）を受け取る"""
+    model_config = {"extra": "forbid"}
     frame_b64: str          # 中央フレーム
     frame_prev_b64: str     # 1フレーム前
     frame_next_b64: str     # 1フレーム後
-    confidence_threshold: float = 0.5
+    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0, allow_inf_nan=False)
 
 @router.post("/tracknet/frame_hint")
 def frame_hint(body: FrameHintRequest):
