@@ -312,15 +312,12 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
                 raise HTTPException(status_code=422, detail=f"video_local_path 検証エラー: {_exc}")
     # notes / final_score / tournament / venue の HTML タグ / script 拒否 (stored XSS 対策)
     # 試合表示画面で出力される文字列は全て HTML タグをブロック
-    import re as _re_xss_m
-    _XSS_RE = _re_xss_m.compile(
-        r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]",
-        _re_xss_m.IGNORECASE,
-    )
+    # round130 Y-1: 元の deny-list は `<%= ... %>` 等の非標準タグを通していた。
+    # ASCII の `<` / `>` を含むだけで reject する厳しめポリシーに変更。
     for fname in ("notes", "final_score", "tournament", "venue", "round", "tournament_grade", "exception_reason"):
         v = getattr(body, fname, None)
-        if v is not None and isinstance(v, str) and _XSS_RE.search(v):
-            raise HTTPException(status_code=422, detail=f"{fname} contains disallowed HTML tags")
+        if v is not None and isinstance(v, str) and ("<" in v or ">" in v):
+            raise HTTPException(status_code=422, detail=f"{fname} contains '<' or '>' (disallowed)")
 
 
 def _video_filename(m: Match) -> Optional[str]:
