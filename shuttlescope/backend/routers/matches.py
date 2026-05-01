@@ -763,6 +763,15 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     except Exception as exc:
         deletion_errors.append(f"server_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
+    # 1.5) この match を指す全 UploadSession の match_id を null 化 (FK 切断)
+    # (vlp 対応の 1 件だけでなく、過去の中断・期限切れ session も含めて全件処理)
+    try:
+        from backend.db.models import UploadSession as _US_all
+        for u in db.query(_US_all).filter(_US_all.match_id == match_id).all():
+            u.match_id = None
+    except Exception as exc:
+        deletion_errors.append(f"upload_sessions_bulk: {type(exc).__name__}")
+
     # 2) ServerVideoArtifact 関連レコード + 実ファイル (queue)
     try:
         from backend.db.models import ServerVideoArtifact as _SVA
