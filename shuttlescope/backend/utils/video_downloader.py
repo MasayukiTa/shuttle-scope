@@ -495,10 +495,13 @@ class VideoDownloader:
         """active_downloads[job_id] を上書きしつつ match_id を保持する。
         各 progress hook / finalize / error path から呼ぶことで、UI 用の
         match_id 関連付けが消えないようにする。
+        error 状態には timestamp を付与 (UI が一定時間後に表示終了するため)。
         """
         prev_mid = (self.active_downloads.get(job_id) or {}).get("match_id")
         if prev_mid is not None:
             payload = {**payload, "match_id": prev_mid}
+        if payload.get("status") == "error":
+            payload = {**payload, "error_at": time.time()}
         self.active_downloads[job_id] = payload
 
     def get_progress(self, job_id: str) -> dict:
@@ -517,23 +520,47 @@ class VideoDownloader:
         else:
             info["match_id"] = int(match_id)
 
+    # error 状態を UI に伝える保持時間 (秒)
+    _ERROR_RETAIN_SEC = 60.0
+
     def active_jobs_by_match(self) -> dict[int, dict]:
-        """進行中 (downloading/pending) のジョブを match_id でグループ化して返す。
-        UI が試合一覧で「DL 中」バッジを出すための index。
+        """match_id でグループ化したジョブ状態を返す。
+
+        - 進行中 (queued/pending/downloading/processing/starting): UI 「DL 中」バッジ
+        - error: ERROR_RETAIN_SEC 内なら error バッジ + 再試行ボタン用に返却
+        - complete は返さない (UI は match.video_local_path を見れば良い)
+
+        同じ match に古い error と新しい active があれば active を優先する。
         """
+        active_states = {"queued", "pending", "downloading", "processing", "starting"}
         out: dict[int, dict] = {}
+        now = time.time()
         for jid, info in self.active_downloads.items():
             mid = info.get("match_id")
             if not isinstance(mid, int):
                 continue
             st = info.get("status", "")
-            if st in ("queued", "pending", "downloading", "processing", "starting"):
+            if st in active_states:
+                # active は無条件で error を上書き
                 out[mid] = {
                     "job_id": jid,
                     "status": st,
                     "percent": info.get("percent"),
                     "speed": info.get("speed"),
                     "eta": info.get("eta"),
+                }
+            elif st == "error":
+                err_at = info.get("error_at") or now
+                if now - err_at > self._ERROR_RETAIN_SEC:
+                    continue
+                # active が既に登録済みならスキップ
+                if mid in out and out[mid].get("status") in active_states:
+                    continue
+                out[mid] = {
+                    "job_id": jid,
+                    "status": st,
+                    "error": info.get("error", ""),
+                    "error_at": err_at,
                 }
         return out
 
