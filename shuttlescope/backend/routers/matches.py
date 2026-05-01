@@ -691,6 +691,31 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
 
     if not (ctx.is_admin or ctx.is_analyst):
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+
+    # R-6 race fix (round121): 並列 DELETE で複数 commit が同じ cascade 行を
+    # 取り合うと IntegrityError で全件 500。先頭で行レベル lock (NOWAIT) を取り、
+    # 取れなかった並列リクエストは 409 で即時失敗させる。
+    try:
+        from sqlalchemy import text as _sa_text
+        from sqlalchemy.exc import OperationalError as _OpErr
+        try:
+            db.execute(
+                _sa_text("SELECT id FROM matches WHERE id = :mid FOR UPDATE NOWAIT"),
+                {"mid": match_id},
+            )
+        except _OpErr as exc:
+            # 別トランザクションが先にロック済み
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="この試合は他の処理で削除中です。少し待って再試行してください。",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # SQLite 等で NOWAIT 未対応の場合は lock を諦めて続行 (本番は PostgreSQL)
+        pass
+
     match = db.get(Match, match_id)
     if not match or not user_can_access_match(ctx, match):
         raise HTTPException(status_code=404, detail="試合が見つかりません")

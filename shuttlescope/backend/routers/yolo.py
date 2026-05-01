@@ -15,7 +15,7 @@ from typing import Optional
 import cv2
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db, SessionLocal
@@ -73,13 +73,16 @@ def yolo_status():
 
 class RoiRectModel(BaseModel):
     """正規化座標 (0-1) の解析対象矩形"""
-    x: float = 0.0
-    y: float = 0.0
-    w: float = 1.0
-    h: float = 1.0
+    model_config = {"extra": "forbid"}
+    x: float = Field(default=0.0, ge=0.0, le=1.0, allow_inf_nan=False)
+    y: float = Field(default=0.0, ge=0.0, le=1.0, allow_inf_nan=False)
+    w: float = Field(default=1.0, ge=0.0, le=1.0, allow_inf_nan=False)
+    h: float = Field(default=1.0, ge=0.0, le=1.0, allow_inf_nan=False)
 
 
 class YoloBatchRequest(BaseModel):
+    # round120 fix: extra=forbid で `sample_every_n` 等の未知フィールド受理を遮断
+    model_config = {"extra": "forbid"}
     roi_rect: Optional[RoiRectModel] = None       # 解析対象エリア（未指定なら全体）
     resume: bool = False                           # True: 既存フレームをスキップして途中再開
     prev_roi: Optional[RoiRectModel] = None       # 直前の ROI（ROI 拡張時の差分処理用）

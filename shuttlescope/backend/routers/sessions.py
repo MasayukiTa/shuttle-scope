@@ -137,11 +137,14 @@ def _get_lan_ips() -> list[str]:
 # ─── リクエストモデル ─────────────────────────────────────────────────────────
 
 class SessionCreate(BaseModel):
+    # round120 fix: extra=forbid で `expires_at`/`ttl_minutes` 等を遮断
+    model_config = {"extra": "forbid"}
     match_id: int
     created_by_role: str = "analyst"
 
 
 class ParticipantJoin(BaseModel):
+    model_config = {"extra": "forbid"}
     role: str = "coach"
     device_name: Optional[str] = None
     device_type: Optional[str] = None   # iphone/ipad/pc/usb_camera/builtin_camera
@@ -150,10 +153,12 @@ class ParticipantJoin(BaseModel):
 
 
 class ViewerPermissionBody(BaseModel):
+    model_config = {"extra": "forbid"}
     viewer_permission: str  # allowed / blocked / default
 
 
 class RegisterSourceBody(BaseModel):
+    model_config = {"extra": "forbid"}
     source_kind: str              # iphone_webrtc/usb_camera/builtin_camera/pc_local
     participant_id: Optional[int] = None
     source_resolution: Optional[str] = None  # "1280x720"
