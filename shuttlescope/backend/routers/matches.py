@@ -711,28 +711,34 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
 
     # R-6 race fix (round121): 並列 DELETE で複数 commit が同じ cascade 行を
-    # 取り合うと IntegrityError で全件 500。先頭で行レベル lock (NOWAIT) を取り、
-    # 取れなかった並列リクエストは 409 で即時失敗させる。
-    try:
-        from sqlalchemy import text as _sa_text
-        from sqlalchemy.exc import OperationalError as _OpErr
+    # 取り合うと IntegrityError で全件 500。PostgreSQL 環境では行レベル lock
+    # (NOWAIT) を取り、取れなかった並列リクエストは 409 で即時失敗させる。
+    # SQLite 等の test 環境では FOR UPDATE NOWAIT 自体が未サポートで構文エラー
+    # を投げるため、PostgreSQL dialect でのみ実行する。
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
         try:
-            db.execute(
-                _sa_text("SELECT id FROM matches WHERE id = :mid FOR UPDATE NOWAIT"),
-                {"mid": match_id},
-            )
-        except _OpErr as exc:
-            # 別トランザクションが先にロック済み
-            db.rollback()
-            raise HTTPException(
-                status_code=409,
-                detail="この試合は他の処理で削除中です。少し待って再試行してください。",
-            )
-    except HTTPException:
-        raise
-    except Exception:
-        # SQLite 等で NOWAIT 未対応の場合は lock を諦めて続行 (本番は PostgreSQL)
-        pass
+            from sqlalchemy import text as _sa_text
+            from sqlalchemy.exc import OperationalError as _OpErr
+            try:
+                db.execute(
+                    _sa_text("SELECT id FROM matches WHERE id = :mid FOR UPDATE NOWAIT"),
+                    {"mid": match_id},
+                )
+            except _OpErr as exc:
+                msg = str(exc).lower()
+                if "could not obtain lock" in msg or "lock not available" in msg or "55p03" in msg:
+                    db.rollback()
+                    raise HTTPException(
+                        status_code=409,
+                        detail="この試合は他の処理で削除中です。少し待って再試行してください。",
+                    )
+                # その他の OperationalError (構文等) は黙って続行
+                db.rollback()
+        except HTTPException:
+            raise
+        except Exception:
+            # 想定外は続行 (defense in depth)
+            pass
 
     match = db.get(Match, match_id)
     if not match or not user_can_access_match(ctx, match):

@@ -145,6 +145,7 @@ def test_no_orphan_event_names():
         # 試合 / 選手
         "match_created",
         "match_deleted",
+        "match_video_cascade_deleted",  # round70: 試合削除時の動画 cascade 監査
         "player_created",
         "player_updated",
         "player_deleted",
