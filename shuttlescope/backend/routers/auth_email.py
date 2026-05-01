@@ -273,6 +273,10 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
 def verify_email(token: str = Query(..., min_length=10, max_length=200),
                  request: Request = None, db: Session = Depends(get_db)):
     """メール内のリンクを踏んだ時の検証エンドポイント。"""
+    # round142 J-1 fix: token brute force 防御 (IP 単位 30 回 / 1 時間)
+    ip = _client_ip(request) if request else "unknown"
+    _enforce_rate_limit(ip, "", "verify", ip_max=30, ip_window_s=3600,
+                        email_max=999, email_window_s=3600)
     result = consume_email_verification_token(db, token)
     if result is None:
         raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")

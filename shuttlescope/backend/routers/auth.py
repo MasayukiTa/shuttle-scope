@@ -847,6 +847,8 @@ def refresh(req: RefreshRequest, request: Request, db: Session = Depends(get_db)
     - 使用された refresh token は即 revoke し新しい refresh を発行
     - revoke 済み refresh の再提示は reuse とみなし chain 全体を revoke
     """
+    # round142 J-1 fix: refresh token brute force 防御 (false-token enumeration)
+    _check_ip_rate_limit(_get_ip(request))
     rotated = rotate_refresh_token(req.refresh_token)
     if not rotated:
         raise HTTPException(status_code=401, detail="refresh token invalid or expired")
