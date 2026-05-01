@@ -95,12 +95,21 @@ def verify_package(payload: dict, db: Optional[Session] = None) -> Tuple[bool, s
     expires_at_str = payload.get(EXPIRES_FIELD)
     if not expires_at_str:
         return False, "有効期限が設定されていません"
+    # D-3 防御 (round113): Python 3.11+ は 'Z' suffix を受理し tz-aware を返すため
+    # naive utcnow との比較で TypeError を起こす。tz を一括 strip して扱う。
     try:
-        expires_at = datetime.fromisoformat(expires_at_str)
+        s = expires_at_str
+        if s.endswith("Z"): s = s[:-1] + "+00:00"
+        expires_at = datetime.fromisoformat(s)
+        if expires_at.tzinfo is not None:
+            expires_at = expires_at.replace(tzinfo=None) - (expires_at.utcoffset() or timedelta(0))
     except (ValueError, TypeError):
         return False, "有効期限の形式が不正です"
-    if datetime.utcnow() > expires_at:
-        return False, f"パッケージの有効期限切れ (期限: {expires_at_str})"
+    try:
+        if datetime.utcnow() > expires_at:
+            return False, f"パッケージの有効期限切れ (期限: {expires_at_str})"
+    except TypeError:
+        return False, "有効期限の形式が不正です (タイムゾーン不整合)"
 
     expected = hmac.new(key, _canonical_json(payload), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, sig):

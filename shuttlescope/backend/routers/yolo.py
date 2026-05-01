@@ -158,6 +158,15 @@ def start_yolo_batch(
             ),
         )
 
+    # F-4 防御 (round115): 同一 match_id に対して既に running/pending な job があれば 409。
+    # GPU 占有 DoS と重複処理による結果不整合を防ぐ。
+    for jid, jinfo in _jobs.items():
+        if jinfo.get("match_id") == match_id and jinfo.get("status") in (JobStatus.PENDING, JobStatus.RUNNING):
+            raise HTTPException(
+                status_code=409,
+                detail=f"この試合は既に YOLO バッチ処理中です (job_id={jid})。先に停止または完了を待ってください。",
+            )
+
     job_id = str(uuid.uuid4())[:8]
     _jobs[job_id] = {
         "status": JobStatus.PENDING,

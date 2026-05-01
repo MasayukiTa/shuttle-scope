@@ -1034,7 +1034,7 @@ app.add_middleware(AnalysisCacheMiddleware)
 _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     r"^/api/(auth/(login|logout|bootstrap-status|register|email/verify|"
     r"password/(request_reset|reset)|invitation/(peek|accept))"
-    r"|health|public(/.*)?"
+    r"|health|csp_report|public(/.*)?"
     # Phase Pay-1: Webhook は認証なし。プロバイダ側の署名検証で正当性確認。
     r"|_internal/billing/webhooks/(stripe|komoju|univapay)"
     # Phase Pay-1: 法的情報 (特商法表示用、公開情報)
@@ -1288,6 +1288,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "form-action 'self'",
                 "frame-ancestors 'none'",
                 "upgrade-insecure-requests",
+                # I-1 (round118): 違反検知用 report endpoint
+                "report-uri /api/csp_report",
             ]
             response.headers["Content-Security-Policy"] = "; ".join(csp_parts)
         return response
@@ -1400,6 +1402,28 @@ async def health():
     """ヘルスチェック（Electron起動確認用）"""
     # 無認証でアクセス可能なため、内部モード（PUBLIC_MODE）/ バージョンは返さない
     return {"status": "ok"}
+
+
+@app.post("/api/csp_report")
+async def csp_report(request: StarletteRequest):
+    """CSP 違反レポート受信 (I-1: round118)。
+    ブラウザが report-uri に POST する。サイズ上限 + 認証なし (browser だから)。
+    別マシンからの noise を抑えるため payload を access_log に記録するだけで他処理しない。
+    """
+    try:
+        body = await request.body()
+        if len(body) > 8192:
+            return {"ok": False, "reason": "too_large"}
+        import json as _json
+        try:
+            data = _json.loads(body or b"{}")
+        except Exception:
+            data = {"raw": body[:1024].decode("utf-8", "replace")}
+        import logging as _lg
+        _lg.getLogger("csp_report").warning("CSP violation: %s", str(data)[:500])
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 @app.post("/api/cache/invalidate")

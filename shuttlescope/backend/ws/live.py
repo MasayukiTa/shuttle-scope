@@ -143,7 +143,18 @@ async def ws_live_handler(session_code: str, websocket: WebSocket, db) -> None:
                 except (ValueError, TypeError):
                     # 不正 JSON は黙って無視（接続は維持）
                     continue
-                if isinstance(data, dict) and data.get("type") == "ping":
+                # A-3 防御 (round110): type field を allowlist で明示的に検証。
+                # 現状受け付けるのは "ping" のみ (broadcast は server→client のみ)。
+                # 未知 type / 非 dict / 過長 type は黙って無視 (接続維持)。
+                if not isinstance(data, dict):
+                    continue
+                msg_type = data.get("type")
+                if not isinstance(msg_type, str) or len(msg_type) > 64:
+                    continue
+                _ALLOWED_TYPES = {"ping"}
+                if msg_type not in _ALLOWED_TYPES:
+                    continue
+                if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
             except asyncio.TimeoutError:
                 # タイムアウト時は keepalive ping を送る

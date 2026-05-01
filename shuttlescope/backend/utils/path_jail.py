@@ -102,10 +102,29 @@ def assert_allowed_video_path(path: Union[str, Path]) -> Path:
 
     - シンボリックリンクは resolve() で解決される
     - HDD 上の archive root 外にあるパスはここで拒否される
+    - NTFS Alternate Data Streams (`file.mp4:hidden`, `::$DATA`) は拒否
+    - trailing dot/space (Windows で別ファイル参照) は拒否
     - 許可されたルート: allowed_video_roots() 参照
 
     違反時は ValueError を送出する。
     """
+    raw_str = str(path)
+    # H-1 防御 (round117): NTFS ADS — Windows のドライブレター除く ':' は ADS
+    # `C:\Users\foo\bar.mp4:hidden` のようなパスを reject する。
+    # 先頭 2 文字目が ':' (ドライブレター) の場合のみ allow、それ以外の ':' は ADS とみなす。
+    body = raw_str
+    if len(body) >= 2 and body[1] == ":":
+        body = body[2:]  # ドライブレター除外
+    if ":" in body:
+        raise ValueError(
+            f"[path_jail] 動画パス拒否: NTFS Alternate Data Stream は許可されません: '{raw_str}'"
+        )
+    # H-5 防御 (round117): trailing dot/space は Windows で別ファイル参照
+    last = raw_str.rstrip()
+    if last != raw_str or raw_str.endswith("."):
+        raise ValueError(
+            f"[path_jail] 動画パス拒否: 末尾の空白/ドットは許可されません: {raw_str!r}"
+        )
     real = Path(path).resolve()
     for root in allowed_video_roots():
         try:
