@@ -163,15 +163,20 @@ def start_batch(
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
 
-    video_path = match.video_local_path or match.video_url
-    if not video_path:
+    from backend.utils.path_jail import normalize_match_local_path, assert_match_video_path_allowed
+    resolved = normalize_match_local_path(match.video_local_path)
+    if resolved is not None:
+        video_path = str(resolved)
+    elif match.video_url:
+        video_path = match.video_url
+    else:
         raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
-    # path_jail: ローカルパスは許可ルート内であることを確認（HDD ドローン映像等への CV 誤起動防止）
-    from backend.utils.path_jail import assert_match_video_path_allowed
-    try:
-        assert_match_video_path_allowed(match.video_local_path)
-    except ValueError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+    # server:// は UPLOAD_DIR 配下なので path_jail スキップ
+    if match.video_local_path and not match.video_local_path.startswith("server://"):
+        try:
+            assert_match_video_path_allowed(match.video_local_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
 
     cuda_idx, ov_device = _load_device_settings(db)
     inf = get_inference(body.backend, cuda_device_index=cuda_idx, openvino_device=ov_device)
