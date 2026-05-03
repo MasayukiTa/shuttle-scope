@@ -138,7 +138,7 @@ export function AuditLogPage() {
   }
 
   return (
-    <div className="p-6 space-y-4 h-full flex flex-col overflow-hidden">
+    <div className="p-3 sm:p-6 space-y-4 h-full flex flex-col overflow-hidden">
       <div className="flex-shrink-0">
         <h1 className={`text-xl font-semibold ${textHeading}`}>{t('auth.audit_log.title')}</h1>
         <p className={`text-xs mt-1 ${textMuted}`}>{t('auth.audit_log.hint')}</p>
@@ -228,14 +228,14 @@ export function AuditLogPage() {
                 </span>
               </th>
               <th
-                className="text-left px-3 py-2 cursor-pointer select-none"
+                className="text-left px-3 py-2 cursor-pointer select-none hidden md:table-cell"
                 onClick={() => handleSort('ip_addr')}
               >
                 <span className="inline-flex items-center gap-1">
                   {t('auth.audit_log.column_ip')} {sortIcon('ip_addr')}
                 </span>
               </th>
-              <th className="text-left px-3 py-2">{t('auth.audit_log.column_details')}</th>
+              <th className="text-left px-3 py-2 hidden lg:table-cell">{t('auth.audit_log.column_details')}</th>
             </tr>
           </thead>
           <tbody>
@@ -269,8 +269,8 @@ export function AuditLogPage() {
                   <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`}>
                     {r.username ? `${r.username} (#${r.user_id})` : (r.user_id ? `#${r.user_id}` : '—')}
                   </td>
-                  <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`}>{r.ip_addr || '—'}</td>
-                  <td className={`px-3 py-2 font-mono text-xs ${textSecondary} break-all max-w-md`}>{r.details || ''}</td>
+                  <td className={`px-3 py-2 whitespace-nowrap hidden md:table-cell ${textSecondary}`}>{r.ip_addr || '—'}</td>
+                  <td className={`px-3 py-2 font-mono text-xs hidden lg:table-cell ${textSecondary} break-all max-w-md`}>{r.details || ''}</td>
                 </tr>
               ))
             )}
