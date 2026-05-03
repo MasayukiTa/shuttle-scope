@@ -488,7 +488,7 @@ function AnnotateContent() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* 動画領域 */}
           <div className={`rounded-lg border p-3 ${panelBg}`}>
             {currentClip && (

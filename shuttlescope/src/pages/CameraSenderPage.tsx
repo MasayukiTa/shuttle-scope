@@ -131,6 +131,7 @@ export function CameraSenderPage() {
   })
   const [battery, setBattery] = useState<{ level: number; charging: boolean } | null>(null)
   const [rttMs, setRttMs] = useState<number | null>(null)
+  const [startingCamera, setStartingCamera] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -368,6 +369,7 @@ export function CameraSenderPage() {
       setErrorMsg('カメラにアクセスできません。HTTPSまたはlocalhostで開いてください（iOSはHTTPではカメラ使用不可）。')
       return
     }
+    setStartingCamera(true)
     try {
       // ICE サーバー設定を取得（TURN が有効な場合はリレー経由）
       let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -426,6 +428,8 @@ export function CameraSenderPage() {
       setSenderState('state_c')
     } catch {
       setErrorMsg('カメラの起動に失敗しました。カメラへのアクセスを許可してください。')
+    } finally {
+      setStartingCamera(false)
     }
   }, [participantId, startRttPolling])
 
@@ -549,10 +553,11 @@ export function CameraSenderPage() {
             )}
             <button
               onClick={() => joinSession(form.sessionCode, form.password, form.deviceName)}
-              disabled={!form.sessionCode}
-              className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium"
+              disabled={!form.sessionCode || senderState === 'connecting'}
+              className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium inline-flex items-center justify-center gap-2"
             >
-              {t('camera_sender.join_button')}
+              {senderState === 'connecting' && <Loader2 size={14} className="animate-spin" />}
+              {senderState === 'connecting' ? '接続中…' : t('camera_sender.join_button')}
             </button>
           </div>
         </div>
@@ -657,10 +662,11 @@ export function CameraSenderPage() {
             <div className="space-y-2">
               <button
                 onClick={startCamera}
-                className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold flex items-center justify-center gap-2"
+                disabled={startingCamera}
+                className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2"
               >
-                <Camera size={18} />
-                {t('camera_sender.state_b_start')}
+                {startingCamera ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+                {startingCamera ? '起動中…' : t('camera_sender.state_b_start')}
               </button>
               <button
                 onClick={() => { setSenderState('state_a'); setErrorMsg('') }}

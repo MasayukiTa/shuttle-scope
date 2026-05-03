@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, Plus, X, Check, Users } from 'lucide-react'
+import { Pencil, Plus, X, Check, Users, Loader2 } from 'lucide-react'
 
 import { listTeams, createTeam, patchTeam, apiGet, type TeamDTO } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 interface UserBrief {
   id: number
@@ -35,6 +36,9 @@ export function TeamManagementPage() {
   // メンバー一覧（admin: 全 user / coach: 自チーム）
   const [users, setUsers] = useState<UserBrief[]>([])
   const [expandedTeamId, setExpandedTeamId] = useState<number | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [savingId, setSavingId] = useState<number | null>(null)
+  const isMobile = useIsMobile()
 
   const load = async () => {
     setLoading(true)
@@ -74,6 +78,7 @@ export function TeamManagementPage() {
       setError('チーム名を入力してください')
       return
     }
+    setCreating(true)
     try {
       await createTeam({
         name: form.name.trim(),
@@ -86,6 +91,8 @@ export function TeamManagementPage() {
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'チーム作成に失敗しました')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -100,6 +107,7 @@ export function TeamManagementPage() {
   }
 
   const handleSave = async (id: number) => {
+    setSavingId(id)
     try {
       await patchTeam(id, {
         name: editForm.name.trim() || undefined,
@@ -111,6 +119,8 @@ export function TeamManagementPage() {
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : '更新に失敗しました')
+    } finally {
+      setSavingId(null)
     }
   }
 
@@ -123,15 +133,15 @@ export function TeamManagementPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold">チーム管理</h1>
+    <div className="p-3 sm:p-6 max-w-4xl">
+      <div className="flex items-center justify-between mb-4 gap-2">
+        <h1 className="text-xl font-bold truncate">チーム管理</h1>
         {isAdmin && (
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shrink-0"
           >
-            <Plus size={16} /> 新規作成
+            <Plus size={16} /> <span className="hidden sm:inline">新規作成</span><span className="sm:hidden">追加</span>
           </button>
         )}
       </div>
@@ -182,18 +192,24 @@ export function TeamManagementPage() {
               />
             </div>
           </div>
-          <div className="mt-3 flex gap-2 justify-end">
+          <div className="mt-3 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
             <button
               onClick={() => {
                 setShowCreate(false)
                 setForm(emptyForm())
               }}
-              className="px-3 py-2 border rounded"
+              disabled={creating}
+              className="px-3 py-2 border rounded disabled:opacity-50 w-full sm:w-auto"
             >
               キャンセル
             </button>
-            <button onClick={handleCreate} className="px-3 py-2 bg-blue-600 text-white rounded">
-              作成
+            <button
+              onClick={handleCreate}
+              disabled={creating}
+              className="px-3 py-2 bg-blue-600 text-white rounded disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 w-full sm:w-auto"
+            >
+              {creating && <Loader2 size={14} className="animate-spin" />}
+              {creating ? '作成中…' : '作成'}
             </button>
           </div>
         </div>
@@ -201,6 +217,110 @@ export function TeamManagementPage() {
 
       {loading ? (
         <p className="text-sm text-gray-500">読み込み中…</p>
+      ) : isMobile ? (
+        <div className="space-y-2">
+          {teams.length === 0 && (
+            <div className="py-6 text-center text-sm text-gray-500">表示できるチームがありません。</div>
+          )}
+          {teams.map((t) => {
+            const editing = editingId === t.id
+            const expanded = expandedTeamId === t.id
+            const members = usersByTeam[t.id] || []
+            return (
+              <div key={t.id} className="border rounded p-3 bg-white">
+                {editing ? (
+                  <div className="space-y-2">
+                    <input
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      className="w-full px-2 py-1.5 border rounded text-sm"
+                      placeholder="表示名"
+                    />
+                    <input
+                      value={editForm.display_id}
+                      onChange={(e) => setEditForm({ ...editForm, display_id: e.target.value })}
+                      className="w-full px-2 py-1.5 border rounded text-sm"
+                      placeholder="識別子"
+                    />
+                    <input
+                      value={editForm.short_name}
+                      onChange={(e) => setEditForm({ ...editForm, short_name: e.target.value })}
+                      className="w-full px-2 py-1.5 border rounded text-sm"
+                      placeholder="短縮名"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setEditingId(null)}
+                        disabled={savingId === t.id}
+                        className="p-2 text-gray-500 border rounded disabled:opacity-50"
+                      >
+                        <X size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleSave(t.id)}
+                        disabled={savingId === t.id}
+                        className="p-2 bg-green-600 text-white rounded inline-flex items-center gap-1 disabled:opacity-60"
+                      >
+                        {savingId === t.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium truncate">{t.name}</div>
+                        <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
+                          <code className="bg-gray-100 px-1 rounded">{t.display_id || '—'}</code>
+                          {t.short_name && <span>({t.short_name})</span>}
+                          {t.is_independent ? (
+                            <span className="px-1.5 rounded bg-yellow-100 text-yellow-700">無所属</span>
+                          ) : (
+                            <span className="px-1.5 rounded bg-blue-100 text-blue-700">チーム</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button
+                          onClick={() => setExpandedTeamId((cur) => (cur === t.id ? null : t.id))}
+                          className="p-1.5 text-gray-600 border rounded inline-flex items-center gap-1"
+                        >
+                          <Users size={14} />
+                          <span className="text-xs">{members.length}</span>
+                        </button>
+                        {(isAdmin || isCoach) && (
+                          <button
+                            onClick={() => startEdit(t)}
+                            className="p-1.5 text-blue-600 border rounded"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {expanded && (
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="text-xs text-gray-500 mb-1">メンバー（{members.length} 名）</div>
+                        {members.length === 0 ? (
+                          <div className="text-xs text-gray-400">所属ユーザーはいません。</div>
+                        ) : (
+                          <ul className="space-y-1 text-sm">
+                            {members.map((u) => (
+                              <li key={u.id} className="flex items-center gap-2">
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-200 text-gray-700">{u.role}</span>
+                                <span className="truncate">{u.display_name || u.username}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )
+          })}
+        </div>
       ) : (
         <table className="w-full border-collapse">
           <thead>
@@ -276,10 +396,11 @@ export function TeamManagementPage() {
                         <>
                           <button
                             onClick={() => handleSave(t.id)}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                            disabled={savingId === t.id}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
                             title="保存"
                           >
-                            <Check size={16} />
+                            {savingId === t.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                           </button>
                           <button
                             onClick={() => setEditingId(null)}

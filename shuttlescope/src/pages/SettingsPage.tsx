@@ -870,7 +870,7 @@ export function SettingsPage() {
         }`} />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6">
         {/* 選手管理タブ */}
         {activeTab === 'players' && (
           <div>
@@ -1104,12 +1104,12 @@ export function SettingsPage() {
               {!reviewPlayersData?.data?.length ? (
                 <div className={`text-sm ${textMuted} py-4`}>{t('review.no_items')}</div>
               ) : (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto -mx-2 sm:mx-0"><table className="w-full text-sm min-w-[480px]">
                   <thead>
                     <tr className={`${textSecondary} border-b ${borderLine}`}>
                       <th className="text-left py-2 pr-4">{t('settings.ui.name')}</th>
-                      <th className="text-left py-2 pr-4">{t('review.profile_status')}</th>
-                      <th className="text-left py-2 pr-4">{t('settings.ui.dominant_hand')}</th>
+                      <th className="text-left py-2 pr-4 hidden sm:table-cell">{t('review.profile_status')}</th>
+                      <th className="text-left py-2 pr-4 hidden sm:table-cell">{t('settings.ui.dominant_hand')}</th>
                       <th className="text-left py-2 pr-4">{t('settings.ui.match_count')}</th>
                       <th className="text-left py-2">{t('settings.ui.operation')}</th>
                     </tr>
@@ -1125,10 +1125,10 @@ export function SettingsPage() {
                             )}
                           </div>
                         </td>
-                        <td className={`py-2 pr-4 ${textSecondary}`}>
+                        <td className={`py-2 pr-4 hidden sm:table-cell ${textSecondary}`}>
                           {t(`player.profile_status_${p.profile_status ?? 'provisional'}`)}
                         </td>
-                        <td className={`py-2 pr-4 ${textSecondary}`}>
+                        <td className={`py-2 pr-4 hidden sm:table-cell ${textSecondary}`}>
                           {p.dominant_hand === 'R' ? '右' : p.dominant_hand === 'L' ? '左' : t('player.unknown_hand')}
                         </td>
                         <td className={`py-2 pr-4 ${textSecondary}`}>{p.match_count ?? 0}</td>
@@ -1154,7 +1154,7 @@ export function SettingsPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
           </div>
@@ -1165,7 +1165,7 @@ export function SettingsPage() {
           <div className="space-y-6">
             <h2 className={`text-lg font-medium ${textHeading}`}>{t('tracknet.tab_label')}</h2>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-6">
             {/* モデルステータス */}
             <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
@@ -1986,7 +1986,7 @@ export function SettingsPage() {
 
         {/* データ管理タブ */}
         {activeTab === 'data' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 
             {/* ── デバイス・同期設定 (admin only) ────────────────────────── */}
             {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
@@ -2531,7 +2531,7 @@ export function SettingsPage() {
 
         {/* アカウント設定タブ */}
         {activeTab === 'account' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
 
             {/* テーマ */}
             <section>
