@@ -672,6 +672,16 @@ def update_match(match_id: int, body: MatchUpdate, request: Request, db: Session
             )
     # 更新前の関与選手を退避（選手差し替えの場合、旧選手のキャッシュも無効化が必要）
     pre_players = [match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id]
+    # video_local_path 防御: フロントエンドが編集 modal で video_url を変更しただけでも
+    # video_local_path: "" を送る実装になっており、サーバ保管動画 (server://...) が
+    # 意図せず破壊される事故が発生する。空文字または '0' を送ってきた場合で、かつ
+    # 既存値が server:// 形式 (= サーバ保管 / DL 済) なら **payload から除外** して保護する。
+    # 明示削除したい場合は別 endpoint (= match 削除 + 再作成 or video reset) を用意する。
+    if "video_local_path" in payload:
+        new_vlp = (payload.get("video_local_path") or "").strip()
+        cur_vlp = (match.video_local_path or "").strip()
+        if not new_vlp and cur_vlp.startswith("server://"):
+            payload.pop("video_local_path", None)
     from backend.utils.db_update import apply_update
     apply_update(match, payload)
     # video_local_path が新たに設定された / 変更された場合に video_token を発行する。
