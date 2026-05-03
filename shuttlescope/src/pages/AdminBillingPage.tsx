@@ -125,10 +125,10 @@ export default function AdminBillingPage() {
                 <th className="px-3 py-2 text-left">user_id</th>
                 <th className="px-3 py-2 text-right">金額</th>
                 <th className="px-3 py-2 text-left">状態</th>
-                <th className="px-3 py-2 text-left">手段</th>
-                <th className="px-3 py-2 text-left">プロバイダ</th>
-                <th className="px-3 py-2 text-left">作成</th>
-                <th className="px-3 py-2 text-left">支払日</th>
+                <th className="px-3 py-2 text-left hidden sm:table-cell">手段</th>
+                <th className="px-3 py-2 text-left hidden md:table-cell">プロバイダ</th>
+                <th className="px-3 py-2 text-left hidden md:table-cell">作成</th>
+                <th className="px-3 py-2 text-left hidden lg:table-cell">支払日</th>
               </tr>
             </thead>
             <tbody>
@@ -138,10 +138,10 @@ export default function AdminBillingPage() {
                   <td className="px-3 py-1 text-xs">{o.user_id}</td>
                   <td className="px-3 py-1 text-right">¥{o.amount_jpy.toLocaleString()}</td>
                   <td className="px-3 py-1"><StatusBadge status={o.status} /></td>
-                  <td className="px-3 py-1 text-xs">{o.payment_method}</td>
-                  <td className="px-3 py-1 text-xs">{o.provider}</td>
-                  <td className="px-3 py-1 text-[10px] text-gray-500">{o.created_at}</td>
-                  <td className="px-3 py-1 text-[10px] text-gray-500">{o.paid_at}</td>
+                  <td className="px-3 py-1 text-xs hidden sm:table-cell">{o.payment_method}</td>
+                  <td className="px-3 py-1 text-xs hidden md:table-cell">{o.provider}</td>
+                  <td className="px-3 py-1 text-[10px] text-gray-500 hidden md:table-cell">{o.created_at}</td>
+                  <td className="px-3 py-1 text-[10px] text-gray-500 hidden lg:table-cell">{o.paid_at}</td>
                 </tr>
               ))}
               {orders.length === 0 && (
