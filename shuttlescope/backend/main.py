@@ -1061,6 +1061,13 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if _GLOBAL_AUTH_EXEMPT.match(request.url.path):
             return await call_next(request)
+        # browser <video> stream: token クエリ認証経路 (Bearer header を送れない)。
+        # endpoint 側で hmac.compare_digest による厳密 token check を実施するため、
+        # ここでは「token クエリが付いている」ことだけを条件に middleware を素通しする。
+        if (request.url.path.startswith("/api/v1/uploads/video/by_match/")
+                and request.url.path.endswith("/stream")
+                and request.query_params.get("token")):
+            return await call_next(request)
         # PUBLIC_MODE（Cloudflare 公開）では loopback 緩和を適用しない。
         # Cloudflare 設定ミス等で CF-Connecting-IP が欠落した場合も全リクエストが
         # 127.0.0.1 として届くため、そこを唯一の信頼点にしてはならない。
