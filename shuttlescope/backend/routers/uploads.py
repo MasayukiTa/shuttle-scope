@@ -712,21 +712,34 @@ def stream_video_for_match(
     match_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    ctx: AuthCtx = Depends(get_auth),
+    token: Optional[str] = Query(default=None),
 ):
     """match に紐づくサーバ保管動画を Range 対応でストリーミング。
 
-    レスポンスは部分応答で返すのでブラウザ <video> が seek 可能。
+    認証経路は 2 つ:
+      1. Bearer JWT (通常 API 経路、Electron / SDK 用途)
+      2. ?token={video_token} クエリ (ブラウザ <video> タグ用 — Bearer header を
+         送れないため。token は match.video_token と一致する必要があり、漏洩した
+         場合は POST /matches/{id}/reissue_video_token で無効化可能)
+
+    Range ヘッダ対応で <video> の seek が可能。
     """
     m = db.get(Match, match_id)
     if m is None:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    # アクセス権チェック: 動画は機微なメディアなので team scope (require_match_scope)
-    # まで厳格化する。これまでの `user_can_access_match` は coach/analyst を素通りさせ、
-    # cross-team で他チームの動画ストリームを抜ける scope leak が成立していた。
-    # comments/sessions/reports と同じ scope ヘルパに統一する。
-    from backend.utils.auth import require_match_scope as _require_match_scope
-    _require_match_scope(request, m, db)
+
+    # 認証: token クエリが match.video_token と一致するなら scope check を bypass
+    # (ブラウザ video タグからの直接アクセス用途)。それ以外は Bearer JWT 必須。
+    import hmac as _hmac
+    if token and m.video_token and _hmac.compare_digest(token, m.video_token):
+        pass  # token 認証成立
+    else:
+        # 通常の Bearer 認証 + team scope 強制
+        ctx = get_auth(request)
+        if ctx.role is None:
+            raise HTTPException(status_code=401, detail="認証が必要です")
+        from backend.utils.auth import require_match_scope as _require_match_scope
+        _require_match_scope(request, m, db)
 
     vlp = m.video_local_path or ""
     if not vlp.startswith("server://"):
