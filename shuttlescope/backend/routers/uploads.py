@@ -742,12 +742,25 @@ def stream_video_for_match(
         _require_match_scope(request, m, db)
 
     vlp = m.video_local_path or ""
-    if not vlp.startswith("server://"):
+    file: Optional[Path] = None
+    if vlp.startswith("server://"):
+        # server://{upload_id}{ext} → UPLOAD_DIR 配下に解決
+        rest = vlp[len("server://"):]
+        file = safe_path(UPLOAD_DIR, rest)
+    elif vlp.startswith("localfile:///"):
+        # 24h 経過アーカイブ移動後の絶対パス。path_jail で
+        # ss_live_archive_root / ss_video_extra_roots 内であることを確認。
+        from backend.utils.path_jail import normalize_match_local_path, assert_allowed_video_path
+        try:
+            candidate = normalize_match_local_path(vlp)
+            if candidate is None:
+                raise HTTPException(status_code=404, detail="動画パスを解決できません")
+            file = assert_allowed_video_path(candidate)
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+    else:
         raise HTTPException(status_code=404, detail="サーバ保管動画が設定されていません")
-    # server://{upload_id}{ext} → ファイル解決
-    rest = vlp[len("server://"):]
-    file = safe_path(UPLOAD_DIR, rest)
-    if not file.exists():
+    if file is None or not file.exists():
         raise HTTPException(status_code=404, detail="動画ファイルが見つかりません")
 
     total = file.stat().st_size

@@ -101,6 +101,7 @@ from backend.routers import conditions as conditions_router
 from backend.routers import condition_tags as condition_tags_router
 from backend.routers import expert as expert_router
 from backend.routers import db_maintenance as db_maintenance_router
+from backend.routers import archive_ops as archive_ops_router
 from backend.routers import review as review_router
 from backend.routers import data_package as data_package_router
 from backend.routers import cluster as cluster_router
@@ -290,6 +291,14 @@ async def lifespan(app: FastAPI):
         logger.debug("uploads GC skipped: %s", exc)
         uploads_gc_task = None
 
+    # DL 動画 24h アーカイブループ (SS_LIVE_ARCHIVE_ROOT 未設定時は no-op)
+    try:
+        from backend.services.downloads_archiver import archive_loop as _dl_archive_loop
+        dl_archive_task = asyncio.create_task(_dl_archive_loop())
+    except Exception as exc:
+        logger.debug("dl_archive skipped: %s", exc)
+        dl_archive_task = None
+
     yield
     cleanup_task.cancel()
     try:
@@ -300,6 +309,12 @@ async def lifespan(app: FastAPI):
         uploads_gc_task.cancel()
         try:
             await uploads_gc_task
+        except asyncio.CancelledError:
+            pass
+    if dl_archive_task is not None:
+        dl_archive_task.cancel()
+        try:
+            await dl_archive_task
         except asyncio.CancelledError:
             pass
 
@@ -1422,6 +1437,7 @@ if not app_settings.PUBLIC_MODE:
     app.include_router(network_diag.router, prefix="/api")
     # DB メンテナンス
     app.include_router(db_maintenance_router.router, prefix="/api")
+    app.include_router(archive_ops_router.router, prefix="/api")
     # クラスタ管理 API
     app.include_router(cluster_router.router, prefix="/api")
 # Phase A: 認証
