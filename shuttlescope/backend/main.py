@@ -1295,28 +1295,32 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # API JSON: 何もロードしない最厳ポリシー
             response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
         elif "text/html" in ctype:
-            # SPA HTML: XSS 防御の主戦場。
-            # - script-src 'self' のみ (inline 除外で stored XSS 影響範囲縮小)
-            # - connect-src で API + WebSocket + tunnel host に限定
-            # - frame-ancestors 'none' で iframe 埋込み拒否 (X-Frame-Options のバックアップ)
-            # - object-src 'none' で Flash/プラグイン経由攻撃排除
-            # - base-uri 'self' で base 改竄 XSS 排除
-            # - form-action 'self' でフォーム送信先制限
-            # - upgrade-insecure-requests で http→https 強制
+            # 公開 LP (apex/www) は public_site.render_public_home で server-rendered。
+            # IntersectionObserver / theme toggle / ハンバーガーメニューなどを inline
+            # <script> で実装しているため、これだけ unsafe-inline を許容する。
+            # SPA (app.shuttle-scope.com) は厳格 CSP のまま。
+            host = (request.headers.get("host") or "").split(":")[0].lower()
+            is_public_lp = host in ("shuttle-scope.com", "www.shuttle-scope.com")
+            script_src = "script-src 'self' 'unsafe-inline'" if is_public_lp else "script-src 'self'"
+            # 公開 LP は Google Fonts CSS も使うので style-src に https: を追加
+            style_src = (
+                "style-src 'self' 'unsafe-inline' https:"
+                if is_public_lp
+                else "style-src 'self' 'unsafe-inline'"
+            )
             csp_parts = [
                 "default-src 'self'",
-                "script-src 'self'",
-                "style-src 'self' 'unsafe-inline'",  # Tailwind 等の inline style 必要
+                script_src,
+                style_src,
                 "img-src 'self' data: blob:",
-                "media-src 'self' blob: app:",  # app://video/ プロトコル + MediaRecorder blob
+                "media-src 'self' blob: app:",
                 "connect-src 'self' wss: https:",
-                "font-src 'self' data: https:",  # CSP report ノイズ抑止 (Google Fonts 等の sub-resource)
+                "font-src 'self' data: https:",
                 "object-src 'none'",
                 "base-uri 'self'",
                 "form-action 'self'",
                 "frame-ancestors 'none'",
                 "upgrade-insecure-requests",
-                # I-1 (round118): 違反検知用 report endpoint
                 "report-uri /api/csp_report",
             ]
             response.headers["Content-Security-Policy"] = "; ".join(csp_parts)
