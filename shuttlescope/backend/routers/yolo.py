@@ -139,15 +139,23 @@ def start_yolo_batch(
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
 
-    video_path = match.video_local_path or match.video_url
-    if not video_path:
+    # server:// / localfile:// / 生パスを実ファイルパスに正規化する。
+    # cv2.VideoCapture は server:// を扱えないため必ず変換する。
+    from backend.utils.path_jail import normalize_match_local_path, assert_match_video_path_allowed
+    resolved = normalize_match_local_path(match.video_local_path)
+    if resolved is not None:
+        video_path = str(resolved)
+    elif match.video_url:
+        video_path = match.video_url
+    else:
         raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
-    # path_jail: ローカルパスは許可ルート内であることを確認（HDD ドローン映像等への誤起動防止）
-    from backend.utils.path_jail import assert_match_video_path_allowed
-    try:
-        assert_match_video_path_allowed(match.video_local_path)
-    except ValueError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+    # server:// 解決済はそのまま OK (UPLOAD_DIR 配下で保証されている)。
+    # それ以外のローカルパスは path_jail でルート内チェック。
+    if match.video_local_path and not match.video_local_path.startswith("server://"):
+        try:
+            assert_match_video_path_allowed(match.video_local_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
 
     cuda_idx, ov_device = _load_device_settings(db)
     inf = get_yolo_inference(cuda_device_index=cuda_idx, openvino_device=ov_device)
@@ -924,17 +932,20 @@ def detect_single_frame(
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
 
-    path = match.video_local_path or match.video_url
-    if not path:
+    from backend.utils.path_jail import normalize_match_local_path, assert_match_video_path_allowed
+    resolved = normalize_match_local_path(match.video_local_path)
+    if resolved is not None:
+        path = str(resolved)
+    elif match.video_url:
+        path = match.video_url
+    else:
         raise HTTPException(status_code=400, detail="動画ファイルが設定されていません")
-    # path_jail: 二箇所目の YOLO 起動経路にも適用
-    from backend.utils.path_jail import assert_match_video_path_allowed
-    try:
-        assert_match_video_path_allowed(match.video_local_path)
-    except ValueError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
-    if path.startswith("localfile:///"):
-        path = path[len("localfile:///"):]
+    # server:// は UPLOAD_DIR 配下なので path_jail スキップ
+    if match.video_local_path and not match.video_local_path.startswith("server://"):
+        try:
+            assert_match_video_path_allowed(match.video_local_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
 
     inf = get_yolo_inference()
     if not inf.is_available() or not inf.load():
