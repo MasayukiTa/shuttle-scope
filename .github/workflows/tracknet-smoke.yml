@@ -48,6 +48,10 @@ jobs:
           # model.load_weights("weights/TrackNet"). Keras 3 (TF >= 2.16)
           # only accepts .keras / .weights.h5 / .h5 files.
           python -m pip install "tensorflow==2.15.*" "tf2onnx>=1.16,<1.17"
+          # onnxruntime is required by the Smoke-load step to load the
+          # exported tracknet.onnx. Not in backend/requirements.txt
+          # because production may use OpenVINO instead.
+          python -m pip install onnxruntime
 
       - name: Download TensorFlow weights
         run: python -m backend.tracknet.setup download
