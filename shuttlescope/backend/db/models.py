@@ -376,6 +376,10 @@ class Stroke(Base):
 
     # ゾーン（集計・フィルタ用）
     hit_zone: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)   # BL/BC/BR/ML/MC/MR/NL/NC/NR
+    # Phase A: 打点ソース ('cv' = CV 自動値そのまま / 'manual' = 人間 override)
+    hit_zone_source: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    # Phase A: CV 元推定値 (override 後も保持してデータ品質計測)
+    hit_zone_cv_original: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
     land_zone: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # 同上
 
     # 打球属性
