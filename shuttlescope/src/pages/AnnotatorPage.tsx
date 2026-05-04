@@ -23,6 +23,7 @@ import { AnalysisModePanel } from '@/components/annotator/AnalysisModePanel'
 import { SettingsModePanel } from '@/components/annotator/SettingsModePanel'
 import { useAnnotatorModeStore } from '@/store/annotatorModeStore'
 import { HistoryStrip } from '@/components/annotator/HistoryStrip'
+import { VideoOverlayToggles } from '@/components/annotator/VideoOverlayToggles'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
@@ -2853,6 +2854,7 @@ export function AnnotatorPage() {
             }
 
             return (
+              <div className="relative w-full h-full">
               <AnnotatorVideoPane
                 externalVideoAreaRef={videoAreaRef}
                 videoRef={videoRef}
@@ -2890,6 +2892,25 @@ export function AnnotatorPage() {
                 frameDetectError={frameDetectError}
                 frameDetectDebug={frameDetectDebug}
               />
+              {/* U5: 動画右上の浮動 overlay toggle */}
+              <VideoOverlayToggles
+                cv={{
+                  on: yoloOverlayVisible,
+                  toggle: () => setYoloOverlayVisible((v) => !v),
+                  available: yoloFrames.length > 0,
+                }}
+                shuttle={{
+                  on: shuttleOverlayVisible,
+                  toggle: () => setShuttleOverlayVisible((v) => !v),
+                  available: shuttleFrames.length > 0,
+                }}
+                court={{
+                  on: courtGridVisible,
+                  toggle: () => setCourtGridVisible((v) => !v),
+                  available: true,
+                }}
+              />
+              </div>
             )
           })()}
 
