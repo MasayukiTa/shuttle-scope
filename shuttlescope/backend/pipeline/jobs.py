@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -34,13 +35,83 @@ def enqueue(db: Session, match_id: int, job_type: str = "full_pipeline") -> Anal
 
 
 def _claim_next(db: Session) -> Optional[AnalysisJob]:
-    """queued 状態の最古ジョブを 1 件取得する。"""
-    return (
-        db.query(AnalysisJob)
+    """queued 状態の最古ジョブを 1 件アトミックにクレームする。
+
+    旧実装は SELECT のみで、status='running' への遷移は execute_job 完了時の commit に
+    依存していた。SS_WORKER_STANDALONE 未設定で API in-process runner と standalone
+    worker が両方ポーリングすると同一ジョブを二重 pickup し、TrackNet/MediaPipe を
+    同じ動画に並走させ ShotInference を相互上書きする (CLAUDE.md が禁ずる GPU 競合)。
+
+    対策:
+      1. 候補 ID を SELECT
+      2. WHERE id=? AND status='queued' で UPDATE → status='running'
+      3. UPDATE の rowcount が 0 (= 他 worker が先に取った) なら None を返す
+
+    PostgreSQL では本来 SELECT ... FOR UPDATE SKIP LOCKED + UPDATE RETURNING が
+    最適だが、SQLite (現状の単一プロセス試験環境) と互換性を取るため conditional
+    UPDATE で実装する。
+    """
+    import socket
+    candidate = (
+        db.query(AnalysisJob.id)
         .filter(AnalysisJob.status == "queued")
         .order_by(AnalysisJob.enqueued_at.asc(), AnalysisJob.id.asc())
         .first()
     )
+    if candidate is None:
+        return None
+    job_id = candidate[0]
+    affected = (
+        db.query(AnalysisJob)
+        .filter(AnalysisJob.id == job_id, AnalysisJob.status == "queued")
+        .update(
+            {
+                AnalysisJob.status: "running",
+                AnalysisJob.started_at: datetime.utcnow(),
+                AnalysisJob.worker_host: socket.gethostname()[:120],
+            },
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    if affected == 0:
+        # 他のランナー/ワーカーが先に取得した。次回ポーリングで別候補を試す。
+        return None
+    return db.get(AnalysisJob, job_id)
+
+
+# stale reaper 用閾値: started_at から N 秒経過したまま running の job は
+# プロセス Kill 等で取り残された可能性が高いので failed に戻す。
+# 通常の動画解析でも 30 分以上かかる事例があるため余裕を見て 2h。
+_STALE_JOB_TIMEOUT_SEC = 7200
+
+
+def reap_stale_jobs(db: Session) -> int:
+    """started_at が _STALE_JOB_TIMEOUT_SEC を超えて running の job を failed に戻す。
+
+    プロセス Kill/SIGTERM 黙殺で `running` 行が永久残留すると per-match dedup
+    (routers/pipeline.py) が 409 で永久ブロックする。worker / API 起動時に呼ぶ。
+    """
+    threshold = datetime.utcnow() - timedelta(seconds=_STALE_JOB_TIMEOUT_SEC)
+    affected = (
+        db.query(AnalysisJob)
+        .filter(
+            AnalysisJob.status == "running",
+            AnalysisJob.started_at != None,  # noqa: E711
+            AnalysisJob.started_at < threshold,
+        )
+        .update(
+            {
+                AnalysisJob.status: "failed",
+                AnalysisJob.finished_at: datetime.utcnow(),
+            },
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    if affected:
+        logger.warning("reaped %d stale running jobs (threshold=%ds)", affected, _STALE_JOB_TIMEOUT_SEC)
+    return affected
 
 
 async def _run_once() -> bool:
@@ -95,6 +166,21 @@ def start_job_runner() -> Optional[asyncio.Task]:
     if os.getenv("SS_WORKER_STANDALONE") == "1":
         logger.info("standalone mode → in-process runner skip")
         return None
+    # worker.lock が存在する = 別プロセスの standalone worker が走っている。
+    # 同じ DB に対して in-process runner も走らせると _claim_next の atomic UPDATE
+    # でレースは防げるが、そもそも GPU を 2 プロセスで奪い合うのが望ましくない。
+    # 起動を拒否してログを残す。
+    try:
+        from pathlib import Path
+        lock_path = Path(__file__).resolve().parent.parent / "data" / "worker.lock"
+        if lock_path.exists():
+            logger.warning(
+                "in-process runner skip: %s exists (standalone worker is running)",
+                lock_path,
+            )
+            return None
+    except Exception:  # pragma: no cover
+        pass
     global _RUNNER_TASK
     if _RUNNER_TASK is not None and not _RUNNER_TASK.done():
         return _RUNNER_TASK

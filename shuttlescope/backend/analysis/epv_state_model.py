@@ -137,12 +137,17 @@ def compute_rally_state_epv(
             global_wins += 1
 
         # ショット種別集計（プレイヤーのショットのみ）
+        # analysis #1 fix: 旧コードは stroke 単位で increment し、勝ち rally の全
+        # stroke が wins に算入されていた。baseline win_rate は rally 単位なので
+        # denominator が不整合 → 「ラリー長の tautology」になり EPV が因果でなく
+        # ラリー長を測ってしまう。重複なく rally 単位で 1 票投じるよう、ラリー内で
+        # 出現したショット種別を set 化してから increment する。
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
-        for s in stks:
-            if s.player == role and s.shot_type:
-                state_shot_total[key][s.shot_type] += 1
-                if is_win:
-                    state_shot_wins[key][s.shot_type] += 1
+        rally_shot_types = {s.shot_type for s in stks if s.player == role and s.shot_type}
+        for st in rally_shot_types:
+            state_shot_total[key][st] += 1
+            if is_win:
+                state_shot_wins[key][st] += 1
 
     global_win_rate = round(global_wins / global_total, 4) if global_total else 0.5
 

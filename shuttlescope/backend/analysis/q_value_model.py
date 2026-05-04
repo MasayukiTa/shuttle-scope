@@ -101,14 +101,24 @@ def compute_q_values(
         if is_win:
             state_wins[key] += 1
 
-        # ショット種別集計（最後のショットを「行動」として使用）
+        # ショット種別集計
+        # analysis #2 fix: 旧コードは「最後のストロークだけを行動」として
+        # クレジットしていた。勝ち rally の最終 stroke は smash 等 (決め球)、
+        # 負け rally の最終 stroke は defensive/lob/clear (守備復帰) になりやすく、
+        # **完全に同一戦術の 50/50 プレイヤーでも smash > defensive にランクされる**
+        # アーティファクトを生んでいた (best_actions が誤推奨)。
+        # 修正: 全 stroke にフラクショナル重み 1/n を割り当て、baseline と action
+        # を同じ denominator にする。total/wins は float で扱う (caller 側 wilson_ci
+        # は int を要求するため round 後 int 化)。
         stks = sorted(strokes_by_rally.get(rally.id, []), key=lambda x: x.stroke_num)
         player_stks = [s for s in stks if s.player == role and s.shot_type]
         if player_stks:
-            last_shot = player_stks[-1].shot_type
-            state_shot_total[key][last_shot] += 1
-            if is_win:
-                state_shot_wins[key][last_shot] += 1
+            n_player = len(player_stks)
+            weight = 1.0 / n_player
+            for s in player_stks:
+                state_shot_total[key][s.shot_type] += weight
+                if is_win:
+                    state_shot_wins[key][s.shot_type] += weight
 
     # Q値テーブル構築
     q_table: list[dict] = []
@@ -121,10 +131,15 @@ def compute_q_values(
         baseline = round(s_wins / s_n, 4) if s_n else 0.5
 
         state_q_entries = []
-        for shot_type, sn in state_shot_total[key].items():
-            sw = state_shot_wins[key].get(shot_type, 0)
-            swr = round(sw / sn, 4) if sn else baseline
+        for shot_type, sn_f in state_shot_total[key].items():
+            # フラクショナル重みのため float になっている。CI と reliable 判定は
+            # int rally 数として丸める (under/over 共に近接の int)。
+            sn_int = int(round(sn_f))
+            sw_int = int(round(state_shot_wins[key].get(shot_type, 0.0)))
+            swr = round(sw_int / sn_int, 4) if sn_int else baseline
             q_val = round(swr - baseline, 4)
+            sn = sn_int
+            sw = sw_int
             ci_low, ci_high = wilson_ci(sw, sn)
             reliable = sn >= min_cell
 

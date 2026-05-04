@@ -18,10 +18,24 @@ def probe() -> Dict[str, Any]:
     except ImportError:
         return {"available": False, "reason": "nvidia-ml-py not installed"}
 
-    try:
-        pynvml.nvmlInit()
-    except Exception as exc:  # pragma: no cover - 環境依存
-        return {"available": False, "reason": f"nvmlInit failed: {exc}"}
+    # pipeline #5 fix: nvmlInit/Shutdown はプロセス内で参照カウント方式で動作するが、
+    # API process と worker process が同時並行で probe すると片方の Shutdown が
+    # もう片方の Init を無効化するレースが発生する。プロセス内 lock で probe 全体を
+    # 直列化し、レース範囲を最小化する。
+    global _NVML_LOCK
+    if "_NVML_LOCK" not in globals():
+        import threading
+        _NVML_LOCK = threading.Lock()  # noqa: F841
+    with _NVML_LOCK:
+        try:
+            pynvml.nvmlInit()
+        except Exception as exc:  # pragma: no cover - 環境依存
+            return {"available": False, "reason": f"nvmlInit failed: {exc}"}
+        return _probe_within_nvml_lock(pynvml)
+
+
+def _probe_within_nvml_lock(pynvml) -> dict:
+    """nvmlInit 済の状態で実行する probe 本体。"""
 
     try:
         count = pynvml.nvmlDeviceGetCount()

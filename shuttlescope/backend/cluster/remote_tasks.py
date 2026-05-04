@@ -55,6 +55,12 @@ def _run_benchmark_tracknet(model_path: str, n_iters: int, use_gpu: bool) -> dic
         return round(1000.0 / float(np.mean(arr)), 2), round(float(np.mean(arr)), 2), round(float(np.percentile(arr, 95)), 2)
 
     # OpenVINO 試行（use_gpu フラグ時）
+    # pipeline #7 fix: 旧コードは openvino import / compile / infer 失敗時に
+    # `except: continue` / `except: pass` で握りつぶし、provider トレースが残らず
+    # ベンチマーク結果から原因を特定できなかった。
+    # 修正: トレースを `_provider_attempts` に蓄積し、最終 ONNX フォールバック結果に
+    # `attempts` として返す。
+    _provider_attempts: list[dict] = []
     if use_gpu:
         xml_path = model_path.replace(".onnx", ".xml")
         try:
@@ -65,17 +71,19 @@ def _run_benchmark_tracknet(model_path: str, n_iters: int, use_gpu: bool) -> dic
             model.reshape({model.input(0).any_name: SHAPE})
             for dev in ("GPU", "CPU"):
                 if dev not in core.available_devices:
+                    _provider_attempts.append({"provider": f"openvino:{dev}", "ok": False, "reason": "device not available"})
                     continue
                 try:
                     compiled = core.compile_model(model, dev, {"PERFORMANCE_HINT": "LATENCY"})
                     req = compiled.create_infer_request()
                     iname = compiled.input(0).any_name
                     fps, avg_ms, p95_ms = _measure(lambda: req.infer({iname: dummy}))
-                    return {"fps": fps, "avg_ms": avg_ms, "p95_ms": p95_ms, "provider": f"openvino:{dev}"}
-                except Exception:
+                    return {"fps": fps, "avg_ms": avg_ms, "p95_ms": p95_ms, "provider": f"openvino:{dev}", "attempts": _provider_attempts}
+                except Exception as exc:
+                    _provider_attempts.append({"provider": f"openvino:{dev}", "ok": False, "reason": f"{type(exc).__name__}: {exc}"})
                     continue
-        except Exception:
-            pass
+        except Exception as exc:
+            _provider_attempts.append({"provider": "openvino:import", "ok": False, "reason": f"{type(exc).__name__}: {exc}"})
 
     # ONNX フォールバック
     try:
@@ -956,16 +964,32 @@ def _get_worker_ssh_creds(worker_ip: str) -> Optional[Dict[str, str]]:
     return None
 
 
+_USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._-]{1,32}$")
+
+
 def _ssh_run_python_script(host: str, username: str, password: str,
                            script_code: str, timeout: int = 120) -> dict:
     """SSH 経由でワーカーに Python スクリプトを送り込み、JSON 結果を返す。
 
     スクリプトは最後の行で json.dumps() を print() すること。
+
+    pipeline #3 fix: username が cluster.config.yaml から取られて文字列補間で
+    cmd 文字列に入っていたため、YAML 改竄で `"; del C:\\* &` 等を仕込まれると RCE。
+    username を `[A-Za-z0-9._-]{1,32}$` の allowlist で先に検証し、不正値は拒否する。
+    パスワード (paramiko 引数) は文字列補間しないので OK だが、host にも同等の
+    検証を入れる。
+    また paramiko の banner_timeout / auth_timeout / channel timeout を pin する。
     """
     try:
         import paramiko  # type: ignore
     except ImportError:
         return {"error": "paramiko 未インストール: pip install paramiko"}
+
+    if not _USERNAME_RE.match(username or ""):
+        return {"error": f"invalid username for ssh dispatch: {username!r}"}
+    # host は IPv4/hostname を想定。コロン (port) や cmd メタは拒否。
+    if not __import__("re").match(r"^[A-Za-z0-9._-]{1,253}$", host or ""):
+        return {"error": f"invalid host for ssh dispatch: {host!r}"}
 
     import uuid as _uuid
 
@@ -976,7 +1000,14 @@ def _ssh_run_python_script(host: str, username: str, password: str,
     ssh.load_system_host_keys()
     ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     try:
-        ssh.connect(host, username=username, password=password, timeout=10)
+        ssh.connect(
+            host,
+            username=username,
+            password=password,
+            timeout=10,
+            banner_timeout=10,
+            auth_timeout=10,
+        )
 
         sftp = ssh.open_sftp()
         with sftp.open(script_path, "wb") as f:

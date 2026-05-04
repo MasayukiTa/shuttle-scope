@@ -63,6 +63,18 @@ class CameraSignalingManager:
         #     "viewers": {str(vid): WebSocket},
         # }}
         self._sessions: dict[str, dict] = {}
+        # ws #9 fix: per-session asyncio.Lock。device disconnect / operator 再接続が
+        # 同一 session に対して同時に起きると _sessions[session_code] dict の状態が
+        # 競合する。state mutate 系の操作はこの lock 経由で直列化する。
+        self._session_locks: dict[str, "asyncio.Lock"] = {}
+
+    def _slock(self, session_code: str) -> "asyncio.Lock":
+        import asyncio as _aio
+        lk = self._session_locks.get(session_code)
+        if lk is None:
+            lk = _aio.Lock()
+            self._session_locks[session_code] = lk
+        return lk
 
     def _ensure_session(self, session_code: str) -> None:
         if session_code not in self._sessions:
@@ -71,9 +83,22 @@ class CameraSignalingManager:
     # ─── 接続 ────────────────────────────────────────────────────────────
 
     async def connect_operator(self, session_code: str, ws: WebSocket) -> None:
+        # ws #4 fix: 旧コードは前任者を黙って上書きしており、operator 役乗っ取りが
+        # 成立していた。既に operator が接続中なら新規接続を拒否する。
+        # ws #9 fix: 既存 operator チェック → set を atomic にするため lock 経由。
         await ws.accept()
         self._ensure_session(session_code)
-        self._sessions[session_code]["operator"] = ws
+        async with self._slock(session_code):
+            existing = self._sessions[session_code].get("operator")
+            if existing is not None:
+                try:
+                    # 1013 = try again later (新規 operator は session 終了後に再接続)
+                    await ws.close(code=1013, reason="operator slot already taken")
+                except Exception:
+                    pass
+                logger.warning("camera operator reject (slot taken): %s", session_code)
+                return
+            self._sessions[session_code]["operator"] = ws
         logger.info("camera operator connected: %s", session_code)
 
     async def connect_device(self, session_code: str, participant_id: str, ws: WebSocket) -> None:
@@ -102,10 +127,12 @@ class CameraSignalingManager:
             logger.info("camera operator disconnected: %s", session_code)
 
     async def disconnect_device(self, session_code: str, participant_id: str) -> None:
-        if session_code in self._sessions:
-            self._sessions[session_code]["devices"].pop(participant_id, None)
-            logger.info("camera device disconnected: %s pid=%s", session_code, participant_id)
-            await self._notify_device_list(session_code)
+        # ws #9 fix: lock で session state の mutation を直列化
+        async with self._slock(session_code):
+            if session_code in self._sessions:
+                self._sessions[session_code]["devices"].pop(participant_id, None)
+                logger.info("camera device disconnected: %s pid=%s", session_code, participant_id)
+        await self._notify_device_list(session_code)
 
     async def disconnect_viewer(self, session_code: str, viewer_id: str) -> None:
         if session_code in self._sessions:

@@ -150,14 +150,25 @@ def compute_bayes_matchup(
             player_won = getattr(m, 'result', '') == 'win'
 
         # フォーマットフィルター
+        # analysis #6 fix: 旧コードは format_filter='singles' のとき m_format=None を
+        # 落とせない (`m_format and m_format != format_filter` で None なら短絡で通過)。
+        # legacy data の m_format=NULL match は singles 想定でも doubles 想定でも素通し
+        # していたため bayes 集計が混入していた。明示的に NULL を扱う:
+        # - singles 指定時: m_format が None のレコードは singles として扱う
+        # - doubles 指定時: m_format=None は doubles では無いので除外
         if format_filter:
             m_format = getattr(m, 'format', None)
             if format_filter == 'doubles':
-                # 'doubles' は womens_doubles / mixed_doubles の両方にマッチ
                 if m_format not in ('womens_doubles', 'mixed_doubles'):
                     continue
-            elif m_format and m_format != format_filter:
-                continue
+            elif format_filter == 'singles':
+                # singles として許可する: 'singles' or NULL (legacy)
+                if m_format not in (None, 'singles'):
+                    continue
+            else:
+                # 任意のカテゴリ指定: 完全一致のみ (NULL は除外)
+                if m_format != format_filter:
+                    continue
 
         if target_opponent_id and opp_id != target_opponent_id:
             continue

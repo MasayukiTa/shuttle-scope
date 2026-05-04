@@ -146,8 +146,13 @@ def mark_ray_connected() -> None:
         invalidate_cache()
     except Exception:
         pass
-    # バックグラウンドで ray.init() を試みる（Windows Firewall 対応）
-    try_ray_init_background()
+    # pipeline #4 fix: 旧コードは try_ray_init_background をここで呼び、
+    # Ray の Windows Firewall ダイアログ表示や socket bind が同期的に 15-30s 走り、
+    # uvicorn のイベントループ executor を block していた (この関数は同期文脈から
+    # 呼ばれる経路あり)。
+    # asyncio スレッドプール上で fire-and-forget 起動して即時 return する。
+    import threading
+    threading.Thread(target=try_ray_init_background, daemon=True, name="ray_init_bg").start()
 
 
 def unmark_ray_connected() -> None:

@@ -89,9 +89,23 @@ export function useRealtimeYolo(
     wsRef.current = ws
     ws.binaryType = 'arraybuffer'
 
-    ws.onopen = () => { setConnected(true); setError(null) }
-    ws.onclose = () => { setConnected(false) }
-    ws.onerror = () => { setError('WebSocket エラー') }
+    ws.onopen = () => {
+      setConnected(true)
+      setError(null)
+      // ws #5 fix: reconnect 後 inflightRef が 1 のまま残ると新規キャプチャが
+      // 抑止され続け FPS=0 のまま「connected」になる sealed-zero-FPS 状態に
+      // なっていた。open 時に必ずリセットする。
+      inflightRef.current = 0
+    }
+    ws.onclose = () => {
+      setConnected(false)
+      // ws #5 fix: close 時も明示的にリセット (次の reconnect で再増分されるため)
+      inflightRef.current = 0
+    }
+    ws.onerror = () => {
+      setError('WebSocket エラー')
+      inflightRef.current = 0
+    }
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data)

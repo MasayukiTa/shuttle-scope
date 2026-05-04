@@ -39,3 +39,28 @@ backend/tracknet/weights/*.onnx
 # Local-only runtime diagnostics
 kernel.errors.txt
 backend/kernel.errors.txt
+
+# Backend supervisor / process logs
+backend/*.log
+backend/*.log.prev
+backend/supervisor.log
+backend/data/worker.lock
+
+# Backend extra DB artifacts (more patterns for safety)
+backend/db/*.db-shm
+backend/db/*.db-wal
+backend/db/*.db.compact
+backend/db/*.db.bak-*
+backend/db/*.db.sqlite-backup-*
+
+# Large pose / external model weights (kept out of git - re-downloadable)
+backend/models/rtmpose*.onnx
+backend/models/rtmpose*.pt
+backend/models/trt_cache/
+
+# Pytest / hypothesis caches in inner repo
+.hypothesis/
+
+# .env backup variants
+.env.development.bak.*
+.env.production.bak.*

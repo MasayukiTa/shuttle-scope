@@ -12,6 +12,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
+from backend.utils.auth import require_admin_or_analyst
 from backend.db.models import Match, GameSet, Rally, Stroke, Player, PreMatchObservation
 from backend.utils.confidence import check_confidence
 from backend.analysis.router_helpers import (
@@ -45,7 +46,9 @@ from backend.analysis.epv_engine import (
     classify_momentum,
 )
 
-router = APIRouter()
+# research tier は admin/analyst のみ。middleware (_PLAYER_FORBIDDEN_ANALYSIS_PATHS) は
+# import 失敗時に silent に空集合化するため、router-level dependency でも明示ガードする。
+router = APIRouter(dependencies=[Depends(require_admin_or_analyst)])
 
 
 # ---------------------------------------------------------------------------

@@ -21,9 +21,15 @@ export function useLiveInference(
   const [inferring, setInferring] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // ws #6 fix: 旧コードは inflight gate がなく 200ms 毎に重複 POST し、古い frame
+  // 結果が新しいのを上書きしていた。inflight 中は次の captureAndSend を skip する。
+  // また各リクエストに ID を付与し、最新発行 ID 以外のレスポンスは破棄する。
+  const inflightRef = useRef(false)
+  const lastReqIdRef = useRef(0)
 
   const captureAndSend = useCallback(async () => {
     if (!videoRef.current || !sessionCode || videoRef.current.readyState < 2) return
+    if (inflightRef.current) return  // 直前のリクエストが未完了 → skip
 
     // Canvas 初期化（初回のみ）
     if (!canvasRef.current) {
@@ -37,6 +43,8 @@ export function useLiveInference(
     ctx.drawImage(videoRef.current, 0, 0, 512, 288)
     const frame_b64 = canvasRef.current.toDataURL('image/jpeg', 0.7)
 
+    const myReqId = ++lastReqIdRef.current
+    inflightRef.current = true
     try {
       setInferring(true)
       const res = await apiPost<{ success: boolean; data: LiveInferenceCandidate }>(
@@ -49,12 +57,15 @@ export function useLiveInference(
           confidence_threshold: 0.5,
         },
       )
+      // 古い inflight のレスポンスは破棄 (新しい一発が走り終わっていた場合)
+      if (myReqId !== lastReqIdRef.current) return
       if (res.success) {
         setCandidate(res.data)
       }
     } catch {
       // 推論失敗は無視
     } finally {
+      inflightRef.current = false
       setInferring(false)
     }
   }, [videoRef, sessionCode])
