@@ -24,7 +24,8 @@ from backend.analysis.analysis_config import AnalysisConfig
 # ── 軸別判定定数 ──────────────────────────────────────────────────────────────
 
 # pace: ドライブ + プッシュ の合計比率で判定
-_FAST_SHOT_TYPES = {"drive", "push"}
+# UR-5 fix: canonical 名は "push_rush"。旧 "push" は taxonomy 正規化後ヒット 0 だった。
+_FAST_SHOT_TYPES = {"drive", "push_rush"}
 PACE_FAST_THRESHOLD = 0.30   # 30% 以上 → fast
 PACE_SLOW_THRESHOLD = 0.10   # 10% 未満 → slow
 

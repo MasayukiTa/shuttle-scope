@@ -380,18 +380,27 @@ def compute_counterfactual_cf2(
             for st, wl in valid_shots.items()
         }
 
-        # IPW 重み付き統計
+        # UR-6 fix: 統計と payload の honest 化。
+        # 本実装は ctx_key で文脈を完全一致させてから shot_type 比較する設計のため、
+        # valid_shots[st] 内のラリーは同一文脈で propensity = 一定値。重み
+        # weights = [1/p_st] * len(wl) は定数となり、IPW 加重平均は素の勝率と完全一致する。
+        # → 名前を marginal_win_rate に変えて誤解を防ぐ。本物の per-rally 補正は
+        #   別途 per-rally covariate (例 rally_length, prev_shot 連結) を valid_shots
+        #   構造に持たせる refactor が必要 (TODO CF-2v2)。
         shot_stats: dict[str, dict] = {}
         for shot_type, wl in valid_shots.items():
             ps = propensity[shot_type]
-            # IPW重み = 1 / propensity（クリップ）
+            # CI 用に bootstrap だけは引き続き計算
             w = min(max(1.0 / ps, _IPW_CLIP_MIN), _IPW_CLIP_MAX)
             weights = [w] * len(wl)
-            ipw_wr, _, n_eff = _ipw_weighted_win_rate(wl, weights)
+            _ipw_wr, _, n_eff = _ipw_weighted_win_rate(wl, weights)
             ci_low, ci_high = _bootstrap_ipw_win_rate(wl, weights, n_bootstrap)
+            raw_wr = round(sum(wl) / len(wl), 4)
             shot_stats[shot_type] = {
-                "win_rate": round(sum(wl) / len(wl), 4),  # 素の勝率
-                "ipw_win_rate": ipw_wr,                    # IPW補正後
+                "win_rate": raw_wr,                  # 素の勝率
+                "marginal_win_rate": raw_wr,          # 旧 'ipw_win_rate' 後方互換のため値は同一
+                "ipw_win_rate": raw_wr,               # @deprecated: 本実装では marginal と等値
+                "ipw_correction_active": False,        # UR-6: per-rally covariate 未実装のため常に False
                 "n": len(wl),
                 "n_eff": n_eff,
                 "propensity": round(ps, 4),
@@ -406,8 +415,10 @@ def compute_counterfactual_cf2(
         for alt_shot, alt_stats in shot_stats.items():
             if alt_shot == actual_shot:
                 continue
-            # CF-2 のリフトは IPW 補正後で計算
-            lift = round(alt_stats["ipw_win_rate"] - actual["ipw_win_rate"], 4)
+            # UR-6: CF-2 のリフトは raw 勝率の差分。
+            # 旧コードは ipw_win_rate ベースで計算していたが上記の通り IPW は no-op
+            # (ipw_correction_active=False) なので結果は同じ。フィールド名は raw に変更。
+            lift = round(alt_stats["win_rate"] - actual["win_rate"], 4)
             overlap_lo = max(actual["ci_low"], alt_stats["ci_low"])
             overlap_hi = min(actual["ci_high"], alt_stats["ci_high"])
             ci_span = max(actual["ci_high"] - actual["ci_low"], 0.01)
@@ -415,7 +426,9 @@ def compute_counterfactual_cf2(
             alternatives.append({
                 "shot_type": alt_shot,
                 "win_rate": alt_stats["win_rate"],
-                "ipw_win_rate": alt_stats["ipw_win_rate"],
+                "ipw_win_rate": alt_stats["ipw_win_rate"],   # @deprecated
+                "marginal_win_rate": alt_stats["marginal_win_rate"],
+                "ipw_correction_active": alt_stats["ipw_correction_active"],
                 "n": alt_stats["n"],
                 "n_eff": alt_stats["n_eff"],
                 "propensity": alt_stats["propensity"],

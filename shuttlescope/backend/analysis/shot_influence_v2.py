@@ -128,12 +128,23 @@ def compute_shot_influence_v2(
         if match_id is None:
             continue
 
-        player_role = role_by_match.get(match_id, 'server')
+        # UR-3 fix: role_by_match は 'player_a' / 'player_b' を保持しており
+        # 'server' / 'receiver' ではない。旧コードは getattr デフォルトで
+        # silently 'server' に倒れていた。
+        player_role = role_by_match.get(match_id)
+        if player_role not in ('player_a', 'player_b'):
+            continue
+        player_is_a = player_role == 'player_a'
         set_num = set_num_by_set.get(set_id, 1)
 
-        my_score = getattr(rally, 'score_before_my', None) or 0
-        opp_score = getattr(rally, 'score_before_opp', None) or 0
-        won = bool(getattr(rally, 'won', False))
+        # UR-3 fix: ORM の Rally は score_a_before / score_b_before / winner を
+        # 持つ。旧コードは存在しない score_before_my / score_before_opp / won に
+        # getattr デフォルトでアクセスし、全ラリーが 0 / forced-loss に潰れていた。
+        score_a_before = getattr(rally, 'score_a_before', 0) or 0
+        score_b_before = getattr(rally, 'score_b_before', 0) or 0
+        my_score = score_a_before if player_is_a else score_b_before
+        opp_score = score_b_before if player_is_a else score_a_before
+        won = getattr(rally, 'winner', None) == player_role
         outcome = 1.0 if won else 0.0
 
         strokes = strokes_by_rally.get(rally.id, [])
@@ -142,12 +153,14 @@ def compute_shot_influence_v2(
             continue
 
         # ラリー全体の RallyState を決定
+        # UR-3 fix: 「自分がサーバーか?」は rally.server == player_role で判定。
+        rally_server = getattr(rally, 'server', None)
         rally_state: RallyState = build_rally_state(
             my_score=my_score,
             opp_score=opp_score,
             set_num=set_num,
             rally_length=rally_length,
-            server=(player_role == 'server'),
+            server=(rally_server == player_role),
             player_role=player_role,
         )
         state_key = rally_state.to_key()

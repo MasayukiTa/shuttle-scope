@@ -32,14 +32,23 @@ def player_wins_match(match: Match, player_id: int) -> bool:
     """
     試合結果を target_player_id 視点の bool に変換する。
     DB の result は player_a 基準で格納されているため、
-    player_b 視点では反転が必要。
+    player_b 視点 (および partner_b 視点) では反転が必要。
+
+    UR-4 fix: partner_b 側も B サイド勝敗で反転する。
+    旧コードは partner_a / partner_b の両方で
+    `match.result == 'win'` を返しており、partner_b の勝率が反転していた。
     """
     role = target_role(match, player_id)
     if role == "player_a":
         return match.result == "win"
     if role == "player_b":
         return match.result == "loss"
-    # パートナーなど: player_a 基準の result をそのまま返す
+    # パートナー (ダブルス) — どちらサイドかを直接 ID で判定
+    if getattr(match, "partner_a_id", None) == player_id:
+        return match.result == "win"
+    if getattr(match, "partner_b_id", None) == player_id:
+        return match.result == "loss"
+    # 該当なし: player_a 基準のまま (シングルスで partner 列が無いケース等)
     return match.result == "win"
 
 

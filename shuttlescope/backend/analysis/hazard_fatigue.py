@@ -86,8 +86,10 @@ def compute_hazard_model(
     for rally in rallies:
         set_rallies[rally.set_id].append(rally)
 
-    all_results: list[tuple[bool, int, int, int]] = []
-    # (is_win, rally_length, my_score, set_num)
+    # UR-1 fix: (match_id, set_id) を 5 要素目に保持して境界を跨いだ
+    # 連鎖計算 (after-long, rolling window 等) を防ぐ。
+    all_results: list[tuple[bool, int, int, int, tuple[int, int]]] = []
+    # (is_win, rally_length, my_score, set_num, boundary_key)
 
     for set_id, s_rallies in set_rallies.items():
         mid = set_to_match.get(set_id)
@@ -98,11 +100,12 @@ def compute_hazard_model(
             continue
         player_is_a = role == "player_a"
         set_num = set_num_by_set.get(set_id, 1)
+        boundary = (mid, set_id)
 
         for rally in sorted(s_rallies, key=lambda r: r.rally_num):
             my_score = rally.score_a_before if player_is_a else rally.score_b_before
             is_win = rally.winner == role
-            all_results.append((is_win, rally.rally_length, my_score, set_num))
+            all_results.append((is_win, rally.rally_length, my_score, set_num, boundary))
 
     total = len(all_results)
     if total == 0:
@@ -119,15 +122,17 @@ def compute_hazard_model(
         }
 
     # ベースライン失点率
-    total_losses = sum(1 for (w, _, _, _) in all_results if not w)
+    total_losses = sum(1 for (w, _, _, _, _) in all_results if not w)
     baseline_loss_rate = round(total_losses / total, 4)
 
-    # ロングラリー後分析
+    # ロングラリー後分析 (UR-1: 同一 (match, set) 境界内のみカウント)
     n_after_long = 0
     n_loss_after_long = 0
     for i in range(1, len(all_results)):
-        prev_win, prev_length, _, _ = all_results[i - 1]
-        curr_win, _, _, _ = all_results[i]
+        prev_win, prev_length, _, _, prev_b = all_results[i - 1]
+        curr_win, _, _, _, curr_b = all_results[i]
+        if prev_b != curr_b:
+            continue  # set / match boundary を跨いだので連鎖判定しない
         if prev_length >= LONG_RALLY_THRESHOLD:
             n_after_long += 1
             if not curr_win:
@@ -135,29 +140,35 @@ def compute_hazard_model(
     loss_after_long = round(n_loss_after_long / n_after_long, 4) if n_after_long else baseline_loss_rate
 
     # 終盤スコア分析
-    n_endgame = sum(1 for (_, _, score, _) in all_results if score >= ENDGAME_SCORE)
-    n_loss_endgame = sum(1 for (w, _, score, _) in all_results if score >= ENDGAME_SCORE and not w)
+    n_endgame = sum(1 for (_, _, score, _, _) in all_results if score >= ENDGAME_SCORE)
+    n_loss_endgame = sum(1 for (w, _, score, _, _) in all_results if score >= ENDGAME_SCORE and not w)
     loss_endgame = round(n_loss_endgame / n_endgame, 4) if n_endgame else baseline_loss_rate
 
     # 直近ウィンドウ ハザード（全試合の最後WINDOW_SIZE件）
     last_window = all_results[-WINDOW_SIZE:]
-    recent_losses = sum(1 for (w, _, _, _) in last_window if not w)
+    recent_losses = sum(1 for (w, _, _, _, _) in last_window if not w)
     hazard_next = _hazard_from_window(recent_losses, len(last_window))
 
-    # ウィンドウ推移（WINDOW_SIZEおきのハザード）
+    # ウィンドウ推移 (UR-1: 同一 (match, set) 境界内でのみウィンドウを切る)
     window_trend = []
-    for i in range(0, len(all_results), WINDOW_SIZE):
-        window = all_results[i:i + WINDOW_SIZE]
-        if len(window) < 2:
-            continue
-        w_losses = sum(1 for (w, _, _, _) in window if not w)
-        w_hazard = _hazard_from_window(w_losses, len(window))
-        window_trend.append({
-            "window_start": i + 1,
-            "window_end": i + len(window),
-            "hazard": w_hazard,
-            "band": _collapse_risk_band(w_hazard),
-        })
+    # まず boundary ごとにグループ化、各グループ内で WINDOW_SIZE 単位
+    from itertools import groupby
+    cumulative_offset = 0
+    for boundary, group_iter in groupby(all_results, key=lambda r: r[4]):
+        group = list(group_iter)
+        for i in range(0, len(group), WINDOW_SIZE):
+            window = group[i:i + WINDOW_SIZE]
+            if len(window) < 2:
+                continue
+            w_losses = sum(1 for (w, _, _, _, _) in window if not w)
+            w_hazard = _hazard_from_window(w_losses, len(window))
+            window_trend.append({
+                "window_start": cumulative_offset + i + 1,
+                "window_end": cumulative_offset + i + len(window),
+                "hazard": w_hazard,
+                "band": _collapse_risk_band(w_hazard),
+            })
+        cumulative_offset += len(group)
 
     # 信頼度スコア
     confidence = round(min(1.0, total / MIN_SAMPLE_HAZARD), 3)
