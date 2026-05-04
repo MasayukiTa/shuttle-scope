@@ -25,6 +25,7 @@ import { useAnnotatorModeStore } from '@/store/annotatorModeStore'
 import { HistoryStrip } from '@/components/annotator/HistoryStrip'
 import { VideoOverlayToggles } from '@/components/annotator/VideoOverlayToggles'
 import { CommandPalette, type PaletteCommand } from '@/components/annotator/CommandPalette'
+import { BottomSheet } from '@/components/annotator/BottomSheet'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
@@ -3187,7 +3188,8 @@ export function AnnotatorPage() {
           (isMatchDayMode || isMobile) ? 'flex-1' : 'w-[40%] border-l border-gray-700'
         )}>
           {/* U3: モード切替 — input モードのみ既存 UI、他モードは専用パネルへ */}
-          {annotatorMode !== 'input' && (
+          {/* UX-R4: モバイル時 (md 未満) は BottomSheet で表示するため、ここでは renderしない */}
+          {annotatorMode !== 'input' && !isMobile && (
             annotatorMode === 'review' ? <ReviewModePanel /> :
             annotatorMode === 'analysis' ? (
               <AnalysisModePanel
@@ -4620,6 +4622,37 @@ export function AnnotatorPage() {
 
       {/* U6: Ctrl+K コマンドパレット */}
       <CommandPalette commands={paletteCommands} />
+
+      {/* UX-R4: モバイル + 非 input モード時に BottomSheet で右パネルを呼び出す */}
+      {isMobile && annotatorMode !== 'input' && (
+        <BottomSheet
+          key={annotatorMode}
+          label={annotatorMode === 'review' ? '確認モード' : annotatorMode === 'analysis' ? '解析モード' : '設定モード'}
+          defaultOpen
+          onClose={() => setAnnotatorMode('input')}
+        >
+          {annotatorMode === 'review' && <ReviewModePanel />}
+          {annotatorMode === 'analysis' && (
+            <AnalysisModePanel
+              scoreA={store.scoreA}
+              scoreB={store.scoreB}
+              setNum={store.currentSetNum}
+              rallyNum={store.currentRallyNum}
+              recentStrokes={store.currentStrokes}
+            />
+          )}
+          {annotatorMode === 'settings' && (
+            <SettingsModePanel
+              isMatchDayMode={isMatchDayMode}
+              onToggleMatchDayMode={toggleMatchDayMode}
+              isBasicMode={isBasicMode}
+              onToggleAnnotationMode={toggleAnnotationMode}
+              stepFocusMode={stepFocusMode}
+              onSetStepFocusMode={setStepFocusMode}
+            />
+          )}
+        </BottomSheet>
+      )}
     </div>
   )
 }
