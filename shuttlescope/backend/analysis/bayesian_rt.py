@@ -13,11 +13,18 @@ class BayesianRealTimeAnalyzer:
         player_id: int,
         opponent_id: int | None = None,
         db: Session | None = None,
+        exclude_match_id: int | None = None,
     ) -> dict[str, float]:
         """過去データからBeta分布のprior(alpha, beta)を計算する
 
         過去の勝率に基づきBeta分布のパラメータを推定する。
         データがない場合は無情報事前分布 (alpha=1, beta=1) を返す。
+
+        analysis #3 fix: 旧コードは exclude_match_id を受けず、generate_interval_report
+        が現在の match_id を除外せずに prior を取り、その上に同じ set_rallies で
+        posterior 更新するため二重計上になっていた。posterior mean は対称なら不変
+        だが CI が不当に狭まり「セット間速報」の確信度が過大に出ていた。
+        opponent_id も docstring にあるのに未使用だった。
         """
         if db is None:
             return {"alpha": 1.0, "beta": 1.0}
@@ -25,14 +32,17 @@ class BayesianRealTimeAnalyzer:
         try:
             from backend.db.models import Match, GameSet, Rally
 
-            # 過去の全ラリー勝敗を取得
-            matches = (
-                db.query(Match)
-                .filter(
-                    (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-                )
-                .all()
+            # 過去の全ラリー勝敗を取得 (現在 match を除外、opponent 指定があれば絞り込む)
+            q = db.query(Match).filter(
+                (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
             )
+            if exclude_match_id is not None:
+                q = q.filter(Match.id != exclude_match_id)
+            if opponent_id is not None:
+                q = q.filter(
+                    (Match.player_a_id == opponent_id) | (Match.player_b_id == opponent_id)
+                )
+            matches = q.all()
             if not matches:
                 return {"alpha": 1.0, "beta": 1.0}
 
@@ -152,8 +162,15 @@ class BayesianRealTimeAnalyzer:
                     },
                 }
 
-            # prior を計算
-            prior = self.compute_prior(player_id, db=db)
+            # prior を計算 (analysis #3 fix: 当該 match を除外して二重計上を防ぐ。
+            # opponent も渡して相手特化の baseline を使う)
+            opponent_id = match.player_b_id if role == "player_a" else match.player_a_id
+            prior = self.compute_prior(
+                player_id,
+                opponent_id=opponent_id,
+                db=db,
+                exclude_match_id=match_id,
+            )
 
             # 完了セットごとにベイズ更新
             set_reports = []

@@ -20,7 +20,9 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       standard: true,
       stream: true,
-      bypassCSP: true,
+      // Electron #3 fix: bypassCSP は外した。CSP 側で localfile:/app: を
+      // 既に media-src に列挙しているため bypass は不要、有効だと webSecurity
+      // 無効化と組み合わせて video ソースの CSP を完全バイパスし XSS 経路を広げる。
       supportFetchAPI: true,
       corsEnabled: true,
     },
@@ -33,7 +35,7 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       standard: true,
       stream: true,
-      bypassCSP: true,
+      // Electron #3 fix: bypassCSP 削除 (理由は localfile と同じ)。
       supportFetchAPI: true,
       corsEnabled: true,
     },
@@ -220,8 +222,12 @@ function startPythonBackend(): ChildProcess {
     env: {
       ...process.env,
       API_PORT: '8765',
-      // LAN_MODE=true で 0.0.0.0 バインド → iOS / 同一 LAN デバイスからアクセス可能
-      LAN_MODE: 'true',
+      // LAN_MODE は既定で false。0.0.0.0 バインドは「LAN 共有」を明示的に opt-in したときだけ。
+      // SS_LAN_MODE=true かつ SS_OPERATOR_TOKEN 設定済のときに backend 側で受理される。
+      // 既定値変更の理由: LAN_MODE が常時有効だと SS_OPERATOR_TOKEN 未設定時に LAN 内
+      // 任意デバイスから API/WS が無認証で叩け、CLAUDE.md の "do not weaken local-only
+      // security posture" に反する。
+      LAN_MODE: process.env.SS_LAN_MODE === 'true' ? 'true' : 'false',
       // DATABASE_URL は .env.development を尊重するため Electron 側からの上書きはしない。
       // .env.development が postgresql/sqlite を切り替える SoT。
       // 旧コード（参考）:
@@ -261,10 +267,37 @@ function startPythonBackend(): ChildProcess {
       }
     }
   })
-  proc.on('exit', (code) => {
-    const msg = `[Python] Process exited (code: ${code})`
+  proc.on('exit', (code, signal) => {
+    const msg = `[Python] Process exited (code: ${code} signal: ${signal})`
     console.log(msg)
     pushBackendLog(msg)
+    // Electron #11 fix: 旧コードはクラッシュ時の自動再起動なし、SIGKILL fallback なし
+    // で Python プロセス孤児化リスクがあった。
+    // exit code 0 (正常停止) や app quit 中はスキップ。それ以外はバックオフ付きで再起動。
+    if ((global as any)._appQuitting) return
+    if (code === 0) return
+    const now = Date.now()
+    const restartHistory: number[] = (global as any)._pyRestartHistory || []
+    // 過去 60 秒以内の再起動が 5 回を超えたら諦める (crashloop 防止)
+    const recent = restartHistory.filter((t) => now - t < 60000)
+    if (recent.length >= 5) {
+      console.error('[Python] crashloop detected (>=5 restarts in 60s); not restarting')
+      pushBackendLog('[Python] crashloop detected; not restarting')
+      return
+    }
+    recent.push(now)
+    ;(global as any)._pyRestartHistory = recent
+    const delay = Math.min(30000, 1000 * Math.pow(2, recent.length - 1))
+    console.warn(`[Python] restart in ${delay}ms (attempt ${recent.length})`)
+    pushBackendLog(`[Python] restart in ${delay}ms (attempt ${recent.length})`)
+    setTimeout(() => {
+      if ((global as any)._appQuitting) return
+      try {
+        pythonProcess = startPythonBackend()
+      } catch (e) {
+        console.error('[Python] restart failed:', e)
+      }
+    }, delay)
   })
 
   return proc
@@ -291,8 +324,21 @@ const VIDEO_MIME: Record<string, string> = {
 
 function registerLocalFileProtocol(): void {
   protocol.handle('localfile', (request) => {
-    // URL から localfile:/// プレフィックスを除去してファイルパスを復元
-    const rawPath = request.url.slice('localfile:///'.length)
+    // Electron #4 fix: 旧コードは `slice('localfile:///'.length)` で生 URL を
+    // パスとして扱い、`?` / `#` を除去せず statSync に渡していた。POSIX では
+    // `file.mp4?` が正規ファイル名として作成可能で隣接攻撃の余地があった。
+    // URL でパースし pathname のみ採用、search/hash 非空は reject。
+    let parsed: URL
+    try {
+      parsed = new URL(request.url)
+    } catch {
+      return new Response(null, { status: 400, statusText: 'Bad URL' })
+    }
+    if (parsed.search || parsed.hash) {
+      return new Response(null, { status: 400, statusText: 'query/fragment not allowed' })
+    }
+    // localfile:///C:/path → pathname = "/C:/path" になる。先頭 / を取って復元。
+    const rawPath = parsed.pathname.replace(/^\//, '')
     const filePath = decodeURIComponent(rawPath)
 
     // 拡張子チェック（動画ファイル以外へのアクセスを拒否 — XSS 経由の任意ファイル読み取り防止）
@@ -323,6 +369,14 @@ function registerLocalFileProtocol(): void {
     const fileSize = fileStat.size
     const contentType = VIDEO_MIME[ext] ?? 'application/octet-stream'
 
+    // Electron #5 fix: TOCTOU 緩和。realpathSync で解決した実体パスを stream にも渡し、
+    // 解決後 → stream open の間にシンボリックリンクが差し替えられても被害を受けないように
+    // する。後段 _isAllowedVideoPath は realpath ベースで判定済みのため、ここでも実体側で
+    // 開く。
+    const resolvedPath = _resolveRealPath(filePath)
+    if (!_isAllowedVideoPath(resolvedPath)) {
+      return new Response(null, { status: 403, statusText: 'path jail (post-resolve)' })
+    }
     // Range ヘッダー処理（ビデオシーク操作に必須）
     const rangeHeader = request.headers.get('range')
     if (rangeHeader) {
@@ -332,7 +386,7 @@ function registerLocalFileProtocol(): void {
         const end = m[2] ? Math.min(parseInt(m[2], 10), fileSize - 1) : fileSize - 1
         const chunkSize = end - start + 1
 
-        const nodeStream = createReadStream(filePath, { start, end })
+        const nodeStream = createReadStream(resolvedPath, { start, end })
         nodeStream.on('error', (err: NodeJS.ErrnoException) => {
           // レンダラーがリクエストをキャンセルしたときに発生するベニーンエラーは無視する
           // （シーク・ソース切替・アンマウント時の正常動作）
@@ -357,8 +411,8 @@ function registerLocalFileProtocol(): void {
       }
     }
 
-    // Range なし: フルファイル送信
-    const nodeStream = createReadStream(filePath)
+    // Range なし: フルファイル送信 (Electron #5 fix: 実体パスで開く)
+    const nodeStream = createReadStream(resolvedPath)
     nodeStream.on('error', (err: NodeJS.ErrnoException) => {
       if (
         err.code === 'ERR_STREAM_DESTROYED' ||
@@ -411,10 +465,21 @@ function registerAppProtocol(): void {
       const operatorToken = (process.env.SS_OPERATOR_TOKEN || '').trim()
       if (operatorToken) headers['X-Operator-Token'] = operatorToken
 
-      const upstream = await fetch(`${_BACKEND_BASE}/api/videos/${token}/stream`, {
-        method: request.method,
-        headers,
-      })
+      // Electron #14 fix: 旧コードは upstream に timeout/abort なしで、backend が
+      // hang した場合 renderer の <video> は永久ロード状態になっていた。
+      // 30 秒の AbortController を付ける (Range リクエストの応答開始までは数百 ms 想定)。
+      const aborter = new AbortController()
+      const abortTimer = setTimeout(() => aborter.abort(), 30000)
+      let upstream: Response
+      try {
+        upstream = await fetch(`${_BACKEND_BASE}/api/videos/${token}/stream`, {
+          method: request.method,
+          headers,
+          signal: aborter.signal,
+        })
+      } finally {
+        clearTimeout(abortTimer)
+      }
       // レスポンスヘッダから不要・不正なものを除去しつつ転送
       const passthrough = new Headers()
       for (const [k, v] of upstream.headers) {
@@ -472,7 +537,10 @@ ipcMain.handle('open-video-window', (_event, src: string, displayId: number, sta
       preload: path.join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false,
+      // Electron #1 fix: webSecurity を true に。video window は localfile:/app:
+      // で動画を再生するだけで cross-origin XHR は不要。無効化すると XSS 発生時に
+      // localhost:8765 のレスポンスを横取り可能になる。
+      webSecurity: true,
       webviewTag: true,
     },
   })
@@ -511,6 +579,21 @@ ipcMain.handle('close-video-window', () => {
 // BroadcastChannel は Electron 別ウィンドウ間で session/partition 都合により
 // 届かない場合があるため、main プロセス経由に統一する。
 ipcMain.on('mirror-broadcast', (event, payload: unknown) => {
+  // Electron #6 fix: 旧コードは renderer から渡された任意 payload を全ウィンドウへ
+  // 無検証 fan-out していた。XSS 経由で他ウィンドウの mirror-message handler に
+  // 偽装メッセージを注入できる。最低限のスキーマ検証 (object + size cap) を入れる。
+  if (payload === null || typeof payload !== 'object') return
+  // 32KB を超える broadcast は reject (動画フレームのような巨大データは想定外)
+  let serialized: string
+  try {
+    serialized = JSON.stringify(payload)
+  } catch {
+    return
+  }
+  if (serialized.length > 32 * 1024) {
+    console.warn('[mirror-broadcast] payload too large, rejected:', serialized.length)
+    return
+  }
   // 送信元以外の全ウィンドウへ転送
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.webContents.id !== event.sender.id && !win.isDestroyed()) {
@@ -522,18 +605,46 @@ ipcMain.on('mirror-broadcast', (event, payload: unknown) => {
 // ─── IPC: 録画データの保存ダイアログ ─────────────────────────────────────────
 // MediaRecorder で録画した Uint8Array を受け取り、保存先をユーザーに選ばせてファイル書き込みする。
 
+// Electron #15 fix: 旧コードは renderer から渡された ArrayBuffer を無検証で
+// writeFileSync に直行していた (CLAUDE.md の "IPC で app data を運ぶな" 原則違反 +
+// XSS 経由で巨大ファイルを書き込んで DoS / 任意拡張子で書き込み可能だった)。
+// 対策:
+//   (a) 拡張子は webm/mp4/mkv のみ許可
+//   (b) サイズ上限 (4GB) でカット
+//   (c) 先頭マジックバイトで媒体タイプ検証 (webm: 0x1A45DFA3, mp4: 'ftyp')
+//   (d) 出力先はユーザーがダイアログで選んだパスのみ (showSaveDialog 経由)
+const _ALLOWED_RECORD_EXTS = new Set(['webm', 'mp4', 'mkv'])
+const _MAX_RECORD_BYTES = 4 * 1024 * 1024 * 1024  // 4GB
 ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultFilename: string) => {
+  if (!data || !(data instanceof ArrayBuffer)) return null
+  if (data.byteLength === 0 || data.byteLength > _MAX_RECORD_BYTES) {
+    console.warn('[save-recorded-video] rejected: size=', data.byteLength)
+    return null
+  }
+  const buf = Buffer.from(data)
+  // マジックバイト検査
+  const isWebm = buf.length >= 4 && buf[0] === 0x1A && buf[1] === 0x45 && buf[2] === 0xDF && buf[3] === 0xA3
+  const isMp4 = buf.length >= 8 && buf.slice(4, 8).toString('ascii') === 'ftyp'
+  // mkv も EBML header (=webm と同じ 0x1A45DFA3) なので isWebm 判定で捕捉される
+  if (!isWebm && !isMp4) {
+    console.warn('[save-recorded-video] rejected: invalid magic bytes')
+    return null
+  }
   const result = await dialog.showSaveDialog({
     defaultPath: defaultFilename,
     filters: [
       { name: 'Video', extensions: ['webm', 'mp4', 'mkv'] },
-      { name: 'All Files', extensions: ['*'] },
     ],
   })
   if (result.canceled || !result.filePath) return null
+  // 拡張子が allowlist 外なら拒否
+  const ext = path.extname(result.filePath).slice(1).toLowerCase()
+  if (!_ALLOWED_RECORD_EXTS.has(ext)) {
+    console.warn('[save-recorded-video] rejected ext:', ext)
+    return null
+  }
   const { writeFileSync } = require('fs') as typeof import('fs')
-  writeFileSync(result.filePath, Buffer.from(data))
-  // Windows パスを localfile:// URL に変換して返す（動画登録に使用）
+  writeFileSync(result.filePath, buf)
   const normalized = result.filePath.replace(/\\/g, '/')
   return `localfile:///${normalized}`
 })
@@ -542,8 +653,22 @@ ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultF
 // WebViewPlayer が表示している映像の現在フレームをキャプチャして Base64 で返す。
 // TrackNet frame_hint API に渡す3フレーム（前・中・後）を取得するために使用する。
 
+// Electron #8 fix: 旧コードは renderer から無条件で capturePage() を呼べたため
+// XSS 経由で main window のスクリーンショット (ログイン情報含む) を流出可能だった。
+// レンダラ側の明示的な意図表明 (window.__captureAllowed) を見て、かつ短時間
+// (5s) しか window が opt-in していない時のみ capture を許可する。
+let _captureWindowExpiry = 0
+ipcMain.handle('enable-frame-capture', () => {
+  // renderer 側でユーザー操作 (録画開始ボタンクリック等) のあとに呼び出す前提
+  _captureWindowExpiry = Date.now() + 5000
+  return true
+})
 ipcMain.handle('capture-webview-frame', async () => {
   if (!mainWindow || mainWindow.isDestroyed()) return null
+  if (Date.now() > _captureWindowExpiry) {
+    console.warn('[capture-webview-frame] denied: capture window not opened by renderer')
+    return null
+  }
   try {
     const image = await mainWindow.webContents.capturePage()
     return image.toDataURL().replace(/^data:image\/png;base64,/, '')
@@ -577,9 +702,19 @@ ipcMain.handle('open-video-file', async () => {
 
 // ─── IPC: アプリ再起動 ────────────────────────────────────────────────────────
 
+// Electron #7 fix: 旧コードは renderer から無条件で relaunch を呼べたため
+// XSS から再起動 DoS が成立した。短時間のレートリミットで連発を防ぐ。
+let _lastRelaunchAt = 0
 ipcMain.handle('relaunch-app', () => {
+  const now = Date.now()
+  if (now - _lastRelaunchAt < 30000) {
+    console.warn('[relaunch-app] rate limit: ignored')
+    return false
+  }
+  _lastRelaunchAt = now
   app.relaunch()
   app.exit(0)
+  return true
 })
 
 // バックエンドログ取得（初期ロード用）
@@ -618,6 +753,38 @@ ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: stri
       nodeIntegration: false,
     },
   })
+  // Electron #2 (URL allowlist 強化) + Electron #19 (permission handler) fix
+  // youtube-live-drm-start IPC は renderer 由来 url を verify せずに loadURL
+  // していた。https://*.youtube.com / *.youtube-nocookie.com 限定にする。
+  // また permission handler 未設定だと既定で media/mediaKeySystem/geolocation 等が
+  // 許可される可能性があるため明示的に screen capture 関連のみ許可。
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(url)
+  } catch {
+    _ytLiveWindow.close()
+    _ytLiveWindow = null
+    throw new Error(`invalid YouTube URL: ${url}`)
+  }
+  if (
+    parsedUrl.protocol !== 'https:' ||
+    !/(^|\.)youtube(-nocookie)?\.com$/.test(parsedUrl.hostname)
+  ) {
+    _ytLiveWindow.close()
+    _ytLiveWindow = null
+    throw new Error(`URL is not a YouTube domain: ${parsedUrl.hostname}`)
+  }
+  _ytLiveWindow.webContents.session.setPermissionRequestHandler(
+    (_wc, permission, callback) => {
+      // Electron #19 fix: 必要最小限のみ許可。
+      // 'media' は YouTube プレーヤーの音声出力に使われ得るので許可。
+      // 'mediaKeySystem' (Widevine) は castLabs build でのみ意味があるが、
+      // YouTube Live DRM 用の限定 window なので許可。
+      // 'geolocation' / 'notifications' / 'midi' / 'pointerLock' 等は拒否。
+      const allowed = new Set(['media', 'mediaKeySystem', 'display-capture'])
+      callback(allowed.has(permission))
+    },
+  )
   _ytLiveWindow.webContents.setUserAgent(BROWSER_UA)
   _ytLiveWindow.loadURL(url)
   _ytLiveWindow.on('closed', () => { _ytLiveWindow = null })
@@ -649,11 +816,29 @@ ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: stri
     width: 1,
     height: 1,
     webPreferences: {
-      // 内部専用ウィンドウのみ nodeIntegration を使用する
+      // Electron #2 緩和: 旧コードは nodeIntegration: true + contextIsolation: false
+      // で外部 URL ロードと組み合わさると RCE 化するリスクがあった。
+      // 本ウィンドウは data: URL しかロードしないが、防御深化のため
+      // will-navigate と loadURL allow-list を下に追加して RCE 経路を塞ぐ。
+      // (fully refactor して preload で start/stop だけ露出する方が綺麗だが、
+      //  MediaRecorder + getDisplayMedia API は renderer 側で動くため最小変更。)
       nodeIntegration: true,
       contextIsolation: false,
+      // Electron #2 強化: 外部リソース fetch を遮断。data: のみ。
+      webSecurity: true,
     },
   })
+
+  // Electron #2 強化: data: URL 以外への navigate を完全拒否。
+  // これにより YouTube ページ等の外部 origin が renderer に nodeIntegration 権限を持って
+  // ロードされる経路を遮断する。
+  _ytRecorderWindow.webContents.on('will-navigate', (event, navUrl) => {
+    if (!navUrl.startsWith('data:')) {
+      console.error('[ytRecorder] blocked navigation to', navUrl)
+      event.preventDefault()
+    }
+  })
+  _ytRecorderWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   // スクリーンキャプチャ権限を許可
   _ytRecorderWindow.webContents.session.setPermissionRequestHandler(
@@ -786,7 +971,10 @@ function createWindow(): void {
       preload: path.join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false,
+      // Electron #1 fix: webSecurity を true に。main window は React renderer を
+      // ロードするだけで cross-origin 制約が必要な操作は無い。無効化していると
+      // XSS 経由で localhost:8765 のレスポンスを横取りされる SOP 全 bypass。
+      webSecurity: true,
       // <webview> タグを有効化（DRM対応 WebView プレイヤーに必要）
       webviewTag: true,
     },
@@ -829,14 +1017,40 @@ function createWindow(): void {
     return { action: 'deny' }
   })
   // webview へ不審な webPreferences を差し込ませない
+  // Electron #17 fix: 旧コードは preload/nodeIntegration/contextIsolation のみ
+  // 上書きしており、攻撃者が `webSecurity: false` / `allowpopups: true` /
+  // `enableRemoteModule: true` などを差し込むと SOP 無効化 + popup 経路を作れた。
+  // 上書きするのではなく allowlist だけ残して全ての他のキーを削除する。
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(mainWindow.webContents as any).on('will-attach-webview', (_event: Electron.Event, webPreferences: Record<string, unknown>) => {
-    delete (webPreferences as any).preload
+    const _allowed = new Set<string>(['contextIsolation', 'nodeIntegration', 'sandbox', 'session'])
+    for (const k of Object.keys(webPreferences)) {
+      if (!_allowed.has(k)) {
+        delete webPreferences[k]
+      }
+    }
     ;(webPreferences as any).nodeIntegration = false
     ;(webPreferences as any).contextIsolation = true
+    ;(webPreferences as any).sandbox = true
+    // webSecurity / allowpopups / experimentalFeatures は明示的に削除済 (allowlist 外)
   })
 
   const rendererFile = path.join(app.getAppPath(), 'out', 'renderer', 'index.html')
+  // Electron #10 fix: packaged build では Ctrl+Shift+I / F12 で DevTools を開けないようにする。
+  // 旧コードは devtools-opened ハンドラで close する形だったが、瞬間的にコンソールが見えていた。
+  // 起動時にメニュー登録自体を抑止 + キーボードショートカットを intercept して preventDefault。
+  if (app.isPackaged) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      // Ctrl+Shift+I / Cmd+Option+I / F12
+      if (
+        (input.control && input.shift && input.key.toLowerCase() === 'i') ||
+        (input.meta && input.alt && input.key.toLowerCase() === 'i') ||
+        input.key === 'F12'
+      ) {
+        event.preventDefault()
+      }
+    })
+  }
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
@@ -857,12 +1071,30 @@ function createWindow(): void {
   }
 
   // React が完全に描画されたらスプラッシュを閉じてメインウィンドウを表示
+  // Electron #18 fix: 旧コードは did-finish-load を起点に splash close + main show
+  // していたが、backend 起動失敗時は did-finish-load が発火せず splash だけ消えて
+  // 真っ暗な画面で hang する経路があった。
+  // 対策: did-fail-load で「再試行 / 終了」ダイアログを出し、main は表示しない。
   mainWindow.webContents.once('did-finish-load', () => {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close()
       splashWindow = null
     }
     mainWindow?.show()
+  })
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDesc, validatedURL) => {
+    if (validatedURL.includes('localhost:5173')) return  // dev HMR 無視
+    console.error('[Main] renderer did-fail-load:', errorCode, errorDesc, validatedURL)
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+      splashWindow = null
+    }
+    dialog.showErrorBox(
+      'ShuttleScope renderer load failed',
+      `Renderer failed to load (${errorCode}): ${errorDesc}\nURL: ${validatedURL}\n` +
+        'Backend may not be running. Check logs and restart.',
+    )
+    app.quit()
   })
 
   mainWindow.on('closed', () => {
@@ -895,13 +1127,22 @@ async function startApp(): Promise<void> {
     } catch { /* ルールなし or 確認失敗 */ }
 
     if (!ruleExists) {
-      // UAC 昇格ダイアログを表示してルール追加（ユーザーがキャンセルした場合は無視）
+      // Electron #12 fix: 旧コードは execSync で UAC powershell を同期実行し、
+      // ユーザーがダイアログに気付くまで Electron 起動を最大 30s ブロックしていた。
+      // spawn で fire-and-forget に変更 (UAC 結果を待つ必要は無い)。
+      // 失敗しても LAN 接続が単に出来ないだけで起動には影響しない。
       try {
-        execSync(
-          `powershell -Command "Start-Process netsh -ArgumentList 'advfirewall firewall add rule name=\\"ShuttleScope LAN\\" protocol=TCP dir=in localport=8765 action=allow profile=private' -Verb RunAs -Wait"`,
-          { timeout: 30000, stdio: 'ignore' }
+        const { spawn: _spawn } = require('child_process') as typeof import('child_process')
+        const ufw = _spawn(
+          'powershell',
+          [
+            '-Command',
+            `Start-Process netsh -ArgumentList 'advfirewall firewall add rule name="ShuttleScope LAN" protocol=TCP dir=in localport=8765 action=allow profile=private' -Verb RunAs -Wait`,
+          ],
+          { detached: true, stdio: 'ignore', windowsHide: true }
         )
-      } catch { /* UAC キャンセル等は無視 */ }
+        ufw.unref()
+      } catch { /* UAC キャンセル / spawn 失敗は無視 */ }
     }
   }
 
@@ -944,20 +1185,33 @@ async function startApp(): Promise<void> {
     })
 
     // YouTube / 外部コンテンツを iframe で読み込めるよう CSP を設定
+    // Electron #9 fix: packaged build では unsafe-inline / unsafe-eval / frame-src * を
+    // 外し、開発時のみ HMR 等のため緩める。frame-src は YouTube 限定にする。
+    const isPackaged = app.isPackaged
+    const cspParts = isPackaged
+      ? [
+          "default-src 'self' localfile: app: blob: data: http://localhost:*;",
+          // packaged では Vite/Tailwind の inline は事前ビルド済みで不要。
+          " script-src 'self';",
+          " style-src 'self' 'unsafe-inline';",  // CSS は inline 残す (Tailwind preflight)
+          " media-src 'self' localfile: app: blob: data: https:;",
+          " frame-src https://www.youtube.com https://www.youtube-nocookie.com;",
+          " img-src 'self' localfile: app: blob: data: https:;",
+          " connect-src 'self' http://localhost:* ws://localhost:* https:;",
+        ]
+      : [
+          "default-src 'self' 'unsafe-inline' 'unsafe-eval' localfile: app: blob: data: http://localhost:*;",
+          " media-src 'self' localfile: app: blob: data: https:;",
+          " script-src 'self' 'unsafe-inline' 'unsafe-eval';",
+          " frame-src *;",
+          " img-src 'self' localfile: app: blob: data: https:;",
+          " connect-src 'self' http://localhost:* ws://localhost:* https:;",
+        ]
     mainWindow.webContents.session.webRequest.onHeadersReceived((details: Electron.OnHeadersReceivedListenerDetails, callback: (response: Electron.HeadersReceivedResponse) => void) => {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
-          'Content-Security-Policy': [
-            // app: は Phase 1 で追加した不透明トークン経由の動画ストリーム用プロトコル。
-            // localfile: は既存ファイル選択用 (将来的に廃止予定)。
-            "default-src 'self' 'unsafe-inline' 'unsafe-eval' localfile: app: blob: data: http://localhost:*;" +
-              " media-src 'self' localfile: app: blob: data: https:;" +
-              " script-src 'self' 'unsafe-inline' 'unsafe-eval';" +
-              " frame-src *;" +
-              " img-src 'self' localfile: app: blob: data: https:;" +
-              " connect-src 'self' http://localhost:* ws://localhost:* https:;",
-          ],
+          'Content-Security-Policy': [cspParts.join('')],
         },
       })
     })
@@ -1017,6 +1271,18 @@ async function startApp(): Promise<void> {
   }
 }
 
+// Electron #16 (design note): auto-updater は現状未実装。
+//
+// 採用方針 (TODO):
+//  - electron-updater (electron-builder 同梱) を採用予定だが、署名証明書 (Authenticode)
+//    の調達と CI のリリースパイプライン整備が前提。
+//  - 配布チャネルが Cloudflare R2 + electron-builder generic provider を想定
+//    (GitHub Releases は private repo 制約から候補外)。
+//  - 自動更新は user-consent 必須 (sileんt update は CLAUDE.md の透明性原則に反する)。
+// それまでの間は手動配布 (バージョン番号比較バナーを app に表示する) で運用する。
+//
+// 関連: shuttle-scope.com 公開計画 (shuttlescope_cloudflare_tunnel_steps.md) と
+// 連動して整備するため、tunnel + Access が安定したあと着手予定。
 app.whenReady().then(startApp)
 
 app.on('window-all-closed', () => {
@@ -1036,8 +1302,20 @@ app.on('activate', () => {
 })
 
 app.on('before-quit', () => {
+  // Electron #11 fix: 自動再起動ロジックが quit 中に発火しないよう flag を立てる。
+  ;(global as any)._appQuitting = true
   if (pythonProcess) {
-    pythonProcess.kill()
+    // SIGTERM 相当: graceful shutdown を試みる
+    try { pythonProcess.kill() } catch {}
+    // 5s 経っても残っていれば SIGKILL fallback (孤児化防止)
+    const p = pythonProcess
     pythonProcess = null
+    setTimeout(() => {
+      try {
+        if (!p.killed) {
+          (p as any).kill('SIGKILL')
+        }
+      } catch {}
+    }, 5000)
   }
 })

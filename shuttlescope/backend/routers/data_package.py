@@ -340,6 +340,23 @@ async def import_package_endpoint(request: Request, db: Session = Depends(get_db
             player_id_map[p_data["id"]] = new_player.id
 
     # ── Match 解決 ────────────────────────────────────────────────────────────
+    # routers #5 fix: 旧コードは match_data["owner_team_id"] を _apply_match_data 経由で
+    # そのまま反映し、resolve_owner_team_for_match_create を経由しなかった。analyst が
+    # owner_team_id を他チームに細工した package を import して **他チーム match を
+    # 自分のチームに移動 / 上書き** できる IDOR が成立していた。HMAC は actor team に
+    # bind されていない。
+    # 対策:
+    #  (a) import 時に owner_team_id = ctx.team_id を強制
+    #  (b) force=true 上書きは既存 match の owner_team_id == ctx.team_id のときのみ許可
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.team_id is None and not getattr(ctx, "is_admin", False):
+        return {
+            "success": False,
+            "error": "import 実行者がチーム未所属です。team 紐付けが必要です。",
+        }
+    actor_team_id = ctx.team_id
+
     existing_match = db.query(Match).filter(Match.uuid == match_data["uuid"]).first()
     if existing_match and not force:
         return {
@@ -350,6 +367,15 @@ async def import_package_endpoint(request: Request, db: Session = Depends(get_db
         }
 
     if existing_match and force:
+        # routers #5 fix: 自チーム所有の match のみ上書き可能。
+        # 他チーム match を force 上書きする操作は IDOR とみなして拒否。
+        existing_owner = getattr(existing_match, "owner_team_id", None)
+        if not getattr(ctx, "is_admin", False):
+            if existing_owner is None or existing_owner != actor_team_id:
+                return {
+                    "success": False,
+                    "error": "他チーム所有の match を上書きする権限がありません",
+                }
         # 既存の子データを削除してから上書き
         _cascade_delete_match(db, existing_match.id)
         match_obj = existing_match
@@ -358,6 +384,10 @@ async def import_package_endpoint(request: Request, db: Session = Depends(get_db
         db.add(match_obj)
 
     _apply_match_data(match_obj, match_data, player_id_map)
+    # routers #5 fix: package 内の owner_team_id を信用せず actor の team_id を強制反映。
+    # admin の場合は package 内の値を尊重する (multi-tenant 管理用)。
+    if not getattr(ctx, "is_admin", False):
+        match_obj.owner_team_id = actor_team_id
     db.flush()
 
     # ── Sets ─────────────────────────────────────────────────────────────────

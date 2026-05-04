@@ -40,12 +40,30 @@ def _load_yaml(path: pathlib.Path) -> Dict[str, Any]:
         return {}
 
 
+def _redact_secrets(data: Dict[str, Any]) -> Dict[str, Any]:
+    """pipeline #3 fix: ssh_password を YAML 永続化時に redact する。
+
+    旧コードは `cluster.config.yaml` に ssh_password を平文保持し、UI からの
+    save_config 経由で毎回ラウンドトリップ書き戻していた。秘密情報を repo 配下に
+    残さないため save 時は SSH_PASSWORD_REDACTED に置換する。
+    実行時は `SS_K10_SSH_PASSWORD` 環境変数 (or 将来的に keyring) から読み出す。
+    """
+    import copy
+    redacted = copy.deepcopy(data)
+    workers = ((redacted.get("network") or {}).get("workers") or [])
+    for w in workers:
+        if isinstance(w, dict) and w.get("ssh_password"):
+            w["ssh_password"] = "SSH_PASSWORD_REDACTED"
+    return redacted
+
+
 def _save_yaml(path: pathlib.Path, data: Dict[str, Any]) -> None:
-    """YAML を書き込む。"""
+    """YAML を書き込む (秘密情報は redact)。"""
     import yaml  # type: ignore
     path.parent.mkdir(parents=True, exist_ok=True)
+    safe_data = _redact_secrets(data)
     with path.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        yaml.safe_dump(safe_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
 
 def load_config(force: bool = False) -> Dict[str, Any]:

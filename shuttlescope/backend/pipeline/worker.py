@@ -104,6 +104,26 @@ class _FileLock:
             self._fp.flush()
         except Exception:  # pragma: no cover
             pass
+        # pipeline #6 fix: lock 取得直後に「自プロセスが実際にロックを保持しているか」を
+        # 検証する。Windows の msvcrt.locking は exclusive lock を取れたかしか返さず、
+        # プロセスクラッシュ後の stale handle で同じファイルがロックされた状態を装う
+        # 経路があり得るため、PID を書き戻したあと先頭 1 バイトを再 lock 試行する。
+        # 失敗したら lock 取得自体をやり直すべき状態として False を返す。
+        try:
+            if os.name == "nt":
+                import msvcrt
+                self._fp.seek(0)
+                # 既に保持しているロックを取り直す (no-op で例外なら他者保持)
+                try:
+                    msvcrt.locking(self._fp.fileno(), msvcrt.LK_NBLCK, 1)
+                    msvcrt.locking(self._fp.fileno(), msvcrt.LK_UNLCK, 1)
+                    # NBLCK 成功 → 自分は実は保持していなかった = stale。再取得試行。
+                    msvcrt.locking(self._fp.fileno(), msvcrt.LK_NBLCK, 1)
+                except OSError:
+                    # 既存 lock を保持中 → 正常 (NBLCK が EAGAIN で失敗するのが期待動作)
+                    pass
+        except Exception:  # pragma: no cover
+            pass
         return True
 
     def release(self) -> None:
@@ -213,6 +233,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         if not lock.acquire():
             logger.error("worker lock already held by another process: %s", _LOCK_PATH)
             return 2
+
+    # 起動時 stale reaper: 前回プロセス Kill で running のまま残った job を failed に戻す。
+    # routers/pipeline.py の per-match dedup が永久ブロックされるのを防ぐ。
+    try:
+        from backend.db.database import SessionLocal
+        from backend.pipeline.jobs import reap_stale_jobs
+        with SessionLocal() as _reap_db:
+            reap_stale_jobs(_reap_db)
+    except Exception:  # pragma: no cover
+        logger.exception("stale job reaper failed at startup")
 
     try:
         if args.once:

@@ -39,12 +39,37 @@ class ConnectionManager:
         self._connections: dict[str, list[WebSocket]] = {}
         # T-9 (round124): cap check の race を防ぐ per-session lock
         self._cap_locks: dict[str, "asyncio.Lock"] = {}
+        # ws #1 fix: per-WebSocket send lock。
+        # Starlette の send channel は concurrent-sender 非安全 (`RuntimeError:
+        # Unexpected ASGI message`)。broadcaster と receive loop が同一 WS に
+        # send_* を並行 await すると稀に発火してクライアントが silent drop される。
+        # send 系は必ずこの lock 経由で直列化する。
+        self._send_locks: dict[int, "asyncio.Lock"] = {}
 
     def _lock(self, session_code: str) -> "asyncio.Lock":
         import asyncio as _aio
         if session_code not in self._cap_locks:
             self._cap_locks[session_code] = _aio.Lock()
         return self._cap_locks[session_code]
+
+    def _send_lock(self, ws: WebSocket) -> "asyncio.Lock":
+        import asyncio as _aio
+        key = id(ws)
+        lk = self._send_locks.get(key)
+        if lk is None:
+            lk = _aio.Lock()
+            self._send_locks[key] = lk
+        return lk
+
+    async def safe_send_json(self, ws: WebSocket, message: dict[str, Any]) -> bool:
+        """concurrent-sender 安全な send_json。失敗時は False。"""
+        lk = self._send_lock(ws)
+        async with lk:
+            try:
+                await ws.send_json(message)
+                return True
+            except Exception:
+                return False
 
     async def connect(self, session_code: str, ws: WebSocket) -> None:
         async with self._lock(session_code):
@@ -66,37 +91,53 @@ class ConnectionManager:
             conns.remove(ws)
         if not conns:
             self._connections.pop(session_code, None)
+            # session 単位 lock も解放 (ws #7 fix: _cap_locks リーク対策)
+            self._cap_locks.pop(session_code, None)
+        # ws #7 fix: per-WS send lock も解放
+        self._send_locks.pop(id(ws), None)
         logger.info("WS disconnected: session=%s", session_code)
 
     def connection_count(self, session_code: str) -> int:
-        return len(self._connections.get(session_code, []))
+        # ws #8 fix: dict 参照を 1 度に抑えてロック外 KeyError 競合を避ける。
+        # 旧コードは len(self._connections[session_code]) で `[session_code]` を直接
+        # アクセスしていたため、別タスクが pop した瞬間に KeyError が起きていた。
+        return len(self._connections.get(session_code) or [])
 
     async def broadcast(self, session_code: str, message: dict[str, Any]) -> None:
         dead: list[WebSocket] = []
         for ws in list(self._connections.get(session_code, [])):
-            try:
-                await ws.send_json(message)
-            except Exception:
+            ok = await self.safe_send_json(ws, message)
+            if not ok:
                 dead.append(ws)
         for ws in dead:
             self.disconnect(session_code, ws)
 
-    async def broadcast_to_match(self, match_id: int, message: dict[str, Any], db) -> None:
-        """match_id に紐づくアクティブセッションへ一括ブロードキャスト"""
+    async def broadcast_to_match(self, match_id: int, message: dict[str, Any], db=None) -> None:
+        """match_id に紐づくアクティブセッションへ一括ブロードキャスト。
+
+        ws #2 fix: 旧コードは ensure_future で渡された request-scoped DB session に
+        対し finally で close 済の状態で commit を試み ResourceClosedError を握りつぶし、
+        last_broadcast_at が永久に更新されなかった。
+        独立した SessionLocal を都度開いて完結させる (db 引数は後方互換のため受けるが
+        参照しない)。
+        """
+        from backend.db.database import SessionLocal
         from backend.db.models import SharedSession
-        sessions = (
-            db.query(SharedSession)
-            .filter(SharedSession.match_id == match_id, SharedSession.is_active.is_(True))
-            .all()
-        )
-        for s in sessions:
-            await self.broadcast(s.session_code, message)
-            s.last_broadcast_at = datetime.utcnow()
-        if sessions:
-            try:
-                db.commit()
-            except Exception:
-                pass
+        with SessionLocal() as own_db:
+            sessions = (
+                own_db.query(SharedSession)
+                .filter(SharedSession.match_id == match_id, SharedSession.is_active.is_(True))
+                .all()
+            )
+            for s in sessions:
+                await self.broadcast(s.session_code, message)
+                s.last_broadcast_at = datetime.utcnow()
+            if sessions:
+                try:
+                    own_db.commit()
+                except Exception:
+                    own_db.rollback()
+                    logger.exception("broadcast_to_match commit failed match_id=%d", match_id)
 
 
 # モジュールレベルシングルトン
@@ -137,7 +178,7 @@ async def ws_live_handler(session_code: str, websocket: WebSocket, db) -> None:
     try:
         # 接続直後: 現在スナップショットを送信
         snapshot = _build_session_snapshot(session, db)
-        await websocket.send_json({"type": "snapshot", "data": snapshot})
+        await manager.safe_send_json(websocket, {"type": "snapshot", "data": snapshot})
 
         # keepalive ループ（ping / 切断検知）
         while True:
@@ -177,10 +218,10 @@ async def ws_live_handler(session_code: str, websocket: WebSocket, db) -> None:
                 if msg_type not in _ALLOWED_TYPES:
                     continue
                 if msg_type == "ping":
-                    await websocket.send_json({"type": "pong"})
+                    await manager.safe_send_json(websocket, {"type": "pong"})
             except asyncio.TimeoutError:
-                # タイムアウト時は keepalive ping を送る
-                await websocket.send_json({"type": "ping"})
+                # タイムアウト時は keepalive ping を送る (concurrent-sender 安全な送信)
+                await manager.safe_send_json(websocket, {"type": "ping"})
     except WebSocketDisconnect:
         pass
     except Exception as e:

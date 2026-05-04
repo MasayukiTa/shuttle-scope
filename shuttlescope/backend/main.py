@@ -398,6 +398,39 @@ class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(UploadSizeLimitMiddleware)
 
 
+# routers #7 fix: prediction / analysis_research / analysis_advanced は同期 DB+解析を
+# request thread で完走させており ?limit= も timeout も無いため、大履歴プレイヤーで
+# thread pool を占有して全 API を DoS する経路があった。
+# starlette レイヤで「重い解析/予測パスは N 秒で打ち切る」 timeout middleware を入れる。
+# 値は内部運用観測から 25s に設定 (LB の 30s 直前)。タイムアウト時は 504 を返す。
+import asyncio as _aio_for_timeout
+_HEAVY_PATH_PREFIXES = (
+    "/api/prediction/",
+    "/api/analysis/research/",
+    "/api/analysis/spine/",
+    "/api/analysis/bundle/",
+)
+_HEAVY_TIMEOUT_SEC = 25.0
+
+
+class HeavyAnalysisTimeoutMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        path = request.url.path
+        if not path.startswith(_HEAVY_PATH_PREFIXES):
+            return await call_next(request)
+        try:
+            return await _aio_for_timeout.wait_for(call_next(request), timeout=_HEAVY_TIMEOUT_SEC)
+        except _aio_for_timeout.TimeoutError:
+            return StarletteResponse(
+                f'{{"detail":"解析処理がタイムアウトしました ({_HEAVY_TIMEOUT_SEC}s)。?limit= で対象範囲を絞ってください"}}',
+                status_code=504,
+                media_type="application/json",
+            )
+
+
+app.add_middleware(HeavyAnalysisTimeoutMiddleware)
+
+
 # ─── アクセス制御ミドルウェア（role=player のみ強制） ────────────────────────
 # POCフェーズの簡易実装:
 #   ロール自体は自己申告(X-Role)だが、role=player の場合は X-Player-Id が
@@ -451,19 +484,20 @@ _PLAYER_ID_PATTERNS = [
 def _build_player_forbidden_analysis_paths() -> frozenset[str]:
     forbidden: set[str] = set()
     # 1) research / spine / bundle/research 全部
-    try:
-        from backend.routers import (
-            analysis_research as _r,
-            analysis_spine as _sp,
-            analysis_bundle as _b,
-        )
-        for sub in (_r.router, _sp.router, _b.router):
-            for route in getattr(sub, "routes", []):
-                p = getattr(route, "path", None)
-                if p:
-                    forbidden.add(f"/api{p}")
-    except Exception:
-        pass
+    # 旧コードは except で silent に空集合化していたため import 失敗時に
+    # 全 research エンドポイントが player 公開される穴があった。
+    # 各ルーターに router-level Depends(require_admin_or_analyst / require_non_player)
+    # を追加してその穴は塞いだが、middleware 側でも import 失敗を fail-loud にする。
+    from backend.routers import (
+        analysis_research as _r,
+        analysis_spine as _sp,
+        analysis_bundle as _b,
+    )
+    for sub in (_r.router, _sp.router, _b.router):
+        for route in getattr(sub, "routes", []):
+            p = getattr(route, "path", None)
+            if p:
+                forbidden.add(f"/api{p}")
     # 2) PLAYER_SENSITIVE_KEYS にマッチする individual paths (advanced + stable)
     forbidden.update({
         # weakness / vulnerability
@@ -485,6 +519,19 @@ def _build_player_forbidden_analysis_paths() -> frozenset[str]:
 
 
 _PLAYER_FORBIDDEN_ANALYSIS_PATHS = _build_player_forbidden_analysis_paths()
+
+# Sanity check: research/spine/bundle ルーターに少なくともこの数のルートがあれば
+# import に成功している。閾値を下回ったら起動を拒否する (silent な空集合化を防止)。
+# 現状: research ~17, spine ~6, bundle ~4, sensitive paths +10 = 約 37。
+# 閾値 25 は将来のルーター追加 / 削除を吸収しつつ "ほぼ空" を確実に拒否する値。
+_EXPECTED_MIN_FORBIDDEN_PATHS = 25
+if len(_PLAYER_FORBIDDEN_ANALYSIS_PATHS) < _EXPECTED_MIN_FORBIDDEN_PATHS:
+    raise RuntimeError(
+        f"_PLAYER_FORBIDDEN_ANALYSIS_PATHS has only "
+        f"{len(_PLAYER_FORBIDDEN_ANALYSIS_PATHS)} entries (expected >= "
+        f"{_EXPECTED_MIN_FORBIDDEN_PATHS}). research/spine/bundle ルーターの "
+        f"import に失敗している可能性が高い。silent な player 公開を防ぐため起動を拒否する。"
+    )
 
 
 def _extract_id(path: str, patterns) -> int | None:
@@ -1086,9 +1133,18 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
         # PUBLIC_MODE（Cloudflare 公開）では loopback 緩和を適用しない。
         # Cloudflare 設定ミス等で CF-Connecting-IP が欠落した場合も全リクエストが
         # 127.0.0.1 として届くため、そこを唯一の信頼点にしてはならない。
+        # PUBLIC_MODE off でも、cloudflared / nginx / SSH forward が 127.0.0.1 に
+        # 向くと外部リクエストが client.host=127.0.0.1 で届く。
+        # X-Forwarded-* / X-Real-IP / CF-Connecting-IP のいずれかが付いている場合は
+        # 上流プロキシ経由とみなし loopback 緩和を撤回する。
         if not app_settings.PUBLIC_MODE:
             from backend.utils.control_plane import is_loopback_request
-            if is_loopback_request(request):
+            forwarded = (
+                request.headers.get("x-forwarded-for")
+                or request.headers.get("x-real-ip")
+                or request.headers.get("cf-connecting-ip")
+            )
+            if is_loopback_request(request) and not forwarded:
                 return await call_next(request)
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
@@ -1568,14 +1624,22 @@ async def _ws_require_auth(websocket: WebSocket) -> bool:
         return False
 
     client_ip = websocket.client.host if websocket.client else ""
-    if client_ip in ("127.0.0.1", "::1", "localhost", ""):
+    # loopback は forwarded ヘッダが付いていない場合のみ信頼する。
+    # cloudflared / nginx / SSH forward が 127.0.0.1 に向くと攻撃者リクエストも
+    # client.host=127.0.0.1 で届くため、X-Forwarded-* / X-Real-IP があれば
+    # loopback 信頼を撤回する。
+    forwarded = (
+        websocket.headers.get("x-forwarded-for")
+        or websocket.headers.get("x-real-ip")
+        or websocket.headers.get("cf-connecting-ip")
+    )
+    if client_ip in ("127.0.0.1", "::1", "localhost", "") and not forwarded:
         return True
 
-    # LAN 直接接続（ws://）は session_code が認証代替として機能
-    if websocket.url.scheme == "ws":
-        return True
-
-    # Cloudflare 経由（wss://）は JWT 必須
+    # 旧コードは scheme == "ws"（平文 WS）を session_code を shared-secret として
+    # 信頼していたが、LAN attacker が session_code を brute-force すれば camera
+    # signaling 乗っ取り / WebRTC MITM / YOLO DoS が成立するため撤去。
+    # 今後は loopback (forwarded なし) または有効 JWT のみが許可される。
     token = websocket.query_params.get("token", "")
     if token and verify_token(token):
         return True
@@ -1961,6 +2025,17 @@ async def spa_catch_all(path: str, request: StarletteRequest):
 
 if __name__ == "__main__":
     # R-002: LAN_MODE=true のとき 0.0.0.0 でバインドして LAN 内からアクセス可能にする
+    # ただし SS_OPERATOR_TOKEN 未設定では 0.0.0.0 バインドを拒否する。
+    # 理由: LAN_MODE 単独だと LAN 内デバイスから JWT/PIN なしで API/WS に到達でき、
+    # 配備時に CLAUDE.md の "do not weaken local-only security posture" に反する。
+    if app_settings.LAN_MODE and not app_settings.ss_operator_token.strip():
+        import sys
+        sys.stderr.write(
+            "[FATAL] LAN_MODE=true requires SS_OPERATOR_TOKEN to be set. "
+            "Refusing to bind 0.0.0.0 without an operator token. "
+            "Set SS_OPERATOR_TOKEN in .env.development or unset LAN_MODE.\n"
+        )
+        sys.exit(2)
     host = "0.0.0.0" if app_settings.LAN_MODE else "127.0.0.1"
     uvicorn.run(
         "backend.main:app",

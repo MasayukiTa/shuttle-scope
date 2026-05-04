@@ -99,10 +99,15 @@ class ShotInfluenceAnalyzer:
     def compute_logistic_influence(
         self,
         all_rallies: list[dict],
+        target_role: str | None = None,
     ) -> dict[str, float]:
         """ロジスティック回帰でショット種別ごとの影響度を計算する
 
-        all_rallies: [{strokes: [{shot_type, stroke_num, score_diff}], won: bool}]
+        all_rallies: [{strokes: [{shot_type, stroke_num, score_diff, role}], won: bool}]
+        target_role: 'player_a' / 'player_b' を渡すと、その role のストロークのみで
+            訓練する (analysis #5 fix: 旧 signature は role filter を要求せず、
+            caller 側 (analysis_research.py) が事前に絞っていたが将来の caller が
+            両者混入データを渡しても気づけない構造だった。明示パラメータ化する。)
         Returns: {shot_type: influence_coefficient}
         """
         if not _ensure_sklearn():
@@ -117,6 +122,11 @@ class ShotInfluenceAnalyzer:
         for rally in all_rallies:
             won = int(rally.get("won", False))
             for stroke in rally.get("strokes", []):
+                # analysis #5 fix: target_role 指定時は他 role のストロークを除外。
+                if target_role is not None:
+                    s_role = stroke.get("role") or stroke.get("player")
+                    if s_role and s_role != target_role:
+                        continue
                 st = stroke.get("shot_type", "other")
                 stroke_num = stroke.get("stroke_num", 1)
                 score_diff = stroke.get("score_diff", 0)

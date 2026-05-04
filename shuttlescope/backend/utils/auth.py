@@ -248,10 +248,13 @@ def apply_match_team_scope(query, ctx: AuthCtx):
     )
 
 
-def require_match_access(match_id: int, request, db) -> "Match":
+def require_match_access_or_404(match_id: int, request, db) -> "Match":
     """指定 match_id にアクセス可能か検証して Match を返す。
 
-    アクセス不可の場合は 404 を返す（存在自体を隠してリーク防止）。
+    routers #6 fix: 旧コードは同名の require_match_access を 2 回定義しており
+    (404 / 403 で挙動分岐)、後勝ち上書きで前者は死コード化していた。
+    名前を _or_404 にリネームして共存させる (404 隠蔽が必要なエンドポイント用)。
+    既定の依存性版 (HTTP 403/404 を区別) は下の require_match_access を使う。
     """
     from fastapi import HTTPException
     from backend.db.models import Match as _Match
@@ -328,11 +331,22 @@ def resolve_owner_team_for_match_create(
     raise HTTPException(status_code=403, detail="この操作の権限がありません")
 
 
-def user_can_access_player(ctx: AuthCtx, player_id: int) -> bool:
-    """選手個別データ（統計・履歴）にアクセスしてよいか。"""
+def user_can_access_player(ctx: AuthCtx, player_id: int, db: Optional[Session] = None) -> bool:
+    """選手個別データ（統計・履歴）にアクセスしてよいか。
+
+    routers #3 fix: 旧コードは non-player に対し team_scope を無視して常に True を
+    返しており、`require_player_self_or_privileged` 経由でクロスチーム IDOR が
+    成立していた (analyst が他チーム選手の個別統計を取得可能)。
+    db を受け取れる場合は can_access_player に委譲、未提供時は admin / non-team
+    のみ True、team scope を持つロールは「player_id 不明」扱いで False (caller 側で
+    db 付き呼び出しに切り替える前提)。
+    """
     if ctx.is_player:
         return ctx.player_id is not None and ctx.player_id == player_id
-    return True
+    if db is not None:
+        return can_access_player(ctx, player_id, db)
+    # db 未提供 → 安全側に倒す。admin だけ素通し、それ以外は False。
+    return bool(getattr(ctx, "is_admin", False))
 
 
 def filter_matches_for_user(ctx: AuthCtx, matches: list[Match], db: Optional[Session] = None) -> list[Match]:

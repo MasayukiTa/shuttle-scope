@@ -195,6 +195,11 @@ class MarkovAnalyzer:
         # CI計算
         ci = self.bootstrap_ci(strokes_list, n_bootstrap=100)
 
+        # analysis #4 fix: 旧コードは per-pair CI を「単発ショット CI と epv の平均」で
+        # 算出しており統計的意味が無かった (s1 単独のブートストラップ結果を pair 単位の
+        # 信頼区間に流用する誤り)。Wilson score interval で pair の wins/total から
+        # 直接 binomial CI を計算する。
+        from backend.utils.confidence import wilson_ci as _wilson_ci
         patterns = []
         for (s1, s2), total in pair_total.items():
             # 最小サンプル数未満のパターンは除外（1〜2回の100%勝率が同値で並ぶ問題を回避）
@@ -207,14 +212,19 @@ class MarkovAnalyzer:
             epv = round(smoothed_rate - baseline, 4)
             s1_ja = SHOT_LABELS_JA.get(s1, s1)
             s2_ja = SHOT_LABELS_JA.get(s2, s2)
-            # 単発EPVから概算CI
-            s1_ci = ci.get(s1, {"ci_low": epv - 0.05, "ci_high": epv + 0.05})
+            # Wilson CI を pair の (wins, total) から直接計算し baseline を引いて epv 軸に揃える
+            try:
+                rate_low, rate_high = _wilson_ci(wins, total)
+                ci_low_v = round(rate_low - baseline, 4)
+                ci_high_v = round(rate_high - baseline, 4)
+            except Exception:
+                ci_low_v, ci_high_v = epv - 0.1, epv + 0.1
             patterns.append({
                 "pattern": f"{s1_ja}→{s2_ja}",
                 "shots": [s1, s2],
                 "epv": epv,
-                "ci_low": round((s1_ci["ci_low"] + epv) / 2, 4),
-                "ci_high": round((s1_ci["ci_high"] + epv) / 2, 4),
+                "ci_low": ci_low_v,
+                "ci_high": ci_high_v,
                 "count": total,
             })
 

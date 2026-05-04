@@ -112,8 +112,31 @@ def _run_tracknet_distributed(video_path: str) -> Dict[str, Any]:
             return {"status": "error", "error": f"フレーム数不足: {n_frames}"}
 
         # ── チャンクに分割して Ray 経由で K10 へ並列送信 ────────────────────
-        remote_infer = ray.remote(_infer_tracknet_frames)
+        # pipeline #2 fix: 旧コードは node-pin なしで dispatch しており、PC1 (head) に
+        # チャンクが落ちると `_get_remote_worker_model_path()` が K10 用 Windows パス
+        # (C:\ss-models\tracknet.xml) を返すためロード失敗 → except: continue で silent
+        # drop され、samples=[] のまま status="ok" を返して空の shuttle 軌跡で
+        # ShotInference が書かれていた。dispatch_benchmark は head_ip 除外していたが
+        # pipeline 経路はその filter を失っていた。
+        # 対策: ray.nodes() で K10 NodeID を解決し resources={f"node:{k10_ip}": 0.001}
+        # を付与する。head ノードへの落下を構造的に禁止。
+        try:
+            from backend.cluster.topology import get_primary_ip
+            head_ip = get_primary_ip() or ""
+        except Exception:
+            head_ip = ""
+        worker_nodes = [
+            n for n in ray.nodes()
+            if n.get("Alive") and n.get("NodeManagerAddress", "") and n.get("NodeManagerAddress", "") != head_ip
+        ]
+        if not worker_nodes:
+            return {"status": "skipped", "reason": "K10 worker ノードが見つかりません (head 単独運用)"}
+        # 最初の worker (現状 K10 のみ運用) に固定。複数 worker 化したら round-robin に。
+        target_ip = worker_nodes[0].get("NodeManagerAddress", "")
+        node_resource = f"node:{target_ip}"
+        remote_infer = ray.remote(resources={node_resource: 0.001})(_infer_tracknet_frames)
         futures: List[tuple[int, Any]] = []
+        expected_chunks = 0
 
         for chunk_start in range(0, n_frames - _TN_FRAME_STACK + 1, _TN_CHUNK):
             chunk_end = min(chunk_start + _TN_CHUNK, n_frames - _TN_FRAME_STACK + 1)
@@ -132,6 +155,7 @@ def _run_tracknet_distributed(video_path: str) -> Dict[str, Any]:
                 model_path=model_path, frames_npy=header + batch.tobytes()
             )
             futures.append((chunk_start, future))
+            expected_chunks += 1
 
         # ── 結果回収・デシリアライズ ─────────────────────────────────────────
         samples: List[Dict[str, Any]] = []
@@ -171,12 +195,28 @@ def _run_tracknet_distributed(video_path: str) -> Dict[str, Any]:
                     }
                 )
 
+        # pipeline #2 fix: chunk loss を status で表面化する。
+        # 旧コードは samples=[] でも常に "ok" を返し、空 shuttle 軌跡で ShotInference を
+        # 書いていた。samples が想定より少ない / ゼロなら "degraded" / "error" にする。
+        chunks_received = len({s["frame_idx"] // _TN_CHUNK for s in samples}) if samples else 0
+        if not samples:
+            status = "error"
+            err_extra = {"error": f"全 {expected_chunks} チャンクで推論失敗 (K10 model load / network issue)"}
+        elif chunks_received < expected_chunks:
+            status = "degraded"
+            err_extra = {"warning": f"chunks_received={chunks_received} / expected={expected_chunks}"}
+        else:
+            status = "ok"
+            err_extra = {}
         return {
-            "status": "ok",
+            "status": status,
             "backend": "distributed_k10",
             "sample_count": len(samples),
+            "expected_chunks": expected_chunks,
+            "chunks_received": chunks_received,
             "samples": samples,
             "rally_bounds": None,
+            **err_extra,
         }
 
     except Exception as exc:
