@@ -16,6 +16,7 @@
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { ShotType } from '@/types'
+import { getStyleForShot } from '@/constants/shotTypeColors'
 
 interface ShotTypePanelProps {
   selected: ShotType | null
@@ -149,22 +150,26 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
           <div className={clsx('grid gap-1', isMatchDayMode ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-3')}>
             {group.shots.map((type) => {
               const key = Object.entries(KEYBOARD_MAP).find(([, v]) => v === type)?.[0] ?? ''
+              // Phase B: ショット種別ごとに固定カテゴリ色を適用
+              const style = getStyleForShot(type)
+              const isSelected = selected === type
               return (
                 <button
                   key={type}
                   onClick={() => !disabled && onSelect(type)}
                   disabled={disabled}
+                  aria-pressed={isSelected}
                   className={clsx(
-                    'relative px-2 rounded font-medium transition-colors',
+                    'relative px-2 rounded font-medium transition-colors border',
                     isMatchDayMode ? 'py-3 text-sm' : 'py-3 text-sm md:py-1.5 md:text-xs',
-                    selected === type
-                      ? 'bg-blue-600 text-white border border-blue-400'
-                      : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600',
+                    style.bg, style.bgHover, style.text, style.border,
+                    isSelected && style.ringSelected,
                     disabled && 'opacity-40 cursor-not-allowed'
                   )}
                   title={`${t(`shot_types.${type}`)} (${key.toUpperCase()})`}
                 >
                   <span className="absolute top-0.5 right-1 text-[9px] opacity-60 font-mono hidden md:inline">{key.toUpperCase()}</span>
+                  <span className="absolute top-0.5 left-1 text-[10px] opacity-80" aria-hidden>{style.icon}</span>
                   <span className="block text-center leading-tight">{t(`shot_types.${type}`)}</span>
                 </button>
               )
