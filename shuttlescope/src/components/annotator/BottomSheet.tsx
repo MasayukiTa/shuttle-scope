@@ -8,6 +8,7 @@
  *  - drag handle で上下スワイプ展開/折り畳み (タップ展開も可)
  */
 import { ReactNode, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -22,6 +23,7 @@ interface BottomSheetProps {
 }
 
 export function BottomSheet({ label, children, defaultOpen = false, onClose }: BottomSheetProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(defaultOpen)
 
   // Esc で閉じる
@@ -45,7 +47,7 @@ export function BottomSheet({ label, children, defaultOpen = false, onClose }: B
       )}
       style={{ maxHeight: '78vh' }}
       role="region"
-      aria-label="ボトムシート"
+      aria-label={t('annotator.ux.bottom_sheet_aria')}
     >
       <div className="flex items-center">
         <button
@@ -62,7 +64,7 @@ export function BottomSheet({ label, children, defaultOpen = false, onClose }: B
           <button
             type="button"
             onClick={onClose}
-            aria-label="閉じる"
+            aria-label={t('annotator.ux.bottom_sheet_close')}
             className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800"
           >
             <MIcon name="close" size={18} />

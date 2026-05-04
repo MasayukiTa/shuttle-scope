@@ -9,6 +9,7 @@
  * 1+1 click 増加コストは許容可能 (連打しない)。
  */
 import { ReactNode, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { useAnnotationStore } from '@/store/annotationStore'
 import type { StepFocusMode } from '@/store/annotatorModeStore'
@@ -48,22 +49,23 @@ export function SettingsModePanel({
   stepFocusMode,
   onSetStepFocusMode,
 }: SettingsModePanelProps) {
+  const { t } = useTranslation()
   const flipMode = useAnnotationStore((s) => s.flipMode)
   const setFlipMode = useAnnotationStore((s) => s.setFlipMode)
 
   const categories: CategorySpec[] = useMemo(() => ([
     {
       key: 'mode',
-      label: '記録モード',
+      label: t('annotator.ux.settings_section_mode'),
       icon: 'tune',
       items: [
         {
           key: 'match_day',
-          label: '試合中モード',
+          label: t('annotator.ux.settings_match_day_label'),
           render: () => (
             <ToggleControl
-              label="試合中モード"
-              hint="ボタン大型・キーボードヒント抑制 (試合本番向け)"
+              label={t('annotator.ux.settings_match_day_label')}
+              hint={t('annotator.ux.settings_match_day_hint')}
               on={isMatchDayMode}
               onClick={onToggleMatchDayMode}
             />
@@ -71,11 +73,13 @@ export function SettingsModePanel({
         },
         {
           key: 'annot_method',
-          label: 'アノテーション方式',
+          label: t('annotator.ux.settings_assist_label'),
           render: () => (
             <ToggleControl
-              label="補助記録モード"
-              hint={isBasicMode ? '今は手動記録 (CV 非参照)' : '今は CV 候補を併用'}
+              label={t('annotator.ux.settings_assist_label')}
+              hint={isBasicMode
+                ? t('annotator.ux.settings_assist_hint_basic')
+                : t('annotator.ux.settings_assist_hint_assisted')}
               on={!isBasicMode}
               onClick={onToggleAnnotationMode}
             />
@@ -83,7 +87,7 @@ export function SettingsModePanel({
         },
         {
           key: 'step_focus',
-          label: '入力ステップ連動表示',
+          label: t('annotator.ux.settings_step_focus_label'),
           render: () => (
             <div className="space-y-1.5">
               {(['step', 'all'] as const).map((m) => (
@@ -99,12 +103,14 @@ export function SettingsModePanel({
                       : 'bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-50')
                   }
                 >
-                  <span>{m === 'step' ? 'ステップ連動 (入力時集中)' : '全表示 (従来)'}</span>
+                  <span>{m === 'step'
+                    ? t('annotator.ux.settings_step_focus_step')
+                    : t('annotator.ux.settings_step_focus_all')}</span>
                   <span className="text-[10px] opacity-70">{m}</span>
                 </button>
               ))}
               <p className="text-[10px] text-gray-500 mt-1">
-                ステップ連動: 属性パネル / 管理操作を入力中は隠す。Cmd+K で常時呼出可。
+                {t('annotator.ux.settings_step_focus_hint')}
               </p>
             </div>
           ),
@@ -113,12 +119,12 @@ export function SettingsModePanel({
     },
     {
       key: 'flip',
-      label: '打者 flip 動作',
+      label: t('annotator.ux.settings_section_flip'),
       icon: 'swap_horiz',
       items: [
         {
           key: 'flip_mode',
-          label: 'flip モード',
+          label: t('annotator.ux.settings_section_flip'),
           render: () => (
             <div className="space-y-1.5">
               {(['auto', 'semi-auto', 'manual'] as const).map((m) => (
@@ -133,12 +139,12 @@ export function SettingsModePanel({
                       : 'bg-gray-700 text-gray-200 hover:bg-gray-600')
                   }
                 >
-                  <span>{labelForFlip(m)}</span>
+                  <span>{labelForFlip(m, t)}</span>
                   <span className="text-[10px] opacity-70">{m}</span>
                 </button>
               ))}
               <p className="text-[10px] text-gray-500 mt-1">
-                semi-auto = flip するが 500ms 以内の次ショットで revert (バウンス対策)
+                {t('annotator.ux.settings_flip_hint')}
               </p>
             </div>
           ),
@@ -147,12 +153,12 @@ export function SettingsModePanel({
     },
     {
       key: 'court',
-      label: 'コートキャリブレーション',
+      label: t('annotator.ux.settings_section_court'),
       icon: 'crop_square',
       items: [
         {
           key: 'open',
-          label: 'キャリブレーション画面',
+          label: t('annotator.ux.settings_section_court'),
           render: () => (
             <button
               type="button"
@@ -160,7 +166,7 @@ export function SettingsModePanel({
               disabled={!onOpenCalibration}
               className="w-full px-2 py-1.5 rounded text-xs bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              キャリブレーションを開く
+              {t('annotator.ux.settings_court_open')}
             </button>
           ),
         },
@@ -168,12 +174,12 @@ export function SettingsModePanel({
     },
     {
       key: 'keys',
-      label: 'キーボード',
+      label: t('annotator.ux.settings_section_keys'),
       icon: 'keyboard',
       items: [
         {
           key: 'legend',
-          label: 'ショートカット凡例',
+          label: t('annotator.ux.settings_section_keys'),
           render: () => (
             <button
               type="button"
@@ -181,14 +187,14 @@ export function SettingsModePanel({
               disabled={!onOpenKeyboardLegend}
               className="w-full px-2 py-1.5 rounded text-xs bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              凡例を表示
+              {t('annotator.ux.settings_keys_legend')}
             </button>
           ),
         },
       ],
     },
   ]), [
-    isMatchDayMode, onToggleMatchDayMode, isBasicMode, onToggleAnnotationMode,
+    t, isMatchDayMode, onToggleMatchDayMode, isBasicMode, onToggleAnnotationMode,
     flipMode, setFlipMode, onOpenCalibration, onOpenKeyboardLegend,
     stepFocusMode, onSetStepFocusMode,
   ])
@@ -202,13 +208,13 @@ export function SettingsModePanel({
     <div className="flex flex-col h-full overflow-y-auto">
       <header className="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b border-gray-700 shrink-0 bg-gray-800/40 text-gray-200">
         <MIcon name="settings" size={18} />
-        設定モード
+        {t('annotator.ux.settings_header')}
       </header>
 
       <div className="px-3 py-3 space-y-3 text-xs">
         {/* Level 1: Category dropdown */}
         <DropdownRow
-          label="カテゴリ"
+          label={t('annotator.ux.settings_category')}
           icon={category.icon}
           value={categoryKey}
           onChange={(v) => {
@@ -221,7 +227,7 @@ export function SettingsModePanel({
 
         {/* Level 2: Item dropdown (within category) */}
         <DropdownRow
-          label="項目"
+          label={t('annotator.ux.settings_item')}
           icon="list"
           value={itemKey}
           onChange={setItemKey}
@@ -288,8 +294,8 @@ function ToggleControl({
   )
 }
 
-function labelForFlip(m: 'auto' | 'semi-auto' | 'manual'): string {
-  if (m === 'auto') return '完全自動 flip'
-  if (m === 'semi-auto') return '準自動 flip (推奨)'
-  return '手動 (常に打者 tap)'
+function labelForFlip(m: 'auto' | 'semi-auto' | 'manual', t: (k: string) => string): string {
+  if (m === 'auto') return t('annotator.ux.settings_flip_auto')
+  if (m === 'semi-auto') return t('annotator.ux.settings_flip_semi')
+  return t('annotator.ux.settings_flip_manual')
 }

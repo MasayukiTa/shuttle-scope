@@ -9,6 +9,7 @@
  * - command provider は外部から `commands` props で注入する
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -27,6 +28,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ commands }: CommandPaletteProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIdx, setActiveIdx] = useState(0)
@@ -111,7 +113,7 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
                 close()
               }
             }}
-            placeholder="アクションを検索 (例: 次のラリー / セット終了)"
+            placeholder={t('annotator.ux.command_placeholder')}
             className="flex-1 bg-transparent text-gray-100 outline-none text-sm placeholder:text-gray-500"
           />
           <kbd className="text-[10px] text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">
@@ -120,7 +122,7 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
         </div>
         <ul className="max-h-[50vh] overflow-y-auto py-1" role="listbox">
           {filtered.length === 0 && (
-            <li className="px-3 py-3 text-xs text-gray-500">該当なし</li>
+            <li className="px-3 py-3 text-xs text-gray-500">{t('annotator.ux.command_no_match')}</li>
           )}
           {filtered.map((c, i) => (
             <li
@@ -142,8 +144,8 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
           ))}
         </ul>
         <div className="flex items-center justify-between px-3 py-1.5 border-t border-gray-700 text-[10px] text-gray-500">
-          <span>↑↓ 選択 / Enter 実行</span>
-          <span>Ctrl+K でいつでも</span>
+          <span>{t('annotator.ux.command_help')}</span>
+          <span>{t('annotator.ux.command_hint_global')}</span>
         </div>
       </div>
     </div>

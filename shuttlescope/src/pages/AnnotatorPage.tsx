@@ -1677,18 +1677,18 @@ export function AnnotatorPage() {
 
   // U6: Ctrl+K コマンドパレット用コマンド一覧
   const paletteCommands: PaletteCommand[] = [
-    { id: 'mode-input',    label: '入力モードに切替', icon: 'edit_note',   keywords: ['mode', 'input', '入力'], run: () => setAnnotatorMode('input') },
-    { id: 'mode-review',   label: '確認モードに切替', icon: 'visibility',  keywords: ['mode', 'review', '確認', 'cv'], run: () => setAnnotatorMode('review') },
-    { id: 'mode-analysis', label: '解析モードに切替', icon: 'analytics',   keywords: ['mode', 'analysis', '解析', '統計'], run: () => setAnnotatorMode('analysis') },
-    { id: 'mode-settings', label: '設定モードに切替', icon: 'settings',    keywords: ['mode', 'settings', '設定'], run: () => setAnnotatorMode('settings') },
-    { id: 'toggle-match-day',  label: '試合中モード切替',     icon: 'sports', hint: isMatchDayMode ? 'ON' : 'OFF', run: toggleMatchDayMode },
-    { id: 'toggle-annot-mode', label: 'アノテーション方式切替', icon: 'tune',   hint: isBasicMode ? 'manual' : 'assisted', run: toggleAnnotationMode },
-    { id: 'open-exception',    label: '途中終了ダイアログを開く', icon: 'block', run: () => setShowExceptionDialog(true) },
-    { id: 'undo-last',         label: '最後のストロークを取消', icon: 'undo',  hint: 'Ctrl+Z', run: () => {
+    { id: 'mode-input',    label: t('annotator.ux.command_mode_input'),    icon: 'edit_note',   keywords: ['mode', 'input', '入力'],         run: () => setAnnotatorMode('input') },
+    { id: 'mode-review',   label: t('annotator.ux.command_mode_review'),   icon: 'visibility',  keywords: ['mode', 'review', '確認', 'cv'],  run: () => setAnnotatorMode('review') },
+    { id: 'mode-analysis', label: t('annotator.ux.command_mode_analysis'), icon: 'analytics',   keywords: ['mode', 'analysis', '解析', '統計'], run: () => setAnnotatorMode('analysis') },
+    { id: 'mode-settings', label: t('annotator.ux.command_mode_settings'), icon: 'settings',    keywords: ['mode', 'settings', '設定'],     run: () => setAnnotatorMode('settings') },
+    { id: 'toggle-match-day',  label: t('annotator.ux.command_toggle_match_day'),  icon: 'sports', hint: isMatchDayMode ? 'ON' : 'OFF',     run: toggleMatchDayMode },
+    { id: 'toggle-annot-mode', label: t('annotator.ux.command_toggle_annot_mode'), icon: 'tune',   hint: isBasicMode ? 'manual' : 'assisted', run: toggleAnnotationMode },
+    { id: 'open-exception',    label: t('annotator.ux.command_open_exception'),    icon: 'block', run: () => setShowExceptionDialog(true) },
+    { id: 'undo-last',         label: t('annotator.ux.command_undo_last'),         icon: 'undo',  hint: 'Ctrl+Z', run: () => {
       const removed = store.undoLastStroke()
       if (removed?.timestamp_sec != null && videoRef.current) videoRef.current.currentTime = removed.timestamp_sec
     } },
-    { id: 'rally-end-req',     label: 'ラリー終了 (得点者選択へ)', icon: 'flag', disabled: !store.isRallyActive, run: () => store.endRallyRequest() },
+    { id: 'rally-end-req',     label: t('annotator.ux.command_rally_end'),         icon: 'flag', disabled: !store.isRallyActive, run: () => store.endRallyRequest() },
   ]
 
   return (
@@ -1732,7 +1732,7 @@ export function AnnotatorPage() {
 
         {/* U1: メニュー (xl 未満で隠れた二次操作の退避先) */}
         <div className="hidden md:flex xl:hidden shrink-0 mr-1">
-          <TopBarMenu ariaLabel={t('annotator.menu_label', '操作メニュー')}>
+          <TopBarMenu ariaLabel={t('annotator.ux.menu_label')}>
             <button
               onClick={toggleAnnotationMode}
               className={clsx(
@@ -1787,7 +1787,7 @@ export function AnnotatorPage() {
                 className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-blue-900/30 text-blue-300 hover:bg-blue-800/50 disabled:opacity-50"
               >
                 <span className="material-symbols-outlined" style={{ fontSize: 14 }}>directions_run</span>
-                YOLO 人物検出を実行
+                {t('annotator.ux.menu_yolo_run')}
               </button>
             )}
             {appSettings.tracknet_enabled && hasVideo(match) && (
@@ -1797,7 +1797,7 @@ export function AnnotatorPage() {
                 className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-purple-900/30 text-purple-300 hover:bg-purple-800/50 disabled:opacity-50"
               >
                 <span className="material-symbols-outlined" style={{ fontSize: 14 }}>route</span>
-                TrackNet シャトル軌跡を実行
+                {t('annotator.ux.menu_tracknet_run')}
               </button>
             )}
           </TopBarMenu>
@@ -4627,7 +4627,11 @@ export function AnnotatorPage() {
       {isMobile && annotatorMode !== 'input' && (
         <BottomSheet
           key={annotatorMode}
-          label={annotatorMode === 'review' ? '確認モード' : annotatorMode === 'analysis' ? '解析モード' : '設定モード'}
+          label={
+            annotatorMode === 'review' ? t('annotator.ux.review_header') :
+            annotatorMode === 'analysis' ? t('annotator.ux.analysis_header') :
+            t('annotator.ux.settings_header')
+          }
           defaultOpen
           onClose={() => setAnnotatorMode('input')}
         >
