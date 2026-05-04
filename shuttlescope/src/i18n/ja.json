@@ -66,6 +66,13 @@
     "drive_defend": "ドライブ/受け",
     "attack_lob": "攻撃/ロブ"
   },
+  "shot_color_categories": {
+    "attack": "攻撃 (緑/◆)",
+    "net": "ネット/守備 (シアン/●)",
+    "mid": "中立高弾道 (黄/■)",
+    "serve": "サーブ (紫/★)",
+    "other": "その他 (灰/✕)"
+  },
   "zones": {
     "BL": "バック左",
     "BC": "バック中",
@@ -1088,6 +1095,7 @@
     "hit_zone_aria": "打点ゾーン選択",
     "hit_zone_cell": "ゾーン {{zone}}",
     "hit_zone_cv_label": "CV推定: ゾーン {{zone}}",
+    "shot_color_legend": "色凡例",
     "land_zone": "落点",
     "land_zone_skip": "落点スキップ (Numpad0)",
     "shot_type": "ショット種別",
