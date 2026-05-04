@@ -28,6 +28,7 @@
     "d3": "^7.9.0",
     "i18next": "^23.8.0",
     "lucide-react": "^0.468.0",
+    "material-symbols": "^0.44.4",
     "qrcode": "^1.5.4",
     "react-i18next": "^14.0.0",
     "react-router-dom": "^6.22.0",
