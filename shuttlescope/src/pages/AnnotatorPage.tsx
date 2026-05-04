@@ -1698,6 +1698,58 @@ export function AnnotatorPage() {
           />
         </div>
 
+        {/* U1: メニュー (xl 未満で隠れた二次操作の退避先) */}
+        <div className="hidden md:flex xl:hidden shrink-0 mr-1">
+          <TopBarMenu ariaLabel={t('annotator.menu_label', '操作メニュー')}>
+            <button
+              onClick={toggleAnnotationMode}
+              className={clsx(
+                'flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium text-left transition-colors',
+                isBasicMode ? 'bg-emerald-700 text-white' : 'bg-purple-700 text-white',
+              )}
+            >
+              <span>{t('annotation_mode.label')}</span>
+              <span>{isBasicMode ? t('annotation_mode.basic') : t('annotation_mode.detailed')}</span>
+            </button>
+            <button
+              onClick={toggleMatchDayMode}
+              className={clsx(
+                'flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium text-left transition-colors',
+                isMatchDayMode ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600',
+              )}
+            >
+              <span>{t('annotator.match_day_mode')}</span>
+              <span className="text-[10px] opacity-80">{isMatchDayMode ? 'ON' : 'OFF'}</span>
+            </button>
+            {displays.length >= 2 && match && hasVideo(match) && (
+              videoWindowOpen ? (
+                <button
+                  onClick={handleCloseVideoWindow}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-indigo-600 text-white hover:bg-indigo-500"
+                >
+                  <MonitorX size={14} />
+                  {t('dual_monitor.close')}
+                </button>
+              ) : (
+                <button
+                  onClick={handleOpenVideoWindow}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-700 text-gray-200 hover:bg-gray-600"
+                >
+                  <MonitorPlay size={14} />
+                  {t('dual_monitor.open')}
+                </button>
+              )
+            )}
+            <button
+              onClick={() => setShowExceptionDialog(true)}
+              className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-red-900/30 text-red-300 hover:bg-red-800/50"
+            >
+              <OctagonX size={14} />
+              {t('exception.title')}
+            </button>
+          </TopBarMenu>
+        </div>
+
         {/* デスクトップ: 全ボタン表示 */}
         <div className="hidden md:flex items-center gap-2 text-xs text-gray-400 shrink-0">
           {/* K-002: 保存中バッジ */}
@@ -1731,19 +1783,19 @@ export function AnnotatorPage() {
               {t('in_match_panel.opponent_info')}
             </button>
           )}
-          {/* P4: デュアルモニター */}
+          {/* P4: デュアルモニター (U1: 1280px 未満では menu) */}
           {displays.length >= 2 && match && hasVideo(match) && (
             videoWindowOpen ? (
               <button
                 onClick={handleCloseVideoWindow}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
+                className="hidden xl:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
                 title={t('dual_monitor.close')}
               >
                 <MonitorX size={12} />
                 {t('dual_monitor.close')}
               </button>
             ) : (
-              <div className="flex items-center gap-1">
+              <div className="hidden xl:flex items-center gap-1">
                 {/* 非プライマリモニタが2台以上のときのみ選択UIを表示 */}
                 {displays.filter((d) => !d.isPrimary).length >= 2 && (
                   <select
@@ -1768,10 +1820,10 @@ export function AnnotatorPage() {
               </div>
             )
           )}
-          {/* 途中終了ボタン */}
+          {/* 途中終了ボタン (U1: 1280px 未満では menu に退避) */}
           <button
             onClick={() => setShowExceptionDialog(true)}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-900/30 text-red-400 hover:bg-red-800/50 transition-colors"
+            className="hidden xl:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-900/30 text-red-400 hover:bg-red-800/50 transition-colors"
             title={t('exception.title')}
           >
             <OctagonX size={12} />
@@ -1781,7 +1833,7 @@ export function AnnotatorPage() {
           <button
             onClick={toggleAnnotationMode}
             className={clsx(
-              'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
+              'hidden xl:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
               isBasicMode
                 ? 'bg-emerald-700 text-white'
                 : 'bg-purple-700 text-white'
@@ -1802,11 +1854,11 @@ export function AnnotatorPage() {
               {reviewBookmarksData!.length}{t('review_later.queue_badge')}
             </button>
           )}
-          {/* K-001: 試合中モード切替 */}
+          {/* K-001: 試合中モード切替 (U1: menu に退避) */}
           <button
             onClick={toggleMatchDayMode}
             className={clsx(
-              'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
+              'hidden xl:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
               isMatchDayMode
                 ? 'bg-yellow-600 text-white'
                 : 'bg-gray-700 text-gray-400 hover:text-white'
