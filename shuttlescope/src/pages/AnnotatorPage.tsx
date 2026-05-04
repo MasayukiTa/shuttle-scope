@@ -22,6 +22,7 @@ import { ReviewModePanel } from '@/components/annotator/ReviewModePanel'
 import { AnalysisModePanel } from '@/components/annotator/AnalysisModePanel'
 import { SettingsModePanel } from '@/components/annotator/SettingsModePanel'
 import { useAnnotatorModeStore } from '@/store/annotatorModeStore'
+import { HistoryStrip } from '@/components/annotator/HistoryStrip'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
@@ -4232,6 +4233,13 @@ export function AnnotatorPage() {
           </>}
         </div>
       </div>
+
+      {/* U4: 下段ストローク履歴ストリップ — 直近 5 件、クリックで動画 seek */}
+      <HistoryStrip
+        strokes={store.currentStrokes}
+        onSeek={(ts) => { if (videoRef.current) videoRef.current.currentTime = ts }}
+        maxItems={5}
+      />
 
       {/* V4-U-001: 試合中補完パネル（暫定相手選手情報の追記） */}
       {showInMatchPanel && match?.player_b && (
