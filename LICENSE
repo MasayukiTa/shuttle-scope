@@ -1,0 +1,145 @@
+ShuttleScope Proprietary Source-Available License
+Version 0.1
+
+Copyright (c) the ShuttleScope developer.
+All rights reserved.
+
+1. Definitions
+
+"Software" means the ShuttleScope source code, object code, application binaries,
+packaging, build scripts, configuration templates, documentation, and any
+updates made available by the licensor, excluding Third-Party Software and
+excluding user-supplied data.
+
+"Licensor" means the copyright holder of the Software.
+
+"You" means the individual or legal entity exercising rights under this License.
+
+"Internal Use" means use of the Software within Your own organization for Your
+own business, training, research, or operational purposes, and not for the
+benefit of unaffiliated third parties as a hosted, managed, or outsourced
+service.
+
+"Third-Party Software" means software, code, assets, fonts, libraries, models,
+or components that are licensed to the Licensor by third parties under their own
+license terms.
+
+2. Grant of Rights
+
+Subject to Your compliance with this License and with any additional terms that
+apply to Third-Party Software, the Licensor grants You a limited, revocable,
+non-exclusive, non-transferable, non-sublicensable license to:
+
+- use the Software for Internal Use;
+- make a reasonable number of copies for backup, testing, staging, and disaster
+  recovery;
+- modify the Software for Internal Use only; and
+- run the Software on devices, virtual machines, or private infrastructure under
+  Your control.
+
+3. Restrictions
+
+You may not, except to the minimum extent expressly required by applicable law:
+
+- sell, sublicense, assign, lease, rent, distribute, publish, or otherwise make
+  the Software available to any third party;
+- provide the Software as a hosted service, managed service, bureau service,
+  platform, or software-as-a-service offering to any third party;
+- use the Software to operate, enable, or materially support a competing
+  commercial annotation platform or competing commercial analysis platform;
+- remove, alter, obscure, or falsify copyright notices, license notices,
+  attribution, or proprietary markings;
+- represent modified versions of the Software as the original Software;
+- use the Licensor's name, product name, or branding except for truthful
+  nominative reference; or
+- circumvent technical, contractual, or usage restrictions implemented by the
+  Licensor.
+
+4. Third-Party Components
+
+The Software may include or depend upon Third-Party Software. Your use of
+Third-Party Software is governed by the license terms applicable to those
+components. In the event of a conflict between this License and the terms of a
+required Third-Party Software license, the Third-Party Software license controls
+solely with respect to that Third-Party Software.
+
+5. Data and Service Terms
+
+This License governs the Software itself. Data-related rights, service operation,
+network access, and user-submitted content are governed separately by:
+
+- `DATA_CONTRIBUTION_TERMS.md`
+- `TERMS_OF_SERVICE.md`
+- `PRIVACY.md`
+
+If the Software is used in connection with network services, hosted features,
+shared workspaces, uploads, or remote synchronization, those separate documents
+apply in addition to this License.
+
+6. Ownership
+
+The Software is licensed, not sold. Except for the limited rights expressly
+granted in this License, the Licensor retains all right, title, and interest in
+and to the Software, including all copyright, trade secret, database,
+compilation, know-how, and other intellectual property rights.
+
+No implied license is granted.
+
+7. Modifications
+
+You may create modified versions for Internal Use only. You may not distribute,
+publish, or provide modified versions to third parties without the Licensor's
+separate written permission.
+
+Any feedback, suggestions, or ideas You voluntarily provide about the Software
+may be used by the Licensor without restriction or compensation, unless a
+separate written agreement states otherwise.
+
+8. Compliance and Termination
+
+This License remains effective until terminated. It terminates automatically if
+You breach any term of this License.
+
+Upon termination, You must cease use of the Software and destroy or delete all
+copies under Your control, except to the extent retention is required by law.
+
+Sections that by their nature should survive termination will survive,
+including Sections 3, 4, 5, 6, 8, 9, 10, and 11.
+
+9. Warranty Disclaimer
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED "AS
+IS" AND "AS AVAILABLE", WITH ALL FAULTS AND WITHOUT WARRANTIES OF ANY KIND,
+WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING ANY IMPLIED
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE,
+NON-INFRINGEMENT, QUIET ENJOYMENT, ACCURACY, OR RESULTS.
+
+THE LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE UNINTERRUPTED, ERROR
+FREE, SECURE, OR SUITABLE FOR ANY PARTICULAR USE CASE.
+
+10. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSOR WILL NOT BE
+LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR
+PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, REVENUE, GOODWILL, DATA, OR
+BUSINESS INTERRUPTION, ARISING OUT OF OR RELATED TO THE SOFTWARE OR THIS
+LICENSE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSOR'S AGGREGATE
+LIABILITY ARISING OUT OF OR RELATING TO THE SOFTWARE OR THIS LICENSE WILL NOT
+EXCEED THE AMOUNT YOU PAID, IF ANY, TO THE LICENSOR FOR THE SOFTWARE DURING THE
+TWELVE MONTHS PRECEDING THE EVENT GIVING RISE TO LIABILITY.
+
+11. General
+
+If any provision of this License is held unenforceable, the remaining provisions
+will remain in effect to the maximum extent permitted by law.
+
+This License constitutes the entire agreement between You and the Licensor with
+respect to the Software itself, unless superseded by a separate written
+agreement signed by both parties.
+
+The Licensor may publish updated versions of this License for future releases of
+the Software. Your use of a given version of the Software is governed by the
+License distributed with that version unless a separate written agreement states
+otherwise.

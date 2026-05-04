@@ -1,0 +1,639 @@
+"""リモートトンネル管理 API
+
+プロバイダー:
+  - cloudflare : cloudflared tunnel --url
+  - ngrok      : ngrok http {port}  (ngrok local API localhost:4040 から URL 取得)
+  - auto       : ngrok → cloudflare の順で利用可能なものを選択
+
+エンドポイント:
+  GET  /api/tunnel/status          — 実行状態・公開URL・プロバイダー情報を返す
+  POST /api/tunnel/start?provider= — トンネル起動（auto|cloudflare|ngrok）
+  POST /api/tunnel/stop            — トンネル停止
+  GET  /api/webrtc/ice-config      — WebRTC ICE サーバー設定（STUN + TURN）
+  POST /api/webrtc/test-turn       — TURN サーバーへの TCP 疎通チェック
+"""
+import glob
+import json
+import logging
+import os
+import re
+import shutil
+import socket as _socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+from typing import Optional, Literal
+
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.orm import Session
+
+from backend.config import settings
+from backend.db.database import get_db
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+TunnelProvider = Literal['cloudflare', 'ngrok']
+
+# ─── プロセス状態（インメモリシングルトン） ───────────────────────────────────
+_proc: Optional[subprocess.Popen] = None
+_tunnel_url: Optional[str] = None
+_active_provider: Optional[TunnelProvider] = None
+_stderr_lines: list[str] = []
+_lock = threading.Lock()
+
+_CF_URL_PATTERN = re.compile(r'https://[a-z0-9\-]+\.trycloudflare\.com', re.IGNORECASE)
+
+
+# ─── プロバイダー可用性チェック ──────────────────────────────────────────────
+
+def _cloudflare_available() -> bool:
+    return shutil.which("cloudflared") is not None
+
+
+def _cloudflare_config_candidates() -> list[str]:
+    candidates: list[str] = []
+    cfg = (settings.CLOUDFLARE_TUNNEL_CONFIG or "").strip()
+    if cfg:
+        candidates.append(cfg)
+    user_cfg = os.path.join(os.path.expanduser("~"), ".cloudflared", "config.yml")
+    if user_cfg not in candidates:
+        candidates.append(user_cfg)
+    desktop_cfg = os.path.join(
+        os.path.expanduser("~"),
+        "Desktop",
+        "cloudflare-shuttle-scope",
+        "config.yml",
+    )
+    if desktop_cfg not in candidates:
+        candidates.append(desktop_cfg)
+    return candidates
+
+
+def _cloudflare_named_tunnel_info() -> dict:
+    info = {
+        "config_path": None,
+        "hostname": settings.CLOUDFLARE_TUNNEL_HOSTNAME,
+        "tunnel_name": settings.CLOUDFLARE_TUNNEL_NAME,
+        "named_ready": False,
+        "reason": "config not found",
+        # 設定の出所を区別する: "config_yml" / "dashboard_managed" / null
+        "managed_by": None,
+    }
+
+    config_path = next((p for p in _cloudflare_config_candidates() if p and os.path.isfile(p)), None)
+    if not config_path:
+        # ダッシュボード管理 / トークン方式に移行済の場合、config.yml は存在しない。
+        # この場合は CLOUDFLARE_TUNNEL_HOSTNAME が設定されていて cloudflared が
+        # 利用可能なら named_ready=True とみなす (実生存確認は別経路)。
+        if (settings.CLOUDFLARE_TUNNEL_HOSTNAME or "").strip() and shutil.which("cloudflared"):
+            info["named_ready"] = True
+            info["reason"] = "dashboard-managed (config.yml なし、env CLOUDFLARE_TUNNEL_HOSTNAME を信頼)"
+            info["managed_by"] = "dashboard_managed"
+        return info
+
+    info["config_path"] = config_path
+    try:
+        text = open(config_path, "r", encoding="utf-8").read()
+    except Exception as exc:
+        # Stack-trace-exposure 防止: 例外詳細はログのみ
+        logger.warning("cloudflare config unreadable (sanitized): %s", exc)
+        info["reason"] = "config unreadable"
+        return info
+
+    host_match = re.search(r'^\s*-\s*hostname:\s*([^\s#]+)', text, re.MULTILINE)
+    if host_match:
+        info["hostname"] = host_match.group(1).strip()
+
+    if re.search(r'(?<![.\w])app\.example\.com(?![.\w])', text) or "<UUID>" in text or "<USER>" in text:
+        info["reason"] = "template placeholders remain"
+        return info
+
+    if not re.search(r'^\s*tunnel:\s*\S+', text, re.MULTILINE):
+        info["reason"] = "missing tunnel id"
+        return info
+
+    if not re.search(r'^\s*credentials-file:\s*\S+', text, re.MULTILINE):
+        info["reason"] = "missing credentials-file"
+        return info
+
+    if not host_match:
+        info["reason"] = "missing hostname"
+        return info
+
+    info["named_ready"] = True
+    info["reason"] = "ready"
+    info["managed_by"] = "config_yml"
+    return info
+def _find_ngrok() -> Optional[str]:
+    """ngrok バイナリのパスを返す。見つからない場合は None。
+
+    検索順:
+      1. PATH に ngrok があればそのまま使用
+      2. WinGet インストールパス（Windows）
+      3. npm グローバルパス
+      4. プロジェクト node_modules/.bin
+    """
+    # 1. PATH
+    p = shutil.which("ngrok")
+    if p:
+        return p
+
+    # 2. WinGet (Windows)
+    local_app = os.environ.get("LOCALAPPDATA", "")
+    if local_app:
+        pattern = os.path.join(local_app, "Microsoft", "WinGet", "Packages",
+                               "Ngrok.Ngrok_*", "ngrok.exe")
+        matches = glob.glob(pattern)
+        if matches:
+            return matches[0]
+
+    # 3. npm グローバル bin（%APPDATA%\npm\ngrok.cmd など）
+    app_data = os.environ.get("APPDATA", "")
+    for candidate in [
+        os.path.join(app_data, "npm", "ngrok.cmd"),
+        os.path.join(app_data, "npm", "ngrok"),
+    ]:
+        if os.path.isfile(candidate):
+            return candidate
+
+    # 4. node_modules/.bin（プロジェクトルートからの相対パス）
+    here = os.path.dirname(os.path.abspath(__file__))
+    for up in range(5):  # 最大5階層上まで探す
+        candidate_win = os.path.join(here, *[".."] * up, "node_modules", ".bin", "ngrok.cmd")
+        candidate_unix = os.path.join(here, *[".."] * up, "node_modules", ".bin", "ngrok")
+        for c in [candidate_win, candidate_unix]:
+            if os.path.isfile(os.path.normpath(c)):
+                return os.path.normpath(c)
+
+    return None
+
+
+def _ngrok_available() -> bool:
+    return _find_ngrok() is not None
+
+
+def _resolve_provider(provider: str) -> Optional[TunnelProvider]:
+    """'auto' の場合は ngrok → cloudflare の順で選択"""
+    if provider == 'ngrok':
+        return 'ngrok' if _ngrok_available() else None
+    if provider == 'cloudflare':
+        return 'cloudflare' if _cloudflare_available() else None
+    # auto
+    if _ngrok_available():
+        return 'ngrok'
+    if _cloudflare_available():
+        return 'cloudflare'
+    return None
+
+
+# ─── Cloudflare stderr 読み取りスレッド ──────────────────────────────────────
+
+def _read_stderr_cloudflare(proc: subprocess.Popen) -> None:
+    global _tunnel_url, _stderr_lines
+    for line in iter(proc.stderr.readline, b''):
+        text = line.decode('utf-8', errors='replace').strip()
+        with _lock:
+            _stderr_lines.append(text)
+            if len(_stderr_lines) > 50:
+                _stderr_lines.pop(0)
+            if not _tunnel_url:
+                m = _CF_URL_PATTERN.search(text)
+                if m:
+                    _tunnel_url = m.group(0)
+
+
+# ─── ngrok stdout 読み取りスレッド ─────────────────────────────────────────
+
+# ngrok が --log=stdout --log-format=json で出力する tunnel 起動ログのパターン
+_NGROK_JSON_URL_RE = re.compile(r'"url"\s*:\s*"(https://[^"]+)"')
+# 万一 JSON でない出力からも拾えるようにする補助パターン
+_NGROK_FWD_URL_RE = re.compile(r'https://\S+\.ngrok[^\s"]+')
+
+def _read_stdout_ngrok(proc: subprocess.Popen) -> None:
+    """ngrok の stdout（JSON 構造化ログ）を読んでURLを取得する。
+    --log=stdout --log-format=json を前提とする。
+    """
+    global _stderr_lines, _proc, _tunnel_url, _active_provider
+    for line in iter(proc.stdout.readline, b''):
+        text = line.decode('utf-8', errors='replace').strip()
+        if not text:
+            continue
+        with _lock:
+            _stderr_lines.append(f'[ngrok] {text[:200]}')
+            if len(_stderr_lines) > 100:
+                _stderr_lines.pop(0)
+        # URL 抽出を試みる
+        if _tunnel_url is None:
+            url: Optional[str] = None
+            m_json = _NGROK_JSON_URL_RE.search(text)
+            if m_json:
+                url = m_json.group(1)  # キャプチャグループ1 = URL値
+            else:
+                m_fwd = _NGROK_FWD_URL_RE.search(text)
+                if m_fwd:
+                    url = m_fwd.group(0)
+            if url and url.startswith('https://'):
+                with _lock:
+                    _tunnel_url = url
+                    _stderr_lines.append(f'[ngrok] 公開URL取得: {url}')
+    # stdout が閉じた = プロセス終了。状態をリセット
+    with _lock:
+        if _proc is proc:
+            _proc = None
+            _tunnel_url = None
+            _active_provider = None
+            _stderr_lines.append('[ngrok] プロセスが終了しました')
+
+
+def _read_stderr_ngrok(proc: subprocess.Popen) -> None:
+    """ngrok の stderr を読んでログに記録する（エラー検出用）"""
+    for line in iter(proc.stderr.readline, b''):
+        text = line.decode('utf-8', errors='replace').strip()
+        if not text:
+            continue
+        with _lock:
+            _stderr_lines.append(f'[ngrok:err] {text[:200]}')
+            if len(_stderr_lines) > 100:
+                _stderr_lines.pop(0)
+
+
+def _poll_ngrok_url(proc: subprocess.Popen) -> None:
+    """ngrok local API (localhost:4040～4043) から HTTPS URL を取得する補助スレッド。
+    主な URL 取得は _read_stdout_ngrok が担う。このスレッドはバックアップ。
+    """
+    global _tunnel_url, _proc, _active_provider
+    deadline = time.time() + 40  # stdout 読み取りより少し長めに待機
+
+    while time.time() < deadline:
+        # stdout 読み取り側が既に URL を取得済みなら終了
+        with _lock:
+            if _tunnel_url is not None:
+                return
+
+        if proc.poll() is not None:
+            return  # プロセス終了 — _read_stdout_ngrok がリセット済み
+
+        # ポート 4040〜4043 を順に試す（前回の ngrok が 4040 を占有している場合対応）
+        for api_port in range(4040, 4044):
+            try:
+                req = urllib.request.urlopen(
+                    f'http://localhost:{api_port}/api/tunnels', timeout=2
+                )
+                data = json.loads(req.read())
+                for t in data.get('tunnels', []):
+                    url = t.get('public_url', '')
+                    if url.startswith('https://'):
+                        with _lock:
+                            if _tunnel_url is None:
+                                _tunnel_url = url
+                                _stderr_lines.append(f'[ngrok:api] 公開URL取得 (port {api_port}): {url}')
+                        return
+            except Exception as e:
+                # 最初の5秒は黙認（起動中）、それ以降はログに記録
+                if time.time() - (deadline - 40) > 5:
+                    with _lock:
+                        msg = f'[ngrok:api:{api_port}] {type(e).__name__}: {e}'
+                        if not _stderr_lines or _stderr_lines[-1] != msg:
+                            _stderr_lines.append(msg)
+
+        time.sleep(2)
+
+    # タイムアウト: stdout 読み取りも API も URL を取得できなかった
+    with _lock:
+        if _tunnel_url is not None:
+            return  # 既に取得済みなら何もしない
+        still_our_proc = (_proc is proc)
+        recent = list(_stderr_lines[-10:])
+
+    recent_text = ' '.join(recent).lower()
+    if 'authtoken' in recent_text or 'auth' in recent_text or 'err_ngrok' in recent_text:
+        hint = '（ngrok 認証エラー。authtoken を確認してください）'
+    elif 'url' in recent_text or 'forwarding' in recent_text:
+        hint = '（URL は出力されましたが取得できませんでした）'
+    else:
+        hint = '（ngrok プロセスの stdout を確認してください）'
+
+    err_msg = f'[ngrok] 40秒以内に公開URLを取得できませんでした{hint}'
+    with _lock:
+        _stderr_lines.append(err_msg)
+        if still_our_proc:
+            _proc = None
+            _active_provider = None
+
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+
+
+# ─── プロセス起動ヘルパー ─────────────────────────────────────────────────────
+
+def _start_cloudflare(port: int) -> subprocess.Popen:
+    cf_path = shutil.which("cloudflared")
+    named = _cloudflare_named_tunnel_info()
+    if named["named_ready"] and named["config_path"]:
+        cmd = [
+            cf_path,
+            "tunnel",
+            "--config",
+            str(named["config_path"]),
+            "run",
+        ]
+        return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, shell=False)
+
+    cmd = [cf_path, "tunnel", "--url", f"http://localhost:{port}"]
+    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, shell=False)
+
+
+def _start_ngrok(port: int, authtoken: str = "") -> subprocess.Popen:
+    ngrok_path = _find_ngrok()
+    if not ngrok_path:
+        raise FileNotFoundError("ngrok が見つかりません")
+    # --log=stdout --log-format=json で構造化ログを stdout に出力させる。
+    # これにより port 4040 API に頼らず stdout から確実に URL を取得できる。
+    cmd_list = [ngrok_path, "http", "--log=stdout", "--log-format=json"]
+    if authtoken:
+        cmd_list += ["--authtoken", authtoken]
+    cmd_list.append(str(port))
+    # stdout=PIPE で読み取る（URL 取得のため）。shell=False で確実にプロセス管理。
+    return subprocess.Popen(
+        cmd_list,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+    )
+
+
+# ─── エンドポイント ──────────────────────────────────────────────────────────
+
+@router.get("/tunnel/status")
+def tunnel_status(request: Request):
+    # config_path に絶対パス (Windows ユーザ名を含む) が入るため admin 限定。
+    from backend.utils.auth import require_admin
+    require_admin(request)
+    cf_avail = _cloudflare_available()
+    ngrok_avail = _ngrok_available()
+    cf_named = _cloudflare_named_tunnel_info()
+
+    with _lock:
+        running = _proc is not None and _proc.poll() is None
+        url = _tunnel_url if running else None
+        # Stack-trace-exposure 防止: stderr 生ログは返さず件数と直近マスク済みシグナルのみ
+        _raw_recent = list(_stderr_lines[-10:])
+        recent_log = [f"{len(_raw_recent)} 件のログを受信済み"] if _raw_recent else []
+        # named tunnel 設定の reason をフロントに伝える (UI で「config を直して」表示用)
+        if not cf_named.get("named_ready") and cf_named.get("reason"):
+            recent_log.insert(0, f"named tunnel: {cf_named['reason']}")
+        provider = _active_provider if running else None
+
+    return {
+        "success": True,
+        "data": {
+            # 後方互換フィールド（AnnotatorPage 等が参照）
+            "available": cf_avail or ngrok_avail,
+            "running": running,
+            "url": url,
+            # 拡張フィールド
+            "active_provider": provider,
+            "providers": {
+                "cloudflare": {
+                    "available": cf_avail,
+                    "named_ready": cf_named["named_ready"],
+                    "hostname": cf_named["hostname"],
+                    "config_path": cf_named["config_path"],
+                    "reason": cf_named["reason"],
+                },
+                "ngrok": {"available": ngrok_avail, "path": _find_ngrok()},
+            },
+            "recent_log": recent_log,
+            # env にトークンが設定されているか（フロント側の表示切替用）
+            "ngrok_authtoken_from_env": bool((settings.NGROK_AUTHTOKEN or "").strip()),
+        },
+    }
+
+
+@router.post("/tunnel/start")
+def tunnel_start(provider: str = "auto", db: Session = Depends(get_db)):
+    global _proc, _tunnel_url, _stderr_lines, _active_provider
+
+    resolved = _resolve_provider(provider)
+    if resolved is None:
+        return {
+            "success": False,
+            "error": (
+                "利用可能なトンネルプロバイダーが見つかりません。"
+                "ngrok または cloudflared をインストールしてください。"
+            ),
+        }
+
+    with _lock:
+        if _proc is not None and _proc.poll() is None:
+            return {
+                "success": True,
+                "data": {"message": "すでに起動中", "url": _tunnel_url, "provider": _active_provider},
+            }
+        _tunnel_url = None
+        _stderr_lines = []
+        _active_provider = None
+        old_proc = _proc
+        _proc = None
+
+    # 残存プロセスを確実に終了させてから新規起動
+    if old_proc is not None:
+        try:
+            old_proc.terminate()
+        except Exception:
+            pass
+    if resolved == 'ngrok':
+        _kill_ngrok_processes()
+
+    port = settings.API_PORT
+
+    if resolved == 'ngrok':
+        # authtoken: 環境変数（.env）→ DB設定 の優先順で取得
+        authtoken = (settings.NGROK_AUTHTOKEN or "").strip()
+        if not authtoken:
+            try:
+                from backend.routers.settings import _load_all
+                cfg = _load_all(db)
+                authtoken = (cfg.get("ngrok_authtoken") or "").strip()
+            except Exception:
+                pass
+        try:
+            proc = _start_ngrok(port, authtoken)
+        except FileNotFoundError:
+            logger.exception("ngrok start failed (FileNotFoundError)")
+            return {"success": False, "error": "ngrok が見つかりません"}
+        with _lock:
+            _proc = proc
+            _active_provider = 'ngrok'
+        # stdout 読み取りスレッド（--log=stdout --log-format=json でURL取得）— 主経路
+        threading.Thread(target=_read_stdout_ngrok, args=(proc,), daemon=True).start()
+        # stderr 読み取りスレッド（エラーログ記録）
+        threading.Thread(target=_read_stderr_ngrok, args=(proc,), daemon=True).start()
+        # API ポーリングスレッド（localhost:4040～4043）— 補助経路
+        threading.Thread(target=_poll_ngrok_url, args=(proc,), daemon=True).start()
+        return {
+            "success": True,
+            "data": {
+                "message": "ngrok を起動しました。URL取得まで数秒かかります。",
+                "provider": "ngrok",
+            },
+        }
+    else:
+        cf_named = _cloudflare_named_tunnel_info()
+        proc = _start_cloudflare(port)
+        with _lock:
+            _proc = proc
+            _active_provider = 'cloudflare'
+            if cf_named["named_ready"] and cf_named["hostname"]:
+                _tunnel_url = f'https://{cf_named["hostname"]}'
+        t = threading.Thread(target=_read_stderr_cloudflare, args=(proc,), daemon=True)
+        t.start()
+        return {
+            "success": True,
+            "data": {
+                "message": (
+                    f'cloudflared を起動しました。{cf_named["hostname"]} を使用します。'
+                    if cf_named["named_ready"] and cf_named["hostname"]
+                    else "cloudflared を起動しました。URL取得まで数秒かかります。"
+                ),
+                "provider": "cloudflare",
+            },
+        }
+
+
+def _kill_ngrok_processes() -> None:
+    """実行中の ngrok プロセスをすべて強制終了する（Windows: taskkill, Unix: pkill）"""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "ngrok.exe"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        else:
+            subprocess.run(
+                ["pkill", "-f", "ngrok http"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+    except Exception:
+        pass
+    # ngrok local API (port 4040) が落ちるまで待機（最大 3 秒）
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen('http://localhost:4040/api/tunnels', timeout=0.5)
+            time.sleep(0.3)
+        except Exception:
+            break  # port 4040 が応答しなくなった = 完全終了
+
+
+@router.post("/tunnel/stop")
+def tunnel_stop():
+    global _proc, _tunnel_url, _stderr_lines, _active_provider
+
+    with _lock:
+        proc = _proc
+        _proc = None
+        _tunnel_url = None
+        _stderr_lines = []
+        _active_provider = None
+
+    if proc is not None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=3)
+        except Exception:
+            pass
+
+    # Windows では terminate だけでは残ることがあるので強制 kill
+    _kill_ngrok_processes()
+
+    return {"success": True, "data": {"message": "停止しました"}}
+
+
+# ─── WebRTC ICE 設定 ─────────────────────────────────────────────────────────
+
+@router.get("/webrtc/ice-config")
+def webrtc_ice_config(db: Session = Depends(get_db)):
+    """WebRTC ICE サーバー設定を返す（STUN デフォルト + TURN オプション）
+
+    Settings の turn_enabled / turn_url / turn_username / turn_credential を読み取り、
+    RTCPeerConnection の iceServers 形式で返す。
+    TURN が無効の場合は STUN のみ返す（ベストエフォート）。
+    """
+    from backend.routers.settings import _load_all
+    cfg = _load_all(db)
+
+    ice_servers: list[dict] = [{"urls": "stun:stun.l.google.com:19302"}]
+
+    if cfg.get("turn_enabled") and cfg.get("turn_url"):
+        entry: dict = {"urls": cfg["turn_url"]}
+        if cfg.get("turn_username"):
+            entry["username"] = cfg["turn_username"]
+        if cfg.get("turn_credential"):
+            entry["credential"] = cfg["turn_credential"]
+        ice_servers.append(entry)
+
+    return {
+        "success": True,
+        "data": {
+            "ice_servers": ice_servers,
+            "turn_enabled": bool(cfg.get("turn_enabled")),
+        },
+    }
+
+
+# ─── TURN 疎通テスト ──────────────────────────────────────────────────────────
+
+_TURN_URL_RE = re.compile(r'^turns?:([^:?]+)(?::(\d+))?', re.IGNORECASE)
+
+
+@router.post("/webrtc/test-turn")
+def webrtc_test_turn(db: Session = Depends(get_db)):
+    """TURN サーバーへの TCP 疎通チェック。
+    設定された turn_url のホスト:ポートに TCP 接続を試み、到達可能かを返す。
+    """
+    from backend.routers.settings import _load_all
+    cfg = _load_all(db)
+
+    if not cfg.get("turn_enabled"):
+        return {"success": False, "error": "TURN が無効です。設定で TURN を有効にしてください。"}
+
+    turn_url = (cfg.get("turn_url") or "").strip()
+    if not turn_url:
+        return {"success": False, "error": "TURN URL が未設定です。"}
+
+    m = _TURN_URL_RE.match(turn_url)
+    if not m:
+        return {
+            "success": False,
+            "error": f"TURN URL の形式が不正です（例: turn:your-server.example.com:3478）",
+        }
+
+    host = m.group(1)
+    port = int(m.group(2)) if m.group(2) else 3478
+
+    try:
+        sock = _socket.create_connection((host, port), timeout=5)
+        sock.close()
+        return {
+            "success": True,
+            "data": {"host": host, "port": port, "reachable": True},
+        }
+    except _socket.timeout:
+        return {
+            "success": False,
+            "data": {"host": host, "port": port, "reachable": False},
+            "error": f"{host}:{port} への接続がタイムアウトしました（5秒）",
+        }
+    except Exception as e:
+        logger.error("reachability check failed %s:%s: %s", host, port, e, exc_info=True)
+        return {
+            "success": False,
+            "data": {"host": host, "port": port, "reachable": False},
+            "error": "到達確認に失敗しました",
+        }

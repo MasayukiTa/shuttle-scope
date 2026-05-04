@@ -1,0 +1,191 @@
+"""パスジェイル: 指定ルート外へのファイルアクセスを封鎖するユーティリティ。
+
+HDD に別用途データ（ドローン映像等）が存在する環境で、
+ShuttleScope のファイル操作が許可された領域外に出ないことを保証する。
+
+重要:
+  - Path.resolve() はシンボリックリンク/ジャンクションを解決する（CPython 3.6+）
+  - これにより `app/data/link_to_drone` のような攻撃を防ぐ
+  - ただし resolve() は存在しないパスでも動作する → 書き込み前のチェックにも使える
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import List, Optional, Union
+
+
+def resolve_within(
+    target: Union[str, Path],
+    root: Union[str, Path],
+) -> Path:
+    """target を resolve（シンボリックリンク追跡）し、root 内にあることを検証して返す。
+
+    root 外に出る（../ やシンボリックリンク経由を含む）場合は ValueError を送出する。
+    """
+    resolved = Path(target).resolve()
+    root_resolved = Path(root).resolve()
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError:
+        raise ValueError(
+            f"[path_jail] アクセス拒否: '{resolved}' は許可されたルート '{root_resolved}' の外です"
+        )
+    return resolved
+
+
+def is_within(
+    target: Union[str, Path],
+    root: Union[str, Path],
+) -> bool:
+    """target が root 内にある場合 True を返す。例外を送出しない。"""
+    try:
+        resolve_within(target, root)
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def assert_safe_filename(name: str) -> str:
+    """ファイル名にディレクトリセパレータやパストラバーサルが含まれないことを確認する。"""
+    if any(c in name for c in ('/', '\\', '\x00')):
+        raise ValueError(f"[path_jail] 不正なファイル名: {name!r}")
+    if name in ('.', '..'):
+        raise ValueError(f"[path_jail] 不正なファイル名: {name!r}")
+    return name
+
+
+# ─── 動画パス専用のジェイル ─────────────────────────────────────────────────
+
+_BACKEND_DATA = Path(__file__).resolve().parent.parent / "data"
+
+
+def allowed_video_roots() -> List[Path]:
+    """動画アクセスが許可されているルートディレクトリ一覧を返す。
+
+    含まれる:
+      - backend/data/             (録画・クリップなどアプリ生成物)
+      - ss_video_root             (設定された動画インポートディレクトリ)
+      - ss_live_archive_root      (HDD 上のアーカイブルート)
+      - ss_video_extra_roots      (ユーザーが明示的に許可した追加ディレクトリ; ; 区切り)
+
+    HDD 上の他データ（ドローン映像等）は含まれない。
+    """
+    roots: List[Path] = [_BACKEND_DATA]
+    try:
+        from backend.config import settings
+        for attr in ("ss_video_root", "ss_live_archive_root"):
+            v = (getattr(settings, attr, "") or "").strip()
+            if v:
+                roots.append(Path(v))
+        extra = (getattr(settings, "ss_video_extra_roots", "") or "").strip()
+        if extra:
+            for part in extra.split(";"):
+                part = part.strip()
+                if part:
+                    roots.append(Path(part))
+    except Exception:
+        pass
+    # 重複と存在しないパスは保持（resolve は存在チェックしない）
+    seen: dict[str, Path] = {}
+    for r in roots:
+        try:
+            key = str(r.resolve()).lower()
+            if key not in seen:
+                seen[key] = r.resolve()
+        except Exception:
+            continue
+    return list(seen.values())
+
+
+def assert_allowed_video_path(path: Union[str, Path]) -> Path:
+    """動画ファイルパスが許可されたルート内にあることを確認する。
+
+    - シンボリックリンクは resolve() で解決される
+    - HDD 上の archive root 外にあるパスはここで拒否される
+    - NTFS Alternate Data Streams (`file.mp4:hidden`, `::$DATA`) は拒否
+    - trailing dot/space (Windows で別ファイル参照) は拒否
+    - 許可されたルート: allowed_video_roots() 参照
+
+    違反時は ValueError を送出する。
+    """
+    raw_str = str(path)
+    # H-1 防御 (round117): NTFS ADS — Windows のドライブレター除く ':' は ADS
+    # `C:\Users\foo\bar.mp4:hidden` のようなパスを reject する。
+    # 先頭 2 文字目が ':' (ドライブレター) の場合のみ allow、それ以外の ':' は ADS とみなす。
+    body = raw_str
+    if len(body) >= 2 and body[1] == ":":
+        body = body[2:]  # ドライブレター除外
+    if ":" in body:
+        raise ValueError(
+            f"[path_jail] 動画パス拒否: NTFS Alternate Data Stream は許可されません: '{raw_str}'"
+        )
+    # H-5 防御 (round117): trailing dot/space は Windows で別ファイル参照
+    last = raw_str.rstrip()
+    if last != raw_str or raw_str.endswith("."):
+        raise ValueError(
+            f"[path_jail] 動画パス拒否: 末尾の空白/ドットは許可されません: {raw_str!r}"
+        )
+    real = Path(path).resolve()
+    for root in allowed_video_roots():
+        try:
+            real.relative_to(root)
+            return real
+        except ValueError:
+            continue
+    raise ValueError(
+        f"[path_jail] 動画パス拒否: '{real}' は許可されたいずれのルートにも含まれません。"
+        f" 許可ルート: {[str(r) for r in allowed_video_roots()]}"
+    )
+
+
+def is_allowed_video_path(path: Union[str, Path]) -> bool:
+    """動画ファイルパスが許可されたルート内にある場合 True。例外を送出しない。"""
+    try:
+        assert_allowed_video_path(path)
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def normalize_match_local_path(video_local_path: Optional[str]) -> Optional[Path]:
+    """Match.video_local_path (localfile:/// / server:// / 生パス) を Path に正規化する。
+
+    - server://{filename}  → UPLOAD_DIR/{filename} (yt-dlp で DL したサーバ保管動画)
+    - localfile:///<path>  → <path>
+    - http(s)://...        → None (外部 URL、ローカル解決不可)
+    - その他               → そのまま Path
+    """
+    if not video_local_path:
+        return None
+    raw = video_local_path
+    if raw.startswith(("http://", "https://")):
+        return None
+    if raw.startswith("server://"):
+        # サーバ保管動画: UPLOAD_DIR (./videos) 配下の {filename} を返す。
+        # CV パイプライン (cv2.VideoCapture) や ffprobe 等が直接開けるようにする。
+        rest = raw[len("server://"):]
+        # path traversal 防御: 区切り文字を含まないファイル名のみ許容
+        if "/" in rest or "\\" in rest or ".." in rest:
+            return None
+        # UPLOAD_DIR は uploads.py と同じ "./videos" を相対解決
+        upload_dir = Path(os.path.abspath("./videos"))
+        return upload_dir / rest
+    if raw.startswith("localfile:///"):
+        raw = raw[len("localfile:///"):]
+    return Path(raw)
+
+
+def assert_match_video_path_allowed(video_local_path: Optional[str]) -> None:
+    """Match.video_local_path がローカルファイルなら path_jail でチェックする。
+
+    URL スキーム (http/https/server) の場合は何もしない（外部 URL は別経路）。
+    違反時は ValueError を送出する。呼び出し側は HTTPException 等に変換すること。
+    """
+    p = normalize_match_local_path(video_local_path)
+    if p is None:
+        return
+    if not is_allowed_video_path(p):
+        raise ValueError(
+            f"[path_jail] 動画パスが許可ルート外です: {p}"
+        )

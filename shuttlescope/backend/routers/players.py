@@ -1,0 +1,559 @@
+"""選手管理API（/api/players）"""
+import json
+import re
+import unicodedata
+from typing import Annotated, Optional
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from backend.db.database import get_db
+from backend.db.models import Player, Match
+from backend.utils.auth import get_auth, require_analyst, AuthCtx
+from fastapi import HTTPException as _HTTPException
+
+
+def _require_auth(request: Request) -> AuthCtx:
+    ctx = get_auth(request)
+    if ctx.role is None:
+        raise _HTTPException(status_code=401, detail="認証が必要です")
+    return ctx
+from backend.utils.sync_meta import touch
+from backend.utils import response_cache
+
+router = APIRouter()
+
+
+def _reject_html_in_field(value: Optional[str], field_name: str, *, require_non_empty: bool = False) -> None:
+    """HTML タグや制御文字を player 名前/チーム等のフィールドから拒否する。
+    React 側で自動エスケープされるが、多層防御として API 受け入れ時点で弾く。
+    require_non_empty=True なら空白のみも拒否 (意味のない空 player 対策)。
+    """
+    if value is None:
+        return
+    import re as _r
+    if require_non_empty and not value.strip():
+        raise HTTPException(status_code=422, detail=f"{field_name} must not be empty or whitespace only")
+    if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]", value, _r.IGNORECASE):
+        raise HTTPException(status_code=422, detail=f"{field_name} contains disallowed HTML tags")
+    # 制御文字 (CR/LF/null/BEL 等) 拒否
+    if _r.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", value):
+        raise HTTPException(status_code=422, detail=f"{field_name} contains control characters")
+
+
+class PlayerCreate(BaseModel):
+    # extra フィールド禁止 + 長さ/形式検証
+    model_config = {"extra": "forbid"}
+    name: str = Field(..., min_length=1, max_length=120)
+    name_en: Optional[str] = Field(default=None, max_length=120)
+    team: Optional[str] = Field(default=None, max_length=100)
+    nationality: Optional[str] = Field(default=None, max_length=60)
+    dominant_hand: Optional[str] = "unknown"
+    birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
+    world_ranking: Optional[int] = Field(default=None, ge=1, le=99999)
+    is_target: bool = False
+    notes: Optional[str] = Field(default=None, max_length=5000)
+    profile_status: Optional[str] = "verified"
+    needs_review: bool = False
+    created_via_quick_start: bool = False
+    organization: Optional[str] = Field(default=None, max_length=200)
+    aliases: Optional[list[str]] = None
+    scouting_notes: Optional[str] = Field(default=None, max_length=5000)
+
+
+class TeamHistoryEntry(BaseModel):
+    team: str
+    until: Optional[str] = None   # "2025-03" など任意の文字列
+    note: Optional[str] = None
+
+
+class PlayerUpdate(BaseModel):
+    # extra フィールド禁止 + 長さ/形式検証
+    model_config = {"extra": "forbid"}
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    name_en: Optional[str] = Field(default=None, max_length=120)
+    team: Optional[str] = Field(default=None, max_length=100)
+    nationality: Optional[str] = Field(default=None, max_length=60)
+    dominant_hand: Optional[str] = None
+    birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
+    world_ranking: Optional[int] = Field(default=None, ge=1, le=99999)
+    is_target: Optional[bool] = None
+    notes: Optional[str] = Field(default=None, max_length=5000)
+    profile_status: Optional[str] = None
+    needs_review: Optional[bool] = None
+    organization: Optional[str] = Field(default=None, max_length=200)
+    aliases: Optional[list[str]] = None
+    scouting_notes: Optional[str] = Field(default=None, max_length=5000)
+    team_history: Optional[list[TeamHistoryEntry]] = None
+
+
+def normalize_name(name: str) -> str:
+    """検索用の正規化名を生成する（全角→半角、大文字→小文字、スペース・記号除去）"""
+    # Unicode正規化（全角→半角）
+    normalized = unicodedata.normalize("NFKC", name)
+    # 大文字→小文字
+    normalized = normalized.lower()
+    # スペース・記号除去
+    normalized = re.sub(r"[\s\-_.・]", "", normalized)
+    return normalized
+
+
+def _parse_json_list(raw: Optional[str]) -> list:
+    if not raw:
+        return []
+    try:
+        return json.loads(raw)
+    except Exception:
+        return []
+
+
+def player_to_dict(p: Player, match_count: int = 0) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "name_en": p.name_en,
+        "team": p.team,
+        "nationality": p.nationality,
+        "dominant_hand": p.dominant_hand,
+        "birth_year": p.birth_year,
+        "world_ranking": p.world_ranking,
+        "is_target": p.is_target,
+        "match_count": match_count,
+        "notes": p.notes,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        # V4
+        "profile_status": p.profile_status or "verified",
+        "needs_review": bool(p.needs_review),
+        "created_via_quick_start": bool(p.created_via_quick_start),
+        "organization": p.organization,
+        "aliases": _parse_json_list(p.aliases),
+        "name_normalized": p.name_normalized,
+        "scouting_notes": p.scouting_notes,
+        # 所属履歴
+        "team_history": _parse_json_list(p.team_history),
+    }
+
+
+@router.get("/players")
+def list_players(request: Request, db: Session = Depends(get_db),
+                 _auth: AuthCtx = Depends(_require_auth)):
+    """選手一覧（試合数付き）。ロールに応じて閲覧範囲を制限する。"""
+    ctx = get_auth(request)
+    query = db.query(Player).order_by(Player.name)
+    if ctx.is_player:
+        # 選手は自分自身のPlayerレコードのみ
+        if ctx.player_id:
+            query = query.filter(Player.id == ctx.player_id)
+        else:
+            return {"success": True, "data": []}
+    elif ctx.is_coach or ctx.is_analyst:
+        # coach / analyst は自チームの選手のみ (cross-team 漏洩防止)
+        team = (ctx.team_name or "").strip()
+        if not team:
+            # loopback dev/test では admin 同等で全件返す
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                return {"success": True, "data": []}
+        else:
+            # Phase B-15+: team 文字列撤去後は teams.name JOIN で解決
+            from backend.db.models import Team as _Team
+            query = query.join(_Team, _Team.id == Player.team_id).filter(
+                _Team.name == team, _Team.deleted_at.is_(None)
+            )
+    # admin は全選手
+
+    players = query.all()
+    result = []
+    for p in players:
+        cnt = db.query(Match).filter(
+            (Match.player_a_id == p.id) | (Match.player_b_id == p.id)
+        ).count()
+        result.append(player_to_dict(p, match_count=cnt))
+    return {"success": True, "data": result}
+
+
+@router.get("/players/search")
+def search_players(request: Request, q: str = Query(default="", max_length=100),
+                   db: Session = Depends(get_db),
+                   _auth: AuthCtx = Depends(_require_auth)):
+    """選手名検索（正規化・alias対応）クイックスタート用"""
+    if not q or not q.strip():
+        return {"success": True, "data": []}
+
+    q_norm = normalize_name(q.strip())
+    # normalize 後に空 or 1 文字のみになる query は全件マッチに近づくため空配列を返す。
+    # 例: q="_" "%" "*" "<script>" 等の特殊記号のみのクエリによる全件露出を防ぐ。
+    if len(q_norm) < 2:
+        return {"success": True, "data": []}
+    all_players = db.query(Player).order_by(Player.name).all()
+
+    exact: list[Player] = []
+    prefix: list[Player] = []
+    contains: list[Player] = []
+    alias_match: list[Player] = []
+
+    for p in all_players:
+        pn_norm = p.name_normalized or normalize_name(p.name)
+        # 完全一致
+        if pn_norm == q_norm:
+            exact.append(p)
+            continue
+        # 前方一致
+        if pn_norm.startswith(q_norm) or (p.name_en and normalize_name(p.name_en).startswith(q_norm)):
+            prefix.append(p)
+            continue
+        # 部分一致
+        if q_norm in pn_norm or (p.name_en and q_norm in normalize_name(p.name_en)):
+            contains.append(p)
+            continue
+        # alias一致
+        if p.aliases:
+            try:
+                aliases_list = json.loads(p.aliases)
+                for alias in aliases_list:
+                    if q_norm in normalize_name(alias):
+                        alias_match.append(p)
+                        break
+            except Exception:
+                pass
+
+    ordered = exact + prefix + contains + alias_match
+    # 重複除去（順序保持）
+    seen: set[int] = set()
+    result = []
+    for p in ordered:
+        if p.id not in seen:
+            seen.add(p.id)
+            cnt = db.query(Match).filter(
+                (Match.player_a_id == p.id) | (Match.player_b_id == p.id)
+            ).count()
+            result.append(player_to_dict(p, match_count=cnt))
+
+    return {"success": True, "data": result}
+
+
+@router.get("/players/needs_review")
+def list_needs_review(request: Request, db: Session = Depends(get_db),
+                      _auth: AuthCtx = Depends(_require_auth)):
+    """要レビュー選手一覧（V4-U-003）"""
+    players = db.query(Player).filter(Player.needs_review == True).order_by(Player.created_at.desc()).all()  # noqa: E712
+    result = []
+    for p in players:
+        cnt = db.query(Match).filter(
+            (Match.player_a_id == p.id) | (Match.player_b_id == p.id)
+        ).count()
+        result.append(player_to_dict(p, match_count=cnt))
+    return {"success": True, "data": result}
+
+
+@router.get("/players/teams")
+def list_teams(request: Request, db: Session = Depends(get_db),
+               _auth: AuthCtx = Depends(_require_auth)):
+    """DBに登録済みの全チーム名を重複なしで返す（同姓同名識別・入力補完用）"""
+    # Phase B-15+: Player.team 文字列撤去後は teams テーブル直接読みに切替
+    from backend.db.models import Team as _Team
+    rows = (
+        db.query(_Team.name)
+        .join(Player, Player.team_id == _Team.id)
+        .filter(_Team.deleted_at.is_(None), _Team.name.isnot(None), _Team.name != "")
+        .distinct()
+        .order_by(_Team.name)
+        .all()
+    )
+    teams = [row[0] for row in rows if row[0]]
+    return {"success": True, "data": teams}
+
+
+@router.post("/players", status_code=201)
+def create_player(
+    body: PlayerCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    _ctx=Depends(require_analyst),
+):
+    """選手登録"""
+    # analyst は自チーム以外の選手を登録不可 (cross-team データ汚染防止)
+    from backend.utils.auth import get_auth as _ga
+    _actor = _ga(request)
+    if _actor.is_analyst and not _actor.is_admin:
+        actor_team = (_actor.team_name or "").strip()
+        body_team = (body.team or "").strip()
+        if not actor_team:
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                raise HTTPException(status_code=403, detail="team_name 未設定")
+        elif not body_team or body_team != actor_team:
+            raise HTTPException(
+                status_code=403,
+                detail=f"自チーム ({actor_team}) 以外の選手は登録できません",
+            )
+    # team 必須 (空文字/whitespace 拒否)
+    if not body.team or not body.team.strip():
+        raise HTTPException(status_code=422, detail="team must not be empty or whitespace only")
+    # HTML タグ / 制御文字の注入を拒否 (stored XSS 対策・多層防御)
+    _reject_html_in_field(body.name, "name", require_non_empty=True)
+    _reject_html_in_field(body.name_en, "name_en")
+    _reject_html_in_field(body.team, "team")
+    _reject_html_in_field(body.nationality, "nationality")
+    _reject_html_in_field(body.organization, "organization")
+    _reject_html_in_field(body.notes, "notes")
+    _reject_html_in_field(body.scouting_notes, "scouting_notes")
+    data = body.model_dump()
+    aliases = data.pop("aliases", None)
+    aliases_json = json.dumps(aliases, ensure_ascii=False) if aliases else None
+    # 正規化名を自動生成
+    name_normalized = normalize_name(data["name"])
+
+    # Phase B-15+: team 文字列 → team_id への翻訳。team カラムは撤去済みなので
+    # data から取り除き、teams テーブルで lookup する（無ければ作成）。
+    team_str = data.pop("team", None)
+    team_id_resolved: Optional[int] = None
+    if team_str and team_str.strip():
+        from backend.db.models import Team as _Team
+        from datetime import datetime as _dt
+        from uuid import uuid4 as _uuid4
+        existing = db.query(_Team).filter(
+            _Team.name == team_str.strip(),
+            _Team.deleted_at.is_(None),
+        ).first()
+        if existing:
+            team_id_resolved = existing.id
+        else:
+            # 自動作成（admin / analyst が新規チーム選手を登録した場合）
+            now = _dt.utcnow()
+            new_team = _Team(
+                uuid=str(_uuid4()),
+                name=team_str.strip(),
+                is_independent=False,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(new_team)
+            db.flush()
+            team_id_resolved = new_team.id
+
+    player = Player(
+        **data,
+        team_id=team_id_resolved,
+        aliases=aliases_json,
+        name_normalized=name_normalized,
+    )
+    touch(player)
+    db.add(player)
+    db.commit()
+    # 新規選手の登録はチーム可視範囲に影響し得るためグローバル無効化も実施
+    response_cache.bump_players([player.id])
+    response_cache.bump_version()
+    db.refresh(player)
+    return {"success": True, "data": player_to_dict(player)}
+
+
+def _player_scope_check(request: Request, player) -> None:
+    """analyst/coach は自チームの player のみ閲覧/編集可能 (cross-team 漏洩・改竄防止)。
+    admin / player は呼び出し元のロジックで別途処理。"""
+    from backend.utils.auth import get_auth as _ga
+    ctx = _ga(request)
+    if ctx.is_admin:
+        return
+    if ctx.is_analyst or ctx.is_coach:
+        team = (ctx.team_name or "").strip()
+        if not team:
+            from backend.utils.control_plane import allow_legacy_header_auth
+            if not allow_legacy_header_auth(request):
+                raise HTTPException(status_code=403, detail="team_name 未設定")
+            return
+        if (player.team or "").strip() != team:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+
+
+@router.get("/players/{player_id}")
+def get_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], request: Request, db: Session = Depends(get_db),
+               _auth: AuthCtx = Depends(_require_auth)):
+    """選手詳細"""
+    player = db.get(Player, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # player ロールは自分のレコードのみ
+    from backend.utils.auth import get_auth as _ga
+    ctx = _ga(request)
+    if ctx.is_player:
+        if not ctx.player_id or ctx.player_id != player_id:
+            raise HTTPException(status_code=404, detail="選手が見つかりません")
+    else:
+        _player_scope_check(request, player)
+    return {"success": True, "data": player_to_dict(player)}
+
+
+@router.put("/players/{player_id}")
+def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body: PlayerUpdate, request: Request,
+                  db: Session = Depends(get_db),
+                  _auth: AuthCtx = Depends(_require_auth)):
+    """選手更新"""
+    from datetime import date as _date
+    player = db.get(Player, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # analyst/coach は自チームの選手のみ更新可能。player 書込み拒否。
+    from backend.utils.auth import get_auth as _ga_upd
+    _ctx_upd = _ga_upd(request)
+    if _ctx_upd.is_player:
+        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    _player_scope_check(request, player)
+    # analyst が他チームへ team を変更しようとするのも遮断
+    if (not _ctx_upd.is_admin) and body.team is not None:
+        actor_team = (_ctx_upd.team_name or "").strip()
+        new_team = (body.team or "").strip()
+        if actor_team and new_team and new_team != actor_team:
+            raise HTTPException(
+                status_code=403,
+                detail=f"team を自チーム ({actor_team}) 以外に変更することはできません",
+            )
+    # HTML タグ / 制御文字の注入を拒否
+    _reject_html_in_field(body.name, "name", require_non_empty=True)
+    _reject_html_in_field(body.name_en, "name_en")
+    _reject_html_in_field(body.team, "team")
+    _reject_html_in_field(body.nationality, "nationality")
+    _reject_html_in_field(body.organization, "organization")
+    _reject_html_in_field(body.notes, "notes")
+    _reject_html_in_field(body.scouting_notes, "scouting_notes")
+    # exclude_unset=True: クライアントが明示的に送ったフィールドのみ更新する
+    # （exclude_none=True だと null 送信時に「クリア」ができない）
+    data = body.model_dump(exclude_unset=True)
+
+    # team 変更時: 旧チームを team_history に自動追記
+    # Phase B-15+: team 文字列カラム撤去後は team_id 経由で名前を解決。
+    # PlayerUpdate.team は文字列入力 → team_id へ翻訳して書き込む。
+    new_team_str = data.pop("team", None)  # data から消す（Player に直接 setattr しない）
+    old_team = player.team  # @property 経由で teams.name を返す
+    if new_team_str is not None and old_team and old_team != new_team_str:
+        history = _parse_json_list(player.team_history)
+        until_str = _date.today().strftime("%Y-%m")
+        already = any(h.get("team") == old_team and h.get("until") == until_str for h in history)
+        if not already:
+            history.append({"team": old_team, "until": until_str, "note": ""})
+        player.team_history = json.dumps(history, ensure_ascii=False)
+    if new_team_str is not None:
+        from backend.db.models import Team as _Team
+        from datetime import datetime as _dt
+        from uuid import uuid4 as _uuid4
+        if not new_team_str.strip():
+            data["team_id"] = None
+        else:
+            existing = db.query(_Team).filter(
+                _Team.name == new_team_str.strip(),
+                _Team.deleted_at.is_(None),
+            ).first()
+            if existing:
+                data["team_id"] = existing.id
+            else:
+                now = _dt.utcnow()
+                new_team = _Team(
+                    uuid=str(_uuid4()),
+                    name=new_team_str.strip(),
+                    is_independent=False,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(new_team)
+                db.flush()
+                data["team_id"] = new_team.id
+
+    # aliases をJSON化
+    if "aliases" in data:
+        data["aliases"] = json.dumps(data["aliases"], ensure_ascii=False)
+    # team_history を手動上書きする場合はJSON化
+    if "team_history" in data:
+        data["team_history"] = json.dumps(
+            [e.model_dump() for e in body.team_history],  # type: ignore[union-attr]
+            ensure_ascii=False,
+        )
+    # name 変更時に name_normalized を更新
+    if "name" in data:
+        data["name_normalized"] = normalize_name(data["name"])
+    from backend.utils.db_update import apply_update
+    apply_update(player, data)
+    touch(player)
+    db.commit()
+    # 選手単位で無効化 + team 変更はコーチ可視範囲に影響するためグローバルも無効化
+    response_cache.bump_players([player_id])
+    response_cache.bump_version()
+    db.refresh(player)
+    return {"success": True, "data": player_to_dict(player)}
+
+
+@router.delete("/players/{player_id}")
+def delete_player(
+    player_id: Annotated[int, Path(ge=1, le=2_147_483_647)],
+    request: Request,
+    db: Session = Depends(get_db),
+    _ctx=Depends(require_analyst),
+):
+    """選手削除"""
+    player = db.get(Player, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # analyst は自チームの選手のみ削除可能 (cross-team 改竄防止)
+    _player_scope_check(request, player)
+    # 試合に紐づいているか確認
+    ref_count = db.query(Match).filter(
+        (Match.player_a_id == player_id) |
+        (Match.player_b_id == player_id) |
+        (Match.partner_a_id == player_id) |
+        (Match.partner_b_id == player_id)
+    ).count()
+    if ref_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"この選手は {ref_count} 件の試合に紐づいているため削除できません。先に試合を削除してください。"
+        )
+    db.delete(player)
+    db.commit()
+    # 削除は全選手への可視範囲影響もあるためグローバル + 自身の両方無効化
+    response_cache.bump_players([player_id])
+    response_cache.bump_version()
+    return {"success": True, "data": {"id": player_id}}
+
+
+@router.get("/players/{player_id}/matches")
+def get_player_matches(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], request: Request, db: Session = Depends(get_db),
+                       _auth: AuthCtx = Depends(_require_auth)):
+    """選手の試合一覧"""
+    player = db.get(Player, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="選手が見つかりません")
+    matches = db.query(Match).filter(
+        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+    ).order_by(Match.date.desc()).all()
+    return {"success": True, "data": [
+        {
+            "id": m.id,
+            "tournament": m.tournament,
+            "date": m.date.isoformat() if m.date else None,
+            "result": m.result,
+            "annotation_status": m.annotation_status,
+            "annotation_progress": m.annotation_progress,
+        }
+        for m in matches
+    ]}
+
+
+@router.get("/players/{player_id}/stats")
+def get_player_stats(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], request: Request, db: Session = Depends(get_db),
+                     _auth: AuthCtx = Depends(_require_auth)):
+    """選手の基礎スタッツ"""
+    player = db.get(Player, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="選手が見つかりません")
+    total_matches = db.query(Match).filter(
+        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+    ).count()
+    wins = db.query(Match).filter(
+        Match.player_a_id == player_id, Match.result == "win"
+    ).count()
+    return {
+        "success": True,
+        "data": {
+            "total_matches": total_matches,
+            "wins": wins,
+        }
+    }

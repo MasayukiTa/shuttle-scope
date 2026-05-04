@@ -1,0 +1,102 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+# ESLint is a tool for identifying and reporting on patterns
+# found in ECMAScript/JavaScript code.
+# More details at https://github.com/eslint/eslint
+# and https://eslint.org
+
+name: ESLint
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [ "main" ]
+  schedule:
+    - cron: '36 9 * * 5'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Scorecard TokenPermissions: top-level は最小 read、write は job レベル
+permissions:
+  contents: read
+
+jobs:
+  eslint:
+    name: Run eslint scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: shuttlescope/package-lock.json
+
+      - name: Detect ESLint config
+        id: eslint_config
+        shell: bash
+        run: |
+          if compgen -G "shuttlescope/eslint.config.*" > /dev/null || compgen -G "shuttlescope/.eslintrc*" > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install ESLint dependencies
+        if: steps.eslint_config.outputs.exists == 'true'
+        working-directory: shuttlescope
+        run: |
+          npm ci
+          npm install @microsoft/eslint-formatter-sarif@3.1.0
+
+      - name: Run ESLint
+        if: steps.eslint_config.outputs.exists == 'true'
+        working-directory: shuttlescope
+        env:
+          SARIF_ESLINT_IGNORE_SUPPRESSED: "true"
+        run: |
+          npx eslint . \
+            --format @microsoft/eslint-formatter-sarif \
+            --output-file ../eslint-results.sarif
+        continue-on-error: true
+
+      - name: Create empty SARIF when ESLint is not configured
+        if: steps.eslint_config.outputs.exists != 'true'
+        shell: bash
+        run: |
+          cat > eslint-results.sarif <<'JSON'
+          {
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [
+              {
+                "tool": {
+                  "driver": {
+                    "name": "ESLint",
+                    "informationUri": "https://eslint.org",
+                    "rules": []
+                  }
+                },
+                "results": []
+              }
+            ]
+          }
+          JSON
+
+      - name: Upload analysis results to GitHub
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
+        with:
+          sarif_file: eslint-results.sarif
+          wait-for-processing: true

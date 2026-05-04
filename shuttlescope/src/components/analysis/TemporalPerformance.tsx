@@ -1,0 +1,133 @@
+// スコアフェーズ別パフォーマンスコンポーネント（序盤/中盤/終盤の3段棒グラフ）
+import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import {
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from 'recharts'
+import { apiGet } from '@/api/client'
+import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { perfColor, lightSafe, getTooltipStyle, AXIS_TICK } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
+
+interface TemporalPerformanceProps {
+  playerId: number
+  chartHeight?: number
+  filters?: AnalysisFilters
+}
+
+interface PhaseData {
+  phase: string
+  win_rate: number
+  rally_count: number
+}
+
+interface TemporalResponse {
+  success: boolean
+  data: { phases: PhaseData[] }
+  meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
+}
+
+// フェーズ色は勝率に基づいて動的に決定（perfColor: 高勝率=青=良い, 低勝率=赤=悪い）
+
+export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEFAULT_FILTERS }: TemporalPerformanceProps) {
+  const { t } = useTranslation()
+  const isLight = useIsLightMode()
+
+  const fp = {
+    ...(filters.result !== 'all' ? { result: filters.result } : {}),
+    ...(filters.tournamentLevel ? { tournament_level: filters.tournamentLevel } : {}),
+    ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+    ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+  }
+  const { data: resp, isLoading } = useQuery({
+    queryKey: ['analysis-temporal-performance', playerId, filters],
+    queryFn: () =>
+      apiGet<TemporalResponse>('/analysis/temporal_performance', { player_id: playerId, ...fp }),
+    enabled: !!playerId,
+  })
+
+  if (isLoading) {
+    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
+  }
+
+  const phases = resp?.data?.phases ?? []
+  const sampleSize = resp?.meta?.sample_size ?? 0
+
+  if (phases.length === 0 || sampleSize === 0) {
+    return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.no_data')}</div>
+  }
+
+  const chartData = phases.map((p) => ({
+    name: p.phase,
+    win_rate_pct: Math.round(p.win_rate * 100),
+    rally_count: p.rally_count,
+    // ライトモードではコントラスト補正（perfColor中間値が白背景で不可視になるため）
+    color: lightSafe(perfColor(p.win_rate), !isLight),
+  }))
+
+  return (
+    <div className="space-y-3">
+      <ConfidenceBadge sampleSize={sampleSize} />
+
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <BarChart data={chartData} margin={{ top: 5, right: 16, left: 0, bottom: 5 }}>
+          <XAxis
+            dataKey="name"
+            tick={{ fill: '#9ca3af', fontSize: 10 }}
+            interval={0}
+            height={40}
+          />
+          <YAxis
+            tick={{ fill: '#9ca3af', fontSize: 10 }}
+            domain={[0, 100]}
+            tickFormatter={(v) => `${v}%`}
+          />
+          <Tooltip
+            contentStyle={getTooltipStyle(isLight)}
+            formatter={(value: number, name: string) => [
+              name === 'win_rate_pct' ? `${value}%` : value,
+              name === 'win_rate_pct' ? t('analysis.temporal.win_rate') : t('analysis.temporal.rally_count'),
+            ]}
+          />
+          {/* 50%の基準線 */}
+          <ReferenceLine y={50} stroke="#6b7280" strokeDasharray="4 2" />
+          <Bar
+            dataKey="win_rate_pct"
+            radius={[3, 3, 0, 0]}
+            name={t('analysis.temporal.win_rate')}
+          >
+            {chartData.map((d, i) => (
+              <Cell key={i} fill={d.color} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+
+      {/* フェーズ詳細テーブル */}
+      <div className="space-y-1.5">
+        {phases.map((p, i) => (
+          <div key={p.phase} className="flex items-center justify-between text-xs">
+            <span
+              className="font-medium"
+              style={{ color: chartData[i]?.color }}
+            >
+              {p.phase}
+            </span>
+            <span className="text-gray-400">{p.rally_count}ラリー</span>
+            <span className="font-semibold" style={{ color: chartData[i]?.color }}>
+              {(p.win_rate * 100).toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

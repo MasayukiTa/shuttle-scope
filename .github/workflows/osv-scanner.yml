@@ -1,0 +1,72 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+# A sample workflow which sets up periodic OSV-Scanner scanning for vulnerabilities,
+# in addition to a PR check which fails if new vulnerabilities are introduced.
+#
+# For more examples and options, including how to ignore specific vulnerabilities,
+# see https://google.github.io/osv-scanner/github-action/
+
+name: OSV-Scanner
+
+on:
+  schedule:
+    - cron: '37 14 * * 6'
+  push:
+    branches: [ "main" ]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Scorecard TokenPermissions: top-level は read のみ、write は job レベル
+permissions:
+  contents: read
+
+jobs:
+  scan-scheduled:
+    name: osv-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Run scanner
+        uses: google/osv-scanner-action/osv-scanner-action@1f1242919d8a60496dd1874b24b62b2370ed4c78 # v1.7.1
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --output=results.json
+            --format=json
+            -r
+            --skip-git
+            ./
+
+      - name: Generate SARIF report
+        uses: google/osv-scanner-action/osv-reporter-action@1f1242919d8a60496dd1874b24b62b2370ed4c78 # v1.7.1
+        with:
+          scan-args: |-
+            --output=results.sarif
+            --new=results.json
+            --gh-annotations=false
+            --fail-on-vuln=false
+
+      - name: Upload SARIF artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: osv-sarif
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code-scanning
+        if: ${{ !cancelled() }}
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
+        with:
+          sarif_file: results.sarif

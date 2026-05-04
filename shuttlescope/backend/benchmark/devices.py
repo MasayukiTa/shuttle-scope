@@ -1,0 +1,599 @@
+"""ベンチマーク計測対象デバイスの型定義とプローブ関数。
+
+ComputeDevice は runner / routers / probe から共通参照する。
+probe_all() が利用可能な計算デバイス（CPU / iGPU / dGPU / Ray ワーカー）を列挙して返す。
+pynvml / openvino / ray が未インストールでも動作する（try/except で遅延インポート）。
+probe 結果は TTL 60秒でメモリキャッシュし、起動時の重い初期化を繰り返さない。
+"""
+from __future__ import annotations
+
+import os
+import platform
+import re
+import time
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+
+@dataclass
+class ComputeDevice:
+    """計算デバイス 1 台を表す。
+
+    device_type: "cpu" | "igpu" | "dgpu" | "ray_worker"
+    backend:     "pytorch-cpu" | "pytorch-cuda" | "openvino" | "onnx" | "ray"
+    available:   False の場合、runner は {"error": "device unavailable"} を即座に返す
+    specs:       追加メタ情報（VRAM, コア数など）
+    """
+
+    device_id: str
+    label: str
+    device_type: str  # cpu | igpu | dgpu | ray_worker
+    backend: str
+    available: bool
+    specs: dict = field(default_factory=dict)
+
+
+# ─── キャッシュ ────────────────────────────────────────────────────────────────
+
+_CACHE_TTL = 60  # 秒
+_cache_result: list[ComputeDevice] | None = None
+_cache_ts: float = 0.0
+
+
+def _sanitize(name: str) -> str:
+    """デバイス ID 生成用: スペース・特殊文字を _ に変換して小文字化"""
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+
+
+# ─── 個別プローブ関数 ──────────────────────────────────────────────────────────
+
+def _get_cpu_name_windows() -> str | None:
+    """Windows WMI 経由で CPU の正式名称を取得する。
+
+    platform.processor() は "AMD64 Family 25 Model 117..." のような
+    汎用文字列を返す場合があるため、PowerShell 経由で正式名称を取得する。
+    失敗時は None を返す。
+    """
+    try:
+        import subprocess
+        result = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                "Get-WmiObject Win32_Processor | Select-Object -First 1 -ExpandProperty Name",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            name = result.stdout.strip()
+            if name:
+                return name
+    except Exception:
+        pass
+    return None
+
+
+def _probe_cpu() -> list[ComputeDevice]:
+    """CPU を常に 1 件検出して返す"""
+    try:
+        import psutil
+        cores: int = psutil.cpu_count(logical=False) or 1
+        logical: int = psutil.cpu_count(logical=True) or 1
+    except Exception:
+        cores = 1
+        logical = 1
+
+    # Windows では PowerShell 経由で正式名称を取得する
+    if platform.system() == "Windows":
+        name = _get_cpu_name_windows() or platform.processor() or platform.machine() or "CPU"
+    else:
+        name = platform.processor() or platform.machine() or "CPU"
+    # 長すぎる場合は先頭 40 文字に丸める
+    name = name[:40].strip()
+
+    specs: dict[str, Any] = {
+        "name": name,
+        "cores": cores,
+        "logical_cores": logical,
+    }
+    dev_id = "cpu_" + _sanitize(name)
+    return [
+        ComputeDevice(
+            device_id=dev_id,
+            label=f"CPU: {name}",
+            device_type="cpu",
+            backend="pytorch-cpu",
+            available=True,
+            specs=specs,
+        )
+    ]
+
+
+def _probe_nvidia() -> list[ComputeDevice]:
+    """pynvml で NVIDIA GPU を検出する。未インストールまたはエラー時は空リスト"""
+    devices: list[ComputeDevice] = []
+    try:
+        import pynvml  # type: ignore
+
+        pynvml.nvmlInit()
+        count = pynvml.nvmlDeviceGetCount()
+        for i in range(count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            try:
+                raw_name = pynvml.nvmlDeviceGetName(handle)
+                # pynvml は bytes または str を返す場合がある
+                name: str = raw_name.decode() if isinstance(raw_name, bytes) else str(raw_name)
+            except Exception:
+                name = f"NVIDIA GPU {i}"
+
+            # VRAM (MiB)
+            try:
+                mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                vram_mb: int | None = mem_info.total // (1024 * 1024)
+            except Exception:
+                vram_mb = None
+
+            # ドライババージョン
+            try:
+                driver_raw = pynvml.nvmlSystemGetDriverVersion()
+                driver: str | None = driver_raw.decode() if isinstance(driver_raw, bytes) else str(driver_raw)
+            except Exception:
+                driver = None
+
+            # CUDA Compute Capability
+            try:
+                major, minor = pynvml.nvmlDeviceGetCudaComputeCapability(handle)
+                cc: str | None = f"{major}.{minor}"
+            except Exception:
+                cc = None
+
+            specs: dict[str, Any] = {"name": name}
+            if vram_mb is not None:
+                specs["vram_mb"] = vram_mb
+            if driver:
+                specs["driver"] = driver
+            if cc:
+                specs["compute_capability"] = cc
+
+            dev_id = f"cuda_{i}_{_sanitize(name)}"
+            devices.append(
+                ComputeDevice(
+                    device_id=dev_id,
+                    label=f"dGPU: {name}",
+                    device_type="dgpu",
+                    backend="pytorch-cuda",
+                    available=True,
+                    specs=specs,
+                )
+            )
+        pynvml.nvmlShutdown()
+    except Exception:
+        # pynvml 未インストール、ドライバ無し等はすべて空リストで返す
+        pass
+    return devices
+
+
+def _probe_openvino() -> list[ComputeDevice]:
+    """OpenVINO Runtime で GPU（iGPU）デバイスを検出する。未インストール時は空リスト"""
+    devices: list[ComputeDevice] = []
+    try:
+        from openvino.runtime import Core  # type: ignore
+
+        core = Core()
+        available = core.available_devices  # 例: ["CPU", "GPU", "GPU.0"]
+        gpu_devices = [d for d in available if d.startswith("GPU")]
+
+        for ov_dev in gpu_devices:
+            try:
+                name = core.get_property(ov_dev, "FULL_DEVICE_NAME")
+            except Exception:
+                name = ov_dev
+
+            # Intel iGPU 判定（"Intel" が含まれるもの）
+            is_igpu = "intel" in str(name).lower()
+            dtype = "igpu" if is_igpu else "dgpu"
+            prefix = "igpu" if is_igpu else "dgpu"
+
+            dev_id = f"{prefix}_{_sanitize(str(name))}"
+            devices.append(
+                ComputeDevice(
+                    device_id=dev_id,
+                    label=f"{'iGPU' if is_igpu else 'GPU'}: {name}",
+                    device_type=dtype,
+                    backend="openvino",
+                    available=True,
+                    specs={"name": str(name)},
+                )
+            )
+    except Exception:
+        # openvino 未インストールはすべて空リスト
+        pass
+    return devices
+
+
+def _probe_onnx() -> list[ComputeDevice]:
+    """onnxruntime の利用可能 EP から追加デバイスを検出する。
+    CPU EP は CPU プローブ済みのためスキップ。CUDA EP のみを対象とする。
+    """
+    devices: list[ComputeDevice] = []
+    try:
+        import onnxruntime as ort  # type: ignore
+
+        providers = ort.get_available_providers()
+        if "CUDAExecutionProvider" in providers:
+            devices.append(
+                ComputeDevice(
+                    device_id="onnx_cuda",
+                    label="ONNX: CUDA ExecutionProvider",
+                    device_type="dgpu",
+                    backend="onnx",
+                    available=True,
+                    specs={"name": "ONNX CUDA"},
+                )
+            )
+    except Exception:
+        pass
+    return devices
+
+
+def _probe_windows_igpu() -> list[ComputeDevice]:
+    """Windows WMI 経由で NVIDIA 以外の GPU アダプタ（AMD/Intel iGPU 等）を列挙する。
+
+    pynvml で既に検出した NVIDIA dGPU はスキップする。
+    Windows 10/11 上の DirectX 12 対応アダプタは DirectML が利用可能なため
+    available=True とする（onnxruntime-directml は別途必要だが表示上は有効）。
+    """
+    if platform.system() != "Windows":
+        return []
+
+    devices: list[ComputeDevice] = []
+    try:
+        import json
+        import subprocess
+
+        result = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                (
+                    "Get-WmiObject Win32_VideoController"
+                    " | Select-Object Name,AdapterCompatibility,AdapterRAM"
+                    " | ConvertTo-Json -Compress"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return devices
+
+        data = json.loads(result.stdout)
+        if isinstance(data, dict):
+            data = [data]
+
+        for adapter in data:
+            name: str = str(adapter.get("Name") or "").strip()
+            compat: str = str(adapter.get("AdapterCompatibility") or "").lower()
+            vram_bytes: int = int(adapter.get("AdapterRAM") or 0)
+            vram_mb = vram_bytes // (1024 * 1024) if vram_bytes > 0 else 0
+            name_lower = name.lower()
+
+            # NVIDIA は pynvml で既に検出済みのためスキップ
+            if "nvidia" in name_lower or "nvidia" in compat:
+                continue
+
+            if "intel" in name_lower or "intel" in compat:
+                # Intel Arc は dGPU、それ以外（UHD/Iris等）は iGPU
+                dtype = "dgpu" if "arc" in name_lower else "igpu"
+            elif "amd" in name_lower or "radeon" in name_lower or "amd" in compat:
+                # 外付け相当の型番（RX, Pro）は dGPU、統合グラフィックスは iGPU
+                is_discrete = any(k in name_lower for k in ["rx ", " pro ", "vega frontier"])
+                dtype = "dgpu" if is_discrete else "igpu"
+            else:
+                # 不明なアダプタは除外
+                continue
+
+            prefix = "igpu" if dtype == "igpu" else "dgpu"
+            dev_id = f"{prefix}_{_sanitize(name)}"
+            label_prefix = "iGPU" if dtype == "igpu" else "GPU"
+            devices.append(
+                ComputeDevice(
+                    device_id=dev_id,
+                    label=f"{label_prefix}: {name}",
+                    device_type=dtype,
+                    backend="directml",
+                    available=True,  # Win10/11 の DX12 対応 GPU は DirectML 利用可能
+                    specs={"name": name, "vram_mb": vram_mb},
+                )
+            )
+    except Exception:
+        pass
+    return devices
+
+
+# AMD XDNA NPU の既知 PCI VendorID:DeviceID（Phoenix/HawkPoint/StrixPoint）
+_AMD_NPU_PCI_IDS = {
+    "1022:1502",  # Phoenix (Ryzen 7040 / 8040 series)
+    "1022:17f0",  # Strix Point (Ryzen AI 300 series)
+    "1022:1505",  # Phoenix variant
+    "1022:150c",  # Hawk Point variant
+}
+
+
+def _probe_npu() -> list[ComputeDevice]:
+    """NPU デバイスを検出する。
+
+    Intel NPU: OpenVINO Runtime の "NPU" デバイス。
+    AMD XDNA NPU: PCI ハードウェア ID で正確に特定する（名前マッチは誤検知が多い）。
+    """
+    devices: list[ComputeDevice] = []
+
+    # Intel NPU (OpenVINO)
+    try:
+        from openvino.runtime import Core  # type: ignore
+
+        core = Core()
+        for ov_dev in core.available_devices:
+            if "NPU" not in ov_dev.upper():
+                continue
+            try:
+                name = core.get_property(ov_dev, "FULL_DEVICE_NAME")
+            except Exception:
+                name = ov_dev
+            dev_id = f"npu_{_sanitize(str(name))}"
+            devices.append(
+                ComputeDevice(
+                    device_id=dev_id,
+                    label=f"NPU: {name}",
+                    device_type="npu",
+                    backend="openvino",
+                    available=True,
+                    specs={"name": str(name)},
+                )
+            )
+    except Exception:
+        pass
+
+    # AMD XDNA NPU (Windows — PCI ハードウェア ID で特定)
+    if platform.system() == "Windows":
+        try:
+            import json
+            import subprocess
+
+            # HardwareID で VEN_1022 (AMD) かつ既知の NPU DeviceID を持つエントリを検索
+            ps_cmd = (
+                "$ids = @('1022:1502','1022:17f0','1022:1505','1022:150c');"
+                "$found = Get-WmiObject Win32_PnPEntity | Where-Object {"
+                "  $hw = $_.HardwareID;"
+                "  if (-not $hw) { return $false };"
+                "  $hwStr = ($hw -join ',').ToLower();"
+                "  foreach ($id in $ids) {"
+                "    $ven = 'ven_' + $id.Split(':')[0];"
+                "    $dev = 'dev_' + $id.Split(':')[1];"
+                "    if ($hwStr -match $ven -and $hwStr -match $dev) { return $true }"
+                "  };"
+                "  return $false"
+                "};"
+                "if ($found) { $found | Select-Object Name,DeviceID | ConvertTo-Json -Compress }"
+                " else { '[]' }"
+            )
+
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                raw = result.stdout.strip()
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    data = [data]
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    npu_name: str = str(item.get("Name") or "AMD NPU Device").strip()
+                    dev_id = f"npu_{_sanitize(npu_name)}"
+                    if any(d.device_id == dev_id for d in devices):
+                        continue
+                    devices.append(
+                        ComputeDevice(
+                            device_id=dev_id,
+                            label=f"NPU: {npu_name}",
+                            device_type="npu",
+                            backend="directml",
+                            available=False,  # NPU 推論バックエンド未実装
+                            specs={"name": npu_name, "note": "NPU inference not yet implemented"},
+                        )
+                    )
+        except Exception:
+            pass
+
+    return devices
+
+
+def _probe_ray() -> list[ComputeDevice]:
+    """Ray 接続済み（UI で Ray起動ボタンを押した後）のときワーカーノードを列挙する。
+
+    ray.init() は Windows Firewall でブロックされる場合があるため使わない。
+    bootstrap.is_ray_connected() と cluster.config.yaml のワーカー設定を使用する。
+    """
+    devices: list[ComputeDevice] = []
+    try:
+        from backend.cluster.bootstrap import is_ray_connected, subprocess_ray_status
+        from backend.cluster.topology import get_workers
+
+        if not is_ray_connected():
+            return devices
+
+        status = subprocess_ray_status()
+        if not status.get("running"):
+            return devices
+
+        # head(1台) を除いた参加済みワーカー数
+        active_workers = max(0, status.get("active_count", 0) - 1)
+        workers = get_workers()
+
+        for i, worker in enumerate(workers):
+            if i >= active_workers:
+                break
+            ip = worker.get("ip", "")
+            label = worker.get("label", f"Worker {i + 1}")
+            node_id = worker.get("id", f"worker_{i}")
+            num_gpus = int(worker.get("num_gpus", 0))
+            gpu_label = worker.get("gpu_label", "iGPU")
+
+            # CPU デバイス
+            devices.append(
+                ComputeDevice(
+                    device_id=f"ray_cpu_{_sanitize(ip or node_id)}",
+                    label=f"Ray CPU: {label} ({ip})",
+                    device_type="cpu",
+                    backend="ray",
+                    available=True,
+                    specs={"name": label, "ip": ip, "node_id": node_id},
+                )
+            )
+
+            # GPU デバイス（cluster.config.yaml で num_gpus > 0 の場合）
+            if num_gpus > 0:
+                devices.append(
+                    ComputeDevice(
+                        device_id=f"ray_igpu_{_sanitize(ip or node_id)}",
+                        label=f"Ray iGPU: {gpu_label} ({label})",
+                        device_type="igpu",
+                        backend="ray",
+                        available=True,
+                        specs={"name": gpu_label, "ip": ip, "node_id": node_id},
+                    )
+                )
+    except Exception:
+        pass
+    return devices
+
+
+def _probe_ssh_workers(existing_ids: set | None = None) -> list[ComputeDevice]:
+    """SSH 認証情報が設定されたワーカーノードを列挙する（Ray 不要）。
+
+    cluster.config.yaml の workers エントリに ssh_user / ssh_password がある場合、
+    Ray 状態に関わらず常にデバイスとして登録する。
+    Ray 経由で既に登録済み（existing_ids 内）のデバイスは重複追加しない。
+    """
+    devices: list[ComputeDevice] = []
+    if existing_ids is None:
+        existing_ids = set()
+
+    try:
+        from backend.cluster.topology import get_workers
+        workers = get_workers()
+
+        for worker in workers:
+            ip = worker.get("ip", "")
+            if not ip:
+                continue
+            if not worker.get("ssh_user") or not worker.get("ssh_password"):
+                continue
+
+            label = worker.get("label", ip)
+            node_id = worker.get("id", f"ssh_{_sanitize(ip)}")
+            num_gpus = int(worker.get("num_gpus", 0))
+            gpu_label = worker.get("gpu_label", "iGPU")
+
+            cpu_id = f"ssh_cpu_{_sanitize(ip)}"
+            if cpu_id not in existing_ids:
+                devices.append(
+                    ComputeDevice(
+                        device_id=cpu_id,
+                        label=f"SSH CPU: {label} ({ip})",
+                        device_type="cpu",
+                        backend="ssh",
+                        available=True,
+                        specs={"name": label, "ip": ip, "node_id": node_id},
+                    )
+                )
+
+            # iGPU デバイスは num_gpus > 0 かつ GPU 対応 ORT プロバイダーが存在する場合のみ追加
+            ort_providers = worker.get("ort_providers", [])
+            has_gpu_provider = any(
+                p in ort_providers
+                for p in ("DmlExecutionProvider", "CUDAExecutionProvider", "OpenVINOExecutionProvider")
+            )
+            if num_gpus > 0 and (has_gpu_provider or not ort_providers):
+                # ort_providers 未設定の場合は楽観的に追加（auto-detect 前の状態）
+                gpu_id = f"ssh_igpu_{_sanitize(ip)}"
+                if gpu_id not in existing_ids:
+                    devices.append(
+                        ComputeDevice(
+                            device_id=gpu_id,
+                            label=f"SSH iGPU: {gpu_label} ({label})",
+                            device_type="igpu",
+                            backend="ssh",
+                            available=has_gpu_provider,
+                            specs={"name": gpu_label, "ip": ip, "node_id": node_id},
+                        )
+                    )
+    except Exception:
+        pass
+
+    return devices
+
+
+# ─── メイン API ────────────────────────────────────────────────────────────────
+
+def probe_all() -> list[ComputeDevice]:
+    """利用可能な計算デバイスを列挙して返す（TTL 60秒キャッシュ）。
+    CPU は常に 1 件以上含まれる。pynvml / openvino / ray が未インストールでも例外を投げない。
+    """
+    global _cache_result, _cache_ts
+
+    now = time.monotonic()
+    if _cache_result is not None and (now - _cache_ts) < _CACHE_TTL:
+        return _cache_result
+
+    result: list[ComputeDevice] = []
+
+    # 1. CPU（常に存在）
+    result.extend(_probe_cpu())
+
+    # 2. NVIDIA GPU（pynvml 経由）
+    nvidia_devices = _probe_nvidia()
+    result.extend(nvidia_devices)
+
+    # 3. OpenVINO GPU（Intel iGPU/dGPU のみ検出）
+    result.extend(_probe_openvino())
+
+    # 4. Windows iGPU（AMD/Intel — OpenVINO で未検出のものを DirectML で補完）
+    existing_ids = {d.device_id for d in result}
+    for dev in _probe_windows_igpu():
+        if dev.device_id not in existing_ids:
+            result.append(dev)
+            existing_ids.add(dev.device_id)
+
+    # 5. NPU（Intel via OpenVINO / AMD XDNA via WMI）
+    for dev in _probe_npu():
+        if dev.device_id not in existing_ids:
+            result.append(dev)
+            existing_ids.add(dev.device_id)
+
+    # 6. ONNX Runtime（CUDA EP、NVIDIA 未検出時のみ追加）
+    has_cuda = any(d.backend == "pytorch-cuda" for d in result)
+    if not has_cuda:
+        result.extend(_probe_onnx())
+
+    # 7. Ray ワーカー（SS_CLUSTER_MODE=ray のとき）
+    result.extend(_probe_ray())
+
+    # 8. SSH ワーカー（cluster.config.yaml に ssh_user が設定されているワーカー）
+    result.extend(_probe_ssh_workers(existing_ids={d.device_id for d in result}))
+
+    _cache_result = result
+    _cache_ts = now
+    return result
+
+
+def invalidate_cache() -> None:
+    """キャッシュを手動でクリアする（テスト用）"""
+    global _cache_result, _cache_ts
+    _cache_result = None
+    _cache_ts = 0.0

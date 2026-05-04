@@ -1,0 +1,55 @@
+mode: primary
+node:
+  role: primary
+  id: pc1
+network:
+  cluster_interface: イーサネット
+  cluster_subnet: 169.254.0.0/16
+  primary_ip: 169.254.96.137
+  fallback_interface: USB-C Network
+  fallback_subnet: 192.168.101.0/24
+  client_interface: Wi-Fi
+  client_subnet: 192.168.1.0/24
+  workers:
+  - id: pc2
+    ip: 169.254.140.146
+    label: GMKtec K10
+    num_cpus: 20
+    num_gpus: 1
+    gpu_label: Intel(R) Iris(R) Xe Graphics
+    model_base: C:\ss-models
+    mac: 84:47:09:52:84:cd
+    ssh_user: M.Takeuchi
+    ssh_password: m1$1Takeuchi
+    ray_restart_bat: C:\Users\M.Takeuchi\Desktop\ray-restart.bat
+ray:
+  head_address: 169.254.96.137:6379
+  dashboard_port: 8265
+  num_cpus: null
+  num_gpus: null
+  memory_limit_gb: null
+postgresql:
+  host: 192.168.100.1
+  port: 5432
+  database: shuttlescope
+  user: ss_user
+  pool_size: 10
+  max_overflow: 20
+inference:
+  frame_compression: jpeg
+  jpeg_quality: 80
+  max_cameras: 4
+resources:
+  gpu_vram_limit_gb: 0
+  system_ram_limit_gb: 0
+  worker_ram_limit_gb: 0
+  workers_ram_limits: {}
+task_routing:
+  tracknet: auto
+  pose: auto
+  yolo: auto
+load_limits:
+  max_gpu_percent: 90
+  max_cpu_percent: 90
+  max_concurrent_inference: 16
+  throttle_interval_sec: 1

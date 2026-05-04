@@ -1,0 +1,50 @@
+private_docs/
+shuttlescope/docs/validation/
+
+# DB ファイル（backend/db/ 配下に統一）
+shuttlescope/backend/db/shuttlescope.db
+shuttlescope/shuttlescope.db
+shuttlescope/backend/db/*.db.bak_*
+shuttlescope/backend/db/*.db.sqlite-backup-*
+
+# 動画ファイル
+shuttlescope/videos/
+
+# TrackNet ウェイト（別途セットアップが必要）
+shuttlescope/backend/tracknet/weights/
+shuttlescope/backend/models/trt_cache/
+
+# ビルド成果物・キャッシュ
+shuttlescope/out/
+shuttlescope/node_modules/
+shuttlescope/backend/.venv/
+shuttlescope/backend/.venv-directml/
+shuttlescope/**/__pycache__/
+shuttlescope/**/*.pyc
+shuttlescope/.coverage
+
+# Local-only runtime diagnostics
+kernel.errors.txt
+
+# Local duplicate model copies
+shuttlescope/yolov8n.onnx
+
+# Local-only cluster helper scripts
+shuttlescope/check_nodes.py
+shuttlescope/fix_k10_ray.py
+shuttlescope/fix_k10_taskscheduler.py
+shuttlescope/run_k10_tasks.py
+shuttlescope/bench_k10_final.py
+shuttlescope/bench_tracknet.py
+shuttlescope/check_models.py
+shuttlescope/check_raylet_crash.py
+shuttlescope/check_raylet_crash2.py
+shuttlescope/fix_models_sftp.py
+shuttlescope/k10_debug.py
+shuttlescope/k10_fix.py
+shuttlescope/k10_stability.py
+shuttlescope/run_bench_bg.py
+shuttlescope/run_benchmarks_direct.py
+shuttlescope/run_benchmarks_now.py
+shuttlescope/run_final.py
+shuttlescope/test_dispatch_fixed.py

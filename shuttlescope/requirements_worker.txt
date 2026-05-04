@@ -1,0 +1,25 @@
+# K10 ワーカーノード最小依存パッケージ
+# ShuttleScope を完全インストールせずに Ray CPU ワーカーとして動作させる最小構成。
+# インストール:
+#   python -m venv C:\ss-worker
+#   C:\ss-worker\Scripts\pip install -r requirements_worker.txt
+# ─────────────────────────────────────────────────────────────
+
+# ── Ray クラスタ ──────────────────────────────────────────────
+ray[default]>=2.54.0         # GHSA-w4rh-fgx7-q63m / q279-jhrf-cc6v / q5fh-2hc8-f6rq 修正。
+                             # 未修正 CVE (GHSA-gx77-xgc2-4888 / 6wgj-66m2-xxp2) は
+                             # trusted network 内での運用前提でリスク受容（backend/osv-scanner.toml 参照）
+
+# ── ONNX 推論 (CPU のみ) ──────────────────────────────────────
+onnxruntime>=1.17.0
+
+# ── 数値・画像処理 ────────────────────────────────────────────
+numpy>=1.24.0
+opencv-python>=4.9.0
+
+# ── 姿勢推定 (MediaPipe) ─────────────────────────────────────
+mediapipe>=0.10.14
+
+# ── システム監視 ──────────────────────────────────────────────
+psutil>=5.9
+pyyaml>=6.0

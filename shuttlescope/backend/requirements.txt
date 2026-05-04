@@ -1,0 +1,76 @@
+# ShuttleScope バックエンド依存パッケージ
+# インストール: backend\.venv\Scripts\pip install -r requirements.txt
+# ────────────────────────────────────────────────────────────────
+
+# ── Web フレームワーク ────────────────────────────────────────────
+fastapi>=0.136.0              # CVE-2024-47874 / CVE-2025-54121 (via starlette) 修正のため bump
+starlette>=1.0.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.26
+pydantic-settings==2.1.0
+# pydantic.EmailStr 用バリデータ（pydantic[email] と同等）
+email-validator>=2.0
+
+# ── データベース ──────────────────────────────────────────────────
+sqlalchemy==2.0.27
+alembic==1.13.1
+psycopg2-binary==2.9.11      # PostgreSQL ドライバ（SQLite → PG 移行後に使用）
+
+# ── データ分析 ────────────────────────────────────────────────────
+pandas==2.2.0
+numpy==1.26.4
+scipy==1.12.0
+scikit-learn>=1.5.0          # CVE-2024-5206 修正
+matplotlib>=3.8.0
+polars>=1.0.0                # 高速 DataFrame（ベンチマーク・バルク集計で使用）
+
+# ── レポート生成 ──────────────────────────────────────────────────
+reportlab==4.1.0
+fpdf2>=2.7.0                 # PDF 代替ライブラリ
+
+# ── 動画・ネットワーク ─────────────────────────────────────────────
+yt-dlp>=2026.02.21           # CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785 / GHSA-g3gw-q23r-pgqm (netrc command injection) 修正
+imageio-ffmpeg>=0.6.0         # bundled ffmpeg (SYSTEM サービスから WinGet AppX shim が解決できない問題の回避)
+httpx==0.26.0
+
+# ── クラスタ / システム監視 ────────────────────────────────────────
+pyyaml>=6.0                  # cluster.config.yaml の読み書き
+psutil>=5.9                  # CPU / メモリ / ネットワーク IF 監視
+# ray>=2.54.0                # 分散推論。pip install "ray[default]" で別途導入（大容量）。
+#                            # 2.54 未満は複数 CVE あり (GHSA-w4rh-fgx7-q63m / q279-jhrf-cc6v / q5fh-2hc8-f6rq)。
+#                            # 未修正 CVE (GHSA-gx77-xgc2-4888 token auth, GHSA-6wgj-66m2-xxp2 jobs API) は
+#                            # ray cluster を trusted network 内に閉じる前提で運用する (ray 公式も trusted network 前提)。
+
+# ── テスト ─────────────────────────────────────────────────────────
+pytest>=9.0.3                # CVE-2025-71176 / GHSA-6w46-j5rx-g56g (tmpdir handling) 修正
+pytest-asyncio>=0.23.0
+
+# ── P3: TrackNet / 推論ランタイム ────────────────────────────────
+opencv-python>=4.9.0
+# OpenVINO アクセラレーション（Intel GPU / iGPU 対応）
+openvino>=2024.0; sys_platform != 'unsupported'
+# TensorFlow / tf2onnx: TrackNet の ONNX エクスポート時のみ必要
+# pip install tensorflow==2.15.1 tf2onnx==1.16.1
+
+# ── ONNX Runtime ─────────────────────────────────────────────────
+# GPU / DirectML 版は環境依存が強いため base requirements には含めない。
+# 必要な環境で scripts/setup_gpu.ps1 または個別 pip install により導入する。
+# ※ onnxruntime-gpu と onnxruntime-directml は競合するため同時インストール不可
+# onnxruntime-gpu>=1.17.0       # CUDA EP（NVIDIA、setup_gpu.ps1 で導入）
+# onnxruntime-directml>=1.17.0  # DirectML EP（AMD iGPU / Intel、CUDA 未使用環境）
+# onnxruntime>=1.17.0           # CPU のみ環境
+
+# ── GPU 推論 ─────────────────────────────────────────────────────
+# torch / torchvision CUDA 版は setup_gpu.ps1 で導入（数 GB のため requirements から除外）
+#   RTX 50xx (Blackwell sm_120): pip install --index-url https://download.pytorch.org/whl/cu128 torch>=2.6 torchvision
+#   RTX 40xx 以前:               pip install --index-url https://download.pytorch.org/whl/cu124 torch>=2.4 torchvision
+mediapipe>=0.10.14               # MediaPipe Pose（姿勢推定）
+nvidia-ml-py>=12.0               # NVIDIA GPU 監視（旧 pynvml の後継）
+
+# ── P4: YOLO プレイヤー検出 ───────────────────────────────────────
+# ultralytics が torch / torchvision を自動インストールする
+ultralytics>=8.0
+python-jose[cryptography]>=3.4.0  # JWT トークン生成・検証 / CVE-2024-33663 / CVE-2024-33664 修正
+bcrypt>=4.0.0                     # パスワードハッシュ（passlib は bcrypt 4+ 非互換のため直接使用）
+pyzipper>=0.3.6                   # Phase A2: バックアップ ZIP の AES-256 暗号化
+hypothesis>=6.100,<6.150          # Phase B1: Security Invariants property-based テスト (6.150+ は TreeNode API 非互換バグあり)

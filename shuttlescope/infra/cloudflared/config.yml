@@ -1,0 +1,21 @@
+# ShuttleScope Cloudflare Tunnel config (named tunnel)
+# Replace <UUID> and <USER> after:
+# 1. cloudflared tunnel login
+# 2. cloudflared tunnel create shuttlescope
+# 3. cloudflared tunnel route dns shuttlescope app.shuttle-scope.com
+
+tunnel: <UUID>
+credentials-file: C:\Users\<USER>\.cloudflared\<UUID>.json
+# Linux example: /home/<USER>/.cloudflared/<UUID>.json
+
+ingress:
+  - hostname: app.shuttle-scope.com
+    service: http://localhost:8765
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: true
+
+  - hostname: ssh.shuttle-scope.com
+    service: ssh://localhost:22
+
+  - service: http_status:404
