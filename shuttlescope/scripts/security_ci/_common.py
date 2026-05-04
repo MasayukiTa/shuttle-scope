@@ -14,8 +14,8 @@ PORT = int(os.environ.get("SS_ATTACK_PORT", "443"))
 INSECURE = os.environ.get("SS_ATTACK_INSECURE", "0") == "1"
 
 if INSECURE:
-    # nosec B323: opt-in via SS_ATTACK_INSECURE=1, used only for local backend
-    CTX = ssl._create_unverified_context()  # noqa: S323
+    # opt-in via SS_ATTACK_INSECURE=1, used only for local backend
+    CTX = ssl._create_unverified_context()  # nosec B323
 else:
     CTX = ssl.create_default_context()
 

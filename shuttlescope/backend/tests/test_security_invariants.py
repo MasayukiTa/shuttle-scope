@@ -235,10 +235,10 @@ def test_inv13_path_jail_outside_root_always_false(name):
     import os as _os
     from pathlib import Path as _P
     # 適当な異なる 2 ディレクトリを生成
-    root = _P(_os.path.abspath("/tmp/test_jail_root_xyz"))
+    root = _P(_os.path.abspath("/tmp/test_jail_root_xyz"))  # nosec B108
     # name を sanitize して攻撃的入力でも例外なく False になることを確認
     safe_name = "".join(c for c in name if c.isalnum() or c in "._-")[:40] or "x"
-    target = _P(_os.path.abspath(f"/tmp/somewhere_else/{safe_name}"))
+    target = _P(_os.path.abspath(f"/tmp/somewhere_else/{safe_name}"))  # nosec B108
     assert is_within(target, root) is False
 
 

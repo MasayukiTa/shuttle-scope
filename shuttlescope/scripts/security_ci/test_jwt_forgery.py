@@ -32,7 +32,7 @@ TOKS = {
     "expired":            make_jwt({"alg": "HS256", "typ": "JWT"}, {"sub": "1", "role": "admin", "exp": NOW - 3600}, key=b"x"),
     "no_sub":             make_jwt({"alg": "HS256", "typ": "JWT"}, {"role": "admin", "exp": NOW + 3600}, key=b"x"),
     "kid_inj":            make_jwt({"alg": "HS256", "kid": "../../etc/passwd", "typ": "JWT"}, {"sub": "1", "role": "admin", "exp": NOW + 3600}, key=b"x"),
-    "jku_inj":            make_jwt({"alg": "HS256", "jku": "http://evil.example.com/jwks", "typ": "JWT"}, {"sub": "1", "role": "admin", "exp": NOW + 3600}, key=b"x"),
+    "jku_inj":            make_jwt({"alg": "HS256", "jku": "http://evil.example.com/jwks", "typ": "JWT"}, {"sub": "1", "role": "admin", "exp": NOW + 3600}, key=b"x"),  # DevSkim: ignore DS137138
     "role_pwn":           make_jwt({"alg": "HS256"}, {"sub": "5", "role": "admin", "exp": NOW + 3600}, key=b"x"),
     "garbage":            "not.a.jwt.at.all",
     "empty":              "",

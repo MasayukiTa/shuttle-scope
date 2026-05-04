@@ -95,8 +95,8 @@ def main() -> int:
     with SessionLocal() as db:
         for table, column in TARGETS:
             logger.info("Processing %s.%s ...", table, column)
-            # nosec B608: table/column come from TARGETS constant (allow-list), not user input.
-            rows = db.execute(text(f"SELECT id, {column} FROM {table} WHERE {column} IS NOT NULL")).fetchall()  # noqa: S608
+            # table/column come from TARGETS constant (allow-list), not user input.
+            rows = db.execute(text(f"SELECT id, {column} FROM {table} WHERE {column} IS NOT NULL")).fetchall()  # nosec B608
             for r in rows:
                 total_rows += 1
                 rid = r[0]
@@ -110,8 +110,8 @@ def main() -> int:
                     continue
                 new_ct = _encrypt_with(plaintext, new_f)
                 if not args.dry_run:
-                    # nosec B608: identifiers come from TARGETS allow-list; values are bound parameters.
-                    db.execute(  # noqa: S608
+                    # identifiers come from TARGETS allow-list; values are bound parameters.
+                    db.execute(  # nosec B608
                         text(f"UPDATE {table} SET {column} = :v WHERE id = :id"),
                         {"v": new_ct, "id": rid},
                     )
