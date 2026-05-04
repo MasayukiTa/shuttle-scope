@@ -9,6 +9,10 @@ export type InputStep =
 export interface PendingStroke {
   shot_type?: ShotType
   hit_zone?: Zone9
+  /** Phase A: CV 自動推定値 (人間 override 前のオリジナル) */
+  hit_zone_cv?: Zone9 | null
+  /** Phase A: 'cv' = CV 値そのまま / 'manual' = 人間 override */
+  hit_zone_source?: 'cv' | 'manual'
   land_zone?: LandZone
   is_backhand: boolean
   is_around_head: boolean
@@ -78,6 +82,8 @@ interface AnnotationState {
   selectLandZone: (zone: LandZone) => void  // 落点クリック or テンキー → 自動確定
   skipLandZone: () => void                // 落点スキップ（0キー / Numpad0）→ 自動確定
   selectHitZone: (zone: Zone9) => void    // 打点（任意で上書き）
+  // Phase A: 打点を人間が override (HitZoneSelector からのタップ)
+  setHitZoneOverride: (zone: Zone9) => void
   toggleAttribute: (key: 'is_backhand' | 'is_around_head') => void
   setAboveNet: (v: boolean | undefined) => void
   cycleAboveNet: () => void              // ネット上下サイクル（未指定→上→下→未指定）
@@ -204,12 +210,28 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       })
     }
 
+    // Phase A: 打点 CV 推定値を先行計算 (HitZoneSelector で preselect 表示)
+    // ロジックは selectLandZone と同等: 直前ストロークの land_zone (有効な場合) を使う
+    const stateNow = get()
+    const prevStroke = stateNow.currentStrokes[stateNow.currentStrokes.length - 1]
+    const NET_ZONES_LOCAL: ZoneNet[] = ['NET_L', 'NET_C', 'NET_R']
+    const prevLandIsValid = prevStroke?.land_zone &&
+      !String(prevStroke.land_zone).startsWith('OB_') &&
+      !(NET_ZONES_LOCAL as string[]).includes(prevStroke.land_zone)
+    const cvHitZone: Zone9 | null = prevLandIsValid
+      ? (prevStroke!.land_zone as Zone9)
+      : null
+
     // 通常: ショット入力後に落点待ち
     set((s) => ({
       pendingStroke: {
         ...s.pendingStroke,
         shot_type: shotType,
         timestamp_sec: timestamp,
+        // Phase A: CV preselect 値を pendingStroke に格納
+        hit_zone_cv: cvHitZone,
+        hit_zone: cvHitZone ?? s.pendingStroke.hit_zone,
+        hit_zone_source: 'cv',
       },
       inputStep: 'land_zone',
     }))
@@ -230,11 +252,23 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       ? (prevStroke!.land_zone as Zone9)
       : state.pendingStroke.hit_zone
 
+    // Phase A: hit_zone_source の決定。
+    // pendingStroke.hit_zone_source が既に 'manual' なら override 済として保持。
+    // それ以外（CV値そのまま or autoHitZone 由来）は 'cv' 扱い。
+    const finalHitZone = state.pendingStroke.hit_zone_source === 'manual'
+      ? state.pendingStroke.hit_zone
+      : autoHitZone
+    const hitZoneSource: 'cv' | 'manual' =
+      state.pendingStroke.hit_zone_source === 'manual' ? 'manual' : 'cv'
+    const cvOriginal = state.pendingStroke.hit_zone_cv ?? autoHitZone ?? null
+
     const stroke: StrokeInput = {
       stroke_num: state.currentStrokeNum,
       player: state.isDoubles ? state.currentHitter : state.currentPlayer,
       shot_type: state.pendingStroke.shot_type,
-      hit_zone: autoHitZone,
+      hit_zone: finalHitZone,
+      hit_zone_source: hitZoneSource,
+      hit_zone_cv_original: cvOriginal,
       land_zone: zone,
       is_backhand: state.pendingStroke.is_backhand,
       is_around_head: state.pendingStroke.is_around_head,
@@ -268,11 +302,20 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     const prevStroke = state.currentStrokes[state.currentStrokes.length - 1]
     const autoHitZone = prevStroke?.land_zone ?? state.pendingStroke.hit_zone
 
+    const finalHitZone = state.pendingStroke.hit_zone_source === 'manual'
+      ? (state.pendingStroke.hit_zone as Zone9 | undefined)
+      : (autoHitZone as Zone9 | undefined)
+    const hitZoneSource: 'cv' | 'manual' =
+      state.pendingStroke.hit_zone_source === 'manual' ? 'manual' : 'cv'
+    const cvOriginal = state.pendingStroke.hit_zone_cv ?? (autoHitZone as Zone9 | undefined) ?? null
+
     const stroke: StrokeInput = {
       stroke_num: state.currentStrokeNum,
       player: state.isDoubles ? state.currentHitter : state.currentPlayer,
       shot_type: state.pendingStroke.shot_type,
-      hit_zone: autoHitZone as StrokeInput['hit_zone'],
+      hit_zone: finalHitZone,
+      hit_zone_source: hitZoneSource,
+      hit_zone_cv_original: cvOriginal,
       land_zone: undefined,
       is_backhand: state.pendingStroke.is_backhand,
       is_around_head: state.pendingStroke.is_around_head,
@@ -297,6 +340,21 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   // 打点の手動上書き
   selectHitZone: (zone) =>
     set((s) => ({ pendingStroke: { ...s.pendingStroke, hit_zone: zone } })),
+
+  // Phase A: HitZoneSelector からのユーザ override
+  // CV 値と一致するなら source='cv'、違うなら 'manual'
+  setHitZoneOverride: (zone) =>
+    set((s) => {
+      const cv = s.pendingStroke.hit_zone_cv ?? null
+      const source: 'cv' | 'manual' = (cv != null && zone === cv) ? 'cv' : 'manual'
+      return {
+        pendingStroke: {
+          ...s.pendingStroke,
+          hit_zone: zone,
+          hit_zone_source: source,
+        },
+      }
+    }),
 
   // 属性トグル（ラリー中いつでも変更可能）
   toggleAttribute: (key) =>

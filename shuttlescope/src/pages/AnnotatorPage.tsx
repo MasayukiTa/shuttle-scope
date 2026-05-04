@@ -13,6 +13,9 @@ import { WebViewPlayer } from '@/components/video/WebViewPlayer'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
+import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
+import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
+import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SessionShareModal } from '@/components/annotation/SessionShareModal'
@@ -175,6 +178,8 @@ function isWinnerBlocked(
 
 export function AnnotatorPage() {
   const { matchId } = useParams<{ matchId: string }>()
+  // Phase A: オフライン未送信ラリーの自動再送
+  useOfflineSync(matchId ? Number(matchId) : null)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { t } = useTranslation()
@@ -502,7 +507,7 @@ export function AnnotatorPage() {
       // バックグラウンド保存
       const storeState = useAnnotationStore.getState()
       storeState.incrementPending()
-      apiPost<{ success: boolean; data: { rally_id: number; stroke_count: number } }>('/strokes/batch', {
+      const batchPayload = {
         rally: {
           set_id: setId,
           rally_num: rallyNum,
@@ -521,6 +526,9 @@ export function AnnotatorPage() {
           player: st.player,
           shot_type: st.shot_type,
           hit_zone: st.hit_zone,
+          // Phase A: 打点ソース + CV 元値
+          hit_zone_source: st.hit_zone_source,
+          hit_zone_cv_original: st.hit_zone_cv_original,
           land_zone: st.land_zone,
           is_backhand: st.is_backhand,
           is_around_head: st.is_around_head,
@@ -534,7 +542,16 @@ export function AnnotatorPage() {
           movement_direction: st.movement_direction,
           source_method: isBasicMode ? 'manual' : 'assisted',
         })),
-      }).then((res) => {
+      }
+      // Phase A: オフライン耐性 — 送信前に IndexedDB へ stash、成功時に削除
+      void stashPending({
+        matchId: matchId!,
+        setId,
+        rallyNum,
+        payload: batchPayload,
+        queued_at: new Date().toISOString(),
+      })
+      apiPost<{ success: boolean; data: { rally_id: number; stroke_count: number } }>('/strokes/batch', batchPayload).then((res) => {
         useAnnotationStore.getState().decrementPending()
         queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
         queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
@@ -542,12 +559,15 @@ export function AnnotatorPage() {
           setLastSavedRallyId(res.data.rally_id)
           setReviewLaterAdded(false)
         }
+        // Phase A: 送信成功 → stash 削除
+        void removePending(matchId!, setId, rallyNum)
       }).catch((err: any) => {
         useAnnotationStore.getState().decrementPending()
         useAnnotationStore.getState().addSaveError({
           rallyNum,
           error: err?.message ?? '保存失敗',
         })
+        // stash は残す → useOfflineSync が再送する
       })
     },
     [matchId, queryClient]
@@ -3506,7 +3526,15 @@ export function AnnotatorPage() {
                     </span>
                   )}
                 </div>
-                <div className="flex justify-center">
+                <div className="flex flex-col sm:flex-row justify-center items-start gap-3">
+                  {/* Phase A: 打点 (hit_zone) マニュアル override タイル */}
+                  <HitZoneSelector
+                    cvPrediction={(store.pendingStroke.hit_zone_cv ?? null) as Zone9 | null}
+                    selectedZone={(store.pendingStroke.hit_zone ?? null) as Zone9 | null}
+                    onZoneSelect={(z) => store.setHitZoneOverride(z)}
+                    isOverridden={store.pendingStroke.hit_zone_source === 'manual'}
+                    cellSize={isMobile ? 56 : 48}
+                  />
                   <CourtDiagram
                     mode={store.currentPlayer === 'player_b' ? 'hit' : 'land'}
                     selectedZone={store.pendingStroke.land_zone ?? null}

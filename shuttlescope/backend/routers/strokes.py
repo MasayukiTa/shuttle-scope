@@ -44,6 +44,10 @@ class StrokeData(BaseModel):
     land_x: Optional[float] = None
     land_y: Optional[float] = None
     hit_zone: Optional[str] = None
+    # Phase A: 'cv' = CV 自動推定 / 'manual' = 人間 override
+    hit_zone_source: Optional[str] = None
+    # Phase A: CV 元推定値 (override 後も保持)
+    hit_zone_cv_original: Optional[str] = None
     land_zone: Optional[str] = None
     is_backhand: bool = False
     is_around_head: bool = False
@@ -107,6 +111,8 @@ def stroke_to_dict(s: Stroke) -> dict:
         "land_x": s.land_x,
         "land_y": s.land_y,
         "hit_zone": s.hit_zone,
+        "hit_zone_source": s.hit_zone_source,
+        "hit_zone_cv_original": s.hit_zone_cv_original,
         "land_zone": s.land_zone,
         "is_backhand": s.is_backhand,
         "is_around_head": s.is_around_head,
