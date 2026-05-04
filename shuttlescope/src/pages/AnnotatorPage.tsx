@@ -14,6 +14,9 @@ import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
+// U1 (UX redesign): 上バー圧縮用のドロップダウン menu + 大型 Score 表示
+import { TopBarMenu } from '@/components/annotator/TopBarMenu'
+import { TopBarScore } from '@/components/annotator/TopBarScore'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
@@ -1672,7 +1675,7 @@ export function AnnotatorPage() {
           <ArrowLeft size={isMobile ? 18 : 16} />
           {!isMobile && '戻る'}
         </button>
-        <div className={clsx('font-medium truncate mx-2 min-w-0', isMobile ? 'text-xs' : 'text-sm')}>
+        <div className={clsx('font-medium truncate mx-2 min-w-0 flex-1 text-gray-300', isMobile ? 'text-xs' : 'text-sm')}>
           {match ? (() => {
             const isDoubles = match.format !== 'singles'
             const sideA = isDoubles && match.partner_a
@@ -1683,6 +1686,16 @@ export function AnnotatorPage() {
               : (match.player_b?.name ?? 'B')
             return isMobile ? `${sideA} vs ${sideB}` : `${match.tournament} — ${sideA} vs ${sideB}`
           })() : 'ShuttleScope'}
+        </div>
+
+        {/* U1: 中央スコア表示 (大型) */}
+        <div className="shrink-0 mx-2">
+          <TopBarScore
+            scoreA={store.scoreA}
+            scoreB={store.scoreB}
+            setNum={store.currentSetNum}
+            isMobile={isMobile}
+          />
         </div>
 
         {/* デスクトップ: 全ボタン表示 */}
