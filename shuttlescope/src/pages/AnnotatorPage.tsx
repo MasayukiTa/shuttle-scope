@@ -16,6 +16,7 @@ import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
+import { useHapticFeedback } from '@/hooks/useHapticFeedback'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
 import { SetIntervalSummary } from '@/components/analysis/SetIntervalSummary'
 import { SessionShareModal } from '@/components/annotation/SessionShareModal'
@@ -180,6 +181,8 @@ export function AnnotatorPage() {
   const { matchId } = useParams<{ matchId: string }>()
   // Phase A: オフライン未送信ラリーの自動再送
   useOfflineSync(matchId ? Number(matchId) : null)
+  // Phase C speed: 触覚フィードバック (モバイル/タブレットのみ実効)
+  const haptic = useHapticFeedback()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { t } = useTranslation()
@@ -3491,6 +3494,7 @@ export function AnnotatorPage() {
                 <ShotTypePanel
                   selected={store.pendingStroke.shot_type ?? null}
                   onSelect={(st: ShotType) => {
+                    haptic.tap()
                     store.inputShotType(st, getTimestamp())
                   }}
                   disabled={false}
@@ -3531,14 +3535,14 @@ export function AnnotatorPage() {
                   <HitZoneSelector
                     cvPrediction={(store.pendingStroke.hit_zone_cv ?? null) as Zone9 | null}
                     selectedZone={(store.pendingStroke.hit_zone ?? null) as Zone9 | null}
-                    onZoneSelect={(z) => store.setHitZoneOverride(z)}
+                    onZoneSelect={(z) => { haptic.tap(); store.setHitZoneOverride(z) }}
                     isOverridden={store.pendingStroke.hit_zone_source === 'manual'}
                     cellSize={isMobile ? 56 : 48}
                   />
                   <CourtDiagram
                     mode={store.currentPlayer === 'player_b' ? 'hit' : 'land'}
                     selectedZone={store.pendingStroke.land_zone ?? null}
-                    onZoneSelect={(zone: LandZone) => store.selectLandZone(zone)}
+                    onZoneSelect={(zone: LandZone) => { haptic.strokeConfirm(); store.selectLandZone(zone) }}
                     interactive={true}
                     showOOB={true}
                     label={undefined}
@@ -3551,7 +3555,7 @@ export function AnnotatorPage() {
                   />
                 </div>
                 <button
-                  onClick={() => store.skipLandZone()}
+                  onClick={() => { haptic.strokeConfirm(); store.skipLandZone() }}
                   className={clsx(
                     'text-gray-500 hover:text-gray-300 text-center',
                     useLargeTouch ? 'py-2 text-sm' : 'py-0.5 text-xs'
@@ -3977,6 +3981,7 @@ export function AnnotatorPage() {
               {store.currentStrokes.length > 0 && (
                 <button
                   onClick={() => {
+                    haptic.undo()
                     const removed = store.undoLastStroke()
                     if (removed?.timestamp_sec != null && videoRef.current) {
                       videoRef.current.currentTime = removed.timestamp_sec

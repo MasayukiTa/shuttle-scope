@@ -42,7 +42,7 @@ export const CATEGORY_STYLES: Record<ShotCategory, CategoryStyle> = {
     border: 'border-green-700',
     icon: '◆',
     labelKey: 'shot_color_categories.attack',
-    ringSelected: 'ring-2 ring-green-300',
+    ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
   },
   // NET 🔵 — cyan-600
   net: {
@@ -52,7 +52,7 @@ export const CATEGORY_STYLES: Record<ShotCategory, CategoryStyle> = {
     border: 'border-cyan-700',
     icon: '●',
     labelKey: 'shot_color_categories.net',
-    ringSelected: 'ring-2 ring-cyan-300',
+    ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
   },
   // MID 🟡 — yellow-500 (黄色背景は暗文字でコントラスト確保)
   mid: {
@@ -62,7 +62,7 @@ export const CATEGORY_STYLES: Record<ShotCategory, CategoryStyle> = {
     border: 'border-yellow-600',
     icon: '■',
     labelKey: 'shot_color_categories.mid',
-    ringSelected: 'ring-2 ring-yellow-300',
+    ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
   },
   // SERVE 🟣 — violet-600
   serve: {
@@ -72,7 +72,7 @@ export const CATEGORY_STYLES: Record<ShotCategory, CategoryStyle> = {
     border: 'border-violet-700',
     icon: '★',
     labelKey: 'shot_color_categories.serve',
-    ringSelected: 'ring-2 ring-violet-300',
+    ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
   },
   // OTHER ⚫ — slate-600
   other: {
@@ -82,7 +82,7 @@ export const CATEGORY_STYLES: Record<ShotCategory, CategoryStyle> = {
     border: 'border-slate-700',
     icon: '✕',
     labelKey: 'shot_color_categories.other',
-    ringSelected: 'ring-2 ring-slate-300',
+    ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
   },
 }
 

@@ -55,6 +55,16 @@ interface AnnotationState {
   pendingSaveCount: number
   saveErrors: SaveError[]
 
+  // Phase C speed: セミ自動 flip 制御
+  // 'auto'      = 既存挙動 (常に flip)
+  // 'semi-auto' = flip するが 500ms 以内の次ショット tap で revert
+  // 'manual'    = flip しない (打者 tap が常に必要)
+  flipMode: 'auto' | 'semi-auto' | 'manual'
+  /** 直前 flip の時刻 (semi-auto の bounce 判定用) */
+  lastFlipAt: number | null
+  /** flip 直前の player (revert 用) */
+  playerBeforeFlip: 'player_a' | 'player_b' | null
+
   // アクション
   init: (
     matchId: number,
@@ -122,6 +132,22 @@ interface AnnotationState {
 
   // セット移行
   nextSet: (setId: number, setNum: number) => void
+
+  // Phase C speed: flip mode 設定 (localStorage 保存)
+  setFlipMode: (mode: 'auto' | 'semi-auto' | 'manual') => void
+}
+
+// Phase C speed: bounce 判定窓 (ms)
+const FLIP_BOUNCE_WINDOW_MS = 500
+const FLIP_MODE_KEY = 'ss_flip_mode'
+
+function loadFlipMode(): 'auto' | 'semi-auto' | 'manual' {
+  if (typeof window === 'undefined') return 'semi-auto'
+  try {
+    const v = window.localStorage.getItem(FLIP_MODE_KEY)
+    if (v === 'auto' || v === 'semi-auto' || v === 'manual') return v
+  } catch { /* noop */ }
+  return 'semi-auto'
 }
 
 const emptyPending = (): PendingStroke => ({
@@ -149,6 +175,9 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   undoStack: [],
   pendingSaveCount: 0,
   saveErrors: [],
+  flipMode: loadFlipMode(),
+  lastFlipAt: null,
+  playerBeforeFlip: null,
 
   // K-002: 保存キュー操作
   incrementPending: () => set((s) => ({ pendingSaveCount: s.pendingSaveCount + 1 })),
@@ -207,6 +236,24 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
         currentStrokes: [],
         undoStack: [],
         currentStrokeNum: 1,
+      })
+    }
+
+    // Phase C speed: semi-auto flip の bounce revert
+    // 直前 flip から 500ms 以内の連続入力 → 同じ打者の連続ショットとして扱う
+    const now = Date.now()
+    const stateBounce = get()
+    if (
+      stateBounce.flipMode === 'semi-auto'
+      && stateBounce.lastFlipAt != null
+      && stateBounce.playerBeforeFlip != null
+      && (now - stateBounce.lastFlipAt) < FLIP_BOUNCE_WINDOW_MS
+    ) {
+      set({
+        currentPlayer: stateBounce.playerBeforeFlip,
+        currentHitter: stateBounce.playerBeforeFlip,
+        playerBeforeFlip: null,
+        lastFlipAt: null,
       })
     }
 
@@ -276,8 +323,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       timestamp_sec: state.pendingStroke.timestamp_sec,
     }
 
-    const nextPlayer: 'player_a' | 'player_b' =
-      state.currentPlayer === 'player_a' ? 'player_b' : 'player_a'
+    // Phase C speed: flipMode に応じた次打者決定
+    const willFlip = state.flipMode !== 'manual'
+    const nextPlayer: 'player_a' | 'player_b' = willFlip
+      ? (state.currentPlayer === 'player_a' ? 'player_b' : 'player_a')
+      : state.currentPlayer
 
     const isOOB = String(zone).startsWith('OB_')
     const isNet = (NET_ZONES as string[]).includes(zone)
@@ -291,6 +341,9 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       pendingStroke: emptyPending(),
       // OOB/NETならそのままrally_end（ラリー終了確定）
       inputStep: isOOB || isNet ? 'rally_end' : 'idle',
+      // Phase C speed: bounce revert 用に直前 player を覚える
+      lastFlipAt: willFlip ? Date.now() : null,
+      playerBeforeFlip: willFlip ? state.currentPlayer : null,
     })
   },
 
@@ -323,8 +376,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       timestamp_sec: state.pendingStroke.timestamp_sec,
     }
 
-    const nextPlayer: 'player_a' | 'player_b' =
-      state.currentPlayer === 'player_a' ? 'player_b' : 'player_a'
+    // Phase C speed: flipMode に応じた次打者決定
+    const willFlip = state.flipMode !== 'manual'
+    const nextPlayer: 'player_a' | 'player_b' = willFlip
+      ? (state.currentPlayer === 'player_a' ? 'player_b' : 'player_a')
+      : state.currentPlayer
 
     set({
       currentStrokes: [...state.currentStrokes, stroke],
@@ -334,6 +390,9 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       currentHitter: nextPlayer,  // 次チームの主プレイヤーにリセット
       pendingStroke: emptyPending(),
       inputStep: 'idle',
+      // Phase C speed: bounce revert 用に直前 player を覚える
+      lastFlipAt: willFlip ? Date.now() : null,
+      playerBeforeFlip: willFlip ? state.currentPlayer : null,
     })
   },
 
@@ -472,6 +531,14 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       // currentPlayer はセット最終ラリーの勝者を引き継ぐ（バドミントンルール）
       currentHitter: s.currentPlayer,  // ダブルス: セット開始時は主プレイヤーにリセット
     })),
+
+  // Phase C speed: flipMode 設定 (localStorage 永続化)
+  setFlipMode: (mode) => {
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.setItem(FLIP_MODE_KEY, mode) } catch { /* noop */ }
+    }
+    set({ flipMode: mode, lastFlipAt: null, playerBeforeFlip: null })
+  },
 
   // 見逃しラリー: スコア更新 + サーバー更新（ストロークなし）
   skipRallyState: (winner) => {
