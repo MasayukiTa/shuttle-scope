@@ -13,6 +13,7 @@
  * その props を渡す形で実装する。
  */
 import { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 
 interface ReviewModePanelProps {
@@ -29,24 +30,24 @@ export function ReviewModePanel({
   identityMappingCount = 0,
   swingEventCount = 0,
 }: ReviewModePanelProps) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       <header className="flex items-center justify-between px-3 py-2 border-b border-gray-700 shrink-0 bg-gray-800/40">
         <div className="flex items-center gap-2 text-sm font-medium text-gray-200">
           <MIcon name="visibility" size={18} />
-          確認モード
+          {t('annotator.ux.review_header')}
         </div>
         <div className="flex items-center gap-3 text-[10px] text-gray-500">
-          <span>境界候補 {rallyBoundaryCount}</span>
-          <span>ID紐付 {identityMappingCount}</span>
-          <span>Swing {swingEventCount}</span>
+          <span>{t('annotator.ux.review_count_boundary', { n: rallyBoundaryCount })}</span>
+          <span>{t('annotator.ux.review_count_identity', { n: identityMappingCount })}</span>
+          <span>{t('annotator.ux.review_count_swing', { n: swingEventCount })}</span>
         </div>
       </header>
       <div className="flex-1 px-3 py-2 space-y-3">
         {cvAssist ?? (
           <div className="text-xs text-gray-500 leading-relaxed">
-            CV 候補・ラリー境界候補・identity マッピングなどがここに表示されます。
-            データがまだ無いラリーでは何も表示されません。
+            {t('annotator.ux.review_empty')}
           </div>
         )}
       </div>

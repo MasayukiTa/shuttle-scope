@@ -14,6 +14,7 @@
  * 各トグルは props で個別に制御可能。data なし時は disabled。
  */
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 
 interface ToggleSpec {
@@ -37,25 +38,26 @@ interface VideoOverlayTogglesProps {
 export function VideoOverlayToggles({
   cv, shuttle, court, pose, fullscreen, className,
 }: VideoOverlayTogglesProps) {
+  const { t } = useTranslation()
   const toggles: ToggleSpec[] = []
   if (cv) toggles.push({
-    key: 'cv', icon: 'directions_run', label: '人物検出',
+    key: 'cv', icon: 'directions_run', label: t('annotator.ux.overlay_cv'),
     on: cv.on, onClick: cv.toggle, disabled: cv.available === false,
   })
   if (shuttle) toggles.push({
-    key: 'shuttle', icon: 'sports_tennis', label: 'シャトル軌跡',
+    key: 'shuttle', icon: 'sports_tennis', label: t('annotator.ux.overlay_shuttle'),
     on: shuttle.on, onClick: shuttle.toggle, disabled: shuttle.available === false,
   })
   if (court) toggles.push({
-    key: 'court', icon: 'grid_on', label: 'コートゾーン',
+    key: 'court', icon: 'grid_on', label: t('annotator.ux.overlay_court'),
     on: court.on, onClick: court.toggle, disabled: court.available === false,
   })
   if (pose) toggles.push({
-    key: 'pose', icon: 'accessibility_new', label: 'ポーズ',
+    key: 'pose', icon: 'accessibility_new', label: t('annotator.ux.overlay_pose'),
     on: pose.on, onClick: pose.toggle, disabled: pose.available === false,
   })
   if (fullscreen) toggles.push({
-    key: 'fullscreen', icon: fullscreen.on ? 'fullscreen_exit' : 'fullscreen', label: '全画面',
+    key: 'fullscreen', icon: fullscreen.on ? 'fullscreen_exit' : 'fullscreen', label: t('annotator.ux.overlay_fullscreen'),
     on: fullscreen.on, onClick: fullscreen.toggle,
   })
 

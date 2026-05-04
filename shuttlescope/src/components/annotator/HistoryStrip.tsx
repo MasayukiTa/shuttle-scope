@@ -5,6 +5,7 @@
  * 折り畳みボタンで非表示にもできる (画面小さい時)。
  */
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { MIcon } from '@/components/common/MIcon'
 import { getStyleForShot } from '@/constants/shotTypeColors'
@@ -17,6 +18,7 @@ interface HistoryStripProps {
 }
 
 export function HistoryStrip({ strokes, onSeek, maxItems = 5 }: HistoryStripProps) {
+  const { t } = useTranslation()
   const [collapsed, setCollapsed] = useState(false)
   const recent = strokes.slice(-maxItems)
 
@@ -27,13 +29,13 @@ export function HistoryStrip({ strokes, onSeek, maxItems = 5 }: HistoryStripProp
         className="w-full flex items-center justify-between px-3 py-1 text-[10px] text-gray-500 hover:text-gray-300"
         aria-expanded={!collapsed}
       >
-        <span className="uppercase tracking-wider">直近のストローク ({strokes.length})</span>
+        <span className="uppercase tracking-wider">{t('annotator.ux.history_title', { n: strokes.length })}</span>
         <MIcon name={collapsed ? 'expand_less' : 'expand_more'} size={14} />
       </button>
       {!collapsed && (
         <div className="px-3 pb-2 overflow-x-auto">
           {recent.length === 0 ? (
-            <div className="text-xs text-gray-600 py-1.5">まだストロークがありません</div>
+            <div className="text-xs text-gray-600 py-1.5">{t('annotator.ux.history_empty')}</div>
           ) : (
             <ol className="flex items-center gap-2 min-w-min">
               {recent.map((s) => {

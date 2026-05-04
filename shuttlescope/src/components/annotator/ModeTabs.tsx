@@ -1,26 +1,24 @@
 /**
- * U2: AnnotatorPage 上バー左の 4 モードタブ.
- *
- * 入力 / 確認 / 解析 / 設定 を切替。
- * アイコンは Google Material Symbols (Outlined) を使用 (@/components/common/MIcon)。
+ * U2 / UX-R2: AnnotatorPage 上バー左の 4 モードタブ。
+ * 入力 / 確認 / 解析 / 設定 を切替。Material Symbols + i18n。
  */
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 
 import { MIcon } from '@/components/common/MIcon'
 import { AnnotatorMode, useAnnotatorModeStore } from '@/store/annotatorModeStore'
 
 interface TabSpec {
   key: AnnotatorMode
-  label: string
-  shortLabel: string
-  icon: string  // Material Symbols name
+  labelKey: string
+  icon: string
 }
 
 const TABS: TabSpec[] = [
-  { key: 'input',    label: '入力', shortLabel: '入力', icon: 'edit_note' },
-  { key: 'review',   label: '確認', shortLabel: '確認', icon: 'visibility' },
-  { key: 'analysis', label: '解析', shortLabel: '解析', icon: 'analytics' },
-  { key: 'settings', label: '設定', shortLabel: '設定', icon: 'settings' },
+  { key: 'input',    labelKey: 'annotator.ux.mode_input',    icon: 'edit_note' },
+  { key: 'review',   labelKey: 'annotator.ux.mode_review',   icon: 'visibility' },
+  { key: 'analysis', labelKey: 'annotator.ux.mode_analysis', icon: 'analytics' },
+  { key: 'settings', labelKey: 'annotator.ux.mode_settings', icon: 'settings' },
 ]
 
 interface ModeTabsProps {
@@ -29,16 +27,18 @@ interface ModeTabsProps {
 }
 
 export function ModeTabs({ isMobile, className }: ModeTabsProps) {
+  const { t } = useTranslation()
   const mode = useAnnotatorModeStore((s) => s.mode)
   const setMode = useAnnotatorModeStore((s) => s.setMode)
   return (
     <div
       className={clsx('flex items-center gap-0.5 shrink-0', className)}
       role="tablist"
-      aria-label="モード切替"
+      aria-label={t('annotator.ux.mode_aria')}
     >
-      {TABS.map(({ key, label, shortLabel, icon }) => {
+      {TABS.map(({ key, labelKey, icon }) => {
         const active = mode === key
+        const label = t(labelKey)
         return (
           <button
             key={key}
@@ -56,7 +56,7 @@ export function ModeTabs({ isMobile, className }: ModeTabsProps) {
             title={label}
           >
             <MIcon name={icon} size={isMobile ? 14 : 16} fill={active ? 1 : 0} />
-            <span>{isMobile ? shortLabel : label}</span>
+            <span>{label}</span>
           </button>
         )
       })}
