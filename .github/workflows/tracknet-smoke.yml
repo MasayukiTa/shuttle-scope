@@ -45,7 +45,10 @@ jobs:
           python -m pip install -r backend/requirements.txt
           python -m pip install tensorflow tf2onnx
 
-      - name: Download weights and export ONNX
+      - name: Download TensorFlow weights
+        run: python -m backend.tracknet.setup download
+
+      - name: Export ONNX from TensorFlow checkpoint
         run: python -m backend.tracknet.setup export
 
       - name: Smoke-load ONNX and auto backend

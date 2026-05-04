@@ -46,7 +46,10 @@ def cmd_download():
 
 def cmd_export():
     if not TF_INDEX_PATH.exists() or not TF_DATA_PATH.exists():
-        print("[error] TensorFlow checkpoint not found")
+        print("[info] TensorFlow checkpoint missing — auto-downloading first")
+        cmd_download()
+    if not TF_INDEX_PATH.exists() or not TF_DATA_PATH.exists():
+        print("[error] TensorFlow checkpoint still not found after download")
         print("Run: python -m backend.tracknet.setup download")
         sys.exit(1)
 
