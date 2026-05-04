@@ -62,7 +62,8 @@ class KomojuProvider(PaymentProvider):
             },
             method=method,
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        # nosec B310: URL built from hardcoded https Komoju API base.
+        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
             return json.loads(resp.read().decode("utf-8"))
 
     def create_session(

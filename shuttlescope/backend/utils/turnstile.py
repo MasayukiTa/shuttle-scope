@@ -78,7 +78,8 @@ def verify_turnstile(token: Optional[str], remote_ip: Optional[str] = None) -> T
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        # nosec B310: hardcoded Cloudflare siteverify https endpoint (_SITEVERIFY_URL).
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
             payload = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         logger.error("[turnstile] siteverify request failed: %s", exc)

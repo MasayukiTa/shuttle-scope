@@ -1118,12 +1118,20 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
     ip_str = inquiry.ip_address or "unknown"
     geo_str = ""
     try:
+        import ipaddress as _ipaddr
+        try:
+            ip_safe = str(_ipaddr.ip_address(ip_str))
+        except (ValueError, TypeError):
+            ip_safe = None
+        if ip_safe is None:
+            raise ValueError("invalid ip")
         geo_req = urllib.request.Request(
-            f"https://ipapi.co/{ip_str}/json/",
+            f"https://ipapi.co/{ip_safe}/json/",
             headers={"User-Agent": "ShuttleScope/1.0"},
             method="GET",
         )
-        geo_raw = urllib.request.urlopen(geo_req, timeout=3).read()
+        # nosec B310: hardcoded https + IP validated via ipaddress above.
+        geo_raw = urllib.request.urlopen(geo_req, timeout=3).read()  # noqa: S310
         geo = json.loads(geo_raw)
         country = geo.get("country_name", "")
         region = geo.get("region", "")

@@ -10,4 +10,4 @@
 #   B105  sample/test string literals flagged as hardcoded passwords
 #   B112  try/except/continue in best-effort loops
 skips: B101,B110,B311,B603,B404,B607,B105,B112
-exclude: /shuttlescope/backend/tests,/shuttlescope/backend/.venv,/shuttlescope/node_modules,/shuttlescope/out
+exclude: /shuttlescope/backend/tests,/shuttlescope/backend/.venv,/shuttlescope/node_modules,/shuttlescope/out,/shuttlescope/scripts/security_ci

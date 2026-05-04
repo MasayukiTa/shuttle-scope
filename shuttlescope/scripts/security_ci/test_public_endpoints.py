@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# DevSkim: ignore DS137138,DS162092,DS176209
+# Intentional adversarial test code; verifies prod rejects malformed input.
 """round137 ベース: 公開 endpoint (contact / register / verify) の入力検証"""
 import sys, os, secrets
 sys.path.insert(0, os.path.dirname(__file__))

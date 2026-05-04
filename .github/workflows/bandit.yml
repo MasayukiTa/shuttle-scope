@@ -51,7 +51,7 @@ jobs:
           # Report only issues of a given confidence level or higher. Can be LOW, MEDIUM or HIGH. Default is UNDEFINED (everything)
           # confidence: # optional, default is UNDEFINED
           # Exclude tests and maintenance scripts (false-positive heavy)
-          excluded_paths: shuttlescope/backend/tests,shuttlescope/backend/.venv,shuttlescope/node_modules
+          excluded_paths: shuttlescope/backend/tests,shuttlescope/backend/.venv,shuttlescope/node_modules,shuttlescope/scripts/security_ci
           # Skip note-tier rules that are FP for this prototype (see docs/validation/security-code-scanning-2026-04-23.md)
           skips: B101,B110,B311,B603,B404,B607,B105,B112
           # path to a .bandit file that supplies command line arguments
