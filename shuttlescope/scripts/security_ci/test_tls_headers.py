@@ -15,15 +15,15 @@ def main():
     # --- TLS バージョン --------------------------------------------------
     if not INSECURE:  # 本番のみ TLS 強度確認
         for ver_name, ver in [
-            ("TLSv1.0", ssl.TLSVersion.TLSv1),
-            ("TLSv1.1", ssl.TLSVersion.TLSv1_1),
+            ("TLSv1.0", ssl.TLSVersion.TLSv1),  # DevSkim: ignore DS169125,DS169126,DS440000
+            ("TLSv1.1", ssl.TLSVersion.TLSv1_1),  # DevSkim: ignore DS169125,DS169126,DS440000
         ]:
             try:
                 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
                 ctx.minimum_version = ver
                 ctx.maximum_version = ver
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
+                ctx.check_hostname = False  # DevSkim: ignore DS130822
+                ctx.verify_mode = ssl.CERT_NONE  # DevSkim: ignore DS130822
                 sock = socket.create_connection((HOST, PORT), timeout=5)
                 ssock = ctx.wrap_socket(sock, server_hostname=HOST)
                 f.critical(f"tls:{ver_name}", "ACCEPTED (must reject)")
@@ -31,13 +31,13 @@ def main():
             except Exception:
                 f.passed(f"tls:{ver_name}", "rejected")
 
-        # 弱い cipher
-        for cipher in ["RC4", "DES-CBC-SHA", "DES-CBC3-SHA"]:
+        # 弱い cipher (DevSkim: 意図的な弱cipher 試験 — prod 拒否を確認するため)
+        for cipher in ["RC4", "DES-CBC-SHA", "DES-CBC3-SHA"]:  # DevSkim: ignore DS106863
             try:
                 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
                 ctx.set_ciphers(cipher)
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
+                ctx.check_hostname = False  # DevSkim: ignore DS130822
+                ctx.verify_mode = ssl.CERT_NONE  # DevSkim: ignore DS130822
                 sock = socket.create_connection((HOST, PORT), timeout=5)
                 ssock = ctx.wrap_socket(sock, server_hostname=HOST)
                 f.critical(f"cipher:{cipher}", "ACCEPTED")

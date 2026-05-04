@@ -41,17 +41,18 @@ jobs:
             shuttlescope/backend/requirements.txt
 
       - name: Install TrackNet dependencies
-        run: |
-          python -m pip install -r backend/requirements.txt
-          # TF 2.15 (Keras 2) is the last release that loads the V1/V2
-          # checkpoint format produced by Chang-Chia-Chi/TrackNet via
-          # model.load_weights("weights/TrackNet"). Keras 3 (TF >= 2.16)
-          # only accepts .keras / .weights.h5 / .h5 files.
-          python -m pip install "tensorflow==2.15.*" "tf2onnx>=1.16,<1.17"
-          # onnxruntime is required by the Smoke-load step to load the
-          # exported tracknet.onnx. Not in backend/requirements.txt
-          # because production may use OpenVINO instead.
-          python -m pip install onnxruntime
+        # Exact version pins to satisfy supply-chain best practice (Scorecard
+        # PinnedDependenciesID). Hash pinning via --require-hashes is not used
+        # because the upstream wheels are large multi-arch (tensorflow ~600MB)
+        # and the smoke workflow runs only weekly + on demand.
+        # TF 2.15 (Keras 2) is the last release that loads the V1/V2
+        # checkpoint format produced by Chang-Chia-Chi/TrackNet via
+        # model.load_weights("weights/TrackNet"). Keras 3 (TF >= 2.16)
+        # only accepts .keras / .weights.h5 / .h5 files.
+        # onnxruntime is required by the Smoke-load step to load the exported
+        # tracknet.onnx. Not in backend/requirements.txt because production
+        # may use OpenVINO instead.
+        run: python -m pip install -r backend/requirements.txt "tensorflow==2.15.1" "tf2onnx==1.16.1" "onnxruntime==1.17.3"
 
       - name: Download TensorFlow weights
         run: python -m backend.tracknet.setup download

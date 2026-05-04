@@ -1130,8 +1130,8 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
             headers={"User-Agent": "ShuttleScope/1.0"},
             method="GET",
         )
-        # nosec B310: hardcoded https + IP validated via ipaddress above.
-        geo_raw = urllib.request.urlopen(geo_req, timeout=3).read()  # noqa: S310
+        # hardcoded https + IP validated via ipaddress above.
+        geo_raw = urllib.request.urlopen(geo_req, timeout=3).read()  # nosec B310
         geo = json.loads(geo_raw)
         country = geo.get("country_name", "")
         region = geo.get("region", "")

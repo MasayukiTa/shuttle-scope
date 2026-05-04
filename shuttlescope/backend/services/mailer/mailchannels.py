@@ -71,8 +71,8 @@ class MailChannelsWorkerMailer(Mailer):
             return False
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         try:
-            # nosec B310: scheme guarded above; URL is operator-supplied Cloudflare Worker.
-            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+            # scheme guarded above; URL is operator-supplied Cloudflare Worker.
+            with urllib.request.urlopen(req, timeout=15) as resp:  # nosec B310
                 if 200 <= resp.status < 300:
                     logger.info("[mailer:mailchannels] sent: to=%s subject=%s status=%d",
                                 msg.to, msg.subject, resp.status)
