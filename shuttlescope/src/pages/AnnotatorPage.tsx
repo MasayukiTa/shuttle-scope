@@ -24,6 +24,7 @@ import { SettingsModePanel } from '@/components/annotator/SettingsModePanel'
 import { useAnnotatorModeStore } from '@/store/annotatorModeStore'
 import { HistoryStrip } from '@/components/annotator/HistoryStrip'
 import { VideoOverlayToggles } from '@/components/annotator/VideoOverlayToggles'
+import { CommandPalette, type PaletteCommand } from '@/components/annotator/CommandPalette'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
@@ -205,6 +206,7 @@ export function AnnotatorPage() {
   const store = useAnnotationStore()
   // U3: 4 モード (input/review/analysis/settings) ─ 右パネル中身切替
   const annotatorMode = useAnnotatorModeStore((s) => s.mode)
+  const setAnnotatorMode = useAnnotatorModeStore((s) => s.setMode)
   const { settings: appSettings } = useSettings()
   const isLight = useIsLightMode()
   const [initialized, setInitialized] = useState(false)
@@ -1669,6 +1671,22 @@ export function AnnotatorPage() {
       </div>
     )
   }
+
+  // U6: Ctrl+K コマンドパレット用コマンド一覧
+  const paletteCommands: PaletteCommand[] = [
+    { id: 'mode-input',    label: '入力モードに切替', icon: 'edit_note',   keywords: ['mode', 'input', '入力'], run: () => setAnnotatorMode('input') },
+    { id: 'mode-review',   label: '確認モードに切替', icon: 'visibility',  keywords: ['mode', 'review', '確認', 'cv'], run: () => setAnnotatorMode('review') },
+    { id: 'mode-analysis', label: '解析モードに切替', icon: 'analytics',   keywords: ['mode', 'analysis', '解析', '統計'], run: () => setAnnotatorMode('analysis') },
+    { id: 'mode-settings', label: '設定モードに切替', icon: 'settings',    keywords: ['mode', 'settings', '設定'], run: () => setAnnotatorMode('settings') },
+    { id: 'toggle-match-day',  label: '試合中モード切替',     icon: 'sports', hint: isMatchDayMode ? 'ON' : 'OFF', run: toggleMatchDayMode },
+    { id: 'toggle-annot-mode', label: 'アノテーション方式切替', icon: 'tune',   hint: isBasicMode ? 'manual' : 'assisted', run: toggleAnnotationMode },
+    { id: 'open-exception',    label: '途中終了ダイアログを開く', icon: 'block', run: () => setShowExceptionDialog(true) },
+    { id: 'undo-last',         label: '最後のストロークを取消', icon: 'undo',  hint: 'Ctrl+Z', run: () => {
+      const removed = store.undoLastStroke()
+      if (removed?.timestamp_sec != null && videoRef.current) videoRef.current.currentTime = removed.timestamp_sec
+    } },
+    { id: 'rally-end-req',     label: 'ラリー終了 (得点者選択へ)', icon: 'flag', disabled: !store.isRallyActive, run: () => store.endRallyRequest() },
+  ]
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-white overflow-hidden">
@@ -4571,6 +4589,9 @@ export function AnnotatorPage() {
           </div>
         </div>
       )}
+
+      {/* U6: Ctrl+K コマンドパレット */}
+      <CommandPalette commands={paletteCommands} />
     </div>
   )
 }
