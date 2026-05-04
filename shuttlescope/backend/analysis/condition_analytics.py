@@ -327,7 +327,9 @@ def best_performance_profile(
             if t_min is not None and cur < t_min:
                 gap = round(t_min - cur, 2)
             elif t_max is not None and cur > t_max:
-                gap = round(t_min - cur, 2)  # 超過（負値）
+                # 超過（負値） — UR-2 fix: t_min ではなく t_max を基準に算出する。
+                # 旧コードは t_min - cur で band 幅 (t_max - t_min) を二重計上していた。
+                gap = round(t_max - cur, 2)
             else:
                 gap = 0.0  # 既にレンジ内
         key_factors.append({
