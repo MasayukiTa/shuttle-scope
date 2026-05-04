@@ -28,8 +28,11 @@ PLAYER_LABELS = {"player_a", "player_b"}
 
 # ─── フォーメーション分類 ─────────────────────────────────────────────────────
 
-def classify_formation(players: list[dict]) -> str:
+def classify_formation(players: list[dict], court_adapter=None) -> str:
     """2 人のプレイヤー検出からフォーメーションを分類する。
+
+    Track A2: court_adapter を渡せばコート座標経由で動的閾値判定。
+    渡さない / 未キャリブレーション時は従来 hard-coded 閾値で動作 (退化なし)。
 
     Returns:
         "front_back"  — 前衛/後衛の縦陣
@@ -41,6 +44,12 @@ def classify_formation(players: list[dict]) -> str:
     p_b = _get_player(players, "player_b")
     if p_a is None or p_b is None:
         return "unknown"
+
+    if court_adapter is not None:
+        # adapter ありなら court 座標経由 (キャリブ無しでも passthrough して動く)
+        return court_adapter.formation_type(
+            tuple(p_a["centroid"]), tuple(p_b["centroid"])
+        )
 
     cx_a, cy_a = p_a["centroid"]
     cx_b, cy_b = p_b["centroid"]

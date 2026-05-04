@@ -69,9 +69,14 @@ class YOLOInference:
         self._load_error: Optional[str] = None
         self._last_debug: dict = {}
         self._lock = threading.Lock()
-        # ByteTrack: SS_YOLO_BYTETRACK=1 で有効化（デフォルト無効）
+        # ByteTrack: Track A1 (2026-05-04) でデフォルト ON に変更。
+        # SS_YOLO_BYTETRACK=0 を明示すれば従来動作に戻せる。
+        # 理由: フレーム間 ID 一貫性 = ラベル swap 削減、IdentityGraph の前提整備。
         import os as _os
-        self._bt_enabled: bool = _os.environ.get("SS_YOLO_BYTETRACK", "0") == "1"
+        self._bt_enabled: bool = _os.environ.get("SS_YOLO_BYTETRACK", "1") != "0"
+        # Track A1: track_id → label の継続マップ。
+        # ByteTrack 有効時に同一 track_id が次フレームでも同ラベルを引き継ぐ。
+        self._prev_track_labels: dict[int, str] = {}
 
     # ─── 可用性確認 ─────────────────────────────────────────────────────
 
@@ -439,6 +444,8 @@ class YOLOInference:
 
     def reset_tracker(self) -> None:
         """ByteTrack の状態をリセットする（バッチ処理開始時に呼び出す）。"""
+        # Track A1: track_id 継続マップも合わせてクリア
+        self.reset_label_continuity()
         if not self._bt_enabled:
             return
         try:
@@ -519,7 +526,13 @@ class YOLOInference:
     def _assign_player_labels(self, detections: list[dict]) -> list[dict]:
         """ultralytics の 'person' ラベルを player_a〜player_d に割り当て。
 
-        ダブルス（最大 4 名）対応。
+        Track A1 (2026-05-04): ByteTrack track_id 継続を最優先。
+          1. 各 person 検出に track_id があり、前フレームで同じ track_id にラベルが
+             割り当てられていれば、そのラベルをそのまま継続する。
+          2. ラベル未確定の検出と未使用ラベルだけを、従来の位置ベースで割り当てる。
+        これによりフレーム間のラベル swap が激減する。
+
+        ダブルス（最大 4 名）対応:
         - 1〜4 人: 信頼度降順に上位 4 名を選択し、y 座標（奥→手前）→ x 座標の順でソート。
                    奥コート側（y 小）の 2 名が player_a/b、手前側（y 大）が player_c/d。
                    同じハーフ内は x 昇順（左→右）で a/b, c/d を割り当て。
@@ -534,22 +547,53 @@ class YOLOInference:
         named = persons_sorted_conf[:4]
         extra = persons_sorted_conf[4:]
 
-        # y 座標の中央値で奥コート / 手前コートに二分
-        if named:
-            ys = [d["centroid"][1] for d in named]
-            y_mid = sum(ys) / len(ys)
-            far  = sorted([d for d in named if d["centroid"][1] <= y_mid], key=lambda d: d["centroid"][0])
-            near = sorted([d for d in named if d["centroid"][1]  > y_mid], key=lambda d: d["centroid"][0])
-            ordered = far + near  # 奥側2名 → 手前側2名
-        else:
-            ordered = []
+        # ── Track A1: 前フレームの track_id → label を再適用 ──
+        # ByteTrack 有効時のみ意味を持つ (track_id が無い検出は skip)
+        used_labels: set[str] = set()
+        unresolved: list[dict] = []
+        for p in named:
+            tid = p.get("track_id")
+            prev_label = self._prev_track_labels.get(tid) if tid is not None else None
+            if (prev_label
+                    and prev_label in self._PLAYER_LABELS
+                    and prev_label not in used_labels):
+                p["label"] = prev_label
+                used_labels.add(prev_label)
+            else:
+                unresolved.append(p)
 
-        for i, p in enumerate(ordered):
-            p["label"] = self._PLAYER_LABELS[i]
+        # ── 残りを従来の位置ベース割当で埋める (未使用ラベルだけ使う) ──
+        if unresolved:
+            ys = [d["centroid"][1] for d in unresolved]
+            y_mid = sum(ys) / len(ys)
+            far  = sorted([d for d in unresolved if d["centroid"][1] <= y_mid], key=lambda d: d["centroid"][0])
+            near = sorted([d for d in unresolved if d["centroid"][1]  > y_mid], key=lambda d: d["centroid"][0])
+            ordered_unresolved = far + near
+            free_labels = [lbl for lbl in self._PLAYER_LABELS if lbl not in used_labels]
+            for p, lbl in zip(ordered_unresolved, free_labels):
+                p["label"] = lbl
+                used_labels.add(lbl)
+            # それでも余ったら player_other
+            for p in ordered_unresolved[len(free_labels):]:
+                p["label"] = "player_other"
+
         for p in extra:
             p["label"] = "player_other"
 
-        return ordered + extra + others
+        # ── prev_track_labels 更新 (今フレームの確定マップを保存) ──
+        new_prev: dict[int, str] = {}
+        for p in named:
+            tid = p.get("track_id")
+            lbl = p.get("label")
+            if tid is not None and lbl in self._PLAYER_LABELS:
+                new_prev[tid] = lbl
+        self._prev_track_labels = new_prev
+
+        return named + extra + others
+
+    def reset_label_continuity(self) -> None:
+        """ByteTrack reset と組で呼ぶ: track_id 継続マップをクリア。"""
+        self._prev_track_labels = {}
 
 
 # ─── シングルトン ────────────────────────────────────────────────────────
