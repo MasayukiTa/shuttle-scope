@@ -1461,6 +1461,44 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/health/cv")
+async def health_cv():
+    """CV パイプラインの簡易ヘルスチェック (Track C verification 用)。
+
+    返すのは選ばれた推論バックエンド名のみ。PII / 構成詳細は返さない。
+    """
+    out: dict = {"status": "ok"}
+    # TrackNet バックエンド
+    try:
+        from backend.tracknet.inference import get_inference as _get_tn_inf
+        tn = _get_tn_inf("auto")
+        if tn.is_available():
+            tn.load()
+            out["tracknet"] = tn.backend_name() if hasattr(tn, "backend_name") else "loaded"
+        else:
+            out["tracknet"] = "unavailable"
+    except Exception as exc:
+        out["tracknet"] = f"error: {type(exc).__name__}"
+    # YOLO バックエンド
+    try:
+        from backend.yolo.inference import get_yolo_inference
+        ycl = get_yolo_inference()
+        if ycl.is_available():
+            out["yolo_available"] = True
+            out["yolo_bytetrack"] = bool(ycl._bt_enabled)
+        else:
+            out["yolo_available"] = False
+    except Exception as exc:
+        out["yolo_available"] = f"error: {type(exc).__name__}"
+    # RTMPose 可用性 (Track C2 で実装後に True になる)
+    try:
+        from backend.cv.rtmpose import RTMPoseEngine  # type: ignore
+        out["rtmpose"] = "available"
+    except Exception:
+        out["rtmpose"] = "not_installed"
+    return out
+
+
 @app.post("/api/csp_report")
 async def csp_report(request: StarletteRequest):
     """CSP 違反レポート受信 (I-1: round118)。
