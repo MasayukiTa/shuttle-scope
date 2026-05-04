@@ -90,6 +90,7 @@ HITTER_MATCH_WINDOW_SEC = float(os.environ.get("CV_HITTER_WINDOW_SEC", "0.6"))
 LAND_SEARCH_WINDOW_SEC = float(os.environ.get("CV_LAND_SEARCH_SEC", "3.0"))
 
 # ダブルスロール: Y座標でfront/back判定する境界（正規化0-1）
+# Track A2: court_adapter があれば動的に上書きされる。env はフォールバック用。
 FRONT_THRESHOLD_Y = float(os.environ.get("CV_FRONT_Y", "0.42"))  # y < この値 → front
 BACK_THRESHOLD_Y  = float(os.environ.get("CV_BACK_Y",  "0.60"))  # y > この値 → back
 
@@ -110,12 +111,20 @@ def build_candidates(
     tracknet_frames: list[dict], # TrackNet アーティファクト data（frame list）
     yolo_frames: list[dict],     # YOLO アーティファクト data（frame list）
     alignment_data: list[dict],  # アライメント結果（per-rally list）; 空可
+    court_adapter=None,           # Track A2: CourtAdapter (None で従来通り)
 ) -> dict:
     """試合全体の CV 候補を生成して返す。
 
     Returns:
         候補辞書 (cv_candidates アーティファクトの data フィールドに保存する内容)
     """
+    # Track A2: court_adapter 未指定時は match_id から自動ロード (フォールバック動作付)
+    if court_adapter is None:
+        try:
+            from backend.cv.court_adapter import CourtAdapter
+            court_adapter = CourtAdapter.for_match(match_id)
+        except Exception:
+            court_adapter = None
     # タイムスタンプ索引を事前構築
     tracknet_ts = [f.get("timestamp_sec", 0.0) for f in tracknet_frames]
     yolo_ts     = [f.get("timestamp_sec", 0.0) for f in yolo_frames]
@@ -167,7 +176,7 @@ def build_candidates(
                                     next_stroke_ts=next_ts)
             hitter = _infer_hitter(aln, rally_yolo, rally_tracknet, stroke_ts=ts,
                                    stroke_num=stroke.get("stroke_num", 1))
-            role = _infer_front_back_role(rally_yolo, stroke_ts=ts) if rally_yolo else None
+            role = _infer_front_back_role(rally_yolo, stroke_ts=ts, court_adapter=court_adapter) if rally_yolo else None
 
             if land and land["confidence_score"] is not None:
                 land_confs.append(land["confidence_score"])
@@ -200,7 +209,7 @@ def build_candidates(
             if (land_confs or hitter_confs) else 0.0
         )
 
-        fb_role = _infer_rally_front_back_role(rally_yolo) if rally_yolo else None
+        fb_role = _infer_rally_front_back_role(rally_yolo, court_adapter=court_adapter) if rally_yolo else None
 
         # ダブルスロール不安定 → 要確認コード追加
         if fb_role and fb_role.get("stability", 1.0) < 0.5:
@@ -424,8 +433,13 @@ def _infer_hitter(
 def _infer_front_back_role(
     yolo_frames: list[dict],
     stroke_ts: Optional[float] = None,
+    court_adapter=None,
 ) -> Optional[dict]:
-    """指定タイムスタンプ付近のフレームからダブルスの前後ポジションを推定する。"""
+    """指定タイムスタンプ付近のフレームからダブルスの前後ポジションを推定する。
+
+    Track A2: court_adapter (CourtAdapter) を渡せばコート座標由来の動的閾値で判定。
+    渡さないか未キャリブレーションの場合は従来 hard-coded 閾値にフォールバック。
+    """
     if not yolo_frames:
         return None
 
@@ -454,15 +468,18 @@ def _infer_front_back_role(
     if not y_values["player_a"] and not y_values["player_b"]:
         return None
 
+    front_y = court_adapter.front_threshold_y if court_adapter is not None else FRONT_THRESHOLD_Y
+    back_y = court_adapter.back_threshold_y if court_adapter is not None else BACK_THRESHOLD_Y
+
     def classify_y(ys: list[float]) -> tuple[str, float]:
         if not ys:
             return "unclear", 0.0
         avg_y = statistics.mean(ys)
-        if avg_y < FRONT_THRESHOLD_Y:
-            conf = min(1.0, (FRONT_THRESHOLD_Y - avg_y) / FRONT_THRESHOLD_Y)
+        if avg_y < front_y:
+            conf = min(1.0, (front_y - avg_y) / max(front_y, 1e-6))
             return "front", round(conf, 3)
-        elif avg_y > BACK_THRESHOLD_Y:
-            conf = min(1.0, (avg_y - BACK_THRESHOLD_Y) / (1.0 - BACK_THRESHOLD_Y))
+        elif avg_y > back_y:
+            conf = min(1.0, (avg_y - back_y) / max(1.0 - back_y, 1e-6))
             return "back", round(conf, 3)
         else:
             return "unclear", 0.3
@@ -480,10 +497,16 @@ def _infer_front_back_role(
 
 # ── ラリーレベルのダブルスロール推定 ─────────────────────────────────────────
 
-def _infer_rally_front_back_role(yolo_frames: list[dict]) -> Optional[dict]:
-    """ラリー全体の YOLO フレームからダブルス役割安定性を推定する。"""
+def _infer_rally_front_back_role(yolo_frames: list[dict], court_adapter=None) -> Optional[dict]:
+    """ラリー全体の YOLO フレームからダブルス役割安定性を推定する。
+
+    Track A2: court_adapter 渡せば動的閾値を使用。
+    """
     if not yolo_frames:
         return None
+
+    front_y = court_adapter.front_threshold_y if court_adapter is not None else FRONT_THRESHOLD_Y
+    back_y = court_adapter.back_threshold_y if court_adapter is not None else BACK_THRESHOLD_Y
 
     frame_roles_a: list[str] = []
     frame_roles_b: list[str] = []
@@ -495,11 +518,11 @@ def _infer_rally_front_back_role(yolo_frames: list[dict]) -> Optional[dict]:
             if cy is None:
                 continue
             if label == "player_a":
-                frame_roles_a.append("front" if cy < FRONT_THRESHOLD_Y else
-                                     "back" if cy > BACK_THRESHOLD_Y else "unclear")
+                frame_roles_a.append("front" if cy < front_y else
+                                     "back" if cy > back_y else "unclear")
             elif label == "player_b":
-                frame_roles_b.append("front" if cy < FRONT_THRESHOLD_Y else
-                                     "back" if cy > BACK_THRESHOLD_Y else "unclear")
+                frame_roles_b.append("front" if cy < front_y else
+                                     "back" if cy > back_y else "unclear")
 
     def dominant(roles: list[str]) -> str:
         if not roles:
