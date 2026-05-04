@@ -17,18 +17,25 @@ interface BottomSheetProps {
   children: ReactNode
   /** 初期 open 状態 */
   defaultOpen?: boolean
+  /** Sheet を完全に閉じる時のコールバック (× ボタン or Esc)。指定しなければ collapse のみ */
+  onClose?: () => void
 }
 
-export function BottomSheet({ label, children, defaultOpen = false }: BottomSheetProps) {
+export function BottomSheet({ label, children, defaultOpen = false, onClose }: BottomSheetProps) {
   const [open, setOpen] = useState(defaultOpen)
 
   // Esc で閉じる
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (onClose) onClose()
+        else setOpen(false)
+      }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open])
+  }, [open, onClose])
 
   return (
     <div
@@ -40,16 +47,28 @@ export function BottomSheet({ label, children, defaultOpen = false }: BottomShee
       role="region"
       aria-label="ボトムシート"
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-800 active:bg-gray-700"
-        aria-expanded={open}
-      >
-        <span className="block w-10 h-1 rounded bg-gray-600" />
-        {label && <span className="ml-2">{label}</span>}
-        <MIcon name={open ? 'expand_more' : 'expand_less'} size={16} />
-      </button>
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-800 active:bg-gray-700"
+          aria-expanded={open}
+        >
+          <span className="block w-10 h-1 rounded bg-gray-600" />
+          {label && <span className="ml-2">{label}</span>}
+          <MIcon name={open ? 'expand_more' : 'expand_less'} size={16} />
+        </button>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="閉じる"
+            className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800"
+          >
+            <MIcon name="close" size={18} />
+          </button>
+        )}
+      </div>
       {open && (
         <div className="overflow-y-auto" style={{ maxHeight: 'calc(78vh - 44px)' }}>
           {children}
