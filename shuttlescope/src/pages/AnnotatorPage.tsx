@@ -14,9 +14,10 @@ import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
-// U1 (UX redesign): 上バー圧縮用のドロップダウン menu + 大型 Score 表示
+// U1/U2 (UX redesign): 上バー圧縮用ドロップダウン menu + 大型 Score 表示 + モードタブ
 import { TopBarMenu } from '@/components/annotator/TopBarMenu'
 import { TopBarScore } from '@/components/annotator/TopBarScore'
+import { ModeTabs } from '@/components/annotator/ModeTabs'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
@@ -1675,6 +1676,8 @@ export function AnnotatorPage() {
           <ArrowLeft size={isMobile ? 18 : 16} />
           {!isMobile && '戻る'}
         </button>
+        {/* U2: モードタブ (入力 / 確認 / 解析 / 設定) */}
+        <ModeTabs isMobile={isMobile} className="ml-2" />
         <div className={clsx('font-medium truncate mx-2 min-w-0 flex-1 text-gray-300', isMobile ? 'text-xs' : 'text-sm')}>
           {match ? (() => {
             const isDoubles = match.format !== 'singles'
