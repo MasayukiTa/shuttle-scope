@@ -207,6 +207,8 @@ export function AnnotatorPage() {
   // U3: 4 モード (input/review/analysis/settings) ─ 右パネル中身切替
   const annotatorMode = useAnnotatorModeStore((s) => s.mode)
   const setAnnotatorMode = useAnnotatorModeStore((s) => s.setMode)
+  const stepFocusMode = useAnnotatorModeStore((s) => s.stepFocusMode)
+  const setStepFocusMode = useAnnotatorModeStore((s) => s.setStepFocusMode)
   const { settings: appSettings } = useSettings()
   const isLight = useIsLightMode()
   const [initialized, setInitialized] = useState(false)
@@ -3180,6 +3182,8 @@ export function AnnotatorPage() {
                 onToggleMatchDayMode={toggleMatchDayMode}
                 isBasicMode={isBasicMode}
                 onToggleAnnotationMode={toggleAnnotationMode}
+                stepFocusMode={stepFocusMode}
+                onSetStepFocusMode={setStepFocusMode}
               />
             )
           )}
@@ -3713,7 +3717,8 @@ export function AnnotatorPage() {
 
             {/* 属性パネル（ラリー中 & idle/land_zone） */}
             {/* G1: land_zone ステップ中は属性パネルを disabled（落点確定を優先） */}
-            {store.isRallyActive && store.inputStep !== 'rally_end' && (
+            {/* UX-R1: stepFocusMode='step' のときは属性パネルを隠す (集中阻害排除) */}
+            {store.isRallyActive && store.inputStep !== 'rally_end' && stepFocusMode === 'all' && (
               <AttributePanel
                 attributes={{
                   is_backhand: store.pendingStroke.is_backhand,
@@ -4182,7 +4187,8 @@ export function AnnotatorPage() {
 
             {/* セット管理（C-1: 確認ダイアログ付き）— モバイルでは折りたたみ */}
             {/* G1: ラリー中は管理操作をグレースケールでロック表示（Step A のみ有効） */}
-            {initialized && !isMobile && (
+            {/* UX-R1: stepFocusMode='step' のときは管理操作を隠す (Cmd+K から呼出可) */}
+            {initialized && !isMobile && stepFocusMode === 'all' && (
               <div className={clsx(
                 'border rounded p-2 text-xs shrink-0 transition-opacity',
                 store.isRallyActive
