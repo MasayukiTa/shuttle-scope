@@ -243,13 +243,27 @@ def test_inv13_path_jail_outside_root_always_false(name):
 
 
 def test_inv13_normalize_url_schemes():
-    """INV-13: http(s)/server スキームは None で素通し（path_jail 対象外）"""
+    """INV-13: 各スキームの正規化挙動。
+
+    http(s) は None で素通し (外部 URL は path_jail 対象外)。
+    server:// は UPLOAD_DIR/{filename} に解決される (Phase A 以降)。
+    localfile:/// は Path に正規化。
+    path traversal 入りの server:// は None で reject される。
+    """
+    # 外部 URL は path_jail の対象外
     assert normalize_match_local_path("https://example.com/v.mp4") is None
     assert normalize_match_local_path("http://localhost/v.mp4") is None
-    assert normalize_match_local_path("server://abc.mp4") is None
+    # server:// は UPLOAD_DIR (./videos) 配下に解決される
+    p_server = normalize_match_local_path("server://abc.mp4")
+    assert p_server is not None
+    assert p_server.name == "abc.mp4"
+    # path traversal 入りの server:// は None で reject
+    assert normalize_match_local_path("server://../etc/passwd") is None
+    assert normalize_match_local_path("server://sub/dir/file.mp4") is None
+    # 空 / None
     assert normalize_match_local_path("") is None
     assert normalize_match_local_path(None) is None
-    # localfile:/// だけ Path に正規化される
+    # localfile:/// は Path に正規化
     p = normalize_match_local_path("localfile:///C:/test/video.mp4")
     assert p is not None
     assert "video.mp4" in str(p)
