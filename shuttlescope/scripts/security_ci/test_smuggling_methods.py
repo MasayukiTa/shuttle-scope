@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# DevSkim: ignore DS137138,DS162092,DS176209
+# Intentional adversarial test code; verifies prod rejects malformed input.
 """round119 + round134: HTTP smuggling / TRACE / TE / CRLF / method override / Host"""
 import sys, os, socket
 sys.path.insert(0, os.path.dirname(__file__))

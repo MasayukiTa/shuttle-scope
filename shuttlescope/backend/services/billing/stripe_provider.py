@@ -61,7 +61,8 @@ class StripeProvider(PaymentProvider):
             },
             method=method,
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        # nosec B310: URL is built from a hardcoded https constant (_STRIPE_API_BASE).
+        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
             return json.loads(resp.read().decode("utf-8"))
 
     def create_session(

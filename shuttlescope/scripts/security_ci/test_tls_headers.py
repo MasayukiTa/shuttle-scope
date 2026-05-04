@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+# DevSkim: ignore DS169125,DS169126,DS440000,DS130822,DS106863,DS137138,DS162092
+# Bandit: skip - this file intentionally negotiates weak TLS versions / disables
+# certificate validation to verify that the production endpoint REJECTS them.
+# See docs/validation/security-code-scanning-2026-04-23.md
 """round145 + round150 + round154: TLS / HSTS / CSP / X-Frame / 漏洩ヘッダ"""
 import sys, os, ssl, socket
 sys.path.insert(0, os.path.dirname(__file__))

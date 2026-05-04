@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# DevSkim: ignore DS137138,DS162092
+# This file intentionally crafts http:// jku injections etc to verify rejection.
 """round122 + round133 ベース: JWT 偽造 11 種 × 主要 23 endpoint = 253 プローブ。
 全て 401 を期待。1 つでも 200 が返ったら CRITICAL。
 """

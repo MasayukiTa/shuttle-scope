@@ -881,9 +881,11 @@ def _session_to_dict(session: SharedSession, db: Session) -> dict:
 
     if lan_mode and lan_ips:
         for ip in lan_ips:
+            # DevSkim: ignore DS137138 - LAN mode intentionally serves over plain HTTP.
             coach_urls.append(f"http://{ip}:{port}/#/annotator/{session.match_id}")
             camera_sender_urls.append(f"http://{ip}:{port}/#/camera/{session.session_code}")
     # localhost (同一デバイスでの確実なアクセス用、最後の fallback)
+    # DevSkim: ignore DS137138 - localhost loopback fallback.
     coach_urls.append(f"http://localhost:{port}/#/annotator/{session.match_id}")
     camera_sender_urls.append(f"http://localhost:{port}/#/camera/{session.session_code}")
     ws_templates.append(f"ws://{{LAN_IP}}:{port}/ws/live/{session.session_code}")

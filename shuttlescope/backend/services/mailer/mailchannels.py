@@ -66,9 +66,13 @@ class MailChannelsWorkerMailer(Mailer):
         if auth:
             headers["Authorization"] = f"Bearer {auth}"
 
+        if not url.startswith("https://"):
+            logger.error("[mailer:mailchannels] SS_MAILCHANNELS_WORKER_URL must be https://")
+            return False
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            # nosec B310: scheme guarded above; URL is operator-supplied Cloudflare Worker.
+            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
                 if 200 <= resp.status < 300:
                     logger.info("[mailer:mailchannels] sent: to=%s subject=%s status=%d",
                                 msg.to, msg.subject, resp.status)

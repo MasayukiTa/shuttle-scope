@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# DevSkim: ignore DS137138,DS162092,DS176209
+# Intentional adversarial test code; verifies prod rejects malformed input.
 """round128 ベース: 無認証で 100+ endpoint をスキャン → 公開すべきでない endpoint が
 200 を返したら CRITICAL。
 """
