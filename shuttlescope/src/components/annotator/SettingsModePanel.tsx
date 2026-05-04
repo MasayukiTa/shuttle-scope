@@ -11,6 +11,7 @@
 import { ReactNode, useMemo, useState } from 'react'
 import { MIcon } from '@/components/common/MIcon'
 import { useAnnotationStore } from '@/store/annotationStore'
+import type { StepFocusMode } from '@/store/annotatorModeStore'
 
 interface SettingsModePanelProps {
   isMatchDayMode: boolean
@@ -19,6 +20,9 @@ interface SettingsModePanelProps {
   onToggleAnnotationMode: () => void
   onOpenCalibration?: () => void
   onOpenKeyboardLegend?: () => void
+  /** UX-R1: 入力モードのステップ連動表示 */
+  stepFocusMode?: StepFocusMode
+  onSetStepFocusMode?: (m: StepFocusMode) => void
 }
 
 interface ItemSpec {
@@ -41,6 +45,8 @@ export function SettingsModePanel({
   onToggleAnnotationMode,
   onOpenCalibration,
   onOpenKeyboardLegend,
+  stepFocusMode,
+  onSetStepFocusMode,
 }: SettingsModePanelProps) {
   const flipMode = useAnnotationStore((s) => s.flipMode)
   const setFlipMode = useAnnotationStore((s) => s.setFlipMode)
@@ -73,6 +79,34 @@ export function SettingsModePanel({
               on={!isBasicMode}
               onClick={onToggleAnnotationMode}
             />
+          ),
+        },
+        {
+          key: 'step_focus',
+          label: '入力ステップ連動表示',
+          render: () => (
+            <div className="space-y-1.5">
+              {(['step', 'all'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => onSetStepFocusMode?.(m)}
+                  disabled={!onSetStepFocusMode}
+                  className={
+                    'w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs transition-colors ' +
+                    (stepFocusMode === m
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-50')
+                  }
+                >
+                  <span>{m === 'step' ? 'ステップ連動 (入力時集中)' : '全表示 (従来)'}</span>
+                  <span className="text-[10px] opacity-70">{m}</span>
+                </button>
+              ))}
+              <p className="text-[10px] text-gray-500 mt-1">
+                ステップ連動: 属性パネル / 管理操作を入力中は隠す。Cmd+K で常時呼出可。
+              </p>
+            </div>
           ),
         },
       ],
@@ -156,6 +190,7 @@ export function SettingsModePanel({
   ]), [
     isMatchDayMode, onToggleMatchDayMode, isBasicMode, onToggleAnnotationMode,
     flipMode, setFlipMode, onOpenCalibration, onOpenKeyboardLegend,
+    stepFocusMode, onSetStepFocusMode,
   ])
 
   const [categoryKey, setCategoryKey] = useState(categories[0].key)
