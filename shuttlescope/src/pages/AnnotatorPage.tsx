@@ -2722,8 +2722,9 @@ export function AnnotatorPage() {
         </div>
       )}
 
-      {/* メインレイアウト */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* メインレイアウト
+          U7: モバイル (<md) は縦積み (動画上 / パネル下)。≥md は従来の横並び。 */}
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* 左: 動画エリア — 試合中モード時/モバイル時は非表示 */}
         <div
           ref={leftPanelRef}
