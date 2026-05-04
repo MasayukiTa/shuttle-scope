@@ -18,6 +18,10 @@ import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
 import { TopBarMenu } from '@/components/annotator/TopBarMenu'
 import { TopBarScore } from '@/components/annotator/TopBarScore'
 import { ModeTabs } from '@/components/annotator/ModeTabs'
+import { ReviewModePanel } from '@/components/annotator/ReviewModePanel'
+import { AnalysisModePanel } from '@/components/annotator/AnalysisModePanel'
+import { SettingsModePanel } from '@/components/annotator/SettingsModePanel'
+import { useAnnotatorModeStore } from '@/store/annotatorModeStore'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
@@ -197,6 +201,8 @@ export function AnnotatorPage() {
   const { playbackRate, setPlaybackRate } = useVideo(videoRef)
 
   const store = useAnnotationStore()
+  // U3: 4 モード (input/review/analysis/settings) ─ 右パネル中身切替
+  const annotatorMode = useAnnotatorModeStore((s) => s.mode)
   const { settings: appSettings } = useSettings()
   const isLight = useIsLightMode()
   const [initialized, setInitialized] = useState(false)
@@ -3116,6 +3122,27 @@ export function AnnotatorPage() {
           'flex flex-col overflow-y-auto',
           (isMatchDayMode || isMobile) ? 'flex-1' : 'w-[40%] border-l border-gray-700'
         )}>
+          {/* U3: モード切替 — input モードのみ既存 UI、他モードは専用パネルへ */}
+          {annotatorMode !== 'input' && (
+            annotatorMode === 'review' ? <ReviewModePanel /> :
+            annotatorMode === 'analysis' ? (
+              <AnalysisModePanel
+                scoreA={store.scoreA}
+                scoreB={store.scoreB}
+                setNum={store.currentSetNum}
+                rallyNum={store.currentRallyNum}
+                recentStrokes={store.currentStrokes}
+              />
+            ) : (
+              <SettingsModePanel
+                isMatchDayMode={isMatchDayMode}
+                onToggleMatchDayMode={toggleMatchDayMode}
+                isBasicMode={isBasicMode}
+                onToggleAnnotationMode={toggleAnnotationMode}
+              />
+            )
+          )}
+          {annotatorMode === 'input' && <>
           {/* ステップインジケーター */}
           <div
             className={clsx(
@@ -4202,6 +4229,7 @@ export function AnnotatorPage() {
               </div>
             )}
           </div>
+          </>}
         </div>
       </div>
 
