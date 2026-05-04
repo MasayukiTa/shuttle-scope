@@ -1778,6 +1778,27 @@ export function AnnotatorPage() {
               <OctagonX size={14} />
               {t('exception.title')}
             </button>
+            {/* UX-R3: バッチ操作 (CV / TrackNet) */}
+            {appSettings.yolo_enabled && hasVideo(match) && (
+              <button
+                onClick={handleYoloBatch}
+                disabled={!!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')}
+                className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-blue-900/30 text-blue-300 hover:bg-blue-800/50 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>directions_run</span>
+                YOLO 人物検出を実行
+              </button>
+            )}
+            {appSettings.tracknet_enabled && hasVideo(match) && (
+              <button
+                onClick={handleTracknetBatch}
+                disabled={!!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')}
+                className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-purple-900/30 text-purple-300 hover:bg-purple-800/50 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>route</span>
+                TrackNet シャトル軌跡を実行
+              </button>
+            )}
           </TopBarMenu>
         </div>
 
@@ -1898,7 +1919,7 @@ export function AnnotatorPage() {
           >
             {t('annotator.match_day_mode')}
           </button>
-          {/* P3: TrackNet バッチ解析ボタン */}
+          {/* P3: TrackNet バッチ解析ボタン (UX-R3: 同じ操作を ⋮ メニューにも置いた) */}
           {appSettings.tracknet_enabled && hasVideo(match) && (
             tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') ? (
               <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
