@@ -76,7 +76,11 @@ jobs:
         run: npx vitest run --config vitest.config.ts
 
       - name: Backend tests
-        run: python -m pytest -v
+        # 2026-05-08: pytest-xdist で並列化。45 分上限を 25 分台に短縮想定。
+        # `-n auto` は CI runner の論理 CPU 数 (= 4 通常) で並列化。
+        # 不安定 test (DB fixture / file race) があれば `--dist loadgroup` か
+        # `@pytest.mark.serial` で同期化する。
+        run: python -m pytest -n auto --dist loadfile -v
 
       - name: Python bytecode smoke
         run: python -m compileall backend
