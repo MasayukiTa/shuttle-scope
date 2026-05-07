@@ -19,21 +19,37 @@
  *     対象サイトが標準HTML5 VideoElementを使用している必要がある
  */
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { Globe, ArrowLeft, ArrowRight, RotateCcw, ExternalLink, AlertCircle, MonitorPlay } from 'lucide-react'
+import { Globe, ArrowLeft, ArrowRight, RotateCcw, ExternalLink, AlertCircle, MonitorPlay, Circle, Square } from 'lucide-react'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
+import { apiPost, apiGet } from '@/api/client'
+
+// session storage の JWT を取得 (api/client 内部の TOKEN_KEY と一致)
+function getStoredAuthToken(): string {
+  try {
+    return sessionStorage.getItem('shuttlescope_token') ?? ''
+  } catch {
+    return ''
+  }
+}
 
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+
+type RecordState = 'idle' | 'starting' | 'recording' | 'stopping' | 'processing' | 'complete' | 'error'
 
 interface WebViewPlayerProps {
   /** 初期表示URL */
   url: string
   /** サービス名（表示用） */
   siteName: string
+  /** 紐付け試合 ID。指定するとアーカイブ完了時に Match.video_local_path が自動更新される */
+  matchId?: number | null
+  /** 録画完了時に呼ばれる (match データ再取得用) */
+  onRecordingComplete?: () => void
 }
 
-export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
+export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: WebViewPlayerProps) {
   const { t } = useTranslation()
 
   const isLight = useIsLightMode()
@@ -134,6 +150,128 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
     window.open(currentUrl, '_blank')
   }, [currentUrl])
 
+  // ── 画面キャプチャ録画 (会員限定 DRM 配信向け) ──
+  // ライセンスされた視聴の OS-level ピクセル録画。yt-dlp が DRM 検知で blocked になる
+  // サイトでも、ユーザがログイン状態で視聴できれば録れる。CDM bypass はしない。
+  // Electron 限定機能 (window.shuttlescope?.screenCaptureStart が必要)。
+  const [recordState, setRecordState] = useState<RecordState>('idle')
+  const [recordError, setRecordError] = useState<string>('')
+  const [recordJobId, setRecordJobId] = useState<string | null>(null)
+  const [recordElapsedMs, setRecordElapsedMs] = useState<number>(0)
+  const recordStartedAtRef = useRef<number>(0)
+
+  // Electron API 利用可否
+  const electronApi = (typeof window !== 'undefined') ? (window as any).shuttlescope : undefined
+  const screenCaptureAvailable = !!electronApi?.screenCaptureStart && !!electronApi?.screenCaptureStop
+
+  // 録画中の経過秒タイマー
+  useEffect(() => {
+    if (recordState !== 'recording') return
+    const id = window.setInterval(() => {
+      setRecordElapsedMs(Date.now() - recordStartedAtRef.current)
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [recordState])
+
+  // ジョブステータスポーリング (stop 後の processing → complete を追跡)
+  useEffect(() => {
+    if (!recordJobId || (recordState !== 'stopping' && recordState !== 'processing')) return
+    const id = window.setInterval(async () => {
+      try {
+        const res = await apiGet<{ job_id: string; status: string; method: string; out_path: string; error?: string }>(
+          `/youtube_live/${recordJobId}/status`,
+        )
+        if (res.status === 'complete' || res.status === 'archived') {
+          window.clearInterval(id)
+          setRecordState('complete')
+          setTimeout(() => onRecordingComplete?.(), 600)
+        } else if (res.status === 'error' || res.status === 'failed') {
+          window.clearInterval(id)
+          setRecordState('error')
+          setRecordError(res.error ?? '録画失敗')
+        } else if (res.status === 'remuxing' || res.status === 'archiving') {
+          setRecordState('processing')
+        }
+      } catch {
+        // ネットワークエラーは次回ポーリングまで待機
+      }
+    }, 2000)
+    return () => window.clearInterval(id)
+  }, [recordJobId, recordState, onRecordingComplete])
+
+  const handleRecordStart = useCallback(async () => {
+    if (!screenCaptureAvailable) {
+      setRecordError('Electron アプリでのみ画面録画できます (Web 版では非対応)')
+      setRecordState('error')
+      return
+    }
+    setRecordError('')
+    setRecordState('starting')
+    try {
+      // 1. backend にジョブを作成 (HLS プローブが失敗 → DRM フォールバック前提で
+      //    method=drm_required を強制したいが、現状の API は probe してから
+      //    自動判定する。会員限定サイトは HLS プローブが通らないので
+      //    自然に drm_required になる)
+      const startResp = await apiPost<{ job_id: string; method: string; status: string; error?: string }>(
+        '/youtube_live/start',
+        {
+          url: currentUrl,
+          quality: '720p',
+          match_id: matchId ?? null,
+        },
+      )
+      if (startResp.method === 'hls') {
+        // HLS で取得できた場合 backend が ffmpeg で勝手に録る (Electron 不要)
+        setRecordState('recording')
+        setRecordJobId(startResp.job_id)
+        recordStartedAtRef.current = Date.now()
+        return
+      }
+      if (startResp.method !== 'drm_required') {
+        throw new Error(startResp.error ?? `予期しないメソッド: ${startResp.method}`)
+      }
+
+      // 2. Electron 側で screen capture 開始
+      const token = getStoredAuthToken()
+      await electronApi.screenCaptureStart({
+        url: currentUrl,
+        jobId: startResp.job_id,
+        token,
+        matchId: matchId ?? null,
+      })
+      setRecordJobId(startResp.job_id)
+      recordStartedAtRef.current = Date.now()
+      setRecordState('recording')
+    } catch (err: any) {
+      setRecordState('error')
+      setRecordError(err?.message ?? String(err))
+    }
+  }, [currentUrl, matchId, electronApi, screenCaptureAvailable])
+
+  const handleRecordStop = useCallback(async () => {
+    if (!recordJobId) return
+    setRecordState('stopping')
+    try {
+      // Electron 録画停止 (HLS の場合は backend が独自に停止する)
+      if (electronApi?.screenCaptureStop) {
+        try { await electronApi.screenCaptureStop() } catch { /* ignore */ }
+      }
+      // Backend に stop シグナル → remux + archive 開始
+      await apiPost(`/youtube_live/${recordJobId}/stop`, {})
+      // status はポーリングで監視
+    } catch (err: any) {
+      setRecordState('error')
+      setRecordError(err?.message ?? String(err))
+    }
+  }, [recordJobId, electronApi])
+
+  const formatElapsed = (ms: number): string => {
+    const s = Math.floor(ms / 1000)
+    const mm = Math.floor(s / 60).toString().padStart(2, '0')
+    const ss = (s % 60).toString().padStart(2, '0')
+    return `${mm}:${ss}`
+  }
+
   // ── テーマ別スタイル定数 ──────────────────────────────────────────────────
   const outerBg     = isLight ? 'bg-white border border-gray-200'      : 'bg-gray-900 border border-gray-700'
   const navBarBg    = isLight ? 'bg-gray-100 border-b border-gray-200' : 'bg-gray-800 border-b border-gray-700'
@@ -191,6 +329,47 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
           />
         </div>
 
+        {/* 画面録画ボタン (Electron + 視聴中の DRM 配信用) */}
+        {screenCaptureAvailable && (
+          recordState === 'recording' || recordState === 'starting' ? (
+            <button
+              onClick={handleRecordStop}
+              disabled={recordState === 'starting'}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
+                isLight ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
+              }`}
+              title="画面録画を停止"
+            >
+              <Square size={10} className="fill-current" />
+              <span className="num-cell">{formatElapsed(recordElapsedMs)}</span>
+            </button>
+          ) : recordState === 'stopping' || recordState === 'processing' ? (
+            <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
+              isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
+            }`}>
+              <RotateCcw size={10} className="animate-spin" />
+              {recordState === 'stopping' ? '停止中…' : '保存中…'}
+            </span>
+          ) : recordState === 'complete' ? (
+            <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
+              isLight ? 'bg-green-100 text-green-700' : 'bg-green-900/40 text-green-300'
+            }`}>
+              ✓ 保存済
+            </span>
+          ) : (
+            <button
+              onClick={handleRecordStart}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
+                isLight ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/40'
+              }`}
+              title="この画面を録画開始 (会員限定 DRM 配信もライセンス済なら録画可能)"
+            >
+              <Circle size={10} className="fill-current" />
+              録画
+            </button>
+          )
+        )}
+
         {/* 外部ブラウザで開く */}
         <button
           onClick={handleOpenExternal}
@@ -200,6 +379,20 @@ export function WebViewPlayer({ url, siteName }: WebViewPlayerProps) {
           <ExternalLink size={14} />
         </button>
       </div>
+
+      {/* 録画エラー表示 */}
+      {recordState === 'error' && recordError && (
+        <div className={`flex items-start gap-2 px-3 py-1.5 shrink-0 text-xs ${errorBanner}`}>
+          <AlertCircle size={12} className="shrink-0 mt-0.5" />
+          <span className="flex-1 break-words">録画エラー: {recordError}</span>
+          <button
+            onClick={() => { setRecordState('idle'); setRecordError(''); setRecordJobId(null) }}
+            className="text-xs underline shrink-0"
+          >
+            閉じる
+          </button>
+        </div>
+      )}
 
       {/* ── ページタイトル（サービス名 + 読込インジケーター） ── */}
       <div className={`flex items-center gap-1.5 px-2 py-1 shrink-0 ${titleBarBg}`}>
