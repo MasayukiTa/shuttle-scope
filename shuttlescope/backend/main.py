@@ -1269,7 +1269,21 @@ def _mask_sensitive(value, depth: int = 0):
         return value
     if isinstance(value, bytes):
         return f"***(bytes,len={len(value)})"
-    return value
+    # Pydantic v2 の field_validator が ValueError を投げると errors[i]['ctx']['error']
+    # に ValueError インスタンスが入る。そのまま JSONResponse に渡すと
+    # `Object of type ValueError is not JSON serializable` で 500 を起こす
+    # (round157 V1 で発覚)。Exception 系は str() に正規化する。
+    if isinstance(value, BaseException):
+        return type(value).__name__ + ": " + str(value)
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    # JSON 不可な型 (custom class 等) は文字列化して fallback
+    try:
+        import json as _json
+        _json.dumps(value)
+        return value
+    except (TypeError, ValueError):
+        return repr(value)[:200]
 
 
 @app.exception_handler(_ReqValidationError)
@@ -1387,12 +1401,6 @@ async def _global_exception_handler(request: StarletteRequest, exc: Exception):
     # 噛ませている本アプリでは RequestValidationError が specific handler を抜けて
     # ここに到達するケースがあった (round157 V1 で 422 期待が 500 になった)。
     # 一段目の specific dispatch を手で行う。
-    _logger = logging.getLogger("shuttlescope.unhandled")
-    _logger.warning(
-        "global_handler dispatch: type=%s module=%s mro=%s",
-        type(exc).__name__, type(exc).__module__,
-        [c.__name__ for c in type(exc).__mro__][:5],
-    )
     if isinstance(exc, _ReqValidationError):
         return await _validation_error_handler(request, exc)
     try:
@@ -1402,6 +1410,7 @@ async def _global_exception_handler(request: StarletteRequest, exc: Exception):
     except ImportError:
         pass
 
+    _logger = logging.getLogger("shuttlescope.unhandled")
     _logger.error("Unhandled exception %s %s", request.method, request.url.path, exc_info=exc)
     if app_settings.PUBLIC_MODE or app_settings.HIDE_STACK_TRACES:
         return StarletteResponse(
