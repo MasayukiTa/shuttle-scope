@@ -103,7 +103,7 @@ function detectStreamingSite(url: string): string | null {
   }
   // 未知の http(s) URL も配信URLとして扱う（yt-dlp が対応している可能性がある）
   if (url.startsWith('http://') || url.startsWith('https://')) {
-    return 'Web動画'
+    return 'Web動画'  // i18n: not displayed directly, used as siteName key
   }
   return null
 }
@@ -481,7 +481,7 @@ export function AnnotatorPage() {
         setInitialized(true)
       } catch (err: any) {
         initStartedRef.current = false // リトライ可能にする
-        setInitError(err?.message ?? '初期化に失敗しました')
+        setInitError(err?.message ?? t('annotator.ui.init_failed', { defaultValue: '初期化に失敗しました' }))
       }
     }
 
@@ -508,7 +508,7 @@ export function AnnotatorPage() {
       const s = useAnnotationStore.getState()
       const setId = s.currentSetId
       if (!setId) {
-        showError('セットIDが未設定です。再読み込みしてください。')
+        showError(t('annotator.ui.set_id_missing', { defaultValue: 'セットIDが未設定です。再読み込みしてください。' }))
         return
       }
 
@@ -576,7 +576,7 @@ export function AnnotatorPage() {
         useAnnotationStore.getState().decrementPending()
         useAnnotationStore.getState().addSaveError({
           rallyNum,
-          error: err?.message ?? '保存失敗',
+          error: err?.message ?? t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' }),
         })
         // stash は残す → useOfflineSync が再送する
       })
@@ -616,7 +616,7 @@ export function AnnotatorPage() {
       setNextSetPending({ id: res.data.id, num: nextSetNum })
       setShowIntervalSummary(true)
     } catch (err: any) {
-      showError(`セット移行エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`${t('annotator.ui.set_change_error_prefix', { defaultValue: 'セット移行エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
   }, [matchId])
 
@@ -655,7 +655,7 @@ export function AnnotatorPage() {
       )
       queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
     } catch (err: any) {
-      showError(`前セット移行エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`${t('annotator.ui.prev_set_error_prefix', { defaultValue: '前セット移行エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
   }, [matchId, setsData, queryClient])
 
@@ -723,12 +723,12 @@ export function AnnotatorPage() {
   const handleBrowserFilePicked = useCallback(async (file: File) => {
     if (!matchId) return
     if (!file.type.startsWith('video/')) {
-      showError('動画ファイルのみアップロードできます')
+      showError(t('annotator.ui.video_only_video_files', { defaultValue: '動画ファイルのみアップロードできます' }))
       return
     }
     // 5GB 上限（サーバ側と一致）
     if (file.size > 5 * 1024 * 1024 * 1024) {
-      showError('ファイルサイズは最大 5GB までです')
+      showError(t('annotator.ui.video_max_size', { defaultValue: 'ファイルサイズは最大 5GB までです' }))
       return
     }
     uploadAbortRef.current?.abort()
@@ -757,7 +757,7 @@ export function AnnotatorPage() {
       void result
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
-        showError(`アップロードエラー: ${err?.message ?? '不明なエラー'}`)
+        showError(`${t('annotator.ui.upload_error_prefix', { defaultValue: 'アップロードエラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
       }
       setUploadProgress(null)
     } finally {
@@ -783,7 +783,7 @@ export function AnnotatorPage() {
         setUrlInput('')
         queryClient.invalidateQueries({ queryKey: ['match', matchId] })
       } catch (err: any) {
-        showError(`保存エラー: ${err?.message ?? '不明なエラー'}`)
+        showError(`${t('annotator.ui.save_error_prefix', { defaultValue: '保存エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
       }
       return
     }
@@ -799,7 +799,7 @@ export function AnnotatorPage() {
       await apiPut(`/matches/${matchId}`, { video_url: url, video_local_path: '' })
       queryClient.invalidateQueries({ queryKey: ['match', matchId] })
     } catch (err: any) {
-      showError(`保存エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`${t('annotator.ui.save_error_prefix', { defaultValue: '保存エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
   }, [matchId, urlInput, queryClient])
 
@@ -956,15 +956,15 @@ export function AnnotatorPage() {
       ) {
         const age = Math.round((Date.now() - saved.savedAt) / 60000)
         const strokeDesc = saved.strokes.length > 0
-          ? `${saved.strokes.length}本確定`
-          : `ショット種別入力中`
+          ? t('annotator.ui.restore_dialog_strokes_count', { defaultValue: '{{n}}本確定', n: saved.strokes.length })
+          : t('annotator.ui.restore_dialog_shot_typing', { defaultValue: 'ショット種別入力中' })
         // window.confirm() の代わりに React Confirm モーダルを使用 (auto-save restoration)
         // 確認は非同期になるが、autoSaveRestored=true は最後に必ず立てるので機能等価
         const restorePending: ConfirmState = {
-          title: '前回の未保存データを復元',
-          message: `前回の未保存データが見つかりました（${strokeDesc}、約${age}分前）。\n復元しますか？`,
-          confirmLabel: '復元する',
-          cancelLabel: '破棄',
+          title: t('annotator.ui.restore_dialog_title', { defaultValue: '前回の未保存データを復元' }),
+          message: t('annotator.ui.restore_dialog_message', { defaultValue: '前回の未保存データが見つかりました（{{desc}}、約{{age}}分前）。\n復元しますか？', desc: strokeDesc, age }),
+          confirmLabel: t('annotator.ui.restore_dialog_confirm', { defaultValue: '復元する' }),
+          cancelLabel: t('annotator.ui.restore_dialog_cancel', { defaultValue: '破棄' }),
           destructive: false,
           onConfirm: () => {
             // ストアに直接書き込み（store.startRally と同等の準備）
@@ -1007,7 +1007,7 @@ export function AnnotatorPage() {
     ...(match.partner_a ? [{ key: 'partner_a', name: match.partner_a.name }] : []),
     ...(match.player_b  ? [{ key: 'player_b',  name: match.player_b.name  }] : []),
     ...(match.partner_b ? [{ key: 'partner_b', name: match.partner_b.name }] : []),
-    { key: 'other', name: 'その他' },
+    { key: 'other', name: t('annotator.ui.player_other', { defaultValue: 'その他' }) },
   ] : []
 
   // P3/P4: CV ジョブフック（TrackNet + YOLO バッチ解析・オーバーレイ）
@@ -1288,7 +1288,7 @@ export function AnnotatorPage() {
         s.setPlayer(server)
       }
     } catch (err: any) {
-      showError(`先サーブ変更エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`${t('annotator.ui.first_serve_change_error_prefix', { defaultValue: '先サーブ変更エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
   }, [matchId, queryClient])
 
@@ -1336,7 +1336,7 @@ export function AnnotatorPage() {
       })
       handleLeaveMatch()
     } catch (err: any) {
-      showError(`途中終了の保存に失敗しました: ${err?.message ?? '不明なエラー'}`)
+      showError(`${t('annotator.ui.exception_save_failed_prefix', { defaultValue: '途中終了の保存に失敗しました:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
   }, [exceptionReason, matchId, handleLeaveMatch])
 
@@ -1379,7 +1379,7 @@ export function AnnotatorPage() {
       queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
     }).catch((err: any) => {
       useAnnotationStore.getState().decrementPending()
-      useAnnotationStore.getState().addSaveError({ rallyNum, error: err?.message ?? '保存失敗' })
+      useAnnotationStore.getState().addSaveError({ rallyNum, error: err?.message ?? t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' }) })
     })
   }, [matchId, queryClient, isBasicMode])
 
@@ -1434,7 +1434,7 @@ export function AnnotatorPage() {
       queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
       setShowScoreCorrection(false)
     } catch (err: any) {
-      showError(`スコア補正エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`${t('annotator.ui.score_correction_error_prefix', { defaultValue: 'スコア補正エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
@@ -1486,7 +1486,7 @@ export function AnnotatorPage() {
       // セット終了フロー（handleNextSet と同じ）
       await handleNextSet()
     } catch (err: any) {
-      showError(`セット強制終了エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`${t('annotator.ui.force_set_end_error_prefix', { defaultValue: 'セット強制終了エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
@@ -1839,7 +1839,7 @@ export function AnnotatorPage() {
                 >
                   <span className="flex items-center gap-2">
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>visibility</span>
-                    CV ツール (BBOX / 軌跡 / グリッド / 領域)
+                    {t('annotator.ui.cv_tools_label', { defaultValue: 'CV ツール (BBOX / 軌跡 / グリッド / 領域)' })}
                   </span>
                   <span className="text-[10px] opacity-80">{cvToolsExpanded ? 'ON' : 'OFF'}</span>
                 </button>
@@ -1893,7 +1893,7 @@ export function AnnotatorPage() {
               className="text-red-400 hover:text-red-300 font-medium"
               title={store.saveErrors.map((e) => `Rally ${e.rallyNum}: ${e.error}`).join('\n')}
             >
-              {t('annotator.save_error_title')} {store.saveErrors.length}件 ✕
+              {t('annotator.save_error_title')} {t('annotator.ui.save_error_count_x', { defaultValue: '{{n}}件 ✕', n: store.saveErrors.length })}
             </button>
           )}
           {/* V4-U-001: 試合中補完パネル */}
@@ -1935,7 +1935,7 @@ export function AnnotatorPage() {
                   : isLight ? 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-50' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-blue-900/20',
               )}
               aria-expanded={cvToolsExpanded}
-              title={cvToolsExpanded ? 'CV ツールを折り畳む' : 'CV ツール (TrackNet / 人物検出 / 表示) を展開'}
+              title={cvToolsExpanded ? t('annotator.ui.cv_tools_collapse_title', { defaultValue: 'CV ツールを折り畳む' }) : t('annotator.ui.cv_tools_expand_title', { defaultValue: 'CV ツール (TrackNet / 人物検出 / 表示) を展開' })}
             >
               <span className="material-symbols-outlined" style={{ fontSize: 13 }}>visibility</span>
               <span>CV</span>
@@ -1968,7 +1968,7 @@ export function AnnotatorPage() {
                   }`}
                   title={t('auto.AnnotatorPage.k3')}
                 >
-                  停止
+                  {t('annotator.ui.stop_btn', { defaultValue: '停止' })}
                 </button>
               </div>
             ) : tracknetJob?.status === 'stopped' ? (
@@ -1976,7 +1976,7 @@ export function AnnotatorPage() {
                 <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
                   isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
                 }`}>
-                  ⏸ 停止済 {Math.round(tracknetJob.progress * 100)}%
+                  {t('annotator.ui.stopped_with_pct', { defaultValue: '⏸ 停止済 {{pct}}%', pct: Math.round(tracknetJob.progress * 100) })}
                 </div>
                 <button
                   onClick={handleTracknetBatchResume}
@@ -1985,7 +1985,7 @@ export function AnnotatorPage() {
                   }`}
                   title={t('auto.AnnotatorPage.k4')}
                 >
-                  再開
+                  {t('annotator.ui.resume_btn', { defaultValue: '再開' })}
                 </button>
               </div>
             ) : tracknetJob?.status === 'complete' ? (
@@ -2030,7 +2030,7 @@ export function AnnotatorPage() {
                     }`}
                     title={t('auto.AnnotatorPage.k4')}
                   >
-                    再開
+                    {t('annotator.ui.resume_btn', { defaultValue: '再開' })}
                   </button>
                 )}
               </div>
@@ -2045,7 +2045,7 @@ export function AnnotatorPage() {
 
               {/* アーティファクト鮮度ヒント */}
               {yoloArtifactMeta && (
-                <span className={`text-[8px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`} title={`最終解析: ${yoloArtifactMeta.created_at} / ${yoloArtifactMeta.frame_count}f`}>
+                <span className={`text-[8px] ${isLight ? 'text-gray-400' : 'text-gray-600'}`} title={t('annotator.ui.yolo_artifact_meta_title', { defaultValue: '最終解析: {{date}} / {{n}}f', date: yoloArtifactMeta.created_at, n: yoloArtifactMeta.frame_count })}>
                   {new Date(yoloArtifactMeta.created_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                 </span>
               )}
@@ -2056,7 +2056,7 @@ export function AnnotatorPage() {
                   isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/40 text-blue-300'
                 }`}>
                   <span className="animate-pulse">●</span>
-                  人物 {Math.round(yoloJob.progress * 100)}%
+                  {t('annotator.ui.person_with_pct', { defaultValue: '人物 {{pct}}%', pct: Math.round(yoloJob.progress * 100) })}
                   <button
                     onClick={handleYoloBatchStop}
                     className={`ml-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors ${
@@ -2064,7 +2064,7 @@ export function AnnotatorPage() {
                     }`}
                     title={t('auto.AnnotatorPage.k5')}
                   >
-                    停止
+                    {t('annotator.ui.stop_btn', { defaultValue: '停止' })}
                   </button>
                 </div>
               ) : yoloJob?.status === 'stopped' ? (
@@ -2081,14 +2081,14 @@ export function AnnotatorPage() {
                     }`}
                     title={t('auto.AnnotatorPage.k6')}
                   >
-                    再開
+                    {t('annotator.ui.resume_btn', { defaultValue: '再開' })}
                   </button>
                   <button
                     onClick={() => {
                       setPendingConfirm({
-                        title: '人物検出をリセット',
-                        message: '既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？',
-                        confirmLabel: 'リセットする',
+                        title: t('annotator.ui.yolo_reset_title', { defaultValue: '人物検出をリセット' }),
+                        message: t('annotator.ui.yolo_reset_message', { defaultValue: '既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？' }),
+                        confirmLabel: t('annotator.ui.yolo_reset_confirm', { defaultValue: 'リセットする' }),
                         destructive: true,
                         onConfirm: () => {
                           setSamplerSamples([])
@@ -2116,9 +2116,9 @@ export function AnnotatorPage() {
                       ? isLight ? 'bg-blue-200 text-blue-800' : 'bg-blue-700/60 text-blue-200'
                       : isLight ? 'bg-gray-200 text-gray-600 hover:bg-blue-100' : 'bg-gray-700 text-gray-400 hover:bg-blue-900/40'
                   }`}
-                  title={yoloOverlayVisible ? '人物オーバーレイを非表示' : '人物オーバーレイを表示'}
+                  title={yoloOverlayVisible ? t('annotator.ui.person_overlay_hide', { defaultValue: '人物オーバーレイを非表示' }) : t('annotator.ui.person_overlay_show', { defaultValue: '人物オーバーレイを表示' })}
                 >
-                  {yoloOverlayVisible ? '◉' : '○'} 人物
+                  {yoloOverlayVisible ? '◉' : '○'} {t('annotator.ui.person_label', { defaultValue: '人物' })}
                 </button>
               ) : yoloJob?.status === 'error' ? (
                 <div className="flex flex-col items-start gap-0.5">
@@ -2129,7 +2129,7 @@ export function AnnotatorPage() {
                     }`}
                     title={yoloJob.error ?? t('yolo.batch_error')}
                   >
-                    ✗ 人物
+                    {t('annotator.ui.person_x_label', { defaultValue: '✗ 人物' })}
                   </button>
                   {yoloJob.error && (
                     <span className={`text-[9px] max-w-[140px] truncate ${isLight ? 'text-red-500' : 'text-red-400'}`} title={yoloJob.error}>
@@ -2150,7 +2150,7 @@ export function AnnotatorPage() {
                     }`}
                     title={t('yolo.batch_start')}
                   >
-                    + 人物検出
+                    {t('annotator.ui.person_detect_add', { defaultValue: '+ 人物検出' })}
                   </button>
                   {yoloArtifactExists && (
                     <button
@@ -2160,16 +2160,16 @@ export function AnnotatorPage() {
                       }`}
                       title={t('auto.AnnotatorPage.k6')}
                     >
-                      再開
+                      {t('annotator.ui.resume_btn', { defaultValue: '再開' })}
                     </button>
                   )}
                   {yoloArtifactExists && (
                     <button
                       onClick={() => {
                         setPendingConfirm({
-                          title: '人物検出をリセット',
-                          message: '既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？',
-                          confirmLabel: 'リセットする',
+                          title: t('annotator.ui.yolo_reset_title', { defaultValue: '人物検出をリセット' }),
+                          message: t('annotator.ui.yolo_reset_message', { defaultValue: '既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？' }),
+                          confirmLabel: t('annotator.ui.yolo_reset_confirm', { defaultValue: 'リセットする' }),
                           destructive: true,
                           onConfirm: () => {
                             setSamplerSamples([])
@@ -2197,7 +2197,7 @@ export function AnnotatorPage() {
                       }`}
                       title={t('auto.AnnotatorPage.k8')}
                     >
-                      差分更新
+                      {t('annotator.ui.diff_update_btn', { defaultValue: '差分更新' })}
                     </button>
                   )}
                 </div>
@@ -2254,7 +2254,7 @@ export function AnnotatorPage() {
                         onClick={finishSampler}
                         disabled={trackingLoading}
                         className={`px-1.5 py-0.5 rounded text-[10px] font-medium disabled:opacity-50 ${isLight ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-green-600 text-white hover:bg-green-500'}`}
-                      >{trackingLoading ? '...' : '完了'}</button>
+                      >{trackingLoading ? '...' : t('annotator.ui.track_complete', { defaultValue: '完了' })}</button>
                     )}
                     <button
                       onClick={cancelSampler}
@@ -2284,7 +2284,7 @@ export function AnnotatorPage() {
                         isLight ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-purple-600 text-white hover:bg-purple-500'
                       }`}
                     >
-                      {trackingLoading ? '...' : `識別確定（${Object.values(taggingAssignments).filter(Boolean).length}）`}
+                      {trackingLoading ? '...' : t('annotator.ui.track_identify_confirm', { defaultValue: '識別確定（{{n}}）', n: Object.values(taggingAssignments).filter(Boolean).length })}
                     </button>
                     <button
                       onClick={() => setTaggingMode(false)}
@@ -2301,10 +2301,10 @@ export function AnnotatorPage() {
                       isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
                     }`}
                     title={trackFrames.length > 0
-                      ? 'コート離脱・衣装変更などで識別をやり直す（10サンプル）'
-                      : '10サンプルでギャラリータグ付けしてトラッキング開始'}
+                      ? t('annotator.ui.track_identify_redo', { defaultValue: 'コート離脱・衣装変更などで識別をやり直す（10サンプル）' })
+                      : t('annotator.ui.track_identify_first', { defaultValue: '10サンプルでギャラリータグ付けしてトラッキング開始' })}
                   >
-                    {frameDetectLoading ? '検出中...' : trackFrames.length > 0 ? '再識別(10)' : '+ 識別(10)'}
+                    {frameDetectLoading ? t('annotator.ui.track_detecting', { defaultValue: '検出中...' }) : trackFrames.length > 0 ? t('annotator.ui.track_identify_redo_btn', { defaultValue: '再識別(10)' }) : t('annotator.ui.track_identify_first_btn', { defaultValue: '+ 識別(10)' })}
                   </button>
                 )
               )}
@@ -2320,8 +2320,8 @@ export function AnnotatorPage() {
                   }`}
                   title={
                     trackFrames.length === 0
-                      ? '識別データなし（先に「+ 識別」を実行してください）'
-                      : trackingVisible ? 'BBOX を非表示' : 'BBOX を表示'
+                      ? t('annotator.ui.track_no_data', { defaultValue: '識別データなし（先に「+ 識別」を実行してください）' })
+                      : trackingVisible ? t('annotator.ui.bbox_hide', { defaultValue: 'BBOX を非表示' }) : t('annotator.ui.bbox_show', { defaultValue: 'BBOX を表示' })
                   }
                 >
                   {trackingVisible && trackFrames.length > 0 ? '◉' : '○'} BBOX
@@ -2337,9 +2337,9 @@ export function AnnotatorPage() {
                       ? isLight ? 'bg-yellow-200 text-yellow-800' : 'bg-yellow-700/60 text-yellow-200'
                       : isLight ? 'bg-gray-200 text-gray-600 hover:bg-yellow-100' : 'bg-gray-700 text-gray-400 hover:bg-yellow-900/40'
                   }`}
-                  title={shuttleOverlayVisible ? 'シャトル軌跡を非表示' : 'シャトル軌跡を表示'}
+                  title={shuttleOverlayVisible ? t('annotator.ui.shuttle_hide', { defaultValue: 'シャトル軌跡を非表示' }) : t('annotator.ui.shuttle_show', { defaultValue: 'シャトル軌跡を表示' })}
                 >
-                  {shuttleOverlayVisible ? '◉' : '○'} 軌跡
+                  {shuttleOverlayVisible ? '◉' : '○'} {t('annotator.ui.shuttle_label', { defaultValue: '軌跡' })}
                 </button>
               )}
 
@@ -2351,9 +2351,9 @@ export function AnnotatorPage() {
                     ? isLight ? 'bg-cyan-200 text-cyan-800' : 'bg-cyan-800/60 text-cyan-200'
                     : isLight ? 'bg-gray-200 text-gray-600 hover:bg-cyan-100' : 'bg-gray-700 text-gray-400 hover:bg-cyan-900/40'
                 }`}
-                title={courtGridVisible ? 'コートグリッドを非表示' : 'コートグリッドを表示'}
+                title={courtGridVisible ? t('annotator.ui.court_grid_hide', { defaultValue: 'コートグリッドを非表示' }) : t('annotator.ui.court_grid_show', { defaultValue: 'コートグリッドを表示' })}
               >
-                {courtGridVisible ? '◉' : '○'} グリッド
+                {courtGridVisible ? '◉' : '○'} {t('annotator.ui.court_grid_label', { defaultValue: 'グリッド' })}
               </button>
 
               {/* TrackNet/YOLO 解析領域（ROI）指定 */}
@@ -2374,10 +2374,10 @@ export function AnnotatorPage() {
                       ? isLight ? 'bg-amber-100 text-amber-700' : 'bg-amber-900/40 text-amber-300'
                       : isLight ? 'bg-gray-200 text-gray-600 hover:bg-amber-100' : 'bg-gray-700 text-gray-400 hover:bg-amber-900/40'
                 }`}
-                title={roiEditing ? '解析領域の指定を確定（クリックで終了）' : roiRect ? '解析領域を変更（ドラッグ）' : '解析領域を指定（TrackNet/YOLO）'}
+                title={roiEditing ? t('annotator.ui.roi_editing_title', { defaultValue: '解析領域の指定を確定（クリックで終了）' }) : roiRect ? t('annotator.ui.roi_change_title', { defaultValue: '解析領域を変更（ドラッグ）' }) : t('annotator.ui.roi_set_title', { defaultValue: '解析領域を指定（TrackNet/YOLO）' })}
               >
                 <Crosshair size={11} />
-                {roiEditing ? '指定中...' : roiRect ? '領域▪' : '領域'}
+                {roiEditing ? t('annotator.ui.roi_editing_label', { defaultValue: '指定中...' }) : roiRect ? t('annotator.ui.roi_set_label', { defaultValue: '領域▪' }) : t('annotator.ui.roi_label', { defaultValue: '領域' })}
               </button>
 
               {/* 両方同時表示プリセット（両アーティファクトが揃っている場合） */}
@@ -2395,7 +2395,7 @@ export function AnnotatorPage() {
                   }`}
                   title={t('auto.AnnotatorPage.k15')}
                 >
-                  {yoloOverlayVisible && shuttleOverlayVisible ? '◉' : '○'} 両方
+                  {yoloOverlayVisible && shuttleOverlayVisible ? '◉' : '○'} {t('annotator.ui.both_overlay_label', { defaultValue: '両方' })}
                 </button>
               )}
             </div>
@@ -2406,7 +2406,7 @@ export function AnnotatorPage() {
               isLight ? 'border-gray-300 bg-gray-50' : 'border-gray-700 bg-gray-800/60'
             }`}>
               <span className={`text-[9px] font-bold uppercase tracking-wider pr-1 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
-                CV補助
+                {t('annotator.ui.cv_assist_short_label', { defaultValue: 'CV補助' })}
               </span>
               {/* 候補生成 */}
               <button
@@ -2417,9 +2417,9 @@ export function AnnotatorPage() {
                     ? isLight ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/60'
                     : isLight ? 'bg-gray-200 text-gray-600 hover:bg-emerald-100' : 'bg-gray-700 text-gray-400 hover:bg-emerald-900/40'
                 }`}
-                title={candidatesData ? `候補生成済み (${candidatesData.built_at?.slice(0, 10)}) — 再生成` : 'CV候補を生成する'}
+                title={candidatesData ? t('annotator.ui.cv_assist_built_at', { defaultValue: '候補生成済み ({{date}}) — 再生成', date: candidatesData.built_at?.slice(0, 10) }) : t('annotator.ui.cv_assist_build_title', { defaultValue: 'CV候補を生成する' })}
               >
-                {cvBuildLoading ? '生成中...' : candidatesData ? '✓ 候補' : '候補生成'}
+                {cvBuildLoading ? t('annotator.ui.cv_assist_building', { defaultValue: '生成中...' }) : candidatesData ? t('annotator.ui.cv_assist_built', { defaultValue: '✓ 候補' }) : t('annotator.ui.cv_assist_build', { defaultValue: '候補生成' })}
               </button>
               {/* 適用コントロール（高確信度・フィールド別・候補含む） */}
               {candidatesData && (
@@ -2432,7 +2432,7 @@ export function AnnotatorPage() {
                     }`}
                     title={t('auto.AnnotatorPage.k16')}
                   >
-                    高確信度適用
+                    {t('annotator.ui.cv_apply_high', { defaultValue: '高確信度適用' })}
                   </button>
                   <button
                     onClick={() => applyCandidates('auto_filled', ['land_zone'])}
@@ -2442,7 +2442,7 @@ export function AnnotatorPage() {
                     }`}
                     title={t('auto.AnnotatorPage.k17')}
                   >
-                    着地のみ
+                    {t('annotator.ui.cv_apply_land_only', { defaultValue: '着地のみ' })}
                   </button>
                   <button
                     onClick={() => applyCandidates('auto_filled', ['hitter'])}
@@ -2452,7 +2452,7 @@ export function AnnotatorPage() {
                     }`}
                     title={t('auto.AnnotatorPage.k18')}
                   >
-                    打者のみ
+                    {t('annotator.ui.cv_apply_hitter_only', { defaultValue: '打者のみ' })}
                   </button>
                   <button
                     onClick={() => applyCandidates('suggested', ['land_zone', 'hitter'])}
@@ -2462,7 +2462,7 @@ export function AnnotatorPage() {
                     }`}
                     title={t('auto.AnnotatorPage.k19')}
                   >
-                    候補も含む
+                    {t('annotator.ui.cv_apply_with_candidates', { defaultValue: '候補も含む' })}
                   </button>
                 </>
               )}
@@ -2477,7 +2477,7 @@ export function AnnotatorPage() {
                   }`}
                   title={t('auto.AnnotatorPage.k20')}
                 >
-                  {showCVAssistPanel ? '◉' : '○'} CV詳細
+                  {showCVAssistPanel ? '◉' : '○'} {t('annotator.ui.cv_detail_label', { defaultValue: 'CV詳細' })}
                 </button>
               )}
               {/* CV要確認キュー */}
@@ -2498,11 +2498,11 @@ export function AnnotatorPage() {
               {cvApplyResult && (
                 <span
                   className={`text-[9px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}
-                  title={`着地: ${cvApplyResult.land_zone_count}件 / 打者: ${cvApplyResult.hitter_count}件`}
+                  title={t('annotator.ui.cv_apply_breakdown_title', { defaultValue: '着地: {{land}}件 / 打者: {{hitter}}件', land: cvApplyResult.land_zone_count, hitter: cvApplyResult.hitter_count })}
                 >
-                  {cvApplyResult.updated_strokes}件適用
-                  {cvApplyResult.land_zone_count > 0 && ` (着地${cvApplyResult.land_zone_count})`}
-                  {cvApplyResult.hitter_count > 0 && ` (打者${cvApplyResult.hitter_count})`}
+                  {t('annotator.ui.cv_apply_result', { defaultValue: '{{n}}件適用', n: cvApplyResult.updated_strokes })}
+                  {cvApplyResult.land_zone_count > 0 && t('annotator.ui.cv_apply_result_land', { defaultValue: ' (着地{{n}})', n: cvApplyResult.land_zone_count })}
+                  {cvApplyResult.hitter_count > 0 && t('annotator.ui.cv_apply_result_hitter', { defaultValue: ' (打者{{n}})', n: cvApplyResult.hitter_count })}
                 </span>
               )}
               {/* ビルドエラー */}
@@ -2534,7 +2534,7 @@ export function AnnotatorPage() {
                       ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                       : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
                 }`}
-                title={tunnelPending ? 'トンネルURL取得中... しばらくお待ちください' : 'クリックしてQRコード・URLを表示'}
+                title={tunnelPending ? t('annotator.ui.tunnel_pending_title', { defaultValue: 'トンネルURL取得中... しばらくお待ちください' }) : t('annotator.ui.tunnel_show_qr_title', { defaultValue: 'クリックしてQRコード・URLを表示' })}
               >
                 <Share2 size={12} />
                 <span className="font-mono font-bold">
@@ -2546,7 +2546,7 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => tunnelToggle.mutate()}
                   disabled={tunnelToggle.isPending}
-                  title={tunnelStatus?.data?.running ? 'トンネル停止' : 'トンネル起動（HTTPS外部公開）'}
+                  title={tunnelStatus?.data?.running ? t('annotator.ui.tunnel_stop_title', { defaultValue: 'トンネル停止' }) : t('annotator.ui.tunnel_start_title', { defaultValue: 'トンネル起動（HTTPS外部公開）' })}
                   className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors disabled:opacity-50 ${
                     tunnelStatus?.data?.running
                       ? isLight
@@ -2558,7 +2558,7 @@ export function AnnotatorPage() {
                   }`}
                 >
                   <Globe size={12} className={tunnelStatus?.data?.running ? 'animate-pulse' : ''} />
-                  {tunnelPending ? '取得中...' : tunnelStatus?.data?.running ? '稼働中' : ''}
+                  {tunnelPending ? t('annotator.ui.tunnel_pending_short', { defaultValue: '取得中...' }) : tunnelStatus?.data?.running ? t('annotator.ui.tunnel_running', { defaultValue: '稼働中' }) : ''}
                 </button>
               )}
               {/* トンネルエラー表示（タイムアウト・認証失敗など） */}
@@ -2627,7 +2627,7 @@ export function AnnotatorPage() {
                   ? isLight ? 'text-green-700' : 'text-green-400'
                   : isLight ? 'text-amber-600' : 'text-amber-400'
               }>
-                {remoteHealth.wsConnected ? '接続' : '再接続中'}
+                {remoteHealth.wsConnected ? t('annotator.ui.remote_health_connected', { defaultValue: '接続' }) : t('annotator.ui.remote_health_reconnecting', { defaultValue: '再接続中' })}
               </span>
               {remoteHealth.connectionState === 'connected' && (
                 <span className={`ml-1 ${isLight ? 'text-red-600' : 'text-red-400'}`}>● LIVE</span>
@@ -2726,7 +2726,7 @@ export function AnnotatorPage() {
                 onClick={() => { store.clearSaveErrors(); setShowMobileMenu(false) }}
                 className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-gray-700"
               >
-                {t('annotator.save_error_title')} {store.saveErrors.length}件
+                {t('annotator.save_error_title')} {t('annotator.ui.save_error_count', { defaultValue: '{{n}}件', n: store.saveErrors.length })}
               </button>
             )}
           </div>
@@ -2763,7 +2763,7 @@ export function AnnotatorPage() {
                   }}
                   className="px-2 py-0.5 bg-amber-800/40 hover:bg-amber-700/60 text-amber-200 rounded text-xs border border-amber-700/30"
                 >
-                  ラリー #{bm.rally_id ?? '?'}
+                  {t('annotator.ui.rally_review_label', { defaultValue: 'ラリー #{{id}}', id: bm.rally_id ?? '?' })}
                   {bm.video_timestamp_sec != null && (
                     <span className="ml-1 opacity-60 text-[10px]">{Math.floor(bm.video_timestamp_sec / 60)}:{String(Math.floor(bm.video_timestamp_sec % 60)).padStart(2, '0')}</span>
                   )}
@@ -2811,7 +2811,7 @@ export function AnnotatorPage() {
             if (videoSourceMode === 'none') {
               return (
                 <div className="flex items-center justify-center bg-gray-900 rounded text-gray-500 text-xs border border-dashed border-gray-700 py-6 text-center">
-                  別モニタで再生中
+                  {t('annotator.ui.external_monitor_playing', { defaultValue: '別モニタで再生中' })}
                 </div>
               )
             }
@@ -2838,7 +2838,7 @@ export function AnnotatorPage() {
                       />
                       <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-green-700 text-white text-xs px-2 py-0.5 rounded-full">
                         <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                        PCカメラ使用中
+                        {t('annotator.ui.pc_camera_in_use', { defaultValue: 'PCカメラ使用中' })}
                       </div>
                       {/* 録画ボタン */}
                       <button
@@ -2846,7 +2846,7 @@ export function AnnotatorPage() {
                         className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
                           isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
                         }`}
-                        title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
+                        title={isRecording ? t('annotator.ui.rec_stop_local', { defaultValue: '録画停止（ローカル保存）' }) : t('annotator.ui.rec_start', { defaultValue: '録画開始' })}
                       >
                         {isRecording ? <><Square size={11} className="fill-current" /> {t('annotator.ui.record_stop')}</> : <><Video size={11} /> {t('annotator.ui.record_start')}</>}
                       </button>
@@ -2867,7 +2867,7 @@ export function AnnotatorPage() {
                       />
                       <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">
                         <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                        iOSカメラ受信中
+                        {t('annotator.ui.ios_camera_receiving', { defaultValue: 'iOSカメラ受信中' })}
                       </div>
                       {/* 録画ボタン */}
                       <button
@@ -2875,7 +2875,7 @@ export function AnnotatorPage() {
                         className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
                           isRecording ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-gray-800/80 hover:bg-gray-700 text-gray-200'
                         }`}
-                        title={isRecording ? '録画停止（ローカル保存）' : '録画開始'}
+                        title={isRecording ? t('annotator.ui.rec_stop_local', { defaultValue: '録画停止（ローカル保存）' }) : t('annotator.ui.rec_start', { defaultValue: '録画開始' })}
                       >
                         {isRecording ? <><Square size={11} className="fill-current" /> {t('annotator.ui.record_stop')}</> : <><Video size={11} /> {t('annotator.ui.record_start')}</>}
                       </button>
@@ -2912,7 +2912,7 @@ export function AnnotatorPage() {
                       onClick={() => setUseWebView(false)}
                       className="text-xs text-gray-500 hover:text-gray-300 text-left px-1"
                     >
-                      ← ダウンロード再生に戻る
+                      {t('annotator.ui.back_to_download_play', { defaultValue: '← ダウンロード再生に戻る' })}
                     </button>
                   </div>
                 )
@@ -2935,7 +2935,7 @@ export function AnnotatorPage() {
                     className="text-xs text-gray-500 hover:text-blue-400 text-left px-1 flex items-center gap-1"
                     title={t('auto.AnnotatorPage.k23')}
                   >
-                    🔒 DRM保護コンテンツ／ログイン必須サイトはブラウザ内視聴モードを使用
+                    {t('annotator.ui.drm_webview_hint', { defaultValue: '🔒 DRM保護コンテンツ／ログイン必須サイトはブラウザ内視聴モードを使用' })}
                   </button>
                 </div>
               )
@@ -3012,7 +3012,7 @@ export function AnnotatorPage() {
                 title={t('auto.AnnotatorPage.k24')}
               >
                 <FolderOpen size={12} />
-                ファイルを開く
+                {t('annotator.ui.open_file', { defaultValue: 'ファイルを開く' })}
               </button>
               <input
                 ref={browserFileInputRef}
@@ -3041,7 +3041,7 @@ export function AnnotatorPage() {
                 className="flex items-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded whitespace-nowrap"
               >
                 <Link size={12} />
-                設定
+                {t('annotator.ui.url_set', { defaultValue: '設定' })}
               </button>
             </div>
             {hasVideo(match) && (
@@ -3067,7 +3067,7 @@ export function AnnotatorPage() {
                   onClick={handleCancelUpload}
                   className="mt-1 text-[10px] text-red-400 hover:text-red-300"
                 >
-                  キャンセル
+                  {t('annotator.ui.cancel', { defaultValue: 'キャンセル' })}
                 </button>
               </div>
             )}
@@ -3151,7 +3151,7 @@ export function AnnotatorPage() {
                   ))}
                 </div>
                 <div className="text-[11px] text-gray-500 mt-0.5">
-                  Shift+U/I/O=OB後 Shift+J/L=OB側 -/=/\=NET
+                  {t('annotator.ui.shortcut_letters_extra', { defaultValue: 'Shift+U/I/O=OB後 Shift+J/L=OB側 -/=/\\=NET' })}
                 </div>
               </div>
               {/* コートチェンジ情報 + 先サーブ/視点変更 */}
@@ -3163,8 +3163,12 @@ export function AnnotatorPage() {
                   return (
                     <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-yellow-300 font-medium' : 'text-gray-500'}`}>
                       <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-yellow-400' : 'bg-gray-700'}`} />
-                      <span>Set {sn}: A={aPos === 'top' ? '↑上' : '↓下'}</span>
-                      {sn === 3 && <span className="text-gray-600 text-[10px]">(11pt↔)</span>}
+                      <span>{t('annotator.ui.set_a_position', {
+                        defaultValue: 'Set {{set}}: A={{pos}}',
+                        set: sn,
+                        pos: aPos === 'top' ? t('annotator.ui.side_arrow_top', { defaultValue: '↑上' }) : t('annotator.ui.side_arrow_bottom', { defaultValue: '↓下' }),
+                      })}</span>
+                      {sn === 3 && <span className="text-gray-600 text-[10px]">{t('annotator.ui.third_set_swap', { defaultValue: '(11pt↔)' })}</span>}
                     </div>
                   )
                 })}
@@ -3265,7 +3269,7 @@ export function AnnotatorPage() {
               store.inputStep === 'idle' ? 'text-gray-400 bg-gray-800' : 'text-blue-300 bg-blue-900/30'
             )}
           >
-            <span>{initialized ? stepLabel : '読み込み中…'}</span>
+            <span>{initialized ? stepLabel : t('annotator.ui.loading_dots', { defaultValue: '読み込み中…' })}</span>
             {isMatchDayMode && (
               <button
                 onClick={() => setShowLegendOverlay((v) => !v)}
@@ -3350,8 +3354,12 @@ export function AnnotatorPage() {
                         return (
                           <div key={sn} className={`text-xs flex items-center gap-1.5 ${isCurrent ? 'text-yellow-300 font-medium' : 'text-gray-500'}`}>
                             <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${isCurrent ? 'bg-yellow-400' : 'bg-gray-700'}`} />
-                            <span>Set {sn}: A={aPos === 'top' ? '↑上' : '↓下'}</span>
-                            {sn === 3 && <span className="text-gray-600 text-[10px]">(11pt↔)</span>}
+                            <span>{t('annotator.ui.set_a_position', {
+                              defaultValue: 'Set {{set}}: A={{pos}}',
+                              set: sn,
+                              pos: aPos === 'top' ? t('annotator.ui.side_arrow_top', { defaultValue: '↑上' }) : t('annotator.ui.side_arrow_bottom', { defaultValue: '↓下' }),
+                            })}</span>
+                            {sn === 3 && <span className="text-gray-600 text-[10px]">{t('annotator.ui.third_set_swap', { defaultValue: '(11pt↔)' })}</span>}
                           </div>
                         )
                       })}
@@ -3469,7 +3477,10 @@ export function AnnotatorPage() {
               ) : store.isRallyActive && store.currentStrokes.length > 0 ? (
                 lastAutoSaveTime ? (
                   <span className="text-green-500">
-                    ✓ 自動保存済 {new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {t('annotator.ui.auto_saved_at', {
+                      defaultValue: '✓ 自動保存済 {{time}}',
+                      time: new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    })}
                   </span>
                 ) : (
                   <span className="text-yellow-500 animate-pulse">{t('annotator.ui.unsaved')}</span>
@@ -3494,7 +3505,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => !playerToggleDisabled && store.setPlayer('player_a')}
                     disabled={playerToggleDisabled}
-                    title={match?.player_a?.team ? `所属: ${match.player_a.team}` : match?.player_a?.name ?? 'A'}
+                    title={match?.player_a?.team ? t('annotator.ui.team_prefix_title', { defaultValue: '所属: {{team}}', team: match.player_a.team }) : match?.player_a?.name ?? 'A'}
                     className={clsx(
                       'flex-1 rounded font-medium transition-colors',
                       useLargeTouch ? 'py-3 text-sm' : 'py-1.5 text-xs',
@@ -3516,14 +3527,14 @@ export function AnnotatorPage() {
                         ? 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-40 grayscale'
                         : 'bg-gray-700 hover:bg-gray-600 text-gray-300',
                     )}
-                    title={playerToggleDisabled ? '落点入力中は切替できません' : 'プレイヤー切替'}
+                    title={playerToggleDisabled ? t('annotator.ui.player_toggle_disabled_title', { defaultValue: '落点入力中は切替できません' }) : t('annotator.ui.player_toggle_title', { defaultValue: 'プレイヤー切替' })}
                   >
                     <Users size={useLargeTouch ? 16 : 12} />
                   </button>
                   <button
                     onClick={() => !playerToggleDisabled && store.setPlayer('player_b')}
                     disabled={playerToggleDisabled}
-                    title={match?.player_b?.team ? `所属: ${match.player_b.team}` : match?.player_b?.name ?? 'B'}
+                    title={match?.player_b?.team ? t('annotator.ui.team_prefix_title', { defaultValue: '所属: {{team}}', team: match.player_b.team }) : match?.player_b?.name ?? 'B'}
                     className={clsx(
                       'flex-1 rounded font-medium transition-colors',
                       useLargeTouch ? 'py-3 text-sm' : 'py-1.5 text-xs',
@@ -3627,12 +3638,22 @@ export function AnnotatorPage() {
 
                     {!pendingEndType && (
                       <p className={clsx('text-gray-500 text-center', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
-                        {isMobile ? 'エンドタイプを選択' : '1–6キーまたはボタンでエンドタイプを選択'}
+                        {isMobile
+                          ? t('annotator.ui.select_end_type_mobile', { defaultValue: 'エンドタイプを選択' })
+                          : t('annotator.ui.select_end_type_desktop', { defaultValue: '1–6キーまたはボタンでエンドタイプを選択' })}
                       </p>
                     )}
                     {pendingEndType && suggestedWinner && (
                       <p className={clsx('text-gray-300 text-center', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
-                        推定: {suggestedWinner === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B'} 得点 — {isMobile ? 'タップで確定' : 'A/Bキーまたはボタンで確定'}
+                        {isMobile
+                          ? t('annotator.ui.estimated_winner_mobile', {
+                              defaultValue: '推定: {{name}} 得点 — タップで確定',
+                              name: suggestedWinner === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B',
+                            })
+                          : t('annotator.ui.estimated_winner_desktop', {
+                              defaultValue: '推定: {{name}} 得点 — A/Bキーまたはボタンで確定',
+                              name: suggestedWinner === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B',
+                            })}
                       </p>
                     )}
                   </div>
@@ -3640,7 +3661,7 @@ export function AnnotatorPage() {
                   {/* T4: Soft warning — land_zone 未入力ストロークがある場合 */}
                   {store.currentStrokes.some((s) => !s.land_zone) && (
                     <p className="text-[10px] text-yellow-700/80 text-center py-0.5">
-                      着地点が未入力のストロークがあります（後から補完可能）
+                      {t('annotator.ui.missing_land_warning', { defaultValue: '着地点が未入力のストロークがあります（後から補完可能）' })}
                     </p>
                   )}
 
@@ -3651,7 +3672,7 @@ export function AnnotatorPage() {
                       useLargeTouch ? 'py-2.5 text-sm' : 'py-1 text-xs'
                     )}
                   >
-                    ← キャンセル {!isMobile && '(Esc)'}
+                    {t('annotator.ui.rally_end_cancel_esc', { defaultValue: '← キャンセル' })} {!isMobile && t('annotator.ui.rally_end_cancel_paren_esc', { defaultValue: '(Esc)' })}
                   </button>
                 </div>
               )
@@ -3693,7 +3714,7 @@ export function AnnotatorPage() {
                 >
                   {store.inputStep === 'land_zone' && (
                     <div className="text-[10px] text-orange-300 text-center font-medium">
-                      ダブルス: 打者を確認・変更 (キー <kbd className="font-mono px-1 bg-gray-800 rounded">7</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">8</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">0</kbd>)
+                      {t('annotator.ui.doubles_hitter_hint', { defaultValue: 'ダブルス: 打者を確認・変更 (キー' })} <kbd className="font-mono px-1 bg-gray-800 rounded">7</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">8</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">0</kbd>{t('annotator.ui.doubles_hitter_hint_close', { defaultValue: ')' })}
                     </div>
                   )}
                   {/* 4選手ボタン行 */}
@@ -3767,12 +3788,12 @@ export function AnnotatorPage() {
                     <span className="text-[10px] text-gray-400 hidden md:inline">
                       {store.isDoubles ? (
                         <>
-                          打点: <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">6</kbd>
-                          ／ 7-9 は <kbd className="font-mono px-1 bg-gray-800 rounded">Shift+7</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
+                          {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打点:' })} <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">6</kbd>
+                          {' '}{t('annotator.ui.hit_zone_hint_doubles_extra', { defaultValue: '／ 7-9 は' })} <kbd className="font-mono px-1 bg-gray-800 rounded">Shift+7</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
                         </>
                       ) : (
                         <>
-                          打点: トップ行 <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
+                          {t('annotator.ui.hit_zone_hint_singles', { defaultValue: '打点: トップ行' })} <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
                         </>
                       )}
                     </span>
@@ -3787,7 +3808,7 @@ export function AnnotatorPage() {
                   {/* CourtDiagram にアクティブフォーカス枠を被せて「ここをクリック」を明示 */}
                   <div className="relative rounded-lg ring-2 ring-blue-400 ring-offset-2 ring-offset-gray-900 animate-pulse-slow">
                     <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-blue-500 text-white text-[10px] font-medium whitespace-nowrap shadow z-10">
-                      着地点を選択 ↓
+                      {t('annotator.ui.land_select_marker', { defaultValue: '着地点を選択 ↓' })}
                     </span>
                     <CourtDiagram
                       mode={store.currentPlayer === 'player_b' ? 'hit' : 'land'}
@@ -3820,7 +3841,7 @@ export function AnnotatorPage() {
                 {/* 打点（自動推定済み） */}
                 {store.pendingStroke.hit_zone && (
                   <div className="text-[10px] text-gray-500 text-center">
-                    {t('annotator.hit_zone')} (自動): {store.pendingStroke.hit_zone}
+                    {t('annotator.hit_zone')} {t('annotator.ui.hit_zone_auto_label', { defaultValue: '(自動)' })}: {store.pendingStroke.hit_zone}
                   </div>
                 )}
               </div>
@@ -3859,7 +3880,7 @@ export function AnnotatorPage() {
                     useLargeTouch ? 'py-4 text-base' : 'py-2.5 text-sm'
                   )}
                 >
-                  ▶ ラリー開始
+                  {t('annotator.ui.rally_start_btn', { defaultValue: '▶ ラリー開始' })}
                 </button>
                 {/* モバイルでは見逃し・ブックマーク・コメント・ウォームアップを省略して画面を広く使う */}
                 {!isMobile && (
@@ -4011,7 +4032,7 @@ export function AnnotatorPage() {
               }`}>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className={`text-[10px] font-semibold ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
-                    CV補助候補
+                    {t('annotator.ui.cv_assist_label', { defaultValue: 'CV補助候補' })}
                   </span>
                   <button
                     onClick={() => setShowCVAssistPanel(false)}
@@ -4022,11 +4043,11 @@ export function AnnotatorPage() {
                 </div>
                 {lastSavedRallyId == null ? (
                   <div className="text-slate-500 text-xs text-center py-3">
-                    ラリーを完了すると候補が表示されます
+                    {t('annotator.ui.cv_assist_finish_rally', { defaultValue: 'ラリーを完了すると候補が表示されます' })}
                   </div>
                 ) : getCandidateForRally(lastSavedRallyId) == null ? (
                   <div className="text-slate-500 text-xs text-center py-3">
-                    このラリーの候補がありません（「候補生成」を再実行してください）
+                    {t('annotator.ui.cv_assist_no_candidate', { defaultValue: 'このラリーの候補がありません（「候補生成」を再実行してください）' })}
                   </div>
                 ) : (
                   <CVAssistPanel
@@ -4056,10 +4077,10 @@ export function AnnotatorPage() {
                     const key = `court-calib-${matchId}`
                     const raw = localStorage.getItem(key)
                     console.info('[GridSync] localStorage key:', key, 'raw:', raw)
-                    if (!raw) return { ok: false, message: 'localStorage にキャリブが見つかりません' }
+                    if (!raw) return { ok: false, message: t('annotator.ui.calib_not_found_local', { defaultValue: 'localStorage にキャリブが見つかりません' }) }
                     const pts = JSON.parse(raw) as Array<{ x: number; y: number }>
                     if (!Array.isArray(pts) || pts.length !== 6) {
-                      return { ok: false, message: `点数不正 (${pts?.length ?? 0}/6)` }
+                      return { ok: false, message: t('annotator.ui.calib_invalid_points', { defaultValue: '点数不正 ({{got}}/6)', got: pts?.length ?? 0 }) }
                     }
                     const body = {
                       points: pts.map((p) => ({ x: p.x, y: p.y })),
@@ -4147,7 +4168,7 @@ export function AnnotatorPage() {
                       className="flex items-center gap-0.5 text-gray-500 hover:text-gray-300 text-xs px-1"
                     >
                       <ChevronUp size={11} />
-                      折りたたむ
+                      {t('annotator.ui.fold_up', { defaultValue: '折りたたむ' })}
                     </button>
                   </div>
                   {/* 返球品質 */}
@@ -4226,7 +4247,7 @@ export function AnnotatorPage() {
                     useLargeTouch ? 'py-4 text-base' : 'py-2 text-sm'
                   )}
                 >
-                  ラリー終了 {!isMobile && '(Enter)'}
+                  {t('annotator.ui.rally_end_btn', { defaultValue: 'ラリー終了' })} {!isMobile && '(Enter)'}
                 </button>
               )}
 
@@ -4246,7 +4267,7 @@ export function AnnotatorPage() {
                   )}
                 >
                   <RotateCcw size={useLargeTouch ? 16 : 14} />
-                  戻す {!isMobile && '(Ctrl+Z)'}
+                  {t('annotator.ui.undo_btn', { defaultValue: '戻す' })} {!isMobile && '(Ctrl+Z)'}
                 </button>
               )}
 
@@ -4259,7 +4280,7 @@ export function AnnotatorPage() {
                     useLargeTouch ? 'py-2.5 text-sm' : 'py-1.5 text-xs'
                   )}
                 >
-                  ✕ ラリーキャンセル
+                  {t('annotator.ui.rally_cancel_btn', { defaultValue: '✕ ラリーキャンセル' })}
                 </button>
               )}
 
@@ -4287,7 +4308,7 @@ export function AnnotatorPage() {
                   )}
                   title={t('auto.AnnotatorPage.k27')}
                 >
-                  💾 一時保存
+                  {t('annotator.ui.manual_save_btn', { defaultValue: '💾 一時保存' })}
                   {lastAutoSaveTime && (
                     <span className="text-gray-500 text-[10px]">
                       {new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -4308,7 +4329,7 @@ export function AnnotatorPage() {
                   : 'border-gray-700',
               )}>
                 <div className="text-gray-400 mb-1.5 font-medium flex items-center gap-1.5">
-                  管理操作
+                  {t('annotator.ui.manage_actions', { defaultValue: '管理操作' })}
                   {store.isRallyActive && (
                     <span className="text-[10px] text-gray-600">{t('annotator.ui.unavailable_rally')}</span>
                   )}
@@ -4319,8 +4340,15 @@ export function AnnotatorPage() {
                   <div className="bg-yellow-900/20 border border-yellow-700/50 rounded p-2 mb-1.5">
                     <p className="text-yellow-400 text-[11px] mb-2">
                       {setNavConfirm.direction === 'next'
-                        ? `Set ${store.currentSetNum} を終了して Set ${store.currentSetNum + 1} へ移行しますか？`
-                        : `Set ${store.currentSetNum - 1} へ戻りますか？（現在のセット進行は変わりません）`
+                        ? t('annotator.ui.set_transition_to_next', {
+                            defaultValue: 'Set {{from}} を終了して Set {{to}} へ移行しますか？',
+                            from: store.currentSetNum,
+                            to: store.currentSetNum + 1,
+                          })
+                        : t('annotator.ui.set_transition_to_prev', {
+                            defaultValue: 'Set {{to}} へ戻りますか？（現在のセット進行は変わりません）',
+                            to: store.currentSetNum - 1,
+                          })
                       }
                     </p>
                     <div className="flex gap-1.5">
@@ -4333,13 +4361,13 @@ export function AnnotatorPage() {
                         }}
                         className="flex-1 py-1 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-[11px] font-medium"
                       >
-                        確定
+                        {t('annotator.ui.confirm', { defaultValue: '確定' })}
                       </button>
                       <button
                         onClick={() => setSetNavConfirm(null)}
                         className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[11px]"
                       >
-                        キャンセル
+                        {t('annotator.ui.cancel', { defaultValue: 'キャンセル' })}
                       </button>
                     </div>
                   </div>
@@ -4351,14 +4379,14 @@ export function AnnotatorPage() {
                       className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <ChevronLeft size={12} />
-                      前のセット (Set {store.currentSetNum - 1})
+                      {t('annotator.ui.prev_set_btn', { defaultValue: '前のセット (Set {{n}})', n: store.currentSetNum - 1 })}
                     </button>
                     <button
                       onClick={() => setSetNavConfirm({ direction: 'next' })}
                       className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center"
                     >
                       <ChevronRight size={12} />
-                      次のセットへ (Set {store.currentSetNum + 1})
+                      {t('annotator.ui.next_set_btn', { defaultValue: '次のセットへ (Set {{n}})', n: store.currentSetNum + 1 })}
                     </button>
                   </div>
                 )}
@@ -4585,13 +4613,13 @@ export function AnnotatorPage() {
                 onClick={() => handleSkipRally('player_a')}
                 className="py-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-bold"
               >
-                {match?.player_a?.name ?? 'A'} 得点
+                {t('annotator.ui.scored_winner', { defaultValue: '{{name}} 得点', name: match?.player_a?.name ?? 'A' })}
               </button>
               <button
                 onClick={() => handleSkipRally('player_b')}
                 className="py-4 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-bold"
               >
-                {match?.player_b?.name ?? 'B'} 得点
+                {t('annotator.ui.scored_winner', { defaultValue: '{{name}} 得点', name: match?.player_b?.name ?? 'B' })}
               </button>
             </div>
             <div className="px-4 pb-4">
@@ -4599,7 +4627,7 @@ export function AnnotatorPage() {
                 onClick={() => setShowSkipRallyDialog(false)}
                 className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs"
               >
-                キャンセル
+                {t('annotator.ui.cancel', { defaultValue: 'キャンセル' })}
               </button>
             </div>
           </div>

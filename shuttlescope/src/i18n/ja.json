@@ -1392,6 +1392,7 @@
       "remote_health_connected": "接続",
       "remote_health_reconnecting": "再接続中",
       "yolo_artifact_meta_title": "最終解析: {{date}} / {{n}}f",
+      "cv_apply_breakdown_title": "着地: {{land}}件 / 打者: {{hitter}}件",
       "team_prefix_title": "所属: {{team}}",
       "player_toggle_disabled_title": "落点入力中は切替できません",
       "player_toggle_title": "プレイヤー切替",
