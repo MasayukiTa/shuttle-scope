@@ -8,6 +8,7 @@ import { clsx } from 'clsx'
 import '@/i18n'
 import { MatchListPage } from '@/pages/MatchListPage'
 import { AnnotatorPage } from '@/pages/AnnotatorPage'
+import { LiveInputPage } from '@/pages/LiveInputPage'
 import { DashboardShell } from '@/pages/dashboard/DashboardShell'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -92,6 +93,8 @@ function Sidebar() {
   const location = useLocation()
   const isLight = theme === 'light'
   const isAnnotatorPage = location.pathname.startsWith('/annotator')
+  // Phase C LiveInputPage もフルブリード扱い (サイドバー/ボトムナビ非表示)
+  const isFullBleedPage = isAnnotatorPage || location.pathname.startsWith('/live')
   const unreadCountQuery = useQuery({
     queryKey: ['public-inquiries-unread-count'],
     queryFn: publicInquiryUnreadCount,
@@ -134,10 +137,17 @@ function Sidebar() {
 
   return (
     <>
-      <div className={clsx('hidden md:flex w-16 flex-col items-center border-r', sidebarBg, isAnnotatorPage && 'md:hidden')}>
+      {/*
+       * サイドバー: md (768-1023) はアイコン縦並び w-16、lg+ (1024px〜=iPad横/PC) は
+       * w-56 でラベル付きの縦ナビ。AnnotatorPage では非表示維持。
+       *
+       * 全幅 56 (~224px) は SPEC が想定していた iPad 横持ち向け labeled sidebar の幅。
+       */}
+      <div className={clsx('hidden md:flex w-16 lg:w-56 flex-col border-r', sidebarBg, isFullBleedPage && 'md:hidden')}>
         {/* ロゴ帯: favicon 画像が白背景のため、ダークモードでも常に白背景を維持する */}
-        <div className="w-full flex items-center justify-center py-2 bg-white border-b border-gray-200">
+        <div className="w-full flex items-center justify-center lg:justify-start lg:px-3 lg:gap-2 py-2 bg-white border-b border-gray-200">
           <img src="/favicon.png" alt="ShuttleScope" className="w-10 h-10 object-contain" />
+          <span className="hidden lg:inline text-sm font-bold text-gray-900 truncate">ShuttleScope</span>
         </div>
         <div className="pt-4" />
         {navItems.map(({ to, label, shortLabel, icon: Icon, badge }) => (
@@ -147,14 +157,16 @@ function Sidebar() {
             title={label}
             className={({ isActive }) =>
               clsx(
-                'flex flex-col items-center gap-1 p-2 rounded text-xs w-full',
+                // md は icon+短縮ラベル縦積み、lg+ は icon+フルラベル横並び
+                'flex items-center gap-1 p-2 rounded text-xs w-full',
+                'flex-col lg:flex-row lg:gap-3 lg:px-3 lg:text-sm',
                 isActive
                   ? (isLight ? 'text-blue-600 bg-blue-50' : 'text-blue-400 bg-blue-900/30')
                   : (isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700')
               )
             }
           >
-            <div className="relative">
+            <div className="relative shrink-0">
               <Icon size={20} />
               {badge ? (
                 <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
@@ -162,39 +174,47 @@ function Sidebar() {
                 </span>
               ) : null}
             </div>
-            <span className="text-[9px] leading-none">{shortLabel ?? label.slice(0, 4)}</span>
+            {/* md: 短縮 / lg+: フルラベル */}
+            <span className="text-[9px] leading-none lg:hidden">{shortLabel ?? label.slice(0, 4)}</span>
+            <span className="hidden lg:inline truncate">{label}</span>
           </NavLink>
         ))}
 
-        <div className="mt-auto mb-2">
+        <div className="mt-auto mb-2 w-full">
           <button
             onClick={handleLogout}
             title={t('auth.logout')}
-            className={`mb-2 flex flex-col items-center gap-1 p-2 rounded text-xs w-full transition-colors ${
-              isLight ? 'text-gray-500 hover:text-red-700 hover:bg-red-50' : 'text-gray-400 hover:text-red-300 hover:bg-gray-700'
-            }`}
+            className={clsx(
+              'mb-2 flex items-center gap-1 p-2 rounded text-xs w-full transition-colors',
+              'flex-col lg:flex-row lg:gap-3 lg:px-3 lg:text-sm',
+              isLight ? 'text-gray-500 hover:text-red-700 hover:bg-red-50' : 'text-gray-400 hover:text-red-300 hover:bg-gray-700',
+            )}
           >
-            <LogOut size={18} />
-            <span className="text-[9px] leading-none">{t('auth.logout')}</span>
+            <LogOut size={18} className="shrink-0" />
+            <span className="text-[9px] leading-none lg:hidden">{t('auth.logout')}</span>
+            <span className="hidden lg:inline">{t('auth.logout')}</span>
           </button>
           <button
             onClick={toggleTheme}
             title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            className={`flex flex-col items-center gap-1 p-2 rounded text-xs w-full transition-colors ${
-              isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700'
-            }`}
+            className={clsx(
+              'flex items-center gap-1 p-2 rounded text-xs w-full transition-colors',
+              'flex-col lg:flex-row lg:gap-3 lg:px-3 lg:text-sm',
+              isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700',
+            )}
           >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-            <span className="text-[9px] leading-none">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            {theme === 'dark' ? <Sun size={18} className="shrink-0" /> : <Moon size={18} className="shrink-0" />}
+            <span className="text-[9px] leading-none lg:hidden">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            <span className="hidden lg:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
           </button>
         </div>
 
-        <div className={`text-[9px] pb-2 ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>
+        <div className={clsx('text-[9px] pb-2 text-center lg:text-left lg:px-3', isLight ? 'text-gray-400' : 'text-gray-600')}>
           {role?.slice(0, 2).toUpperCase()}
         </div>
       </div>
 
-      {!isAnnotatorPage && (
+      {!isFullBleedPage && (
         <div
           className={`md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t ${sidebarBg}`}
           style={{ paddingBottom: 'env(safe-area-inset-bottom, 8px)', height: '56px' }}
@@ -257,6 +277,8 @@ function MainLayout() {
             <Route path="/" element={<Navigate to="/matches" replace />} />
             <Route path="/matches" element={<MatchListPage />} />
             <Route path="/annotator/:matchId" element={<AnnotatorPage />} />
+            {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
+            <Route path="/live/:matchId" element={<LiveInputPage />} />
             <Route path="/condition" element={<ConditionPage />} />
             <Route path="/dashboard/*" element={<DashboardShell />} />
             <Route path="/prediction" element={<PageAccessRoute pageKey="prediction"><PredictionPage /></PageAccessRoute>} />

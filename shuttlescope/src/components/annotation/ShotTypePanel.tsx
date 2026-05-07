@@ -156,6 +156,7 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
               return (
                 <button
                   key={type}
+                  data-tile="true"
                   onClick={() => !disabled && onSelect(type)}
                   disabled={disabled}
                   aria-pressed={isSelected}

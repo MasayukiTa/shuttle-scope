@@ -19,6 +19,7 @@ import { HumanForecastPanel } from '@/components/analysis/HumanForecastPanel'
 import { PrematchStatCard } from '@/components/analysis/PrematchStatCard'
 import { useAuth } from '@/hooks/useAuth'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 
@@ -94,6 +95,8 @@ export function PredictionPage() {
 
   const headerBg = isLight ? 'bg-white border-b border-gray-200' : 'bg-gray-900 border-b border-gray-700'
   const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
+  const { below: bpBelow } = useBreakpoint()
+  const useShortLabel = bpBelow('md')  // md 未満 (=スマホ縦) では短縮ラベル
   const tabActive = isLight ? 'bg-gray-200 text-gray-900' : 'bg-gray-700 text-white'
   const tabInactive = isLight
     ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
@@ -199,12 +202,12 @@ export function PredictionPage() {
         <div className={`flex gap-1 px-6 py-2 border-b shrink-0 overflow-x-auto ${isLight ? 'border-gray-200 bg-white' : 'border-gray-800 bg-gray-900'} ${!selectedPlayerId ? 'invisible' : ''}`}>
           {(
             [
-              { key: 'preview' as const, label: t('prediction.title') },
-              { key: 'pair' as const, label: t('prediction.pair_simulation') },
-              { key: 'lineup' as const, label: t('prediction.lineup_optimizer') },
-              { key: 'forecast' as const, label: t('prediction.human_forecast') },
+              { key: 'preview' as const, label: t('prediction.title'), labelShort: t('prediction.title_short') },
+              { key: 'pair' as const, label: t('prediction.pair_simulation'), labelShort: t('prediction.pair_simulation_short') },
+              { key: 'lineup' as const, label: t('prediction.lineup_optimizer'), labelShort: t('prediction.lineup_optimizer_short') },
+              { key: 'forecast' as const, label: t('prediction.human_forecast'), labelShort: t('prediction.human_forecast_short') },
             ] as const
-          ).map(({ key, label }) => (
+          ).map(({ key, label, labelShort }) => (
             <button
               key={key}
               onClick={() => setSubTab(key)}
@@ -213,7 +216,7 @@ export function PredictionPage() {
                 subTab === key ? tabActive : tabInactive
               }`}
             >
-              {label}
+              {useShortLabel ? labelShort : label}
             </button>
           ))}
         </div>

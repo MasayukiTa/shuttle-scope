@@ -68,6 +68,7 @@ export function HitZoneSelector({
             <button
               key={zone}
               type="button"
+              data-tile="hit-zone"
               onClick={() => !disabled && onZoneSelect(zone)}
               disabled={disabled}
               aria-pressed={isSelected}
@@ -85,8 +86,10 @@ export function HitZoneSelector({
                 disabled && 'opacity-40 cursor-not-allowed',
               )}
               style={{
-                minWidth: cellSize,
-                minHeight: cellSize,
+                // iOS フォント縮小耐性: globals.css の data-tile="hit-zone" が
+                // 44x44 を確保するため、cellSize はそれを下回らないよう Math.max
+                minWidth: Math.max(cellSize, 44),
+                minHeight: Math.max(cellSize, 44),
               }}
             >
               <span>{zone}</span>

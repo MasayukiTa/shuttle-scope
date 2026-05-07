@@ -1068,6 +1068,12 @@
     "provisional_badge": "Tentative"
   },
   "annotator": {
+    "loading": "Loading...",
+    "back_to_matches": "Back to matches",
+    "live": {
+      "tab_rally": "Rally input",
+      "tab_result": "Confirm point"
+    },
     "rally_start": "Rally start",
     "rally_confirm": "Confirm rally",
     "rally_cancel": "Cancel",
@@ -1704,6 +1710,10 @@
   },
   "prediction": {
     "title": "Match prediction",
+    "title_short": "Predict",
+    "pair_simulation_short": "Pair",
+    "lineup_optimizer_short": "Lineup",
+    "human_forecast_short": "Forecast",
     "subtitle": "Statistical prediction based on past match data",
     "select_player": "Please select a player",
     "select_opponent": "— Select an opponent (optional) —",
