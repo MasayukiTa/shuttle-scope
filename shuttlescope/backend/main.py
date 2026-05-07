@@ -1579,18 +1579,23 @@ app.include_router(data_package_router.router, prefix="/api")
 # 分割動画アップロード（ブラウザ用。iOS Safari 含む）
 app.include_router(uploads_router.router, prefix="/api")
 
-# SEC-001: 本番姿勢ではマウント除外する危険ルーター群
-# (CV/GPU 集中処理 + ネットワーク診断 + DB メンテ + クラスタ管理)
-if not app_settings.is_production_posture:
-    # CV モデルベンチマーク
-    app.include_router(cv_benchmark.router, prefix="/api")
-    # Q-002/Q-008: ネットワーク診断
-    app.include_router(network_diag.router, prefix="/api")
-    # DB メンテナンス
-    app.include_router(db_maintenance_router.router, prefix="/api")
-    app.include_router(archive_ops_router.router, prefix="/api")
-    # クラスタ管理 API
-    app.include_router(cluster_router.router, prefix="/api")
+# 旧 SEC-001: 本番姿勢では mount 除外する危険ルーター群を意図していたが、
+# admin operator が外部 (Cloudflare tunnel) 経由でクラスタ起動 / ベンチマーク /
+# DB メンテを行えなくなる運用上のブロッカーになっていた。
+# 各 router は内部で role gate を持つ:
+#   - cluster.py: router-level Depends(_require_admin_dep) + endpoint 側
+#                 require_local_operator_or_admin
+#   - db_maintenance.py / archive_ops.py: 各 endpoint で require_admin
+#   - network_diag.py: require_admin_or_analyst
+#   - cv_benchmark.py: require_analyst (round181 で追加)
+# middleware の _GLOBAL_AUTH_EXEMPT にも該当 path は含まれていないため
+# anonymous は middleware で先に 401 で弾かれる。production posture でも
+# 常時 mount しても、admin 権限なしには操作できない。
+app.include_router(cv_benchmark.router, prefix="/api")
+app.include_router(network_diag.router, prefix="/api")
+app.include_router(db_maintenance_router.router, prefix="/api")
+app.include_router(archive_ops_router.router, prefix="/api")
+app.include_router(cluster_router.router, prefix="/api")
 # Phase A: 認証
 app.include_router(auth_router.router, prefix="/api")
 app.include_router(youtube_live_router.router, prefix="/api")
