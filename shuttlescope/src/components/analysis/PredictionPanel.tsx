@@ -293,24 +293,29 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
               {t('prediction.most_likely')}
             </p>
             <div className="space-y-1">
-              {d.most_likely_scorelines.map((sl, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs">
-                  <span
-                    className="font-bold w-8 shrink-0"
-                    style={{ color: sl.outcome.startsWith('2') ? WIN : LOSS }}
-                  >
-                    {sl.outcome}
-                  </span>
-                  <span className="font-mono" style={{ color: neutral }}>
-                    {[sl.set1_score, sl.set2_score, sl.set3_score]
-                      .filter(Boolean)
-                      .join(' / ')}
-                  </span>
-                  <span className="ml-auto font-mono" style={{ color: subText }}>
-                    {Math.round(sl.probability * 100)}%
-                  </span>
-                </div>
-              ))}
+              {d.most_likely_scorelines.map((sl, i) => {
+                const scoreText = [sl.set1_score, sl.set2_score, sl.set3_score].filter(Boolean).join(' / ')
+                return (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span
+                      className="font-bold w-8 shrink-0 num-cell"
+                      style={{ color: sl.outcome.startsWith('2') ? WIN : LOSS }}
+                    >
+                      {sl.outcome}
+                    </span>
+                    <span
+                      className="num-cell flex-1 min-w-0 truncate"
+                      style={{ color: neutral }}
+                      title={scoreText}
+                    >
+                      {scoreText}
+                    </span>
+                    <span className="num-cell shrink-0" style={{ color: subText }}>
+                      {Math.round(sl.probability * 100)}%
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}

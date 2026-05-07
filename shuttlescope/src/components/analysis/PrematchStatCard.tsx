@@ -176,17 +176,21 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
                 {d.most_likely_scorelines.slice(0, 3).map((sl, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span
-                      className="font-bold w-8 shrink-0"
+                      className="font-bold w-8 shrink-0 num-cell"
                       style={{ color: sl.outcome.startsWith('2') ? WIN : LOSS }}
                     >
                       {sl.outcome}
                     </span>
-                    <span className="font-mono flex-1" style={{ color: neutral }}>
+                    <span
+                      className="num-cell flex-1 min-w-0 truncate"
+                      style={{ color: neutral }}
+                      title={[sl.set1_score, sl.set2_score, sl.set3_score].filter(Boolean).join(' / ')}
+                    >
                       {[sl.set1_score, sl.set2_score, sl.set3_score]
                         .filter(Boolean)
                         .join(' / ')}
                     </span>
-                    <span className="font-mono shrink-0" style={{ color: subText }}>
+                    <span className="num-cell shrink-0" style={{ color: subText }}>
                       {Math.round(sl.probability * 100)}%
                     </span>
                   </div>

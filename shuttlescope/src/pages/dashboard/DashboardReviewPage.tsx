@@ -129,7 +129,8 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
             STEP 3 — スコア推移
           </p>
           <div className="bg-gray-800 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
+            {/* xs: タイトルと select を縦積みにして余白を確保、sm+: 横並び */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
               <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
               <SearchableSelect
                 options={matchOptions}
@@ -137,7 +138,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
                 onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
                 emptyLabel="— 試合を選択 —"
                 placeholder={t('auto.DashboardReviewPage.k4')}
-                className="max-w-[260px]"
+                className="w-full sm:max-w-[260px]"
               />
             </div>
             {selectedMatchId ? (

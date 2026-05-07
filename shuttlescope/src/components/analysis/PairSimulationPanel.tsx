@@ -198,14 +198,19 @@ function PartnerRankingSection({
                   >
                     {rank}
                   </span>
-                  <span className="flex-1 text-xs font-medium truncate" style={{ color: neutral }}>
+                  <span
+                    className="flex-1 min-w-0 text-xs font-medium truncate"
+                    style={{ color: neutral }}
+                    title={r.partner_team ? `${r.partner_name} (${r.partner_team})` : r.partner_name}
+                  >
                     {r.partner_name}
                     {r.partner_team && (
                       <span className="ml-1 opacity-50 font-normal">（{r.partner_team}）</span>
                     )}
                   </span>
-                  <ConfidenceBadge sampleSize={r.sample_size} />
-                  <span className="text-[10px] shrink-0" style={{ color: subText }}>
+                  {/* xs: ConfidenceBadge と試合数を hide して名前領域を確保 */}
+                  <span className="hidden sm:inline-flex"><ConfidenceBadge sampleSize={r.sample_size} /></span>
+                  <span className="hidden sm:inline text-[10px] shrink-0 num-cell" style={{ color: subText }}>
                     {r.sample_size}試合
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
@@ -216,7 +221,7 @@ function PartnerRankingSection({
                       />
                     </div>
                     <span
-                      className="text-xs font-bold w-9 text-right shrink-0"
+                      className="text-xs font-bold w-9 text-right shrink-0 num-cell"
                       style={{ color: pct >= 55 ? WIN : pct <= 45 ? LOSS : neutral }}
                     >
                       {pct}%
@@ -371,9 +376,9 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
       {d && (
         <div className="bg-gray-800 rounded-lg p-4 space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-semibold" style={{ color: neutral }}>{d.pair_name}</span>
+            <span className="text-sm font-semibold min-w-0 truncate max-w-full" style={{ color: neutral }} title={d.pair_name}>{d.pair_name}</span>
             <ConfidenceBadge sampleSize={d.sample_size} />
-            <span className="text-xs" style={{ color: subText }}>{d.sample_size}試合</span>
+            <span className="text-xs num-cell" style={{ color: subText }}>{d.sample_size}試合</span>
           </div>
 
           <div className="text-center">
