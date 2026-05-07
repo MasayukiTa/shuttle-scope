@@ -263,6 +263,7 @@ class VideoDownloader:
         quality: str = "720",
         cookie_browser: str = "",
         cookies_file: str = "",
+        video_password: str = "",
     ) -> None:
         """非同期でダウンロードを開始。進捗は job_id で管理。
 
@@ -273,6 +274,9 @@ class VideoDownloader:
             cookie_browser: （Electron 互換用 / Web では使用禁止）使用するブラウザ名
             cookies_file:   yt-dlp 形式 cookies.txt の絶対パス（優先）
                             ジョブ完了後に呼び出し元で削除する責務。
+            video_password: パスワード保護動画 (Vimeo Showcase 等) の動画パスワード。
+                            yt-dlp の `--video-password` に相当。
+                            ログには出力されない (内部 dict のキー名を伏せ字化)。
         """
         if not YT_DLP_AVAILABLE:
             self._set_status(job_id, {
@@ -348,6 +352,12 @@ class VideoDownloader:
                     yt_opts["cookiesfrombrowser"] = (browser, unlocked_profile, None, None)
                 else:
                     yt_opts["cookiesfrombrowser"] = (browser,)
+
+        # 動画パスワード (Vimeo Showcase / 一部のメンバー限定動画) — 入力値は
+        # ログ出力対象から除外する。yt-dlp は `videopassword` キーで受け取る。
+        if video_password:
+            # 1024 文字上限 (極端な長さの入力を排除)
+            yt_opts["videopassword"] = video_password[:1024]
 
         try:
             await asyncio.get_event_loop().run_in_executor(

@@ -132,21 +132,62 @@ api/client.ts の TOKEN_KEY と一致。`getStoredAuthToken()` ヘルパーを W
 - HTTP / 内部 IP / loopback URL を入力すると IPC レイヤーで拒否される
 - Web 版 (ブラウザアクセス) では録画ボタン非表示
 
-## 未対応 (本 PR 範囲外)
+## 残スコープ完了 (2026-05-07 追加分)
 
-1. **Public Suffix List 完全実装** — 現状は eTLD+1 簡易判定。`co.uk` など
-   2 階層の TLD では誤判定 (例: `bbc.co.uk` から `news.bbc.co.uk` がブロック
-   される可能性)。実害が出たら `psl` library 導入 (難易度 S)
-2. **会員 OAuth 経路** — Twitch メンバー限定 / Vimeo Showcase 等は cookie
-   経由ログイン UI が webview 内で完結する想定 (動作確認は別途)
-3. **HDCP black-frame 検出** — 録画したのに真っ黒 mp4 になるケースに対する
-   ユーザ通知。サンプル frame の brightness ヒストグラムで判定可能だが、
-   遅延が出るので post-processing で検査するのが無難 (難易度 M)
-4. **録画品質設定** — 現状 5Mbps / 30fps / 1080p 上限固定。バドミントン
-   分析にはこれで十分だが、配信元が低画質の場合は無駄に大きい mp4 ができる
-5. **castLabs Electron 移行** — Widevine L3 (SW CDM) を Electron 標準で
-   サポートしないサイト用。本 PR で対応した DRM 視聴経由の録画は
-   castLabs 不要 (視聴自体は外部ブラウザでも OK)
+ユーザ指示「ok、残スコープ分完了させて。これ時間かかってもよいので」を受けて、
+本 PR の「未対応」5 項目すべてを実装。
+
+### 1. Public Suffix List 完全実装 (済)
+
+- `psl@^1.15.0` + `@types/psl@^1.1.3` を `package.json` に追加
+- `electron/main.ts` の `_registrableDomain(host)` ヘルパで `psl.get()` ベースの
+  registrable domain 取得に切替
+- `screen-capture-start` の `will-navigate` ハンドラを registrable domain 一致に
+  変更 (`bbc.co.uk` ↔ `news.bbc.co.uk` が正しく一致、`bbc.co.uk` ↔ `other.co.uk` は
+  一致しない)
+- IP アドレスや PSL に該当しない host は hostname をそのまま使う fallback あり
+
+### 2. 会員 OAuth / 動画パスワード経路 (済)
+
+- `backend/utils/video_downloader.py::start_download` に `video_password: str`
+  引数を追加 (yt-dlp の `videopassword` キー、`--video-password` 相当)
+- `backend/routers/matches.py::DownloadRequest` に `video_password: Optional[str]`
+  を追加 (1024 文字上限、audit log には記録しない)
+- `StreamingDownloadPanel.tsx` に折りたたみ「パスワード保護動画 (Vimeo Showcase 等)」
+  セクションを追加。type=password / 表示切替 / autoComplete=off / 投入確認 ✓
+- backend は値を yt-dlp に渡すのみで保持しない (cookies.txt と同じ即破棄方針)
+
+### 3. HDCP black-frame 検出 (済)
+
+- `RecordJob` に `warning: Optional[str]` フィールド追加
+- `_detect_black_frames(mp4_path)` を新規実装。`ffmpeg blackdetect=d=0:pix_th=0.10`
+  で黒区間総時間 / 動画長 を計算
+  - 80% 以上が黒 → 「HDCP / DRM ブロックの可能性」警告を warning にセット
+  - 30%〜80% → 部分ブランク警告
+- `stop_recording()` の DRM 経路 remux 後に呼び出し (HLS 経路は判定不要)
+- `routers/youtube_live.py::_job_status` に `warning` フィールドを追加
+- `WebViewPlayer.tsx` がポーリング時に `warning` を受け取って橙色バナーで
+  ユーザに通知 (閉じるボタン付き)
+
+### 4. 録画品質設定 (済)
+
+- `electron/main.ts` に `CaptureQuality = 'low' | 'med' | 'high'` 型 +
+  `CAPTURE_QUALITY_PRESETS` (low: 1.5Mbps/480p, med: 5Mbps/720p, high: 9Mbps/1080p)
+- `screen-capture-start` IPC opts に `quality?: CaptureQuality` を追加。
+  `executeJavaScript` 内の `getUserMedia` mandatory 制約 + MediaRecorder
+  videoBitsPerSecond をプリセットから読む
+- `preload.ts` の型シグネチャを更新
+- `WebViewPlayer.tsx` ナビバーに録画ボタン直前の小さな select (低/中/高)。
+  選択値は sessionStorage に保存され、ブラウザ再起動で `med` にリセット
+- 結果 `{ ..., quality }` を返すので、ログ・将来の UI 表示で確認可能
+
+### 5. castLabs Electron 移行 (ドキュメント整備で対応、コードは現状維持)
+
+- `docs/electron-drm.md` を全面改訂。3 経路 (yt-dlp / WebView+screen capture /
+  castLabs) の使い分け表を追加し、castLabs に切り替えても **HDCP black-frame
+  問題が解決しない** ことを明記
+- 結論: ShuttleScope 標準ビルドは経路 1 + 2 のみサポート。castLabs は個人
+  ユーザの自己責任で `package.json` を差し替えてもらう (法的グレーゾーン回避)
 
 ## 影響
 

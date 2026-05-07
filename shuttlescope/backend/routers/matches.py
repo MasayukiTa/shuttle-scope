@@ -1048,6 +1048,10 @@ class DownloadRequest(BaseModel):
     # HTTPS + Cloudflare Tunnel 経由のため傍受されない前提。
     # ジョブ完了 or タイムアウト 10 分でサーバ上から即削除する。
     cookies_txt: Optional[str] = None
+    # パスワード保護動画 (Vimeo Showcase / 一部メンバー限定) の動画パスワード。
+    # yt-dlp の --video-password と同等。サーバ上では保持せず yt-dlp に直接渡し、
+    # ジョブ完了で即破棄。ログ・audit log には記録しない。
+    video_password: Optional[str] = None
 
 
 # 同時 DL 並列数 (800Mbps 想定: 3 並列 × 260Mbps/job)
@@ -1064,6 +1068,7 @@ def _get_dl_semaphore() -> _asyncio_dl.Semaphore:
 
 async def _run_download_with_cookie(
     url: str, job_id: str, quality: str, cookies_file_path: str,
+    video_password: str = "",
 ):
     """cookies.txt を使って DL し、完了/失敗問わず cookies.txt を即削除する。"""
     import os as _os
@@ -1072,6 +1077,7 @@ async def _run_download_with_cookie(
             await video_downloader.start_download(
                 url=url, job_id=job_id, quality=quality,
                 cookie_browser="", cookies_file=cookies_file_path,
+                video_password=video_password,
             )
     finally:
         try:
@@ -1199,11 +1205,18 @@ async def start_download(
         finally:
             s.close()
 
+    # パスワード保護動画用の追加引数 (Vimeo Showcase 等)。
+    # ログ・audit log には記録しない (cookies_used フラグと同等で値は伏せる)。
+    _video_password = (body.video_password or "").strip()
+    if _video_password and len(_video_password) > 1024:
+        raise HTTPException(status_code=422, detail="video_password が長すぎます (max 1024)")
+
     if cookies_file_path:
         async def _run_with_cookie_then_persist():
             try:
                 await _run_download_with_cookie(
                     validated_url, job_id, body.quality, cookies_file_path,
+                    video_password=_video_password,
                 )
             finally:
                 _persist_completion(match_id, job_id)
@@ -1214,6 +1227,7 @@ async def start_download(
                 await video_downloader.start_download(
                     url=validated_url, job_id=job_id, quality=body.quality,
                     cookie_browser=body.cookie_browser,
+                    video_password=_video_password,
                 )
             _persist_completion(match_id, job_id)
         background_tasks.add_task(_run_no_cookie)

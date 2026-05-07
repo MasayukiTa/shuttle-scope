@@ -39,6 +39,8 @@ def _job_status(job) -> Dict[str, Any]:
         "elapsed": job.elapsed(),
         "error": job.error,
         "out_path": str(job.out_path),
+        # HDCP / 黒フレーム検出時の警告 (post-stop / 既定 None)
+        "warning": getattr(job, "warning", None),
     }
 
 

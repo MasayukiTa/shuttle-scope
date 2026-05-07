@@ -96,6 +96,9 @@ class RecordJob:
     started_at: float = field(default_factory=time.time)
     error: Optional[str] = None
     match_id: Optional[int] = None  # 紐付け試合 ID（アーカイブ完了時に DB を自動更新）
+    # HDCP / プラットフォーム黒フレーム検出時の警告メッセージ。
+    # ユーザに「録画は成功したが画面がほぼ真っ黒のため再撮影を推奨」を伝えるため。
+    warning: Optional[str] = None
     _proc: Optional[subprocess.Popen] = field(default=None, repr=False)
 
     def file_size(self) -> int:
@@ -330,6 +333,88 @@ def _remux_webm_to_mp4(job: RecordJob) -> None:
         logger.error("[yt_live] remux error: %s", exc)
 
 
+def _detect_black_frames(mp4_path: Path) -> Optional[str]:
+    """ffmpeg で動画の黒フレーム率を計測し、HDCP/DRM block を検出する。
+
+    HDCP 強制 (Netflix 等の Widevine L1 サイト) で OS-level capture すると、
+    プラットフォーム側がフレームバッファを黒で塗りつぶすため真っ黒な mp4 になる。
+    ユーザは「録画できた」と思って後で再生して気付くことが多い。
+
+    検出戦略:
+      ffmpeg `blackdetect=d=0:pix_th=0.10` フィルタで「ほぼ黒」と判定された
+      区間の合計時間を取得し、動画全体の 80% 以上が黒なら警告を返す。
+
+    Returns:
+      None  : 通常の動画 (警告なし)
+      str   : 警告メッセージ (UI 表示用)
+    """
+    ffmpeg = _ffmpeg_bin()
+    if not ffmpeg or not mp4_path.exists():
+        return None
+    try:
+        # 動画全体の長さを取得 (ffprobe ではなく ffmpeg stderr からパース)
+        probe = subprocess.run(
+            [ffmpeg, "-i", str(mp4_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        # ffmpeg は -i のみだとエラーで止まるが stderr にメタ情報を出す
+        stderr = probe.stderr or ""
+        duration_sec = 0.0
+        for line in stderr.splitlines():
+            line = line.strip()
+            if line.startswith("Duration:"):
+                # "Duration: 00:01:23.45, start: ..."
+                try:
+                    hms = line.split(",")[0].split("Duration:")[1].strip()
+                    h, m, s = hms.split(":")
+                    duration_sec = int(h) * 3600 + int(m) * 60 + float(s)
+                except Exception:
+                    duration_sec = 0.0
+                break
+        if duration_sec < 1.0:
+            return None  # 短すぎる動画は判定しない (probe 中など)
+
+        # blackdetect で黒区間を抽出。pix_th=0.10 = 黒判定しきい値 10% 輝度。
+        # d=0 は最小持続時間なし。-an で音声処理スキップ。-f null で出力しない。
+        det = subprocess.run(
+            [ffmpeg, "-i", str(mp4_path), "-an",
+             "-vf", "blackdetect=d=0:pix_th=0.10",
+             "-f", "null", "-"],
+            capture_output=True, text=True, timeout=120,
+        )
+        det_stderr = det.stderr or ""
+        # 出力例: "[blackdetect @ 0x...] black_start:0 black_end:5.5 black_duration:5.5"
+        total_black = 0.0
+        for line in det_stderr.splitlines():
+            if "black_duration:" in line:
+                try:
+                    val = line.split("black_duration:")[1].strip().split()[0]
+                    total_black += float(val)
+                except Exception:
+                    continue
+        ratio = total_black / duration_sec if duration_sec > 0 else 0.0
+        logger.info("[yt_live] black-frame ratio: %.1f%% (%.1f / %.1f sec)",
+                    ratio * 100, total_black, duration_sec)
+        if ratio >= 0.80:
+            return (
+                f"録画動画のほぼ全体が黒画面です ({ratio * 100:.0f}%)。"
+                f"HDCP / DRM 保護により画面キャプチャがブロックされた可能性があります。"
+                f"配信元の HDR/HDCP 設定を確認するか、別の視聴経路をお試しください。"
+            )
+        if ratio >= 0.30:
+            return (
+                f"録画動画の {ratio * 100:.0f}% が黒画面です。"
+                f"配信側の途中ブランクや HDCP 部分ブロックの可能性があります。"
+            )
+        return None
+    except subprocess.TimeoutExpired:
+        logger.warning("[yt_live] black-frame detection timed out: %s", mp4_path)
+        return None
+    except Exception as exc:
+        logger.warning("[yt_live] black-frame detection error: %s", exc)
+        return None
+
+
 def _path_to_localfile_url(p: Path) -> str:
     """ファイルパスを localfile:/// 形式の URL に変換する（DB 保存形式）。"""
     return "localfile:///" + str(p).replace("\\", "/")
@@ -442,6 +527,18 @@ def stop_recording(job_id: str) -> Optional[RecordJob]:
 
     if job.method == "drm" and job.out_path.suffix == ".webm":
         _remux_webm_to_mp4(job)
+
+    # remux 後の mp4 で HDCP / 黒フレームを検出 (DRM 経路のみ)
+    # HLS 経路は配信側のフィードがそのまま保存されるため判定不要
+    if job.method == "drm" and job.out_path.suffix == ".mp4" and job.out_path.exists():
+        try:
+            warn = _detect_black_frames(job.out_path)
+            if warn:
+                job.warning = warn
+                logger.warning("[yt_live] black-frame warning set for job=%s: %s",
+                               job_id, warn)
+        except Exception as exc:
+            logger.error("[yt_live] black-frame detection raised: %s", exc)
 
     archive = _archive_root()
     if archive:

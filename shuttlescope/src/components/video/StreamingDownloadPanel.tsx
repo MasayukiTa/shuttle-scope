@@ -81,6 +81,11 @@ export function StreamingDownloadPanel({
   const [cookiesTxt, setCookiesTxt] = useState<string>('')
   const [cookiesFileName, setCookiesFileName] = useState<string>('')
   const [cookiesError, setCookiesError] = useState<string>('')
+  // 動画パスワード (Vimeo Showcase 等)。type=password でブラウザ管理者に依頼。
+  // 既定では UI 折りたたみ。送信時のみ backend に渡し、状態は localStorage に保存しない。
+  const [videoPassword, setVideoPassword] = useState<string>('')
+  const [showPassword, setShowPassword] = useState<boolean>(false)
+  const [authPanelOpen, setAuthPanelOpen] = useState<boolean>(false)
 
   // ── システム機能確認（ffmpeg / yt-dlp 可用性） ────────────────────────────
   useEffect(() => {
@@ -150,6 +155,8 @@ export function StreamingDownloadPanel({
       const body: Record<string, unknown> = { quality, cookie_browser: cookieBrowser }
       // cookies.txt が投入されていれば backend の `cookies_txt` パスを使う (Web 経由会員限定サイト対応)
       if (cookiesTxt.trim()) body.cookies_txt = cookiesTxt
+      // Vimeo Showcase 等のパスワード保護動画用 (yt-dlp --video-password)
+      if (videoPassword) body.video_password = videoPassword
       const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
         `/matches/${matchId}/download`,
         body,
@@ -160,7 +167,7 @@ export function StreamingDownloadPanel({
       setDlState('error')
       setErrorMsg(err?.message ?? 'ダウンロード開始に失敗しました')
     }
-  }, [matchId, quality, cookieBrowser, cookiesTxt])
+  }, [matchId, quality, cookieBrowser, cookiesTxt, videoPassword])
 
   // ── cookies.txt ファイル投入 (1MB 上限、Netscape ヘッダ簡易チェック) ────────
   const handleCookiesFile = useCallback(async (file: File | null) => {
@@ -432,6 +439,53 @@ export function StreamingDownloadPanel({
             <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
               ブラウザに「Cookie-Editor」「Get cookies.txt LOCALLY」等の拡張をインストール → 該当サイトで書き出し → ここにアップ
             </div>
+          </div>
+
+          {/* パスワード保護動画 (Vimeo Showcase 等) */}
+          <div className="flex flex-col gap-1 border-t border-dashed pt-2"
+               style={{ borderColor: isLight ? '#cbd5e1' : '#374151' }}>
+            <button
+              type="button"
+              onClick={() => setAuthPanelOpen((v) => !v)}
+              className={`text-xs ${labelColor} flex items-center gap-1 self-start`}
+              aria-expanded={authPanelOpen}
+            >
+              <ChevronDown size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
+              パスワード保護動画 (Vimeo Showcase 等)
+              {videoPassword && <span className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>✓ 設定済</span>}
+            </button>
+            {authPanelOpen && (
+              <div className="flex flex-col gap-1 pl-4">
+                <div className="flex items-center gap-2">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={videoPassword}
+                    onChange={(e) => setVideoPassword(e.target.value)}
+                    placeholder="動画パスワード"
+                    autoComplete="off"
+                    maxLength={1024}
+                    className={`text-xs flex-1 min-w-0 rounded px-2 py-1 border ${
+                      isLight
+                        ? 'bg-white border-gray-300 text-gray-800'
+                        : 'bg-gray-700 border-gray-600 text-gray-200'
+                    }`}
+                    aria-label="動画パスワード"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className={`text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                    aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+                  >
+                    {showPassword ? '隠す' : '表示'}
+                  </button>
+                </div>
+                <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
+                  Vimeo / 一部メンバー限定動画など、再生時にパスワードを要求するコンテンツ用。
+                  サーバには保存されず、yt-dlp に渡された後即破棄されます。
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ダウンロードボタン */}

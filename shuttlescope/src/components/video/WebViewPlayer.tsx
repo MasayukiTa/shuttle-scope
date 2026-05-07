@@ -38,6 +38,12 @@ const BROWSER_UA =
 
 type RecordState = 'idle' | 'starting' | 'recording' | 'stopping' | 'processing' | 'complete' | 'error'
 
+// 録画品質プリセット (electron/main.ts の CAPTURE_QUALITY_PRESETS と一致):
+//   low  : 1.5 Mbps / 480p / 30fps  (低画質配信元向け)
+//   med  : 5   Mbps / 720p / 30fps  (バドミントン分析の既定値)
+//   high : 9   Mbps / 1080p / 30fps (1080p 配信を高品質保存したい場合)
+type CaptureQuality = 'low' | 'med' | 'high'
+
 interface WebViewPlayerProps {
   /** 初期表示URL */
   url: string
@@ -158,6 +164,20 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
   const [recordError, setRecordError] = useState<string>('')
   const [recordJobId, setRecordJobId] = useState<string | null>(null)
   const [recordElapsedMs, setRecordElapsedMs] = useState<number>(0)
+  // HDCP / プラットフォーム黒フレーム警告 (backend 側 post-processing で検出)
+  const [recordWarning, setRecordWarning] = useState<string>('')
+  // 録画品質。一度選んだら sessionStorage に保存 (再起動で med にリセット)
+  const [quality, setQuality] = useState<CaptureQuality>(() => {
+    try {
+      const v = sessionStorage.getItem('shuttlescope_capture_quality')
+      if (v === 'low' || v === 'med' || v === 'high') return v
+    } catch { /* ignore */ }
+    return 'med'
+  })
+  const handleQualityChange = useCallback((q: CaptureQuality) => {
+    setQuality(q)
+    try { sessionStorage.setItem('shuttlescope_capture_quality', q) } catch { /* ignore */ }
+  }, [])
   const recordStartedAtRef = useRef<number>(0)
 
   // Electron API 利用可否
@@ -178,10 +198,14 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
     if (!recordJobId || (recordState !== 'stopping' && recordState !== 'processing')) return
     const id = window.setInterval(async () => {
       try {
-        const res = await apiGet<{ job_id: string; status: string; method: string; out_path: string; error?: string }>(
+        const res = await apiGet<{ job_id: string; status: string; method: string; out_path: string; error?: string; warning?: string }>(
           `/youtube_live/${recordJobId}/status`,
         )
-        if (res.status === 'complete' || res.status === 'archived') {
+        // backend 側で HDCP black-frame 検出された場合、warning フィールドが返ってくる
+        if (res.warning && res.warning !== recordWarning) {
+          setRecordWarning(res.warning)
+        }
+        if (res.status === 'complete' || res.status === 'archived' || res.status === 'stopped') {
           window.clearInterval(id)
           setRecordState('complete')
           setTimeout(() => onRecordingComplete?.(), 600)
@@ -197,7 +221,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       }
     }, 2000)
     return () => window.clearInterval(id)
-  }, [recordJobId, recordState, onRecordingComplete])
+  }, [recordJobId, recordState, onRecordingComplete, recordWarning])
 
   const handleRecordStart = useCallback(async () => {
     if (!screenCaptureAvailable) {
@@ -238,15 +262,17 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
         jobId: startResp.job_id,
         token,
         matchId: matchId ?? null,
+        quality,
       })
       setRecordJobId(startResp.job_id)
       recordStartedAtRef.current = Date.now()
+      setRecordWarning('')
       setRecordState('recording')
     } catch (err: any) {
       setRecordState('error')
       setRecordError(err?.message ?? String(err))
     }
-  }, [currentUrl, matchId, electronApi, screenCaptureAvailable])
+  }, [currentUrl, matchId, electronApi, screenCaptureAvailable, quality])
 
   const handleRecordStop = useCallback(async () => {
     if (!recordJobId) return
@@ -329,6 +355,25 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
           />
         </div>
 
+        {/* 画質プリセット (録画開始前のみ表示) */}
+        {screenCaptureAvailable && (recordState === 'idle' || recordState === 'error' || recordState === 'complete') && (
+          <select
+            value={quality}
+            onChange={(e) => handleQualityChange(e.target.value as CaptureQuality)}
+            className={`text-[10px] rounded px-1 py-0.5 border ${
+              isLight
+                ? 'bg-white border-gray-300 text-gray-700'
+                : 'bg-gray-700 border-gray-600 text-gray-300'
+            }`}
+            title="録画画質: low (1.5Mbps/480p) / med (5Mbps/720p) / high (9Mbps/1080p)"
+            aria-label="録画画質"
+          >
+            <option value="low">低</option>
+            <option value="med">中</option>
+            <option value="high">高</option>
+          </select>
+        )}
+
         {/* 画面録画ボタン (Electron + 視聴中の DRM 配信用) */}
         {screenCaptureAvailable && (
           recordState === 'recording' || recordState === 'starting' ? (
@@ -388,6 +433,25 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
           <button
             onClick={() => { setRecordState('idle'); setRecordError(''); setRecordJobId(null) }}
             className="text-xs underline shrink-0"
+          >
+            閉じる
+          </button>
+        </div>
+      )}
+
+      {/* HDCP / 黒フレーム警告 (録画完了直後にのみ意味あり) */}
+      {recordWarning && (recordState === 'complete' || recordState === 'processing') && (
+        <div className={`flex items-start gap-2 px-3 py-1.5 shrink-0 text-xs ${
+          isLight
+            ? 'bg-orange-50 border-b border-orange-200 text-orange-800'
+            : 'bg-orange-900/20 border-b border-orange-700/40 text-orange-300'
+        }`}>
+          <AlertCircle size={12} className="shrink-0 mt-0.5" />
+          <span className="flex-1 break-words">{recordWarning}</span>
+          <button
+            onClick={() => setRecordWarning('')}
+            className="text-xs underline shrink-0"
+            aria-label="警告を閉じる"
           >
             閉じる
           </button>
