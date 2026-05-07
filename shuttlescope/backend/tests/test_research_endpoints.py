@@ -10,6 +10,17 @@ from datetime import date
 from backend.main import app
 from backend.db.database import get_db
 from backend.db.models import Player, Match, GameSet, Rally, Stroke
+from backend.utils.auth import (
+    AuthCtx,
+    get_auth,
+    require_admin_or_analyst,
+    require_non_player,
+)
+
+
+def _admin_auth_ctx() -> AuthCtx:
+    """テスト用の admin AuthCtx (router-level Depends 差し替え用)."""
+    return AuthCtx(role="admin", player_id=None, user_id=1, team_name=None, team_id=None)
 
 
 def _make_player(db, name, hand="R"):
@@ -98,6 +109,11 @@ def research_client(db_session):
     db_session.flush()
 
     app.dependency_overrides[get_db] = lambda: db_session
+    # research / advanced tier の router-level Depends を bypass
+    # (700e3dd で player role bypass 防御として require_admin_or_analyst を導入したため)
+    app.dependency_overrides[get_auth] = _admin_auth_ctx
+    app.dependency_overrides[require_admin_or_analyst] = _admin_auth_ctx
+    app.dependency_overrides[require_non_player] = _admin_auth_ctx
     client = TestClient(app)
     yield client, pa.id, partner.id, opp1.id, m1.id
     app.dependency_overrides.clear()

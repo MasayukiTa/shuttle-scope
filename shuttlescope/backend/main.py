@@ -1675,9 +1675,14 @@ async def _ws_require_auth(websocket: WebSocket) -> bool:
         or websocket.headers.get("x-real-ip")
         or websocket.headers.get("cf-connecting-ip")
     )
+    # Starlette TestClient は WebSocket scope の client.host を `"testclient"` という
+    # 定数で埋める。production ASGI サーバ (uvicorn/gunicorn) は実 IP literal を入れる
+    # ため、`"testclient"` がクライアント側からなりすませる経路は無く、テスト用に
+    # loopback 扱いしても外部攻撃面は広がらない (CI で WebSocket テストを動かすため
+    # に必要)。
     if (
         app_settings.ALLOW_LOOPBACK_NO_AUTH
-        and client_ip in ("127.0.0.1", "::1", "localhost", "")
+        and client_ip in ("127.0.0.1", "::1", "localhost", "", "testclient")
         and not forwarded
     ):
         return True

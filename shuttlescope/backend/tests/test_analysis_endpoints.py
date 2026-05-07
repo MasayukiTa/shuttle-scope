@@ -7,6 +7,17 @@ from datetime import date
 from backend.main import app
 from backend.db.database import get_db
 from backend.db.models import Player, Match, GameSet, Rally, Stroke
+from backend.utils.auth import (
+    AuthCtx,
+    get_auth,
+    require_admin_or_analyst,
+    require_non_player,
+)
+
+
+def _admin_auth_ctx() -> AuthCtx:
+    """テスト用の admin AuthCtx (router-level Depends 差し替え用)."""
+    return AuthCtx(role="admin", player_id=None, user_id=1, team_name=None, team_id=None)
 
 
 def make_test_player(db: Session, name: str = "テスト選手") -> Player:
@@ -116,6 +127,12 @@ def client_with_data(db_session):
     db_session.flush()
 
     app.dependency_overrides[get_db] = lambda: db_session
+    # research / advanced tier の router-level Depends を bypass.
+    # 700e3dd で player role bypass 防御として require_admin_or_analyst /
+    # require_non_player を導入したため、TestClient (auth ヘッダなし) が 403 を返していた。
+    app.dependency_overrides[get_auth] = _admin_auth_ctx
+    app.dependency_overrides[require_admin_or_analyst] = _admin_auth_ctx
+    app.dependency_overrides[require_non_player] = _admin_auth_ctx
     client = TestClient(app)
     yield client, player_a.id, match.id
     app.dependency_overrides.clear()
@@ -312,6 +329,10 @@ class TestEmptyDataHandling:
         db_session.flush()
 
         app.dependency_overrides[get_db] = lambda: db_session
+        # research / advanced tier の router-level Depends を bypass
+        app.dependency_overrides[get_auth] = _admin_auth_ctx
+        app.dependency_overrides[require_admin_or_analyst] = _admin_auth_ctx
+        app.dependency_overrides[require_non_player] = _admin_auth_ctx
         client = TestClient(app)
 
         player_endpoints = [
