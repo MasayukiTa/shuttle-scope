@@ -104,27 +104,51 @@ class _FileLock:
             self._fp.flush()
         except Exception:  # pragma: no cover
             pass
-        # pipeline #6 fix: lock 取得直後に「自プロセスが実際にロックを保持しているか」を
-        # 検証する。Windows の msvcrt.locking は exclusive lock を取れたかしか返さず、
-        # プロセスクラッシュ後の stale handle で同じファイルがロックされた状態を装う
-        # 経路があり得るため、PID を書き戻したあと先頭 1 バイトを再 lock 試行する。
-        # 失敗したら lock 取得自体をやり直すべき状態として False を返す。
-        try:
-            if os.name == "nt":
-                import msvcrt
-                self._fp.seek(0)
-                # 既に保持しているロックを取り直す (no-op で例外なら他者保持)
-                try:
-                    msvcrt.locking(self._fp.fileno(), msvcrt.LK_NBLCK, 1)
-                    msvcrt.locking(self._fp.fileno(), msvcrt.LK_UNLCK, 1)
-                    # NBLCK 成功 → 自分は実は保持していなかった = stale。再取得試行。
-                    msvcrt.locking(self._fp.fileno(), msvcrt.LK_NBLCK, 1)
-                except OSError:
-                    # 既存 lock を保持中 → 正常 (NBLCK が EAGAIN で失敗するのが期待動作)
-                    pass
-        except Exception:  # pragma: no cover
-            pass
         return True
+
+    @staticmethod
+    def is_pid_alive(path: str) -> bool:
+        """rereview pipeline #11 fix: lock file の PID を読み出して os.kill(pid,0)
+        で生存確認する。`kill -9` された worker の lock が残っているケースで、
+        新規起動時に「lock は取れないがプロセスは死んでいる」と判定して reaper
+        ロジックの一部として活用する。
+        """
+        try:
+            from pathlib import Path as _P
+            p = _P(path)
+            if not p.exists():
+                return False
+            data = p.read_bytes()
+            if len(data) < 2:
+                return False
+            pid_str = data[1:].decode("ascii", errors="replace").strip()
+            if not pid_str.isdigit():
+                return False
+            pid = int(pid_str)
+            if os.name == "nt":
+                # Windows: subprocess で tasklist を呼ぶより、psutil があれば優先
+                try:
+                    import psutil  # type: ignore
+                    return psutil.pid_exists(pid)
+                except ImportError:
+                    # OpenProcess 経由 fallback
+                    import ctypes
+                    PROCESS_QUERY = 0x0400 | 0x1000  # QUERY_INFORMATION + LIMITED
+                    h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY, False, pid)
+                    if h:
+                        ctypes.windll.kernel32.CloseHandle(h)
+                        return True
+                    return False
+            else:
+                try:
+                    os.kill(pid, 0)
+                    return True
+                except ProcessLookupError:
+                    return False
+                except PermissionError:
+                    return True  # 存在はする
+        except Exception:
+            return False
 
     def release(self) -> None:
         if self._fp is None:

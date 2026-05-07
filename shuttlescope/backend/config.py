@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     LAN_MODE: bool = False
     # 公開モード: SS_PUBLIC_MODE=1 でクラスタ/ベンチマーク/DB保守ルーターをマウント除外
     PUBLIC_MODE: bool = False
+    # rereview defense-in-depth: loopback (127.0.0.1) からの JWT 無し API/WS 緩和を
+    # 強制的に殺すスイッチ。SS_ALLOW_LOOPBACK_NO_AUTH=0 で常時 JWT 必須。
+    # 既定は True (Electron 単体運用での PIN 選択 UX を維持)。
+    # 本番 (cloudflared / nginx / SSH forward) では 0 に設定する。
+    ALLOW_LOOPBACK_NO_AUTH: bool = True
     # API ドキュメント非表示: SS_HIDE_API_DOCS=1 で /docs /redoc /openapi.json を無効化
     # PUBLIC_MODE=True でも同様に無効化されるが、クラスタルーターを残したまま docs だけ消したい場合に使う
     HIDE_API_DOCS: bool = False

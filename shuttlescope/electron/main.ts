@@ -578,23 +578,29 @@ ipcMain.handle('close-video-window', () => {
 // ─── IPC: メイン↔別モニタ間ミラー（main プロセスをハブにブロードキャスト） ──
 // BroadcastChannel は Electron 別ウィンドウ間で session/partition 都合により
 // 届かない場合があるため、main プロセス経由に統一する。
+// rereview Electron #6 強化: shape schema を allowlist で明示。
+// VideoOnlyPage の利用想定 (src + visible flags + overlay data) に合わせ、
+// 既知 type のみ受理し、各 type の必須キーをチェックする。
+const _MIRROR_ALLOWED_TYPES = new Set([
+  'video-src',     // {type, src: string}
+  'overlay',       // {type, visible: bool, ...}
+  'cv-toggle',     // {type, name: string, on: bool}
+  'play-state',    // {type, playing: bool, t?: number}
+])
 ipcMain.on('mirror-broadcast', (event, payload: unknown) => {
-  // Electron #6 fix: 旧コードは renderer から渡された任意 payload を全ウィンドウへ
-  // 無検証 fan-out していた。XSS 経由で他ウィンドウの mirror-message handler に
-  // 偽装メッセージを注入できる。最低限のスキーマ検証 (object + size cap) を入れる。
   if (payload === null || typeof payload !== 'object') return
-  // 32KB を超える broadcast は reject (動画フレームのような巨大データは想定外)
-  let serialized: string
-  try {
-    serialized = JSON.stringify(payload)
-  } catch {
+  const p = payload as Record<string, unknown>
+  const t = typeof p.type === 'string' ? p.type : ''
+  if (!_MIRROR_ALLOWED_TYPES.has(t)) {
+    console.warn('[mirror-broadcast] rejected: unknown type', t)
     return
   }
+  let serialized: string
+  try { serialized = JSON.stringify(payload) } catch { return }
   if (serialized.length > 32 * 1024) {
     console.warn('[mirror-broadcast] payload too large, rejected:', serialized.length)
     return
   }
-  // 送信元以外の全ウィンドウへ転送
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.webContents.id !== event.sender.id && !win.isDestroyed()) {
       win.webContents.send('mirror-message', payload)
@@ -653,20 +659,16 @@ ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultF
 // WebViewPlayer が表示している映像の現在フレームをキャプチャして Base64 で返す。
 // TrackNet frame_hint API に渡す3フレーム（前・中・後）を取得するために使用する。
 
-// Electron #8 fix: 旧コードは renderer から無条件で capturePage() を呼べたため
-// XSS 経由で main window のスクリーンショット (ログイン情報含む) を流出可能だった。
-// レンダラ側の明示的な意図表明 (window.__captureAllowed) を見て、かつ短時間
-// (5s) しか window が opt-in していない時のみ capture を許可する。
-let _captureWindowExpiry = 0
-ipcMain.handle('enable-frame-capture', () => {
-  // renderer 側でユーザー操作 (録画開始ボタンクリック等) のあとに呼び出す前提
-  _captureWindowExpiry = Date.now() + 5000
-  return true
-})
+// rereview Electron N1 fix: enable-frame-capture IPC は preload で露出されておらず
+// 孤児コードだった。完全に削除する。capture-webview-frame は user-gesture フラグで
+// 守る。
+let _lastUserInputAt = 0
 ipcMain.handle('capture-webview-frame', async () => {
   if (!mainWindow || mainWindow.isDestroyed()) return null
-  if (Date.now() > _captureWindowExpiry) {
-    console.warn('[capture-webview-frame] denied: capture window not opened by renderer')
+  // rereview Electron #8 強化: 直近 5s に user gesture (キーボード/マウス) があった
+  // 場合のみ許可。renderer XSS 経由ではこのフラグを立てられない。
+  if (Date.now() - _lastUserInputAt > 5000) {
+    console.warn('[capture-webview-frame] denied: no recent user gesture')
     return null
   }
   try {
@@ -785,6 +787,22 @@ ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: stri
       callback(allowed.has(permission))
     },
   )
+  // rereview Electron N3 fix: in-page JS から他オリジン navigate を遮断。
+  // recorder/main 側にはあった `will-navigate` / `setWindowOpenHandler` を ytLive にも
+  // 追加して allowlist (youtube.com / youtube-nocookie.com / about:blank) のみ許可。
+  _ytLiveWindow.webContents.on('will-navigate', (e, navUrl) => {
+    try {
+      const u = new URL(navUrl)
+      const okHost = /(^|\.)youtube(-nocookie)?\.com$/.test(u.hostname) || /(^|\.)googlevideo\.com$/.test(u.hostname) || /(^|\.)ytimg\.com$/.test(u.hostname)
+      if (u.protocol !== 'https:' || !okHost) {
+        console.error('[ytLive] blocked navigation to', navUrl)
+        e.preventDefault()
+      }
+    } catch {
+      e.preventDefault()
+    }
+  })
+  _ytLiveWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   _ytLiveWindow.webContents.setUserAgent(BROWSER_UA)
   _ytLiveWindow.loadURL(url)
   _ytLiveWindow.on('closed', () => { _ytLiveWindow = null })
@@ -1051,6 +1069,11 @@ function createWindow(): void {
       }
     })
   }
+  // rereview Electron N1: capture-webview-frame の user-gesture 検出。
+  // 直近 5s 以内に物理入力があったときのみ capturePage を許可する。
+  mainWindow.webContents.on('before-input-event', () => {
+    _lastUserInputAt = Date.now()
+  })
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
@@ -1185,10 +1208,11 @@ async function startApp(): Promise<void> {
     })
 
     // YouTube / 外部コンテンツを iframe で読み込めるよう CSP を設定
-    // Electron #9 fix: packaged build では unsafe-inline / unsafe-eval / frame-src * を
-    // 外し、開発時のみ HMR 等のため緩める。frame-src は YouTube 限定にする。
-    const isPackaged = app.isPackaged
-    const cspParts = isPackaged
+    // Electron #9 fix + rereview Electron N4: 厳格 CSP は `app.isPackaged` だけでなく
+    // `NODE_ENV !== 'development'` の AND で発動。これにより
+    // unpackaged + NODE_ENV=production の preview ビルド等でも厳格 CSP が当たる。
+    const isProductionLike = app.isPackaged || process.env.NODE_ENV !== 'development'
+    const cspParts = isProductionLike
       ? [
           "default-src 'self' localfile: app: blob: data: http://localhost:*;",
           // packaged では Vite/Tailwind の inline は事前ビルド済みで不要。

@@ -5,7 +5,13 @@ pynvml は関数内で try-import する (未インストール環境で backend
 """
 from __future__ import annotations
 
+import threading
 from typing import Any, Dict
+
+# rereview NEW-E fix: 旧コードは関数内で `if "_NVML_LOCK" not in globals(): ...` の
+# lazy-init を行っており、複数スレッドが同時 probe で `globals()` 競合する可能性
+# (= ロック自体が競合) があった。module top-level で初期化することで一発確定。
+_NVML_LOCK = threading.Lock()
 
 
 def probe() -> Dict[str, Any]:
@@ -18,14 +24,9 @@ def probe() -> Dict[str, Any]:
     except ImportError:
         return {"available": False, "reason": "nvidia-ml-py not installed"}
 
-    # pipeline #5 fix: nvmlInit/Shutdown はプロセス内で参照カウント方式で動作するが、
-    # API process と worker process が同時並行で probe すると片方の Shutdown が
-    # もう片方の Init を無効化するレースが発生する。プロセス内 lock で probe 全体を
-    # 直列化し、レース範囲を最小化する。
-    global _NVML_LOCK
-    if "_NVML_LOCK" not in globals():
-        import threading
-        _NVML_LOCK = threading.Lock()  # noqa: F841
+    # pipeline #5 fix + rereview NEW-E: module-level Lock で probe を直列化。
+    # cross-process race (API + worker) はプロセス内 Lock では解決できないため
+    # 別 NORMAL TODO として残す (file-lock or DB advisory lock 等)。
     with _NVML_LOCK:
         try:
             pynvml.nvmlInit()

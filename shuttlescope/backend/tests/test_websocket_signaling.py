@@ -546,19 +546,21 @@ class TestCameraSignalingManagerUnit:
         assert mgr._sessions["TEST_UNIT_01"]["viewers"] == {}
 
     def test_disconnect_operator_clears_reference(self):
+        import anyio
         from backend.ws.camera import CameraSignalingManager
         mgr = CameraSignalingManager()
         mgr._ensure_session("TEST_UNIT_02")
         # 仮の operator をセット
         mgr._sessions["TEST_UNIT_02"]["operator"] = object()
-        mgr.disconnect_operator("TEST_UNIT_02")
+        anyio.run(mgr.disconnect_operator, "TEST_UNIT_02")
         assert mgr._sessions["TEST_UNIT_02"]["operator"] is None
 
     def test_disconnect_unknown_session_safe(self):
+        import anyio
         from backend.ws.camera import CameraSignalingManager
         mgr = CameraSignalingManager()
         # 存在しないセッションを切断してもクラッシュしない
-        mgr.disconnect_operator("NO_SUCH_SESSION")
+        anyio.run(mgr.disconnect_operator, "NO_SUCH_SESSION")
 
     def test_relay_to_viewer_unknown_session_safe(self):
         import anyio

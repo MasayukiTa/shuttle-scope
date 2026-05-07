@@ -948,17 +948,43 @@ print(json.dumps({{
 '''
 
 
+_REDACTED_PASSWORD = "SSH_PASSWORD_REDACTED"
+
+
 def _get_worker_ssh_creds(worker_ip: str) -> Optional[Dict[str, str]]:
-    """cluster.config.yaml から指定 IP のワーカーの SSH 認証情報を取得する。"""
+    """cluster.config.yaml から指定 IP のワーカーの SSH 認証情報を取得する。
+
+    rereview NEW-A fix: `topology._redact_secrets` が save_config の度に
+    ssh_password を `"SSH_PASSWORD_REDACTED"` 文字列で恒久書き換えるため、
+    `dispatch_hardware_detect` 1 回成功後にディスク・メモリ両方が壊れていた。
+    対策:
+      1. YAML の値が REDACTED センチネルなら無効扱い
+      2. `SS_K10_SSH_PASSWORD` env-var (または worker 個別 `SS_<ID>_SSH_PASSWORD`)
+         からの読み出しを fallback として実装
+      3. それでも未設定なら None (= SSH dispatch 不可、Ray fallback)
+    """
     try:
         from backend.cluster.topology import load_config
+        import os as _os
         cfg = load_config()
         for w in cfg.get("network", {}).get("workers", []):
-            if w.get("ip") == worker_ip:
-                user = w.get("ssh_user")
-                pwd = w.get("ssh_password")
-                if user and pwd:
-                    return {"host": worker_ip, "username": user, "password": pwd}
+            if w.get("ip") != worker_ip:
+                continue
+            user = w.get("ssh_user")
+            pwd = w.get("ssh_password")
+            wid = (w.get("id") or "").strip().upper()
+            # 1) ENV 優先 (worker 個別 → 共通)
+            env_pwd = ""
+            if wid:
+                env_pwd = (_os.getenv(f"SS_{wid}_SSH_PASSWORD") or "").strip()
+            if not env_pwd:
+                env_pwd = (_os.getenv("SS_K10_SSH_PASSWORD") or _os.getenv("SS_WORKER_SSH_PASSWORD") or "").strip()
+            if user and env_pwd:
+                return {"host": worker_ip, "username": user, "password": env_pwd}
+            # 2) YAML 値が redacted でない場合のみ採用
+            if user and pwd and pwd != _REDACTED_PASSWORD:
+                return {"host": worker_ip, "username": user, "password": pwd}
+            return None
     except Exception:
         pass
     return None
@@ -1350,7 +1376,7 @@ def dispatch_hardware_detect(worker_ip: str) -> Dict[str, Any]:
         return {"error": str(exc)}
 
 
-def dispatch_tracknet_inference(frames_npy: bytes, model_path: str, device_id: str) -> bytes:
+def dispatch_tracknet_inference(frames_npy: bytes, model_path: str, device_id: str, target_ip: str = "") -> bytes:
     """TrackNet 推論を特定の Ray ワーカーに dispatch する。
 
     Args:
@@ -1359,6 +1385,14 @@ def dispatch_tracknet_inference(frames_npy: bytes, model_path: str, device_id: s
                                 残り = float32 フレームデータ
         model_path: ワーカー上の ONNX モデルパス
         device_id:  ターゲットデバイス ID（"ray_igpu_..." で GPU 使用）
+        target_ip:  Ray worker NodeManagerAddress (任意)。未指定時は head 以外の
+                    最初の Alive worker に pin する。
+
+    rereview NEW-F fix: 旧 signature は target_ip を持たず、`ray.remote(...)` を
+    node-pin なしで呼ぶため head ノード (PC1) にチャンクが落ちる経路が再発し
+    `_get_remote_worker_model_path()` の Windows 用 K10 パスでロード失敗する
+    (cluster/pipeline.py の `_run_tracknet_distributed` と同じ問題)。
+    `_run_tracknet_distributed` で行った node 解決ロジックをここでも適用する。
 
     Returns:
         推論結果バイト列（_infer_tracknet_frames と同形式）
@@ -1372,8 +1406,24 @@ def dispatch_tracknet_inference(frames_npy: bytes, model_path: str, device_id: s
     if not ray.is_initialized():
         return json.dumps({"error": "Ray初期化未完了 — バックグラウンドでray.init()中"}).encode("utf-8")
 
+    # rereview NEW-F fix: head 除外 + node-pin
     try:
-        remote_fn = ray.remote(_infer_tracknet_frames)
+        try:
+            from backend.cluster.topology import get_primary_ip
+            head_ip = get_primary_ip() or ""
+        except Exception:
+            head_ip = ""
+        if target_ip:
+            pin_ip = target_ip
+        else:
+            worker_nodes = [
+                n for n in ray.nodes()
+                if n.get("Alive") and n.get("NodeManagerAddress", "") and n.get("NodeManagerAddress", "") != head_ip
+            ]
+            if not worker_nodes:
+                return json.dumps({"error": "K10 worker ノードが見つかりません (head 単独運用)"}).encode("utf-8")
+            pin_ip = worker_nodes[0].get("NodeManagerAddress", "")
+        remote_fn = ray.remote(resources={f"node:{pin_ip}": 0.001})(_infer_tracknet_frames)
         future = remote_fn.remote(model_path=model_path, frames_npy=frames_npy)
         result = ray.get(future, timeout=60)
         return result

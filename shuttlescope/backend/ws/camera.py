@@ -102,17 +102,21 @@ class CameraSignalingManager:
         logger.info("camera operator connected: %s", session_code)
 
     async def connect_device(self, session_code: str, participant_id: str, ws: WebSocket) -> None:
+        # rereview ws #9 fix: ensure_session + dict mutation を _slock で直列化
         await ws.accept()
-        self._ensure_session(session_code)
-        self._sessions[session_code]["devices"][participant_id] = ws
-        logger.info("camera device connected: %s pid=%s", session_code, participant_id)
+        async with self._slock(session_code):
+            self._ensure_session(session_code)
+            self._sessions[session_code]["devices"][participant_id] = ws
+            logger.info("camera device connected: %s pid=%s", session_code, participant_id)
         await self._notify_device_list(session_code)
 
     async def connect_viewer(self, session_code: str, viewer_id: str, ws: WebSocket) -> None:
+        # rereview ws #9 fix: 同上 — viewer 接続も lock で直列化
         await ws.accept()
-        self._ensure_session(session_code)
-        self._sessions[session_code]["viewers"][viewer_id] = ws
-        logger.info("camera viewer connected: %s vid=%s", session_code, viewer_id)
+        async with self._slock(session_code):
+            self._ensure_session(session_code)
+            self._sessions[session_code]["viewers"][viewer_id] = ws
+            logger.info("camera viewer connected: %s vid=%s", session_code, viewer_id)
         # Operator に viewer 参加を通知（Operator が WebRTC offer を送る）
         await self._send_to_operator(session_code, {
             "type": "viewer_joined",
@@ -121,10 +125,12 @@ class CameraSignalingManager:
 
     # ─── 切断 ────────────────────────────────────────────────────────────
 
-    def disconnect_operator(self, session_code: str) -> None:
-        if session_code in self._sessions:
-            self._sessions[session_code]["operator"] = None
-            logger.info("camera operator disconnected: %s", session_code)
+    async def disconnect_operator(self, session_code: str) -> None:
+        # rereview ws #9 fix: 同期版だった disconnect_operator を async + lock 化
+        async with self._slock(session_code):
+            if session_code in self._sessions:
+                self._sessions[session_code]["operator"] = None
+                logger.info("camera operator disconnected: %s", session_code)
 
     async def disconnect_device(self, session_code: str, participant_id: str) -> None:
         # ws #9 fix: lock で session state の mutation を直列化
@@ -135,13 +141,16 @@ class CameraSignalingManager:
         await self._notify_device_list(session_code)
 
     async def disconnect_viewer(self, session_code: str, viewer_id: str) -> None:
-        if session_code in self._sessions:
-            self._sessions[session_code]["viewers"].pop(viewer_id, None)
-            logger.info("camera viewer disconnected: %s vid=%s", session_code, viewer_id)
-            await self._send_to_operator(session_code, {
-                "type": "viewer_left",
-                "viewer_id": viewer_id,
-            })
+        # rereview ws #9 fix: lock 経由で dict 操作を直列化
+        async with self._slock(session_code):
+            if session_code in self._sessions:
+                self._sessions[session_code]["viewers"].pop(viewer_id, None)
+                logger.info("camera viewer disconnected: %s vid=%s", session_code, viewer_id)
+        # 通知は lock 外で実行 (operator への送信は別ロック経路)
+        await self._send_to_operator(session_code, {
+            "type": "viewer_left",
+            "viewer_id": viewer_id,
+        })
 
     # ─── メッセージ中継 ──────────────────────────────────────────────────
 
@@ -315,7 +324,7 @@ async def ws_camera_handler(
         pass
     finally:
         if is_operator:
-            camera_manager.disconnect_operator(session_code)
+            await camera_manager.disconnect_operator(session_code)
         elif is_viewer and viewer_id:
             await camera_manager.disconnect_viewer(session_code, viewer_id)
         elif participant_id:

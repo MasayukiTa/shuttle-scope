@@ -1,11 +1,11 @@
 """予測 API エンドポイント — Phase A + B + Phase 1 Rebuild"""
 from typing import Optional
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 import json
 from backend.db.database import get_db
-from backend.utils.auth import require_non_player
+from backend.utils.auth import require_non_player, get_auth
 from backend.db.models import Player, Match, PrematchPrediction
 from backend.analysis.prediction_engine import (
     get_matches_for_player,
@@ -284,6 +284,7 @@ def get_fatigue_risk(
 def get_prematch_by_match(
     match_id: int,
     player_id: int,
+    request: Request,
     force: bool = False,
     db: Session = Depends(get_db),
 ):
@@ -294,6 +295,11 @@ def get_prematch_by_match(
     - 一度算出した結果は DB に保存し、以降は再算出しない（スナップショット）
     - force=true で強制再計算・上書き保存
     """
+    # rereview NEW-N3 fix: actor の team_id を取得して _upsert_prematch_prediction に渡す。
+    # 旧コードは team_id=None で呼び出され、prematch_predictions テーブルが
+    # 全スコープ書き込みになっていた (他チームの prediction を上書きできる経路あり)。
+    _actor_ctx = get_auth(request)
+    _actor_team_id = getattr(_actor_ctx, "team_id", None)
     match = db.get(Match, match_id)
     if not match:
         return {"success": False, "error": "Match not found"}
@@ -365,7 +371,8 @@ def get_prematch_by_match(
                                     sample_size=0, h2h_count=0,
                                     win_probability=None, set_dist=None,
                                     scorelines=None, score_volatility=None,
-                                    confidence=None, match_narrative=None)
+                                    confidence=None, match_narrative=None,
+                                    team_id=_actor_team_id)
         return {
             "success": True,
             "cached": False,
@@ -423,7 +430,8 @@ def get_prematch_by_match(
                                 sample_size=sample_size, h2h_count=h2h_count,
                                 win_probability=win_prob_v2, set_dist=set_dist,
                                 scorelines=scorelines, score_volatility=score_volatility,
-                                confidence=confidence_val, match_narrative=match_narrative)
+                                confidence=confidence_val, match_narrative=match_narrative,
+                                team_id=_actor_team_id)
 
     return {
         "success": True,
