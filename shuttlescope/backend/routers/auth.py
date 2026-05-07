@@ -1366,6 +1366,15 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
             detail="role の変更は admin のみ可能です",
         )
 
+    # round174 U2: admin の self role 変更を禁止 (self-demote 不可)。
+    # 自分を admin から降格させると system が admin を失う可能性があり、
+    # 復旧には DB 直接介入が必要になる。role 変更は別 admin に依頼する運用に限定。
+    if body.role is not None and ctx.is_admin and ctx.user_id == target_id:
+        raise HTTPException(
+            status_code=403,
+            detail="admin は自分自身の role を変更できません (別 admin に依頼してください)",
+        )
+
     # ── password 上書きは admin または自分自身のみ ─────────────────────────
     # analyst が他ユーザ (player/coach) の password を書換えてアカウント乗っ取る
     # 経路を遮断（ラウンド10 検出）。password 変更は /api/auth/password で
