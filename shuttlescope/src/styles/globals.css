@@ -266,6 +266,38 @@ button[role="combobox"] {
   overflow-y: auto;
 }
 
+/*
+ * Annotation tile resilience (iOS フォント縮小でタイル崩壊対策)
+ * --------------------------------------------------------------
+ * iOS では accessibility 設定でフォントを縮小すると -webkit-text-size-adjust
+ * 100% でも button/label のテキストが縮み、固定 px の grid 子要素が枠から
+ * はみ出る or 折り返してタイル崩壊する。
+ *
+ * 対象: HitZoneSelector / ShotTypePanel / 一般的なタイルボタン
+ *
+ * 戦略:
+ *   - data-tile="true" を持つタイルボタンは 16px 強制 + min-w/min-h で枠固定
+ *   - touch-action: manipulation で double-tap zoom も封じる
+ *   - line-height を詰めて 2 行折り返しでも tile が破綻しないように
+ */
+button[data-tile="true"] {
+  font-size: 16px !important;
+  line-height: 1.15;
+  min-width: 7ch;
+  min-height: 44px; /* WCAG 2.5.5 推奨タッチターゲット */
+  touch-action: manipulation;
+  /* テキストがタイル外に溢れた場合は省略表示 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 9-zone hit_zone セルは数字 1 文字なので min-w を緩めて正方形を優先 */
+button[data-tile="hit-zone"] {
+  font-size: 18px !important;
+  min-width: 44px;
+  min-height: 44px;
+}
+
 /* iOS ノッチ対応: 固定ヘッダーの上パディング */
 .safe-area-top {
   padding-top: env(safe-area-inset-top);
