@@ -4,6 +4,8 @@
  * 任意のアクションを名前で検索 → Enter で実行。
  *
  * - グローバルキー: Ctrl+K (Mac は Cmd+K も)
+ * - グローバルイベント `commandpalette:open` でも開閉できる
+ *   (タッチデバイス / 明示ボタン用。openCommandPalette() ヘルパーを使う)
  * - 開いた状態で / でも検索フォーカス
  * - 矢印キーで候補移動、Enter で実行、Esc で閉じる
  * - command provider は外部から `commands` props で注入する
@@ -27,6 +29,15 @@ interface CommandPaletteProps {
   commands: PaletteCommand[]
 }
 
+/** イベント名 (キーボードショートカットを持たないタッチデバイス向けに ⌘K 相当を発火する) */
+const PALETTE_OPEN_EVENT = 'shuttlescope:command-palette-open'
+
+/** 外部から CommandPalette を開く。明示ボタンや他の UI から呼び出す用。 */
+export function openCommandPalette(): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(PALETTE_OPEN_EVENT))
+}
+
 export function CommandPalette({ commands }: CommandPaletteProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -45,8 +56,17 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
         setActiveIdx(0)
       }
     }
+    const onOpenEvent = () => {
+      setOpen((v) => !v)
+      setQuery('')
+      setActiveIdx(0)
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener(PALETTE_OPEN_EVENT, onOpenEvent)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener(PALETTE_OPEN_EVENT, onOpenEvent)
+    }
   }, [])
 
   // 開いたら入力にフォーカス
@@ -116,9 +136,11 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
             placeholder={t('annotator.ux.command_placeholder')}
             className="flex-1 bg-transparent text-gray-100 outline-none text-sm placeholder:text-gray-500"
           />
-          <kbd className="text-[10px] text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">
-            Esc
-          </kbd>
+          <div className="flex items-center gap-1 shrink-0">
+            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">↑↓</kbd>
+            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">Enter</kbd>
+            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">Esc</kbd>
+          </div>
         </div>
         <ul className="max-h-[50vh] overflow-y-auto py-1" role="listbox">
           {filtered.length === 0 && (
