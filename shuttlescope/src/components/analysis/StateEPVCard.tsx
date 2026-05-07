@@ -131,13 +131,13 @@ export function StateEPVCard({ playerId, filters }: Props) {
                     <td className={`py-1.5 pr-3 ${textSecondary}`}>{SCORE_PHASE_LABELS[row.state.score_phase] ?? row.state.score_phase}</td>
                     <td className={`py-1.5 pr-3 ${textSecondary}`}>{RALLY_BUCKET_LABELS[row.state.rally_bucket] ?? row.state.rally_bucket}</td>
                     <td className={`py-1.5 pr-3 ${textMuted}`}>{ROLE_LABELS[row.state.player_role] ?? row.state.player_role}</td>
-                    <td className={`py-1.5 pr-3 text-right ${textMuted}`}>{row.n}</td>
-                    <td className="py-1.5 pr-3 text-right">
+                    <td className={`py-1.5 pr-3 text-right num-cell ${textMuted}`}>{row.n}</td>
+                    <td className="py-1.5 pr-3 text-right num-cell">
                       <span className={row.win_rate >= 0.5 ? 'text-blue-500' : 'text-red-500'}>
                         {pct(row.win_rate)}
                       </span>
                     </td>
-                    <td className={`py-1.5 pr-3 text-right text-[10px] ${textFaint}`}>[{pct(row.ci_low)}–{pct(row.ci_high)}]</td>
+                    <td className={`py-1.5 pr-3 text-right text-[10px] num-cell ${textFaint}`}>[{pct(row.ci_low)}–{pct(row.ci_high)}]</td>
                     <td className={`py-1.5 ${textMuted}`}>
                       {row.top_epv_shots.slice(0, 2).map((s) => (
                         <span key={s.shot_type} className={`mr-1 text-[10px] ${s.epv > 0 ? 'text-emerald-500' : 'text-orange-500'}`}>

@@ -90,11 +90,11 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
                   <td className="py-1.5 pr-3 font-semibold text-white">
                     {t(`zones.${z.zone}`, z.zone)}
                   </td>
-                  <td className="py-1.5 pr-3 text-center text-gray-300">{z.count}</td>
-                  <td className="py-1.5 pr-3 text-center text-gray-300">
+                  <td className="py-1.5 pr-3 text-center text-gray-300 num-cell">{z.count}</td>
+                  <td className="py-1.5 pr-3 text-center text-gray-300 num-cell">
                     {(z.freq_rate * 100).toFixed(1)}%
                   </td>
-                  <td className="py-1.5 pr-2 text-right">
+                  <td className="py-1.5 pr-2 text-right num-cell">
                     <span
                       className="font-semibold"
                       style={{ color: lightSafe(perfColor(z.win_rate), !isLight) }}

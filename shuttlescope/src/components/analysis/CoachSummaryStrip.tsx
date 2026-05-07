@@ -107,10 +107,10 @@ export function CoachSummaryStrip({
         </div>
 
         {/* 最大リスク */}
-        <div className="sm:col-span-1">
+        <div className="sm:col-span-1 min-w-0">
           {topRisk ? (
             <>
-              <p className="text-xs font-medium leading-snug" style={{ color: LOSS }}>⚠ {topRisk}</p>
+              <p className="text-xs font-medium leading-snug line-clamp-2" style={{ color: LOSS }} title={topRisk}>⚠ {topRisk}</p>
               <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.biggest_risk')}</p>
             </>
           ) : (
@@ -122,10 +122,10 @@ export function CoachSummaryStrip({
         </div>
 
         {/* 推奨アクション */}
-        <div className="sm:col-span-1">
+        <div className="sm:col-span-1 min-w-0">
           {topAction ? (
             <>
-              <p className="text-xs font-medium leading-snug" style={{ color: WIN }}>→ {topAction}</p>
+              <p className="text-xs font-medium leading-snug line-clamp-2" style={{ color: WIN }} title={topAction}>→ {topAction}</p>
               <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.top_action')}</p>
             </>
           ) : (

@@ -298,6 +298,43 @@ button[data-tile="hit-zone"] {
   min-height: 44px;
 }
 
+/*
+ * 数値セル共通ユーティリティ。
+ * 解析テーブル / 集計表で桁数が変動する数値 (% / Brier / EPV / 試合数 etc) に
+ * 統一して適用する。tabular-nums で 桁を揃え、whitespace-nowrap で折り返し
+ * による桁ずれを防ぐ。
+ */
+.num-cell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * 名前 / 大会名など可変長日本語セル共通ユーティリティ。
+ * デスクトップでは max-w で頭打ち + truncate、ホバー title 属性で全文を見せる。
+ * モバイルでは card レイアウトに切替えるのが基本だが、テーブル表示しか用意で
+ * きないページではこのクラスでフォールバックする。
+ *
+ * 情報量を「減らす」のではなく「畳む」目的のため、必ず title 属性で全文を
+ * 与えるのを呼び出し側のルールにする。
+ */
+.cell-name-clip {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (min-width: 768px) {
+  .cell-name-clip {
+    max-width: 22ch;
+  }
+}
+@media (min-width: 1024px) {
+  .cell-name-clip {
+    max-width: 28ch;
+  }
+}
+
 /* iOS ノッチ対応: 固定ヘッダーの上パディング */
 .safe-area-top {
   padding-top: env(safe-area-inset-top);

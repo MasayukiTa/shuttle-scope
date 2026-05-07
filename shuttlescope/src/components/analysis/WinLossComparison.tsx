@@ -37,8 +37,8 @@ function StatRow({ label, winVal, lossVal }: { label: string; winVal: string; lo
   return (
     <tr className="border-b border-gray-700/50">
       <td className="py-2 text-gray-400 text-sm">{label}</td>
-      <td className="py-2 text-center font-semibold text-sm" style={{ color: WIN }}>{winVal}</td>
-      <td className="py-2 text-center font-semibold text-sm" style={{ color: LOSS }}>{lossVal}</td>
+      <td className="py-2 text-center font-semibold text-sm num-cell" style={{ color: WIN }}>{winVal}</td>
+      <td className="py-2 text-center font-semibold text-sm num-cell" style={{ color: LOSS }}>{lossVal}</td>
     </tr>
   )
 }

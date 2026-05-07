@@ -121,11 +121,11 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
                 <td className="py-1.5 pr-3 font-medium" style={{ color: coolwarm(levelRatio(l.level)) }}>
                   {l.level}
                 </td>
-                <td className="py-1.5 pr-3 text-center" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.match_count}</td>
-                <td className="py-1.5 pr-3 text-center font-semibold" style={{ color: isLight ? '#334155' : '#d1d5db' }}>
+                <td className="py-1.5 pr-3 text-center num-cell" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.match_count}</td>
+                <td className="py-1.5 pr-3 text-center font-semibold num-cell" style={{ color: isLight ? '#334155' : '#d1d5db' }}>
                   {(l.win_rate * 100).toFixed(1)}%
                 </td>
-                <td className="py-1.5 pr-2 text-right" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.avg_rally_length.toFixed(1)}</td>
+                <td className="py-1.5 pr-2 text-right num-cell" style={{ color: isLight ? '#334155' : '#d1d5db' }}>{l.avg_rally_length.toFixed(1)}</td>
               </tr>
             ))}
           </tbody>

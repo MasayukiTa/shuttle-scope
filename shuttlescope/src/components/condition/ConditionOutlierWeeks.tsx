@@ -203,7 +203,7 @@ export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
                       <span>{r.date}</span>
                     </div>
                   </td>
-                  <td className="px-2 py-1 align-top font-mono">
+                  <td className="px-2 py-1 align-top num-cell">
                     {r.primaryZ.toFixed(2)}
                     <span className={`ml-1 ${muted}`}>
                       ({t(`condition.outlier.metric.${PRIMARY}`)})
@@ -263,7 +263,7 @@ export function ConditionOutlierWeeks({ playerId, isLight }: Props) {
                   return (
                     <tr key={k} className={`border-t ${borderColor}`}>
                       <td className="px-2 py-1">{t(`condition.outlier.metric.${k}`)}</td>
-                      <td className="px-2 py-1 font-mono text-right">
+                      <td className="px-2 py-1 text-right num-cell">
                         {z == null ? t('condition.outlier.no_value') : z.toFixed(2)}
                       </td>
                     </tr>

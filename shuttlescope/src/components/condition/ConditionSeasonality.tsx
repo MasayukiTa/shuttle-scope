@@ -267,7 +267,7 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
                       const n = arr.length
                       const m = n >= MIN_N ? mean(arr) : null
                       return (
-                        <td key={k} className="px-2 py-1 text-right font-mono">
+                        <td key={k} className="px-2 py-1 text-right num-cell">
                           {m == null ? (
                             <span className={muted}>
                               {t('condition.seasonality.no_value')}
