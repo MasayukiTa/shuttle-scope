@@ -20,11 +20,19 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 md:gap-3 text-sm">
+    <div
+      className="flex flex-wrap items-center gap-2 md:gap-3 text-sm"
+      role="group"
+      aria-label={t('annotator.attributes_aria')}
+      aria-disabled={disabled || undefined}
+    >
       {/* バックハンド */}
       <button
         onClick={() => toggle('is_backhand', !attributes.is_backhand)}
         disabled={disabled}
+        aria-pressed={attributes.is_backhand}
+        aria-disabled={disabled || undefined}
+        aria-keyshortcuts="Q"
         className={`flex items-center gap-1.5 px-3 py-2.5 md:px-2 md:py-1 rounded border transition-colors ${
           attributes.is_backhand
             ? 'bg-purple-700 border-purple-500 text-white'
@@ -39,6 +47,9 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
       <button
         onClick={() => toggle('is_around_head', !attributes.is_around_head)}
         disabled={disabled}
+        aria-pressed={attributes.is_around_head}
+        aria-disabled={disabled || undefined}
+        aria-keyshortcuts="W"
         className={`flex items-center gap-1.5 px-3 py-2.5 md:px-2 md:py-1 rounded border transition-colors ${
           attributes.is_around_head
             ? 'bg-purple-700 border-purple-500 text-white'
@@ -50,28 +61,39 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
       </button>
 
       {/* ネット上下 */}
-      <div className="flex items-center gap-1.5 md:gap-1">
+      <div
+        className="flex items-center gap-1.5 md:gap-1"
+        role="radiogroup"
+        aria-label={t('annotator.net_position_aria')}
+      >
         <span className="text-gray-500 text-xs">
-          ネット:
+          {t('annotator.net_label')}
         </span>
         {[
           { value: true, label: t('annotator.above_net') },
           { value: false, label: t('annotator.below_net') },
           { value: undefined, label: t('annotator.net_unknown') },
-        ].map(({ value, label }) => (
-          <button
-            key={String(value)}
-            onClick={() => toggle('above_net', value)}
-            disabled={disabled}
-            className={
-              attributes.above_net === value
-                ? 'px-3 py-2 md:px-2 md:py-0.5 rounded bg-blue-600 text-white text-xs'
-                : 'px-3 py-2 md:px-2 md:py-0.5 rounded bg-gray-700 text-gray-300 text-xs hover:bg-gray-600'
-            }
-          >
-            {label}
-          </button>
-        ))}
+        ].map(({ value, label }) => {
+          const selected = attributes.above_net === value
+          return (
+            <button
+              key={String(value)}
+              onClick={() => toggle('above_net', value)}
+              disabled={disabled}
+              role="radio"
+              aria-checked={selected}
+              aria-disabled={disabled || undefined}
+              className={
+                (selected
+                  ? 'px-3 py-2 md:px-2 md:py-0.5 rounded bg-blue-600 text-white text-xs'
+                  : 'px-3 py-2 md:px-2 md:py-0.5 rounded bg-gray-700 text-gray-300 text-xs hover:bg-gray-600')
+                + (disabled ? ' opacity-40 cursor-not-allowed' : '')
+              }
+            >
+              {label}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
