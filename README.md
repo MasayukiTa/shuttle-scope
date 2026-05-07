@@ -18,16 +18,20 @@ If someone opens ShuttleScope today, the parts they can realistically expect to 
 - create and edit matches, players, and doubles pairings
 - sign in with role-aware local auth flows for admin / analyst / coach / player
 - manage teams and team-owned access boundaries for coach / analyst / player workflows
-- annotate rallies stroke by stroke
+- annotate rallies stroke by stroke with a redesigned mode-driven layout (`Input` / `Review` / `Analysis` / `Settings`), a `Ctrl+K` command palette, and a bottom history strip showing the last 5 strokes with click-to-seek
+- enter the full annotation flow from the keyboard, including `1`–`9` for `hit_zone` (with `Shift+1`–`9` to escape doubles input), `Tab` to swap player, and a visible kbd hint that can be force-shown for analysts who prefer it always on
 - review rallies with comments, bookmarks, review-later markers, and warm-up notes
 - run badminton-specific dashboard analysis across matches
 - inspect condition data through role-aware filtered views rather than one unrestricted surface
 - use local video, second-screen playback, and court calibration support
+- record any HTTPS streaming site you have a licensed view of through OS-level pixel capture (the OBS-equivalent legal path), with a `low / med / high` quality preset and an HDCP / black-frame post-recording warning
+- download yt-dlp-reachable streams with optional `cookies.txt` upload (Web build) or browser-cookie selection (desktop build) for member-only sites, plus a `video_password` field for password-protected videos like Vimeo Showcase
 - capture desktop video regions, define ROI, and run ROI-aware CV batch analysis on prepared environments
 - test CV-assisted annotation flows, candidate review, and TrackNet / YOLO readiness on prepared environments
 - benchmark CPU / GPU / OpenVINO / Ray-capable environments from Settings and compare available inference targets
 - configure Ray / cluster routing from Settings and inspect worker availability, load limits, and network health
 - share sessions on nearby devices over LAN with password-protected join flow
+- use the same workflow on phone / tablet widths with mobile cards, bottom navigation, and a player-selector sheet, sharing an underlying `useBreakpoint` ladder (xs / sm / md / lg / xl / 2xl) so the layout stays coherent rather than guessing per-component
 
 The parts that still need more real-world proof are:
 
@@ -77,6 +81,12 @@ Prediction, CV-assisted annotation, remote camera support, and research views ar
 - review-later flow for incomplete rallies
 - warm-up / pre-match observation capture
 - comments, bookmarks, and review markers around a match session
+- mode-driven right panel (`Input` / `Review` / `Analysis` / `Settings`) so the working surface only shows what the current mode needs
+- `Ctrl+K` command palette and a unified `TopBarMenu` so secondary actions are reachable without crowding the score bar
+- bottom history strip (last 5 strokes, click to seek) and floating video overlay toggles for CV / shuttle / court
+- 4-state step indicator (`待機 / ラリー中 / land_zone / rally_end`) with focus ring + `aria-keyshortcuts` so the keyboard user always knows which step the next key affects
+- `Notice` toast and `ConfirmDialog` modal (with destructive variant, ESC + backdrop close) replacing every `alert()` / `window.confirm()`
+- ~152 hardcoded Japanese annotator strings migrated into the `annotator.ui.*` i18n tree
 
 ### Match and Player Management
 
@@ -133,6 +143,15 @@ These areas are usable for internal exploration, but they are still a step behin
 - benchmark jobs, device probing, and doctor scripts for CV environment validation
 - YOLO benchmark target and backend override controls
 - Ray / worker-aware benchmark routing for cluster environments
+- person-tracking through ByteTrack with court adapter, identity / occlusion / rally modules
+- pose estimation via `RTMPoseEngine` (17 keypoints), `SwingDetector` driven by wrist velocity + elbow angle, 3-stage hitter attribution, and `NetAwareDetector` + `CourtBoundedFilter`
+
+### Streaming Capture and Download
+
+- Generic OS-level screen recording for any HTTPS streaming site the user has a licensed view of, sharing the desktop-capturer pipeline that previously only worked for YouTube. The recorder rejects non-HTTPS, embedded credentials, and loopback / private / link-local hosts, restricts cross-origin navigation to the same registrable domain (PSL-based), and writes a webm chunk → mp4 remux → archive flow that auto-updates `Match.video_local_path`. Recording is OBS-equivalent OS pixel capture only — no DRM, CDM, or HDCP defeat is implemented, and HDCP-protected content typically yields a black recording on purpose.
+- A `low / med / high` quality preset (1.5 Mbps / 480p, 5 Mbps / 720p, 9 Mbps / 1080p) is selectable from the recorder's nav-bar dropdown and persisted in `sessionStorage`.
+- An HDCP / black-frame detector runs after the remux (`ffmpeg blackdetect`) and surfaces a warning to the operator if the recording came back mostly black, so a useless capture is caught immediately.
+- yt-dlp downloads accept `cookies.txt` from the web build (1 MB cap, Netscape-format check, deleted server-side after the job runs) or browser-cookie selection from the desktop build, plus an optional `video_password` field for Vimeo Showcase / member-only password-protected videos. None of these inputs are written to logs or the audit log.
 
 These areas are useful for development and internal testing, but CV quality still depends heavily on real-video validation.
 
