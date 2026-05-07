@@ -299,6 +299,11 @@ def reset_user_limits(
     from backend.main import ExfilRateLimitMiddleware  # type: ignore
     from backend.db.models import UploadSession, User
 
+    # 存在しない user_id への reset は 404 (round165 M3: silent 200 で
+    # ユーザー id 列挙 leak を防ぐ)
+    if db.get(User, user_id) is None:
+        raise HTTPException(status_code=404, detail="user が見つかりません")
+
     # フラグ解釈: 1 つでも明示的に指定があればその通り、全部 None なら全 True
     if body is None or all(v is None for v in (body.exfil, body.uploads, body.failed_attempts, body.lock)):
         do_exfil = do_uploads = do_failed = do_lock = True
