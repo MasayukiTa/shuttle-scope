@@ -100,9 +100,23 @@ function _handleSessionExpired(): void {
     sessionStorage.removeItem('shuttlescope_role')
     sessionStorage.removeItem('shuttlescope_player_id')
     sessionStorage.removeItem('shuttlescope_team_name')
+    // 残りの auth 関連 storage も全て掃除する。掃除漏れがあると `useAuth` の
+    // 内部 state が "token は null だが userId/displayName は残っている" 状態
+    // になり、リログイン後の表示が一貫しない。
+    sessionStorage.removeItem('shuttlescope_user_id')
+    sessionStorage.removeItem('shuttlescope_display_name')
+    sessionStorage.removeItem('shuttlescope_page_access')
   } catch {
     /* noop */
   }
+  // useAuth が listen している AUTH_CHANGED_EVENT を発火させて React state を再同期する。
+  // 旧コードはこの dispatch を欠いており、`useState(() => getStored(...))` の初期値だけが
+  // 残った状態で `<ProtectedMainRoute>` の `token != null` チェックを通過し続け、
+  // hash が `/login?session_expired=1` に変わっても <LoginPage /> がレンダーされなかった
+  // (2026-05-07 報告)。
+  try {
+    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT))
+  } catch { /* noop */ }
   // 既に未認証ページにいるならリダイレクト不要
   const currentHash = (window.location.hash || '').slice(1).split('?')[0]
   const SKIP_PATHS = [
