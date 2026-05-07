@@ -22,10 +22,10 @@ jobs:
   build-test:
     name: Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # 2026-05-07: backend test スイートが拡大して 30 分上限に引っかかり cancel された
-    # (run 25501537934)。45 分に引き上げる。長期的には pytest-xdist で parallelize
-    # するのが本筋だが、まずはタイムアウト緩和で CI を回す。
-    timeout-minutes: 45
+    # 2026-05-08: pytest-xdist + 45 分でも GitHub Actions runner が 2 worker 限定で
+    # WS テスト hang (operator JWT 必要化 567cd64 + 旧テスト) で 45 分丸ごと食う
+    # 事象を観測したため 60 分に上げる。WS hang fix も同時 push。
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
