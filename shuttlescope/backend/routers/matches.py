@@ -1052,6 +1052,12 @@ class DownloadRequest(BaseModel):
     # yt-dlp の --video-password と同等。サーバ上では保持せず yt-dlp に直接渡し、
     # ジョブ完了で即破棄。ログ・audit log には記録しない。
     video_password: Optional[str] = None
+    # 切り抜きダウンロード (バドミントン Live 配信容量圧迫対策、2026-05-08)。
+    # `start_sec` / `end_sec` で動画内の特定区間 (秒) のみ DL する。
+    # 両方 None なら従来通り全体 DL。yt-dlp の `download_ranges` callback に変換する。
+    # 24h (= 86400 秒) 上限。負値・反転 (start > end) は 422。
+    start_sec: Optional[float] = Field(None, ge=0.0, le=86400.0)
+    end_sec: Optional[float] = Field(None, ge=0.0, le=86400.0)
 
 
 # 同時 DL 並列数 (800Mbps 想定: 3 並列 × 260Mbps/job)
@@ -1069,6 +1075,8 @@ def _get_dl_semaphore() -> _asyncio_dl.Semaphore:
 async def _run_download_with_cookie(
     url: str, job_id: str, quality: str, cookies_file_path: str,
     video_password: str = "",
+    start_sec: Optional[float] = None,
+    end_sec: Optional[float] = None,
 ):
     """cookies.txt を使って DL し、完了/失敗問わず cookies.txt を即削除する。"""
     import os as _os
@@ -1078,6 +1086,7 @@ async def _run_download_with_cookie(
                 url=url, job_id=job_id, quality=quality,
                 cookie_browser="", cookies_file=cookies_file_path,
                 video_password=video_password,
+                start_sec=start_sec, end_sec=end_sec,
             )
     finally:
         try:
@@ -1211,12 +1220,22 @@ async def start_download(
     if _video_password and len(_video_password) > 1024:
         raise HTTPException(status_code=422, detail="video_password が長すぎます (max 1024)")
 
+    # 切り抜き範囲のサニティチェック (両方 None なら従来通り全体 DL)
+    _start_sec = body.start_sec
+    _end_sec = body.end_sec
+    if _start_sec is not None and _end_sec is not None and _start_sec >= _end_sec:
+        raise HTTPException(
+            status_code=422,
+            detail=f"start_sec ({_start_sec}) は end_sec ({_end_sec}) より小さい必要があります",
+        )
+
     if cookies_file_path:
         async def _run_with_cookie_then_persist():
             try:
                 await _run_download_with_cookie(
                     validated_url, job_id, body.quality, cookies_file_path,
                     video_password=_video_password,
+                    start_sec=_start_sec, end_sec=_end_sec,
                 )
             finally:
                 _persist_completion(match_id, job_id)
@@ -1228,6 +1247,7 @@ async def start_download(
                     url=validated_url, job_id=job_id, quality=body.quality,
                     cookie_browser=body.cookie_browser,
                     video_password=_video_password,
+                    start_sec=_start_sec, end_sec=_end_sec,
                 )
             _persist_completion(match_id, job_id)
         background_tasks.add_task(_run_no_cookie)
