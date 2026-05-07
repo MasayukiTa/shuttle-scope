@@ -993,6 +993,33 @@ def _get_worker_ssh_creds(worker_ip: str) -> Optional[Dict[str, str]]:
 _USERNAME_RE = __import__("re").compile(r"^[A-Za-z0-9._-]{1,32}$")
 
 
+def _categorize_ssh_failure(err_text: str) -> str:
+    """SSH dispatch 失敗メッセージを log-safe な literal enum 文字列に正規化する。
+
+    返り値は **入力文字列を含まない** 固定 literal だけで構成され、CodeQL
+    data-flow tracker が「sanitizer で taint が落ちた」と認識できる形になる。
+    `password` を含み得る err_text の文字種を出力に伝播させない設計。
+
+    Returns one of:
+      'paramiko_missing' / 'invalid_username' / 'invalid_host' /
+      'no_json_output' / 'auth_failure' / 'connection_error' / 'unknown'
+    """
+    s = (err_text or "").lower()
+    if "paramiko 未インストール" in s:
+        return "paramiko_missing"
+    if "invalid username" in s:
+        return "invalid_username"
+    if "invalid host" in s:
+        return "invalid_host"
+    if "json 出力なし" in s:
+        return "no_json_output"
+    if "badauthentication" in s or "authenticationexception" in s:
+        return "auth_failure"
+    if "ssh 実行失敗" in s or "sshexception" in s or "nosuch" in s:
+        return "connection_error"
+    return "unknown"
+
+
 def _ssh_run_python_script(host: str, username: str, password: str,
                            script_code: str, timeout: int = 120) -> dict:
     """SSH 経由でワーカーに Python スクリプトを送り込み、JSON 結果を返す。
@@ -1301,19 +1328,17 @@ def dispatch_hardware_detect(worker_ip: str) -> Dict[str, Any]:
         )
         if "error" not in result:
             return result
-        # CodeQL py/clear-text-logging-sensitive-data: result["error"] は
-        # `_ssh_run_python_script` 内の paramiko 例外メッセージや、認証失敗時の
-        # リモート stdout fragment ("JSON 出力なし: ..." の末尾 300 char) を
-        # 含み得る。paramiko 経路は `password` 引数を受け取る関数なので
-        # CodeQL の data-flow が tainted と判定する。実害となる password 漏洩
-        # 経路は現状ないが、防衛的に log には full message を出さず、
-        # error 種別 (text の prefix だけ) と worker_ip のみ残す。
-        # 詳細は呼び出し元が必要なら別途返り値から取り出せる。
-        err_text = str(result.get("error", ""))
-        err_summary = err_text.split(":", 1)[0][:64] if err_text else "unknown"
+        # CodeQL py/clear-text-logging-sensitive-data 対応 (alert #1998):
+        # paramiko 経路の関数戻り値は `password` 引数を受ける関数からの値なので
+        # CodeQL data-flow が tainted と判定する。旧コードは prefix 64 char に
+        # 切り詰めて password が漏れない実態だったが static analyzer を満足
+        # させられなかった。ここでは log メッセージ自体に result の中身を
+        # 一切載せないことで data-flow を完全に断つ。粗い分類が欲しい場合は
+        # _categorize_ssh_failure() で literal enum 文字列に正規化する。
+        err_category = _categorize_ssh_failure(result.get("error", ""))
         logger.warning(
-            "dispatch_hardware_detect: SSH 失敗 (worker=%s code=%s)、Ray にフォールバック",
-            worker_ip, err_summary,
+            "dispatch_hardware_detect: SSH 失敗 (worker=%s category=%s)、Ray にフォールバック",
+            worker_ip, err_category,
         )
 
     # ── Ray フォールバックパス ────────────────────────────────────────────────
