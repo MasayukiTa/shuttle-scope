@@ -53,40 +53,54 @@ def _validate_url_for_subprocess(url: str) -> str:
     if any(ord(c) < 0x20 or ord(c) == 0x7F for c in s):
         raise ValueError("url contains control character")
     # 内部 IP / localhost への SSRF を拒否 (round65 で routers/matches.py に追加した防御を本層にも適用)
+    # 注: 旧コードは `_ipa.ip_address(host)` の例外を catch する `except ValueError: pass`
+    # が、自身の `raise ValueError("...is internal/reserved IP")` まで巻き込んで silent
+    # swallow していた (2026-05-08 round 25511044863 で test_drm_capture_defense_layer_rejects_all
+    # が "DID NOT RAISE" で発覚)。先に IP 判定を try/except で行い、成功した場合だけ
+    # is_loopback 等のチェックを別ブロックで raise する。
     try:
         from urllib.parse import urlparse
         import ipaddress as _ipa
         parsed = urlparse(s)
-        host = (parsed.hostname or "").strip().lower()
-        if host in ("localhost", "localhost.localdomain", "ip6-localhost"):
-            raise ValueError(f"url host {host!r} not allowed")
-        if host:
-            try:
-                ip = _ipa.ip_address(host)
-                if (ip.is_loopback or ip.is_private or ip.is_link_local
-                        or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-                    raise ValueError(f"url host {host!r} is internal/reserved IP")
-            except ValueError:
-                pass  # ホスト名 → public DNS 解決対象
-    except ValueError:
-        raise
     except Exception:
         raise ValueError("url parse failed")
+    host = (parsed.hostname or "").strip().lower()
+    if host in ("localhost", "localhost.localdomain", "ip6-localhost"):
+        raise ValueError(f"url host {host!r} not allowed")
+    if host:
+        try:
+            ip = _ipa.ip_address(host)
+        except ValueError:
+            ip = None  # ホスト名 → public DNS 解決対象、ここでは reject しない
+        if ip is not None and (
+            ip.is_loopback or ip.is_private or ip.is_link_local
+            or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+        ):
+            raise ValueError(f"url host {host!r} is internal/reserved IP")
     return s
 
 
 def _validate_drm_capture_url(url: str) -> str:
-    """DRM/screen-capture ジョブ作成時の URL 検証 (https-only, SSRF guard).
+    """DRM/screen-capture ジョブ作成時の URL 検証 (https-only, SSRF guard, no embedded creds).
 
     `_validate_url_for_subprocess` は yt-dlp / ffmpeg subprocess の引数に
-    渡す URL を想定して http(s):// 両方許可しているが、screen capture 経路は
-    Electron の `loadURL` に渡るため scheme を https のみに絞る必要がある。
-    Pydantic 層 (routers.youtube_live._validate_public_https_url) と同じ規則
-    を defense-in-depth で重複適用する (round156 R156-S1 対策)。
+    渡す URL を想定して http(s):// 両方許可 + embedded creds 容認 (HTTP basic
+    auth で配信元にアクセスするケースがあるため) だが、screen capture 経路は
+    Electron の `loadURL` に渡るため (1) scheme を https のみに絞り、(2) embedded
+    credentials を拒否する必要がある (Electron `window.open` redirect / referrer
+    経由で credential leak の既知パターン)。Pydantic 層
+    (routers.youtube_live._validate_public_https_url) と同じ規則を defense-in-depth
+    で重複適用する (round156 R156-S1 対策)。
     """
     safe = _validate_url_for_subprocess(url)
     if not safe.startswith("https://"):
         raise ValueError("DRM capture url must use https://")
+    # embedded credentials check (subprocess 用 validator は HTTP basic 用に容認するが
+    # Electron 経路は credential leak リスクがあるためここで明示 reject)
+    from urllib.parse import urlparse as _urlparse
+    parsed = _urlparse(safe)
+    if parsed.username or parsed.password:
+        raise ValueError("DRM capture url must not contain embedded credentials")
     return safe
 
 

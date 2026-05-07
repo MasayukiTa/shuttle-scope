@@ -81,7 +81,19 @@ def test_run_pipeline_writes_rows(db_session, _seed_match, monkeypatch):
     assert db_session.query(ShuttleTrack).filter(ShuttleTrack.match_id == _seed_match.id).count() == 900
     assert db_session.query(PoseFrame).filter(PoseFrame.match_id == _seed_match.id).count() == 1800
     assert db_session.query(CenterOfGravity).filter(CenterOfGravity.match_id == _seed_match.id).count() == 1800
-    assert db_session.query(ShotInference).count() == 3
+    # ShotInference は stroke 経由で match に紐付くので、本 match の strokes に絞って数える。
+    # 旧コードは無条件 count() で、xdist + db_session.commit() 連鎖により他テストの
+    # ShotInference を巻き込んで 3 != 5 で失敗していた (2026-05-08 CI 25511044863)。
+    from backend.db.models import Stroke, Rally, GameSet
+    inference_count = (
+        db_session.query(ShotInference)
+        .join(Stroke, Stroke.id == ShotInference.stroke_id)
+        .join(Rally, Rally.id == Stroke.rally_id)
+        .join(GameSet, GameSet.id == Rally.set_id)
+        .filter(GameSet.match_id == _seed_match.id)
+        .count()
+    )
+    assert inference_count == 3
 
 
 def test_job_runner_processes_queue(db_session, _seed_match, monkeypatch):
