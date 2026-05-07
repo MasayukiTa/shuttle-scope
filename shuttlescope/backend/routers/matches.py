@@ -220,6 +220,13 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             raise HTTPException(status_code=422, detail="video_url contains control characters")
         if vu.strip() != vu:
             raise HTTPException(status_code=422, detail="video_url must not have leading/trailing whitespace")
+        # round179 N5 finding: format char (ZWSP/RTLO 等) は URL 内でも UI deception を起こすため拒否
+        for _ch in vu:
+            if _ch in _BIDI_FORMAT_CHARS:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"video_url contains disallowed format character (U+{ord(_ch):04X})",
+                )
         # URL スキーム検証: javascript: / data: / about: / mailto: / file: / ftp:
         # 等の stored XSS 経路や SSRF 原資を PUT/POST 時点で拒否する。
         # validate_external_url は download 時のみ呼ばれるため、DB には格納されてしまう。
@@ -247,6 +254,22 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             import ipaddress as _ipa
             _parsed = _urlparse(vu)
             _host = (_parsed.hostname or "").strip()
+            # round179 N5 finding: userinfo (user:pass@host) は host 偽装 phishing パターン。
+            # `https://safe.com@evil.com/x` は実 host が evil.com になるため frontend で
+            # リンク表示すると click 先が攻撃者制御。明示的に reject する。
+            if _parsed.username or _parsed.password:
+                raise HTTPException(
+                    status_code=422,
+                    detail="video_url must not contain userinfo (user@host)",
+                )
+            # round179 N5 finding: 全角ピリオド / 漢字句点等 host confusable を reject。
+            # `safe．com` (U+FF0E) は `safe.com` に見えるが別 domain 解決 (homograph)。
+            for _conf in ("．", "。", "｡"):
+                if _conf in _host:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="video_url host contains confusable character (use ASCII '.')",
+                    )
             # IP 直接指定の SSRF を拒否
             if _host:
                 try:
