@@ -1301,8 +1301,19 @@ def dispatch_hardware_detect(worker_ip: str) -> Dict[str, Any]:
         )
         if "error" not in result:
             return result
+        # CodeQL py/clear-text-logging-sensitive-data: result["error"] は
+        # `_ssh_run_python_script` 内の paramiko 例外メッセージや、認証失敗時の
+        # リモート stdout fragment ("JSON 出力なし: ..." の末尾 300 char) を
+        # 含み得る。paramiko 経路は `password` 引数を受け取る関数なので
+        # CodeQL の data-flow が tainted と判定する。実害となる password 漏洩
+        # 経路は現状ないが、防衛的に log には full message を出さず、
+        # error 種別 (text の prefix だけ) と worker_ip のみ残す。
+        # 詳細は呼び出し元が必要なら別途返り値から取り出せる。
+        err_text = str(result.get("error", ""))
+        err_summary = err_text.split(":", 1)[0][:64] if err_text else "unknown"
         logger.warning(
-            "dispatch_hardware_detect: SSH 失敗 (%s)、Ray にフォールバック", result["error"]
+            "dispatch_hardware_detect: SSH 失敗 (worker=%s code=%s)、Ray にフォールバック",
+            worker_ip, err_summary,
         )
 
     # ── Ray フォールバックパス ────────────────────────────────────────────────

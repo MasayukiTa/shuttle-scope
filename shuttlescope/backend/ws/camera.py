@@ -67,6 +67,14 @@ class CameraSignalingManager:
         # 同一 session に対して同時に起きると _sessions[session_code] dict の状態が
         # 競合する。state mutate 系の操作はこの lock 経由で直列化する。
         self._session_locks: dict[str, "asyncio.Lock"] = {}
+        # 3rd-review #1b/4 fix: operator session-owner check。
+        # main.py:1730-1738 の JWT role-claim ガードは privileged role かどうかは見るが、
+        # 同一 role の他ユーザが他人のセッションを乗っ取れる問題は塞げていない。
+        # session_code 単位で「最初に operator として claim した user_id」を覚え、
+        # 以降 operator 接続は同じ user_id しか受け付けない。
+        # session 終了 (is_active=False) で disconnect された後も entry は残し、
+        # 万一 session が再活性化しても同じ owner だけが復帰可能にする。
+        self._operator_owners: dict[str, int] = {}
 
     def _slock(self, session_code: str) -> "asyncio.Lock":
         import asyncio as _aio
@@ -82,24 +90,46 @@ class CameraSignalingManager:
 
     # ─── 接続 ────────────────────────────────────────────────────────────
 
-    async def connect_operator(self, session_code: str, ws: WebSocket) -> None:
+    async def connect_operator(self, session_code: str, ws: WebSocket, user_id: Optional[int] = None) -> bool:
         # ws #4 fix: 旧コードは前任者を黙って上書きしており、operator 役乗っ取りが
         # 成立していた。既に operator が接続中なら新規接続を拒否する。
-        # ws #9 fix: 既存 operator チェック → set を atomic にするため lock 経由。
-        await ws.accept()
-        self._ensure_session(session_code)
+        # 3rd-review #1a fix: ws.accept() を slot/owner check の **後** に移動。
+        # live.py の cap-check-inside-lock + accept-on-success パターンに揃え、
+        # 認証通過直後の handshake までは行うが、slot 拒否の場合は accept せずに
+        # WebSocket close handshake (HTTP 4xx) で帰す。返値で呼び出し側が分岐する。
+        # 3rd-review #1b/4 fix: session-owner consistency check。
+        # session_code 単位で先着 user_id を覚え、それ以降 operator は同じ user_id だけ。
+        # user_id が None (loopback 緩和) のときは owner check をスキップする。
         async with self._slock(session_code):
+            self._ensure_session(session_code)
             existing = self._sessions[session_code].get("operator")
             if existing is not None:
+                # 既に他 ws が operator として接続中
+                logger.warning("camera operator reject (slot taken): %s", session_code)
                 try:
-                    # 1013 = try again later (新規 operator は session 終了後に再接続)
                     await ws.close(code=1013, reason="operator slot already taken")
                 except Exception:
                     pass
-                logger.warning("camera operator reject (slot taken): %s", session_code)
-                return
+                return False
+            # session-owner consistency
+            owner = self._operator_owners.get(session_code)
+            if owner is not None and user_id is not None and owner != user_id:
+                logger.warning(
+                    "camera operator reject (owner mismatch): session=%s owner=%s requester=%s",
+                    session_code, owner, user_id,
+                )
+                try:
+                    await ws.close(code=4403, reason="operator owned by another user")
+                except Exception:
+                    pass
+                return False
+            # ここまで通れば accept してから slot に入れる
+            await ws.accept()
             self._sessions[session_code]["operator"] = ws
-        logger.info("camera operator connected: %s", session_code)
+            if user_id is not None and owner is None:
+                self._operator_owners[session_code] = user_id
+        logger.info("camera operator connected: %s user_id=%s", session_code, user_id)
+        return True
 
     async def connect_device(self, session_code: str, participant_id: str, ws: WebSocket) -> None:
         # rereview ws #9 fix: ensure_session + dict mutation を _slock で直列化
@@ -165,7 +195,10 @@ class CameraSignalingManager:
             try:
                 await device_ws.send_text(json.dumps(message))
             except Exception:
-                self._sessions[session_code]["devices"].pop(str(participant_id), None)
+                # 3rd-review LOW: 失敗時の dict mutate を _slock 経由に揃える
+                async with self._slock(session_code):
+                    if session_code in self._sessions:
+                        self._sessions[session_code]["devices"].pop(str(participant_id), None)
 
     async def relay_to_viewer(self, session_code: str, viewer_id: str, message: dict) -> None:
         if session_code not in self._sessions:
@@ -175,7 +208,10 @@ class CameraSignalingManager:
             try:
                 await viewer_ws.send_text(json.dumps(message))
             except Exception:
-                self._sessions[session_code]["viewers"].pop(str(viewer_id), None)
+                # 3rd-review LOW: 失敗時の dict mutate を _slock 経由に揃える
+                async with self._slock(session_code):
+                    if session_code in self._sessions:
+                        self._sessions[session_code]["viewers"].pop(str(viewer_id), None)
 
     # ─── 内部ヘルパー ────────────────────────────────────────────────────
 
@@ -250,7 +286,25 @@ async def ws_camera_handler(
             return
 
     if is_operator:
-        await camera_manager.connect_operator(session_code, websocket)
+        # 3rd-review #1b/4: JWT から user_id を抽出し session-owner check に渡す。
+        # main.py の WS ガード側で role claim 検証は済んでいるが、user_id を
+        # 改めて取り出して session_code 単位で「先着勝ち」のオーナーシップを敷く。
+        # loopback (ALLOW_LOOPBACK_NO_AUTH=1) で token が無いケースは
+        # owner check をスキップする (user_id=None)。
+        from backend.utils.jwt_utils import verify_token as _verify_token
+        _operator_user_id: Optional[int] = None
+        _token = websocket.query_params.get("token", "")
+        if _token:
+            _payload = _verify_token(_token)
+            if isinstance(_payload, dict):
+                _sub = _payload.get("sub")
+                try:
+                    _operator_user_id = int(_sub) if _sub is not None else None
+                except (ValueError, TypeError):
+                    _operator_user_id = None
+        ok = await camera_manager.connect_operator(session_code, websocket, user_id=_operator_user_id)
+        if not ok:
+            return
     elif is_viewer:
         await camera_manager.connect_viewer(session_code, viewer_id, websocket)
     elif participant_id:

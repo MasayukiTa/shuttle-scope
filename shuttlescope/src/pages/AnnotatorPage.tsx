@@ -27,6 +27,7 @@ import { VideoOverlayToggles } from '@/components/annotator/VideoOverlayToggles'
 import { CommandPalette, type PaletteCommand } from '@/components/annotator/CommandPalette'
 import { BottomSheet } from '@/components/annotator/BottomSheet'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
+import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
 import { useOfflineSync } from '@/hooks/useOfflineSync'
 import { useHapticFeedback } from '@/hooks/useHapticFeedback'
 import { StrokeHistory } from '@/components/annotation/StrokeHistory'
@@ -517,9 +518,11 @@ export function AnnotatorPage() {
       setLastAutoSaveTime(null)
 
       // 11点インターバル: どちらかが11点に到達したとき（BWFルール）
+      // 3rd-review followup: midGameShown を直接読まず ref 経由で stale closure を避ける
+      // (handleSkipRally は既に同じパターン)
       const prevMax = Math.max(scoreA, scoreB)
       const newMax = Math.max(newScoreA, newScoreB)
-      if (prevMax < 11 && newMax >= 11 && !midGameShown) {
+      if (prevMax < 11 && newMax >= 11 && !midGameShownRef.current) {
         setMidGameShown(true)
         setShowMidGameSummary(true)
       }
@@ -527,42 +530,19 @@ export function AnnotatorPage() {
       // バックグラウンド保存
       const storeState = useAnnotationStore.getState()
       storeState.incrementPending()
-      const batchPayload = {
-        rally: {
-          set_id: setId,
-          rally_num: rallyNum,
-          server: strokes[0]?.player ?? 'player_a',
-          winner,
-          end_type: endType,
-          rally_length: strokes.length,
-          score_a_after: newScoreA,
-          score_b_after: newScoreB,
-          is_deuce: newScoreA >= 20 && newScoreB >= 20,
-          video_timestamp_start: rallyStart ?? undefined,
-          annotation_mode: isBasicMode ? 'manual_record' : 'assisted_record',
-        },
-        strokes: strokes.map((st) => ({
-          stroke_num: st.stroke_num,
-          player: st.player,
-          shot_type: st.shot_type,
-          hit_zone: st.hit_zone,
-          // Phase A: 打点ソース + CV 元値
-          hit_zone_source: st.hit_zone_source,
-          hit_zone_cv_original: st.hit_zone_cv_original,
-          land_zone: st.land_zone,
-          is_backhand: st.is_backhand,
-          is_around_head: st.is_around_head,
-          above_net: st.above_net,
-          timestamp_sec: st.timestamp_sec,
-          // G2+移動系: オプションエンリッチメント
-          return_quality: st.return_quality,
-          contact_height: st.contact_height,
-          contact_zone: st.contact_zone,
-          movement_burden: st.movement_burden,
-          movement_direction: st.movement_direction,
-          source_method: isBasicMode ? 'manual' : 'assisted',
-        })),
-      }
+      // ペイロード構築は src/utils/annotationPayload.ts の純関数に集約。
+      // Phase A (CV 推定 override) と G2 (移動系) の取りこぼし防止はそこのテストでガード。
+      const batchPayload = buildBatchPayload({
+        setId,
+        rallyNum,
+        winner,
+        endType,
+        strokes,
+        scoreAAfter: newScoreA,
+        scoreBAfter: newScoreB,
+        rallyStartTimestamp: rallyStart,
+        isBasicMode,
+      })
       // Phase A: オフライン耐性 — 送信前に IndexedDB へ stash、成功時に削除
       void stashPending({
         matchId: matchId!,
@@ -590,7 +570,12 @@ export function AnnotatorPage() {
         // stash は残す → useOfflineSync が再送する
       })
     },
-    [matchId, queryClient]
+    // 3rd-review followup #2 fix: isBasicMode が deps から漏れており、
+    // ユーザがアノテーション中にモード切替 (基本↔詳細) すると次の 1 ラリーが
+    // 切替前の値で保存される stale closure バグがあった (annotation_mode 誤分類)。
+    // autoSaveKey も同様に matchId 由来だが念のため明示。midGameShown は
+    // ref 経由で読むため deps 不要。
+    [matchId, queryClient, isBasicMode, autoSaveKey]
   )
 
   // --- セット終了 → 次のセット作成 (K-003: サマリーモーダル表示) ---
@@ -1347,28 +1332,24 @@ export function AnnotatorPage() {
     setShowSkipRallyDialog(false)
 
     s.incrementPending()
-    apiPost('/strokes/batch', {
-      rally: {
-        set_id: setId,
-        rally_num: rallyNum,
-        server: s.currentPlayer,
-        winner,
-        end_type: 'skipped',
-        rally_length: 0,
-        is_skipped: true,
-        score_a_after: newScoreA,
-        score_b_after: newScoreB,
-        is_deuce: newScoreA >= 20 && newScoreB >= 20,
-      },
-      strokes: [],
-    }).then(() => {
+    // 3rd-review followup #1: skipped ラリー保存も buildSkippedRallyPayload を使い、
+    // annotation_mode を一貫して保存する (fine-tune データセット作成 / 性能評価向け)
+    apiPost('/strokes/batch', buildSkippedRallyPayload({
+      setId,
+      rallyNum,
+      server: s.currentPlayer,
+      winner,
+      scoreAAfter: newScoreA,
+      scoreBAfter: newScoreB,
+      isBasicMode,
+    })).then(() => {
       useAnnotationStore.getState().decrementPending()
       queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
     }).catch((err: any) => {
       useAnnotationStore.getState().decrementPending()
       useAnnotationStore.getState().addSaveError({ rallyNum, error: err?.message ?? '保存失敗' })
     })
-  }, [matchId, queryClient])
+  }, [matchId, queryClient, isBasicMode])
 
   // P1: スコア補正（差分をスキップラリーで埋める）
   const handleScoreCorrection = useCallback(async () => {
@@ -1404,21 +1385,15 @@ export function AnnotatorPage() {
       for (const winner of sequence) {
         const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
         const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB
-        await apiPost('/strokes/batch', {
-          rally: {
-            set_id: setId,
-            rally_num: rallyNum,
-            server: winner,
-            winner,
-            end_type: 'skipped',
-            rally_length: 0,
-            is_skipped: true,
-            score_a_after: newScoreA,
-            score_b_after: newScoreB,
-            is_deuce: newScoreA >= 20 && newScoreB >= 20,
-          },
-          strokes: [],
-        })
+        await apiPost('/strokes/batch', buildSkippedRallyPayload({
+          setId,
+          rallyNum,
+          server: winner,
+          winner,
+          scoreAAfter: newScoreA,
+          scoreBAfter: newScoreB,
+          isBasicMode,
+        }))
         scoreA = newScoreA
         scoreB = newScoreB
         rallyNum++
@@ -1431,7 +1406,7 @@ export function AnnotatorPage() {
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
-  }, [correctionTargetA, correctionTargetB, matchId, queryClient, t])
+  }, [correctionTargetA, correctionTargetB, matchId, queryClient, t, isBasicMode])
 
   // P1: セット強制終了（残りをスキップラリーで埋めてセット終了）
   const handleForceSetEnd = useCallback(async () => {
@@ -1463,15 +1438,15 @@ export function AnnotatorPage() {
       for (const winner of sequence) {
         const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
         const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB
-        await apiPost('/strokes/batch', {
-          rally: {
-            set_id: setId, rally_num: rallyNum, server: winner, winner,
-            end_type: 'skipped', rally_length: 0, is_skipped: true,
-            score_a_after: newScoreA, score_b_after: newScoreB,
-            is_deuce: newScoreA >= 20 && newScoreB >= 20,
-          },
-          strokes: [],
-        })
+        await apiPost('/strokes/batch', buildSkippedRallyPayload({
+          setId,
+          rallyNum,
+          server: winner,
+          winner,
+          scoreAAfter: newScoreA,
+          scoreBAfter: newScoreB,
+          isBasicMode,
+        }))
         scoreA = newScoreA; scoreB = newScoreB; rallyNum++
       }
       useAnnotationStore.getState().applyScoreCorrection(forceSetScoreA, forceSetScoreB, rallyNum)
@@ -1483,7 +1458,7 @@ export function AnnotatorPage() {
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
-  }, [forceSetScoreA, forceSetScoreB, matchId, queryClient, t, handleNextSet])
+  }, [forceSetScoreA, forceSetScoreB, matchId, queryClient, t, handleNextSet, isBasicMode])
 
   // P4: 別モニタで動画を開く
   const handleOpenVideoWindow = useCallback(() => {

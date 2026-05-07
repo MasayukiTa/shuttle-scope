@@ -1087,6 +1087,8 @@
     "stroke_none": "No strokes recorded",
     "team_tooltip_prefix": "Team:",
     "missing_land_zone": "No landing point",
+    "hit_zone_manual_badge": "Manual hit-zone",
+    "hit_zone_manual_tooltip": "Hit zone manually overridden (CV={{cv}} → picked={{picked}})",
     "rally_end_select_hint": "Select scorer and end type:",
     "rally_point_suffix": "point",
     "score": "Score",
