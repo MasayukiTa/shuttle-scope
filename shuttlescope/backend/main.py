@@ -257,9 +257,14 @@ async def lifespan(app: FastAPI):
                 num_gpus = int(_raw_gpus) if _raw_gpus is not None else None
             except (ValueError, TypeError):
                 num_gpus = None
+            # SEC-005: Ray dashboard は既定 127.0.0.1 (LAN/WAN 露出しない)。
+            # 公開する場合は環境変数 SS_RAY_DASHBOARD_HOST=0.0.0.0 で明示 opt-in。
+            # その場合も Cloudflare Access / Basic auth など別の認証層を必須とする。
+            import os as _os_ray
+            _ray_dash_host = _os_ray.environ.get("SS_RAY_DASHBOARD_HOST", "127.0.0.1").strip()
             cmd = [ray_cmd, "start", "--head",
                    f"--node-ip-address={primary_ip}", "--port=6379",
-                   "--dashboard-host=0.0.0.0"]
+                   f"--dashboard-host={_ray_dash_host}"]
             if num_cpus is not None:
                 cmd.append(f"--num-cpus={num_cpus}")
             if num_gpus is not None:
@@ -319,11 +324,22 @@ async def lifespan(app: FastAPI):
             pass
 
 
-# PUBLIC_MODE=True または HIDE_API_DOCS=True ではドキュメントエンドポイントを無効化
-_hide_docs   = app_settings.PUBLIC_MODE or app_settings.HIDE_API_DOCS
+# SEC-001: 本番姿勢判定 (settings.is_production_posture) でドキュメント露出を統一制御
+# 既定の判定: PUBLIC_MODE / HIDE_API_DOCS / HIDE_STACK_TRACES / ENVIRONMENT=production /
+#            SS_PUBLIC_HOSTNAME のいずれかで True
+# 旧 _hide_docs (PUBLIC_MODE or HIDE_API_DOCS のみ) は ENVIRONMENT=production /
+# CF tunnel host だけが立った状態を取りこぼしていたため、判定を一元化した
+_hide_docs   = app_settings.is_production_posture
 _docs_url    = None if _hide_docs else "/docs"
 _redoc_url   = None if _hide_docs else "/redoc"
 _openapi_url = None if _hide_docs else "/openapi.json"
+
+# 起動時 sanity check: 本番姿勢の認識を log に明示出力
+import logging as _logging_posture
+_logging_posture.getLogger("backend.posture").info(
+    "[posture] is_production=%s docs=%s benchmark_router=%s",
+    _hide_docs, _docs_url, "OFF" if _hide_docs else "ON",
+)
 
 
 # ─── タイムゾーン整合: naive datetime を UTC として ISO+"Z" で返す ─────────────
@@ -363,8 +379,9 @@ try:
 except ImportError:
     pass
 
-# ベンチマーク用デバイス自動検出 + ジョブ管理ルーター（PUBLIC_MODE 時はマウント除外）
-if not app_settings.PUBLIC_MODE:
+# ベンチマーク用デバイス自動検出 + ジョブ管理ルーター
+# SEC-001: 本番姿勢ではマウント除外 (CV/GPU 集中処理エンドポイント露出 → DoS 起点を防ぐ)
+if not app_settings.is_production_posture:
     try:
         from backend.routers import benchmark as _bm_router  # type: ignore
         app.include_router(_bm_router.router, prefix="/api")
@@ -1432,20 +1449,21 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 # ─── CORS設定 ───────────────────────────────────────────────────────────────
-# PUBLIC_MODE=True（Cloudflare公開）: 許可オリジンをトンネルホスト名に限定。
-# PUBLIC_MODE=False（LAN / Electron）: wildcard。LAN デバイスは任意 IP のため。
+# SEC-001: 本番姿勢 (Cloudflare 公開含む) で wildcard を切る
+# PUBLIC_MODE=True or ENVIRONMENT=production or SS_PUBLIC_HOSTNAME 設定時:
+#   許可オリジンをトンネルホスト名に限定
+# それ以外 (LAN / Electron): wildcard。LAN デバイスは任意 IP のため。
 _cors_origins = (
     [f"https://{app_settings.CLOUDFLARE_TUNNEL_HOSTNAME}"]
-    if app_settings.PUBLIC_MODE
+    if app_settings.is_production_posture
     else ["*"]
 )
 app.add_middleware(SecurityHeadersMiddleware)
 # A-2 (DNS rebinding 対策): Host ヘッダ検証
-# PUBLIC_MODE 時は CF tunnel ホスト + apex (LP 用) + localhost のみ許可。
-# LAN モード時は LAN IP の Host を許容する必要があるため広めに (192.168/* / 10/* / 172.16/*)。
+# SEC-001: 本番姿勢では実 hostname のみ列挙。LAN モード時のみ wildcard。
 from starlette.middleware.trustedhost import TrustedHostMiddleware as _THM
 _trusted_hosts: list[str] = []
-if app_settings.PUBLIC_MODE:
+if app_settings.is_production_posture:
     _trusted_hosts = [
         app_settings.CLOUDFLARE_TUNNEL_HOSTNAME,    # app.shuttle-scope.com (アプリ)
         "shuttle-scope.com",                          # apex (公開 LP — public_site.py)
@@ -1511,8 +1529,9 @@ app.include_router(data_package_router.router, prefix="/api")
 # 分割動画アップロード（ブラウザ用。iOS Safari 含む）
 app.include_router(uploads_router.router, prefix="/api")
 
-# PUBLIC_MODE=0（デフォルト）の場合のみマウントする危険ルーター群
-if not app_settings.PUBLIC_MODE:
+# SEC-001: 本番姿勢ではマウント除外する危険ルーター群
+# (CV/GPU 集中処理 + ネットワーク診断 + DB メンテ + クラスタ管理)
+if not app_settings.is_production_posture:
     # CV モデルベンチマーク
     app.include_router(cv_benchmark.router, prefix="/api")
     # Q-002/Q-008: ネットワーク診断
