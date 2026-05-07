@@ -16,6 +16,8 @@ import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
 // U1/U2 (UX redesign): 上バー圧縮用ドロップダウン menu + 大型 Score 表示 + モードタブ
 import { TopBarMenu, TopBarMenuSection } from '@/components/annotator/TopBarMenu'
+import { ScoreboardCompact } from '@/components/annotator/ScoreboardCompact'
+import { ShortcutLegend } from '@/components/annotator/ShortcutLegend'
 import { TopBarScore } from '@/components/annotator/TopBarScore'
 import { ModeTabs } from '@/components/annotator/ModeTabs'
 import { ReviewModePanel } from '@/components/annotator/ReviewModePanel'
@@ -257,6 +259,15 @@ export function AnnotatorPage() {
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<number | null>(null)
   // localStorage 自動保存の失敗 (quota 超過 / private モード / disabled) を UI に出すための state
   const [autoSaveError, setAutoSaveError] = useState<string | null>(null)
+  // ShotTypePanel のキーヒント (右上角の "P" "S" "N" 等) をモバイルでも表示するか。
+  // BT keyboard 接続の iPad ベンチ運用を想定。localStorage 永続化。
+  const [forceShowKeyHints, setForceShowKeyHintsState] = useState<boolean>(() => {
+    try { return localStorage.getItem('ss_show_key_hints_mobile') === '1' } catch { return false }
+  })
+  const setForceShowKeyHints = useCallback((v: boolean) => {
+    try { localStorage.setItem('ss_show_key_hints_mobile', v ? '1' : '0') } catch { /* private mode */ }
+    setForceShowKeyHintsState(v)
+  }, [])
   // alert() / window.confirm() の React 化代替
   const [notice, setNotice] = useState<NoticeState | null>(null)
   const [pendingConfirm, setPendingConfirm] = useState<ConfirmState | null>(null)
@@ -822,6 +833,16 @@ export function AnnotatorPage() {
   }, [])
 
   // --- キーボードショートカット ---
+  // useKeyboard は内部で deps=[videoRef] のみを使い、callback 引数を毎レンダで
+  // 再生成するパターンを取っている。pendingEndType / store.currentStrokes は
+  // 関数本体の closure に焼かれるが、useKeyboard が次回 render の callback を
+  // 参照できるよう Refs 経由で読む実装になっているため stale にはならない。
+  // ただし「呼ばれる瞬間の最新値」を確実に取るため、ref で防衛的に固定する。
+  const pendingEndTypeRef = useRef(pendingEndType)
+  pendingEndTypeRef.current = pendingEndType
+  const currentStrokesRef = useRef(store.currentStrokes)
+  currentStrokesRef.current = store.currentStrokes
+
   useKeyboard({
     videoRef,
     enabled: initialized,
@@ -831,10 +852,13 @@ export function AnnotatorPage() {
     },
     onWinnerSelect: (winner) => {
       // A/B キーで勝者確定（pendingEndType が選択済み かつ 無効な組み合わせでない場合のみ）
-      if (!pendingEndType) return
-      const lastStroke = store.currentStrokes[store.currentStrokes.length - 1]
-      if (isWinnerBlocked(winner, pendingEndType, lastStroke?.player)) return
-      handleConfirmRally(winner, pendingEndType)
+      // ref 経由で最新値を取る (stale closure 防止)
+      const currentEndType = pendingEndTypeRef.current
+      if (!currentEndType) return
+      const strokes = currentStrokesRef.current
+      const lastStroke = strokes[strokes.length - 1]
+      if (isWinnerBlocked(winner, currentEndType, lastStroke?.player)) return
+      handleConfirmRally(winner, currentEndType)
     },
     onSkipRallyOpen: () => setShowSkipRallyDialog(true),
     onServerSelect: (player) => store.setPlayer(player),
@@ -1788,7 +1812,8 @@ export function AnnotatorPage() {
                   isBasicMode ? 'bg-emerald-700 text-white' : 'bg-purple-700 text-white',
                 )}
               >
-                <span>{t('annotation_mode.label')}</span>
+                {/* SettingsModePanel と同じ i18n キーで統一 (drift 防止) */}
+                <span>{t('annotator.ux.settings_assist_label')}</span>
                 <span className="text-[10px] opacity-80">{isBasicMode ? t('annotation_mode.basic') : t('annotation_mode.detailed')}</span>
               </button>
               <button
@@ -1798,7 +1823,8 @@ export function AnnotatorPage() {
                   isMatchDayMode ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600',
                 )}
               >
-                <span>{t('annotator.match_day_mode')}</span>
+                {/* SettingsModePanel と同じ i18n キーで統一 (drift 防止) */}
+                <span>{t('annotator.ux.settings_match_day_label')}</span>
                 <span className="text-[10px] opacity-80">{isMatchDayMode ? 'ON' : 'OFF'}</span>
               </button>
             </TopBarMenuSection>
@@ -3096,24 +3122,9 @@ export function AnnotatorPage() {
             </div>
           </div>
 
-          {/* ショートカットガイド */}
-          <div className="bg-gray-800 rounded p-3 text-gray-300 shrink-0">
-            <div className="font-semibold text-gray-200 mb-2 text-sm">{t('annotator.ui.shortcuts_title')}</div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Space</kbd> {t('annotator.ui.sc_play_pause')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">←/→</kbd> {t('annotator.ui.sc_frame')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Shift+←/→</kbd> {t('annotator.ui.sc_ten_sec')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> {t('annotator.ui.sc_rally_toggle')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">N/C/P…G</kbd> {t('annotator.ui.sc_shot_input')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Q/W/E</kbd> {t('annotator.ui.sc_attr')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> {t('annotator.ui.sc_undo')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> {t('annotator.ui.sc_cancel')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">1–6</kbd> {t('annotator.ui.sc_end_type')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">A/B</kbd> {t('annotator.ui.sc_winner')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">K</kbd> {t('annotator.ui.sc_missed')}</span>
-              <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Backspace</kbd> {t('annotator.ui.sc_land_cancel')}</span>
-            </div>
-          </div>
+          {/* ショートカットガイド (compact 版、サイドバー用) — drift 防止のため
+              ShortcutLegend コンポーネントに集約済 */}
+          <ShortcutLegend variant="compact" className="shrink-0" />
 
           {/* テンキーガイド */}
           <div className="bg-gray-800 rounded p-3 text-gray-300 shrink-0">
@@ -3258,15 +3269,28 @@ export function AnnotatorPage() {
                 onSetStepFocusMode={setStepFocusMode}
                 onOpenCalibration={() => setCourtGridVisible(true)}
                 onOpenKeyboardLegend={() => setShowLegendOverlay(true)}
+                playerAStart={playerAStart}
+                onSetPlayerAStart={setPlayerAStart}
+                initialServer={(match?.initial_server as 'player_a' | 'player_b' | undefined) ?? 'player_a'}
+                onSetInitialServer={handleInitialServerChange}
+                forceShowKeyHints={forceShowKeyHints}
+                onSetForceShowKeyHints={setForceShowKeyHints}
               />
             )
           )}
           {annotatorMode === 'input' && <>
-          {/* ステップインジケーター */}
+          {/* ステップインジケーター — idle 内でも「待機中 (Enter で開始)」と
+              「ラリー中 (ショット選択待ち)」を色で区別する */}
           <div
             className={clsx(
               'flex items-center justify-between px-3 py-2 text-xs font-medium border-b border-gray-700 shrink-0',
-              store.inputStep === 'idle' ? 'text-gray-400 bg-gray-800' : 'text-blue-300 bg-blue-900/30'
+              store.inputStep === 'idle' && !store.isRallyActive
+                ? 'text-gray-400 bg-gray-800'                          // pre-rally idle (待機)
+                : store.inputStep === 'idle'
+                  ? 'text-emerald-300 bg-emerald-900/30'                // in-rally idle (ショット待ち) — 緑
+                  : store.inputStep === 'land_zone'
+                    ? 'text-blue-300 bg-blue-900/30'                    // 着地点入力中 — 青
+                    : 'text-orange-300 bg-orange-900/30'                // rally_end — 橙
             )}
           >
             <span>{initialized ? stepLabel : t('annotator.ui.loading_dots', { defaultValue: '読み込み中…' })}</span>
@@ -3300,20 +3324,8 @@ export function AnnotatorPage() {
                     ✕
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-300">
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Space</kbd> {t('annotator.ui.sc_play_pause')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">←/→</kbd> {t('annotator.ui.sc_frame')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Shift+←/→</kbd> {t('annotator.ui.sc_ten_sec')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Enter</kbd> {t('annotator.ui.sc_rally_toggle')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">N/C/P…G</kbd> {t('annotator.ui.sc_shot_input')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Q/W/E</kbd> {t('annotator.ui.sc_attr')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Ctrl+Z</kbd> {t('annotator.ui.sc_undo')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Esc</kbd> {t('annotator.ui.sc_cancel')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">1–6</kbd> {t('annotator.ui.sc_end_type')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">A/B</kbd> {t('annotator.ui.sc_winner')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">K</kbd> {t('annotator.ui.sc_missed')}</span>
-                  <span><kbd className="bg-gray-600 text-white px-1.5 py-0.5 rounded text-xs font-mono">Backspace</kbd> {t('annotator.ui.sc_land_cancel')}</span>
-                </div>
+                {/* キー一覧は ShortcutLegend に集約済 (full variant: 上級キーも含む) */}
+                <ShortcutLegend variant="full" className="!bg-transparent !p-0" />
                 <div className="border-t border-gray-700 pt-3">
                   <div className="font-semibold text-gray-200 mb-2 text-xs">{t('annotator.ui.numpad_title_mobile')}</div>
                   <div className="flex gap-4 items-start">
@@ -3371,101 +3383,57 @@ export function AnnotatorPage() {
             </div>
           )}
 
-          {/* モバイル: スコアを sticky 固定 */}
+          {/* モバイル: スコアを sticky 固定 — ScoreboardCompact (大型) */}
           {isMobile && (
             <div className="sticky top-0 z-10 bg-gray-900 px-3 pt-2 pb-1 shrink-0">
-              <div className="bg-gray-800 rounded-lg p-3 flex items-center justify-between">
-                <div className="text-center min-w-[80px]">
-                  {match?.format !== 'singles' ? (
-                    <div className="text-[10px] text-gray-400 leading-tight">
-                      <div className="whitespace-nowrap truncate max-w-[110px]">{match?.player_a?.name ?? 'A'}</div>
-                      <div className="whitespace-nowrap truncate max-w-[110px]">{match?.partner_a?.name ?? '—'}</div>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-400 truncate">{match?.player_a?.name ?? 'A'}</div>
-                  )}
-                  <div className="text-4xl font-bold">{store.scoreA}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-sm text-gray-400">Set {store.currentSetNum}</div>
-                  <div className="text-xs text-gray-500">Rally {store.currentRallyNum}</div>
-                  {store.isRallyActive && store.currentStrokes.length > 0 && (
-                    <div className="text-[10px] text-blue-400 mt-0.5">
-                      {store.currentStrokes.length} shots
-                    </div>
-                  )}
-                </div>
-                <div className="text-center min-w-[80px]">
-                  {match?.format !== 'singles' ? (
-                    <div className="text-[10px] text-gray-400 leading-tight">
-                      <div className="whitespace-nowrap truncate max-w-[110px]">{match?.player_b?.name ?? 'B'}</div>
-                      <div className="whitespace-nowrap truncate max-w-[110px]">{match?.partner_b?.name ?? '—'}</div>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-400 truncate">{match?.player_b?.name ?? 'B'}</div>
-                  )}
-                  <div className="text-4xl font-bold">{store.scoreB}</div>
-                </div>
-              </div>
+              <ScoreboardCompact
+                match={match}
+                scoreA={store.scoreA}
+                scoreB={store.scoreB}
+                setNum={store.currentSetNum}
+                rallyNum={store.currentRallyNum}
+                strokeCount={store.isRallyActive ? store.currentStrokes.length : 0}
+                useLargeTouch
+                className="bg-gray-800 rounded-lg p-3"
+              />
             </div>
           )}
 
           <div className="flex flex-col gap-3 p-3">
-            {/* スコア表示（デスクトップのみ — モバイルは上の sticky に移動） */}
+            {/* スコア表示（デスクトップのみ — モバイルは上の sticky に移動）— ScoreboardCompact + timer middleExtra */}
             {!isMobile && (
-            <div className={clsx('bg-gray-800 rounded flex items-center justify-between shrink-0', useLargeTouch ? 'p-3' : 'p-2')}>
-              <div className={clsx('text-center', useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]')}>
-                {match?.format !== 'singles' ? (
-                  <div className={clsx('text-gray-400 leading-tight', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
-                    <div className="whitespace-nowrap truncate max-w-[120px]">{match?.player_a?.name ?? 'A'}</div>
-                    <div className="whitespace-nowrap truncate max-w-[120px]">{match?.partner_a?.name ?? '—'}</div>
-                  </div>
-                ) : (
-                  <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_a?.name ?? 'A'}</div>
-                )}
-                <div className={clsx('font-bold', useLargeTouch ? 'text-4xl' : 'text-2xl')}>{store.scoreA}</div>
-              </div>
-              <div className="text-center text-xs text-gray-500">
-                <div>Set {store.currentSetNum}</div>
-                <div>Rally {store.currentRallyNum}</div>
-                {/* P2: タイマー（none/webviewモード） */}
-                {videoSourceMode !== 'local' && (
-                  <div className="mt-1 flex flex-col items-center gap-0.5">
-                    <div className={clsx(
-                      'font-mono text-sm font-bold',
-                      timer.isRunning ? 'text-green-400' : 'text-gray-400'
-                    )}>
-                      {timer.displayTime}
-                    </div>
-                    <div className="flex gap-1">
-                      {!timer.isRunning ? (
-                        <button onClick={timer.start} className="px-1.5 py-0.5 bg-green-700 hover:bg-green-600 text-white rounded text-[9px] flex items-center gap-0.5">
-                          <Play size={8} />{t('timer.start')}
+              <ScoreboardCompact
+                match={match}
+                scoreA={store.scoreA}
+                scoreB={store.scoreB}
+                setNum={store.currentSetNum}
+                rallyNum={store.currentRallyNum}
+                useLargeTouch={useLargeTouch}
+                className={clsx('bg-gray-800 rounded shrink-0', useLargeTouch ? 'p-3' : 'p-2')}
+                middleExtra={
+                  videoSourceMode !== 'local' ? (
+                    <div className="mt-1 flex flex-col items-center gap-0.5">
+                      <div className={clsx('num-cell text-sm font-bold', timer.isRunning ? 'text-green-400' : 'text-gray-400')}>
+                        {timer.displayTime}
+                      </div>
+                      <div className="flex gap-1">
+                        {!timer.isRunning ? (
+                          <button onClick={timer.start} className="px-1.5 py-0.5 bg-green-700 hover:bg-green-600 text-white rounded text-[9px] flex items-center gap-0.5">
+                            <Play size={8} />{t('timer.start')}
+                          </button>
+                        ) : (
+                          <button onClick={timer.pause} className="px-1.5 py-0.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-[9px] flex items-center gap-0.5">
+                            <Pause size={8} />{t('timer.pause')}
+                          </button>
+                        )}
+                        <button onClick={timer.reset} className="px-1.5 py-0.5 bg-gray-600 hover:bg-gray-500 text-gray-300 rounded text-[9px]">
+                          {t('timer.reset')}
                         </button>
-                      ) : (
-                        <button onClick={timer.pause} className="px-1.5 py-0.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-[9px] flex items-center gap-0.5">
-                          <Pause size={8} />{t('timer.pause')}
-                        </button>
-                      )}
-                      <button onClick={timer.reset} className="px-1.5 py-0.5 bg-gray-600 hover:bg-gray-500 text-gray-300 rounded text-[9px]">
-                        {t('timer.reset')}
-                      </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-              <div className={clsx('text-center', useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]')}>
-                {match?.format !== 'singles' ? (
-                  <div className={clsx('text-gray-400 leading-tight', useLargeTouch ? 'text-xs' : 'text-[10px]')}>
-                    <div className="whitespace-nowrap truncate max-w-[120px]">{match?.player_b?.name ?? 'B'}</div>
-                    <div className="whitespace-nowrap truncate max-w-[120px]">{match?.partner_b?.name ?? '—'}</div>
-                  </div>
-                ) : (
-                  <div className={clsx('text-gray-400 truncate', useLargeTouch ? 'text-xs' : 'text-[10px]')}>{match?.player_b?.name ?? 'B'}</div>
-                )}
-                <div className={clsx('font-bold', useLargeTouch ? 'text-4xl' : 'text-2xl')}>{store.scoreB}</div>
-              </div>
-            </div>
+                  ) : undefined
+                }
+              />
             )}
 
             {/* D-1: 自動保存ステータス（デスクトップのみ） */}
@@ -3499,7 +3467,8 @@ export function AnnotatorPage() {
                 return side === 'top' ? '↑' : '↓'
               }
               // G1: landing 中はプレイヤー切替を無効化（打者アイデンティティ保護）
-              const playerToggleDisabled = store.inputStep === 'land_zone'
+              // rally_end ステップでもプレイヤートグルを無効化 (押しても無視されるバグの修正)
+              const playerToggleDisabled = store.inputStep === 'land_zone' || store.inputStep === 'rally_end'
               return (
                 <div className="flex items-center gap-2 shrink-0">
                   <button
@@ -3520,16 +3489,20 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => !playerToggleDisabled && store.togglePlayer()}
                     disabled={playerToggleDisabled}
+                    aria-keyshortcuts="Tab"
                     className={clsx(
-                      'rounded transition-colors',
+                      'rounded transition-colors flex items-center gap-1',
                       useLargeTouch ? 'px-3 py-3' : 'px-2 py-1.5 text-xs',
                       playerToggleDisabled
                         ? 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-40 grayscale'
                         : 'bg-gray-700 hover:bg-gray-600 text-gray-300',
                     )}
-                    title={playerToggleDisabled ? t('annotator.ui.player_toggle_disabled_title', { defaultValue: '落点入力中は切替できません' }) : t('annotator.ui.player_toggle_title', { defaultValue: 'プレイヤー切替' })}
+                    title={playerToggleDisabled ? t('annotator.ui.player_toggle_disabled_title', { defaultValue: '落点入力中は切替できません' }) : t('annotator.ui.player_toggle_title', { defaultValue: 'プレイヤー切替 (Tab)' })}
                   >
                     <Users size={useLargeTouch ? 16 : 12} />
+                    {!isMobile && (
+                      <kbd className="text-[9px] font-mono opacity-60 bg-black/20 px-1 rounded">Tab</kbd>
+                    )}
                   </button>
                   <button
                     onClick={() => !playerToggleDisabled && store.setPlayer('player_b')}
@@ -3754,6 +3727,7 @@ export function AnnotatorPage() {
                       : null
                   }
                   isMatchDayMode={useLargeTouch}
+                  forceShowKeyHints={forceShowKeyHints}
                 />
                 {/* T3: Basic モードで「ここまでで保存可能」ヒント */}
                 {isBasicMode && (
@@ -3828,6 +3802,11 @@ export function AnnotatorPage() {
                 </div>
                 <button
                   onClick={() => { haptic.strokeConfirm(); store.skipLandZone() }}
+                  title={
+                    store.isDoubles
+                      ? t('annotator.ui.skip_dual_meaning_doubles', { defaultValue: 'ダブルス: 0 キーは player_b 打者選択に割当のためボタンのみ' })
+                      : t('annotator.ui.skip_dual_meaning_singles', { defaultValue: 'シングルス: 0 / Numpad0 でも skip 可能' })
+                  }
                   className={clsx(
                     'text-gray-500 hover:text-gray-300 text-center',
                     useLargeTouch ? 'py-2 text-sm' : 'py-0.5 text-xs'
@@ -4251,23 +4230,38 @@ export function AnnotatorPage() {
                 </button>
               )}
 
-              {/* アンドゥ */}
-              {store.currentStrokes.length > 0 && (
+              {/* アンドゥ — step 別挙動を tooltip + ラベルで明示
+                  - idle: 直前ストローク削除 (動画はその時刻にシーク)
+                  - land_zone: ペンディングストロークだけキャンセル (確定済みは消さない) */}
+              {(store.currentStrokes.length > 0 || store.inputStep === 'land_zone') && (
                 <button
                   onClick={() => {
+                    if (store.inputStep === 'land_zone') {
+                      // land_zone: ペンディングだけキャンセル (button からは利便性のため許可)
+                      store.cancelPendingStroke()
+                      return
+                    }
                     haptic.undo()
                     const removed = store.undoLastStroke()
                     if (removed?.timestamp_sec != null && videoRef.current) {
                       videoRef.current.currentTime = removed.timestamp_sec
                     }
                   }}
+                  title={
+                    store.inputStep === 'land_zone'
+                      ? t('annotator.ui.undo_pending_title', { defaultValue: '入力中のショットをキャンセル (Ctrl+Z)' })
+                      : t('annotator.ui.undo_stroke_title', { defaultValue: '直前のストロークを取り消し (Ctrl+Z)' })
+                  }
                   className={clsx(
                     'flex items-center gap-1 justify-center bg-gray-700 hover:bg-gray-600 text-gray-300 rounded',
                     useLargeTouch ? 'py-3 text-base' : 'py-1.5 text-sm'
                   )}
                 >
                   <RotateCcw size={useLargeTouch ? 16 : 14} />
-                  {t('annotator.ui.undo_btn', { defaultValue: '戻す' })} {!isMobile && '(Ctrl+Z)'}
+                  {store.inputStep === 'land_zone'
+                    ? t('annotator.ui.undo_pending_label', { defaultValue: '入力をキャンセル' })
+                    : t('annotator.ui.undo_btn', { defaultValue: '戻す' })}
+                  {!isMobile && ' (Ctrl+Z)'}
                 </button>
               )}
 

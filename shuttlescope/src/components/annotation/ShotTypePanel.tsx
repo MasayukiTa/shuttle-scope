@@ -28,6 +28,8 @@ interface ShotTypePanelProps {
   lastShotType: ShotType | null
   /** K-001: 試合中モード — 2カラム・大きめボタン */
   isMatchDayMode?: boolean
+  /** モバイルでも常にキーヒントを表示する (BT keyboard 接続の iPad 等) */
+  forceShowKeyHints?: boolean
 }
 
 // ─── キーボードショートカットマップ（useKeyboard.ts と同期すること） ──────────
@@ -136,7 +138,7 @@ function buildGroups(context: ShotContext): ShotGroup[] {
 
 // ─── コンポーネント ──────────────────────────────────────────────────────────
 
-export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum, lastShotType, isMatchDayMode = false }: ShotTypePanelProps) {
+export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum, lastShotType, isMatchDayMode = false, forceShowKeyHints = false }: ShotTypePanelProps) {
   const { t } = useTranslation()
 
   const context = getShotContext(strokeNum, lastShotType)
@@ -169,7 +171,7 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
                   )}
                   title={`${t(`shot_types.${type}`)} (${key.toUpperCase()})`}
                 >
-                  <span className="absolute top-0.5 right-1 text-[9px] opacity-60 font-mono hidden md:inline">{key.toUpperCase()}</span>
+                  <span className={clsx('absolute top-0.5 right-1 text-[9px] opacity-60 font-mono', forceShowKeyHints ? 'inline' : 'hidden md:inline')}>{key.toUpperCase()}</span>
                   <span className="absolute top-0.5 left-1 text-[10px] opacity-80" aria-hidden>{style.icon}</span>
                   <span className="block text-center leading-tight">{t(`shot_types.${type}`)}</span>
                 </button>
