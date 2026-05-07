@@ -486,7 +486,7 @@ def stop_ray(request: Request) -> Dict[str, Any]:
 
 
 @router.post("/cluster/nodes/{worker_ip}/detect")
-def detect_worker_hardware(worker_ip: str, request: Request) -> Dict[str, Any]:
+async def detect_worker_hardware(worker_ip: str, request: Request) -> Dict[str, Any]:
     """SSH または Ray 経由で指定ワーカーのハードウェア情報を取得する。
 
     取得成功後は cluster.config.yaml のワーカー設定を自動更新する。
@@ -497,7 +497,20 @@ def detect_worker_hardware(worker_ip: str, request: Request) -> Dict[str, Any]:
 
     from backend.cluster.remote_tasks import dispatch_hardware_detect
 
-    hw = dispatch_hardware_detect(actual_ip)
+    # rereview NEW-D fix: 旧コードは dispatch_hardware_detect (最大 ~96 秒の SSH/Ray
+    # dispatch) を request handler 内で同期実行し、CLAUDE.md「long-running を request
+    # handler にインラインするな」に違反 + ヘルスチェックを巻き込んで遅延させていた。
+    # 短期対応として asyncio.to_thread + wait_for で 100 秒の hard ceiling を付け、
+    # event loop と他リクエストへの巻き添えを防ぐ。
+    # 中期対応 (TODO): ClusterJob テーブル経由で worker dispatch を非同期化。
+    import asyncio as _aio_for_hw
+    try:
+        hw = await _aio_for_hw.wait_for(
+            _aio_for_hw.to_thread(dispatch_hardware_detect, actual_ip),
+            timeout=100,
+        )
+    except _aio_for_hw.TimeoutError:
+        raise HTTPException(504, f"hardware detect timed out for {actual_ip} (>100s)")
     if "error" in hw:
         raise HTTPException(400, hw["error"])
 

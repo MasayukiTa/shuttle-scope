@@ -72,6 +72,8 @@ def compute_q_values(
     # 状態×ショット種別集計
     state_shot_wins: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     state_shot_total: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    # rereview NEW-Q: Σw² を蓄積して effective sample size を CI 計算に反映
+    state_shot_w2: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
 
     for rally in rallies:
         mid = set_to_match.get(rally.set_id)
@@ -119,6 +121,10 @@ def compute_q_values(
                 state_shot_total[key][s.shot_type] += weight
                 if is_win:
                     state_shot_wins[key][s.shot_type] += weight
+                # rereview NEW-Q fix: フラクショナル重みのもと Wilson CI が
+                # 過小幅にならないよう、effective sample size n_eff = (Σw)²/Σw² を
+                # 後段で計算するために Σw² を蓄積する。
+                state_shot_w2.setdefault(key, defaultdict(float))[s.shot_type] += weight * weight
 
     # Q値テーブル構築
     q_table: list[dict] = []
@@ -132,14 +138,18 @@ def compute_q_values(
 
         state_q_entries = []
         for shot_type, sn_f in state_shot_total[key].items():
-            # フラクショナル重みのため float になっている。CI と reliable 判定は
-            # int rally 数として丸める (under/over 共に近接の int)。
-            sn_int = int(round(sn_f))
-            sw_int = int(round(state_shot_wins[key].get(shot_type, 0.0)))
-            swr = round(sw_int / sn_int, 4) if sn_int else baseline
+            # フラクショナル重みのもと、点推定 q_val は素直に Σw_win/Σw、
+            # CI は effective sample size n_eff = (Σw)² / Σw² で計算する
+            # (rereview NEW-Q fix: フラクショナル重みでの分散膨張を反映)。
+            sw_f = state_shot_wins[key].get(shot_type, 0.0)
+            w2 = state_shot_w2[key].get(shot_type, 0.0)
+            n_eff = (sn_f * sn_f / w2) if w2 > 0 else 0.0
+            swr = round(sw_f / sn_f, 4) if sn_f > 0 else baseline
             q_val = round(swr - baseline, 4)
-            sn = sn_int
-            sw = sw_int
+            n_eff_int = int(round(n_eff))
+            sw_eff_int = int(round(swr * n_eff_int))
+            sn = n_eff_int
+            sw = sw_eff_int
             ci_low, ci_high = wilson_ci(sw, sn)
             reliable = sn >= min_cell
 

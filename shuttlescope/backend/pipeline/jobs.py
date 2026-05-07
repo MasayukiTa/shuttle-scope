@@ -37,21 +37,42 @@ def enqueue(db: Session, match_id: int, job_type: str = "full_pipeline") -> Anal
 def _claim_next(db: Session) -> Optional[AnalysisJob]:
     """queued 状態の最古ジョブを 1 件アトミックにクレームする。
 
-    旧実装は SELECT のみで、status='running' への遷移は execute_job 完了時の commit に
-    依存していた。SS_WORKER_STANDALONE 未設定で API in-process runner と standalone
-    worker が両方ポーリングすると同一ジョブを二重 pickup し、TrackNet/MediaPipe を
-    同じ動画に並走させ ShotInference を相互上書きする (CLAUDE.md が禁ずる GPU 競合)。
-
     対策:
-      1. 候補 ID を SELECT
-      2. WHERE id=? AND status='queued' で UPDATE → status='running'
-      3. UPDATE の rowcount が 0 (= 他 worker が先に取った) なら None を返す
+      - PostgreSQL: SELECT ... FOR UPDATE SKIP LOCKED で行ロック取得後 UPDATE
+      - SQLite: SELECT → conditional UPDATE (rowcount 0 ならレース敗北)
 
-    PostgreSQL では本来 SELECT ... FOR UPDATE SKIP LOCKED + UPDATE RETURNING が
-    最適だが、SQLite (現状の単一プロセス試験環境) と互換性を取るため conditional
-    UPDATE で実装する。
+    rereview NEW-B fix: 旧実装は SQLite 想定の SELECT → conditional UPDATE のみ
+    で、PostgreSQL READ COMMITTED では SELECT 時点ではロックが取られないため
+    複数 worker が同じ candidate を SELECT し、最初の UPDATE 成功者以外は
+    rowcount=0 で None を返す → 結果 OK だが「next 候補がスキップされる」副作用が
+    出ていた (FIFO 順序が崩れる)。`with_for_update(skip_locked=True)` で行ロックを
+    取れば PostgreSQL でも他 worker は次の候補を見にいく。
     """
     import socket
+    dialect_name = ""
+    try:
+        dialect_name = (db.bind.dialect.name if db.bind else "").lower()
+    except Exception:
+        dialect_name = ""
+
+    if dialect_name == "postgresql":
+        # PG: 行ロック付き SELECT で claim を取る
+        row = (
+            db.query(AnalysisJob)
+            .filter(AnalysisJob.status == "queued")
+            .order_by(AnalysisJob.enqueued_at.asc(), AnalysisJob.id.asc())
+            .with_for_update(skip_locked=True)
+            .first()
+        )
+        if row is None:
+            return None
+        row.status = "running"
+        row.started_at = datetime.utcnow()
+        row.worker_host = socket.gethostname()[:120]
+        db.commit()
+        return row
+
+    # SQLite / その他: conditional UPDATE 方式 (READ COMMITTED 相当の扱い)
     candidate = (
         db.query(AnalysisJob.id)
         .filter(AnalysisJob.status == "queued")
@@ -75,7 +96,6 @@ def _claim_next(db: Session) -> Optional[AnalysisJob]:
     )
     db.commit()
     if affected == 0:
-        # 他のランナー/ワーカーが先に取得した。次回ポーリングで別候補を試す。
         return None
     return db.get(AnalysisJob, job_id)
 
@@ -167,18 +187,30 @@ def start_job_runner() -> Optional[asyncio.Task]:
         logger.info("standalone mode → in-process runner skip")
         return None
     # worker.lock が存在する = 別プロセスの standalone worker が走っている。
-    # 同じ DB に対して in-process runner も走らせると _claim_next の atomic UPDATE
-    # でレースは防げるが、そもそも GPU を 2 プロセスで奪い合うのが望ましくない。
-    # 起動を拒否してログを残す。
+    # rereview NEW-C fix: 旧コードは Path.exists() のみ確認し、kill -9 された worker
+    # の stale lock が残っていると in-process runner も拒否する dual-deadlock に
+    # 陥っていた。`_FileLock.is_pid_alive` で記録 PID を生存確認し、死んでいたら
+    # lock ファイル自体を削除して in-process runner 起動を継続する。
     try:
         from pathlib import Path
+        from backend.pipeline.worker import _FileLock
         lock_path = Path(__file__).resolve().parent.parent / "data" / "worker.lock"
         if lock_path.exists():
-            logger.warning(
-                "in-process runner skip: %s exists (standalone worker is running)",
-                lock_path,
-            )
-            return None
+            if _FileLock.is_pid_alive(str(lock_path)):
+                logger.warning(
+                    "in-process runner skip: %s held by live PID (standalone worker)",
+                    lock_path,
+                )
+                return None
+            else:
+                logger.warning(
+                    "in-process runner: %s is stale (no live PID) - removing and continuing",
+                    lock_path,
+                )
+                try:
+                    lock_path.unlink()
+                except Exception:
+                    pass
     except Exception:  # pragma: no cover
         pass
     global _RUNNER_TASK

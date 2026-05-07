@@ -104,12 +104,19 @@ class ConnectionManager:
         return len(self._connections.get(session_code) or [])
 
     async def broadcast(self, session_code: str, message: dict[str, Any]) -> None:
-        dead: list[WebSocket] = []
-        for ws in list(self._connections.get(session_code, [])):
-            ok = await self.safe_send_json(ws, message)
-            if not ok:
-                dead.append(ws)
-        for ws in dead:
+        # rereview ws N4 fix: 旧コードは逐次 await で 1 台の遅いクライアントが
+        # 全クライアントへの配信を直列ブロックしていた。asyncio.gather で並行化し
+        # broadcaster の DB session 保持時間も短縮する (broadcast_to_match からの呼出)。
+        targets = list(self._connections.get(session_code, []))
+        if not targets:
+            return
+        results = await asyncio.gather(
+            *(self.safe_send_json(ws, message) for ws in targets),
+            return_exceptions=True,
+        )
+        for ws, ok in zip(targets, results):
+            if ok is True:
+                continue
             self.disconnect(session_code, ws)
 
     async def broadcast_to_match(self, match_id: int, message: dict[str, Any], db=None) -> None:

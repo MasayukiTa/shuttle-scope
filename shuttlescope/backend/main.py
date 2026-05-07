@@ -404,19 +404,45 @@ app.add_middleware(UploadSizeLimitMiddleware)
 # starlette レイヤで「重い解析/予測パスは N 秒で打ち切る」 timeout middleware を入れる。
 # 値は内部運用観測から 25s に設定 (LB の 30s 直前)。タイムアウト時は 504 を返す。
 import asyncio as _aio_for_timeout
-_HEAVY_PATH_PREFIXES = (
-    "/api/prediction/",
-    "/api/analysis/research/",
-    "/api/analysis/spine/",
-    "/api/analysis/bundle/",
-)
+# rereview NEW-N1 fix: 旧コードは `/api/analysis/research/`, `.../spine/`, `.../bundle/`
+# というリテラル prefix を hard-code していたが、実際のルートは `/api/analysis/epv`,
+# `/api/analysis/shot_influence` 等で該当ゼロだった。
+# 各ルーターの `routes` から動的に exact path 集合を構築する。
+# `/api/prediction/*` は wildcard で全 prediction 配下を捕捉 (こちらは prefix 一致で OK)。
+_HEAVY_PATH_PREFIXES = ("/api/prediction/",)
+_HEAVY_EXACT_PATHS: frozenset[str] = frozenset()
 _HEAVY_TIMEOUT_SEC = 25.0
+
+
+def _build_heavy_exact_paths() -> frozenset[str]:
+    """analysis_research / analysis_spine / analysis_bundle / analysis_advanced の
+    実 path を `/api` プレフィックス付きで集めて exact-match セットにする。"""
+    paths: set[str] = set()
+    try:
+        from backend.routers import (
+            analysis_research as _r,
+            analysis_spine as _sp,
+            analysis_bundle as _b,
+            analysis_advanced as _a,
+        )
+        for sub in (_r.router, _sp.router, _b.router, _a.router):
+            for route in getattr(sub, "routes", []):
+                p = getattr(route, "path", None)
+                if p:
+                    paths.add(f"/api{p}")
+    except Exception:
+        pass
+    return frozenset(paths)
+
+
+_HEAVY_EXACT_PATHS = _build_heavy_exact_paths()
 
 
 class HeavyAnalysisTimeoutMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         path = request.url.path
-        if not path.startswith(_HEAVY_PATH_PREFIXES):
+        is_heavy = path.startswith(_HEAVY_PATH_PREFIXES) or path in _HEAVY_EXACT_PATHS
+        if not is_heavy:
             return await call_next(request)
         try:
             return await _aio_for_timeout.wait_for(call_next(request), timeout=_HEAVY_TIMEOUT_SEC)
@@ -1131,13 +1157,13 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                 and request.query_params.get("token")):
             return await call_next(request)
         # PUBLIC_MODE（Cloudflare 公開）では loopback 緩和を適用しない。
-        # Cloudflare 設定ミス等で CF-Connecting-IP が欠落した場合も全リクエストが
-        # 127.0.0.1 として届くため、そこを唯一の信頼点にしてはならない。
-        # PUBLIC_MODE off でも、cloudflared / nginx / SSH forward が 127.0.0.1 に
-        # 向くと外部リクエストが client.host=127.0.0.1 で届く。
-        # X-Forwarded-* / X-Real-IP / CF-Connecting-IP のいずれかが付いている場合は
-        # 上流プロキシ経由とみなし loopback 緩和を撤回する。
-        if not app_settings.PUBLIC_MODE:
+        # rereview #4 fix (defense-in-depth): SS_ALLOW_LOOPBACK_NO_AUTH=0 で env
+        # ベースの kill-switch を提供。本番 (cloudflared / nginx / SSH forward) で
+        # 強制的に JWT 必須にする運用フックとして用意する。
+        if (
+            not app_settings.PUBLIC_MODE
+            and app_settings.ALLOW_LOOPBACK_NO_AUTH
+        ):
             from backend.utils.control_plane import is_loopback_request
             forwarded = (
                 request.headers.get("x-forwarded-for")
@@ -1624,16 +1650,17 @@ async def _ws_require_auth(websocket: WebSocket) -> bool:
         return False
 
     client_ip = websocket.client.host if websocket.client else ""
-    # loopback は forwarded ヘッダが付いていない場合のみ信頼する。
-    # cloudflared / nginx / SSH forward が 127.0.0.1 に向くと攻撃者リクエストも
-    # client.host=127.0.0.1 で届くため、X-Forwarded-* / X-Real-IP があれば
-    # loopback 信頼を撤回する。
+    # rereview #4 fix: SS_ALLOW_LOOPBACK_NO_AUTH=0 のときは loopback 緩和を完全に殺す。
     forwarded = (
         websocket.headers.get("x-forwarded-for")
         or websocket.headers.get("x-real-ip")
         or websocket.headers.get("cf-connecting-ip")
     )
-    if client_ip in ("127.0.0.1", "::1", "localhost", "") and not forwarded:
+    if (
+        app_settings.ALLOW_LOOPBACK_NO_AUTH
+        and client_ip in ("127.0.0.1", "::1", "localhost", "")
+        and not forwarded
+    ):
         return True
 
     # 旧コードは scheme == "ws"（平文 WS）を session_code を shared-secret として
@@ -1692,9 +1719,23 @@ async def ws_camera(
     ?role=operator               → PC オペレーター
     ?role=viewer&viewer_id={id}  → ビューワーデバイス（他PC / タブレット）
     ?participant_id={id}         → iOS / タブレット 送信デバイス
+
+    rereview NEW-N6 / camera ws #4 fix: operator 役は privileged JWT (admin/analyst/coach)
+    のみ。旧コードは `_ws_require_auth` の接続性ゲートしか持たず、認証通れば誰でも
+    先着で operator を奪取できた (camera signaling 乗っ取り)。
+    role=viewer / participant は今まで通り (session_code 共有で OK)。
     """
     if not await _ws_require_auth(websocket):
         return
+    if role == "operator":
+        # JWT を再検証して role claim をチェック (loopback 緩和でも operator 役は要 JWT)
+        from backend.utils.jwt_utils import verify_token
+        token = websocket.query_params.get("token", "")
+        payload = verify_token(token) if token else None
+        op_role = (payload or {}).get("role") if isinstance(payload, dict) else None
+        if op_role not in ("admin", "analyst", "coach"):
+            await websocket.close(code=4403, reason="operator role requires admin/analyst/coach JWT")
+            return
     from backend.ws.camera import ws_camera_handler
     await ws_camera_handler(
         session_code, websocket,

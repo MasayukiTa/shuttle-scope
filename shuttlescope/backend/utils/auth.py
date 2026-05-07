@@ -600,12 +600,25 @@ def check_export_player_scope(
 def require_player_self_or_privileged(
     player_id: int,
     request: Request,
+    db: Session = Depends(get_db),
 ) -> AuthCtx:
     """選手個別データへのアクセスを強制する依存性。
-    role=player は自分自身のみ。それ以外は常に許可。
+
+    rereview NEW-N2 fix: 旧コードは `db` を持たず `user_can_access_player(ctx,
+    player_id)` を db=None で呼んでおり、IDOR 修正の副作用で coach/analyst が
+    全 403 になっていた。`Depends(get_db)` で db を受け取り team scope ベースの
+    `can_access_player` 判定を経由させる。
+    role=player は自分自身のみ。admin は常に許可。coach/analyst は team scope。
     """
     ctx = get_auth(request)
-    if not user_can_access_player(ctx, player_id):
+    if ctx.is_player:
+        if ctx.player_id is None or ctx.player_id != player_id:
+            raise HTTPException(
+                status_code=403,
+                detail="この選手データへのアクセス権限がありません",
+            )
+        return ctx
+    if not can_access_player(ctx, player_id, db):
         raise HTTPException(
             status_code=403,
             detail="この選手データへのアクセス権限がありません",
