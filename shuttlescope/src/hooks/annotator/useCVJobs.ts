@@ -17,14 +17,48 @@ import type { Match } from '@/types'
 import type { RoiRect } from '@/components/video/RoiRectOverlay'
 import type { TrackFrame, RawDetection } from '@/components/annotation/PlayerTrackingOverlay'
 
-/** FastAPI HTTPException の detail フィールドを取り出す。取れなければ元のメッセージ。 */
+/** ROI を backend へ送る形に正規化 (extra=forbid 対策で `corners` を落とす)。
+ *
+ * フロントの `RoiRect` 型は表示用の `corners?: [TL,TR,BR,BL]` を持つが、backend の
+ * `RoiRectModel` は `model_config = {"extra": "forbid"}` で x/y/w/h のみ受け付ける。
+ * そのまま投げると 422 になり、しかも detail が ValidationError 配列で返るため
+ * フロントは `[object Object]` を表示し原因不明扱いになる
+ * (2026-05-07 アノテーション人物検出で発覚)。
+ */
+function _normalizeRoiForApi(r: RoiRect | null | undefined): { x: number; y: number; w: number; h: number } | null {
+  if (!r) return null
+  return { x: r.x, y: r.y, w: r.w, h: r.h }
+}
+
+
+/** FastAPI HTTPException の detail フィールドを取り出す。取れなければ元のメッセージ。
+ *
+ * FastAPI の 422 validation error は `{"detail":[{type,loc,msg,...},...]}` の配列で
+ * 返るため、素の `String(detail)` だと `"[object Object]"` になりユーザに役立つ
+ * 情報がゼロのバナーが出る (2026-05-07 アノテーション人物検出 [object object] バグ)。
+ * 配列・オブジェクト・文字列の各形式を人間可読に正規化する。
+ */
 function extractApiError(err: unknown): string {
   if (!(err instanceof Error)) return '不明なエラー'
   try {
     const parsed = JSON.parse(err.message)
-    if (parsed?.detail) return String(parsed.detail)
+    const d = parsed?.detail
+    if (typeof d === 'string') return d
+    if (Array.isArray(d)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return d.map((e: any) => {
+        if (e && typeof e === 'object') {
+          const loc = Array.isArray(e.loc) ? e.loc.join('.') : ''
+          const msg = e.msg ?? e.message ?? JSON.stringify(e)
+          return loc ? `${loc}: ${msg}` : String(msg)
+        }
+        return String(e)
+      }).join('; ')
+    }
+    if (d && typeof d === 'object') return JSON.stringify(d)
+    if (d != null) return String(d)
   } catch { /* not JSON */ }
-  return err.message
+  return err.message || '不明なエラー'
 }
 
 // ── 内部型 ───────────────────────────────────────────────────────────────────
@@ -199,25 +233,15 @@ export function useCVJobs({
         data: { players: RawDetection[]; debug?: Record<string, any> }
       }>(
         `/yolo/frame_detect/${matchId}`,
-        { timestamp_sec: timestampSec, roi_rect: roiRect ?? null }
+        { timestamp_sec: timestampSec, roi_rect: _normalizeRoiForApi(roiRect) }
       )
       if (res.success) {
         setFrameDetections(res.data.players)
         if (res.data.debug) setFrameDetectDebug(res.data.debug)
       }
     } catch (err: unknown) {
-      // APIエラー詳細を保存してユーザーに表示する
-      let reason = '検出APIエラー'
-      if (err instanceof Error) {
-        try {
-          const parsed = JSON.parse(err.message)
-          if (parsed?.detail) reason = String(parsed.detail)
-          else reason = err.message
-        } catch {
-          reason = err.message
-        }
-      }
-      setFrameDetectError(reason)
+      // extractApiError で FastAPI ValidationError 配列も含めて人間可読化する
+      setFrameDetectError(extractApiError(err))
       setFrameDetections([])
     } finally {
       setFrameDetectLoading(false)
@@ -237,7 +261,7 @@ export function useCVJobs({
         assignments,
         extra_seeds: extraSeeds ?? [],
         // コート ROI を送って、追跡時にコート外候補（観客等）を reject する
-        court_roi: roiRect ?? null,
+        court_roi: _normalizeRoiForApi(roiRect),
       })
       // 保存後すぐ取得
       const res = await apiGet<{ success: boolean; data: TrackFrame[] }>(
@@ -317,9 +341,9 @@ export function useCVJobs({
         {
           backend: tracknetBackend,
           confidence_threshold: 0.5,
-          roi_rect: roiRect ?? null,
+          roi_rect: _normalizeRoiForApi(roiRect),
           resume: opts.resume ?? false,
-          prev_roi: opts.prevRoi ?? null,
+          prev_roi: _normalizeRoiForApi(opts.prevRoi),
         }
       )
       if (res.success) {
@@ -410,9 +434,9 @@ export function useCVJobs({
       const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
         `/yolo/batch/${matchId}`,
         {
-          roi_rect: roiRect ?? null,
+          roi_rect: _normalizeRoiForApi(roiRect),
           resume: opts.resume ?? false,
-          prev_roi: opts.prevRoi ?? null,
+          prev_roi: _normalizeRoiForApi(opts.prevRoi),
         }
       )
       if (res.success) {

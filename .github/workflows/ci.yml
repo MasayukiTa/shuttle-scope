@@ -22,7 +22,10 @@ jobs:
   build-test:
     name: Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # 2026-05-07: backend test スイートが拡大して 30 分上限に引っかかり cancel された
+    # (run 25501537934)。45 分に引き上げる。長期的には pytest-xdist で parallelize
+    # するのが本筋だが、まずはタイムアウト緩和で CI を回す。
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
