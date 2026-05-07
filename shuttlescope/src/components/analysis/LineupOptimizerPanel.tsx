@@ -210,12 +210,17 @@ function AnalystRankingView({
         >
           {displayRank ?? '—'}
         </span>
-        <span className="flex-1 text-sm font-medium truncate" style={{ color: displayRank ? neutral : subText }}>
+        <span
+          className="flex-1 min-w-0 text-sm font-medium truncate"
+          style={{ color: displayRank ? neutral : subText }}
+          title={rp.player_name}
+        >
           {rp.player_name}
         </span>
+        {/* xs: バッジ群を隠して名前領域を確保。sm+ で表示 */}
         {rp.h2h_available && (
           <span
-            className="text-[10px] px-1 rounded shrink-0"
+            className="hidden sm:inline-flex text-[10px] px-1 rounded shrink-0"
             style={{
               color: isLight ? '#1d4ed8' : '#93c5fd',
               background: isLight ? '#dbeafe' : '#1d4ed820',
@@ -224,7 +229,7 @@ function AnalystRankingView({
             H2H
           </span>
         )}
-        <span className="text-[11px] shrink-0" style={{ color: subText }}>
+        <span className="hidden sm:inline text-[11px] shrink-0 num-cell" style={{ color: subText }}>
           {rp.sample_size > 0 ? `${rp.sample_size}試合` : 'データなし'}
         </span>
         {rp.sample_size > 0 && (
@@ -239,7 +244,7 @@ function AnalystRankingView({
               />
             </div>
             <span
-              className="text-sm font-bold w-10 text-right shrink-0"
+              className="text-sm font-bold w-10 text-right shrink-0 num-cell"
               style={{ color: pct >= 55 ? WIN : pct <= 45 ? LOSS : neutral }}
             >
               {pct}%

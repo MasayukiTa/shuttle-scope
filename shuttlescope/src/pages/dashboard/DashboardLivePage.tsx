@@ -126,7 +126,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                 <button
                   disabled={!flashMatchId}
                   onClick={() => setShowRallyPicker(true)}
-                  className={`px-3 py-1 text-xs rounded font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'}`}
+                  title={flashRallyNum ? `Set ${flashSet} — R.${flashRallyNum}` : undefined}
+                  className={`px-3 py-1 text-xs rounded font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed truncate max-w-full ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'}`}
                 >
                   {flashRallyNum ? `Set ${flashSet} — R.${flashRallyNum}` : '全ラリー（グラフから選択）'}
                 </button>

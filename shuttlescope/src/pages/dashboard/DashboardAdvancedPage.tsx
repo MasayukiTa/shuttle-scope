@@ -111,17 +111,17 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
             ? 'bg-amber-50 border-amber-400 text-amber-800'
             : 'bg-amber-900/20 border-amber-600 text-amber-300'
         }`}>
-          <span className="font-medium">
+          <span className="font-medium min-w-0 flex-1 truncate">
             {activeOverrides.length}件の分析に手動 Override が設定されています
           </span>
           {holdCount > 0 && (
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+            <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
               isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-900/40 text-orange-300'
             }`}>
               保留 {holdCount}件
             </span>
           )}
-          <span className={`ml-auto text-[10px] ${isLight ? 'text-amber-600' : 'text-amber-500'}`}>
+          <span className={`shrink-0 text-[10px] ${isLight ? 'text-amber-600' : 'text-amber-500'}`}>
             Research タブで詳細確認
           </span>
         </div>

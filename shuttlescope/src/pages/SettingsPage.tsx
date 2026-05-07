@@ -928,9 +928,9 @@ export function SettingsPage() {
               </span>
             </div>
 
-            {/* テーブル */}
+            {/* テーブル: xs-md で min-w-[640px] により列幅の崩壊を防止、横スクロールで全列保持 */}
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[640px]">
                 <thead className={`sticky top-0 z-10 ${bodyBg}`}>
                   <tr className={`${textSecondary} border-b ${borderLine}`}>
                     {/* ソート可能カラム共通ヘルパー */}
@@ -999,21 +999,21 @@ export function SettingsPage() {
                           <button
                             type="button"
                             onClick={() => copyPlayerName(p)}
-                            className="text-left group flex items-center gap-1.5"
-                            title={t('auto.SettingsPage.k22')}
+                            className="text-left group flex items-center gap-1.5 min-w-0"
+                            title={p.name}
                           >
-                            <span>{p.name}</span>
+                            <span className="cell-name-clip">{p.name}</span>
                             {copiedPlayerId === p.id ? (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500 text-white border border-white font-medium">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500 text-white border border-white font-medium shrink-0">
                                 コピー済
                               </span>
                             ) : (
-                              <span className={`text-[10px] opacity-0 group-hover:opacity-60 transition-opacity ${textMuted}`}>
+                              <span className={`text-[10px] opacity-0 group-hover:opacity-60 transition-opacity shrink-0 ${textMuted}`}>
                                 コピー
                               </span>
                             )}
                           </button>
-                          {p.name_en && <div className="text-xs text-gray-500 mt-0.5 leading-snug">{p.name_en}</div>}
+                          {p.name_en && <div className="text-xs text-gray-500 mt-0.5 leading-snug truncate" title={p.name_en}>{p.name_en}</div>}
                         </div>
                       </td>
                       <td className={`py-2 pr-4 ${textSecondary}`}>
@@ -2276,9 +2276,9 @@ export function SettingsPage() {
                   <p className="text-xs text-gray-500">{t('settings.ui.saved_backups')}</p>
                   <div className="rounded border border-gray-700 divide-y divide-gray-700 max-h-48 overflow-y-auto">
                     {((backupsData as any).data as Array<{ filename: string; size_bytes: number; created_at: string }>).map((b) => (
-                      <div key={b.filename} className="flex items-center justify-between px-3 py-2 text-xs text-gray-300">
-                        <span className="truncate font-mono">{b.filename}</span>
-                        <span className="text-gray-500 shrink-0 ml-2">{(b.size_bytes / 1024).toFixed(0)} KB</span>
+                      <div key={b.filename} className="flex items-center justify-between px-3 py-2 text-xs text-gray-300 gap-2">
+                        <span className="truncate font-mono flex-1 min-w-0" title={b.filename}>{b.filename}</span>
+                        <span className="text-gray-500 shrink-0 num-cell">{(b.size_bytes / 1024).toFixed(0)} KB</span>
                       </div>
                     ))}
                   </div>
@@ -2347,10 +2347,12 @@ export function SettingsPage() {
                   {conflicts.map((c: any) => (
                     <div key={c.id} className="rounded border border-orange-900/60 bg-orange-900/10 p-3 space-y-2">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-orange-300">{c.record_table} / <span className="font-mono">{c.record_uuid?.slice(0, 8)}…</span></p>
-                          <p className="text-[11px] text-gray-400 mt-0.5">{c.reason}</p>
-                          <p className="text-[11px] text-gray-500">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-orange-300 truncate" title={`${c.record_table} / ${c.record_uuid ?? ''}`}>
+                            {c.record_table} / <span className="font-mono">{c.record_uuid?.slice(0, 8)}…</span>
+                          </p>
+                          <p className="text-[11px] text-gray-400 mt-0.5 break-words">{c.reason}</p>
+                          <p className="text-[11px] text-gray-500 num-cell">
                             ローカル: {c.local_updated_at?.slice(0, 16)} ／ 取込: {c.import_updated_at?.slice(0, 16)}
                             {c.import_device ? ` (${c.import_device})` : ''}
                           </p>
