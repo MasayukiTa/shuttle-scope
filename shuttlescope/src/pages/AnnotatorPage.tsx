@@ -2933,7 +2933,16 @@ export function AnnotatorPage() {
               if (useWebView) {
                 return (
                   <div className="w-full flex flex-col gap-1">
-                    <WebViewPlayer url={videoSrc} siteName={streamingSiteName} />
+                    <WebViewPlayer
+                      url={videoSrc}
+                      siteName={streamingSiteName}
+                      matchId={matchId ? Number(matchId) : null}
+                      onRecordingComplete={() => {
+                        // 録画完了で match.video_local_path が backend で更新されるので
+                        // フロント側もキャッシュ無効化して再取得
+                        queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+                      }}
+                    />
                     <button
                       onClick={() => setUseWebView(false)}
                       className="text-xs text-gray-500 hover:text-gray-300 text-left px-1"

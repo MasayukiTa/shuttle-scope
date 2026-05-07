@@ -762,6 +762,52 @@ let _ytRecorderWindow: BrowserWindowInstance | null = null
 let _ytDrmJobId: string | null = null
 let _ytDrmToken: string | null = null
 
+/**
+ * SSRF / 内部 IP 経由のナビゲーションを遮断するための URL 検証。
+ * - https のみ
+ * - loopback / private / link-local / reserved IP 拒否
+ * - URL 長さ上限 500 (backend 側と一致)
+ * - embedded credentials (user:pass@) 拒否
+ *
+ * 旧 YouTube 限定パスとは別に、汎用 screen capture (会員限定 DRM 配信) で
+ * 任意 URL を受ける場合に使う。同じ判定が backend の
+ * `_validate_url_for_subprocess` (`backend/services/youtube_live_recorder.py`)
+ * にもあるが、こちらは Electron 側で URL を loadURL する前段階のガード。
+ */
+function _validateUserUrlForCapture(rawUrl: string): URL {
+  if (rawUrl.length > 500) {
+    throw new Error(`URL が長すぎます (${rawUrl.length} > 500 chars)`)
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    throw new Error(`URL の形式が不正です: ${rawUrl}`)
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`URL は https:// のみ許可されます (got: ${parsed.protocol})`)
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('URL に embedded credentials は使用できません')
+  }
+  // hostname の loopback / private IP チェック
+  const host = parsed.hostname.toLowerCase()
+  if (
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host) ||
+    /^169\.254\./.test(host) ||                    // link-local
+    /^::1$|^fe80:/i.test(host) ||                   // IPv6 loopback / link-local
+    /^fc[0-9a-f]{2}:|^fd[0-9a-f]{2}:/i.test(host)   // IPv6 unique-local
+  ) {
+    throw new Error(`内部 / loopback / プライベート IP は使用できません: ${host}`)
+  }
+  return parsed
+}
+
 ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: string, token: string) => {
   _ytDrmJobId = jobId
   _ytDrmToken = token
@@ -970,6 +1016,177 @@ ipcMain.handle('youtube-live-drm-stop', async () => {
   if (_ytRecorderWindow && !_ytRecorderWindow.isDestroyed()) {
     _ytRecorderWindow.webContents.send('youtube-drm-stop')
     await new Promise<void>((r) => setTimeout(r, 1500)) // 最終チャンク送出を待機
+    _ytRecorderWindow.close()
+    _ytRecorderWindow = null
+  }
+  if (_ytLiveWindow && !_ytLiveWindow.isDestroyed()) {
+    _ytLiveWindow.close()
+    _ytLiveWindow = null
+  }
+  _ytDrmJobId = null
+  _ytDrmToken = null
+})
+
+// ─── 汎用 画面キャプチャ録画 (会員限定 DRM 配信対応) ─────────────────────────
+//
+// バドミントン放送はあらゆる配信プラットフォーム (DAZN / WOWOW / U-NEXT /
+// niconico / YouTube / Twitter Live etc.) で行われる。yt-dlp は DRM 検知で
+// blocked になるが、ユーザがすでに正規アカウントでログインして視聴できる
+// コンテンツは **OS-level の画面ピクセル録画** (OBS と同等) なら法的に safe。
+//
+// 本 IPC は YouTube 限定だった `youtube-live-drm-start` の URL allowlist を
+// 緩和した汎用版。SSRF / 内部 IP / 非 https を `_validateUserUrlForCapture`
+// で拒否、それ以外の任意 https ドメインを受け入れる。BrowserWindow を立てて
+// loadURL → desktopCapturer.getSources({types:['window']}) → 隠し
+// BrowserWindow で MediaRecorder で webm に → 既存の
+// `youtube-drm-chunk` 経路 (POST /api/youtube_live/{job_id}/chunk) を再利用。
+//
+// 注意: HDCP / プラットフォーム側 black-frame 対策には触れない。DRM 強制で
+// 画面キャプチャ自体を blocked にするサイト (Netflix 等) は本機能の対象外。
+ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId: string; token: string; matchId?: number | null }) => {
+  const { url, jobId, token } = opts
+  _ytDrmJobId = jobId
+  _ytDrmToken = token
+
+  // 1. URL 安全検証 (SSRF / 内部 IP / 非 https 拒否)
+  const parsedUrl = _validateUserUrlForCapture(url)
+
+  // 2. キャプチャ対象ウィンドウを開く
+  _ytLiveWindow = new BrowserWindow({
+    width: 1280,
+    height: 720,
+    title: `画面録画 — ${parsedUrl.hostname}`,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  // permission handler — 必要最小限のみ許可
+  _ytLiveWindow.webContents.session.setPermissionRequestHandler(
+    (_wc, permission, callback) => {
+      const allowed = new Set(['media', 'mediaKeySystem', 'display-capture'])
+      callback(allowed.has(permission))
+    },
+  )
+
+  // ナビゲーションは「同じ registrable domain (eTLD+1 近似)」のみ許可。
+  // CDN へのリダイレクト (例: dazn.com → dazn-cdn.example.com) は許可しないが、
+  // 多くの動画 CDN は同じ Cookie scope (.dazn.com) で動くため eTLD+1 で十分。
+  // (Public Suffix List を完全実装するのは過剰、簡易判定で 80% カバー)
+  const targetEtld1 = parsedUrl.hostname.split('.').slice(-2).join('.').toLowerCase()
+  _ytLiveWindow.webContents.on('will-navigate', (e, navUrl) => {
+    try {
+      const u = new URL(navUrl)
+      const navEtld1 = u.hostname.split('.').slice(-2).join('.').toLowerCase()
+      if (u.protocol !== 'https:' || navEtld1 !== targetEtld1) {
+        console.error('[screen-capture] blocked navigation to', navUrl)
+        e.preventDefault()
+      }
+    } catch {
+      e.preventDefault()
+    }
+  })
+  _ytLiveWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  _ytLiveWindow.webContents.setUserAgent(BROWSER_UA)
+  _ytLiveWindow.loadURL(parsedUrl.toString())
+  _ytLiveWindow.on('closed', () => { _ytLiveWindow = null })
+
+  // ページ読み込み待機
+  await new Promise<void>((resolve) => {
+    _ytLiveWindow!.webContents.once('did-finish-load', () => resolve())
+    setTimeout(resolve, 8000) // タイムアウト保険 (DRM サイトは初期化が長いことが多い)
+  })
+
+  // 3. desktopCapturer で対象ウィンドウの sourceId を取得
+  const sources = await desktopCapturer.getSources({
+    types: ['window'],
+    thumbnailSize: { width: 0, height: 0 },
+  })
+  const targetTitle = _ytLiveWindow?.isDestroyed() ? '' : _ytLiveWindow?.getTitle() ?? ''
+  const source =
+    sources.find((s) => s.name === targetTitle) ??
+    sources.find((s) => s.name.includes(parsedUrl.hostname))
+
+  if (!source) {
+    throw new Error(`キャプチャ対象ウィンドウが見つかりません (host: ${parsedUrl.hostname})`)
+  }
+
+  // 4. 隠しレコーダーウィンドウで MediaRecorder
+  _ytRecorderWindow = new BrowserWindow({
+    show: false,
+    width: 1,
+    height: 1,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      webSecurity: true,
+    },
+  })
+
+  _ytRecorderWindow.webContents.on('will-navigate', (event, navUrl) => {
+    if (!navUrl.startsWith('data:')) {
+      console.error('[screen-capture-recorder] blocked navigation to', navUrl)
+      event.preventDefault()
+    }
+  })
+  _ytRecorderWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  _ytRecorderWindow.webContents.session.setPermissionRequestHandler(
+    (_wc, permission, callback) => {
+      callback(permission === 'media' || permission === 'display-capture')
+    },
+  )
+
+  _ytRecorderWindow.loadURL('data:text/html,<html><body></body></html>')
+  await _ytRecorderWindow.webContents.executeJavaScript(`
+    (async () => {
+      const { ipcRenderer } = require('electron')
+      const sourceId = ${JSON.stringify(source.id)}
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: sourceId,
+              maxWidth: 1920,
+              maxHeight: 1080,
+              maxFrameRate: 30,
+            }
+          }
+        })
+      } catch (err) {
+        ipcRenderer.send('youtube-drm-error', String(err))
+        return
+      }
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm;codecs=vp8'
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 })
+      recorder.ondataavailable = async (e) => {
+        if (e.data && e.data.size > 0) {
+          const buf = await e.data.arrayBuffer()
+          ipcRenderer.send('youtube-drm-chunk', buf)
+        }
+      }
+      recorder.onerror = (e) => ipcRenderer.send('youtube-drm-error', String(e.error))
+      recorder.start(2000)
+      ipcRenderer.on('youtube-drm-stop', () => {
+        recorder.stop()
+        stream.getTracks().forEach((t) => t.stop())
+      })
+    })()
+  `)
+
+  return { sourceId: source.id, sourceName: source.name, hostname: parsedUrl.hostname }
+})
+
+// 汎用 stop は youtube-live-drm-stop と同じ挙動 (state は共通変数で保持)。
+ipcMain.handle('screen-capture-stop', async () => {
+  if (_ytRecorderWindow && !_ytRecorderWindow.isDestroyed()) {
+    _ytRecorderWindow.webContents.send('youtube-drm-stop')
+    await new Promise<void>((r) => setTimeout(r, 1500))
     _ytRecorderWindow.close()
     _ytRecorderWindow = null
   }
