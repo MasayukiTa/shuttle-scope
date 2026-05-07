@@ -148,10 +148,10 @@ These areas are usable for internal exploration, but they are still a step behin
 
 ### Streaming Capture and Download
 
-- Generic OS-level screen recording for any HTTPS streaming site the user has a licensed view of, sharing the desktop-capturer pipeline that previously only worked for YouTube. The recorder rejects non-HTTPS, embedded credentials, and loopback / private / link-local hosts, restricts cross-origin navigation to the same registrable domain (PSL-based), and writes a webm chunk → mp4 remux → archive flow that auto-updates `Match.video_local_path`. Recording is OBS-equivalent OS pixel capture only — no DRM, CDM, or HDCP defeat is implemented, and HDCP-protected content typically yields a black recording on purpose.
-- A `low / med / high` quality preset (1.5 Mbps / 480p, 5 Mbps / 720p, 9 Mbps / 1080p) is selectable from the recorder's nav-bar dropdown and persisted in `sessionStorage`.
-- An HDCP / black-frame detector runs after the remux (`ffmpeg blackdetect`) and surfaces a warning to the operator if the recording came back mostly black, so a useless capture is caught immediately.
-- yt-dlp downloads accept `cookies.txt` from the web build (1 MB cap, Netscape-format check, deleted server-side after the job runs) or browser-cookie selection from the desktop build, plus an optional `video_password` field for Vimeo Showcase / member-only password-protected videos. None of these inputs are written to logs or the audit log.
+- OS-level screen recording for any HTTPS streaming site the user has a licensed view of. Recording is OBS-equivalent pixel capture only — no DRM, CDM, or HDCP defeat is implemented anywhere, and HDCP-protected content typically yields a black recording on purpose.
+- Quality preset (low / med / high) selectable from the recorder UI.
+- A post-recording check surfaces a warning when the captured video is mostly black, so a useless capture is caught immediately.
+- yt-dlp downloads accept a `cookies.txt` upload from the web build, browser-cookie selection from the desktop build, and an optional video password for password-protected videos like Vimeo Showcase. Sensitive inputs are not logged.
 
 These areas are useful for development and internal testing, but CV quality still depends heavily on real-video validation.
 
@@ -172,13 +172,12 @@ These areas are useful for development and internal testing, but CV quality stil
 - device manager and camera sender pages
 - viewer page and grouped device / handoff UX groundwork
 - tunnel-provider selection and remote health status groundwork
-- Cloudflare named tunnel deployment at `https://app.shuttle-scope.com` with SSH-via-tunnel for unattended remote operation
-- email-based authentication (register / verify / password reset / invitation) backed by a Cloudflare Worker + MailChannels mailer abstraction; admin approval gates self-registered users
-- sender-side server recording (R-1) so iOS / Android camera senders persist video to the server through chunked upload rather than only producing a P2P stream
-- LAN-first endpoint resolution (R-2) on the sender so devices on the same Wi-Fi take a `192.168.*` direct path instead of round-tripping through Cloudflare
-- worker HTTP file-sharing endpoints (R-3, preliminary) so an out-of-band worker can pull persisted sender uploads via authenticated HTTP Range
-- supervisor + Scheduled Task + cloudflared Windows service stack for unattended operation across long absences (auto-restart on crash, automatic startup on boot)
-- admin user-limit visibility chips (lock / failed-attempts / upload-saturated / exfil-rate) with per-category reset, and an audit log rendered in JST
+- public hosting via the configured tunnel for unattended remote access
+- email-based authentication (register / verify / password reset / invitation); admin approval gates self-registered users
+- sender-side server recording so phone / tablet camera senders persist video to the server rather than only producing a peer-to-peer stream
+- LAN-first endpoint resolution so devices on the same Wi-Fi take a direct path instead of round-tripping through the public tunnel
+- supervisor + Scheduled Task + tunnel-as-Windows-service stack for unattended operation across long absences
+- admin visibility into per-user usage limits (lock / failed-attempts / upload-saturation indicators) with category-scoped reset, plus an audit log surface
 
 Remote and browser-based video workflows exist, but they should still be treated as experimental compared with the core local workflow.
 
@@ -443,8 +442,7 @@ Recent CI hardening:
 
 - Vulnerability reports are handled through `SECURITY.md` at the repository root.
 - `main` is protected against force-push and branch deletion; normal pushes remain available so solo / cross-device workflows are not blocked.
-- Known accepted risks (e.g. `paramiko` AutoAddPolicy for loopback / private-LAN SSH, and Electron `webSecurity: false` required for the `localfile://` video scheme) are documented in `shuttlescope/docs/validation/security-code-scanning-2026-04-23.md` rather than left implicit.
-- Code Scanning alerts are actively triaged: false positives are dismissed with explicit justification, known-unfixable findings are marked `won't fix` with the reason, and remaining real findings are fixed in the source.
+- Code Scanning alerts are actively triaged. Specific findings, accepted residual risks, and the reasoning behind each disposition are tracked in the project's internal security log rather than this README.
 
 ## Local Data
 
