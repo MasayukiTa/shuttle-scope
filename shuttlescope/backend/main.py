@@ -1351,7 +1351,25 @@ async def _json_decode_handler(request: StarletteRequest, exc: _JSONDecodeError)
 
 @app.exception_handler(ValueError)
 async def _value_error_handler(request: StarletteRequest, exc: ValueError):
-    """JSON parse の orjson は ValueError を投げる経路もあるため同様に 400 化。"""
+    """JSON parse の orjson は ValueError を投げる経路もあるため同様に 400 化。
+
+    重要: pydantic 2.13+ の `pydantic_core.ValidationError` は **ValueError を継承**
+    する (MRO: ValidationError → ValueError → Exception)。本ハンドラが普通の
+    ValueError と区別なく catch すると、Pydantic のリクエストバリデーション失敗が
+    `_validation_error_handler` (422) ではなく `_global_exception_handler` (500) に
+    流れてしまう (round157 で R156-S1 SSRF reject が 500 で発覚)。Pydantic 由来の
+    ValidationError は専用ハンドラに委譲する。
+    """
+    # Pydantic の ValidationError は専用ハンドラに dispatch
+    try:
+        from pydantic_core import ValidationError as _PCV
+        if isinstance(exc, _PCV):
+            # FastAPI の RequestValidationError でラップして委譲
+            from fastapi.exceptions import RequestValidationError as _RVE
+            return await _validation_error_handler(request, _RVE(exc.errors()))
+    except ImportError:
+        pass
+
     msg = str(exc)
     if "json" in msg.lower() or "infinity" in msg.lower() or "nan" in msg.lower():
         return StarletteResponse(
