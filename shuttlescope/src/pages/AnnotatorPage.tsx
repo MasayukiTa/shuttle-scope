@@ -25,6 +25,7 @@ import { useAnnotatorModeStore } from '@/store/annotatorModeStore'
 import { HistoryStrip } from '@/components/annotator/HistoryStrip'
 import { VideoOverlayToggles } from '@/components/annotator/VideoOverlayToggles'
 import { CommandPalette, openCommandPalette, type PaletteCommand } from '@/components/annotator/CommandPalette'
+import { NoticeBanner, ConfirmDialog, type NoticeState, type ConfirmState } from '@/components/common/Notice'
 import { BottomSheet } from '@/components/annotator/BottomSheet'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
@@ -254,6 +255,12 @@ export function AnnotatorPage() {
   const autoSaveKey = matchId ? `shuttlescope.autosave.${matchId}` : null
   const [autoSaveRestored, setAutoSaveRestored] = useState(false)
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<number | null>(null)
+  // localStorage 自動保存の失敗 (quota 超過 / private モード / disabled) を UI に出すための state
+  const [autoSaveError, setAutoSaveError] = useState<string | null>(null)
+  // alert() / window.confirm() の React 化代替
+  const [notice, setNotice] = useState<NoticeState | null>(null)
+  const [pendingConfirm, setPendingConfirm] = useState<ConfirmState | null>(null)
+  const showError = (message: string) => setNotice({ kind: 'error', message })
 
   // C-1: セット移行確認ダイアログ
   const [setNavConfirm, setSetNavConfirm] = useState<{ direction: 'prev' | 'next' } | null>(null)
@@ -501,7 +508,7 @@ export function AnnotatorPage() {
       const s = useAnnotationStore.getState()
       const setId = s.currentSetId
       if (!setId) {
-        alert('セットIDが未設定です。再読み込みしてください。')
+        showError('セットIDが未設定です。再読み込みしてください。')
         return
       }
 
@@ -609,7 +616,7 @@ export function AnnotatorPage() {
       setNextSetPending({ id: res.data.id, num: nextSetNum })
       setShowIntervalSummary(true)
     } catch (err: any) {
-      alert(`セット移行エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`セット移行エラー: ${err?.message ?? '不明なエラー'}`)
     }
   }, [matchId])
 
@@ -648,7 +655,7 @@ export function AnnotatorPage() {
       )
       queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
     } catch (err: any) {
-      alert(`前セット移行エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`前セット移行エラー: ${err?.message ?? '不明なエラー'}`)
     }
   }, [matchId, setsData, queryClient])
 
@@ -716,12 +723,12 @@ export function AnnotatorPage() {
   const handleBrowserFilePicked = useCallback(async (file: File) => {
     if (!matchId) return
     if (!file.type.startsWith('video/')) {
-      alert('動画ファイルのみアップロードできます')
+      showError('動画ファイルのみアップロードできます')
       return
     }
     // 5GB 上限（サーバ側と一致）
     if (file.size > 5 * 1024 * 1024 * 1024) {
-      alert('ファイルサイズは最大 5GB までです')
+      showError('ファイルサイズは最大 5GB までです')
       return
     }
     uploadAbortRef.current?.abort()
@@ -750,7 +757,7 @@ export function AnnotatorPage() {
       void result
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
-        alert(`アップロードエラー: ${err?.message ?? '不明なエラー'}`)
+        showError(`アップロードエラー: ${err?.message ?? '不明なエラー'}`)
       }
       setUploadProgress(null)
     } finally {
@@ -776,7 +783,7 @@ export function AnnotatorPage() {
         setUrlInput('')
         queryClient.invalidateQueries({ queryKey: ['match', matchId] })
       } catch (err: any) {
-        alert(`保存エラー: ${err?.message ?? '不明なエラー'}`)
+        showError(`保存エラー: ${err?.message ?? '不明なエラー'}`)
       }
       return
     }
@@ -792,7 +799,7 @@ export function AnnotatorPage() {
       await apiPut(`/matches/${matchId}`, { video_url: url, video_local_path: '' })
       queryClient.invalidateQueries({ queryKey: ['match', matchId] })
     } catch (err: any) {
-      alert(`保存エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`保存エラー: ${err?.message ?? '不明なエラー'}`)
     }
   }, [matchId, urlInput, queryClient])
 
@@ -905,8 +912,21 @@ export function AnnotatorPage() {
       videoTimestamp: videoRef.current?.currentTime ?? null,
       savedAt: now,
     }
-    localStorage.setItem(autoSaveKey, JSON.stringify(data))
-    setLastAutoSaveTime(now)
+    try {
+      localStorage.setItem(autoSaveKey, JSON.stringify(data))
+      setLastAutoSaveTime(now)
+      // 一度成功したら過去の error は消す
+      if (autoSaveError) setAutoSaveError(null)
+    } catch (err: any) {
+      // QuotaExceededError / SecurityError / private mode の disabled etc.
+      // ユーザがリアルタイムで「保存されてない」を知る経路として error を残す
+      const msg = err?.name === 'QuotaExceededError'
+        ? t('annotator.ui.autosave_quota')
+        : t('annotator.ui.autosave_failed', { defaultValue: '一時保存失敗' })
+      setAutoSaveError(msg)
+      // eslint-disable-next-line no-console
+      console.warn('[autosave] localStorage failed:', err)
+    }
   }, [
     autoSaveKey,
     store.currentStrokes,
@@ -938,32 +958,40 @@ export function AnnotatorPage() {
         const strokeDesc = saved.strokes.length > 0
           ? `${saved.strokes.length}本確定`
           : `ショット種別入力中`
-        const ok = window.confirm(
-          `前回の未保存データが見つかりました（${strokeDesc}、約${age}分前）。\n復元しますか？`
-        )
-        if (ok) {
-          // ストアに直接書き込み（store.startRally と同等の準備）
-          store.startRally(store.rallyStartTimestamp ?? 0)
-          for (const stroke of saved.strokes) {
-            useAnnotationStore.setState((s) => ({
-              currentStrokes: [...s.currentStrokes, stroke],
-              currentStrokeNum: s.currentStrokeNum + 1,
-            }))
-          }
-          // ペンディングストローク（ショット種別まで入力済み）も復元
-          if (saved.pendingStroke?.shot_type) {
-            useAnnotationStore.setState({
-              pendingStroke: saved.pendingStroke,
-              inputStep: (saved.inputStep as any) ?? 'idle',
-            })
-          }
-          // 前回の動画再生位置に復元
-          if (saved.videoTimestamp != null && videoRef.current) {
-            videoRef.current.currentTime = saved.videoTimestamp
-          }
-        } else {
-          localStorage.removeItem(autoSaveKey)
+        // window.confirm() の代わりに React Confirm モーダルを使用 (auto-save restoration)
+        // 確認は非同期になるが、autoSaveRestored=true は最後に必ず立てるので機能等価
+        const restorePending: ConfirmState = {
+          title: '前回の未保存データを復元',
+          message: `前回の未保存データが見つかりました（${strokeDesc}、約${age}分前）。\n復元しますか？`,
+          confirmLabel: '復元する',
+          cancelLabel: '破棄',
+          destructive: false,
+          onConfirm: () => {
+            // ストアに直接書き込み（store.startRally と同等の準備）
+            store.startRally(store.rallyStartTimestamp ?? 0)
+            for (const stroke of saved.strokes) {
+              useAnnotationStore.setState((s) => ({
+                currentStrokes: [...s.currentStrokes, stroke],
+                currentStrokeNum: s.currentStrokeNum + 1,
+              }))
+            }
+            // ペンディングストローク（ショット種別まで入力済み）も復元
+            if (saved.pendingStroke?.shot_type) {
+              useAnnotationStore.setState({
+                pendingStroke: saved.pendingStroke,
+                inputStep: (saved.inputStep as any) ?? 'idle',
+              })
+            }
+            // 前回の動画再生位置に復元
+            if (saved.videoTimestamp != null && videoRef.current) {
+              videoRef.current.currentTime = saved.videoTimestamp
+            }
+          },
+          onCancel: () => {
+            try { localStorage.removeItem(autoSaveKey) } catch { /* private mode */ }
+          },
         }
+        setPendingConfirm(restorePending)
       }
     } catch {
       // parse失敗は無視
@@ -1260,7 +1288,7 @@ export function AnnotatorPage() {
         s.setPlayer(server)
       }
     } catch (err: any) {
-      alert(`先サーブ変更エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`先サーブ変更エラー: ${err?.message ?? '不明なエラー'}`)
     }
   }, [matchId, queryClient])
 
@@ -1308,7 +1336,7 @@ export function AnnotatorPage() {
       })
       handleLeaveMatch()
     } catch (err: any) {
-      alert(`途中終了の保存に失敗しました: ${err?.message ?? '不明なエラー'}`)
+      showError(`途中終了の保存に失敗しました: ${err?.message ?? '不明なエラー'}`)
     }
   }, [exceptionReason, matchId, handleLeaveMatch])
 
@@ -1364,7 +1392,7 @@ export function AnnotatorPage() {
     const diffA = correctionTargetA - s.scoreA
     const diffB = correctionTargetB - s.scoreB
     if (diffA < 0 || diffB < 0) {
-      alert(t('skip_rally.cannot_decrease'))
+      showError(t('skip_rally.cannot_decrease'))
       return
     }
     if (diffA === 0 && diffB === 0) {
@@ -1406,7 +1434,7 @@ export function AnnotatorPage() {
       queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
       setShowScoreCorrection(false)
     } catch (err: any) {
-      alert(`スコア補正エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`スコア補正エラー: ${err?.message ?? '不明なエラー'}`)
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
@@ -1421,7 +1449,7 @@ export function AnnotatorPage() {
     const diffA = forceSetScoreA - s.scoreA
     const diffB = forceSetScoreB - s.scoreB
     if (diffA < 0 || diffB < 0) {
-      alert(t('skip_rally.cannot_decrease'))
+      showError(t('skip_rally.cannot_decrease'))
       return
     }
 
@@ -1458,7 +1486,7 @@ export function AnnotatorPage() {
       // セット終了フロー（handleNextSet と同じ）
       await handleNextSet()
     } catch (err: any) {
-      alert(`セット強制終了エラー: ${err?.message ?? '不明なエラー'}`)
+      showError(`セット強制終了エラー: ${err?.message ?? '不明なエラー'}`)
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
@@ -1634,21 +1662,45 @@ export function AnnotatorPage() {
   // ステップラベル
   const stepLabel = {
     idle: store.isRallyActive
-      ? `ショットキーを押してください（${store.currentPlayer === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B'} 打球中）`
-      : 'ショットキーを押してラリー開始',
-    land_zone: `着地ゾーンをクリック（${store.pendingStroke.shot_type ?? ''}）`,
-    rally_end: 'ラリー終了 — 得点者と終了種別を選択',
+      ? t('annotator.ui.step_label_idle_active', {
+          defaultValue: 'ショットキーを押してください（{{name}} 打球中）',
+          name: store.currentPlayer === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B',
+        })
+      : t('annotator.ui.step_label_idle', { defaultValue: 'ショットキーを押してラリー開始' }),
+    land_zone: t('annotator.ui.step_label_land', {
+      defaultValue: '着地ゾーンをクリック（{{shot}}）',
+      shot: store.pendingStroke.shot_type ?? '',
+    }),
+    rally_end: t('annotator.ui.step_label_rally_end', { defaultValue: 'ラリー終了 — 得点者と終了種別を選択' }),
   }[store.inputStep]
 
   if (initError) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
-        <div className="text-center">
+        <div className="text-center max-w-sm px-4">
           <div className="text-red-400 text-lg mb-2">{t('annotator.ui.init_error')}</div>
-          <div className="text-gray-400 text-sm mb-4">{initError}</div>
-          <button onClick={() => navigate('/matches')} className="px-4 py-2 bg-blue-600 rounded text-sm">
-            戻る
-          </button>
+          <div className="text-gray-400 text-sm mb-4 break-words">{initError}</div>
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={() => {
+                // initStartedRef は err 経路で false に戻されているため、
+                // setInitError(null) で再 mount せず effect 再実行されるよう
+                // 強制リトライする
+                setInitError(null)
+                initStartedRef.current = false
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+              autoFocus
+            >
+              {t('annotator.ui.retry')}
+            </button>
+            <button
+              onClick={() => navigate('/matches')}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+            >
+              {t('annotator.ui.back')}
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -1676,13 +1728,15 @@ export function AnnotatorPage() {
       <div className="flex items-center justify-between px-3 md:px-4 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
         <button
           onClick={handleLeaveMatch}
+          aria-label={t('annotator.ui.back')}
+          title={t('annotator.ui.back')}
           className={clsx(
             'flex items-center gap-1 text-gray-400 hover:text-white shrink-0',
             isMobile ? 'text-xs p-1' : 'text-sm'
           )}
         >
-          <ArrowLeft size={isMobile ? 18 : 16} />
-          {!isMobile && '戻る'}
+          <ArrowLeft size={isMobile ? 18 : 16} aria-hidden="true" />
+          {!isMobile && t('annotator.ui.back')}
         </button>
         {/* U2: モードタブ (入力 / 確認 / 解析 / 設定) */}
         <ModeTabs isMobile={isMobile} className="ml-2" />
@@ -1696,7 +1750,7 @@ export function AnnotatorPage() {
               ? `${match.player_b?.name ?? 'B'} / ${match.partner_b.name}`
               : (match.player_b?.name ?? 'B')
             return isMobile ? `${sideA} vs ${sideB}` : `${match.tournament} — ${sideA} vs ${sideB}`
-          })() : 'ShuttleScope'}
+          })() : t('annotator.ui.fallback_app_title', { defaultValue: 'ShuttleScope' })}
         </div>
 
         {/* U1: 中央スコア表示 (大型) */}
@@ -2031,14 +2085,20 @@ export function AnnotatorPage() {
                   </button>
                   <button
                     onClick={() => {
-                      if (window.confirm('既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？')) {
-                        setSamplerSamples([])
-                        setSamplerIdx(0)
-                        setTaggingMode(false)
-                        setTaggingAssignments({})
-                        setTaggingSeedTs(0)
-                        handleYoloReset()
-                      }
+                      setPendingConfirm({
+                        title: '人物検出をリセット',
+                        message: '既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？',
+                        confirmLabel: 'リセットする',
+                        destructive: true,
+                        onConfirm: () => {
+                          setSamplerSamples([])
+                          setSamplerIdx(0)
+                          setTaggingMode(false)
+                          setTaggingAssignments({})
+                          setTaggingSeedTs(0)
+                          handleYoloReset()
+                        },
+                      })
                     }}
                     className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
                       isLight ? 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/50'
@@ -2106,14 +2166,20 @@ export function AnnotatorPage() {
                   {yoloArtifactExists && (
                     <button
                       onClick={() => {
-                        if (window.confirm('既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？')) {
-                          setSamplerSamples([])
-                          setSamplerIdx(0)
-                          setTaggingMode(false)
-                          setTaggingAssignments({})
-                          setTaggingSeedTs(0)
-                          handleYoloReset()
-                        }
+                        setPendingConfirm({
+                          title: '人物検出をリセット',
+                          message: '既存の人物検出結果を全削除して 0% からやり直します。よろしいですか？',
+                          confirmLabel: 'リセットする',
+                          destructive: true,
+                          onConfirm: () => {
+                            setSamplerSamples([])
+                            setSamplerIdx(0)
+                            setTaggingMode(false)
+                            setTaggingAssignments({})
+                            setTaggingSeedTs(0)
+                            handleYoloReset()
+                          },
+                        })
                       }}
                       className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
                         isLight ? 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/50'
@@ -3186,6 +3252,8 @@ export function AnnotatorPage() {
                 onToggleAnnotationMode={toggleAnnotationMode}
                 stepFocusMode={stepFocusMode}
                 onSetStepFocusMode={setStepFocusMode}
+                onOpenCalibration={() => setCourtGridVisible(true)}
+                onOpenKeyboardLegend={() => setShowLegendOverlay(true)}
               />
             )
           )}
@@ -3394,7 +3462,11 @@ export function AnnotatorPage() {
 
             {/* D-1: 自動保存ステータス（デスクトップのみ） */}
             <div className={clsx('flex items-center text-[10px] shrink-0 px-0.5', isMobile && 'hidden')}>
-              {store.isRallyActive && store.currentStrokes.length > 0 ? (
+              {autoSaveError ? (
+                <span className="text-red-400 font-medium" title={autoSaveError}>
+                  ⚠ {autoSaveError}
+                </span>
+              ) : store.isRallyActive && store.currentStrokes.length > 0 ? (
                 lastAutoSaveTime ? (
                   <span className="text-green-500">
                     ✓ 自動保存済 {new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -3475,10 +3547,13 @@ export function AnnotatorPage() {
               return (
                 <div className={clsx('border border-yellow-700/50 bg-yellow-900/20 rounded shrink-0', useLargeTouch ? 'p-3' : 'p-2')}>
                   <div className={clsx('text-yellow-400 mb-2 font-medium', useLargeTouch ? 'text-sm' : 'text-xs')}>
-                    ラリー終了 — エンドタイプ→勝者の順に選択
+                    {t('annotator.ui.rally_end_panel_title', { defaultValue: 'ラリー終了 — エンドタイプ→勝者の順に選択' })}
                     {!isMobile && lastStriker && (
                       <span className="ml-1 text-gray-500">
-                        （最終打者: {lastStriker === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B'}）
+                        {t('annotator.ui.last_striker_paren', {
+                          defaultValue: '（最終打者: {{name}}）',
+                          name: lastStriker === 'player_a' ? match?.player_a?.name ?? 'A' : match?.player_b?.name ?? 'B',
+                        })}
                       </span>
                     )}
                   </div>
@@ -3541,7 +3616,7 @@ export function AnnotatorPage() {
                             )}
                           >
                             {!isMobile && <span className="absolute top-0.5 right-1.5 text-[9px] font-mono opacity-60">{key}</span>}
-                            {label} 得点
+                            {label} {t('annotator.ui.score_suffix', { defaultValue: '得点' })}
                             {suggested && pendingEndType && (
                               <span className="block text-[9px] opacity-70">{t('annotator.ui.estimated_arrow')}</span>
                             )}
@@ -3669,25 +3744,37 @@ export function AnnotatorPage() {
             )}
 
             {/* 落点選択（land_zone ステップ時） — 視覚的アクティブフォーカスと キーボード割当を明示 */}
-            {store.inputStep === 'land_zone' && (
+            {store.inputStep === 'land_zone' && (() => {
+              // 視点 + コート交代を考慮して、解析対象側 (player_a) が画面のどちらに居るかを算出。
+              // CourtDiagram の playerSides と完全一致させ、警告テキストの「自コート↓」が
+              // 実際の表示と矛盾しないようにする。
+              const aTop = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB) === 'top'
+              const currentPlayerOnTop = store.currentPlayer === 'player_a' ? aTop : !aTop
+              const courtDirection = currentPlayerOnTop ? '↑' : '↓'
+              const keyHint = isMobile ? t('annotator.land_zone_hint_mobile') : t('annotator.land_zone_hint_desktop')
+              return (
               <div className="flex flex-col gap-1 shrink-0">
                 <div className={clsx('text-center', useLargeTouch ? 'text-sm' : 'text-xs')}>
-                  {/* player_bの返球は自コートに着地 → 下半分をクリック可能にする */}
-                  {store.currentPlayer === 'player_b' ? (
-                    <span className="text-orange-400 font-medium">
-                      着地ゾーン（自コート↓） — {isMobile ? 'タップで選択' : 'テンキー 1-9 / U I O J K L M , . でクリック'}
-                    </span>
-                  ) : (
-                    <span className="text-blue-400 font-medium">
-                      {t('annotator.land_zone')} — {isMobile ? 'タップで選択' : 'テンキー 1-9 / U I O J K L M , . でクリック'}
-                    </span>
-                  )}
+                  <span className={clsx('font-medium', store.currentPlayer === 'player_b' ? 'text-orange-400' : 'text-blue-400')}>
+                    {t('annotator.land_zone_label_with_dir', { dir: courtDirection })} — {keyHint}
+                  </span>
                 </div>
                 <div className="flex flex-col sm:flex-row justify-center items-start gap-3">
-                  {/* Phase A: 打点 (hit_zone) マニュアル override タイル */}
+                  {/* Phase A: 打点 (hit_zone) マニュアル override タイル
+                      ダブルス時は 7/8/9 が hitter にバインドされるため、
+                      hit_zone 7-9 入力には Shift+7/8/9 を使う */}
                   <div className="flex flex-col gap-1 items-center">
                     <span className="text-[10px] text-gray-400 hidden md:inline">
-                      打点: トップ行 <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
+                      {store.isDoubles ? (
+                        <>
+                          打点: <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">6</kbd>
+                          ／ 7-9 は <kbd className="font-mono px-1 bg-gray-800 rounded">Shift+7</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
+                        </>
+                      ) : (
+                        <>
+                          打点: トップ行 <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
+                        </>
+                      )}
                     </span>
                     <HitZoneSelector
                       cvPrediction={(store.pendingStroke.hit_zone_cv ?? null) as Zone9 | null}
@@ -3737,7 +3824,8 @@ export function AnnotatorPage() {
                   </div>
                 )}
               </div>
-            )}
+              )
+            })()}
 
             {/* 属性パネル（ラリー中 & idle/land_zone） */}
             {/* G1: land_zone ステップ中は属性パネルを disabled（落点確定を優先） */}
@@ -4654,10 +4742,20 @@ export function AnnotatorPage() {
               onToggleAnnotationMode={toggleAnnotationMode}
               stepFocusMode={stepFocusMode}
               onSetStepFocusMode={setStepFocusMode}
+              onOpenCalibration={() => setCourtGridVisible(true)}
+              onOpenKeyboardLegend={() => setShowLegendOverlay(true)}
+              playerAStart={playerAStart}
+              onSetPlayerAStart={setPlayerAStart}
+              initialServer={(match?.initial_server as 'player_a' | 'player_b' | undefined) ?? 'player_a'}
+              onSetInitialServer={handleInitialServerChange}
             />
           )}
         </BottomSheet>
       )}
+
+      {/* alert() / window.confirm() の React 化代替: 全画面共通の通知バナー + 確認ダイアログ */}
+      <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />
+      <ConfirmDialog pending={pendingConfirm} onClose={() => setPendingConfirm(null)} />
     </div>
   )
 }

@@ -292,8 +292,17 @@ export function useKeyboard({
           return
         }
 
-        // ダブルス: 7/8/9/0 (トップ行) を hitter 選択にリダイレクト
-        // hit_zone 7/8/9 を使いたい場合は Shift+1..9 か HitZoneSelector を click
+        // Shift+1..9 (ダブルス用 hit_zone エスケープ): doubles で 7/8/9 が hitter に
+        // 奪われたとき、hit_zone を入力したいユーザのための逃げ道。
+        // singles では Shift 不要 (Digit1..Digit9 が直接 hit_zone)。
+        if (e.shiftKey && store.isDoubles && e.code in DIGIT_HIT_ZONE) {
+          e.preventDefault()
+          store.setHitZoneOverride(DIGIT_HIT_ZONE[e.code] as unknown as Zone9)
+          return
+        }
+
+        // ダブルス: 7/8/9/0 (トップ行) を hitter 選択にリダイレクト (Shift なしのみ)
+        // 1-6 はそのまま hit_zone (singles と同じ挙動)
         if (store.isDoubles && !e.shiftKey) {
           if (e.code === 'Digit7') { e.preventDefault(); onHitterSelectRef.current?.('player_a'); return }
           if (e.code === 'Digit8') { e.preventDefault(); onHitterSelectRef.current?.('partner_a'); return }
@@ -303,7 +312,6 @@ export function useKeyboard({
 
         // トップ行 1-9 → hit_zone (打点) override (Digit1..Digit9)
         // Numpad は land_zone 用なので干渉しない
-        // Shift+1..9 でもダブルス時の hitter ショートカットを温存しつつ hit_zone 入力可能
         if (e.code in DIGIT_HIT_ZONE) {
           e.preventDefault()
           // pendingStroke.hit_zone は Zone9 string 型だが既存実装で number もサポート

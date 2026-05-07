@@ -29,6 +29,12 @@ interface SettingsModePanelProps {
   /** UX-R1: 入力モードのステップ連動表示 */
   stepFocusMode?: StepFocusMode
   onSetStepFocusMode?: (m: StepFocusMode) => void
+  /** 視点切替: player_a が画面のどちら側に居るか (ユーザ設定値、コートチェンジ前の初期側) */
+  playerAStart?: 'top' | 'bottom'
+  onSetPlayerAStart?: (side: 'top' | 'bottom') => void
+  /** 最初のサーバー (player_a / player_b) */
+  initialServer?: 'player_a' | 'player_b'
+  onSetInitialServer?: (server: 'player_a' | 'player_b') => void
 }
 
 export function SettingsModePanel({
@@ -40,6 +46,10 @@ export function SettingsModePanel({
   onOpenKeyboardLegend,
   stepFocusMode,
   onSetStepFocusMode,
+  playerAStart,
+  onSetPlayerAStart,
+  initialServer,
+  onSetInitialServer,
 }: SettingsModePanelProps) {
   const { t } = useTranslation()
   const flipMode = useAnnotationStore((s) => s.flipMode)
@@ -107,6 +117,40 @@ export function SettingsModePanel({
             onChange={(v) => setFlipMode(v as 'auto' | 'semi-auto' | 'manual')}
           />
         </Section>
+
+        {/* 試合設定: 視点 / 最初のサーバー — モバイル & 試合中モードでも到達可能に */}
+        {(onSetPlayerAStart || onSetInitialServer) && (
+          <Section
+            icon="sports_tennis"
+            title={t('annotator.ux.settings_section_match')}
+            alwaysOpen={isWide}
+          >
+            {onSetPlayerAStart && (
+              <SegmentedControl
+                label={t('annotator.ux.settings_player_a_start_label')}
+                hint={t('annotator.ux.settings_player_a_start_hint')}
+                value={playerAStart ?? 'bottom'}
+                options={[
+                  { value: 'bottom', label: t('annotator.ux.settings_side_bottom') },
+                  { value: 'top', label: t('annotator.ux.settings_side_top') },
+                ]}
+                onChange={(v) => onSetPlayerAStart(v as 'top' | 'bottom')}
+              />
+            )}
+            {onSetInitialServer && (
+              <SegmentedControl
+                label={t('annotator.ux.settings_initial_server_label')}
+                hint={t('annotator.ux.settings_initial_server_hint')}
+                value={initialServer ?? 'player_a'}
+                options={[
+                  { value: 'player_a', label: 'A' },
+                  { value: 'player_b', label: 'B' },
+                ]}
+                onChange={(v) => onSetInitialServer(v as 'player_a' | 'player_b')}
+              />
+            )}
+          </Section>
+        )}
 
         <Section
           icon="crop_square"
