@@ -13,6 +13,7 @@ import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useAuth } from '@/hooks/useAuth'
 import { PipelineJobBadge } from '@/components/analysis/PipelineJobBadge'
+import { DownloadOptionsModal } from '@/components/video/DownloadOptionsModal'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -209,6 +210,9 @@ export function MatchListPage() {
   const [downloadJobIds, setDownloadJobIds] = useState<Record<number, string>>({})
   const [downloadQuality, setDownloadQuality] = useState<string>('720')
   const [downloadCookieBrowser, setDownloadCookieBrowser] = useState<string>('')
+  // DL オプションモーダル (2026-05-08): 全部DL / 範囲指定 / 手入力 を選べる。
+  // null なら閉じている。Match を渡すと開く。
+  const [downloadModalMatch, setDownloadModalMatch] = useState<Match | null>(null)
 
   // 選手コンボボックス用クエリ
   const [playerAQuery, setPlayerAQuery] = useState('')
@@ -967,12 +971,11 @@ export function MatchListPage() {
                     {dlByMatch[String(m.id)] && dlByMatch[String(m.id)].status === 'error' && (
                       <button
                         type="button"
-                        onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
+                        onClick={() => setDownloadModalMatch(m)}
                         className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${
                           isLight ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-900/60'
                         }`}
-                        title={`DL 失敗: ${dlByMatch[String(m.id)].error ?? ''}\nクリックで再試行`}
-                        disabled={startDownload.isPending}
+                        title={`DL 失敗: ${dlByMatch[String(m.id)].error ?? ''}\nクリックで再試行 (オプション選択あり)`}
                       >
                         <AlertCircle size={12} />
                         失敗・再試行
@@ -991,10 +994,9 @@ export function MatchListPage() {
                     )}
                     {m.video_url && !m.has_video_local && !dlByMatch[String(m.id)] && (
                       <button
-                        onClick={() => startDownload.mutate({ matchId: m.id, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
+                        onClick={() => setDownloadModalMatch(m)}
                         className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
                         title={t('auto.MatchListPage.k6')}
-                        disabled={startDownload.isPending}
                       >
                         <Download size={16} />
                       </button>
@@ -1235,14 +1237,9 @@ export function MatchListPage() {
                         )}
                         {m.video_url && !m.has_video_local && !dlByMatch[String(m.id)] && (
                           <button
-                            onClick={() => startDownload.mutate({
-                              matchId: m.id,
-                              quality: downloadQuality,
-                              cookieBrowser: downloadCookieBrowser,
-                            })}
+                            onClick={() => setDownloadModalMatch(m)}
                             className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                            title={`動画ダウンロード (${downloadQuality}p${downloadCookieBrowser ? ` / Cookie: ${downloadCookieBrowser}` : ''})`}
-                            disabled={startDownload.isPending}
+                            title="動画ダウンロード (オプション選択)"
                           >
                             <Download size={14} />
                           </button>
@@ -1563,12 +1560,15 @@ export function MatchListPage() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => editingMatchId != null && startDownload.mutate({ matchId: editingMatchId, quality: downloadQuality, cookieBrowser: downloadCookieBrowser })}
-                              disabled={startDownload.isPending}
+                              onClick={() => {
+                                if (editingMatchId == null) return
+                                const m = matches.find((x) => x.id === editingMatchId)
+                                if (m) setDownloadModalMatch(m)
+                              }}
                               className={`shrink-0 inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded text-xs font-medium ${
                                 isLight
-                                  ? 'bg-red-600 hover:bg-red-700 text-white disabled:bg-red-400'
-                                  : 'bg-red-700 hover:bg-red-600 text-white disabled:bg-red-900'
+                                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                                  : 'bg-red-700 hover:bg-red-600 text-white'
                               }`}
                             >
                               <Download size={12} />
@@ -1750,6 +1750,25 @@ export function MatchListPage() {
           </div>
         </div>
       )}
+
+      {/* DL オプションモーダル (2026-05-08): 全部 / 範囲指定 / 手入力 を選択 */}
+      <DownloadOptionsModal
+        open={!!downloadModalMatch}
+        onClose={() => setDownloadModalMatch(null)}
+        matchId={downloadModalMatch?.id ?? 0}
+        matchLabel={downloadModalMatch
+          ? `${downloadModalMatch.tournament ?? ''}${downloadModalMatch.tournament ? ' - ' : ''}${downloadModalMatch.date ?? ''}`
+          : ''}
+        videoUrl={downloadModalMatch?.video_url ?? ''}
+        initialQuality={downloadQuality}
+        initialCookieBrowser={downloadCookieBrowser}
+        onStarted={(jobId) => {
+          if (downloadModalMatch && jobId) {
+            setDownloadJobIds((prev) => ({ ...prev, [downloadModalMatch.id]: jobId }))
+          }
+          // モーダル側で onClose 呼ぶので何もしない
+        }}
+      />
     </div>
   )
 }

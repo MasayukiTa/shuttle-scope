@@ -264,6 +264,8 @@ class VideoDownloader:
         cookie_browser: str = "",
         cookies_file: str = "",
         video_password: str = "",
+        start_sec: float | None = None,
+        end_sec: float | None = None,
     ) -> None:
         """非同期でダウンロードを開始。進捗は job_id で管理。
 
@@ -277,6 +279,10 @@ class VideoDownloader:
             video_password: パスワード保護動画 (Vimeo Showcase 等) の動画パスワード。
                             yt-dlp の `--video-password` に相当。
                             ログには出力されない (内部 dict のキー名を伏せ字化)。
+            start_sec:      切り抜き開始秒 (None なら動画先頭)。
+            end_sec:        切り抜き終了秒 (None なら動画末尾)。
+                            両方 None なら従来通り全体 DL。
+                            yt-dlp の `download_ranges` callback に変換する。
         """
         if not YT_DLP_AVAILABLE:
             self._set_status(job_id, {
@@ -358,6 +364,20 @@ class VideoDownloader:
         if video_password:
             # 1024 文字上限 (極端な長さの入力を排除)
             yt_opts["videopassword"] = video_password[:1024]
+
+        # 切り抜き範囲 (バドミントン Live 配信容量圧迫対策、2026-05-08)。
+        # yt-dlp は `download_ranges` に「(info_dict, ydl) → list of {start_time, end_time}」
+        # を受け取る callback を期待する。両方 None の場合は callback 自体を渡さない
+        # ことで従来動作 (全体 DL) を維持する。
+        if start_sec is not None or end_sec is not None:
+            _start = float(start_sec) if start_sec is not None else 0.0
+            _end = float(end_sec) if end_sec is not None else float("inf")
+            def _download_ranges(_info_dict, _ydl):  # noqa: ARG001
+                return [{"start_time": _start, "end_time": _end}]
+            yt_opts["download_ranges"] = _download_ranges
+            # `force_keyframes_at_cuts` を True にすると切り出した区間が再 encode され
+            # 切れ目で I-frame が打たれる。これがないと最初の数秒が黒画面になる場合あり。
+            yt_opts["force_keyframes_at_cuts"] = True
 
         try:
             await asyncio.get_event_loop().run_in_executor(

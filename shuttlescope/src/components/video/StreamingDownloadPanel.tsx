@@ -14,10 +14,11 @@
  * 画質が制限される場合がある。
  */
 import { useState, useEffect, useCallback } from 'react'
-import { Download, AlertCircle, CheckCircle, Loader2, Film, Cookie, ChevronDown, WifiOff } from 'lucide-react'
+import { Download, AlertCircle, CheckCircle, Loader2, Film, Cookie, ChevronDown, WifiOff, Scissors } from 'lucide-react'
 import { apiGet, apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
+import { DownloadOptionsModal } from '@/components/video/DownloadOptionsModal'
 
 interface StreamingDownloadPanelProps {
   /** 配信URL（表示 + ダウンロード元） */
@@ -72,6 +73,8 @@ export function StreamingDownloadPanel({
   const [cookieBrowser, setCookieBrowser] = useState('')
   const [dlState, setDlState] = useState<DLState>('idle')
   const [jobId, setJobId] = useState<string | null>(null)
+  // DL オプションモーダル (2026-05-08): 範囲指定 (切り抜き) DL のための高度オプション窓
+  const [showOptionsModal, setShowOptionsModal] = useState(false)
   const [progress, setProgress] = useState<ProgressInfo>({ percent: '0%', speed: '', eta: '' })
   const [errorMsg, setErrorMsg] = useState('')
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
@@ -497,8 +500,40 @@ export function StreamingDownloadPanel({
             ダウンロードして再生
             {ffmpegMissing && <span className="text-xs text-blue-300 ml-1">{t('auto.StreamingDownloadPanel.k9')}</span>}
           </button>
+
+          {/* 範囲指定 (切り抜き) DL オプションモーダル — Live 配信が長くて全部 DL したくない場合 */}
+          <button
+            type="button"
+            onClick={() => setShowOptionsModal(true)}
+            className={`flex items-center justify-center gap-1.5 w-full py-1.5 text-xs rounded ${
+              isLight
+                ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                : 'bg-gray-700/60 hover:bg-gray-700 text-gray-300'
+            }`}
+            title="区間指定 / cookies.txt / video password 等の詳細オプションを開く"
+          >
+            <Scissors size={12} />
+            範囲指定 / 詳細オプション...
+          </button>
         </div>
       )}
+
+      {/* 詳細 DL オプションモーダル */}
+      <DownloadOptionsModal
+        open={showOptionsModal}
+        onClose={() => setShowOptionsModal(false)}
+        matchId={Number(matchId)}
+        videoUrl={url}
+        matchLabel={siteName}
+        initialQuality={quality}
+        initialCookieBrowser={cookieBrowser}
+        onStarted={(newJobId) => {
+          if (newJobId) {
+            setJobId(newJobId)
+            setDlState('downloading')
+          }
+        }}
+      />
     </div>
   )
 }
