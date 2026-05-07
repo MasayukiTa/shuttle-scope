@@ -1175,6 +1175,8 @@
     "stroke_none": "ストローク未記録",
     "team_tooltip_prefix": "所属:",
     "missing_land_zone": "着地点なし",
+    "hit_zone_manual_badge": "手動打点",
+    "hit_zone_manual_tooltip": "打点を手動で修正済 (CV={{cv}} → 手動={{picked}})",
     "rally_end_select_hint": "得点者と終了種別を選択:",
     "rally_point_suffix": "得点",
     "score": "スコア",

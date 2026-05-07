@@ -59,6 +59,12 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
         const hitLabel = stroke.hit_zone ? `(${stroke.hit_zone})` : ''
         const num = circledNumbers[(stroke.stroke_num - 1) % 10]
         const isLatest = idx === recent.length - 1
+        // Phase A: 打点を CV からユーザが override したストロークを区別
+        const isHitZoneOverridden =
+          stroke.hit_zone_source === 'manual' &&
+          stroke.hit_zone_cv_original != null &&
+          stroke.hit_zone != null &&
+          stroke.hit_zone_cv_original !== stroke.hit_zone
 
         return (
           <div
@@ -66,6 +72,17 @@ export function StrokeHistory({ strokes, playerAName = 'A', playerBName = 'B', p
             className={`text-xs px-2 py-0.5 rounded font-mono flex items-center gap-1.5 ${isLatest ? 'bg-gray-700 text-gray-100' : 'text-gray-400'}`}
           >
             <span title={teamTooltip}>{num}{playerLabel}:{shotLabel}{hitLabel}{landLabel}</span>
+            {isHitZoneOverridden && (
+              <span
+                className="text-[9px] text-orange-300 border border-orange-500/40 rounded px-1 shrink-0"
+                title={t('annotator.hit_zone_manual_tooltip', {
+                  cv: stroke.hit_zone_cv_original,
+                  picked: stroke.hit_zone,
+                })}
+              >
+                {t('annotator.hit_zone_manual_badge')}
+              </span>
+            )}
             {missingLand && (
               <span className="text-[9px] text-yellow-700/80 border border-yellow-700/30 rounded px-1 shrink-0">{t('annotator.missing_land_zone')}</span>
             )}

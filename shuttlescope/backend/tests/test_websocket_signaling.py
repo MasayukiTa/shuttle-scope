@@ -111,6 +111,8 @@ def clear_camera_manager():
     """各テスト後に camera_manager の状態をクリーンアップ"""
     yield
     camera_manager._sessions.clear()
+    # 3rd-review #1b/4 fix: session-owner マップも忘れずに clear
+    camera_manager._operator_owners.clear()
 
 
 # ─── 接続テスト ───────────────────────────────────────────────────────────────

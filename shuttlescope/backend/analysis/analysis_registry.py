@@ -445,3 +445,120 @@ def get_tier(analysis_type: str) -> str:
 def list_registry_entries() -> list[RegistryEntry]:
     """全登録済みエントリをリストで返す（API レスポンス用）。"""
     return list(ANALYSIS_REGISTRY.values())
+
+
+# ── 3rd-review #5 fix: tier-based sample-size enforcement ────────────────────
+#
+# CLAUDE.md non-negotiable rules:
+#   - "New analyses must declare evidence level, minimum sample size, and
+#      behavior when the threshold is unmet."
+#   - "Promotion ... is governed by promotion_rules.py (do not bypass)"
+#
+# 旧コードは register したサンプル閾値を **エンドポイント側から自発的に**
+# 見るしかなく、analyst が知らずに低 N で叩くと research / advanced 結果が
+# warning なしで返っていた。
+#
+# evaluate_sample(): 非例外。レスポンスに含めるためのデータを返す。
+# check_or_raise(): 例外。research / advanced で hard-gate したい時に使う。
+#
+# 段階導入の指針:
+#   - stable tier は引き続き従来挙動 (ConfidenceBadge 依存)。
+#   - advanced tier はレスポンスに `sample_diagnostic` を埋めるため
+#     evaluate_sample を呼ぶ運用を推奨。
+#   - research tier は hard-gate (check_or_raise) が CLAUDE.md の趣旨に最も近い。
+
+class InsufficientSampleError(Exception):
+    """サンプル数不足を構造化して上位に伝える例外。
+
+    routers 側で FastAPI HTTPException に変換する。
+    本モジュール自体は FastAPI に依存しないため、HTTP レイヤとは結合させない。
+    """
+
+    def __init__(
+        self,
+        analysis_type: str,
+        tier: str,
+        sample_size: int,
+        min_recommended_sample: int,
+    ) -> None:
+        self.analysis_type = analysis_type
+        self.tier = tier
+        self.sample_size = sample_size
+        self.min_recommended_sample = min_recommended_sample
+        super().__init__(
+            f"insufficient_sample: analysis_type={analysis_type} tier={tier} "
+            f"n={sample_size} < min_recommended={min_recommended_sample}"
+        )
+
+    def to_dict(self) -> dict:
+        """FastAPI HTTPException(detail=...) に渡せる形に整形。"""
+        return {
+            "code": "insufficient_sample",
+            "analysis_type": self.analysis_type,
+            "tier": self.tier,
+            "sample_size": self.sample_size,
+            "min_recommended_sample": self.min_recommended_sample,
+        }
+
+
+class SampleDiagnostic(TypedDict):
+    """レスポンスに埋め込むための診断情報。"""
+    analysis_type: str
+    tier: str
+    sample_size: int
+    min_recommended_sample: int
+    is_sufficient: bool
+
+
+def evaluate_sample(analysis_type: str, sample_size: int) -> SampleDiagnostic:
+    """
+    サンプル数を分類するだけの非例外ヘルパー。
+
+    - 未知 analysis_type は _FALLBACK (research / 50) で評価される。
+    - 結果はそのままレスポンスに含めて UI 側の ConfidenceBadge に渡せる。
+    """
+    meta = get_analysis_meta(analysis_type)
+    min_recommended = meta["min_recommended_sample"]
+    return {
+        "analysis_type": analysis_type,
+        "tier": meta["tier"],
+        "sample_size": sample_size,
+        "min_recommended_sample": min_recommended,
+        "is_sufficient": sample_size >= min_recommended,
+    }
+
+
+def check_or_raise(
+    analysis_type: str,
+    sample_size: int,
+    *,
+    enforce_tiers: tuple[str, ...] = ("research", "advanced"),
+) -> None:
+    """
+    サンプル数が tier 閾値未満なら InsufficientSampleError を raise する。
+
+    enforce_tiers で「強制したい tier」を指定する。デフォルトは
+    research / advanced。stable tier は既定で対象外 (ConfidenceBadge で
+    UI 側が処理する)。
+
+    - 未知 analysis_type は research 扱い (フォールバック挙動)。
+    - sample_size が負値なら 0 として扱う (defensive)。
+
+    例:
+        check_or_raise("opponent_policy", n_rallies)
+        # advanced/research で n_rallies < TIER_MIN_SAMPLES[tier] なら raise
+    """
+    if sample_size is None or sample_size < 0:
+        sample_size = 0
+    meta = get_analysis_meta(analysis_type)
+    tier = meta["tier"]
+    if tier not in enforce_tiers:
+        return
+    min_recommended = meta["min_recommended_sample"]
+    if sample_size < min_recommended:
+        raise InsufficientSampleError(
+            analysis_type=analysis_type,
+            tier=tier,
+            sample_size=sample_size,
+            min_recommended_sample=min_recommended,
+        )

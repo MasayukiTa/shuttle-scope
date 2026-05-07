@@ -6,7 +6,7 @@
 fastapi>=0.136.0              # CVE-2024-47874 / CVE-2025-54121 (via starlette) 修正のため bump
 starlette>=1.0.0
 uvicorn[standard]==0.27.0
-python-multipart==0.0.26
+python-multipart==0.0.27   # CVE-2026-42561 (multipart header parser DoS) 修正のため bump
 pydantic-settings==2.1.0
 # pydantic.EmailStr 用バリデータ（pydantic[email] と同等）
 email-validator>=2.0

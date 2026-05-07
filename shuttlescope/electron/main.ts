@@ -704,11 +704,36 @@ ipcMain.handle('open-video-file', async () => {
 
 // ─── IPC: アプリ再起動 ────────────────────────────────────────────────────────
 
-// Electron #7 fix: 旧コードは renderer から無条件で relaunch を呼べたため
-// XSS から再起動 DoS が成立した。短時間のレートリミットで連発を防ぐ。
+// Electron #7 fix (3rd review): renderer XSS から無条件 relaunch DoS を防ぐ多層ガード。
+//   - sender frame が main window の top frame であることを確認
+//     (videoWindow / 子 BrowserView / iframe は relaunch を呼べない)
+//   - 直近 5s 以内に物理 user gesture (capturePage と同じ閾値) がないと拒否
+//     (renderer XSS では before-input-event を合成不能)
+//   - 30s rate limit は連発防止のため維持
 let _lastRelaunchAt = 0
-ipcMain.handle('relaunch-app', () => {
+ipcMain.handle('relaunch-app', (event) => {
   const now = Date.now()
+  // (1) origin gate: main window の top frame からのみ受け付ける
+  const senderFrame = event.senderFrame
+  const senderWc = event.sender
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.warn('[relaunch-app] denied: main window unavailable')
+    return false
+  }
+  if (senderWc.id !== mainWindow.webContents.id) {
+    console.warn('[relaunch-app] denied: sender is not main window webContents')
+    return false
+  }
+  if (senderFrame?.parent != null) {
+    console.warn('[relaunch-app] denied: sender is a sub-frame')
+    return false
+  }
+  // (2) user-gesture gate: capturePage と同じ 5s 閾値
+  if (now - _lastUserInputAt > 5000) {
+    console.warn('[relaunch-app] denied: no recent user gesture')
+    return false
+  }
+  // (3) rate limit (連発抑止)
   if (now - _lastRelaunchAt < 30000) {
     console.warn('[relaunch-app] rate limit: ignored')
     return false
