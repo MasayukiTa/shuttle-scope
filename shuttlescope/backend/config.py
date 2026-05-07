@@ -153,25 +153,58 @@ class Settings(BaseSettings):
     # 値があれば /api/_internal/videos/* が X-Worker-Token ヘッダで認証受付。
     # 現地 Worker PC が持ち込めない場合のクラウド/オフサイト Worker 用。
     ss_worker_auth_token: str = ""
+    # ── 既知 env 変数の declare-only stub (extra_forbidden 回避) ───────────────
+    # .env.development には以下 5 つが入っていて backend では別経路で参照される
+    # (R-1 sender 側 / 公開リクエスト TTL / 課金 UI flag) が、Settings に未宣言で
+    # `extra_forbidden` で起動拒否される pre-existing 問題があった。
+    # 本番未影響だが unit test では import 失敗して開発体験が落ちるため declare のみ追加。
+    ss_otp_ttl_minutes: int = 10
+    ss_temp_password_ttl_hours: int = 24
+    ss_sender_max_recording_duration_min: int = 180
+    ss_public_request_ttl_hours: int = 72
+    vite_ss_billing_ui_enabled: bool = False
 
     class Config:
         # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）
         env_file = (str(_ROOT / ".env.development"), str(_ROOT / ".env"))
 
+    # ── 本番姿勢判定 (SEC-001) ────────────────────────────────────────────
+    # 本番姿勢である = OpenAPI/docs 露出を切る、benchmark / cluster ルータを
+    # 隠す、TrustedHost を実 hostname に絞る、bootstrap-status を admin only
+    # にする、レガシーヘッダ認証を拒否する、等の安全側にデフォルトを倒す。
+    #
+    # 何があれば「本番姿勢」とみなすか:
+    #   - PUBLIC_MODE=true                  (明示)
+    #   - HIDE_API_DOCS=true                (明示)
+    #   - HIDE_STACK_TRACES=true            (明示)
+    #   - ENVIRONMENT=production            (環境タグ)
+    #   - CLOUDFLARE_TUNNEL_HOSTNAME と CF_PUBLIC_HOST が一致 (露出ホスト動作)
+    #
+    # ※ 過去の `_PRODUCTION_INTENT` 変数は SECRET_KEY 起動拒否でのみ使われていた
+    #    が、これを property として 1 箇所に統合し各 main.py ガードで参照する。
+    @property
+    def is_production_posture(self) -> bool:
+        import os as _os
+        if self.PUBLIC_MODE or self.HIDE_API_DOCS or self.HIDE_STACK_TRACES:
+            return True
+        env = (self.ENVIRONMENT or _os.environ.get("ENVIRONMENT", "")).strip().lower()
+        if env == "production":
+            return True
+        # 公開ホスト名が明示されている (Cloudflare 経由公開) なら本番扱い
+        if _os.environ.get("SS_PUBLIC_HOSTNAME", "").strip():
+            return True
+        return False
+
 
 settings = Settings()
 
 # 起動時に弱い秘密鍵を検出して警告・拒否
-# 本番意図のフラグ（PUBLIC_MODE / HIDE_API_DOCS / HIDE_STACK_TRACES）が1つでも
-# 有効なら弱鍵のままでは起動させない（開発意図との混在を防止・多層防御）。
-_PRODUCTION_INTENT = (
-    settings.PUBLIC_MODE
-    or settings.HIDE_API_DOCS
-    or settings.HIDE_STACK_TRACES
-    or (settings.ENVIRONMENT == "production")
-)
+# 本番姿勢 (PUBLIC_MODE / HIDE_API_DOCS / HIDE_STACK_TRACES / ENVIRONMENT=production /
+# SS_PUBLIC_HOSTNAME) のいずれかが立っていれば弱鍵のままでは起動させない。
+# 過去の `_PRODUCTION_INTENT` 変数は SEC-001 で `is_production_posture` プロパティ
+# に統合した。
 if settings.SECRET_KEY in _WEAK_KEYS:
-    if _PRODUCTION_INTENT:
+    if settings.is_production_posture:
         raise RuntimeError(
             "本番モード（PUBLIC_MODE/HIDE_API_DOCS/HIDE_STACK_TRACES/ENVIRONMENT=production）で\n"
             "SECRET_KEY がデフォルト値または空です。\n"

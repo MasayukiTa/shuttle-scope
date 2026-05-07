@@ -75,6 +75,21 @@ def _validate_url_for_subprocess(url: str) -> str:
     return s
 
 
+def _validate_drm_capture_url(url: str) -> str:
+    """DRM/screen-capture ジョブ作成時の URL 検証 (https-only, SSRF guard).
+
+    `_validate_url_for_subprocess` は yt-dlp / ffmpeg subprocess の引数に
+    渡す URL を想定して http(s):// 両方許可しているが、screen capture 経路は
+    Electron の `loadURL` に渡るため scheme を https のみに絞る必要がある。
+    Pydantic 層 (routers.youtube_live._validate_public_https_url) と同じ規則
+    を defense-in-depth で重複適用する (round156 R156-S1 対策)。
+    """
+    safe = _validate_url_for_subprocess(url)
+    if not safe.startswith("https://"):
+        raise ValueError("DRM capture url must use https://")
+    return safe
+
+
 def _archive_root() -> Optional[Path]:
     """設定から HDD アーカイブルートを取得する。未設定なら None。"""
     try:
@@ -281,10 +296,15 @@ def _start_ytdlp_recording(
 
 
 def create_drm_job(url: str, match_id: Optional[int] = None) -> RecordJob:
+    # round156 R156-S1 defense-in-depth:
+    # ルータ側の Pydantic 層で reject するのが基本だが、別経路 (内部 caller /
+    # 旧コード / pytest fixture) からも生 URL を持ち込まれない保証として、
+    # ここでも _validate_drm_capture_url で https-only + SSRF guard を再適用。
+    safe_url = _validate_drm_capture_url(url)
     job_id = uuid.uuid4().hex
     _RECORD_ROOT.mkdir(parents=True, exist_ok=True)
     out_path = resolve_within(_RECORD_ROOT / f"{job_id}.webm", _RECORD_ROOT)
-    job = RecordJob(job_id=job_id, url=url, out_path=out_path,
+    job = RecordJob(job_id=job_id, url=safe_url, out_path=out_path,
                     method="drm_pending", status="probing", match_id=match_id)
     _jobs[job_id] = job
     logger.info("[yt_live] DRM job created: job=%s match_id=%s", job_id, match_id)

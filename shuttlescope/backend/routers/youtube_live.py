@@ -1,11 +1,13 @@
 """YouTube Live 録画 API ルーター。"""
 from __future__ import annotations
 
+import ipaddress
 import logging
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.utils.auth import get_auth
 
@@ -20,6 +22,54 @@ def _require_auth(request: Request):
     return ctx
 
 
+def _validate_public_https_url(value: str) -> str:
+    """Pydantic field_validator + create_drm_job 防御層で共有する URL 検証。
+
+    SSRF / scheme 混在 / embedded creds / 内部 IP / 制御文字を Pydantic 層で reject。
+    `services/youtube_live_recorder.py::_validate_url_for_subprocess` と同等の
+    判定を入口側 (Router StartRequest) にも入れて、HLS probe を bypass して
+    DRM フォールバックに落ちる経路でも生 URL が `RecordJob.url` に格納されない
+    ようにする (round156 R156-S1 対策)。
+    """
+    s = (value or "").strip()
+    # 制御文字 / 改行 / DEL を拒否
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in s):
+        raise ValueError("url contains control character")
+    try:
+        parsed = urlparse(s)
+    except Exception as exc:  # urlparse は基本失敗しないが念のため
+        raise ValueError(f"url parse failed: {exc}")
+    # scheme allowlist: https のみ (http / ftp / javascript / data / file 等を排除)
+    if parsed.scheme != "https":
+        raise ValueError("url must use https://")
+    # embedded credentials を拒否
+    if parsed.username or parsed.password:
+        raise ValueError("url must not contain embedded credentials")
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        raise ValueError("url has no host")
+    if host in ("localhost", "localhost.localdomain", "ip6-localhost"):
+        raise ValueError(f"url host {host!r} is not allowed")
+    # IP 直指定なら loopback / private / link-local / reserved / multicast を弾く
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        # ホスト名 (DNS 解決対象) — 入口層では弾かない
+        # ※ DNS rebinding 対策は subprocess 実行直前で別途実施
+        pass
+    else:
+        if (
+            ip.is_loopback
+            or ip.is_private
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise ValueError(f"url host {host!r} is internal/reserved IP")
+    return s
+
+
 class StartRequest(BaseModel):
     url: str = Field(..., min_length=10, max_length=500)
     quality: str = Field("best", pattern=r"^(best|1080p|720p|480p|360p)$")
@@ -28,6 +78,11 @@ class StartRequest(BaseModel):
     cookie_file: Optional[str] = Field(None, max_length=500)
     # 紐付け試合 ID（指定するとアーカイブ完了時に Match.video_local_path が自動更新される）
     match_id: Optional[int] = Field(None, ge=1, le=2_147_483_647)
+
+    @field_validator("url")
+    @classmethod
+    def _ensure_safe_url(cls, v: str) -> str:
+        return _validate_public_https_url(v)
 
 
 def _job_status(job) -> Dict[str, Any]:

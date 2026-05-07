@@ -781,8 +781,24 @@ def mfa_status(request: Request, db: Session = Depends(get_db)):
 # ── ブートストラップステータス ───────────────────────────────────────────────
 
 @router.get("/bootstrap-status", response_model=BootstrapStatusResponse)
-def bootstrap_status(db: Session = Depends(get_db)):
-    """Expose initial-admin bootstrap readiness without revealing secrets."""
+def bootstrap_status(request: Request, db: Session = Depends(get_db)):
+    """Expose initial-admin bootstrap readiness without revealing secrets.
+
+    SEC / 攻撃集計 #3: 本番姿勢 (Cloudflare 公開等) では匿名で運用状態
+    (admin 在席 / 初期化フロー進行度) を取得できないように admin 認証必須。
+    LAN / Electron 単体の場合は Electron 初回 UX のため匿名のまま許可。
+    """
+    from backend.config import settings as _settings_bs
+    if _settings_bs.is_production_posture:
+        from backend.utils.auth import get_auth as _get_auth_bs
+        ctx = _get_auth_bs(request)
+        if ctx.role != "admin":
+            # 匿名 / 非 admin にはバイナリの ready 判定だけ返して内部状態を隠す
+            status = _bootstrap_admin_status(db)
+            return BootstrapStatusResponse(
+                has_admin=bool(status.has_admin),
+                bootstrap_configured=False,
+            )
     status = _bootstrap_admin_status(db)
     # 初期化済みの場合は has_admin のみ返す（設定状態の詳細を隠す）
     if status.has_admin:
