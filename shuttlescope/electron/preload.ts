@@ -65,7 +65,8 @@ contextBridge.exposeInMainWorld('shuttlescope', {
 
   // ─── 汎用 画面キャプチャ録画 (任意 https URL 対応、会員限定 DRM 配信用) ──────
   // ライセンスされた視聴の OS-level 録画。CDM / DRM bypass はしない。
-  screenCaptureStart: (opts: { url: string; jobId: string; token: string; matchId?: number | null }): Promise<{ sourceId: string; sourceName: string; hostname: string }> =>
+  // quality: 'low' (1.5Mbps/480p) / 'med' (5Mbps/720p, 既定) / 'high' (9Mbps/1080p)
+  screenCaptureStart: (opts: { url: string; jobId: string; token: string; matchId?: number | null; quality?: 'low' | 'med' | 'high' }): Promise<{ sourceId: string; sourceName: string; hostname: string; quality: 'low' | 'med' | 'high' }> =>
     ipcRenderer.invoke('screen-capture-start', opts),
   screenCaptureStop: (): Promise<void> =>
     ipcRenderer.invoke('screen-capture-stop'),

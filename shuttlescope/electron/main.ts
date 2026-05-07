@@ -5,6 +5,7 @@ import * as path from 'path'
 import * as http from 'http'
 import { existsSync, statSync, createReadStream, realpathSync } from 'fs'
 import { Readable } from 'stream'
+import psl from 'psl'
 
 const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, screen, shell, desktopCapturer, session } = electron
 
@@ -808,6 +809,30 @@ function _validateUserUrlForCapture(rawUrl: string): URL {
   return parsed
 }
 
+// Public Suffix List ベースの registrable domain 取得。
+// `psl.get('news.bbc.co.uk')` → `'bbc.co.uk'` のように 2 階層 TLD でも正しく動く。
+// IP アドレスなど PSL に該当しないものは hostname をそのまま返す (== マッチ判定で OK)。
+function _registrableDomain(host: string): string {
+  const lower = host.toLowerCase()
+  try {
+    const got = psl.get(lower)
+    if (got) return got
+  } catch {
+    // 例外時は fallback
+  }
+  return lower
+}
+
+// 録画品質プリセット。MediaRecorder の videoBitsPerSecond と
+// getUserMedia の解像度上限を定義。バドミントン分析用途では med (5Mbps/720p) で
+// 十分だが、配信元が 1080p HDR の場合は high で取り込む。
+type CaptureQuality = 'low' | 'med' | 'high'
+const CAPTURE_QUALITY_PRESETS: Record<CaptureQuality, { bitsPerSecond: number; maxWidth: number; maxHeight: number; maxFrameRate: number }> = {
+  low:  { bitsPerSecond: 1_500_000, maxWidth: 854,  maxHeight: 480,  maxFrameRate: 30 },
+  med:  { bitsPerSecond: 5_000_000, maxWidth: 1280, maxHeight: 720,  maxFrameRate: 30 },
+  high: { bitsPerSecond: 9_000_000, maxWidth: 1920, maxHeight: 1080, maxFrameRate: 30 },
+}
+
 ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: string, token: string) => {
   _ytDrmJobId = jobId
   _ytDrmToken = token
@@ -1043,8 +1068,10 @@ ipcMain.handle('youtube-live-drm-stop', async () => {
 //
 // 注意: HDCP / プラットフォーム側 black-frame 対策には触れない。DRM 強制で
 // 画面キャプチャ自体を blocked にするサイト (Netflix 等) は本機能の対象外。
-ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId: string; token: string; matchId?: number | null }) => {
+ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId: string; token: string; matchId?: number | null; quality?: CaptureQuality }) => {
   const { url, jobId, token } = opts
+  const quality: CaptureQuality = (opts.quality && opts.quality in CAPTURE_QUALITY_PRESETS) ? opts.quality : 'med'
+  const preset = CAPTURE_QUALITY_PRESETS[quality]
   _ytDrmJobId = jobId
   _ytDrmToken = token
 
@@ -1070,16 +1097,16 @@ ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId
     },
   )
 
-  // ナビゲーションは「同じ registrable domain (eTLD+1 近似)」のみ許可。
-  // CDN へのリダイレクト (例: dazn.com → dazn-cdn.example.com) は許可しないが、
-  // 多くの動画 CDN は同じ Cookie scope (.dazn.com) で動くため eTLD+1 で十分。
-  // (Public Suffix List を完全実装するのは過剰、簡易判定で 80% カバー)
-  const targetEtld1 = parsedUrl.hostname.split('.').slice(-2).join('.').toLowerCase()
+  // ナビゲーションは「同じ registrable domain」のみ許可 (Public Suffix List ベース)。
+  // 例: bbc.co.uk → news.bbc.co.uk は OK (registrable domain 一致)、
+  //     bbc.co.uk → other.co.uk は NG。
+  // psl ライブラリで `co.uk` のような 2 階層 TLD も正しく扱える。
+  const targetRegistrable = _registrableDomain(parsedUrl.hostname)
   _ytLiveWindow.webContents.on('will-navigate', (e, navUrl) => {
     try {
       const u = new URL(navUrl)
-      const navEtld1 = u.hostname.split('.').slice(-2).join('.').toLowerCase()
-      if (u.protocol !== 'https:' || navEtld1 !== targetEtld1) {
+      const navRegistrable = _registrableDomain(u.hostname)
+      if (u.protocol !== 'https:' || navRegistrable !== targetRegistrable) {
         console.error('[screen-capture] blocked navigation to', navUrl)
         e.preventDefault()
       }
@@ -1142,6 +1169,7 @@ ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId
     (async () => {
       const { ipcRenderer } = require('electron')
       const sourceId = ${JSON.stringify(source.id)}
+      const PRESET = ${JSON.stringify(preset)}
       let stream
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -1150,9 +1178,9 @@ ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId
             mandatory: {
               chromeMediaSource: 'desktop',
               chromeMediaSourceId: sourceId,
-              maxWidth: 1920,
-              maxHeight: 1080,
-              maxFrameRate: 30,
+              maxWidth: PRESET.maxWidth,
+              maxHeight: PRESET.maxHeight,
+              maxFrameRate: PRESET.maxFrameRate,
             }
           }
         })
@@ -1163,7 +1191,7 @@ ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
         ? 'video/webm;codecs=vp9'
         : 'video/webm;codecs=vp8'
-      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 })
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: PRESET.bitsPerSecond })
       recorder.ondataavailable = async (e) => {
         if (e.data && e.data.size > 0) {
           const buf = await e.data.arrayBuffer()
@@ -1179,7 +1207,7 @@ ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId
     })()
   `)
 
-  return { sourceId: source.id, sourceName: source.name, hostname: parsedUrl.hostname }
+  return { sourceId: source.id, sourceName: source.name, hostname: parsedUrl.hostname, quality }
 })
 
 // 汎用 stop は youtube-live-drm-stop と同じ挙動 (state は共通変数で保持)。
