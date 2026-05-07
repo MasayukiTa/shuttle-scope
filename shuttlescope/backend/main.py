@@ -1383,6 +1383,19 @@ async def _value_error_handler(request: StarletteRequest, exc: ValueError):
 
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: StarletteRequest, exc: Exception):
+    # FastAPI / Starlette の dispatch order の都合で、BaseHTTPMiddleware を多段で
+    # 噛ませている本アプリでは RequestValidationError が specific handler を抜けて
+    # ここに到達するケースがあった (round157 V1 で 422 期待が 500 になった)。
+    # 一段目の specific dispatch を手で行う。
+    if isinstance(exc, _ReqValidationError):
+        return await _validation_error_handler(request, exc)
+    try:
+        from pydantic_core import ValidationError as _PCV
+        if isinstance(exc, _PCV):
+            return await _validation_error_handler(request, _ReqValidationError(exc.errors()))
+    except ImportError:
+        pass
+
     _logger = logging.getLogger("shuttlescope.unhandled")
     _logger.error("Unhandled exception %s %s", request.method, request.url.path, exc_info=exc)
     if app_settings.PUBLIC_MODE or app_settings.HIDE_STACK_TRACES:
