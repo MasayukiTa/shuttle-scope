@@ -9,7 +9,27 @@ confidence-aware output control:
   high:         具体的比較・提案まで出す
 """
 from __future__ import annotations
+import math
 from typing import Any, Optional
+
+
+def wilson_ci(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """Wilson スコア法による比率の信頼区間。
+
+    Returns (ci_low, ci_high) in [0, 1].
+
+    既に `backend.analysis.epv_state_model.wilson_ci` に同じ実装があるが、
+    700e3dd 以降 `markov.py` が `backend.utils.confidence` から import している
+    ため、共通ユーティリティ層 (本ファイル) を canonical として一元化する。
+    epv_state_model 側は import alias として残しても良い。
+    """
+    if n == 0:
+        return (0.0, 1.0)
+    p_hat = successes / n
+    denominator = 1 + z * z / n
+    center = (p_hat + z * z / (2 * n)) / denominator
+    margin = (z * math.sqrt(p_hat * (1 - p_hat) / n + z * z / (4 * n * n))) / denominator
+    return (round(max(0.0, center - margin), 4), round(min(1.0, center + margin), 4))
 
 
 def check_confidence(analysis_type: str, sample_size: int) -> dict:
