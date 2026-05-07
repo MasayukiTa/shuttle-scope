@@ -1432,12 +1432,19 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     elif ctx.is_player:
         if ctx.user_id != target_id:
             raise HTTPException(status_code=403, detail="自分自身のみ編集できます")
-        # player が権限関連フィールド (username / team_name / player_id) を送ってきたら
-        # silent drop ではなく 403 で明示拒否する (silent success は攻撃検出を困難にする)
-        if any(v is not None for v in (body.username, body.team_name, body.player_id)):
+        # player が権限関連フィールド (username / team_name / team_id / player_id /
+        # role) を送ってきたら silent drop ではなく 403 で明示拒否する。
+        # silent success は攻撃検出を困難にし、ポリシー意図 (player は自身の表示名や
+        # 認証情報のみ自己更新可能) と矛盾する。
+        # round180 P6 finding: team_id / role が同 reject 対象に漏れていたため追加。
+        # role は事前 admin-only check で 403 になるが、防御深化として明記。
+        if any(v is not None for v in (
+            body.username, body.team_name, body.team_id,
+            body.player_id, body.role,
+        )):
             raise HTTPException(
                 status_code=403,
-                detail="player ロールは username / team_name / player_id を変更できません",
+                detail="player ロールは username / team / role / player_id を変更できません",
             )
         body = UserUpdate(display_name=body.display_name, password=body.password, pin=body.pin)
     else:
