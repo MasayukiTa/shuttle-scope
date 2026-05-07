@@ -196,8 +196,12 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
     # video_url の制御文字拒否 (CR/LF/Tab 埋め込みで header injection / shell 攻撃経路)
     vu = getattr(body, "video_url", None)
     if vu is not None and isinstance(vu, str) and vu != "":
-        if len(vu) > 2000:
-            raise HTTPException(status_code=422, detail="video_url too long (max 2000)")
+        # round173 V1 url_too_long で発覚: validator 上限 2000 に対し DB 列が
+        # varchar(500) で、500 < len <= 2000 の URL が DB commit で
+        # StringDataRightTruncation → 500 を起こしていた。validator を DB schema
+        # に合わせて 500 に下げる (schema 拡張は migration 重いので validator 側で)。
+        if len(vu) > 500:
+            raise HTTPException(status_code=422, detail="video_url too long (max 500)")
         import re as _re_vu
         if _re_vu.search(r"[\x00-\x1f\x7f]", vu):
             raise HTTPException(status_code=422, detail="video_url contains control characters")
