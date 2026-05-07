@@ -22,6 +22,18 @@ from backend.main import app
 from backend.db import database as db_module
 from backend.db.models import Match, Player, SharedSession, SessionParticipant
 from backend.ws.camera import camera_manager
+from backend.utils.jwt_utils import create_access_token
+
+
+# 567cd64 で operator role に privileged JWT (admin/analyst/coach) が必須化された。
+# テストでは固定 admin token を発行して `?role=operator&token=...` で渡す。
+def _operator_token() -> str:
+    """admin role の access token を 1 つ作って WS operator 接続に使う."""
+    return create_access_token(user_id=1, role="admin", minutes=10)
+
+
+_OPERATOR_TOKEN = _operator_token()
+_OPR_QS = f"role=operator&token={_OPERATOR_TOKEN}"
 
 
 # ─── ヘルパー ─────────────────────────────────────────────────────────────────
@@ -122,7 +134,7 @@ class TestOperatorConnect:
         """operator ロールで WS 接続できる"""
         code = _fresh_code("OPR")
         with TestClient(app) as client:
-            with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+            with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                 # 接続直後は何も送らず即切断 — エラーなし
                 pass
 
@@ -148,7 +160,7 @@ class TestDeviceConnect:
 
         with TestClient(app) as client:
             def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                     ready.set()
                     try:
                         raw = ws.receive_text()
@@ -185,7 +197,7 @@ class TestDeviceConnect:
 
         with TestClient(app) as client:
             def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                     ready.set()
                     try:
                         for _ in range(2):  # 2 回受信
@@ -228,7 +240,7 @@ class TestViewerConnect:
 
         with TestClient(app) as client:
             def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                     ready.set()
                     try:
                         raw = ws.receive_text()
@@ -267,7 +279,7 @@ class TestViewerConnect:
 
         with TestClient(app) as client:
             def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                     ready.set()
                     try:
                         for _ in range(2):  # viewer_joined + viewer_left
@@ -312,7 +324,7 @@ class TestDeviceToOperatorRelay:
 
         with TestClient(app) as client:
             def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                     ready.set()
                     try:
                         # 1 回目: device_list_update（接続通知）
@@ -357,7 +369,7 @@ class TestDeviceToOperatorRelay:
 
         with TestClient(app) as client:
             def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                     ready.set()
                     try:
                         ws.receive_text()   # device_list_update
@@ -399,7 +411,7 @@ class TestOperatorToDeviceRelay:
 
         with TestClient(app) as client:
             def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                     op_ready.set()
                     dev_ready.wait(timeout=3)
                     time.sleep(0.1)
@@ -444,7 +456,7 @@ class TestOperatorToViewerRelay:
 
         with TestClient(app) as client:
             def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                     op_ready.set()
                     vw_ready.wait(timeout=3)
                     # viewer_joined を受信してから offer を送る
@@ -496,7 +508,7 @@ class TestViewerToOperatorRelay:
 
         with TestClient(app) as client:
             def run_operator():
-                with client.websocket_connect(f"/ws/camera/{code}?role=operator") as ws:
+                with client.websocket_connect(f"/ws/camera/{code}?{_OPR_QS}") as ws:
                     op_ready.set()
                     try:
                         ws.receive_text()  # viewer_joined
