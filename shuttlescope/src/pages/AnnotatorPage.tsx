@@ -15,7 +15,7 @@ import { ShotTypePanel } from '@/components/annotation/ShotTypePanel'
 import { AttributePanel } from '@/components/annotation/AttributePanel'
 import { HitZoneSelector } from '@/components/annotation/HitZoneSelector'
 // U1/U2 (UX redesign): 上バー圧縮用ドロップダウン menu + 大型 Score 表示 + モードタブ
-import { TopBarMenu } from '@/components/annotator/TopBarMenu'
+import { TopBarMenu, TopBarMenuSection } from '@/components/annotator/TopBarMenu'
 import { TopBarScore } from '@/components/annotator/TopBarScore'
 import { ModeTabs } from '@/components/annotator/ModeTabs'
 import { ReviewModePanel } from '@/components/annotator/ReviewModePanel'
@@ -24,7 +24,7 @@ import { SettingsModePanel } from '@/components/annotator/SettingsModePanel'
 import { useAnnotatorModeStore } from '@/store/annotatorModeStore'
 import { HistoryStrip } from '@/components/annotator/HistoryStrip'
 import { VideoOverlayToggles } from '@/components/annotator/VideoOverlayToggles'
-import { CommandPalette, type PaletteCommand } from '@/components/annotator/CommandPalette'
+import { CommandPalette, openCommandPalette, type PaletteCommand } from '@/components/annotator/CommandPalette'
 import { BottomSheet } from '@/components/annotator/BottomSheet'
 import { stashPending, removePending } from '@/utils/offlineStrokeQueue'
 import { buildBatchPayload, buildSkippedRallyPayload } from '@/utils/annotationPayload'
@@ -1705,76 +1705,105 @@ export function AnnotatorPage() {
           />
         </div>
 
-        {/* U1: メニュー (xl 未満で隠れた二次操作の退避先) */}
-        <div className="hidden md:flex xl:hidden shrink-0 mr-1">
+        {/* U1: コマンドパレット起動ボタン (md+ で常時表示。⌘/Ctrl+K の発見性向上) */}
+        <button
+          type="button"
+          onClick={() => openCommandPalette()}
+          aria-label={t('annotator.ux.command_button_aria')}
+          title={t('annotator.ux.command_button_title')}
+          className="hidden md:flex items-center gap-1 shrink-0 mr-1 px-2 py-1 rounded text-xs text-gray-300 bg-gray-700/60 hover:bg-gray-700 transition-colors"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>search</span>
+          <span className="hidden lg:inline">{t('annotator.ux.command_button_label')}</span>
+          <kbd className="text-[10px] font-mono opacity-70 bg-black/30 px-1 rounded">⌘K</kbd>
+        </button>
+
+        {/* U1: メニュー (md+ で常時表示。xl+ でも直接ボタン廃止し統一入口に集約) */}
+        <div className="hidden md:flex shrink-0 mr-1">
           <TopBarMenu ariaLabel={t('annotator.ux.menu_label')}>
-            <button
-              onClick={toggleAnnotationMode}
-              className={clsx(
-                'flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium text-left transition-colors',
-                isBasicMode ? 'bg-emerald-700 text-white' : 'bg-purple-700 text-white',
-              )}
-            >
-              <span>{t('annotation_mode.label')}</span>
-              <span>{isBasicMode ? t('annotation_mode.basic') : t('annotation_mode.detailed')}</span>
-            </button>
-            <button
-              onClick={toggleMatchDayMode}
-              className={clsx(
-                'flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium text-left transition-colors',
-                isMatchDayMode ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600',
-              )}
-            >
-              <span>{t('annotator.match_day_mode')}</span>
-              <span className="text-[10px] opacity-80">{isMatchDayMode ? 'ON' : 'OFF'}</span>
-            </button>
+            {/* 記録モード */}
+            <TopBarMenuSection title={t('annotator.ux.menu_section_record')} firstSection>
+              <button
+                onClick={toggleAnnotationMode}
+                className={clsx(
+                  'flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium text-left transition-colors',
+                  isBasicMode ? 'bg-emerald-700 text-white' : 'bg-purple-700 text-white',
+                )}
+              >
+                <span>{t('annotation_mode.label')}</span>
+                <span className="text-[10px] opacity-80">{isBasicMode ? t('annotation_mode.basic') : t('annotation_mode.detailed')}</span>
+              </button>
+              <button
+                onClick={toggleMatchDayMode}
+                className={clsx(
+                  'flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium text-left transition-colors',
+                  isMatchDayMode ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600',
+                )}
+              >
+                <span>{t('annotator.match_day_mode')}</span>
+                <span className="text-[10px] opacity-80">{isMatchDayMode ? 'ON' : 'OFF'}</span>
+              </button>
+            </TopBarMenuSection>
+
+            {/* 表示 */}
             {displays.length >= 2 && match && hasVideo(match) && (
-              videoWindowOpen ? (
-                <button
-                  onClick={handleCloseVideoWindow}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-indigo-600 text-white hover:bg-indigo-500"
-                >
-                  <MonitorX size={14} />
-                  {t('dual_monitor.close')}
-                </button>
-              ) : (
-                <button
-                  onClick={handleOpenVideoWindow}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-700 text-gray-200 hover:bg-gray-600"
-                >
-                  <MonitorPlay size={14} />
-                  {t('dual_monitor.open')}
-                </button>
-              )
+              <TopBarMenuSection title={t('annotator.ux.menu_section_display')}>
+                {videoWindowOpen ? (
+                  <button
+                    onClick={handleCloseVideoWindow}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-indigo-600 text-white hover:bg-indigo-500"
+                  >
+                    <MonitorX size={14} />
+                    {t('dual_monitor.close')}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleOpenVideoWindow}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-700 text-gray-200 hover:bg-gray-600"
+                  >
+                    <MonitorPlay size={14} />
+                    {t('dual_monitor.open')}
+                  </button>
+                )}
+              </TopBarMenuSection>
             )}
-            <button
-              onClick={() => setShowExceptionDialog(true)}
-              className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-red-900/30 text-red-300 hover:bg-red-800/50"
-            >
-              <OctagonX size={14} />
-              {t('exception.title')}
-            </button>
-            {/* UX-R3: バッチ操作 (CV / TrackNet) */}
-            {appSettings.yolo_enabled && hasVideo(match) && (
+
+            {/* CV バッチ */}
+            {((appSettings.yolo_enabled || appSettings.tracknet_enabled) && hasVideo(match)) && (
+              <TopBarMenuSection title={t('annotator.ux.menu_section_cv')}>
+                {appSettings.yolo_enabled && hasVideo(match) && (
+                  <button
+                    onClick={handleYoloBatch}
+                    disabled={!!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-blue-900/30 text-blue-300 hover:bg-blue-800/50 disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>directions_run</span>
+                    {t('annotator.ux.menu_yolo_run')}
+                  </button>
+                )}
+                {appSettings.tracknet_enabled && hasVideo(match) && (
+                  <button
+                    onClick={handleTracknetBatch}
+                    disabled={!!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-purple-900/30 text-purple-300 hover:bg-purple-800/50 disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>route</span>
+                    {t('annotator.ux.menu_tracknet_run')}
+                  </button>
+                )}
+              </TopBarMenuSection>
+            )}
+
+            {/* 危険操作 */}
+            <TopBarMenuSection title={t('annotator.ux.menu_section_danger')}>
               <button
-                onClick={handleYoloBatch}
-                disabled={!!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')}
-                className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-blue-900/30 text-blue-300 hover:bg-blue-800/50 disabled:opacity-50"
+                onClick={() => setShowExceptionDialog(true)}
+                className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-red-900/30 text-red-300 hover:bg-red-800/50"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>directions_run</span>
-                {t('annotator.ux.menu_yolo_run')}
+                <OctagonX size={14} />
+                {t('exception.title')}
               </button>
-            )}
-            {appSettings.tracknet_enabled && hasVideo(match) && (
-              <button
-                onClick={handleTracknetBatch}
-                disabled={!!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')}
-                className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-purple-900/30 text-purple-300 hover:bg-purple-800/50 disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>route</span>
-                {t('annotator.ux.menu_tracknet_run')}
-              </button>
-            )}
+            </TopBarMenuSection>
           </TopBarMenu>
         </div>
 
@@ -1811,66 +1840,6 @@ export function AnnotatorPage() {
               {t('in_match_panel.opponent_info')}
             </button>
           )}
-          {/* P4: デュアルモニター (U1: 1280px 未満では menu) */}
-          {displays.length >= 2 && match && hasVideo(match) && (
-            videoWindowOpen ? (
-              <button
-                onClick={handleCloseVideoWindow}
-                className="hidden xl:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
-                title={t('dual_monitor.close')}
-              >
-                <MonitorX size={12} />
-                {t('dual_monitor.close')}
-              </button>
-            ) : (
-              <div className="hidden xl:flex items-center gap-1">
-                {/* 非プライマリモニタが2台以上のときのみ選択UIを表示 */}
-                {displays.filter((d) => !d.isPrimary).length >= 2 && (
-                  <select
-                    value={selectedDisplayId ?? ''}
-                    onChange={(e) => setSelectedDisplayId(Number(e.target.value))}
-                    className="px-1 py-1 rounded text-xs bg-gray-700 text-gray-300 border border-gray-600 focus:outline-none focus:border-indigo-500"
-                    title={t('dual_monitor.select_display')}
-                  >
-                    {displays.filter((d) => !d.isPrimary).map((d) => (
-                      <option key={d.id} value={d.id}>{d.label}</option>
-                    ))}
-                  </select>
-                )}
-                <button
-                  onClick={handleOpenVideoWindow}
-                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-                  title={t('dual_monitor.open')}
-                >
-                  <MonitorPlay size={12} />
-                  {t('dual_monitor.open')}
-                </button>
-              </div>
-            )
-          )}
-          {/* 途中終了ボタン (U1: 1280px 未満では menu に退避) */}
-          <button
-            onClick={() => setShowExceptionDialog(true)}
-            className="hidden xl:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-900/30 text-red-400 hover:bg-red-800/50 transition-colors"
-            title={t('exception.title')}
-          >
-            <OctagonX size={12} />
-            {t('exception.title')}
-          </button>
-          {/* Annotation モード切替 (手動記録 / 補助記録) */}
-          <button
-            onClick={toggleAnnotationMode}
-            className={clsx(
-              'hidden xl:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
-              isBasicMode
-                ? 'bg-emerald-700 text-white'
-                : 'bg-purple-700 text-white'
-            )}
-            title={isBasicMode ? t('annotation_mode.basic_helper') : t('annotation_mode.detailed_helper')}
-          >
-            <span>{t('annotation_mode.label')}</span>
-            {isBasicMode ? t('annotation_mode.basic') : t('annotation_mode.detailed')}
-          </button>
           {/* T6: Review queue バッジ */}
           {(reviewBookmarksData?.length ?? 0) > 0 && (
             <button
@@ -1882,20 +1851,7 @@ export function AnnotatorPage() {
               {reviewBookmarksData!.length}{t('review_later.queue_badge')}
             </button>
           )}
-          {/* K-001: 試合中モード切替 (U1: menu に退避) */}
-          <button
-            onClick={toggleMatchDayMode}
-            className={clsx(
-              'hidden xl:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
-              isMatchDayMode
-                ? 'bg-yellow-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:text-white'
-            )}
-            title={isMatchDayMode ? t('annotator.match_day_mode_on') : t('annotator.match_day_mode_off')}
-          >
-            {t('annotator.match_day_mode')}
-          </button>
-          {/* P3: TrackNet バッチ解析ボタン (UX-R3: 同じ操作を ⋮ メニューにも置いた) */}
+          {/* P3: TrackNet バッチ解析ボタン (state-driven UI なので直配置維持) */}
           {appSettings.tracknet_enabled && hasVideo(match) && (
             tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') ? (
               <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${

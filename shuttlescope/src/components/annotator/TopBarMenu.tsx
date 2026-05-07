@@ -9,6 +9,7 @@
  *  - ⋮ クリックで開閉
  *  - 外側クリック / Esc で閉じる
  *  - children をそのまま並べる (button や inline JSX をそのまま渡せる)
+ *  - <TopBarMenuSection title="…"> でセクション見出し付きのグループに整理可能
  */
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { MoreVertical } from 'lucide-react'
@@ -56,15 +57,38 @@ export function TopBarMenu({ children, ariaLabel = 'メニュー', className }: 
       </button>
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 z-50 min-w-[240px] max-w-[320px] bg-gray-800 border border-gray-700 rounded-md shadow-2xl py-2"
+          className="absolute right-0 top-full mt-1 z-50 min-w-[260px] max-w-[340px] bg-gray-800 border border-gray-700 rounded-md shadow-2xl py-2"
           role="menu"
           onClick={() => setOpen(false)}
         >
-          <div className="flex flex-col gap-1 px-2">
+          <div className="flex flex-col gap-2 px-2">
             {children}
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * メニュー内セクション。見出し + 区切り線 + 子ボタン。
+ * 同種の操作 (記録モード / 表示 / 危険操作) をグループ化する用途。
+ */
+interface TopBarMenuSectionProps {
+  title: string
+  children: ReactNode
+  /** 一番最初のセクションは上区切り線を出さない */
+  firstSection?: boolean
+}
+
+export function TopBarMenuSection({ title, children, firstSection = false }: TopBarMenuSectionProps) {
+  return (
+    <div className="flex flex-col gap-1">
+      {!firstSection && <div className="border-t border-gray-700 -mx-2 mt-1 mb-1" />}
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 px-1 pt-0.5">
+        {title}
+      </div>
+      <div className="flex flex-col gap-1">{children}</div>
     </div>
   )
 }
