@@ -171,11 +171,18 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             )
     if getattr(body, "annotation_status", None) is not None and body.annotation_status not in _MATCH_ANNOTATION_STATUS:
         raise HTTPException(status_code=422, detail=f"invalid annotation_status: {body.annotation_status!r}")
-    # 文字列フィールドの長さ上限 + 制御文字 (CR/LF/NUL) 拒否
-    # null byte / CRLF 埋め込みはログ偽装・DB 処理バグ・UI 表示汚染経路
+    # 文字列フィールドの長さ上限 + 制御文字 (CR/LF/NUL) + Unicode BIDI / 不可視
+    # 制御文字の拒否。null byte / CRLF はログ偽装・DB 処理バグ。BIDI override
+    # (U+202E 等) と zero-width 系は表示偽装 (homograph 攻撃) の経路で、
+    # round167 X5 で tournament 名に保存して GET で raw 反射されることが発覚。
     import re as _re_ctl
     # tournament / round は業務上必須 (空/空白のみ禁止)。無意味な DB 肥大を防ぐ。
     _non_empty_required = {"tournament", "round"}
+    _BIDI_FORMAT_CHARS = (
+        "​‌‍  "        # ZWSP/ZWNJ/ZWJ/LS/PS
+        "‪‫‬‭‮"        # LRE/RLE/PDF/LRO/RLO
+        "⁦⁧⁨⁩﻿"        # LRI/RLI/FSI/PDI/BOM
+    )
     for fname, maxlen in (
         ("tournament", 200), ("tournament_grade", 100), ("round", 100),
         ("venue", 200), ("notes", 5000), ("final_score", 200),
@@ -191,6 +198,12 @@ def _validate_match_enums(body: "MatchUpdate | MatchCreate") -> None:
             raise HTTPException(status_code=422, detail=f"{fname} too long (max {maxlen})")
         if _re_ctl.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", v):
             raise HTTPException(status_code=422, detail=f"{fname} contains control characters")
+        for _ch in v:
+            if _ch in _BIDI_FORMAT_CHARS:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{fname} contains disallowed format character (U+{ord(_ch):04X})",
+                )
         if fname in _non_empty_required and not v.strip():
             raise HTTPException(status_code=422, detail=f"{fname} must not be empty or whitespace only")
     # video_url の制御文字拒否 (CR/LF/Tab 埋め込みで header injection / shell 攻撃経路)

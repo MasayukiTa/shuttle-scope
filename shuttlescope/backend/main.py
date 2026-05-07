@@ -1137,7 +1137,7 @@ app.add_middleware(AnalysisCacheMiddleware)
 #   - /api/auth/invitation/accept (M-A: 招待受領)
 # 注: /api/auth/email/resend_verification と /api/auth/invitation/create は要認証
 _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
-    r"^/api/(auth/(login|logout|bootstrap-status|register|email/verify|"
+    r"^/api/(auth/(login|logout|refresh|bootstrap-status|register|email/verify|"
     r"password/(request_reset|reset)|invitation/(peek|accept))"
     r"|health|csp_report|public(/.*)?"
     # Phase Pay-1: Webhook は認証なし。プロバイダ側の署名検証で正当性確認。
@@ -1147,6 +1147,11 @@ _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     # R-3: Worker 共有 API は X-Worker-Token で独自認証、JWT 不要
     r"|_internal/videos/.*)"
 )
+# /api/auth/refresh: refresh_token 自体が credential なので Authorization 必須は
+# OAuth2 標準逸脱。access_token expired 後に refresh で recover する正規フローを
+# 阻害していた (round172 T4 で発覚)。refresh ハンドラ側で IP rate limit + token
+# rotation の reuse 検知 + lockout 再 check が走るので、Authorization 不要でも
+# brute-force / replay は防げる。
 
 # 承認待ち (awaiting_admin_approval=True) ユーザでも到達可能なエンドポイント。
 # - /api/auth/me: 自分の承認状態 / email_verified の確認
