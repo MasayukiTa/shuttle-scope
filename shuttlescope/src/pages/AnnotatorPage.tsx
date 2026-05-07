@@ -358,6 +358,10 @@ export function AnnotatorPage() {
   // CV補助アノテーション
   const [showCVAssistPanel, setShowCVAssistPanel] = useState(false)
   const [cvReviewQueueOpen, setCVReviewQueueOpen] = useState(false)
+  // 上バー右側の CV ツール一式 (TrackNet / YOLO 人物検出 / 表示トグル / CV補助) の展開状態。
+  // デフォルトは折り畳み — 試合中入力時の視界を狭めないため。TopBarMenu CV セクションから
+  // または インラインの「CV ツール」ピルから展開できる。
+  const [cvToolsExpanded, setCvToolsExpanded] = useState(false)
 
   // S-003: コメント
   const [showCommentInput, setShowCommentInput] = useState(false)
@@ -1771,6 +1775,20 @@ export function AnnotatorPage() {
             {/* CV バッチ */}
             {((appSettings.yolo_enabled || appSettings.tracknet_enabled) && hasVideo(match)) && (
               <TopBarMenuSection title={t('annotator.ux.menu_section_cv')}>
+                {/* CV ツール展開トグル: 上バー右側の状態 UI 一式の表示制御 */}
+                <button
+                  onClick={() => setCvToolsExpanded((v) => !v)}
+                  className={clsx(
+                    'flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs font-medium text-left transition-colors',
+                    cvToolsExpanded ? 'bg-blue-700 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600',
+                  )}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>visibility</span>
+                    CV ツール (BBOX / 軌跡 / グリッド / 領域)
+                  </span>
+                  <span className="text-[10px] opacity-80">{cvToolsExpanded ? 'ON' : 'OFF'}</span>
+                </button>
                 {appSettings.yolo_enabled && hasVideo(match) && (
                   <button
                     onClick={handleYoloBatch}
@@ -1851,8 +1869,38 @@ export function AnnotatorPage() {
               {reviewBookmarksData!.length}{t('review_later.queue_badge')}
             </button>
           )}
-          {/* P3: TrackNet バッチ解析ボタン (state-driven UI なので直配置維持) */}
-          {appSettings.tracknet_enabled && hasVideo(match) && (
+          {/* CV ツール折り畳みピル: 既存ジョブの進行状況を圧縮表示 + 展開トグル */}
+          {(appSettings.tracknet_enabled || appSettings.yolo_enabled) && hasVideo(match) && (
+            <button
+              type="button"
+              onClick={() => setCvToolsExpanded((v) => !v)}
+              className={clsx(
+                'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors border shrink-0',
+                cvToolsExpanded
+                  ? isLight ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-blue-900/40 text-blue-300 border-blue-800'
+                  : isLight ? 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-50' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-blue-900/20',
+              )}
+              aria-expanded={cvToolsExpanded}
+              title={cvToolsExpanded ? 'CV ツールを折り畳む' : 'CV ツール (TrackNet / 人物検出 / 表示) を展開'}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 13 }}>visibility</span>
+              <span>CV</span>
+              {/* 圧縮ステータス: 解析中 % または 完了 ✓ */}
+              {tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') && (
+                <span className="num-cell text-[10px]"> {Math.round(tracknetJob.progress * 100)}%</span>
+              )}
+              {yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running') && (
+                <span className="num-cell text-[10px]"> {Math.round(yoloJob.progress * 100)}%</span>
+              )}
+              {tracknetJob?.status === 'complete' && yoloJob?.status === 'complete' && (
+                <span className="text-[10px] text-emerald-400">✓</span>
+              )}
+              <span className="text-[9px] opacity-70">{cvToolsExpanded ? '▲' : '▼'}</span>
+            </button>
+          )}
+
+          {/* P3: TrackNet バッチ解析ボタン (state-driven UI、cvToolsExpanded で 折り畳み) */}
+          {cvToolsExpanded && appSettings.tracknet_enabled && hasVideo(match) && (
             tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') ? (
               <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
                 isLight ? 'bg-purple-100 text-purple-700' : 'bg-purple-900/40 text-purple-300'
@@ -1934,8 +1982,8 @@ export function AnnotatorPage() {
               </div>
             )
           )}
-          {/* CV オーバーレイグループ（YOLO + TrackNet） */}
-          {appSettings.yolo_enabled && hasVideo(match) && (
+          {/* CV オーバーレイグループ（YOLO + TrackNet）— cvToolsExpanded で折り畳み */}
+          {cvToolsExpanded && appSettings.yolo_enabled && hasVideo(match) && (
             <div className={`flex items-center gap-1 px-1.5 py-1 rounded border ${
               isLight ? 'border-gray-300 bg-gray-50' : 'border-gray-700 bg-gray-800/60'
             }`}>
@@ -2286,8 +2334,8 @@ export function AnnotatorPage() {
               )}
             </div>
           )}
-          {/* CV補助: 候補生成・適用ボタン（TrackNet or YOLO が完了済みのとき表示） */}
-          {(tracknetJob?.status === 'complete' || yoloJob?.status === 'complete') && (
+          {/* CV補助: 候補生成・適用ボタン（cvToolsExpanded で折り畳み） */}
+          {cvToolsExpanded && (tracknetJob?.status === 'complete' || yoloJob?.status === 'complete') && (
             <div className={`flex items-center gap-1 px-1.5 py-1 rounded border ${
               isLight ? 'border-gray-300 bg-gray-50' : 'border-gray-700 bg-gray-800/60'
             }`}>
@@ -3561,7 +3609,18 @@ export function AnnotatorPage() {
               }
 
               return (
-                <div className="flex flex-col gap-0.5 px-1">
+                <div
+                  className={clsx(
+                    'flex flex-col gap-0.5 px-1 rounded',
+                    // land_zone step 中はオレンジ枠で「打者を確認/変更してから着地点」を強調
+                    store.inputStep === 'land_zone' && 'ring-2 ring-orange-400/60 ring-offset-1 ring-offset-gray-900 py-1',
+                  )}
+                >
+                  {store.inputStep === 'land_zone' && (
+                    <div className="text-[10px] text-orange-300 text-center font-medium">
+                      ダブルス: 打者を確認・変更 (キー <kbd className="font-mono px-1 bg-gray-800 rounded">7</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">8</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd> <kbd className="font-mono px-1 bg-gray-800 rounded">0</kbd>)
+                    </div>
+                  )}
                   {/* 4選手ボタン行 */}
                   <div className="flex items-center gap-1">
                     <button onClick={() => store.setHitter('player_a')}  className={btnCls('player_a')}  title={[match.player_a?.team, '[7]'].filter(Boolean).join(' ')}>
@@ -3609,44 +3668,55 @@ export function AnnotatorPage() {
               </>
             )}
 
-            {/* 落点選択（land_zone ステップ時） */}
+            {/* 落点選択（land_zone ステップ時） — 視覚的アクティブフォーカスと キーボード割当を明示 */}
             {store.inputStep === 'land_zone' && (
               <div className="flex flex-col gap-1 shrink-0">
                 <div className={clsx('text-center', useLargeTouch ? 'text-sm' : 'text-xs')}>
                   {/* player_bの返球は自コートに着地 → 下半分をクリック可能にする */}
                   {store.currentPlayer === 'player_b' ? (
                     <span className="text-orange-400 font-medium">
-                      着地ゾーン（自コート↓） — {isMobile ? 'タップで選択' : 'テンキー1–9 or クリック'}
+                      着地ゾーン（自コート↓） — {isMobile ? 'タップで選択' : 'テンキー 1-9 / U I O J K L M , . でクリック'}
                     </span>
                   ) : (
                     <span className="text-blue-400 font-medium">
-                      {t('annotator.land_zone')} — {isMobile ? 'タップで選択' : 'テンキー1–9 or クリック'}
+                      {t('annotator.land_zone')} — {isMobile ? 'タップで選択' : 'テンキー 1-9 / U I O J K L M , . でクリック'}
                     </span>
                   )}
                 </div>
                 <div className="flex flex-col sm:flex-row justify-center items-start gap-3">
                   {/* Phase A: 打点 (hit_zone) マニュアル override タイル */}
-                  <HitZoneSelector
-                    cvPrediction={(store.pendingStroke.hit_zone_cv ?? null) as Zone9 | null}
-                    selectedZone={(store.pendingStroke.hit_zone ?? null) as Zone9 | null}
-                    onZoneSelect={(z) => { haptic.tap(); store.setHitZoneOverride(z) }}
-                    isOverridden={store.pendingStroke.hit_zone_source === 'manual'}
-                    cellSize={isMobile ? 56 : 48}
-                  />
-                  <CourtDiagram
-                    mode={store.currentPlayer === 'player_b' ? 'hit' : 'land'}
-                    selectedZone={store.pendingStroke.land_zone ?? null}
-                    onZoneSelect={(zone: LandZone) => { haptic.strokeConfirm(); store.selectLandZone(zone) }}
-                    interactive={true}
-                    showOOB={true}
-                    label={undefined}
-                    maxWidth={isMobile ? 340 : 200}
-                    playerSides={(() => {
-                      const aTop = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB) === 'top'
-                      return { top: aTop ? 'a' : 'b', bottom: aTop ? 'b' : 'a' }
-                    })()}
-                    activePlayer={store.currentPlayer === 'player_a' ? 'a' : 'b'}
-                  />
+                  <div className="flex flex-col gap-1 items-center">
+                    <span className="text-[10px] text-gray-400 hidden md:inline">
+                      打点: トップ行 <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
+                    </span>
+                    <HitZoneSelector
+                      cvPrediction={(store.pendingStroke.hit_zone_cv ?? null) as Zone9 | null}
+                      selectedZone={(store.pendingStroke.hit_zone ?? null) as Zone9 | null}
+                      onZoneSelect={(z) => { haptic.tap(); store.setHitZoneOverride(z) }}
+                      isOverridden={store.pendingStroke.hit_zone_source === 'manual'}
+                      cellSize={isMobile ? 56 : 48}
+                    />
+                  </div>
+                  {/* CourtDiagram にアクティブフォーカス枠を被せて「ここをクリック」を明示 */}
+                  <div className="relative rounded-lg ring-2 ring-blue-400 ring-offset-2 ring-offset-gray-900 animate-pulse-slow">
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-blue-500 text-white text-[10px] font-medium whitespace-nowrap shadow z-10">
+                      着地点を選択 ↓
+                    </span>
+                    <CourtDiagram
+                      mode={store.currentPlayer === 'player_b' ? 'hit' : 'land'}
+                      selectedZone={store.pendingStroke.land_zone ?? null}
+                      onZoneSelect={(zone: LandZone) => { haptic.strokeConfirm(); store.selectLandZone(zone) }}
+                      interactive={true}
+                      showOOB={true}
+                      label={undefined}
+                      maxWidth={isMobile ? 340 : 200}
+                      playerSides={(() => {
+                        const aTop = computePlayerASide(playerAStart, store.currentSetNum, store.scoreA, store.scoreB) === 'top'
+                        return { top: aTop ? 'a' : 'b', bottom: aTop ? 'b' : 'a' }
+                      })()}
+                      activePlayer={store.currentPlayer === 'player_a' ? 'a' : 'b'}
+                    />
+                  </div>
                 </div>
                 <button
                   onClick={() => { haptic.strokeConfirm(); store.skipLandZone() }}

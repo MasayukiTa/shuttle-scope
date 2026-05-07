@@ -299,6 +299,19 @@ button[data-tile="hit-zone"] {
 }
 
 /*
+ * land_zone 入力ステップで CourtDiagram のアクティブ枠をふんわり点滅させる。
+ * 1.4s 周期で透過率を 100% → 60% → 100% に揺らすことで「ここをクリック」を強調。
+ * @keyframes は Tailwind 標準の `animate-pulse` (50% で 50%) より弱めに。
+ */
+@keyframes pulse-slow-frames {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+.animate-pulse-slow {
+  animation: pulse-slow-frames 1.4s ease-in-out infinite;
+}
+
+/*
  * 数値セル共通ユーティリティ。
  * 解析テーブル / 集計表で桁数が変動する数値 (% / Brier / EPV / 試合数 etc) に
  * 統一して適用する。tabular-nums で 桁を揃え、whitespace-nowrap で折り返し

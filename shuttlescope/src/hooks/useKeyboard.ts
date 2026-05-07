@@ -49,6 +49,7 @@ interface UseKeyboardOptions {
  *   Ctrl+Z      : 直前ストロークをアンドゥ
  *
  * 【land_zone = 落点選択中】
+ *   ── 着地点 (Numpad / 文字キー) ──
  *   U/I/O       : BL/BC/BR（バックゾーン）
  *   J/K/L       : ML/MC/MR（ミドルゾーン）
  *   M/,/.       : NL/NC/NR（ネットゾーン）
@@ -62,6 +63,9 @@ interface UseKeyboardOptions {
  *   Shift+.     : OB_FR（ネット前右外）
  *   - / = / \   : NET_L / NET_C / NET_R
  *   0 / Numpad0 / NumpadDecimal : 落点スキップ
+ *   ── 打点 override (トップ行 1-9) ──
+ *   1-9 (トップ行 Digit1〜Digit9) : 打点 1-9 を override (HitZoneSelector と同じ 3x3 配置)
+ *   ── キャンセル ──
  *   Escape / Backspace          : ペンディングストローク キャンセル
  *   Ctrl+Z                      : ペンディングストローク キャンセル（確定済みは消さない）
  *
@@ -103,6 +107,15 @@ const SHIFT_OOB: Record<string, ZoneOOB> = {
 // 文字キー → NETゾーン（land_zone ステップのみ）
 const NET_KEY: Record<string, ZoneNet> = {
   '-': 'NET_L', '=': 'NET_C', '\\': 'NET_R',
+}
+
+// トップ行 1-9 → hit_zone (打点) override
+// HitZoneSelector の 3x3 配置 (上段=左奥/中奥/右奥, 中段=左中/中中/右中, 下段=左前/中前/右前) に対応
+// e.code === 'Digit1'..'Digit9' のときのみ反応 (Numpad は land_zone 用に温存)
+const DIGIT_HIT_ZONE: Record<string, number> = {
+  Digit1: 1, Digit2: 2, Digit3: 3,
+  Digit4: 4, Digit5: 5, Digit6: 6,
+  Digit7: 7, Digit8: 8, Digit9: 9,
 }
 
 /** フォーカスが入力系要素内にあるか確認 */
@@ -279,8 +292,28 @@ export function useKeyboard({
           return
         }
 
-        // 0: スキップ（数字キー）
-        if (e.key === '0' && !e.code.startsWith('Numpad')) {
+        // ダブルス: 7/8/9/0 (トップ行) を hitter 選択にリダイレクト
+        // hit_zone 7/8/9 を使いたい場合は Shift+1..9 か HitZoneSelector を click
+        if (store.isDoubles && !e.shiftKey) {
+          if (e.code === 'Digit7') { e.preventDefault(); onHitterSelectRef.current?.('player_a'); return }
+          if (e.code === 'Digit8') { e.preventDefault(); onHitterSelectRef.current?.('partner_a'); return }
+          if (e.code === 'Digit9') { e.preventDefault(); onHitterSelectRef.current?.('partner_b'); return }
+          if (e.code === 'Digit0') { e.preventDefault(); onHitterSelectRef.current?.('player_b'); return }
+        }
+
+        // トップ行 1-9 → hit_zone (打点) override (Digit1..Digit9)
+        // Numpad は land_zone 用なので干渉しない
+        // Shift+1..9 でもダブルス時の hitter ショートカットを温存しつつ hit_zone 入力可能
+        if (e.code in DIGIT_HIT_ZONE) {
+          e.preventDefault()
+          // pendingStroke.hit_zone は Zone9 string 型だが既存実装で number もサポート
+          // (HitZoneSelector が `[1..9]` で setHitZoneOverride を呼ぶため)
+          store.setHitZoneOverride(DIGIT_HIT_ZONE[e.code] as unknown as Zone9)
+          return
+        }
+
+        // 0: スキップ（数字キー、シングルスのみ。ダブルスは player_b hitter が優先される）
+        if (e.key === '0' && !e.code.startsWith('Numpad') && !store.isDoubles) {
           e.preventDefault()
           store.skipLandZone()
           return

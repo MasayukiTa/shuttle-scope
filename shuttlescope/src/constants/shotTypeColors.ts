@@ -54,12 +54,14 @@ export const CATEGORY_STYLES: Record<ShotCategory, CategoryStyle> = {
     labelKey: 'shot_color_categories.net',
     ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
   },
-  // MID 🟡 — yellow-500 (黄色背景は暗文字でコントラスト確保)
+  // MID 🟠 — amber-600 (白文字でも WCAG AA 通る濃い黄色)
+  // 旧 yellow-500 + text-gray-900 はカラフルタイル群で「黒文字だけ浮く」見栄え不良
+  // だったため、他カテゴリと同じく白文字に統一できる amber-600 に変更
   mid: {
-    bg: 'bg-yellow-500',
-    bgHover: 'hover:bg-yellow-400',
-    text: 'text-gray-900',
-    border: 'border-yellow-600',
+    bg: 'bg-amber-600',
+    bgHover: 'hover:bg-amber-500',
+    text: 'text-white',
+    border: 'border-amber-700',
     icon: '■',
     labelKey: 'shot_color_categories.mid',
     ringSelected: 'ring-2 ring-white ring-offset-2 ring-offset-gray-900',
