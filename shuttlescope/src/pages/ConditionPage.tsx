@@ -176,11 +176,13 @@ export function ConditionPage() {
             {t('condition.player_notice')}
           </div>
         ) : (
-          <div className="flex items-center gap-3">
-            <User size={16} className={`${textMuted} shrink-0`} />
-            <label className={`text-sm ${textMuted} shrink-0`}>
-              {t('condition.player_select')}：
-            </label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 shrink-0">
+              <User size={16} className={`${textMuted} shrink-0`} />
+              <label className={`text-sm ${textMuted}`}>
+                {t('condition.player_select')}：
+              </label>
+            </div>
             <SearchableSelect
               options={sortedPlayers.map((p) => ({
                 value: p.id,
@@ -193,7 +195,7 @@ export function ConditionPage() {
               onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
               emptyLabel="— 選手を選択 —"
               placeholder={t('auto.ConditionPage.k2')}
-              className="min-w-[280px]"
+              className="w-full sm:min-w-[280px] sm:max-w-md"
             />
           </div>
         )}
@@ -531,14 +533,15 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
                 onClick={() => onSelect(r as unknown as Record<string, unknown>)}
                 className="w-full text-left px-3 py-2"
               >
-                <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{r.measured_at ?? ''}</span>
+                    <span className="text-sm font-medium num-cell">{r.measured_at ?? ''}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isLight ? 'border-gray-300 text-gray-600' : 'border-gray-600 text-gray-300'}`}>
                       {typeLabel(r.condition_type)}
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
+                  {/* xs: 2 列 grid (5 指標は 3 行で安定)、sm+: 横並び flex-wrap で 1-2 行に */}
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:flex sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1 text-xs num-cell">
                     {r.ccs != null && (
                       <span>{t('condition.history.ccs')}: <span className="text-blue-500">{fmt(r.ccs)}</span></span>
                     )}
@@ -557,7 +560,7 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
                   </div>
                 </div>
                 {(r.f1 != null || r.f2 != null || r.f3 != null || r.f4 != null || r.f5 != null) && (
-                  <div className={`mt-1 flex gap-3 text-[11px] font-mono ${muted}`}>
+                  <div className={`mt-1 grid grid-cols-3 gap-x-3 gap-y-1 sm:flex sm:gap-3 text-[11px] num-cell ${muted}`}>
                     {(['f1', 'f2', 'f3', 'f4', 'f5'] as const).map((k) => {
                       const v = r[k] as number | null | undefined
                       return (

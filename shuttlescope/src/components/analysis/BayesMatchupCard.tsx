@@ -104,7 +104,34 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
             <span>総試合数: {matchupData?.total_matches ?? 0}</span>
             <span>全体勝率: {pct(matchupData?.global_win_rate ?? 0)}</span>
           </div>
-          <div className="overflow-x-auto">
+          {/* モバイル: カードリスト (md 未満)。情報量を維持しつつ縦並び */}
+          <ul className="md:hidden space-y-1.5">
+            {estimates.map((est, i) => (
+              <li key={i} className={`rounded border p-2 ${isLight ? 'border-gray-200 bg-white/40' : 'border-gray-700 bg-gray-800/40'}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className={`${textHeading} truncate block`} title={est.opponent_name}>{est.opponent_name}</span>
+                    {est.opponent_type !== 'neutral' && (
+                      <span className={`text-[10px] ${textFaint}`}>
+                        {OPPONENT_TYPE_LABELS[est.opponent_type] ?? est.opponent_type}
+                      </span>
+                    )}
+                  </div>
+                  <span className={'shrink-0 text-base font-semibold num-cell ' + (est.posterior_win_prob >= 0.5 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : (isLight ? 'text-orange-600' : 'text-orange-400'))}>
+                    {pct(est.posterior_win_prob)}
+                  </span>
+                </div>
+                <div className={`grid grid-cols-3 gap-1 mt-1 text-[10px] ${textFaint} num-cell`}>
+                  <span>N={est.n_matches}</span>
+                  <span>{t('auto.BayesMatchupCard.k5')} {pct(est.raw_win_rate)}</span>
+                  <span className="text-right">CI {pct(est.credible_interval[0])}–{pct(est.credible_interval[1])}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {/* デスクトップ: テーブル (md 以上) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className={tableHeader}>
@@ -119,21 +146,21 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
                 {estimates.map((est, i) => (
                   <tr key={i} className={`${rowBorder} ${rowHover}`}>
                     <td className="py-1.5 pr-2">
-                      <span className={textHeading}>{est.opponent_name}</span>
+                      <span className={`${textHeading} cell-name-clip`} title={est.opponent_name}>{est.opponent_name}</span>
                       {est.opponent_type !== 'neutral' && (
                         <span className={`ml-1 text-[10px] ${textFaint}`}>
                           ({OPPONENT_TYPE_LABELS[est.opponent_type] ?? est.opponent_type})
                         </span>
                       )}
                     </td>
-                    <td className={`py-1.5 pr-2 text-right ${textSecondary}`}>{est.n_matches}</td>
-                    <td className={`py-1.5 pr-2 text-right ${textSecondary}`}>{pct(est.raw_win_rate)}</td>
+                    <td className={`py-1.5 pr-2 text-right ${textSecondary} num-cell`}>{est.n_matches}</td>
+                    <td className={`py-1.5 pr-2 text-right ${textSecondary} num-cell`}>{pct(est.raw_win_rate)}</td>
                     <td className="py-1.5 pr-2 text-right">
-                      <span className={est.posterior_win_prob >= 0.5 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : (isLight ? 'text-orange-600' : 'text-orange-400')}>
+                      <span className={'num-cell ' + (est.posterior_win_prob >= 0.5 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : (isLight ? 'text-orange-600' : 'text-orange-400'))}>
                         {pct(est.posterior_win_prob)}
                       </span>
                     </td>
-                    <td className={`py-1.5 text-right text-[10px] ${textFaint}`}>
+                    <td className={`py-1.5 text-right text-[10px] ${textFaint} num-cell`}>
                       [{pct(est.credible_interval[0])}–{pct(est.credible_interval[1])}]
                     </td>
                   </tr>

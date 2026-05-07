@@ -223,13 +223,13 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
                     return (
                       <tr key={s.key} className="border-t border-gray-200 dark:border-gray-700">
                         <td className="py-1 pr-2">{s.label}</td>
-                        <td className="text-right py-1 px-2">
+                        <td className="text-right py-1 px-2 num-cell">
                           {s.inMean != null ? s.inMean.toFixed(2) : '—'}
                         </td>
-                        <td className="text-right py-1 px-2">
+                        <td className="text-right py-1 px-2 num-cell">
                           {s.outMean != null ? s.outMean.toFixed(2) : '—'}
                         </td>
-                        <td className="text-right py-1 px-2">
+                        <td className="text-right py-1 px-2 num-cell">
                           {insufficient || s.diff == null ? (
                             <span className="opacity-60">
                               {t('condition.tags.insufficient_short')}
@@ -238,8 +238,8 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
                             s.diff.toFixed(2)
                           )}
                         </td>
-                        <td className="text-right py-1 px-2">{s.nIn}</td>
-                        <td className="text-right py-1 px-2">{s.nOut}</td>
+                        <td className="text-right py-1 px-2 num-cell">{s.nIn}</td>
+                        <td className="text-right py-1 px-2 num-cell">{s.nOut}</td>
                       </tr>
                     )
                   })}

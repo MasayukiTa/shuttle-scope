@@ -81,12 +81,12 @@ export function StateActionValueCard({ playerId, filters }: Props) {
                     /{ROLE_LABELS[row.state.player_role] ?? row.state.player_role}
                   </td>
                   <td className={`py-1.5 pr-2 font-medium ${textSecondary}`}>{row.best_action}</td>
-                  <td className="py-1.5 pr-2 text-right">
+                  <td className="py-1.5 pr-2 text-right num-cell">
                     <span className={row.best_q > 0 ? 'text-emerald-500' : 'text-orange-500'}>
                       {row.best_q > 0 ? '+' : ''}{(row.best_q * 100).toFixed(1)}pp
                     </span>
                   </td>
-                  <td className={`py-1.5 text-right text-[10px] ${textFaint}`}>
+                  <td className={`py-1.5 text-right text-[10px] num-cell ${textFaint}`}>
                     [{(row.best_q_ci_low * 100).toFixed(1)}–{(row.best_q_ci_high * 100).toFixed(1)}]
                   </td>
                 </tr>

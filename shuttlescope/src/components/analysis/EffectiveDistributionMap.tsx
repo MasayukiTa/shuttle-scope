@@ -180,11 +180,11 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                         {ZONE_LABELS[zone] ?? zone}
                         {topZones.includes(zone) && <span className="ml-1 text-[9px]">★</span>}
                       </td>
-                      <td className="py-1.5 pr-3 text-center text-gray-300">{d.win_count}</td>
-                      <td className="py-1.5 pr-3 text-center">
+                      <td className="py-1.5 pr-3 text-center text-gray-300 num-cell">{d.win_count}</td>
+                      <td className="py-1.5 pr-3 text-center num-cell">
                         <span className="font-semibold" style={{ color: WIN }}>{(d.win_rate * 100).toFixed(1)}%</span>
                       </td>
-                      <td className="py-1.5 text-right text-gray-400">{(d.effectiveness * 100).toFixed(1)}</td>
+                      <td className="py-1.5 text-right text-gray-400 num-cell">{(d.effectiveness * 100).toFixed(1)}</td>
                     </tr>
                   ))}
               </tbody>

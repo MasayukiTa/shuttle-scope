@@ -396,53 +396,86 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             {matches.length > 0 ? 'フィルター条件に一致する試合がありません' : 'データなし'}
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className={`${textSecondary} border-b ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
-                  {([
-                    { col: 'opponent' as const,        label: t('auto.DashboardOverviewPage.k22'), align: 'left'   },
-                    { col: null,                        label: t('auto.DashboardOverviewPage.k23'),     align: 'left'   },
-                    { col: 'tournament_level' as const, label: t('auto.DashboardOverviewPage.k24'),   align: 'center' },
-                    { col: 'date' as const,             label: t('auto.DashboardOverviewPage.k25'),     align: 'left'   },
-                    { col: 'result' as const,           label: t('auto.DashboardOverviewPage.k26'),     align: 'center' },
-                    { col: 'rally_count' as const,      label: t('auto.DashboardOverviewPage.k27'),   align: 'right'  },
-                  ] as const).map(({ col, label, align }) => (
-                    <th
-                      key={label}
-                      className={`py-2 pr-3 font-medium select-none ${col ? `cursor-pointer ${isLight ? 'hover:text-gray-900' : 'hover:text-gray-200'}` : ''} text-${align}`}
-                      onClick={() => col && toggleSort(col)}
-                    >
-                      {label}
-                      {col && matchSort.col === col && (
-                        <span className="ml-0.5 text-[10px]">{matchSort.order === 'asc' ? '▲' : '▼'}</span>
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMatches.map((m) => (
-                  <tr
-                    key={m.match_id}
-                    className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-700/50 hover:bg-gray-700/30'} transition-colors cursor-pointer`}
-                    onClick={() => setSelectedMatchId(m.match_id)}
-                  >
-                    <td className={`py-2 pr-3 ${textHeading}`}>{m.opponent}</td>
-                    <td className={`py-2 pr-3 ${textSecondary} text-xs`}>{m.tournament}</td>
-                    <td className="py-2 pr-3 text-center"><span className={`text-xs ${textMuted}`}>{m.tournament_level ?? '—'}</span></td>
-                    <td className={`py-2 pr-3 ${textSecondary} whitespace-nowrap`}>{m.date}</td>
-                    <td className="py-2 pr-3 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-blue-900 text-blue-300' : 'bg-red-900 text-red-300'}`}>
-                        {m.result === 'win' ? '勝' : '負'}
-                      </span>
-                    </td>
-                    <td className={`py-2 text-right ${textSecondary}`}>{m.rally_count}</td>
+          <>
+            {/* モバイル: カードリスト (md 未満)。情報量は維持しつつ縦並びで横スクロール回避 */}
+            <ul className="md:hidden space-y-2">
+              {filteredMatches.map((m) => (
+                <li
+                  key={m.match_id}
+                  onClick={() => setSelectedMatchId(m.match_id)}
+                  className={`rounded border p-2.5 transition-colors cursor-pointer ${
+                    isLight ? 'border-gray-200 hover:bg-gray-50' : 'border-gray-700 hover:bg-gray-700/30'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-sm font-medium truncate ${textHeading}`} title={m.opponent}>{m.opponent}</div>
+                      <div className={`text-xs truncate ${textSecondary}`} title={m.tournament}>{m.tournament}</div>
+                      <div className={`text-[11px] mt-0.5 ${textMuted} num-cell`}>
+                        {m.date}{m.tournament_level ? ` · ${m.tournament_level}` : ''} · {m.rally_count} {t('auto.DashboardOverviewPage.k27')}
+                      </div>
+                    </div>
+                    <span className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-blue-900 text-blue-300' : 'bg-red-900 text-red-300'}`}>
+                      {m.result === 'win' ? '勝' : '負'}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {/* デスクトップ: 従来テーブル (md 以上)。長文セルは truncate + title でフル表示 */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={`${textSecondary} border-b ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
+                    {([
+                      { col: 'opponent' as const,        label: t('auto.DashboardOverviewPage.k22'), align: 'left'   },
+                      { col: null,                        label: t('auto.DashboardOverviewPage.k23'),     align: 'left'   },
+                      { col: 'tournament_level' as const, label: t('auto.DashboardOverviewPage.k24'),   align: 'center' },
+                      { col: 'date' as const,             label: t('auto.DashboardOverviewPage.k25'),     align: 'left'   },
+                      { col: 'result' as const,           label: t('auto.DashboardOverviewPage.k26'),     align: 'center' },
+                      { col: 'rally_count' as const,      label: t('auto.DashboardOverviewPage.k27'),   align: 'right'  },
+                    ] as const).map(({ col, label, align }) => (
+                      <th
+                        key={label}
+                        className={`py-2 pr-3 font-medium select-none ${col ? `cursor-pointer ${isLight ? 'hover:text-gray-900' : 'hover:text-gray-200'}` : ''} text-${align}`}
+                        onClick={() => col && toggleSort(col)}
+                      >
+                        {label}
+                        {col && matchSort.col === col && (
+                          <span className="ml-0.5 text-[10px]">{matchSort.order === 'asc' ? '▲' : '▼'}</span>
+                        )}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredMatches.map((m) => (
+                    <tr
+                      key={m.match_id}
+                      className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-700/50 hover:bg-gray-700/30'} transition-colors cursor-pointer`}
+                      onClick={() => setSelectedMatchId(m.match_id)}
+                    >
+                      <td className={`py-2 pr-3 ${textHeading}`}>
+                        <span className="cell-name-clip" title={m.opponent}>{m.opponent}</span>
+                      </td>
+                      <td className={`py-2 pr-3 ${textSecondary} text-xs`}>
+                        <span className="cell-name-clip" title={m.tournament}>{m.tournament}</span>
+                      </td>
+                      <td className="py-2 pr-3 text-center"><span className={`text-xs ${textMuted}`}>{m.tournament_level ?? '—'}</span></td>
+                      <td className={`py-2 pr-3 ${textSecondary} num-cell`}>{m.date}</td>
+                      <td className="py-2 pr-3 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-blue-900 text-blue-300' : 'bg-red-900 text-red-300'}`}>
+                          {m.result === 'win' ? '勝' : '負'}
+                        </span>
+                      </td>
+                      <td className={`py-2 text-right ${textSecondary} num-cell`}>{m.rally_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 

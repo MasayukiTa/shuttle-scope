@@ -249,22 +249,24 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
                 {d.summary.map((s, i) => (
                   <tr key={i} className="border-t border-gray-700">
                     <td className="py-1 pr-3" style={{ color: neutral }}>
-                      {s.role === 'coach' ? 'コーチ' : 'アナリスト'} ({s.n}試合)
+                      <span className="cell-name-clip" title={`${s.role === 'coach' ? 'コーチ' : 'アナリスト'} (${s.n}試合)`}>
+                        {s.role === 'coach' ? 'コーチ' : 'アナリスト'} ({s.n}試合)
+                      </span>
                     </td>
-                    <td className="text-right pr-3" style={{ color: neutral }}>
+                    <td className="text-right pr-3 num-cell" style={{ color: neutral }}>
                       {Math.round(s.human_accuracy * 100)}%
                     </td>
                     <td
-                      className="text-right pr-3 font-medium"
+                      className="text-right pr-3 font-medium num-cell"
                       style={{ color: s.model_accuracy >= s.human_accuracy ? WIN : LOSS }}
                     >
                       {Math.round(s.model_accuracy * 100)}%
                     </td>
-                    <td className="text-right pr-3 font-mono" style={{ color: neutral }}>
+                    <td className="text-right pr-3 num-cell" style={{ color: neutral }}>
                       {s.human_brier.toFixed(3)}
                     </td>
                     <td
-                      className="text-right font-mono font-medium"
+                      className="text-right font-medium num-cell"
                       style={{ color: s.model_brier <= s.human_brier ? WIN : LOSS }}
                     >
                       {s.model_brier.toFixed(3)}

@@ -234,7 +234,7 @@ function BrierScoreSection({ data, isLight }: { data: BrierScore; isLight: boole
         {t('prediction.brier_score')}
       </p>
       <div className="flex items-center gap-3">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="h-2 bg-gray-700 rounded overflow-hidden">
             <div
               className="h-full rounded transition-all"
@@ -247,7 +247,7 @@ function BrierScoreSection({ data, isLight }: { data: BrierScore; isLight: boole
           </div>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-sm font-bold font-mono" style={{ color: gradeColor }}>
+          <p className="text-sm font-bold num-cell" style={{ color: gradeColor }}>
             {data.score.toFixed(3)}
           </p>
           <p className="text-[10px]" style={{ color: gradeColor }}>{gradeLabel}</p>

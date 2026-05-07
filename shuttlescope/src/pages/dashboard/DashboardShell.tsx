@@ -75,15 +75,15 @@ function StatCard({
     : '★★★'
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 flex items-start gap-3">
-      <div className="text-blue-400 mt-0.5">{icon}</div>
-      <div>
-        <p className="text-xs text-gray-400 mb-1">{label}</p>
-        <p className="text-xl font-semibold text-white">
+    <div className="bg-gray-800 rounded-lg p-4 flex items-start gap-3 min-w-0">
+      <div className="text-blue-400 mt-0.5 shrink-0">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-gray-400 mb-1 truncate" title={label}>{label}</p>
+        <p className="text-xl font-semibold text-white num-cell">
           {value !== undefined && value !== null ? value : '—'}
         </p>
         {sampleSize !== undefined && (
-          <p className="text-[10px] text-gray-500 mt-0.5">
+          <p className="text-[10px] text-gray-500 mt-0.5 num-cell">
             {stars} N={sampleSize.toLocaleString()}ラリー
           </p>
         )}
@@ -328,7 +328,7 @@ export function DashboardShell() {
             </div>
 
             <div className={`px-6 pt-3 pb-3 border-b ${borderColor}`}>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatCard icon={<Award size={18} />} label="試合数" value={descriptive?.total_matches} />
                 <StatCard icon={<Activity size={18} />} label="ラリー数" value={descriptive?.total_rallies} sampleSize={descriptive?.total_rallies} />
                 <StatCard
