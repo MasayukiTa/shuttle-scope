@@ -89,7 +89,10 @@ def _run_benchmark() -> dict:
     # 追跡コスト計算の軽量性を確認: 4 検出 × 4 既存トラックの1フレーム分
     track_result: dict = {"error": "未計測"}
     try:
-        from backend.routers.yolo import _torso_hue_hist, _cos_sim
+        # round181 fix: yolo.py 側で _torso_hue_hist は legacy 化され、production は
+        # backend.cv.reid.extract_embedding (HSV+LBP or OSNet ONNX) を使用している。
+        # ベンチマークは production と同じ経路を測る。
+        from backend.cv.reid import extract_embedding as _torso_hue_hist, cos_sim as _cos_sim
         rng2 = np.random.default_rng(7)
         # 4 つの仮想 bbox（正規化座標）
         bboxes = []
@@ -116,7 +119,7 @@ def _run_benchmark() -> dict:
             "fps":     round(1000.0 / avg_ms, 1),
             "avg_ms":  round(avg_ms, 2),
             "p95_ms":  round(float(np.percentile(latencies, 95)) * 1000, 2),
-            "backend": "cv2+numpy",
+            "backend": "reid_embedding",
             "samples": _TRACK_SAMPLES,
         }
     except Exception as e:
