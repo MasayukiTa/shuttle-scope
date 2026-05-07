@@ -35,6 +35,9 @@ interface SettingsModePanelProps {
   /** 最初のサーバー (player_a / player_b) */
   initialServer?: 'player_a' | 'player_b'
   onSetInitialServer?: (server: 'player_a' | 'player_b') => void
+  /** モバイルでもショットタイルのキーヒントを表示する (BT keyboard 接続 iPad ベンチ用) */
+  forceShowKeyHints?: boolean
+  onSetForceShowKeyHints?: (v: boolean) => void
 }
 
 export function SettingsModePanel({
@@ -50,6 +53,8 @@ export function SettingsModePanel({
   onSetPlayerAStart,
   initialServer,
   onSetInitialServer,
+  forceShowKeyHints,
+  onSetForceShowKeyHints,
 }: SettingsModePanelProps) {
   const { t } = useTranslation()
   const flipMode = useAnnotationStore((s) => s.flipMode)
@@ -166,6 +171,22 @@ export function SettingsModePanel({
             {t('annotator.ux.settings_court_open')}
           </button>
         </Section>
+
+        {/* キーヒント表示設定 (BT keyboard 接続 iPad 対応) */}
+        {onSetForceShowKeyHints && (
+          <Section
+            icon="keyboard_alt"
+            title={t('annotator.ux.settings_section_keyhints', { defaultValue: 'キーヒント表示' })}
+            alwaysOpen={isWide}
+          >
+            <ToggleControl
+              label={t('annotator.ux.settings_force_keyhints_label', { defaultValue: 'モバイルでもキーヒントを表示' })}
+              hint={t('annotator.ux.settings_force_keyhints_hint', { defaultValue: 'BT キーボード接続の iPad ベンチ運用向け' })}
+              on={!!forceShowKeyHints}
+              onClick={() => onSetForceShowKeyHints(!forceShowKeyHints)}
+            />
+          </Section>
+        )}
 
         <Section
           icon="keyboard"

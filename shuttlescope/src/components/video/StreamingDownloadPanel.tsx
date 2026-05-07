@@ -75,6 +75,12 @@ export function StreamingDownloadPanel({
   const [progress, setProgress] = useState<ProgressInfo>({ percent: '0%', speed: '', eta: '' })
   const [errorMsg, setErrorMsg] = useState('')
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
+  // 会員限定サイト対応: cookies.txt (Netscape 形式) を Web 経由でも投入できるようにする。
+  // 旧版は cookie_browser のみで、Cloudflare 経由の Web からは何も渡せなかった。
+  // backend `/matches/{id}/download` は body に `cookies_txt: string` を受け付ける既存実装を活用。
+  const [cookiesTxt, setCookiesTxt] = useState<string>('')
+  const [cookiesFileName, setCookiesFileName] = useState<string>('')
+  const [cookiesError, setCookiesError] = useState<string>('')
 
   // ── システム機能確認（ffmpeg / yt-dlp 可用性） ────────────────────────────
   useEffect(() => {
@@ -141,9 +147,12 @@ export function StreamingDownloadPanel({
     setDlState('starting')
     setErrorMsg('')
     try {
+      const body: Record<string, unknown> = { quality, cookie_browser: cookieBrowser }
+      // cookies.txt が投入されていれば backend の `cookies_txt` パスを使う (Web 経由会員限定サイト対応)
+      if (cookiesTxt.trim()) body.cookies_txt = cookiesTxt
       const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
         `/matches/${matchId}/download`,
-        { quality, cookie_browser: cookieBrowser }
+        body,
       )
       setJobId(res.data.job_id)
       setDlState('downloading')
@@ -151,7 +160,33 @@ export function StreamingDownloadPanel({
       setDlState('error')
       setErrorMsg(err?.message ?? 'ダウンロード開始に失敗しました')
     }
-  }, [matchId, quality, cookieBrowser])
+  }, [matchId, quality, cookieBrowser, cookiesTxt])
+
+  // ── cookies.txt ファイル投入 (1MB 上限、Netscape ヘッダ簡易チェック) ────────
+  const handleCookiesFile = useCallback(async (file: File | null) => {
+    setCookiesError('')
+    if (!file) {
+      setCookiesTxt('')
+      setCookiesFileName('')
+      return
+    }
+    if (file.size > 1024 * 1024) {
+      setCookiesError('cookies.txt は 1MB 以下にしてください')
+      return
+    }
+    try {
+      const text = await file.text()
+      // Netscape cookies.txt 形式の簡易チェック (backend と同じ条件)
+      if (!/Netscape HTTP Cookie File/i.test(text) && !/^# /m.test(text)) {
+        setCookiesError('Netscape 形式の cookies.txt ではないようです')
+        return
+      }
+      setCookiesTxt(text)
+      setCookiesFileName(file.name)
+    } catch (err: any) {
+      setCookiesError(err?.message ?? 'ファイル読み込みに失敗しました')
+    }
+  }, [])
 
   // ── リセット ────────────────────────────────────────────────────────────────
   const handleRetry = useCallback(() => {
@@ -356,6 +391,48 @@ export function StreamingDownloadPanel({
               <div className={`font-medium ${isLight ? 'text-orange-600' : 'text-orange-300'}`}>{t('auto.StreamingDownloadPanel.k8')}</div>
             </div>
           )}
+
+          {/* cookies.txt ファイル投入 (会員限定サイト Web 経由 DL 用)
+              Cookie-Editor 拡張等で書き出した Netscape 形式 cookies.txt を読み込み、
+              backend の `cookies_txt` パスに送る。1MB 上限 + 簡易ヘッダチェックあり。 */}
+          <div className="flex flex-col gap-1 border-t border-dashed pt-2"
+               style={{ borderColor: isLight ? '#cbd5e1' : '#374151' }}>
+            <label className={`text-xs ${labelColor} flex items-center gap-1`}>
+              <Cookie size={12} />
+              cookies.txt (Web 経由会員限定サイト用)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept=".txt,text/plain"
+                onChange={(e) => handleCookiesFile(e.target.files?.[0] ?? null)}
+                className={`text-xs flex-1 min-w-0 ${isLight ? 'text-gray-700' : 'text-gray-300'}`}
+              />
+              {cookiesFileName && (
+                <button
+                  type="button"
+                  onClick={() => handleCookiesFile(null)}
+                  className={`text-[10px] px-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                  title="cookies.txt をクリア"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {cookiesFileName && !cookiesError && (
+              <div className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                ✓ {cookiesFileName} ({Math.round(cookiesTxt.length / 1024)} KB) を投入済
+              </div>
+            )}
+            {cookiesError && (
+              <div className={`text-[10px] ${isLight ? 'text-red-600' : 'text-red-400'}`}>
+                ⚠ {cookiesError}
+              </div>
+            )}
+            <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
+              ブラウザに「Cookie-Editor」「Get cookies.txt LOCALLY」等の拡張をインストール → 該当サイトで書き出し → ここにアップ
+            </div>
+          </div>
 
           {/* ダウンロードボタン */}
           <button

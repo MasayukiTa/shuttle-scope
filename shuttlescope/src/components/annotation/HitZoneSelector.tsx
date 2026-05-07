@@ -48,9 +48,17 @@ export function HitZoneSelector({
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className="text-xs font-medium text-blue-300">
-        {t('annotator.hit_zone')} {isOverridden && (
-          <span className="ml-1 text-[10px] text-orange-400">({t('annotator.hit_zone_overridden')})</span>
+      <div className="text-xs font-medium text-blue-300 flex items-center gap-1">
+        <span>{t('annotator.hit_zone')}</span>
+        {isOverridden && (
+          // 旧: text-[10px] で WCAG AA 失敗 (小文字 + orange-400 on dark = ~3.5:1)
+          // 新: text-xs (12px) + text-orange-300 + 丸枠で視認性確保
+          <span
+            className="inline-flex items-center px-1 py-0.5 rounded border border-orange-500/50 bg-orange-900/40 text-xs text-orange-300 font-semibold leading-none"
+            aria-label={t('annotator.hit_zone_overridden')}
+          >
+            ✎ {t('annotator.hit_zone_overridden')}
+          </span>
         )}
       </div>
       <div

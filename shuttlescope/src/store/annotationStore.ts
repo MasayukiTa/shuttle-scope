@@ -444,10 +444,18 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   // ダブルス制御
   setIsDoubles: (v) => set({ isDoubles: v }),
   // setHitter は currentPlayer も同期する（打者のチームが正しく反映されないバグ対策）
-  setHitter: (h) => set({
-    currentHitter: h,
-    currentPlayer: (h === 'player_b' || h === 'partner_b') ? 'player_b' : 'player_a',
-  }),
+  // 旧: 文字列 suffix `_a` / `_b` で判定していたが、将来 hitter id に '_a' を含む
+  // 名前 (例: '_anchor' 等) が混入すると壊れるため、explicit map で対応する。
+  setHitter: (h) => {
+    const HITTER_TO_TEAM: Record<string, 'player_a' | 'player_b'> = {
+      player_a: 'player_a',
+      partner_a: 'player_a',
+      player_b: 'player_b',
+      partner_b: 'player_b',
+    }
+    const team = HITTER_TO_TEAM[h] ?? 'player_a'  // 未知 hitter はデフォルトで player_a 側
+    set({ currentHitter: h, currentPlayer: team })
+  },
   toggleHitterWithinTeam: () =>
     set((s) => {
       if (!s.isDoubles) return {}
