@@ -16,202 +16,115 @@ Read it together with:
 
 ## 2026-05-07
 
-### Generic Screen-Capture Recording for Any HTTPS Streaming Site
+### Streaming-Capture Recording for Member-Only Live Sites
 
-- Removed the YouTube-only allowlist on the Electron `desktopCapturer` recording path so the OS-level pixel capture works for any HTTPS streaming site the user is licensed to view (DAZN, WOWOW, U-NEXT, niconico, Twitter Live, etc.). The YouTube-specific IPC (`youtube-live-drm-start`) is preserved for backward compatibility; a new `screen-capture-start` IPC accepts `{ url, jobId, token, matchId, quality }` and shares the existing webm chunk → mp4 remux → `Match.video_local_path` archive pipeline. No DRM / CDM bypass and no HDCP defeat is implemented anywhere; the feature is exclusively the OBS-equivalent legal capture of frames the platform actually rendered for the licensed viewer.
-- The new IPC validates user-supplied URLs through `_validateUserUrlForCapture`: rejects non-`https://`, embedded credentials (`user:pass@`), 500-character cap, loopback / private / link-local / IPv6 unique-local hosts, and IPv6 link-local. The browser window is then loaded with a normal Chrome UA, and `permission` requests are restricted to `media`, `mediaKeySystem`, and `display-capture`.
-- The same-origin navigation guard for the capture window now uses the `psl` library (`registrable domain` matching) instead of a naive last-two-label split. This fixes second-level public TLDs like `co.uk` / `co.jp` (e.g. `bbc.co.uk` ↔ `news.bbc.co.uk` is allowed, `bbc.co.uk` ↔ `unrelated.co.uk` is not). IP-literal hosts and PSL-unknown TLDs fall back to the literal lowercase hostname.
-- Added a `low / med / high` recording quality preset (1.5 Mbps / 480p, 5 Mbps / 720p, 9 Mbps / 1080p, all at 30 fps) selectable from a dropdown next to the record button. The selection is persisted in `sessionStorage` so the same value is used until the app is restarted, and is plumbed through to the recorder window's `getUserMedia` mandatory constraints and `MediaRecorder.videoBitsPerSecond`.
-- Added an HDCP / black-frame post-processing step. After the DRM-path remux to mp4, `_detect_black_frames` runs `ffmpeg blackdetect=d=0:pix_th=0.10` and computes the ratio of black-detected duration to total duration; ≥ 80 % triggers a `RecordJob.warning` saying the platform likely blocked the capture, 30–80 % surfaces a partial-blank notice. The warning is exposed through `/youtube_live/{job_id}/status` and rendered in `WebViewPlayer` as an orange banner so the operator notices before assuming the recording is usable.
-- Added a `video_password` path for password-protected videos (Vimeo Showcase, some member-only Vimeo content). `DownloadRequest.video_password` is plumbed through `start_download` to yt-dlp's `videopassword` option; the value is capped at 1024 characters, never written to logs or audit log, and dropped after the job runs. The frontend exposes it in `StreamingDownloadPanel` as a collapsed section with a `type=password` field, a show/hide toggle, and `autoComplete="off"`.
-- `WebViewPlayer.tsx` got the record-button state machine itself (`idle / starting / recording / stopping / processing / complete / error`) with a real-time `MM:SS` elapsed counter, a status poller against `/youtube_live/{id}/status`, and `onRecordingComplete` callback wiring so the annotator's match query is invalidated as soon as the file is archived. The button is hidden in the web build (`screenCaptureAvailable === false`) since the capture path is Electron-only.
-- `docs/electron-drm.md` was rewritten as a 3-path decision guide (yt-dlp / WebView + screen capture / castLabs Electron) with a per-site recommendation table. The note now explicitly states that even castLabs L1 does not bypass HDCP black-frame, so the project intentionally keeps the standard Electron build as the default and leaves castLabs as user-managed opt-in.
+- Generalised the desktop screen-recording feature beyond the original YouTube-only path so the analyst can capture badminton broadcasts on any streaming site they are licensed to view. Recording is OS-level pixel capture (the OBS-equivalent path) only; no DRM or HDCP bypass is implemented anywhere in the project. Quality presets (low / med / high), a recording state machine, and a post-processing warning when the captured frames are mostly black (i.e. the platform actively blocked the capture) were added at the same time.
+- Added a video-password field to the streaming download panel for sites like Vimeo Showcase. Browser cookies (`cookies.txt`) and that password are passed to the downloader and discarded immediately after the job runs; neither is logged.
+- Documented the three available recording paths (yt-dlp, in-app WebView + screen capture, and the optional castLabs Electron build) in `docs/electron-drm.md`, including why castLabs is left as a user-managed opt-in.
 
-### Annotator Audit Sweep — Rounds 1, 2, and 3
+### Annotator Audit Sweep — UX, Keyboard, Errors, Mobile
 
-- Closed three full audit passes on the annotator workflow over 31 fix items. The intent was to make the annotation surface usable without ever needing the keyboard fallback in mind: tile contrast, focus order, keyboard shortcuts, doubles input, and error-handling all had to land before the recording work was meaningful.
-- Round 1 (5 items): pushed the active stroke-type tile from `amber-500` to `amber-600` so its label remains WCAG AA in both themes; bound `1`–`9` (and `Shift+1`–`9` in doubles) to `hit_zone` selection so the analyst never has to mouse to a 9-cell grid mid-rally; added a focus ring + `aria-keyshortcuts` on the active step indicator so the keyboard user can see which step the next key will affect; collapsed the TrackNet / CV / BBOX / grid block under a single `cvToolsExpanded` toggle; and made the doubles hitter selector remain editable when the rally is mid-flight rather than locking the wrong side.
-- Round 2 (10 items): wired the previously dead `SettingsPage` "calibration" / "keyboard legend" buttons into real handlers, added `aria-keyshortcuts="Tab"` to the player toggle with a visible kbd pill, made auto-init retry loop instead of needing a manual reload, fixed `Shift+1`–`9` to escape `hit_zone` mode rather than feed it digits, fixed a `land_zone` direction bug in doubles, replaced every `alert()` and `window.confirm()` with the new `Notice` / `ConfirmDialog` components (`destructive` variant, ESC + backdrop close, accessible focus management), surfaced the mobile match-settings under `SettingsModePanel` so the small-screen layout actually has a path to per-match config, and migrated ~152 hard-coded Japanese strings into the i18n tree under `annotator.ui.*`.
-- Round 3 (13 items): turned the step indicator into a 4-state `待機 / ラリー中 / land_zone / rally_end` pill (grey / emerald / blue / orange); added a Tab kbd hint to the player toggle and made the toggle disabled in `rally_end`; promoted the `HitZoneSelector` override label from `text-[10px]` to a WCAG-AA bordered chip with `✎`; added a `forceShowKeyHints` toggle to `ShotTypePanel` so analysts who want the keys visible always can disable the `md:` breakpoint hide; fixed the `useKeyboard` ref-stale-closure that made the first key after a step transition behave like the previous step; made `Undo` step-aware; extracted `ScoreboardCompact` and `ShortcutLegend` into their own components; corrected a label-key drift bug; replaced the suffix-string `setHitter` heuristic with an explicit `HITTER_TO_TEAM` map; and exposed the cookies.txt upload path in `StreamingDownloadPanel` so member-only sites that yt-dlp can still reach (with cookies) work from the web build too.
+- Three coordinated review passes against the annotator workflow (28 items total). Highlights: improved contrast on the active stroke-type tile so it stays WCAG AA, expanded keyboard coverage (number-row binds for hit/land zones, Tab to swap player, an opt-in always-on key-hint toggle), a 4-state step indicator with focus ring and screen-reader hints, replaced every native `alert()` / `confirm()` with accessible toast and modal components, and migrated ~150 remaining hardcoded Japanese strings into the translation tree.
+- Mobile pass: walked the dashboard / settings / condition / review surfaces at iPhone widths and fixed every place tabs and tables spilled outside their container. `useBreakpoint` was extended to the full 6-stage Tailwind ladder, and a phone-sized players sheet and iPad sidebar layout were rebuilt on top of that hook.
+- Consolidated the annotator's various menu surfaces into a single top-bar menu plus a flattened settings panel, and surfaced the existing `Ctrl+K` command palette as a visible button so it is discoverable.
 
-### Mobile Sub-Tab Overflow Pass
+### Operator: Production Scheduled-Task Recovery
 
-- Walked the entire app at iPhone widths and fixed every place sub-tabs / sub-controls were spilling out of their container. `DashboardTopNav`, `DashboardSectionNav`, and `SettingsPage` tabs already had `overflow-x-auto scrollbar-hide`; the regression was on settings tables, ranking rows on `xs`, and `DashboardLivePage` / `DashboardAdvancedPage` / `DashboardReviewPage` action rows. The unified fix was: `num-cell` + `cell-name-clip` utility classes (xs:14ch / md:22ch / lg:28ch with ellipsis + `title` tooltip), tabular-nums + nowrap on score cells, and hiding non-essential ranking columns under `xs`. The override banner on `DashboardAdvancedPage` and the back button aria label on `DashboardReviewPage` were brought into the same pass.
-- `useBreakpoint` was extended to the full 6-stage Tailwind ladder (`xs:480 / sm:640 / md:768 / lg:1024 / xl:1200 / 2xl:1440`) so component code no longer guesses at boundaries. `PlayerSelectorSheet` (a phone-sized players sheet) and `iPad` sidebar layouts were rebuilt on top of this hook.
-
-### Production Scheduled-Task Recovery
-
-- Discovered during a post-deploy that the `ShuttleScopeBackend` Scheduled Task had reverted from `/RU SYSTEM` to `/RU kiyus` Interactive at some point, which meant a logoff would kill the backend. Re-registered it via `Register-ScheduledTask` with `SYSTEM` principal, `RestartCount=99`, `ExecutionTimeLimit=0`, `OnStart` trigger, and the existing `backend_supervisor.ps1` (Global-Mutex + 5/10/30/60/120/300 s exponential backoff). Backed up the previous task XML to `C:\Users\kiyus\Desktop\schedtask_backup\ShuttleScopeBackend_20260507-130558.xml` for rollback.
-- Documented the gotcha that `Stop-ScheduledTask` orphans the Python child (the supervisor PowerShell dies, but the spawned `python.exe` keeps holding port 8765); the safe restart path is to kill the Python process and let the supervisor respawn it. This is now in the operator notes alongside the `git stash push config.py → git pull → git stash pop → npm build` deploy pattern that preserves the production-only `extra="ignore"` and Phase M-A env vars in `config.py`.
-
-### Top-Bar / Menu Surface Consolidation and ⌘K Surfacing
-
-- Consolidated the annotator's various menu surfaces (top bar, kebab menu, mode-driven right panel, settings cascading dropdowns) into a single `TopBarMenu` plus a flattened `SettingsModePanel`, and surfaced the existing `Ctrl+K` command palette as a visible button so the discoverable path matches the keyboard shortcut. The settings panel went from a 3-level cascade to a flat sectioned panel: 記録モード / 自動切替 / 試合設定 (now including `playerAStart` and `initialServer` segmented controls) / コートキャリブレーション / キーヒント表示 (new `forceShowKeyHints` toggle) / キーボード legend.
+- Caught a regression where the production task supervisor had been reverted from a system-level run mode to an interactive one and would die on logoff. Re-registered it with the correct system-level principal, restart count, and start trigger. Operator notes for safe deploy and restart steps were updated.
 
 ## 2026-05-04
 
-### UX Redesign U1–U8 and UX-R1–R4 Refinements
+### Annotator UX Redesign
 
-- Took the annotator through a full redesign sprint. U1 split the top bar into a primary score display plus a kebab menu and hid secondary buttons under `xl`. U2 introduced mode tabs (`Input / Review / Analysis / Settings`) with Material Symbols, and U3 wired those modes to a mode-driven right panel so the working surface only shows what the current mode needs. U4 added a bottom history strip showing the last 5 strokes with click-to-seek, U5 added floating video overlay toggles for CV / shuttle / court, and U6 added the `Ctrl+K` command palette. U7 added the mobile variant — a vertical stack with a bottom sheet, and U8 introduced a JMP-style cascading dropdown for the settings mode (later flattened in the 2026-05-07 sweep above). UX-R1 added a `stepFocusMode` that hides secondary widgets while the analyst is in input mode, UX-R2 migrated all U1–U8 / R1 / R3 / R4 strings to i18n, UX-R3 added the YOLO / TrackNet batch ops to `TopBarMenu`, and UX-R4 wired the new `BottomSheet` component into the mode panels on mobile.
-- The annotator also got `Phase A`–`C` craftsmanship work on the same day: hit_zone manual override + offline rally stash (Phase A), a semantic colour system for `ShotTypePanel` (Phase B), and a haptics + semi-auto flip + selected-ring fix (Phase C speed). The ring-selection regression had been making it ambiguous which player was active during quick rally entry.
+- Full redesign sprint over the annotator workflow: top-bar split into a primary score display plus a kebab menu, mode tabs for Input / Review / Analysis / Settings driving a right panel that only shows what the current mode needs, a bottom history strip with click-to-seek, floating video-overlay toggles, and a `Ctrl+K` command palette. A mobile variant with a bottom sheet was added in the same sprint, and remaining hardcoded strings were migrated to the translation tree.
+- Annotator craftsmanship: hit-zone manual override, offline rally stash, semantic colour system on the stroke-type panel, haptics, and a semi-auto flip path that fixes a player-selection regression during quick rally entry.
 
-### CV — Tracks A through E Foundation
+### CV Foundation — Tracks A through E
 
-- Track A landed person-tracking on top of ByteTrack with the court adapter, identity / occlusion / rally modules, plus a `/api/health/cv` endpoint so the diagnostics tooling can see whether the CV stack is wired. Track C rolled out in C2 / C3 / C4 / C5: `RTMPoseEngine` for 17-keypoint pose estimation (C2), a `SwingDetector` driven by wrist velocity and elbow angle (C3), a 3-stage hitter-attribution fallback chain (C4), and a `NetAwareDetector` plus `CourtBoundedFilter` (C5). The accompanying Track C design note documents the fallback ordering and which signal each layer actually uses, so future tuning does not need to re-derive the contract.
+- Person-tracking, pose estimation, swing detection, and hitter attribution rolled in over multiple tracks with a fallback chain documented for future tuning.
 
-### Mobile-Responsive Pass Across Condition / Team / Settings / Camera / Expert Labeler
+### Mobile-Responsive Pass
 
-- Walked the same set of pages under iPhone widths and applied the same recipe used in the 2026-05-07 sub-tab pass (`overflow-x-auto scrollbar-hide` for tabs, `num-cell` and `cell-name-clip` utility classes for tables, mobile-card variants under `md`). The Audit-Log and Admin-Billing tables specifically hid non-essential columns on the smaller breakpoints rather than horizontally scrolling, since the full table is still reachable on desktop.
+- Walked the condition / team / settings / camera / expert-labeler surfaces at iPhone widths and applied the same overflow / clipping / mobile-card recipe that the dashboard had been using.
 
-### Video Workflow Fixes
+### Video Pipeline Fixes
 
-- Fixed three connected video bugs that together had been blocking the browser-side stream of server-stored matches. `fix(video): browser <video> can stream server-stored matches` made the renderer accept the `server://` protocol, `fix(auth): middleware bypass for token-authenticated video stream` wired the auth middleware to honour token-bearing video stream requests, and `fix(matches): preserve server:// video_local_path against empty PUT` stopped a `PUT /api/matches/{id}` body without `video_local_path` from clearing the stored path. `fix(cv): resolve server:// to UPLOAD_DIR file for yolo/tracknet/normalize` made the same path resolve to the actual upload-dir file when CV jobs ran.
-- Added `feat(archive): move downloaded videos to external SSD after 24h` so the on-PC `data/youtube_live/` does not silently grow; archive uses `path_jail` + a configurable `SS_LIVE_ARCHIVE_ROOT` and updates `Match.video_local_path` automatically.
+- Resolved a bundle of bugs that together had been blocking browser-side playback of server-stored matches and CV pipeline reads of the same.
+- Added an automated archive step that moves downloaded videos off the working drive after a configurable interval, with a path safety jail and DB-side path tracking.
 
-### Local Parallel Review (49 / 49 Findings) and UltraReview UR-1 .. UR-6
+### Internal Reviews and CI
 
-- Closed both review sweeps on the same day. `fix: address local parallel review (49/49 findings)` walked through 49 individual findings — naming, type narrowing, missing aria, role gating, copy / paste duplications, dead imports — in one bundled commit since splitting them would have created merge churn against the UX redesign series above. `fix(analysis): address ultrareview UR-1..UR-6 findings` closed six analysis-side issues from a separate ultra-review run (mostly evidence-level metadata, sample-size guards, and player-facing language sanitization).
-- `chore(scan): correct Bandit / DevSkim suppressions + Scorecard pin` removed stale suppressions that had been masking new findings, and pinned the Scorecard workflow's commit to a verified SHA. `chore(scan): suppress code-scanning noise from intentional attack tests` carved out the `shuttlescopeattacktest/` directory so legitimate attack-payload literals (CRLF, control chars, fake JWTs) don't keep generating noise on the security tab.
+- Closed two coordinated review sweeps (general code review and an analytics-focused ultra-review) and brought the TrackNet smoke workflow back to green after dependency drift in the runtime stack.
 
-### CI Triage — TrackNet Smoke and Two CI Jobs
+### Data-Loss Incident and Recovery
 
-- `fix(ci): repair two failing CI jobs` and `fix(ci): pin TensorFlow 2.15 in TrackNet Smoke workflow` and `fix(ci): install onnxruntime in TrackNet Smoke workflow` brought the smoke workflow back to green. The TrackNet smoke had been failing because TF 2.16 broke a load path the project relies on, and onnxruntime had been an implicit dependency that disappeared when the worker requirements were split out.
-
-### 2026-05-04 Data-Loss Incident and Recovery
-
-- A `/ultrareview` invocation on an orphan branch wiped a gitignored area that was holding several validation MDs, helper scripts, and downloaded `youtube_live/` videos. Most of the data was recoverable from the production machine (SSH + Claude session jsonl) and `chore: restore validation docs and helper script from production` brought the validation MDs back. The downloaded video archive was unrecoverable for files that had not yet been moved to the external SSD by the new archive cron — going forward `/ultrareview` is treated as destructive on this repo and a backup of the gitignored areas is now taken before invoking it.
+- An automated review tool was invoked on an orphan branch and wiped a gitignored area holding validation notes, helper scripts, and downloaded video archives. Validation docs were recoverable from the production machine; the unsynced video archive was lost. Going forward, the tool is treated as destructive on this repo and a backup of the gitignored areas is taken before invoking it.
 
 ## 2026-04-30
 
 ### CI Restoration on Windows and Linux
 
-- Removed an invalid `_castlabs_drm_note` pseudo-package from `package.json` that was crashing `npm ci` with `EINVALIDPACKAGENAME` on both Windows and Linux runners. The Japanese explanatory note about the castlabs Electron build was relocated to `shuttlescope/docs/electron-drm.md`.
-- Made `test_database_bootstrap` read the latest Alembic head dynamically from the `versions/` directory instead of hard-coding a revision string, so future migrations no longer require test edits.
-- Converted module-level `_ADMIN_HEADERS = create_access_token(...)` constants in `test_db_maintenance`, `test_benchmark_devices`, `test_network_diag`, and `test_settings_router` to per-test `admin_headers` fixtures. The module-level form was being evaluated at import time, before pytest fixtures wired the in-memory DB, and was producing tokens that the running app rejected as `403 admin role required` for the rest of the suite.
-- Added a UTF-8 stdout wrapper to `scripts/check_security_conventions.py` so its Japanese log lines no longer break Windows CI under cp1252.
-- Backend tests, frontend tests, build, and security-conventions check now pass on both `ubuntu-latest` and `windows-latest` runners.
+- Cleaned up CI infrastructure issues so backend tests, frontend tests, build, and the security-conventions check pass on both `ubuntu-latest` and `windows-latest` runners.
 
-### Code Scanning Cleanup (Critical and High)
+### Security Hardening
 
-- Closed both Critical `py/command-line-injection` findings in `services/youtube_live_recorder.py`. Added a `_validate_url_for_subprocess` helper that rejects non-`http(s)://`, control characters, and any loopback / private / link-local / reserved / multicast / unspecified IP host before the URL ever reaches `yt-dlp` or `ffmpeg`. The yt-dlp invocations were also rewritten to insert `["--", url]` so a URL like `--exec=evil` cannot be reinterpreted as a yt-dlp flag, and the ffmpeg `-i` paths now require `http(s)://` URLs explicitly.
-- Closed the High `py/path-injection` finding in `routers/video_import.py` by reordering the `path_jail` check to run before any `Path.exists()` / `Path.is_file()` filesystem probe. Previously the filesystem state could be queried via differential response codes before the jail rejected an out-of-jail path.
-- Reviewed the remaining High and Medium findings (HMAC-SHA256 audit-chain hashing, `path_jail.py` self-resolve, Electron `webSecurity:false` on the YouTube live preview window) and either fixed or formally dismissed them with rationale recorded on the alert.
-- Removed `webSecurity: false` from the YouTube live preview `BrowserWindow` so Same-Origin and CSP enforcement remain on; the window is captured at the OS level via `desktopCapturer` so cross-origin DOM access was never required.
+- Closed the Critical and High findings from the static analysis sweep through additional input validation and path-safety guards. Specific finding details and the corresponding mitigations are tracked in the project's internal security log rather than this public changelog.
+- Tightened HTTP response headers (Content-Security-Policy on HTML responses, Permissions-Policy, COOP / CORP) and adjusted CORS for the public deployment posture.
+- Hardened authentication-related timing characteristics so failed login responses do not leak whether a username exists.
+- Restored the emergency token-revocation path after a regression. Operational runbook for incident response is maintained internally.
+- Added admin tooling (per-user limit visibility and category-scoped reset) to make abnormal usage visible from the admin UI rather than only in process memory.
 
-### Emergency Token Revocation Restored
+### Streaming Upload Path
 
-- Fixed two compounding bugs that had silently disabled `POST /api/admin/security/revoke_all_tokens`. First, the sentinel marker stored in `revoked_tokens.jti` (`"__mass_revoke_<isoformat>"`) overran `VARCHAR(36)` because the ISO timestamp included microseconds, so the row never persisted (`revoked_marker_added: false`). Second, the recovery path read the timestamp back via naive `datetime.fromisoformat(...).timestamp()`, which on a JST host treated the naive datetime as local time and produced an epoch value 9 hours earlier than the actual revoke moment, allowing tokens issued in the preceding 9 hours to keep authenticating.
-- After the fixes the emergency revoke now persists a sentinel that fits the column, recovers it as UTC, and rejects every token with `iat < mass_revoke_at` exactly as documented in the incident-response runbook. The behaviour was verified end-to-end against the live tunnel: an old admin token returned 401 within the 60s sentinel-cache TTL, and a fresh re-login worked.
+- Introduced a streaming-upload flag for MediaRecorder-style chunk uploads where the final file size is not known until finalize. Strict ordering on chunk receipt and an upper bound on total bytes are enforced server-side. Frontend updated to use the matching content type.
 
-### SSRF Hardening on Stored Video URLs
+### Unattended Operation
 
-- `PUT /api/matches/{id}` previously accepted a `video_url` like `http://169.254.169.254/...` (cloud metadata), `http://127.0.0.1/...`, `http://[::1]:.../`, or `http://localhost/...` and persisted it. The actual SSRF surface was at download time, but storing those URLs left them ready to fire if any future code path read them less carefully.
-- Added an `ipaddress`-based early reject at the router so the value never reaches the database when its host resolves to a loopback, private, link-local, reserved, multicast, or unspecified IP, or to a `localhost`-family hostname. Public hostnames continue to be accepted; download-time validation still applies as the second layer.
+- Stood up the production backend supervisor and the tunnel as proper Windows services with restart policies, so a connect-holiday absence does not lose service on crash or logoff.
 
-### Security Headers Tightened
+### Internal Verification Rounds
 
-- Added a full `Content-Security-Policy` to `text/html` responses (HTML pages had no CSP previously, only the `application/json` API responses did). The policy is `default-src 'self'`-based with `script-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`, and `upgrade-insecure-requests`.
-- Changed `Permissions-Policy` for `camera` and `microphone` from `()` (deny all) to `(self)` so the R-1 sender flow's `getUserMedia()` actually works; `geolocation` stays fully denied.
-- Added `Cross-Origin-Resource-Policy: same-origin` and `Cross-Origin-Opener-Policy: same-origin` for additional Spectre and popup isolation.
-- Made the SPA hash-redirect catch-all return `404` for `api/*` and `ws/*` paths instead of redirecting to `/#/...` and ultimately serving the SPA HTML, which had been creating a 302 confusion on non-existent API endpoints (round60 J-1a / round63 Z-1).
-- Forced `PUBLIC_MODE=1`, `HIDE_API_DOCS=1`, and `HIDE_STACK_TRACES=1` from the backend supervisor's spawn environment so production hardening is on regardless of `.env.development`. As a result CORS no longer answers `Access-Control-Allow-Origin: *` on authenticated origins; only the configured tunnel host is allowed and arbitrary origins are rejected at preflight with 400.
-
-### Login Timing Channel Closed
-
-- Wrapped `POST /api/auth/login` so failure-class responses (401 / 422 / 429) are padded to a constant minimum of 2.5 seconds plus 0–150 ms of jitter. Earlier rounds had observed a roughly 100 ms difference between an existing-user-wrong-password path and an unknown-user path because `_on_login_failure` performed an extra DB write that the dummy-bcrypt sanity path did not. The padding compresses the relative difference to about 3.5 percent and buries the residual in the random jitter, making practical username enumeration via login timing infeasible.
-
-### Admin Visibility for Per-User Limits
-
-- Added two admin-only endpoints under `admin_security`:
-  - `GET /admin/security/user_limits` returns each user's current `active_uploads`, `exfil_window` counters, `failed_attempts`, lockout state, and a derived `is_limited` flag.
-  - `POST /admin/security/user_limits/{user_id}/reset` clears the chosen subset of state. The body now accepts `exfil`, `uploads`, `failed_attempts`, and `lock` flags so admins can clear a single category instead of resetting everything (the old all-or-nothing behaviour is preserved as the default when no flags are passed).
-- `ExfilRateLimitMiddleware` exposes class-level `snapshot()` and `reset_user()` methods used by the new endpoints. The exfil counters are now visible from the admin UI rather than hidden in process memory.
-- The user list in `UserManagementPage.tsx` gained four chip badges — 🔒 lock, ⚠ failed-attempts, UL-saturated, EXFIL — plus per-category reset buttons and a separate "all" reset under `RotateCcw`. The columns are sortable so a saturated user is easy to spot at a glance.
-- The admin audit log now renders `created_at` in `Asia/Tokyo` via `toLocaleString` while keeping the raw UTC ISO string in the `title` attribute for traceability.
-
-### R-1 Streaming Upload, Magic-Bytes Bypass Defence, and 50 GB Cap
-
-- Added a `streaming` flag to `UploadSession` (Alembic `0022`) so MediaRecorder-style chunk uploads — which never know the final file size in advance — can be accepted. With `streaming=true`, init creates an empty `.part`, chunks are appended in strict `chunk_index == received_count` order, and the final file size is determined at finalize time. Non-streaming uploads keep the original sparse-file pre-allocation flow.
-- Tightened the chunk handler so an out-of-order chunk for `chunk_index > 0` is rejected with 409 unless chunk 0 has already been received. Without this, an attacker could push HTML or other payloads as chunks 1..N and then send a valid mp4 header at chunk 0, slipping past the existing magic-bytes verification on the first byte.
-- Raised `MAX_UPLOAD_SIZE` from 5 GB to 50 GB so high-bitrate camera output is realistic. The streaming path enforces the same upper bound as a running-total cap during chunk receipt rather than as a precise pre-allocation.
-- Updated `useServerSideRecording.ts` to send `streaming: true` and to use a real `multipart/form-data` chunk body (the previous `Content-Type: application/octet-stream` send was incompatible with the FastAPI `Form/File` endpoint and would have failed in production).
-
-### Unattended Operation Plumbing for the Connect Holiday
-
-- Introduced `backend_supervisor.ps1`, a Global-Mutex-protected daemon that supervises the `.venv` Python with the same six environment variables Electron passes (`API_PORT`, `LAN_MODE`, `ENVIRONMENT=production`, `PYTHONUNBUFFERED`, `PYTHONUTF8`, `PYTHONIOENCODING`), redirects stdout / stderr to log files with 10 MB rotation, and restarts the backend with exponential backoff (5 / 10 / 30 / 60 / 120 / 300 s) on crash. `install_supervisor.ps1` registers it as a Scheduled Task with `/SC ONSTART /RU SYSTEM /RL HIGHEST` so it survives logoff and reboots.
-- Reinstalled `cloudflared` as a real Windows service (`cloudflared --config <path> service install`) with `sc.exe failure cloudflared reset= 86400 actions= restart/5000/restart/15000/restart/60000`. The previous setup had `cloudflared.exe` registered as a service binary but with no arguments, while the actual tunnel was being run by a separate `Start-Process` child of `start.bat`; killing that process cut the tunnel and confirmed the service shim was inert.
-- Verified end-to-end that killing the live tunnel-run process makes the SCM-managed instance take over within a single SSH reconnect window, so a tunnel crash during the connect-holiday absence will self-heal in tens of seconds.
-- Added `electron/main.ts` support for a `SKIP_BACKEND_SPAWN=1` env so the desktop app can intentionally not spawn its own Python child, letting an external supervisor own port 8765 instead of fighting the Electron-spawned process for the same port.
-
-### Security Verification Rounds 58 to 105
-
-- Recorded a long sweep of attack rounds against the live tunnel:
-  - 58 (R-1/2/3 critical 1–7), 59 + 59b (chunk-0 enforcement, streaming, Content-Encoding, chunk_index OOB, empty chunk),
-  - 60 (JWT alg=none / exp / jti tampering, mass-assignment, CSRF, worker traversal, session-code guessing),
-  - 61 (static-file leak probes, CORS preflight, internal-API exposure),
-  - 62 (login user-enumeration timing — found and fixed),
-  - 63 (concurrent finalize / abort race, JWT replay),
-  - 66 + 66b (WebSocket outer-rejection layer with and without a real session),
-  - 67 (auth-timing horizontal sweep),
-  - 68 (CSP / Permissions / COOP / CORP audit — found and fixed), 69 (stored-injection survey),
-  - 71 (account recovery, approval, email-enum), 78 (`npm audit` and `pip-audit`, surfaced `CVE-2026-3219` in pip),
-  - 86 (RBAC matrix on admin endpoints), 89 / 90 (cache-poisoning regression, surface confirmed empty),
-  - 92 (mass_revoke — found two compounding critical bugs documented above),
-  - 95 (stored-log injection, confirmed JSON-escaped on save),
-  - 105 (DNS authentication audit — `SPF ~all` / `DMARC` missing, deferred to Cloudflare DNS).
+- A multi-week sequence of attack rounds was run against the live deployment. The findings, mitigations, and per-round verifications are tracked internally; the changelog only records that the sweep happened.
 
 ## 2026-04-29
 
-### Image-Heavy Round Bundles 58 / 59 / 59b / 60
+### Sender-Side Server Recording
 
-- The dedicated security verification rounds are documented under `2026-04-30` above; the same day's commit history pushed several round scripts and validation MD entries that this changelog folds into the higher-level summary rather than reproducing line-by-line.
+- Reworked the camera sender path so recordings are uploaded to the server (rather than only existing as a P2P WebRTC stream that disappears at session end). Each completed upload is registered for downstream worker / archive processing.
 
-### R-1 Sender-Side Server Recording
+### LAN-First Endpoint Resolution
 
-- Added `useServerSideRecording.ts` and `CameraSenderPage.tsx` plumbing so the camera sender records to the server through `/v1/uploads/video/init|chunk|finalize` rather than only producing a P2P WebRTC stream that disappears at session end. The on-stop and `camera_deactivate` paths now finalise the upload deterministically.
-- Added a `ServerVideoArtifact` table and finalize-time creation so each completed sender upload is enumerable for downstream worker / archive processing.
-
-### R-2 LAN-First Endpoint Resolution
-
-- Added `src/utils/preferredEndpoint.ts` which races configured candidate hosts (LAN IPs versus the Cloudflare tunnel) with a 1 s timeout and a 30 s cache, so a sender on the same Wi-Fi as the operator PC uses a `192.168.*` direct path instead of round-tripping through Cloudflare.
-
-### R-3 Worker HTTP File Sharing (Preliminary)
-
-- Added a worker token authentication helper, an `internal_videos.py` router with three endpoints (`list_artifacts`, `stream_artifact` with HTTP Range, `mark_synced`), an in-memory IP rate limit, and `is_allowed_video_path` enforcement so a remote worker can pull the persisted sender uploads. The whole router is `include_in_schema=False` and gated by the worker token; it is shipped as the preliminary HTTP-only design since on-site worker hardware is not yet a given.
+- Added preferred-endpoint resolution that races configured candidate hosts on session join, so a sender on the same Wi-Fi as the operator PC takes the LAN path directly instead of round-tripping through the public tunnel.
 
 ### Cloudflare Named Tunnel Support
 
-- Updated `routers/sessions.py` so `coach_urls`, `camera_sender_urls`, and `ws_url_template[s]` return `https://app.shuttle-scope.com/...` (or `wss://`) URLs first when the named tunnel is active.
-- Added a `dashboard_managed` fallback path to `routers/tunnel.py` for setups where the tunnel is configured purely from the Cloudflare Zero Trust dashboard rather than from a local `config.yml`.
+- Routed coach / camera-sender / WebSocket URLs through the named tunnel host when active, with a fallback for tunnel configurations that are managed from the Cloudflare dashboard.
 
 ### Phase Pay-1 Billing Foundation
 
-- Wired up Stripe Checkout, KOMOJU Hosted Sessions, and a Univapay stub provider behind a feature flag (`VITE_SS_BILLING_UI_ENABLED`, off by default for now). Receipt PDFs are generated with a Heisei Kaku Gothic CID font, invoice numbers, and legal information sourced entirely from environment variables (`SS_LEGAL_*`, `SS_INVOICE_REGISTRATION_NUMBER`, etc.). All billing endpoints are `include_in_schema=False`.
+- Wired up multi-provider checkout behind a feature flag (off by default). Receipts are generated as PDFs and legal metadata is sourced from environment variables. All billing endpoints are excluded from the public OpenAPI schema.
 
 ### Phase M-A Email Authentication Foundation
 
-- Implemented register / verify / password-reset / invitation flows around a `Mailer` abstraction that defaults to the Cloudflare Worker + MailChannels backend documented in `private_docs/2026-04-28_mail_auth_phase_b_to_d_manual_runbook.md`. Email login (`if "@" in identifier`) is supported alongside username login.
-- Added the `awaiting_admin_approval` flag and a `PendingUsersPage` admin UI so a self-registered user lands as `role="player"` with `awaiting_admin_approval=True` until reviewed.
-- `SS_REGISTRATION_ENABLED=0` is the default so the public registration flow is closed unless explicitly opted in.
+- Implemented register / verify / password-reset / invitation flows around a mail-backend abstraction. Self-registered users land in a pending state and require admin approval before becoming active. Public registration is opt-in via configuration.
 
-### Phase A / B / C Data Protection
+### Data Protection
 
-- Added Fernet-based field encryption, a `pyzipper` AES-256 backup pathway, an HMAC-signed export package format with a `consumed_export_nonces` replay-defence table, an admin emergency-revoke API, and the `incident_response/` runbook set.
+- Added field-level encryption, encrypted backup output, signed export packages with replay defence, and operator runbooks for incident response.
 
 ## 2026-04-28
 
-### YouTube Live Recording Workflow
+### Live Recording Workflow
 
-- Added a YouTube live recording flow with castlabs Electron / DRM detection and cookie-based auth so paywalled streams (e.g. NHK+ / niconico live) can be captured. Implementation lives in `services/youtube_live_recorder.py`.
-- Added `routers/youtube_live.py`, a `_RECORD_ROOT` job model, `RecordJob` lifecycle, and the path-jail-aware HDD archive flow. The HDD archive root is chosen by `SS_LIVE_ARCHIVE_ROOT` and stays inside `is_allowed_video_path` for all writes so unrelated drone footage on the same drive cannot be touched accidentally.
+- Added a live-stream recording flow that supports cookie-based authentication for paywalled sources, with a job model and an off-volume archive step that respects the configured allowed-paths policy.
 
-### HDD Archive and Path Jail
+### Path Safety
 
-- Added `backend/utils/path_jail.py` and a related `is_allowed_video_path` / `assert_allowed_video_path` API used across `youtube_live_recorder`, `video_import`, `internal_videos`, and the matches PUT endpoint. The jail accepts only paths under `backend/data`, `SS_VIDEO_ROOT`, `SS_LIVE_ARCHIVE_ROOT`, or `SS_VIDEO_EXTRA_ROOTS`, with realpath canonicalisation to defeat symlink and `..` games.
+- Centralised path validation through a single helper that accepts only the configured roots, with canonicalisation that prevents traversal and symlink games.
 
-### Phase 1 Video Token Privacy
+### Video Token Privacy
 
-- Replaced the raw `video_local_path` exposure in API responses with an opaque `video_token` UUID, an `app://video/{token}` Electron protocol handler, and a `user_can_access_match`-gated lookup so accessing a video requires both the token and the team-scope authorisation that already gates match access. The previous design allowed a coach with a stale URL to keep playing a match they had been moved off of.
+- Replaced the previous raw filesystem-path exposure in API responses with an opaque token plus a team-scope-gated lookup, so reading a video requires both the token and an authorised match relationship.
 
 ## 2026-04-27
 
@@ -242,20 +155,15 @@ Read it together with:
 
 ### Input Validation and Sanitization
 
-- Tightened integer bounds across auth, bookmarks, conditions, expert, players, and public-site routers.
-- Added payload length validation for shot annotation fields.
-- Added text field sanitizers to bookmark and comment inputs.
-- Fixed BiDi literal character warnings flagged by Bandit B613 in auth and security test source files.
+- Tightened input validation and text-field sanitization across the authenticated API surface and adjusted static-analysis suppressions where appropriate.
 
 ### Infrastructure and Test Stabilization
 
-- Fixed Alembic `env.py` URL priority so `stamp_db_head` resolves correctly when `DATABASE_URL` is set via environment variable, restoring test isolation in CI.
-- Updated bootstrap tests to cover migration 0015.
-- Updated `package-lock.json` for a minor postcss dependency update.
+- Fixed an Alembic configuration ordering issue that affected CI test isolation, and updated bootstrap tests to cover the latest migration.
 
-### Attack-Driven Hardening
+### Internal Adversarial Validation
 
-- Ran adversarial validation against free-text fields, integer boundary handling, authentication surfaces, public-facing endpoints, and expert labeler scope enforcement.
+- Ran an internal adversarial-validation pass across input handling, authentication, public-facing endpoints, and labeler scope enforcement. Findings and verifications are tracked internally.
 - Converted findings into source-level fixes and database cleanup. 
 
 ## 2026-04-26
@@ -330,121 +238,39 @@ Read it together with:
 
 ## 2026-04-23
 
-### Phase B Authentication (B-1 〜 B-5) と Frontend 認証 UI
+### Phase B Authentication and Auth UI
 
-- Refresh token rotation + reuse 検知 + chain revoke (`POST /api/auth/refresh`, `/logout`)。access token は短命 (15分) 化し、refresh token は一度使用で revoke される rotation 方式。reuse 検出時は該当ユーザの全 refresh token を chain revoke。
-- 15 分無操作による自動ログアウト (B-2) をフロント側に実装。
-- Self-service のパスワード変更 (`POST /api/auth/password`) と admin による強制リセット (`POST /api/auth/admin/reset-password`)。リセット時は一時パスワード発行 + 既存 refresh token 全 revoke。
-- 管理者向け audit log 一覧 API (`GET /api/auth/audit-logs`) と、フロント側の監査ログ閲覧ページ。
-- 認証 UI (パスワード変更画面 / admin リセット / 監査ログページ) を追加。
+- Token rotation with reuse detection, idle auto-logout, self-service password change, admin-driven reset, and an admin audit-log surface in the frontend.
 
-### Router 単体テスト拡充 (Phase C2 / C3 / C4)
+### Router Unit Test Coverage
 
-- `db_maintenance` / `settings` / `network_diag` ルーターに対する unit test を追加 (計 20+ ケース)。TestClient ベースで lifespan・依存注入を含む実環境に近いパスを検証。
+- Added unit tests for the maintenance-side routers (~20 cases) using TestClient against the same dependency-injected paths the running app uses.
 
-### テスト安定化 (test pollution 根本対策)
+### Test Stabilisation
 
-- `backend/db/database.py::set_auto_vacuum_mode()` がインメモリ DB 上で `bind.dispose()` を呼んで StaticPool を破壊する問題を修正 (`:memory:` URL を no-op で早期 return)。これにより `test_db_maintenance` 以降の 103 errors / 30 failures が解消。
-- `backend/config.settings` の singleton 差し替え (`cfg_mod.settings = cfg_mod.Settings()`) が `from backend.config import settings` を import 時にキャプチャしている router 群 (auth / network_diag 等) を古い instance に固定し、後続テストで BOOTSTRAP_ADMIN 関連の pollution を起こしていた問題を修正。`backend/benchmark/runner.py` と `backend/tests/test_benchmark_runner.py` を instance 置換から **in-place attribute 更新** に切り替え、`test_cv_factory` の `importlib.reload(backend.config)` も撤廃。
-- `backend/routers/settings.py` の import 時 `engine` キャプチャと `create_settings_table()` 実行が `conftest.py::test_engine` fixture の engine patch より前に走っていた問題を修正。各リクエストで `_ensure_settings_table(db)` を冪等実行する方式に変更。
-- `backend/routers/network_diag.py` を `_get_settings()` 経由の動的参照に書き換え、settings instance 差し替え時も LAN_MODE 切替が一貫するようにした。
-- `backend/main.py` の lifespan を `bootstrap_database(None, app_settings.DATABASE_URL)` に変更し、`db_module.engine` を動的解決。
-- 最終結果: `DATABASE_URL=sqlite:///:memory: pytest backend/tests/` が **670 passed, 4 skipped, 0 failed** (作業前: 30 failed + 103 errors)。CI (ubuntu-latest / windows-latest) 両方 green。
+- Fixed several import-order and singleton-capture issues that were causing test pollution under in-memory DB mode. Result: full backend pytest run is green on both CI runners.
 
-### OSV 依存脆弱性対応 (Scorecard #1773)
+### Dependency Upgrades
 
-- `pytest>=8.4.0` → `>=9.0.3` (GHSA-6w46-j5rx-g56g)
-- `yt-dlp>=2025.1.15` → `>=2026.02.21` (GHSA-g3gw-q23r-pgqm netrc command injection)
-- `ray>=2.9` コメント pin → `>=2.54.0` に更新 (GHSA-w4rh-fgx7-q63m / q279-jhrf-cc6v / q5fh-2hc8-f6rq の 3 件を production install 時に回避)
-- ray の未修正 CVE 2 件 (GHSA-gx77-xgc2-4888 token auth デフォルト無効 / GHSA-6wgj-66m2-xxp2 jobs API RCE) は `shuttlescope/backend/osv-scanner.toml` を新設して trusted network 運用前提で ignore 登録。運用要件 (dashboard / jobs API を外部公開しない等) は `docs/validation/fix-osv-dependency-vulnerabilities.md` に明文化。
+- Bumped Python dependencies to clear known advisories. Two Ray-side advisories that have no fixed release are scoped to trusted-network operation and tracked in the project's internal security log.
 
-### i18n 移行 (B1 / B2a / B3 / B4 / B5 相当)
+### i18n Migration
 
-- `AnnotatorPage`, `SettingsPage` (~35 箇所), `MatchListPage`, `UserManagementPage`, `CourtHeatModal`, `DoublesAnalysis` のハードコーディング日本語を `src/i18n/ja.json` のキーに移行。
-- キー命名は `match.list.*`, `users.manage.*` など領域別に整理。
+- Migrated remaining hardcoded Japanese strings across several major pages into the translation tree.
 
-### Validation ドキュメント
+### Code Scanning Triage and Supply-Chain Hardening
 
-- `shuttlescope/docs/validation/fix-set-auto-vacuum-memory-safe.md`
-- `shuttlescope/docs/validation/fix-test-pollution-settings-singleton.md`
-- `shuttlescope/docs/validation/fix-osv-dependency-vulnerabilities.md`
-
-### Security Code Scanning Triage (Phase 1)
-
-- Dismissed 25 CodeQL alerts with explicit rationale after verifying mitigations or accepting residual risk.
-  - 19 false positives: `py/path-injection` x12 (sanitized via `Path.resolve()` + `relative_to()` scope check, segment whitelist regex, and extension whitelist), `py/stack-trace-exposure` x6 (sanitized via `_sanitize_errors()` and generic user-facing messages with `logger.exception` redirected to server logs), `py/url-redirection` x1 (SPA catch-all blocks scheme / backslash / protocol-relative URLs plus charset whitelist).
-  - 6 won't-fix: `py/paramiko-missing-host-key-validation` x4 (cluster SSH is loopback / private LAN only and worker nodes rotate too aggressively for `known_hosts`), `js/disabling-electron-websecurity` x2 (the `localfile://` scheme for local video playback requires `webSecurity: false` inside the Electron shell).
-- Added `SECURITY.md` at repository root so Scorecard `SecurityPolicyID` clears and external reporters have a documented reporting channel.
-- Enabled minimum branch protection on `main` (force-push blocked, branch deletion blocked, no status-check gating) so solo-maintainer push from any device continues to work while Scorecard `BranchProtectionID` score improves.
-
-### Scorecard Supply-Chain Hardening (Phase 2a)
-
-- Pinned every third-party and first-party GitHub Action `uses:` reference to a commit SHA across all eleven workflows: `bandit.yml`, `ci.yml`, `codeql.yml`, `defender-for-devops.yml`, `desktop-package-smoke.yml`, `devskim.yml`, `eslint.yml`, `osv-scanner.yml`, `osv-scanner-pr.yml`, `scorecard.yml`, `tracknet-smoke.yml`.
-  Version tags are preserved as trailing comments so Dependabot can continue to propose upgrades and humans can still read the intent at a glance.
-  This resolves the 46 Scorecard `PinnedDependenciesID` alerts.
-
-### Python Dependency CVE Bumps (Phase 2b)
-
-- Raised declared floor versions in `shuttlescope/backend/requirements.txt` so OSV-Scanner (which reads the minimum pin) stops flagging already-patched CVEs:
-  - `scikit-learn` `>=1.3.0` → `>=1.5.0` (CVE-2024-5206)
-  - `yt-dlp` `>=2024.3.10` → `>=2025.1.15` (CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785)
-  - `pytest` `>=8.0.0` → `>=8.4.0` (CVE-2025-71176)
-  - `python-jose[cryptography]` `>=3.3.0` → `>=3.4.0` (CVE-2024-33663 / CVE-2024-33664)
-
-### Bandit / DevSkim Total Triage (Phase 2c + Phase 3)
-
-- Dismissed 37 Bandit warning / DevSkim error alerts per-alert with explicit rationale:
-  - Bandit warnings (29): `B310` x13 (maintenance-script hardcoded URLs), `B608` x7 (SQL strings use introspected table names / PRAGMA, no external input), `B601` x4 (paramiko shell with pre-validated cluster IPs — same policy as already-dismissed paramiko findings), `B507` x4 (same paramiko policy), `B104` x1 (`0.0.0.0` bind gated by `LAN_MODE`), `B324` x1 (SHA1 used as non-security cache key).
-  - DevSkim errors (8): `DS126858` x3 (SHA1 is RFC 6238 TOTP mandate in `auth.py`; SHA1 in `response_cache.py` is a cache key), `DS148264` x4 (random used in test data generators and seed scripts, not crypto), `DS187371` x1 (flagged line in `electron/main.ts` is a DRM permission-handler comment, not cipher code).
-- Bulk-dismissed ~1608 Bandit note / DevSkim note alerts covering prototype noise tiers (`B101` assert, `B110` / `B112` try-pass/continue, `B311` test-data random, `B603` / `B404` / `B607` subprocess, `B105` sample strings, `DS162092` HTTP URL, `DS137138`, `DS176209`).
-- Added scanner configuration to prevent the note tier from reappearing on new code:
-  - `.bandit` at repo root with `skips = B101,B110,B311,B603,B404,B607,B105,B112` and `exclude` covering `tests`, `.venv`, `node_modules`, `out`.
-  - `.devskim.json` at repo root with `ignores` for `DS162092` / `DS137138` / `DS176209`.
-  - `.github/workflows/bandit.yml` updated to pass `skips` and `excluded_paths` to `shundor/python-bandit-scan` so the workflow matches local behavior.
-
-### Validation
-
-- Recorded the full triage and scope decisions in `shuttlescope/docs/validation/security-code-scanning-2026-04-23.md`, which tracks each dismissed rule with rationale and the remaining Scorecard / paramiko / electron-websecurity risks that stay intentionally accepted.
+- Triaged the static-analysis backlog with explicit rationale for each disposition, pinned every workflow `uses:` reference to a commit SHA across all eleven CI workflows, and reduced workflow token permissions to the minimum required.
 
 ## 2026-04-22
 
-### Code Scanning Response (Dependabot + CodeQL Critical / High)
+### Code Scanning Response
 
-- Bumped `@xmldom/xmldom` to `^0.8.13` to clear the three Dependabot advisories (CVE-2026-41672 / 41674 / 41675).
-- Fixed critical command-line-injection and SSRF issues surfaced by CodeQL:
-  - `backend/cluster/topology.py` now normalizes IP input through `ipaddress.ip_address()` before passing to `ping`, and coerces / range-checks ports before constructing URLs.
-  - `backend/main.py` validates `primary_ip` and coerces `num_cpus` / `num_gpus` to `int` before invoking the Ray auto-start subprocess.
-  - `backend/routers/cluster.py` validates `body.node_ip`, `body.port`, `body.num_cpus`, and `body.num_gpus` before any subprocess call.
-- Fixed high-severity path-injection findings in asset, sync, and video-import routes:
-  - `backend/main.py` `serve_assets` now decomposes the asset path, whitelists each segment against a conservative regex, resolves against the assets root, and verifies the final path stays inside `_assets_dir` before doing an extension whitelist check.
-  - `backend/routers/sync.py` `cloud_import` resolves relative to the configured sync folder first, rejects paths outside the folder, and limits the extension to `.sspkg`.
-  - `backend/routers/video_import.py` rejects URL-scheme paths and control characters, enforces an allowed-extension set both before and after `Path.resolve()` so symlink hops cannot bypass the check.
-- Fixed the XSS-through-DOM finding in `src/components/video/WebViewPlayer.tsx` by parsing incoming URLs with `new URL()` and accepting only `http:` / `https:` before setting `wv.src`.
-- Fixed the medium open-redirect finding in `backend/main.py` SPA catch-all by rejecting `://`, backslash, leading `/` or `\`, and restricting the remaining charset.
+- Closed the Critical and High alerts surfaced by the static analysis sweep through additional input validation and path-safety checks across the API and the desktop renderer. Specific vulnerability classes and the corresponding remediations are tracked in the project's internal security log.
 
-### Stack-Trace Exposure Total Cleanup
+### CI Recovery
 
-- While in a coding-focused environment, walked through all 14 `py/stack-trace-exposure` findings and redirected any `str(exc)` or traceback content to `logger.warning` / `logger.exception` on the server side while returning only generic, user-safe messages in responses.
-  Touched routers: `analysis_research.py`, `cluster.py`, `db_maintenance.py`, `sync.py`, `tracknet.py`, `tunnel.py`.
-- Backend smoke: `python -m pytest backend/tests` → `635 passed / 4 skipped`.
-
-### CI Failure Recovery and Scorecard TokenPermissions
-
-- Resolved the CodeQL Advanced / default-setup conflict by disabling GitHub's default Code Scanning setup (`gh api --method PATCH repos/.../code-scanning/default-setup -f state=not-configured`) so the advanced matrix workflow (`actions` + `javascript-typescript` + `python`) can run.
-- Fixed Microsoft Defender For Devops SARIF upload failing with `Resource not accessible by integration` by adding explicit `security-events: write`, `contents: read`, and `actions: read` permissions to the `MSDO` job.
-- Cleared eight Scorecard `TokenPermissionsID` high alerts by adding top-level `permissions: contents: read` to `bandit.yml`, `codeql.yml`, `defender-for-devops.yml`, `devskim.yml`, and `eslint.yml`, and by moving the write permissions from top-level to job-level in `osv-scanner.yml` and `osv-scanner-pr.yml`.
-
-### Detailed Progress
-
-- Bumped `@xmldom/xmldom` to `0.8.13+`.
-- Added IP and port validation to cluster topology, cluster router, and Ray auto-start paths.
-- Tightened static asset, sync import, and video import routes against path injection.
-- Sanitized XSS-capable URL handling in the WebView player.
-- Tightened SPA catch-all redirect handling against open-redirect patterns.
-- Sanitized all 14 stack-trace-exposure responses across analysis, cluster, DB maintenance, sync, TrackNet, and tunnel routers.
-- Switched from GitHub's default Code Scanning setup to the advanced matrix workflow.
-- Added job-level SARIF permissions for the Microsoft Defender For Devops workflow.
-- Declared minimal top-level workflow token permissions across security scanning workflows.
+- Resolved the conflict between two overlapping code-scanning configurations and tightened workflow token permissions across the security-scanning workflows.
 
 ## 2026-04-21
 
@@ -460,17 +286,7 @@ Read it together with:
 
 ### Permission Scope Enforcement
 
-- **User management** — role-scoped list, update, and create:
-  - admin / analyst: full access to all users.
-  - coach: can list and edit only users within their own team; cannot change roles.
-  - player: can view and edit only their own account; restricted to `display_name` and password changes.
-  - Frontend `UserManagementPage` now surfaces the appropriate UI controls per role instead of showing an "access denied" wall to non-admin roles.
-- **Match result perspective** — practice match win / loss now reflects the viewing player's side:
-  - `Match.result` is stored from player_a's perspective.
-  - When the authenticated player is `player_b` or `partner_b`, `list_matches` now inverts `win` ↔ `loss` so each player sees their own outcome.
-- **Data export / import auth (critical fix)** — `GET /api/export/package` and `POST /api/import/package` previously had no authentication checks.
-  - Export now enforces the same `check_export_match_scope` scoping used by analysis endpoints (player / coach / analyst boundaries).
-  - Import now requires analyst or admin role via `require_analyst`.
+- Role-scoped user management surfaces (admin / analyst / coach / player each see only what they should), match-result inversion so practice-match wins / losses are shown from the viewer's own perspective, and authentication added to the data export / import endpoints.
 
 ### Condition Analytics Role Restrictions Removed
 
@@ -486,18 +302,11 @@ Read it together with:
 
 ### Admin Bootstrap Security
 
-- Removed the fixed repository-visible bootstrap admin password and replaced it with environment-driven first-run admin provisioning.
-- Added backend bootstrap-status reporting so the login screen can indicate whether initial admin creation is ready without exposing any secret value.
-- Updated the login UI to prefill the bootstrap admin username and clearly warn when `BOOTSTRAP_ADMIN_PASSWORD` has not been configured yet.
-- Added backend coverage for the bootstrap-status path and first admin creation on password login.
+- Removed the previously checked-in default bootstrap-admin password and replaced it with environment-driven first-run provisioning. Added a bootstrap-status path so the login screen can indicate readiness without exposing any secret value.
 
 ### Auth Flow Hardening and Session Cleanup
 
-- Removed the lingering POC-era role switching path from the frontend so operators can no longer change analyst / coach / player context from Settings after login.
-- Switched auth state persistence from long-lived local storage to session-scoped storage, making the app return to the login screen after the app or browser is fully closed.
-- Added logout actions to the app shell and Settings so role changes now happen through explicit logout and re-login rather than client-side role mutation.
-- Added a protected startup revalidation step through `/auth/me` so the frontend re-syncs its displayed role, user identity, and team context with the server-issued JWT before entering the main app.
-- Extended auth responses to return `team_name`, which keeps coach-facing identity context aligned across login, startup restore, and account display.
+- Removed the prototype-era client-side role switcher, moved auth-context persistence to session storage so a closed app returns to the login screen, added explicit logout actions, and added a startup revalidation step that re-syncs the displayed identity with the server.
 
 ### CI Stabilization and Benchmark Test Reliability
 
