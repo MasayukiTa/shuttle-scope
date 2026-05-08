@@ -1051,7 +1051,26 @@ def _ssh_run_python_script(host: str, username: str, password: str,
 
     ssh = paramiko.SSHClient()
     ssh.load_system_host_keys()
-    ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+    # cluster.config.yaml に登録された worker IP に限り AutoAddPolicy を適用する。
+    # それ以外の host は引き続き RejectPolicy で MitM を防ぐ。
+    # 背景: backend を ScheduledTask 等で起動すると known_hosts のパスが
+    # 起動ユーザの $HOME 配下から外れて未登録扱いになり、cluster benchmark の
+    # SSH dispatch が失敗していた。worker IP は operator が config に登録済の
+    # 信頼境界内 (link-local や cluster_subnet 内) なので、TOFU 相当を許容する。
+    _registered_worker = False
+    try:
+        from backend.cluster import topology as _topo
+        _workers = _topo.get_workers() or []
+        _ips = {(w.get("ip") or "").strip() for w in _workers if isinstance(w, dict)}
+        _ips.discard("")
+        if host in _ips:
+            _registered_worker = True
+    except Exception:
+        pass
+    if _registered_worker:
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    else:
+        ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     try:
         ssh.connect(
             host,
