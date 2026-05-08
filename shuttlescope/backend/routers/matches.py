@@ -1083,17 +1083,18 @@ def get_match_rallies(match_id: int, request: Request, db: Session = Depends(get
 
 class DownloadRequest(BaseModel):
     model_config = {"extra": "forbid"}
-    quality: str = "720"            # "360" / "480" / "720" / "1080" / "best"
+    quality: str = Field("720", max_length=10)            # "360" / "480" / "720" / "1080" / "best"
     # Electron 限定互換フィールド。Web からは使用不可（下で 403）。
-    cookie_browser: str = ""
+    cookie_browser: str = Field("", max_length=32)
     # cookies.txt 本文（ユーザが UI からアップロード）。
     # HTTPS + Cloudflare Tunnel 経由のため傍受されない前提。
     # ジョブ完了 or タイムアウト 10 分でサーバ上から即削除する。
-    cookies_txt: Optional[str] = None
+    # 通常 cookies.txt は数 KB。100KB を超える入力は DoS / disk 過負荷の兆候。
+    cookies_txt: Optional[str] = Field(default=None, max_length=100_000)
     # パスワード保護動画 (Vimeo Showcase / 一部メンバー限定) の動画パスワード。
     # yt-dlp の --video-password と同等。サーバ上では保持せず yt-dlp に直接渡し、
     # ジョブ完了で即破棄。ログ・audit log には記録しない。
-    video_password: Optional[str] = None
+    video_password: Optional[str] = Field(default=None, max_length=200)
     # 切り抜きダウンロード (バドミントン Live 配信容量圧迫対策、2026-05-08)。
     # `start_sec` / `end_sec` で動画内の特定区間 (秒) のみ DL する。
     # 両方 None なら従来通り全体 DL。yt-dlp の `download_ranges` callback に変換する。
