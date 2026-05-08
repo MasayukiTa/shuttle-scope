@@ -79,14 +79,20 @@ VALID_TIMING = {"early", "optimal", "late"}
 
 
 class LabelPayload(BaseModel):
+    # mass-assignment / 不正フィールド silent drop 遮断
+    model_config = {"extra": "forbid"}
     match_id: int = Field(..., ge=1, le=2_147_483_647)
     stroke_id: int = Field(..., ge=1, le=2_147_483_647)
     annotator_role: Literal["coach", "analyst"]
-    posture_collapse: str
-    weight_distribution: str
-    shot_timing: str
+    # 入力上限 (handler 側で enum 検査もするが、事前に長さ拒否で DoS / DB 列長
+    # エラーを未然に防ぐ)
+    posture_collapse: str = Field(..., max_length=32)
+    weight_distribution: str = Field(..., max_length=32)
+    shot_timing: str = Field(..., max_length=32)
     confidence: int = Field(default=2, ge=1, le=3)
-    comment: str = ""
+    # 自由記述コメント。BIDI / 制御文字は handler 側 _sanitize_label 経由で除去されるが、
+    # 長さ上限はここでガード (DoS / DB 肥大対策)。
+    comment: str = Field(default="", max_length=2000)
 
 
 class VideoSummary(BaseModel):
@@ -438,6 +444,8 @@ def export_labels(
 # ─── ショット種別アノテーション（admin 専用） ───────────────────────────────────
 
 class ShotAnnotationPayload(BaseModel):
+    # mass-assignment 防御
+    model_config = {"extra": "forbid"}
     match_id: int = Field(..., ge=1, le=2_147_483_647)
     stroke_id: int = Field(..., ge=1, le=2_147_483_647)
     shot_type: str = Field(..., min_length=1, max_length=64)
