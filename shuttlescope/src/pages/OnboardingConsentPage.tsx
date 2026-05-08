@@ -18,8 +18,14 @@ import {
   submitConsents,
 } from '@/api/client'
 
+// 必須項目は GDPR Article 6(1)(b) (契約履行) / APPI 第18条 を法的根拠とし、
+// 「同意」ではなく「契約条項の確認」として扱う。撤回はサービス利用終了と等価。
 const REQUIRED: ConsentType[] = ['service_delivery', 'beta_agreement']
-const OPTIONAL: ConsentType[] = ['ai_training', 'research_participation', 'cross_border_transfer']
+// 任意項目は GDPR Article 6(1)(a) (同意) / APPI 同意。independent specific consent
+// per Article 7(2)。撤回は contact@shuttle-scope.com / 問い合わせフォーム経由。
+// cross_border_transfer は EU-Japan 十分性認定 (2019-01) により追加同意不要のため
+// UI 提示しない (CONSENT_UI_LEGAL_ANALYSIS §2.5 選択肢 A 採用)。
+const OPTIONAL: ConsentType[] = ['ai_training', 'research_participation']
 
 interface OnboardingConsentPageProps {
   onCompleted: () => void
@@ -32,12 +38,14 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 同意状態。initial は false、ユーザーが明示的にチェックしない限り送信されない。
+  // 同意/確認状態。initial は false、ユーザーが明示的にチェックしない限り送信されない。
   const [given, setGiven] = useState<Record<ConsentType, boolean>>({
     service_delivery: false,
     beta_agreement: false,
     ai_training: false,
     research_participation: false,
+    // cross_border_transfer は UI に出さないが backend 側の互換のため keep。
+    // 送信時は false のまま (撤回扱い) で送り、backend は OPTIONAL として記録する。
     cross_border_transfer: false,
   })
 
@@ -122,11 +130,11 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
       <div className="max-w-3xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
         <header className="border-b border-gray-200 dark:border-gray-700 pb-4">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            {t('onboarding.consent.title') || 'データ取り扱いに関する同意'}
+            {t('onboarding.consent.title') || 'データ取り扱いに関する確認・同意'}
           </h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
             {t('onboarding.consent.intro') ||
-              '本サービス (ShuttleScope) のご利用にあたり、以下の文書をお読みいただき、同意の可否をご判断ください。同意は任意であり、いつでも撤回できます。'}
+              '本サービス (ShuttleScope) のご利用にあたり、以下の文書をお読みいただき、内容をご確認の上、任意同意項目について同意の可否をご判断ください。'}
           </p>
           <ul className="mt-3 text-sm space-y-1">
             <li>
@@ -164,20 +172,20 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
 
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {t('onboarding.consent.required_section') || '必須同意項目'}
+            {t('onboarding.consent.required_section') || '必須確認事項（契約履行に基づく処理）'}
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {t('onboarding.consent.required_hint') ||
-              'これらに同意いただかないと本サービスをご利用いただけません。'}
+              'これらに同意いただかないと本サービスをご利用いただけません。これらは GDPR Article 6(1)(b)（契約履行）および APPI 第18条に基づく処理であり、撤回はサービス利用の終了と等価となります。'}
           </p>
 
           <ConsentCheckbox
             checked={given.service_delivery}
             onChange={(v) => setGiven((g) => ({ ...g, service_delivery: v }))}
-            label={t('onboarding.consent.service_delivery_label') || 'サービス提供のためのデータ処理に同意します'}
+            label={t('onboarding.consent.service_delivery_label') || 'Privacy Notice および Terms of Service の内容を確認しました'}
             description={
               t('onboarding.consent.service_delivery_desc') ||
-              '試合データ・選手プロフィール・解析結果の処理。本サービス利用のため必須。'
+              'これらの文書に記載されたデータ処理（試合データ・選手プロフィール・解析結果の処理、認証、監査ログ等）は本サービス提供に必要な処理であり、GDPR Article 6(1)(b) および APPI 第18条に基づき行われます。これらの処理を停止する場合はサービスの利用終了をお選びください。'
             }
             required
           />
@@ -185,10 +193,10 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
           <ConsentCheckbox
             checked={given.beta_agreement}
             onChange={(v) => setGiven((g) => ({ ...g, beta_agreement: v }))}
-            label={t('onboarding.consent.beta_agreement_label') || 'β版データ取り扱い説明書の内容を読み、理解しました'}
+            label={t('onboarding.consent.beta_agreement_label') || 'β版データ取り扱い説明書（Terms of Service Section 14）の内容を確認しました'}
             description={
               t('onboarding.consent.beta_agreement_desc') ||
-              '別途提供されている β 期間中のデータ取り扱い説明書 (RBC_BETA_AGREEMENT) を読了したことを表明します。'
+              'β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 14.5 の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。'
             }
             required
           />
@@ -196,8 +204,12 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
 
         <section className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {t('onboarding.consent.optional_section') || '任意同意項目 (チェックしなくても本サービスは使えます)'}
+            {t('onboarding.consent.optional_section') || '任意同意事項（チェックしなくても本サービスは使えます）'}
           </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {t('onboarding.consent.optional_hint') ||
+              '以下の任意同意は GDPR Article 6(1)(a) / APPI に基づく同意です。撤回はお問い合わせフォームまたは contact@shuttle-scope.com 宛てメールで受け付けます（受領から 14 日以内に処理）。'}
+          </p>
 
           <ConsentCheckbox
             checked={given.ai_training}
@@ -205,7 +217,7 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
             label={t('onboarding.consent.ai_training_label') || 'AI モデル学習への利用に同意します'}
             description={
               t('onboarding.consent.ai_training_desc') ||
-              '匿名化・集計化されたデータを将来的な精度向上モデル学習に利用します。撤回時は以後の学習対象から除外されます。'
+              '匿名化・集計化されたデータを将来的なモデル精度向上のために利用します。同意は任意であり、いつでも撤回できます。撤回時は以後の学習対象から除外されます。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。'
             }
           />
 
@@ -215,17 +227,7 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
             label={t('onboarding.consent.research_label') || '学術研究への利用に同意します'}
             description={
               t('onboarding.consent.research_desc') ||
-              '匿名化のうえスポーツ科学研究、論文発表等への利用を許可します。事前説明・同意撤回権を保持します。'
-            }
-          />
-
-          <ConsentCheckbox
-            checked={given.cross_border_transfer}
-            onChange={(v) => setGiven((g) => ({ ...g, cross_border_transfer: v }))}
-            label={t('onboarding.consent.cross_border_label') || '越境データ移転 (EU/EEA/北米遠征時) に同意します'}
-            description={
-              t('onboarding.consent.cross_border_desc') ||
-              '海外遠征時の現地解析および日本の本サービスサーバーへの転送について GDPR / APPI 等の保護措置を前提に同意します。'
+              '匿名化のうえスポーツ科学研究、論文発表等への利用を許可します。事前説明と同意撤回権を保持します。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。'
             }
           />
         </section>
@@ -245,13 +247,13 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
           >
             {submitting
               ? t('onboarding.consent.submitting') || '送信中...'
-              : t('onboarding.consent.submit') || '同意して開始'}
+              : t('onboarding.consent.submit') || '確認・同意して開始'}
           </button>
         </footer>
 
         <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
           {t('onboarding.consent.withdraw_notice') ||
-            '同意は本ページもしくは設定画面からいつでも撤回できます。任意同意の撤回は本サービスの利用に影響しません。'}
+            '必須確認事項は契約履行のため撤回は行えません（撤回はサービス利用終了と等価です）。任意同意は問い合わせフォームまたは contact@shuttle-scope.com 宛てメールでいつでも撤回でき、本サービスの利用には影響しません。設定画面内の同意撤回 UI は順次提供予定です。'}
         </p>
       </div>
     </div>
@@ -282,7 +284,7 @@ function ConsentCheckbox({
       <div className="flex-1">
         <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
           {label}
-          {required ? <span className="ml-2 text-red-600 text-xs">必須</span> : null}
+          {required ? <span className="ml-2 text-red-600 text-xs">契約履行（必須）</span> : null}
         </div>
         <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{description}</p>
       </div>
