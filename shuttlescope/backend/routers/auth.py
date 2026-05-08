@@ -1637,35 +1637,78 @@ def delete_user(target_id: int, request: Request, db: Session = Depends(get_db))
     user = db.get(User, target_id)
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
-    # round155 fix: User には access_log / refresh_token / shared_session 等の
-    # FK 子レコードが多数あり、生 db.delete(user) は IntegrityError → 500 になる。
-    # FK 持ち子テーブルを user_id=NULL or 削除してから本体を削除。
+    # round229 A3: User には access_logs / refresh_tokens / shared_sessions /
+    # matches.annotator_id / shot_annotations / user_invitations / billing_orders /
+    # billing_entitlements 等の FK 子レコードが多数あり、生 db.delete(user) は
+    # IntegrityError → 500 になる。各テーブルを user_id=NULL or 削除してから本体を削除。
+    #
+    # 旧コードの問題:
+    #   - "access_log" 単数表記の typo (実テーブルは "access_logs")
+    #   - user_invitations.created_by_user_id 列は存在しない (実列は inviter_user_id)
+    #   - shared_sessions.created_by_user_id 列は存在しない
+    #   - matches.annotator_id / shot_annotations.annotator_user_id / billing_* 系の漏れ
+    #   - 各 cleanup 失敗時の db.rollback() が前段の正常 cleanup も巻き戻していた
+    #
+    # 修正:
+    #   - 正しい table / column 名で全 FK 経路を null 化 or 削除
+    #   - 各 statement は SAVEPOINT (nested transaction) で囲み、1 つ失敗しても
+    #     他は反映する。SQLite では SAVEPOINT も同等に動作する (begin_nested)。
     from sqlalchemy import text as _sa_text
     cleanup_stmts = [
-        ("UPDATE access_log SET user_id = NULL WHERE user_id = :uid", "access_log"),
+        # access_logs.user_id は NULL 許容 → 履歴を残しつつ user 削除可能にする
+        ("UPDATE access_logs SET user_id = NULL WHERE user_id = :uid", "access_logs"),
+        # ondelete=CASCADE 持ち (refresh_tokens / revoked_tokens / user_consents /
+        # player_page_access) は DB 側で自動削除されるが、明示しておく方が安全。
         ("DELETE FROM refresh_tokens WHERE user_id = :uid", "refresh_tokens"),
+        ("DELETE FROM revoked_tokens WHERE user_id = :uid", "revoked_tokens"),
+        ("DELETE FROM user_consents WHERE user_id = :uid", "user_consents"),
+        ("DELETE FROM player_page_access WHERE user_id = :uid", "player_page_access"),
+        # email/password reset tokens
         ("DELETE FROM email_verification_tokens WHERE user_id = :uid", "email_verification_tokens"),
         ("DELETE FROM password_reset_tokens WHERE user_id = :uid", "password_reset_tokens"),
-        ("DELETE FROM user_invitations WHERE created_by_user_id = :uid", "user_invitations_cb"),
-        ("UPDATE shared_sessions SET created_by_user_id = NULL WHERE created_by_user_id = :uid", "shared_sessions"),
+        # user_invitations: 旧コードは存在しない created_by_user_id を使っていた。
+        # 正しい列は inviter_user_id (NOT NULL) と consumed_by_user_id (NULL 可)。
+        # inviter は招待履歴を残すべきだが NOT NULL のため削除する (trade-off)。
+        ("DELETE FROM user_invitations WHERE inviter_user_id = :uid", "user_invitations_inv"),
+        ("UPDATE user_invitations SET consumed_by_user_id = NULL WHERE consumed_by_user_id = :uid", "user_invitations_csm"),
+        # upload_sessions / server_video_artifacts: NULL 許容なので履歴残し
         ("UPDATE upload_sessions SET user_id = NULL WHERE user_id = :uid", "upload_sessions"),
         ("UPDATE server_video_artifacts SET sender_user_id = NULL WHERE sender_user_id = :uid", "server_video_artifacts"),
+        # matches.annotator_id / shot_annotations.annotator_user_id (NULL 許容)
+        ("UPDATE matches SET annotator_id = NULL WHERE annotator_id = :uid", "matches_annotator"),
+        ("UPDATE shot_annotations SET annotator_user_id = NULL WHERE annotator_user_id = :uid", "shot_annotations"),
+        # billing 系 (dormant だが FK は active)
+        ("DELETE FROM billing_orders WHERE user_id = :uid", "billing_orders"),
+        ("DELETE FROM billing_entitlements WHERE user_id = :uid", "billing_entitlements"),
+        ("UPDATE billing_entitlements SET granted_by_user_id = NULL WHERE granted_by_user_id = :uid", "billing_entitlements_granted"),
     ]
+    cleanup_log: list[str] = []
     for stmt, label in cleanup_stmts:
+        # SAVEPOINT (nested transaction) で囲んで個別失敗を分離する。
+        # テーブル / 列が存在しないケースでも他の cleanup を巻き込まず続行。
         try:
-            db.execute(_sa_text(stmt), {"uid": target_id})
-        except Exception:
-            # テーブル不在等は黙って続行 (defense in depth)
-            db.rollback()
-            continue
+            with db.begin_nested():
+                result = db.execute(_sa_text(stmt), {"uid": target_id})
+                n = getattr(result, "rowcount", 0) or 0
+                if n:
+                    cleanup_log.append(f"{label}={n}")
+        except Exception as exc:
+            # nested rollback は外側 transaction を保つので safe
+            cleanup_log.append(f"{label}=FAIL({type(exc).__name__})")
     try:
         db.execute(_sa_text("DELETE FROM users WHERE id = :uid"), {"uid": target_id})
         db.commit()
     except Exception as exc:
         db.rollback()
+        # 詳細は server log に残す。client には generic message を返す。
+        import logging as _lg_du
+        _lg_du.getLogger(__name__).error(
+            "[delete_user] target=%s commit_fail=%s cleanup=%s",
+            target_id, exc, cleanup_log,
+        )
         raise HTTPException(
             status_code=409,
-            detail=f"ユーザ削除に失敗しました (FK 制約等): {type(exc).__name__}",
+            detail="ユーザ削除に失敗しました (依存レコードがあります)",
         )
     log_access(db, "user_deleted", details={"deleted_user_id": target_id})
     return {"success": True}
