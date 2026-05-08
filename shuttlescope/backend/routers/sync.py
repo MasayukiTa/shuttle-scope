@@ -297,10 +297,15 @@ async def import_package_endpoint(
 
 @router.post("/backup")
 def backup_now(
-    label: Optional[str] = Query(None),
+    label: Optional[str] = Query(None, max_length=100),
     _ctx=Depends(require_analyst),
 ):
-    """現行 DB をバックアップ ZIP として保存 (analyst 限定)"""
+    """現行 DB をバックアップ ZIP として保存 (analyst 限定)。
+
+    例外文面は内部パスや実装詳細を直接返さず、サーバ log にのみ記録する。
+    analyst も最終的に admin 経由で閲覧可能なロールだが、log で十分な情報が
+    取れるためレスポンスでは stack-trace 系の情報を曖昧化する。
+    """
     try:
         path = create_backup(label=label)
         return {
@@ -308,12 +313,15 @@ def backup_now(
             "data": {"path": str(path), "filename": path.name},
         }
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning("backup_now FileNotFoundError (sanitized): %s", e)
+        raise HTTPException(status_code=404, detail="バックアップ元ファイルが見つかりません")
     except NotImplementedError as e:
         # PostgreSQL 環境では SQLite ベースのバックアップは不可
-        raise HTTPException(status_code=501, detail=str(e))
+        logger.warning("backup_now NotImplementedError (sanitized): %s", e)
+        raise HTTPException(status_code=501, detail="この DB エンジンではこのバックアップ方式はサポートされていません")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"バックアップエラー: {e}")
+        logger.exception("backup_now unexpected error")
+        raise HTTPException(status_code=500, detail="バックアップエラー")
 
 
 @router.get("/backups")
