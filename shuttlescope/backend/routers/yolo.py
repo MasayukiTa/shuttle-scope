@@ -920,7 +920,9 @@ def _run_batch(
 # ─── 1フレーム即時検出（タグ付け用） ────────────────────────────────────────
 
 class FrameDetectRequest(BaseModel):
-    timestamp_sec: float
+    # mass-assignment 防御 + timestamp は 24 時間以内 (秒)
+    model_config = {"extra": "forbid"}
+    timestamp_sec: float = Field(..., ge=0, le=86400, allow_inf_nan=False)
     roi_rect: Optional[RoiRectModel] = None
 
 
