@@ -104,12 +104,15 @@ def _serialize_order(o: BillingOrder, *, for_admin: bool = False) -> dict:
 # ─── スキーマ ─────────────────────────────────────────────────────────
 
 class CreateOrderRequest(BaseModel):
+    # 課金 endpoint は dormant だが mass-assignment 防御は将来 enable 時に有効化される
+    model_config = {"extra": "forbid"}
     product_code: str = Field(..., min_length=1, max_length=50)
     payment_method: str = Field(..., min_length=1, max_length=30)
     extra_metadata: Optional[dict] = None  # match_id 等を埋め込む
 
 
 class CreateProductRequest(BaseModel):
+    model_config = {"extra": "forbid"}
     code: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
@@ -118,11 +121,12 @@ class CreateProductRequest(BaseModel):
 
 
 class GrantEntitlementRequest(BaseModel):
+    model_config = {"extra": "forbid"}
     user_id: int = Field(..., ge=1, le=2_147_483_647)
     entitlement_type: str = Field(..., min_length=1, max_length=50)
     resource_type: Optional[str] = Field(None, max_length=50)
     resource_id: Optional[int] = Field(None, ge=1, le=2_147_483_647)
-    valid_to_iso: Optional[str] = None
+    valid_to_iso: Optional[str] = Field(None, max_length=40)
     note: Optional[str] = Field(None, max_length=500)
 
 
