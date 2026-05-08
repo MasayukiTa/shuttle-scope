@@ -27,7 +27,7 @@ from typing import Optional
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from sqlalchemy import text
@@ -40,8 +40,13 @@ router = APIRouter()
 # ─── スキーマ ─────────────────────────────────────────────────────────────────
 
 class Point2D(BaseModel):
-    x: float
-    y: float
+    # mass-assignment 防御 + 正規化座標 [0,1] + NaN/Inf 拒否。
+    # round 224 H1 で発見した経路の対策:
+    #   - x/y が [0,1] 範囲外 (例: 1.5) → 200 で受理されコート外へ matrix 計算
+    #   - x/y に NaN / Inf → np.linalg.svd が "did not converge" で 500 リーク
+    model_config = {"extra": "forbid"}
+    x: float = Field(..., ge=0.0, le=1.0, allow_inf_nan=False)
+    y: float = Field(..., ge=0.0, le=1.0, allow_inf_nan=False)
 
 class CourtCalibrationRequest(BaseModel):
     """
@@ -53,9 +58,12 @@ class CourtCalibrationRequest(BaseModel):
     points[5]: ネット右支柱 (NetR)
     座標は動画コンテナを [0,1]×[0,1] とした正規化値。
     """
-    points: list[Point2D]
-    container_width: Optional[int] = None
-    container_height: Optional[int] = None
+    model_config = {"extra": "forbid"}
+    # points 数は 6 固定。配列長検証も Pydantic 層で行う (旧コードは handler で検査)。
+    points: list[Point2D] = Field(..., min_length=6, max_length=6)
+    # container 解像度はピクセル値。8K (7680x4320) を上限に正の整数に制限。
+    container_width: Optional[int] = Field(default=None, ge=1, le=8192)
+    container_height: Optional[int] = Field(default=None, ge=1, le=8192)
 
 # ─── ホモグラフィ演算 ─────────────────────────────────────────────────────────
 
