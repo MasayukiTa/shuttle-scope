@@ -1916,7 +1916,15 @@ def create_team(body: TeamBody, request: Request, db: Session = Depends(get_db))
         is_independent=bool(body.is_independent),
     )
     db.add(team)
-    db.commit()
+    # parallel POST race: 同じ display_id が DB unique 制約で IntegrityError →
+    # 旧コードは 500 にリーク。round 211 BB2 で確認した経路を 409 に正規化する
+    # (POST /api/auth/users の round 210 AA8 と同パターン)。
+    from sqlalchemy.exc import IntegrityError as _IntegrityError
+    try:
+        db.commit()
+    except _IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="team already exists")
     db.refresh(team)
     log_access(db, "team_created", details={"team_id": team.id, "display_id": team.display_id})
     return {"success": True, "data": _team_to_dict(team, for_admin=True)}
