@@ -197,6 +197,16 @@ def init_upload(
     # 文字種は事前に絞っておく (defense in depth, CWE-93 / CWE-138)。
     if any(ord(c) < 0x20 or ord(c) == 0x7F for c in body.filename):
         raise HTTPException(status_code=422, detail="filename に制御文字を含めることはできません")
+    # BIDI override / 不可視 format char を拒否 (UI 表示で拡張子偽装を防ぐ)。
+    # 例: "evil‮3pm.exe" は RTLO で "evilexe.mp3" に見えるが拡張子検査は .exe を見る。
+    # 拡張子検査と一致する別の見た目を提示できる経路を塞ぐ。
+    _BIDI_CHARS = (
+        "​", "‌", "‍", " ", " ",
+        "‪", "‫", "‬", "‭", "‮",
+        "⁦", "⁧", "⁨", "⁩", "﻿",
+    )
+    if any(c in body.filename for c in _BIDI_CHARS):
+        raise HTTPException(status_code=422, detail="filename に不可視 format 文字を含めることはできません")
     # B-2 強化: HTML タグ / Path Traversal / 危険な文字 を拒否 (Stored XSS + path traversal)
     _BAD_FNAME_CHARS = ("<", ">", "\"", "'", "&", "\\", "/", "..", "\x00")
     if any(c in body.filename for c in _BAD_FNAME_CHARS):
