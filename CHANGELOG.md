@@ -14,6 +14,32 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-05-08
+
+### GDPR / APPI Compliance Hardening
+
+- Promoted Privacy Notice to Version 1.1 with a new Article V-bis ("AI Model Training Data Practices") covering training-data sources, exclusions, model memorization mitigations, the right to object to training use, and transparency disclosures. Added Section 2.6 covering cookie categorization on `shuttle-scope.com`. The existing Articles VI through X retain their numbering — V-bis is inserted between V and VI without disturbing downstream references.
+- Promoted Terms of Service to Version 1.1 with a new Section 15 ("EU/EEA Operations") describing operational constraints (court ROI required; legitimate-interests basis for non-consenting third parties; bounded cross-border transmission), third-party athlete data handling under GDPR Article 21, and coordination obligations with Contributing Parties.
+- Added `contracts/DPA_TEMPLATE.md` (public) — a template Data Processing Agreement compliant with GDPR Article 28(3), with annexes covering processing details, technical and organizational measures, sub-processors, and Standard Contractual Clauses placement.
+- Added internal records (kept under `private_docs/internal/`, not committed): `RoPA.md` (Records of Processing Activities per GDPR Article 30, eight processing activities documented), `DPIA.md` (Data Protection Impact Assessment per Article 35), `SAR_PROCEDURE.md` (Subject Access Request operational procedure), `BREACH_RESPONSE.md` (Personal Data breach response plan with a 72-hour notification track and authority / data subject notification templates).
+- Added a public-facing β-period agreement at `private_docs/contracts/RBC_BETA_AGREEMENT.md` (kept private; intended for distribution to in-scope athletes outside the repository) — derived from the prior internal docx, with personal names and parent-company references removed.
+
+### Onboarding Consent Flow
+
+- Backend: introduced the `user_consents` table (Alembic migration `0024_user_consents.py`) and `users.consent_required` flag. Added `UserConsent` ORM model. Exposed `GET / POST /api/auth/consents` and `DELETE /api/auth/consents/{type}` for retrieving consent state, submitting initial / updated consent, and withdrawing optional consents (required types refuse withdrawal — those require account deletion). `/api/auth/me` now returns `consent_required` so the frontend can route to the onboarding flow.
+- Consent records capture privacy-policy version, terms version, given-at timestamp, IP address, and a SHA-256 hash of the User-Agent string (raw UA is not retained). Existing users are migrated with `consent_required=False` so the launch does not lock them out; new accounts default to `True` and must complete the consent flow before reaching the main UI.
+- Frontend: added `OnboardingConsentPage.tsx` covering two required consents (`service_delivery`, `beta_agreement`) and three optional consents (`ai_training`, `research_participation`, `cross_border_transfer`). Each consent is an independent checkbox per GDPR Article 7(2). Links to the public Privacy Notice / Terms of Service / Data Contribution Terms are surfaced inline. `ProtectedMainRoute` in `App.tsx` gates the application behind the onboarding page until the required consents are submitted.
+
+### Privacy-by-Design Hardening (CV Pipeline)
+
+- `CourtBoundedFilter` (`backend/cv/detection_hardening.py`) now defaults to `strict_mode=True`, which forces `court_margin=0` and excludes any detection outside the calibrated court polygon. Spectator and umpire zones remain excluded by their dedicated checks. Strict mode is configured in code only; the settings UI does not expose it.
+- The pipeline-run endpoint (`/v1/pipeline/run`, `backend/routers/pipeline.py`) refuses to enqueue analysis with HTTP 403 when the target match has no court calibration (`MatchCVArtifact` of type `court_calibration`). The rejection message references GDPR Article 25 / Privacy by Design so the operational reason is explicit.
+
+### Repository Hygiene
+
+- `private_docs/contracts/` and `private_docs/internal/` are kept under the existing `private_docs/` ignore rule. The new public-facing `contracts/DPA_TEMPLATE.md` (root-level) is committed.
+- Added `private_docs/2026-05-08_gdpr_compliance_implementation_plan.md` recording the strict task plan that drove the work above; it is internal-only and is referenced in the DPIA's "Integration of outcomes" section.
+
 ## 2026-05-07
 
 ### Streaming-Capture Recording for Member-Only Live Sites

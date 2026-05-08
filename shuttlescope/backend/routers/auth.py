@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import Player, PlayerPageAccess, Team, User
+from backend.db.models import Player, PlayerPageAccess, Team, User, UserConsent
 
 GRANTABLE_PAGES = {"prediction", "expert_labeler"}
 
@@ -985,6 +985,9 @@ def me(request: Request, db: Session = Depends(get_db)):
         # M-A: 自分の email と検証状態 (フロントの「再送」UI 等で参照)
         "email": getattr(user, "email", None) if user else None,
         "email_verified": bool(getattr(user, "email_verified_at", None)) if user else False,
+        # GDPR Article 7 / APPI 第18条: 同意未取得の場合 frontend は
+        # /onboarding/consent へリダイレクトする
+        "consent_required": bool(getattr(user, "consent_required", True)) if user else True,
     }
 
 
@@ -1935,3 +1938,232 @@ def patch_team(team_id: int, body: TeamPatch, request: Request, db: Session = De
     db.commit()
     log_access(db, "team_updated", details={"team_id": team.id})
     return {"success": True, "data": _team_to_dict(team, for_admin=ctx.is_admin)}
+
+
+# ─── 同意取得 (GDPR Article 7 / APPI 第18条) ───────────────────────────────
+
+# 現行 PRIVACY.md / TERMS_OF_SERVICE.md / DATA_CONTRIBUTION_TERMS.md の version。
+# 文書改定時はここを更新し、frontend 側にも反映する (再同意取得の判定根拠)。
+CURRENT_PRIVACY_VERSION = "1.1"
+CURRENT_TERMS_VERSION = "1.1"
+CURRENT_DCT_VERSION = "1.0"
+
+# ユーザが同意可能な目的。各 type は独立して give/withdraw 可能 (GDPR Article 7(2))。
+# service_delivery のみ必須 (これに同意しない限り Service 提供不可)、他は opt-in。
+_REQUIRED_CONSENT_TYPES = {"service_delivery", "beta_agreement"}
+_OPTIONAL_CONSENT_TYPES = {"ai_training", "research_participation", "cross_border_transfer"}
+_ALL_CONSENT_TYPES = _REQUIRED_CONSENT_TYPES | _OPTIONAL_CONSENT_TYPES
+
+
+def _hash_user_agent(ua: Optional[str]) -> Optional[str]:
+    """User-Agent を SHA256 hash 化 (raw UA は保存せず PII 縮減)。"""
+    if not ua:
+        return None
+    import hashlib as _h
+    return _h.sha256(ua.encode("utf-8", errors="replace")).hexdigest()[:64]
+
+
+def _client_ip(request: Request) -> Optional[str]:
+    """クライアント IP を取得。Cloudflare 経由は CF-Connecting-IP を優先。"""
+    cf = request.headers.get("cf-connecting-ip", "").strip()
+    if cf:
+        return cf[:64]
+    if request.client:
+        return (request.client.host or "")[:64] or None
+    return None
+
+
+class ConsentItem(BaseModel):
+    consent_type: str
+    consent_given: bool
+
+
+class ConsentSubmitBody(BaseModel):
+    """4 種同意 + β合意書同意を一括送信する。
+
+    POST /api/auth/consents
+    body = {"consents": [{consent_type, consent_given}, ...],
+            "privacy_policy_version": "...",
+            "terms_version": "..."}
+    """
+    model_config = {"extra": "forbid"}
+
+    consents: list[ConsentItem]
+    privacy_policy_version: str
+    terms_version: str
+
+
+@router.get("/consents")
+def get_my_consents(request: Request, db: Session = Depends(get_db)):
+    """自分の同意状態 (最新 give / withdraw) を返す。"""
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not ctx.user_id:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
+    rows = (
+        db.query(UserConsent)
+        .filter(UserConsent.user_id == ctx.user_id)
+        .order_by(UserConsent.given_at.desc())
+        .all()
+    )
+    # type ごとに最新 1 件 (give または withdraw)
+    latest: dict[str, dict] = {}
+    for r in rows:
+        t = r.consent_type
+        if t in latest:
+            continue
+        latest[t] = {
+            "consent_type": t,
+            "consent_given": bool(r.consent_given) and r.withdrawn_at is None,
+            "privacy_policy_version": r.privacy_policy_version,
+            "terms_version": r.terms_version,
+            "given_at": r.given_at.isoformat() if r.given_at else None,
+            "withdrawn_at": r.withdrawn_at.isoformat() if r.withdrawn_at else None,
+        }
+    user = db.get(User, ctx.user_id)
+    return {
+        "success": True,
+        "data": {
+            "consent_required": bool(user.consent_required) if user else True,
+            "current_versions": {
+                "privacy_policy": CURRENT_PRIVACY_VERSION,
+                "terms": CURRENT_TERMS_VERSION,
+                "data_contribution": CURRENT_DCT_VERSION,
+            },
+            "required_types": sorted(_REQUIRED_CONSENT_TYPES),
+            "optional_types": sorted(_OPTIONAL_CONSENT_TYPES),
+            "consents": list(latest.values()),
+        },
+    }
+
+
+@router.post("/consents", status_code=201)
+def submit_consents(
+    body: ConsentSubmitBody, request: Request, db: Session = Depends(get_db)
+):
+    """同意項目を一括登録する (初回同意 / 文書改定後の再同意 / 個別更新を兼ねる)。
+
+    GDPR Article 7(1) (demonstrate consent) 準拠で privacy_policy_version /
+    terms_version / given_at / IP / UA hash を残す。同 consent_type に対する
+    新規行を append し、過去の give/withdraw 履歴は保持する (audit 用)。
+    """
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not ctx.user_id:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
+    # version 妥当性
+    if body.privacy_policy_version != CURRENT_PRIVACY_VERSION:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"プライバシーポリシーが更新されています "
+                f"(送信: {body.privacy_policy_version}, 現行: {CURRENT_PRIVACY_VERSION})。"
+                f"再読込してから同意してください。"
+            ),
+        )
+    if body.terms_version != CURRENT_TERMS_VERSION:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"利用規約が更新されています "
+                f"(送信: {body.terms_version}, 現行: {CURRENT_TERMS_VERSION})。"
+                f"再読込してから同意してください。"
+            ),
+        )
+
+    # 必須同意の検証
+    given_types = {c.consent_type: c.consent_given for c in body.consents}
+    for t in given_types:
+        if t not in _ALL_CONSENT_TYPES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"未知の consent_type: {t!r}",
+            )
+    for required in _REQUIRED_CONSENT_TYPES:
+        if not given_types.get(required, False):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"必須同意 ({required}) が未取得です。Service 提供のため "
+                    f"以下の同意が必要です: {sorted(_REQUIRED_CONSENT_TYPES)}"
+                ),
+            )
+
+    ip = _client_ip(request)
+    ua = _hash_user_agent(request.headers.get("user-agent"))
+    now = datetime.utcnow()
+
+    for item in body.consents:
+        rec = UserConsent(
+            user_id=ctx.user_id,
+            consent_type=item.consent_type,
+            consent_given=bool(item.consent_given),
+            privacy_policy_version=body.privacy_policy_version,
+            terms_version=body.terms_version,
+            given_at=now,
+            withdrawn_at=None if item.consent_given else now,
+            ip_address=ip,
+            user_agent_hash=ua,
+        )
+        db.add(rec)
+
+    # 必須同意が取得できたので consent_required フラグを下ろす
+    user = db.get(User, ctx.user_id)
+    if user is not None:
+        user.consent_required = False
+
+    db.commit()
+    log_access(
+        db,
+        "consents_submitted",
+        details={
+            "consent_types": sorted(given_types.keys()),
+            "privacy_policy_version": body.privacy_policy_version,
+            "terms_version": body.terms_version,
+        },
+    )
+    return {"success": True, "data": {"consent_required": False}}
+
+
+@router.delete("/consents/{consent_type}")
+def withdraw_consent(consent_type: str, request: Request, db: Session = Depends(get_db)):
+    """指定 consent_type の同意を撤回する (GDPR Article 7(3) 準拠)。
+
+    必須同意 (service_delivery / beta_agreement) は撤回不可。撤回したい場合は
+    アカウント削除を先に行う運用とする (Service 提供不能になるため)。
+    """
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if not ctx.user_id:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
+    if consent_type not in _ALL_CONSENT_TYPES:
+        raise HTTPException(status_code=422, detail=f"未知の consent_type: {consent_type!r}")
+    if consent_type in _REQUIRED_CONSENT_TYPES:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"必須同意 ({consent_type}) は撤回できません。"
+                f"撤回する場合はアカウント削除を依頼してください "
+                f"(Service 提供のため必須項目)。"
+            ),
+        )
+
+    now = datetime.utcnow()
+    rec = UserConsent(
+        user_id=ctx.user_id,
+        consent_type=consent_type,
+        consent_given=False,
+        privacy_policy_version=CURRENT_PRIVACY_VERSION,
+        terms_version=CURRENT_TERMS_VERSION,
+        given_at=now,
+        withdrawn_at=now,
+        ip_address=_client_ip(request),
+        user_agent_hash=_hash_user_agent(request.headers.get("user-agent")),
+    )
+    db.add(rec)
+    db.commit()
+    log_access(db, "consent_withdrawn", details={"consent_type": consent_type})
+    return {"success": True, "data": {"consent_type": consent_type, "withdrawn_at": now.isoformat()}}

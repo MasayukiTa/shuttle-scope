@@ -28,6 +28,7 @@ import EmailVerifyPage from '@/pages/EmailVerifyPage'
 import PasswordResetRequestPage from '@/pages/PasswordResetRequestPage'
 import PasswordResetConfirmPage from '@/pages/PasswordResetConfirmPage'
 import InvitationAcceptPage from '@/pages/InvitationAcceptPage'
+import OnboardingConsentPage from '@/pages/OnboardingConsentPage'
 import { NotificationInboxPage } from '@/pages/NotificationInboxPage'
 import { UserManagementPage } from '@/pages/UserManagementPage'
 import PendingUsersPage from '@/pages/PendingUsersPage'
@@ -323,6 +324,8 @@ function ProtectedMainRoute() {
 
   const { token, role, setSession, clearRole } = useAuth()
   const [checkingAuth, setCheckingAuth] = useState(true)
+  // GDPR Article 7 / APPI 第18条: 同意未取得なら OnboardingConsentPage に誘導
+  const [consentRequired, setConsentRequired] = useState<boolean>(false)
 
   useIdleLogout({
     enabled: !!token,
@@ -354,6 +357,7 @@ function ProtectedMainRoute() {
           displayName: me.display_name ?? null,
           pageAccess: me.page_access ?? [],
         })
+        setConsentRequired(!!me.consent_required)
       })
       .catch(() => {
         if (cancelled) return
@@ -381,6 +385,12 @@ function ProtectedMainRoute() {
 
   if (!token || !role) {
     return <LoginPage onLogin={() => { window.location.hash = '/matches' }} />
+  }
+
+  // 同意未取得 → 必須同意取得画面 (フェーズ 1 / GDPR Article 7)。
+  // ここで gate されている間、MainLayout 内のすべてのページにアクセス不可。
+  if (consentRequired) {
+    return <OnboardingConsentPage onCompleted={() => setConsentRequired(false)} />
   }
 
   return <MainLayout />

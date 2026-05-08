@@ -66,6 +66,39 @@ class User(Base):
     awaiting_admin_approval: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="0"
     )
+    # GDPR Article 7 / APPI 第18条 準拠の同意取得 flag。
+    # True なら未同意 = 必須同意 endpoint (`/api/auth/consents`) を経由しないと
+    # 保護対象 API を呼べない。新規ユーザは default True、初回ログインで同意画面誘導。
+    # 0024 migration 時に既存ユーザは False に設定済 (運用断絶を避けるため)。
+    consent_required: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default="1"
+    )
+
+
+class UserConsent(Base):
+    """GDPR Article 7(1) (demonstrate consent) / APPI 第18条 準拠の同意取得記録。
+
+    consent_type ごとに 1 行 1 件、時系列で give/withdraw を追跡する。
+    privacy_policy_version / terms_version は文書改定時にユーザ再同意を判定する根拠。
+    ip_address / user_agent_hash は GDPR Article 32 (security of processing) に基づく
+    evidentiary 補強 (raw UA は記録せず SHA256 hash のみ保存し PII 縮減)。
+    """
+    __tablename__ = "user_consents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    # 'service_delivery' | 'ai_training' | 'research_participation'
+    # | 'cross_border_transfer' | 'beta_agreement'
+    consent_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    consent_given: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    privacy_policy_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    terms_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    given_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    withdrawn_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
 
 class RevokedToken(Base):
