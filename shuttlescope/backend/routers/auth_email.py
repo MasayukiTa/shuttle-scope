@@ -103,6 +103,9 @@ def _enforce_rate_limit(ip: str, email: str, scope: str,
 # ─── スキーマ ───────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
+    # mass-assignment 防御: is_admin / role / team_id 等の権限関連フィールドが
+    # body 経由で silent drop されない (拒否される) ことを保証する。
+    model_config = {"extra": "forbid"}
     username: str = Field(..., min_length=3, max_length=64)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
@@ -111,22 +114,26 @@ class RegisterRequest(BaseModel):
 
 
 class PasswordResetRequest(BaseModel):
+    model_config = {"extra": "forbid"}
     email: EmailStr
     turnstile_token: Optional[str] = Field(None, max_length=2048)
 
 
 class PasswordResetConfirm(BaseModel):
+    model_config = {"extra": "forbid"}
     token: str = Field(..., min_length=10, max_length=200)
     new_password: str = Field(..., min_length=8, max_length=128)
 
 
 class InvitationCreateRequest(BaseModel):
+    model_config = {"extra": "forbid"}
     email: EmailStr
     role: str = Field("analyst", pattern=r"^(analyst|coach|player)$")
     team_id: Optional[int] = Field(None, ge=1, le=2_147_483_647)
 
 
 class InvitationAcceptRequest(BaseModel):
+    model_config = {"extra": "forbid"}
     token: str = Field(..., min_length=10, max_length=200)
     username: str = Field(..., min_length=3, max_length=64)
     password: str = Field(..., min_length=8, max_length=128)
@@ -483,6 +490,8 @@ def accept_invitation(body: InvitationAcceptRequest, request: Request,
 
 class PendingApprovalRequest(BaseModel):
     """admin が保留ユーザーを承認する際のロール / チーム指定。"""
+    # mass-assignment 防御: admin ロール昇格を body 経由で silent 注入できないように。
+    model_config = {"extra": "forbid"}
     role: str = Field("player", pattern=r"^(analyst|coach|player)$")
     team_id: Optional[int] = Field(None, ge=1, le=2_147_483_647)
     team_name: Optional[str] = Field(None, max_length=100)
