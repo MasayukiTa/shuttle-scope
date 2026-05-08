@@ -41,10 +41,13 @@ router = APIRouter()
 
 class HumanForecastCreate(BaseModel):
     # SQLite/PostgreSQL の INTEGER は 32-bit。範囲外を Pydantic で 422 拒否する
+    # mass-assignment 防御 + 文字列上限を DB 列長と整合させる
+    model_config = {"extra": "forbid"}
     match_id: int = Field(..., ge=1, le=2_147_483_647)
     player_id: int = Field(..., ge=1, le=2_147_483_647)
     forecaster_role: str = Field(..., pattern="^(coach|analyst)$")
-    forecaster_name: Optional[str] = None
+    # HumanForecast.forecaster_name は VARCHAR(100)
+    forecaster_name: Optional[str] = Field(default=None, max_length=100)
     predicted_outcome: str = Field(..., pattern="^(win|loss)$")
     predicted_set_path: Optional[str] = Field(
         None, pattern="^(2-0|2-1|1-2|0-2)$"
@@ -53,7 +56,8 @@ class HumanForecastCreate(BaseModel):
     confidence_level: Optional[str] = Field(
         None, pattern="^(high|medium|low)$"
     )
-    notes: Optional[str] = None
+    # notes は DB Text 列。DoS / DB 肥大対策で上限 5000
+    notes: Optional[str] = Field(default=None, max_length=5000)
 
 
 # ── エンドポイント ────────────────────────────────────────────────────────────
