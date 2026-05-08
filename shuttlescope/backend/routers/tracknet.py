@@ -135,16 +135,19 @@ def tracknet_status():
 # ────────────────────────────────────────────────────────────────────
 
 class RoiRectModel(BaseModel):
-    """正規化座標 (0-1) の解析対象矩形"""
-    x: float = 0.0
-    y: float = 0.0
-    w: float = 1.0
-    h: float = 1.0
+    """正規化座標 (0-1) の解析対象矩形。NaN/Inf 拒否 + 範囲制限。"""
+    model_config = {"extra": "forbid"}
+    x: float = Field(default=0.0, ge=0.0, le=1.0, allow_inf_nan=False)
+    y: float = Field(default=0.0, ge=0.0, le=1.0, allow_inf_nan=False)
+    w: float = Field(default=1.0, ge=0.0, le=1.0, allow_inf_nan=False)
+    h: float = Field(default=1.0, ge=0.0, le=1.0, allow_inf_nan=False)
 
 
 class BatchRequest(BaseModel):
-    backend: str = "auto"  # auto | openvino | onnx_cpu
-    confidence_threshold: float = 0.5
+    # mass-assignment 防御
+    model_config = {"extra": "forbid"}
+    backend: str = Field("auto", max_length=32)  # auto | openvino | onnx_cpu
+    confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0, allow_inf_nan=False)
     roi_rect: Optional[RoiRectModel] = None   # 解析対象エリア（未指定なら全体）
     resume: bool = False                       # True: 解析済みラリーをスキップして途中再開
     prev_roi: Optional[RoiRectModel] = None   # 直前の ROI（ROI 拡張時に再処理強制）
