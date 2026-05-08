@@ -101,6 +101,73 @@ class UserConsent(Base):
     user_agent_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
 
+class ContentReport(Base):
+    """CONTENT_POLICY.md / NOTICE_AND_TAKEDOWN_PROCEDURE.md に基づく違反通報。
+
+    DMCA 17 USC § 512 / EU eCommerce Directive 14 / DSA / 著作権法第30条 等の
+    safe harbor を構成する notice-and-takedown 経路の永続化。匿名通報も
+    受け付け、SLA に従った triage / action を残す。
+    """
+    __tablename__ = "content_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    subject_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    subject_match_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    complainant_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    complainant_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    statement_text: Mapped[str] = mapped_column(Text, nullable=False)
+    legal_basis: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    source_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # triage
+    triage_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
+    triaged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    triaged_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    triage_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # action
+    action_taken: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    action_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # counter-notice
+    counter_notice_received_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    counter_notice_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    restored_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class TrainingDatasetRecord(Base):
+    """LEARNING_DATA_PROVENANCE.md に基づく学習データ provenance。
+
+    license_type で著作権法第30条の4 / 第47条の5、明示許諾、β-legacy 想定等を
+    区別する。raw URL は保存せず source_url_hash (SHA256) で参照する。
+    """
+    __tablename__ = "training_dataset_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dataset_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_url_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    acquisition_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    license_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    licensor_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    licensor_contact: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    scope_description: Mapped[str] = mapped_column(String(500), nullable=False)
+    verification_artefacts: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )
+    beta_legacy_flag: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    recorded_by_user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 class RevokedToken(Base):
     """ログアウト済みJWTのブラックリスト。expires_at 以降は自動的に参照不要になる。"""
     __tablename__ = "revoked_tokens"

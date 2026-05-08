@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import PublicInquiry
+from backend.db.models import PublicInquiry, ContentReport
 from backend.utils.auth import get_auth
 
 logger = logging.getLogger(__name__)
@@ -1766,3 +1766,254 @@ async def bulk_delete_public_inquiries(
         ip_addr=_client_ip(request),
     )
     return {"success": True, "data": {"deleted": len(deleted_ids), "ids": deleted_ids}}
+
+
+# ─── Content Reports (DMCA / EU Art 14 / 著作権法 30/47-bis) ─────────────────
+# 詳細手順: CONTENT_POLICY.md / private_docs/internal/NOTICE_AND_TAKEDOWN_PROCEDURE.md
+# Notes:
+#   - anonymous 受付可 (匿名性は GDPR Art 21 等の適切な権利行使に必要)
+#   - rate limit 適用 (DoS 対策)
+#   - statement_text 5000 文字上限 / honeypot あり
+#   - admin triage / action は別 endpoint で行う
+
+class ContentReportCreate(BaseModel):
+    """違反コンテンツ通報の受付スキーマ。
+
+    妥当な範囲で 17 USC 512(c)(3) / EU 14 / 著作権法 30 系の elements を
+    受け取る。匿名通報も処理するため complainant_email は任意。
+    """
+    model_config = {"extra": "forbid"}
+
+    # 通報対象 (どちらか一方は必須)
+    subject_url: Optional[str] = Field(default=None, max_length=500)
+    subject_match_id: Optional[int] = Field(default=None, ge=0)
+    # 通報者情報 (匿名可、ただし connect-back 連絡には email 推奨)
+    complainant_name: Optional[str] = Field(default=None, max_length=255)
+    complainant_email: Optional[str] = Field(default=None, max_length=255)
+    # 主張内容 (free-text、最低 20 文字、最大 5000)
+    statement_text: str = Field(min_length=20, max_length=5000)
+    # 法的根拠
+    legal_basis: Optional[str] = Field(default=None, max_length=50)
+    # honeypot (UI 表示しない隠しフィールド、bot 提出検知)
+    website: Optional[str] = Field(default=None, max_length=200)
+
+
+_VALID_LEGAL_BASIS = {
+    "copyright", "data_protection", "defamation", "privacy",
+    "image_rights", "trademark", "other",
+}
+
+
+@router.post("/api/public/content_report")
+async def submit_content_report(
+    body: ContentReportCreate, request: Request, db: Session = Depends(get_db)
+):
+    """違反コンテンツ通報を受け付ける。
+
+    SLA は CONTENT_POLICY.md Section 7 のとおり:
+      - 受領確認: 1 営業日 (本 API のレスポンスで完了)
+      - 一次審査: 5 営業日
+      - 措置完了: 14 日
+
+    匿名通報も受け付ける (受付確認メール不可)。
+    """
+    # bot 検知 (honeypot)
+    if body.website:
+        raise HTTPException(status_code=400, detail="invalid submission")
+
+    # rate limit (contact form 同等)
+    _enforce_contact_rate_limit(request)
+
+    # 通報対象 (URL or match_id) のいずれかが必要
+    if not body.subject_url and body.subject_match_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="subject_url または subject_match_id のいずれかが必要です",
+        )
+
+    # legal_basis enum
+    if body.legal_basis is not None and body.legal_basis not in _VALID_LEGAL_BASIS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid legal_basis: {body.legal_basis!r}",
+        )
+
+    report = ContentReport(
+        subject_url=(body.subject_url or "").strip()[:500] or None,
+        subject_match_id=body.subject_match_id,
+        complainant_name=(body.complainant_name or "").strip()[:255] or None,
+        complainant_email=(body.complainant_email or "").strip()[:255] or None,
+        statement_text=body.statement_text.strip(),
+        legal_basis=body.legal_basis,
+        source_ip=_client_ip(request),
+        triage_status="pending",
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    # admin 通知 (audit_log + 受領 ID 返却)
+    try:
+        from backend.utils.access_log import log_access
+        log_access(
+            db, "content_report_received",
+            resource_type="content_report",
+            resource_id=report.id,
+            details={
+                "legal_basis": body.legal_basis,
+                "has_subject_url": bool(body.subject_url),
+                "has_subject_match_id": body.subject_match_id is not None,
+                "is_anonymous": not body.complainant_email,
+            },
+            ip_addr=_client_ip(request),
+        )
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "data": {
+            "report_id": report.id,
+            "received_at": report.received_at.isoformat() if report.received_at else None,
+            "ack_message": (
+                "通報を受領しました。CONTENT_POLICY.md Section 7 に従い、"
+                "5 営業日以内に一次審査、14 日以内に措置を実施します。"
+            ),
+        },
+    }
+
+
+# ─── Admin: Content Report triage ────────────────────────────────────
+
+class ContentReportTriageBody(BaseModel):
+    """admin による triage 状態更新。"""
+    model_config = {"extra": "forbid"}
+
+    triage_status: str  # pending | upheld | rejected | awaiting_info | on_hold
+    triage_note: Optional[str] = Field(default=None, max_length=5000)
+    action_taken: Optional[str] = None
+    # no_action | content_removed | access_restricted | account_suspended | pending_legal
+
+
+_VALID_TRIAGE_STATUS = {
+    "pending", "upheld", "rejected", "awaiting_info", "on_hold",
+}
+_VALID_ACTION = {
+    "no_action", "content_removed", "access_restricted",
+    "account_suspended", "pending_legal",
+}
+
+
+@router.get("/api/admin/content_reports")
+async def list_content_reports(
+    request: Request, db: Session = Depends(get_db)
+):
+    _require_admin(request)
+    rows = db.query(ContentReport).order_by(ContentReport.received_at.desc()).all()
+    out = []
+    for r in rows:
+        out.append({
+            "id": r.id,
+            "received_at": r.received_at.isoformat() if r.received_at else None,
+            "subject_url": r.subject_url,
+            "subject_match_id": r.subject_match_id,
+            "complainant_name": r.complainant_name,
+            "complainant_email": r.complainant_email,
+            "legal_basis": r.legal_basis,
+            "statement_excerpt": (r.statement_text or "")[:500],
+            "triage_status": r.triage_status,
+            "triaged_at": r.triaged_at.isoformat() if r.triaged_at else None,
+            "action_taken": r.action_taken,
+            "action_at": r.action_at.isoformat() if r.action_at else None,
+            "counter_notice_received_at": (
+                r.counter_notice_received_at.isoformat()
+                if r.counter_notice_received_at else None
+            ),
+            "restored_at": r.restored_at.isoformat() if r.restored_at else None,
+        })
+    return {"success": True, "data": out}
+
+
+@router.get("/api/admin/content_reports/{report_id}")
+async def get_content_report(
+    report_id: int, request: Request, db: Session = Depends(get_db)
+):
+    _require_admin(request)
+    r = db.get(ContentReport, report_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="content_report not found")
+    return {
+        "success": True,
+        "data": {
+            "id": r.id,
+            "received_at": r.received_at.isoformat() if r.received_at else None,
+            "subject_url": r.subject_url,
+            "subject_match_id": r.subject_match_id,
+            "complainant_name": r.complainant_name,
+            "complainant_email": r.complainant_email,
+            "legal_basis": r.legal_basis,
+            "statement_text": r.statement_text,
+            "source_ip": r.source_ip,
+            "triage_status": r.triage_status,
+            "triaged_at": r.triaged_at.isoformat() if r.triaged_at else None,
+            "triaged_by_user_id": r.triaged_by_user_id,
+            "triage_note": r.triage_note,
+            "action_taken": r.action_taken,
+            "action_at": r.action_at.isoformat() if r.action_at else None,
+            "counter_notice_received_at": (
+                r.counter_notice_received_at.isoformat()
+                if r.counter_notice_received_at else None
+            ),
+            "counter_notice_text": r.counter_notice_text,
+            "restored_at": r.restored_at.isoformat() if r.restored_at else None,
+        },
+    }
+
+
+@router.patch("/api/admin/content_reports/{report_id}")
+async def triage_content_report(
+    report_id: int, body: ContentReportTriageBody,
+    request: Request, db: Session = Depends(get_db),
+):
+    _require_admin(request)
+    ctx = get_auth(request)
+    r = db.get(ContentReport, report_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="content_report not found")
+
+    if body.triage_status not in _VALID_TRIAGE_STATUS:
+        raise HTTPException(
+            status_code=422, detail=f"invalid triage_status: {body.triage_status!r}"
+        )
+    if body.action_taken is not None and body.action_taken not in _VALID_ACTION:
+        raise HTTPException(
+            status_code=422, detail=f"invalid action_taken: {body.action_taken!r}"
+        )
+
+    now = datetime.utcnow()
+    r.triage_status = body.triage_status
+    r.triaged_at = now
+    r.triaged_by_user_id = ctx.user_id
+    if body.triage_note is not None:
+        r.triage_note = body.triage_note.strip() or None
+    if body.action_taken is not None:
+        r.action_taken = body.action_taken
+        r.action_at = now
+    db.commit()
+
+    try:
+        from backend.utils.access_log import log_access
+        log_access(
+            db, "content_report_triaged",
+            user_id=ctx.user_id,
+            resource_type="content_report",
+            resource_id=r.id,
+            details={
+                "triage_status": body.triage_status,
+                "action_taken": body.action_taken,
+            },
+        )
+    except Exception:
+        pass
+
+    return {"success": True, "data": {"id": r.id, "triage_status": r.triage_status}}
