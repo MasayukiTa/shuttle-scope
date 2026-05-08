@@ -20,6 +20,7 @@ from backend.db.database import get_db
 from backend.db.models import EventBookmark, Match
 from backend.utils.auth import get_auth, require_match_scope as _require_match_scope
 from backend.utils.sync_meta import touch_sync_metadata, get_device_id
+from backend.utils.text_sanitize import reject_bidi_only
 
 router = APIRouter()
 
@@ -48,10 +49,22 @@ class BookmarkCreate(BaseModel):
         if v is None:
             return v
         v = str(v)
-        # null byte 除去
+        # null byte 除去 (mode=before のため早期に削る)
         v = v.replace("\x00", "")
-        # HTML タグ除去（Stored XSS 対策）
-        v = _re.sub(r"<[^>]*>?", "", v)
+        # HTML タグ除去（Stored XSS 対策）。1 パスでは
+        #   <scr<!---->ipt>alert(1)</scr<!---->ipt>
+        # のような obfuscation を完全に除去できないので、
+        # 文字列が安定するまでループする (round 207 X3 nested_script の対策)。
+        for _ in range(8):
+            new_v = _re.sub(r"<[^>]*>?", "", v)
+            if new_v == v:
+                break
+            v = new_v
+        # 残った > のみの fragment も削除する (HTML residue を残さない)
+        v = v.replace(">", "")
+        # BIDI override / ZWSP 等の不可視 format char を拒否
+        # (round 207 X1 の RTLO 通過対策。free-text なので改行は許可)
+        reject_bidi_only(v, "note", max_len=2000)
         return v
 
 

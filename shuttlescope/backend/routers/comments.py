@@ -38,8 +38,18 @@ class CommentCreate(BaseModel):
             return v
         v = str(v)
         v = v.replace("\x00", "")
-        # 閉じタグなし (<img src=x onerror=... の末尾 > 省略) も除去するため > を optional に
-        v = _re.sub(r"<[^>]*>?", "", v)
+        # 閉じタグなし (<img src=x onerror=... の末尾 > 省略) も除去するため > を optional に。
+        # 1 パスでは <scr<!---->ipt> 等の obfuscation で残り物が出る (round 207 X3)。
+        # 文字列が安定するまでループ + 余分な > を削除して HTML residue を 0 にする。
+        for _ in range(8):
+            new_v = _re.sub(r"<[^>]*>?", "", v)
+            if new_v == v:
+                break
+            v = new_v
+        v = v.replace(">", "")
+        # BIDI override / ZWSP 等の不可視 format char を拒否 (round 207 X2)
+        from backend.utils.text_sanitize import reject_bidi_only
+        reject_bidi_only(v, "text", max_len=5000)
         return v
 
 

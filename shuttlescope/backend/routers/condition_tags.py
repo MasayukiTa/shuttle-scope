@@ -44,7 +44,16 @@ class ConditionTagCreate(BaseModel):
         if v is None:
             return v
         v = str(v).replace("\x00", "")
-        v = _HTML_TAG_RE.sub("", v)
+        # 1 パスでは <scr<!---->ipt> 等の obfuscation で残り物が出るため安定するまでループ
+        for _ in range(8):
+            new_v = _HTML_TAG_RE.sub("", v)
+            if new_v == v:
+                break
+            v = new_v
+        v = v.replace(">", "")
+        # BIDI override / ZWSP 等を拒否 (短い識別子なので改行も拒否)
+        from backend.utils.text_sanitize import reject_ctrl_and_bidi
+        reject_ctrl_and_bidi(v, "label", max_len=100)
         return v
 
     @field_validator("color")
@@ -67,7 +76,16 @@ class ConditionTagUpdate(BaseModel):
         if v is None:
             return v
         v = str(v).replace("\x00", "")
-        v = _HTML_TAG_RE.sub("", v)
+        # 1 パスでは <scr<!---->ipt> 等の obfuscation で残り物が出るため安定するまでループ
+        for _ in range(8):
+            new_v = _HTML_TAG_RE.sub("", v)
+            if new_v == v:
+                break
+            v = new_v
+        v = v.replace(">", "")
+        # BIDI override / ZWSP 等を拒否 (短い識別子なので改行も拒否)
+        from backend.utils.text_sanitize import reject_ctrl_and_bidi
+        reject_ctrl_and_bidi(v, "label", max_len=100)
         return v
 
     @field_validator("color")
