@@ -14,6 +14,34 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-05-09
+
+### Input-Validation Defense-in-Depth (Round 200-226 Continuous Attack)
+
+Twenty-one attack-driven backend fixes shipped in two deploy batches.
+
+- Aligned Pydantic `max_length` with the underlying SQLAlchemy column lengths (`Player.name` / `name_en` / `nationality` 100/100/50; `User.display_name` / `username` / `team_name` 100; `Team.name` 100, `short_name` 50, `display_id` 64). Rejection that previously slipped past the validator and tripped a 500 at INSERT time is now a 422.
+- Replaced the local control-character-only filter on `Player` and team text fields with `text_sanitize.reject_ctrl_and_bidi`, so RTLO / LRO / ZWSP / ZWNJ / BOM / CRLF / null bytes are rejected together with C0 control characters. The same rule was applied to `bookmark.note`, `comment.text`, public-inquiry fields, `condition_tag.label`, and upload filenames; the HTML-strip regex used by the comment/note/inquiry sanitizers now iterates to a fixed point and removes lingering bare `>` characters so obfuscation patterns like `<scr<!---->ipt>` no longer leave residue.
+- Added a per-element validator for `Player.aliases`: each item must be a string passing `reject_ctrl_and_bidi(max_len=120)`, and the list is capped at 50 items.
+- Replaced `Player.dominant_hand` free-string acceptance with an enum guard (`R` / `L` / `unknown`).
+- `POST /api/auth/users` and `POST /api/auth/teams` now catch SQLAlchemy `IntegrityError` from concurrent unique-constraint races and return `409 user already exists` / `409 team already exists` instead of leaking `500` with stack-trace shape.
+- `Point2D` (court calibration) and `RoiRectModel` (TrackNet batch) now bound coordinates to `[0,1]` with `allow_inf_nan=False`. `CourtCalibrationRequest` enforces exactly 6 points at the schema layer and bounds `container_width` / `container_height` to `1..8192`. `FrameDetectRequest.timestamp_sec` is bounded to `0..86400`. Out-of-range / NaN / Infinity inputs that previously reached `numpy.linalg.svd` and surfaced as `500 SVD did not converge` are now rejected with `422` at the Pydantic layer.
+- Added `model_config = {"extra": "forbid"}` to LabelPayload, ShotAnnotationPayload, AuxiliaryInput, QuestionnaireSubmit, RegisterRequest, PasswordResetRequest, PasswordResetConfirm, InvitationCreateRequest, InvitationAcceptRequest, PendingApprovalRequest, RallyCreate, RallyUpdate, StrokeData, RallyData, SetRoleBody, QuickStartBody, HumanForecastCreate, CreateOrderRequest, CreateProductRequest, GrantEntitlementRequest, DownloadRequest, Point2D, CourtCalibrationRequest, RoiRectModel, BatchRequest, FrameDetectRequest. Field-level `max_length` / `ge` / `le` constraints were added on the same models so payload size is bounded at the schema layer.
+- `sync.backup_now` no longer returns raw exception text in the error detail; the path-related information is moved to server log via `logger.warning` / `logger.exception`, and the response uses generic status-tied messages. `label` query parameter is capped at 100 characters.
+
+### Validation
+
+- Round 212 post-deploy verification confirmed all 13 directly-found issues resolved (display_name boundary, player.name BIDI / ZWSP / CRLF / control, bookmark.note BIDI, comment.text BIDI, comment.text obfuscated HTML strip clean, aliases item BIDI / control / over-length / over-count, team-name BIDI / 101-char / short_name 51-char, parallel user-create race, dominant_hand enum).
+- Round 211 race-suite re-run showed parallel team creation now produces `1×201 + 4×409` (previously `1×201 + 4×500`); user-creation race already converted in batch 1 produces the same shape.
+- Round 225 post-deploy verification of the second batch (court / cv float bounds) returned `422` for Point2D out-of-range, NaN/Inf, points-array length ≠ 6, container_width/height out-of-range, FrameDetectRequest.timestamp_sec out-of-range, and tracknet RoiRectModel out-of-range — 13/13 ✅.
+- Sweep rounds 213-218 (data_package signature, NFKC search, role matrix, GDPR consent lifecycle, JWT corner cases, cross-team isolation, expert-label boundaries, condition / condition_tag color, DoS / rapid-write / concurrent / 413, admin training_data / audit / cluster, security headers / CORS / timing) returned 0 critical findings.
+
+### Documentation
+
+- `private_docs/2026-05-08_continuous_attack_findings.md` now lists the 13 critical findings, their commits, and the post-deploy verification results.
+- `private_docs/2026-05-08_secret_scanning_candidates.md` was extended with five additional candidate rules surfaced by Round 207-210: HTML-strip fixed-point loop, validator `max_length` vs DB column AST check, `list[str]` per-element validator coverage, `IntegrityError → 409` pattern enforcement, filename BIDI smoke.
+- Per-batch validation memos under `shuttlescope/docs/validation/2026-05-09_*.md` (validator alignment batch, text-field BIDI / HTML strip, aliases validator, user-create race, static-review Pydantic field bounds).
+
 ## 2026-05-08
 
 ### GDPR / APPI Compliance Hardening
