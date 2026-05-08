@@ -72,10 +72,15 @@ def export_match_endpoint(
     since: Optional[str] = Query(None, description="YYYY-MM-DD コンディション開始日"),
     until: Optional[str] = Query(None, description="YYYY-MM-DD コンディション終了日"),
     db: Session = Depends(get_db),
+    _ctx=Depends(require_analyst),
 ):
     """
     指定試合群を .sspkg としてダウンロード。
     例: /api/sync/export/match?match_ids=1,2,3
+
+    認証: analyst / admin のみ (round191 finding: player ロールが own match の
+    sync export を試行すると後段処理で 500 になっていた。同 router の他の
+    sync endpoint と同じ require_analyst gate を明示する)。
     """
     try:
         ids = [int(x.strip()) for x in match_ids.split(",") if x.strip()]
