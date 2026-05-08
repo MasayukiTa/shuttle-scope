@@ -4,7 +4,7 @@ import re
 import unicodedata
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -72,6 +72,31 @@ def _validate_dominant_hand(value: Optional[str]) -> None:
         )
 
 
+# aliases リスト要素ごとに BIDI / 制御文字 / 長さを検査する共通バリデータ。
+# Pydantic は list[str] に対する per-element 検証を自動で行わないため、
+# ここで明示的に呼び出して 422 を返す (round 208 Y2 で発見した抜け道の対策)。
+_ALIASES_MAX_COUNT = 50
+_ALIASES_ITEM_MAX = 120
+
+
+def _validate_aliases_list(v):
+    if v is None:
+        return v
+    if not isinstance(v, list):
+        # Pydantic 側で list 型チェック済みなのでここには来ない想定
+        raise HTTPException(status_code=422, detail="aliases must be a list")
+    if len(v) > _ALIASES_MAX_COUNT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"aliases too many (max {_ALIASES_MAX_COUNT})",
+        )
+    for item in v:
+        if not isinstance(item, str):
+            raise HTTPException(status_code=422, detail="aliases items must be strings")
+        reject_ctrl_and_bidi(item, "aliases item", max_len=_ALIASES_ITEM_MAX)
+    return v
+
+
 class PlayerCreate(BaseModel):
     # extra フィールド禁止 + 長さ/形式検証
     # DB 列長 (VARCHAR(100)) に validator を揃え、101-120 char で 500 に抜ける
@@ -92,6 +117,11 @@ class PlayerCreate(BaseModel):
     organization: Optional[str] = Field(default=None, max_length=200)
     aliases: Optional[list[str]] = None
     scouting_notes: Optional[str] = Field(default=None, max_length=5000)
+
+    @field_validator("aliases", mode="after")
+    @classmethod
+    def _aliases_check(cls, v):
+        return _validate_aliases_list(v)
 
 
 class TeamHistoryEntry(BaseModel):
@@ -118,6 +148,11 @@ class PlayerUpdate(BaseModel):
     aliases: Optional[list[str]] = None
     scouting_notes: Optional[str] = Field(default=None, max_length=5000)
     team_history: Optional[list[TeamHistoryEntry]] = None
+
+    @field_validator("aliases", mode="after")
+    @classmethod
+    def _aliases_check(cls, v):
+        return _validate_aliases_list(v)
 
 
 def normalize_name(name: str) -> str:
