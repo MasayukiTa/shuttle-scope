@@ -142,6 +142,9 @@ def test_no_orphan_event_names():
         "user_team_changed",
         "team_created",
         "team_updated",
+        # GDPR / APPI 同意取得 (Article 7 / 第18条)
+        "consents_submitted",
+        "consent_withdrawn",
         # 試合 / 選手
         "match_created",
         "match_deleted",
