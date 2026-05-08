@@ -1,7 +1,7 @@
 """ストローク管理API（/api/strokes）"""
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -35,20 +35,23 @@ def _stroke_require_scope(request: Request, db: Session, rally_id: int) -> Match
 
 
 class StrokeData(BaseModel):
-    stroke_num: int
-    player: str
-    shot_type: str
-    shot_quality: Optional[str] = None
+    # 未知フィールド silent drop 遮断
+    model_config = {"extra": "forbid"}
+    stroke_num: int = Field(..., ge=1, le=10000)
+    # 文字列は handler 側で enum 検査されるが Pydantic 層でも DoS / DB 列長保護
+    player: str = Field(..., max_length=32)
+    shot_type: str = Field(..., max_length=64)
+    shot_quality: Optional[str] = Field(default=None, max_length=32)
     hit_x: Optional[float] = None
     hit_y: Optional[float] = None
     land_x: Optional[float] = None
     land_y: Optional[float] = None
-    hit_zone: Optional[str] = None
+    hit_zone: Optional[str] = Field(default=None, max_length=32)
     # Phase A: 'cv' = CV 自動推定 / 'manual' = 人間 override
-    hit_zone_source: Optional[str] = None
+    hit_zone_source: Optional[str] = Field(default=None, max_length=32)
     # Phase A: CV 元推定値 (override 後も保持)
-    hit_zone_cv_original: Optional[str] = None
-    land_zone: Optional[str] = None
+    hit_zone_cv_original: Optional[str] = Field(default=None, max_length=32)
+    land_zone: Optional[str] = Field(default=None, max_length=32)
     is_backhand: bool = False
     is_around_head: bool = False
     above_net: Optional[bool] = None
@@ -62,34 +65,35 @@ class StrokeData(BaseModel):
     return_target_x:    Optional[float] = None
     return_target_y:    Optional[float] = None
     # G2: 返球品質・打点高さ（ストローク確定後オプション）
-    return_quality: Optional[str] = None   # attack/neutral/defensive/emergency
-    contact_height: Optional[str] = None   # overhead/side/underhand/scoop
+    return_quality: Optional[str] = Field(default=None, max_length=32)   # attack/neutral/defensive/emergency
+    contact_height: Optional[str] = Field(default=None, max_length=32)   # overhead/side/underhand/scoop
     # 移動系コンテキスト（4.1 Movement Features）
-    contact_zone: Optional[str] = None     # front/mid/rear
-    movement_burden: Optional[str] = None  # low/medium/high
-    movement_direction: Optional[str] = None  # forward/backward/lateral
+    contact_zone: Optional[str] = Field(default=None, max_length=32)     # front/mid/rear
+    movement_burden: Optional[str] = Field(default=None, max_length=32)  # low/medium/high
+    movement_direction: Optional[str] = Field(default=None, max_length=32)  # forward/backward/lateral
     # アノテーション記録方式 (manual / assisted / corrected)
-    source_method: Optional[str] = None
+    source_method: Optional[str] = Field(default=None, max_length=32)
 
 
 class RallyData(BaseModel):
-    set_id: int
-    rally_num: int
-    server: str
-    winner: str
-    end_type: str
-    rally_length: int
-    duration_sec: Optional[float] = None
-    score_a_after: int
-    score_b_after: int
+    model_config = {"extra": "forbid"}
+    set_id: int = Field(..., ge=1, le=2_147_483_647)
+    rally_num: int = Field(..., ge=1, le=10000)
+    server: str = Field(..., max_length=32)
+    winner: str = Field(..., max_length=32)
+    end_type: str = Field(..., max_length=32)
+    rally_length: int = Field(..., ge=0, le=10000)
+    duration_sec: Optional[float] = Field(default=None, ge=0, le=86400)
+    score_a_after: int = Field(..., ge=0, le=1000)
+    score_b_after: int = Field(..., ge=0, le=1000)
     is_deuce: bool = False
-    video_timestamp_start: Optional[float] = None
-    video_timestamp_end: Optional[float] = None
+    video_timestamp_start: Optional[float] = Field(default=None, ge=0, le=86400)
+    video_timestamp_end: Optional[float] = Field(default=None, ge=0, le=86400)
     is_skipped: bool = False
     # アノテーション記録方式 (manual_record / assisted_record)
-    annotation_mode: Optional[str] = None
+    annotation_mode: Optional[str] = Field(default=None, max_length=32)
     # レビューステータス (pending / completed)
-    review_status: Optional[str] = None
+    review_status: Optional[str] = Field(default=None, max_length=32)
 
 
 class BatchSaveRequest(BaseModel):

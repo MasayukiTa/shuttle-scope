@@ -1,7 +1,7 @@
 """ラリー管理API（/api/rallies）"""
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -30,31 +30,33 @@ def _rally_require_scope(request: Request, db: Session, set_id: int) -> Match:
 class RallyCreate(BaseModel):
     # 未知フィールド禁止 (mass assignment 防御)
     model_config = {"extra": "forbid"}
-    set_id: int
-    rally_num: int
-    server: str
-    winner: str
-    end_type: str
-    rally_length: int
-    duration_sec: Optional[float] = None
-    score_a_after: int
-    score_b_after: int
+    set_id: int = Field(..., ge=1, le=2_147_483_647)
+    rally_num: int = Field(..., ge=1, le=10000)
+    # server / winner / end_type は handler 側で enum 検査されるが、
+    # Pydantic 層でも長さ制限を入れて DoS / DB 列長エラーを防ぐ
+    server: str = Field(..., max_length=32)
+    winner: str = Field(..., max_length=32)
+    end_type: str = Field(..., max_length=32)
+    rally_length: int = Field(..., ge=0, le=10000)
+    duration_sec: Optional[float] = Field(default=None, ge=0, le=86400)
+    score_a_after: int = Field(..., ge=0, le=1000)
+    score_b_after: int = Field(..., ge=0, le=1000)
     is_deuce: bool = False
-    video_timestamp_start: Optional[float] = None
-    video_timestamp_end: Optional[float] = None
+    video_timestamp_start: Optional[float] = Field(default=None, ge=0, le=86400)
+    video_timestamp_end: Optional[float] = Field(default=None, ge=0, le=86400)
 
 
 class RallyUpdate(BaseModel):
     model_config = {"extra": "forbid"}
-    winner: Optional[str] = None
-    end_type: Optional[str] = None
-    rally_length: Optional[int] = None
-    duration_sec: Optional[float] = None
-    score_a_after: Optional[int] = None
-    score_b_after: Optional[int] = None
+    winner: Optional[str] = Field(default=None, max_length=32)
+    end_type: Optional[str] = Field(default=None, max_length=32)
+    rally_length: Optional[int] = Field(default=None, ge=0, le=10000)
+    duration_sec: Optional[float] = Field(default=None, ge=0, le=86400)
+    score_a_after: Optional[int] = Field(default=None, ge=0, le=1000)
+    score_b_after: Optional[int] = Field(default=None, ge=0, le=1000)
     is_deuce: Optional[bool] = None
-    video_timestamp_start: Optional[float] = None
-    video_timestamp_end: Optional[float] = None
+    video_timestamp_start: Optional[float] = Field(default=None, ge=0, le=86400)
+    video_timestamp_end: Optional[float] = Field(default=None, ge=0, le=86400)
 
 
 def rally_to_dict(r: Rally) -> dict:
