@@ -1,6 +1,6 @@
 # ShuttleScope Privacy Notice
-## Version 1.1 — Effective upon first use of the Software by any Contributing Party
-## Effective Date: 2026-05-08 (Version 1.1 supersedes Version 1.0)
+## Version 1.2 — Effective upon first use of the Software by any Contributing Party
+## Effective Date: 2026-05-08 (Version 1.2 supersedes Version 1.1; Version 1.1 superseded Version 1.0 on 2026-05-08)
 
 ---
 
@@ -693,6 +693,16 @@ rights and freedoms of natural persons, the Licensor shall:
   breach and fulfill its own notification obligations; and
   **(c)** cooperate with the Contributing Party and relevant supervisory
   authorities as required.
+
+**9.3 Beta Period Interim Measures.**  
+During the beta period of the Service, certain technical and organizational
+measures described in this Article IX are operated under interim
+arrangements appropriate to a small-scale beta deployment. These interim
+arrangements are documented in the Licensor's internal operating
+procedures, reviewed at the end of the beta period, and progressively
+replaced or upgraded as the Service matures. Material changes to the
+arrangements that affect the protection of Personal Data shall be reflected
+in subsequent updates to this Notice.
 
 ---
 

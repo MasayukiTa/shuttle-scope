@@ -1,6 +1,6 @@
 # Terms of Service
 
-## Version 1.1 — Effective 2026-05-08 (supersedes Version 1.0)
+## Version 1.2 — Effective 2026-05-08 (supersedes Version 1.1)
 
 ## 1. Purpose
 
@@ -36,16 +36,33 @@ You are responsible for:
 
 ## 4. Acceptable Use
 
+ShuttleScope is a generally available analysis tool. You are responsible for
+ensuring that the content You submit and the manner in which You use the
+Service are consistent with the rights You hold and with applicable law.
+
 You may not use ShuttleScope to:
 
 - violate law or third-party rights;
-- upload or process data You are not authorized to use;
+- submit content You are not authorized to record, copy, transmit, store,
+  or analyze in the manner contemplated by Your use of the Service;
+- submit content that is unlawful per se in the jurisdictions where the
+  Service is operated;
 - interfere with the security, integrity, or availability of the software or
   service;
 - probe, scan, or benchmark the service in a manner that imposes abnormal load
   or seeks to extract confidential implementation details; or
 - provide a commercial competing service using the software except as expressly
   authorized in writing by the developer.
+
+The developer does not pre-screen content submitted to the Service and does
+not assert a position on the lawfulness of any particular submission prior
+to receiving a credible report to the contrary. Content lawfully accessible
+to You through paid streaming subscriptions, broadcast licensing, or other
+lawful means may be processed through the Service in the same manner as
+content You have personally recorded; the assessment of whether Your use is
+within the scope of Your rights remains with You. The reporting and
+take-down procedure that applies after a third-party report is set forth in
+`CONTENT_POLICY.md` and Section 16 below.
 
 ## 5. Customer Data and Operational Data
 
@@ -233,3 +250,100 @@ obligations, including without limitation:
 - entering into a Data Processing Agreement substantially in the form of the
   template referenced in `contracts/DPA_TEMPLATE.md` where the developer acts
   as data processor on Your behalf.
+
+## 16. User Content and Hosting Posture
+
+### 16.1 Definition
+
+"User Content" means video, annotation data, derived analysis records, and
+other materials submitted to the Service by a User in the course of using
+the Service.
+
+### 16.2 User Representations
+
+By submitting User Content, You represent that You hold the rights or have
+otherwise obtained the legal basis necessary to submit, process, store, and
+use the resulting analysis output in the manner contemplated by Your use of
+the Service. The developer relies on this representation and does not
+independently verify it.
+
+### 16.3 Hosting Posture
+
+The developer's role in respect of User Content is limited to operating
+the analysis pipeline, storing the resulting artifacts, and responding to
+verified reports of infringement or other content-related complaints. The
+developer does not engage in pre-screening or editorial selection of User
+Content, does not curate User Content, and does not promote particular
+categories of User Content over others. This posture is consistent with
+the framework recognized for general-purpose tools and hosting services
+under applicable law, including the safe-harbor regimes for hosting
+services under 17 U.S.C. § 512 and Article 14 of Directive 2000/31/EC, and
+the corresponding case law of the relevant jurisdictions.
+
+### 16.4 Notice and Take-Down
+
+The procedure by which a third party may report User Content believed to
+infringe their rights, and the procedure by which the developer responds
+to such reports, is set forth in `CONTENT_POLICY.md`. By submitting User
+Content, You acknowledge that User Content may be removed in accordance
+with that procedure.
+
+### 16.5 Counter-Notice
+
+Where User Content is removed in response to a notice and You believe the
+removal was the result of mistake or misidentification, You may submit a
+counter-notice in accordance with `CONTENT_POLICY.md` Section 8.
+
+### 16.6 No Editorial Selection
+
+Nothing in this Section 16 shall be construed as creating an obligation
+on the developer to monitor User Content, to seek out facts or
+circumstances indicating illegal activity, or to take general measures of
+preventive surveillance, except to the extent expressly required by
+applicable law and limited to that extent.
+
+### 16.7 Designated Agent (Future)
+
+At the time the Service is offered to Users in or directed to the United
+States on a sustained commercial basis, the developer intends to register
+a designated agent with the United States Copyright Office under 17
+U.S.C. § 512(c)(2). Until such registration is in effect, the channels
+in `CONTENT_POLICY.md` Section 5 are operative.
+
+## 17. Developer Conduct Guarantees
+
+### 17.1 Role Separation
+
+The developer maintains a clear distinction between (a) the developer's
+role as the operator of the Service and (b) any role the developer may
+have as a User of the Service. Nothing in these Terms shall be construed
+as exempting the developer, when acting as a User, from the obligations
+applicable to Users generally.
+
+### 17.2 Training Data Sourcing
+
+The developer maintains internal records of the sources and licensing
+basis of data used to train, fine-tune, or evaluate the machine-learning
+components of the Service, in alignment with the disclosures in
+`PRIVACY.md` Article V-bis. Where applicable national law provides for an
+exception permitting the use of works for information-analysis purposes
+(e.g., Article 30-4 of the Japanese Copyright Act), the developer relies
+on such exception only within the scope expressly permitted by law and
+does not represent that the exception extends beyond that scope.
+
+### 17.3 No Inducement of Infringement
+
+The developer does not market, promote, or endorse the use of the
+Service for the infringement of third-party rights. Marketing materials
+and public statements by the developer concerning the Service shall not
+characterize as a recommended use any activity that would constitute
+infringement under applicable law.
+
+### 17.4 Beta Period Note
+
+During the beta period, certain technical and organizational measures
+described in `PRIVACY.md` Article IX are operated under interim
+arrangements appropriate to a small-scale beta deployment. These interim
+arrangements are reviewed at the end of the beta period and replaced or
+upgraded as the Service matures, with the resulting changes reflected in
+subsequent updates to `PRIVACY.md`.
