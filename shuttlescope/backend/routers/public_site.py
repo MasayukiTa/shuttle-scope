@@ -1838,6 +1838,15 @@ async def submit_content_report(
             detail=f"invalid legal_basis: {body.legal_basis!r}",
         )
 
+    # 文字列フィールドの control char / BIDI 拒否 (UI 表示偽装 + null byte 防御)。
+    # statement_text は free-text なので改行・タブは許容、それ以外の control / BIDI を reject。
+    # 識別子・短いフィールドは改行も含めて全 reject。
+    from backend.utils.text_sanitize import reject_ctrl_and_bidi, reject_bidi_only
+    reject_ctrl_and_bidi(body.subject_url, "subject_url", max_len=500)
+    reject_ctrl_and_bidi(body.complainant_email, "complainant_email", max_len=255)
+    reject_ctrl_and_bidi(body.complainant_name, "complainant_name", max_len=255)
+    reject_bidi_only(body.statement_text, "statement_text", max_len=5000)
+
     report = ContentReport(
         subject_url=(body.subject_url or "").strip()[:500] or None,
         subject_match_id=body.subject_match_id,
@@ -1989,6 +1998,10 @@ async def triage_content_report(
         raise HTTPException(
             status_code=422, detail=f"invalid action_taken: {body.action_taken!r}"
         )
+
+    # triage_note の control char / BIDI 拒否 (admin が後で UI で見るため)
+    from backend.utils.text_sanitize import reject_bidi_only
+    reject_bidi_only(body.triage_note, "triage_note", max_len=5000)
 
     now = datetime.utcnow()
     r.triage_status = body.triage_status

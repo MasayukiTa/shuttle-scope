@@ -77,6 +77,16 @@ def create_training_record(
             detail=f"invalid license_type: {body.license_type!r}",
         )
 
+    # 文字列フィールドの control char / BIDI 拒否 (admin 表示偽装 / null byte 防御)
+    from backend.utils.text_sanitize import reject_ctrl_and_bidi, reject_bidi_only
+    reject_ctrl_and_bidi(body.dataset_id, "dataset_id", max_len=100)
+    reject_ctrl_and_bidi(body.licensor_id, "licensor_id", max_len=100)
+    reject_ctrl_and_bidi(body.licensor_contact, "licensor_contact", max_len=255)
+    reject_ctrl_and_bidi(body.source_url, "source_url", max_len=2000)
+    reject_ctrl_and_bidi(body.verification_artefacts, "verification_artefacts", max_len=500)
+    reject_bidi_only(body.scope_description, "scope_description", max_len=500)
+    reject_bidi_only(body.notes, "notes", max_len=5000)
+
     rec = TrainingDatasetRecord(
         dataset_id=body.dataset_id.strip(),
         source_url_hash=_hash_source_url(body.source_url),
