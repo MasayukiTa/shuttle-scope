@@ -721,6 +721,19 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
             if path in ("/api/auth/logout", "/api/auth/mfa/setup", "/api/auth/mfa/confirm",
                         "/api/auth/mfa/disable", "/api/auth/mfa/login"):
                 _player_write_allowed = True
+            # GDPR Article 7 / APPI 第18条: player は自身の consent を submit/withdraw
+            # できる必要がある。OnboardingConsentPage を通る player ロールも当然対象。
+            # endpoint 側で ctx.user_id でしか自身のレコードに作用しないため、横展開
+            # リスクなし。
+            if method == "POST" and path == "/api/auth/consents":
+                _player_write_allowed = True
+            if method == "DELETE" and path.startswith("/api/auth/consents/"):
+                _player_write_allowed = True
+            # 違反コンテンツ通報 (CONTENT_POLICY.md): player でも anonymous でも
+            # 通報可能であるべき。本来 anonymous endpoint で player トークンが
+            # ついていても通すのが自然。
+            if method == "POST" and path == "/api/public/content_report":
+                _player_write_allowed = True
             if not _player_write_allowed:
                 try:
                     from backend.utils.access_log import log_access
