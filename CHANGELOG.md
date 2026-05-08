@@ -16,6 +16,29 @@ Read it together with:
 
 ## 2026-05-09
 
+### Cascade & FK Cleanup (Round 227-231 Local Boundary / Artifact Lifecycle)
+
+Three additional backend fixes shipped after the Round 200-226 batch.
+
+- `DELETE /api/matches/{id}` now cascades comments and event_bookmarks via Core SQL `DELETE` before `db.delete(match)`. Previously, matches with attached comments or bookmarks failed at commit with `psycopg.errors.ForeignKeyViolation` and surfaced the raw SQL detail (table + constraint name) in the 500 response. The 500 detail is now sanitized; full diagnostics go to server log.
+- `DELETE /api/auth/users/{id}` repaired. The previous cleanup statement list contained typos (`access_log` vs the actual `access_logs`; `user_invitations.created_by_user_id` and `shared_sessions.created_by_user_id` did not exist) and missing FK paths (`matches.annotator_id`, `shot_annotations.annotator_user_id`, `billing_orders.user_id`, `billing_entitlements.user_id` / `granted_by_user_id`, `revoked_tokens.user_id`, `user_consents.user_id`, `player_page_access.user_id`, `user_invitations.consumed_by_user_id`). Each cleanup statement also called `db.rollback()` on exception, which reverted ALL prior successful cleanups. Each cleanup is now wrapped in `db.begin_nested()` (SAVEPOINT) so a failure on one statement no longer poisons the others, and the 409 response detail is now generic.
+
+### Validation
+
+- Round 229 post-deploy verification: 11/11 ✅. Match deletion with attached comments / bookmarks succeeds; bookmarks and comments are removed; subsequent GET / list / export return 404 / 422. User deletion (with the cleanup) succeeds for freshly-created users; the access token, refresh token, and login-after-delete all return 401. Player record survives user deletion (player_id was nulled on the user side via existing FK behaviour).
+- Round 230 (admin blast radius): admin rapid-create 30 users / 30 teams produces no 500 / no rate-limit hits — by design but worth flagging for guardrail review. Audit log spot-check confirmed 26 unique action types (login / login_failed / logout / token_refresh / user_created / user_updated / user_updated_high_risk / user_deleted / team_created / team_updated / match_updated / match_deleted / consents_submitted / consent_withdrawn / training_data_record_created / content_report_received / content_report_triaged / export_package_created / password_reset_by_admin / admin_reset_user_limits / account_locked / account_unlocked / access_denied / access_denied_write / access_denied_coach_scope / access_denied_research) over a 500-row sample.
+- Round 231 (legal / ops workflow drill): consent withdrawal correctly rejects contractual-basis types (`service_delivery`, `beta_agreement`) with 403 and accepts optional types (`ai_training`, `research_participation`) with 200, satisfying GDPR Article 7(3). Training-data records remain immutable (PUT / DELETE → 405). Self-delete is blocked (400). The Subject Access Request (SAR) and counter-notice routes are 404 / 405 / 401 — confirmed as known operational gaps tracked separately for Wave B / `SAR_PROCEDURE.md`.
+
+### Static Review (Round 227, no code change)
+
+The Electron `main.ts` (1615 lines) and `preload.ts` (92 lines) were re-read end to end. Defenses confirmed in place: `localfile://` and `app://video/{token}` schemes use URL parsing with strict path-jail and 32-hex token regex; the main BrowserWindow runs with `contextIsolation: true` / `nodeIntegration: false` / `webSecurity: true`; `will-attach-webview` strips unknown webPreferences keys and forces `sandbox: true`; `relaunch-app` is gated by sender-WC, top-frame, 5s user-gesture, and 30s rate limit; `mirror-broadcast` enforces a four-type allowlist and 32 KB cap; `save-recorded-video` validates ArrayBuffer + magic byte (webm / mp4 ftyp) + extension + dialog-only path + 4 GB cap; the Python backend is spawned with an absolute path and explicit env (no PATH lookup); packaged builds block DevTools at the input-event layer. Two minor observations (not vulnerabilities): `SS_LIVE_ARCHIVE_ROOT` not set leaves drive isolation off (warned at startup but not enforced); `_userSelectedPaths` is session-scoped and persists across the session for any file selected via dialog.
+
+### Notes
+
+- Player-facing UI policy leak (Round 228 finding) — the `Sidebar` `/dashboard` link, `DashboardTopNav` six routes, and `DashboardReviewPage` i18n labels (`analysis.review.section_maps` = "STEP 1 — 弱点・配球マップ", `guide_step1` = "① 受け側の弱点・有効配球を確認", `vulnerability_map` = "被打球弱点マップ") are reachable from the `player` role. Backend `/api/analysis/received_vulnerability` already returns 403 to player so the data is empty, but the literal labels render. This violates the CLAUDE.md non-negotiable rule "Never show players direct 'weakness' framing". Tracked as a UX-decision item (route gating / hasPageAccess('dashboard') / role-based label substitution) and intentionally not fixed in this batch.
+- Team delete API gap — `/api/auth/teams/{id}` has no DELETE handler. The model has `deleted_at` but no soft-delete endpoint. Operational gap, not a vulnerability.
+- Audit-log HMAC chain integrity vs FK enforcement — `delete_user` updates `access_logs.user_id = NULL`, but the original `row_hash` was computed with the original `user_id` and `verify_chain` re-derives canonical bytes from current row state, so the hash chain breaks after a user is deleted. Architectural tension (FK vs append-only); migration to remove the FK or switch to `ON DELETE SET NULL` is the long-term fix.
+
 ### Input-Validation Defense-in-Depth (Round 200-226 Continuous Attack)
 
 Twenty-one attack-driven backend fixes shipped in two deploy batches.
