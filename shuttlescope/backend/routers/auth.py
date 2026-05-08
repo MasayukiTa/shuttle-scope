@@ -1346,7 +1346,17 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
         hashed_credential=hashed,
     )
     db.add(user)
-    db.commit()
+    # parallel POST race: 同じ username / player_id が DB レベルの unique 制約で
+    # IntegrityError になる経路を 409 に正規化する (round 210 AA8)。素の 500 は
+    # スタックトレースリークと攻撃者の意図しない情報提示につながるので避ける。
+    from sqlalchemy.exc import IntegrityError as _IntegrityError
+    try:
+        db.commit()
+    except _IntegrityError:
+        db.rollback()
+        # username / player_id どちらの衝突かは error 文面で判別可能だが、
+        # 攻撃者向けには曖昧化する (timing / reason side channel 抑制)。
+        raise HTTPException(status_code=409, detail="user already exists")
     db.refresh(user)
     log_access(db, "user_created", user_id=user.id, details={"role": body.role, "display_name": body.display_name, "team_id": team.id})
     return {"success": True, "data": {"id": user.id, "role": user.role, "display_name": user.display_name, "team_id": team.id}}
