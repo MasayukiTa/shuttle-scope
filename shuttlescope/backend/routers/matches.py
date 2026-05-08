@@ -966,15 +966,17 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
 
 class QuickStartBody(BaseModel):
     """クイックスタート専用リクエスト（V4）"""
-    player_a_id: int                           # 自チーム選手（登録済み）
-    opponent_name: str                         # 相手選手名（新規または既存）
-    opponent_id: Optional[int] = None          # 既存選手を選択した場合はIDを指定
-    opponent_team: Optional[str] = None        # 相手選手チーム名（同姓同名識別用）
-    initial_server: Optional[str] = None       # player_a / player_b
-    competition_type: str = "unknown"          # official/practice_match/open_practice/unknown
-    tournament: Optional[str] = None           # 大会名（任意）
-    round: Optional[str] = None               # ラウンド（任意）
-    format: str = "singles"
+    # mass-assignment 防御 + 文字列上限を DB 列長に整合させる
+    model_config = {"extra": "forbid"}
+    player_a_id: int = Field(..., ge=1, le=2_147_483_647)        # 自チーム選手（登録済み）
+    opponent_name: str = Field(..., min_length=1, max_length=100)  # Player.name VARCHAR(100)
+    opponent_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
+    opponent_team: Optional[str] = Field(default=None, max_length=100)  # Team.name VARCHAR(100)
+    initial_server: Optional[str] = Field(default=None, max_length=32)  # player_a / player_b
+    competition_type: str = Field("unknown", max_length=50)             # official/practice_match/open_practice/unknown
+    tournament: Optional[str] = Field(default=None, max_length=200)     # Match.tournament VARCHAR(200)
+    round: Optional[str] = Field(default=None, max_length=50)           # Match.round VARCHAR(50)
+    format: str = Field("singles", max_length=30)
 
 
 def _normalize_name(name: str) -> str:
