@@ -379,14 +379,16 @@ try:
 except ImportError:
     pass
 
-# ベンチマーク用デバイス自動検出 + ジョブ管理ルーター
-# SEC-001: 本番姿勢ではマウント除外 (CV/GPU 集中処理エンドポイント露出 → DoS 起点を防ぐ)
-if not app_settings.is_production_posture:
-    try:
-        from backend.routers import benchmark as _bm_router  # type: ignore
-        app.include_router(_bm_router.router, prefix="/api")
-    except ImportError:
-        pass
+# ベンチマーク用デバイス自動検出 + クラスタ分散ジョブ管理ルーター
+# 旧 SEC-001 ガードは外した: admin が外部 (Cloudflare tunnel) 経由で各 worker
+# (primary + Ray join した remote node) のデバイスをベンチマークできなくなる
+# ブロッカーになっていた。/v1/benchmark/{devices,run,jobs/{id}} は全 endpoint で
+# require_admin を実施するため anonymous / non-admin から DoS 起点にならない。
+try:
+    from backend.routers import benchmark as _bm_router  # type: ignore
+    app.include_router(_bm_router.router, prefix="/api")
+except ImportError:
+    pass
 
 
 # ─── HTTP ボディサイズ上限ミドルウェア ────────────────────────────────────────
