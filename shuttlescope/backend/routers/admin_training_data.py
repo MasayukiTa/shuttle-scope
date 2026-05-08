@@ -77,6 +77,27 @@ def create_training_record(
             detail=f"invalid license_type: {body.license_type!r}",
         )
 
+    # round186 E10: license_type と beta_legacy_flag の整合性強制。
+    # LEARNING_DATA_PROVENANCE.md §1.1 で beta_legacy_flag は
+    # license_type='beta_legacy_assumed_legal' の必須マーカーとして定義されている。
+    # 矛盾は意図しない学習データ混入の温床なので明示 reject する。
+    if body.license_type == "beta_legacy_assumed_legal" and not body.beta_legacy_flag:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "license_type='beta_legacy_assumed_legal' requires "
+                "beta_legacy_flag=true"
+            ),
+        )
+    if body.license_type != "beta_legacy_assumed_legal" and body.beta_legacy_flag:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "beta_legacy_flag=true is only valid with "
+                "license_type='beta_legacy_assumed_legal'"
+            ),
+        )
+
     # 文字列フィールドの control char / BIDI 拒否 (admin 表示偽装 / null byte 防御)
     from backend.utils.text_sanitize import reject_ctrl_and_bidi, reject_bidi_only
     reject_ctrl_and_bidi(body.dataset_id, "dataset_id", max_len=100)
