@@ -40,6 +40,17 @@ Read it together with:
 - `private_docs/contracts/` and `private_docs/internal/` are kept under the existing `private_docs/` ignore rule. The new public-facing `contracts/DPA_TEMPLATE.md` (root-level) is committed.
 - Added `private_docs/2026-05-08_gdpr_compliance_implementation_plan.md` recording the strict task plan that drove the work above; it is internal-only and is referenced in the DPIA's "Integration of outcomes" section.
 
+### Consent UI Refinement (Contractual Basis vs Consent)
+
+- Following an internal legal analysis, the Onboarding consent flow now distinguishes contractual confirmation from optional consent more strictly. The two required items (`service_delivery`, `beta_agreement`) carry the GDPR Article 6(1)(b) / APPI Article 18 contract-performance basis. Their UI labels read "...の内容を確認しました" rather than "...に同意します", their description texts cite the legal basis explicitly, and the section header notes that withdrawal of these items is equivalent to ending use of the service. The required badge reads "契約履行（必須）" rather than "必須" alone.
+- The optional `cross_border_transfer` item was removed from the UI. EU→Japan transfers operate under the EU-Japan adequacy decision (effective January 2019), so a separate user consent for cross-border transfer is not the appropriate legal basis; surfacing such a checkbox risks misleading users into thinking transfers depend on their personal opt-in. APPI Article 28 cross-border safeguards remain in place via the safeguards described in `PRIVACY.md` Section 6.2 and the SCC placement of `contracts/DPA_TEMPLATE.md` Annex 4. Other future non-adequate destinations (e.g., the United States) will be handled through SCCs / equivalent measures rather than a UI checkbox.
+- Optional consent items now state their withdrawal channel inline (in-application contact form, public contact form, or email to `contact@shuttle-scope.com`).
+- `PRIVACY.md` Section 8.5 ("Withdrawal Mechanism (Interim)") added. It records the interim withdrawal channels, acknowledges the GDPR Article 7(3) "as easy to withdraw as to give" standard, and commits to delivering an in-application withdrawal interface no later than 31 December 2026. Required confirmations under the contractual basis are explicitly excluded from the withdrawal flow.
+
+### Public-Facing β Agreement
+
+- Added `contracts/BETA_DATA_HANDLING_AGREEMENT.md` as the repository's public template version of the β-period data handling agreement. Personal names and parent-organization references are stripped relative to the internal in-person `private_docs/ShuttleScope_同意書.docx`; the contact channel on the public version is `contact@shuttle-scope.com` plus the public contact form. The internal docx remains under `private_docs/` as the in-person signing instrument.
+
 ## 2026-05-07
 
 ### Streaming-Capture Recording for Member-Only Live Sites

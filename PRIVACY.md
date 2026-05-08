@@ -632,6 +632,37 @@ The right to erasure is subject to the following limitations:
   deployment is the responsibility of the Organization and must be addressed
   through the Organization's own data management procedures.
 
+**8.5 Withdrawal Mechanism (Interim).**  
+As of the effective date of Version 1.1 of this Notice, withdrawal of consent
+for optional processing purposes (including AI model training as described in
+Article V-bis and research participation as described in Article IV) is
+operated through the following channels:
+
+  **(a)** the in-application contact form accessible after authentication;
+
+  **(b)** the public contact form at `https://shuttle-scope.com/contact`;
+  and
+
+  **(c)** electronic mail to `contact@shuttle-scope.com`.
+
+The Licensor acknowledges that this interim mechanism may not fully satisfy
+the standard expressed in Article 7(3) GDPR, which requires that the
+withdrawal of consent be as easy as the giving of consent. The Licensor is
+committed to implementing an in-application withdrawal interface, accessible
+from the Software's settings, by no later than 31 December 2026. Until that
+implementation is delivered, withdrawal requests received through the
+channels in this Section 8.5 shall be processed within fourteen (14) days of
+verified receipt and shall take prospective effect from the date of
+processing, save where retroactive removal is required by other applicable
+provisions of this Notice.
+
+Required confirmations relating to the contractual basis for service
+delivery (Article 6(1)(b) GDPR / Article 18 APPI) — as opposed to consent
+under Article 6(1)(a) — are not subject to withdrawal under this Section.
+A Data Subject who does not wish those processing activities to continue
+may discontinue use of the Software, in which case the retention provisions
+of Article VII shall apply.
+
 ---
 
 ### ARTICLE IX — SECURITY
