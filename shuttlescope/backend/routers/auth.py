@@ -17,7 +17,7 @@ from typing import Optional
 
 import bcrypt as _bcrypt_lib
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -1944,8 +1944,9 @@ def patch_team(team_id: int, body: TeamPatch, request: Request, db: Session = De
 
 # 現行 PRIVACY.md / TERMS_OF_SERVICE.md / DATA_CONTRIBUTION_TERMS.md の version。
 # 文書改定時はここを更新し、frontend 側にも反映する (再同意取得の判定根拠)。
-CURRENT_PRIVACY_VERSION = "1.1"
-CURRENT_TERMS_VERSION = "1.1"
+# 2026-05-08: PRIVACY v1.2 (Article IX §9.3 追加) / TERMS v1.2 (§16/§17 追加) で更新。
+CURRENT_PRIVACY_VERSION = "1.2"
+CURRENT_TERMS_VERSION = "1.2"
 CURRENT_DCT_VERSION = "1.0"
 
 # ユーザが同意可能な目的。各 type は独立して give/withdraw 可能 (GDPR Article 7(2))。
@@ -1974,8 +1975,12 @@ def _client_ip(request: Request) -> Optional[str]:
 
 
 class ConsentItem(BaseModel):
+    """同意 1 項目。consent_given は StrictBool を採用し、"yes"/"1" 等の string
+    から bool への暗黙 coerce を禁止する (Article 7 unambiguous 要件への対応)。"""
+    model_config = {"extra": "forbid"}
+
     consent_type: str
-    consent_given: bool
+    consent_given: StrictBool
 
 
 class ConsentSubmitBody(BaseModel):
