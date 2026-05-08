@@ -57,18 +57,21 @@ def upgrade() -> None:
     # ── users.consent_required (既存ユーザ救済 flag) ─────────────────────
     user_cols = {c["name"] for c in inspector.get_columns("users")}
     if "consent_required" not in user_cols:
+        # SQLite と PostgreSQL の両方で boolean リテラルを解釈できるよう
+        # sa.text("true") を使う (PG は integer リテラルを boolean 列に
+        # 使えない、SQLite は true/false 双方を 1/0 として受け付ける)。
         op.add_column(
             "users",
             sa.Column(
                 "consent_required",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("1"),
+                server_default=sa.text("true"),
             ),
         )
-        # 既存ユーザは consent_required=False に設定 (次回ログイン時に同意画面誘導)。
-        # 新規ユーザは default 1 で作成され、必ず onboarding 経路を通る。
-        op.execute("UPDATE users SET consent_required = 0")
+        # 既存ユーザは consent_required=false に設定 (次回ログイン時に同意画面誘導)。
+        # 新規ユーザは default true で作成され、必ず onboarding 経路を通る。
+        op.execute("UPDATE users SET consent_required = false")
 
 
 def downgrade() -> None:
