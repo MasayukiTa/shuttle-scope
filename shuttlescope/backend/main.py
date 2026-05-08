@@ -1581,6 +1581,13 @@ app.include_router(data_package_router.router, prefix="/api")
 # 分割動画アップロード（ブラウザ用。iOS Safari 含む）
 app.include_router(uploads_router.router, prefix="/api")
 
+# Host Liability Wave B: 学習データ provenance 管理 (LEARNING_DATA_PROVENANCE.md)
+try:
+    from backend.routers import admin_training_data as _atd_router
+    app.include_router(_atd_router.router, prefix="/api")
+except ImportError:
+    pass
+
 # 旧 SEC-001: 本番姿勢では mount 除外する危険ルーター群を意図していたが、
 # admin operator が外部 (Cloudflare tunnel) 経由でクラスタ起動 / ベンチマーク /
 # DB メンテを行えなくなる運用上のブロッカーになっていた。

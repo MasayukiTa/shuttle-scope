@@ -145,6 +145,10 @@ def test_no_orphan_event_names():
         # GDPR / APPI 同意取得 (Article 7 / 第18条)
         "consents_submitted",
         "consent_withdrawn",
+        # Host Liability Wave B: 違反通報 / 学習データ provenance
+        "content_report_received",
+        "content_report_triaged",
+        "training_data_record_created",
         # 試合 / 選手
         "match_created",
         "match_deleted",

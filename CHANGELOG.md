@@ -65,6 +65,19 @@ Read it together with:
 - Added `private_docs/internal/LEARNING_DATA_PROVENANCE.md` defining the provenance schema, license categories (granted / public_domain / appi_47_4 / appi_47_5 / beta_legacy_assumed_legal / other), the beta-vs-production phase boundary, and the recording discipline. A database-backed implementation of this register is planned in the second wave of the Host Liability work; the document at present operates as the schema-of-record.
 - Added `private_docs/2026-05-08_host_liability_implementation_plan.md` recording the strict task plan for the host-liability hardening, the wave structure (A: documents now / B: code enforcement / C: future commercial work), and the legal mapping driving the work.
 
+### Host Liability Code Enforcement (Wave B)
+
+- Added Alembic migration `0025_content_reports_and_provenance.py` introducing two new tables. `content_reports` persists notice-and-takedown reports with the elements expected by 17 U.S.C. § 512(c)(3) and the corresponding national equivalents; the schema captures complainant identification (where provided — anonymous reports are accepted), the subject of the report, the legal basis invoked, an audit trail of the developer's triage and action, and any counter-notice received. `training_dataset_records` persists the schema described in `private_docs/internal/LEARNING_DATA_PROVENANCE.md` so that the provenance register is kept in the database rather than only as documentation; the source URL is stored as a SHA-256 hash rather than in plaintext.
+- Added `ContentReport` and `TrainingDatasetRecord` ORM models to mirror the schema.
+- Added the public reporting endpoint `POST /api/public/content_report` (anonymous accepted, rate-limited via the existing contact-form rate limiter, honeypot field for bot rejection, statement length 20–5000 characters, optional `legal_basis` from a closed enum). The response carries the report id, the receipt timestamp, and an acknowledgement message that points back to `CONTENT_POLICY.md` Section 7 for the SLA.
+- Added admin-only triage endpoints `GET /api/admin/content_reports`, `GET /api/admin/content_reports/{id}`, and `PATCH /api/admin/content_reports/{id}` so the developer can record triage status (pending / upheld / rejected / awaiting_info / on_hold), action taken (no_action / content_removed / access_restricted / account_suspended / pending_legal), counter-notice receipt, and restoration. Each transition is logged through the existing `audit_log` channel.
+- Added admin-only training-data provenance endpoints under `routers/admin_training_data.py`: `POST /api/admin/training_data/records`, `GET /api/admin/training_data/records` (filterable by license_type / beta_legacy_flag / dataset_id), and `GET /api/admin/training_data/records/{id}`. Source URLs are not retained; the endpoint hashes the URL with SHA-256 before persistence.
+- Registered the new audit-log event names (`content_report_received`, `content_report_triaged`, `training_data_record_created`) in the audit-coverage allowlist.
+
+### Wave B — Deferred to a Later Round
+
+- Mandatory `reason` parameter on admin video-access endpoints. Admin video access in the current architecture flows through team-scoped match endpoints (rather than a single dedicated admin path) and is already audited under the standard auth audit. Adding a `reason` requirement is worthwhile but requires endpoint-by-endpoint analysis and was scoped out of this round to keep the change set focused.
+
 ## 2026-05-07
 
 ### Streaming-Capture Recording for Member-Only Live Sites
