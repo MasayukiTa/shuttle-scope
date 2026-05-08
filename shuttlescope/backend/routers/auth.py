@@ -1110,12 +1110,13 @@ class UserCreate(BaseModel):
     model_config = {"extra": "forbid"}
 
     role: str
-    display_name: str
-    username: str
+    # DB 列長 VARCHAR(100) と一致させ、validator 通過後の DB INSERT 500 を防ぐ。
+    display_name: str = Field(..., min_length=1, max_length=100)
+    username: str = Field(..., min_length=1, max_length=100)
     password: Optional[str] = None
     pin: Optional[str] = None
     player_id: Optional[int] = None
-    team_name: Optional[str] = None
+    team_name: Optional[str] = Field(default=None, max_length=100)
     # B-2: 所属チーム指定。team_id 指定（既存チーム）または independent=True（無所属チーム自動生成）
     team_id: Optional[int] = None
     independent: bool = False
@@ -1126,11 +1127,11 @@ class UserUpdate(BaseModel):
     # 権限関連を body に混入させる mass assignment 攻撃を検出・遮断する。
     model_config = {"extra": "forbid"}
 
-    display_name: Optional[str] = None
-    username: Optional[str] = None
+    display_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    username: Optional[str] = Field(default=None, min_length=1, max_length=100)
     password: Optional[str] = None
     pin: Optional[str] = None
-    team_name: Optional[str] = None
+    team_name: Optional[str] = Field(default=None, max_length=100)
     player_id: Optional[int] = None
     # role は admin のみが書換可能。analyst/coach/player が role を送ってきた場合
     # 403 で明示拒否する（silent drop にするとサイレント昇格攻撃を検出困難にする）。
@@ -1277,8 +1278,11 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     if not isinstance(body.role, str) or body.role not in allowed_roles:
         raise HTTPException(status_code=422, detail=f"invalid role: {body.role!r}")
     # display_name / team_name の制御文字 / BIDI override を拒否
-    _reject_control_chars(body.display_name, "display_name", max_len=120)
-    _reject_control_chars(body.team_name, "team_name", max_len=80)
+    # DB 列長 (User.display_name VARCHAR(100), team_name VARCHAR(100)) と一致させる。
+    # 旧 max_len=120/80 では 101-120 char が DB INSERT で 500 に抜けていた
+    # (round 205 V3, round 200 Q6-B 系)。
+    _reject_control_chars(body.display_name, "display_name", max_len=100)
+    _reject_control_chars(body.team_name, "team_name", max_len=100)
     # display_name 空文字/空白のみ拒否 + HTML タグ拒否 (stored XSS 対策)
     if not body.display_name or not body.display_name.strip():
         raise HTTPException(status_code=422, detail="display_name must not be empty or whitespace only")
@@ -1454,8 +1458,8 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         raise HTTPException(status_code=403, detail="編集権限がありません")
 
     # display_name / team_name の制御文字 / BIDI override を拒否
-    _reject_control_chars(body.display_name, "display_name", max_len=120)
-    _reject_control_chars(body.team_name, "team_name", max_len=80)
+    _reject_control_chars(body.display_name, "display_name", max_len=100)
+    _reject_control_chars(body.team_name, "team_name", max_len=100)
     # display_name / team_name HTML タグ拒否 (stored XSS 対策)
     _HTML_TAG_RE = _re.compile(
         r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]",
@@ -1817,18 +1821,22 @@ def set_team_page_access(team_name: str, body: PageAccessBody, request: Request,
 # ── B-2: チーム管理（teams テーブル CRUD） ───────────────────────────────────
 
 class TeamBody(BaseModel):
-    name: str
-    display_id: Optional[str] = None
-    short_name: Optional[str] = None
-    notes: Optional[str] = None
+    # mass assignment 防御: 内部フィールド (uuid/created_at/deleted_at 等) を body 経由
+    # で上書きさせない。長さ制約は DB 列長と整合させる (Team.name VARCHAR(100), short_name 50)。
+    model_config = {"extra": "forbid"}
+    name: str = Field(..., min_length=1, max_length=100)
+    display_id: Optional[str] = Field(default=None, max_length=64)
+    short_name: Optional[str] = Field(default=None, max_length=50)
+    notes: Optional[str] = Field(default=None, max_length=5000)
     is_independent: bool = False
 
 
 class TeamPatch(BaseModel):
-    name: Optional[str] = None
-    display_id: Optional[str] = None
-    short_name: Optional[str] = None
-    notes: Optional[str] = None
+    model_config = {"extra": "forbid"}
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    display_id: Optional[str] = Field(default=None, max_length=64)
+    short_name: Optional[str] = Field(default=None, max_length=50)
+    notes: Optional[str] = Field(default=None, max_length=5000)
 
 
 def _team_to_dict(team: Team, *, for_admin: bool = False) -> dict:
@@ -1875,6 +1883,13 @@ def list_teams(request: Request, db: Session = Depends(get_db)):
 def create_team(body: TeamBody, request: Request, db: Session = Depends(get_db)):
     """チームを新規作成。admin のみ可。"""
     _require_admin(request)
+    # DB 列長 (Team.name VARCHAR(100), short_name VARCHAR(50), display_id VARCHAR(64))
+    # に整合させた上で、BIDI override / 制御文字 (CRLF・null byte 含む) を拒否。
+    # 旧コードはここでバリデートしておらず Team.name BIDI 通過 + 101 char 500 が発生
+    # していた (round 200 Q6-A / Q6-B)。
+    _reject_control_chars(body.name, "name", max_len=100)
+    _reject_control_chars(body.short_name, "short_name", max_len=50)
+    _reject_control_chars(body.display_id, "display_id", max_len=64)
     name = (body.name or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="name is required")
@@ -1916,6 +1931,10 @@ def patch_team(team_id: int, body: TeamPatch, request: Request, db: Session = De
         pass
     else:
         raise HTTPException(status_code=403, detail="チーム編集の権限がありません")
+    # PATCH も BIDI/制御文字/長大値を統一拒否 (round 203 T7 で短縮通過した経路の修正)。
+    _reject_control_chars(body.name, "name", max_len=100)
+    _reject_control_chars(body.short_name, "short_name", max_len=50)
+    _reject_control_chars(body.display_id, "display_id", max_len=64)
     if body.name is not None:
         name = body.name.strip()
         if not name:
