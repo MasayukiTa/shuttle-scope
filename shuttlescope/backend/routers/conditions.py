@@ -156,17 +156,23 @@ class ConditionUpdate(BaseModel):
 
 
 class AuxiliaryInput(BaseModel):
-    sleep_hours: Optional[float] = None
-    injury_notes: Optional[str] = None
-    general_comment: Optional[str] = None
+    # mass-assignment / 不正フィールド silent drop 遮断 + 文字列長を限定。
+    # injury_notes / general_comment は DB で _EncryptedText (TEXT 列) なので
+    # 列長は無制限だが、長大入力は DoS / 暗号化コスト増の原因になるため上限を設ける。
+    model_config = {"extra": "forbid"}
+    sleep_hours: Optional[float] = Field(default=None, ge=0, le=24)
+    injury_notes: Optional[str] = Field(default=None, max_length=5000)
+    general_comment: Optional[str] = Field(default=None, max_length=5000)
 
 
 class QuestionnaireSubmit(BaseModel):
-    player_id: int
+    # extra フィールドの silent drop 遮断
+    model_config = {"extra": "forbid"}
+    player_id: int = Field(..., ge=1, le=2**31 - 1)
     measured_at: _date
     condition_type: str = Field(..., pattern="^(weekly|pre_match)$")
     responses: Dict[str, int]
-    match_id: Optional[int] = None
+    match_id: Optional[int] = Field(default=None, ge=1, le=2**31 - 1)
     auxiliary: Optional[AuxiliaryInput] = None
 
 
