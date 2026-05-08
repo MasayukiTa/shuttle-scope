@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Player, Match
 from backend.utils.auth import get_auth, require_analyst, AuthCtx
+from backend.utils.text_sanitize import reject_ctrl_and_bidi
 from fastapi import HTTPException as _HTTPException
 
 
@@ -23,11 +24,27 @@ from backend.utils import response_cache
 
 router = APIRouter()
 
+# DB 列長: Player.name / name_en は VARCHAR(100)。
+# 過去 Pydantic max_length=120 と乖離しており、101-120 char 入力で
+# DB INSERT で 500 に抜けていた (round 205 V3 系)。validator を DB 列長に揃える。
+_NAME_MAX = 100
+_TEAM_MAX = 100
+_NATIONALITY_MAX = 50
+_ORG_MAX = 200
+
+# 利き手 enum: DB 列は VARCHAR(10)。コード上は R / L / unknown / null のみ受理。
+_DOMINANT_HAND_ALLOWED = frozenset({"R", "L", "unknown"})
+
 
 def _reject_html_in_field(value: Optional[str], field_name: str, *, require_non_empty: bool = False) -> None:
-    """HTML タグや制御文字を player 名前/チーム等のフィールドから拒否する。
+    """HTML タグ / 制御文字 / BIDI override / 長大値を player 名前/チーム等のフィールドから拒否する。
+
     React 側で自動エスケープされるが、多層防御として API 受け入れ時点で弾く。
     require_non_empty=True なら空白のみも拒否 (意味のない空 player 対策)。
+
+    BIDI override (RTLO U+202E 等) と CRLF を含む C0 制御文字を一律拒否することで
+    UI なりすまし / ログ偽装 / null byte 経由の処理バグを防ぐ
+    (round 205 V7 で発見した player.name BIDI/ZWSP/CRLF 通過への対策)。
     """
     if value is None:
         return
@@ -36,18 +53,34 @@ def _reject_html_in_field(value: Optional[str], field_name: str, *, require_non_
         raise HTTPException(status_code=422, detail=f"{field_name} must not be empty or whitespace only")
     if _r.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]", value, _r.IGNORECASE):
         raise HTTPException(status_code=422, detail=f"{field_name} contains disallowed HTML tags")
-    # 制御文字 (CR/LF/null/BEL 等) 拒否
-    if _r.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", value):
-        raise HTTPException(status_code=422, detail=f"{field_name} contains control characters")
+    # BIDI / 不可視 format char + C0 制御文字 (改行・タブ含む) を拒否
+    reject_ctrl_and_bidi(value, field_name, max_len=200)
+
+
+def _validate_dominant_hand(value: Optional[str]) -> None:
+    """利き手フィールドを enum 制限する。R / L / unknown / None のみ。
+
+    任意文字列を受け入れていたため、解析ロジックが想定外の値で分岐失敗する
+    リスクがあった (round 193 J4)。
+    """
+    if value is None:
+        return
+    if value not in _DOMINANT_HAND_ALLOWED:
+        raise HTTPException(
+            status_code=422,
+            detail=f"dominant_hand must be one of R/L/unknown (got: {value!r})",
+        )
 
 
 class PlayerCreate(BaseModel):
     # extra フィールド禁止 + 長さ/形式検証
+    # DB 列長 (VARCHAR(100)) に validator を揃え、101-120 char で 500 に抜ける
+    # 経路を塞ぐ (round 205 V3 系の display_name 問題と同根)。
     model_config = {"extra": "forbid"}
-    name: str = Field(..., min_length=1, max_length=120)
-    name_en: Optional[str] = Field(default=None, max_length=120)
+    name: str = Field(..., min_length=1, max_length=100)
+    name_en: Optional[str] = Field(default=None, max_length=100)
     team: Optional[str] = Field(default=None, max_length=100)
-    nationality: Optional[str] = Field(default=None, max_length=60)
+    nationality: Optional[str] = Field(default=None, max_length=50)
     dominant_hand: Optional[str] = "unknown"
     birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
     world_ranking: Optional[int] = Field(default=None, ge=1, le=99999)
@@ -68,12 +101,12 @@ class TeamHistoryEntry(BaseModel):
 
 
 class PlayerUpdate(BaseModel):
-    # extra フィールド禁止 + 長さ/形式検証
+    # extra フィールド禁止 + 長さ/形式検証 (DB 列長 VARCHAR(100) に整合)
     model_config = {"extra": "forbid"}
-    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    name_en: Optional[str] = Field(default=None, max_length=120)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    name_en: Optional[str] = Field(default=None, max_length=100)
     team: Optional[str] = Field(default=None, max_length=100)
-    nationality: Optional[str] = Field(default=None, max_length=60)
+    nationality: Optional[str] = Field(default=None, max_length=50)
     dominant_hand: Optional[str] = None
     birth_year: Optional[int] = Field(default=None, ge=1900, le=2100)
     world_ranking: Optional[int] = Field(default=None, ge=1, le=99999)
@@ -290,7 +323,7 @@ def create_player(
     # team 必須 (空文字/whitespace 拒否)
     if not body.team or not body.team.strip():
         raise HTTPException(status_code=422, detail="team must not be empty or whitespace only")
-    # HTML タグ / 制御文字の注入を拒否 (stored XSS 対策・多層防御)
+    # HTML タグ / 制御文字 / BIDI override の注入を拒否 (stored XSS 対策・多層防御)
     _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")
     _reject_html_in_field(body.team, "team")
@@ -298,6 +331,7 @@ def create_player(
     _reject_html_in_field(body.organization, "organization")
     _reject_html_in_field(body.notes, "notes")
     _reject_html_in_field(body.scouting_notes, "scouting_notes")
+    _validate_dominant_hand(body.dominant_hand)
     data = body.model_dump()
     aliases = data.pop("aliases", None)
     aliases_json = json.dumps(aliases, ensure_ascii=False) if aliases else None
@@ -408,7 +442,7 @@ def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body:
                 status_code=403,
                 detail=f"team を自チーム ({actor_team}) 以外に変更することはできません",
             )
-    # HTML タグ / 制御文字の注入を拒否
+    # HTML タグ / 制御文字 / BIDI override の注入を拒否
     _reject_html_in_field(body.name, "name", require_non_empty=True)
     _reject_html_in_field(body.name_en, "name_en")
     _reject_html_in_field(body.team, "team")
@@ -416,6 +450,7 @@ def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body:
     _reject_html_in_field(body.organization, "organization")
     _reject_html_in_field(body.notes, "notes")
     _reject_html_in_field(body.scouting_notes, "scouting_notes")
+    _validate_dominant_hand(body.dominant_hand)
     # exclude_unset=True: クライアントが明示的に送ったフィールドのみ更新する
     # （exclude_none=True だと null 送信時に「クリア」ができない）
     data = body.model_dump(exclude_unset=True)
