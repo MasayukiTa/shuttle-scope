@@ -59,6 +59,30 @@ def _mask_worker_secrets(worker: Dict[str, Any]) -> Dict[str, Any]:
     return redacted
 
 
+def _apply_host_key_policy(client, host: str) -> None:
+    """cluster.config.yaml の workers に登録された IP のみ AutoAddPolicy を適用。
+
+    背景: backend を ScheduledTask 等で起動すると known_hosts のパスが
+    起動ユーザの $HOME 配下から外れて未登録扱いになり、SSH dispatch が
+    "Server 'X' not found in known_hosts" で失敗する。worker IP は operator
+    が config に登録済の信頼境界内 (link-local や cluster_subnet 内) なので
+    TOFU 相当を許容する。それ以外の host は引き続き RejectPolicy で MitM 防止。
+    """
+    import paramiko  # type: ignore
+    registered = False
+    try:
+        for w in topology.get_workers() or []:
+            if isinstance(w, dict) and (w.get("ip") or "").strip() == host:
+                registered = True
+                break
+    except Exception:
+        pass
+    if registered:
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    else:
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
+
+
 router = APIRouter(tags=["cluster"], dependencies=[Depends(_require_admin_dep)])
 
 
@@ -418,7 +442,7 @@ def start_ray_head(body: StartHeadRequest, request: Request) -> Dict[str, Any]:
                 import paramiko  # type: ignore
                 client = paramiko.SSHClient()
                 client.load_system_host_keys()
-                client.set_missing_host_key_policy(paramiko.RejectPolicy())
+                _apply_host_key_policy(client, wip)
                 client.connect(wip, username=user, password=pwd, timeout=10)
                 # bat はリモート側で `cmd /c "<bat>"` の "" 内に直接展開される。
                 # cluster.config.yaml が万一汚染された場合に `& malicious` 等で
@@ -768,7 +792,7 @@ def disable_worker_sleep(worker_ip: str, body: SleepDisableRequest, request: Req
     try:
         client = paramiko.SSHClient()
         client.load_system_host_keys()
-        client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        _apply_host_key_policy(client, actual_ip)
         client.connect(actual_ip, username=body.username, password=body.password, timeout=10)
         results = []
         for cmd in cmds:
@@ -824,7 +848,7 @@ def remote_ray_join(worker_ip: str, body: RemoteRayJoinRequest, request: Request
     try:
         client = paramiko.SSHClient()
         client.load_system_host_keys()
-        client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        _apply_host_key_policy(client, actual_ip)
         client.connect(actual_ip, username=body.username, password=body.password, timeout=10)
         _, stdout, stderr = client.exec_command(cmd, timeout=30)
         out = stdout.read().decode(errors="replace")
@@ -875,7 +899,7 @@ def remote_ray_restart(worker_ip: str, request: Request) -> Dict[str, Any]:
     try:
         client = paramiko.SSHClient()
         client.load_system_host_keys()
-        client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        _apply_host_key_policy(client, actual_ip)
         client.connect(actual_ip, username=user, password=password, timeout=10)
         _, stdout, stderr = client.exec_command(cmd, timeout=120)
         raw_out = stdout.read()
