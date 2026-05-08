@@ -49,8 +49,17 @@ class PublicInquiryCreate(BaseModel):
         if v is None:
             return v
         v = str(v).replace("\x00", "")
-        # HTML タグ除去 (Stored XSS 対策 / admin 管理画面での安全表示)
-        v = re.sub(r"<[^>]*>?", "", v)
+        # HTML タグ除去 (Stored XSS 対策 / admin 管理画面での安全表示)。
+        # 1 パスでは <scr<!---->ipt> 等の obfuscation で残り物が出るため安定するまでループ。
+        for _ in range(8):
+            new_v = re.sub(r"<[^>]*>?", "", v)
+            if new_v == v:
+                break
+            v = new_v
+        v = v.replace(">", "")
+        # BIDI override / ZWSP 等を拒否し、admin 管理画面で表示偽装されないようにする。
+        from backend.utils.text_sanitize import reject_bidi_only
+        reject_bidi_only(v, "field", max_len=4000)
         return v
 
 
