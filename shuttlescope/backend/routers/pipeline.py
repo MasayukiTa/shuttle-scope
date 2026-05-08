@@ -113,6 +113,29 @@ def run_pipeline_endpoint(
             ts_list.append(now)
     if not db.get(Match, body.match_id):
         raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # GDPR Article 25 (Privacy by Design) / APPI 第20条 (適正取得) 準拠:
+    # コート ROI (court_calibration) 未設定の試合は解析開始を拒否する。
+    # ROI なしの解析は観客・審判席など競技者外の領域も処理対象に含める可能性があり、
+    # 第三者の personal data を意図せず処理する経路となるため事前に塞ぐ。
+    try:
+        from backend.routers.court_calibration import load_calibration_from_db
+        if not load_calibration_from_db(body.match_id, db):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "コート範囲 (Court ROI) が未設定のため解析を開始できません。"
+                    "GDPR Article 25 / Privacy by Design 準拠のため、"
+                    "解析対象領域をコート内に限定する設定が必須です。"
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # load_calibration_from_db が想定外で失敗しても解析は中断する (fail-safe)
+        raise HTTPException(
+            status_code=403,
+            detail="コート範囲設定の検証に失敗しました。再度コート設定を行ってください。",
+        )
     # 同一 match の非終端 job (queued/running) が存在する場合は重複投入を拒否
     # (ワーカ GPU/CPU の重複消費による DoS 防御)
     existing = (

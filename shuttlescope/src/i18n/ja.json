@@ -3375,5 +3375,32 @@
       "coach": "コーチ (coach)",
       "analyst": "アナリスト (analyst)"
     }
+  },
+  "onboarding": {
+    "consent": {
+      "title": "データ取り扱いに関する同意",
+      "intro": "本サービス (ShuttleScope) のご利用にあたり、以下の文書をお読みいただき、同意の可否をご判断ください。同意は任意であり、いつでも撤回できます。",
+      "required_section": "必須同意項目",
+      "required_hint": "これらに同意いただかないと本サービスをご利用いただけません。",
+      "optional_section": "任意同意項目（チェックしなくても本サービスは使えます）",
+      "service_delivery_label": "サービス提供のためのデータ処理に同意します",
+      "service_delivery_desc": "試合データ・選手プロフィール・解析結果の処理。本サービス利用のため必須です。",
+      "beta_agreement_label": "β版データ取り扱い説明書の内容を読み、理解しました",
+      "beta_agreement_desc": "別途提供されている β 期間中のデータ取り扱い説明書を読了したことを表明します。",
+      "ai_training_label": "AI モデル学習への利用に同意します",
+      "ai_training_desc": "匿名化・集計化されたデータを将来的な精度向上モデル学習に利用します。撤回時は以後の学習対象から除外されます。",
+      "research_label": "学術研究への利用に同意します",
+      "research_desc": "匿名化のうえスポーツ科学研究、論文発表等への利用を許可します。事前説明・同意撤回権を保持します。",
+      "cross_border_label": "越境データ移転（EU/EEA／北米遠征時）に同意します",
+      "cross_border_desc": "海外遠征時の現地解析および日本の本サービスサーバーへの転送について、GDPR / APPI 等の保護措置を前提に同意します。",
+      "submit": "同意して開始",
+      "submitting": "送信中...",
+      "withdraw_notice": "同意は本ページもしくは設定画面からいつでも撤回できます。任意同意の撤回は本サービスの利用に影響しません。",
+      "error_required_missing": "必須同意項目にすべてチェックを入れてください",
+      "error_submit": "同意送信に失敗しました"
+    }
+  },
+  "common": {
+    "loading": "読み込み中..."
   }
 }

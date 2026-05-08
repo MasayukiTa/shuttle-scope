@@ -241,10 +241,55 @@ export interface AuthMeDTO {
   team_name: string | null
   display_name: string | null
   page_access: string[]
+  email?: string | null
+  email_verified?: boolean
+  // GDPR Article 7 / APPI 第18条: 同意未取得なら frontend は OnboardingConsent へ誘導
+  consent_required?: boolean
 }
 
 export function authMe(): Promise<AuthMeDTO> {
   return apiGet<AuthMeDTO>('/auth/me')
+}
+
+// ─── 同意取得 (GDPR Article 7 / APPI 第18条) ────────────────────────────
+export type ConsentType =
+  | 'service_delivery'
+  | 'beta_agreement'
+  | 'ai_training'
+  | 'research_participation'
+  | 'cross_border_transfer'
+
+export interface ConsentRecord {
+  consent_type: ConsentType
+  consent_given: boolean
+  privacy_policy_version: string
+  terms_version: string
+  given_at: string | null
+  withdrawn_at: string | null
+}
+
+export interface ConsentStateDTO {
+  consent_required: boolean
+  current_versions: { privacy_policy: string; terms: string; data_contribution: string }
+  required_types: ConsentType[]
+  optional_types: ConsentType[]
+  consents: ConsentRecord[]
+}
+
+export function getMyConsents(): Promise<{ success: boolean; data: ConsentStateDTO }> {
+  return apiGet('/auth/consents')
+}
+
+export function submitConsents(payload: {
+  consents: { consent_type: ConsentType; consent_given: boolean }[]
+  privacy_policy_version: string
+  terms_version: string
+}): Promise<{ success: boolean; data: { consent_required: boolean } }> {
+  return apiPost('/auth/consents', payload)
+}
+
+export function withdrawConsent(consent_type: ConsentType): Promise<{ success: boolean; data: { consent_type: ConsentType; withdrawn_at: string } }> {
+  return apiDelete(`/auth/consents/${consent_type}`)
 }
 
 export function getUserPageAccess(userId: number): Promise<{ success: boolean; data: string[] }> {

@@ -1,5 +1,7 @@
 # Terms of Service
 
+## Version 1.1 — Effective 2026-05-08 (supersedes Version 1.0)
+
 ## 1. Purpose
 
 These Terms of Service govern access to and use of ShuttleScope when operated as
@@ -173,3 +175,61 @@ If you do not wish your annotated clips and label data to be used under this
 section, please notify the developer via the contact form at
 https://shuttle-scope.com/contact. Reasonable opt-out requests will be
 accommodated on an individual basis within a reasonable period after receipt.
+
+## 15. EU/EEA Operations
+
+### 15.1 Applicability
+
+This section applies when the Software is operated within the territory of the
+European Union or European Economic Area, including but not limited to use
+during international tournaments, training camps, or other events held in such
+territory, regardless of the legal residence or establishment of the
+Contributing Party operating the Software.
+
+### 15.2 Operational Constraints
+
+When the Software is operated in EU/EEA territory:
+
+- court ROI configuration must be activated to limit processing to the playing
+  area, and analysis features that require unbounded processing of frame
+  content shall not be enabled;
+- detection results pertaining to non-consenting third parties (opposing
+  athletes, spectators, officials) shall be processed under the lawful basis
+  of legitimate interests pursuant to Article 6(1)(f) GDPR, with data
+  minimization measures applied including but not limited to court-bounded
+  filtering and exclusion of umpire and audience zones;
+- real-time analysis results shall not be transmitted to non-EU/EEA servers
+  until the data has been minimized in accordance with the preceding bullet,
+  and any such cross-border transfer shall be subject to the safeguards
+  described in `PRIVACY.md` Section 6.2;
+- the developer's processing during EU/EEA operations is subject to the
+  GDPR-specific provisions in `PRIVACY.md`, including without limitation
+  Article V (sensitive athlete profiles) and Article V-bis (AI model training
+  data).
+
+### 15.3 Third-Party Athlete Data
+
+When opposing athletes whose data is processed during EU/EEA operations submit
+objections under GDPR Article 21:
+
+- the objection shall be reviewed within five business days of receipt;
+- where the objection is upheld, the developer shall remove the objecting
+  individual's data from analysis results and add the individual to an
+  exclusion list to prevent processing in subsequent analysis;
+- where the legitimate interest balance favors continued processing, the
+  developer shall provide reasoned written justification to the objecting
+  individual within the same five business day window.
+
+### 15.4 Coordination with Contributing Parties
+
+You agree to cooperate in good faith with the developer to ensure that
+operations in EU/EEA territory satisfy GDPR Articles 13, 14, 21, and 28
+obligations, including without limitation:
+
+- providing required pre-tournament notice to athletes whose data may be
+  processed;
+- routing data subject requests promptly to the developer where the developer
+  is the appropriate controller or processor;
+- entering into a Data Processing Agreement substantially in the form of the
+  template referenced in `contracts/DPA_TEMPLATE.md` where the developer acts
+  as data processor on Your behalf.

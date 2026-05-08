@@ -171,6 +171,7 @@ class CourtBoundedFilter:
         self,
         court_adapter=None,
         *,
+        strict_mode: bool = True,
         court_margin: float = 0.05,
         umpire_zone_y: Tuple[float, float] = (0.92, 1.0),
         umpire_zone_x: Tuple[float, float] = (0.40, 0.60),
@@ -178,14 +179,29 @@ class CourtBoundedFilter:
         max_area: float = 0.50,
         persistence_frames: int = 0,
     ) -> None:
+        # GDPR Article 25 (Privacy by Design) / APPI 第20条 (適正取得) 準拠:
+        # コート外人物 (観客等) の処理を技術的に強制除外するため strict_mode を
+        # default True とする。strict_mode 時は court_margin を 0 に固定し、
+        # 検出はコートポリゴン内側のみに限定する (外側マージンによる観客取り込みを禁止)。
+        # 設定 UI からの strict_mode 変更は許可しない (コード呼び出し時のみ override 可)。
+        self.strict_mode = strict_mode
         self.court_adapter = court_adapter
-        self.court_margin = court_margin
+        self.court_margin = 0.0 if strict_mode else court_margin
         self.umpire_zone_y = umpire_zone_y
         self.umpire_zone_x = umpire_zone_x
         self.min_area = min_area
         self.max_area = max_area
         self.persistence_frames = max(0, persistence_frames)
         self._track_seen: Dict[int, int] = defaultdict(int)
+        # 起動時監査証跡 (GDPR Article 32 評価のため)
+        try:
+            import logging as _logging_cbf
+            _logging_cbf.getLogger(__name__).info(
+                "[CourtBoundedFilter] strict_mode=%s court_margin=%s",
+                self.strict_mode, self.court_margin,
+            )
+        except Exception:
+            pass
 
     # ─── 個別判定 ────────────────────────────────────────────────────────
 
