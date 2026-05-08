@@ -912,6 +912,30 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
     except Exception as exc:
         deletion_errors.append(f"sva_branch: {type(exc).__name__}: {str(exc)[:80]}")
 
+    # 2.5) Comment / EventBookmark の cascade。
+    #
+    # Match の relationship には sets / cv_artifacts のみ cascade 設定があり、
+    # comments / event_bookmarks は FK のみで cascade なし。試合に comment/bookmark
+    # が紐付いていると `db.delete(match)` で psycopg.errors.ForeignKeyViolation が
+    # 出て 500 リーク (round 229 A1 で発見)。ORM relationship 修正は migration を
+    # 巻き込むので、ここで Core SQL で先に削除する。
+    try:
+        from sqlalchemy import text as _sa_text_cm
+        for table_name in ("comments", "event_bookmarks"):
+            try:
+                result_cm = db.execute(
+                    _sa_text_cm(f"DELETE FROM {table_name} WHERE match_id = :mid"),
+                    {"mid": match_id},
+                )
+                n_cm = getattr(result_cm, "rowcount", 0) or 0
+                if n_cm:
+                    deleted_files.append(f"{table_name}: {n_cm} rows")
+            except Exception as exc:
+                deletion_errors.append(f"{table_name}_cascade: {type(exc).__name__}: {str(exc)[:80]}")
+        db.flush()
+    except Exception as exc:
+        deletion_errors.append(f"cm_branch: {type(exc).__name__}: {str(exc)[:80]}")
+
     # 3) match 自身の削除を queue → 全てを 1 commit で flush
     db.delete(match)
     try:
@@ -939,9 +963,11 @@ def delete_match(match_id: int, request: Request, db: Session = Depends(get_db))
             pass
         logger_local = __import__("logging").getLogger(__name__)
         logger_local.error("[delete_match] commit failed: %s | cascade_errors=%s", exc, deletion_errors)
-        # admin にのみ詳細メッセージを返却 (DB 内部構造を露出させないため)
-        msg = str(exc)[:300] if ctx.is_admin else type(exc).__name__
-        raise HTTPException(status_code=500, detail=f"試合削除の commit に失敗: {msg}")
+        # round 229 A1 強化: 旧コードは admin に str(exc)[:300] を返しており
+        # psycopg のテーブル名 / FK 制約名を素で露出していた。admin であっても
+        # HTTP body にスタックトレース要素を返すのは avoid し、詳細は server log
+        # からのみ追跡できるようにする。
+        raise HTTPException(status_code=500, detail="試合削除に失敗しました")
 
     # 4) commit 成功後に audit log 2 件を書く (log_access は内部で別 commit するので順次)
     try:
