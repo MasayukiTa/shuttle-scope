@@ -709,6 +709,12 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
         # player が変更可能なエンドポイントは極めて限定的（自分の User / Player 情報更新のみ）。
         # 他はすべて 403 にする。データ改ざん・リソース作成の全面防御。
         method = request.method.upper()
+        # /api/public/* は anonymous でも通る一般公開 endpoint なので player トークンが
+        # 付いていても通す (contact form / content_report 等の通報経路を確保)。
+        # endpoint 側で意味のある処理のみ受け付け、role-specific な書き換えは行わない。
+        # round187 で content_report、round190 で contact が漏れていた問題への一括対応。
+        if method in ("POST", "PUT", "PATCH", "DELETE") and path.startswith("/api/public/"):
+            return await call_next(request)
         if method in ("POST", "PUT", "PATCH", "DELETE") and path.startswith("/api/"):
             _player_write_allowed = False
             # 自分の User レコードへの PUT (password/pin/display_name 更新など) は OK
