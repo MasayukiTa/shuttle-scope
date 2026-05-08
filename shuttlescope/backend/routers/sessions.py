@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -145,28 +145,31 @@ class SessionCreate(BaseModel):
 
 class ParticipantJoin(BaseModel):
     model_config = {"extra": "forbid"}
-    role: str = "coach"
-    device_name: Optional[str] = None
-    device_type: Optional[str] = None   # iphone/ipad/pc/usb_camera/builtin_camera
-    session_password: Optional[str] = None
-    device_uid: Optional[str] = None    # デバイス固有 ID（再接続認識用）
+    role: str = Field("coach", max_length=32)
+    # device_name は DB VARCHAR(100) と整合 (validator 通過後の DB 500 を予防)
+    device_name: Optional[str] = Field(default=None, max_length=100)
+    device_type: Optional[str] = Field(default=None, max_length=32)   # iphone/ipad/pc/usb_camera/builtin_camera
+    session_password: Optional[str] = Field(default=None, max_length=200)
+    device_uid: Optional[str] = Field(default=None, max_length=128)    # デバイス固有 ID（再接続認識用）
 
 
 class ViewerPermissionBody(BaseModel):
     model_config = {"extra": "forbid"}
-    viewer_permission: str  # allowed / blocked / default
+    viewer_permission: str = Field(..., max_length=32)  # allowed / blocked / default
 
 
 class RegisterSourceBody(BaseModel):
     model_config = {"extra": "forbid"}
-    source_kind: str              # iphone_webrtc/usb_camera/builtin_camera/pc_local
-    participant_id: Optional[int] = None
-    source_resolution: Optional[str] = None  # "1280x720"
-    source_fps: Optional[int] = None
+    source_kind: str = Field(..., max_length=32)              # iphone_webrtc/usb_camera/builtin_camera/pc_local
+    participant_id: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
+    source_resolution: Optional[str] = Field(default=None, max_length=32)  # "1280x720"
+    source_fps: Optional[int] = Field(default=None, ge=1, le=240)
 
 
 class SetRoleBody(BaseModel):
-    connection_role: str  # viewer/coach/analyst/camera_candidate/active_camera
+    # mass-assignment 防御: 旧コードは extra silent drop 受理だった
+    model_config = {"extra": "forbid"}
+    connection_role: str = Field(..., max_length=32)  # viewer/coach/analyst/camera_candidate/active_camera
 
 
 # ─── エンドポイント ───────────────────────────────────────────────────────────
