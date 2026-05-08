@@ -51,6 +51,20 @@ Read it together with:
 
 - Added `contracts/BETA_DATA_HANDLING_AGREEMENT.md` as the repository's public template version of the β-period data handling agreement. Personal names and parent-organization references are stripped relative to the internal in-person `private_docs/ShuttleScope_同意書.docx`; the contact channel on the public version is `contact@shuttle-scope.com` plus the public contact form. The internal docx remains under `private_docs/` as the in-person signing instrument.
 
+### Host Liability Posture Hardening
+
+- Added `CONTENT_POLICY.md` as a public-facing description of how ShuttleScope treats user-submitted content, the channels through which a rights-holder, regulator, or data subject may file a content report, the format of such reports, and the response timeline. The Policy is written to align with the safe-harbour expectations of 17 U.S.C. § 512 (DMCA), Article 14 of Directive 2000/31/EC (EU e-Commerce Directive) as carried forward by Regulation (EU) 2022/2065 (DSA), and Articles 30 / 47-bis / 47-5 / 30-4 of the Japanese Copyright Act. The hosting posture is passive — content lawfully accessible to a User through paid streaming subscriptions, broadcast licensing, or other lawful means may be processed in the same manner as content the User has personally recorded; the developer responds after a verified report rather than by pre-screening submissions.
+- Promoted `TERMS_OF_SERVICE.md` to Version 1.2. Section 4 ("Acceptable Use") is rewritten to reflect the passive hosting posture and to make the User's responsibility for the legal basis of submissions explicit. New Section 16 ("User Content and Hosting Posture") and Section 17 ("Developer Conduct Guarantees") record the developer's role separation between operator and user, the developer-side undertaking on training-data sourcing, the no-inducement statement, and a beta-period note. A future U.S. Designated Agent under 17 U.S.C. § 512(c)(2) is anticipated in Section 16.7.
+- Promoted `PRIVACY.md` to Version 1.2 with a small addition (Article IX Section 9.3 "Beta Period Interim Measures") recording that the technical and organisational measures described in Article IX are operated under interim arrangements during the beta period and that material changes affecting personal-data protection will be reflected in subsequent updates to the Notice. No new processing purposes or recipients are introduced; existing consent records remain valid.
+- `SECURITY.md` now points content reports (non-vulnerability) to `CONTENT_POLICY.md`, separating that channel from the vulnerability reporting channel.
+
+### Internal Operational Documents (Host Liability)
+
+- Added `private_docs/internal/NOTICE_AND_TAKEDOWN_PROCEDURE.md` recording the operational notice-handling flow that backs the public commitments in `CONTENT_POLICY.md`, with templates for receipt acknowledgement, action notification (user side), and action notification (complainant side).
+- Added `private_docs/internal/DEVELOPER_CODE_OF_CONDUCT.md` codifying the developer's operator-role and user-role conduct rules, the no-inducement rule, the training-data sourcing discipline, and the annual self-audit cadence.
+- Added `private_docs/internal/LEARNING_DATA_PROVENANCE.md` defining the provenance schema, license categories (granted / public_domain / appi_47_4 / appi_47_5 / beta_legacy_assumed_legal / other), the beta-vs-production phase boundary, and the recording discipline. A database-backed implementation of this register is planned in the second wave of the Host Liability work; the document at present operates as the schema-of-record.
+- Added `private_docs/2026-05-08_host_liability_implementation_plan.md` recording the strict task plan for the host-liability hardening, the wave structure (A: documents now / B: code enforcement / C: future commercial work), and the legal mapping driving the work.
+
 ## 2026-05-07
 
 ### Streaming-Capture Recording for Member-Only Live Sites

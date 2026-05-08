@@ -44,3 +44,9 @@ Out-of-scope (not prototype concerns at this stage):
 ## Hardening Notes
 
 Ongoing hardening work is tracked in `shuttlescope/docs/validation/`. Known accepted risks are documented there with justification.
+
+## Reporting Content (Non-Vulnerability)
+
+Reports concerning the *content* of material processed by ShuttleScope — for example, claims by a rights holder that User-submitted material infringes copyright, claims by a data subject under GDPR Article 17 / APPI 第30条 erasure, or other non-security content complaints — are handled separately from vulnerability reports.
+
+The procedure for content reports, including the reporting channels, the expected report format, the response timeline, and the counter-notice procedure, is set out in `CONTENT_POLICY.md`. Please use the channels listed in `CONTENT_POLICY.md` Section 5 for content reports rather than the vulnerability channels listed above.
