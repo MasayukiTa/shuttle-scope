@@ -77,9 +77,28 @@ def test_with_court_adapter_uses_homography_band():
 # ─── CourtBoundedFilter ──────────────────────────────────────────────────────
 
 def test_in_court_default_margin():
-    cbf = CourtBoundedFilter(court_margin=0.05)
+    # GDPR Article 25 対応で default は strict_mode=True (court_margin を 0 に強制)。
+    # マージン挙動の検証には明示的に strict_mode=False を渡す。
+    cbf = CourtBoundedFilter(strict_mode=False, court_margin=0.05)
     assert cbf.is_in_court([0.10, 0.10, 0.20, 0.20]) is True
     assert cbf.is_in_court([0.01, 0.01, 0.02, 0.02]) is False  # 外側マージン外
+
+
+def test_strict_mode_forces_zero_margin():
+    """strict_mode=True (default) が court_margin を 0 に強制することを確認。"""
+    cbf = CourtBoundedFilter(court_margin=0.10)  # strict_mode default True
+    assert cbf.strict_mode is True
+    assert cbf.court_margin == 0.0
+    # margin=0.10 なら reject される位置 (cx=0.05) が strict mode では accept される
+    # (court_adapter なしのフォールバック挙動: 0 <= cx <= 1 ならコート内扱い)
+    assert cbf.is_in_court([0.04, 0.04, 0.06, 0.06]) is True
+
+
+def test_strict_mode_can_be_disabled_for_tests():
+    """strict_mode=False を明示すれば court_margin が尊重される (テスト用 override)。"""
+    cbf = CourtBoundedFilter(strict_mode=False, court_margin=0.10)
+    assert cbf.strict_mode is False
+    assert cbf.court_margin == 0.10
 
 
 def test_umpire_zone_excluded():
