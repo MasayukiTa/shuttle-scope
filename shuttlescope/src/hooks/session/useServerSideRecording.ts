@@ -31,14 +31,25 @@ import { apiPost } from '@/api/client'
 import { resolveBaseUrl } from '@/utils/preferredEndpoint'
 
 
+// Round 258 R17 P3 fix (NEW-6): R16 の sweeper は `startsWith('__ss_pending_upload_')`
+// と緩く、将来別目的でこの prefix を使う legitimate な key まで巻き込んで消すリスクが
+// あった。旧 R16 以前 / R15 以前のフォーマットは
+//   __ss_pending_upload_<uploadId>_<chunkIndex>
+//   __ss_pending_upload_<chunkIndex>
+// のいずれか。両方カバーしつつ、予期しない key を消さないように
+// `__ss_pending_upload_` の直後に **英数 + ハイフン + アンダースコアのみ** 1〜128 字
+// を要求する。これで `__ss_pending_upload_user_settings` のような将来の偶発衝突 key
+// は対象外になる。
+const _STALE_UPLOAD_KEY_RE = /^__ss_pending_upload_[A-Za-z0-9_-]{1,128}$/
+
 function _sweepStaleUploadQueue(): void {
   // Round 258 R16 P0 fix (deep audit F-2): 旧バージョンが localStorage に
-  // base64 化した chunk を残している場合、起動時に全部削除する。
+  // base64 化した chunk を残している場合、起動時に削除する。
   try {
     const keysToRemove: string[] = []
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)
-      if (k && k.startsWith('__ss_pending_upload_')) keysToRemove.push(k)
+      if (k && _STALE_UPLOAD_KEY_RE.test(k)) keysToRemove.push(k)
     }
     for (const k of keysToRemove) localStorage.removeItem(k)
   } catch {
@@ -78,6 +89,28 @@ const DEFAULT_AUTO_RECORD =
 const DEFAULT_TIMESLICE_SEC =
   Number(import.meta.env.VITE_SS_SENDER_CHUNK_SECONDS ?? '10')
 
+/**
+ * Round 258 R17 P0 fix (regression of R16 F-2 NEW-1):
+ *   R16 で localStorage retry を全削除した結果、ネットワーク 5xx / 切断時の chunk が
+ *   そのまま捨てられ、試合映像に永続的な穴が空く重大データ損失となっていた。
+ *   修正: メモリ上に bounded pending Map を持ち、retry timer で再送する。
+ *   localStorage には**書かない** (F-2 の DoS / XSS 経路を再導入しない)。
+ *
+ * 容量設計:
+ *   - 1 chunk = 8 MB (mediaRecorder 出力)
+ *   - MAX_PENDING_CHUNKS=20 → 最大 ~160 MB の RAM。
+ *     ブラウザタブの heap (1-2 GB) には十分収まり、かつ無限にバッファして
+ *     OOM で renderer プロセスが落ちる事故を防ぐ。
+ *   - 上限超過時は **古い順に drop**。完全な無欠録画は諦め、最新分の保全を優先。
+ *     drop した chunkIndex は errorMsg に記録するので運用側が認識できる。
+ *
+ * リトライ間隔:
+ *   - RETRY_INTERVAL_MS=15s。timeslice=10s なので「次の chunk と同時に裏で再送」され、
+ *     burst にはならない (uploadChunk は並行 fire-and-forget)。
+ */
+const MAX_PENDING_CHUNKS = 20
+const RETRY_INTERVAL_MS = 15_000
+
 
 function selectMimeType(): string {
   // iOS Safari は mp4 のみ、Chrome/Edge は VP9 webm が安定
@@ -114,6 +147,34 @@ export function useServerSideRecording(
   const chunkIndexRef = useRef<number>(0)
   const apiBaseRef = useRef<string>('')
 
+  // Round 258 R17 P0 fix (NEW-1): メモリ上の pending chunk キュー。
+  // localStorage には絶対に書かない (R16 F-2 の DoS/XSS 経路を再導入しない)。
+  // Map<chunkIndex, Blob> insertion-order を保つので「古い順に drop」が自然にできる。
+  const pendingRef = useRef<Map<number, Blob>>(new Map())
+  const retryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const droppedChunksRef = useRef<number[]>([])
+  const retryInFlightRef = useRef<boolean>(false)
+
+  // ─── pending キュー操作 ──────────────────────────────────────────
+  // Round 258 R17 P0 fix (NEW-1): pending Map に積む。容量超過時は古い順に drop。
+  const enqueuePending = useCallback((chunkIndex: number, blob: Blob) => {
+    const q = pendingRef.current
+    // 既に同じ index が居る場合 (retry の再失敗) は新しい blob で上書きしない
+    // (Map.set で同 key を再 set するとイテレーション順序が末尾に移動する仕様だが、
+    //  blob 自体は同じなので「新しい失敗」として末尾扱いになるのは許容)。
+    q.set(chunkIndex, blob)
+    while (q.size > MAX_PENDING_CHUNKS) {
+      const oldestKey = q.keys().next().value
+      if (oldestKey === undefined) break
+      q.delete(oldestKey)
+      droppedChunksRef.current.push(oldestKey as number)
+      setErrorMsg(
+        `pending queue overflow: chunk #${oldestKey} dropped ` +
+        `(total dropped: ${droppedChunksRef.current.length})`,
+      )
+    }
+  }, [])
+
   // ─── アップロード関数 ───────────────────────────────────────────
   const uploadChunk = useCallback(async (blob: Blob, chunkIndex: number) => {
     const uploadId = uploadIdRef.current
@@ -135,30 +196,58 @@ export function useServerSideRecording(
         body: fd,
       })
       if (!res.ok) {
-        // Round 258 R16 P0 fix (deep audit F-2):
-        // 旧コードはアップロード失敗時に blob 全体を base64 (dataURL) 化して
-        // localStorage に書き込んでいた。問題:
-        //   1. base64 inflation (~33%) で 8 MB chunk が ~10.6 MB → localStorage の
-        //      ブラウザ全体クォータ (5-10 MB) を 1 chunk で食い潰し、以降の
-        //      legitimate localStorage 書込み (auth token migrate / theme / ROI 等) が
-        //      QuotaExceededError で全滅する DoS パターン。
-        //   2. 私的試合映像のフレーム断片が **平文** で localStorage に長期残留。
-        //      XSS が成立すれば exfil 容易。
-        //   3. `__ss_pending_upload_*` を読んで再送する dequeue コードはどこにも無く、
-        //      write-only の orphan ゴミ。
-        // 対策: localStorage への blob ダンプは完全撤去。失敗 chunk は次の retry
-        // タイマーでメモリから再送する設計に倒す (chunkIndex を pending 管理する
-        // 別実装は別 commit で対応)。今は **失敗を返して呼び出し側に retry を委譲**。
-        // 旧 stale data は同 hook 起動時に sweep する (下記 useEffect)。
+        // Round 258 R17 P0 fix (NEW-1, regression of R16 F-2):
+        // R16 で localStorage を撤去したものの retry 経路ごと消してしまったため
+        // 一過性のネットワーク失敗で chunk が永久に欠落していた。
+        // 修正: localStorage には書かない (R16 F-2 の DoS/XSS 経路を温存) が、
+        // メモリ上の bounded pending queue に積み、retry timer で再送する。
+        // 旧 localStorage stale データは _sweepStaleUploadQueue() で sweep 済み。
+        //
+        // 4xx (auth / validation) はリトライしても解消しないため積まない。
+        // 5xx / network のみ retry 対象。
+        if (res.status >= 500 && res.status < 600) {
+          enqueuePending(chunkIndex, blob)
+        }
         return false
       }
+      // 成功時: 既に pending に居る場合は除去 (retry 成功)
+      pendingRef.current.delete(chunkIndex)
       setUploadedChunks((n) => n + 1)
       return true
     } catch (err: any) {
+      // ネットワーク完全切断等の throw は retry 対象に積む
+      enqueuePending(chunkIndex, blob)
       setErrorMsg(err?.message ?? String(err))
       return false
     }
-  }, [])
+  }, [enqueuePending])
+
+  // ─── retry タイマー ──────────────────────────────────────────────
+  // Round 258 R17 P0 fix (NEW-1): pending を順に再送する。
+  // 同時実行を 1 つに制限 (retryInFlightRef) して、回線復活直後に
+  // 全 pending chunk を一斉に同時 POST し DoS 状態にしないようにする。
+  const flushPending = useCallback(async () => {
+    if (retryInFlightRef.current) return
+    if (!uploadIdRef.current) return
+    if (pendingRef.current.size === 0) return
+    retryInFlightRef.current = true
+    try {
+      // Map のスナップショットを取って while でひとつずつ処理
+      // (uploadChunk 成功時に pendingRef.current.delete されるので、
+      //  同時に新たな失敗 chunk が積まれてもイテレーターは壊れない)
+      const entries = Array.from(pendingRef.current.entries())
+      for (const [idx, blob] of entries) {
+        if (!uploadIdRef.current) break
+        const ok = await uploadChunk(blob, idx)
+        if (!ok) {
+          // この round はここで打ち切り。次の interval まで待つ。
+          break
+        }
+      }
+    } finally {
+      retryInFlightRef.current = false
+    }
+  }, [uploadChunk])
 
   // ─── 開始 ───────────────────────────────────────────────────────
   const start = useCallback(async (stream: MediaStream): Promise<boolean> => {
@@ -243,30 +332,63 @@ export function useServerSideRecording(
     try {
       recorder.start(timesliceSec * 1000)
       setState('recording')
+      // Round 258 R17 P0 fix (NEW-1): retry timer 起動
+      if (retryTimerRef.current) {
+        clearInterval(retryTimerRef.current)
+      }
+      pendingRef.current.clear()
+      droppedChunksRef.current = []
+      retryTimerRef.current = setInterval(() => { void flushPending() }, RETRY_INTERVAL_MS)
       return true
     } catch (err: any) {
       setErrorMsg(`recorder.start 失敗: ${err?.message ?? err}`)
       setState('error')
       return false
     }
-  }, [matchId, timesliceSec, enabled, uploadChunk])
+  }, [matchId, timesliceSec, enabled, uploadChunk, flushPending])
 
   // ─── 停止 + finalize ────────────────────────────────────────────
   const stop = useCallback(async () => {
     const recorder = recorderRef.current
     const uploadId = uploadIdRef.current
     recorderRef.current = null
-    uploadIdRef.current = null
+    // uploadId は finalize 後に消す (retry に使うため)
 
     if (recorder && recorder.state !== 'inactive') {
       try { recorder.stop() } catch { /* noop */ }
     }
     if (!uploadId) {
+      uploadIdRef.current = null
+      // Round 258 R17 P0 fix (NEW-1): retry timer / pending を解放
+      if (retryTimerRef.current) {
+        clearInterval(retryTimerRef.current)
+        retryTimerRef.current = null
+      }
+      pendingRef.current.clear()
       setState('idle')
       return
     }
     // 最終 ondataavailable が出るまで少し待つ
     await new Promise((r) => setTimeout(r, 500))
+    // Round 258 R17 P0 fix (NEW-1): finalize 前に pending を可能な限り flush。
+    // タイマーで自然に流れるのを待つと finalize と競合するため明示的に呼ぶ。
+    try { await flushPending() } catch { /* noop */ }
+    // retry timer 停止 (finalize 後の再送は無意味)
+    if (retryTimerRef.current) {
+      clearInterval(retryTimerRef.current)
+      retryTimerRef.current = null
+    }
+    // uploadId をここで無効化 → 以降の uploadChunk は no-op
+    uploadIdRef.current = null
+    const droppedCount = droppedChunksRef.current.length
+    const stillPending = pendingRef.current.size
+    pendingRef.current.clear()
+    if (droppedCount > 0 || stillPending > 0) {
+      setErrorMsg(
+        `chunk loss: dropped=${droppedCount} stillPending=${stillPending} ` +
+        `(録画は完了したが一部欠損あり)`,
+      )
+    }
     try {
       const base = apiBaseRef.current || ''
       const token = sessionStorage.getItem('shuttlescope_token') ?? ''
@@ -289,7 +411,7 @@ export function useServerSideRecording(
       setErrorMsg(`finalize エラー: ${err?.message ?? err}`)
       setState('error')
     }
-  }, [])
+  }, [flushPending])
 
   // unmount で必ず停止
   useEffect(() => {

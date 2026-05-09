@@ -38,6 +38,7 @@ WebRTC シグナリングを中継する。映像データは流れない（SDP/
 """
 import json
 import logging
+import re
 import time as _time
 from typing import Optional
 
@@ -431,7 +432,17 @@ async def ws_camera_handler(
                 # なお relay_to_* は session_code-scoped なので、operator が他 session
                 # の device を打つことは構造上不可能 (intentional design: operator は
                 # 自 session のオーナー)。ここで追加するのは「異常 ID」のサニタイズ。
-                _id_ok = lambda s: bool(s) and len(s) <= 64 and all(c.isalnum() or c in '_-' for c in s)
+                #
+                # Round 258 R17 P2 fix (NEW-3): Python の str.isalnum() は Unicode-aware
+                # で、`ⅰ` (Roman numeral one U+2170) や `０` (full-width digit U+FF10)、
+                # Arabic-Indic digits 等の "見た目数字に化ける文字" を全て True にする。
+                # 攻撃者が participant_id に Unicode look-alike を仕込み、内部 dict
+                # の key を ASCII の participant_id と区別困難な形でフォーク登録する
+                # 経路 (関連監査・ログ confusion / homoglyph spoofing) を防ぐため、
+                # **ASCII のみを許容する regex** に置換する。
+                _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+                def _id_ok(s: str) -> bool:
+                    return bool(s) and bool(_ID_RE.fullmatch(s))
 
                 # Operator → 送信デバイスへの中継
                 target_pid = str(msg.get("target_participant_id", ""))

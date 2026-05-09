@@ -593,15 +593,40 @@ const _MIRROR_ALLOWED_TYPES = new Set([
 // renderer XSS が `<video src="data:text/html,...">` や `<video src="localfile:///foo">`
 // を mirror 経由で別 window に強制ロードできた。data: は CSP allow されていて
 // localfile:// は path-jail で防がれるが、defense-in-depth で scheme allowlist を入れる。
+//
+// Round 258 R17 P1 fix (NEW-4): R16 の `s.startsWith('https://')` は generic 過ぎ。
+// 攻撃者が renderer XSS 取得後、mirror window で
+//   `<video src="https://evil.example.com/track.mp4">` を強制再生し、
+//   被害者の IP/UA を任意ドメインに送信できる (covert exfil channel)。
+// 修正: shuttle-scope.com / app.shuttle-scope.com / cdn.shuttle-scope.com の
+// **正確な host** だけを許容。サブドメイン全体を ".shuttle-scope.com" の
+// suffix match で許すのも、third-party CNAME 等で広がるリスクがあるため避ける。
+const _MIRROR_HTTPS_HOSTS = new Set<string>([
+  'app.shuttle-scope.com',
+  'www.shuttle-scope.com',
+  'shuttle-scope.com',
+  'cdn.shuttle-scope.com',
+])
 function _isAllowedMirrorVideoSrc(s: unknown): boolean {
   if (typeof s !== 'string' || s.length === 0 || s.length > 4096) return false
-  // 許容: localfile:///, app://video/, https://, blob:
-  return (
-    s.startsWith('localfile:///')
-    || s.startsWith('app://video/')
-    || s.startsWith('https://')
-    || s.startsWith('blob:')
-  )
+  // 早期 reject: ASCII 制御文字 + Unicode whitespace (URL parser bypass 対策)
+  if (/[\x00-\x1f\x7f]/.test(s)) return false
+  if (s.startsWith('localfile:///')) return true
+  if (s.startsWith('app://video/')) return true
+  if (s.startsWith('blob:')) return true
+  if (s.startsWith('https://')) {
+    let parsed: URL
+    try {
+      parsed = new URL(s)
+    } catch {
+      return false
+    }
+    if (parsed.protocol !== 'https:') return false
+    // hostname を lowercase で正確一致比較。ポートが付いていても hostname は host から分離される。
+    const host = parsed.hostname.toLowerCase()
+    return _MIRROR_HTTPS_HOSTS.has(host)
+  }
+  return false
 }
 
 ipcMain.on('mirror-broadcast', (event, payload: unknown) => {
@@ -1548,13 +1573,20 @@ async function startApp(): Promise<void> {
     // 任意外部 URL は main IPC 経由 (open-external-safe) に寄せる。
     //
     // Round 258 R16 P2 fix (deep audit F-7): production CSP から
-    // `http://localhost:*` を削除。Electron 本番ビルドでは backend は
-    // `localfile://` 等の独自 scheme で走ることもあるが、http://localhost を残すと
-    // renderer XSS 時に同 PC 上の任意の localhost daemon (悪意のあるアプリ等) に
-    // JWT を exfil できる経路を残してしまう。production posture では `'self'` 経由
-    // (Cloudflare Tunnel) のみに絞る。
+    // `http://localhost:*` (ワイルドカード) を削除し、JWT exfil 経路を遮断。
+    //
+    // Round 258 R17 P0 fix (regression of R16): `http://localhost:*` を「全削除」
+    // した結果、packaged Electron renderer (file:// オリジン) が child Python
+    // backend (http://localhost:8765) に到達できず、本番ビルドが完全 broken に
+    // なっていた (api/client.ts: BASE_URL='http://localhost:8765/api' フォールバック、
+    // CameraSenderPage / ViewerPage / useRealtimeYolo が ws://localhost:8765 を直叩き)。
+    // 修正方針: ワイルドカードではなく **port 8765 だけを明示** allowlist。
+    //   - 任意 localhost daemon への XSS exfil 経路は依然として遮断
+    //   - 自身の backend (固定 8765) は通常通り動作
     const _PROD_CONNECT_ALLOWLIST = [
       "'self'",
+      "http://localhost:8765",
+      "ws://localhost:8765",
       "https://app.shuttle-scope.com",
       "wss://app.shuttle-scope.com",
       "https://www.shuttle-scope.com",
