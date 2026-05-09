@@ -171,6 +171,7 @@ def get_match_preview(
 
 @router.get("/prediction/lineup_optimizer")
 def get_lineup_optimizer(
+    request: Request,
     player_ids: str,
     opponent_id: Optional[int] = None,
     tournament_level: Optional[str] = None,
@@ -189,7 +190,13 @@ def get_lineup_optimizer(
     if not ids:
         return {"success": False, "error": "player_ids is empty"}
 
-    ranked = compute_lineup_scores(db, ids, opponent_id, tournament_level)
+    # R32 fix (R30a P2-1 残): team scope を internal helper に渡す
+    from backend.utils.auth import get_auth as _ga_lo
+    _ctx_lo = _ga_lo(request)
+    ranked = compute_lineup_scores(
+        db, ids, opponent_id, tournament_level,
+        ctx_team_id=_ctx_lo.team_id, ctx_is_admin=_ctx_lo.is_admin,
+    )
 
     return {
         "success": True,
@@ -274,6 +281,7 @@ def get_analyst_depth(
 
 @router.get("/prediction/fatigue_risk")
 def get_fatigue_risk(
+    request: Request,
     player_id: int,
     tournament_level: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -282,7 +290,13 @@ def get_fatigue_risk(
     疲労・崩壊リスク予測 (Phase C)
     序盤/終盤の勝率差・長ラリー後ペナルティ・デュース時勝率低下から推定。
     """
-    result = compute_fatigue_risk(db, player_id, tournament_level=tournament_level)
+    # R32 fix (R30a P2-1 残): team scope
+    from backend.utils.auth import get_auth as _ga_fr
+    _ctx_fr = _ga_fr(request)
+    result = compute_fatigue_risk(
+        db, player_id, tournament_level=tournament_level,
+        ctx_team_id=_ctx_fr.team_id, ctx_is_admin=_ctx_fr.is_admin,
+    )
     return {
         "success": True,
         "data": result,
@@ -531,6 +545,7 @@ def _upsert_prematch_prediction(
 
 @router.get("/prediction/pair_ranking")
 def get_pair_ranking(
+    request: Request,
     anchor_player_id: int,
     tournament_level: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -540,6 +555,11 @@ def get_pair_ranking(
     全選手を候補としてペア試合実績から勝率を計算し、降順でソートする。
     コーチ・選手には返してはいけないエンドポイント（フロントエンド側で RoleGuard 必須）。
     """
+    # R32 fix (R30a P2-1 残): team scope を inline pair_q にも適用。
+    # 旧コードは Match を team filter なしで直接 query していたため、admin 以外でも
+    # 他チーム所有 match を含む集計を返していた。
+    from backend.utils.auth import get_auth as _ga_pr
+    _ctx_pr = _ga_pr(request)
     all_players = db.query(Player).order_by(Player.name).all()
     anchor = db.get(Player, anchor_player_id)
 
@@ -560,6 +580,9 @@ def get_pair_ranking(
             )
         )
     )
+    if not _ctx_pr.is_admin:
+        # admin 以外は public_pool または owner_team_id 一致のみ
+        _pair_q = _pair_q.filter(_or_(Match.is_public_pool.is_(True), Match.owner_team_id == _ctx_pr.team_id))
     if tournament_level:
         _pair_q = _pair_q.filter(Match.tournament_level == tournament_level)
     _all_pair_matches = _pair_q.all()
@@ -617,6 +640,7 @@ def get_pair_ranking(
 
 @router.get("/prediction/pair_simulation")
 def get_pair_simulation(
+    request: Request,
     player_id_1: int,
     player_id_2: int,
     tournament_level: Optional[str] = None,
@@ -626,7 +650,13 @@ def get_pair_simulation(
     ペアシミュレーション。
     player_id_1 / player_id_2 のペアとしての過去試合を集計。
     """
-    pair_matches = get_pair_matches(db, player_id_1, player_id_2, tournament_level)
+    # R32 fix (R30a P2-1 残): get_pair_matches に team scope を渡す
+    from backend.utils.auth import get_auth as _ga_ps
+    _ctx_ps = _ga_ps(request)
+    pair_matches = get_pair_matches(
+        db, player_id_1, player_id_2, tournament_level,
+        ctx_team_id=_ctx_ps.team_id, ctx_is_admin=_ctx_ps.is_admin,
+    )
 
     win_prob, sample_size = compute_win_probability(pair_matches, player_id_1)
     set_dist = compute_set_distribution(pair_matches, player_id_1, win_prob)
