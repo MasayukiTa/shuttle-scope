@@ -114,6 +114,15 @@ export function DashboardShell() {
   const { theme } = useTheme()
   const isLight = theme === 'light'
 
+  // Round 228 R228-F2 (B 案): player ロールが直接 /dashboard URL を typing して
+  // たどり着いた場合は /matches にリダイレクト。CLAUDE.md non-negotiable rule
+  // (Never show players direct 'weakness' framing) を /dashboard/review 等の
+  // 子 route に到達する前に守る。sidebar nav の方は App.tsx の hasPageAccess
+  // gate で player には表示されない (R228-F1 fix と併用)。
+  if (role === 'player') {
+    return <Navigate to="/matches" replace />
+  }
+
   const dlReport = (path: string, filename: string) => {
     const token = sessionStorage.getItem('shuttlescope_token')
     const fullUrl = API_BASE_URL + path.replace(/^\/api/, '')

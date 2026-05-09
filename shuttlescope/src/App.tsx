@@ -107,7 +107,13 @@ function Sidebar() {
   const navItems: NavItem[] = [
     { to: '/matches', label: t('nav.matches'), icon: List },
     { to: '/condition', label: t('nav.condition'), icon: Heart },
-    { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
+    // Round 228 R228-F1: dashboard を player に表示しない (review/research タブ内に
+    // 弱点系ラベルが含まれるため CLAUDE.md non-negotiable rule 違反)。
+    // hasPageAccess は coach/analyst/admin に対しては自動で true を返すので
+    // 既存ロールには影響なし。player は明示 grant が必要 (現状は grant されない)。
+    ...(hasPageAccess('dashboard')
+      ? [{ to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 }]
+      : []),
     ...(hasPageAccess('prediction')
       ? [{ to: '/prediction', label: t('nav.prediction'), icon: TrendingUp }]
       : []),
