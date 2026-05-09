@@ -306,12 +306,17 @@ def save_court_calibration(
         try:
             _upsert(retry_db)
             logger.info("court_calibration save retry succeeded")
-        except Exception as retry_err:
+        except Exception:
             retry_db.rollback()
             retry_db.close()
+            # Round 258 R13 P1 fix (deep audit F-3): R12 NEW-4 で初回 exception の
+            # leak を塞いだが retry path 側で同様の `f"...: {retry_err}（初回: {exc}）"`
+            # 形式が残っており SQLAlchemy file path / version / table name が
+            # 漏れていた。両方とも opaque message に統一。
+            logger.exception("court_calibration retry _upsert failed match_id=%s", match_id)
             raise HTTPException(
                 status_code=500,
-                detail=f"DB保存失敗: {retry_err}（初回: {exc}）"
+                detail="キャリブレーション保存に失敗しました",
             )
         retry_db.close()
 

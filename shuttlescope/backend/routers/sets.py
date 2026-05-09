@@ -51,8 +51,18 @@ def set_to_dict(s: GameSet) -> dict:
 
 
 @router.get("/sets/match/{match_id}")
-def get_sets(match_id: int, db: Session = Depends(get_db)):
-    """試合のセット一覧"""
+def get_sets(match_id: int, request: Request, db: Session = Depends(get_db)):
+    """試合のセット一覧。
+
+    Round 258 R13 P0 fix (deep audit F-2): 旧コードは auth/scope check 一切無しで
+    cross-team の set 一覧 (得点・winner・timestamp) を任意ユーザに返していた。
+    sibling である POST /sets / PUT /sets/{id}/end と同じ `_set_require_match_scope`
+    を適用して、cross-team enumeration (player JWT で全試合スコアボード抽出) を遮断。
+    """
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _set_require_match_scope(request, db, match)
     sets = db.query(GameSet).filter(
         GameSet.match_id == match_id
     ).order_by(GameSet.set_num).all()
