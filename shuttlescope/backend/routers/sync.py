@@ -553,14 +553,29 @@ def resolve_conflict(
                 incoming = _json.loads(conflict.incoming_snapshot)
                 local_obj = _find_by_uuid(db, model_cls, conflict.record_uuid)
                 if local_obj:
-                    valid_cols = _get_columns(model_cls)
-                    data = {k: v for k, v in incoming.items() if k in valid_cols and k != "id"}
-                    for k, v in data.items():
+                    # Round 258 R12 P1 fix (NEW-3): sync conflict resolve の mass-assignment
+                    # を import_package と同じ allowlist + ownership 強制でガードする。
+                    # 旧コードは `valid_cols and k != "id"` だけで全列を書き込めたため、
+                    # owner_team_id / uuid / created_at / password_hash 等まで上書き可能で、
+                    # cross-team data takeover が成立した。
+                    from backend.services.import_package import _sanitize_import_record
+                    from datetime import datetime as _dt_cf
+                    safe_data = _sanitize_import_record(model_cls, incoming, _dt_cf.utcnow())
+                    # ownership 再 check: 他チームの行を勝手に上書きさせない
+                    actor_team = getattr(_ctx, "team_id", None) if "_ctx" in locals() else None
+                    if actor_team is not None and hasattr(local_obj, "owner_team_id"):
+                        if local_obj.owner_team_id is not None and local_obj.owner_team_id != actor_team:
+                            raise HTTPException(status_code=403, detail="他チームのレコードは編集できません")
+                    for k, v in safe_data.items():
                         setattr(local_obj, k, v)
                     db.commit()
-            except Exception as e:
+            except HTTPException:
+                raise
+            except Exception:
+                # Round 258 R12 P2 fix (NEW-4): 内部例外詳細は client に返さない
                 db.rollback()
-                raise HTTPException(status_code=500, detail=f"適用エラー: {e}")
+                logger.exception("sync conflict resolve apply failed")
+                raise HTTPException(status_code=500, detail="適用処理に失敗しました")
 
     conflict.resolution = body.resolution
     conflict.resolved_at = datetime.utcnow()

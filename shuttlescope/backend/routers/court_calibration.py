@@ -205,9 +205,19 @@ def save_court_calibration(
     """
     from backend.utils.auth import get_auth as _ga_cc, user_can_access_match as _uac_cc
     _ctx_cc = _ga_cc(request)
-    # Round 258 R11: X-Role header fallback での擬装防止。user_id 必須化。
-    if _ctx_cc.role is None or _ctx_cc.user_id is None:
+    if _ctx_cc.role is None:
         raise HTTPException(status_code=401, detail="認証が必要です")
+    # Round 258 R12 P0 fix: R11 で `user_id is None` を required にしたが、これは
+    # 以下の正当ケースを破壊していた:
+    #   - bootstrap select login (sub=0 → user_id=None で AuthCtx 生成)
+    #   - Electron loopback X-Role fallback (allow_legacy_header_auth 通過時)
+    # X-Role 経路は既に control_plane 側で loopback + (optional) operator token に
+    # gate されているため、ここで二重に user_id を要求すると正規ユーザを 401 にする。
+    # admin 強権限への昇格だけ追加で防御する形に直す。
+    if _ctx_cc.is_admin and _ctx_cc.user_id is None:
+        # admin role を主張するが JWT sub が無い = X-Role spoof or bootstrap token。
+        # admin write は厳格に拒否し、analyst/coach 以下にダウングレード扱いにはしない。
+        raise HTTPException(status_code=401, detail="認証が必要です (admin には JWT が必要)")
     _m_cc = db.get(Match, match_id)
     if _m_cc is None:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
@@ -229,8 +239,11 @@ def save_court_calibration(
     try:
         H     = _compute_homography(src_corners, dst_corners)
         H_inv = _invert_homography(H)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"ホモグラフィ計算エラー: {exc}")
+    except Exception:
+        # Round 258 R12 P2 fix (NEW-4): exc を detail に晒すと numpy / file path /
+        # version 情報が漏れる。stable な opaque message に統一し、詳細はサーバ log のみ。
+        logger.exception("ホモグラフィ計算 failed match_id=%s", match_id)
+        raise HTTPException(status_code=500, detail="ホモグラフィ計算に失敗しました")
 
     # ネット支柱のコート座標（精度確認）
     net_l = apply_homography(H, *pts[4])
@@ -323,8 +336,12 @@ def get_court_calibration(match_id: int, request: Request, db: Session = Depends
     """
     from backend.utils.auth import get_auth as _ga_cc_get, user_can_access_match as _uac_cc_get
     _ctx = _ga_cc_get(request)
-    if _ctx.role is None or _ctx.user_id is None:
+    if _ctx.role is None:
         raise HTTPException(status_code=401, detail="認証が必要です")
+    # Round 258 R12 P0 fix: 同上 — admin 主張時のみ user_id 要求 (bootstrap/X-Role
+    # 経由で role=admin を擬装する経路を遮断、analyst/coach の正規 X-Role loopback は維持)
+    if _ctx.is_admin and _ctx.user_id is None:
+        raise HTTPException(status_code=401, detail="認証が必要です (admin には JWT が必要)")
     _m = db.get(Match, match_id)
     if _m is None:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
