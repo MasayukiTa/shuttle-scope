@@ -981,6 +981,137 @@ class ExfilRateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(ExfilRateLimitMiddleware)
 
 
+# ─── admin 書込み per-class rate limit ─────────────────────────────────────
+# ExfilRateLimitMiddleware は admin を完全除外している。これは運用上の大量参照
+# (DB メンテ・全件レポート抽出) を許容するための設計。だが POST/PUT/PATCH/DELETE
+# については、admin token が漏洩した場合の "rapid mass-insert" 攻撃を抑止するため
+# クラス別 (resources) per-minute バケットを別途設ける。
+# 大会前の 50+ 選手一括登録のような正当業務はバースト 100/min 以内で完了するため
+# 業務阻害なし。ただし機械的な無限ループ insert は速やかに 429 で頭打ちにする。
+#
+# クラスマッピング (path prefix → class):
+#   POST/PUT/PATCH/DELETE /api/auth/users         → "users"
+#   POST/PUT/PATCH/DELETE /api/auth/teams         → "teams"
+#   POST/PUT/PATCH/DELETE /api/players            → "players"
+#   POST/PUT/PATCH/DELETE /api/matches            → "matches"
+#   POST/PUT/PATCH/DELETE /api/cv_candidates*     → "training_data"
+#   POST/PUT/PATCH/DELETE /api/training*          → "training_data"
+#   それ以外の admin 書込み                       → "default"
+class AdminWriteRateLimitMiddleware(BaseHTTPMiddleware):
+    _window_sec = 60
+    # 1 admin user あたりの per-minute 上限 (大会前バルク作業を許容しつつ
+    # 機械的 brute-insert を頭打ちにする値)
+    _per_class_limits: dict[str, int] = {
+        "users": 60,
+        "teams": 30,
+        "players": 100,
+        "matches": 60,
+        "training_data": 50,
+        "default": 300,
+    }
+    _write_methods = {"POST", "PUT", "PATCH", "DELETE"}
+
+    import threading as _th_aw_init
+    _state_lock = _th_aw_init.Lock()
+    # state: {(user_id, class_key): [ts_start, count]}
+    _state: dict[tuple[int, str], list] = {}
+
+    @classmethod
+    def _classify(cls, path: str) -> str:
+        # auth.users / auth.teams は /api/auth/users, /api/auth/teams 配下
+        if path.startswith("/api/auth/users"):
+            return "users"
+        if path.startswith("/api/auth/teams"):
+            return "teams"
+        if path.startswith("/api/players"):
+            return "players"
+        if path.startswith("/api/matches"):
+            return "matches"
+        if path.startswith("/api/cv_candidates") or path.startswith("/api/training"):
+            return "training_data"
+        return "default"
+
+    @classmethod
+    def snapshot(cls) -> dict:
+        """admin UI 用の現在状態 (debug / 監視用)."""
+        import time as _t
+        now = _t.time()
+        out: dict[str, dict] = {}
+        with cls._state_lock:
+            for (uid, klass), st in cls._state.items():
+                age = max(0.0, now - st[0])
+                out[f"{uid}:{klass}"] = {
+                    "window_age_sec": round(age, 1),
+                    "requests": int(st[1]),
+                    "limit": cls._per_class_limits.get(klass, cls._per_class_limits["default"]),
+                }
+        return out
+
+    @classmethod
+    def reset_user(cls, user_id: int) -> int:
+        """指定 admin user の全クラス bucket をクリア。"""
+        removed = 0
+        with cls._state_lock:
+            keys = [k for k in cls._state if k[0] == int(user_id)]
+            for k in keys:
+                cls._state.pop(k, None)
+                removed += 1
+        return removed
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        # 高速ルート: 書込みでない or /api/ 配下でない → 素通し
+        if request.method not in self._write_methods:
+            return await call_next(request)
+        path = request.url.path
+        if not path.startswith("/api/"):
+            return await call_next(request)
+        # 認証無し/admin 以外は素通し (ExfilRateLimit が処理する)
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return await call_next(request)
+        from backend.utils.jwt_utils import verify_token
+        payload = verify_token(auth[7:])
+        if not payload or payload.get("role") != "admin":
+            return await call_next(request)
+        try:
+            uid = int(payload.get("sub", 0))
+        except (ValueError, TypeError):
+            return await call_next(request)
+        if uid <= 0:
+            return await call_next(request)
+
+        klass = self._classify(path)
+        limit = self._per_class_limits.get(klass, self._per_class_limits["default"])
+
+        import time as _t
+        import logging as _lg
+        _logger = _lg.getLogger("shuttlescope.admin_rl")
+        now = _t.time()
+        key = (uid, klass)
+        with self._state_lock:
+            st = self._state.get(key)
+            if not st or now - st[0] > self._window_sec:
+                st = [now, 0]
+                self._state[key] = st
+            st[1] += 1
+            if st[1] > limit:
+                retry_after = max(1, int(self._window_sec - (now - st[0])))
+                _logger.warning(
+                    "admin write rate limit user_id=%s class=%s count=%s limit=%s path=%s",
+                    uid, klass, st[1], limit, path,
+                )
+                return StarletteResponse(
+                    f'{{"detail":"admin {klass} 書込みレート上限 ({limit}/min) に達しました。{retry_after}s 後に再試行してください。"}}',
+                    status_code=429,
+                    media_type="application/json",
+                    headers={"Retry-After": str(retry_after)},
+                )
+        return await call_next(request)
+
+
+app.add_middleware(AdminWriteRateLimitMiddleware)
+
+
 # ─── チーム境界アクセス制御ミドルウェア（Phase B-6） ─────────────────────────
 # coach/analyst のリクエストに対し、対象 match_id がチーム境界内（owner_team_id 一致 /
 # is_public_pool / 自チーム選手登場）であるかを DB 検証する。

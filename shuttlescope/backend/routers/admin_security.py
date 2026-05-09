@@ -314,8 +314,15 @@ def reset_user_limits(
         do_lock = bool(body.lock)
 
     exfil_cleared = False
+    admin_write_cleared = 0
     if do_exfil:
         exfil_cleared = ExfilRateLimitMiddleware.reset_user(user_id)
+        # admin 自身の書込み rate limit bucket もまとめてリセット (admin_write_rl)
+        try:
+            from backend.main import AdminWriteRateLimitMiddleware  # type: ignore
+            admin_write_cleared = AdminWriteRateLimitMiddleware.reset_user(user_id)
+        except Exception:
+            admin_write_cleared = 0
 
     expired_sessions: list = []
     if do_uploads:
@@ -350,7 +357,8 @@ def reset_user_limits(
             resource_type="user",
             resource_id=str(user_id),
             details=(
-                f"exfil_cleared={exfil_cleared} sessions_expired={len(expired_sessions)} "
+                f"exfil_cleared={exfil_cleared} admin_write_cleared={admin_write_cleared} "
+                f"sessions_expired={len(expired_sessions)} "
                 f"failed_attempts_cleared={cleared_failed} lock_cleared={cleared_lock}"
             ),
         ))
@@ -363,8 +371,41 @@ def reset_user_limits(
         "data": {
             "user_id": user_id,
             "exfil_cleared": exfil_cleared,
+            "admin_write_buckets_cleared": admin_write_cleared,
             "sessions_expired": len(expired_sessions),
             "failed_attempts_cleared": cleared_failed,
             "lock_cleared": cleared_lock,
+        },
+    }
+
+
+# ─── admin 書込み per-class bucket の snapshot ────────────────────────────
+@router.get("/admin/security/admin_write_limits")
+def get_admin_write_limits(request: Request):
+    """admin 自身の書込み rate-limit per-class bucket の現在値を返す.
+
+    レスポンス例:
+        {
+          "success": true,
+          "data": {
+            "1:players": { "window_age_sec": 12.4, "requests": 47, "limit": 100 },
+            "1:teams":   { "window_age_sec": 33.0, "requests":  3, "limit": 30 },
+            ...
+          },
+          "meta": {
+            "limits": {"users":60, "teams":30, "players":100, "matches":60, "training_data":50, "default":300},
+            "window_sec": 60
+          }
+        }
+    """
+    _require_admin(request)
+    from backend.main import AdminWriteRateLimitMiddleware  # type: ignore
+    snap = AdminWriteRateLimitMiddleware.snapshot()
+    return {
+        "success": True,
+        "data": snap,
+        "meta": {
+            "limits": dict(AdminWriteRateLimitMiddleware._per_class_limits),
+            "window_sec": AdminWriteRateLimitMiddleware._window_sec,
         },
     }
