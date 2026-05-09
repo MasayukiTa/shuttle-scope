@@ -426,27 +426,52 @@ async def ws_camera_handler(
     # revoke / role 降格しても WS は切れず、operator 権限を **保持し続ける** 経路が
     # あった。修正: 60s 毎に同じ token を再検証し、無効化を検知したら close する。
     # `?token=` が空 (loopback 経路) の場合は再検証スキップ (= 元から JWT 不要)。
-    _last_reverify = _time.monotonic()
-    _reverify_interval = 60.0
+    #
+    # Round 258 R20 P1 fix (R20 P1-2): R19 は `await websocket.receive_text()` の
+    # **return 後**に再検証していたため、idle な operator (送信無し) は永久に
+    # reverify が走らず、revoke しても slot を持ち続ける逆ザル状態だった。
+    # 修正: asyncio.wait_for で 60s timeout を設定し、timeout 経由でも reverify を
+    # 駆動する。
+    import asyncio as _asyncio_cam
     _saved_token = websocket.query_params.get("token", "") if is_operator else ""
+    _reverify_interval = 60.0
+    _last_reverify = _time.monotonic()
+
+    async def _do_reverify_and_close_if_invalid() -> bool:
+        """token 検証。無効なら close して True を返す (= 呼び出し側は return する)。"""
+        if not _saved_token:
+            return False
+        try:
+            from backend.utils.jwt_utils import verify_token as _reverify
+            if not isinstance(_reverify(_saved_token), dict):
+                logger.warning("camera operator WS reverify failed; closing session=%s", session_code)
+                try:
+                    await websocket.close(code=4401, reason="token revoked or expired")
+                except Exception:
+                    pass
+                return True
+        except Exception as _exc:
+            logger.debug("camera operator reverify error: %s", _exc)
+        return False
 
     try:
         while True:
-            raw = await websocket.receive_text()
-            # R19 P2: 一定間隔で JWT 再検証 (operator のみ最高優先度)
-            if _saved_token and (_time.monotonic() - _last_reverify) >= _reverify_interval:
+            try:
+                raw = await _asyncio_cam.wait_for(
+                    websocket.receive_text(),
+                    timeout=_reverify_interval,
+                )
+            except _asyncio_cam.TimeoutError:
+                # idle: 何も送られてこなかった → 再検証だけ実施して continue
                 _last_reverify = _time.monotonic()
-                try:
-                    from backend.utils.jwt_utils import verify_token as _reverify
-                    if not isinstance(_reverify(_saved_token), dict):
-                        logger.warning("camera operator WS reverify failed; closing session=%s", session_code)
-                        try:
-                            await websocket.close(code=4401, reason="token revoked or expired")
-                        except Exception:
-                            pass
-                        return
-                except Exception as _exc:
-                    logger.debug("camera operator reverify error: %s", _exc)
+                if await _do_reverify_and_close_if_invalid():
+                    return
+                continue
+            # 受信成功時は interval 単位でだけ再検証 (busy traffic でも DB 負荷を抑える)
+            if (_time.monotonic() - _last_reverify) >= _reverify_interval:
+                _last_reverify = _time.monotonic()
+                if await _do_reverify_and_close_if_invalid():
+                    return
             # 巨大メッセージによるメモリ DoS (CWE-770) を遮断する。
             if len(raw) > _MAX_WS_MESSAGE_BYTES:
                 logger.warning("camera WS oversized message session=%s len=%d", session_code, len(raw))

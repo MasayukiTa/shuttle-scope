@@ -346,6 +346,24 @@ def verify_token(token: str) -> Optional[dict]:
                     logger.info("JWT rejected: mass-revoked iat=%s mass_revoke_at=%s",
                                 iat_i, mass_revoke_at)
                     return None
+
+                # Round 258 R20 P2 fix (R20 P2-2): per-user revoke epoch チェック。
+                # change_password / admin_reset_password 経由で revoke_all_for_user が
+                # sentinel を書くと、当該 user の iat < user_revoke_at 全 access token
+                # が以降の verify で reject される (15 分の access token 残時間を 0 化)。
+                _sub_for_revoke = payload.get("sub")
+                try:
+                    _user_id_for_revoke = int(_sub_for_revoke) if _sub_for_revoke is not None else None
+                except (ValueError, TypeError):
+                    _user_id_for_revoke = None
+                if _user_id_for_revoke is not None:
+                    user_revoke_at = _get_user_revoke_timestamp(_user_id_for_revoke)
+                    if user_revoke_at is not None and iat_i < user_revoke_at:
+                        logger.info(
+                            "JWT rejected: per-user revoked sub=%s iat=%s user_revoke_at=%s",
+                            _user_id_for_revoke, iat_i, user_revoke_at,
+                        )
+                        return None
             except (ValueError, TypeError):
                 return None
 
@@ -401,6 +419,88 @@ def _is_token_revoked(jti: str) -> bool:
 #  通常運用への影響は無視できる。)
 _MASS_REVOKE_CACHE: dict = {"ts": 0.0, "value": None}
 _MASS_REVOKE_CACHE_TTL = 5.0
+
+# Round 258 R20 P2 fix (R20 P2-2): per-user の token revoke epoch。
+# password change / admin reset 時に「この時刻より前に発行された token は失効」
+# とする sentinel を revoked_tokens に書く (`__user_revoke_<user_id>_<iso>`)。
+# verify_token は cache で per-user 検索し、iat < user_revoke_at なら拒否する。
+# cache は LRU bounded で 4096 entries まで保持。
+from collections import OrderedDict as _OrderedDict
+_USER_REVOKE_CACHE: "_OrderedDict[int, tuple[float, Optional[int]]]" = _OrderedDict()
+_USER_REVOKE_CACHE_TTL = 5.0
+_USER_REVOKE_CACHE_MAX = 4096
+
+
+def _get_user_revoke_timestamp(user_id: int) -> Optional[int]:
+    """指定 user_id について「これより前の token を失効」とする最新時刻 (epoch sec)。
+
+    sentinel jti は "__user_revoke_<user_id>_<isoformat>" の形式で revoked_tokens に
+    残されている。5 秒に 1 回だけ DB を引き、それ以外は cache。
+    cache 上限超過時は LRU で evict。
+    """
+    import time as _time
+    now = _time.time()
+    cached = _USER_REVOKE_CACHE.get(user_id)
+    if cached is not None and (now - cached[0]) < _USER_REVOKE_CACHE_TTL:
+        # touch して LRU 末尾に移動
+        _USER_REVOKE_CACHE.move_to_end(user_id)
+        return cached[1]
+
+    from backend.db.database import SessionLocal
+    from backend.db.models import RevokedToken
+    try:
+        prefix = f"__user_revoke_{user_id}_"
+        with SessionLocal() as db:
+            row = (
+                db.query(RevokedToken)
+                .filter(RevokedToken.jti.like(prefix + "%"))
+                .order_by(RevokedToken.id.desc())
+                .first()
+            )
+            ts: Optional[int] = None
+            if row is not None:
+                iso = row.jti[len(prefix):]
+                try:
+                    from datetime import timezone as _tz
+                    ts = int(datetime.fromisoformat(iso).replace(tzinfo=_tz.utc).timestamp())
+                except (ValueError, TypeError):
+                    ts = None
+            _USER_REVOKE_CACHE[user_id] = (now, ts)
+            _USER_REVOKE_CACHE.move_to_end(user_id)
+            while len(_USER_REVOKE_CACHE) > _USER_REVOKE_CACHE_MAX:
+                _USER_REVOKE_CACHE.popitem(last=False)
+            return ts
+    except Exception as exc:
+        logger.warning("[jwt] user_revoke check failed user_id=%s: %s", user_id, exc)
+        _USER_REVOKE_CACHE[user_id] = (now, None)
+        return None
+
+
+def revoke_all_for_user(user_id: int) -> None:
+    """指定 user_id の access/refresh token を **iat ベースで** 全失効させる。
+
+    R20 P2-2: 旧 change_password は revoke_all_refresh_tokens_for_user のみ呼んで
+    いたが access token (15min) は失効しなかった。この関数を呼ぶことで以降の
+    verify_token が iat 比較で reject する。
+    既存 refresh token も revoke_all_refresh_tokens_for_user 側で別途無効化されること。
+    """
+    from backend.db.database import SessionLocal
+    from backend.db.models import RevokedToken
+    iso = datetime.utcnow().isoformat()
+    sentinel = f"__user_revoke_{user_id}_{iso}"
+    try:
+        with SessionLocal() as db:
+            db.add(RevokedToken(
+                jti=sentinel,
+                user_id=user_id,
+                expires_at=datetime.utcnow() + timedelta(days=30),
+            ))
+            db.commit()
+    except Exception as exc:
+        logger.warning("[jwt] revoke_all_for_user write failed user_id=%s: %s", user_id, exc)
+        raise
+    # in-process cache を即時無効化 → 次回 verify_token で DB を引き直す
+    _USER_REVOKE_CACHE.pop(user_id, None)
 
 
 def _get_mass_revoke_timestamp() -> Optional[int]:

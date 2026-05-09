@@ -254,6 +254,22 @@ def init_upload(
         ).count()
         if active >= MAX_CONCURRENT_PER_USER:
             raise HTTPException(status_code=429, detail=f"同時アップロード本数の上限 ({MAX_CONCURRENT_PER_USER}) に達しています")
+    else:
+        # Round 258 R20 P2 fix (R20 P2-3): ctx.user_id is None (= ALLOW_LOOPBACK_NO_AUTH
+        # 経路 / loopback 緩和) だと旧コードは並列上限を完全に skip していた。
+        # その状態で `body.total_size = 5GB` を持つ init を多数発行されると、
+        # 1 つあたり sparse 5GB の .part ファイルが確保 (truncate) されて Volume を
+        # 食い潰し DoS になっていた。loopback 用の弱い cap を導入する。
+        loopback_active = db.query(UploadSession).filter(
+            UploadSession.user_id.is_(None),
+            UploadSession.status == "uploading",
+        ).count()
+        _MAX_CONCURRENT_LOOPBACK = 4
+        if loopback_active >= _MAX_CONCURRENT_LOOPBACK:
+            raise HTTPException(
+                status_code=429,
+                detail=f"loopback 同時アップロード本数の上限 ({_MAX_CONCURRENT_LOOPBACK}) に達しています",
+            )
 
     total_chunks = (body.total_size + body.chunk_size - 1) // body.chunk_size
     upload_id = str(uuid.uuid4())

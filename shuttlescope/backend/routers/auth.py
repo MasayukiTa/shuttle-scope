@@ -1059,6 +1059,14 @@ def change_password(req: PasswordChangeRequest, request: Request, db: Session = 
     db.commit()
     # 既存 refresh token を全失効させ、再ログインを要求
     revoke_all_refresh_tokens_for_user(user.id)
+    # Round 258 R20 P2 fix (R20 P2-2): access token (15min) も per-user revoke epoch
+    # で即時失効させる。これで盗まれた access token が password rotation 後に
+    # 残存利用される 15 分の窓を閉じる。
+    try:
+        from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
+        _revoke_all_for_user(user.id)
+    except Exception as exc:
+        logger.warning("revoke_all_for_user failed (password change) user_id=%s: %s", user.id, exc)
     log_access(db, "password_changed", user_id=user.id, ip_addr=_get_ip(request))
     return {"success": True}
 
@@ -1076,6 +1084,12 @@ def admin_reset_password(target_id: int, request: Request, db: Session = Depends
     user.locked_until = None
     db.commit()
     revoke_all_refresh_tokens_for_user(user.id)
+    # Round 258 R20 P2 fix (R20 P2-2): access token も即時失効
+    try:
+        from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
+        _revoke_all_for_user(user.id)
+    except Exception as exc:
+        logger.warning("revoke_all_for_user failed (admin reset) user_id=%s: %s", user.id, exc)
     log_access(db, "password_reset_by_admin", details={"target_user_id": target_id})
     return PasswordResetResponse(temporary_password=temp)
 
