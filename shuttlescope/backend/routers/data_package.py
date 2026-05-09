@@ -249,9 +249,15 @@ def export_package(match_id: int, request: Request, db: Session = Depends(get_db
         _lg.getLogger(__name__).warning("[export] access_log failed: %s", exc)
 
     # ファイル名: match_YYYYMMDD_vs_opponent.json
+    # Round 258 R8 P1 fix (deep audit P1-2): Content-Disposition filename injection。
+    # 旧コードは space と '/' しか除去していなかったため `"`, `;`, `\\` が通り、
+    # `filename="match_..._vs_a"; filename="evil.exe.json"` のように quote-break →
+    # 第二パラメータ注入が成立した。ASCII alnum + `_-` だけを許可する strict 化。
+    import re as _re_dp
     date_str = match.date.strftime("%Y%m%d") if match.date else "unknown"
     opp = db.get(Player, match.player_b_id)
-    opp_name = (opp.name if opp else "opponent").replace(" ", "_").replace("/", "-")[:20]
+    opp_name_raw = (opp.name if opp else "opponent")
+    opp_name = _re_dp.sub(r"[^A-Za-z0-9_-]", "_", opp_name_raw)[:20] or "opponent"
     filename = f"match_{date_str}_vs_{opp_name}.json"
 
     # HTTP ヘッダは latin-1 限定なので RFC 5987 形式で UTF-8 ファイル名を提供する。

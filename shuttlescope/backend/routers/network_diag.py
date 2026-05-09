@@ -20,7 +20,7 @@ import socket
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from backend import config as _config_module
 
@@ -219,12 +219,22 @@ async def network_diagnostics(request: Request):
 
 
 @router.post("/network/lan-mode")
-def toggle_lan_mode(enable: bool):
+def toggle_lan_mode(enable: bool, request: Request):
     """
     LAN 共有モードの有効/無効を切替。
     ※ uvicorn の bind アドレスは起動時に決まるため、実際の効果は次回起動時。
        本エンドポイントは設定フラグの更新のみ行う。
+
+    Round 258 R8 P1 fix (deep audit V-1):
+    旧コードは `request: Request` を取らず、GlobalAuthMiddleware の loopback
+    緩和や CF-Connecting-IP 偽装で誰でも .env.development を書き換えて次回
+    再起動で 0.0.0.0 bind に倒せていた P1。admin role を必須化する。
     """
+    from backend.utils.auth import get_auth as _ga_lan
+    _ctx = _ga_lan(request)
+    if not _ctx.is_admin:
+        raise HTTPException(status_code=403, detail="admin only")
+
     # .env.development に書き込む（次回起動時に有効）
     # config.py が読む env_file と同じパスに書く（CWD=shuttlescope/ を前提）
     import pathlib

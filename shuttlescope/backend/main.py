@@ -435,7 +435,10 @@ class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         cl = request.headers.get("content-length")
         if cl:
-            cl_int = int(cl)
+            try:
+                cl_int = int(cl)
+            except (ValueError, TypeError):
+                cl_int = 0
             limit = _AUTH_BODY_LIMIT if request.url.path.startswith("/api/auth/") else _HTTP_UPLOAD_LIMIT
             if cl_int > limit:
                 return StarletteResponse(
@@ -443,6 +446,19 @@ class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
                     status_code=413,
                     media_type="application/json",
                 )
+        # Round 258 R8 P1 fix (deep audit F5): gzip/deflate decompression bomb 対策。
+        # Content-Encoding 付きの POST body は Cloudflare / nginx / 一部 router が
+        # 自動 decompress するため、100 MB 圧縮 body が GB 単位に膨らむ可能性がある。
+        # ShuttleScope のいずれの endpoint も client-supplied Content-Encoding を
+        # 期待していないので、明示的に拒否する。yt-dlp / sspkg ZIP 等の独自圧縮は
+        # body ではなく upload chunk で扱うため影響しない。
+        ce = (request.headers.get("content-encoding") or "").strip().lower()
+        if ce and ce not in ("identity",):
+            return StarletteResponse(
+                '{"detail":"Content-Encoding が許可されていません (compression bomb 対策)"}',
+                status_code=415,
+                media_type="application/json",
+            )
         return await call_next(request)
 
 
@@ -1359,8 +1375,20 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
+        # Round 258 R8 P1 fix (deep audit F4): OPTIONS preflight bypass による
+        # endpoint 列挙を遮断。CORS preflight を装った probe (200 / 405 / 404 の
+        # 差分で route 存在を学習) で /api/auth/users/{id} 等の admin-only path を
+        # 列挙されていた。本物の preflight は `access-control-request-method` header
+        # を必ず付けるため、それを満たす場合のみ素通す。
         if request.method == "OPTIONS":
-            return await call_next(request)
+            if request.headers.get("access-control-request-method"):
+                return await call_next(request)
+            # 偽 OPTIONS は authentication 経路に乗せる
+            return StarletteResponse(
+                '{"detail":"OPTIONS preflight requires Access-Control-Request-Method"}',
+                status_code=400,
+                media_type="application/json",
+            )
         if _GLOBAL_AUTH_EXEMPT.match(request.url.path):
             return await call_next(request)
         # browser <video> stream: token クエリ認証経路 (Bearer header を送れない)。
