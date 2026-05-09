@@ -55,10 +55,47 @@ _USERNAME_RE = re.compile(r"^[A-Za-z0-9_\-.]{3,64}$")
 # 制限値:
 #   register:        IP 単位 5 req / 15min, email 単位 3 req / 24h
 #   request_reset:   IP 単位 5 req / 15min, email 単位 3 req / 1h
+#   reset_consume:   IP 単位 20 req / 1h, global 200 req / 1h (R26)
 #
 # in-memory 実装の制約:
 #   - プロセス再起動でリセット (本番複数プロセスは想定外、単一プロセス前提)
 #   - 1 プロセスのメモリ内のみ → IP 偽装は別 layer (CF) で防御
+#
+# Round 258 R29 P2 fix (R26 P2-2): 上記の「単一プロセス前提」を **起動時に強制**。
+# PM2 cluster mode / multiple uvicorn workers で auth プロセスが複数立ち上がると、
+# 各 worker が個別の bucket を持ち、global rate limit が `count × N_workers` に
+# 緩んでしまう (例: 200/h global → 1000/h with 5 workers)。
+# 環境変数 `SS_AUTH_PROCESS_INSTANCES` (PM2 ecosystem.config 側で `instances: 1`
+# でも、明示的な値) または PM2 標準の `pm_id` / `NODE_APP_INSTANCE` を見て、
+# 1 を超える場合は警告ログを出す。本番運用ではこの警告を CI / オンコール監視で
+# 検知して構成を直す。
+def _enforce_single_instance_warning() -> None:
+    import os as _os_si
+    # PM2 が cluster mode のとき NODE_APP_INSTANCE に 0..N-1 を設定。
+    # uvicorn worker count は WEB_CONCURRENCY / --workers で決まる。
+    raw_instance = _os_si.environ.get("NODE_APP_INSTANCE", "")
+    raw_workers = _os_si.environ.get("WEB_CONCURRENCY", "")
+    raw_pm2_total = _os_si.environ.get("instances", "")  # PM2 internal
+    suspicious = []
+    if raw_instance.isdigit() and int(raw_instance) > 0:
+        suspicious.append(f"NODE_APP_INSTANCE={raw_instance}")
+    if raw_workers.isdigit() and int(raw_workers) > 1:
+        suspicious.append(f"WEB_CONCURRENCY={raw_workers}")
+    if raw_pm2_total.isdigit() and int(raw_pm2_total) > 1:
+        suspicious.append(f"PM2 instances={raw_pm2_total}")
+    if suspicious:
+        import logging as _log_si
+        _log_si.getLogger(__name__).warning(
+            "[auth-rate-limit] suspected multi-process deployment: %s. "
+            "_RATE_BUCKETS is in-memory and will not compose across processes; "
+            "global rate limits become count*N. Set instances=1 in pm2 ecosystem "
+            "or migrate buckets to Redis/DB.",
+            suspicious,
+        )
+
+
+_enforce_single_instance_warning()
+
 
 _RATE_LOCK = Lock()
 _RATE_BUCKETS: dict[str, list[datetime]] = {}
