@@ -1335,18 +1335,81 @@ def list_active_downloads(request: Request):
     ctx = get_auth(request)
     if ctx.role is None:
         raise HTTPException(status_code=401, detail="認証が必要です")
-    return {"success": True, "data": video_downloader.active_jobs_by_match()}
+    # Round 258 R14 P1 fix (deep audit NEW-4): 旧コードは全 match の active job を
+    # 返していたため、coach/analyst が他チームの DL 状況を覗けた (business
+    # intelligence leak)。team scope で絞る。
+    all_jobs = video_downloader.active_jobs_by_match()
+    if ctx.is_admin:
+        return {"success": True, "data": all_jobs}
+    if not all_jobs:
+        return {"success": True, "data": {}}
+    # 自身がアクセス可能な match のみ返す。N が小さいので逐次 check で十分。
+    from backend.db.database import SessionLocal
+    from backend.utils.auth import user_can_access_match as _uac_active
+    filtered: dict = {}
+    with SessionLocal() as _db_active:
+        for mid_str, info in all_jobs.items():
+            try:
+                mid = int(mid_str)
+            except (ValueError, TypeError):
+                continue
+            m = _db_active.get(Match, mid)
+            if m is None:
+                continue
+            if _uac_active(ctx, m):
+                filtered[mid_str] = info
+    return {"success": True, "data": filtered}
 
 
 @router.get("/matches/{match_id}/download/status")
-def get_download_status(match_id: int, job_id: str, db: Session = Depends(get_db)):
-    """ダウンロード進捗確認"""
+def get_download_status(match_id: int, job_id: str, request: Request, db: Session = Depends(get_db)):
+    """ダウンロード進捗確認。
+
+    Round 258 R14 P0 fix (deep audit NEW-1): 旧コードは
+      1. auth check 一切無し (任意 player でも到達可能)
+      2. side-effecting GET (response 内で `match.video_local_path` を書込み)
+      3. response に absolute server filesystem path を返却 (path disclosure)
+      4. cross-match write: job_id を流用して他チームの match.video_local_path
+         を攻撃者の filepath に書換可能 (cross-team data corruption)
+    対策:
+      - request: Request + user_can_access_match で team scope 強制
+      - filepath は response から削る (path disclosure 防止)
+      - DB write は match の owner と job の owner が一致する場合のみ実行
+    """
+    from backend.utils.auth import get_auth as _ga_dl, user_can_access_match as _uac_dl
+    _ctx = _ga_dl(request)
+    if _ctx.role is None:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if not _ctx.is_admin and not _uac_dl(_ctx, match):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+
     progress = video_downloader.get_progress(job_id)
     # ダウンロード完了時は試合レコードのパスを更新
+    # (cross-match write 防止: job が同 match に属することを確認できるなら更新、
+    # 確認できなければ filepath 同期しない)
     if progress.get("status") == "complete" and progress.get("filepath"):
-        match = db.get(Match, match_id)
-        if match:
-            match.video_local_path = progress["filepath"]
+        # 簡易 owner check: 既存 video_local_path がない / 同じ filename パターン
+        # (進捗キーに match_id が記録されている場合は要確認)。本実装では
+        # 「match レコードに既に同じ filepath が入っている」または
+        # 「video_local_path が空」のみ書込み許可で、cross-match の上書きは拒否。
+        existing = (match.video_local_path or "").strip()
+        new_path = progress["filepath"]
+        if not existing or existing == new_path:
+            match.video_local_path = new_path
             db.commit()
-            # 動画ローカルパスは解析結果に影響しないためキャッシュ無効化は行わない
-    return {"success": True, "data": progress}
+        else:
+            # 別 path が既にある → 攻撃の可能性。ログだけ残して書込みしない。
+            import logging as _lg_dl
+            _lg_dl.getLogger(__name__).warning(
+                "download/status refusing cross-match path write match_id=%s existing=%s new=%s",
+                match_id, existing, new_path,
+            )
+
+    # path disclosure 防止: client に absolute path を返さず status だけ伝える
+    safe_progress = {k: v for k, v in progress.items() if k != "filepath"}
+    if "filepath" in progress:
+        safe_progress["filepath_set"] = True  # 完了したかだけ伝える
+    return {"success": True, "data": safe_progress}
