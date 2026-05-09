@@ -690,6 +690,8 @@ def compute_fatigue_risk(
     db: Session,
     player_id: int,
     tournament_level: Optional[str] = None,
+    ctx_team_id: Optional[int] = None,  # R32 fix: team scope
+    ctx_is_admin: bool = False,
 ) -> dict:
     """
     疲労・崩壊リスク推定 (Phase C)
@@ -697,8 +699,14 @@ def compute_fatigue_risk(
       - temporal_drop  (40%): 序盤(≤8点) vs 終盤(≥20点) の勝率差
       - long_rally_penalty (30%): 長ラリー(≥7打) 直後の勝率低下
       - pressure_drop  (30%): デュース時の勝率低下
+
+    Round 258 R32 fix (R30a P2-1 残): caller の team scope を get_matches_for_player に
+    渡す。admin 以外は public_pool または owner_team_id 一致の match のみ。
     """
-    matches = get_matches_for_player(db, player_id, tournament_level=tournament_level)
+    matches = get_matches_for_player(
+        db, player_id, tournament_level=tournament_level,
+        ctx_team_id=ctx_team_id, ctx_is_admin=ctx_is_admin,
+    )
     if not matches:
         return _empty_fatigue_result()
 
@@ -1114,16 +1122,22 @@ def compute_lineup_scores(
     player_ids: list[int],
     opponent_id: Optional[int] = None,
     tournament_level: Optional[str] = None,
+    ctx_team_id: Optional[int] = None,  # R32 fix: team scope
+    ctx_is_admin: bool = False,
 ) -> list[dict]:
     """
     Phase S3: 複数選手の勝率予測をランク付けしてラインナップ最適化を支援。
     各 player_id に対して compute_feature_win_prob を実行し、降順で返す。
+
+    Round 258 R32 fix (R30a P2-1 残): caller の team scope を get_matches_for_player
+    にすべての pid 呼出で渡す。admin 以外は public_pool / 同 team owner のみ。
     """
+    _kw_team = {"ctx_team_id": ctx_team_id, "ctx_is_admin": ctx_is_admin}
     results: list[dict] = []
     for pid in player_ids:
-        all_m = get_matches_for_player(db, pid)
+        all_m = get_matches_for_player(db, pid, **_kw_team)
         h2h_m = (
-            get_matches_for_player(db, pid, opponent_id=opponent_id)
+            get_matches_for_player(db, pid, opponent_id=opponent_id, **_kw_team)
             if opponent_id else []
         )
         obs = get_observation_context(db, pid, opponent_id)
