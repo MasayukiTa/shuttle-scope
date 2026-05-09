@@ -94,7 +94,18 @@ def get_auth(request: Request) -> AuthCtx:
         from backend.utils.jwt_utils import verify_token
         payload = verify_token(token)
         if payload:
-            role = payload.get("role")
+            # Round 258 R15 P2 fix (deep audit NEW-6): mfa_pending JWT は MFA 完了前の
+            # 一時 token なので、access role としては絶対に honor しない。
+            # GlobalAuthMiddleware (main.py) は path ベースで `/api/auth/mfa/*` のみ
+            # 通すよう実装済だが、ここでは get_auth レイヤで AuthCtx を「未認証相当」
+            # に倒すことで、middleware を bypass する経路 (将来的な追加 endpoint /
+            # WS handler / scheduled job 内呼出 etc.) でも安全側に倒す。
+            token_use = payload.get("token_use")
+            payload_role = payload.get("role")
+            if token_use == "mfa_pending" or payload_role == "mfa_pending":
+                # 全部 None で返して downstream の `if ctx.role is None` で 401 にする
+                return AuthCtx(None, None)
+            role = payload_role
             if role not in {r.value for r in UserRole}:
                 role = None
             pid = payload.get("player_id")
