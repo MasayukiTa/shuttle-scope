@@ -347,24 +347,37 @@ async def lifespan(app: FastAPI):
     # 次回 hot-reload 時に connection-pool exhaustion を起こす経路があった。
     # 修正: cleanup 関数を thread 内 try/finally で session を必ず close し、
     # SQLite なら短い busy_timeout を強制する wrapper を被せる。
+    #
+    # Round 258 R24 P1 fix (R24 P1):
+    # 旧 R23 実装の `_probe.execute("PRAGMA busy_timeout=5000")` は SQLite の
+    # PRAGMA が **per-connection** なため、別 connection を pool から取り出す
+    # `cleanup_expired_revoked_tokens()` には反映されない (no-op だった)。
+    # 修正: SQLAlchemy `event.listens_for(..., "connect")` で **engine 全体に**
+    # busy_timeout PRAGMA を設定し、すべての SQLite connection で有効化する。
+    # 1 度だけ登録すれば永続。
+    try:
+        from sqlalchemy import event as _sa_event, text as _sa_text
+        from backend.db.database import engine as _engine_for_pragma
+        if "sqlite" in str(_engine_for_pragma.dialect.name).lower():
+            @_sa_event.listens_for(_engine_for_pragma, "connect")
+            def _set_sqlite_busy_timeout(dbapi_conn, _cr):
+                try:
+                    cur = dbapi_conn.cursor()
+                    cur.execute("PRAGMA busy_timeout = 5000")
+                    cur.close()
+                except Exception:
+                    pass
+            logger.info("SQLite busy_timeout=5000 listener installed for revoked_tokens GC")
+    except Exception as exc:
+        logger.debug("SQLite PRAGMA listener install skipped: %s", exc)
+
     async def _revoked_tokens_gc_loop() -> None:
         def _safe_cleanup() -> int:
             from backend.utils.jwt_utils import cleanup_expired_revoked_tokens as _cleanup_rev
-            from backend.db.database import SessionLocal as _SL
-            # SQLite なら busy_timeout を 5s に縮めて long lock を即時 abort
-            try:
-                with _SL() as _probe:
-                    bind = _probe.get_bind()
-                    if bind is not None and "sqlite" in str(bind.dialect.name):
-                        _probe.execute(__import__("sqlalchemy").text("PRAGMA busy_timeout = 5000"))
-            except Exception:
-                pass
             try:
                 return _cleanup_rev()
             finally:
-                # SessionLocal は cleanup_rev 側で close される設計だが、
-                # 万が一 leak した場合に備え engine pool dispose を最終手段で呼ばない。
-                # ここでは何もしない (SessionLocal は context manager 中で close 済)
+                # SessionLocal は cleanup_rev 側で close される設計
                 pass
         while True:
             try:
