@@ -2476,7 +2476,7 @@
       "withdrawn_label": "撤回済み",
       "state_active": "有効",
       "state_withdrawn": "未付与または撤回済",
-      "confirm_withdraw": "同意「{{type}}」を撤回します。よろしいですか？\n\n撤回後、関連する処理（AI モデル学習等）から除外されます。撤回履歴は GDPR / APPI の monitoring 目的で保管されます。",
+      "confirm_withdraw": "同意「{{type}}」を撤回します。よろしいですか？\n\n撤回後、関連する処理（AI モデル学習等）から除外されます。撤回履歴は GDPR / APPI の monitoring 目的で保管されます。\n\n関連データの削除をご希望の場合は contact@shuttle-scope.com まで別途ご連絡ください（同意書 第8条 (2) に基づき 30 日以内に対応します）。",
       "error": "撤回に失敗しました。再試行してください。",
       "types": {
         "service_delivery": "サービス提供に必要なデータ処理",

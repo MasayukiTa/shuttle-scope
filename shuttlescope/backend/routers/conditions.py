@@ -35,6 +35,7 @@ from backend.analysis.condition_analytics import (
 )
 from backend.db.database import get_db
 from backend.db.models import Condition, Match, Player
+from backend.utils.field_sensitivity import filter_condition_fields
 
 router = APIRouter(prefix="/api/conditions", tags=["conditions"])
 
@@ -313,11 +314,19 @@ def _coach_view(c: Condition) -> dict:
 
 
 def _serialize(c: Condition, role: str) -> dict:
+    """同意書 第5条 アライメント。
+
+    - player: 自身のデータ前提 (ownership は呼び出し側で担保)。派生統計のみの軽量ビュー。
+    - admin:  生データ全件 (開発者・モデル監査)。
+    - coach / analyst: filter_condition_fields() で Tier 1 (識別子 + 妥当性) まで縮約。
+      raw factor / 体組成 / 医療自由記述は全てマスクされる。
+    """
     if role == "player":
         return _player_view(c)
-    if role == "coach":
-        return _coach_view(c)
-    return _full_dict(c)
+    if role == "admin":
+        return _full_dict(c)
+    # coach / analyst / その他: ROLE_MAX_TIER に従って自動マスク
+    return filter_condition_fields(_full_dict(c), role)
 
 
 # ─── マスター ────────────────────────────────────────────────────────────────
@@ -433,8 +442,9 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
     db.add(cond)
     db.commit()
     db.refresh(cond)
-    # analyst ビュー（完全）で返却
-    return {"success": True, "data": _full_dict(cond)}
+    # 同意書 第5条: 提出した本人 (player) と admin のみ生データ可。
+    # coach/analyst が代理提出した場合は ROLE_MAX_TIER に従って自動マスクされる。
+    return {"success": True, "data": filter_condition_fields(_full_dict(cond), _ctx_q.role)}
 
 
 # ─── 直接入力 CRUD ───────────────────────────────────────────────────────────
@@ -723,6 +733,9 @@ def get_discrepancy(
         .order_by(Condition.measured_at.asc(), Condition.id.asc())
         .all()
     )
+    # detect_discrepancy は内部で生スコアを参照するため _full_dict() で回す。
+    # 検知ロジックを通したあと、レスポンスは flags のみ返却するので
+    # 同意書 第5条 違反は発生しない (生スコアは外に漏れない)。
     dicts = [_full_dict(c) for c in rows]
     results: List[dict] = []
     prev: Optional[dict] = None
@@ -770,32 +783,32 @@ def get_insights(
             },
         }
 
-    # coach / analyst: raw factor trends + validity summary
-    factor_trends = {
-        k: [
-            {"measured_at": c["measured_at"], "value": c.get(k)}
-            for c in conds if c.get(k) is not None
-        ]
-        for k in ("f1_physical", "f2_stress", "f3_mood", "f4_motivation", "f5_sleep_life")
-    }
+    # 同意書 第5条: コンディション生スコア (F1..F5 など) は coach/analyst には開示不可。
+    # 妥当性フラグのみは ○ (admin/coach/analyst) なので summary だけ返す。
+    # admin のみ raw_factor_trends を可視化（モデル監査用途）。
     validity_counts: Dict[str, int] = {"ok": 0, "caution": 0, "unreliable": 0}
     for c in conds:
         vf = c.get("validity_flag")
         if vf in validity_counts:
             validity_counts[vf] += 1
-    return {
-        "success": True,
-        "data": {
-            "growth_cards": insights["growth_cards"],
-            "personal_trend": {"ccs": ccs_trend},
-            "raw_factor_trends": factor_trends,
-            "validity_summary": {
-                "counts": validity_counts,
-                "n": len([c for c in conds if c.get("validity_flag")]),
-            },
-            "confidence_note": insights["confidence_note"],
+    data = {
+        "growth_cards": insights["growth_cards"],
+        "personal_trend": {"ccs": ccs_trend},
+        "validity_summary": {
+            "counts": validity_counts,
+            "n": len([c for c in conds if c.get("validity_flag")]),
         },
+        "confidence_note": insights["confidence_note"],
     }
+    if role == "admin":
+        data["raw_factor_trends"] = {
+            k: [
+                {"measured_at": c["measured_at"], "value": c.get(k)}
+                for c in conds if c.get(k) is not None
+            ]
+            for k in ("f1_physical", "f2_stress", "f3_mood", "f4_motivation", "f5_sleep_life")
+        }
+    return {"success": True, "data": data}
 
 
 def _require_condition_access(request: Request, cond: Condition) -> None:
