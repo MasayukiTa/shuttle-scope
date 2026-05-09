@@ -93,6 +93,13 @@ def save_warmup_observations(
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
     ctx = get_auth(request)
+    # Round 258 R27 P2 fix (R27 P2-1): 旧コードは ctx を取得後に
+    # `user_can_access_match` だけ呼んでいたが、ALLOW_LOOPBACK_NO_AUTH=1 経路では
+    # ctx.team_id is None / is_admin False で素通しされ、`is_public_pool=True` の
+    # match に対し loopback unauth user が偽 observation を書ける経路があった。
+    # 修正: `ctx.role` が None (= unauth) の場合は明示 reject。
+    if not ctx.role:
+        raise HTTPException(status_code=401, detail="認証が必要です")
     # Phase B: チーム境界チェック (4-1)
     from backend.utils.auth import user_can_access_match
     if not user_can_access_match(ctx, match):
