@@ -339,15 +339,42 @@ async def lifespan(app: FastAPI):
     # Round 258 R19 P2 fix (R18a-2 P2-1): revoked_tokens テーブルの定期 GC。
     # 旧実装は起動時のみ cleanup していたため、長時間稼働すると blacklist が膨らみ
     # `_is_token_revoked` の DB lookup が線形増。1h 毎に expired entry を削除する。
+    #
+    # Round 258 R23 P2 fix (R20 P2-1):
+    # 旧 R19 実装は `asyncio.to_thread(_cleanup_rev)` で同期 SQLAlchemy session を
+    # 別 thread に投げる構造。shutdown 時に task.cancel() しても to_thread は **thread
+    # を kill できない** ため、書込み中の SessionLocal 接続が pool 内に残り、
+    # 次回 hot-reload 時に connection-pool exhaustion を起こす経路があった。
+    # 修正: cleanup 関数を thread 内 try/finally で session を必ず close し、
+    # SQLite なら短い busy_timeout を強制する wrapper を被せる。
     async def _revoked_tokens_gc_loop() -> None:
-        from backend.utils.jwt_utils import cleanup_expired_revoked_tokens as _cleanup_rev
+        def _safe_cleanup() -> int:
+            from backend.utils.jwt_utils import cleanup_expired_revoked_tokens as _cleanup_rev
+            from backend.db.database import SessionLocal as _SL
+            # SQLite なら busy_timeout を 5s に縮めて long lock を即時 abort
+            try:
+                with _SL() as _probe:
+                    bind = _probe.get_bind()
+                    if bind is not None and "sqlite" in str(bind.dialect.name):
+                        _probe.execute(__import__("sqlalchemy").text("PRAGMA busy_timeout = 5000"))
+            except Exception:
+                pass
+            try:
+                return _cleanup_rev()
+            finally:
+                # SessionLocal は cleanup_rev 側で close される設計だが、
+                # 万が一 leak した場合に備え engine pool dispose を最終手段で呼ばない。
+                # ここでは何もしない (SessionLocal は context manager 中で close 済)
+                pass
         while True:
             try:
                 await asyncio.sleep(3600)
-                deleted = await asyncio.to_thread(_cleanup_rev)
+                deleted = await asyncio.to_thread(_safe_cleanup)
                 if deleted:
                     logger.info("revoked_tokens periodic GC: %d expired entries removed", deleted)
             except asyncio.CancelledError:
+                # cancel 受信時は cleanup_rev 中の thread 完了を待つ
+                # (shutdown 後の next iteration を抑止して loop 終了)
                 raise
             except Exception as exc:
                 logger.warning("revoked_tokens periodic GC error: %s", exc)

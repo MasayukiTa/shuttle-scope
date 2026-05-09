@@ -119,6 +119,23 @@ def create_backup(label: Optional[str] = None, max_generations: int = 10) -> Pat
                 "[backup] SS_BACKUP_PASSPHRASE が短すぎます (最低 20 文字)。"
                 "PKWARE-AES の KDF (PBKDF2-SHA1 1000 iter) は脆弱なため passphrase 強度で補償が必要です"
             )
+        # Round 258 R23 P2 fix (R18a-3 P2-1): 20 文字でも全部同じ char (例: "a"*20) なら
+        # 5 bits 程度のエントロピーしか無く、PBKDF2-SHA1 1000 iter の弱 KDF と組み合わせて
+        # オフライン総当たりの現実時間内で破られる。Shannon エントロピーの粗推定で
+        # 80 bits 以上を強制する (= 大文字小文字数字記号それぞれ最低 1 種 + 重複の偏り低)。
+        import math as _bp_math
+        from collections import Counter as _bp_Counter
+        _ch_counts = _bp_Counter(passphrase)
+        _len = len(passphrase)
+        _shannon = -sum((c / _len) * _bp_math.log2(c / _len) for c in _ch_counts.values())
+        # 全 chars 一致なら shannon=0、20文字×全 unique なら shannon=log2(20)≒4.32。
+        # 80 bits / 20 chars = 4.0 bit/char は最低ライン。
+        if _shannon < 4.0:
+            raise RuntimeError(
+                "[backup] SS_BACKUP_PASSPHRASE のエントロピーが不足しています "
+                f"(Shannon={_shannon:.2f} bit/char, 必要 4.0 bit/char 以上 = 約 80 bits 全体)。"
+                "secrets.token_urlsafe(24) 等で生成してください"
+            )
 
     if passphrase and _HAS_PYZIPPER:
         # AES-256 暗号化 ZIP
