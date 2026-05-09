@@ -720,8 +720,24 @@ ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultF
     console.warn('[save-recorded-video] rejected: invalid magic bytes')
     return null
   }
+  // Round 258 R25 P2 fix (R25 P2-2): renderer 由来の defaultFilename を `path.basename`
+  // でフォルダ部分を strip し、許可拡張子のみ allowlist。
+  // 旧コードは renderer 由来文字列をそのまま `defaultPath` に渡していたため、
+  // npm 依存先 (supply-chain compromise) が `defaultFilename = "../../.ssh/authorized_keys"`
+  // を渡すと dialog の初期 path が user profile 外を指す → 利用者が enter 押下した
+  // 瞬間に任意 path 書込みになる経路があった (allow-list 防御は後段に効くが、UI で
+  // 騙される race を予防する)。
+  const safeDefaultFilename = path.basename(String(defaultFilename || ''))
+    .replace(/[ -]/g, '')  // 制御文字除去
+    .slice(0, 200) || 'recording.webm'
+  // R25 P2-2 hardening: 万一上の制御文字 strip が control char を残しても、
+  // dialog 表示に余計な char は混入させないよう ASCII printable のみ残す追加 filter。
+  const _safeFinal = safeDefaultFilename.split('').filter((c) => {
+    const code = c.charCodeAt(0)
+    return code >= 0x20 && code !== 0x7f
+  }).join('') || 'recording.webm'
   const result = await dialog.showSaveDialog({
-    defaultPath: defaultFilename,
+    defaultPath: _safeFinal,
     filters: [
       { name: 'Video', extensions: ['webm', 'mp4', 'mkv'] },
     ],

@@ -1098,14 +1098,46 @@ def _ssh_run_python_script(host: str, username: str, password: str,
         )
 
         # R24 P1 fix: 実 %TEMP% を SSH 先で resolve する。失敗時は default にフォールバック。
+        # Round 258 R25 P1 fix (R25 P1-2):
+        # 旧 R24 実装は `_stdout.read()` で blocking する設計。OpenSSH on Win10/11 で
+        # default shell が PowerShell に変更されているケースでは channel が長時間
+        # close せず数秒 hang し、cluster benchmark の各 worker dispatch が直列に
+        # 5s × N hang する soft DoS が発生する。
+        # 修正: channel を直接 select-loop 経由で polling し、5s wall-clock budget で
+        # 強制 abort する。get_pty=False を維持。
+        import select as _select_temp
+        import time as _time_temp
         resolved_temp = f"C:/Users/{username}/AppData/Local/Temp"
         try:
-            _, _stdout, _ = ssh.exec_command("cmd /c echo %TEMP%")
-            _stdout.channel.settimeout(5)
-            _temp_raw = _stdout.read().decode("utf-8", errors="replace").strip()
+            _, _stdout, _ = ssh.exec_command("cmd /c echo %TEMP%", get_pty=False)
+            chan = _stdout.channel
+            chan.settimeout(0.0)  # non-blocking
+            buf = b""
+            deadline = _time_temp.monotonic() + 5.0
+            while _time_temp.monotonic() < deadline:
+                if chan.exit_status_ready() and not chan.recv_ready():
+                    break
+                rlist, _, _ = _select_temp.select([chan], [], [], 0.5)
+                if rlist:
+                    try:
+                        chunk = chan.recv(4096)
+                        if not chunk:
+                            break
+                        buf += chunk
+                        if len(buf) > 4096:
+                            break  # path だけなら 4KB 超は異常
+                    except Exception:
+                        break
+            try:
+                chan.close()
+            except Exception:
+                pass
+            _temp_raw = buf.decode("utf-8", errors="replace").strip()
             if _temp_raw and ":" in _temp_raw and "%" not in _temp_raw:
-                # `C:\\Users\\xxx\\AppData\\Local\\Temp` 形式が来る → POSIX 形に正規化
-                resolved_temp = _temp_raw.replace("\\", "/").rstrip("/")
+                # PowerShell が PSReadLine 等で複数行を返す可能性に備えて 1 行目を採用
+                first_line = _temp_raw.splitlines()[0].strip()
+                if first_line and ":" in first_line and "%" not in first_line:
+                    resolved_temp = first_line.replace("\\", "/").rstrip("/")
         except Exception as _temp_exc:
             logger.debug("[ssh] %%TEMP%% resolve failed, using default: %s", _temp_exc)
 

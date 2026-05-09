@@ -47,6 +47,12 @@ if "sqlite" in settings.DATABASE_URL and ":memory:" not in settings.DATABASE_URL
             cur.execute("PRAGMA mmap_size=268435456")
             # auto_vacuum=INCREMENTAL: 削除後の空きページを定期的に回収できるようにする
             cur.execute("PRAGMA auto_vacuum=INCREMENTAL")
+            # Round 258 R25 P1 fix (R25 P1-1): busy_timeout を connect 時点で設定。
+            # R24 で main.py の lifespan に書いていたが、bootstrap_database() が
+            # lifespan より先に走り pool に pre-warm 接続を作る → 後発の listener は
+            # 既存接続には反映されない race があった。本 listener (engine 構築直後の
+            # @listens_for) なら最初の checkout から確実に PRAGMA が適用される。
+            cur.execute("PRAGMA busy_timeout=5000")
             cur.close()
         except Exception:
             pass

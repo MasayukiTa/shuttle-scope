@@ -511,8 +511,13 @@ def _get_user_revoke_timestamp(user_id: int) -> Optional[int]:
         logger.warning("[jwt] user_revoke check failed user_id=%s: %s", user_id, exc)
         import time as _time_fc
         fail_closed_horizon = int(_time_fc.time()) + 600  # 10 min
-        # 短期 cache (2s) で DB 連打を防止しつつ、回復後すぐ正常 path に戻れる
-        _USER_REVOKE_CACHE[user_id] = (now - (_USER_REVOKE_CACHE_TTL - 2.0), fail_closed_horizon)
+        # Round 258 R25 P2 fix (R25 P2-1): R22 実装は `now - (TTL - 2.0) = now - 3.0`
+        # を timestamp として書いていたため、cache 取り出し時の `now - cached[0]` が
+        # 即座に 5+ s となり TTL=5s を超え、cache が **常に stale 扱い** → DB に
+        # 連打して回復まで毎呼出 DB hit。修正: `(now, ts)` を素直に書き、最初の
+        # 5s 間は cache hit する正しい挙動にする (TTL 5s × fail-closed 600s なので、
+        # DB 連打抑制 + 復旧後は次回 lookup で正常 path に戻る)。
+        _USER_REVOKE_CACHE[user_id] = (now, fail_closed_horizon)
         _USER_REVOKE_CACHE.move_to_end(user_id)
         while len(_USER_REVOKE_CACHE) > _USER_REVOKE_CACHE_MAX:
             _USER_REVOKE_CACHE.popitem(last=False)
