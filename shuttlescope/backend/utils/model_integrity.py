@@ -50,14 +50,41 @@ def _sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
 def _iter_model_files(models_dir: Path):
     if not models_dir.exists():
         return
-    for root, dirs, files in os.walk(models_dir):
-        # in-place dirs filter で EXCLUDE_DIRS を walk から除外
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+    models_dir_resolved = models_dir.resolve()
+    for root, dirs, files in os.walk(models_dir, followlinks=False):
         root_path = Path(root)
+        # Round 258 P1 fix: 旧来は basename match だったため models/legit/trt_cache/
+        # のような深い階層に置かれた "trt_cache" もまとめて除外され、攻撃者が
+        # models/legit/trt_cache/badmodel.onnx を仕込めば hash 検査をすり抜けた。
+        # トップレベル相対パスの先頭セグメントのみで判定する。
+        try:
+            rel_parts = root_path.resolve().relative_to(models_dir_resolved).parts
+        except ValueError:
+            # シンボリックリンクで models_dir 外を指している場合
+            dirs[:] = []
+            continue
+        if rel_parts and rel_parts[0] in EXCLUDE_DIRS:
+            dirs[:] = []
+            continue
+        # サブディレクトリの top-level 名 EXCLUDE_DIRS は次のループでブロックする
+        dirs[:] = [
+            d for d in dirs
+            if not (len(rel_parts) == 0 and d in EXCLUDE_DIRS)
+        ]
         for fn in files:
             ext = Path(fn).suffix.lower()
-            if ext in MODEL_EXTENSIONS:
-                yield root_path / fn
+            if ext not in MODEL_EXTENSIONS:
+                continue
+            full = root_path / fn
+            # Round 258 P2 fix: シンボリックリンク経由で models_dir 外の任意ファイルを
+            # hash する経路を遮断 (regenerate manifest 時に攻撃者が ln -s で
+            # /etc/passwd を models/ 配下に挟み込むのを防ぐ)。
+            try:
+                if full.is_symlink():
+                    continue
+            except OSError:
+                continue
+            yield full
 
 
 def compute_manifest(models_dir: Optional[Path] = None) -> dict[str, str]:

@@ -313,16 +313,22 @@ def reset_user_limits(
         do_failed = bool(body.failed_attempts)
         do_lock = bool(body.lock)
 
+    # Round 258 P1 fix: 自分自身の admin_write bucket を reset すると
+    # 大量 insert を無限ループで通せる (60/min を超えるごとにリセット → 60/min 超え)。
+    # 自己リセットは禁止し、別 admin による reset 以外は admin_write は触らない。
+    self_reset_blocked = (ctx.user_id == user_id)
+
     exfil_cleared = False
     admin_write_cleared = 0
     if do_exfil:
         exfil_cleared = ExfilRateLimitMiddleware.reset_user(user_id)
-        # admin 自身の書込み rate limit bucket もまとめてリセット (admin_write_rl)
-        try:
-            from backend.main import AdminWriteRateLimitMiddleware  # type: ignore
-            admin_write_cleared = AdminWriteRateLimitMiddleware.reset_user(user_id)
-        except Exception:
-            admin_write_cleared = 0
+        if not self_reset_blocked:
+            # admin 自身の書込み rate limit bucket は別 admin によるリセット時のみクリア
+            try:
+                from backend.main import AdminWriteRateLimitMiddleware  # type: ignore
+                admin_write_cleared = AdminWriteRateLimitMiddleware.reset_user(user_id)
+            except Exception:
+                admin_write_cleared = 0
 
     expired_sessions: list = []
     if do_uploads:
@@ -372,6 +378,7 @@ def reset_user_limits(
             "user_id": user_id,
             "exfil_cleared": exfil_cleared,
             "admin_write_buckets_cleared": admin_write_cleared,
+            "admin_write_self_reset_blocked": self_reset_blocked,
             "sessions_expired": len(expired_sessions),
             "failed_attempts_cleared": cleared_failed,
             "lock_cleared": cleared_lock,

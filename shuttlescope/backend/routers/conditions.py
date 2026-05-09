@@ -569,7 +569,10 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
         )
     except Exception:
         pass
-    return {"success": True, "data": _full_dict(cond)}
+    # Round 258 P0 fix: 同意書 第5条 — coach/analyst には生スコア・体組成・医療
+    # 自由記述を返さない。_serialize() は role に応じた masking を適用する
+    # (player=自身データ前提で full / admin=full / coach・analyst=Tier 1 まで縮約)。
+    return {"success": True, "data": _serialize(cond, ctx.role or "")}
 
 
 @router.get("")
@@ -651,7 +654,11 @@ def update_condition(condition_id: int, body: ConditionUpdate, request: Request,
     _recompute(cond)
     db.commit()
     db.refresh(cond)
-    return {"success": True, "data": _full_dict(cond)}
+    # Round 258 P0 fix: 同意書 第5条 — coach の正当な編集後でもレスポンスに
+    # 生スコア・体組成を含めない。role 別 masking は _serialize() に統合済み。
+    from backend.utils.auth import get_auth as _ga_resp
+    _resp_ctx = _ga_resp(request)
+    return {"success": True, "data": _serialize(cond, _resp_ctx.role or "")}
 
 
 # ─── Phase 3: 解析系エンドポイント ───────────────────────────────────────────
@@ -728,6 +735,21 @@ def get_correlation(
                 "growth_frame": growth_frame,
             },
         }
+    # Round 258 P0 fix: 同意書 第5条 — coach/analyst に scatter points
+    # (raw x,y) を返すと Tier 2/3 の生値が漏れる (例: x=f1_physical, y=weight_kg)。
+    # admin のみ raw points を可視化、coach/analyst は r + n + confidence のみ返却。
+    if role != "admin":
+        return {
+            "success": True,
+            "data": {
+                "x_key": x,
+                "y_key": y,
+                "n": series["n"],
+                "pearson_r": series.get("pearson_r"),
+                "p_value": series.get("p_value"),
+                "confidence_note": series["confidence_note"],
+            },
+        }
     return {"success": True, "data": series}
 
 
@@ -757,6 +779,23 @@ def get_best_profile(
                 "note": profile["note"],
             },
         }
+    # Round 258 P0 fix: 同意書 第5条 — top_profile/rest_profile は PROFILE_KEYS
+    # (ccs_score, F1..F5, hooper_index, weight 系等) の mean/std/min/max を返すため
+    # n_top=1 では mean = 生値そのものとなり Tier 2/3 漏洩。admin のみ raw 統計を返す。
+    if role != "admin":
+        return {
+            "success": True,
+            "data": {
+                "key_factors": [
+                    {"key": k["key"], "direction": k["direction"]}
+                    for k in profile["key_factors"]
+                ],
+                "n_top": profile["n_top"],
+                "n_rest": profile["n_rest"],
+                "confidence": profile["confidence"],
+                "note": profile["note"],
+            },
+        }
     return {"success": True, "data": profile}
 
 
@@ -779,18 +818,23 @@ def get_discrepancy(
         .all()
     )
     # detect_discrepancy は内部で生スコアを参照するため _full_dict() で回す。
-    # 検知ロジックを通したあと、レスポンスは flags のみ返却するので
-    # 同意書 第5条 違反は発生しない (生スコアは外に漏れない)。
     dicts = [_full_dict(c) for c in rows]
     results: List[dict] = []
     prev: Optional[dict] = None
     for c in dicts:
         flags = detect_discrepancy(c, prev_condition=prev)
         if flags:
+            # Round 258 P0 fix: detect_discrepancy が返す flags の `detail` は
+            # ecw_ratio / f1_physical / weight_kg / hooper_index / ccs_score 等の
+            # 生値を含む。同意書 第5条 で coach/analyst には開示不可。
+            # admin 以外は detail を削除し type/severity のみ返す。
+            sanitized_flags = flags if role == "admin" else [
+                {"type": f["type"], "severity": f["severity"]} for f in flags
+            ]
             results.append({
                 "condition_id": c["id"],
                 "measured_at": c["measured_at"],
-                "flags": flags,
+                "flags": sanitized_flags,
             })
         prev = c
     results = results[-limit:]
@@ -828,9 +872,9 @@ def get_insights(
             },
         }
 
-    # 同意書 第5条: コンディション生スコア (F1..F5 など) は coach/analyst には開示不可。
-    # 妥当性フラグのみは ○ (admin/coach/analyst) なので summary だけ返す。
-    # admin のみ raw_factor_trends を可視化（モデル監査用途）。
+    # 同意書 第5条: コンディション生スコア (F1..F5 / ccs_score 等) は coach/analyst
+    # には開示不可。妥当性フラグのみは ○ (admin/coach/analyst) なので summary だけ返す。
+    # admin のみ raw_factor_trends + ccs_trend を可視化（モデル監査用途）。
     validity_counts: Dict[str, int] = {"ok": 0, "caution": 0, "unreliable": 0}
     for c in conds:
         vf = c.get("validity_flag")
@@ -838,7 +882,8 @@ def get_insights(
             validity_counts[vf] += 1
     data = {
         "growth_cards": insights["growth_cards"],
-        "personal_trend": {"ccs": ccs_trend},
+        # Round 258 P0 fix: ccs_score は Tier 2 (生スコア相当) なので
+        # coach/analyst へ trend として返すと第5条違反。admin のみへ返す。
         "validity_summary": {
             "counts": validity_counts,
             "n": len([c for c in conds if c.get("validity_flag")]),
@@ -846,6 +891,7 @@ def get_insights(
         "confidence_note": insights["confidence_note"],
     }
     if role == "admin":
+        data["personal_trend"] = {"ccs": ccs_trend}
         data["raw_factor_trends"] = {
             k: [
                 {"measured_at": c["measured_at"], "value": c.get(k)}

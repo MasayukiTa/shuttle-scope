@@ -381,18 +381,38 @@ def create_player(
         from backend.db.models import Team as _Team
         from datetime import datetime as _dt
         from uuid import uuid4 as _uuid4
+        team_name_clean = team_str.strip()
         existing = db.query(_Team).filter(
-            _Team.name == team_str.strip(),
+            _Team.name == team_name_clean,
             _Team.deleted_at.is_(None),
         ).first()
         if existing:
             team_id_resolved = existing.id
         else:
+            # Round 258 P1 fix: 同名で soft-delete 済の team が存在するなら
+            # 新規 team を作って resurrection するのではなく拒否する。
+            # 旧来の挙動だと admin が DELETE /api/auth/teams/{id} で削除した直後に
+            # POST /api/players に同 team 名を渡すと新 team が作られ、UI から見ると
+            # 「削除したはずのチームが復活」してしまう。audit 整合性のため明示的拒否。
+            soft_deleted = db.query(_Team).filter(
+                _Team.name == team_name_clean,
+                _Team.deleted_at.isnot(None),
+            ).first()
+            if soft_deleted is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "team_name_soft_deleted",
+                        "team_id": soft_deleted.id,
+                        "deleted_at": soft_deleted.deleted_at.isoformat() + "Z" if soft_deleted.deleted_at else None,
+                        "hint": "同名のチームが削除済です。別名を使用するか、admin に既存チームの復元を依頼してください",
+                    },
+                )
             # 自動作成（admin / analyst が新規チーム選手を登録した場合）
             now = _dt.utcnow()
             new_team = _Team(
                 uuid=str(_uuid4()),
-                name=team_str.strip(),
+                name=team_name_clean,
                 is_independent=False,
                 created_at=now,
                 updated_at=now,
@@ -509,17 +529,33 @@ def update_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], body:
         if not new_team_str.strip():
             data["team_id"] = None
         else:
+            new_team_clean = new_team_str.strip()
             existing = db.query(_Team).filter(
-                _Team.name == new_team_str.strip(),
+                _Team.name == new_team_clean,
                 _Team.deleted_at.is_(None),
             ).first()
             if existing:
                 data["team_id"] = existing.id
             else:
+                # Round 258 P1 fix: soft-deleted team の名前再利用を拒否
+                soft_deleted = db.query(_Team).filter(
+                    _Team.name == new_team_clean,
+                    _Team.deleted_at.isnot(None),
+                ).first()
+                if soft_deleted is not None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "error": "team_name_soft_deleted",
+                            "team_id": soft_deleted.id,
+                            "deleted_at": soft_deleted.deleted_at.isoformat() + "Z" if soft_deleted.deleted_at else None,
+                            "hint": "同名のチームが削除済です。別名を使用するか、admin に既存チームの復元を依頼してください",
+                        },
+                    )
                 now = _dt.utcnow()
                 new_team = _Team(
                     uuid=str(_uuid4()),
-                    name=new_team_str.strip(),
+                    name=new_team_clean,
                     is_independent=False,
                     created_at=now,
                     updated_at=now,

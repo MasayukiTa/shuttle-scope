@@ -84,24 +84,39 @@ def issue_email_verification_token(
 
 
 def consume_email_verification_token(db: Session, token_plain: str) -> Optional[Tuple[int, str]]:
-    """検証トークンを消費し、(user_id, email) を返す。失敗時は None。"""
+    """検証トークンを消費し、(user_id, email) を返す。失敗時は None。
+
+    Round 258 P1 fix: 旧来は SELECT → Python で属性更新 → commit という
+    非アトミックな consume だったため、並行 POST で同じトークンが二度消費
+    される race があった。ここでは UPDATE ... WHERE consumed_at IS NULL を
+    rowcount チェック付きで実行して、勝者のトランザクションだけがレコードを
+    取得するように直す。
+    """
     from backend.db.models import EmailVerificationToken
     h = _hash_token(token_plain)
-    rec = (
+    now = datetime.utcnow()
+    # アトミック UPDATE: 並行リクエストの一方だけが rowcount=1 で勝つ
+    upd = (
         db.query(EmailVerificationToken)
         .filter(
             EmailVerificationToken.token_hash == h,
             EmailVerificationToken.consumed_at.is_(None),
-            EmailVerificationToken.expires_at > datetime.utcnow(),
+            EmailVerificationToken.expires_at > now,
         )
+        .update({"consumed_at": now}, synchronize_session=False)
+    )
+    if upd != 1:
+        db.commit()
+        return None
+    rec = (
+        db.query(EmailVerificationToken)
+        .filter(EmailVerificationToken.token_hash == h)
         .first()
     )
-    if rec is None:
-        return None
-    rec.consumed_at = datetime.utcnow()
-    user_id, email = rec.user_id, rec.email
     db.commit()
-    return user_id, email
+    if rec is None:  # paranoia
+        return None
+    return rec.user_id, rec.email
 
 
 # ─── Password Reset ─────────────────────────────────────────────────────────
@@ -128,24 +143,33 @@ def issue_password_reset_token(
 
 
 def consume_password_reset_token(db: Session, token_plain: str) -> Optional[int]:
-    """パスワードリセットトークンを消費し、user_id を返す。"""
+    """パスワードリセットトークンを消費し、user_id を返す。
+
+    Round 258 P1 fix: アトミック UPDATE ... WHERE consumed_at IS NULL +
+    rowcount=1 チェックで並行 POST の二重消費を遮断。
+    """
     from backend.db.models import PasswordResetToken
     h = _hash_token(token_plain)
-    rec = (
+    now = datetime.utcnow()
+    upd = (
         db.query(PasswordResetToken)
         .filter(
             PasswordResetToken.token_hash == h,
             PasswordResetToken.consumed_at.is_(None),
-            PasswordResetToken.expires_at > datetime.utcnow(),
+            PasswordResetToken.expires_at > now,
         )
+        .update({"consumed_at": now}, synchronize_session=False)
+    )
+    if upd != 1:
+        db.commit()
+        return None
+    rec = (
+        db.query(PasswordResetToken)
+        .filter(PasswordResetToken.token_hash == h)
         .first()
     )
-    if rec is None:
-        return None
-    rec.consumed_at = datetime.utcnow()
-    user_id = rec.user_id
     db.commit()
-    return user_id
+    return rec.user_id if rec else None
 
 
 # ─── Invitation ─────────────────────────────────────────────────────────────
@@ -176,22 +200,38 @@ def issue_invitation_token(
 
 
 def consume_invitation_token(db: Session, token_plain: str, accepted_by_user_id: int):
-    """招待トークンを消費し、招待レコードを返す。失敗時は None。"""
+    """招待トークンを消費し、招待レコードを返す。失敗時は None。
+
+    Round 258 P1 fix: アトミック UPDATE で並行 accept による二重ユーザ作成を遮断。
+    旧来は SELECT → 属性更新 → commit の隙間に並行 POST が走ると、同じ招待から
+    role/team_id が同じユーザが 2 つ作られる data integrity 事故が起きた。
+    """
     from backend.db.models import InvitationToken
     h = _hash_token(token_plain)
-    rec = (
+    now = datetime.utcnow()
+    upd = (
         db.query(InvitationToken)
         .filter(
             InvitationToken.token_hash == h,
             InvitationToken.consumed_at.is_(None),
-            InvitationToken.expires_at > datetime.utcnow(),
+            InvitationToken.expires_at > now,
         )
+        .update(
+            {
+                "consumed_at": now,
+                "consumed_by_user_id": accepted_by_user_id,
+            },
+            synchronize_session=False,
+        )
+    )
+    if upd != 1:
+        db.commit()
+        return None
+    rec = (
+        db.query(InvitationToken)
+        .filter(InvitationToken.token_hash == h)
         .first()
     )
-    if rec is None:
-        return None
-    rec.consumed_at = datetime.utcnow()
-    rec.consumed_by_user_id = accepted_by_user_id
     db.commit()
     return rec
 

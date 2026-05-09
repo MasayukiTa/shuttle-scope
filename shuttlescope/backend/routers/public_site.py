@@ -62,6 +62,17 @@ class PublicInquiryCreate(BaseModel):
         reject_bidi_only(v, "field", max_len=4000)
         return v
 
+    @field_validator("name", "organization", "role", "contact_reference", mode="after")
+    @classmethod
+    def _strip_newlines(cls, v):
+        # Round 258 P2 fix: name/organization/role/contact_reference に \r\n を許すと
+        # Slack/メール webhook 通知の line-based payload に "second forged inquiry"
+        # を注入できる (例: name="ok\n---\nrole: admin" で受信側が偽の項目を表示)。
+        # message は複数行が正当なので除外。
+        if v is None:
+            return v
+        return str(v).replace("\r", "").replace("\n", " ").strip()
+
 
 class PublicInquiryUpdate(BaseModel):
     status: str = Field(pattern="^(new|reviewed|resolved)$")

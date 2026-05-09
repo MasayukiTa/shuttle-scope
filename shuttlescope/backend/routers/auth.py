@@ -2144,8 +2144,18 @@ def delete_team(
     - Round 233 で確認済みの DPAPI / FK 設計と矛盾なし。
     """
     ctx = _require_admin(request)
-    team = db.get(Team, team_id)
+    # Round 258 P1 fix: TOCTOU + 並列 DELETE 重複監査ログ問題の対策。
+    # team 行を SELECT FOR UPDATE で排他ロックし、トランザクション中に
+    # 他リクエストが同 team を編集できないようにする。
+    # SQLite は SELECT FOR UPDATE を無視するが、PostgreSQL では正しく機能する。
+    team = (
+        db.query(Team)
+        .filter(Team.id == team_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if not team or team.deleted_at is not None:
+        # 既に他のリクエストが soft-delete 済 → 404 を返し重複監査ログを防ぐ
         raise HTTPException(status_code=404, detail="team not found")
 
     counts = _team_dep_counts(db, team_id)
@@ -2193,6 +2203,23 @@ def delete_team(
             if m.away_team_id == team_id:
                 m.away_team_id = None
             orphaned["matches"] += 1
+
+        # Round 258 P1 fix: TOCTOU 二段目 — orphan ループ実行中に並行 POST /api/players
+        # で同 team_id の新しい player が insert される可能性がある。
+        # team.deleted_at セット直前に再カウントして、孤児化漏れがあれば例外を上げて
+        # トランザクションをロールバックさせ、リトライを促す (再 SELECT FOR UPDATE で
+        # 並行 player insert を見せる)。
+        recount = _team_dep_counts(db, team_id)
+        if recount["users"] or recount["players"] or recount["matches"]:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "team_dependencies_changed_during_delete",
+                    "counts": recount,
+                    "hint": "並行作業で新しい依存レコードが追加されました。再試行してください",
+                },
+            )
 
     team.deleted_at = datetime.utcnow()
     db.commit()

@@ -151,6 +151,7 @@ def verify_chain(db, limit: Optional[int] = None,
     prev_hash: Optional[str] = None
     checked = 0
     first_bad: Optional[int] = None
+    null_hash_ids: list[int] = []
     started = False  # from_id 指定時、最初の row の prev_hash を None とみなして開始する
     for row in q.all():
         checked += 1
@@ -160,6 +161,15 @@ def verify_chain(db, limit: Optional[int] = None,
             started = True
             continue
         if row.row_hash is None:
+            # Round 258 P2 fix: 旧来は row_hash IS NULL を見ると prev_hash を None
+            # にリセットして「次行の hash チェックを通る」状態にしていた。
+            # これを悪用すると admin が `UPDATE access_logs SET row_hash=NULL` で
+            # 任意セグメントを「忘れさせる」 tamper が可能だった。
+            # NULL 出現は tamper signal として first_bad を立てつつ、null_hash_ids に
+            # 記録して上位レイヤで参照可能にする。
+            null_hash_ids.append(row.id)
+            if first_bad is None:
+                first_bad = row.id
             prev_hash = None
             continue
         expected = _compute_row_hash(
@@ -168,7 +178,8 @@ def verify_chain(db, limit: Optional[int] = None,
                        row.details, row.ip_addr, row.created_at),
         )
         if row.row_hash != expected or (row.prev_hash or None) != (prev_hash or None):
-            first_bad = row.id
+            if first_bad is None:
+                first_bad = row.id
             break
         prev_hash = row.row_hash
         started = True
@@ -179,6 +190,7 @@ def verify_chain(db, limit: Optional[int] = None,
         "total": total,
         "first_bad_id": first_bad,
         "from_id": from_id,
+        "null_hash_ids": null_hash_ids,
     }
 
 

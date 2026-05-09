@@ -50,11 +50,16 @@ class Phase:
 _jobs: dict[str, dict] = {}   # job_id → job dict
 
 
-def _new_job(video_path: str, match_id: Optional[int] = None) -> dict:
+def _new_job(video_path: str, match_id: Optional[int] = None,
+             owner_user_id: Optional[int] = None,
+             owner_team_name: Optional[str] = None) -> dict:
     return {
         "job_id": None,           # 後で設定
         "video_path": video_path,
         "match_id": match_id,
+        # Round 258 P1: cross-team filesystem path leak 対策のため owner を記録
+        "owner_user_id": owner_user_id,
+        "owner_team_name": owner_team_name,
         "phase": Phase.QUEUED,
         "progress": 0.0,          # 0.0 - 1.0
         "tracknet": {
@@ -73,6 +78,36 @@ def _new_job(video_path: str, match_id: Optional[int] = None) -> dict:
         "finished_at": None,
         "error": None,
     }
+
+
+def _can_view_job(ctx, job: dict) -> bool:
+    """Round 258 P1: cross-team の video_path leak 防止.
+    admin: 全件可視 / coach・analyst: 同チーム or owner=自分 / player: 不可."""
+    if ctx is None or ctx.role is None:
+        return False
+    if ctx.is_admin:
+        return True
+    if ctx.is_player:
+        return False
+    if job.get("owner_user_id") == ctx.user_id:
+        return True
+    own_team = (ctx.team_name or "").strip()
+    job_team = (job.get("owner_team_name") or "").strip()
+    return bool(own_team and job_team and own_team == job_team)
+
+
+def _redact_job(job: dict, ctx) -> dict:
+    """非 admin には絶対パスを返さず basename のみ。"""
+    if ctx is not None and ctx.is_admin:
+        return job
+    redacted = dict(job)
+    vp = job.get("video_path") or ""
+    if vp:
+        try:
+            redacted["video_path"] = Path(vp).name  # filesystem path 構造を伏せる
+        except Exception:
+            redacted["video_path"] = "<redacted>"
+    return redacted
 
 
 # ─── エンドポイント ───────────────────────────────────────────────────────────
@@ -139,7 +174,14 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks,
         )
 
     job_id = uuid.uuid4().hex[:8]
-    job = _new_job(str(path), body.match_id)
+    # Round 258 P1: owner を記録 (cross-team leak 防止)
+    _ctx_imp = get_auth(request)
+    job = _new_job(
+        str(path),
+        body.match_id,
+        owner_user_id=_ctx_imp.user_id,
+        owner_team_name=(_ctx_imp.team_name or None),
+    )
     job["job_id"] = job_id
     _jobs[job_id] = job
 
@@ -149,24 +191,25 @@ def import_from_path(body: PathImportRequest, background_tasks: BackgroundTasks,
 
 @router.get("/video_import/list")
 def list_jobs(request: Request):
-    """全ジョブ一覧（最新順）"""
+    """全ジョブ一覧（最新順）。Round 258 P1: cross-team 絞込 + path redact。"""
     ctx = get_auth(request)
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
-    jobs = sorted(_jobs.values(), key=lambda j: j.get("started_at") or 0, reverse=True)
-    return {"success": True, "data": jobs}
+    jobs = [j for j in _jobs.values() if _can_view_job(ctx, j)]
+    jobs.sort(key=lambda j: j.get("started_at") or 0, reverse=True)
+    return {"success": True, "data": [_redact_job(j, ctx) for j in jobs]}
 
 
 @router.get("/video_import/{job_id}")
 def get_job(job_id: str, request: Request):
-    """ジョブ進捗取得"""
+    """ジョブ進捗取得。Round 258 P1: cross-team は 404、admin 以外は path redact。"""
     ctx = get_auth(request)
     if ctx.is_player:
         raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
     job = _jobs.get(job_id)
-    if not job:
+    if not job or not _can_view_job(ctx, job):
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
-    return {"success": True, "data": job}
+    return {"success": True, "data": _redact_job(job, ctx)}
 
 
 # ─── パイプライン本体（別スレッド） ──────────────────────────────────────────
