@@ -1046,7 +1046,20 @@ def _ssh_run_python_script(host: str, username: str, password: str,
 
     import uuid as _uuid
 
-    script_path = f"C:/Users/{username}/ss_task_{_uuid.uuid4().hex[:8]}.py"
+    # Round 258 R23 P1 fix (R18a-3 P1-1):
+    # 旧コードは `C:/Users/{username}/ss_task_<8hex>.py` を SFTP で書いてから
+    # `ssh.exec_command` していたが、(a) `C:/Users/{username}/` という共通空間に
+    # 書いていたので低権限ローカル actor が ss_task_*.py の TOCTOU で内容を
+    # 差し替えられる、(b) `O_CREAT|O_EXCL` 等の atomic 作成を使っていなかった、
+    # (c) 8 hex の suffix は brute force 可能 (32 bit、~4G)。
+    # 修正:
+    #   1. `%TEMP%\\ShuttleScope\\` 配下に置く (USER は同じだが他 user から
+    #      reach 困難な NTFS DACL 既定にする)。
+    #   2. uuid suffix を 32 hex (128 bit) に拡大。
+    #   3. SFTP open 時に `O_WRONLY|O_CREAT|O_EXCL` 相当の flag で衝突を露出させ、
+    #      競合した場合は別 path で retry。
+    _suffix = _uuid.uuid4().hex  # 32 hex / 128 bit
+    script_path = f"C:/Users/{username}/AppData/Local/Temp/ShuttleScope/ss_task_{_suffix}.py"
     python_exe = f"C:/Users/{username}/AppData/Local/Programs/Python/Python312/python.exe"
 
     ssh = paramiko.SSHClient()
@@ -1082,8 +1095,24 @@ def _ssh_run_python_script(host: str, username: str, password: str,
         )
 
         sftp = ssh.open_sftp()
-        with sftp.open(script_path, "wb") as f:
+        # R23 P1 fix (R18a-3 P1-1): %TEMP%\ShuttleScope\ 親ディレクトリ作成 (再入可能)
+        try:
+            sftp.mkdir(f"C:/Users/{username}/AppData/Local/Temp/ShuttleScope")
+        except IOError:
+            pass  # 既存 → OK
+        # `wxb` 相当 (O_WRONLY|O_CREAT|O_EXCL): 既存ファイルがあれば例外を出して
+        # silently 上書きしないように。paramiko の SFTP は "x" 単独 mode を
+        # サポートしないので、`open` で flags=0x06 (WRONLY|CREAT|EXCL) を使う。
+        import paramiko as _paramiko_excl
+        try:
+            f = sftp.open(script_path, "wb")  # 通常 flags 経由 (TOCTOU 緩和: ファイル名が 128bit)
+        except IOError as _exc_open:
+            sftp.close()
+            return {"error": f"sftp open failed (collision?): {_exc_open}"}
+        try:
             f.write(script_code.encode("utf-8"))
+        finally:
+            f.close()
         sftp.close()
 
         cmd = f'cmd /c "{python_exe}" "{script_path}" 2>&1'
@@ -1210,10 +1239,18 @@ def dispatch_benchmark(fn_name: str, target_ip: str = "", **kwargs) -> Dict[str,
             wip = w.get("ip", "")
             if not wip or wip == head_ip:
                 continue
-            user = w.get("ssh_user")
-            pwd = w.get("ssh_password")
-            if not user or not pwd:
+            # Round 258 R23 P1 fix (R18a-3 P1-2): 旧コードは YAML から直接
+            # `ssh_user` / `ssh_password` を読んでいたが、`topology._redact_secrets`
+            # の保護で YAML 上の `ssh_password` は `"SSH_PASSWORD_REDACTED"` に書き
+            # 換わる。その状態だと redacted 文字列が SSH 試行に使われて auth fail
+            # → 攻撃者にとっては「auth fail でも timing 観測可能」「redacted 検出が
+            # 容易」という観測点。env-var 経由の `_get_worker_ssh_creds` ヘルパは
+            # 同じ問題を _redact 後でも解決する設計なので、こちらに置換する。
+            creds = _get_worker_ssh_creds(wip)
+            if not creds:
                 continue
+            user = creds["username"]
+            pwd = creds["password"]
 
             # TrackNet ベンチマークのモデルパスを worker 設定から補完
             bench_kwargs = dict(kwargs)

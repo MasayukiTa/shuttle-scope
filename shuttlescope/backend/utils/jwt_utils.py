@@ -519,9 +519,12 @@ def revoke_all_for_user(user_id: int) -> None:
     """
     from backend.db.database import SessionLocal
     from backend.db.models import RevokedToken
-    import uuid as _uuid
+    import secrets as _secrets
+    # Round 258 R23 P2 fix (R22 P2-2): R21 で導入した uuid4().hex[:8] は 32-bit
+    # で birthday paradox 上 ~65k 程度の同時発行で衝突する。secrets.token_hex(16)
+    # の 128-bit 乱数に拡大し IntegrityError 経路を実用上排除する。
     iso = datetime.utcnow().isoformat()
-    sentinel = f"__user_revoke_{user_id}_{iso}_{_uuid.uuid4().hex[:8]}"
+    sentinel = f"__user_revoke_{user_id}_{iso}_{_secrets.token_hex(16)}"
     with SessionLocal() as db:
         db.add(RevokedToken(
             jti=sentinel,
