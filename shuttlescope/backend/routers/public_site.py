@@ -1081,12 +1081,11 @@ def _require_admin(request: Request) -> None:
 
 
 def _client_ip(request: Request) -> str:
-    # CF-Connecting-IP は Cloudflare が設定するため、クライアント偽造不可。
-    # X-Forwarded-For の先頭はクライアントが任意設定できるためレート制限回避に使われる → 採用しない。
-    cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
-    if cf_ip:
-        return cf_ip
-    return request.client.host if request.client else "unknown"
+    """Round 258 R3 fix (VULN-3): CF-Connecting-IP は loopback (=cloudflared) 経由の
+    リクエストのみで信用する。Cloudflare bypass / 直接 LAN アクセスでヘッダ偽造して
+    レート制限を回避するパスを塞ぐ。"""
+    from backend.utils.client_ip import trusted_client_ip
+    return trusted_client_ip(request, default="unknown")
 
 
 def _enforce_contact_rate_limit(request: Request) -> None:

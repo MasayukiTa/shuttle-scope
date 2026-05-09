@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from threading import Lock
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
@@ -143,10 +143,9 @@ class InvitationAcceptRequest(BaseModel):
 # ─── ヘルパー ─────────────────────────────────────────────────────────────
 
 def _client_ip(request: Request) -> str:
-    cf = request.headers.get("CF-Connecting-IP", "").strip()
-    if cf:
-        return cf[:64]
-    return (request.client.host if request.client else "")[:64]
+    # Round 258 R3 fix: CF-Connecting-IP は loopback (cloudflared) 経由の時だけ信用
+    from backend.utils.client_ip import trusted_client_ip
+    return trusted_client_ip(request, default="")[:64]
 
 
 def _app_base_url() -> str:
@@ -326,6 +325,7 @@ def resend_verification(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/auth/password/request_reset")
 def request_password_reset(body: PasswordResetRequest, request: Request,
+                           background_tasks: BackgroundTasks = None,  # type: ignore
                            db: Session = Depends(get_db)):
     """パスワードリセットメールを送信する。
 
@@ -353,20 +353,45 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
 
+    # Round 258 R3 P0 fix (VULN-2): password reset timing oracle 対策。
+    # 旧来は user 存在時のみ DB INSERT + 同期 SMTP 送信を実行、無い時は cheap log
+    # のみだったため、応答時間差で email 列挙が可能だった。
+    # 対策: 重い処理をすべて BackgroundTasks に逃がし、レスポンスは常に同じ
+    # cheap log + return パスを通す。
     user = db.query(User).filter(User.email == body.email).first()
     if user is not None:
         token = issue_password_reset_token(db, user.id, requested_ip=ip)
         reset_url = f"{_app_base_url()}/password/reset-confirm?token={token}"
-        _send_email_safe(
-            body.email,
-            "ShuttleScope パスワードリセット",
-            f"以下のリンクから新しいパスワードを設定してください:\n\n{reset_url}\n\n"
-            f"このリンクは 15 分間有効です。\n"
-            f"心当たりがない場合はこのメールを無視してください。",
-            tag="password_reset",
-        )
+        # background_tasks で送信を非同期化し、応答時間を user の存在に依存させない
+        if background_tasks is not None:
+            background_tasks.add_task(
+                _send_email_safe,
+                body.email,
+                "ShuttleScope パスワードリセット",
+                f"以下のリンクから新しいパスワードを設定してください:\n\n{reset_url}\n\n"
+                f"このリンクは 15 分間有効です。\n"
+                f"心当たりがない場合はこのメールを無視してください。",
+                "password_reset",
+            )
+        else:
+            _send_email_safe(
+                body.email,
+                "ShuttleScope パスワードリセット",
+                f"以下のリンクから新しいパスワードを設定してください:\n\n{reset_url}\n\n"
+                f"このリンクは 15 分間有効です。\n"
+                f"心当たりがない場合はこのメールを無視してください。",
+                tag="password_reset",
+            )
         log_access(db, "password_reset_requested", user_id=user.id, ip_addr=ip)
     else:
+        # 存在しない email でもダミー hash 計算で時間差を吸収する。
+        # DB INSERT は行わない (それ自体は user 不在なので意味なし) が、
+        # bcrypt 並みの計算量で「あったように見せる」。
+        try:
+            import bcrypt as _bcrypt_dummy
+            _bcrypt_dummy.hashpw(body.email.encode('utf-8')[:72], _bcrypt_dummy.gensalt(rounds=4))
+        except Exception:
+            pass
         log_access(db, "password_reset_unknown_email", ip_addr=ip,
                    details={"email_domain": body.email.split("@")[-1]})
     # 列挙防御: 常に成功風レスポンス
