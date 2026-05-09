@@ -16,6 +16,53 @@ Read it together with:
 
 ## 2026-05-09
 
+### Cross-Team Page-Access Scope Check (Round 237-257 Deeper Sweep)
+
+A 21-round deep-dive sweep across already-covered areas surfaced one
+cross-team data integrity gap that needed fixing.
+
+- `GET /api/auth/users/{target_id}/page-access`, `PUT` of the same path,
+  `GET /api/auth/teams/{team_name}/page-access`, and the `PUT` for
+  team-level page access only enforced `_require_manager`
+  (admin / analyst / coach) and did not verify that the actor's team
+  matched the target. An analyst from team A could:
+  - GET another team's player's page-access list (information leak).
+  - PUT `{page_keys: []}` to another team's player → wipe their grants.
+  - The same shape applied to the team-level endpoints.
+
+  `GRANTABLE_PAGES` is allowlisted (`{"prediction", "expert_labeler"}`),
+  so the attack could not grant *new* privileges, but the
+  DELETE-then-INSERT pattern still allowed wiping existing grants —
+  a cross-team data integrity violation.
+
+  Fix: `ctx.team_id == user.team_id` (and `ctx.team_name == team_name`
+  for the team-level endpoints) is now required for non-admin actors,
+  with 404 returned on mismatch to avoid leaking existence of the
+  cross-team target.
+
+### Sweep Coverage (no findings, recorded for completeness)
+
+The remaining 20 rounds confirmed defenses across:
+
+- Open-redirect / Location-header — only `/jp` → `/` is hardcoded; no user-influenced redirect.
+- Command-injection probe — `subprocess.run(shell=True)` is not used anywhere; yt-dlp / ffmpeg invocations go through `_validate_url_for_subprocess` and use list-style args plus the `--` separator.
+- Insecure deserialization — only `yaml.safe_load` / `yaml.safe_dump` are used; no `pickle` / `marshal`.
+- ORDER BY / column injection — every `order_by(...)` uses ORM column references; no `text()` with f-string interpolation.
+- CORS — invalid `Origin` headers do not receive `Access-Control-Allow-Origin`; preflight from `null` / evil origins returns 400.
+- Stored XSS — bookmark.note / comment.text strip script / img / svg / iframe / style / meta tags; React renders all `note` / `text` fields as text, no `dangerouslySetInnerHTML` anywhere.
+- Concurrent state — 5-parallel rally / set / condition POSTs and match.result PUTs produce zero 500s. Lack of unique constraint on (set_id, rally_num), (match_id, set_num), (player_id, measured_at) is a data-quality observation rather than a security issue.
+- Rate-limit IP spoofing — `X-Forwarded-For` / `X-Real-IP` spoofing has no effect; `CF-Connecting-IP` from clients is rejected by Cloudflare itself with 403.
+- HTTP smuggling — `Content-Length` + `Transfer-Encoding` conflict and bad chunk sizes are rejected at the Cloudflare front line with 400.
+- Method-override — `X-HTTP-Method-Override` / `X-HTTP-Method` / `_method` headers are ignored. WebDAV verbs are not implemented.
+- Path traversal — `..%2F` / null-byte / file:// / Windows reserved names against video / clip / upload / training_data endpoints all return 404 / 422.
+- MFA / password reset / email verify — wrong TOTP repeated 8× yields 422 each time; arbitrary password-reset / email-verify tokens produce 400 / 405.
+- Search SQL — `pg_sleep` / `' UNION SELECT` / null-byte / `%%` payloads against `/api/players?q=` all complete in < 0.25s with 200; ORM parameterization is intact.
+- Public abuse — `/api/public/contact` rate-limits at the third inquiry per address; BIDI / huge-name / over-length payloads are 422 in the validator.
+- Host header injection — Cloudflare returns 403 for any unauthorized Host.
+- WebSocket — `/api/ws/live` / `/ws/live` / `/api/realtime/yolo` (with or without a valid session_code) require auth; 403 without it.
+- Refresh token rotation — old refresh token reuse is detected on the second use and the entire family is invalidated.
+- Cross-team match owner spoof — analyst-supplied `owner_team_id` and `is_public_pool` are silently overridden by `ctx.team_id` / `False` server-side.
+
 ### P6-P10 Thin-Areas Sweep (Round 232-236)
 
 One additional backend fix and a cross-cutting operational review.
