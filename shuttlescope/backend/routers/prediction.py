@@ -325,11 +325,18 @@ def get_prematch_by_match(
 
     # ── DB キャッシュ確認 ──────────────────────────────────────────────────────
     if not force:
-        cached = (
-            db.query(PrematchPrediction)
-            .filter_by(match_id=match_id, player_id=player_id)
-            .first()
-        )
+        # Round 258 R30 P2 fix (R30 P2-3): cache 読み出しでも team scope を適用。
+        # 旧コードは match_id+player_id だけで filter しており、Team B が以前 cache した
+        # row を Team A の coach が直接読める cross-team leak の経路があった。
+        # admin 以外は team_id 一致 (or NULL) のみ。
+        cache_q = db.query(PrematchPrediction).filter_by(match_id=match_id, player_id=player_id)
+        if not _actor_ctx.is_admin:
+            from sqlalchemy import or_ as _or_pmc
+            cache_q = cache_q.filter(_or_pmc(
+                PrematchPrediction.team_id.is_(None),
+                PrematchPrediction.team_id == _actor_team_id,
+            ))
+        cached = cache_q.first()
         if cached:
             opponent_obj = db.get(Player, cached.opponent_id)
             return {
