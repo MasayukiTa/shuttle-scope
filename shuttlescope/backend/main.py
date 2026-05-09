@@ -183,6 +183,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.debug("revoked_tokens cleanup skipped: %s", exc)
 
+    # ── Round 258 #8: モデルファイル整合性検証 ─────────────────────────────
+    # backend/models/ 配下のモデル hash を SHA256SUMS と照合。
+    # MISMATCH/MISSING は CRITICAL ログ。本番 (ENVIRONMENT=production) では
+    # 起動を拒否する (バックドア入りモデルでの推論を防止)。
+    try:
+        from backend.utils.model_integrity import verify_and_log
+        is_prod = (app_settings.ENVIRONMENT or "").lower() == "production"
+        verify_and_log(fail_on_mismatch=is_prod)
+    except SystemExit:
+        raise  # production fail-closed: そのまま落とす
+    except Exception as exc:
+        logger.warning("[INFRA] model integrity check skipped: %s", exc)
+
     # ── INFRA Phase A: GPU ヘルスプローブ ────────────────────────────────────
     try:
         from backend.services import gpu_health
