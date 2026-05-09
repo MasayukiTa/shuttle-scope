@@ -27,14 +27,34 @@ _TRUSTED_PREFIXES: list[str] = [
 _OPERATOR_TOKEN: str = os.getenv("SS_OPERATOR_TOKEN", "").strip()
 
 
-def _client_ip(request: Request) -> str:
-    # CF-Connecting-IP は Cloudflare が設定するため、クライアントによる偽造不可。
-    # X-Forwarded-For の先頭はクライアントが任意に設定できるため loopback 判定に使用しない。
-    cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
-    if cf_ip:
-        return cf_ip
-    # Cloudflare Tunnel を経由しない接続（Electron ローカル等）はソケット IP を使用。
+# Round 258 R7 P0 fix (Codex review):
+# 旧コードは `CF-Connecting-IP` を無条件に信用して `_client_ip()` の戻り値とし、
+# それを `is_loopback_request()` が `127.0.0.1 / ::1 / localhost` と比較していた。
+# attacker が `CF-Connecting-IP: 127.0.0.1` を付ければ:
+#   - `allow_select_login()` (analyst/coach JWT 発行)
+#   - `allow_legacy_header_auth()` (X-Role 互換経路)
+#   - `require_local_operator_or_admin()` (cluster/Ray/SSH dispatch)
+#   - `allow_local_file_control()` (ローカル動画パス import)
+# が全て突破される P0 級の auth bypass だった。
+# 修正: control plane の loopback 判定は **proxy ヘッダを一切信用せず** ASGI socket
+# `request.client.host` のみを根拠にする。CF-Connecting-IP は監査ログ/レート制限の
+# クライアント IP 表示用途 (`backend.utils.client_ip.trusted_client_ip`) にのみ残す。
+
+
+def _socket_client_ip(request: Request) -> str:
+    """ASGI socket レベルの true client host を返す (proxy ヘッダ無視)。"""
     return request.client.host if request.client else ""
+
+
+def _client_ip(request: Request) -> str:
+    """[非推奨] proxy ヘッダ込みのクライアント IP。loopback 判定には使わないこと。
+
+    レート制限や監査ログの「見かけの送信元 IP 表示」用途のみ。
+    現在の callers のうち control plane の判定経路は `_socket_client_ip` を使い、
+    残りの「表示」用途のみ trusted_client_ip 経由にする。
+    """
+    from backend.utils.client_ip import trusted_client_ip
+    return trusted_client_ip(request, default="")
 
 
 # PUBLIC_MODE=True または ENVIRONMENT=production では空文字・testclient を
@@ -48,10 +68,13 @@ def _is_production_mode() -> bool:
 def is_loopback_request(request: Request) -> bool:
     """リクエスト元が loopback アドレスかどうかを返す。
 
+    Round 258 R7 P0 fix (Codex): proxy ヘッダ無視で socket IP のみを根拠にする。
+    `CF-Connecting-IP: 127.0.0.1` を付けただけで control plane を突破される穴を塞ぐ。
+
     本番環境（PUBLIC_MODE=True または ENVIRONMENT=production）では
     `""` や `"testclient"` を loopback 扱いしない。開発/テスト時のみ許容する。
     """
-    ip = _client_ip(request)
+    ip = _socket_client_ip(request)
     if ip in ("127.0.0.1", "::1", "localhost"):
         return True
     # 開発・テスト環境のみ空文字と "testclient" を loopback 扱い
@@ -61,8 +84,12 @@ def is_loopback_request(request: Request) -> bool:
 
 
 def is_trusted_cluster_request(request: Request) -> bool:
-    """リクエスト元が信頼済みクラスタサブネットかどうかを返す。"""
-    ip = _client_ip(request)
+    """リクエスト元が信頼済みクラスタサブネットかどうかを返す。
+
+    Round 258 R7 P0 fix (Codex): subnet 判定も socket IP のみで行う。
+    `CF-Connecting-IP: 192.168.100.1` 等で trusted subnet を偽装する経路を遮断。
+    """
+    ip = _socket_client_ip(request)
     return any(ip.startswith(prefix) for prefix in _TRUSTED_PREFIXES)
 
 

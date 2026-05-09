@@ -57,6 +57,19 @@ def _require_billing_enabled():
         )
 
 
+# Round 258 R7 P2 fix (Codex review): billing webhook kill switch.
+# 旧設計では webhook は SS_BILLING_ENABLED に関係なく受信可能だった。
+# しかし billing は最低 7ヶ月表示しない方針なので、その間 webhook だけ
+# 公開面に残す合理性は弱い。`SS_BILLING_WEBHOOKS_ENABLED=0` (default 0) で
+# webhook 自体を 503 で閉じ、署名検証 / body read / DB 書込みを一切起こさせない。
+# プロバイダの test event 受信時のみ env=1 にして開ける運用にする。
+def _require_billing_webhooks_enabled():
+    import os as _os_bw
+    if _os_bw.getenv("SS_BILLING_WEBHOOKS_ENABLED", "0") not in ("1", "true", "True"):
+        # 503 だと payment provider 側の retry が走るため 404 で「存在しない」扱いに。
+        raise HTTPException(status_code=404, detail="not found")
+
+
 def _require_login(request: Request):
     ctx = get_auth(request)
     if ctx.role is None:
@@ -433,16 +446,19 @@ async def _handle_webhook(provider_name: str, request: Request, db: Session) -> 
 
 @router.post("/webhooks/stripe")
 async def webhook_stripe(request: Request, db: Session = Depends(get_db)):
+    _require_billing_webhooks_enabled()  # Round 258 R7 P2: kill switch
     return await _handle_webhook("stripe", request, db)
 
 
 @router.post("/webhooks/komoju")
 async def webhook_komoju(request: Request, db: Session = Depends(get_db)):
+    _require_billing_webhooks_enabled()  # Round 258 R7 P2: kill switch
     return await _handle_webhook("komoju", request, db)
 
 
 @router.post("/webhooks/univapay")
 async def webhook_univapay(request: Request, db: Session = Depends(get_db)):
+    _require_billing_webhooks_enabled()  # Round 258 R7 P2: kill switch
     return await _handle_webhook("univapay", request, db)
 
 

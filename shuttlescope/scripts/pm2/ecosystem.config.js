@@ -3,13 +3,38 @@
 // 起動: pm2 start scripts/pm2/ecosystem.config.js
 // 停止: pm2 delete all
 
+// Round 258 R7 P1 fix (Codex review):
+// 旧定義は uvicorn を `--host 0.0.0.0` で直接起動しており、main.py 側の
+// LAN_MODE / SS_OPERATOR_TOKEN ガード (LAN_MODE=true で SS_OPERATOR_TOKEN 未設定なら
+// fatal exit) を完全に迂回していた。
+// 既定は loopback bind に倒し、LAN/tunnel 公開時のみ環境変数で opt-in する。
+//   - SS_API_BIND_HOST  (default 127.0.0.1)
+//   - 0.0.0.0 を選ぶ場合は SS_OPERATOR_TOKEN + (PUBLIC_MODE or LAN_MODE) を伴うこと。
+//     起動前 sanity check を別 script (scripts/preflight_pm2.sh) で実装する想定。
+const _API_BIND_HOST = process.env.SS_API_BIND_HOST || '127.0.0.1'
+const _API_PORT = process.env.SS_API_PORT || '8765'
+if (_API_BIND_HOST !== '127.0.0.1' && _API_BIND_HOST !== '::1') {
+  // 公開バインドする場合は安全 envの存在を必須にする
+  const _opTok = (process.env.SS_OPERATOR_TOKEN || '').trim()
+  const _public = process.env.PUBLIC_MODE === '1' || process.env.PUBLIC_MODE === 'true'
+  const _lan = process.env.LAN_MODE === 'true'
+  if (!_opTok || (!_public && !_lan)) {
+    // PM2 起動時に throw すれば pm2 はエラーで起動を止める
+    throw new Error(
+      `[ecosystem.config.js] Refusing to bind API on ${_API_BIND_HOST}: ` +
+      `SS_OPERATOR_TOKEN must be set AND (PUBLIC_MODE=1 or LAN_MODE=true) is required. ` +
+      `Set SS_API_BIND_HOST=127.0.0.1 for local-only deployments (recommended).`
+    )
+  }
+}
+
 module.exports = {
   apps: [
     {
       // FastAPI / uvicorn 本体
       name: 'shuttlescope-api',
       script: 'python',
-      args: '-m uvicorn backend.main:app --host 0.0.0.0 --port 8765',
+      args: `-m uvicorn backend.main:app --host ${_API_BIND_HOST} --port ${_API_PORT}`,
       cwd: '.',
       env: {
         PYTHONUNBUFFERED: '1',

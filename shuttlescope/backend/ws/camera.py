@@ -131,21 +131,67 @@ class CameraSignalingManager:
         logger.info("camera operator connected: %s user_id=%s", session_code, user_id)
         return True
 
+    # Round 258 R7 P2 fix (Codex review):
+    # camera WS には live.py の MAX_CONN_PER_SESSION=20 相当の総量 cap が無く、
+    # 認証済 user / loopback 経路から大量 viewer / device 接続で memory + socket
+    # を膨らませる DoS 経路があった。session 単位 + 全体 cap を導入する。
+    MAX_VIEWERS_PER_SESSION = 30
+    MAX_DEVICES_PER_SESSION = 10
+    MAX_TOTAL_CAMERA_SESSIONS = 100
+    MAX_TOTAL_CAMERA_CONNECTIONS = 500
+
+    def _total_active_connections(self) -> int:
+        n = 0
+        for s in self._sessions.values():
+            if s.get("operator") is not None:
+                n += 1
+            n += len(s.get("devices") or {})
+            n += len(s.get("viewers") or {})
+        return n
+
     async def connect_device(self, session_code: str, participant_id: str, ws: WebSocket) -> None:
         # rereview ws #9 fix: ensure_session + dict mutation を _slock で直列化
-        await ws.accept()
+        # Round 258 R7 P2 fix: per-session + 全体 cap を accept() 前に確認
         async with self._slock(session_code):
             self._ensure_session(session_code)
-            self._sessions[session_code]["devices"][participant_id] = ws
+            sess = self._sessions[session_code]
+            if len(sess["devices"]) >= self.MAX_DEVICES_PER_SESSION:
+                logger.warning("camera device reject (per-session cap): %s", session_code)
+                await ws.close(code=1013, reason="device per-session cap reached")
+                return
+            if len(self._sessions) > self.MAX_TOTAL_CAMERA_SESSIONS:
+                logger.warning("camera device reject (total session cap): %s", session_code)
+                await ws.close(code=1013, reason="too many sessions")
+                return
+            if self._total_active_connections() >= self.MAX_TOTAL_CAMERA_CONNECTIONS:
+                logger.warning("camera device reject (total conn cap): %s", session_code)
+                await ws.close(code=1013, reason="too many connections")
+                return
+            await ws.accept()
+            sess["devices"][participant_id] = ws
             logger.info("camera device connected: %s pid=%s", session_code, participant_id)
         await self._notify_device_list(session_code)
 
     async def connect_viewer(self, session_code: str, viewer_id: str, ws: WebSocket) -> None:
         # rereview ws #9 fix: 同上 — viewer 接続も lock で直列化
-        await ws.accept()
+        # Round 258 R7 P2 fix: per-session + 全体 cap を accept() 前に確認
         async with self._slock(session_code):
             self._ensure_session(session_code)
-            self._sessions[session_code]["viewers"][viewer_id] = ws
+            sess = self._sessions[session_code]
+            if len(sess["viewers"]) >= self.MAX_VIEWERS_PER_SESSION:
+                logger.warning("camera viewer reject (per-session cap): %s", session_code)
+                await ws.close(code=1013, reason="viewer per-session cap reached")
+                return
+            if len(self._sessions) > self.MAX_TOTAL_CAMERA_SESSIONS:
+                logger.warning("camera viewer reject (total session cap): %s", session_code)
+                await ws.close(code=1013, reason="too many sessions")
+                return
+            if self._total_active_connections() >= self.MAX_TOTAL_CAMERA_CONNECTIONS:
+                logger.warning("camera viewer reject (total conn cap): %s", session_code)
+                await ws.close(code=1013, reason="too many connections")
+                return
+            await ws.accept()
+            sess["viewers"][viewer_id] = ws
             logger.info("camera viewer connected: %s vid=%s", session_code, viewer_id)
         # Operator に viewer 参加を通知（Operator が WebRTC offer を送る）
         await self._send_to_operator(session_code, {

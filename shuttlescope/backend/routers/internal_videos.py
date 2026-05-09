@@ -37,15 +37,30 @@ _CHUNK = 1024 * 1024  # 1 MB
 import time as _time
 from threading import Lock as _Lock
 _WORKER_RATE: dict[str, list[float]] = {}
+_WORKER_RATE_FAIL: dict[str, list[float]] = {}  # 失敗専用 (R7 fix)
 _WORKER_LOCK = _Lock()
 _WORKER_RATE_MAX = 60
+_WORKER_RATE_FAIL_MAX = 10  # 401 大量試行は厳しく抑止
 _WORKER_RATE_WINDOW = 60.0
+# 簡易 LRU 上限 (IPv6 ローテーション攻撃で OOM しないように)
+_WORKER_RATE_MAX_KEYS = 50_000
+
+
+def _prune_rate_dicts(now: float) -> None:
+    cutoff = now - _WORKER_RATE_WINDOW
+    for d in (_WORKER_RATE, _WORKER_RATE_FAIL):
+        if len(d) > _WORKER_RATE_MAX_KEYS:
+            empty = [k for k, v in d.items() if not [t for t in v if t > cutoff]]
+            for k in empty:
+                d.pop(k, None)
 
 
 def _worker_rate_check(ip: str):
+    """成功 path 用 60/min。"""
     now = _time.time()
     cutoff = now - _WORKER_RATE_WINDOW
     with _WORKER_LOCK:
+        _prune_rate_dicts(now)
         history = [t for t in _WORKER_RATE.get(ip, []) if t >= cutoff]
         if len(history) >= _WORKER_RATE_MAX:
             _WORKER_RATE[ip] = history
@@ -54,17 +69,71 @@ def _worker_rate_check(ip: str):
         _WORKER_RATE[ip] = history
 
 
+def _worker_fail_rate_check(ip: str):
+    """Round 258 R7 P2 fix (Codex review): 失敗試行用 10/min。
+    旧コードは verify_worker_token() 失敗で即 401 を返し _worker_rate_check() を
+    通らなかったため、無効 token の brute force / 401 flood が無制限だった。
+    成功前に必ず通すようにする。"""
+    now = _time.time()
+    cutoff = now - _WORKER_RATE_WINDOW
+    with _WORKER_LOCK:
+        _prune_rate_dicts(now)
+        history = [t for t in _WORKER_RATE_FAIL.get(ip, []) if t >= cutoff]
+        if len(history) >= _WORKER_RATE_FAIL_MAX:
+            _WORKER_RATE_FAIL[ip] = history
+            raise HTTPException(
+                status_code=429,
+                detail="Worker auth failure rate limit exceeded",
+            )
+        history.append(now)
+        _WORKER_RATE_FAIL[ip] = history
+
+
+def _resolve_ip_for_worker(request: Optional[Request]) -> str:
+    """Round 258 R7: trusted_client_ip 統一 (CF-Connecting-IP は loopback 経由のみ信用)."""
+    if request is None:
+        return "unknown"
+    try:
+        from backend.utils.client_ip import trusted_client_ip
+        ip = trusted_client_ip(request, default="unknown")
+    except Exception:
+        ip = (request.client.host if request.client else "unknown") or "unknown"
+    return (ip or "unknown")[:64]
+
+
 def _require_worker(x_worker_token: Optional[str], request: Optional[Request] = None):
+    """Round 258 R7 P2 fix (Codex): 失敗試行も per-IP rate-limit に乗せる。
+
+    順序:
+      1. service-enabled check
+      2. (NEW) 失敗 bucket の事前チェック → 既に閾値超なら 429
+      3. token verify。失敗時は失敗 bucket に記録して 401。
+      4. 成功 bucket 進行 + 60/min check。
+    """
     if not is_worker_enabled():
         raise HTTPException(status_code=503, detail="Worker 機能は無効です (SS_WORKER_AUTH_TOKEN 未設定)")
+    ip = _resolve_ip_for_worker(request)
+    # 失敗 bucket を成功検証より先に評価する (R7 P2)
+    _worker_fail_rate_check_peek = lambda: None  # noqa: E731 (compatibility, body below)
+    # 失敗 bucket は「既に閾値オーバーなら 429」だけ先に判定し、加算は失敗時のみ。
+    now = _time.time()
+    cutoff = now - _WORKER_RATE_WINDOW
+    with _WORKER_LOCK:
+        history = [t for t in _WORKER_RATE_FAIL.get(ip, []) if t >= cutoff]
+        if len(history) >= _WORKER_RATE_FAIL_MAX:
+            _WORKER_RATE_FAIL[ip] = history
+            raise HTTPException(status_code=429, detail="Worker auth failure rate limit exceeded")
     if not verify_worker_token(x_worker_token):
+        # 失敗を加算
+        with _WORKER_LOCK:
+            history = [t for t in _WORKER_RATE_FAIL.get(ip, []) if t >= cutoff]
+            history.append(now)
+            _WORKER_RATE_FAIL[ip] = history
+        logger.warning("worker_auth_failed ip=%s", ip)
         raise HTTPException(status_code=401, detail="Worker トークンが無効です")
+    # 成功 path
     if request is not None:
-        ip = (
-            request.headers.get("CF-Connecting-IP")
-            or (request.client.host if request.client else "")
-        )[:64]
-        _worker_rate_check(ip or "unknown")
+        _worker_rate_check(ip)
 
 
 def _parse_range(header: Optional[str], file_size: int) -> Optional[Tuple[int, int]]:
