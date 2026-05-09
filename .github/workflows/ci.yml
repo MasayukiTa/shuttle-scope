@@ -75,12 +75,22 @@ jobs:
       - name: Frontend tests
         run: npx vitest run --config vitest.config.ts
 
-      - name: Backend tests
+      - name: Backend tests (Linux — parallel)
         # 2026-05-08: pytest-xdist で並列化。45 分上限を 25 分台に短縮想定。
         # `-n auto` は CI runner の論理 CPU 数 (= 4 通常) で並列化。
         # 不安定 test (DB fixture / file race) があれば `--dist loadgroup` か
         # `@pytest.mark.serial` で同期化する。
+        if: runner.os != 'Windows'
         run: python -m pytest -n auto --dist loadfile -v
+
+      - name: Backend tests (Windows — serial)
+        # 2026-05-10: Windows + xdist 3.8.0 + Python 3.10 で worker IPC が不安定
+        # (test_analysis_foundation.py 開始直後に gw0/gw1 controller が
+        # AssertionError で死ぬ既知の race; xdist#693 系)。
+        # Windows は parallel を諦めて単一プロセス走行に切替える。Linux 側で
+        # 並列カバレッジは取れているので、Windows は smoke として直列で十分。
+        if: runner.os == 'Windows'
+        run: python -m pytest -v
 
       - name: Python bytecode smoke
         run: python -m compileall backend
