@@ -340,7 +340,10 @@ def build_key(prefix: str, params: dict) -> str:
     pid = _extract_player_id(params)
     pv = player_version(pid)
     raw = json.dumps(params, sort_keys=True, default=str).encode("utf-8")
-    digest = hashlib.sha1(raw).hexdigest()
+    # Round 258 R29 fix (CodeQL py/weak-sensitive-data-hashing): SHA-1 → SHA-256。
+    # 用途は cache key 衝突回避だけだが、CodeQL の指摘 (sensitive context) を
+    # クリアするため SHA-256 に置換。短い prefix だけ使えば長さも近似。
+    digest = hashlib.sha256(raw).hexdigest()[:40]
     return f"{prefix}:gv{gv}:pv{pv}:{digest}"
 
 
