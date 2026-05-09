@@ -96,6 +96,9 @@ class KomojuProvider(PaymentProvider):
             extra={"raw": result},
         )
 
+    # Round 258 R5 F2 fix: replay window 上限 (Stripe 互換 5 分)
+    _REPLAY_TOLERANCE_SECONDS = 300
+
     def verify_webhook(self, raw_body: bytes, headers: dict) -> bool:
         secret = self._webhook_secret()
         if not secret:
@@ -105,7 +108,37 @@ class KomojuProvider(PaymentProvider):
         if not sig:
             return False
         expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected, sig)
+        if not hmac.compare_digest(expected, sig):
+            return False
+        # Round 258 R5 F2 fix: 旧来は signature 検証のみで timestamp 検証なし =
+        # 1 度傍受された legitimate webhook を永久に replay 可能だった。
+        # payload の `created_at` (epoch) と現在時刻の差を 5 分以内に制限。
+        try:
+            import json as _json
+            payload = _json.loads(raw_body.decode("utf-8"))
+            created_at = payload.get("created_at")
+            if created_at is None:
+                # 旧 fixture に created_at が無い場合は logger だけ出して許容
+                # (本番運用時は Komoju ダッシュボードで created_at 必須化を確認)
+                logger.warning("[komoju] webhook payload に created_at 無し (replay window 検証スキップ)")
+                return True
+            import time as _time
+            now = int(_time.time())
+            try:
+                ts = int(created_at) if isinstance(created_at, (int, float)) else int(_time.mktime(_time.strptime(created_at[:19], "%Y-%m-%dT%H:%M:%S")))
+            except Exception:
+                logger.warning("[komoju] created_at parse failed: %r", created_at)
+                return False
+            if abs(now - ts) > self._REPLAY_TOLERANCE_SECONDS:
+                logger.warning(
+                    "[komoju] webhook outside replay window: now=%s ts=%s diff=%s",
+                    now, ts, now - ts,
+                )
+                return False
+        except Exception as exc:
+            logger.warning("[komoju] replay check failed: %s", exc)
+            return False
+        return True
 
     def parse_webhook(self, raw_body: bytes, headers: dict) -> Optional[WebhookEvent]:
         try:

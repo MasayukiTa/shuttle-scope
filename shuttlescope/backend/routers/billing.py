@@ -303,10 +303,19 @@ def cancel_order(public_id: str = PathParam(..., min_length=10, max_length=80),
 
 async def _handle_webhook(provider_name: str, request: Request, db: Session) -> dict:
     raw = await request.body()
+    # Round 258 R5 F3 fix: 旧来は signature 検証失敗時でも raw_payload (50KB) を
+    # DB に persist してから 401 を返していた。匿名 attacker が大量 POST で
+    # billing_webhook_events に 50KB ブロブを書き込み放題だった。
+    # 検証失敗時は DB 書込みを一切行わない (fingerprint だけ log) ように変更。
     headers = {k.lower(): v for k, v in request.headers.items()}
     provider = get_provider_by_name(provider_name)
 
     verified = provider.verify_webhook(raw, headers)
+    if not verified:
+        log_access(db, "billing_webhook_invalid_signature",
+                   details={"provider": provider_name, "size": len(raw)})
+        raise HTTPException(status_code=401, detail="invalid signature")
+
     evt = provider.parse_webhook(raw, headers) if verified else None
 
     # 既知 event_id なら冪等扱い (二重処理防止)
@@ -324,20 +333,13 @@ async def _handle_webhook(provider_name: str, request: Request, db: Session) -> 
 
     rec = BillingWebhookEvent(
         provider=provider_name,
-        event_id=(evt.event_id if evt else f"unverified_{_uuid.uuid4().hex}"),
-        event_type=(evt.event_type if evt else "unverified"),
+        event_id=(evt.event_id if evt else f"parsefail_{_uuid.uuid4().hex}"),
+        event_type=(evt.event_type if evt else "parse_failed"),
         raw_payload=raw.decode("utf-8", errors="replace")[:50_000],
         signature_verified=verified,
     )
     db.add(rec)
     db.flush()
-
-    if not verified:
-        rec.error = "signature verification failed"
-        db.commit()
-        log_access(db, "billing_webhook_invalid_signature",
-                   details={"provider": provider_name})
-        raise HTTPException(status_code=401, detail="invalid signature")
 
     if evt is None:
         rec.error = "parse failed"
@@ -360,6 +362,41 @@ async def _handle_webhook(provider_name: str, request: Request, db: Session) -> 
         )
     if order is not None:
         rec.related_order_id = order.id
+        # Round 258 R5 F1 fix: amount/currency mismatch を検出。
+        # 旧来は session_id / payment_id 一致だけで status='paid' に flip していたため、
+        # 攻撃者が ¥100 の自分の支払いを ¥10,000,000 のターゲット order に紐付ける
+        # web hook を replay (or rewrite metadata) すれば不正に paid 扱いになっていた。
+        # 金額・通貨を必ず照合する。
+        evt_amount = getattr(evt, "amount_jpy", None) or getattr(evt, "amount", None)
+        evt_currency = (getattr(evt, "currency", None) or "JPY").upper()
+        order_currency = (order.currency or "JPY").upper()
+        if evt.event_type in ("payment.succeeded", "payment.authorized"):
+            if evt_amount is not None and evt_amount != order.amount_jpy:
+                rec.error = (f"amount mismatch: evt={evt_amount} order={order.amount_jpy}")
+                db.commit()
+                log_access(
+                    db, "billing_webhook_amount_mismatch",
+                    details={
+                        "provider": provider_name,
+                        "order_public_id": order.public_id,
+                        "evt_amount": evt_amount,
+                        "order_amount": order.amount_jpy,
+                    },
+                )
+                raise HTTPException(status_code=409, detail="amount mismatch")
+            if evt_currency != order_currency:
+                rec.error = f"currency mismatch: evt={evt_currency} order={order_currency}"
+                db.commit()
+                log_access(
+                    db, "billing_webhook_currency_mismatch",
+                    details={
+                        "provider": provider_name,
+                        "order_public_id": order.public_id,
+                        "evt_currency": evt_currency,
+                        "order_currency": order_currency,
+                    },
+                )
+                raise HTTPException(status_code=409, detail="currency mismatch")
         if evt.event_type == "payment.succeeded":
             order.status = "paid"
             order.paid_at = datetime.utcnow()
