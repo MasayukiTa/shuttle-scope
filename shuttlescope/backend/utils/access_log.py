@@ -128,23 +128,37 @@ def log_access(
             pass
 
 
-def verify_chain(db, limit: Optional[int] = None) -> dict:
-    """ハッシュチェーンを先頭から再計算し、食い違う最初の行を返す。
+def verify_chain(db, limit: Optional[int] = None,
+                 from_id: Optional[int] = None) -> dict:
+    """ハッシュチェーンを再計算して食い違う最初の行を返す。
 
-    返り値: {"ok": bool, "checked": int, "total": int, "first_bad_id": Optional[int]}
+    Args:
+        limit: 検証する最大行数 (先頭から)。None なら全行。
+        from_id: この id 以降のみ検証 (運用上の re-baseline 後に segment 検査する用)。
+
+    Returns:
+        {"ok": bool, "checked": int, "total": int,
+         "first_bad_id": Optional[int], "from_id": Optional[int]}
     """
     from backend.db.models import AccessLog
     q = db.query(AccessLog).order_by(AccessLog.id.asc())
     total = q.count()
+    if from_id is not None:
+        q = q.filter(AccessLog.id >= int(from_id))
     if limit is not None:
         q = q.limit(int(limit))
 
     prev_hash: Optional[str] = None
     checked = 0
     first_bad: Optional[int] = None
+    started = False  # from_id 指定時、最初の row の prev_hash を None とみなして開始する
     for row in q.all():
         checked += 1
-        # 旧データ（prev_hash / row_hash が null）はスキップして鎖を再開
+        if not started and from_id is not None:
+            # segment 開始行は prev_hash 比較をスキップ (chain は前段で切れている前提)
+            prev_hash = row.row_hash
+            started = True
+            continue
         if row.row_hash is None:
             prev_hash = None
             continue
@@ -157,10 +171,19 @@ def verify_chain(db, limit: Optional[int] = None) -> dict:
             first_bad = row.id
             break
         prev_hash = row.row_hash
+        started = True
 
     return {
         "ok": first_bad is None,
         "checked": checked,
         "total": total,
         "first_bad_id": first_bad,
+        "from_id": from_id,
     }
+
+
+def find_first_chain_break(db) -> Optional[int]:
+    """全行で最初の chain break 位置を返す。
+    既知の broken segment を運用記録するときに使う。
+    """
+    return verify_chain(db).get("first_bad_id")

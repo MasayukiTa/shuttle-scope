@@ -1668,8 +1668,12 @@ def delete_user(target_id: int, request: Request, db: Session = Depends(get_db))
     #     他は反映する。SQLite では SAVEPOINT も同等に動作する (begin_nested)。
     from sqlalchemy import text as _sa_text
     cleanup_stmts = [
-        # access_logs.user_id は NULL 許容 → 履歴を残しつつ user 削除可能にする
-        ("UPDATE access_logs SET user_id = NULL WHERE user_id = :uid", "access_logs"),
+        # round 233 R233-A: access_logs.user_id は migration 0026 で FK を drop 済。
+        # 旧コードはここで UPDATE access_logs SET user_id = NULL を実行していたが、
+        # canonical bytes が変わって HMAC chain が破損する (verify_chain で
+        # first_bad_id 検出される) ため、user 削除時は access_logs を変更しない。
+        # orphan integer reference (user_id が指す user 行が消えた状態) は audit log
+        # の append-only 原則で許容する。
         # ondelete=CASCADE 持ち (refresh_tokens / revoked_tokens / user_consents /
         # player_page_access) は DB 側で自動削除されるが、明示しておく方が安全。
         ("DELETE FROM refresh_tokens WHERE user_id = :uid", "refresh_tokens"),
@@ -1807,11 +1811,21 @@ def list_audit_logs(
 
 
 @router.get("/audit-logs/verify")
-def verify_audit_logs(request: Request, db: Session = Depends(get_db)):
-    """admin のみ。access_logs のハッシュチェーンを再計算し整合性を返す。"""
+def verify_audit_logs(
+    request: Request,
+    from_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。access_logs のハッシュチェーン整合性を返す。
+
+    Round 233 R233-A: 過去の delete_user 修正バグで chain が一度破損している
+    (first_bad_id=466 付近)。migration 0026 + delete_user 修正以降は新規 row が
+    valid な chain を維持するため、admin は `?from_id=<break_id+1>` で破損
+    segment 以降を検証できる。
+    """
     _require_admin(request)
     from backend.utils.access_log import verify_chain
-    result = verify_chain(db)
+    result = verify_chain(db, from_id=from_id)
     return {"success": True, "data": result}
 
 
