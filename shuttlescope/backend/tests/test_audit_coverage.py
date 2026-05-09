@@ -175,6 +175,10 @@ def test_no_orphan_event_names():
         "condition_updated",
         "condition_deleted",
         "video_dl_started",
+        # Round 258: 後発で追加された billing webhook 整合性検査 / team 削除
+        "billing_webhook_amount_mismatch",
+        "billing_webhook_currency_mismatch",
+        "team_deleted",
     }
     idx = _all_routers_event_index()
     all_events = set()

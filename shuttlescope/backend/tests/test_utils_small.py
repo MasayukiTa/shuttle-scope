@@ -10,10 +10,13 @@ from backend.utils import match_players as mp
 
 
 class TestFieldSensitivity:
+    # Round 258 R2 で `analyst=4 / coach=3` から `analyst=1 / coach=1` に縮小。
+    # 医療自由記述・体組成の漏洩経路を遮断するための変更。テスト assert を新仕様に同期。
+    # impl 側 backend/utils/field_sensitivity.py:77-82 が一次ソース。
     def test_get_max_tier_known_roles(self):
         assert fs.get_max_tier("admin") == 4
-        assert fs.get_max_tier("analyst") == 4
-        assert fs.get_max_tier("coach") == 3
+        assert fs.get_max_tier("analyst") == 1
+        assert fs.get_max_tier("coach") == 1
         assert fs.get_max_tier("player") == 2
 
     def test_get_max_tier_unknown_or_none(self):
@@ -35,17 +38,25 @@ class TestFieldSensitivity:
         got = fs.filter_condition_fields(row, "player")
         assert "weight_kg" not in got
         assert "injury_notes" not in got
+        # player は Tier 2 まで → hooper_fatigue (Tier 2) は OK
         assert got["hooper_fatigue"] == 3
 
-    def test_filter_coach_sees_body_composition_but_not_medical(self):
+    def test_filter_coach_does_not_see_body_composition_or_medical(self):
+        # Round 258 R2: coach=Tier 1 縮小により weight_kg / injury_notes 両方 drop。
+        # 旧テスト名 (`..._but_not_medical`) は 4→3 時代の前提だったため改名。
         row = {"weight_kg": 70.0, "injury_notes": "sprain"}
         got = fs.filter_condition_fields(row, "coach")
-        assert got.get("weight_kg") == 70.0
+        assert "weight_kg" not in got
         assert "injury_notes" not in got
 
-    def test_filter_analyst_sees_all(self):
+    def test_filter_analyst_only_sees_tier_le_1(self):
+        # Round 258 R2: analyst=Tier 1 縮小により weight_kg (Tier 2) / injury_notes (Tier 4)
+        # は drop、Tier 1 の general_comment のみ可視。旧テスト名 (`..._sees_all`) は廃止。
         row = {"weight_kg": 70.0, "injury_notes": "sprain", "general_comment": "ok"}
-        assert fs.filter_condition_fields(row, "analyst") == row
+        got = fs.filter_condition_fields(row, "analyst")
+        assert "weight_kg" not in got
+        assert "injury_notes" not in got
+        assert got.get("general_comment") == "ok"
 
     def test_filter_unknown_field_defaults_to_tier0(self):
         row = {"brand_new_field": "value"}
@@ -170,9 +181,15 @@ class TestControlPlane:
         assert cp.is_loopback_request(_mk_request(client_host="::1")) is True
         assert cp.is_loopback_request(_mk_request(client_host="8.8.8.8")) is False
 
-    def test_cf_connecting_ip_overrides_client(self):
+    def test_cf_connecting_ip_ignored_by_control_plane(self):
+        # Round 258 R7 P0 fix: control-plane decisions (`is_loopback_request` /
+        # `is_trusted_cluster_request`) は **proxy headers を無視** する設計に変更。
+        # 攻撃者が CF-Connecting-IP / X-Forwarded-For を spoof しても、socket peer が
+        # loopback であれば loopback と判定される (= 内部信頼境界は socket レベル)。
+        # 旧テスト名 (`overrides_client`) は古い「CF が socket を上書き」前提だったため改名。
         r = _mk_request({"CF-Connecting-IP": "8.8.8.8"}, client_host="127.0.0.1")
-        assert cp.is_loopback_request(r) is False
+        # socket=127.0.0.1 → loopback (CF header は無視される)
+        assert cp.is_loopback_request(r) is True
 
     def test_trusted_subnet(self, monkeypatch):
         monkeypatch.setattr(cp, "_TRUSTED_PREFIXES", ["192.168.100."])
