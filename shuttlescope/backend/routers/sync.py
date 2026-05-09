@@ -356,7 +356,13 @@ def list_cloud_packages(db: Session = Depends(get_db), _ctx=Depends(require_anal
         stat = f.stat()
         packages.append({
             "filename": f.name,
-            "path": str(f),
+            # Round 258 R31 fix: import_from_cloud_path 側で absolute path を reject
+            # する設計に変更したのに合わせ、ここは **sync_folder からの relative path**
+            # を返す。glob("*.sspkg") は sync_folder 直下しか拾わないので relative
+            # path は basename と同じ。frontend (SettingsPage.tsx:2315) は
+            # `pkg.path` をそのまま import endpoint に投げるので contract 整合する。
+            "path": f.name,
+            "absolute_path_display": str(f),  # 表示用 (UI 側ではこれは利用していないが念のため別 field で残す)
             "size_bytes": stat.st_size,
             "modified_at": datetime.utcfromtimestamp(stat.st_mtime).isoformat(),
         })
