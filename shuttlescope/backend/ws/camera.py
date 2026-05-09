@@ -421,9 +421,32 @@ async def ws_camera_handler(
     _msg_window_start = _time.monotonic()
     _msg_count = 0
 
+    # Round 258 R19 P2 fix (R18a-2 P2-2): WS は accept 時に 1 度だけ JWT を検証
+    # していた。長時間接続中に admin が当該ユーザの token を mass_revoke / 個別
+    # revoke / role 降格しても WS は切れず、operator 権限を **保持し続ける** 経路が
+    # あった。修正: 60s 毎に同じ token を再検証し、無効化を検知したら close する。
+    # `?token=` が空 (loopback 経路) の場合は再検証スキップ (= 元から JWT 不要)。
+    _last_reverify = _time.monotonic()
+    _reverify_interval = 60.0
+    _saved_token = websocket.query_params.get("token", "") if is_operator else ""
+
     try:
         while True:
             raw = await websocket.receive_text()
+            # R19 P2: 一定間隔で JWT 再検証 (operator のみ最高優先度)
+            if _saved_token and (_time.monotonic() - _last_reverify) >= _reverify_interval:
+                _last_reverify = _time.monotonic()
+                try:
+                    from backend.utils.jwt_utils import verify_token as _reverify
+                    if not isinstance(_reverify(_saved_token), dict):
+                        logger.warning("camera operator WS reverify failed; closing session=%s", session_code)
+                        try:
+                            await websocket.close(code=4401, reason="token revoked or expired")
+                        except Exception:
+                            pass
+                        return
+                except Exception as _exc:
+                    logger.debug("camera operator reverify error: %s", _exc)
             # 巨大メッセージによるメモリ DoS (CWE-770) を遮断する。
             if len(raw) > _MAX_WS_MESSAGE_BYTES:
                 logger.warning("camera WS oversized message session=%s len=%d", session_code, len(raw))
