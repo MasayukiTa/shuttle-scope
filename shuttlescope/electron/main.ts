@@ -1184,27 +1184,29 @@ ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: stri
   }
 
   // 3. 隠しウィンドウで MediaRecorder による webm キャプチャを開始
+  // Round 258 R33 fix (R6 deferred P1): 旧設計は nodeIntegration:true + contextIsolation:false
+  // で `executeJavaScript` 内の `require('electron')` を直接使っていた。Electron security
+  // best practice 違反 (renderer から require 不可、contextIsolation 必須) で、renderer
+  // XSS 経路で recorder window が node API を取られると任意ファイル書込み等に拡張する経路。
+  // 修正:
+  //   - nodeIntegration:false / contextIsolation:true / sandbox:true で構築
+  //   - `electron/recorder-preload.ts` を preload に指定し contextBridge 経由で
+  //     `recorderApi.sendChunk / sendError / onStop` だけ露出
+  //   - executeJavaScript の中身は `window.recorderApi` を呼ぶだけにする
   _ytRecorderWindow = new BrowserWindow({
     show: false,
     width: 1,
     height: 1,
     webPreferences: {
-      // Electron #2 緩和: 旧コードは nodeIntegration: true + contextIsolation: false
-      // で外部 URL ロードと組み合わさると RCE 化するリスクがあった。
-      // 本ウィンドウは data: URL しかロードしないが、防御深化のため
-      // will-navigate と loadURL allow-list を下に追加して RCE 経路を塞ぐ。
-      // (fully refactor して preload で start/stop だけ露出する方が綺麗だが、
-      //  MediaRecorder + getDisplayMedia API は renderer 側で動くため最小変更。)
-      nodeIntegration: true,
-      contextIsolation: false,
-      // Electron #2 強化: 外部リソース fetch を遮断。data: のみ。
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
       webSecurity: true,
+      preload: path.join(__dirname, '../preload/recorder-preload.cjs'),
     },
   })
 
   // Electron #2 強化: data: URL 以外への navigate を完全拒否。
-  // これにより YouTube ページ等の外部 origin が renderer に nodeIntegration 権限を持って
-  // ロードされる経路を遮断する。
   _ytRecorderWindow.webContents.on('will-navigate', (event, navUrl) => {
     if (!navUrl.startsWith('data:')) {
       console.error('[ytRecorder] blocked navigation to', navUrl)
@@ -1223,7 +1225,11 @@ ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: stri
   _ytRecorderWindow.loadURL('data:text/html,<html><body></body></html>')
   await _ytRecorderWindow.webContents.executeJavaScript(`
     (async () => {
-      const { ipcRenderer } = require('electron')
+      const api = window.recorderApi
+      if (!api) {
+        console.error('[ytRecorder] recorderApi preload bridge missing')
+        return
+      }
       const sourceId = ${JSON.stringify(source.id)}
       let stream
       try {
@@ -1240,7 +1246,7 @@ ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: stri
           }
         })
       } catch (err) {
-        ipcRenderer.send('youtube-drm-error', String(err))
+        api.sendError(String(err))
         return
       }
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
@@ -1250,12 +1256,12 @@ ipcMain.handle('youtube-live-drm-start', async (_event, url: string, jobId: stri
       recorder.ondataavailable = async (e) => {
         if (e.data && e.data.size > 0) {
           const buf = await e.data.arrayBuffer()
-          ipcRenderer.send('youtube-drm-chunk', buf)
+          api.sendChunk(buf)
         }
       }
-      recorder.onerror = (e) => ipcRenderer.send('youtube-drm-error', String(e.error))
+      recorder.onerror = (e) => api.sendError(String(e.error))
       recorder.start(2000) // 2 秒ごとにチャンクを送出
-      ipcRenderer.on('youtube-drm-stop', () => {
+      api.onStop(() => {
         recorder.stop()
         stream.getTracks().forEach((t) => t.stop())
       })
@@ -1399,14 +1405,19 @@ ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId
   }
 
   // 4. 隠しレコーダーウィンドウで MediaRecorder
+  // Round 258 R33 fix (R6 deferred P1): YouTube DRM 経路と同じ理由で
+  // nodeIntegration:false / contextIsolation:true / sandbox:true + recorder-preload
+  // 経由に統一する。`window.recorderApi.sendChunk / sendError / onStop` だけ露出。
   _ytRecorderWindow = new BrowserWindow({
     show: false,
     width: 1,
     height: 1,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
       webSecurity: true,
+      preload: path.join(__dirname, '../preload/recorder-preload.cjs'),
     },
   })
 
@@ -1426,7 +1437,11 @@ ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId
   _ytRecorderWindow.loadURL('data:text/html,<html><body></body></html>')
   await _ytRecorderWindow.webContents.executeJavaScript(`
     (async () => {
-      const { ipcRenderer } = require('electron')
+      const api = window.recorderApi
+      if (!api) {
+        console.error('[screen-capture-recorder] recorderApi preload bridge missing')
+        return
+      }
       const sourceId = ${JSON.stringify(source.id)}
       const PRESET = ${JSON.stringify(preset)}
       let stream
@@ -1444,7 +1459,7 @@ ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId
           }
         })
       } catch (err) {
-        ipcRenderer.send('youtube-drm-error', String(err))
+        api.sendError(String(err))
         return
       }
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
@@ -1454,12 +1469,12 @@ ipcMain.handle('screen-capture-start', async (_event, opts: { url: string; jobId
       recorder.ondataavailable = async (e) => {
         if (e.data && e.data.size > 0) {
           const buf = await e.data.arrayBuffer()
-          ipcRenderer.send('youtube-drm-chunk', buf)
+          api.sendChunk(buf)
         }
       }
-      recorder.onerror = (e) => ipcRenderer.send('youtube-drm-error', String(e.error))
+      recorder.onerror = (e) => api.sendError(String(e.error))
       recorder.start(2000)
-      ipcRenderer.on('youtube-drm-stop', () => {
+      api.onStop(() => {
         recorder.stop()
         stream.getTracks().forEach((t) => t.stop())
       })
