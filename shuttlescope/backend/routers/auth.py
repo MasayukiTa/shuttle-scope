@@ -2143,7 +2143,9 @@ def delete_team(
     - 物理削除はしない (audit chain / 過去ラリー参照保全のため)。
     - Round 233 で確認済みの DPAPI / FK 設計と矛盾なし。
     """
-    ctx = _require_admin(request)
+    _require_admin(request)
+    from backend.utils.auth import get_auth as _ga_del
+    ctx = _ga_del(request)
     # Round 258 P1 fix: TOCTOU + 並列 DELETE 重複監査ログ問題の対策。
     # team 行を SELECT FOR UPDATE で排他ロックし、トランザクション中に
     # 他リクエストが同 team を編集できないようにする。
