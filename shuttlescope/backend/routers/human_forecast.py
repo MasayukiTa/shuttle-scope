@@ -216,7 +216,12 @@ def get_prediction_benchmark(
     }
 
     # モデル予測（全試合の事前計算）
-    all_player_matches = get_matches_for_player(db, player_id)
+    # R30 P2 fix (R29 P2-3): get_matches_for_player にも team scope を渡し、
+    # admin 以外は public_pool または owner_team_id 一致のみに絞る。
+    all_player_matches = get_matches_for_player(
+        db, player_id,
+        ctx_team_id=_auth.team_id, ctx_is_admin=_auth.is_admin,
+    )
 
     comparisons: list[dict] = []
     for f in forecasts:

@@ -32,8 +32,17 @@ def get_matches_for_player(
     opponent_id: Optional[int] = None,
     tournament_level: Optional[str] = None,
     before_date=None,  # date | None — この日付より前のみ（試合前予測のデータカットオフ用）
+    ctx_team_id: Optional[int] = None,  # R29 P2-3 fix: team scope
+    ctx_is_admin: bool = False,
 ) -> list[Match]:
-    """フィルタ済み試合リスト取得（棄権・未完了除外）"""
+    """フィルタ済み試合リスト取得（棄権・未完了除外）。
+
+    Round 258 R30 P2 fix (R29 P2-3): 旧コードは team scope を全く考慮せず、
+    coach A が他チームの player_id で prediction を要求すると、Team C の private
+    な match を含む集計が露出していた (h2h sample_size 等で side-channel)。
+    修正: caller から ctx_team_id / ctx_is_admin を受け、admin 以外は
+    `is_public_pool=True` または `owner_team_id == ctx_team_id` の match のみ。
+    """
     # N+1 解消: m.sets を後続ループで参照するため selectinload で一括取得
     q = (
         db.query(Match)
@@ -43,6 +52,15 @@ def get_matches_for_player(
         )
         .filter(Match.result.in_(['win', 'loss']))
     )
+    # R29 P2-3 / R30 P2 fix: admin 以外で ctx_team_id が **明示的に渡された** 場合に
+    # team-scope filter を適用。下位互換のため ctx_team_id is None かつ ctx_is_admin
+    # is False の場合は filter しない (backwards compat — 既存呼出は無変更)。
+    # 新規 router-level caller は明示的に ctx 情報を渡すこと。
+    if ctx_is_admin:
+        pass  # admin は全試合
+    elif ctx_team_id is not None:
+        q = q.filter(or_(Match.is_public_pool.is_(True), Match.owner_team_id == ctx_team_id))
+    # else: legacy 呼出 — filter を適用しない (既存挙動を維持; 新規 caller は ctx を渡せ)
     if opponent_id is not None:
         q = q.filter(
             or_(
