@@ -1830,10 +1830,17 @@ def _require_manager(request: Request) -> None:
 
 @router.get("/users/{target_id}/page-access")
 def get_user_page_access(target_id: int, request: Request, db: Session = Depends(get_db)):
+    from backend.utils.auth import get_auth
     _require_manager(request)
+    ctx = get_auth(request)
     user = db.get(User, target_id)
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
+    # round 245 R245-E7: cross-team page-access leak 防止。
+    # admin 以外は同 team の player にのみ参照可能。
+    if not ctx.is_admin:
+        if user.team_id is None or ctx.team_id is None or user.team_id != ctx.team_id:
+            raise HTTPException(status_code=404, detail="user not found")
     rows = db.query(PlayerPageAccess).filter(PlayerPageAccess.user_id == target_id).all()
     return {"success": True, "data": [r.page_key for r in rows]}
 
@@ -1846,6 +1853,13 @@ def set_user_page_access(target_id: int, body: PageAccessBody, request: Request,
     user = db.get(User, target_id)
     if not user or user.role != "player":
         raise HTTPException(status_code=404, detail="player user not found")
+    # round 245 R245-E7: 旧コードは _require_manager (admin/analyst/coach) のみで
+    # cross-team scope check が無く、analyst (team A) が player (team B) の page_access
+    # を全削除できた。admin 以外は対象 player と同 team_id でのみ操作可能にする。
+    # 404 で返すのは存在 leak (404 vs 403 の区別) を避けるため。
+    if not ctx.is_admin:
+        if user.team_id is None or ctx.team_id is None or user.team_id != ctx.team_id:
+            raise HTTPException(status_code=404, detail="player user not found")
     valid = {k for k in body.page_keys if k in GRANTABLE_PAGES}
     db.query(PlayerPageAccess).filter(
         PlayerPageAccess.user_id == target_id,
@@ -1859,7 +1873,14 @@ def set_user_page_access(target_id: int, body: PageAccessBody, request: Request,
 
 @router.get("/teams/{team_name}/page-access")
 def get_team_page_access(team_name: str, request: Request, db: Session = Depends(get_db)):
+    from backend.utils.auth import get_auth
     _require_manager(request)
+    ctx = get_auth(request)
+    # round 245 R245-E7 系: cross-team page-access leak 防止。
+    if not ctx.is_admin:
+        actor_team = (ctx.team_name or "").strip()
+        if not actor_team or actor_team != team_name:
+            raise HTTPException(status_code=404, detail="team not found")
     rows = (
         db.query(PlayerPageAccess)
         .filter(PlayerPageAccess.team_name == team_name, PlayerPageAccess.user_id.is_(None))
@@ -1873,6 +1894,12 @@ def set_team_page_access(team_name: str, body: PageAccessBody, request: Request,
     from backend.utils.auth import get_auth
     _require_manager(request)
     ctx = get_auth(request)
+    # round 245 R245-E7 系: team-level page-access も同じ cross-team 問題。
+    # admin 以外は自身の team_name にのみ操作可能。
+    if not ctx.is_admin:
+        actor_team = (ctx.team_name or "").strip()
+        if not actor_team or actor_team != team_name:
+            raise HTTPException(status_code=404, detail="team not found")
     valid = {k for k in body.page_keys if k in GRANTABLE_PAGES}
     db.query(PlayerPageAccess).filter(
         PlayerPageAccess.team_name == team_name,
