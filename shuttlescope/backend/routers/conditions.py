@@ -265,6 +265,12 @@ def _factor_labels_from_cond(c: Condition) -> Dict[str, str]:
 
 
 def _player_view(c: Condition) -> dict:
+    """同意書 第5条: 本人は自身のデータについて生スコア・体組成・医療記述まで全て可視。
+    ownership 検証は呼び出し側 (_require_condition_access) で実施済み前提。
+
+    Round 258 #4: 従来は派生統計のみ返していたが、本人が自身のトレンドを
+    詳細に把握できるよう生スコア + 体組成 + 医療自由記述まで含めて返す。
+    """
     # Condition モデルには mean_28/sd_28 列は保存していないため、
     # ccs_score / delta_28ma / z_score から逆算する。
     mean_28 = None
@@ -283,12 +289,51 @@ def _player_view(c: Condition) -> dict:
         "player_id": c.player_id,
         "measured_at": c.measured_at.isoformat() if c.measured_at else None,
         "condition_type": c.condition_type,
+        "match_id": c.match_id,
+        # 派生サマリ (旧来から)
         "ccs_score": c.ccs_score,
         "delta_28ma": c.delta_28ma,
         "mean_28": mean_28,
         "sd_28": sd_28,
         "personal_range": personal_range,
         "factor_labels": _factor_labels_from_cond(c),
+        # 生スコア (本人=○ per 同意書 第5条)
+        "f1_physical": c.f1_physical,
+        "f2_stress": c.f2_stress,
+        "f3_mood": c.f3_mood,
+        "f4_motivation": c.f4_motivation,
+        "f5_sleep_life": c.f5_sleep_life,
+        "total_score": c.total_score,
+        "delta_prev": c.delta_prev,
+        "delta_3ma": c.delta_3ma,
+        "z_score": c.z_score,
+        # Hooper / RPE 系 (本人=○)
+        "hooper_sleep": c.hooper_sleep,
+        "hooper_soreness": c.hooper_soreness,
+        "hooper_stress": c.hooper_stress,
+        "hooper_fatigue": c.hooper_fatigue,
+        "hooper_index": c.hooper_index,
+        "session_rpe": c.session_rpe,
+        "session_duration_min": c.session_duration_min,
+        "session_load": c.session_load,
+        "sleep_hours": c.sleep_hours,
+        # 体組成 (本人=○ per 同意書 第5条)
+        "weight_kg": c.weight_kg,
+        "muscle_mass_kg": c.muscle_mass_kg,
+        "body_fat_pct": c.body_fat_pct,
+        "body_fat_mass_kg": c.body_fat_mass_kg,
+        "lean_mass_kg": c.lean_mass_kg,
+        "ecw_ratio": c.ecw_ratio,
+        "arm_l_muscle_kg": c.arm_l_muscle_kg,
+        "arm_r_muscle_kg": c.arm_r_muscle_kg,
+        "leg_l_muscle_kg": c.leg_l_muscle_kg,
+        "leg_r_muscle_kg": c.leg_r_muscle_kg,
+        "trunk_muscle_kg": c.trunk_muscle_kg,
+        "bmr_kcal": c.bmr_kcal,
+        # 医療・自由記述 (本人=○)
+        "injury_notes": c.injury_notes,
+        "general_comment": c.general_comment,
+        # 妥当性: 同意書 5条で本人=× → 含めない（呼び出し側 fields に含めない）
     }
 
 

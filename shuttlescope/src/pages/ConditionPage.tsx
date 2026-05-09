@@ -177,6 +177,19 @@ export function ConditionPage() {
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+            {/* Round 258 #3: 同意書 第5条遵守の挙動説明 (coach/analyst には
+                生スコア・体組成・医療記述は表示されない／自分自身の記録は入力可) */}
+            {(role === 'coach' || role === 'analyst') && (
+              <div
+                className={`w-full text-xs px-3 py-2 rounded border ${
+                  isLight
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-amber-900/20 border-amber-700/40 text-amber-200'
+                }`}
+              >
+                {t('condition.summary_only_notice')}
+              </div>
+            )}
             <div className="flex items-center gap-2 shrink-0">
               <User size={16} className={`${textMuted} shrink-0`} />
               <label className={`text-sm ${textMuted}`}>
