@@ -80,8 +80,15 @@ def get_pair_matches(
     player_id_1: int,
     player_id_2: int,
     tournament_level: Optional[str] = None,
+    ctx_team_id: Optional[int] = None,  # R30 P2-2 fix
+    ctx_is_admin: bool = False,
 ) -> list[Match]:
-    """ペアとして出場した試合を取得"""
+    """ペアとして出場した試合を取得。
+
+    Round 258 R30 P2 fix (R30 P2-2): get_matches_for_player と同様 team scope を適用。
+    旧コードは team filter 無しで全 pair 試合を返し、coach A が任意 player_id_1/2 で
+    他チームの pair の sample_size / recent results を side-channel 取得できる経路。
+    """
     # N+1 解消: 呼び出し側で m.sets を参照するので selectinload で一括取得
     q = (
         db.query(Match)
@@ -96,6 +103,11 @@ def get_pair_matches(
             )
         )
     )
+    # R30 P2-2 fix: admin 以外で ctx_team_id が明示的に渡された場合 team-scope filter
+    if ctx_is_admin:
+        pass
+    elif ctx_team_id is not None:
+        q = q.filter(or_(Match.is_public_pool.is_(True), Match.owner_team_id == ctx_team_id))
     if tournament_level:
         q = q.filter(Match.tournament_level == tournament_level)
     return q.order_by(Match.date.desc()).all()
