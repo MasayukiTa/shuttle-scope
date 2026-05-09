@@ -157,6 +157,15 @@ def delete_human_forecast(
         from backend.utils.auth import user_can_access_match
         if not user_can_access_match(ctx, m):
             raise HTTPException(status_code=404, detail="Forecast not found")
+    # Round 258 R8 P1 fix (deep audit V-3):
+    # 旧コードは f.deleted_at を **設定せず** に touch_sync_metadata + commit して
+    # success を返していた。結果として:
+    #   - DELETE が成功しても list/benchmark で当該行が引き続き表示される
+    #   - UI で「削除した」のに残るので analyst が混乱
+    #   - 結合テストでは catch されない (404 が出ない)
+    # 明示的に deleted_at を utcnow() で立てる。
+    from datetime import datetime as _dt_hf
+    f.deleted_at = _dt_hf.utcnow()
     touch_sync_metadata(f, device_id=get_device_id(db))
     db.commit()
     return {"success": True}

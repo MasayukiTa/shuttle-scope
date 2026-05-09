@@ -26,13 +26,13 @@ import logging
 from typing import Optional
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from sqlalchemy import text
 from backend.db.database import engine, get_db
-from backend.db.models import MatchCVArtifact
+from backend.db.models import Match, MatchCVArtifact
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -191,12 +191,31 @@ def load_calibration_standalone(match_id: int) -> Optional[dict]:
 def save_court_calibration(
     match_id: int,
     body: CourtCalibrationRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """
     コートキャリブレーション 6点を保存し、ホモグラフィを計算して返す。
     同一 match_id の既存データは上書きされる。
+
+    Round 258 R8 P1 fix (deep audit V-2):
+    旧コードは Request を取らず middleware (TeamScopeAccessControlMiddleware) のみに
+    依存していた。team_id=None の analyst (legacy / pending-team) は middleware が
+    skip するため cross-team の match の calibration を上書き可能だった。
     """
+    from backend.utils.auth import get_auth as _ga_cc, user_can_access_match as _uac_cc
+    _ctx_cc = _ga_cc(request)
+    if _ctx_cc.role is None:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    _m_cc = db.get(Match, match_id)
+    if _m_cc is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if not _ctx_cc.is_admin and not _uac_cc(_ctx_cc, _m_cc):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    # team_id None の analyst/coach は cross-team write を許さない
+    if (_ctx_cc.is_coach or _ctx_cc.is_analyst) and _ctx_cc.team_id is None:
+        raise HTTPException(status_code=403, detail="team_id 未設定のためキャリブレーションを保存できません")
+
     if len(body.points) != 6:
         raise HTTPException(status_code=400, detail="6点が必要です（4コーナー＋ネット支柱2点）")
 

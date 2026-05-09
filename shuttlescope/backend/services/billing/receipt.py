@@ -114,7 +114,11 @@ def generate_receipt_pdf(
         story.append(Paragraph(f"適格請求書発行事業者登録番号: {invoice_no}", body))
     story.append(Spacer(1, 8 * mm))
 
-    story.append(Paragraph(f"<b>{customer_display}</b> 様", body))
+    # Round 258 R8 P1 fix (deep audit P1-1): reportlab Paragraph mini-XML 注入対策。
+    # customer_display は target_user.display_name or .username で、ユーザ入力。
+    from xml.sax.saxutils import escape as _xml_escape_rcpt
+    _safe_customer = _xml_escape_rcpt(str(customer_display or ""))
+    story.append(Paragraph(f"<b>{_safe_customer}</b> 様", body))
     story.append(Spacer(1, 4 * mm))
     story.append(Paragraph("下記のとおりお支払いを受領いたしました。", body))
     story.append(Spacer(1, 6 * mm))

@@ -579,17 +579,22 @@ def export_shot_labels(
     )
 
 
-_CSV_DANGEROUS_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+_CSV_DANGEROUS_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 
 def _csv_safe(value):
     """CSV/Formula injection 対策: Excel/Sheets が式として解釈する先頭文字を無効化する。
 
     str 以外（int/float/None など）はそのまま返す。
-    str 値の先頭が =, +, -, @, TAB, CR のいずれかなら ' を前置する。
+    str 値の先頭 (空白を除く) が =, +, -, @, TAB, CR, LF のいずれかなら ' を前置する。
+
+    Round 258 R8 P1 fix (deep audit P1-3): 旧コードは `value[0]` だけ見ていたため
+    " =cmd|'/c calc'!A0" のように先頭空白で挟むと bypass された (Excel は先頭空白を
+    無視して式評価する)。lstrip() してから判定し、LF も追加する。
     """
     if not isinstance(value, str) or not value:
         return value
-    if value[0] in _CSV_DANGEROUS_PREFIXES:
+    stripped = value.lstrip()
+    if stripped and stripped[0] in _CSV_DANGEROUS_PREFIXES:
         return "'" + value
     return value

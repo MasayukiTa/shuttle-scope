@@ -2,8 +2,21 @@
 import io
 from collections import defaultdict
 from datetime import datetime
+from xml.sax.saxutils import escape as _xml_escape
 
 from fastapi import APIRouter, Depends, Query, Request
+
+
+def _safe_paragraph_text(s: object) -> str:
+    """Round 258 R8 P1 fix (deep audit P1-1): reportlab Paragraph mini-XML 注入対策。
+
+    reportlab.Paragraph は `<b>`, `<i>`, `<font>`, `<a href>`, `<link>`, `<img src>`
+    を解釈する。ユーザ入力 (player.name 等) を直接 f-string に入れると外部リンク注入や
+    `<img src="file:///etc/passwd"/>` 等の SSRF/local-file 経路を作るので、表示前に
+    必ず XML escape する。"""
+    if s is None:
+        return ""
+    return _xml_escape(str(s))
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -243,7 +256,7 @@ def get_scouting_report(player_id: int, request: Request, db: Session = Depends(
         )
 
         content = []
-        content.append(Paragraph(f"スカウティングレポート: {player.name}", title_style))
+        content.append(Paragraph(f"スカウティングレポート: {_safe_paragraph_text(player.name)}", title_style))
         content.append(Spacer(1, 5*mm))
 
         # 信頼度バッジ相当テキスト
@@ -649,7 +662,7 @@ def get_condition_report_pdf(
         footer_s = ParagraphStyle("F", fontName=jp, fontSize=8, textColor=colors.grey)
 
         content = [
-            Paragraph(f"体調レポート: {player.name}", title_s),
+            Paragraph(f"体調レポート: {_safe_paragraph_text(player.name)}", title_s),
             Paragraph(f"集計期間: {date_from} 〜 {date_to}　記録数: {len(conditions)}", body_s),
             Spacer(1, 5*mm),
             Paragraph("■ 平均指標", body_s),
@@ -875,7 +888,7 @@ def get_prediction_report_pdf(
         footer_s = ParagraphStyle("F", fontName=jp, fontSize=8, textColor=colors.grey)
 
         content = [
-            Paragraph(f"予測レポート: {player.name}", title_s),
+            Paragraph(f"予測レポート: {_safe_paragraph_text(player.name)}", title_s),
             Paragraph(f"直近 {len(matches)} 試合 / {total} ラリー 分析", body_s),
             Spacer(1, 5*mm),
             Paragraph("■ 総合成績", body_s),

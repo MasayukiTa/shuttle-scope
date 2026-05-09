@@ -254,18 +254,46 @@ def _timing_padding_db_write(db: Session) -> None:
 
 
 def _on_login_failure(user: User, db: Session, ip: Optional[str], reason: str) -> None:
+    """Round 258 R8 P1 fix (deep audit F3): lockout race を atomic UPDATE で塞ぐ。
+
+    旧コードは `user.failed_attempts += 1` を ORM で行い読み取り→更新の間に
+    並列 login が走ると counter を奪い合い、結果として:
+      - 同じ user に対して同時 fail で各 request が `>= MAX` 判定して
+        全部が `locked_until = now + 30min` を上書き→ rolling lockout で永久 DoS
+      - 失敗カウンタが正確に増えない (3 並列 fail でも +3 にならず +1 で済む) ため
+        実質ブルートフォース cap を攻撃者に有利に倒せる
+    対策: SQL レベルで `failed_attempts = failed_attempts + 1` の atomic UPDATE を
+    使い、戻り値を refresh して判定。`locked_until` は **未来日時を更新しない**
+    (既に lock 中なら維持) ガードを入れて rolling lockout を阻止。
+    """
     from backend.utils.access_log import log_access
-    user.failed_attempts = (user.failed_attempts or 0) + 1
+    from backend.db.models import User as _UserMdl
+    now = datetime.utcnow()
+    lock_until = now + timedelta(minutes=_LOCKOUT_MINUTES)
+    # atomic increment + 条件付き locked_until セット (locked_until が NULL or 過去のみ更新)
+    db.query(_UserMdl).filter(_UserMdl.id == user.id).update(
+        {
+            "failed_attempts": _UserMdl.failed_attempts + 1,
+        },
+        synchronize_session=False,
+    )
+    db.commit()
+    db.refresh(user)
     if user.failed_attempts >= _MAX_FAILED_ATTEMPTS:
-        user.locked_until = datetime.utcnow() + timedelta(minutes=_LOCKOUT_MINUTES)
-        db.commit()
+        # locked_until は既に未来なら触らない (race による rolling lock 防止)
+        if not user.locked_until or user.locked_until <= now:
+            db.query(_UserMdl).filter(
+                _UserMdl.id == user.id,
+                ((_UserMdl.locked_until.is_(None)) | (_UserMdl.locked_until <= now)),
+            ).update({"locked_until": lock_until}, synchronize_session=False)
+            db.commit()
+            db.refresh(user)
         log_access(db, "account_locked", user_id=user.id, ip_addr=ip,
                    details={"reason": reason, "attempts": user.failed_attempts})
         raise HTTPException(
             status_code=429,
             detail=f"ログイン失敗が{_MAX_FAILED_ATTEMPTS}回に達しました。{_LOCKOUT_MINUTES}分間ロックされます。",
         )
-    db.commit()
     log_access(db, "login_failed", user_id=user.id, ip_addr=ip, details={"reason": reason})
     raise HTTPException(status_code=401, detail="login failed")
 
@@ -1113,10 +1141,39 @@ def list_analysts_for_login(request: Request, db: Session = Depends(get_db)):
 # ── ユーザー管理 (admin / analyst) ───────────────────────────────────────────
 
 def _require_admin(request: Request) -> None:
+    """Round 258 R8 P0 fix (deep audit F1): admin role の DB 二重検証。
+
+    旧コードは JWT payload の `role` だけで判定していたため、admin が DB 上で
+    demote されたり lock されたりしても token 期限切れまで admin 操作が通った。
+    incident response (admin demotion / 強制 lockout) が機能不全になる重大な穴。
+    本修正は JWT を信用した上で、必ず DB から user を再取得して
+    role / locked_until / awaiting_admin_approval を再確認する。
+    """
     from backend.utils.auth import get_auth
     ctx = get_auth(request)
     if not ctx.is_admin:
         raise HTTPException(status_code=403, detail="admin role required")
+    # DB 再検証
+    if ctx.user_id is None:
+        raise HTTPException(status_code=403, detail="admin role required")
+    try:
+        from backend.db.database import SessionLocal
+        from backend.db.models import User
+        with SessionLocal() as _db:
+            u = _db.get(User, int(ctx.user_id))
+            if u is None or (u.role or "") != "admin":
+                raise HTTPException(status_code=403, detail="admin role required (DB re-check failed)")
+            if getattr(u, "awaiting_admin_approval", False):
+                raise HTTPException(status_code=403, detail="admin pending approval")
+            from datetime import datetime as _dt_admin
+            lu = getattr(u, "locked_until", None)
+            if lu is not None and lu > _dt_admin.utcnow():
+                raise HTTPException(status_code=403, detail="admin account is locked")
+    except HTTPException:
+        raise
+    except Exception:
+        # DB エラー時は fail-closed (admin は数分待てば良い)
+        raise HTTPException(status_code=503, detail="admin re-verification temporarily unavailable")
 
 
 def _reject_control_chars(value: Optional[str], field_name: str, max_len: int = 200) -> Optional[str]:
