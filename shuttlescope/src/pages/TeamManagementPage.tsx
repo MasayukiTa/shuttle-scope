@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, Plus, X, Check, Users, Loader2 } from 'lucide-react'
+import { Pencil, Plus, X, Check, Users, Loader2, Trash2, AlertTriangle } from 'lucide-react'
 
-import { listTeams, createTeam, patchTeam, apiGet, type TeamDTO } from '@/api/client'
+import {
+  listTeams,
+  createTeam,
+  patchTeam,
+  apiGet,
+  deleteTeam,
+  getTeamDependencies,
+  type TeamDTO,
+  type TeamDependencies,
+} from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
@@ -39,6 +48,11 @@ export function TeamManagementPage() {
   const [creating, setCreating] = useState(false)
   const [savingId, setSavingId] = useState<number | null>(null)
   const isMobile = useIsMobile()
+
+  // 削除確認用 state（Round 258 #16）
+  const [deleteTarget, setDeleteTarget] = useState<TeamDTO | null>(null)
+  const [deleteDeps, setDeleteDeps] = useState<TeamDependencies | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -104,6 +118,40 @@ export function TeamManagementPage() {
       short_name: t.short_name || '',
       notes: t.notes || '',
     })
+  }
+
+  /**
+   * 削除フロー (Round 258 #16):
+   * 1. 削除ボタン押下 → GET /teams/{id}/dependencies で users/players/matches 件数を取得
+   * 2. モーダル表示 (依存数・force 選択)
+   * 3. 確定で DELETE /teams/{id}?force=... 実行 → 成功で再 load
+   */
+  const startDelete = async (t: TeamDTO) => {
+    if (!isAdmin) return
+    setDeleteTarget(t)
+    setDeleteDeps(null)
+    try {
+      const res = await getTeamDependencies(t.id)
+      setDeleteDeps(res.data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '依存関係の取得に失敗しました')
+      setDeleteTarget(null)
+    }
+  }
+
+  const confirmDelete = async (force: boolean) => {
+    if (!deleteTarget) return
+    setDeletingId(deleteTarget.id)
+    try {
+      await deleteTeam(deleteTarget.id, force)
+      setDeleteTarget(null)
+      setDeleteDeps(null)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'チーム削除に失敗しました')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const handleSave = async (id: number) => {
@@ -296,6 +344,20 @@ export function TeamManagementPage() {
                             <Pencil size={14} />
                           </button>
                         )}
+                        {isAdmin && (
+                          <button
+                            onClick={() => startDelete(t)}
+                            disabled={deletingId === t.id}
+                            className="p-1.5 text-red-600 border rounded disabled:opacity-50"
+                            title="削除"
+                          >
+                            {deletingId === t.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
                     {expanded && (
@@ -411,13 +473,29 @@ export function TeamManagementPage() {
                           </button>
                         </>
                       ) : canEdit || isCoach ? (
-                        <button
-                          onClick={() => startEdit(t)}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                          title="編集"
-                        >
-                          <Pencil size={16} />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => startEdit(t)}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="編集"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => startDelete(t)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded"
+                              title="削除"
+                              disabled={deletingId === t.id}
+                            >
+                              {deletingId === t.id ? (
+                                <Loader2 size={16} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={16} />
+                              )}
+                            </button>
+                          )}
+                        </>
                       ) : null}
                     </div>
                   </td>
@@ -457,6 +535,124 @@ export function TeamManagementPage() {
             )}
           </tbody>
         </table>
+      )}
+
+      {/* 削除確認モーダル (Round 258 #16) */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            if (deletingId == null) {
+              setDeleteTarget(null)
+              setDeleteDeps(null)
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-lg shadow-lg max-w-md w-full p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={20} className="text-red-600" />
+              <h2 className="text-lg font-semibold">チームを削除しますか？</h2>
+            </div>
+            <p className="text-sm text-gray-700 mb-3">
+              チーム「<span className="font-medium">{deleteTarget.name}</span>」を soft-delete します。
+              物理削除ではないため過去データは保全されます（audit chain 維持のため）。
+            </p>
+
+            {!deleteDeps ? (
+              <div className="text-sm text-gray-500 flex items-center gap-2 py-2">
+                <Loader2 size={14} className="animate-spin" /> 依存関係を確認中…
+              </div>
+            ) : (
+              <div className="mb-4">
+                <div className="text-xs text-gray-500 mb-1">紐付いている現役レコード:</div>
+                <ul className="text-sm space-y-0.5 mb-3">
+                  <li>
+                    ユーザー:{' '}
+                    <span className={deleteDeps.counts.users ? 'font-medium text-red-700' : 'text-gray-500'}>
+                      {deleteDeps.counts.users}
+                    </span>{' '}
+                    名
+                  </li>
+                  <li>
+                    選手:{' '}
+                    <span
+                      className={deleteDeps.counts.players ? 'font-medium text-red-700' : 'text-gray-500'}
+                    >
+                      {deleteDeps.counts.players}
+                    </span>{' '}
+                    名
+                  </li>
+                  <li>
+                    試合:{' '}
+                    <span
+                      className={deleteDeps.counts.matches ? 'font-medium text-red-700' : 'text-gray-500'}
+                    >
+                      {deleteDeps.counts.matches}
+                    </span>{' '}
+                    件
+                  </li>
+                </ul>
+                {(deleteDeps.counts.users ||
+                  deleteDeps.counts.players ||
+                  deleteDeps.counts.matches) > 0 ? (
+                  <div className="text-xs bg-yellow-50 border border-yellow-200 text-yellow-800 p-2 rounded">
+                    依存レコードが存在します。「孤児化して削除」を選ぶと、上記レコードの
+                    team_id を NULL にしてから team を soft-delete します。
+                    後から admin が手動で再割当する想定です。
+                  </div>
+                ) : (
+                  <div className="text-xs bg-green-50 border border-green-200 text-green-800 p-2 rounded">
+                    依存レコードはありません。安全に削除できます。
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  if (deletingId == null) {
+                    setDeleteTarget(null)
+                    setDeleteDeps(null)
+                  }
+                }}
+                disabled={deletingId != null}
+                className="px-3 py-2 border rounded disabled:opacity-50"
+              >
+                キャンセル
+              </button>
+              {deleteDeps &&
+                (deleteDeps.counts.users ||
+                  deleteDeps.counts.players ||
+                  deleteDeps.counts.matches) > 0 && (
+                  <button
+                    onClick={() => confirmDelete(true)}
+                    disabled={deletingId != null}
+                    className="px-3 py-2 bg-orange-600 text-white rounded disabled:opacity-60 inline-flex items-center gap-2"
+                  >
+                    {deletingId != null && <Loader2 size={14} className="animate-spin" />}
+                    孤児化して削除
+                  </button>
+                )}
+              {deleteDeps &&
+                deleteDeps.counts.users === 0 &&
+                deleteDeps.counts.players === 0 &&
+                deleteDeps.counts.matches === 0 && (
+                  <button
+                    onClick={() => confirmDelete(false)}
+                    disabled={deletingId != null}
+                    className="px-3 py-2 bg-red-600 text-white rounded disabled:opacity-60 inline-flex items-center gap-2"
+                  >
+                    {deletingId != null && <Loader2 size={14} className="animate-spin" />}
+                    削除
+                  </button>
+                )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
