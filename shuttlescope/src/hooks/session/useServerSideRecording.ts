@@ -31,16 +31,17 @@ import { apiPost } from '@/api/client'
 import { resolveBaseUrl } from '@/utils/preferredEndpoint'
 
 
-// Round 258 R17 P3 fix (NEW-6): R16 の sweeper は `startsWith('__ss_pending_upload_')`
-// と緩く、将来別目的でこの prefix を使う legitimate な key まで巻き込んで消すリスクが
-// あった。旧 R16 以前 / R15 以前のフォーマットは
-//   __ss_pending_upload_<uploadId>_<chunkIndex>
-//   __ss_pending_upload_<chunkIndex>
-// のいずれか。両方カバーしつつ、予期しない key を消さないように
-// `__ss_pending_upload_` の直後に **英数 + ハイフン + アンダースコアのみ** 1〜128 字
-// を要求する。これで `__ss_pending_upload_user_settings` のような将来の偶発衝突 key
-// は対象外になる。
-const _STALE_UPLOAD_KEY_RE = /^__ss_pending_upload_[A-Za-z0-9_-]{1,128}$/
+// Round 258 R17 P3 fix (NEW-6) → R18 P1 (R18a NEW-9):
+// R17 で正規表現化したが `[A-Za-z0-9_-]{1,128}$` は依然として偶発衝突する key を
+// 巻き込む。例えば `__ss_pending_upload_user_settings` は match してしまう
+// (R17 のコメントは「対象外」と書いていたが実装が一致していなかった盲点)。
+// 修正: 旧フォーマットの **正確な構造** だけを許可:
+//   - `__ss_pending_upload_<digits>`               (R15 以前)
+//   - `__ss_pending_upload_<uploadId-hex>_<digits>` (R16 fd69298 以前)
+// 偶発的に同 prefix を使う将来の legitimate key (例: `_user_settings`) は
+// 両パターンに該当せず、sweep されない。
+const _STALE_UPLOAD_KEY_RE =
+  /^__ss_pending_upload_(?:\d{1,12}|[0-9a-fA-F-]{32,40}_\d{1,12})$/
 
 function _sweepStaleUploadQueue(): void {
   // Round 258 R16 P0 fix (deep audit F-2): 旧バージョンが localStorage に
@@ -177,6 +178,12 @@ export function useServerSideRecording(
 
   // ─── アップロード関数 ───────────────────────────────────────────
   const uploadChunk = useCallback(async (blob: Blob, chunkIndex: number) => {
+    // Round 258 R18 P0 fix (R18a P0-1): uploadId を **関数頭でスナップショット**。
+    // 旧コードは `const uploadId = uploadIdRef.current` を取得した直後 await を挟むが、
+    // その間に stop() が `uploadIdRef.current = null` を実行すると、後続の FormData は
+    // 既に取得済みの古い uploadId を使う。だが retry timer 経由で再呼出された flush
+    // は別の path で `uploadIdRef.current` を再読込してしまうため race の余地が残る。
+    // 完全に閉じるため snapshot を 1 回だけ取り、await 後も snapshot を信頼する。
     const uploadId = uploadIdRef.current
     if (!uploadId) return false
     const base = apiBaseRef.current || ''
@@ -195,6 +202,11 @@ export function useServerSideRecording(
         },
         body: fd,
       })
+      // R18 P0 fix (R18a P0-1): await 後に uploadId が無効化されている場合は
+      // 結果を採用しない。stop() と並走した chunk は破棄。
+      if (uploadIdRef.current !== uploadId) {
+        return false
+      }
       if (!res.ok) {
         // Round 258 R17 P0 fix (NEW-1, regression of R16 F-2):
         // R16 で localStorage を撤去したものの retry 経路ごと消してしまったため
@@ -329,22 +341,25 @@ export function useServerSideRecording(
       setState('stopping')
     }
 
+    // Round 258 R18 P2 fix (R18a P2-4): retry timer は recorder.start() **成功後**
+     // にだけ起動する。旧コードは start 前に setInterval を仕込み、recorder.start()
+     // が throw した場合 timer が orphan して uploadIdRef を見ながら無駄 retry を
+     // 続け、refresh されたトークンで finalize 後の session に書き込む経路まであった。
+    pendingRef.current.clear()
+    droppedChunksRef.current = []
     try {
       recorder.start(timesliceSec * 1000)
-      setState('recording')
-      // Round 258 R17 P0 fix (NEW-1): retry timer 起動
-      if (retryTimerRef.current) {
-        clearInterval(retryTimerRef.current)
-      }
-      pendingRef.current.clear()
-      droppedChunksRef.current = []
-      retryTimerRef.current = setInterval(() => { void flushPending() }, RETRY_INTERVAL_MS)
-      return true
     } catch (err: any) {
       setErrorMsg(`recorder.start 失敗: ${err?.message ?? err}`)
       setState('error')
       return false
     }
+    setState('recording')
+    if (retryTimerRef.current) {
+      clearInterval(retryTimerRef.current)
+    }
+    retryTimerRef.current = setInterval(() => { void flushPending() }, RETRY_INTERVAL_MS)
+    return true
   }, [matchId, timesliceSec, enabled, uploadChunk, flushPending])
 
   // ─── 停止 + finalize ────────────────────────────────────────────

@@ -16,6 +16,7 @@ import os
 from typing import Any, Dict, List
 
 from backend.config import settings
+from backend.utils.path_jail import assert_pipeline_video_source_safe
 
 from . import tasks as _tasks
 from .bootstrap import is_ray_available
@@ -236,6 +237,14 @@ def run_video_analysis_pipeline(video_id: int, video_path: str) -> Dict[str, Any
     クラスタモード (ray) かつ Ray 起動済みなら K10 で分散 TrackNet 推論。
     それ以外は同一プロセスで逐次実行 (フォールバック)。
     """
+    # Round 258 R18 P0 fix (R18a-3 P0-1): cv2.VideoCapture / TrackNet runner が
+    # http/rtsp/smb/file 等を解釈する経路を遮断する。SSRF / 任意ファイル読み防御。
+    try:
+        assert_pipeline_video_source_safe(video_path)
+    except ValueError as exc:
+        logger.error("run_video_analysis_pipeline reject unsafe source: video_id=%s err=%s", video_id, exc)
+        return {"status": "error", "error": f"unsafe video source: {exc}"}
+
     mode = getattr(settings, "ss_cluster_mode", "off")
     use_distributed = (mode == "ray" and _ray_live())
     logger.info(

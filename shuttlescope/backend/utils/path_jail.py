@@ -189,3 +189,57 @@ def assert_match_video_path_allowed(video_local_path: Optional[str]) -> None:
         raise ValueError(
             f"[path_jail] 動画パスが許可ルート外です: {p}"
         )
+
+
+# Round 258 R18 P0 fix (R18a-3 P0-1):
+# `assert_match_video_path_allowed` は http/https/server スキームを「外部 URL」と
+# みなして黙って通していたが、worker / cluster pipeline は実際にはこの文字列を
+# **そのまま cv2.VideoCapture / TrackNet / MediaPipe に渡している**。
+# OpenCV の VideoCapture は file:// / http(s):// / rtsp:// / smb:// / \\UNC\share
+# 等を解釈するため、analyst が Match.video_local_path に
+#   "http://169.254.169.254/latest/meta-data" (AWS メタデータ SSRF)
+#   "rtsp://attacker.example/stream"           (RTSP smuggling / NAT pivot)
+#   "\\\\attacker\\share\\evil.mkv"            (SMB credential relay)
+#   "file:///etc/passwd"                       (file:// 経由の任意ファイル読み)
+# 等を仕込んだ場合、worker プロセスが privileged context でこれらを解決してしまう。
+#
+# 修正: pipeline の入口で **strict 版** を呼び、scheme allowlist を満たさない値を
+# 即拒否する。ローカル localfile:/// と server:// は path_jail を通す。それ以外
+# (http/https/rtsp/file/smb/UNC) は ValueError で reject。
+_PIPELINE_ALLOWED_LOCAL_SCHEMES = ("localfile:///", "server://")
+
+
+def assert_pipeline_video_source_safe(video_local_path: Optional[str]) -> None:
+    """Worker / cluster pipeline 用の strict 版。
+
+    OpenCV / TrackNet 等が解釈する全プロトコルを潜在的に攻撃面とみなし、
+    **ローカルファイルパス** と **明示 allowlist された localfile:/// / server:// **
+    のみ通す。http/https/rtsp/file/ftp/smb 系および UNC \\\\host\\share は拒否。
+    違反時は ValueError を送出する (pipeline は abort)。
+    """
+    if video_local_path is None or video_local_path == "":
+        return  # mock match や既定パスの場合は別経路で正規化される
+    raw = video_local_path.strip()
+    # 明示 allowlist
+    if raw.startswith(_PIPELINE_ALLOWED_LOCAL_SCHEMES):
+        # localfile:/// は通常の path_jail に委譲。server:// は normalize 経由で
+        # UPLOAD_DIR/{filename} に固定されるので path traversal は不可能。
+        assert_match_video_path_allowed(raw)
+        return
+    # それ以外で `://` を含む値はリモート URL → 全 reject
+    if "://" in raw:
+        raise ValueError(
+            f"[pipeline-jail] 動画ソースのスキームが許可されていません: {raw[:80]}"
+        )
+    # UNC \\host\share\... も reject (Windows)
+    if raw.startswith("\\\\") or raw.startswith("//"):
+        raise ValueError(
+            f"[pipeline-jail] UNC / network share パスは許可されていません: {raw[:80]}"
+        )
+    # file: prefix 単体 (file: scheme without //) も念のため reject
+    if raw.lower().startswith("file:"):
+        raise ValueError(
+            f"[pipeline-jail] file: スキームは許可されていません: {raw[:80]}"
+        )
+    # 純粋なローカル path → path_jail に委譲
+    assert_match_video_path_allowed(raw)

