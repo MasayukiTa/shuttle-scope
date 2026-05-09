@@ -92,16 +92,24 @@ def _get_lan_ips() -> list[str]:
 
 
 def _redact_proxy_url(val: str) -> str:
-    """Round 258 R12 P1 fix (NEW-2): proxy URL から basic-auth credentials を剥がす。
+    """Round 258 R12/R13 P1 fix: proxy URL から basic-auth credentials を剥がす。
     `http://corpuser:S3cret@proxy.acme:8080` → `http://***:***@proxy.acme:8080`
+
+    R13 fix (deep audit F-5): IPv6 host (`[::1]:8080`) は urlsplit で hostname=`::1`
+    に decompose されるため、再構築時に再度 `[]` で囲まないと壊れた URL になる。
     """
     try:
         from urllib.parse import urlsplit, urlunsplit
         parts = urlsplit(val)
         if parts.username or parts.password:
-            netloc = parts.hostname or ""
+            host = parts.hostname or ""
+            if ":" in host:
+                # IPv6 — `[]` で囲み直さないと url 構造が壊れる
+                host = f"[{host}]"
             if parts.port:
-                netloc = f"{netloc}:{parts.port}"
+                netloc = f"{host}:{parts.port}"
+            else:
+                netloc = host
             netloc = f"***:***@{netloc}"
             return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
     except Exception:

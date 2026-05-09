@@ -239,14 +239,18 @@ def create_order(body: CreateOrderRequest, request: Request, db: Session = Depen
             cancel_url=cancel_url,
             customer_email=customer_email,
         )
-    except NotImplementedError as exc:
+    except NotImplementedError:
+        # Round 258 R13 P1 fix (deep audit F-4): provider exception を detail に晒すと
+        # Stripe/KOMOJU の request ID, masked API key prefix, internal error code が
+        # 漏れる。logger.exception でサーバ log のみに残し client には opaque message。
         db.rollback()
-        raise HTTPException(status_code=501, detail=f"プロバイダ未実装: {exc}")
-    except Exception as exc:
-        logger.error("[billing] create_session failed: %s", exc)
+        logger.exception("[billing] provider not implemented")
+        raise HTTPException(status_code=501, detail="決済プロバイダが未実装です")
+    except Exception:
+        logger.exception("[billing] create_session failed")
         order.status = "failed"
         db.commit()
-        raise HTTPException(status_code=502, detail=f"決済セッション作成に失敗しました: {exc}")
+        raise HTTPException(status_code=502, detail="決済セッション作成に失敗しました")
 
     order.provider_session_id = session.session_id
     db.commit()
