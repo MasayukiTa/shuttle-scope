@@ -336,6 +336,27 @@ async def lifespan(app: FastAPI):
         logger.debug("dl_archive skipped: %s", exc)
         dl_archive_task = None
 
+    # Round 258 R19 P2 fix (R18a-2 P2-1): revoked_tokens テーブルの定期 GC。
+    # 旧実装は起動時のみ cleanup していたため、長時間稼働すると blacklist が膨らみ
+    # `_is_token_revoked` の DB lookup が線形増。1h 毎に expired entry を削除する。
+    async def _revoked_tokens_gc_loop() -> None:
+        from backend.utils.jwt_utils import cleanup_expired_revoked_tokens as _cleanup_rev
+        while True:
+            try:
+                await asyncio.sleep(3600)
+                deleted = await asyncio.to_thread(_cleanup_rev)
+                if deleted:
+                    logger.info("revoked_tokens periodic GC: %d expired entries removed", deleted)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("revoked_tokens periodic GC error: %s", exc)
+    try:
+        revoked_gc_task = asyncio.create_task(_revoked_tokens_gc_loop())
+    except Exception as exc:
+        logger.debug("revoked_tokens GC scheduling skipped: %s", exc)
+        revoked_gc_task = None
+
     yield
     cleanup_task.cancel()
     try:
@@ -352,6 +373,12 @@ async def lifespan(app: FastAPI):
         dl_archive_task.cancel()
         try:
             await dl_archive_task
+        except asyncio.CancelledError:
+            pass
+    if revoked_gc_task is not None:
+        revoked_gc_task.cancel()
+        try:
+            await revoked_gc_task
         except asyncio.CancelledError:
             pass
 
@@ -2179,10 +2206,19 @@ async def _ws_require_auth(websocket: WebSocket) -> bool:
     # Round 258 R3 P0 fix (WS-3): client.host == "" は loopback として扱わない。
     # ASGI スコープに client が無いケース (proxy バグ等) を「ローカル」とみなして
     # 素通しすると外部からの匿名 WS 接続が成立し得る。
+    # Round 258 R19 P3 fix (R18a-2 P3-1): control_plane._normalize_ip と挙動を揃える。
+    # 旧 set 比較は dual-stack listener の `::ffff:127.0.0.1` (IPv4-mapped IPv6) を
+    # loopback と認識せず、結果的に内部接続が `?token=` 経路にフォールバックして
+    # 別エラーになる cosmetic な不整合があった。
+    try:
+        from backend.utils.control_plane import _normalize_ip as _cp_norm
+        normalized_ip = _cp_norm(client_ip) if client_ip else ""
+    except Exception:
+        normalized_ip = client_ip
     real_loopback = {"127.0.0.1", "::1", "localhost", "testclient"}
     if (
         app_settings.ALLOW_LOOPBACK_NO_AUTH
-        and client_ip in real_loopback
+        and normalized_ip in real_loopback
         and not forwarded
     ):
         return True

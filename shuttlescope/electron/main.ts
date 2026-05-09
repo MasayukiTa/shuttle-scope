@@ -461,8 +461,16 @@ function registerAppProtocol(): void {
       }
 
       const headers: Record<string, string> = {}
+      // Round 258 R19 P2 fix (R18a-1 P2-3): renderer から渡された Range ヘッダを
+      // 無検証で backend に転送していたため、`Range: bytes=0-99999999999999` 等の
+      // 不正な書式で memory amplification を仕掛けることが可能だった。
+      // 形式 `bytes=<digits>-<digits>?` (12 桁以内) のみ許容、それ以外は drop。
       const range = request.headers.get('range')
-      if (range) headers['Range'] = range
+      if (range && /^bytes=\d{1,12}-\d{0,12}$/.test(range)) {
+        headers['Range'] = range
+      } else if (range) {
+        console.warn('[app://video] Range header dropped (invalid format):', range.slice(0, 80))
+      }
       const operatorToken = (process.env.SS_OPERATOR_TOKEN || '').trim()
       if (operatorToken) headers['X-Operator-Token'] = operatorToken
 
@@ -630,6 +638,20 @@ function _isAllowedMirrorVideoSrc(s: unknown): boolean {
 }
 
 ipcMain.on('mirror-broadcast', (event, payload: unknown) => {
+  // Round 258 R19 P2 fix (R18a-1 P2-1): relaunch-app と同じ sender-trust gate。
+  // 旧コードは sender frame を無検証で broadcast していたため、将来 webview /
+  // sub-frame / 別 BrowserWindow を導入したときに、信頼境界外の sender が
+  // 任意 mirror-message を全 window に注入できる経路が開いていた。
+  // mainWindow の top-level frame からの mirror-broadcast だけ受け付ける。
+  const senderFrame = event.senderFrame
+  if (senderFrame?.parent != null) {
+    console.warn('[mirror-broadcast] denied: sender is a sub-frame')
+    return
+  }
+  if (mainWindow?.isDestroyed() === false && event.sender.id !== mainWindow.webContents.id) {
+    console.warn('[mirror-broadcast] denied: sender is not main window webContents')
+    return
+  }
   if (payload === null || typeof payload !== 'object') return
   const p = payload as Record<string, unknown>
   const t = typeof p.type === 'string' ? p.type : ''

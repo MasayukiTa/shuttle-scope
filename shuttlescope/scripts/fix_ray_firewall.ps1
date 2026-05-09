@@ -28,9 +28,19 @@ $RayRemote = if ($env:SS_RAY_FIREWALL_REMOTE) {
     "169.254.0.0/16"
 }
 
-if ($RayRemote -eq "Any" -or $RayRemote -eq "0.0.0.0/0") {
-    Write-Warning "[Ray firewall] RemoteAddress=$RayRemote はリンクローカル外への公開です。Ray は無認証で RCE 可能です。"
-    Write-Warning "[Ray firewall] WireGuard / Cloudflare Access / SSH tunnel の背後でのみ運用してください。"
+# Round 258 R19 P0 fix (R18a-3 P0-2): 旧コードは Write-Warning で警告のみ、
+# そのまま `Any` / `0.0.0.0/0` で New-NetFirewallRule を実行していた。
+# Ray GCS / dashboard / worker は **無認証で cloudpickle RCE 可能** な経路で、
+# WireGuard / SSH tunnel / Cloudflare Access の背後配置を**実装で強制**する必要がある。
+# 修正: `Any` / `0.0.0.0/0` / `::/0` / `*` は throw し、`SS_RAY_FIREWALL_FORCE_PUBLIC=1`
+# を別途 set した時のみ警告継続。この env はコード上に残るのでレビュー時に把握できる。
+if ($RayRemote -eq "Any" -or $RayRemote -eq "0.0.0.0/0" -or $RayRemote -eq "::/0" -or $RayRemote -eq "*") {
+    if ($env:SS_RAY_FIREWALL_FORCE_PUBLIC -eq "1") {
+        Write-Warning "[Ray firewall] RemoteAddress=$RayRemote (FORCE_PUBLIC=1)"
+        Write-Warning "[Ray firewall] Ray は無認証で RCE 可能です。WireGuard / Cloudflare Access / SSH tunnel の背後でのみ運用してください。"
+    } else {
+        throw "[Ray firewall] RemoteAddress=$RayRemote は public 公開を意味します。Ray は無認証で RCE 可能です。本当に必要なら SS_RAY_FIREWALL_FORCE_PUBLIC=1 を明示的に set してから再実行してください。"
+    }
 }
 
 $rules = @(

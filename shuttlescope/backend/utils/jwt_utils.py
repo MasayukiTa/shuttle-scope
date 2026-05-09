@@ -305,6 +305,13 @@ def verify_token(token: str) -> Optional[dict]:
                     return None
             except Exception:
                 pass
+            # Round 258 R19 P2 fix (R18a-2 P2-3): legacy grace 経路では get_auth() の
+            # `token_use=="mfa_pending"` ガードが空振りする。既発行の legacy token に
+            # mfa_pending role が設定されている可能性は低いが、念のため role 単独で
+            # `mfa_pending` を持つ legacy token は明示的に reject。
+            if payload.get("role") == "mfa_pending":
+                logger.warning("JWT rejected: legacy token with mfa_pending role (no token_use)")
+                return None
         jti = payload.get("jti")
         if jti and _is_token_revoked(jti):
             logger.debug("JWT rejected: token has been revoked jti=%s", jti)

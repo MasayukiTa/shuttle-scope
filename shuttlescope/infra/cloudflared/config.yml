@@ -26,19 +26,31 @@ ingress:
     service: http://localhost:8765
     originRequest:
       connectTimeout: 30s
-      noTLSVerify: true
+      # Round 258 R19 P1 fix (R18a-3 P1-3): 旧 config は noTLSVerify: true を
+      # 全 ingress に付けていた。origin が `http://localhost:8765` の間は
+      # フラグ自体は no-op だが、運用者が origin を `https://...` にコピー&
+      # 改変した瞬間に MITM 受容の地雷化する。
+      # 削除して、もし origin を https に変更する場合は明示的に追記する形にする。
 
   - hostname: www.shuttle-scope.com
     service: http://localhost:8765
     originRequest:
       connectTimeout: 30s
-      noTLSVerify: true
+      # Round 258 R19 P1 fix (R18a-3 P1-3): 旧 config は noTLSVerify: true を
+      # 全 ingress に付けていた。origin が `http://localhost:8765` の間は
+      # フラグ自体は no-op だが、運用者が origin を `https://...` にコピー&
+      # 改変した瞬間に MITM 受容の地雷化する。
+      # 削除して、もし origin を https に変更する場合は明示的に追記する形にする。
 
   - hostname: shuttle-scope.com
     service: http://localhost:8765
     originRequest:
       connectTimeout: 30s
-      noTLSVerify: true
+      # Round 258 R19 P1 fix (R18a-3 P1-3): 旧 config は noTLSVerify: true を
+      # 全 ingress に付けていた。origin が `http://localhost:8765` の間は
+      # フラグ自体は no-op だが、運用者が origin を `https://...` にコピー&
+      # 改変した瞬間に MITM 受容の地雷化する。
+      # 削除して、もし origin を https に変更する場合は明示的に追記する形にする。
 
   # NOTE: SSH ingress は config.ssh.example.yml に分離 (Round 258 R7 P1)
   # Cloudflare Access policy の保護下でのみ追加すること。
