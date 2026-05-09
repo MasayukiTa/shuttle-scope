@@ -17,7 +17,11 @@ CONDITION_FIELD_TIERS: dict[str, int] = {
     "measured_at": 0,
     "condition_type": 0,
     "match_id": 0,
-    # Tier 2 — パフォーマンス指標
+    # Tier 1 — 派生サマリ（運営/コーチ/アナリストに開示可・選手本人は除外）
+    # 同意書 第5条: 妥当性フラグは admin/coach/analyst=○、本人=×
+    # 注: 選手本人除外は呼び出し側で別途実装する必要あり（tier 単独では表現不可）
+    "validity_flag": 1,
+    # Tier 2 — パフォーマンス指標（生スコア。同意書では本人と admin のみ）
     "hooper_sleep": 2,
     "hooper_soreness": 2,
     "hooper_stress": 2,
@@ -39,7 +43,6 @@ CONDITION_FIELD_TIERS: dict[str, int] = {
     "z_score": 2,
     "sleep_hours": 2,
     "validity_score": 2,
-    "validity_flag": 2,
     "validity_flags_json": 2,
     # Tier 3 — 身体組成
     "weight_kg": 3,
@@ -61,10 +64,20 @@ CONDITION_FIELD_TIERS: dict[str, int] = {
 }
 
 # ロール → 許可最大ティア
+# 同意書 第5条 アライメント:
+# - admin (開発者): 全件 ○ → Tier 4
+# - analyst: コンディション生スコア ×, 体組成 ×, 医療自由記述 × → Tier 1 (識別子+派生のみ)
+# - coach:   コンディション生スコア ×, 体組成 ×, 医療自由記述 × → Tier 1
+# - player:  自身のデータは全 Tier 可（owner check は呼び出し側で行う）
+#            他選手の生スコア/体組成/医療記述は不可。デフォルト cap は Tier 2 に置き、
+#            owner であれば routers が個別に Tier 4 まで開示する設計。
+# Round 258: analyst=4 / coach=3 から大幅縮小（医療自由記述・体組成の漏洩を遮断）。
+# 既存 UI で coach/analyst が hooper/F-スコア raw を期待していた箇所は壊れる可能性があるため
+# docs/validation/ 配下の MD で残存差分を P1 として追跡する。
 ROLE_MAX_TIER: dict[str, int] = {
     "admin": 4,
-    "analyst": 4,
-    "coach": 3,
+    "analyst": 1,
+    "coach": 1,
     "player": 2,
 }
 
