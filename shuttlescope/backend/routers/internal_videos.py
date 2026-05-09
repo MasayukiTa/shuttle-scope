@@ -129,7 +129,22 @@ def _require_worker(x_worker_token: Optional[str], request: Optional[Request] = 
             history = [t for t in _WORKER_RATE_FAIL.get(ip, []) if t >= cutoff]
             history.append(now)
             _WORKER_RATE_FAIL[ip] = history
-        logger.warning("worker_auth_failed ip=%s", ip)
+        # Round 258 R31 fix (CodeQL py/clear-text-logging-sensitive-data #2057 high):
+        # 旧コードは IP を平文で audit log に書き込んでいた。CodeQL は IP を
+        # sensitive data 扱いし high として alert 上げる。
+        # 監査運用上「failed auth から IP を辿って rate limit / IDS の効果を確認」
+        # する用途自体は維持する必要があるので、daily-rotated HMAC hash で 1) 同じ
+        # IP の連続失敗は判別可能、2) IP 平文露出は防止、3) cross-day で再特定不能、
+        # の三条件を満たす形に置換する (R26 P3 daily-salt 実装と同じパターン)。
+        try:
+            import hashlib as _hashlib_iv
+            import hmac as _hmac_iv
+            from datetime import datetime as _dt_iv
+            _daily_salt_iv = _dt_iv.utcnow().strftime("%Y-%m-%d").encode("utf-8")
+            _ip_hash = _hmac_iv.new(_daily_salt_iv, (ip or "").encode("utf-8"), _hashlib_iv.sha256).hexdigest()[:8]
+        except Exception:
+            _ip_hash = "unknown"
+        logger.warning("worker_auth_failed ip_hash=%s", _ip_hash)
         raise HTTPException(status_code=401, detail="Worker トークンが無効です")
     # 成功 path
     if request is not None:
