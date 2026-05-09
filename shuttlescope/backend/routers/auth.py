@@ -2074,6 +2074,153 @@ def patch_team(team_id: int, body: TeamPatch, request: Request, db: Session = De
     return {"success": True, "data": _team_to_dict(team, for_admin=ctx.is_admin)}
 
 
+# ─── チーム削除 (Round 258 #16: admin による soft-delete) ──────────────────
+
+def _team_dep_counts(db: Session, team_id: int) -> dict[str, int]:
+    """チーム削除前の依存カウント。
+
+    soft-deleted (deleted_at IS NOT NULL) の行は除外し、現役ぶら下がりだけを数える。
+    """
+    from backend.db.models import Match, User
+    counts: dict[str, int] = {}
+    counts["users"] = (
+        db.query(User).filter(User.team_id == team_id).count()
+    )
+    counts["players"] = (
+        db.query(Player).filter(
+            Player.team_id == team_id,
+            Player.deleted_at.is_(None),
+        ).count()
+    )
+    counts["matches"] = (
+        db.query(Match).filter(
+            (
+                (Match.owner_team_id == team_id)
+                | (Match.home_team_id == team_id)
+                | (Match.away_team_id == team_id)
+            ),
+            Match.deleted_at.is_(None),
+        ).count()
+    )
+    return counts
+
+
+@router.get("/teams/{team_id}/dependencies")
+def get_team_dependencies(team_id: int, request: Request, db: Session = Depends(get_db)):
+    """admin のみ。チームに紐付く現役レコード数を返す。削除確認 UI 用。"""
+    _require_admin(request)
+    team = db.get(Team, team_id)
+    if not team or team.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="team not found")
+    return {
+        "success": True,
+        "data": {
+            "team_id": team.id,
+            "team_name": team.name,
+            "counts": _team_dep_counts(db, team_id),
+        },
+    }
+
+
+@router.delete("/teams/{team_id}")
+def delete_team(
+    team_id: int,
+    request: Request,
+    force: bool = False,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。チームを soft-delete する。
+
+    依存解決:
+    - force=false (既定): 現役 user / player / match が紐付いている場合は 409 で
+      返却。レスポンスに依存カウントを含めるので UI で確認後 force=true で再要求。
+    - force=true: 紐付いている User.team_id / Player.team_id /
+      Match.owner_team_id / home_team_id / away_team_id を NULL にして孤児化させ
+      (orphan)、そのうえで Team.deleted_at を設定する。
+      孤児化された User/Player は admin が手動で再割当する想定。
+
+    注意:
+    - 物理削除はしない (audit chain / 過去ラリー参照保全のため)。
+    - Round 233 で確認済みの DPAPI / FK 設計と矛盾なし。
+    """
+    ctx = _require_admin(request)
+    team = db.get(Team, team_id)
+    if not team or team.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="team not found")
+
+    counts = _team_dep_counts(db, team_id)
+    if not force and (counts["users"] or counts["players"] or counts["matches"]):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "team_has_dependencies",
+                "counts": counts,
+                "hint": "force=true を指定すると依存レコードを孤児化 (team_id=NULL) してから削除します",
+            },
+        )
+
+    # force 時の孤児化
+    orphaned = {"users": 0, "players": 0, "matches": 0}
+    if force:
+        from backend.db.models import Match, User
+        # User.team_id NULL 化 (User.team_name 文字列は履歴のため残す)
+        for u in db.query(User).filter(User.team_id == team_id).all():
+            u.team_id = None
+            orphaned["users"] += 1
+        for p in (
+            db.query(Player)
+            .filter(Player.team_id == team_id, Player.deleted_at.is_(None))
+            .all()
+        ):
+            p.team_id = None
+            orphaned["players"] += 1
+        for m in (
+            db.query(Match)
+            .filter(
+                (
+                    (Match.owner_team_id == team_id)
+                    | (Match.home_team_id == team_id)
+                    | (Match.away_team_id == team_id)
+                ),
+                Match.deleted_at.is_(None),
+            )
+            .all()
+        ):
+            if m.owner_team_id == team_id:
+                m.owner_team_id = None
+            if m.home_team_id == team_id:
+                m.home_team_id = None
+            if m.away_team_id == team_id:
+                m.away_team_id = None
+            orphaned["matches"] += 1
+
+    team.deleted_at = datetime.utcnow()
+    db.commit()
+
+    # 監査ログ (誰がどの team を force/soft delete したか forensic 用)
+    log_access(
+        db,
+        "team_deleted",
+        details={
+            "team_id": team_id,
+            "team_name": team.name,
+            "force": force,
+            "orphaned": orphaned,
+            "actor_user_id": ctx.user_id,
+        },
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "team_id": team_id,
+            "deleted_at": team.deleted_at.isoformat() + "Z" if team.deleted_at else None,
+            "force": force,
+            "orphaned": orphaned,
+        },
+    }
+
+
 # ─── 同意取得 (GDPR Article 7 / APPI 第18条) ───────────────────────────────
 
 # 現行 PRIVACY.md / TERMS_OF_SERVICE.md / DATA_CONTRIBUTION_TERMS.md の version。

@@ -381,6 +381,39 @@ export function patchTeam(
   return apiPatch(`/auth/teams/${teamId}`, body)
 }
 
+export interface TeamDependencies {
+  team_id: number
+  team_name: string
+  counts: { users: number; players: number; matches: number }
+}
+
+export function getTeamDependencies(
+  teamId: number,
+): Promise<{ success: boolean; data: TeamDependencies }> {
+  return apiGet(`/auth/teams/${teamId}/dependencies`)
+}
+
+/**
+ * チーム削除 (admin のみ).
+ * - force=false (既定): 依存レコード (users/players/matches) があれば 409 で拒否
+ *   ({ counts } を含む detail を返却)
+ * - force=true: 紐付く team_id を NULL にして孤児化したうえで soft-delete
+ */
+export function deleteTeam(
+  teamId: number,
+  force: boolean = false,
+): Promise<{
+  success: boolean
+  data: {
+    team_id: number
+    deleted_at: string | null
+    force: boolean
+    orphaned: { users: number; players: number; matches: number }
+  }
+}> {
+  return apiDelete(`/auth/teams/${teamId}${force ? '?force=true' : ''}`)
+}
+
 export interface PublicInquiryRow {
   id: number
   name: string
