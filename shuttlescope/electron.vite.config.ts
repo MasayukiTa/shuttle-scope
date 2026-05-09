@@ -22,6 +22,9 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'electron/preload.ts'),
+          // Round 258 R33 fix (R6 deferred P1): recorder hidden-window 用 preload を
+          // 別 entry で出力する。main.ts は <preload>/recorder-preload.cjs を参照する。
+          'recorder-preload': resolve(__dirname, 'electron/recorder-preload.ts'),
         },
         output: {
           // package.json "type":"module" だと .mjs になり Electron sandbox と非互換のため CJS 強制
