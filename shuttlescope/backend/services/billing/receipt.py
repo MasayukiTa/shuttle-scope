@@ -105,19 +105,25 @@ def generate_receipt_pdf(
     body = ParagraphStyle("body", parent=styles["Normal"], fontName=font_name, fontSize=10, leading=14)
     small = ParagraphStyle("small", parent=styles["Normal"], fontName=font_name, fontSize=8, leading=11, textColor=colors.grey)
 
+    # Round 258 R8/R10 P1 fix (deep audit P1-1 + regression): reportlab Paragraph
+    # mini-XML 注入対策。customer_display / order_public_id / invoice_no は admin
+    # 設定経由で attacker influence 可能 (公開 inquiry や billing 管理画面経由)。
+    # title も同様に Paragraph に渡るので escape する。
+    from xml.sax.saxutils import escape as _xml_escape_rcpt
+    _safe_title = _xml_escape_rcpt(str(title or ""))
+    _safe_order_id = _xml_escape_rcpt(str(order_public_id or ""))
+    _safe_invoice = _xml_escape_rcpt(str(invoice_no or ""))
+    _safe_customer = _xml_escape_rcpt(str(customer_display or ""))
+
     story = []
-    story.append(Paragraph(title, h_style))
+    story.append(Paragraph(_safe_title, h_style))
     story.append(Spacer(1, 6 * mm))
     story.append(Paragraph(f"発行日: {issued_at.strftime('%Y年%m月%d日')}", body))
-    story.append(Paragraph(f"領収書番号: {order_public_id}", body))
+    story.append(Paragraph(f"領収書番号: {_safe_order_id}", body))
     if invoice_no:
-        story.append(Paragraph(f"適格請求書発行事業者登録番号: {invoice_no}", body))
+        story.append(Paragraph(f"適格請求書発行事業者登録番号: {_safe_invoice}", body))
     story.append(Spacer(1, 8 * mm))
 
-    # Round 258 R8 P1 fix (deep audit P1-1): reportlab Paragraph mini-XML 注入対策。
-    # customer_display は target_user.display_name or .username で、ユーザ入力。
-    from xml.sax.saxutils import escape as _xml_escape_rcpt
-    _safe_customer = _xml_escape_rcpt(str(customer_display or ""))
     story.append(Paragraph(f"<b>{_safe_customer}</b> 様", body))
     story.append(Spacer(1, 4 * mm))
     story.append(Paragraph("下記のとおりお支払いを受領いたしました。", body))

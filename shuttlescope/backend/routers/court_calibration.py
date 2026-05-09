@@ -309,8 +309,24 @@ def save_court_calibration(
 
 
 @router.get("/matches/{match_id}/court_calibration")
-def get_court_calibration(match_id: int, db: Session = Depends(get_db)):
-    """コートキャリブレーション取得。未設定の場合は 404。"""
+def get_court_calibration(match_id: int, request: Request, db: Session = Depends(get_db)):
+    """コートキャリブレーション取得。未設定の場合は 404。
+
+    Round 258 R10 P0 fix (regression audit): 旧コードは Request を取らず middleware
+    任せだった。R8 で POST 側に team scope check を入れたが GET 側の sibling は
+    未対応で、player を含む任意ユーザが他チーム match のホモグラフィ・6点座標・
+    ROI ポリゴンを読めていた (cross-team intelligence leak)。POST と同じ scope を
+    適用する。
+    """
+    from backend.utils.auth import get_auth as _ga_cc_get, user_can_access_match as _uac_cc_get
+    _ctx = _ga_cc_get(request)
+    if _ctx.role is None:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    _m = db.get(Match, match_id)
+    if _m is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if not _ctx.is_admin and not _uac_cc_get(_ctx, _m):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
     data = load_calibration_from_db(match_id, db)
     if data is None:
         raise HTTPException(status_code=404, detail="キャリブレーションが設定されていません")

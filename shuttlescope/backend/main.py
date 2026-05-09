@@ -1304,13 +1304,16 @@ class AnalysisCacheMiddleware(BaseHTTPMiddleware):
             try:
                 payload = _json_cache.loads(body)
                 # DB 永続化用メタデータ: JWT検証済みpidを優先、なければクエリパラメータ
+                # Round 258 R10 P1 fix (regression audit): R9 で _extract_player_id を
+                # parse_qs ベースに直したが、ここの write 経路は raw regex のままだった。
+                # `?other=player_id=999&player_id=1` で 999 を pid_val に書き、後の
+                # bump_players([1]) で invalidate されない stale entry が pin される問題が
+                # ここでも発生していた。`_extract_player_id` で統一。
                 pid: int | None
                 if jwt_pid.isdigit():
                     pid = int(jwt_pid)
                 else:
-                    import re as _re
-                    m = _re.search(r"player_id=(\d+)", query)
-                    pid = int(m.group(1)) if m else None
+                    pid = response_cache._extract_player_id({"q": query})
                 analysis_type = path.replace("/api/analysis/", "", 1).split("/")[0] or "unknown"
                 try:
                     filters_json = _json_cache.dumps(params)
@@ -1384,18 +1387,22 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
-        # Round 258 R8 P1 fix (deep audit F4): OPTIONS preflight bypass による
-        # endpoint 列挙を遮断。CORS preflight を装った probe (200 / 405 / 404 の
-        # 差分で route 存在を学習) で /api/auth/users/{id} 等の admin-only path を
-        # 列挙されていた。本物の preflight は `access-control-request-method` header
-        # を必ず付けるため、それを満たす場合のみ素通す。
+        # Round 258 R8/R10 P1 fix (deep audit F4 + regression): OPTIONS preflight
+        # bypass による endpoint 列挙を遮断する。
+        # R8 で 400 を返したが、k8s liveness probe / 監視ツールが bare OPTIONS
+        # を打つケースに preflight header の有無で破綻していたため、health/public
+        # path のみは bare OPTIONS を許容、それ以外は 405 を返す (404 enumeration
+        # よりも明確で probe ツールが「method 未対応」と素直に解釈する)。
         if request.method == "OPTIONS":
             if request.headers.get("access-control-request-method"):
                 return await call_next(request)
-            # 偽 OPTIONS は authentication 経路に乗せる
+            # health / public は bare OPTIONS を許容
+            _p = request.url.path
+            if _p == "/api/health" or _p.startswith("/api/public/") or _p == "/api/version":
+                return await call_next(request)
             return StarletteResponse(
-                '{"detail":"OPTIONS preflight requires Access-Control-Request-Method"}',
-                status_code=400,
+                '{"detail":"Method Not Allowed (use GET/POST etc.; CORS preflight requires Access-Control-Request-Method)"}',
+                status_code=405,
                 media_type="application/json",
             )
         if _GLOBAL_AUTH_EXEMPT.match(request.url.path):

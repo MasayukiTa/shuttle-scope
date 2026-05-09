@@ -69,7 +69,11 @@ def _gc_expired() -> None:
 def _db_get(key: str) -> Optional[IdempotencyRecord]:
     """AnalysisCache から idempotency record を読む。
 
-    payload に JSON として {user_id, endpoint, status_code, response, created_at} を保存する。
+    Round 258 R10 P0 fix (regression audit): R9 で AnalysisCache.key / .payload と
+    書いていたが実際の column 名は cache_key / result_json で、毎回 AttributeError
+    で warning に落ちて in-memory-only に degrade していた (V6 fix が完全 noop)。
+    正しい column 名 + NOT NULL 制約 (player_id / analysis_type / filters_json /
+    expires_at) を満たす形で書き直す。
     """
     try:
         from datetime import datetime
@@ -78,13 +82,12 @@ def _db_get(key: str) -> Optional[IdempotencyRecord]:
         with SessionLocal() as db:
             rec = (
                 db.query(AnalysisCache)
-                .filter(AnalysisCache.key == _IDEM_KEY_PREFIX + key)
+                .filter(AnalysisCache.cache_key == _IDEM_KEY_PREFIX + key)
                 .first()
             )
             if rec is None:
                 return None
             if rec.expires_at and rec.expires_at < datetime.utcnow():
-                # expired
                 try:
                     db.delete(rec)
                     db.commit()
@@ -92,7 +95,7 @@ def _db_get(key: str) -> Optional[IdempotencyRecord]:
                     pass
                 return None
             try:
-                meta = json.loads(rec.payload or "{}")
+                meta = json.loads(rec.result_json or "{}")
             except Exception:
                 return None
             return IdempotencyRecord(
@@ -120,20 +123,33 @@ def _db_store(rec: IdempotencyRecord) -> None:
             "status_code": rec.status_code,
             "created_at": rec.created_at,
         }
+        meta_json = json.dumps(meta, ensure_ascii=False)
+        # Round 258 R10 P0 fix: cache_key / result_json + NOT NULL 列 (player_id /
+        # analysis_type / filters_json) もすべて埋める。idempotency は player に
+        # 紐付かないので player_id=0 (sentinel) を入れて区別。
+        now = datetime.utcnow()
+        expires = now + timedelta(seconds=_TTL_SECONDS)
         with SessionLocal() as db:
             existing = (
                 db.query(AnalysisCache)
-                .filter(AnalysisCache.key == _IDEM_KEY_PREFIX + rec.key)
+                .filter(AnalysisCache.cache_key == _IDEM_KEY_PREFIX + rec.key)
                 .first()
             )
             if existing is not None:
-                existing.payload = json.dumps(meta, ensure_ascii=False)
-                existing.expires_at = datetime.utcnow() + timedelta(seconds=_TTL_SECONDS)
+                existing.result_json = meta_json
+                existing.expires_at = expires
+                existing.computed_at = now
             else:
                 db.add(AnalysisCache(
-                    key=_IDEM_KEY_PREFIX + rec.key,
-                    payload=json.dumps(meta, ensure_ascii=False),
-                    expires_at=datetime.utcnow() + timedelta(seconds=_TTL_SECONDS),
+                    cache_key=_IDEM_KEY_PREFIX + rec.key,
+                    player_id=0,  # idempotency 用 sentinel
+                    analysis_type="idempotency",
+                    filters_json="{}",
+                    result_json=meta_json,
+                    sample_size=0,
+                    confidence_level=0.0,
+                    computed_at=now,
+                    expires_at=expires,
                 ))
             db.commit()
     except Exception as exc:
