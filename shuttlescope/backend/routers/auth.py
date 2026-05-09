@@ -716,6 +716,13 @@ def mfa_setup(request: Request, db: Session = Depends(get_db)):
             status_code=409,
             detail="MFA は既に有効です。再設定する場合は /mfa/disable で無効化後にセットアップしてください。",
         )
+    # Round 258 R4 F7 fix: 既に setup 中 (totp_secret 設定済 / totp_enabled=False) の場合
+    # 攻撃者が再生成して正規ユーザの QR スキャンを差し替え、自分の secret を仕込むのを防ぐ。
+    # 同 secret を返却して setup 進行を冪等化する (ユーザは前回の QR を引き続き使える)。
+    existing_secret = getattr(user, "totp_secret", None)
+    if existing_secret:
+        return MfaSetupResponse(secret=existing_secret,
+                                otpauth_uri=_totp_uri(existing_secret, user.username))
     secret = _totp_generate_secret()
     user.totp_secret = secret
     db.commit()
