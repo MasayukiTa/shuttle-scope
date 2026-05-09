@@ -110,13 +110,37 @@ def _serialize(t: ConditionTag) -> dict:
     }
 
 
+# Round 258 R28 P2 fix (R28 P2-1): condition_tags の team scope + role gating。
+# 旧コードは `_require_auth` だけで通し、player を含む全認証 user に対し他チームの
+# player_id 指定で create/update/delete を許していた (ConditionTag に team_id 列が
+# 無いので scoping が完全欠如)。修正方針:
+#   - GET / POST / PUT / DELETE すべてで対象 Player の team_id を解決
+#   - admin / 同一 team / public_pool 以外は 404
+#   - player ロールは write 不可 (analyst / coach / admin のみ create/update/delete)
+def _can_access_player_for_condition(ctx: AuthCtx, player: Player) -> bool:
+    if getattr(ctx, "is_admin", False):
+        return True
+    if getattr(player, "is_public_pool", False):
+        return True
+    p_team = getattr(player, "team_id", None)
+    return p_team is not None and getattr(ctx, "team_id", None) == p_team
+
+
+def _can_write_condition(ctx: AuthCtx) -> bool:
+    role = getattr(ctx, "role", None)
+    return role in ("admin", "analyst", "coach")
+
+
 @router.get("")
 def list_condition_tags(
     player_id: int = Query(..., ge=1, le=2_147_483_647),
     db: Session = Depends(get_db),
     _auth: AuthCtx = Depends(_require_auth),
 ):
-    if not db.get(Player, player_id):
+    player = db.get(Player, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="選手が見つかりません")
+    if not _can_access_player_for_condition(_auth, player):
         raise HTTPException(status_code=404, detail="選手が見つかりません")
     rows = (
         db.query(ConditionTag)
@@ -134,8 +158,13 @@ def create_condition_tag(
     db: Session = Depends(get_db),
     _auth: AuthCtx = Depends(_require_auth),
 ):
-    if not db.get(Player, body.player_id):
+    player = db.get(Player, body.player_id)
+    if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    if not _can_access_player_for_condition(_auth, player):
+        raise HTTPException(status_code=404, detail="選手が見つかりません")
+    if not _can_write_condition(_auth):
+        raise HTTPException(status_code=403, detail="condition tag の編集権限がありません")
     if body.end_date is not None and body.end_date < body.start_date:
         raise HTTPException(status_code=422, detail="end_date は start_date 以降である必要があります")
     tag = ConditionTag(
@@ -162,6 +191,11 @@ def update_condition_tag(
     tag = db.get(ConditionTag, tag_id)
     if not tag:
         raise HTTPException(status_code=404, detail="タグが見つかりません")
+    player = db.get(Player, tag.player_id)
+    if not player or not _can_access_player_for_condition(_auth, player):
+        raise HTTPException(status_code=404, detail="タグが見つかりません")
+    if not _can_write_condition(_auth):
+        raise HTTPException(status_code=403, detail="condition tag の編集権限がありません")
     data = body.model_dump(exclude_unset=True)
     from backend.utils.db_update import apply_update
     apply_update(tag, data)
@@ -182,6 +216,11 @@ def delete_condition_tag(
     tag = db.get(ConditionTag, tag_id)
     if not tag:
         raise HTTPException(status_code=404, detail="タグが見つかりません")
+    player = db.get(Player, tag.player_id)
+    if not player or not _can_access_player_for_condition(_auth, player):
+        raise HTTPException(status_code=404, detail="タグが見つかりません")
+    if not _can_write_condition(_auth):
+        raise HTTPException(status_code=403, detail="condition tag の編集権限がありません")
     db.delete(tag)
     db.commit()
     return {"success": True, "data": {"id": tag_id}}
