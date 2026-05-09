@@ -16,6 +16,26 @@ Read it together with:
 
 ## 2026-05-09
 
+### P6-P10 Thin-Areas Sweep (Round 232-236)
+
+One additional backend fix and a cross-cutting operational review.
+
+- `POST /api/auth/login` with a `username` or `identifier` containing a NUL byte (or any other C0 control character) returned `500` instead of `422`. PostgreSQL's text column rejects NUL bytes via `psycopg.ValueError`, which surfaced as the generic 500 "internal error" response. `LoginRequest` now applies a `@field_validator(mode="after")` that rejects any character in `0x00-0x1F + 0x7F` with 422 before the value reaches the SQL query.
+
+### Operational observations recorded for separate handling
+
+These items came out of the Round 232-236 sweep across Windows ops, audit log integrity, ML model supply chain, backup/restore, and browser cache. They are not deployed code changes — they require migration coordination, infrastructure setup, or product-policy decisions, and are tracked in `private_docs/2026-05-09_user_must_verify_checklist.md`.
+
+- Audit-log HMAC chain integrity is broken at the first row whose `user_id` was nulled by a previous user deletion. `GET /api/auth/audit-logs/verify` reports `ok: false`. Two fix paths exist: (a) Alembic migration to drop the FK on `access_logs.user_id` so the chain canonical bytes are never modified, or (b) make `verify_chain` anonymize-aware. Either is migration-coordinated.
+- Production backup gap: `POST /api/sync/backup` returns 501 because the existing implementation is SQLite-only, and there is no Windows scheduled task or filesystem evidence of an external `pg_dump` / WAL archive. PostgreSQL data is not currently protected against volume failure.
+- File ACL on `shuttlescope/.env.development` and `cloudflare-shuttle-scope/config.yml` includes the local `MiniTakeuchi\CodexSandboxUsers` group (members: `CodexSandboxOnline`, `CodexSandboxOffline`). If those accounts are reachable over the network, `SECRET_KEY` / `SS_OPERATOR_TOKEN` / `DATABASE_URL` are exposed to them.
+- The `Cloudflared` service runs as `LocalSystem` but its binary lives in `C:\Users\kiyus\AppData\Local\Microsoft\WinGet\...\cloudflared.exe`, a path writable by the `kiyus` account. Compromising `kiyus` would allow a binary swap that the next service start runs with SYSTEM privileges.
+- `ssh.shuttle-scope.com` routes to `localhost:22` over Cloudflare Tunnel. Cloudflare Access policy on that hostname is not verifiable from inside the box; needs a dashboard check.
+- `backend_daemon.ps1` exits with the Python child's exit code; the scheduled task does not auto-restart on failure (RestartCount: 0). Single Python crashes leave the backend down until the next boot/login trigger.
+- `backend/models/` (`*.onnx`, `*.engine`) has no integrity manifest. Local model swap by an attacker with `kiyus` privileges is undetected.
+- `yt-dlp` is two months behind release; several Python deps (sqlalchemy, alembic, httpx, requests, uvicorn) are also slightly behind. `pip-audit` integration recommended.
+- `localStorage` keys for match-specific UI state (`court-calib-{matchId}`, `yolo-last-roi-{matchId}`, `shuttlescope.viewpoint.{matchId}`) are not user-scoped; on a shared PC, the previous user's state survives a logout. SaaS / per-browser deployment is unaffected.
+
 ### Cascade & FK Cleanup (Round 227-231 Local Boundary / Artifact Lifecycle)
 
 Three additional backend fixes shipped after the Round 200-226 batch.
