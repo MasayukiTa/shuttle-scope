@@ -173,16 +173,20 @@ def generate_receipt_pdf(
     story.append(Spacer(1, 12 * mm))
 
     # 発行者情報
+    # Round 258 R10/R11 P0 fix: 旧 R10 fix は customer/order_id/invoice/title のみ escape していたが、
+    # 発行者ブロック (company/representative/address/phone/email/invoice_no) の Paragraph も
+    # admin 設定で attacker influence 可能な値を unescaped で渡していた。9 箇所すべて escape する。
+    _e = _xml_escape_rcpt
     story.append(Paragraph("<b>発行者</b>", body))
-    issuer_lines = [company]
+    issuer_lines = [_e(str(company or ""))]
     if representative:
-        issuer_lines.append(f"代表: {representative}")
-    issuer_lines.append(address)
+        issuer_lines.append(f"代表: {_e(str(representative))}")
+    issuer_lines.append(_e(str(address or "")))
     if phone:
-        issuer_lines.append(f"TEL: {phone}")
-    issuer_lines.append(f"Email: {email}")
+        issuer_lines.append(f"TEL: {_e(str(phone))}")
+    issuer_lines.append(f"Email: {_e(str(email or ''))}")
     if invoice_no:
-        issuer_lines.append(f"登録番号: {invoice_no}")
+        issuer_lines.append(f"登録番号: {_safe_invoice}")
     for line in issuer_lines:
         story.append(Paragraph(line, body))
 

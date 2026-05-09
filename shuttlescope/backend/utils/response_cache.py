@@ -138,12 +138,17 @@ def _db_upsert(
 
 
 def _db_delete_all() -> None:
+    """Round 258 R11 P0 fix (regression): idempotency 行 (analysis_type='idempotency') を
+    巻き込まないように除外する。R10 で AnalysisCache を idempotency 永続化に流用したため、
+    bump_version() による全消去で idempotency dedup window が 0 にリセットされ
+    R9 V6 fix が undo されていた。
+    """
     s = _session()
     if s is None:
         return
     try:
         from backend.db.models import AnalysisCache  # noqa: WPS433
-        s.query(AnalysisCache).delete()
+        s.query(AnalysisCache).filter(AnalysisCache.analysis_type != "idempotency").delete(synchronize_session=False)
         s.commit()
     except Exception as exc:
         _logger.debug("response_cache: DB delete_all failed: %s", exc)
@@ -166,7 +171,12 @@ def _db_delete_players(pids: list[int]) -> None:
         return
     try:
         from backend.db.models import AnalysisCache  # noqa: WPS433
-        s.query(AnalysisCache).filter(AnalysisCache.player_id.in_(pids)).delete(synchronize_session=False)
+        # Round 258 R11 P0 fix: idempotency 行は player_id=0 sentinel を使うため、
+        # bump_players([0]) で巻き込まれないよう analysis_type で除外する。
+        s.query(AnalysisCache).filter(
+            AnalysisCache.player_id.in_(pids),
+            AnalysisCache.analysis_type != "idempotency",
+        ).delete(synchronize_session=False)
         s.commit()
     except Exception as exc:
         _logger.debug("response_cache: DB delete_players failed: %s", exc)
