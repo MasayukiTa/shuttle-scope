@@ -588,6 +588,22 @@ const _MIRROR_ALLOWED_TYPES = new Set([
   'cv-toggle',     // {type, name: string, on: bool}
   'play-state',    // {type, playing: bool, t?: number}
 ])
+// Round 258 R16 P1 fix (deep audit F-5): video-src の URL scheme allowlist。
+// 旧コードは inner field を validate せずに second window に flow させていたため、
+// renderer XSS が `<video src="data:text/html,...">` や `<video src="localfile:///foo">`
+// を mirror 経由で別 window に強制ロードできた。data: は CSP allow されていて
+// localfile:// は path-jail で防がれるが、defense-in-depth で scheme allowlist を入れる。
+function _isAllowedMirrorVideoSrc(s: unknown): boolean {
+  if (typeof s !== 'string' || s.length === 0 || s.length > 4096) return false
+  // 許容: localfile:///, app://video/, https://, blob:
+  return (
+    s.startsWith('localfile:///')
+    || s.startsWith('app://video/')
+    || s.startsWith('https://')
+    || s.startsWith('blob:')
+  )
+}
+
 ipcMain.on('mirror-broadcast', (event, payload: unknown) => {
   if (payload === null || typeof payload !== 'object') return
   const p = payload as Record<string, unknown>
@@ -595,6 +611,13 @@ ipcMain.on('mirror-broadcast', (event, payload: unknown) => {
   if (!_MIRROR_ALLOWED_TYPES.has(t)) {
     console.warn('[mirror-broadcast] rejected: unknown type', t)
     return
+  }
+  // R16 fix: video-src は scheme allowlist 必須
+  if (t === 'video-src') {
+    if (!_isAllowedMirrorVideoSrc(p.src)) {
+      console.warn('[mirror-broadcast] rejected: unsafe video src scheme')
+      return
+    }
   }
   let serialized: string
   try { serialized = JSON.stringify(payload) } catch { return }
@@ -1523,17 +1546,27 @@ async function startApp(): Promise<void> {
     // sessionStorage に置いた JWT が XSS で任意 HTTPS に exfil 可能だった。
     // production では allowlist (本番 API + Cloudflare Tunnel + 必要な公開資産) のみ許可し、
     // 任意外部 URL は main IPC 経由 (open-external-safe) に寄せる。
+    //
+    // Round 258 R16 P2 fix (deep audit F-7): production CSP から
+    // `http://localhost:*` を削除。Electron 本番ビルドでは backend は
+    // `localfile://` 等の独自 scheme で走ることもあるが、http://localhost を残すと
+    // renderer XSS 時に同 PC 上の任意の localhost daemon (悪意のあるアプリ等) に
+    // JWT を exfil できる経路を残してしまう。production posture では `'self'` 経由
+    // (Cloudflare Tunnel) のみに絞る。
     const _PROD_CONNECT_ALLOWLIST = [
       "'self'",
-      "http://localhost:*",
-      "ws://localhost:*",
       "https://app.shuttle-scope.com",
       "wss://app.shuttle-scope.com",
       "https://www.shuttle-scope.com",
       "https://shuttle-scope.com",
-      // CSP report endpoint
-      "https://app.shuttle-scope.com/api/csp_report",
     ].join(' ')
+    // Round 258 R16 P2 fix (deep audit F-7): CSP report-uri を追加。
+    // 旧 connect-src allowlist には report endpoint を含めていたが、CSP 文字列自体に
+    // `report-uri` directive が無いため violation は **どこにも報告されなかった**。
+    // attacker が wild で CSP coverage を probe しても alert が来ない。
+    // 本修正で violation が `/api/csp_report` に POST される (既存 endpoint)。
+    const _CSP_REPORT_DIRECTIVE = " report-uri https://app.shuttle-scope.com/api/csp_report;"
+
     const cspParts = isProductionLike
       ? [
           "default-src 'self' localfile: app: blob: data: http://localhost:*;",
@@ -1544,6 +1577,7 @@ async function startApp(): Promise<void> {
           " frame-src https://www.youtube.com https://www.youtube-nocookie.com;",
           " img-src 'self' localfile: app: blob: data: https:;",
           ` connect-src ${_PROD_CONNECT_ALLOWLIST};`,
+          _CSP_REPORT_DIRECTIVE,
         ]
       : [
           "default-src 'self' 'unsafe-inline' 'unsafe-eval' localfile: app: blob: data: http://localhost:*;",

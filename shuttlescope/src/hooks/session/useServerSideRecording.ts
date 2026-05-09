@@ -7,9 +7,15 @@
  *   3. ondataavailable で得た Blob を chunked upload
  *   4. 停止時に finalize → ServerVideoArtifact 生成
  *
- * フォールバック:
- *   - ネットワーク切断時はチャンクを localStorage キューに入れて後で再送
- *   - MediaRecorder 非対応ブラウザ (古い iOS Safari 等) では何もしない
+ * Round 258 R16 P0 fix (deep audit F-2):
+ *   旧設計は「ネットワーク切断時はチャンクを localStorage キューに入れて後で再送」
+ *   としていたが、実装は base64 dataURL を localStorage に書く形で:
+ *     - 1 chunk (8MB) で base64 inflation 後 ~10.6MB → ブラウザの ~5-10MB クォータを
+ *       1 失敗で破壊し、以降の legitimate localStorage 書込みが全滅する DoS
+ *     - 試合映像フレーム断片が平文残留 (XSS exfil 経路)
+ *     - dequeue コードが存在しない write-only orphan
+ *   修正: localStorage 経由の retry は撤去。retry は memory + 上位の retry hook で。
+ *   起動時に古い `__ss_pending_upload_*` キーを sweep する (下記 useEffect)。
  *
  * 使い方:
  * ```tsx
@@ -23,6 +29,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiPost } from '@/api/client'
 import { resolveBaseUrl } from '@/utils/preferredEndpoint'
+
+
+function _sweepStaleUploadQueue(): void {
+  // Round 258 R16 P0 fix (deep audit F-2): 旧バージョンが localStorage に
+  // base64 化した chunk を残している場合、起動時に全部削除する。
+  try {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith('__ss_pending_upload_')) keysToRemove.push(k)
+    }
+    for (const k of keysToRemove) localStorage.removeItem(k)
+  } catch {
+    /* private mode 等 */
+  }
+}
 
 export type ServerRecordingState =
   | 'idle' | 'initializing' | 'recording' | 'stopping' | 'completed' | 'error'
@@ -81,6 +103,12 @@ export function useServerSideRecording(
   const [uploadedChunks, setUploadedChunks] = useState(0)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
+  // Round 258 R16 P0 fix (deep audit F-2): 旧バージョンが localStorage に
+  // 残した base64 chunk を起動時に削除する。
+  useEffect(() => {
+    _sweepStaleUploadQueue()
+  }, [])
+
   const recorderRef = useRef<MediaRecorder | null>(null)
   const uploadIdRef = useRef<string | null>(null)
   const chunkIndexRef = useRef<number>(0)
@@ -107,20 +135,21 @@ export function useServerSideRecording(
         body: fd,
       })
       if (!res.ok) {
-        // 失敗時は localStorage に貯める (再送のため)
-        const queueKey = `__ss_pending_upload_${uploadId}_${chunkIndex}`
-        try {
-          const reader = new FileReader()
-          await new Promise<void>((resolve) => {
-            reader.onload = () => {
-              try {
-                localStorage.setItem(queueKey, reader.result as string)
-              } catch { /* quota 超過は無視 */ }
-              resolve()
-            }
-            reader.readAsDataURL(blob)
-          })
-        } catch { /* noop */ }
+        // Round 258 R16 P0 fix (deep audit F-2):
+        // 旧コードはアップロード失敗時に blob 全体を base64 (dataURL) 化して
+        // localStorage に書き込んでいた。問題:
+        //   1. base64 inflation (~33%) で 8 MB chunk が ~10.6 MB → localStorage の
+        //      ブラウザ全体クォータ (5-10 MB) を 1 chunk で食い潰し、以降の
+        //      legitimate localStorage 書込み (auth token migrate / theme / ROI 等) が
+        //      QuotaExceededError で全滅する DoS パターン。
+        //   2. 私的試合映像のフレーム断片が **平文** で localStorage に長期残留。
+        //      XSS が成立すれば exfil 容易。
+        //   3. `__ss_pending_upload_*` を読んで再送する dequeue コードはどこにも無く、
+        //      write-only の orphan ゴミ。
+        // 対策: localStorage への blob ダンプは完全撤去。失敗 chunk は次の retry
+        // タイマーでメモリから再送する設計に倒す (chunkIndex を pending 管理する
+        // 別実装は別 commit で対応)。今は **失敗を返して呼び出し側に retry を委譲**。
+        // 旧 stale data は同 hook 起動時に sweep する (下記 useEffect)。
         return false
       }
       setUploadedChunks((n) => n + 1)
