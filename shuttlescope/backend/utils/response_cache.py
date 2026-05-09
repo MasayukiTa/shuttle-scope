@@ -293,6 +293,13 @@ def _extract_player_id(params: dict) -> Optional[int]:
     1. "pid" キー（X-Player-Id ヘッダ由来 / ミドルウェアがセット）
     2. "q" キー（query string）中の `player_id=N`
     どちらも取れなければ None。
+
+    Round 258 R9 V3 fix: 旧コードは raw query を regex substring で
+    `player_id=(\\d+)` 抽出していたため、`?other=player_id=999&player_id=1` のような
+    URL で attacker がダミーの player_id substring を仕込むと、cache key 用 pid が
+    本物 (1) ではなく偽装値 (999) として評価され、bump_players([1]) で
+    invalidate されない stale entry を pin できた (cross-user data leak の
+    持続化に悪用可能)。urlparse.parse_qs で標準的に解釈する。
     """
     raw_pid = params.get("pid")
     if raw_pid not in (None, ""):
@@ -302,12 +309,17 @@ def _extract_player_id(params: dict) -> Optional[int]:
             pass
     q = params.get("q")
     if isinstance(q, str) and q:
-        m = _PLAYER_ID_RE.search(q)
-        if m:
-            try:
-                return int(m.group(1))
-            except ValueError:
-                return None
+        try:
+            from urllib.parse import parse_qs as _pqs
+            qs = _pqs(q, keep_blank_values=False)
+            v = qs.get("player_id", [])
+            if v:
+                # 同名 param が複数あったら最初の正規 value のみ採用
+                first = v[0]
+                if first.isdigit():
+                    return int(first)
+        except Exception:
+            pass
     return None
 
 
