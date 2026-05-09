@@ -348,28 +348,9 @@ async def lifespan(app: FastAPI):
     # 修正: cleanup 関数を thread 内 try/finally で session を必ず close し、
     # SQLite なら短い busy_timeout を強制する wrapper を被せる。
     #
-    # Round 258 R24 P1 fix (R24 P1):
-    # 旧 R23 実装の `_probe.execute("PRAGMA busy_timeout=5000")` は SQLite の
-    # PRAGMA が **per-connection** なため、別 connection を pool から取り出す
-    # `cleanup_expired_revoked_tokens()` には反映されない (no-op だった)。
-    # 修正: SQLAlchemy `event.listens_for(..., "connect")` で **engine 全体に**
-    # busy_timeout PRAGMA を設定し、すべての SQLite connection で有効化する。
-    # 1 度だけ登録すれば永続。
-    try:
-        from sqlalchemy import event as _sa_event, text as _sa_text
-        from backend.db.database import engine as _engine_for_pragma
-        if "sqlite" in str(_engine_for_pragma.dialect.name).lower():
-            @_sa_event.listens_for(_engine_for_pragma, "connect")
-            def _set_sqlite_busy_timeout(dbapi_conn, _cr):
-                try:
-                    cur = dbapi_conn.cursor()
-                    cur.execute("PRAGMA busy_timeout = 5000")
-                    cur.close()
-                except Exception:
-                    pass
-            logger.info("SQLite busy_timeout=5000 listener installed for revoked_tokens GC")
-    except Exception as exc:
-        logger.debug("SQLite PRAGMA listener install skipped: %s", exc)
+    # Round 258 R25 P1 fix (R25 P1-1): SQLite busy_timeout listener は
+    # `backend/db/database.py` の engine 構築直後に登録する形に変更した。
+    # ここでは何もしない (旧コードの listener は db/database.py に移動済)。
 
     async def _revoked_tokens_gc_loop() -> None:
         def _safe_cleanup() -> int:

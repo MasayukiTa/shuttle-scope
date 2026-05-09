@@ -776,7 +776,20 @@ def regenerate_password(code: str, request: Request, db: Session = Depends(get_d
     plain_password = _generate_password()
     session.password_hash = _hash_password(plain_password)
     db.commit()
-    return {"success": True, "data": {"session_password": plain_password}}
+    # Round 258 R25 P3 fix (R25 P3-3): operator token も同時に再発行する。
+    # 旧コードは `regenerate-password` で session password だけ更新していたが、
+    # operator token は session 作成時の値を保持していた。session password が
+    # 漏洩 → 再生成、で新 password を運用に流す経路でも、旧 operator token を
+    # 持ち続けた actor は LAN/リモートから operator API を呼べてしまう。
+    new_op_token = _generate_operator_token()
+    _operator_tokens[code] = new_op_token
+    return {
+        "success": True,
+        "data": {
+            "session_password": plain_password,
+            "operator_token": new_op_token,
+        },
+    }
 
 
 # ─── 内部ヘルパー ─────────────────────────────────────────────────────────────
