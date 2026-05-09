@@ -421,11 +421,18 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
         # に対する 429 と組み合わせて、組織 domain の user 列挙を可能にしていた。
         # 修正: domain を SHA256 hash の short prefix (8 hex) に置換 → 同 domain か
         # どうかは判定できるが、平文 leak はしない。
+        # Round 258 R26 P3 fix (R25 P3-1): SHA-256 prefix 単独だと長期間の log で
+        # 同 domain は同じ hash を持ち続け、attacker が一度 known seed domain を
+        # 走らせれば cross-day で相関可能。日付ベース salt (UTC date 単位) を
+        # HMAC で混ぜて、cross-day 相関を切る。
         import hashlib as _hashlib_aem
+        import hmac as _hmac_aem
+        from datetime import datetime as _dt_aem
         _dom = body.email.split("@")[-1].lower().strip()
-        _dom_hash = _hashlib_aem.sha256(_dom.encode("utf-8")).hexdigest()[:8]
+        _daily_salt = _dt_aem.utcnow().strftime("%Y-%m-%d").encode("utf-8")
+        _dom_hash = _hmac_aem.new(_daily_salt, _dom.encode("utf-8"), _hashlib_aem.sha256).hexdigest()[:8]
         log_access(db, "password_reset_unknown_email", ip_addr=ip,
-                   details={"email_domain_hash": _dom_hash})
+                   details={"email_domain_hash": _dom_hash, "salt": "daily-utc"})
     # 列挙防御: 常に成功風レスポンス
     return {"success": True, "data": {"sent": True}}
 
@@ -439,9 +446,18 @@ def reset_password(body: PasswordResetConfirm, request: Request,
     # 攻撃者は token 文字列 (≥10 chars base64) を brute-force し放題で、
     # min_length=10 の低エントロピー token / timing 観測で当たりを引ける。
     # 修正: IP 単位の弱い rate limit (1h で 20 回) を強制。
+    # Round 258 R26 P1 fix (R25 P1-3): IP 単独 RL は LAN-mode (0.0.0.0 bind) で
+    # /24 内 254 端末分の bucket を持てるため、20 × 254 = 5,080/h まで許容
+    # されてしまう。global bucket (200/h) を併設して全体上限を絶対的に固定する。
     ip = _client_ip(request)
     _enforce_rate_limit(ip, "", "reset_consume", ip_max=20, ip_window_s=3600,
                         email_max=0, email_window_s=3600)
+    # global bucket: scope key を固定して全 IP で共有
+    if not _rate_limit_check("reset_consume:global", 200, 3600):
+        raise HTTPException(
+            status_code=429,
+            detail="システム全体のリセット試行回数が上限に達しました。",
+        )
     user_id = consume_password_reset_token(db, body.token)
     if user_id is None:
         raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")

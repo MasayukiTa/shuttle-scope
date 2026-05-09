@@ -265,6 +265,18 @@ def toggle_lan_mode(enable: bool, request: Request):
     # config.py が読む env_file と同じパスに書く（CWD=shuttlescope/ を前提）
     import pathlib
     env_file = pathlib.Path(__file__).resolve().parent.parent.parent / ".env.development"
+    # Round 258 R26 P2 fix (R25 P2-3): resolved path が app root 配下であることを
+    # 検証する。Junction / symlink が deployed install 配下にある場合、resolve 後の
+    # path が APP_ROOT 外を指すと .env.development 書込が install 外に流出する経路。
+    _app_root = pathlib.Path(__file__).resolve().parent.parent.parent
+    _resolved_env = env_file.resolve(strict=False)
+    try:
+        _resolved_env.relative_to(_app_root.resolve(strict=False))
+    except ValueError:
+        raise HTTPException(
+            status_code=500,
+            detail=f"env file path {_resolved_env} is outside app root",
+        )
     lines: list[str] = []
     if env_file.exists():
         lines = env_file.read_text(encoding="utf-8").splitlines()
