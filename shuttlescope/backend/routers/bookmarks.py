@@ -159,7 +159,12 @@ def mark_reviewed(bookmark_id: int, request: Request, db: Session = Depends(get_
     if match is None:
         # 存在列挙防止: ブックマーク不在と同じエラーメッセージに統一
         raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
-    _require_match_scope(request, match, db)
+    ctx = _require_match_scope(request, match, db)
+    # Round 258 R29 P2 fix (R29 P2-1): public_pool match では bookmarks は他チーム
+    # 所有 row も見えてしまい、その is_reviewed を他チーム coach/analyst が
+    # toggle できる経路があった。list-filter (line 141) と同じ team_id 一致チェック適用。
+    if not ctx.is_admin and bm.team_id is not None and bm.team_id != ctx.team_id:
+        raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
     bm.is_reviewed = True
     touch_sync_metadata(bm, device_id=get_device_id(db))
     db.commit()
@@ -176,6 +181,9 @@ def delete_bookmark(bookmark_id: int, request: Request, db: Session = Depends(ge
         # 存在列挙防止: ブックマーク不在と同じエラーメッセージに統一
         raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
     ctx = _require_match_scope(request, match, db)
+    # Round 258 R29 P2 fix (R29 P2-1): delete も team_id 一致チェック (mark_reviewed 同様)
+    if not ctx.is_admin and bm.team_id is not None and bm.team_id != ctx.team_id:
+        raise HTTPException(status_code=404, detail="ブックマークが見つかりません")
     # player は削除不可（他者の自動統計等を消すのを防ぐ）。coach は削除可だが
     # analyst / admin 以外は自チームスコープ内のみ（_require_match_scope で確認済み）。
     if ctx.is_player:

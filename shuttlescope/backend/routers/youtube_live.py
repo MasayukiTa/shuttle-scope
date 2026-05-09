@@ -76,6 +76,28 @@ class StartRequest(BaseModel):
     # 認証あり配信用: ブラウザ名 ("chrome","firefox","edge","brave") またはクッキーファイルパス
     cookie_browser: Optional[str] = Field(None, pattern=r"^(chrome|firefox|edge|brave|opera|vivaldi|safari)$")
     cookie_file: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("cookie_file")
+    @classmethod
+    def _validate_cookie_file_path(cls, v: Optional[str]) -> Optional[str]:
+        # Round 258 R29 P3 fix (R29 P3-2): cookie_file は max_length しか検証されておらず、
+        # 任意 path (e.g. `/etc/shadow`, `C:\\Windows\\System32\\config\\SAM`) を渡されても
+        # yt-dlp に転送されてファイル存在 / parse error が stderr に leak していた。
+        # 修正: 許可 root (`SS_COOKIE_DIR` または `./cookies/`) 直下のファイルだけに限定。
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        import os as _os_cf, pathlib as _pl_cf
+        cookies_root_str = _os_cf.environ.get("SS_COOKIE_DIR") or "./cookies"
+        try:
+            root = _pl_cf.Path(cookies_root_str).resolve(strict=False)
+            target = _pl_cf.Path(v).resolve(strict=False)
+            target.relative_to(root)
+        except (ValueError, OSError) as exc:
+            raise ValueError(f"cookie_file は {cookies_root_str} 配下のファイルのみ許可されます: {exc}")
+        return str(target)
     # 紐付け試合 ID（指定するとアーカイブ完了時に Match.video_local_path が自動更新される）
     match_id: Optional[int] = Field(None, ge=1, le=2_147_483_647)
 

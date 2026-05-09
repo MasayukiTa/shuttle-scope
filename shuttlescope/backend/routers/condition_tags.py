@@ -118,10 +118,13 @@ def _serialize(t: ConditionTag) -> dict:
 #   - admin / 同一 team / public_pool 以外は 404
 #   - player ロールは write 不可 (analyst / coach / admin のみ create/update/delete)
 def _can_access_player_for_condition(ctx: AuthCtx, player: Player) -> bool:
+    # Round 258 R29 P3 fix (R29 P3-1): R28 で `getattr(player, "is_public_pool", ...)` の
+    # branch を入れていたが、Player モデルには `is_public_pool` 列が存在しない (Match のみ
+    # 持つ)。dead branch だが「同 helper を別 router にコピペした際に True になる」誤読を
+    # 招くので削除し、Player には public_pool 概念が無い旨を明示する。
     if getattr(ctx, "is_admin", False):
         return True
-    if getattr(player, "is_public_pool", False):
-        return True
+    # NOTE: Player に is_public_pool 概念は無い。team_id 完全一致 (or admin) のみ許可。
     p_team = getattr(player, "team_id", None)
     return p_team is not None and getattr(ctx, "team_id", None) == p_team
 

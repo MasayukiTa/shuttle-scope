@@ -966,7 +966,23 @@ ipcMain.handle('relaunch-app', (event) => {
 })
 
 // バックエンドログ取得（初期ロード用）
-ipcMain.handle('get-backend-log', () => backendLogBuffer.slice())
+// Round 258 R29 P3 fix (R29 P3-3): mainWindow の top-level frame からの取得だけ許可。
+// renderer XSS / 将来の sub-frame / 別 BrowserWindow から backendLogBuffer (最大
+// 500 行の stderr; パス、例外スタック、partial SQL を含む) を読み出される経路を遮断。
+ipcMain.handle('get-backend-log', (event) => {
+  if (!event.senderFrame || event.senderFrame.parent != null) {
+    console.warn('[get-backend-log] denied: sender frame missing or sub-frame')
+    return []
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return []
+  }
+  if (event.sender.id !== mainWindow.webContents.id) {
+    console.warn('[get-backend-log] denied: sender is not main window webContents')
+    return []
+  }
+  return backendLogBuffer.slice()
+})
 
 // ─── YouTube Live DRM キャプチャ ─────────────────────────────────────────────
 // castLabs Electron (Widevine 内蔵) でのみ DRM 保護コンテンツを再生できる。

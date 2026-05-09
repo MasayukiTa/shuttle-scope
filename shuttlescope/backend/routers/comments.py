@@ -158,6 +158,11 @@ def toggle_flag(comment_id: int, request: Request, db: Session = Depends(get_db)
     if match is None:
         raise HTTPException(status_code=404, detail="コメントが見つかりません")
     ctx = _require_match_scope(request, match, db)
+    # Round 258 R29 P2 fix (R29 P2-1): public_pool match では comments は他チーム所有の
+    # row も含むが、その flag を他チームの coach/analyst が toggle できる経路があった。
+    # list-filter (line 142) と同じ team_id 一致チェックを適用する。
+    if not ctx.is_admin and comment.team_id is not None and comment.team_id != ctx.team_id:
+        raise HTTPException(status_code=404, detail="コメントが見つかりません")
     # player は他人のコメントを flag できない
     if ctx.is_player and comment.author_role != "player":
         raise HTTPException(status_code=403, detail="このコメントを変更する権限がありません")
@@ -176,6 +181,9 @@ def delete_comment(comment_id: int, request: Request, db: Session = Depends(get_
     if match is None:
         raise HTTPException(status_code=404, detail="コメントが見つかりません")
     ctx = _require_match_scope(request, match, db)
+    # Round 258 R29 P2 fix (R29 P2-1): delete も team_id 一致チェック (toggle_flag と同様)
+    if not ctx.is_admin and comment.team_id is not None and comment.team_id != ctx.team_id:
+        raise HTTPException(status_code=404, detail="コメントが見つかりません")
     # player / coach は自分（同ロール）のコメントのみ削除可能、analyst / admin は全て削除可能
     if not (ctx.is_admin or ctx.is_analyst):
         if comment.author_role != ctx.role:

@@ -183,12 +183,20 @@ def get_prediction_benchmark(
     結果が確定している試合（result が win/loss）のみ評価対象。
     各ロール別の予測精度（accuracy, Brier score）を返す。
     """
-    # このプレイヤーについての全人間予測を取得
-    forecasts = (
-        db.query(HumanForecast)
-        .filter(HumanForecast.player_id == player_id, HumanForecast.deleted_at.is_(None))
-        .all()
+    # Round 258 R29 P2 fix (R29 P2-2): cross-team forecast leak。
+    # 旧コードは team filter 無しで全 HumanForecast を返していたため、coach A が
+    # 他チームの player_id でこの endpoint を叩くと、Team C analyst の予測まで
+    # forecaster_role / forecaster_name 単位で集計露出する経路があった。
+    # 修正: admin 以外は team_id 一致 (or NULL) のみ。さらに underlying match へ
+    # アクセスできない場合は match_comparisons から除外 (後段で適用)。
+    from sqlalchemy import or_ as _or_hf
+    q = db.query(HumanForecast).filter(
+        HumanForecast.player_id == player_id,
+        HumanForecast.deleted_at.is_(None),
     )
+    if not _auth.is_admin:
+        q = q.filter(_or_hf(HumanForecast.team_id.is_(None), HumanForecast.team_id == _auth.team_id))
+    forecasts = q.all()
     if not forecasts:
         return {
             "success": True,
