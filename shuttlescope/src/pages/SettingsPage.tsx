@@ -14,6 +14,7 @@ import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTheme } from '@/hooks/useTheme'
 import { ClusterSettingsPanel } from '@/components/cluster/ClusterSettingsPanel'
 import { PasswordChangeCard } from '@/components/auth/PasswordChangeCard'
+import { ConsentManagementCard } from '@/components/auth/ConsentManagementCard'
 import { DeviceSelector } from '@/components/benchmark/DeviceSelector'
 import { TargetSelector } from '@/components/benchmark/TargetSelector'
 import { ResultMatrix } from '@/components/benchmark/ResultMatrix'
@@ -2622,6 +2623,9 @@ export function SettingsPage() {
 
             {/* パスワード変更 (ログイン済みユーザ全員) */}
             <PasswordChangeCard isLight={isLight} />
+
+            {/* 同意管理 (Round 231 R231 #13: GDPR Article 7(3) 撤回 UI) */}
+            <ConsentManagementCard isLight={isLight} />
 
             {/* アプリ再起動 (admin only) */}
             {role === 'admin' && (

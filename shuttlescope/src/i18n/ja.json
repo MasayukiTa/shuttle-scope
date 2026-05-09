@@ -2466,6 +2466,26 @@
     "ray_not_connected": "Ray未接続"
   },
   "settings": {
+    "consent": {
+      "title": "同意状態と撤回",
+      "description": "任意同意は GDPR Article 7(3) / APPI 第18条に基づきいつでも撤回できます。必須同意（契約履行）は、撤回するにはアカウント削除が必要です。",
+      "required_label": "契約履行（必須）",
+      "optional_label": "任意",
+      "required_note": "撤回不可",
+      "withdraw_btn": "撤回",
+      "withdrawn_label": "撤回済み",
+      "state_active": "有効",
+      "state_withdrawn": "未付与または撤回済",
+      "confirm_withdraw": "同意「{{type}}」を撤回します。よろしいですか？\n\n撤回後、関連する処理（AI モデル学習等）から除外されます。撤回履歴は GDPR / APPI の monitoring 目的で保管されます。",
+      "error": "撤回に失敗しました。再試行してください。",
+      "types": {
+        "service_delivery": "サービス提供に必要なデータ処理",
+        "beta_agreement": "β版データ取り扱い説明書",
+        "ai_training": "AI モデル学習への利用",
+        "research_participation": "学術研究への利用",
+        "cross_border_transfer": "EU/EEA からの越境移転"
+      }
+    },
     "ui": {
       "player_list": "選手一覧",
       "add_player": "選手追加",
