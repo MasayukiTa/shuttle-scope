@@ -91,13 +91,31 @@ def _get_lan_ips() -> list[str]:
     return list(dict.fromkeys(ips))
 
 
+def _redact_proxy_url(val: str) -> str:
+    """Round 258 R12 P1 fix (NEW-2): proxy URL から basic-auth credentials を剥がす。
+    `http://corpuser:S3cret@proxy.acme:8080` → `http://***:***@proxy.acme:8080`
+    """
+    try:
+        from urllib.parse import urlsplit, urlunsplit
+        parts = urlsplit(val)
+        if parts.username or parts.password:
+            netloc = parts.hostname or ""
+            if parts.port:
+                netloc = f"{netloc}:{parts.port}"
+            netloc = f"***:***@{netloc}"
+            return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    except Exception:
+        pass
+    return val
+
+
 def _detect_proxy() -> dict:
-    """環境変数ベースのプロキシ検出"""
+    """環境変数ベースのプロキシ検出。Round 258 R12 P1 fix: corp basic-auth は redact。"""
     found: dict[str, str] = {}
     for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
         val = os.environ.get(key)
         if val:
-            found[key] = val
+            found[key] = _redact_proxy_url(val)
     return found
 
 
