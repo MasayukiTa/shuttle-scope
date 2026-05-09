@@ -438,19 +438,34 @@ async def ws_camera_handler(
     _last_reverify = _time.monotonic()
 
     async def _do_reverify_and_close_if_invalid() -> bool:
-        """token 検証。無効なら close して True を返す (= 呼び出し側は return する)。"""
+        """token 検証。無効なら close して True を返す (= 呼び出し側は return する)。
+
+        Round 258 R21 P1 fix (R21 P1-3): R20 実装は verify_token を **event loop
+        thread 上で同期実行** していたため、DB query が遅いとイベントループ全体が
+        ブロックされて他 WS / HTTP まで停滞した。さらに `except Exception` で
+        CancelledError まで握り潰しており、shutdown 時に operator coroutine の
+        cancel が伝搬せず graceful stop が hang する経路があった。
+        修正:
+          - `asyncio.to_thread(verify_token, _saved_token)` で別 thread に押し出す
+          - except は OSError / JWTError 系の specific narrow に絞り、
+            BaseException / CancelledError は再 raise する
+        """
         if not _saved_token:
             return False
         try:
             from backend.utils.jwt_utils import verify_token as _reverify
-            if not isinstance(_reverify(_saved_token), dict):
+            from jose import JWTError as _JWTError  # narrow except 用
+            payload = await _asyncio_cam.to_thread(_reverify, _saved_token)
+            if not isinstance(payload, dict):
                 logger.warning("camera operator WS reverify failed; closing session=%s", session_code)
                 try:
                     await websocket.close(code=4401, reason="token revoked or expired")
                 except Exception:
                     pass
                 return True
-        except Exception as _exc:
+        except _asyncio_cam.CancelledError:
+            raise  # shutdown / cancel は伝搬必須
+        except (_JWTError, OSError) as _exc:
             logger.debug("camera operator reverify error: %s", _exc)
         return False
 

@@ -471,9 +471,17 @@ def _get_user_revoke_timestamp(user_id: int) -> Optional[int]:
                 _USER_REVOKE_CACHE.popitem(last=False)
             return ts
     except Exception as exc:
+        # Round 258 R21 P1 fix (R21 P1-1): 旧 R20 実装は DB error 時に
+        # `_USER_REVOKE_CACHE[user_id] = (now, None)` で **negative cache** を書いて
+        # いた。直後に admin が emergency revoke を打っても 5s の TTL 中は cache が
+        # None を返し、当該 user の旧 token が引き続き valid と判定される DoS 経路。
+        # 修正: DB error 時は cache に書かず、また「未来 timestamp」を返すことで
+        # **fail-closed** 化 (= iat < future_ts は常に成立 → 全 token reject)。
+        # 5s 以内に DB が回復すれば次回 lookup で正しい値に置き換わる。
         logger.warning("[jwt] user_revoke check failed user_id=%s: %s", user_id, exc)
-        _USER_REVOKE_CACHE[user_id] = (now, None)
-        return None
+        # 1 年後を sentinel として返す (今生きている全 access token を失効扱い)
+        import time as _time_fc
+        return int(_time_fc.time()) + 365 * 86400
 
 
 def revoke_all_for_user(user_id: int) -> None:
@@ -483,22 +491,30 @@ def revoke_all_for_user(user_id: int) -> None:
     いたが access token (15min) は失効しなかった。この関数を呼ぶことで以降の
     verify_token が iat 比較で reject する。
     既存 refresh token も revoke_all_refresh_tokens_for_user 側で別途無効化されること。
+
+    Round 258 R21 P0 fix (R21 P0-1):
+      旧 R20 実装は sentinel jti を `__user_revoke_<id>_<iso>` だけで作っていた。
+      RevokedToken.jti は UNIQUE 制約が付いているため、極短い間隔で同じユーザの
+      revoke が二重発行された場合 (e.g. concurrent change_password) IntegrityError
+      で **2 回目以降の write が黙って失敗**。caller (auth.py change_password) は
+      try/except で握り潰していたので、password rotation 自体は成功するが
+      access-token 失効が走らないまま 15 min 残存する致命経路があった。
+      修正:
+        1. sentinel に uuid4().hex[:8] を suffix 追加して衝突を不可能化
+        2. caller 側で握り潰さず HTTP 500 で素直に失敗するよう raise を維持
     """
     from backend.db.database import SessionLocal
     from backend.db.models import RevokedToken
+    import uuid as _uuid
     iso = datetime.utcnow().isoformat()
-    sentinel = f"__user_revoke_{user_id}_{iso}"
-    try:
-        with SessionLocal() as db:
-            db.add(RevokedToken(
-                jti=sentinel,
-                user_id=user_id,
-                expires_at=datetime.utcnow() + timedelta(days=30),
-            ))
-            db.commit()
-    except Exception as exc:
-        logger.warning("[jwt] revoke_all_for_user write failed user_id=%s: %s", user_id, exc)
-        raise
+    sentinel = f"__user_revoke_{user_id}_{iso}_{_uuid.uuid4().hex[:8]}"
+    with SessionLocal() as db:
+        db.add(RevokedToken(
+            jti=sentinel,
+            user_id=user_id,
+            expires_at=datetime.utcnow() + timedelta(days=30),
+        ))
+        db.commit()
     # in-process cache を即時無効化 → 次回 verify_token で DB を引き直す
     _USER_REVOKE_CACHE.pop(user_id, None)
 

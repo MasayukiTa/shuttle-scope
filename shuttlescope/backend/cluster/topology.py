@@ -380,18 +380,31 @@ def wake_worker(worker_ip: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # ブロードキャストアドレスを決定する
+    # ブロードキャストアドレスを決定する。
+    # Round 258 R20 P2 fix (R18a-3 P2-2): 旧コードは link-local 以外を素朴に
+    # /24 broadcast にし、解析失敗時は **global broadcast 255.255.255.255** に fallback
+    # していた。multi-tenant subnet (colo / VPS) では magic packet + MAC が neighbor
+    # に丸見えになる leak。修正: worker_ip が ipaddress.is_private (RFC 1918 / link-local)
+    # でない場合は WOL を refuse する。
     try:
         addr = ipaddress.ip_address(worker_ip)
         if addr.is_link_local:
             # 169.254.0.0/16 → 169.254.255.255
             broadcast = "169.254.255.255"
-        else:
-            # サブネットブロードキャストを計算（/24 と仮定）
+        elif addr.is_private:
+            # RFC 1918 (10.0.0.0/8 / 172.16.0.0/12 / 192.168.0.0/16) → /24 broadcast
             parts = worker_ip.split(".")
             broadcast = f"{parts[0]}.{parts[1]}.{parts[2]}.255"
+        else:
+            return {
+                "ok": False,
+                "error": f"WOL refused: {worker_ip} is not private/link-local. WOL on public/multi-tenant subnets leaks MAC to neighbors.",
+            }
     except Exception:
-        broadcast = "255.255.255.255"
+        return {
+            "ok": False,
+            "error": f"WOL refused: 不正な worker_ip '{worker_ip}'",
+        }
 
     try:
         send_wol(mac, broadcast_ip=broadcast)

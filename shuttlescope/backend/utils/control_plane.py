@@ -106,8 +106,15 @@ def is_loopback_request(request: Request) -> bool:
             return True
     except (ValueError, TypeError):
         pass
-    # 開発・テスト環境のみ空文字と "testclient" を loopback 扱い
-    if not _is_production_mode():
+    # Round 258 R20 P3 fix (R18a-2 P3-2): 旧コードは `not _is_production_mode()`
+    # のみで blank/testclient を loopback とみなしていたが、staging 等で
+    # ENVIRONMENT が "" や "test" になると非 production 扱いになり、ASGI バグで
+    # client.host が "" になった本番外部リクエストまで loopback 認定される穴が
+    # あった。修正: ENVIRONMENT が **明示的に "development" または "test"** の
+    # ときだけ blank/testclient を許容する。
+    import os as _os_cp
+    env_norm = (_os_cp.environ.get("ENVIRONMENT", "") or "").strip().lower()
+    if env_norm in ("development", "dev", "test", "testing"):
         return ip in ("", "testclient")
     return False
 
