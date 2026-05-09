@@ -205,7 +205,8 @@ def save_court_calibration(
     """
     from backend.utils.auth import get_auth as _ga_cc, user_can_access_match as _uac_cc
     _ctx_cc = _ga_cc(request)
-    if _ctx_cc.role is None:
+    # Round 258 R11: X-Role header fallback での擬装防止。user_id 必須化。
+    if _ctx_cc.role is None or _ctx_cc.user_id is None:
         raise HTTPException(status_code=401, detail="認証が必要です")
     _m_cc = db.get(Match, match_id)
     if _m_cc is None:
@@ -312,15 +313,17 @@ def save_court_calibration(
 def get_court_calibration(match_id: int, request: Request, db: Session = Depends(get_db)):
     """コートキャリブレーション取得。未設定の場合は 404。
 
-    Round 258 R10 P0 fix (regression audit): 旧コードは Request を取らず middleware
+    Round 258 R10/R11 P0 fix (regression audit): 旧コードは Request を取らず middleware
     任せだった。R8 で POST 側に team scope check を入れたが GET 側の sibling は
     未対応で、player を含む任意ユーザが他チーム match のホモグラフィ・6点座標・
     ROI ポリゴンを読めていた (cross-team intelligence leak)。POST と同じ scope を
     適用する。
+    R11 追加: X-Role header fallback 経由で `is_admin=True, user_id=None` 状態の擬装が
+    残らないように `user_id is not None` を必ず要求する。
     """
     from backend.utils.auth import get_auth as _ga_cc_get, user_can_access_match as _uac_cc_get
     _ctx = _ga_cc_get(request)
-    if _ctx.role is None:
+    if _ctx.role is None or _ctx.user_id is None:
         raise HTTPException(status_code=401, detail="認証が必要です")
     _m = db.get(Match, match_id)
     if _m is None:
