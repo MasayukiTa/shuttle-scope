@@ -527,14 +527,15 @@ export function SettingsPage() {
   }
 
   async function handleExportMatch() {
+    // R258 R6 P2 fix: noopener,noreferrer (defense-in-depth; same-origin だが規律統一)
     if (exportMode === 'change_set') {
       if (!exportSince.trim()) return
       const url = `/api/sync/export/change_set?since=${encodeURIComponent(exportSince)}`
-      window.open(url, '_blank')
+      window.open(url, '_blank', 'noopener,noreferrer')
     } else {
       if (!exportMatchIds.trim()) return
       const url = `/api/sync/export/match?match_ids=${encodeURIComponent(exportMatchIds.trim())}`
-      window.open(url, '_blank')
+      window.open(url, '_blank', 'noopener,noreferrer')
     }
   }
 

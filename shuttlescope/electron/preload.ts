@@ -53,6 +53,13 @@ contextBridge.exposeInMainWorld('shuttlescope', {
   saveRecordedVideo: (data: Uint8Array, defaultFilename: string): Promise<string | null> =>
     ipcRenderer.invoke('save-recorded-video', data.buffer, defaultFilename),
 
+  // R258 R6 P2 fix: renderer から OS 標準ブラウザに URL を切り出す安全な経路。
+  // shell.openExternal の薄いラッパで、main 側が http/https に限定する。
+  openExternalSafe: async (url: string): Promise<void> => {
+    const r = await ipcRenderer.invoke('open-external-safe', url)
+    if (!r || r.ok !== true) throw new Error('openExternalSafe failed: ' + (r?.reason ?? 'unknown'))
+  },
+
   // ─── アプリ再起動 ────────────────────────────────────────────────────────────
   restartApp: (): Promise<void> =>
     ipcRenderer.invoke('relaunch-app'),

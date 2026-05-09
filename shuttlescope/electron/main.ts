@@ -682,6 +682,25 @@ ipcMain.handle('capture-webview-frame', async () => {
 
 // ─── IPC: 動画ファイル選択ダイアログ ─────────────────────────────────────────
 
+// R258 R6 P2 fix: renderer からの safe な外部 URL オープン経路。
+// 旧来は WebViewPlayer の handleOpenExternal が `window.open(currentUrl, '_blank')` を
+// noopener なしで呼んでおり、reverse tabnabbing / opener 経由の改竄余地があった。
+// Electron 経由なら shell.openExternal で OS 標準ブラウザに切り出すのが安全。
+// http(s) のみ許可して file:// / javascript:// 等のスキーム injection を遮断する。
+ipcMain.handle('open-external-safe', async (_event, url: string) => {
+  try {
+    if (typeof url !== 'string' || url.length > 4096) return { ok: false, reason: 'invalid' }
+    const u = new URL(url)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+      return { ok: false, reason: 'unsupported_scheme' }
+    }
+    await shell.openExternal(url)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, reason: 'open_failed' }
+  }
+})
+
 ipcMain.handle('open-video-file', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
@@ -1283,7 +1302,20 @@ function createWindow(): void {
   mainWindow.webContents.on('will-navigate', (event: Electron.Event, url: string) => {
     try {
       const u = new URL(url)
-      if (u.protocol === 'file:' || u.protocol === 'localfile:') return
+      // R258 R6 P2 fix (private_docs/2026-05-09_security_deep_hole_hunt.md):
+      // 旧来は file: プロトコルを無条件許可していたが、ローカル HTML / 任意ファイルを
+      // renderer に表示できる余地があった (Node 無効でも CSP 境界外読み込み)。
+      // 動画は localfile: 独自プロトコル + path jail に寄せ済なので file: は
+      // 開発時のみ許可、production 相当では明示拒否する。
+      if (u.protocol === 'file:') {
+        const _isDev = !app.isPackaged && process.env.NODE_ENV === 'development'
+        if (!_isDev) {
+          event.preventDefault()
+          console.warn('[Main] file: navigation blocked in production-like mode:', url)
+        }
+        return
+      }
+      if (u.protocol === 'localfile:') return
       if (!ALLOWED_NAV_ORIGINS.has(`${u.protocol}//${u.host}`)) {
         event.preventDefault()
         // 外部 http(s) URL は既定ブラウザで開く
@@ -1467,8 +1499,12 @@ async function startApp(): Promise<void> {
       .catch((err) => console.error('[Main] Backend startup warning:', err.message))
 
     // ── DRM / EME 権限ハンドラー ──────────────────────────────────────────────
+    // R258 R6 P2 fix (private_docs/2026-05-09_security_deep_hole_hunt.md):
+    // 旧 request handler は `geolocation` を許可していたが ShuttleScope の機能上不要。
+    // check handler は media/mediaKeySystem のみで不整合 = 攻撃者が geolocation を
+    // ピンポイントで取りに来る経路だった。両方とも media/mediaKeySystem のみに揃える。
     mainWindow.webContents.session.setPermissionRequestHandler((_webContents: unknown, permission: string, callback: (granted: boolean) => void) => {
-      const allowed = new Set(['media', 'mediaKeySystem', 'geolocation'])
+      const allowed = new Set(['media', 'mediaKeySystem'])
       callback(allowed.has(permission))
     })
 
@@ -1482,6 +1518,22 @@ async function startApp(): Promise<void> {
     // `NODE_ENV !== 'development'` の AND で発動。これにより
     // unpackaged + NODE_ENV=production の preview ビルド等でも厳格 CSP が当たる。
     const isProductionLike = app.isPackaged || process.env.NODE_ENV !== 'development'
+    // R258 R6 P1 fix (private_docs/2026-05-09_security_deep_hole_hunt.md):
+    // 旧来 production でも `connect-src ... https:` の wildcard を入れていたため、
+    // sessionStorage に置いた JWT が XSS で任意 HTTPS に exfil 可能だった。
+    // production では allowlist (本番 API + Cloudflare Tunnel + 必要な公開資産) のみ許可し、
+    // 任意外部 URL は main IPC 経由 (open-external-safe) に寄せる。
+    const _PROD_CONNECT_ALLOWLIST = [
+      "'self'",
+      "http://localhost:*",
+      "ws://localhost:*",
+      "https://app.shuttle-scope.com",
+      "wss://app.shuttle-scope.com",
+      "https://www.shuttle-scope.com",
+      "https://shuttle-scope.com",
+      // CSP report endpoint
+      "https://app.shuttle-scope.com/api/csp_report",
+    ].join(' ')
     const cspParts = isProductionLike
       ? [
           "default-src 'self' localfile: app: blob: data: http://localhost:*;",
@@ -1491,7 +1543,7 @@ async function startApp(): Promise<void> {
           " media-src 'self' localfile: app: blob: data: https:;",
           " frame-src https://www.youtube.com https://www.youtube-nocookie.com;",
           " img-src 'self' localfile: app: blob: data: https:;",
-          " connect-src 'self' http://localhost:* ws://localhost:* https:;",
+          ` connect-src ${_PROD_CONNECT_ALLOWLIST};`,
         ]
       : [
           "default-src 'self' 'unsafe-inline' 'unsafe-eval' localfile: app: blob: data: http://localhost:*;",
