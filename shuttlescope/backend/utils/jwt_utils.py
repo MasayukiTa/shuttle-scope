@@ -12,6 +12,11 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 ALGORITHM = "HS256"
+# Round 258 R7 P2/P3 fix (Codex): token confusion 防止用の identity claims.
+# auth JWT 以外で SECRET_KEY を使う実装 (email_token / video_token / export_signing) と
+# accidentally cross-honored されないように iss/aud をピン止めする。
+JWT_ISSUER = "shuttlescope-auth"
+JWT_AUDIENCE = "shuttlescope-api"
 # Phase B-1: access token を短命化し refresh token で再取得する
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 ADMIN_TOKEN_EXPIRE_MINUTES = 15
@@ -41,6 +46,14 @@ def create_access_token(
         "exp": expire,
         "iat": datetime.utcnow(),
         "jti": str(uuid.uuid4()),
+        # Round 258 R7 P2/P3 fix (Codex review): token confusion 対策。
+        # email_token / video_token / export_signing が同 SECRET_KEY を使い得る
+        # 設計だったため、auth token とそれら生 HMAC 用 token を取り違えると
+        # 別経路の token が auth として通る (verify_token は payload shape だけ
+        # チェックしていた) 余地があった。`iss` / `aud` / `token_use` で identify する。
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
+        "token_use": "access",
     }
     if player_id is not None:
         payload["player_id"] = player_id
@@ -251,9 +264,47 @@ def verify_token(token: str) -> Optional[dict]:
     APT 対策として以下の追加検証を行う:
     - iat が未来 (時計ずれ > 5 分) の JWT は拒否（偽造時計攻撃）
     - iat と exp の差が想定有効期間を超える JWT は拒否（forge した超長寿命 JWT 対策）
+
+    Round 258 R7 P2/P3 fix (Codex review):
+    - aud / iss / token_use を明示検証して token confusion を防ぐ
+    - aud / iss が無い旧 token (本コミット前に発行) は移行猶予として 24h 受け入れる
     """
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        # まず標準 decode (aud 検証付き)。aud が無い旧 token は MissingRequiredClaim を投げるので
+        # 段階移行として options で aud を一旦無効化してから自前で確認する。
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={"verify_aud": False},  # 旧 token 互換のため自前検証に倒す
+        )
+        # iss 検証 (旧 token は iss 無し → 移行猶予として 24h 経過で reject)
+        token_iss = payload.get("iss")
+        if token_iss is not None and token_iss != JWT_ISSUER:
+            logger.warning("JWT rejected: iss mismatch got=%s expected=%s", token_iss, JWT_ISSUER)
+            return None
+        # aud 検証 (旧 token は aud 無し → 同上)
+        token_aud = payload.get("aud")
+        if token_aud is not None and token_aud != JWT_AUDIENCE:
+            logger.warning("JWT rejected: aud mismatch got=%s expected=%s", token_aud, JWT_AUDIENCE)
+            return None
+        # token_use 検証: access / refresh / mfa_pending 以外は拒否
+        token_use = payload.get("token_use")
+        if token_use is not None and token_use not in ("access", "mfa_pending"):
+            logger.warning("JWT rejected: unknown token_use=%s", token_use)
+            return None
+        # 旧 token (iss も aud も token_use も無い) → migration grace period: iat が
+        # 24h 以内ならば許容 (本コミットデプロイ前後の既発行 token を維持)
+        if token_iss is None and token_aud is None and token_use is None:
+            iat_legacy = payload.get("iat")
+            try:
+                import time as _t_legacy
+                age = _t_legacy.time() - int(iat_legacy) if iat_legacy else None
+                if age is not None and age > 86400:
+                    logger.warning("JWT rejected: legacy token (no iss/aud) older than 24h grace")
+                    return None
+            except Exception:
+                pass
         jti = payload.get("jti")
         if jti and _is_token_revoked(jti):
             logger.debug("JWT rejected: token has been revoked jti=%s", jti)

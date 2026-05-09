@@ -16,30 +16,47 @@ Write-Host "  Ray Firewall Setup" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 
+# Round 258 R7 P1 fix (Codex review):
+# 旧コードは RemoteAddress = "Any" で Ray ポートを全 IP に開放していた。
+# Ray GCS / dashboard / worker port は **無認証** で RCE 可能 (cloudpickle 経由)。
+# 「Any」は事実上 anyone-with-network-reach を Ray クラスタの管理者にする。
+# 既定はリンクローカル (169.254.0.0/16) のみ。public 公開は SS_RAY_FIREWALL_REMOTE
+# 環境変数で上書きを必須化し、ログにも警告を出す。
+$RayRemote = if ($env:SS_RAY_FIREWALL_REMOTE) {
+    $env:SS_RAY_FIREWALL_REMOTE
+} else {
+    "169.254.0.0/16"
+}
+
+if ($RayRemote -eq "Any" -or $RayRemote -eq "0.0.0.0/0") {
+    Write-Warning "[Ray firewall] RemoteAddress=$RayRemote はリンクローカル外への公開です。Ray は無認証で RCE 可能です。"
+    Write-Warning "[Ray firewall] WireGuard / Cloudflare Access / SSH tunnel の背後でのみ運用してください。"
+}
+
 $rules = @(
     @{
         Name          = "ShuttleScope-Ray-GCS-TCP-6379"
         DisplayName   = "ShuttleScope Ray GCS TCP 6379"
         Protocol      = "TCP"
         LocalPort     = "6379"
-        RemoteAddress = "Any"
-        Description   = "Ray GCS server"
+        RemoteAddress = $RayRemote
+        Description   = "Ray GCS server (Round 258 R7: no-auth; restrict to link-local)"
     },
     @{
         Name          = "ShuttleScope-Ray-Dashboard-TCP-8265"
         DisplayName   = "ShuttleScope Ray Dashboard TCP 8265"
         Protocol      = "TCP"
         LocalPort     = "8265"
-        RemoteAddress = "Any"
-        Description   = "Ray Dashboard"
+        RemoteAddress = $RayRemote
+        Description   = "Ray Dashboard (Round 258 R7: no-auth; restrict to link-local)"
     },
     @{
         Name          = "ShuttleScope-Ray-Workers-TCP-10000-10999"
         DisplayName   = "ShuttleScope Ray Workers TCP 10000-10999"
         Protocol      = "TCP"
         LocalPort     = "10000-10999"
-        RemoteAddress = "Any"
-        Description   = "Ray worker communication"
+        RemoteAddress = $RayRemote
+        Description   = "Ray worker communication (Round 258 R7: restrict to link-local)"
     }
 )
 

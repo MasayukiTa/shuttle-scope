@@ -3,6 +3,19 @@
 # 1. cloudflared tunnel login
 # 2. cloudflared tunnel create shuttlescope
 # 3. cloudflared tunnel route dns shuttlescope app.shuttle-scope.com
+#
+# Round 258 R7 P1 fix (Codex review):
+# 旧 default では `ssh.shuttle-scope.com -> ssh://localhost:22` を同居させていた。
+# repo に SSH ingress を default で含めると、Cloudflare Access policy が未設定 /
+# 誤設定の場合に SSH が外部公開される事故を起こす。
+# Application 用 ingress (app.shuttle-scope.com) のみ default に残し、
+# SSH ingress は別ファイル `config.ssh.example.yml` に切り出した。
+# 必要なら下記コメントの手順で merge すること:
+#   1. Cloudflare Access policy を ssh.shuttle-scope.com に必ず適用
+#      (GitHub OIDC + 2FA + 許可 email allowlist)
+#   2. config.ssh.example.yml の `- hostname: ssh.shuttle-scope.com` ブロックを
+#      `service: http_status:404` の **直前** に貼る
+#   3. cloudflared service restart で反映
 
 tunnel: <UUID>
 credentials-file: C:\Users\<USER>\.cloudflared\<UUID>.json
@@ -15,7 +28,19 @@ ingress:
       connectTimeout: 30s
       noTLSVerify: true
 
-  - hostname: ssh.shuttle-scope.com
-    service: ssh://localhost:22
+  - hostname: www.shuttle-scope.com
+    service: http://localhost:8765
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: true
+
+  - hostname: shuttle-scope.com
+    service: http://localhost:8765
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: true
+
+  # NOTE: SSH ingress は config.ssh.example.yml に分離 (Round 258 R7 P1)
+  # Cloudflare Access policy の保護下でのみ追加すること。
 
   - service: http_status:404

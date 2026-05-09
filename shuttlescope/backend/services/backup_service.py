@@ -92,6 +92,34 @@ def create_backup(label: Optional[str] = None, max_generations: int = 10) -> Pat
 
     passphrase = _passphrase()
 
+    # Round 258 R7 P2 fix (Codex review): production posture では平文 ZIP fallback
+    # 禁止。SS_BACKUP_PASSPHRASE 未設定 / pyzipper 未導入なら fail-closed。
+    # backup は DB 丸ごとなので漏洩時の影響範囲が大きい。「警告ログだけで平文」は
+    # 運用ミスに極めて弱いので、エラーで止めて運用者に注意喚起する。
+    # passphrase の最低長 (PKWARE-AES KDF が PBKDF2-SHA1 1000 iter と弱いため、
+    # 実エントロピーで補償する) も同時に強制する。
+    from backend.config import settings as _bp_settings
+    _is_prod = (
+        bool(getattr(_bp_settings, "PUBLIC_MODE", False))
+        or (getattr(_bp_settings, "ENVIRONMENT", "") or "").strip().lower() == "production"
+    )
+    if _is_prod:
+        if not passphrase:
+            raise RuntimeError(
+                "[backup] production posture で SS_BACKUP_PASSPHRASE 未設定: "
+                "fail-closed (平文 ZIP fallback を禁止)。20 文字以上の strong passphrase を設定してください"
+            )
+        if not _HAS_PYZIPPER:
+            raise RuntimeError(
+                "[backup] production posture で pyzipper 未インストール: "
+                "fail-closed。`pip install pyzipper` を実行してください"
+            )
+        if len(passphrase) < 20:
+            raise RuntimeError(
+                "[backup] SS_BACKUP_PASSPHRASE が短すぎます (最低 20 文字)。"
+                "PKWARE-AES の KDF (PBKDF2-SHA1 1000 iter) は脆弱なため passphrase 強度で補償が必要です"
+            )
+
     if passphrase and _HAS_PYZIPPER:
         # AES-256 暗号化 ZIP
         with pyzipper.AESZipFile(
@@ -104,16 +132,14 @@ def create_backup(label: Optional[str] = None, max_generations: int = 10) -> Pat
             zf.write(db_path, db_path.name)
         logger.info("[backup] AES-256 暗号化 ZIP を作成: %s", zip_path.name)
     else:
-        # フォールバック: 平文 ZIP（本番では使わないこと）
+        # 開発時のみ: フォールバック平文 ZIP（本番では上で raise 済み）
         if not passphrase:
             logger.warning(
-                "[backup] SS_BACKUP_PASSPHRASE 未設定。平文 ZIP で作成します。"
-                " 本番運用前に必ず設定してください。"
+                "[backup] SS_BACKUP_PASSPHRASE 未設定 (dev only)。平文 ZIP で作成します。"
             )
         elif not _HAS_PYZIPPER:
             logger.error(
-                "[backup] pyzipper 未インストール。pip install pyzipper を実行してください。"
-                " フォールバックで平文 ZIP を作成します。"
+                "[backup] pyzipper 未インストール (dev only)。フォールバックで平文 ZIP を作成します。"
             )
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.write(db_path, db_path.name)
