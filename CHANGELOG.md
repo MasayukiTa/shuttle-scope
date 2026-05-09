@@ -16,6 +16,13 @@ Read it together with:
 
 ## 2026-05-09
 
+### Audit Log FK Drop + Player Dashboard Gate (User-directed remediation #2 + #3)
+
+Two follow-up product changes from the post-attack remediation pass.
+
+- **Audit log HMAC chain integrity (Round 233 R233-A — plan A):** Alembic migration `0026_drop_fk_access_logs_user_id` drops the FK constraint on `access_logs.user_id`. `delete_user` no longer modifies `access_logs.user_id` on user removal, so subsequent rows preserve their canonical bytes and the HMAC chain stays valid. The pre-existing broken segments (id 466 + 897, from earlier mismatched cleanups) are intentionally NOT rewritten — rewriting hashes would defeat the tamper-detection purpose of the chain. `verify_chain` now accepts `?from_id=N` so an admin can verify the chain from any segment boundary forward, and the `/api/auth/audit-logs/verify` endpoint surfaces this to admin operators.
+- **Player dashboard gate (Round 228 R228-F1 + F2):** the sidebar `/dashboard` entry is now wrapped in `hasPageAccess('dashboard')`. Because `hasPageAccess` returns true for admin/coach/analyst by default and false for player (whose `pageAccess` array is empty), the player no longer sees a dashboard link. Independently, `DashboardShell` now redirects `role === 'player'` to `/matches` at the top of the component — typing the URL directly no longer renders the dashboard. The `analysis.review.{section_maps,guide_step1,vulnerability_map}` i18n labels (which contain 弱点 framing) therefore can no longer reach a player view, satisfying the CLAUDE.md non-negotiable rule.
+
 ### Cross-Team Page-Access Scope Check (Round 237-257 Deeper Sweep)
 
 A 21-round deep-dive sweep across already-covered areas surfaced one
