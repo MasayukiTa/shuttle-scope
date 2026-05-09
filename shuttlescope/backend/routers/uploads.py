@@ -483,6 +483,24 @@ async def upload_chunk(
             if _bitmap_get(session.received_bitmap, chunk_index):
                 return {"success": True, "already_received": True, "received_count": session.received_count}
 
+            # Round 258 R14 P0 fix (deep audit NEW-2): chunk.read() で全バイトを spool に
+            # 読み込む前に Content-Length header を見て上限超過を検知する。
+            # 旧コードは chunk_size 検証を line 506 で行っていたが、その時点で
+            # `await chunk.read()` が既に GB 単位を spool (デフォルト 1MB 超で disk へ) に
+            # 書き出しており、disk-fill DoS が成立した。受け取る前に弾く。
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    cl_int = int(content_length)
+                except (ValueError, TypeError):
+                    cl_int = 0
+                # multipart overhead を 1 MB 許容しつつ、chunk_size の 110% を上限とする
+                _max_allowed = (session.chunk_size or 16 * 1024 * 1024) + 1 * 1024 * 1024
+                if cl_int > _max_allowed:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"chunk リクエストサイズが上限を超えています ({cl_int} > {_max_allowed})",
+                    )
             # チャンクを読む。
             data = await chunk.read()
             if not data:

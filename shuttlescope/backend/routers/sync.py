@@ -566,31 +566,48 @@ def resolve_conflict(
                     from backend.services.import_package import _sanitize_import_record
                     from datetime import datetime as _dt_cf
                     safe_data = _sanitize_import_record(model_cls, incoming, _dt_cf.utcnow())
-                    actor_team = getattr(_ctx, "team_id", None) if "_ctx" in locals() else None
-                    actor_is_admin = bool(getattr(_ctx, "is_admin", False)) if "_ctx" in locals() else False
+                    # Round 258 R14 P0 fix (deep audit R13-C): R13 で `actor_team is not None`
+                    # AND 他チーム判定で deny していたが、actor_team が None (teamless analyst /
+                    # 招待直後 / admin demote 直後) の場合は判定そのものをスキップしていたため、
+                    # teamless analyst が任意 team の record を上書き可能だった (cross-team
+                    # takeover)。deny を default にし、admin / 同一チーム所属者のみ allow に倒す。
+                    actor_team = getattr(_ctx, "team_id", None)
+                    actor_is_admin = bool(getattr(_ctx, "is_admin", False))
+
+                    def _allow_or_403(local_team_attr: str) -> None:
+                        if actor_is_admin:
+                            return
+                        local_team_val = getattr(local_obj, local_team_attr, None)
+                        # local_team が None (legacy / 未設定) でも teamless actor は通さない
+                        if actor_team is None:
+                            raise HTTPException(
+                                status_code=403,
+                                detail="team_id が設定されていないユーザーは sync conflict を解決できません",
+                            )
+                        if local_team_val is None:
+                            # local 側が teamless = 過去の orphan record。actor が
+                            # 自身の team_id で上書きできるが、念のため admin のみに制限。
+                            raise HTTPException(
+                                status_code=403,
+                                detail="team_id 未設定の record は admin のみ編集可能です",
+                            )
+                        if local_team_val != actor_team:
+                            raise HTTPException(
+                                status_code=403,
+                                detail="他チームのレコードは編集できません",
+                            )
 
                     if hasattr(local_obj, "owner_team_id"):
-                        if (
-                            actor_team is not None
-                            and local_obj.owner_team_id is not None
-                            and local_obj.owner_team_id != actor_team
-                            and not actor_is_admin
-                        ):
-                            raise HTTPException(status_code=403, detail="他チームのレコードは編集できません")
+                        _allow_or_403("owner_team_id")
                     elif hasattr(local_obj, "team_id"):
-                        # Player など team_id 列のみのモデル
-                        local_team_id = getattr(local_obj, "team_id", None)
-                        if (
-                            actor_team is not None
-                            and local_team_id is not None
-                            and local_team_id != actor_team
-                            and not actor_is_admin
-                        ):
-                            raise HTTPException(status_code=403, detail="他チームのレコードは編集できません")
+                        _allow_or_403("team_id")
                     else:
                         # User や認証関連の model は admin だけ編集可能
                         if not actor_is_admin:
-                            raise HTTPException(status_code=403, detail="このレコードの編集には管理者権限が必要です")
+                            raise HTTPException(
+                                status_code=403,
+                                detail="このレコードの編集には管理者権限が必要です",
+                            )
                     for k, v in safe_data.items():
                         setattr(local_obj, k, v)
                     db.commit()
