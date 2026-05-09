@@ -17,7 +17,7 @@ from typing import Optional
 
 import bcrypt as _bcrypt_lib
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, Field, StrictBool, field_validator
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -300,6 +300,19 @@ class LoginRequest(BaseModel):
     user_id: Optional[int] = None
     pin: Optional[str] = Field(default=None, max_length=128)
     role: Optional[str] = Field(default=None, max_length=32)
+
+    @field_validator("username", "identifier", mode="after")
+    @classmethod
+    def _reject_null_byte_in_id(cls, v: Optional[str]) -> Optional[str]:
+        # round 233 R7-A: PostgreSQL の text 列は NUL byte を受け付けず、
+        # ValueError 経由で 500 リークする。Pydantic 層で早期拒否する。
+        # 同時に C0 制御文字も拒否 (audit log injection / log noise 抑制)。
+        if v is None:
+            return v
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in v):
+            from fastapi import HTTPException as _HTTP
+            raise _HTTP(status_code=422, detail="username/identifier に制御文字を含めることはできません")
+        return v
 
 
 class LoginResponse(BaseModel):
