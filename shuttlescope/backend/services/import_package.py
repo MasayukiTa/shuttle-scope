@@ -97,6 +97,75 @@ def _get_columns(model_cls: type) -> set[str]:
     return _COLUMN_CACHE[model_cls]
 
 
+# Round 258 R3 P0/P1 fix (Finding 1+2): mass-assignment / cross-team takeover 防止
+#
+# 旧来は `data = {k: v for k, v in incoming.items() if k in valid_cols and k != "id"}` で
+# どのカラムでも書き込めていた。これを使うと、悪意ある analyst が以下を仕込んだ .sspkg を
+# import すると team scope を超えてデータを掌握できる:
+#   - matches: owner_team_id / is_public_pool / annotator_id を上書き
+#   - players: team_id を別チームに移動
+#   - 全モデル: deleted_at=None で soft-delete を蘇生
+#   - updated_at=9999-12-31 で永続的に「勝ち」を確保 (merge resolver 騙し)
+#   - revision / content_hash を偽造して audit chain 仮定を破る
+#
+# 対策:
+#   1. テーブル別の許可カラム allowlist (IMPORT_ALLOWED_COLUMNS) を定義
+#   2. 列がリストに無い場合は黙って drop (例外で attacker 露出させない)
+#   3. updated_at は server_now を超えない値にクランプ
+#   4. revision / content_hash / deleted_at / *_team_id / annotator_id は server-derived
+#      として一律 strip
+_FORCED_STRIP_COLUMNS = {
+    "deleted_at",          # 蘇生防止 (admin 経由でのみ復元)
+    "revision",            # サーバ derived
+    "content_hash",        # audit chain 整合性
+    "row_hash",            # audit chain
+    "prev_hash",           # audit chain
+    "owner_team_id",       # team scope 強制 (importer team で再決定)
+    "home_team_id",        # 同上
+    "away_team_id",        # 同上
+    "team_id",             # players/users の team は server で再解決
+    "annotator_id",        # ユーザ偽装防止
+    "is_public_pool",      # 公開フラグ偽造防止
+    "uploader_user_id",    # 同上
+    "actor_user_id",       # 同上
+}
+
+
+def _sanitize_import_record(model_cls: type, incoming: dict, server_now: datetime) -> dict:
+    """incoming dict を import 安全な dict にサニタイズする。
+
+    - id を除外
+    - _FORCED_STRIP_COLUMNS をすべて drop
+    - updated_at が未来に飛んでいたら server_now にクランプ
+    - 戻り値: 適用してよい (model_cls(**data) / setattr) dict
+    """
+    valid_cols = _get_columns(model_cls)
+    out = {}
+    for k, v in incoming.items():
+        if k == "id":
+            continue
+        if k in _FORCED_STRIP_COLUMNS:
+            continue
+        if k not in valid_cols:
+            continue
+        out[k] = v
+    # 時刻クランプ: future-pinning による merge 戦略の悪用を防ぐ
+    if "updated_at" in out and out["updated_at"] is not None:
+        try:
+            ts = out["updated_at"]
+            if isinstance(ts, str):
+                # ISO 文字列を datetime に
+                from datetime import datetime as _dt
+                ts = _dt.fromisoformat(ts.replace("Z", "+00:00"))
+                if ts.tzinfo is not None:
+                    ts = ts.replace(tzinfo=None)
+            if isinstance(ts, datetime) and ts > server_now:
+                out["updated_at"] = server_now
+        except Exception:
+            out["updated_at"] = server_now
+    return out
+
+
 def _find_by_uuid(db: Session, model_cls: type, uuid: str) -> Optional[Any]:
     return db.query(model_cls).filter_by(uuid=uuid).first()
 
@@ -117,6 +186,7 @@ def _apply_record(
     decision: MergeDecision,
     id_remap: dict[str, dict[str, int]],
     table_key: str,
+    importer_team_id: Optional[int] = None,
 ) -> None:
     """
     MergeDecision に従ってレコードを DB に書き込む。
@@ -127,23 +197,33 @@ def _apply_record(
         return
 
     incoming = decision.incoming_record or {}
-    valid_cols = _get_columns(model_cls)
+    server_now = datetime.utcnow()
 
     # 論理削除
     if decision.action == "delete":
         obj = db.query(model_cls).filter_by(id=decision.local_id).first()
         if obj and hasattr(obj, "deleted_at") and obj.deleted_at is None:
-            obj.deleted_at = datetime.utcnow()
+            # Round 258 R3 P1 fix (Finding 4): delete も ownership 検証必須。
+            # 旧来は uuid 一致だけで他チームのレコードを soft-delete できた。
+            if importer_team_id is not None and hasattr(obj, "owner_team_id"):
+                if obj.owner_team_id is not None and obj.owner_team_id != importer_team_id:
+                    return  # 他チームのレコードは静かにスキップ
+            obj.deleted_at = server_now
             db.commit()
         return
 
-    # フィールド準備（DB 内部 id は除く、外部キーをリマップ）
-    data = {k: v for k, v in incoming.items() if k in valid_cols and k != "id"}
+    # Round 258 R3 P0/P1 fix (Finding 1+2): mass-assignment 防止 + 時刻クランプ
+    data = _sanitize_import_record(model_cls, incoming, server_now)
 
     # 外部キーリマップ（players: player_a_id/player_b_id etc.）
     _remap_fks(data, id_remap)
 
     if decision.action == "new":
+        # 新規作成時は importer team を server-side で強制設定
+        if importer_team_id is not None:
+            for col in ("owner_team_id", "home_team_id", "team_id"):
+                if col in _get_columns(model_cls):
+                    data.setdefault(col, importer_team_id)
         obj = model_cls(**data)
         db.add(obj)
         db.flush()
@@ -155,6 +235,10 @@ def _apply_record(
     elif decision.action == "update":
         obj = db.query(model_cls).filter_by(id=decision.local_id).first()
         if obj:
+            # Round 258 R3 P1 fix (Finding 4): update も ownership 検証必須。
+            if importer_team_id is not None and hasattr(obj, "owner_team_id"):
+                if obj.owner_team_id is not None and obj.owner_team_id != importer_team_id:
+                    return
             for k, v in data.items():
                 if k != "id":
                     setattr(obj, k, v)
@@ -185,11 +269,18 @@ def _remap_fks(data: dict, id_remap: dict[str, dict[str, int]]) -> None:
 
 # ─── メインインポート処理 ──────────────────────────────────────────────────────
 
-def import_package(db: Session, raw: bytes, dry_run: bool = False) -> ImportSummary:
+def import_package(db: Session, raw: bytes, dry_run: bool = False,
+                   importer_team_id: Optional[int] = None) -> ImportSummary:
     """
     .sspkg バイト列を解析し DB へマージする。
 
     dry_run=True の場合は DB を変更せず ImportSummary のみ返す（プレビュー用）。
+
+    Round 258 R3 P0/P1 fix:
+    importer_team_id を受け取り、_apply_record まで伝播する。これにより
+    cross-team データ takeover (incoming に他チームの owner_team_id を仕込む攻撃)
+    と他チーム row の delete/update を遮断する。caller (routers/sync.py) は
+    呼び出し元の認証コンテキストから team_id を解決して渡すこと。
     """
     summary = ImportSummary()
     id_remap: dict[str, dict[str, int]] = {}
@@ -245,10 +336,10 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False) -> ImportSumm
                     # 実際の書き込み
                     try:
                         if decision.action == "new":
-                            _apply_record(db, model_cls, decision, id_remap, table_key)
+                            _apply_record(db, model_cls, decision, id_remap, table_key, importer_team_id)
                             summary.added += 1
                         elif decision.action == "update":
-                            _apply_record(db, model_cls, decision, id_remap, table_key)
+                            _apply_record(db, model_cls, decision, id_remap, table_key, importer_team_id)
                             summary.updated += 1
                         elif decision.action == "keep":
                             # 既存 id をリマップに登録（後続FK解決用）
@@ -257,7 +348,7 @@ def import_package(db: Session, raw: bytes, dry_run: bool = False) -> ImportSumm
                                 id_remap.setdefault(table_key, {})[old_id] = local_obj.id
                             summary.kept += 1
                         elif decision.action == "delete":
-                            _apply_record(db, model_cls, decision, id_remap, table_key)
+                            _apply_record(db, model_cls, decision, id_remap, table_key, importer_team_id)
                             summary.deleted += 1
                         elif decision.action == "conflict":
                             summary.conflicts += 1

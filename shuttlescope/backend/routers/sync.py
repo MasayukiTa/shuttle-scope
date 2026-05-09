@@ -239,8 +239,9 @@ async def preview_package(
     if not validation["valid"]:
         raise HTTPException(status_code=422, detail=validation["error"])
 
-    # dry_run でマージシミュレーション
-    summary = import_package(db, raw, dry_run=True)
+    # Round 258 R3 P0/P1 fix: importer team を解決して _apply_record まで伝播
+    importer_team_id = getattr(_ctx, "team_id", None) if "_ctx" in locals() else None
+    summary = import_package(db, raw, dry_run=True, importer_team_id=importer_team_id)
 
     return {
         "success": True,
@@ -277,7 +278,9 @@ async def import_package_endpoint(
     if not validation["valid"]:
         raise HTTPException(status_code=422, detail=validation["error"])
 
-    summary = import_package(db, raw, dry_run=False)
+    # Round 258 R3 P0/P1 fix: importer team を _apply_record に伝播
+    importer_team_id = getattr(_ctx, "team_id", None)
+    summary = import_package(db, raw, dry_run=False, importer_team_id=importer_team_id)
 
     return {
         "success": True,
@@ -426,6 +429,18 @@ def import_from_cloud_path(
     if not pkg_path.exists() or not pkg_path.is_file():
         raise HTTPException(status_code=404, detail="ファイルが見つかりません")
 
+    # Round 258 R3 P1 fix (file audit #3): symlink reject + UNC reject
+    # raw_path 内の `\\?\` / `\\.\` / leading UNC は受け付けない
+    p_str = str(raw_path)
+    if (
+        p_str.startswith("\\\\?\\")
+        or p_str.startswith("\\\\.\\")
+        or p_str.startswith("\\\\")
+    ):
+        raise HTTPException(status_code=400, detail="UNC / extended-length path は許可されません")
+    if pkg_path.is_symlink():
+        raise HTTPException(status_code=400, detail="symlink は許可されません")
+
     raw = pkg_path.read_bytes()
     if len(raw) > _MAX_IMPORT_BYTES:
         raise HTTPException(status_code=413, detail=f"ファイルサイズが上限（{_MAX_IMPORT_BYTES // 1024 // 1024} MB）を超えています")
@@ -433,7 +448,9 @@ def import_from_cloud_path(
     if not validation["valid"]:
         raise HTTPException(status_code=422, detail=validation["error"])
 
-    summary = import_package(db, raw, dry_run=dry_run)
+    # Round 258 R3 P0/P1 fix: importer team を伝播
+    importer_team_id = getattr(_ctx, "team_id", None)
+    summary = import_package(db, raw, dry_run=dry_run, importer_team_id=importer_team_id)
     return {
         "success": True,
         "data": {
