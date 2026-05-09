@@ -449,22 +449,43 @@ def _get_user_revoke_timestamp(user_id: int) -> Optional[int]:
     from backend.db.database import SessionLocal
     from backend.db.models import RevokedToken
     try:
-        prefix = f"__user_revoke_{user_id}_"
+        # Round 258 R24 P0 hotfix: new compact format `__ur_<id>_<b36_us>_<rand>` を
+        # parse する。旧 `__user_revoke_<id>_<iso>` 形式の row も後方互換として残し、
+        # どちらの prefix もサポートする。
+        new_prefix = f"__ur_{user_id}_"
+        old_prefix = f"__user_revoke_{user_id}_"
         with SessionLocal() as db:
             row = (
                 db.query(RevokedToken)
-                .filter(RevokedToken.jti.like(prefix + "%"))
+                .filter(
+                    (RevokedToken.jti.like(new_prefix + "%"))
+                    | (RevokedToken.jti.like(old_prefix + "%"))
+                )
                 .order_by(RevokedToken.id.desc())
                 .first()
             )
             ts: Optional[int] = None
             if row is not None:
-                iso = row.jti[len(prefix):]
-                try:
-                    from datetime import timezone as _tz
-                    ts = int(datetime.fromisoformat(iso).replace(tzinfo=_tz.utc).timestamp())
-                except (ValueError, TypeError):
-                    ts = None
+                jti = row.jti
+                if jti.startswith(new_prefix):
+                    body = jti[len(new_prefix):]
+                    # body は `<b36_us>_<rand>` 形式
+                    parts = body.split("_", 1)
+                    if len(parts) >= 1:
+                        try:
+                            us = int(parts[0], 36)
+                            ts = us // 1_000_000
+                        except (ValueError, TypeError):
+                            ts = None
+                elif jti.startswith(old_prefix):
+                    iso_and_more = jti[len(old_prefix):]
+                    # 旧 format は `<iso>_<8hex>` または `<iso>` だけ
+                    iso = iso_and_more.rsplit("_", 1)[0] if "_" in iso_and_more else iso_and_more
+                    try:
+                        from datetime import timezone as _tz
+                        ts = int(datetime.fromisoformat(iso).replace(tzinfo=_tz.utc).timestamp())
+                    except (ValueError, TypeError):
+                        ts = None
             _USER_REVOKE_CACHE[user_id] = (now, ts)
             _USER_REVOKE_CACHE.move_to_end(user_id)
             while len(_USER_REVOKE_CACHE) > _USER_REVOKE_CACHE_MAX:
@@ -521,10 +542,33 @@ def revoke_all_for_user(user_id: int) -> None:
     from backend.db.models import RevokedToken
     import secrets as _secrets
     # Round 258 R23 P2 fix (R22 P2-2): R21 で導入した uuid4().hex[:8] は 32-bit
-    # で birthday paradox 上 ~65k 程度の同時発行で衝突する。secrets.token_hex(16)
-    # の 128-bit 乱数に拡大し IntegrityError 経路を実用上排除する。
-    iso = datetime.utcnow().isoformat()
-    sentinel = f"__user_revoke_{user_id}_{iso}_{_secrets.token_hex(16)}"
+    # で birthday paradox 上 ~65k 程度の同時発行で衝突する。
+    # Round 258 R24 P0 hotfix (R23 self-introduced regression):
+    #   旧 R23 は `__user_revoke_<id>_<isoformat>_<32hex>` で ~75 文字となり、
+    #   RevokedToken.jti = String(36) 制約に違反 (truncate or PG IntegrityError)。
+    #   修正: コンパクト format `__ur_<id>_<base36_epoch_us>_<6hex>` で 36 char に収める。
+    #     - `__ur_`         = 5 chars
+    #     - user_id (≤8 digits) ≦ 8 chars
+    #     - base36 epoch_us (microsec since epoch ≈ 12 char in base36) ≤ 12
+    #     - 6 hex = 6
+    #     合計 ≦ 5+8+1+12+1+6 = 33 (margin 3)
+    #   collision 確率は 6hex (24bit ≈ 16M) を 1 microsec 内で同 user_id で消費する場合のみ。
+    #   change_password の物理的レートでは衝突不可能。
+    import time as _time_jwt_rev
+    epoch_us = int(_time_jwt_rev.time() * 1_000_000)
+    # base36 string
+    def _b36(n: int) -> str:
+        if n == 0:
+            return "0"
+        out = []
+        while n:
+            n, r = divmod(n, 36)
+            out.append("0123456789abcdefghijklmnopqrstuvwxyz"[r])
+        return "".join(reversed(out))
+    sentinel = f"__ur_{user_id}_{_b36(epoch_us)}_{_secrets.token_hex(3)}"
+    if len(sentinel) > 36:
+        # safety net (user_id が極端に大きい等の異常時): 末尾を切り落として制約 OK にする
+        sentinel = sentinel[:36]
     with SessionLocal() as db:
         db.add(RevokedToken(
             jti=sentinel,
