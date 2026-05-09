@@ -58,43 +58,44 @@ def upgrade() -> None:
         # テーブルが存在しない (新規 deploy) → create_all() に任せる。本 migration は no-op。
         return
 
-    # ─── Phase 1: 全列を nullable=True で追加 + 既存行を埋める ───
+    # ─── Phase 1a: 不足列を nullable=True で追加 ───
+    # Round 258 R17 P2 fix (NEW-5): R12 までは UPDATE backfill を
+    # `if "X" not in cols:` ブロック内に書いていた。問題は、前回実行で add_column は
+    # 成功したが Phase 2 の NOT NULL 昇格で例外死した場合、再実行時には
+    # 「カラムは既に存在 → backfill UPDATE が走らない → 一部行が IS NULL のまま
+    # → Phase 2 が再度 IntegrityError」という詰みパターンに陥る。
+    # 修正: add_column と UPDATE backfill を分離し、UPDATE は **無条件で**
+    # 実行する。`WHERE X IS NULL` で副作用は完全に冪等。
     if "cache_key" not in cols:
         op.add_column(
             "analysis_cache",
             sa.Column("cache_key", sa.String(length=200), nullable=True),
         )
-        op.execute("UPDATE analysis_cache SET cache_key = 'legacy_' || CAST(id AS VARCHAR) WHERE cache_key IS NULL")
     if "analysis_type" not in cols:
         op.add_column(
             "analysis_cache",
             sa.Column("analysis_type", sa.String(length=50), nullable=True),
         )
-        op.execute("UPDATE analysis_cache SET analysis_type = 'unknown' WHERE analysis_type IS NULL")
     if "filters_json" not in cols:
         op.add_column(
             "analysis_cache",
             sa.Column("filters_json", sa.Text(), nullable=True),
         )
-        op.execute("UPDATE analysis_cache SET filters_json = '{}' WHERE filters_json IS NULL")
     if "result_json" not in cols:
         op.add_column(
             "analysis_cache",
             sa.Column("result_json", sa.Text(), nullable=True),
         )
-        op.execute("UPDATE analysis_cache SET result_json = '{}' WHERE result_json IS NULL")
     if "sample_size" not in cols:
         op.add_column(
             "analysis_cache",
             sa.Column("sample_size", sa.Integer(), nullable=True, server_default="0"),
         )
-        op.execute("UPDATE analysis_cache SET sample_size = 0 WHERE sample_size IS NULL")
     if "confidence_level" not in cols:
         op.add_column(
             "analysis_cache",
             sa.Column("confidence_level", sa.Float(), nullable=True, server_default="0.0"),
         )
-        op.execute("UPDATE analysis_cache SET confidence_level = 0.0 WHERE confidence_level IS NULL")
     if "computed_at" not in cols:
         op.add_column(
             "analysis_cache",
@@ -105,13 +106,26 @@ def upgrade() -> None:
             "analysis_cache",
             sa.Column("expires_at", sa.DateTime(), nullable=True),
         )
-        op.execute("UPDATE analysis_cache SET expires_at = CURRENT_TIMESTAMP WHERE expires_at IS NULL")
     if "player_id" not in cols:
         op.add_column(
             "analysis_cache",
             sa.Column("player_id", sa.Integer(), nullable=True, server_default="-1"),
         )
-        op.execute("UPDATE analysis_cache SET player_id = -1 WHERE player_id IS NULL")
+
+    # ─── Phase 1b: 既存 NULL 行を default で埋める (idempotent backfill) ───
+    # WHERE ... IS NULL で何度実行しても同じ結果。前回の Phase 2 失敗からの
+    # 復旧再実行でも確実に NOT NULL 制約を満たせる状態にする。
+    op.execute(
+        "UPDATE analysis_cache SET cache_key = 'legacy_' || CAST(id AS VARCHAR) "
+        "WHERE cache_key IS NULL"
+    )
+    op.execute("UPDATE analysis_cache SET analysis_type = 'unknown' WHERE analysis_type IS NULL")
+    op.execute("UPDATE analysis_cache SET filters_json = '{}' WHERE filters_json IS NULL")
+    op.execute("UPDATE analysis_cache SET result_json = '{}' WHERE result_json IS NULL")
+    op.execute("UPDATE analysis_cache SET sample_size = 0 WHERE sample_size IS NULL")
+    op.execute("UPDATE analysis_cache SET confidence_level = 0.0 WHERE confidence_level IS NULL")
+    op.execute("UPDATE analysis_cache SET expires_at = CURRENT_TIMESTAMP WHERE expires_at IS NULL")
+    op.execute("UPDATE analysis_cache SET player_id = -1 WHERE player_id IS NULL")
 
     # ─── Phase 2: NOT NULL 昇格 + UNIQUE は batch_alter_table で SQLite 互換 ───
     # 直前で全行を埋めたので、ここでの NOT NULL 化は安全。
