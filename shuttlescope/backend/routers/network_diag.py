@@ -280,7 +280,29 @@ def toggle_lan_mode(enable: bool, request: Request):
     if not found:
         lines.append(f"{key}={value}")
 
-    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Round 258 R25 P2 fix (R24 P2 backlog): 旧コードは `env_file.write_text` を直接
+    # 呼んでおり、書込み中に backend が hot-reload / restart すると半行状態の .env を
+    # 読んで起動時設定 validation が落ちる経路があった。
+    # 修正: temp file → `os.replace` で atomic 置換。POSIX/Windows いずれでも
+    # filesystem-level に atomic な rename。
+    import os as _os_nd
+    import tempfile as _tempfile_nd
+    _content = "\n".join(lines) + "\n"
+    _tmp_fd, _tmp_path = _tempfile_nd.mkstemp(
+        dir=str(env_file.parent), prefix=".env.development.tmp.", suffix=".tmp"
+    )
+    try:
+        with _os_nd.fdopen(_tmp_fd, "w", encoding="utf-8") as _tmp_f:
+            _tmp_f.write(_content)
+        # Windows でも .replace は同 FS 内なら atomic
+        _os_nd.replace(_tmp_path, str(env_file))
+    except Exception:
+        # 書込み失敗時の tmp ファイル後始末
+        try:
+            _os_nd.unlink(_tmp_path)
+        except OSError:
+            pass
+        raise
 
     # メモリ上の設定値も即時反映（再起動なしでトグル状態を UI に返す）
     _get_settings().LAN_MODE = enable
