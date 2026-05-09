@@ -388,6 +388,14 @@ def wake_worker(worker_ip: str) -> Dict[str, Any]:
     # でない場合は WOL を refuse する。
     try:
         addr = ipaddress.ip_address(worker_ip)
+        # Round 258 R23 P2 fix (R22 P2-3): IPv6 worker_ip は IPv4 broadcast の概念が
+        # 適用できない (multicast を使うのが正解)。WOL 自体が一般に IPv4 broadcast を
+        # 前提にしているため、IPv6 worker は短絡で reject する。
+        if isinstance(addr, ipaddress.IPv6Address):
+            return {
+                "ok": False,
+                "error": f"WOL refused: IPv6 worker_ip {worker_ip} は対応していません (IPv4 broadcast 前提)",
+            }
         if addr.is_link_local:
             # 169.254.0.0/16 → 169.254.255.255
             broadcast = "169.254.255.255"

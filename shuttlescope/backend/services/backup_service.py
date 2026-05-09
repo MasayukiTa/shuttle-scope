@@ -136,6 +136,23 @@ def create_backup(label: Optional[str] = None, max_generations: int = 10) -> Pat
                 f"(Shannon={_shannon:.2f} bit/char, 必要 4.0 bit/char 以上 = 約 80 bits 全体)。"
                 "secrets.token_urlsafe(24) 等で生成してください"
             )
+        # Round 258 R24 P2 fix (R24 P2):
+        # Shannon ≥4.0 単独では `"abcdefghijklmnopqrst"` (a-t 20 chars unique) が
+        # log2(20)≈4.32 で通るが、実体は 26-letter 辞書攻撃の射程内。
+        # 大文字/小文字/数字/記号の 4 character class のうち最低 3 種を要求し、
+        # 自然な強い passphrase (例: secrets.token_urlsafe / Diceware) でしか通らない
+        # ようにする。
+        _has_lower = any(c.islower() for c in passphrase)
+        _has_upper = any(c.isupper() for c in passphrase)
+        _has_digit = any(c.isdigit() for c in passphrase)
+        _has_symbol = any(not c.isalnum() for c in passphrase)
+        _classes = sum([_has_lower, _has_upper, _has_digit, _has_symbol])
+        if _classes < 3:
+            raise RuntimeError(
+                "[backup] SS_BACKUP_PASSPHRASE は大文字 / 小文字 / 数字 / 記号 の "
+                f"4 種のうち最低 3 種を含めてください (現在 {_classes} 種)。"
+                "secrets.token_urlsafe(24) は自動で複数 class を含みます"
+            )
 
     if passphrase and _HAS_PYZIPPER:
         # AES-256 暗号化 ZIP

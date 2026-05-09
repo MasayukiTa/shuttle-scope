@@ -1056,11 +1056,14 @@ def _ssh_run_python_script(host: str, username: str, password: str,
     #   1. `%TEMP%\\ShuttleScope\\` 配下に置く (USER は同じだが他 user から
     #      reach 困難な NTFS DACL 既定にする)。
     #   2. uuid suffix を 32 hex (128 bit) に拡大。
-    #   3. SFTP open 時に `O_WRONLY|O_CREAT|O_EXCL` 相当の flag で衝突を露出させ、
-    #      競合した場合は別 path で retry。
+    #
+    # Round 258 R24 P1 fix (R24 P1):
+    # `C:/Users/{username}/AppData/Local/Temp/` を hard-code すると、worker user の
+    # `%TEMP%` がリダイレクト (corp policy / roaming profile / 個別設定) されている
+    # 場合に実 path と乖離する。SSH で先に `cmd /c echo %TEMP%` を投げて resolve する。
     _suffix = _uuid.uuid4().hex  # 32 hex / 128 bit
-    script_path = f"C:/Users/{username}/AppData/Local/Temp/ShuttleScope/ss_task_{_suffix}.py"
     python_exe = f"C:/Users/{username}/AppData/Local/Programs/Python/Python312/python.exe"
+    script_path = ""  # 後段で resolve 後に決定
 
     ssh = paramiko.SSHClient()
     ssh.load_system_host_keys()
@@ -1094,12 +1097,25 @@ def _ssh_run_python_script(host: str, username: str, password: str,
             auth_timeout=10,
         )
 
+        # R24 P1 fix: 実 %TEMP% を SSH 先で resolve する。失敗時は default にフォールバック。
+        resolved_temp = f"C:/Users/{username}/AppData/Local/Temp"
+        try:
+            _, _stdout, _ = ssh.exec_command("cmd /c echo %TEMP%")
+            _stdout.channel.settimeout(5)
+            _temp_raw = _stdout.read().decode("utf-8", errors="replace").strip()
+            if _temp_raw and ":" in _temp_raw and "%" not in _temp_raw:
+                # `C:\\Users\\xxx\\AppData\\Local\\Temp` 形式が来る → POSIX 形に正規化
+                resolved_temp = _temp_raw.replace("\\", "/").rstrip("/")
+        except Exception as _temp_exc:
+            logger.debug("[ssh] %%TEMP%% resolve failed, using default: %s", _temp_exc)
+
         sftp = ssh.open_sftp()
         # R23 P1 fix (R18a-3 P1-1): %TEMP%\ShuttleScope\ 親ディレクトリ作成 (再入可能)
         try:
-            sftp.mkdir(f"C:/Users/{username}/AppData/Local/Temp/ShuttleScope")
+            sftp.mkdir(f"{resolved_temp}/ShuttleScope")
         except IOError:
             pass  # 既存 → OK
+        script_path = f"{resolved_temp}/ShuttleScope/ss_task_{_suffix}.py"
         # `wxb` 相当 (O_WRONLY|O_CREAT|O_EXCL): 既存ファイルがあれば例外を出して
         # silently 上書きしないように。paramiko の SFTP は "x" 単独 mode を
         # サポートしないので、`open` で flags=0x06 (WRONLY|CREAT|EXCL) を使う。
@@ -1227,6 +1243,10 @@ def dispatch_benchmark(fn_name: str, target_ip: str = "", **kwargs) -> Dict[str,
     """
     results: Dict[str, Any] = {}
     ssh_handled_ips: set = set()
+    # Round 258 R24 P1 fix (R24 P1): creds=None で silently skip すると、
+    # 全 worker が skip された場合に results={} のまま return → UI から
+    # 「成功 / 失敗」の区別が付かない無音。skipped を別途集計する。
+    skipped_no_creds: list = []
 
     # ── SSH 経由でワーカーを処理 ──────────────────────────────────────────────
     try:
@@ -1248,6 +1268,7 @@ def dispatch_benchmark(fn_name: str, target_ip: str = "", **kwargs) -> Dict[str,
             # 同じ問題を _redact 後でも解決する設計なので、こちらに置換する。
             creds = _get_worker_ssh_creds(wip)
             if not creds:
+                skipped_no_creds.append(wip)
                 continue
             user = creds["username"]
             pwd = creds["password"]
@@ -1271,7 +1292,18 @@ def dispatch_benchmark(fn_name: str, target_ip: str = "", **kwargs) -> Dict[str,
 
     # SSH で全ワーカーを処理できた場合はここで返す
     if results and all("error" not in v for v in results.values()):
+        if skipped_no_creds:
+            results["_skipped_no_ssh_creds"] = skipped_no_creds  # type: ignore[assignment]
         return results
+    # R24 P1 fix: 全 worker creds 無しで results 空のまま落ちる経路に warning を残す
+    if not results and skipped_no_creds:
+        return {
+            "warning": (
+                f"SSH dispatch skipped for {len(skipped_no_creds)} worker(s) "
+                f"due to missing credentials: {skipped_no_creds}"
+            ),
+            "skipped_no_ssh_creds": skipped_no_creds,
+        }
 
     # ── Ray フォールバック ────────────────────────────────────────────────────
     try:

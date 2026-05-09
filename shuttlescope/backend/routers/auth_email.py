@@ -416,8 +416,16 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
             _bcrypt_dummy.hashpw(body.email.encode('utf-8')[:72], _bcrypt_dummy.gensalt(rounds=4))
         except Exception:
             pass
+        # Round 258 R24 P2 fix (R24 P2): 旧コードは email_domain を平文でログに残して
+        # いたため、`access_log` 読取り権を持つ analyst が "存在しない email"
+        # に対する 429 と組み合わせて、組織 domain の user 列挙を可能にしていた。
+        # 修正: domain を SHA256 hash の short prefix (8 hex) に置換 → 同 domain か
+        # どうかは判定できるが、平文 leak はしない。
+        import hashlib as _hashlib_aem
+        _dom = body.email.split("@")[-1].lower().strip()
+        _dom_hash = _hashlib_aem.sha256(_dom.encode("utf-8")).hexdigest()[:8]
         log_access(db, "password_reset_unknown_email", ip_addr=ip,
-                   details={"email_domain": body.email.split("@")[-1]})
+                   details={"email_domain_hash": _dom_hash})
     # 列挙防御: 常に成功風レスポンス
     return {"success": True, "data": {"sent": True}}
 
@@ -426,6 +434,14 @@ def request_password_reset(body: PasswordResetRequest, request: Request,
 def reset_password(body: PasswordResetConfirm, request: Request,
                    db: Session = Depends(get_db)):
     """token + 新 password で実リセット。"""
+    # Round 258 R24 P1 fix (R24 P1): 旧コードは `request_reset` (送信側) のみに
+    # rate limit をかけていたが、`reset_password` (consume 側) は無制限だった。
+    # 攻撃者は token 文字列 (≥10 chars base64) を brute-force し放題で、
+    # min_length=10 の低エントロピー token / timing 観測で当たりを引ける。
+    # 修正: IP 単位の弱い rate limit (1h で 20 回) を強制。
+    ip = _client_ip(request)
+    _enforce_rate_limit(ip, "", "reset_consume", ip_max=20, ip_window_s=3600,
+                        email_max=0, email_window_s=3600)
     user_id = consume_password_reset_token(db, body.token)
     if user_id is None:
         raise HTTPException(status_code=400, detail="トークンが無効または期限切れです")
