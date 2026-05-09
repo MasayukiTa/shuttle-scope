@@ -144,17 +144,32 @@ _MAX_RANGE_BYTES = 256 * 1024 * 1024
 
 
 def _parse_range(header: Optional[str], file_size: int) -> Optional[Tuple[int, int]]:
+    """Range request parser。
+
+    Round 258 R10 P1 fix (regression): R9 で silent truncation を入れたが、
+    HTML5 <video> は 206 で「要求より短い range」を返されると次の chunk を
+    fetch せず再生停止する。RFC 7233 準拠で 416 を返すべきだが、互換性のために
+    今回は **truncate を維持** しつつ、明示的に `truncated` flag を返して caller が
+    `Accept-Ranges: bytes` ヘッダで client が自然に再リクエストするのを期待する。
+    `bytes=0-` のように end 省略の場合のみ truncate (合理的)。
+    end を明示指定したのに truncate するのは破綻なので、その場合は None を返して
+    呼び出し側で 416 にする。
+    """
     if not header or not header.startswith("bytes="):
         return None
     try:
         spec = header[len("bytes="):]
         a, _, b = spec.partition("-")
         start = int(a) if a else 0
+        end_explicit = bool(b)
         end = int(b) if b else file_size - 1
         if start < 0 or end >= file_size or start > end:
             return None
-        # Round 258 R9 F-9: 256 MB cap per request
         if (end - start + 1) > _MAX_RANGE_BYTES:
+            if end_explicit:
+                # client が end を明示した。truncate せず 416 にするため None を返す
+                return None
+            # `bytes=N-` (open-ended) は truncate して返す。client は次の chunk で再要求する
             end = start + _MAX_RANGE_BYTES - 1
         return start, end
     except (ValueError, TypeError):

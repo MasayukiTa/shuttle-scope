@@ -254,40 +254,52 @@ def _timing_padding_db_write(db: Session) -> None:
 
 
 def _on_login_failure(user: User, db: Session, ip: Optional[str], reason: str) -> None:
-    """Round 258 R8 P1 fix (deep audit F3): lockout race を atomic UPDATE で塞ぐ。
+    """Round 258 R8/R10 P1 fix (deep audit F3 + regression): lockout race を
+    **単一 atomic UPDATE** で塞ぐ。
 
-    旧コードは `user.failed_attempts += 1` を ORM で行い読み取り→更新の間に
-    並列 login が走ると counter を奪い合い、結果として:
-      - 同じ user に対して同時 fail で各 request が `>= MAX` 判定して
-        全部が `locked_until = now + 30min` を上書き→ rolling lockout で永久 DoS
-      - 失敗カウンタが正確に増えない (3 並列 fail でも +3 にならず +1 で済む) ため
-        実質ブルートフォース cap を攻撃者に有利に倒せる
-    対策: SQL レベルで `failed_attempts = failed_attempts + 1` の atomic UPDATE を
-    使い、戻り値を refresh して判定。`locked_until` は **未来日時を更新しない**
-    (既に lock 中なら維持) ガードを入れて rolling lockout を阻止。
+    R8 fix では UPDATE → commit → refresh → 第二 UPDATE → commit の 2 段構成だった
+    ため、2 commit の間に並列 `_check_lockout` が `failed_attempts=MAX, locked_until=NULL`
+    を観測して「未 lock」と判定し、ブルートフォース budget が +1 する race window が
+    残っていた。R10 では CASE 句で increment + lock 確定を 1 statement で実行し、
+    その間 transaction 内で他リクエストが「中間状態」を観測できないようにする。
     """
     from backend.utils.access_log import log_access
     from backend.db.models import User as _UserMdl
+    from sqlalchemy import case as _case_sql, func as _func_sql
     now = datetime.utcnow()
     lock_until = now + timedelta(minutes=_LOCKOUT_MINUTES)
-    # atomic increment + 条件付き locked_until セット (locked_until が NULL or 過去のみ更新)
+
+    # 単一 atomic UPDATE:
+    #   failed_attempts = failed_attempts + 1
+    #   locked_until = CASE
+    #     WHEN failed_attempts + 1 >= MAX
+    #          AND (locked_until IS NULL OR locked_until <= now)  -- rolling lock 阻止
+    #     THEN lock_until
+    #     ELSE locked_until
+    #   END
+    new_attempts = _UserMdl.failed_attempts + 1
     db.query(_UserMdl).filter(_UserMdl.id == user.id).update(
         {
-            "failed_attempts": _UserMdl.failed_attempts + 1,
+            "failed_attempts": new_attempts,
+            "locked_until": _case_sql(
+                (
+                    (
+                        (new_attempts >= _MAX_FAILED_ATTEMPTS)
+                        & (
+                            (_UserMdl.locked_until.is_(None))
+                            | (_UserMdl.locked_until <= now)
+                        )
+                    ),
+                    lock_until,
+                ),
+                else_=_UserMdl.locked_until,
+            ),
         },
         synchronize_session=False,
     )
     db.commit()
     db.refresh(user)
     if user.failed_attempts >= _MAX_FAILED_ATTEMPTS:
-        # locked_until は既に未来なら触らない (race による rolling lock 防止)
-        if not user.locked_until or user.locked_until <= now:
-            db.query(_UserMdl).filter(
-                _UserMdl.id == user.id,
-                ((_UserMdl.locked_until.is_(None)) | (_UserMdl.locked_until <= now)),
-            ).update({"locked_until": lock_until}, synchronize_session=False)
-            db.commit()
-            db.refresh(user)
         log_access(db, "account_locked", user_id=user.id, ip_addr=ip,
                    details={"reason": reason, "attempts": user.failed_attempts})
         raise HTTPException(
