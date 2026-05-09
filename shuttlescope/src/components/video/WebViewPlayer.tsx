@@ -151,9 +151,16 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
   }, [])
 
   const handleOpenExternal = useCallback(() => {
-    // Electron の shell.openExternal でシステムブラウザを起動
-    // window.open は Electron では新規ウィンドウを開く場合がある
-    window.open(currentUrl, '_blank')
+    // R258 R6 P2 fix: noopener,noreferrer + Electron shell.openExternal を優先。
+    // 旧来は noopener なしで window.open していたため reverse tabnabbing 余地があった。
+    const w = window as unknown as { shuttlescope?: { openExternalSafe?: (u: string) => Promise<void> } }
+    if (w.shuttlescope?.openExternalSafe) {
+      w.shuttlescope.openExternalSafe(currentUrl).catch(() => {
+        window.open(currentUrl, '_blank', 'noopener,noreferrer')
+      })
+    } else {
+      window.open(currentUrl, '_blank', 'noopener,noreferrer')
+    }
   }, [currentUrl])
 
   // ── 画面キャプチャ録画 (会員限定 DRM 配信向け) ──
@@ -479,14 +486,21 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       {/*
         partition="persist:streaming" でセッション（Cookie）を永続化
         useragent で Electron UA ブロックを回避
-        disablewebsecurity="true" で CORS 制限を緩和
+
+        R258 R6 P1 fix (private_docs/2026-05-09_security_deep_hole_hunt.md):
+        - 旧来は disablewebsecurity="true" / allowpopups="true" を全 URL で有効に
+          していた。同一生成元境界が緩む & popup を newWindow で許容するため、
+          XSS / フィッシング受信 / Cookie 漏洩の被害半径が広かった。
+        - 既定は両方 false。disablewebsecurity は実際に必要なサイトの
+          allowlist を別途設けて opt-in する設計に倒す (現状 allowlist 空)。
+        - allowpopups も無効。setWindowOpenHandler は main.ts 側で
+          shell.openExternal に逃がしている。
       */}
       <webview
         ref={webviewRef}
         src={url}
         partition="persist:streaming"
         useragent={BROWSER_UA}
-        {...({ disablewebsecurity: 'true', allowpopups: 'true' } as Record<string, string>)}
         style={{ flex: 1, width: '100%' }}
       />
     </div>

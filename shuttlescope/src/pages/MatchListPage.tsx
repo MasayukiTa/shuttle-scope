@@ -783,7 +783,8 @@ export function MatchListPage() {
           <button
             onClick={() => {
               const ids = [...selectedMatchIds].join(',')
-              window.open(`/api/sync/export/match?match_ids=${encodeURIComponent(ids)}`, '_blank')
+              // R258 R6 P2 fix: noopener,noreferrer 統一
+              window.open(`/api/sync/export/match?match_ids=${encodeURIComponent(ids)}`, '_blank', 'noopener,noreferrer')
             }}
             className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm"
           >
