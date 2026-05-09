@@ -191,26 +191,39 @@ def start_job_runner() -> Optional[asyncio.Task]:
     # の stale lock が残っていると in-process runner も拒否する dual-deadlock に
     # 陥っていた。`_FileLock.is_pid_alive` で記録 PID を生存確認し、死んでいたら
     # lock ファイル自体を削除して in-process runner 起動を継続する。
+    #
+    # Round 258 R9 F-7 fix (deep audit): is_pid_alive → unlink の間に並列の standalone
+    # worker が起動して file lock を取得すると、unlink が live worker の lock を消し
+    # 「lock 無し」状態を作って二重 worker が動いてしまう (GPU 競合 + duplicate
+    # MatchCVArtifact insert)。`_FileLock.acquire` で OS file lock を取って試行し、
+    # 取れたら自分が lock holder なので削除→継続。取れなければ live holder がいる →
+    # in-process runner skip で正しい挙動。
     try:
         from pathlib import Path
         from backend.pipeline.worker import _FileLock
         lock_path = Path(__file__).resolve().parent.parent / "data" / "worker.lock"
         if lock_path.exists():
-            if _FileLock.is_pid_alive(str(lock_path)):
-                logger.warning(
-                    "in-process runner skip: %s held by live PID (standalone worker)",
-                    lock_path,
-                )
-                return None
-            else:
-                logger.warning(
-                    "in-process runner: %s is stale (no live PID) - removing and continuing",
-                    lock_path,
-                )
+            # OS file lock を atomic に取得して live holder を判定する。
+            # `_FileLock.acquire` は非ブロッキングで、別プロセスが保持していれば False。
+            _probe = _FileLock(lock_path)
+            if _probe.acquire():
+                # 自分が holder になった = stale だった。即 release + delete で再取得を防ぐ。
+                _probe.release()
                 try:
                     lock_path.unlink()
                 except Exception:
                     pass
+                logger.warning(
+                    "in-process runner: %s was stale (acquired OS lock) - removing and continuing",
+                    lock_path,
+                )
+            else:
+                # 別プロセスが OS file lock を保持中 = standalone worker live
+                logger.warning(
+                    "in-process runner skip: %s held by live OS lock (standalone worker)",
+                    lock_path,
+                )
+                return None
     except Exception:  # pragma: no cover
         pass
     global _RUNNER_TASK

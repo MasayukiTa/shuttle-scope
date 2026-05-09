@@ -62,12 +62,21 @@ class ConnectionManager:
         return lk
 
     async def safe_send_json(self, ws: WebSocket, message: dict[str, Any]) -> bool:
-        """concurrent-sender 安全な send_json。失敗時は False。"""
+        """concurrent-sender 安全な send_json。失敗時は False。
+
+        Round 258 R9 F-4 fix (deep audit): 5 秒 timeout を導入。
+        旧コードは無制限に await し、TCP zero-window で受信を意図的に止めた slow
+        consumer 1 台で broadcast 全体が DB session 保持したまま停止する DoS が成立。
+        timeout 超で False 返却 → caller が disconnect する。
+        """
         lk = self._send_lock(ws)
         async with lk:
             try:
-                await ws.send_json(message)
+                await asyncio.wait_for(ws.send_json(message), timeout=5.0)
                 return True
+            except asyncio.TimeoutError:
+                logger.warning("WS send_json timeout (slow consumer) — disconnecting")
+                return False
             except Exception:
                 return False
 
@@ -128,23 +137,37 @@ class ConnectionManager:
         独立した SessionLocal を都度開いて完結させる (db 引数は後方互換のため受けるが
         参照しない)。
         """
+        # Round 258 R9 F-4 fix (deep audit): broadcast を行う前に DB session を完全に
+        # クローズし、broadcast の長時間 (slow consumer 5s timeout × N sockets) で
+        # connection pool を抑え込まないようにする。`last_broadcast_at` 更新も別 session で。
         from backend.db.database import SessionLocal
         from backend.db.models import SharedSession
+        # 1. session_code 列だけを短時間で取得して即 close
+        session_codes: list[str] = []
         with SessionLocal() as own_db:
             sessions = (
                 own_db.query(SharedSession)
                 .filter(SharedSession.match_id == match_id, SharedSession.is_active.is_(True))
                 .all()
             )
-            for s in sessions:
-                await self.broadcast(s.session_code, message)
-                s.last_broadcast_at = datetime.utcnow()
-            if sessions:
-                try:
-                    own_db.commit()
-                except Exception:
-                    own_db.rollback()
-                    logger.exception("broadcast_to_match commit failed match_id=%d", match_id)
+            session_codes = [s.session_code for s in sessions]
+        # 2. broadcast (DB を保持しない)
+        for code in session_codes:
+            await self.broadcast(code, message)
+        # 3. 別 session で last_broadcast_at を一括更新
+        if session_codes:
+            try:
+                with SessionLocal() as upd_db:
+                    upd_db.query(SharedSession).filter(
+                        SharedSession.match_id == match_id,
+                        SharedSession.is_active.is_(True),
+                    ).update(
+                        {"last_broadcast_at": datetime.utcnow()},
+                        synchronize_session=False,
+                    )
+                    upd_db.commit()
+            except Exception:
+                logger.exception("broadcast_to_match last_broadcast_at update failed match_id=%d", match_id)
 
 
 # モジュールレベルシングルトン

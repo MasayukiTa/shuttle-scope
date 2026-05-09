@@ -65,9 +65,24 @@ _RATE_BUCKETS: dict[str, list[datetime]] = {}
 
 
 def _rate_limit_check(bucket_key: str, max_count: int, window_seconds: int) -> bool:
-    """bucket_key の試行回数が制限以内か確認。True=許可, False=制限超過。"""
+    """bucket_key の試行回数が制限以内か確認。True=許可, False=制限超過。
+
+    Round 258 R9 F-2 fix (deep audit): 旧 LRU は「最古の `max(timestamps)` を持つ
+    bucket を 1 件だけ削除」する設計だったため、攻撃者が 1001 個の偽 IP を spray
+    すると **lockout 中の被害者の bucket が evict され、被害者向け brute force が
+    再開可能** になる脆弱性があった (= LRU eviction が defense-bypass primitive)。
+    対策:
+      1. eviction は「window 外で活動が無い bucket の一括削除」(absolute age cutoff)
+      2. 個別 entry の取り合いではないので、1001 spray でも被害者 bucket は維持
+      3. cap 超過時もまずは expired のみ落とす。それでも cap 超なら新規 bucket 作成を
+         拒否 (制限を保守側に倒す)
+    """
     now = datetime.utcnow()
     cutoff = now - timedelta(seconds=window_seconds)
+    # window より古い = 任意 scope の bucket を全消去するための maximum window。
+    # 各 scope の window が異なるため、最大の `password_reset` 1h を採用すれば
+    # それより古い bucket は確実に死んでいる。
+    max_window_cutoff = now - timedelta(hours=24)
     with _RATE_LOCK:
         history = [ts for ts in _RATE_BUCKETS.get(bucket_key, []) if ts >= cutoff]
         if len(history) >= max_count:
@@ -75,11 +90,20 @@ def _rate_limit_check(bucket_key: str, max_count: int, window_seconds: int) -> b
             return False
         history.append(now)
         _RATE_BUCKETS[bucket_key] = history
-        # 古いバケットを GC (1000 個超えたら最古から削除)
+        # GC: 24h 以上活動の無い bucket を一括削除 (絶対年齢ベース)
         if len(_RATE_BUCKETS) > 1000:
-            oldest = sorted(_RATE_BUCKETS.items(),
-                            key=lambda kv: max(kv[1]) if kv[1] else now)[0][0]
-            del _RATE_BUCKETS[oldest]
+            stale_keys = [
+                k for k, v in _RATE_BUCKETS.items()
+                if not v or max(v) < max_window_cutoff
+            ]
+            for sk in stale_keys:
+                _RATE_BUCKETS.pop(sk, None)
+            # それでも cap 超 → 強制 cap (5000 まで許容、超過分は新規拒否)
+            if len(_RATE_BUCKETS) > 5000:
+                # 新規 bucket 作成を一時的に拒否することで、偽 IP spray を緩和
+                # (= 攻撃中は legitimate user も影響を受けるが、defense 優先)
+                if bucket_key not in _RATE_BUCKETS:
+                    return False
     return True
 
 

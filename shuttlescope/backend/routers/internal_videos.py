@@ -136,6 +136,13 @@ def _require_worker(x_worker_token: Optional[str], request: Optional[Request] = 
         _worker_rate_check(ip)
 
 
+# Round 258 R9 F-9 fix (deep audit): Range request 1 回あたりの最大バイト数を限定する。
+# 旧コードは `end = file_size - 1` を許容していたため、worker token を持つ攻撃者が
+# `bytes=0-` で 10 GB ファイルを 60 req/min × 開いて流す = 600 GB/min の disk I/O DoS が
+# 可能だった。chunk 上限を 256 MB にして、複数リクエストを強制 = rate limit が効く。
+_MAX_RANGE_BYTES = 256 * 1024 * 1024
+
+
 def _parse_range(header: Optional[str], file_size: int) -> Optional[Tuple[int, int]]:
     if not header or not header.startswith("bytes="):
         return None
@@ -146,6 +153,9 @@ def _parse_range(header: Optional[str], file_size: int) -> Optional[Tuple[int, i
         end = int(b) if b else file_size - 1
         if start < 0 or end >= file_size or start > end:
             return None
+        # Round 258 R9 F-9: 256 MB cap per request
+        if (end - start + 1) > _MAX_RANGE_BYTES:
+            end = start + _MAX_RANGE_BYTES - 1
         return start, end
     except (ValueError, TypeError):
         return None

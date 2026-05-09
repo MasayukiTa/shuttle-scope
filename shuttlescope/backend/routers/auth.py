@@ -765,6 +765,26 @@ _mfa_failures: dict[int, list[float]] = {}
 _mfa_lock = _th_mfa.Lock()
 _MFA_WINDOW_SEC = 600
 _MFA_MAX_FAILURES = 10
+# Round 258 R9 F-1 fix: 不正な user_id を任意に append できると dict が無制限に
+# 膨らむ。periodic LRU sweep + cap で memory DoS を抑止する。
+_MFA_MAX_KEYS = 10_000
+_MFA_SWEEP_EVERY = 100
+_MFA_SWEEP_COUNTER = [0]
+
+
+def _mfa_sweep_locked(now: float) -> None:
+    cutoff = now - _MFA_WINDOW_SEC
+    stale = [uid for uid, arr in _mfa_failures.items()
+             if not arr or max(arr) < cutoff]
+    for uid in stale:
+        _mfa_failures.pop(uid, None)
+    if len(_mfa_failures) > _MFA_MAX_KEYS:
+        # それでも溢れる → 最古順に半分落とす (DoS 緩和; legitimate user も多少影響)
+        ordered = sorted(_mfa_failures.items(),
+                         key=lambda kv: max(kv[1]) if kv[1] else 0)
+        drop = len(_mfa_failures) - _MFA_MAX_KEYS // 2
+        for uid, _ in ordered[:drop]:
+            _mfa_failures.pop(uid, None)
 
 
 def _check_mfa_brute_limit(user_id: int) -> None:
@@ -773,6 +793,11 @@ def _check_mfa_brute_limit(user_id: int) -> None:
         return
     now = _t_mfa.time()
     with _mfa_lock:
+        # Periodic LRU sweep (R9 F-1 fix)
+        _MFA_SWEEP_COUNTER[0] += 1
+        if _MFA_SWEEP_COUNTER[0] >= _MFA_SWEEP_EVERY:
+            _MFA_SWEEP_COUNTER[0] = 0
+            _mfa_sweep_locked(now)
         arr = _mfa_failures.get(user_id, [])
         cutoff = now - _MFA_WINDOW_SEC
         arr = [t for t in arr if t >= cutoff]

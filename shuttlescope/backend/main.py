@@ -1260,6 +1260,7 @@ class AnalysisCacheMiddleware(BaseHTTPMiddleware):
         jwt_pid = ""
         jwt_team = ""
         jwt_team_id = ""
+        jwt_user_id = ""
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             from backend.utils.jwt_utils import verify_token
@@ -1270,13 +1271,21 @@ class AnalysisCacheMiddleware(BaseHTTPMiddleware):
                 jwt_team = _payload.get("team_name", "") or ""
                 _tid = _payload.get("team_id")
                 jwt_team_id = str(_tid) if _tid is not None else ""
+                # Round 258 R9 V1 fix: user_id を必ずキーに含める。
+                # 旧来は (role, pid, team, team_id) のみで、同チーム同ロールの 2 アナリストが
+                # 同じ URL を叩くと cache HIT で互いの per-user フィルタ結果 (例:
+                # ownership-bound bookmarks/comments) が漏出した。AnalysisCacheMiddleware は
+                # PlayerAccess/TeamScope より外周で動くため、cache HIT 時は ACL middleware が
+                # bypass される。user_id を key に含めれば、user 間の混信は構造的に起きない。
+                jwt_user_id = str(_payload.get("sub", "")) if _payload.get("sub") else ""
         params = {
             "q": query,
             "role": jwt_role,
             "pid": jwt_pid,
             "team": jwt_team,
-            # Phase B-8: チーム ID をキャッシュキーに含めることで他チーム閲覧結果の漏出を防ぐ
             "team_id": jwt_team_id,
+            # Round 258 R9 V1 fix: cross-user 漏洩防止
+            "user_id": jwt_user_id,
         }
         key = response_cache.build_key(path, params)
         cached = response_cache.get(key)

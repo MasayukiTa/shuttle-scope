@@ -163,12 +163,19 @@ def get_scouting_report(player_id: int, request: Request, db: Session = Depends(
     if not player:
         return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
 
-    # 基本統計の収集
+    # Round 258 R9 F-3 fix (deep audit): 試合数 / rally 数の上限を導入。
+    # 旧コードは無制限の query→all() で多 GB 級の Python list と reportlab 描画を
+    # request thread で実行していたため、analyst が意図的に rally を量産すれば
+    # FastAPI worker を OOM kill 可能だった。最も新しい 200 試合に絞り、それ以上は
+    # admin に対して「期間指定 / job queue 経由のレポート生成」へ案内する。
+    _MAX_MATCHES_PER_REPORT = 200
     matches = (
         db.query(Match)
         .filter(
             (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
         )
+        .order_by(Match.date.desc().nullslast(), Match.id.desc())
+        .limit(_MAX_MATCHES_PER_REPORT)
         .all()
     )
 
