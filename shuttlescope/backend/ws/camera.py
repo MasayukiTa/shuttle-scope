@@ -423,9 +423,19 @@ async def ws_camera_handler(
             msg_type = msg.get("type", "")
 
             if is_operator:
+                # Round 258 R15 P1 fix (deep audit NEW-3): operator が relay する
+                # target ID も regex で検証する。connect 時の query string check は
+                # 既に入っているが、message 経由で渡される target_*id は別経路なので
+                # ここでも検証して dict key injection / 異常 ID で _sessions[code]
+                # を膨らませる経路を遮断する。
+                # なお relay_to_* は session_code-scoped なので、operator が他 session
+                # の device を打つことは構造上不可能 (intentional design: operator は
+                # 自 session のオーナー)。ここで追加するのは「異常 ID」のサニタイズ。
+                _id_ok = lambda s: bool(s) and len(s) <= 64 and all(c.isalnum() or c in '_-' for c in s)
+
                 # Operator → 送信デバイスへの中継
                 target_pid = str(msg.get("target_participant_id", ""))
-                if target_pid and msg_type in (
+                if _id_ok(target_pid) and msg_type in (
                     "camera_request", "webrtc_answer", "ice_candidate",
                     "camera_deactivate",
                 ):
@@ -433,7 +443,7 @@ async def ws_camera_handler(
 
                 # Operator → ビューワーへの中継（PC が viewer に offer を送る）
                 target_vid = str(msg.get("viewer_id", ""))
-                if target_vid and msg_type in (
+                if _id_ok(target_vid) and msg_type in (
                     "viewer_webrtc_offer", "viewer_ice_candidate",
                 ):
                     await camera_manager.relay_to_viewer(session_code, target_vid, msg)

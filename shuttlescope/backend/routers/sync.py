@@ -239,8 +239,9 @@ async def preview_package(
     if not validation["valid"]:
         raise HTTPException(status_code=422, detail=validation["error"])
 
-    # Round 258 R3 P0/P1 fix: importer team を解決して _apply_record まで伝播
-    importer_team_id = getattr(_ctx, "team_id", None) if "_ctx" in locals() else None
+    # Round 258 R3/R15 P0/P1 fix: importer team を解決して _apply_record まで伝播
+    # (R15: dead `_ctx in locals()` guard 撤去 — _ctx は関数 parameter で常に存在)
+    importer_team_id = getattr(_ctx, "team_id", None)
     summary = import_package(db, raw, dry_run=True, importer_team_id=importer_team_id)
 
     return {
@@ -571,6 +572,11 @@ def resolve_conflict(
                     # 招待直後 / admin demote 直後) の場合は判定そのものをスキップしていたため、
                     # teamless analyst が任意 team の record を上書き可能だった (cross-team
                     # takeover)。deny を default にし、admin / 同一チーム所属者のみ allow に倒す。
+                    # Round 258 R15 P3 fix (deep audit R13-D): R12-R13 で
+                    # `if "_ctx" in locals()` という dead guard を入れていたが、
+                    # _ctx は関数 parameter なので常に locals() に含まれる。
+                    # 直接アクセスして type 不整合があれば早期に AttributeError で
+                    # 落とす方が defense として明示的。
                     actor_team = getattr(_ctx, "team_id", None)
                     actor_is_admin = bool(getattr(_ctx, "is_admin", False))
 
