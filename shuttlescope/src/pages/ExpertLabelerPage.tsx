@@ -198,7 +198,7 @@ function ExpertLabelerContent() {
                         <a
                           href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=json`}
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                           className={`text-[10px] px-2 py-1 rounded border text-center transition-colors ${
                             isLight
                               ? 'border-gray-300 text-gray-500 hover:bg-gray-100'
@@ -210,7 +210,7 @@ function ExpertLabelerContent() {
                         <a
                           href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=csv`}
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                           className={`text-[10px] px-2 py-1 rounded border text-center transition-colors ${
                             isLight
                               ? 'border-gray-300 text-gray-500 hover:bg-gray-100'

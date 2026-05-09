@@ -432,7 +432,7 @@ function AnnotateContent() {
             <a
               href={`/api/v1/expert/export?match_id=${matchId}&fmt=json`}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className={`text-xs px-3 py-2 rounded border transition-colors ${
                 isLight
                   ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
@@ -444,7 +444,7 @@ function AnnotateContent() {
             <a
               href={`/api/v1/expert/export?match_id=${matchId}&fmt=csv`}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className={`text-xs px-3 py-2 rounded border transition-colors ${
                 isLight
                   ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
@@ -741,7 +741,7 @@ function AnnotateContent() {
               <a
                 href={`/api/v1/expert/shot_labels/export?match_id=${matchId}&fmt=csv`}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className={`flex items-center justify-center ${btnLarge} border ${
                   isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'
                 }`}
