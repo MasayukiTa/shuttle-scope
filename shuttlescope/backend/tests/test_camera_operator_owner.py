@@ -70,11 +70,18 @@ async def test_second_concurrent_operator_rejected_without_accept(manager):
 
 @pytest.mark.asyncio
 async def test_owner_persists_after_disconnect(manager):
-    """operator が一度切断されても session_code の owner は記録され続ける"""
+    """operator が一度切断されても session_code の owner は記録され続ける。
+
+    Round 258 R3 P1 fix: `_gc_session_if_empty` で全 connection が無くなった場合に
+    `_sessions[code]` を pop する設計。owner は別 dict (`_operator_owners`) で
+    保持しており、再接続時の identity check 用に永続する。テスト assert を新仕様に
+    同期: session entry は GC される (KeyError) が _operator_owners は残る。
+    """
     ws = _FakeWebSocket()
     await manager.connect_operator("S3", ws, user_id=7)
     await manager.disconnect_operator("S3")
-    assert manager._sessions["S3"]["operator"] is None
+    # session entry は GC 済 (R3 P1 fix)
+    assert "S3" not in manager._sessions
     # owner は残る (再接続時の identity check 用)
     assert manager._operator_owners["S3"] == 7
 
