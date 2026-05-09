@@ -155,12 +155,27 @@ class CameraSignalingManager:
 
     # ─── 切断 ────────────────────────────────────────────────────────────
 
+    def _gc_session_if_empty(self, session_code: str) -> None:
+        """Round 258 R3 P1 fix: 全 connection が無くなったら session entry を pop。
+        旧来は operator が None になっても _sessions / _session_locks が永続化し
+        attacker が多数の session_code に touch してメモリを膨らませられた。
+        ※ caller は self._slock(session_code) を保持していること。
+        """
+        sess = self._sessions.get(session_code)
+        if sess is None:
+            return
+        if sess.get("operator") is None and not sess.get("devices") and not sess.get("viewers"):
+            self._sessions.pop(session_code, None)
+            self._session_locks.pop(session_code, None)
+            logger.info("camera session entry GC'd: %s", session_code)
+
     async def disconnect_operator(self, session_code: str) -> None:
         # rereview ws #9 fix: 同期版だった disconnect_operator を async + lock 化
         async with self._slock(session_code):
             if session_code in self._sessions:
                 self._sessions[session_code]["operator"] = None
                 logger.info("camera operator disconnected: %s", session_code)
+                self._gc_session_if_empty(session_code)
 
     async def disconnect_device(self, session_code: str, participant_id: str) -> None:
         # ws #9 fix: lock で session state の mutation を直列化
@@ -168,6 +183,7 @@ class CameraSignalingManager:
             if session_code in self._sessions:
                 self._sessions[session_code]["devices"].pop(participant_id, None)
                 logger.info("camera device disconnected: %s pid=%s", session_code, participant_id)
+                self._gc_session_if_empty(session_code)
         await self._notify_device_list(session_code)
 
     async def disconnect_viewer(self, session_code: str, viewer_id: str) -> None:
@@ -176,6 +192,7 @@ class CameraSignalingManager:
             if session_code in self._sessions:
                 self._sessions[session_code]["viewers"].pop(viewer_id, None)
                 logger.info("camera viewer disconnected: %s vid=%s", session_code, viewer_id)
+                self._gc_session_if_empty(session_code)
         # 通知は lock 外で実行 (operator への送信は別ロック経路)
         await self._send_to_operator(session_code, {
             "type": "viewer_left",
@@ -248,6 +265,21 @@ async def ws_camera_handler(
     viewer_id: Optional[str] = None,
 ) -> None:
     """WebRTC シグナリング WebSocket ハンドラー"""
+    # Round 258 R3 P1 fix: query string 由来の任意長 ID で memory exhaustion を避ける。
+    # viewer_id / participant_id は dict のキーになるため、長大値や制御文字を含む値は
+    # accept() 前に拒否する。許容: ASCII alphanum / '-' / '_' / 64 文字以下。
+    import re as _re_cam_id
+    _id_re = _re_cam_id.compile(r"^[A-Za-z0-9_-]{1,64}$")
+    if viewer_id is not None and not _id_re.match(viewer_id):
+        await websocket.close(code=4400, reason="viewer_id が不正")
+        return
+    if participant_id is not None and not _id_re.match(participant_id):
+        await websocket.close(code=4400, reason="participant_id が不正")
+        return
+    if session_code is None or not _re_cam_id.compile(r"^[A-Za-z0-9_-]{1,64}$").match(session_code):
+        await websocket.close(code=4400, reason="session_code が不正")
+        return
+
     # セッション存在確認（存在しないまたは終了済みセッションへの接続を拒否）
     from backend.db.database import SessionLocal
     from backend.db.models import SharedSession

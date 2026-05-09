@@ -1401,6 +1401,26 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 media_type="application/json",
             )
+        # Round 258 R3 P0 fix (F7): mfa_pending JWT で MFA gate 突破を防ぐ。
+        # この JWT は /api/auth/mfa/login と /api/auth/mfa/cancel のみで有効。
+        # それ以外の API では認証として扱わない。
+        token_role = (payload.get("role") or "").strip()
+        path_for_role = request.url.path
+        if token_role == "mfa_pending":
+            if not path_for_role.startswith("/api/auth/mfa/"):
+                return StarletteResponse(
+                    '{"detail":"MFA 認証が完了していません。/api/auth/mfa/login で TOTP を入力してください"}',
+                    status_code=401,
+                    media_type="application/json",
+                )
+            # mfa/* パスは継続。MFA 自体のチェックはハンドラに任せる。
+        elif token_role not in ("admin", "analyst", "coach", "player"):
+            # 想定外 role (壊れた JWT 等) は拒否
+            return StarletteResponse(
+                '{"detail":"トークンの role が不正です"}',
+                status_code=401,
+                media_type="application/json",
+            )
         # 承認待ちユーザーの API 制限
         # JWT に awaiting フラグは入れていないため DB を引いて確認する。
         # 軽量化のためパスが既に許可リストならスキップ。
@@ -1726,6 +1746,78 @@ app.add_middleware(
     allow_headers=["Content-Type", "Accept", "Authorization", "X-Session-Token", "X-Role", "X-Player-Id", "X-Team-Name", "X-Worker-Token", "X-Idempotency-Key"],
 )
 
+
+# ─── Round 258 R3 P0 fix: パス正規化ミドルウェア (最外周で実行) ───────────
+# Round 258 R2 で AdminWriteRateLimit の `//api/...` bypass を発見し個別に
+# 正規化を入れたが、その後の追加監査で:
+#   - GlobalAuthMiddleware (auth 完全 bypass)
+#   - PlayerAccessControlMiddleware (player IDOR)
+#   - TeamScopeAccessControlMiddleware (cross-team 漏洩)
+#   - ExfilRateLimitMiddleware (exfil 規制 bypass)
+#   - HeavyAnalysisTimeoutMiddleware
+# も同じ raw `request.url.path.startswith("/api/")` 判定を使っており、
+# `//api/foo`, `/api//foo`, `/api/./foo` 等で一斉に bypass される事が判明。
+# 個別 patch は抜けやすいので、最外周で `request.scope["path"]` そのものを
+# 正規化して全 middleware が clean path を見るようにする。
+#
+# 動作:
+#   - `//+` を `/` に圧縮
+#   - 末尾の `/` (ルート以外) は保持 (FastAPI の trailing-slash redirect 任せ)
+#   - `/./` セグメントの除去
+#   - `/../` は 400 で即時拒否 (本来 path に出現してはいけない)
+#
+# 注意:
+#   - HTTP のみ。WS scope の path も同様に処理する (CSWSH 防止には別途
+#     Origin チェックが必要)。
+#   - raw_path (scope.get("raw_path")) も合わせて書き換えると downstream の
+#     BaseHTTPMiddleware が再構築する Request の url.path もズレずに済む。
+class PathNormalizationMiddleware:
+    """ASGI middleware (BaseHTTPMiddleware ではなく素の ASGI で書く):
+    BaseHTTPMiddleware は scope を子に渡す前に request.url を再計算するため
+    raw_path 書換えが効かないケースがある。ASGI で直接 scope を書き換える。
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") in ("http", "websocket"):
+            raw = scope.get("path") or ""
+            # /../ 出現は不正アクセス意図の signal — HTTP のみ即時拒否、WS は close
+            if "/../" in raw or raw.endswith("/.."):
+                if scope["type"] == "http":
+                    resp = StarletteResponse(
+                        '{"detail":"path contains traversal segment"}',
+                        status_code=400,
+                        media_type="application/json",
+                    )
+                    await resp(scope, receive, send)
+                    return
+                else:
+                    # WS: 拒否
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
+            # 連続スラッシュ → 1 個に圧縮
+            normalized = _re_acl.sub(r"/+", "/", raw)
+            # /./ 除去 (繰り返し適用)
+            while "/./" in normalized:
+                normalized = normalized.replace("/./", "/")
+            if normalized.endswith("/."):
+                normalized = normalized[:-2] or "/"
+            if normalized != raw:
+                scope["path"] = normalized
+                # raw_path も同期 (ASGI spec: bytes)
+                if "raw_path" in scope:
+                    try:
+                        scope["raw_path"] = normalized.encode("ascii", "replace")
+                    except Exception:
+                        pass
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(PathNormalizationMiddleware)
+
+
 # ルーター登録
 app.include_router(players.router, prefix="/api")
 app.include_router(matches.router, prefix="/api")
@@ -1901,42 +1993,90 @@ async def cache_stats(request: StarletteRequest):
 
 # ─── WebSocket 共通: JWT 認証ヘルパー ────────────────────────────────────────
 
+def _ws_origin_allowed(websocket: WebSocket) -> bool:
+    """Round 258 R3 P0 fix (WS-1): Cross-Site WebSocket Hijacking 対策。
+
+    ブラウザは WebSocket 接続時に `Origin` ヘッダーを自動付与する。
+    別オリジンの悪意あるページが logged-in ユーザの cookie/JWT を流用して
+    `new WebSocket('wss://app.shuttle-scope.com/ws/...')` を開けば、
+    認証は通ってしまうため Origin の allowlist 検証を行う。
+
+    Origin 不在 (curl / native client / Electron) は HTTP 同一オリジンポリシーの
+    対象外なので素通しする。loopback 緩和とは別軸の防御。
+    """
+    origin = (websocket.headers.get("origin") or "").strip()
+    if not origin:
+        # ブラウザ以外 (Electron, curl, ws library) は Origin を送らない事がある。
+        # その場合は他の認証 (JWT or loopback) で守る。
+        return True
+    # _cors_origins は HTTP CORS 設定と同じ allowlist (production: shuttle-scope.com 系)
+    try:
+        allowed = set(_cors_origins) if isinstance(_cors_origins, (list, tuple, set)) else set()
+    except Exception:
+        allowed = set()
+    # localhost / 127.0.0.1 は Electron renderer / 開発時に必要
+    extra_local = {"http://localhost", "http://127.0.0.1", "http://localhost:5173",
+                   "http://127.0.0.1:5173", "app://."}
+    return origin in allowed or origin in extra_local or origin.startswith("app://")
+
+
 async def _ws_require_auth(websocket: WebSocket) -> bool:
     """WS 接続時のJWT事前検証（accept() 前に呼ぶ）。
 
-    許可条件（優先順）:
-      1. loopback (127.0.0.1 / ::1) — Electron ローカル起動
-      2. 平文 WS (ws://) — LAN 直接接続。session_code が暗黙の shared-secret として機能
-      3. ?token=<jwt> クエリパラメータが有効 — Cloudflare 経由の外部接続
-    上記いずれも満たさない場合は接続を拒否する。
+    Round 258 R3 P0 fix:
+    - Origin allowlist チェックを最初に追加 (CSWSH 対策)
+    - 旧コードは client.host == "" を loopback 扱いして JWT 無しで通していたため、
+      Cloudflare misconfig / SSRF 経路で来る匿名コネクションも素通しになっていた。
+      `""` を loopback 扱いから除外し、ASGI sanity check として明示拒否する。
+    - JWT が `mfa_pending` role の場合は WS は許可しない (MFA 完了前)。
+
+    許可条件 (Origin 通過後):
+      1. PUBLIC_MODE: ?token=<jwt> 必須
+      2. ALLOW_LOOPBACK_NO_AUTH かつ client.host が真のループバック かつ forwarded ヘッダ無し
+      3. ?token=<jwt> が有効 (mfa_pending 以外)
     """
     from backend.utils.jwt_utils import verify_token
+
+    # CSWSH 防御
+    if not _ws_origin_allowed(websocket):
+        await websocket.close(code=4403)
+        return False
+
+    def _accept_token(tok: str) -> bool:
+        if not tok:
+            return False
+        payload = verify_token(tok)
+        if not payload:
+            return False
+        # mfa_pending は WS 経由のロール強化に流用できないよう拒否
+        role = (payload.get("role") or "").strip()
+        if role == "mfa_pending" or not role:
+            return False
+        return True
 
     # PUBLIC_MODE（Cloudflare 公開）では、cloudflared が 127.0.0.1 から接続するため
     # loopback / ws:// の緩和条件を許容すると外部から JWT 無しで WS に繋げてしまう。
     # したがって PUBLIC_MODE 時は例外なく JWT を要求する。
     if app_settings.PUBLIC_MODE:
         token = websocket.query_params.get("token", "")
-        if token and verify_token(token):
+        if _accept_token(token):
             return True
         await websocket.close(code=4401)
         return False
 
     client_ip = websocket.client.host if websocket.client else ""
-    # rereview #4 fix: SS_ALLOW_LOOPBACK_NO_AUTH=0 のときは loopback 緩和を完全に殺す。
     forwarded = (
         websocket.headers.get("x-forwarded-for")
         or websocket.headers.get("x-real-ip")
         or websocket.headers.get("cf-connecting-ip")
     )
-    # Starlette TestClient は WebSocket scope の client.host を `"testclient"` という
-    # 定数で埋める。production ASGI サーバ (uvicorn/gunicorn) は実 IP literal を入れる
-    # ため、`"testclient"` がクライアント側からなりすませる経路は無く、テスト用に
-    # loopback 扱いしても外部攻撃面は広がらない (CI で WebSocket テストを動かすため
-    # に必要)。
+    # Round 258 R3 P0 fix (WS-3): client.host == "" は loopback として扱わない。
+    # ASGI スコープに client が無いケース (proxy バグ等) を「ローカル」とみなして
+    # 素通しすると外部からの匿名 WS 接続が成立し得る。
+    real_loopback = {"127.0.0.1", "::1", "localhost", "testclient"}
     if (
         app_settings.ALLOW_LOOPBACK_NO_AUTH
-        and client_ip in ("127.0.0.1", "::1", "localhost", "", "testclient")
+        and client_ip in real_loopback
         and not forwarded
     ):
         return True
@@ -1944,9 +2084,8 @@ async def _ws_require_auth(websocket: WebSocket) -> bool:
     # 旧コードは scheme == "ws"（平文 WS）を session_code を shared-secret として
     # 信頼していたが、LAN attacker が session_code を brute-force すれば camera
     # signaling 乗っ取り / WebRTC MITM / YOLO DoS が成立するため撤去。
-    # 今後は loopback (forwarded なし) または有効 JWT のみが許可される。
     token = websocket.query_params.get("token", "")
-    if token and verify_token(token):
+    if _accept_token(token):
         return True
 
     await websocket.close(code=4401)

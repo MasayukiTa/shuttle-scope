@@ -48,12 +48,35 @@ _IP_RATE_WINDOW  = 60   # 秒
 _IP_RATE_LIMIT   = 10   # 同一 IP から 60 秒以内に 10 回まで
 
 
+# Round 258 R3 P1 fix (F8): _IP_LOGIN_TIMES dict は IPv6 ローテーション攻撃で
+# 無制限に key が積もり memory DoS を引き起こす。LRU で 100k key cap を設けつつ、
+# 100 回に 1 回程度 expired key を sweep する。
+_IP_RATE_MAX_KEYS = 100_000
+_IP_RATE_SWEEP_INTERVAL = 100
+_IP_RATE_SWEEP_COUNTER = [0]  # mutable for inner closure
+
+
 def _check_ip_rate_limit(ip: Optional[str]) -> None:
     if not ip:
         return
     now = time.time()
     cutoff = now - _IP_RATE_WINDOW
     with _IP_RATE_LOCK:
+        # Periodic sweep
+        _IP_RATE_SWEEP_COUNTER[0] += 1
+        if _IP_RATE_SWEEP_COUNTER[0] >= _IP_RATE_SWEEP_INTERVAL:
+            _IP_RATE_SWEEP_COUNTER[0] = 0
+            empty_keys = [k for k, v in _IP_LOGIN_TIMES.items() if not [t for t in v if t > cutoff]]
+            for k in empty_keys:
+                _IP_LOGIN_TIMES.pop(k, None)
+            # 万一 cap を超えたら任意の古い key を 1k 件落とす (簡易 LRU)
+            if len(_IP_LOGIN_TIMES) > _IP_RATE_MAX_KEYS:
+                drop_n = len(_IP_LOGIN_TIMES) - _IP_RATE_MAX_KEYS + 1000
+                # times list の最大値が小さい順 (古い IP) を削る
+                ordered = sorted(_IP_LOGIN_TIMES.items(),
+                                 key=lambda kv: max(kv[1]) if kv[1] else 0)
+                for k, _ in ordered[:drop_n]:
+                    _IP_LOGIN_TIMES.pop(k, None)
         times = [t for t in _IP_LOGIN_TIMES[ip] if t > cutoff]
         _IP_LOGIN_TIMES[ip] = times
         if len(times) >= _IP_RATE_LIMIT:
@@ -2275,13 +2298,11 @@ def _hash_user_agent(ua: Optional[str]) -> Optional[str]:
 
 
 def _client_ip(request: Request) -> Optional[str]:
-    """クライアント IP を取得。Cloudflare 経由は CF-Connecting-IP を優先。"""
-    cf = request.headers.get("cf-connecting-ip", "").strip()
-    if cf:
-        return cf[:64]
-    if request.client:
-        return (request.client.host or "")[:64] or None
-    return None
+    """クライアント IP を取得。Round 258 R3 fix: loopback (cloudflared) 経由のときのみ
+    CF-Connecting-IP / X-Forwarded-For を信用する (utils.client_ip 統一)。"""
+    from backend.utils.client_ip import trusted_client_ip
+    ip = trusted_client_ip(request, default="")
+    return ip[:64] if ip else None
 
 
 class ConsentItem(BaseModel):

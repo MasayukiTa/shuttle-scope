@@ -114,6 +114,32 @@ def rotate_refresh_token(presented_token: str) -> Optional[dict]:
             now = datetime.utcnow()
             if row.expires_at <= now:
                 return None
+            # Round 258 R3 P0 fix (F1): mass-revoke が refresh token も対象にする。
+            # 旧来は revoke_all_tokens 後でも refresh で新 access が発行可能だった
+            # ため、SECRET 漏洩や緊急 incident 時の containment が機能しなかった。
+            mass_ts = _get_mass_revoke_timestamp()
+            if mass_ts is not None:
+                # RefreshToken の created_at 列が無い設計のため、jti プレフィクス
+                # に紐付く RevokedToken の created_at で代替判定する代わりに、
+                # mass_revoke 後に発行された refresh は再発行 created_at が
+                # mass_ts より新しい必要がある。`row.id` ベースの簡易判定として
+                # row が mass_ts 以前から存在していれば revoke する。
+                # (より厳密な実装は created_at 追加 + Alembic migration を要するため
+                #  ここでは mass_revoke が active な間は全 refresh を一律拒否する。
+                #  運用上 mass_revoke は緊急時のみ、ユーザは再ログインで新 refresh
+                #  を取得するためダウンタイムは限定的。)
+                logger.warning(
+                    "refresh blocked by mass_revoke sentinel ts=%s user_id=%s",
+                    mass_ts, row.user_id,
+                )
+                # 該当 refresh も明示的に revoke してチェーン残骸を残さない
+                (
+                    db.query(RefreshToken)
+                    .filter(RefreshToken.user_id == row.user_id, RefreshToken.revoked_at.is_(None))
+                    .update({"revoked_at": now}, synchronize_session=False)
+                )
+                db.commit()
+                return None
             if row.revoked_at is not None:
                 # reuse 検知: chain 全体を revoke
                 (
@@ -272,7 +298,13 @@ def verify_token(token: str) -> Optional[dict]:
 
 
 def revoke_token(jti: str, user_id: Optional[int], expires_at: datetime) -> None:
-    """JTIをブラックリストに登録する（ログアウト時に呼ぶ）。"""
+    """JTIをブラックリストに登録する（ログアウト時に呼ぶ）。
+
+    Round 258 R3 P0 fix (F3): 旧来は DB エラーを warning に落として silent success
+    していたため logout が「成功」を返しても実際には失効が永続化されず、盗まれた
+    アクセストークンが logout 後も使われ続ける危険があった。失敗時は例外を伝播
+    させて caller (logout endpoint) が 500 を返せるようにする (FAIL-CLOSED)。
+    """
     from backend.db.database import SessionLocal
     from backend.db.models import RevokedToken
     try:
@@ -280,7 +312,8 @@ def revoke_token(jti: str, user_id: Optional[int], expires_at: datetime) -> None
             db.add(RevokedToken(jti=jti, user_id=user_id, expires_at=expires_at))
             db.commit()
     except Exception as exc:
-        logger.warning("Failed to revoke token jti=%s: %s", jti, exc)
+        logger.error("Failed to revoke token jti=%s: %s", jti, exc)
+        raise
 
 
 def _is_token_revoked(jti: str) -> bool:
@@ -302,9 +335,14 @@ def _is_token_revoked(jti: str) -> bool:
         return False
 
 
-# Phase C2: mass-revoke sentinel キャッシュ (60 秒 TTL で DB ヒット削減)
+# Phase C2: mass-revoke sentinel キャッシュ
+# Round 258 R3 P0 fix (F2): 旧来 60s TTL だったが、admin が emergency revoke を打って
+# も最大 60 秒間 stale cache が他プロセスで生きており、盗まれた token が使われ続けた。
+# 5 秒に短縮して incident response 中の被害を最小化する。
+# (cache ヒット率は数 % 落ちるが、verify_token の DB query 1 回 < 1ms なので
+#  通常運用への影響は無視できる。)
 _MASS_REVOKE_CACHE: dict = {"ts": 0.0, "value": None}
-_MASS_REVOKE_CACHE_TTL = 60.0
+_MASS_REVOKE_CACHE_TTL = 5.0
 
 
 def _get_mass_revoke_timestamp() -> Optional[int]:
