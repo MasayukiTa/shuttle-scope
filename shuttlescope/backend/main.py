@@ -1783,6 +1783,58 @@ class PathNormalizationMiddleware:
     async def __call__(self, scope, receive, send):
         if scope.get("type") in ("http", "websocket"):
             raw = scope.get("path") or ""
+            # Round 258 R4 F2 fix: 空 / "/" でない start を sanity check
+            if not raw or not raw.startswith("/"):
+                # ASGI 規約上 path は必ず "/" 始まりだが、防御的に拒否
+                if scope["type"] == "http":
+                    resp = StarletteResponse(
+                        '{"detail":"invalid path"}',
+                        status_code=400,
+                        media_type="application/json",
+                    )
+                    await resp(scope, receive, send)
+                    return
+                else:
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
+            # Round 258 R4 F3 fix: 長大 path で /./ 圧縮ループ DoS を防止
+            if len(raw) > 2048:
+                if scope["type"] == "http":
+                    resp = StarletteResponse(
+                        '{"detail":"URI too long"}',
+                        status_code=414,
+                        media_type="application/json",
+                    )
+                    await resp(scope, receive, send)
+                    return
+                else:
+                    await send({"type": "websocket.close", "code": 1009})
+                    return
+            # Round 258 R4 F1 fix: %2F (encoded slash), %5C (backslash), %2E%2E (encoded ..)
+            # を含むパスは取り扱わない。Starlette / Uvicorn は scope["path"] を decode 済みで
+            # 渡すため通常は当たらないが、raw_path / 一部 ASGI server は encoded のまま渡す
+            # 場合がある。defense-in-depth で encoded form もガード。
+            from urllib.parse import unquote as _uq
+            decoded_once = _uq(raw)
+            decoded_twice = _uq(decoded_once)
+            if (
+                "%2f" in raw.lower()
+                or "%5c" in raw.lower()
+                or "\\" in decoded_once
+                or "/../" in decoded_twice
+                or decoded_twice.endswith("/..")
+            ):
+                if scope["type"] == "http":
+                    resp = StarletteResponse(
+                        '{"detail":"path contains disallowed encoded characters"}',
+                        status_code=400,
+                        media_type="application/json",
+                    )
+                    await resp(scope, receive, send)
+                    return
+                else:
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
             # /../ 出現は不正アクセス意図の signal — HTTP のみ即時拒否、WS は close
             if "/../" in raw or raw.endswith("/.."):
                 if scope["type"] == "http":
@@ -1794,22 +1846,23 @@ class PathNormalizationMiddleware:
                     await resp(scope, receive, send)
                     return
                 else:
-                    # WS: 拒否
                     await send({"type": "websocket.close", "code": 1008})
                     return
             # 連続スラッシュ → 1 個に圧縮
             normalized = _re_acl.sub(r"/+", "/", raw)
-            # /./ 除去 (繰り返し適用)
+            # /./ 除去 (繰り返し適用、ただし /+/ → / 後なので O(n))
             while "/./" in normalized:
                 normalized = normalized.replace("/./", "/")
             if normalized.endswith("/."):
                 normalized = normalized[:-2] or "/"
             if normalized != raw:
                 scope["path"] = normalized
-                # raw_path も同期 (ASGI spec: bytes)
+                # raw_path も同期 (ASGI spec: bytes)。
+                # Round 258 R4 F1 fix: ascii/replace は非 ASCII を `?` 化して silent corruption
+                # するため utf-8 に変更。ただし path 自体は ASCII であるべきなので errors='strict' は使わず utf-8/replace
                 if "raw_path" in scope:
                     try:
-                        scope["raw_path"] = normalized.encode("ascii", "replace")
+                        scope["raw_path"] = normalized.encode("utf-8", "replace")
                     except Exception:
                         pass
         await self.app(scope, receive, send)
@@ -1994,30 +2047,39 @@ async def cache_stats(request: StarletteRequest):
 # ─── WebSocket 共通: JWT 認証ヘルパー ────────────────────────────────────────
 
 def _ws_origin_allowed(websocket: WebSocket) -> bool:
-    """Round 258 R3 P0 fix (WS-1): Cross-Site WebSocket Hijacking 対策。
+    """Round 258 R3 P0 fix (WS-1) + R4 F6 hardening: Cross-Site WebSocket Hijacking 対策。
 
     ブラウザは WebSocket 接続時に `Origin` ヘッダーを自動付与する。
-    別オリジンの悪意あるページが logged-in ユーザの cookie/JWT を流用して
+    別オリジンの悪意あるページが logged-in ユーザの JWT を流用して
     `new WebSocket('wss://app.shuttle-scope.com/ws/...')` を開けば、
     認証は通ってしまうため Origin の allowlist 検証を行う。
 
-    Origin 不在 (curl / native client / Electron) は HTTP 同一オリジンポリシーの
-    対象外なので素通しする。loopback 緩和とは別軸の防御。
+    R4 F6 fix:
+    - 旧コードは `origin.startswith("app://")` で全 app:// を許容していたが、
+      第三者 Electron / app:// scheme 登録アプリで bypass 可能。完全一致 set に変更。
+    - `null` Origin (sandboxed iframe / data: URL / file: navigation) は production
+      では拒否 (legitimate Electron は通常 Origin ヘッダを送らないので
+      `not origin` 経路で通る; "null" 文字列 origin は明示拒否)。
     """
     origin = (websocket.headers.get("origin") or "").strip()
     if not origin:
-        # ブラウザ以外 (Electron, curl, ws library) は Origin を送らない事がある。
+        # ブラウザ以外 (Electron native, curl, ws lib) は Origin を送らない。
         # その場合は他の認証 (JWT or loopback) で守る。
         return True
-    # _cors_origins は HTTP CORS 設定と同じ allowlist (production: shuttle-scope.com 系)
+    if origin.lower() == "null":
+        # null は sandboxed iframe / cross-origin opaque source — production 拒否
+        return False
     try:
         allowed = set(_cors_origins) if isinstance(_cors_origins, (list, tuple, set)) else set()
     except Exception:
         allowed = set()
-    # localhost / 127.0.0.1 は Electron renderer / 開発時に必要
-    extra_local = {"http://localhost", "http://127.0.0.1", "http://localhost:5173",
-                   "http://127.0.0.1:5173", "app://."}
-    return origin in allowed or origin in extra_local or origin.startswith("app://")
+    # localhost / 127.0.0.1 / Electron app scheme — 完全一致のみ
+    extra_local = {
+        "http://localhost", "http://127.0.0.1",
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        "app://.", "app://shuttlescope",
+    }
+    return origin in allowed or origin in extra_local
 
 
 async def _ws_require_auth(websocket: WebSocket) -> bool:

@@ -115,19 +115,42 @@ def _get_columns(model_cls: type) -> set[str]:
 #   4. revision / content_hash / deleted_at / *_team_id / annotator_id は server-derived
 #      として一律 strip
 _FORCED_STRIP_COLUMNS = {
-    "deleted_at",          # 蘇生防止 (admin 経由でのみ復元)
-    "revision",            # サーバ derived
-    "content_hash",        # audit chain 整合性
-    "row_hash",            # audit chain
-    "prev_hash",           # audit chain
-    "owner_team_id",       # team scope 強制 (importer team で再決定)
-    "home_team_id",        # 同上
-    "away_team_id",        # 同上
-    "team_id",             # players/users の team は server で再解決
-    "annotator_id",        # ユーザ偽装防止
-    "is_public_pool",      # 公開フラグ偽造防止
-    "uploader_user_id",    # 同上
-    "actor_user_id",       # 同上
+    # ─ 蘇生防止 ─
+    "deleted_at",
+    "is_deleted",
+    # ─ audit chain / server-derived ─
+    "revision",
+    "content_hash",
+    "row_hash",
+    "prev_hash",
+    "created_at",          # Round 258 R4 F4 fix: 旧監査改竄 (作成日付偽造) 防止
+    # ─ team scope 強制 (importer team で再決定) ─
+    "owner_team_id",
+    "home_team_id",
+    "away_team_id",
+    "team_id",
+    # ─ ユーザ / 認証関連 ─
+    "annotator_id",
+    "uploader_user_id",
+    "actor_user_id",
+    "user_id",             # generic user FK
+    "consumed_by_user_id",
+    "inviter_user_id",
+    "imported_from_device_id",
+    "source_device_id",
+    # ─ 機微フラグ・トークン ─
+    "is_public_pool",
+    "is_admin",
+    "share_token",         # session_share token spoofing
+    "session_token",
+    "parent_session_id",
+    "totp_secret",
+    "password_hash",       # 万が一 model に列があっても export/import 経由で書かない
+    # ─ モデル出力偽造防止 ─
+    "confidence_score",
+    "evidence_level",
+    "validity_score",
+    "validity_flag",
 }
 
 
@@ -150,16 +173,26 @@ def _sanitize_import_record(model_cls: type, incoming: dict, server_now: datetim
             continue
         out[k] = v
     # 時刻クランプ: future-pinning による merge 戦略の悪用を防ぐ
+    # Round 258 R4 F5 fix: epoch int / float も datetime に正規化してから比較。
+    # 旧来は str しか handle していなかったため `"updated_at": 99999999999` で永久勝利可能だった。
     if "updated_at" in out and out["updated_at"] is not None:
         try:
             ts = out["updated_at"]
             if isinstance(ts, str):
-                # ISO 文字列を datetime に
                 from datetime import datetime as _dt
                 ts = _dt.fromisoformat(ts.replace("Z", "+00:00"))
                 if ts.tzinfo is not None:
                     ts = ts.replace(tzinfo=None)
-            if isinstance(ts, datetime) and ts > server_now:
+            elif isinstance(ts, (int, float)):
+                from datetime import datetime as _dt
+                ts = _dt.utcfromtimestamp(float(ts))
+            if isinstance(ts, datetime):
+                if ts > server_now:
+                    out["updated_at"] = server_now
+                else:
+                    out["updated_at"] = ts
+            else:
+                # 想定外の型 → server_now にクランプ
                 out["updated_at"] = server_now
         except Exception:
             out["updated_at"] = server_now
