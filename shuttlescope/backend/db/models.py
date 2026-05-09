@@ -1169,7 +1169,11 @@ class AccessLog(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    # Round 233 R233-A: audit log は append-only であり、user 削除時に FK 制約で
+    # access_logs.user_id を NULL 化すると HMAC chain (row_hash) が破損する。
+    # migration 0026 で FK を drop 済 (orphan integer reference を許容)。
+    # ORM 側でも ForeignKey を外し、INSERT 時の参照整合性チェックを発生させない。
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     action: Mapped[str] = mapped_column(String(50), nullable=False)            # login/logout/export/deny
     resource_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     resource_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
