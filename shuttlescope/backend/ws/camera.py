@@ -75,7 +75,19 @@ class CameraSignalingManager:
         # 以降 operator 接続は同じ user_id しか受け付けない。
         # session 終了 (is_active=False) で disconnect された後も entry は残し、
         # 万一 session が再活性化しても同じ owner だけが復帰可能にする。
-        self._operator_owners: dict[str, int] = {}
+        #
+        # Round 258 R18 P0 fix (R18a-2 P0-1): 旧コードでは _gc_session_if_empty が
+        # _operator_owners を pop しなかったため、認証済 operator が大量の random
+        # session_code に touch する → entry が永続的に積み上がり、process RAM を
+        # 食い潰す DoS 経路が成立していた。
+        # 修正: dict ではなく **LRU OrderedDict** にし、上限 4096 件で古い順に evict。
+        # session-owner consistency の意図 (再活性化時の owner 維持) は短期間の
+        # 再接続なら確実に守られる。極めて長期間アクセスが無かった session が
+        # evict 後に他 operator から再請求されるケースだけは、実運用上既に
+        # is_active=False の archived state なので問題にならない。
+        from collections import OrderedDict
+        self._operator_owners: "OrderedDict[str, int]" = OrderedDict()
+        self._OPERATOR_OWNERS_MAX = 4096
 
     def _slock(self, session_code: str) -> "asyncio.Lock":
         import asyncio as _aio
@@ -128,7 +140,20 @@ class CameraSignalingManager:
             await ws.accept()
             self._sessions[session_code]["operator"] = ws
             if user_id is not None and owner is None:
+                # Round 258 R18 P0 fix (R18a-2 P0-1): LRU evict + bounded insert
                 self._operator_owners[session_code] = user_id
+                self._operator_owners.move_to_end(session_code)
+                while len(self._operator_owners) > self._OPERATOR_OWNERS_MAX:
+                    evicted_code, _ = self._operator_owners.popitem(last=False)
+                    logger.info(
+                        "camera _operator_owners LRU evict: %s (size now %d)",
+                        evicted_code, len(self._operator_owners),
+                    )
+            elif owner is not None:
+                # 既存 owner も touch しておくことで、active な session ほど
+                # LRU の末尾に維持されるようにする (random session_code touch 攻撃で
+                # 正規 owner の entry が evict される攻撃の緩和)。
+                self._operator_owners.move_to_end(session_code)
         logger.info("camera operator connected: %s user_id=%s", session_code, user_id)
         return True
 

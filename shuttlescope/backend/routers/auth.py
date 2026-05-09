@@ -205,9 +205,24 @@ def _get_ip(request: Request) -> Optional[str]:
     # CF-Connecting-IP は Cloudflare 側で設定される（偽造不可）。
     # X-Forwarded-For はクライアントが任意に設定できるためログイン
     # IP レート制限の根拠に使ってはならない（レート制限バイパス防止）。
+    #
+    # Round 258 R18 P1 fix (R18a-2 P1-1): 旧コードは CF-Connecting-IP を **無条件**
+    # に信頼していたが、本プロセスはローカル port 8765 にも bind されており
+    # cloudflared 経由でない LAN クライアントが直接到達する経路がある (cluster /
+    # SSH トンネル / Tailscale)。その場合 attacker が `CF-Connecting-IP` を
+    # 任意に書き換えてレート制限を回避できる。
+    # 修正: socket peer が **loopback (cloudflared sidecar)** のときだけ
+    # CF-Connecting-IP を採用し、それ以外は socket IP を返す。
     cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
     if cf_ip:
-        return cf_ip
+        try:
+            from backend.utils.control_plane import is_loopback_request
+            if is_loopback_request(request):
+                return cf_ip
+        except Exception:
+            # control_plane が読み込めないか request 解釈に失敗した場合は
+            # 安全側に倒し、socket peer の IP を返す。
+            pass
     return request.client.host if request.client else None
 
 

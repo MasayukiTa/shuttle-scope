@@ -29,6 +29,7 @@ from backend.db.models import (
 from backend.cv.gravity import compute_cog
 from backend.cv.shot_classifier import classify_stroke
 from backend.pipeline.pose_storage import encode_landmarks
+from backend.utils.path_jail import assert_pipeline_video_source_safe
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,19 @@ def run_pipeline(db: Session, match_id: int, *, use_gpu: bool = False) -> dict:
 
     tracknet = _get_tracknet()
     pose = _get_pose()
+
+    # Round 258 R18 P0 fix (R18a-3 P0-1): worker pipeline が match.video_local_path
+    # を **path_jail なしで** cv2.VideoCapture / TrackNet / MediaPipe に渡していた。
+    # OpenCV は http(s)/rtsp/smb/file 等を解釈するため、analyst が Match を編集して
+    # 任意 URL を仕込めば、worker プロセス特権で SSRF / file:// 任意ファイル読み /
+    # SMB credential relay / RTSP NAT pivot が成立していた。
+    # 修正: pipeline 入口で strict 版を通し、ローカルパス + localfile:/// + server://
+    # 以外を ValueError で reject する。
+    try:
+        assert_pipeline_video_source_safe(match.video_local_path)
+    except ValueError as exc:
+        logger.error("run_pipeline reject unsafe video source: match_id=%d err=%s", match_id, exc)
+        raise
 
     video_path = match.video_local_path or match.video_url or f"match-{match.id}"
 
