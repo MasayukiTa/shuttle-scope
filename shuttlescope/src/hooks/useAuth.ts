@@ -155,6 +155,30 @@ export function useAuth() {
     removeStorage(STORAGE_KEY_USER_ID)
     removeStorage(STORAGE_KEY_DISPLAY_NAME)
     removeStorage(STORAGE_KEY_PAGE_ACCESS)
+
+    // Round 236 #10: 共有 PC で前 user の match-specific UI state が残ると
+    // (court calibration / yolo ROI memory / viewpoint 等) 次 user に引き継がれるため
+    // logout 時にまとめて消す。
+    try {
+      const matchScopedPrefixes = [
+        'shuttlescope.viewpoint.',
+        'court-calib-',
+        'yolo-last-roi-',
+        'tracknet-last-roi-',
+      ]
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (!k) continue
+        if (matchScopedPrefixes.some((p) => k.startsWith(p))) {
+          keysToRemove.push(k)
+        }
+      }
+      for (const k of keysToRemove) localStorage.removeItem(k)
+    } catch {
+      // localStorage アクセス不可環境 (Safari private mode 等) は無視
+    }
+
     setTokenState(null)
     setRoleState(null)
     setPlayerIdState(null)
