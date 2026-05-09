@@ -1062,11 +1062,16 @@ def change_password(req: PasswordChangeRequest, request: Request, db: Session = 
     # Round 258 R20 P2 fix (R20 P2-2): access token (15min) も per-user revoke epoch
     # で即時失効させる。これで盗まれた access token が password rotation 後に
     # 残存利用される 15 分の窓を閉じる。
+    # Round 258 R21 P0 fix (R21 P0-1): 旧コードは exception を warn ログだけで
+    # 握り潰していたため、DB 書込み失敗時に password 変更だけ成功して access
+    # token 失効が走らない silent failure があった。raise に変更して 500 で
+    # 早期検知できるようにする (sentinel uniqueness は jwt_utils 側で uuid 補強済)。
+    from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
     try:
-        from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
         _revoke_all_for_user(user.id)
     except Exception as exc:
-        logger.warning("revoke_all_for_user failed (password change) user_id=%s: %s", user.id, exc)
+        logger.error("revoke_all_for_user failed (password change) user_id=%s: %s", user.id, exc)
+        raise HTTPException(status_code=500, detail="access token 失効処理に失敗しました")
     log_access(db, "password_changed", user_id=user.id, ip_addr=_get_ip(request))
     return {"success": True}
 
@@ -1084,12 +1089,14 @@ def admin_reset_password(target_id: int, request: Request, db: Session = Depends
     user.locked_until = None
     db.commit()
     revoke_all_refresh_tokens_for_user(user.id)
-    # Round 258 R20 P2 fix (R20 P2-2): access token も即時失効
+    # Round 258 R20 P2 fix (R20 P2-2) + R21 P0 fix (R21 P0-1): access token も即時失効。
+    # silent failure を避けるため raise に倒す。
+    from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
     try:
-        from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user
         _revoke_all_for_user(user.id)
     except Exception as exc:
-        logger.warning("revoke_all_for_user failed (admin reset) user_id=%s: %s", user.id, exc)
+        logger.error("revoke_all_for_user failed (admin reset) user_id=%s: %s", user.id, exc)
+        raise HTTPException(status_code=500, detail="access token 失効処理に失敗しました")
     log_access(db, "password_reset_by_admin", details={"target_user_id": target_id})
     return PasswordResetResponse(temporary_password=temp)
 
@@ -1760,6 +1767,18 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     if hashed:
         user.hashed_credential = hashed
     db.commit()
+    # Round 258 R21 P1 fix (R21 P1-4): role / password / pin / username 変更時には
+    # 既存 access token を必ず失効させる。旧 R20 は change_password 系だけだったが、
+    # admin が compromised user を demote しても access token は role=admin のまま
+    # 残存していた。
+    changed_for_revoke = body.model_dump(exclude_unset=True)
+    if any(k in changed_for_revoke for k in ("role", "password", "pin", "username")):
+        from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user2
+        try:
+            _revoke_all_for_user2(target_id)
+        except Exception as exc:
+            logger.error("revoke_all_for_user failed (user_update target=%s): %s", target_id, exc)
+            raise HTTPException(status_code=500, detail="access token 失効処理に失敗しました")
     # 重要度の高い変更 (role/password/pin/team_name/username) は action を分けて
     # audit log に残し、検知/アラートで優先度を上げられるようにする。
     changed = body.model_dump(exclude_unset=True)

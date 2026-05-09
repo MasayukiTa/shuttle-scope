@@ -44,7 +44,11 @@ foreach ($p in $forbiddenPrefixes) {
 }
 
 # 既存タスクを削除して再登録
-cmd /c "schtasks /Delete /TN $taskName /F >/dev/null 2>&1"
+# Round 258 R20 P3 fix (R18a-3 P3-3): 旧コードは POSIX 形式 `>/dev/null 2>&1` を
+# cmd /c に渡していた。cmd.exe ではこの形式は無効で実際には redirect されていない
+# (`>` でファイル名 `/dev/null` への redirect 試行 → ENOENT で stderr に消化不良
+# メッセージ)。Windows 形式 `>nul 2>&1` に修正。
+cmd /c "schtasks /Delete /TN $taskName /F >nul 2>&1"
 
 $tr = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$daemon`""
 # /SC ONSTART = OS 起動時自動実行

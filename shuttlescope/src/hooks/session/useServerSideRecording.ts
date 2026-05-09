@@ -43,9 +43,16 @@ import { resolveBaseUrl } from '@/utils/preferredEndpoint'
 const _STALE_UPLOAD_KEY_RE =
   /^__ss_pending_upload_(?:\d{1,12}|[0-9a-fA-F-]{32,40}_\d{1,12})$/
 
+// Round 258 R20 P3 fix (R18a-1 P3-1): 同じ hook が複数 mount された場合に
+// useEffect から呼ばれて何度も全 localStorage を走査するのは無駄。module-level
+// flag でプロセス内 1 回だけ走査する。
+let _didSweepStaleUploadQueue = false
+
 function _sweepStaleUploadQueue(): void {
   // Round 258 R16 P0 fix (deep audit F-2): 旧バージョンが localStorage に
   // base64 化した chunk を残している場合、起動時に削除する。
+  if (_didSweepStaleUploadQueue) return
+  _didSweepStaleUploadQueue = true
   try {
     const keysToRemove: string[] = []
     for (let i = 0; i < localStorage.length; i++) {

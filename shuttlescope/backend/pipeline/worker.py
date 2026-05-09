@@ -122,9 +122,18 @@ class _FileLock:
             if len(data) < 2:
                 return False
             pid_str = data[1:].decode("ascii", errors="replace").strip()
-            if not pid_str.isdigit():
+            # Round 258 R20 P3 fix (R18a-3 P3-1): pid_str.isdigit() は Unicode-aware
+            # で `０` 等 fullwidth digit / ⅰ 等 Roman を True にする (camera.py R17 と
+            # 同じ問題)。lock file は単一プロセスが書くので外部攻撃面は薄いが、
+            # ファイル破損時に不正な int になり stale lock の判定が混乱する経路を遮断する。
+            if not (pid_str and len(pid_str) <= 10 and all('0' <= c <= '9' for c in pid_str)):
                 return False
-            pid = int(pid_str)
+            try:
+                pid = int(pid_str)
+            except ValueError:
+                return False
+            if pid <= 0:
+                return False
             if os.name == "nt":
                 # Windows: subprocess で tasklist を呼ぶより、psutil があれば優先
                 try:

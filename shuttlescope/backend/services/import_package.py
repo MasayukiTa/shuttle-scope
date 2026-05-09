@@ -151,6 +151,30 @@ _FORCED_STRIP_COLUMNS = {
     "evidence_level",
     "validity_score",
     "validity_flag",
+    # ─ R20 P2 fix (R18a-3 P2-3): ID 系の alias を追加。
+    # 旧 denylist は `id` だけを `_sanitize_import_record` の if 内で除外していたが、
+    # `pkid` / `external_id` / `device_id` / `client_id` 等の future-aliasing column が
+    # 追加されたときに mass-assignment 経路で書き込まれる窓があった。
+    "pkid",
+    "external_id",
+    "device_id",
+    "client_id",
+    "session_id",  # session 別経路で生成される。import で書かない。
+    # rate-limit / 状態管理用カラムも server-derived
+    "failed_attempts",
+    "locked_until",
+    "last_login_at",
+    # ─ Round 258 R21 P3 fix (R21 P3-3): User 系の認証/権限フラグも追加。
+    # 現在は _TABLE_MAP に User が含まれていないため dormant だが、将来追加されたとき
+    # MFA 解除 / 強制 admin 化 / activate / 検証済 email スプーフィング を一括防止。
+    "mfa_secret",
+    "totp_secret",        # 重複だが allowlist 側にある場合の防御深化
+    "email_verified",
+    "email_verified_at",
+    "is_active",
+    "role",               # 権限昇格の最重要カラム
+    "username",
+    "hashed_credential",
 }
 
 

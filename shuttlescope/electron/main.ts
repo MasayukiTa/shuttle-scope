@@ -737,31 +737,65 @@ ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultF
   // 返すが、user の Desktop 配下にあらかじめ Junction (symlink) を置けば書き込み先を
   // C:\Windows\System32\... 等に redirect できる (admin 権限なしの一般 NTFS junction)。
   // 防御: realpathSync で resolve 後、システムディレクトリ配下なら拒否する。
+  //
+  // Round 258 R21 P1 fix (R21 P1-2): R19 の deny-list は以下の bypass を許していた:
+  //   1. Windows extended-length prefix `\\?\C:\Windows\...` (lower → `\\?\c:\windows\...`)
+  //      は `c:\windows` で startsWith しないため通過。
+  //   2. UNC `\\server\share\...` / `\\?\UNC\server\share\...` は deny-list に無い。
+  //   3. drive root の `C:\autoexec.bat` 直下 file (Program Files 配下でない) も通過。
+  //   4. `C:/windows` (forward-slash) ブランチは Windows realpath が常に backslash を
+  //      返すので dead code。
+  // 修正: **allow-list** ベースに切り替える。書き込み先を user の Desktop / Documents /
+  // Downloads / Videos 配下のみ許容し、それ以外は reject。Junction で外に飛ばしても
+  // realpath 経由の resolved path が allow ルート外なら拒否される。
   const fsMod = require('fs') as typeof import('fs')
   let resolvedPath: string
   try {
-    // 親ディレクトリだけ realpath で解決 (まだ存在しない target file 自体を realpath
-    // しようとすると ENOENT になる)
     const parentReal = fsMod.realpathSync(path.dirname(result.filePath))
-    resolvedPath = path.join(parentReal, path.basename(result.filePath))
+    resolvedPath = path.normalize(path.join(parentReal, path.basename(result.filePath)))
   } catch (err) {
     console.warn('[save-recorded-video] rejected: realpath failed', err)
     return null
   }
-  const lowered = resolvedPath.toLowerCase()
-  const _RECORD_DENY_PREFIXES = [
-    (process.env.windir || 'c:\\windows').toLowerCase(),
-    'c:\\program files',
-    'c:\\program files (x86)',
-    'c:\\programdata',
-    '/etc/', '/usr/', '/bin/', '/sbin/', '/var/lib/', '/boot/',
-  ]
-  if (_RECORD_DENY_PREFIXES.some((p) => lowered.startsWith(p) || lowered.startsWith(p.replace(/\\/g, '/')))) {
-    console.warn('[save-recorded-video] rejected: system directory:', resolvedPath)
+  // \\?\ extended prefix を除去 (Windows realpath 戻り値で稀に出る)
+  let canonical = resolvedPath
+  if (canonical.startsWith('\\\\?\\UNC\\')) {
+    console.warn('[save-recorded-video] rejected: UNC extended path', canonical)
     return null
   }
-  fsMod.writeFileSync(resolvedPath, buf)
-  const normalized = resolvedPath.replace(/\\/g, '/')
+  if (canonical.startsWith('\\\\?\\')) {
+    canonical = canonical.slice(4)
+  }
+  // 直接 UNC `\\server\share\...` も拒否 (network share 越しの書き込み禁止)
+  if (canonical.startsWith('\\\\') || canonical.startsWith('//')) {
+    console.warn('[save-recorded-video] rejected: UNC/network path', canonical)
+    return null
+  }
+  // allow-list: app.getPath('documents') / 'downloads' / 'videos' / 'desktop' のいずれか配下
+  const allowedRoots: string[] = []
+  for (const k of ['documents', 'downloads', 'videos', 'desktop'] as const) {
+    try {
+      const r = app.getPath(k)
+      if (r) allowedRoots.push(path.normalize(r))
+    } catch { /* ignore (一部 OS では未提供) */ }
+  }
+  if (allowedRoots.length === 0) {
+    console.warn('[save-recorded-video] rejected: no allowed roots resolved')
+    return null
+  }
+  const canonLower = canonical.toLowerCase()
+  const ok = allowedRoots.some((r) => {
+    const rLower = r.toLowerCase()
+    // path.sep を末尾に付けて prefix match を厳密化
+    const sep = path.sep
+    return canonLower === rLower || canonLower.startsWith(rLower + sep)
+  })
+  if (!ok) {
+    console.warn('[save-recorded-video] rejected: outside user-data allow-list', canonical)
+    return null
+  }
+  fsMod.writeFileSync(canonical, buf)
+  const normalized = canonical.replace(/\\/g, '/')
   return `localfile:///${normalized}`
 })
 
@@ -921,6 +955,15 @@ function _validateUserUrlForCapture(rawUrl: string): URL {
   }
   // hostname の loopback / private IP チェック
   const host = parsed.hostname.toLowerCase()
+  // Round 258 R20 P3 fix (R18a-1 P3-2): octal IPv4 (`010.0.0.1` → 8.0.0.1)
+  // / 16 進 IPv4 (`0x7f.0.0.1`) / 1 進 (`017700000001` = 0x7F000001) を一部の
+  // resolver は通常 IPv4 として解決する。`/^10\./` 等の正規表現はそれらを
+  // 内部 IP と見なさず、SSRF allow に倒す経路があった。
+  // 修正: 数字始まり (== IPv4 風の hostname) は **すべて拒否** する。
+  // 内部 IP に対する legitimate なキャプチャ用途は無いので副作用は無い。
+  if (/^[0-9]/.test(host)) {
+    throw new Error(`数字始まりの hostname は IPv4 / 異形式 IPv4 の可能性があるため許可しません: ${host}`)
+  }
   if (
     host === 'localhost' ||
     host === '0.0.0.0' ||
