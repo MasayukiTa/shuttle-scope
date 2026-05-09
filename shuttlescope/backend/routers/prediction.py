@@ -44,6 +44,7 @@ router = APIRouter(dependencies=[Depends(require_non_player)])
 
 @router.get("/prediction/match_preview")
 def get_match_preview(
+    request: Request,
     player_id: int,
     opponent_id: Optional[int] = None,
     tournament_level: Optional[str] = None,
@@ -56,13 +57,18 @@ def get_match_preview(
     - H2H データがある場合は優先使用
     - なければ全試合統計にフォールバック
     """
-    all_matches = get_matches_for_player(db, player_id)
+    # Round 258 R30 P2 fix (R29 P2-3): caller の team_id を get_matches_for_player に
+    # 渡し、admin 以外は public_pool または owner_team_id 一致の match のみに絞る。
+    from backend.utils.auth import get_auth as _ga_pred
+    _ctx_pred = _ga_pred(request)
+    _kw_team = {"ctx_team_id": _ctx_pred.team_id, "ctx_is_admin": _ctx_pred.is_admin}
+    all_matches = get_matches_for_player(db, player_id, **_kw_team)
     h2h_matches = (
-        get_matches_for_player(db, player_id, opponent_id=opponent_id)
+        get_matches_for_player(db, player_id, opponent_id=opponent_id, **_kw_team)
         if opponent_id else []
     )
     level_matches = (
-        get_matches_for_player(db, player_id, tournament_level=tournament_level)
+        get_matches_for_player(db, player_id, tournament_level=tournament_level, **_kw_team)
         if tournament_level else []
     )
 
@@ -198,6 +204,7 @@ def get_lineup_optimizer(
 
 @router.get("/prediction/analyst_depth")
 def get_analyst_depth(
+    request: Request,
     player_id: int,
     opponent_id: Optional[int] = None,
     tournament_level: Optional[str] = None,
@@ -211,13 +218,17 @@ def get_analyst_depth(
     - 最近傍試合エビデンス
     - 多特徴量ブレンド内訳
     """
-    all_matches = get_matches_for_player(db, player_id)
+    # R30 P2 fix (R29 P2-3): team scope を get_matches_for_player に渡す
+    from backend.utils.auth import get_auth as _ga_pred2
+    _ctx_pred2 = _ga_pred2(request)
+    _kw_team2 = {"ctx_team_id": _ctx_pred2.team_id, "ctx_is_admin": _ctx_pred2.is_admin}
+    all_matches = get_matches_for_player(db, player_id, **_kw_team2)
     h2h_matches = (
-        get_matches_for_player(db, player_id, opponent_id=opponent_id)
+        get_matches_for_player(db, player_id, opponent_id=opponent_id, **_kw_team2)
         if opponent_id else []
     )
     level_matches = (
-        get_matches_for_player(db, player_id, tournament_level=tournament_level)
+        get_matches_for_player(db, player_id, tournament_level=tournament_level, **_kw_team2)
         if tournament_level else []
     )
     obs_context = get_observation_context(db, player_id, opponent_id)
@@ -347,9 +358,13 @@ def get_prematch_by_match(
     cutoff_date = match.date
     tournament_level = match.tournament_level
 
-    all_matches = get_matches_for_player(db, player_id, before_date=cutoff_date)
-    h2h_matches = get_matches_for_player(db, player_id, opponent_id=opponent_id, before_date=cutoff_date)
-    level_matches = get_matches_for_player(db, player_id, tournament_level=tournament_level, before_date=cutoff_date)
+    # R30 P2 fix (R29 P2-3): team scope を get_matches_for_player に渡す
+    from backend.utils.auth import get_auth as _ga_pred3
+    _ctx_pred3 = _ga_pred3(request)
+    _kw_team3 = {"ctx_team_id": _ctx_pred3.team_id, "ctx_is_admin": _ctx_pred3.is_admin}
+    all_matches = get_matches_for_player(db, player_id, before_date=cutoff_date, **_kw_team3)
+    h2h_matches = get_matches_for_player(db, player_id, opponent_id=opponent_id, before_date=cutoff_date, **_kw_team3)
+    level_matches = get_matches_for_player(db, player_id, tournament_level=tournament_level, before_date=cutoff_date, **_kw_team3)
 
     obs_context = get_observation_context(db, player_id, opponent_id, match_id)
 
