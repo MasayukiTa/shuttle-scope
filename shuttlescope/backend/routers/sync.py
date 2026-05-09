@@ -416,8 +416,41 @@ def import_from_cloud_path(
     if not sync_folder:
         raise HTTPException(status_code=400, detail="同期フォルダが設定されていません")
     sync_root = Path(sync_folder).resolve()
-    raw_path = Path(path)
-    pkg_path = (raw_path if raw_path.is_absolute() else (sync_root / raw_path)).resolve()
+
+    # Round 258 R31 fix (CodeQL py/path-injection #2037 high):
+    # 旧コードは raw_path が absolute なら sync_root を経由せずに使い、その後で
+    # `relative_to(sync_root)` で弾く設計。意味上は安全だが、CodeQL は
+    # `Query(...) → Path → resolve() → read_bytes` の taint flow を直線的に
+    # しか追えず high alert が残っていた。
+    # 修正:
+    #   1. **入力 path は必ず relative** とし、absolute / 親参照 / UNC / extended-length
+    #      / NUL を含むものは sync_root に結合する前に **拒否** する。
+    #   2. 結合と resolve を一行にまとめ、`is_relative_to` (Py3.9+) で明示確認。
+    #   3. その後の `is_symlink` / `read_bytes` は **resolve 済み確定パス** のみ
+    #      参照し、ユーザー入力文字列を二度と消費しない。
+    # これで CodeQL のフロー追跡がはっきり「sanitizer 通過済」を認識できる。
+    p_str = path or ""
+    if not p_str:
+        raise HTTPException(status_code=400, detail="path が空です")
+    if "\x00" in p_str:
+        raise HTTPException(status_code=400, detail="不正な path 文字 (NUL)")
+    if (
+        p_str.startswith("\\\\?\\")
+        or p_str.startswith("\\\\.\\")
+        or p_str.startswith("\\\\")
+        or p_str.startswith("//")
+    ):
+        raise HTTPException(status_code=400, detail="UNC / extended-length path は許可されません")
+    raw_path = Path(p_str)
+    if raw_path.is_absolute():
+        raise HTTPException(status_code=400, detail="絶対パスは許可されません (sync_root 相対のみ)")
+    # `..` が relative path のどこかに含まれていれば parts で検出して reject
+    if any(part == ".." for part in raw_path.parts):
+        raise HTTPException(status_code=400, detail="親参照 (`..`) は許可されません")
+
+    # ここから先 raw_path は sync_root 配下に閉じ込められた relative とみなす
+    pkg_path = (sync_root / raw_path).resolve()
+    # `is_relative_to` で sync_root 配下確認 (resolve 後に symlink で外に出ても検出)
     try:
         pkg_path.relative_to(sync_root)
     except ValueError:
@@ -430,15 +463,7 @@ def import_from_cloud_path(
     if not pkg_path.exists() or not pkg_path.is_file():
         raise HTTPException(status_code=404, detail="ファイルが見つかりません")
 
-    # Round 258 R3 P1 fix (file audit #3): symlink reject + UNC reject
-    # raw_path 内の `\\?\` / `\\.\` / leading UNC は受け付けない
-    p_str = str(raw_path)
-    if (
-        p_str.startswith("\\\\?\\")
-        or p_str.startswith("\\\\.\\")
-        or p_str.startswith("\\\\")
-    ):
-        raise HTTPException(status_code=400, detail="UNC / extended-length path は許可されません")
+    # Round 258 R3 P1 fix (file audit #3): symlink reject
     if pkg_path.is_symlink():
         raise HTTPException(status_code=400, detail="symlink は許可されません")
 
