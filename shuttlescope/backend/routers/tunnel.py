@@ -416,7 +416,12 @@ def tunnel_status(request: Request):
 
 
 @router.post("/tunnel/start")
-def tunnel_start(provider: str = "auto", db: Session = Depends(get_db)):
+def tunnel_start(request: Request, provider: str = "auto", db: Session = Depends(get_db)):
+    # Round 258 R27 P1 fix (R27 P1-1): 旧コードは認証ガード無しで誰でも tunnel/start
+    # を叩け、low-priv account から `cloudflared tunnel --url` を spawn して LAN-bound
+    # API を `*.trycloudflare.com` に公開できる経路があった。admin only に絞る。
+    from backend.utils.auth import require_admin as _require_admin_tunnel
+    _require_admin_tunnel(request)
     global _proc, _tunnel_url, _stderr_lines, _active_provider
 
     resolved = _resolve_provider(provider)
@@ -532,7 +537,11 @@ def _kill_ngrok_processes() -> None:
 
 
 @router.post("/tunnel/stop")
-def tunnel_stop():
+def tunnel_stop(request: Request):
+    # Round 258 R27 P1 fix (R27 P1-1): tunnel_stop も admin only。低 priv account に
+    # よる admin-started named tunnel の DoS 停止を防ぐ。
+    from backend.utils.auth import require_admin as _require_admin_tunnel
+    _require_admin_tunnel(request)
     global _proc, _tunnel_url, _stderr_lines, _active_provider
 
     with _lock:
