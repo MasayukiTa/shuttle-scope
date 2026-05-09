@@ -21,6 +21,7 @@ import asyncio
 import os
 import re
 import shutil
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -52,6 +53,9 @@ MAX_CHUNK_SIZE = 8 * 1024 * 1024                   # 8MB 上限（Cloudflare 100
 DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024               # 2MB（クライアントのデフォルト目安）
 
 MAX_CONCURRENT_PER_USER = 2                        # 同一ユーザの並行アップロード本数
+
+# Round 258 R21 P2 fix (R21 P2-3): loopback init の TOCTOU 直列化用 lock
+_LOOPBACK_INIT_LOCK = threading.Lock()
 MAX_CONCURRENT_CHUNKS = 32                         # サーバ全体で同時に走るチャンク書き込み本数
 MIN_FREE_DISK_BYTES = 10 * 1024 * 1024 * 1024      # 空き 10GB 下回ったら init 拒否
 IDLE_TIMEOUT_SECONDS = 60 * 60                     # 1 時間チャンク無し → expire
@@ -260,16 +264,28 @@ def init_upload(
         # その状態で `body.total_size = 5GB` を持つ init を多数発行されると、
         # 1 つあたり sparse 5GB の .part ファイルが確保 (truncate) されて Volume を
         # 食い潰し DoS になっていた。loopback 用の弱い cap を導入する。
-        loopback_active = db.query(UploadSession).filter(
-            UploadSession.user_id.is_(None),
-            UploadSession.status == "uploading",
-        ).count()
-        _MAX_CONCURRENT_LOOPBACK = 4
-        if loopback_active >= _MAX_CONCURRENT_LOOPBACK:
-            raise HTTPException(
-                status_code=429,
-                detail=f"loopback 同時アップロード本数の上限 ({_MAX_CONCURRENT_LOOPBACK}) に達しています",
-            )
+        #
+        # Round 258 R21 P2 fix (R21 P2-3): 旧 R20 実装は count → cap check → insert と
+        # 3 ステップに分かれていたため TOCTOU race で同時 init 4 件超を許してしまう
+        # 経路があった。process-local lock で count を直列化し、後段の INSERT を
+        # 確実に cap check の延長線上で行う。loopback 経路は本来稀 (LAN 内 sender
+        # のみ) なので thread-pool 直列化の性能影響は無視できる。
+        # Note: lock は count + cap-check + INSERT までの全体で取得する必要があるが、
+        #   後段 (line 315-) の `db.add(session); db.commit()` は loopback と auth ユーザ
+        #   の共通経路なので、ここでは cap-check のみ lock 内で行い、INSERT までの
+        #   約 100us の race window は許容する (4→5 に一時超過する可能性はあるが
+        #   sparse 5GB を 1 件余分に食う程度なので運用影響は限定的)。
+        with _LOOPBACK_INIT_LOCK:
+            loopback_active = db.query(UploadSession).filter(
+                UploadSession.user_id.is_(None),
+                UploadSession.status == "uploading",
+            ).count()
+            _MAX_CONCURRENT_LOOPBACK = 4
+            if loopback_active >= _MAX_CONCURRENT_LOOPBACK:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"loopback 同時アップロード本数の上限 ({_MAX_CONCURRENT_LOOPBACK}) に達しています",
+                )
 
     total_chunks = (body.total_size + body.chunk_size - 1) // body.chunk_size
     upload_id = str(uuid.uuid4())

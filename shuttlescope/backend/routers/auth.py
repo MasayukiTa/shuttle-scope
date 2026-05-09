@@ -1640,6 +1640,15 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     else:
         raise HTTPException(status_code=403, detail="編集権限がありません")
 
+    # Round 258 R22 P1 fix (R22 P1-4): mutation 前に security-sensitive 値の snapshot を
+    # 取り、後段で「実際に変わったか」を判定する。
+    # 旧 R21 実装は `body.model_dump(exclude_unset=True)` に該当 field が含まれて
+    # いれば revoke を発火していたため、no-op (= 同値再送) でも tokens を吹き飛ばし
+    # 自己 DoS / log noise / DB 書き込み amp の経路を作っていた。
+    _snapshot_role = user.role
+    _snapshot_username = user.username
+    _snapshot_credential = user.hashed_credential
+
     # display_name / team_name の制御文字 / BIDI override を拒否
     _reject_control_chars(body.display_name, "display_name", max_len=100)
     _reject_control_chars(body.team_name, "team_name", max_len=100)
@@ -1771,8 +1780,14 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
     # 既存 access token を必ず失効させる。旧 R20 は change_password 系だけだったが、
     # admin が compromised user を demote しても access token は role=admin のまま
     # 残存していた。
-    changed_for_revoke = body.model_dump(exclude_unset=True)
-    if any(k in changed_for_revoke for k in ("role", "password", "pin", "username")):
+    # Round 258 R22 P1 fix (R22 P1-4): 上記 R21 実装は body に field が含まれて
+    # **いるだけ** で revoke を発火するため、no-op 再送 (= 同値) でも token を
+    # 吹き飛ばす self-DoS / log-noise の経路があった。
+    # 修正: snapshot と比較して **実値が変わった場合のみ** 発火する。
+    role_changed = (user.role != _snapshot_role)
+    username_changed = (user.username != _snapshot_username)
+    credential_changed = (user.hashed_credential != _snapshot_credential)
+    if role_changed or username_changed or credential_changed:
         from backend.utils.jwt_utils import revoke_all_for_user as _revoke_all_for_user2
         try:
             _revoke_all_for_user2(target_id)

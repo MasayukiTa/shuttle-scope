@@ -112,8 +112,21 @@ def is_loopback_request(request: Request) -> bool:
     # client.host が "" になった本番外部リクエストまで loopback 認定される穴が
     # あった。修正: ENVIRONMENT が **明示的に "development" または "test"** の
     # ときだけ blank/testclient を許容する。
-    import os as _os_cp
-    env_norm = (_os_cp.environ.get("ENVIRONMENT", "") or "").strip().lower()
+    #
+    # Round 258 R22 P1 fix (R22 P1-1): 旧 R20 実装は `os.environ.get("ENVIRONMENT","")`
+    # を直接読んでいたが、pytest は ENVIRONMENT を export しないため env_norm が ""
+    # となり、TestClient (`client.host=="testclient"`) が常に非 loopback 扱いになって
+    # 大量の test が 403 fail する regression を起こしていた。
+    # 修正: `backend.config.settings.ENVIRONMENT` を経由する。settings 側で
+    # default="development" + strip+lower されているため、env が空でも development
+    # と解釈される。
+    try:
+        from backend.config import settings as _settings_cp
+        env_norm = (getattr(_settings_cp, "ENVIRONMENT", None) or "").strip().lower()
+    except Exception:
+        # settings が読めない超レアケースのみ env を直読
+        import os as _os_cp
+        env_norm = (_os_cp.environ.get("ENVIRONMENT", "") or "").strip().lower()
     if env_norm in ("development", "dev", "test", "testing"):
         return ip in ("", "testclient")
     return False

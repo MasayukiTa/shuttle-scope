@@ -478,10 +478,24 @@ def _get_user_revoke_timestamp(user_id: int) -> Optional[int]:
         # 修正: DB error 時は cache に書かず、また「未来 timestamp」を返すことで
         # **fail-closed** 化 (= iat < future_ts は常に成立 → 全 token reject)。
         # 5s 以内に DB が回復すれば次回 lookup で正しい値に置き換わる。
+        #
+        # Round 258 R22 P1 fix (R22 P1-2): 旧 R21 実装は `now + 365*86400` を返し、
+        # かつ **キャッシュしなかった** ため、DB outage が続くと 1) 全 user の token が
+        # 1 年失効扱いで全員 logout / 2) 毎リクエスト DB 再 hit でスレッドプール飢餓 /
+        # 3) operator escape hatch 無し (in-process cache; restart 必須)、という
+        # cascade-DoS の地雷だった。
+        # 修正:
+        #   - fail-closed の地平を **10 分** に短縮 (10 分以内に DB 回復すれば auto-heal)
+        #   - 結果を 2 秒だけ cache し、DB 連打を抑制 (DoS 化を防ぐ)
         logger.warning("[jwt] user_revoke check failed user_id=%s: %s", user_id, exc)
-        # 1 年後を sentinel として返す (今生きている全 access token を失効扱い)
         import time as _time_fc
-        return int(_time_fc.time()) + 365 * 86400
+        fail_closed_horizon = int(_time_fc.time()) + 600  # 10 min
+        # 短期 cache (2s) で DB 連打を防止しつつ、回復後すぐ正常 path に戻れる
+        _USER_REVOKE_CACHE[user_id] = (now - (_USER_REVOKE_CACHE_TTL - 2.0), fail_closed_horizon)
+        _USER_REVOKE_CACHE.move_to_end(user_id)
+        while len(_USER_REVOKE_CACHE) > _USER_REVOKE_CACHE_MAX:
+            _USER_REVOKE_CACHE.popitem(last=False)
+        return fail_closed_horizon
 
 
 def revoke_all_for_user(user_id: int) -> None:

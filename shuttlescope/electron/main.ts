@@ -771,31 +771,51 @@ ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultF
     console.warn('[save-recorded-video] rejected: UNC/network path', canonical)
     return null
   }
-  // allow-list: app.getPath('documents') / 'downloads' / 'videos' / 'desktop' のいずれか配下
+  // allow-list: app.getPath('documents') / 'downloads' / 'videos' / 'desktop' のいずれか配下。
+  // Round 258 R22 P1 fix (R22 P1-3): 旧 R21 実装は `app.getPath()` の戻り値をそのまま
+  // 比較していたが、Windows folder redirection で Documents が D:\ への junction に
+  // なっている場合、realpath された canonical が allowedRoots と prefix match せず
+  // 正規 write が silently 拒否される regression があった。
+  // 修正: app.getPath() 側も realpath 解決し、`path.relative` で **../ や ../ を含まない
+  // pure descendent** であることを判定する (case 比較 / sep 一致 / prefix bug を回避)。
   const allowedRoots: string[] = []
   for (const k of ['documents', 'downloads', 'videos', 'desktop'] as const) {
     try {
       const r = app.getPath(k)
-      if (r) allowedRoots.push(path.normalize(r))
+      if (!r) continue
+      let realR: string
+      try {
+        realR = fsMod.realpathSync(r)
+      } catch {
+        realR = path.normalize(r)
+      }
+      allowedRoots.push(realR)
     } catch { /* ignore (一部 OS では未提供) */ }
   }
   if (allowedRoots.length === 0) {
     console.warn('[save-recorded-video] rejected: no allowed roots resolved')
     return null
   }
-  const canonLower = canonical.toLowerCase()
+  // canonical 側も最終 path 単位で再 realpath する。すでに parent は realpath 済だが
+  // basename が junction file の場合 (existing target を上書き保存) の経路を念のため通す。
+  // 存在しない target file は realpathSync が ENOENT になるので fallback して parent+basename を採用。
+  let finalReal: string
+  try {
+    finalReal = fsMod.realpathSync(canonical)
+  } catch {
+    finalReal = canonical
+  }
   const ok = allowedRoots.some((r) => {
-    const rLower = r.toLowerCase()
-    // path.sep を末尾に付けて prefix match を厳密化
-    const sep = path.sep
-    return canonLower === rLower || canonLower.startsWith(rLower + sep)
+    const rel = path.relative(r, finalReal)
+    // rel が空 (root 自身) / "." / "../" 等を含まない / 絶対 path でない場合のみ inside 扱い
+    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
   })
   if (!ok) {
-    console.warn('[save-recorded-video] rejected: outside user-data allow-list', canonical)
+    console.warn('[save-recorded-video] rejected: outside user-data allow-list', finalReal)
     return null
   }
-  fsMod.writeFileSync(canonical, buf)
-  const normalized = canonical.replace(/\\/g, '/')
+  fsMod.writeFileSync(finalReal, buf)
+  const normalized = finalReal.replace(/\\/g, '/')
   return `localfile:///${normalized}`
 })
 
@@ -954,7 +974,12 @@ function _validateUserUrlForCapture(rawUrl: string): URL {
     throw new Error('URL に embedded credentials は使用できません')
   }
   // hostname の loopback / private IP チェック
-  const host = parsed.hostname.toLowerCase()
+  // Round 258 R22 P0 fix (R22 P0-1): `new URL('https://[::1]/').hostname` は Node では
+  // **`'[::1]'` (角括弧付き)** を返すため、旧コードの `/^::1$/` 等のリテラル比較は
+  // 完全に空振りし、IPv6 loopback / link-local / unique-local が SSRF allow に倒れる
+  // 致命脆弱性があった。修正: 角括弧を除去してから regex 比較する。
+  const rawHost = parsed.hostname.toLowerCase()
+  const host = rawHost.replace(/^\[|\]$/g, '')
   // Round 258 R20 P3 fix (R18a-1 P3-2): octal IPv4 (`010.0.0.1` → 8.0.0.1)
   // / 16 進 IPv4 (`0x7f.0.0.1`) / 1 進 (`017700000001` = 0x7F000001) を一部の
   // resolver は通常 IPv4 として解決する。`/^10\./` 等の正規表現はそれらを
@@ -973,7 +998,10 @@ function _validateUserUrlForCapture(rawUrl: string): URL {
     /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host) ||
     /^169\.254\./.test(host) ||                    // link-local
     /^::1$|^fe80:/i.test(host) ||                   // IPv6 loopback / link-local
-    /^fc[0-9a-f]{2}:|^fd[0-9a-f]{2}:/i.test(host)   // IPv6 unique-local
+    /^::ffff:/i.test(host) ||                        // IPv6-mapped IPv4 (R22)
+    /^fc[0-9a-f]{2}:|^fd[0-9a-f]{2}:/i.test(host) || // IPv6 unique-local
+    /^::$/.test(host) ||                              // IPv6 unspecified
+    /^ff[0-9a-f]{2}:/i.test(host)                     // IPv6 multicast
   ) {
     throw new Error(`内部 / loopback / プライベート IP は使用できません: ${host}`)
   }

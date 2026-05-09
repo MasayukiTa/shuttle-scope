@@ -68,11 +68,41 @@ def _validate_url_for_subprocess(url: str) -> str:
     if host in ("localhost", "localhost.localdomain", "ip6-localhost"):
         raise ValueError(f"url host {host!r} not allowed")
     if host:
+        # Round 258 R21 P2 fix (R21 P2-2): 旧コードは `ipaddress.ip_address(host)` で
+        # 直接的な数値 IP のみ判定し、ホスト名の場合は reject しなかった。
+        # しかし攻撃者は以下の方法で内部 IP に到達できる:
+        #   - `0x7f.0.0.1` / `2130706433` 等の異形式 IPv4 (ip_address は ValueError)
+        #   - `localhost.attacker.com` 等の attacker 制御 DNS (A=127.0.0.1)
+        #   - `[::ffff:127.0.0.1]` など IPv6 表記
+        # 修正: ホスト名 → `socket.getaddrinfo` で実際に解決して、得られた IP が
+        # 内部/予約済なら reject。DNS lookup なので副作用 (パブリック解決) はあるが、
+        # subprocess 渡し前の defense-in-depth として許容する。
         try:
             ip = _ipa.ip_address(host)
         except ValueError:
-            ip = None  # ホスト名 → public DNS 解決対象、ここでは reject しない
-        if ip is not None and (
+            ip = None
+        if ip is None:
+            # ホスト名解決して全 A/AAAA を検査
+            import socket as _sk
+            try:
+                infos = _sk.getaddrinfo(host, None)
+            except _sk.gaierror:
+                # 解決失敗 → 後段 yt-dlp/ffmpeg も失敗するので素通し (gaierror は無害)
+                infos = []
+            for fam, _typ, _proto, _cn, sockaddr in infos:
+                try:
+                    resolved_ip_str = sockaddr[0]
+                    rip = _ipa.ip_address(resolved_ip_str.split("%")[0])  # zone-id strip
+                except (ValueError, IndexError):
+                    continue
+                if (
+                    rip.is_loopback or rip.is_private or rip.is_link_local
+                    or rip.is_reserved or rip.is_multicast or rip.is_unspecified
+                ):
+                    raise ValueError(
+                        f"url host {host!r} resolves to internal/reserved IP {resolved_ip_str}"
+                    )
+        elif (
             ip.is_loopback or ip.is_private or ip.is_link_local
             or ip.is_reserved or ip.is_multicast or ip.is_unspecified
         ):
