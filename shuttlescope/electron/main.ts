@@ -643,12 +643,25 @@ ipcMain.on('mirror-broadcast', (event, payload: unknown) => {
   // sub-frame / 別 BrowserWindow を導入したときに、信頼境界外の sender が
   // 任意 mirror-message を全 window に注入できる経路が開いていた。
   // mainWindow の top-level frame からの mirror-broadcast だけ受け付ける。
+  //
+  // Round 258 R20 P1 fix (R20 P1-1): R19 の実装は **fail-open** な書き方だった:
+  //   - `senderFrame?.parent != null`: senderFrame が null の場合
+  //     `undefined != null` = false (緩い等値比較の coercion) → guard を通過
+  //   - `mainWindow?.isDestroyed() === false &&`: mainWindow が null/destroyed の
+  //     場合 short-circuit で 2nd guard が実行されない
+  //   両方が同時に成立する状態 (mainWindow 破棄中 / 起動直後 / splash 切替) で、
+  //   stale な webContents が任意 mirror-message を注入できる窓があった。
+  // 修正: 明示的に fail-closed で書き直す。
   const senderFrame = event.senderFrame
-  if (senderFrame?.parent != null) {
-    console.warn('[mirror-broadcast] denied: sender is a sub-frame')
+  if (!senderFrame || senderFrame.parent != null) {
+    console.warn('[mirror-broadcast] denied: sender frame missing or sub-frame')
     return
   }
-  if (mainWindow?.isDestroyed() === false && event.sender.id !== mainWindow.webContents.id) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.warn('[mirror-broadcast] denied: main window not available')
+    return
+  }
+  if (event.sender.id !== mainWindow.webContents.id) {
     console.warn('[mirror-broadcast] denied: sender is not main window webContents')
     return
   }
@@ -720,9 +733,35 @@ ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultF
     console.warn('[save-recorded-video] rejected ext:', ext)
     return null
   }
-  const { writeFileSync } = require('fs') as typeof import('fs')
-  writeFileSync(result.filePath, buf)
-  const normalized = result.filePath.replace(/\\/g, '/')
+  // Round 258 R19 P2 fix (R18a-1 P2-2): showSaveDialog はユーザ選択 path をそのまま
+  // 返すが、user の Desktop 配下にあらかじめ Junction (symlink) を置けば書き込み先を
+  // C:\Windows\System32\... 等に redirect できる (admin 権限なしの一般 NTFS junction)。
+  // 防御: realpathSync で resolve 後、システムディレクトリ配下なら拒否する。
+  const fsMod = require('fs') as typeof import('fs')
+  let resolvedPath: string
+  try {
+    // 親ディレクトリだけ realpath で解決 (まだ存在しない target file 自体を realpath
+    // しようとすると ENOENT になる)
+    const parentReal = fsMod.realpathSync(path.dirname(result.filePath))
+    resolvedPath = path.join(parentReal, path.basename(result.filePath))
+  } catch (err) {
+    console.warn('[save-recorded-video] rejected: realpath failed', err)
+    return null
+  }
+  const lowered = resolvedPath.toLowerCase()
+  const _RECORD_DENY_PREFIXES = [
+    (process.env.windir || 'c:\\windows').toLowerCase(),
+    'c:\\program files',
+    'c:\\program files (x86)',
+    'c:\\programdata',
+    '/etc/', '/usr/', '/bin/', '/sbin/', '/var/lib/', '/boot/',
+  ]
+  if (_RECORD_DENY_PREFIXES.some((p) => lowered.startsWith(p) || lowered.startsWith(p.replace(/\\/g, '/')))) {
+    console.warn('[save-recorded-video] rejected: system directory:', resolvedPath)
+    return null
+  }
+  fsMod.writeFileSync(resolvedPath, buf)
+  const normalized = resolvedPath.replace(/\\/g, '/')
   return `localfile:///${normalized}`
 })
 
