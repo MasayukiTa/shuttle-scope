@@ -433,8 +433,13 @@ async def ws_camera_handler(
     # 修正: asyncio.wait_for で 60s timeout を設定し、timeout 経由でも reverify を
     # 駆動する。
     import asyncio as _asyncio_cam
+    import random as _random_cam
     _saved_token = websocket.query_params.get("token", "") if is_operator else ""
-    _reverify_interval = 60.0
+    # Round 258 R25 P3 fix (R22 P3-2): R20 で interval を 60s 固定にしたが、すべての
+    # operator WS が同時 accept された場合、60s 後に DB lookup が一斉発火し DB バーストが
+    # 起きる経路があった (DB hiccup → 全 operator が同時に fail-closed reject へ）。
+    # ±10s の jitter を初期値と再計算時に入れて、DB アクセスを時間軸方向に分散させる。
+    _reverify_interval = 60.0 + _random_cam.uniform(-10.0, 10.0)
     _last_reverify = _time.monotonic()
 
     async def _do_reverify_and_close_if_invalid() -> bool:
