@@ -394,14 +394,22 @@ def export_labels(
     _ctx: AuthCtx = Depends(require_labeler_role),
 ):
     """CSV / JSON エクスポート。"""
-    if not db.get(Match, match_id):
+    m = db.get(Match, match_id)
+    if not m:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    rows = (
-        db.query(ExpertLabel)
-        .filter(ExpertLabel.match_id == match_id)
-        .order_by(ExpertLabel.stroke_id.asc())
-        .all()
-    )
+    # Round 258 R28 P2 fix (R28 P2-2): list_labels と export_labels の team filter parity。
+    # 旧 export は ExpertLabel.match_id だけで filter し team scope を無視していたため、
+    # is_public_pool=True で match に到達できる coach/analyst が他チームの ExpertLabel
+    # を CSV exfil できる経路があった。GET /labels と同じく user_can_access_match +
+    # team_id filter を適用する。
+    from backend.utils.auth import user_can_access_match
+    if not user_can_access_match(_ctx, m):
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    from sqlalchemy import or_ as _or_export
+    q = db.query(ExpertLabel).filter(ExpertLabel.match_id == match_id)
+    if not _ctx.is_admin:
+        q = q.filter(_or_export(ExpertLabel.team_id.is_(None), ExpertLabel.team_id == _ctx.team_id))
+    rows = q.order_by(ExpertLabel.stroke_id.asc()).all()
     records = [
         {
             "id": r.id,

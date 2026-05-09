@@ -524,7 +524,29 @@ ipcMain.handle('get-displays', () => {
 
 // ─── IPC: 別ウィンドウで動画を表示 ──────────────────────────────────────────
 
+// Round 258 R28 P3 fix (R27 P3-3): src を allow-list 検証する。
+// renderer XSS 経路で `openVideoWindow('https://attacker/...')` を呼ばれると、
+// new BrowserWindow の <video> が attacker host に Range request を出して
+// 認証済 user の IP/UA を leak する covert exfil 経路があった。
+// 許容: localfile:/// (ローカル動画) / app://video/{token} (server-streamed) /
+//       blob: (renderer 内部) / http://localhost:8765 (dev backend)
+function _isAllowedVideoWindowSrc(s: string): boolean {
+  if (typeof s !== 'string' || s.length === 0 || s.length > 4096) return false
+  if (new RegExp('[\u0000-\u001f\u007f]').test(s)) return false
+  return (
+    s.startsWith('localfile:///')
+    || s.startsWith('app://video/')
+    || s.startsWith('blob:')
+    || s === 'http://localhost:8765'
+    || s.startsWith('http://localhost:8765/')
+  )
+}
+
 ipcMain.handle('open-video-window', (_event, src: string, displayId: number, startTime: number = 0, paused: boolean = false, matchId?: string) => {
+  if (!_isAllowedVideoWindowSrc(src)) {
+    console.warn('[open-video-window] denied: unsafe src scheme:', String(src).slice(0, 80))
+    return
+  }
   if (videoWindow && !videoWindow.isDestroyed()) {
     videoWindow.focus()
     return
@@ -728,7 +750,7 @@ ipcMain.handle('save-recorded-video', async (_event, data: ArrayBuffer, defaultF
   // 瞬間に任意 path 書込みになる経路があった (allow-list 防御は後段に効くが、UI で
   // 騙される race を予防する)。
   const safeDefaultFilename = path.basename(String(defaultFilename || ''))
-    .replace(/[ -]/g, '')  // 制御文字除去
+    .replace(new RegExp('[\u0000-\u001f\u007f]', 'g'), '')  // 制御文字除去
     .slice(0, 200) || 'recording.webm'
   // R25 P2-2 hardening: 万一上の制御文字 strip が control char を残しても、
   // dialog 表示に余計な char は混入させないよう ASCII printable のみ残す追加 filter。

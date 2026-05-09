@@ -1005,8 +1005,31 @@ def detect_single_frame(
 # ─── モデルウォームアップ ───────────────────────────────────────────────────
 import numpy as _np
 
+# Round 258 R28 P2 fix (R28 P2-3): yolo_warmup の auth + per-process RL。
+# 旧コードは認証ガード無しで誰でも /api/yolo/warmup を叩けた → 各 call で
+# ONNX/Torch model load + dummy inference がトリガされ、GPU メモリ消費 +
+# real batch job の blocking。LAN / tunnel / loopback 経路で DoS 化していた。
+# 修正:
+#   - 認証必須 (`_require_auth` は ctx.role を保証する)
+#   - process-local の単純 RL (1s に 1 回まで) で連打を抑制
+import time as _time_yolo_warmup
+import threading as _threading_yolo_warmup
+_YOLO_WARMUP_LAST: dict = {"ts": 0.0}
+_YOLO_WARMUP_LOCK = _threading_yolo_warmup.Lock()
+
+
 @router.post("/yolo/warmup")
-def yolo_warmup():
+def yolo_warmup(request: Request):
+    from backend.utils.auth import get_auth as _ga_yw
+    _ctx_yw = _ga_yw(request)
+    if not _ctx_yw.role:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    # 1s に 1 回までの soft RL (lock 内で last-ts を見て早期 reject)
+    with _YOLO_WARMUP_LOCK:
+        _now_yw = _time_yolo_warmup.monotonic()
+        if _now_yw - _YOLO_WARMUP_LAST["ts"] < 1.0:
+            raise HTTPException(status_code=429, detail="warmup の連打を抑制します")
+        _YOLO_WARMUP_LAST["ts"] = _now_yw
     """YOLO モデルを事前ロードして最初の検出遅延をなくす。
     アノテーターページロード時にバックグラウンドで呼び出す。
     """
