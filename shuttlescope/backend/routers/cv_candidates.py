@@ -5,6 +5,13 @@
   GET  /cv-candidates/{match_id}         — 生成済み候補を返す
   POST /cv-candidates/apply/{match_id}   — 高確信度候補をストロークに書き戻す
   PUT  /cv-candidates/review/{rally_id}  — ラリーのレビューステータスを更新
+
+Round 258 P1 fix: 旧来は router 内部で auth check を一切持たず、
+TeamScopeAccessControlMiddleware の path-pattern マッチングに依存していた。
+PUT /cv-candidates/review/{rally_id} は match_id ではなく rally_id を取るので
+middleware の _MATCH_ID_PATTERNS には引っ掛からず、coach/analyst が cross-team
+の rally の review_status を書き換える IDOR が成立していた。
+本ファイルでは全 endpoint に auth + team scope を明示的に書く。
 """
 from __future__ import annotations
 
@@ -13,7 +20,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -24,6 +31,61 @@ from backend.yolo.cv_aligner import align_match
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _require_match_team_scope(request: Request, db: Session, match_id: int) -> Match:
+    """match_id に対する team-scope 強制 + auth check.
+
+    - 未認証 → 401
+    - admin → スルー
+    - coach/analyst → 自チームの match (owner/home/away に自チームがあれば OK) のみ
+    - player → 自分が出場している match のみ
+    無ければ 404 (列挙耐性)。Round 258 P1 fix のため明示。
+    """
+    from backend.utils.auth import get_auth as _ga
+    ctx = _ga(request)
+    if ctx.role is None:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    match = db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    if ctx.is_admin:
+        return match
+    # team scope: coach / analyst
+    if ctx.is_coach or ctx.is_analyst:
+        from backend.db.models import Team as _Team
+        team_name = (ctx.team_name or "").strip()
+        if not team_name:
+            raise HTTPException(status_code=403, detail="team_name 未設定")
+        team_row = db.query(_Team).filter(_Team.name == team_name, _Team.deleted_at.is_(None)).first()
+        if not team_row:
+            raise HTTPException(status_code=404, detail="試合が見つかりません")
+        team_id = team_row.id
+        if match.owner_team_id != team_id and match.home_team_id != team_id and match.away_team_id != team_id:
+            # 公開プールの場合は許可
+            if not getattr(match, "is_public_pool", False):
+                raise HTTPException(status_code=404, detail="試合が見つかりません")
+        return match
+    if ctx.is_player:
+        if not ctx.player_id:
+            raise HTTPException(status_code=403, detail="player_id 未設定")
+        pids = {match.player_a_id, match.player_b_id, match.partner_a_id, match.partner_b_id}
+        if ctx.player_id not in pids:
+            raise HTTPException(status_code=404, detail="試合が見つかりません")
+        return match
+    raise HTTPException(status_code=403, detail="権限がありません")
+
+
+def _require_rally_team_scope(request: Request, db: Session, rally_id: int) -> Rally:
+    """rally_id に対する team-scope 強制 + auth check (rally → set → match で resolve)."""
+    rally = db.get(Rally, rally_id)
+    if not rally:
+        raise HTTPException(status_code=404, detail="ラリーが見つかりません")
+    game_set = db.get(GameSet, rally.set_id)
+    if not game_set:
+        raise HTTPException(status_code=404, detail="ラリーが見つかりません")
+    _require_match_team_scope(request, db, game_set.match_id)
+    return rally
 
 ARTIFACT_TYPE_CANDIDATES = "cv_candidates"
 ARTIFACT_TYPE_TRACKNET   = "tracknet_shuttle_track"
@@ -36,14 +98,13 @@ ARTIFACT_TYPE_ALIGNMENT  = "cv_alignment"
 # ────────────────────────────────────────────────────────────────────────────
 
 @router.post("/cv-candidates/build/{match_id}")
-def build_cv_candidates(match_id: int, db: Session = Depends(get_db)):
+def build_cv_candidates(match_id: int, request: Request, db: Session = Depends(get_db)):
     """TrackNet + YOLO アーティファクトから CV 候補を生成して保存する。
 
     どちらかのアーティファクトが欠けていても部分的な候補を生成する。
+    Round 258 P1: team scope check 追加 (cross-team match に対する誤動作・抗解析を遮断)。
     """
-    match = db.get(Match, match_id)
-    if not match:
-        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    match = _require_match_team_scope(request, db, match_id)
 
     # ── アーティファクト取得 ──────────────────────────────────────────────────
     tracknet_artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_TRACKNET)
@@ -141,8 +202,9 @@ def build_cv_candidates(match_id: int, db: Session = Depends(get_db)):
 # ────────────────────────────────────────────────────────────────────────────
 
 @router.get("/cv-candidates/{match_id}")
-def get_cv_candidates(match_id: int, db: Session = Depends(get_db)):
+def get_cv_candidates(match_id: int, request: Request, db: Session = Depends(get_db)):
     """生成済み CV 候補を返す。未生成の場合は data: null を返す。"""
+    _require_match_team_scope(request, db, match_id)  # Round 258 P1
     artifact = _latest_artifact(db, match_id, ARTIFACT_TYPE_CANDIDATES)
     if not artifact or not artifact.data:
         return {"success": True, "data": None}
@@ -168,8 +230,11 @@ class ApplyRequest(BaseModel):
 def apply_cv_candidates(
     match_id: int,
     body: ApplyRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
+    # Round 258 P1: team scope check 追加 (cross-team match の stroke 書き換え防止)
+    _require_match_team_scope(request, db, match_id)
     """候補を既存ストロークに書き戻す。
 
     - mode="auto_filled": decision_mode=="auto_filled" の候補のみ適用
@@ -257,15 +322,19 @@ class ReviewStatusUpdate(BaseModel):
 def update_rally_review_status(
     rally_id: int,
     body: ReviewStatusUpdate,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    """ラリーのレビューステータスを更新する。"""
-    rally = db.get(Rally, rally_id)
-    if not rally:
-        raise HTTPException(status_code=404, detail="ラリーが見つかりません")
+    """ラリーのレビューステータスを更新する。
 
+    Round 258 P1 fix: 旧来は auth/team scope check が一切なかったため、
+    任意の coach/analyst が他チーム rally の review_status を書き換えられた
+    (rally_id は連番なので列挙容易)。rally → set → match で team scope 強制。
+    """
     if body.review_status not in ("pending", "completed"):
         raise HTTPException(status_code=400, detail="review_status は pending / completed のいずれかです")
+
+    rally = _require_rally_team_scope(request, db, rally_id)
 
     rally.review_status = body.review_status
     db.commit()
@@ -278,8 +347,9 @@ def update_rally_review_status(
 # ────────────────────────────────────────────────────────────────────────────
 
 @router.get("/cv-candidates/review-queue/{match_id}")
-def get_review_queue(match_id: int, db: Session = Depends(get_db)):
+def get_review_queue(match_id: int, request: Request, db: Session = Depends(get_db)):
     """review_status='pending' のラリー一覧を返す（自動フラグ + 手動フラグ両方）。"""
+    _require_match_team_scope(request, db, match_id)  # Round 258 P1
     # 手動フラグされたラリー
     sets = (
         db.query(GameSet)

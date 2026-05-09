@@ -187,14 +187,33 @@ async def lifespan(app: FastAPI):
     # backend/models/ 配下のモデル hash を SHA256SUMS と照合。
     # MISMATCH/MISSING は CRITICAL ログ。本番 (ENVIRONMENT=production) では
     # 起動を拒否する (バックドア入りモデルでの推論を防止)。
+    #
+    # Round 258 P0/P1 fix:
+    # - ENVIRONMENT のスペース/大小文字ゆらぎを strip().lower() で吸収
+    # - 旧来は verify_and_log の Exception を黙って warning に落として fail-open
+    #   していた (PermissionError や UnicodeDecodeError on manifest 等で素通し
+    #   = backdoored モデルでの推論を許してしまう)。本番では unexpected exception
+    #   は CRITICAL + sys.exit(3) で fail-closed に変更。
+    env_norm = (app_settings.ENVIRONMENT or "").strip().lower()
+    is_prod = env_norm == "production"
     try:
         from backend.utils.model_integrity import verify_and_log
-        is_prod = (app_settings.ENVIRONMENT or "").lower() == "production"
         verify_and_log(fail_on_mismatch=is_prod)
     except SystemExit:
         raise  # production fail-closed: そのまま落とす
     except Exception as exc:
-        logger.warning("[INFRA] model integrity check skipped: %s", exc)
+        if is_prod:
+            logger.critical(
+                "[INFRA] model integrity check raised unexpected exception in production: %s",
+                exc,
+            )
+            import sys as _sys_mi
+            _sys_mi.stderr.write(
+                f"[FATAL] model integrity check failed unexpectedly: {exc}. "
+                "Refusing to start in production. See logs for details.\n"
+            )
+            _sys_mi.exit(3)
+        logger.warning("[INFRA] model integrity check skipped (dev only): %s", exc)
 
     # ── INFRA Phase A: GPU ヘルスプローブ ────────────────────────────────────
     try:
@@ -1075,15 +1094,23 @@ class AdminWriteRateLimitMiddleware(BaseHTTPMiddleware):
         # 高速ルート: 書込みでない or /api/ 配下でない → 素通し
         if request.method not in self._write_methods:
             return await call_next(request)
-        path = request.url.path
+        # Round 258 P1 fix: 旧来は raw `request.url.path` で startswith 判定して
+        # いたため `//api/auth/users` (double slash) 等で `/api/` prefix が外れて
+        # bucket がスキップされた。連続スラッシュを 1 つに正規化してから判定。
+        import re as _re_arl
+        raw_path = request.url.path or ""
+        path = _re_arl.sub(r"/+", "/", raw_path)
         if not path.startswith("/api/"):
             return await call_next(request)
         # 認証無し/admin 以外は素通し (ExfilRateLimit が処理する)
-        auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
+        # Round 258 P1 fix: GlobalAuthMiddleware が "Bearer "/"bearer "/その他
+        # 大小混在を許容している場合に startswith("Bearer ") では bucket が外れる。
+        # case-insensitive prefix チェックに統一。
+        auth = request.headers.get("Authorization", "") or ""
+        if len(auth) < 7 or auth[:7].lower() != "bearer ":
             return await call_next(request)
         from backend.utils.jwt_utils import verify_token
-        payload = verify_token(auth[7:])
+        payload = verify_token(auth[7:].strip())
         if not payload or payload.get("role") != "admin":
             return await call_next(request)
         try:
@@ -2329,6 +2356,21 @@ if __name__ == "__main__":
         )
         sys.exit(2)
     host = "0.0.0.0" if app_settings.LAN_MODE else "127.0.0.1"
+    # Round 258 P1 fix: AdminWriteRateLimit / ExfilRateLimit の bucket は
+    # in-memory なので worker > 1 では各プロセスで別々の counter になり実効
+    # 上限が N倍に膨らむ (60/min が 60×N/min)。共有 store (Redis 等) を
+    # 入れるまではマルチワーカー禁止する。
+    import os as _os_wg
+    _wc = (_os_wg.environ.get("WEB_CONCURRENCY") or _os_wg.environ.get("UVICORN_WORKERS") or "").strip()
+    if _wc and _wc.isdigit() and int(_wc) > 1:
+        import sys as _sys_wg
+        _sys_wg.stderr.write(
+            f"[FATAL] WEB_CONCURRENCY/UVICORN_WORKERS={_wc} > 1 detected. "
+            "AdminWriteRateLimit and ExfilRateLimit use in-memory state, so "
+            "multi-worker deployment silently weakens limits N-fold. "
+            "Refusing to start until a shared store (e.g. Redis) is wired in.\n"
+        )
+        _sys_wg.exit(2)
     uvicorn.run(
         "backend.main:app",
         host=host,
@@ -2338,4 +2380,6 @@ if __name__ == "__main__":
         # uvicorn の dictConfig による basicConfig 上書きを防ぐ
         # （これがないとアプリ側 logger.info/warning が全て黙殺される）
         log_config=None,
+        # Round 258 P1: 明示的に workers=1 を固定 (上の guard と整合)
+        workers=1,
     )
