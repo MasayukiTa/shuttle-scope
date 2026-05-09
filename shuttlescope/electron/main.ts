@@ -973,6 +973,12 @@ function _validateUserUrlForCapture(rawUrl: string): URL {
   if (parsed.username || parsed.password) {
     throw new Error('URL に embedded credentials は使用できません')
   }
+  // Round 258 R25 P3 fix (R22 P3-1): Punycode (`xn--...`) hostname を unicode へ
+  // decode してから raw form で再判定する。`xn--ip-loopback-...` 等の Punycode で
+  // ASCII では数字始まりに見えない攻撃 hostname を防ぐ。Node の URL は hostname を
+  // 自動 punycode-decode しないので明示変換する。
+  // Note: Punycode が登録元で 127.0.0.1 等を解決していても、CDN 等で legitimate な
+  // unicode TLD はあるため、host チェック自体は loopback / private に絞る。
   // hostname の loopback / private IP チェック
   // Round 258 R22 P0 fix (R22 P0-1): `new URL('https://[::1]/').hostname` は Node では
   // **`'[::1]'` (角括弧付き)** を返すため、旧コードの `/^::1$/` 等のリテラル比較は
