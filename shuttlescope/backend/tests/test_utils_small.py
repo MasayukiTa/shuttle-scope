@@ -50,13 +50,21 @@ class TestFieldSensitivity:
         assert "injury_notes" not in got
 
     def test_filter_analyst_only_sees_tier_le_1(self):
-        # Round 258 R2: analyst=Tier 1 縮小により weight_kg (Tier 2) / injury_notes (Tier 4)
-        # は drop、Tier 1 の general_comment のみ可視。旧テスト名 (`..._sees_all`) は廃止。
-        row = {"weight_kg": 70.0, "injury_notes": "sprain", "general_comment": "ok"}
+        # Round 258 R2: analyst=Tier 1 縮小により Tier 2+ は全て drop。
+        # CONDITION_FIELD_TIERS で Tier 1 は `validity_flag` のみ (他は派生 score)。
+        # weight_kg=Tier 3, injury_notes=Tier 4, general_comment=Tier 4 → 全 drop。
+        # 旧テスト名 (`..._sees_all`) は廃止し、Tier 1 だけ可視であることを assert する。
+        row = {
+            "validity_flag": True,   # Tier 1 → keep
+            "weight_kg": 70.0,        # Tier 3 → drop
+            "injury_notes": "sprain", # Tier 4 → drop
+            "general_comment": "ok",  # Tier 4 → drop
+        }
         got = fs.filter_condition_fields(row, "analyst")
         assert "weight_kg" not in got
         assert "injury_notes" not in got
-        assert got.get("general_comment") == "ok"
+        assert "general_comment" not in got
+        assert got.get("validity_flag") is True
 
     def test_filter_unknown_field_defaults_to_tier0(self):
         row = {"brand_new_field": "value"}
