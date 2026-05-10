@@ -11,8 +11,11 @@ from backend.db.models import Player
 
 @pytest.fixture()
 def client(db_session):
+    # Round 258 R2 後の tier filter のため、CRUD ラウンドトリップ assert で
+    # weight_kg / general_comment / hooper_* 等 (Tier 2-4) を見るためには admin role
+    # で叩く必要がある。TestClient に X-Role: admin デフォルトヘッダを仕込む。
     app.dependency_overrides[get_db] = lambda: db_session
-    c = TestClient(app)
+    c = TestClient(app, headers={"X-Role": "admin"})
     yield c
     app.dependency_overrides.clear()
 

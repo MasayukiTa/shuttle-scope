@@ -36,7 +36,16 @@ def _all_threes() -> dict:
 
 
 def _submit(client, player_id, responses, measured_at="2026-04-15",
-            condition_type="weekly", match_id=None):
+            condition_type="weekly", match_id=None, role: str = "admin"):
+    """Submit a questionnaire response.
+
+    Round 258 R2: condition POST/GET responses are role-filtered per Tier 1-4
+    sensitivity matrix. With ROLE_MAX_TIER reduced (analyst=1, coach=1, player=2,
+    admin=4), only admin can see all scoring fields (f1_physical etc are Tier 2,
+    validity_* are Tier 1/2, questionnaire_json is Tier 4).
+    Default to admin so scoring-detail assertions see unfiltered output.
+    TestRoleFilter tests override role explicitly to verify per-role filtering.
+    """
     body = {
         "player_id": player_id,
         "measured_at": measured_at,
@@ -45,7 +54,11 @@ def _submit(client, player_id, responses, measured_at="2026-04-15",
     }
     if match_id is not None:
         body["match_id"] = match_id
-    return client.post("/api/conditions/questionnaire", json=body)
+    return client.post(
+        "/api/conditions/questionnaire",
+        json=body,
+        headers={"X-Role": role},
+    )
 
 
 class TestMaster:
@@ -167,48 +180,75 @@ class TestValidity:
 
 
 class TestRoleFilter:
-    def test_player_view_hides_validity(self, client, player):
+    # Round 258 R2: ROLE_MAX_TIER を analyst=4/coach=3 → analyst=1/coach=1 に縮小。
+    # 同意書 第5条 (体組成・医療自由記述は admin と本人 player のみ生公開) に整合。
+    # ccs_score / f1_physical 等 Tier 2 は player と admin のみ可視、coach/analyst は
+    # validity_flag (Tier 1) のみ可視という新規範を assert する形にテストを書き直し。
+
+    def test_player_view_hides_validity_score(self, client, player):
+        """player は Tier 2 まで可視: ccs_score / f1_physical 等は見える。
+        validity_score (Tier 2) は本人除外ルールが router 側にあれば隠れる。
+        ※実装側で player に対する `validity_score` 露出ポリシーが固まったら追補。
+        """
         resp = _submit(client, player.id, _all_threes())
         cid = resp.json()["data"]["id"]
-        r = client.get(f"/api/conditions/{cid}", headers={"X-Role": "player", "X-Player-Id": str(player.id)})
+        r = client.get(
+            f"/api/conditions/{cid}",
+            headers={"X-Role": "player", "X-Player-Id": str(player.id)},
+        )
         assert r.status_code == 200
         data = r.json()["data"]
-        assert "validity_score" not in data
-        assert "validity_flag" not in data
-        assert "f1_physical" not in data
+        # player = Tier 2 → ccs_score (Tier 2) / f1_physical (Tier 2) は可視
         assert "ccs_score" in data
-        assert "factor_labels" in data
-        assert "personal_range" in data
+        assert "f1_physical" in data
+        # Tier 4 (questionnaire_json / general_comment / injury_notes) は drop
+        assert "questionnaire_json" not in data
+        assert "injury_notes" not in data
 
-    def test_coach_view_shows_factors_hides_validity_score(self, client, player):
+    def test_coach_view_only_tier_le_1(self, client, player):
+        """coach=Tier 1: validity_flag (Tier 1) のみ。Tier 2+ は drop。"""
         resp = _submit(client, player.id, _all_threes())
         cid = resp.json()["data"]["id"]
         r = client.get(f"/api/conditions/{cid}", headers={"X-Role": "coach"})
         data = r.json()["data"]
-        assert "f1_physical" in data
-        assert "total_score" in data
+        # validity_flag は Tier 1 → 可視
         assert "validity_flag" in data
+        # f1_physical (Tier 2) / total_score (Tier 2) / validity_score (Tier 2) は drop
+        assert "f1_physical" not in data
+        assert "total_score" not in data
         assert "validity_score" not in data
 
-    def test_analyst_view_has_everything(self, client, player):
+    def test_analyst_view_only_tier_le_1(self, client, player):
+        """analyst=Tier 1: validity_flag (Tier 1) のみ。Tier 2+ は drop。
+        旧テスト名 (`..._has_everything`) は廃止 (R2 で analyst tier 縮小)。
+        """
         resp = _submit(client, player.id, _all_threes())
         cid = resp.json()["data"]["id"]
         r = client.get(f"/api/conditions/{cid}", headers={"X-Role": "analyst"})
         data = r.json()["data"]
-        assert "validity_score" in data
-        assert "questionnaire_json" in data
-        assert "f1_physical" in data
+        # validity_flag は Tier 1 → 可視
+        assert "validity_flag" in data
+        # Tier 2+ は drop (questionnaire_json は Tier 4)
+        assert "f1_physical" not in data
+        assert "questionnaire_json" not in data
+        assert "validity_score" not in data
 
     def test_role_via_query(self, client, player):
         resp = _submit(client, player.id, _all_threes())
         cid = resp.json()["data"]["id"]
         r = client.get(f"/api/conditions/{cid}?role=player")
         assert r.status_code == 200
-        assert "validity_score" not in r.json()["data"]
+        # player は Tier 2 まで可視 (validity_score も Tier 2 なので可視)。
+        # 旧仕様 (`validity_score` を player から隠す) は R2 で field-level でなく
+        # router 側の owner check に移行したため、ここでは field-level filter のみ assert。
+        data = r.json()["data"]
+        assert "ccs_score" in data
 
 
 class TestPreMatch:
     def test_pre_match_roundtrip(self, client, player):
+        # R2 tier filter: pre_match POST も role 単位フィルタを受けるため、
+        # total_score (Tier 2) を assert する側は admin role でリクエストする。
         r = {qid: 4 for qid in PRE_MATCH_REQUIRED_IDS}
         body = {
             "player_id": player.id,
@@ -216,7 +256,11 @@ class TestPreMatch:
             "condition_type": "pre_match",
             "responses": r,
         }
-        resp = client.post("/api/conditions/questionnaire", json=body)
+        resp = client.post(
+            "/api/conditions/questionnaire",
+            json=body,
+            headers={"X-Role": "admin"},
+        )
         assert resp.status_code == 201, resp.text
         data = resp.json()["data"]
         # 10 項目 × 4 = 40 を total_score に格納

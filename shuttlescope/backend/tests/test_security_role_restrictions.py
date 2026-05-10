@@ -483,11 +483,18 @@ class TestVideoDownloadSSRF:
             validate_external_url(ok)  # raise しなければ OK
 
     def test_cookie_browser_blocked_from_non_loopback(self, db_session, monkeypatch):
-        """Web リクエスト (Cloudflare 経由) で cookie_browser 指定は 403。"""
+        """Web リクエスト (Cloudflare 経由) で cookie_browser 指定は 403。
+
+        Round 258 R22 P1-1: `is_loopback_request` は `settings.ENVIRONMENT` を経由する
+        ように変更され、ENVIRONMENT が development/test の場合 testclient (TestClient
+        の socket peer) を loopback 扱いするようになった。本テストは "非 loopback 想定"
+        を作るために ENVIRONMENT を "production" に monkeypatch する必要がある。
+        """
         from backend.routers.auth import _hash_password
         from backend.db.models import Match as _Match, Player as _P
         from backend.config import settings as _s
         monkeypatch.setattr(_s, "PUBLIC_MODE", True, raising=False)
+        monkeypatch.setattr(_s, "ENVIRONMENT", "production", raising=False)
         db_session.query(User).delete()
         db_session.query(_Match).delete()
         db_session.query(_P).delete()
@@ -922,16 +929,21 @@ class TestPrivEscalationBlock:
             app.dependency_overrides.clear()
 
     def test_player_cannot_list_analysts(self, db_session):
-        """player は /api/auth/analysts にアクセス不可 (Cloudflare 経由想定)。"""
+        """player は /api/auth/analysts にアクセス不可 (Cloudflare 経由想定)。
+
+        Round 258 R22 P1-1: is_loopback_request は settings.ENVIRONMENT を経由する。
+        PUBLIC_MODE=True だけでは testclient (loopback 既定) を抜けないため、
+        ENVIRONMENT=production も併設して非 loopback 想定にする。
+        """
         db_session.query(User).filter(User.id == 50).delete()
         db_session.commit()
         token = self._player_token(db_session)
         app.dependency_overrides[get_db] = lambda: db_session
         try:
-            # loopback をスキップして検証するため PUBLIC_MODE=True をシミュレート
             import pytest
             monkeypatch = pytest.MonkeyPatch()
             monkeypatch.setattr(settings, "PUBLIC_MODE", True, raising=False)
+            monkeypatch.setattr(settings, "ENVIRONMENT", "production", raising=False)
             try:
                 client = TestClient(app, raise_server_exceptions=False)
                 resp = client.get(
@@ -1033,11 +1045,17 @@ class TestAuditLogHmacKey:
 
 class TestLoopbackHardening:
     def test_production_mode_rejects_empty_client(self, monkeypatch):
-        """PUBLIC_MODE=True では空文字・testclient を loopback 扱いしない。"""
+        """ENVIRONMENT=production では空文字・testclient を loopback 扱いしない。
+
+        Round 258 R22 P1-1: is_loopback_request は `settings.ENVIRONMENT` を経由
+        ("development"/"test"/... のとき blank/testclient を loopback)。
+        PUBLIC_MODE 単独では切替わらないので ENVIRONMENT も "production" に明示。
+        """
         from backend.utils import control_plane as cp
         from backend.config import settings as s
         from unittest.mock import MagicMock
         monkeypatch.setattr(s, "PUBLIC_MODE", True, raising=False)
+        monkeypatch.setattr(s, "ENVIRONMENT", "production", raising=False)
         req = MagicMock()
         req.headers = {}
         req.client = None  # client None → _client_ip は ""
