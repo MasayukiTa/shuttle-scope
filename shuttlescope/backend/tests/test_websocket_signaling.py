@@ -560,6 +560,9 @@ class TestCameraSignalingManagerUnit:
         assert mgr._sessions["TEST_UNIT_01"]["viewers"] == {}
 
     def test_disconnect_operator_clears_reference(self):
+        # Round 258 R3 P1 fix: disconnect_operator は operator=None にした後
+        # _gc_session_if_empty で session entry を pop する。テストの assert を
+        # 「session が GC 済」に変更 (旧 assert `is None` は KeyError になる)。
         import anyio
         from backend.ws.camera import CameraSignalingManager
         mgr = CameraSignalingManager()
@@ -567,7 +570,8 @@ class TestCameraSignalingManagerUnit:
         # 仮の operator をセット
         mgr._sessions["TEST_UNIT_02"]["operator"] = object()
         anyio.run(mgr.disconnect_operator, "TEST_UNIT_02")
-        assert mgr._sessions["TEST_UNIT_02"]["operator"] is None
+        # session entry は GC 済 (operator None + devices/viewers 空 → pop)
+        assert "TEST_UNIT_02" not in mgr._sessions
 
     def test_disconnect_unknown_session_safe(self):
         import anyio

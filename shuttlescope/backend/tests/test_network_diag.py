@@ -69,10 +69,11 @@ class TestDiagnostics:
 
 
 class TestLanModeToggle:
-    def test_writes_env_file_and_returns_success(self, client, tmp_path, monkeypatch):
+    def test_writes_env_file_and_returns_success(self, client, tmp_path, monkeypatch, admin_headers):
         # env_file パスを tmp に差し替えるため、ルータ内の pathlib.Path 参照を絞って
         # 代わりに settings.LAN_MODE の反映と 200 応答を検証する。
         # env file 書き込み自体は shuttlescope 直下へ書き込まれるため、一時的に CWD をずらす
+        # Round 258 R8 V-1 fix: toggle_lan_mode は admin role 必須。admin_headers を付与する。
         import os, pathlib
         fake_dir = tmp_path / "shuttlescope"
         fake_dir.mkdir()
@@ -82,7 +83,7 @@ class TestLanModeToggle:
         if real_env.exists():
             backup = real_env.read_text(encoding="utf-8")
         try:
-            r = client.post("/api/network/lan-mode?enable=true")
+            r = client.post("/api/network/lan-mode?enable=true", headers=admin_headers)
             assert r.status_code == 200
             assert r.json()["data"]["lan_mode"] is True
 
@@ -90,7 +91,7 @@ class TestLanModeToggle:
             assert settings.LAN_MODE is True
 
             # off に戻して確認
-            r2 = client.post("/api/network/lan-mode?enable=false")
+            r2 = client.post("/api/network/lan-mode?enable=false", headers=admin_headers)
             assert r2.status_code == 200
             assert r2.json()["data"]["lan_mode"] is False
             assert settings.LAN_MODE is False

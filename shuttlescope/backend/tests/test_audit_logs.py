@@ -112,12 +112,18 @@ class TestAuditLogList:
 
 class TestAuditLogHashChain:
     def test_chain_is_intact_after_logins(self, client, test_engine):
+        # Round 258 R10 F-3 fix: account lockout が atomic CASE UPDATE で 3-attempt 制
+        # になった結果、`ADMIN_USER` で 3 連続 bogus login を打つと admin 自身が lock
+        # されて verify endpoint も 403 を返す。
+        # 修正: 複数イベントを記録する目的なら **存在しない username** に向けて打てば
+        # 誰の account も lock されない & chain には login_failed イベントが残る。
         data = _login(client, ADMIN_USER, ADMIN_PASS)
         access = data["access_token"]
-        # 複数イベントを記録
+        # 複数イベントを記録 (admin 自身を lock しないように nonexistent ユーザに対して)
         for _ in range(3):
             client.post("/api/auth/login", json={
-                "grant_type": "credential", "identifier": ADMIN_USER, "password": "bogus",
+                "grant_type": "credential", "identifier": "nonexistent_user_for_audit_chain",
+                "password": "bogus",
             })
 
         resp = client.get(

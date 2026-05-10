@@ -245,7 +245,22 @@ class TestRoleFilter:
         assert "raw_factor_trends" not in d
         assert "validity_summary" not in d
 
-    def test_analyst_insights_full(self, client, player, db_session):
+    def test_admin_insights_full(self, client, player, db_session):
+        # Round 258 R2 P0 fix: 第5条 alignment により raw_factor_trends は **admin のみ**。
+        # coach/analyst は validity_summary だけ可視 (Tier 1 mapping)。
+        # 旧テスト名 (`test_analyst_insights_full`) は廃止し、admin role で再 assert。
+        _seed_condition(db_session, player.id, date(2026, 4, 1), ccs_score=100.0)
+        db_session.commit()
+        r = client.get(
+            f"/api/conditions/insights?player_id={player.id}",
+            headers={"X-Role": "admin"},
+        )
+        d = r.json()["data"]
+        assert "raw_factor_trends" in d
+        assert "validity_summary" in d
+
+    def test_analyst_insights_summary_only(self, client, player, db_session):
+        # analyst は Tier 1 のみ可視 → validity_summary は ○ / raw_factor_trends は ×。
         _seed_condition(db_session, player.id, date(2026, 4, 1), ccs_score=100.0)
         db_session.commit()
         r = client.get(
@@ -253,8 +268,8 @@ class TestRoleFilter:
             headers={"X-Role": "analyst"},
         )
         d = r.json()["data"]
-        assert "raw_factor_trends" in d
         assert "validity_summary" in d
+        assert "raw_factor_trends" not in d
 
     def test_correlation_endpoint_basic(self, client, player, db_session):
         for i in range(5):
