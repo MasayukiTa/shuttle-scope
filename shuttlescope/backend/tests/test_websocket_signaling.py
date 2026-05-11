@@ -148,6 +148,14 @@ def clear_camera_manager():
 # ─── 接続テスト ───────────────────────────────────────────────────────────────
 
 class TestOperatorConnect:
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason=(
+            "TestClient WebSocket on Windows ProactorEventLoop raises "
+            "WebSocketDisconnect inside the `with` block; Linux passes. "
+            "Same family as the threading deadlock skipped above (R37)."
+        ),
+    )
     def test_operator_connects_without_error(self):
         """operator ロールで WS 接続できる"""
         code = _fresh_code("OPR")
