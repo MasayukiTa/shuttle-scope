@@ -1529,6 +1529,21 @@ _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
     r"|csp_report(?:\?.*)?$"
     # public は path の続き OK
     r"|public(?:/[^?]*)?(?:\?.*)?$"
+    # R47: canary paths (intentionally exposed without auth so attackers reach
+    # the canary handler which records + tarpits + escalates). Auth-protecting
+    # these would fingerprint that something is here (= 401 means "exists").
+    # These are sink-only handlers that return generic 404 to attackers.
+    r"|admin/export_all(?:\?.*)?$"
+    r"|admin/dump(?:\?.*)?$"
+    r"|debug/env(?:\?.*)?$"
+    r"|internal/backup/download(?:\?.*)?$"
+    r"|internal/secrets(?:\?.*)?$"
+    r"|\.env(?:\?.*)?$"
+    r"|config(?:\?.*)?$"
+    r"|\.git/config(?:\?.*)?$"
+    r"|wp-admin(?:\?.*)?$"
+    r"|phpmyadmin(?:\?.*)?$"
+    r"|actuator/env(?:\?.*)?$"
     # Phase Pay-1: Webhook は認証なし (プロバイダ署名で検証)
     r"|_internal/billing/webhooks/(?:stripe|komoju|univapay)(?:\?.*)?$"
     # Phase Pay-1: 法的情報 (exact match)
