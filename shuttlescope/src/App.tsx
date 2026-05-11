@@ -378,6 +378,24 @@ function ProtectedMainRoute() {
     }
   }, [token, setSession, clearRole])
 
+  // R47: タイムアウトや 401 で未認証状態に落ちたとき、URL が
+  // `#/dashboard/research` 等の保護パスのまま残ると第三者に「このパスが存在する」
+  // ことが漏れる。LoginPage に切り替わるタイミングで hash を `#/login` に
+  // replaceState してアドレスバーから保護パス情報を消す。
+  // 履歴は replace で上書きするので、戻る ボタンで元の保護 URL に飛ぶこともない。
+  useEffect(() => {
+    if (checkingAuth) return
+    if (token && role) return
+    const currentHash = window.location.hash || ''
+    if (currentHash === '#/login' || currentHash === '#/' || currentHash === '') return
+    try {
+      const cleaned = window.location.pathname + window.location.search + '#/login'
+      window.history.replaceState(null, '', cleaned)
+    } catch {
+      // history.replaceState 失敗時は黙って fallback (LoginPage は描画されるので機能は維持)
+    }
+  }, [checkingAuth, token, role])
+
   if (checkingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
