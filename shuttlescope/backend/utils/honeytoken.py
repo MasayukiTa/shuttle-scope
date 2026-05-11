@@ -185,20 +185,22 @@ def handle_hit(
         pass
 
     # ─── R45: escalation policy で TTL 付き ban (honeytoken 10/100/1000) ─
-    # honeytoken は kind 別カウンタに加算され、閾値跨ぎ時に TTL 付き ban を
-    # 発火する。VPN/Tor/CGNAT は cf_ban_policy で managed_challenge に丸まる。
-    # kill-switch: SS_DISABLE_AUTO_CF_BAN=1。
+    # R47: 自己テスト用 allowlist (IP) があれば ban 経路を skip。
+    # honeytoken は handle_hit シグネチャに headers を増やすのは互換性影響
+    # 大きいので、IP allowlist のみで判定する (= header allowlist は対象外)。
     import os as _os
     if (_os.environ.get("SS_DISABLE_AUTO_CF_BAN") or "").strip() != "1":
         try:
+            from backend.utils.ban_allowlist import is_ban_allowlisted
             from backend.utils.escalation_policy import record_hit_and_decide
-            decision = record_hit_and_decide(ip, "honeytoken")
-            if decision is not None:
-                from backend.routers.canary import _trigger_cf_auto_ban
-                _trigger_cf_auto_ban(
-                    ip, f"honeytoken_used:{label}",
-                    confidence=decision["confidence"],
-                    ttl_sec=decision["ttl_sec"],
-                )
+            if not is_ban_allowlisted(ip, None):
+                decision = record_hit_and_decide(ip, "honeytoken")
+                if decision is not None:
+                    from backend.routers.canary import _trigger_cf_auto_ban
+                    _trigger_cf_auto_ban(
+                        ip, f"honeytoken_used:{label}",
+                        confidence=decision["confidence"],
+                        ttl_sec=decision["ttl_sec"],
+                    )
         except Exception as exc:
             logger.warning("[honeytoken] CF ban trigger failed: %s", exc)
