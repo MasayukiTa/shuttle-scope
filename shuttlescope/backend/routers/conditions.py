@@ -698,6 +698,7 @@ def _load_player_matches(db: Session, player_id: int, since: Optional[_date]) ->
 
 @router.get("/correlation")
 def get_correlation(
+    request: Request,
     player_id: int = Query(...),
     x: str = Query(...),
     y: str = Query(...),
@@ -705,18 +706,22 @@ def get_correlation(
     role: str = Depends(resolve_role),
     db: Session = Depends(get_db),
 ):
-    """x=condition 指標、y=condition or 試合指標（win_rate）の相関。
-
-    role filter: player には raw 条件配列は返さず point の (x, y) 集計のみ。
-    """
+    """x=condition 指標、y=condition or 試合指標（win_rate）の相関。"""
     if not db.get(Player, player_id):
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # R47: player は自分自身のみアクセス可。他選手は 403。
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        if not ctx.player_id or player_id != ctx.player_id:
+            raise HTTPException(status_code=403, detail="他選手のコンディションは参照できません")
     conds = _load_player_conditions(db, player_id, since)
     mts = _load_player_matches(db, player_id, since)
     series = correlation_series(conds, mts, x_key=x, y_key=y)
     if role == "player":
-        # 選手向けは散布図も非公開。r と note のみ。弱点暗示を避けるため
-        # 負相関は「伸びしろ」方向の肯定コメントに置き換える i18n キーを併記。
+        # 自分自身の散布図 + r + n + 信頼度を返す (= 自分のデータなので consent 第5条 「本人=○」)。
+        # 弱点暗示を避けるため負相関は「伸びしろ」方向の肯定コメントを併記する
+        # i18n キーは保持。raw points を含めて分布を見られるようにする。
         r = series.get("pearson_r")
         growth_frame = None
         if r is not None:
@@ -731,6 +736,9 @@ def get_correlation(
                 "x_key": x,
                 "y_key": y,
                 "n": series["n"],
+                "points": series.get("points") or [],
+                "pearson_r": r,
+                "p_value": series.get("p_value"),
                 "confidence_note": series["confidence_note"],
                 "growth_frame": growth_frame,
             },
@@ -755,6 +763,7 @@ def get_correlation(
 
 @router.get("/best_profile")
 def get_best_profile(
+    request: Request,
     player_id: int = Query(...),
     since: Optional[_date] = Query(None),
     role: str = Depends(resolve_role),
@@ -762,19 +771,31 @@ def get_best_profile(
 ):
     if not db.get(Player, player_id):
         raise HTTPException(status_code=404, detail="選手が見つかりません")
+    # R47: player ロールでも自分自身 (player_id == ctx.player_id) を見るときは
+    # 同意書 第5条「本人=○」に従い coach 相当の top_profile/n_top/n_rest を返す。
+    # 他選手の閲覧は 403。
+    from backend.utils.auth import get_auth
+    ctx = get_auth(request)
+    if ctx.is_player:
+        if not ctx.player_id or player_id != ctx.player_id:
+            raise HTTPException(status_code=403, detail="他選手のコンディションは参照できません")
     conds = _load_player_conditions(db, player_id, since)
     mts = _load_player_matches(db, player_id, since)
     profile = best_performance_profile(conds, mts)
     if role == "player":
-        # 選手向けは key_factors のみ growth 文脈で、生値分布は非公開。
+        # 自分自身のベストプロファイル: top_profile + key_factors (mean/min/max 込み)
+        # + win_rate_in_profile/outside を返す。rest_profile は「自分の負け状態」を
+        # 直接ラベリングするので非公開 (CLAUDE.md non-negotiable: no direct weakness)。
         return {
             "success": True,
             "data": {
-                "key_factors": [
-                    {"key": k["key"], "direction": k["direction"],
-                     "i18n_frame": "condition.insight.best_profile_positive"}
-                    for k in profile["key_factors"]
-                ],
+                "key_factors": profile["key_factors"],
+                "top_profile": profile.get("top_profile"),
+                "win_rate_in_profile": profile.get("win_rate_in_profile"),
+                "win_rate_outside": profile.get("win_rate_outside"),
+                "n_matches": profile.get("n_matches") or
+                             (profile.get("n_top", 0) + profile.get("n_rest", 0)),
+                "n_top": profile.get("n_top"),
                 "confidence": profile["confidence"],
                 "note": profile["note"],
             },
