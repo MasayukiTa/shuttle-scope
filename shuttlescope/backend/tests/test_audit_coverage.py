@@ -181,6 +181,11 @@ def test_no_orphan_event_names():
         "team_deleted",
         # R41: canary endpoint hit
         "canary_hit",
+        # R42: honeytoken used (critical severity)
+        "honeytoken_used",
+        # R44: decoy maze hits (collected by attacker_swim, but may be
+        # surfaced through access_log in the future)
+        "decoy_maze_hit",
     }
     idx = _all_routers_event_index()
     all_events = set()

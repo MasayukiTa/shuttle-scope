@@ -2090,10 +2090,138 @@ class PathNormalizationMiddleware:
 app.add_middleware(PathNormalizationMiddleware)
 
 
+# ─── Round 258 R42: Honeytoken detection middleware ───────────────────────
+# header / query を検査し、固定 honeytoken を発見したら critical 監査 + CF ban。
+# body は読まない (stream を破壊しないため)。
+from starlette.middleware.base import BaseHTTPMiddleware as _HT_BaseMW
+
+
+class HoneytokenDetectionMiddleware(_HT_BaseMW):
+    """request の header / query / cookie に honeytoken が出現したら検知する。
+
+    どの header / query から検出したかを `where` として記録するので、
+    攻撃者の手法 (Authorization header に貼った / URL query に渡した) も追える。
+    検知してもレスポンスは通常通り進める (= 攻撃者には canary であることを
+    悟らせない)。CF ban が走ったあと数秒以内に edge で落ちる想定。
+    """
+
+    _SCAN_HEADERS = (
+        "authorization", "x-api-key", "x-admin-token", "x-backup-token",
+        "x-internal-token", "x-worker-key", "cookie", "x-refresh-token",
+    )
+
+    async def dispatch(self, request, call_next):
+        try:
+            from backend.utils import honeytoken as _ht
+            # ip / 識別子は canary と同じ helper を使う
+            from backend.routers.canary import _client_ip, _ua_fingerprint
+            ip = _client_ip(request)
+            ua_fp = _ua_fingerprint(request.headers.get("user-agent", "")[:200])
+            cf_ray = request.headers.get("cf-ray", "")
+            country = request.headers.get("cf-ipcountry", "?")
+            path = request.url.path
+            method = request.method
+
+            # ─── header 走査 ─────────────────────────────────────────────
+            for h in self._SCAN_HEADERS:
+                v = request.headers.get(h)
+                hit = _ht.detect(v)
+                if hit is not None:
+                    label, prov = hit
+                    _ht.handle_hit(
+                        ip=ip, label=label, provenance=prov,
+                        path=path, method=method, ua_fp=ua_fp,
+                        cf_ray=cf_ray, country=country,
+                        where=f"header:{h}",
+                    )
+                    break
+
+            # ─── query 走査 (key を問わず value 全部を見る) ──────────────
+            for k, v in request.query_params.multi_items():
+                hit = _ht.detect(v)
+                if hit is not None:
+                    label, prov = hit
+                    _ht.handle_hit(
+                        ip=ip, label=label, provenance=prov,
+                        path=path, method=method, ua_fp=ua_fp,
+                        cf_ray=cf_ray, country=country,
+                        where=f"query:{k}",
+                    )
+                    break
+        except Exception:
+            # 検知 layer は絶対に request flow を壊さない (fail open)
+            pass
+        return await call_next(request)
+
+
+app.add_middleware(HoneytokenDetectionMiddleware)
+
+
+# ─── Round 258 R43: Staged honeytoken response lure ───────────────────────
+# canary / honeytoken / 失敗認証等を踏んで suspicious 認定された IP の
+# JSON レスポンスにだけ、動的に偽 token フィールドを混入する。
+# 攻撃者がそれを次の request で使ってきた瞬間 R42 detector が捕捉する。
+class StagedHoneytokenResponseMiddleware(_HT_BaseMW):
+    """suspicious IP 向け JSON response に lure フィールドを注入する。
+
+    対象: Content-Type が application/json の dict ルート。
+    非対象: HTML / SSE / streaming / 大きすぎる body / 認証エンドポイント
+            (副作用を起こしうるので除外)。
+    """
+
+    _SKIP_PATHS = ("/api/auth/", "/api/csp_report", "/api/_internal/")
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        try:
+            from backend.utils.staged_honeytoken import (
+                is_suspicious, maybe_inject_lure_into_json_bytes,
+            )
+            from backend.routers.canary import _client_ip
+            ip = _client_ip(request)
+            if not is_suspicious(ip):
+                return response
+            path = request.url.path
+            if any(path.startswith(p) for p in self._SKIP_PATHS):
+                return response
+            ctype = (response.headers.get("content-type") or "").lower()
+            if "application/json" not in ctype:
+                return response
+            # streaming response は本実装では触らない (body_iterator 消費して
+            # しまうと double-iter で 500 を返すリスク)
+            body_chunks: list[bytes] = []
+            async for chunk in response.body_iterator:  # type: ignore[attr-defined]
+                body_chunks.append(chunk)
+            body = b"".join(body_chunks)
+            patched = maybe_inject_lure_into_json_bytes(body)
+            final = patched if patched is not None else body
+            # 新しい Response を返す (status / headers は保持、content-length 更新)
+            from starlette.responses import Response as _Resp
+            new_headers = dict(response.headers)
+            new_headers.pop("content-length", None)
+            return _Resp(
+                content=final,
+                status_code=response.status_code,
+                headers=new_headers,
+                media_type=response.media_type,
+            )
+        except Exception:
+            # 失敗時は元 response を返す (fail-open)
+            return response
+
+
+app.add_middleware(StagedHoneytokenResponseMiddleware)
+
+
 # Round 258 R41: Canary endpoints — 攻撃者だけが叩く path を register。
 # OpenAPI には出ない。hit すると HMAC audit chain に書く + tarpit + CF auto-ban。
 from backend.routers import canary as _canary_router
 app.include_router(_canary_router.router)
+
+# Round 258 R44: Decoy maze — 偽 admin / 偽 .env / 偽 backup の迷路。
+# 攻撃者を泳がせて行動ログを溜める。OpenAPI には絶対に出さない。
+from backend.routers import decoy_maze as _decoy_maze_router
+app.include_router(_decoy_maze_router.router)
 
 
 # ルーター登録

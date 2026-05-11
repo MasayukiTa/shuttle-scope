@@ -102,6 +102,21 @@ class PublicInquiryOut(BaseModel):
     status: str
     admin_note: Optional[str]
     created_at: str
+    # R42: ban_appeal 等のカテゴリ。admin UI で目立つタグ表示に使う。
+    category: str = "general"
+
+
+class BanAppealCreate(BaseModel):
+    """誤 ban 申し立てフォーム (R42)。
+
+    通常の inquiry より項目を絞り、攻撃者が大量送信できないよう厳しめ制限。
+    実態は PublicInquiry に category="ban_appeal" で保存される。
+    """
+    model_config = {"extra": "forbid"}
+
+    contact: str = Field(min_length=3, max_length=200)  # email / ハンドル
+    recent_actions: str = Field(min_length=20, max_length=2000)  # 直近何をしたか
+    website: Optional[str] = Field(default=None, max_length=100)  # honeypot
 
 
 def _base_layout_str(title: str, body: str, *, canonical_path: str = "/", noindex: bool = False) -> str:
@@ -1652,6 +1667,221 @@ async def submit_public_contact(body: PublicInquiryCreate, request: Request, db:
     return {"success": True, "data": {"id": inquiry.id, "status": inquiry.status}}
 
 
+# ─── R42: Ban appeal channel ──────────────────────────────────────────────
+@router.post("/api/public/ban_appeal")
+async def submit_ban_appeal(body: BanAppealCreate, request: Request, db: Session = Depends(get_db)):
+    """誤 ban の申し立てを受け付ける。
+
+    実装方針:
+      - PublicInquiry に category="ban_appeal" で保存。admin 画面で目立つ
+        タグ付けで表示される。
+      - 攻撃者は通常この form を送らないので、送られて来た時点で「本物の
+        false positive 候補」として扱う運用。
+      - rate limit は通常の contact form と共通 (短時間連投を抑止)。
+      - 入力は最小限 (contact + recent_actions) で、name は固定文字列。
+    """
+    if body.website:
+        raise HTTPException(status_code=400, detail="invalid submission")
+    _enforce_contact_rate_limit(request)
+
+    ip = _client_ip(request)
+    ua = (request.headers.get("User-Agent") or "")[:400] or None
+
+    # message に WAF ban context (IP / UA / cf-ray) を埋め込んで運用側で
+    # ban rule との突合せをしやすくする。生 UA は admin 画面で見える形で残す。
+    cf_ray = (request.headers.get("cf-ray") or "")[:80]
+    country = (request.headers.get("cf-ipcountry") or "?")[:8]
+    composed = (
+        f"[ban_appeal] from ip={ip} ray={cf_ray} country={country}\n"
+        f"--- recent actions ---\n{body.recent_actions.strip()}"
+    )
+
+    inquiry = PublicInquiry(
+        name="(ban appeal)",
+        organization=None,
+        role=None,
+        contact_reference=body.contact.strip()[:200],
+        message=composed,
+        category="ban_appeal",
+        ip_address=ip,
+        user_agent=ua,
+    )
+    db.add(inquiry)
+    db.commit()
+    db.refresh(inquiry)
+    _notify_inquiry(inquiry)
+    return {"success": True, "data": {"id": inquiry.id, "status": inquiry.status}}
+
+
+# ─── R42: Bilingual ban / appeal landing page ─────────────────────────────
+_BAN_APPEAL_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Access Blocked / アクセス遮断 — ShuttleScope</title>
+<style>
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","MigMix 1P",sans-serif;background:#0b1220;color:#e6edf6;line-height:1.6}
+  .wrap{max-width:680px;margin:0 auto;padding:48px 24px 80px}
+  h1{font-size:28px;margin:0 0 8px;letter-spacing:.02em}
+  h2{font-size:18px;margin:32px 0 12px;color:#9fc4ff;border-left:3px solid #4a7fcc;padding-left:10px}
+  .lang-row{display:flex;gap:8px;margin:0 0 28px}
+  .lang-btn{flex:1;text-align:center;padding:10px;border:1px solid #2a3a55;border-radius:4px;cursor:pointer;background:#121b2e;color:#cbd6e6;font-size:13px;user-select:none}
+  .lang-btn.active{background:#1d2d4d;color:#fff;border-color:#4a7fcc}
+  .card{background:#101a2c;border:1px solid #1f2c47;border-radius:6px;padding:24px;margin-bottom:20px}
+  .muted{color:#8fa0b8;font-size:13px}
+  label{display:block;margin:14px 0 6px;font-size:13px;color:#cbd6e6}
+  input,textarea{width:100%;box-sizing:border-box;padding:10px 12px;background:#0a1426;border:1px solid #2a3a55;border-radius:4px;color:#e6edf6;font-size:14px;font-family:inherit}
+  textarea{min-height:140px;resize:vertical}
+  button[type=submit]{margin-top:18px;background:#2a5cb8;color:#fff;border:none;padding:12px 22px;border-radius:4px;font-size:14px;cursor:pointer;font-weight:600}
+  button[type=submit]:hover{background:#3a6dd1}
+  .hidden{display:none}
+  .ok{color:#8fe6a0;margin-top:12px}
+  .err{color:#ff9090;margin-top:12px}
+  .ref{font-family:Consolas,monospace;font-size:12px;color:#6b7a92;margin-top:8px;word-break:break-all}
+  .hp{position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="lang-row">
+    <div class="lang-btn active" data-lang="ja" onclick="setLang('ja')">日本語</div>
+    <div class="lang-btn" data-lang="en" onclick="setLang('en')">English</div>
+  </div>
+
+  <!-- ─── 日本語 ─── -->
+  <div id="ja-block">
+    <h1>アクセスが遮断されました</h1>
+    <p class="muted">このページは、ShuttleScope のセキュリティシステムにより自動的に通信が遮断された方向けの案内です。</p>
+
+    <div class="card">
+      <h2>何が起きたか</h2>
+      <p>あなたのアクセスは、当サービスの異常検知 (canary endpoint や honeytoken の使用、典型的な侵入スキャナのパターンなど) に該当したため、自動的に Cloudflare 経由でブロックされました。</p>
+      <p>通常のユーザーがこの画面を見ることは想定していません。</p>
+    </div>
+
+    <div class="card">
+      <h2>誤ブロックだと思う場合</h2>
+      <p>もしこれが誤検知であると思われる場合は、直前にあなたが行った操作 (URL / クリック / ツール / スクリプト) を具体的に記載して送信してください。攻撃者は通常この申請を行いません。本物の誤検知は手動で精査し、ブロックを解除します。</p>
+      <p class="muted">送信内容と IP / User-Agent / Cloudflare Ray-ID は監査ログに記録されます。</p>
+
+      <form id="form-ja" onsubmit="submitAppeal(event,'ja')">
+        <label>連絡先 (メール / SNS ハンドル等)</label>
+        <input name="contact" required minlength="3" maxlength="200" placeholder="you@example.com">
+
+        <label>直前に行った操作 (URL や状況を具体的に)</label>
+        <textarea name="recent_actions" required minlength="20" maxlength="2000" placeholder="例: https://shuttle-scope.com/ にアクセスし、お問い合わせフォームから送信したらこの画面になりました。"></textarea>
+
+        <input class="hp" name="website" tabindex="-1" autocomplete="off">
+
+        <button type="submit">申し立てを送信する</button>
+        <div id="result-ja"></div>
+      </form>
+    </div>
+
+    <p class="muted">継続的な不正アクセスや脅威行為と判定された場合、申し立ては受理されないことがあります。</p>
+  </div>
+
+  <!-- ─── English ─── -->
+  <div id="en-block" class="hidden">
+    <h1>Access Blocked</h1>
+    <p class="muted">This page is shown to clients whose traffic has been automatically blocked by ShuttleScope's security system.</p>
+
+    <div class="card">
+      <h2>What happened</h2>
+      <p>Your request matched one of our automated detections (canary endpoint hit, honeytoken usage, or a known intrusion-scanner pattern), and you were automatically blocked at the Cloudflare edge.</p>
+      <p>Ordinary users are not expected to reach this page.</p>
+    </div>
+
+    <div class="card">
+      <h2>If you believe this is a false positive</h2>
+      <p>Please describe specifically what you were doing right before you were blocked (URLs, clicks, tools, scripts). Attackers will normally not file this appeal. Genuine false positives will be reviewed manually and unblocked.</p>
+      <p class="muted">Your submission, IP address, User-Agent and Cloudflare Ray-ID will be stored in our audit log.</p>
+
+      <form id="form-en" onsubmit="submitAppeal(event,'en')">
+        <label>Contact (email / handle)</label>
+        <input name="contact" required minlength="3" maxlength="200" placeholder="you@example.com">
+
+        <label>Recent actions (URLs and context, be specific)</label>
+        <textarea name="recent_actions" required minlength="20" maxlength="2000" placeholder="e.g. I opened https://shuttle-scope.com/ and submitted the contact form, then got this page."></textarea>
+
+        <input class="hp" name="website" tabindex="-1" autocomplete="off">
+
+        <button type="submit">Submit appeal</button>
+        <div id="result-en"></div>
+      </form>
+    </div>
+
+    <p class="muted">Appeals from sources showing repeated abusive behaviour may not be accepted.</p>
+  </div>
+
+</div>
+
+<script>
+function setLang(l){
+  document.getElementById('ja-block').classList.toggle('hidden', l!=='ja');
+  document.getElementById('en-block').classList.toggle('hidden', l!=='en');
+  document.querySelectorAll('.lang-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.lang===l);
+  });
+}
+async function submitAppeal(ev, lang){
+  ev.preventDefault();
+  const f = ev.target;
+  const out = document.getElementById('result-'+lang);
+  out.className=''; out.textContent='';
+  const body = {
+    contact: f.contact.value,
+    recent_actions: f.recent_actions.value,
+    website: f.website.value || null,
+  };
+  try{
+    const r = await fetch('/api/public/ban_appeal', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if(r.ok){
+      out.className='ok';
+      out.textContent = lang==='ja'
+        ? '申し立てを受け付けました。内容を確認のうえ、必要に応じて連絡します。'
+        : 'Your appeal has been received. We will review it and contact you if needed.';
+      f.reset();
+    } else {
+      out.className='err';
+      out.textContent = lang==='ja'
+        ? '送信に失敗しました。時間をおいて再度お試しください。'
+        : 'Submission failed. Please try again later.';
+    }
+  } catch(e){
+    out.className='err';
+    out.textContent = lang==='ja' ? '通信エラーが発生しました。' : 'Network error.';
+  }
+}
+// ブラウザ言語で初期言語を決める
+if((navigator.language||'').toLowerCase().startsWith('en')) setLang('en');
+</script>
+</body>
+</html>"""
+
+
+@router.get("/banned")
+@router.get("/blocked")
+@router.get("/appeal")
+async def ban_appeal_page(request: Request):
+    """誤 ban 申し立てページ (bilingual JP/EN)。
+
+    Cloudflare の WAF Custom Error Page (1020 block 等) から
+    https://shuttle-scope.com/appeal へリンクさせる運用を想定。
+    本ページ自体は通常の origin で配信する (CF block 対象 IP からは
+    edge で 403 が返るので、appeal はモバイル回線等の別 IP から行う前提)。
+    """
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(_BAN_APPEAL_HTML)
+
+
 @router.get("/api/public/inquiries")
 async def list_public_inquiries(request: Request, db: Session = Depends(get_db)):
     _require_admin(request)
@@ -1668,6 +1898,7 @@ async def list_public_inquiries(request: Request, db: Session = Depends(get_db))
                 message=item.message,
                 status=item.status,
                 admin_note=item.admin_note,
+                category=getattr(item, "category", "general") or "general",
                 created_at=(
                     item.created_at.replace(tzinfo=timezone.utc)
                     .astimezone(timezone(timedelta(hours=9)))

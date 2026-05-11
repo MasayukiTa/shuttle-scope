@@ -1099,6 +1099,7 @@ class PublicInquiry(Base):
     __table_args__ = (
         Index("ix_public_inquiries_status", "status"),
         Index("ix_public_inquiries_created_at", "created_at"),
+        Index("ix_public_inquiries_category", "category"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -1108,6 +1109,9 @@ class PublicInquiry(Base):
     contact_reference: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="new")
+    # R42: 問い合わせ種別 ("general" / "ban_appeal" 等)。ban_appeal は WAF 誤 ban
+    # 申し立てチャネルからの投稿で、admin 画面で目立つタグ付け表示の対象。
+    category: Mapped[str] = mapped_column(String(40), nullable=False, default="general")
     admin_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
