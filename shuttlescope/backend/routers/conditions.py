@@ -50,6 +50,13 @@ def resolve_role(
 ) -> str:
     """JWT → X-Role ヘッダ → ?role= の優先順でロールを解決する。
     JWT なし + 非ローカル接続は 401 を返す（ロールクエリパラ昇格防止）。
+
+    R47 fix: 過去に「admin を analyst に降格」する 2 行が入っていて、
+    admin が ROLE_MAX_TIER=4 のはずなのに条件 endpoint では analyst (tier 1)
+    として扱われ、top_profile / scatter points / 生スコアが全て stripped
+    された response しか返らなかった。GrowthInsights だけ動いていたのは
+    /insights endpoint が role ごとに別経路で growth_cards を返していたため。
+    降格を撤去し、admin は ROLE_MAX_TIER 通り full access に戻す。
     """
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -58,8 +65,6 @@ def resolve_role(
         payload = verify_token(token)
         if payload:
             r = (payload.get("role") or "").strip().lower()
-            if r == "admin":
-                r = "analyst"
             if r in ALLOWED_ROLES:
                 return r
     # JWT なし: loopback（Electron/テスト）のみ X-Role/クエリパラを受け付ける
@@ -67,8 +72,6 @@ def resolve_role(
     if not allow_legacy_header_auth(request):
         raise HTTPException(status_code=401, detail="認証が必要です")
     r = (x_role or role or "analyst").strip().lower()
-    if r == "admin":
-        r = "analyst"
     if r not in ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail=f"invalid role: {r}")
     return r
