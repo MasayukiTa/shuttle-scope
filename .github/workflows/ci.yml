@@ -80,8 +80,10 @@ jobs:
         # `-n auto` は CI runner の論理 CPU 数 (= 4 通常) で並列化。
         # 不安定 test (DB fixture / file race) があれば `--dist loadgroup` か
         # `@pytest.mark.serial` で同期化する。
+        # 2026-05-11 R37: pytest-timeout で 1 test = 60s 上限。WS テスト hang による
+        # CI 全体 60 分 timeout を防ぐ二重防御。
         if: runner.os != 'Windows'
-        run: python -m pytest -n auto --dist loadfile -v
+        run: python -m pytest -n auto --dist loadfile -v --timeout=60 --timeout-method=thread
 
       - name: Backend tests (Windows — serial)
         # 2026-05-10: Windows + xdist 3.8.0 + Python 3.10 で worker IPC が不安定
@@ -89,8 +91,10 @@ jobs:
         # AssertionError で死ぬ既知の race; xdist#693 系)。
         # Windows は parallel を諦めて単一プロセス走行に切替える。Linux 側で
         # 並列カバレッジは取れているので、Windows は smoke として直列で十分。
+        # 2026-05-11 R37: pytest-timeout で 1 test = 60s 上限。test_websocket_signaling
+        # 系の threading-based テストは Windows skip 済だが、未発見の hang への保険。
         if: runner.os == 'Windows'
-        run: python -m pytest -v
+        run: python -m pytest -v --timeout=60 --timeout-method=thread
 
       - name: Python bytecode smoke
         run: python -m compileall backend
