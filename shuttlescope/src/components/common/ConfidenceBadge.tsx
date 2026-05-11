@@ -52,11 +52,23 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
     )
   }
 
+  // 親の幅に対して縮みやすく / はみ出さないように max-w-full + whitespace-nowrap
+  // + overflow-hidden を入れる。狭い親では label / sample-size 部分を CSS で
+  // 非表示にして ★ だけ残す (= 自動コンパクト)。
+  // user 報告 (mobile): 高信頼バッジが枠を突き破る / タイトル側が縦書きになる。
   return (
-    <div className={clsx('inline-flex items-center gap-2 px-2 py-1 rounded border text-xs', colorClass, className)}>
-      <span className="font-mono">{stars}</span>
-      <span>{label}</span>
-      <span className="opacity-70">
+    <div
+      className={clsx(
+        'inline-flex items-center gap-2 px-2 py-1 rounded border text-xs',
+        'max-w-full overflow-hidden whitespace-nowrap shrink',
+        colorClass,
+        className,
+      )}
+      title={`${label}（${t('confidence.sample_size')}: ${size.toLocaleString()}${t('confidence.strokes')})`}
+    >
+      <span className="font-mono shrink-0">{stars}</span>
+      <span className="hidden sm:inline truncate">{label}</span>
+      <span className="hidden md:inline opacity-70 truncate">
         ({t('confidence.sample_size')}: {size.toLocaleString()}{t('confidence.strokes')})
       </span>
     </div>
