@@ -75,11 +75,15 @@ def upgrade() -> None:
         "pg_read_file(text)",
         "pg_read_file(text, bigint, bigint)",
     ]
+    # PG では失敗すると transaction 全体が aborted 状態になるので、
+    # 各 REVOKE を SAVEPOINT で隔離する。これで一部の関数が存在しなくても
+    # 他の関数 / 後続 statement は通る。
+    import sqlalchemy as sa
     for sig in dangerous_funcs:
         try:
-            op.execute(f"REVOKE EXECUTE ON FUNCTION {sig} FROM PUBLIC")
+            with bind.begin_nested():
+                bind.execute(sa.text(f"REVOKE EXECUTE ON FUNCTION {sig} FROM PUBLIC"))
         except Exception as exc:
-            # 関数が存在しない / 権限不足 → スキップ
             print(f"[migration 0028] REVOKE on {sig} skipped: {exc}")
 
 
