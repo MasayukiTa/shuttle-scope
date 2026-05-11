@@ -353,6 +353,114 @@ button[data-tile="hit-zone"] {
   padding-top: env(safe-area-inset-top);
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+ * R47 mobile triage: 「縦書きみたいになる」「画面外に飛び出す」を
+ * 構造的に潰すための全画面ガード。selectors は意図的にゆるく、
+ * 個別ページの修正なしで全ページの最悪症状を抑える目的。
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* (1) ページが横スクロールしないように body に hidden を入れる。
+ *     縦書きに見える主因は「子要素が viewport より広くなり、横スクロールが
+ *     発生して、ユーザは縦軸方向にしか動けないので狭い列で読まされる」。
+ *     body 全体で overflow-x: hidden にすると、収まらない子要素は強制的に
+ *     畳まれ、文章が縦並びに見える症状の根本を断つ。 */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* (2) flex / grid 子要素のデフォルト min-width: auto を 0 に上書き。
+ *     これが「flex 内の長い文字列が縮まず viewport を突き破る」最大の犯人。
+ *     子側で個別に min-w-0 を付ける必要がなくなる。 */
+@media (max-width: 767px) {
+  .flex > *,
+  .inline-flex > *,
+  .grid > * {
+    min-width: 0;
+  }
+}
+
+/* (3) 画面より広い table は横スクロール container を持っていないことが多く、
+ *     幅オーバーで右端の列が「1 文字ずつ縦に積まれる」典型症状を起こす。
+ *     md 未満は table を block 化 + 横スクロールに切替えて潰す。
+ *     既に `overflow-x-auto` で正しく包んでいる table も無害。 */
+@media (max-width: 767px) {
+  /* 親が overflow-x-auto を持っている table は触らない (.scroll-shell)
+     その他の生 table は wrap container を持っていないと崩れがちなので
+     block 化して横スクロール可能にする。 */
+  table:not(.scroll-shell table) {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  /* thead / tbody は table の block 化につられて崩れるので、内側で
+     table-layout を維持する。 */
+  table:not(.scroll-shell table) > thead,
+  table:not(.scroll-shell table) > tbody {
+    display: table;
+    width: 100%;
+    table-layout: auto;
+  }
+}
+
+/* (4) よくある「ボタンが横に並んだ flex 行が viewport より広い」を、
+ *     ボタン側で折り返さず容器側で横スクロール可能にする。 */
+@media (max-width: 767px) {
+  /* 既に scrollbar-hide を持つコンテナは横スクロール意図あり、触らない */
+  .ss-button-row:not(.scrollbar-hide) {
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+/* (5) 大きすぎる左右パディングを mobile で詰める。px-6 / px-8 は phone で
+ *     コンテンツ幅を半分近く食う。tailwind を直接書き換えず、グローバルで
+ *     最大値を絞る。 */
+@media (max-width: 480px) {
+  .ss-mobile-cozy,
+  body .px-8 { padding-left: 0.75rem; padding-right: 0.75rem; }
+  body .px-6 { padding-left: 0.75rem; padding-right: 0.75rem; }
+}
+
+/* (6) WCAG 推奨タッチターゲット (44x44) をモバイル全 button に最小保証。
+ *     既に `data-tile=true` 等で個別保証されているものは別ルールで上書き済。 */
+@media (hover: none) and (pointer: coarse) {
+  button:not([data-no-min-tap]),
+  a[role="button"]:not([data-no-min-tap]) {
+    min-height: 36px;  /* WCAG 44 はやや過剰なので密配置を許す 36 に */
+  }
+}
+
+/* (7) 長い英数字 / URL が改行されずに viewport を突き破るのを防ぐ。
+ *     日本語は元々折り返しできるが、ハイフン無し英単語 / 長い token が
+ *     表示崩壊の原因。 */
+@media (max-width: 767px) {
+  body {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+/* (8) writing-mode が意図せず vertical 化することを最終防衛。
+ *     SVG / chart 等は固有 writing-mode を持つことがあるので除外。 */
+body, body div, body p, body span, body h1, body h2, body h3, body h4,
+body h5, body h6, body label, body button, body a, body li, body td, body th {
+  writing-mode: horizontal-tb;
+}
+
+/* (9) 動画 / iframe / svg などの埋め込みが viewport より広いと横スクロールが
+ *     発生。安全側で 100% 上限を入れる。 */
+img, video, iframe, svg, canvas {
+  max-width: 100%;
+  height: auto;
+}
+/* ただし固定サイズ指定された SVG (ヒートマップ等) は触らない */
+svg[width][height] {
+  max-width: 100%;
+  height: auto;
+}
+
 /* ─── 3. ページ基底 ─────────────────────────────────────────────── */
 body {
   background-color: hsl(var(--background));
