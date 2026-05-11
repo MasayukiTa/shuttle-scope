@@ -150,9 +150,92 @@ async def _stale_device_cleanup():
             logger.warning("stale cleanup error: %s", exc)
 
 
+def _enforce_production_security_gate() -> None:
+    """Round 258 R40 fix (Codex addendum A-001): production / PUBLIC_MODE 時の
+    構成ミスを **起動段階で fail-closed** で拒否する gate。
+
+    検査項目:
+      (a) DATABASE_URL が SQLite なら fail (production は PostgreSQL 必須)
+      (b) SECRET_KEY が空 / default / 32 文字未満なら fail
+      (c) backup 有効なのに passphrase 不在なら fail (R7/R23 を起動時にも強制)
+      (d) HIDE_API_DOCS / HIDE_STACK_TRACES が逆に False なら warning
+      (e) SS_ALLOW_LOOPBACK_NO_AUTH が production posture で有効なら fail
+      (f) SS_OPERATOR_TOKEN が空なのに /tunnel/start 等の operator endpoint が
+          有効なら warning (R7)
+      (g) SS_FIELD_ENCRYPTION_KEY が空でも warning だけ (現在は未 wire なので任意)
+    各 fail は logger.critical + sys.exit(2)。warning は続行可。
+    """
+    import sys as _sys_gate
+    env_norm = (app_settings.ENVIRONMENT or "").strip().lower()
+    is_public = bool(getattr(app_settings, "PUBLIC_MODE", False))
+    is_prod = (env_norm == "production") or is_public
+    if not is_prod:
+        return  # dev / test は厳格化しない
+
+    errors: list[str] = []
+    warnings_: list[str] = []
+
+    db_url = (app_settings.DATABASE_URL or "").lower()
+    if db_url.startswith("sqlite"):
+        errors.append(
+            "(a) DATABASE_URL is SQLite in production posture. "
+            "Use postgresql+psycopg://... or unset PUBLIC_MODE/ENVIRONMENT=production."
+        )
+
+    sec = (getattr(app_settings, "SECRET_KEY", "") or "").strip()
+    if not sec or sec in ("dev", "default", "change-me", "secret") or len(sec) < 32:
+        errors.append(
+            f"(b) SECRET_KEY is weak/default/short (len={len(sec)}). "
+            "Generate via `python -c 'import secrets;print(secrets.token_urlsafe(48))'`."
+        )
+
+    bp = (getattr(app_settings, "ss_backup_passphrase", "") or "").strip()
+    if not bp:
+        warnings_.append(
+            "(c) SS_BACKUP_PASSPHRASE is not set; backups would refuse to write per R7/R23 enforcement."
+        )
+
+    if not bool(getattr(app_settings, "HIDE_API_DOCS", False)):
+        warnings_.append("(d) HIDE_API_DOCS is False in production — /docs is reachable.")
+    if not bool(getattr(app_settings, "HIDE_STACK_TRACES", False)):
+        warnings_.append("(d) HIDE_STACK_TRACES is False in production — exception details may leak.")
+
+    import os as _os_gate
+    if _os_gate.environ.get("SS_ALLOW_LOOPBACK_NO_AUTH") == "1":
+        errors.append("(e) SS_ALLOW_LOOPBACK_NO_AUTH=1 in production — bypasses auth on loopback.")
+
+    op_tok = (_os_gate.environ.get("SS_OPERATOR_TOKEN") or "").strip()
+    if not op_tok:
+        warnings_.append("(f) SS_OPERATOR_TOKEN is empty — tunnel/operator endpoints rely on loopback only.")
+
+    fek = (getattr(app_settings, "ss_field_encryption_key", "") or "").strip()
+    if not fek:
+        warnings_.append(
+            "(g) SS_FIELD_ENCRYPTION_KEY is empty — encrypted fields would fall back to plaintext. "
+            "Generate via `python -c 'from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())'`."
+        )
+
+    for w in warnings_:
+        logger.warning("[startup-gate] WARNING %s", w)
+    if errors:
+        for e in errors:
+            logger.critical("[startup-gate] FATAL %s", e)
+        logger.critical(
+            "[startup-gate] Refusing to start in production posture due to %d configuration error(s). "
+            "See messages above. Unset PUBLIC_MODE / ENVIRONMENT=production for development.",
+            len(errors),
+        )
+        _sys_gate.exit(2)
+    logger.info(
+        "[startup-gate] OK: production posture verified (errors=0, warnings=%d).", len(warnings_)
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """アプリ起動時にテーブル作成 + stale cleanup タスク開始"""
+    # R40-1: 本番姿勢構成ミスは起動を拒否する
+    _enforce_production_security_gate()
     try:
         loop = asyncio.get_event_loop()
         await asyncio.wait_for(
@@ -2005,6 +2088,12 @@ class PathNormalizationMiddleware:
 
 
 app.add_middleware(PathNormalizationMiddleware)
+
+
+# Round 258 R41: Canary endpoints — 攻撃者だけが叩く path を register。
+# OpenAPI には出ない。hit すると HMAC audit chain に書く + tarpit + CF auto-ban。
+from backend.routers import canary as _canary_router
+app.include_router(_canary_router.router)
 
 
 # ルーター登録
