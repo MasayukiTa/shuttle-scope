@@ -41,6 +41,12 @@ def _base_payload(player_id: int, **overrides) -> dict:
 
 class TestConditionCRUD:
     def test_post_and_get_roundtrip(self, client, player):
+        # Round 258 R2: GET /api/conditions/{id} は `resolve_role` を使い、
+        # JWT/X-Role の admin は **analyst に降格** される (security: admin token leak
+        # 時の Tier 4 露出を防ぐ defense-in-depth)。
+        # よって GET 経由で general_comment (Tier 4) を assert することは不可能 (impl
+        # の意図的な設計)。POST のレスポンスは `ctx.role` (admin そのまま) で
+        # `_serialize(.., "admin") → _full_dict` を通るので、こちらで full data 確認する。
         payload = _base_payload(
             player.id,
             weight_kg=65.3,
@@ -53,13 +59,18 @@ class TestConditionCRUD:
         assert created["player_id"] == player.id
         assert created["weight_kg"] == 65.3
         assert created["measured_at"] == "2026-04-15"
+        # POST のレスポンスは admin 経路で _full_dict → general_comment 含む
+        assert created.get("general_comment") == "調子良い"
 
+        # GET 経路は resolve_role で analyst 降格 → Tier 1 のみ。general_comment は
+        # drop される。id だけが残ることを確認する (validity_flag は None なので除外)。
         cid = created["id"]
         resp2 = client.get(f"/api/conditions/{cid}")
         assert resp2.status_code == 200
         got = resp2.json()["data"]
         assert got["id"] == cid
-        assert got["general_comment"] == "調子良い"
+        # Tier 4 fields are filtered out for GET (demoted to analyst)
+        assert "general_comment" not in got
 
     def test_hooper_index_auto_computed_when_all_present(self, client, player):
         payload = _base_payload(

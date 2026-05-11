@@ -245,22 +245,13 @@ class TestRoleFilter:
         assert "raw_factor_trends" not in d
         assert "validity_summary" not in d
 
-    def test_admin_insights_full(self, client, player, db_session):
-        # Round 258 R2 P0 fix: 第5条 alignment により raw_factor_trends は **admin のみ**。
-        # coach/analyst は validity_summary だけ可視 (Tier 1 mapping)。
-        # 旧テスト名 (`test_analyst_insights_full`) は廃止し、admin role で再 assert。
-        _seed_condition(db_session, player.id, date(2026, 4, 1), ccs_score=100.0)
-        db_session.commit()
-        r = client.get(
-            f"/api/conditions/insights?player_id={player.id}",
-            headers={"X-Role": "admin"},
-        )
-        d = r.json()["data"]
-        assert "raw_factor_trends" in d
-        assert "validity_summary" in d
-
-    def test_analyst_insights_summary_only(self, client, player, db_session):
-        # analyst は Tier 1 のみ可視 → validity_summary は ○ / raw_factor_trends は ×。
+    def test_non_player_insights_summary_only(self, client, player, db_session):
+        # Round 258 R2 P0 fix: 第5条 alignment + resolve_role admin→analyst 降格 により
+        # `/insights` 経由で `raw_factor_trends` を取得する経路は実質存在しない (admin
+        # role token は resolve_role で analyst に降格、`if role == "admin"` ブロックは
+        # 到達不可能)。
+        # よって「analyst/coach/admin の代表として validity_summary のみ可視」を assert
+        # する 1 ケースに統合。旧 test_analyst_insights_full は廃止。
         _seed_condition(db_session, player.id, date(2026, 4, 1), ccs_score=100.0)
         db_session.commit()
         r = client.get(
