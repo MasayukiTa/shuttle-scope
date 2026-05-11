@@ -2091,12 +2091,91 @@ async def health_cv():
     return out
 
 
+# Round 258 R38 fix (外部スキャナー観測): /api/csp_report は仕様上 unauth だが、
+# 2026-05-04〜10 の Cloudflare firewall events で OVH 3 IP が本 endpoint に外部から
+# POST しているのを観測。CF Bot Fight Mode が前段で全部 403 にしているので backend
+# 到達はゼロだが、CF 設定変更 / Free plan 廃止等の前段防御が外れた将来も視野に入れ、
+# backend 単独で以下の多層防御を入れる:
+#   (a) Origin/Referer が shuttle-scope.com 系でなければ 403 silent drop
+#   (b) Content-Type allow-list (CSP report 仕様準拠)
+#   (c) per-IP 簡易 rate limit (5 req/min)
+#   (d) JSON schema 最小チェック (csp-report or body キー必須)
+#   (e) malformed payload は **log に書かず** 403 で捨てる (log injection 経路除去)
+_CSP_ALLOWED_ORIGIN_HOSTS = {
+    "shuttle-scope.com", "www.shuttle-scope.com", "app.shuttle-scope.com",
+    "localhost",  # Electron renderer (development) 用
+}
+_CSP_ALLOWED_CT_PREFIXES = (
+    "application/csp-report",      # 旧 spec
+    "application/reports+json",    # 新 spec (Reporting API)
+    "application/json",            # 互換 (古いブラウザ / 自前 reporter)
+)
+_CSP_RATE_LIMIT_WINDOW_SEC = 60
+_CSP_RATE_LIMIT_MAX = 5
+_csp_rate_state: dict = {}  # ip -> list[float] (mono timestamps)
+_csp_rate_lock = __import__("threading").Lock()
+
+
+def _csp_check_rate(ip: str) -> bool:
+    """True=許可、False=制限超過。"""
+    import time as _t
+    now = _t.monotonic()
+    cutoff = now - _CSP_RATE_LIMIT_WINDOW_SEC
+    with _csp_rate_lock:
+        hist = [t for t in _csp_rate_state.get(ip, []) if t >= cutoff]
+        if len(hist) >= _CSP_RATE_LIMIT_MAX:
+            _csp_rate_state[ip] = hist
+            return False
+        hist.append(now)
+        _csp_rate_state[ip] = hist
+        # 簡易 GC: state が 1000 IP を超えたら window 外を全部捨てる
+        if len(_csp_rate_state) > 1000:
+            for k in list(_csp_rate_state.keys()):
+                _csp_rate_state[k] = [t for t in _csp_rate_state[k] if t >= cutoff]
+                if not _csp_rate_state[k]:
+                    del _csp_rate_state[k]
+    return True
+
+
 @app.post("/api/csp_report")
 async def csp_report(request: StarletteRequest):
     """CSP 違反レポート受信 (I-1: round118)。
     ブラウザが report-uri に POST する。サイズ上限 + 認証なし (browser だから)。
     別マシンからの noise を抑えるため payload を access_log に記録するだけで他処理しない。
+
+    Round 258 R38 hardening: Origin / Content-Type / rate limit / schema check 追加。
+    防御層が外れても直接の害が出ない設計にする。
     """
+    # (a) Origin / Referer 確認 — どちらかが shuttle-scope.com 系である必要あり
+    origin = request.headers.get("origin", "") or ""
+    referer = request.headers.get("referer", "") or ""
+    allowed = False
+    for src in (origin, referer):
+        if not src:
+            continue
+        try:
+            from urllib.parse import urlparse as _urlparse
+            host = (_urlparse(src).hostname or "").lower()
+            if host in _CSP_ALLOWED_ORIGIN_HOSTS:
+                allowed = True
+                break
+        except Exception:
+            pass
+    if not allowed:
+        # log injection を防ぐため詳細は記録しない。silent 403。
+        return _JSONResp({"ok": False, "reason": "origin"}, status_code=403)
+
+    # (b) Content-Type allow-list
+    ct = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if not any(ct.startswith(p) for p in _CSP_ALLOWED_CT_PREFIXES):
+        return _JSONResp({"ok": False, "reason": "content_type"}, status_code=415)
+
+    # (c) per-IP rate limit
+    client = request.client
+    ip = (client.host if client else "") or "?"
+    if not _csp_check_rate(ip):
+        return _JSONResp({"ok": False, "reason": "rate_limit"}, status_code=429)
+
     try:
         body = await request.body()
         if len(body) > 8192:
@@ -2105,7 +2184,23 @@ async def csp_report(request: StarletteRequest):
         try:
             data = _json.loads(body or b"{}")
         except Exception:
-            data = {"raw": body[:1024].decode("utf-8", "replace")}
+            # (e) malformed: log には書かず drop。攻撃者が log を経由した injection
+            # ベクタを使う経路を遮断 (元実装は raw を log に書いていた)。
+            return _JSONResp({"ok": False, "reason": "bad_json"}, status_code=400)
+
+        # (d) CSP report の最小スキーマチェック: top-level に `csp-report` か
+        # Reporting API の `body` / `type` キーがあること。それ以外は report じゃない。
+        if not isinstance(data, dict):
+            return _JSONResp({"ok": False, "reason": "bad_shape"}, status_code=400)
+        is_csp_legacy = "csp-report" in data
+        is_reports_api = (
+            ("body" in data and isinstance(data.get("body"), dict))
+            or ("type" in data and "url" in data)
+            or (isinstance(data, list))  # Reporting API はリストの場合もある
+        )
+        if not (is_csp_legacy or is_reports_api):
+            return _JSONResp({"ok": False, "reason": "bad_shape"}, status_code=400)
+
         import logging as _lg
         _lg.getLogger("csp_report").warning("CSP violation: %s", str(data)[:500])
     except Exception:
