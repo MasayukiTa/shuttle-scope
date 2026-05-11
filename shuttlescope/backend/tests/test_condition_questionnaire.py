@@ -186,9 +186,9 @@ class TestRoleFilter:
     # validity_flag (Tier 1) のみ可視という新規範を assert する形にテストを書き直し。
 
     def test_player_view_hides_validity_score(self, client, player):
-        """player は Tier 2 まで可視: ccs_score / f1_physical 等は見える。
-        validity_score (Tier 2) は本人除外ルールが router 側にあれば隠れる。
-        ※実装側で player に対する `validity_score` 露出ポリシーが固まったら追補。
+        """player は自身のデータについて生スコア+体組成+医療記述まで可視 (第5条 同意書)。
+        ただし `validity_*` (妥当性スコア) は本人除外 — `_player_view` が validity フィールド
+        を明示的に含めないことで実装。
         """
         resp = _submit(client, player.id, _all_threes())
         cid = resp.json()["data"]["id"]
@@ -198,12 +198,14 @@ class TestRoleFilter:
         )
         assert r.status_code == 200
         data = r.json()["data"]
-        # player = Tier 2 → ccs_score (Tier 2) / f1_physical (Tier 2) は可視
+        # player は自身のデータ全 Tier 可視
         assert "ccs_score" in data
         assert "f1_physical" in data
-        # Tier 4 (questionnaire_json / general_comment / injury_notes) は drop
-        assert "questionnaire_json" not in data
-        assert "injury_notes" not in data
+        assert "injury_notes" in data  # 第5条: 本人=○
+        # validity_* だけは本人除外 (`_player_view` が含めない)
+        assert "validity_score" not in data
+        assert "validity_flag" not in data
+        assert "validity_flags_json" not in data
 
     def test_coach_view_only_tier_le_1(self, client, player):
         """coach=Tier 1: validity_flag (Tier 1) のみ。Tier 2+ は drop。"""
