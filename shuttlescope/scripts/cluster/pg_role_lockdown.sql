@@ -83,10 +83,32 @@ REVOKE UPDATE, DELETE ON access_logs FROM ss_user;
 GRANT SELECT, INSERT ON access_logs TO ss_user;
 
 -- ─── 4. 危険関数を全 user から剥奪 ────────────────────────────────────────
-REVOKE EXECUTE ON FUNCTION pg_read_server_files(text) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_read_binary_file(text) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_ls_dir(text) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_read_file(text) FROM PUBLIC;
+-- PG バージョン差で signature が違ったり、そもそも PUBLIC 権限が無い場合に
+-- ON_ERROR_STOP で transaction 全体が aborted になるのを避けるため、
+-- 動的に「存在するなら REVOKE」する DO block を使う。
+DO $$
+DECLARE
+    func_oid oid;
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT n.nspname AS schema, p.proname AS name, p.oid AS oid
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.proname IN ('pg_read_server_files', 'pg_read_binary_file',
+                            'pg_ls_dir', 'pg_read_file')
+    LOOP
+        BEGIN
+            EXECUTE format('REVOKE EXECUTE ON FUNCTION %I.%I(%s) FROM PUBLIC',
+                           r.schema, r.name,
+                           pg_get_function_identity_arguments(r.oid));
+        EXCEPTION WHEN OTHERS THEN
+            -- 権限不足 / 既に剥奪済 / 他は無視
+            RAISE NOTICE 'REVOKE skipped on %.%: %', r.schema, r.name, SQLERRM;
+        END;
+    END LOOP;
+END
+$$;
 
 -- ─── 5. DB OWNER を ss_user から外す ──────────────────────────────────────
 -- OWNER を postgres (superuser) に戻す。DB 単位の CREATE 権限も ss_user は不要。
