@@ -250,10 +250,14 @@ export async function uploadVideoInChunks(opts: ChunkUploadOptions): Promise<Chu
   }
 
   // ── finalize ──
+  // Round 258 R39 (Codex F-005): backend は絶対 path を返さなくなったので、
+  // frontend は upload_id と filename だけ受け取る (filename は backend が
+  // basename だけ返す)。`finalPath` は backward-compat のために残し、
+  // 絶対 path ではなく filename を入れる。
   const final = await postJson<{
     upload_id: string
     status: string
-    final_path: string
+    filename?: string | null
     match_id: number | null
   }>(`/v1/uploads/video/${uploadId}/finalize`, {}, signal)
 
@@ -261,7 +265,7 @@ export async function uploadVideoInChunks(opts: ChunkUploadOptions): Promise<Chu
 
   return {
     uploadId,
-    finalPath: final.final_path,
+    finalPath: final.filename ?? '',
     matchId: final.match_id,
   }
 }
