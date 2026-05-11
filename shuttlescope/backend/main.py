@@ -1022,15 +1022,22 @@ class ExfilRateLimitMiddleware(BaseHTTPMiddleware):
         if not payload:
             return await call_next(request)
         role = payload.get("role")
-        # admin は exfil 制限完全除外 (運用・メンテ業務)
-        if role == "admin":
-            return await call_next(request)
+        # Round 258 R39 fix (Codex F-004 P2): admin 完全 bypass を撤廃。
+        # admin token が盗まれた場合の bulk-extract に対する **最終ブレーキ** を確保
+        # しないと nation-state 級脅威で DB 全件抽出を許す経路になる。
+        # admin には別系数 (10x) の閾値を与えるが、bypass は無し。bulk read 時の
+        # audit log は変更せず別途取得可能。
         try:
             uid = int(payload.get("sub", 0))
         except (ValueError, TypeError):
             return await call_next(request)
         if uid <= 0:
             return await call_next(request)
+
+        # admin 用の higher threshold 計算 (10x)
+        is_admin = (role == "admin")
+        max_req = self._max_requests_per_window * (10 if is_admin else 1)
+        max_bytes = self._max_bytes_per_window * (10 if is_admin else 1)
 
         import time as _t
         import logging as _lg
@@ -1043,8 +1050,8 @@ class ExfilRateLimitMiddleware(BaseHTTPMiddleware):
                 self._state[uid] = st
             st[2] += 1
 
-            # HARD BLOCK: 機械的 exfil のみ止める
-            if st[2] > self._max_requests_per_window or st[1] > self._max_bytes_per_window:
+            # HARD BLOCK: 機械的 exfil のみ止める (admin は 10x 緩和、ただし完全 bypass は不可)
+            if st[2] > max_req or st[1] > max_bytes:
                 _logger.error(
                     "exfil HARD BLOCK user_id=%s role=%s bytes=%s req=%s path=%s",
                     uid, role, st[1], st[2], path,
@@ -1055,7 +1062,10 @@ class ExfilRateLimitMiddleware(BaseHTTPMiddleware):
                     media_type="application/json",
                 )
             # ALERT: 通常業務の上限付近で WARNING ログ出力 (ブロックしない)
-            if not st[3] and (st[2] > self._alert_requests or st[1] > self._alert_bytes):
+            # R39 fix: admin にも同じ ALERT を出す (10x 閾値で alert)。早期検知用。
+            _alert_req = self._alert_requests * (10 if is_admin else 1)
+            _alert_bytes = self._alert_bytes * (10 if is_admin else 1)
+            if not st[3] and (st[2] > _alert_req or st[1] > _alert_bytes):
                 _logger.warning(
                     "exfil ALERT user_id=%s role=%s bytes=%s req=%s path=%s (not blocked)",
                     uid, role, st[1], st[2], path,
@@ -1404,16 +1414,32 @@ app.add_middleware(AnalysisCacheMiddleware)
 #   - /api/auth/invitation/peek (M-A: 招待トークン情報取得)
 #   - /api/auth/invitation/accept (M-A: 招待受領)
 # 注: /api/auth/email/resend_verification と /api/auth/invitation/create は要認証
+#
+# Round 258 R39 fix (Codex F-002 P1): 旧 regex は prefix match で、
+# `/api/healthanything` / `/api/auth/loginXYZ` / `/api/_internal/billing/legal_infoXYZ`
+# 等の near-miss path に新規 route が追加されると **inadvertent exempt** されるリスク
+# (今は 404 になるが将来の regression 経路)。
+# 修正: 全 path を **`$` または `(?:/...)` の境界付き** で anchor し、
+# `/api/health` を **exact match** (= `/api/health/cv` 含まないため別途 router 側で
+# 認証する) にする。F-001 で `/api/health/cv` を `ctx.role` チェックする impl と整合。
 _GLOBAL_AUTH_EXEMPT = _re_acl.compile(
-    r"^/api/(auth/(login|logout|refresh|bootstrap-status|register|email/verify|"
-    r"password/(request_reset|reset)|invitation/(peek|accept))"
-    r"|health|csp_report|public(/.*)?"
-    # Phase Pay-1: Webhook は認証なし。プロバイダ側の署名検証で正当性確認。
-    r"|_internal/billing/webhooks/(stripe|komoju|univapay)"
-    # Phase Pay-1: 法的情報 (特商法表示用、公開情報)
-    r"|_internal/billing/legal_info"
+    r"^/api/(?:"
+    # auth サブパス: 終端 $ で anchor (sub-path の延長を許さない)
+    r"auth/(?:login|logout|refresh|bootstrap-status|register|email/verify"
+    r"|password/(?:request_reset|reset)|invitation/(?:peek|accept))(?:\?.*)?$"
+    # health は exact match (= /api/health のみ。/api/health/cv は router で別途認証)
+    r"|health(?:\?.*)?$"
+    # csp_report は exact match
+    r"|csp_report(?:\?.*)?$"
+    # public は path の続き OK
+    r"|public(?:/[^?]*)?(?:\?.*)?$"
+    # Phase Pay-1: Webhook は認証なし (プロバイダ署名で検証)
+    r"|_internal/billing/webhooks/(?:stripe|komoju|univapay)(?:\?.*)?$"
+    # Phase Pay-1: 法的情報 (exact match)
+    r"|_internal/billing/legal_info(?:\?.*)?$"
     # R-3: Worker 共有 API は X-Worker-Token で独自認証、JWT 不要
-    r"|_internal/videos/.*)"
+    r"|_internal/videos/[^?]*(?:\?.*)?$"
+    r")"
 )
 # /api/auth/refresh: refresh_token 自体が credential なので Authorization 必須は
 # OAuth2 標準逸脱。access_token expired 後に refresh で recover する正規フローを
@@ -1783,13 +1809,31 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 if is_public_lp
                 else "style-src 'self' 'unsafe-inline'"
             )
+            # Round 258 R39 fix (Codex F-008 P3): production CSP では
+            # `connect-src 'self' wss: https:` を厳格化。任意 https/wss への
+            # exfil 経路を XSS から塞ぐ。expected origin だけ列挙する。
+            from backend.config import settings as _s_csp
+            _is_prod = (
+                bool(getattr(_s_csp, "PUBLIC_MODE", False))
+                or (getattr(_s_csp, "ENVIRONMENT", "") or "").strip().lower() == "production"
+            )
+            if _is_prod:
+                connect_src = (
+                    "connect-src 'self' "
+                    "https://app.shuttle-scope.com wss://app.shuttle-scope.com "
+                    "https://www.shuttle-scope.com https://shuttle-scope.com "
+                    "https://cdn.shuttle-scope.com"
+                )
+            else:
+                # 開発・テスト: 緩く (localhost backend / Vite dev server / electron-vite)
+                connect_src = "connect-src 'self' wss: https: http://localhost:* ws://localhost:*"
             csp_parts = [
                 "default-src 'self'",
                 script_src,
                 style_src,
                 "img-src 'self' data: blob:",
                 "media-src 'self' blob: app:",
-                "connect-src 'self' wss: https:",
+                connect_src,
                 "font-src 'self' data: https:",
                 "object-src 'none'",
                 "base-uri 'self'",
@@ -2054,12 +2098,22 @@ async def health():
 
 
 @app.get("/api/health/cv")
-async def health_cv():
+async def health_cv(request: StarletteRequest):
     """CV パイプラインの簡易ヘルスチェック (Track C verification 用)。
 
-    返すのは選ばれた推論バックエンド名のみ。PII / 構成詳細は返さない。
+    Round 258 R39 fix (Codex F-001 P1): 旧コードは未認証公開で TrackNet 等を
+    `tn.load()` していたため、外部から GPU/CPU/モデル init を反復的に triggers でき
+    低コスト DoS primitive になりうる。CF 防御が外れた場合の前線として、認証必須化:
+      - admin / analyst / coach のみ詳細を返す
+      - それ以外 / 未認証は `{"status":"unknown","authorized":false}` の軽量レスポンス
+    モデル init は authorized=true ブランチ内でのみ実行する。
     """
-    out: dict = {"status": "ok"}
+    from backend.utils.auth import get_auth as _ga_hc
+    _ctx_hc = _ga_hc(request)
+    if not _ctx_hc.role or _ctx_hc.role not in ("admin", "analyst", "coach"):
+        return {"status": "ok", "authorized": False}
+
+    out: dict = {"status": "ok", "authorized": True}
     # TrackNet バックエンド
     try:
         from backend.tracknet.inference import get_inference as _get_tn_inf
@@ -2668,9 +2722,20 @@ _FALLBACK_HTML = """<!DOCTYPE html>
 </html>"""
 
 
-_ASSETS_ALLOWED_EXTS = {".js", ".mjs", ".css", ".map", ".woff", ".woff2", ".ttf", ".otf",
+# Round 258 R39 fix (Codex F-003 P2): production で .map を配信しない。
+# source map を取得されると frontend ソース構造 / API ルート名 / コメント / 設計上の
+# 仮定が全部 attacker に渡る → reconnaissance の質が著しく上がる。
+# 開発時のみ .map を allow、PUBLIC_MODE / ENVIRONMENT=production では除外する。
+from backend.config import settings as _settings_assets
+_IS_PUBLIC_BUILD = (
+    bool(getattr(_settings_assets, "PUBLIC_MODE", False))
+    or (getattr(_settings_assets, "ENVIRONMENT", "") or "").strip().lower() == "production"
+)
+_ASSETS_ALLOWED_EXTS = {".js", ".mjs", ".css", ".woff", ".woff2", ".ttf", ".otf",
                         ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
                         ".json", ".txt", ".wasm"}
+if not _IS_PUBLIC_BUILD:
+    _ASSETS_ALLOWED_EXTS.add(".map")  # 開発時のみ
 _ASSETS_SEGMENT_RE = _re_acl.compile(r"^[A-Za-z0-9_.\-]+$")
 
 

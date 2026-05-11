@@ -179,9 +179,17 @@ class StatusResponse(BaseModel):
 
 
 class FinalizeResponse(BaseModel):
+    """upload finalize 応答。
+
+    Round 258 R39 fix (Codex F-005 P3): 旧 schema は server 上の絶対 path を
+    `final_path` として返していた。frontend は upload_id しか必要としないので
+    server filesystem layout を漏らす経路は閉じる。logical handle (upload_id)
+    だけを返し、絶対 path は DB 内 (session.final_path) に残して内部参照のみ。
+    """
     upload_id: str
     status: str
-    final_path: str
+    # NOTE: filename だけ返す。絶対 path / dir 構造は露出しない。
+    filename: Optional[str] = None
     match_id: Optional[int] = None
 
 
@@ -641,8 +649,17 @@ async def finalize_upload(
         if session.user_id is not None and ctx.user_id is not None and session.user_id != ctx.user_id:
             raise HTTPException(status_code=403, detail="このアップロードへの権限がありません")
         if session.status == "completed":
+            # R39 fix (F-005): 絶対 path は返さない (basename だけ)
+            from pathlib import Path as _PathFin2
+            _bn = ""
+            try:
+                if session.final_path:
+                    _bn = _PathFin2(session.final_path).name
+            except Exception:
+                pass
             return FinalizeResponse(upload_id=upload_id, status="completed",
-                                    final_path=session.final_path or "", match_id=session.match_id)
+                                    filename=_bn or session.filename or None,
+                                    match_id=session.match_id)
         if session.status != "uploading":
             raise HTTPException(status_code=409, detail=f"セッションは {session.status} 状態です")
         is_streaming = bool(getattr(session, "streaming", False))
@@ -733,10 +750,18 @@ async def finalize_upload(
 
         db.commit()
 
+        # R39 fix (F-005): 絶対 path は返さず、basename だけ露出。
+        from pathlib import Path as _PathFin
+        _basename = ""
+        try:
+            if session.final_path:
+                _basename = _PathFin(session.final_path).name
+        except Exception:
+            pass
         return FinalizeResponse(
             upload_id=upload_id,
             status="completed",
-            final_path=session.final_path,
+            filename=_basename or session.filename or None,
             match_id=session.match_id,
         )
 
