@@ -247,6 +247,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("bootstrap_database エラー: %s — 起動を続行します", exc)
 
+    # R47: Tor 出口 IP リストを起動時に読み込む (env で path 指定されている場合のみ)
+    # cf_ban_policy.is_tor_exit() がこれを参照して Tor 出口を必ず managed_challenge
+    # に丸める。ファイルは ShuttleScope-TorExitRefresh ScheduledTask が hourly で
+    # 更新するが、本 process は起動時に 1 回読むだけ。リフレッシュ反映には backend
+    # 再起動が必要 (= 24h 周期の更新でも実害ほぼなし)。
+    try:
+        from backend.utils.cf_ban_policy import load_tor_exit_list_from_file
+        n = load_tor_exit_list_from_file()
+        if n > 0:
+            logger.info("[startup] Tor exit list loaded: %d IPs", n)
+    except Exception as exc:
+        logger.debug("Tor exit list load skipped: %s", exc)
+
     # R46: attack_pattern aggregator の前回 snapshot を復元 + 定期 flush 開始
     try:
         from backend.utils import attack_pattern as _ap
