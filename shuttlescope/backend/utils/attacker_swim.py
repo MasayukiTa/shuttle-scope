@@ -65,6 +65,14 @@ def note_hit(ip: Optional[str], *, kind: str, detail: str) -> int:
         "[swim] hit ip=%s kind=%s detail=%s total=%d",
         ip, kind, detail[:80], total,
     )
+    # R46: 統計集計レイヤにも転送 (in-memory aggregator、別 module で
+    # Markov / first-hit / depth カウンタを更新する)。失敗しても note_hit
+    # 自体の挙動には影響させない (fail-open)。
+    try:
+        from backend.utils.attack_pattern import record_hit as _rec
+        _rec(ip, detail, kind)
+    except Exception:
+        pass
     return total
 
 

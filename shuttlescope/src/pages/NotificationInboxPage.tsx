@@ -251,7 +251,19 @@ export function NotificationInboxPage() {
                       className={`flex-1 text-left px-4 md:px-5 py-3 md:py-4 ${rowHover}`}
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <div className={`text-sm font-semibold ${textMain} truncate`}>{item.name}</div>
+                        <div className={`text-sm font-semibold ${textMain} truncate flex items-center gap-2`}>
+                          {item.category === 'ban_appeal' && (
+                            // R42: WAF 誤 ban 申し立てチャネルからの投稿。
+                            // 通常 inquiry より優先度高として目立つ赤バッジを付与。
+                            <span
+                              className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-600 text-white shrink-0"
+                              title="Cloudflare 自動 ban の誤検知申し立て"
+                            >
+                              BAN APPEAL
+                            </span>
+                          )}
+                          <span className="truncate">{item.name}</span>
+                        </div>
                         <span
                           className={`text-[11px] shrink-0 px-2 py-0.5 rounded-full ${
                             item.status === 'new'

@@ -247,6 +247,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("bootstrap_database エラー: %s — 起動を続行します", exc)
 
+    # R46: attack_pattern aggregator の前回 snapshot を復元 + 定期 flush 開始
+    try:
+        from backend.utils import attack_pattern as _ap
+        _ap_path = (os.environ.get("SS_ATTACK_PATTERN_FILE") or "").strip()
+        if not _ap_path:
+            from pathlib import Path as _P
+            _ap_path = str(_P(__file__).resolve().parent / "data" / "attack_pattern.json")
+        _ap.load_from_file(_ap_path)
+        _ap.start_periodic_flush(_ap_path, interval_sec=300)
+        logger.info("[attack_pattern] aggregator started: file=%s", _ap_path)
+    except Exception as exc:
+        logger.debug("attack_pattern startup skipped: %s", exc)
+
     # 期限切れ AnalysisCache 行をクリーンアップ（起動時のみ）
     try:
         from backend.db.database import SessionLocal
