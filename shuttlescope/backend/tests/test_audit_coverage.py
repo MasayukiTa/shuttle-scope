@@ -179,6 +179,8 @@ def test_no_orphan_event_names():
         "billing_webhook_amount_mismatch",
         "billing_webhook_currency_mismatch",
         "team_deleted",
+        # R41: canary endpoint hit
+        "canary_hit",
     }
     idx = _all_routers_event_index()
     all_events = set()

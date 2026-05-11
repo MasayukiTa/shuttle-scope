@@ -624,7 +624,11 @@ class Comment(Base):
     rally_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("rallies.id"), nullable=True)
     stroke_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("strokes.id"), nullable=True)
     author_role: Mapped[str] = mapped_column(String(20), nullable=False, default="analyst")
-    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Round 258 R40-6: 自由記述 → DB ファイル / WAL / backup 漏洩経路で平文露出を防ぐ
+    # ため EncryptedText で透過暗号化する。鍵 (`SS_FIELD_ENCRYPTION_KEY`) は backend
+    # process の env にのみ存在し、DB host 単体侵害 / backup file 漏洩のシナリオで PII
+    # が読めなくなる。既存平文 row は decrypt_field の "v1:" prefix check で互換維持。
+    text: Mapped[str] = mapped_column(_EncryptedText, nullable=False)
     is_flagged: Mapped[bool] = mapped_column(Boolean, default=False)  # 重要フラグ
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # Phase B-7: 書き込みチーム
@@ -653,7 +657,8 @@ class EventBookmark(Base):
     # manual / coach_request / auto_stat / clip_request
     bookmark_type: Mapped[str] = mapped_column(String(30), default="manual")
     video_timestamp_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Round 258 R40-6: EncryptedText (Condition / Comment と同設計)
+    note: Mapped[Optional[str]] = mapped_column(_EncryptedText, nullable=True)
     is_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # Phase B-7: 書き込みチーム
