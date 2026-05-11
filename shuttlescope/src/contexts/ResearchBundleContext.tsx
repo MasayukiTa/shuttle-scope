@@ -26,18 +26,27 @@ export function ResearchBundleProvider({ value, children }: ProviderProps) {
  * 指定カードのスライスを返す。
  *
  * 戻り値の意味:
- * - `provided=false`: bundle 提供なし（Provider 外 / bundle 取得失敗 / slice が null）
- *   → カードは個別 fetch にフォールバックすべき
- * - `provided=true, loading=true`: bundle 取得中
+ * - `provided=false`: bundle 提供なし、または bundle ロード中
+ *   → カードは個別 fetch を即座に発火する (= UX ブロック回避)
  * - `provided=true, slice=値`: bundle 取得済み、このデータを使用可
+ *   (bundled が返ってきたら個別 fetch 結果より優先される)
+ *
+ * R47 fix:
+ *   旧実装は bundle ロード中に `provided=true, loading=true` を返し、
+ *   各カードの個別 fetch を `enabled: !provided && !bundleLoading` で
+ *   ブロックしていた。bundle endpoint は 10 個の重い ML を逐次実行する
+ *   ため 10-30s かかり、その間全カードが「読み込み中」のまま固まる。
+ *   別タブに移動して戻ると bundle が裏で完了済 → 一気に表示される
+ *   という最悪 UX になっていた。
+ *   修正: bundle ロード中は provided=false を返し、個別 fetch を並列発火
+ *   させる。bundle 完了時に slice があれば優先 (`bundled ?? indiv.data`)。
  */
 export function useResearchBundleSlice<T = unknown>(
   key: ResearchBundleKey,
 ): { slice: T | null; loading: boolean; provided: boolean } {
   const ctx = useContext(Ctx)
   if (!ctx) return { slice: null, loading: false, provided: false }
-  if (ctx.isLoading) return { slice: null, loading: true, provided: true }
-  // bundle 取得失敗（undefined）→ provided=false で個別 fetch へ
+  // bundle ロード中 / 失敗時はどちらも個別 fetch にフォールバックさせる
   if (!ctx.data) return { slice: null, loading: false, provided: false }
   const raw = ctx.data.data?.[key] ?? null
   const slice = raw as T | null
