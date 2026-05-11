@@ -5,6 +5,9 @@ import './styles/globals.css'
 // Material Symbols (Outlined) ローカルフォント。CSP / 外部 CDN 不要。
 // 新規 UI のアイコンは @/components/common/MIcon 経由で利用する。
 import 'material-symbols/outlined.css'
+// R43 honeypot bundle: 死コードとして bundle に残し、reverse engineer 検知に使う。
+// この import は副作用 (console.debug 1 行) しか起こさない。
+import './utils/legacyCompat'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
