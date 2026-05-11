@@ -461,6 +461,31 @@ svg[width][height] {
   height: auto;
 }
 
+/* (10) Pill / badge 系の span はモバイルで縦書き化しやすいので nowrap 強制。
+ *      ユーザ管理タブの「選手」「アナリスト」が縦に積まれる症状を潰す。
+ *      role badge / status badge / "✓ ok" 系の小 pill 全般に効く。 */
+@media (max-width: 767px) {
+  span.rounded-full,
+  span.rounded.text-xs,
+  span[class*="rounded-full"],
+  td > span,
+  th > span {
+    white-space: nowrap;
+  }
+}
+
+/* (11) flex 横並びコンテナの "片方が固定 + もう片方が長文" 配置で
+ *      長文側を縮める。dashboard の "サーブ勝率 + ConfidenceBadge" が
+ *      縦書きになる症状を潰す。flex justify-between の子に min-width: 0
+ *      を強制。 */
+@media (max-width: 767px) {
+  .flex.justify-between > *,
+  .flex.justify-around > *,
+  .flex.justify-evenly > * {
+    min-width: 0;
+  }
+}
+
 /* ─── 3. ページ基底 ─────────────────────────────────────────────── */
 body {
   background-color: hsl(var(--background));
