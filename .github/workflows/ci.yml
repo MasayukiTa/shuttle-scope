@@ -82,8 +82,13 @@ jobs:
         # `@pytest.mark.serial` で同期化する。
         # 2026-05-11 R37: pytest-timeout で 1 test = 60s 上限。WS テスト hang による
         # CI 全体 60 分 timeout を防ぐ二重防御。
+        # 2026-05-11 R37.2: Linux は signal (SIGALRM) 法に変更。`thread` 法は xdist 配下
+        # の subprocess worker では `os._exit` 経由で worker 自体を kill する形だが、
+        # coordinator がそれを正しく回収できず CI 全体が hang する事象が観測された
+        # (R37.1 で test_turnstile.py 起点で 18min hang)。POSIX なら SIGALRM 一発で
+        # 該当 test だけ TimeoutError を投げて続行できる。
         if: runner.os != 'Windows'
-        run: python -m pytest -n auto --dist loadfile -v --timeout=60 --timeout-method=thread
+        run: python -m pytest -n auto --dist loadfile -v --timeout=60 --timeout-method=signal
 
       - name: Backend tests (Windows — serial)
         # 2026-05-10: Windows + xdist 3.8.0 + Python 3.10 で worker IPC が不安定
