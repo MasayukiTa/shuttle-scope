@@ -424,6 +424,9 @@ export interface PublicInquiryRow {
   status: 'new' | 'reviewed' | 'resolved'
   admin_note: string | null
   created_at: string
+  /** R42: 問い合わせ種別。"general" / "ban_appeal" 等。
+   *  ban_appeal は WAF 誤 ban 申し立てチャネルからの投稿で UI で目立つ表示にする。 */
+  category?: string
 }
 
 export function publicInquiryUnreadCount(): Promise<{ success: boolean; data: { count: number } }> {
