@@ -33,7 +33,13 @@ config = context.config
 # Python コードで明示設定された URL のみ settings より優先する。
 _ini_default = "sqlite:///./backend/db/shuttlescope.db"
 _config_url = config.get_main_option("sqlalchemy.url") or ""
-if _config_url and _config_url != _ini_default:
+# R47 (R40-2 完了): pg_role_lockdown.sql 適用後、ss_user は DDL を実行できない。
+# 環境変数 SS_DB_MIGRATION_URL があれば migration 実行時のみそちらを使う
+# (= ss_migration ロール経由)。未設定ならフォールバックで通常の DATABASE_URL。
+_migration_url = (os.environ.get("SS_DB_MIGRATION_URL") or "").strip()
+if _migration_url:
+    configured_url = _migration_url
+elif _config_url and _config_url != _ini_default:
     configured_url = _config_url  # 明示的に set_main_option で上書きされた値を使う
 else:
     configured_url = settings.DATABASE_URL or _config_url
