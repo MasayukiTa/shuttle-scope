@@ -276,23 +276,22 @@ async def _canary_response(request: Request, path: str) -> JSONResponse:
         pass
 
     # ─── R45: 「永遠に泳がせる」 + escalation 閾値で TTL 付き ban ─────
-    # 既定では ban せず maze で泳がせる。ただし escalation_policy で
-    # 閾値超え (canary 30 hits / 300 hits 等) を検知したら TTL 付きで
-    # block する。VPN/Tor/CGNAT は cf_ban_policy が managed_challenge に
-    # 丸めるので誤 ban 事故は構造上発生しない。
-    # kill-switch: SS_DISABLE_AUTO_CF_BAN=1 で完全 OFF。
+    # R47: 自己テスト用 allowlist (IP / header) があれば ban 経路を skip。
+    # 記録 (note_hit) は通常どおり行う。
     try:
         from backend.utils.attacker_swim import note_hit
         from backend.utils.escalation_policy import record_hit_and_decide
+        from backend.utils.ban_allowlist import is_ban_allowlisted
         note_hit(ip, kind="canary", detail=path)
         if (os.environ.get("SS_DISABLE_AUTO_CF_BAN") or "").strip() != "1":
-            decision = record_hit_and_decide(ip, "canary")
-            if decision is not None:
-                _trigger_cf_auto_ban(
-                    ip, f"canary_hit:{path}",
-                    confidence=decision["confidence"],
-                    ttl_sec=decision["ttl_sec"],
-                )
+            if not is_ban_allowlisted(ip, dict(request.headers)):
+                decision = record_hit_and_decide(ip, "canary")
+                if decision is not None:
+                    _trigger_cf_auto_ban(
+                        ip, f"canary_hit:{path}",
+                        confidence=decision["confidence"],
+                        ttl_sec=decision["ttl_sec"],
+                    )
     except Exception:
         pass
 

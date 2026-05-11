@@ -93,18 +93,21 @@ async def _record_and_delay(request: Request, kind: str, detail: str,
     # R45 escalation: decoy_maze 500 hits → 60s, 3000 hits → 600s ban
     # 帯域消費が酷い場合だけ短時間 edge から弾く (maze 探索の自然な範疇では
     # 発火しない閾値)。kill-switch SS_DISABLE_AUTO_CF_BAN=1 で OFF。
+    # R47: 自己テスト用 allowlist (IP / header) があれば ban 経路を skip。
     import os as _os
     if (_os.environ.get("SS_DISABLE_AUTO_CF_BAN") or "").strip() != "1":
         try:
+            from backend.utils.ban_allowlist import is_ban_allowlisted
             from backend.utils.escalation_policy import record_hit_and_decide
-            decision = record_hit_and_decide(ip, "decoy_maze")
-            if decision is not None:
-                from backend.routers.canary import _trigger_cf_auto_ban
-                _trigger_cf_auto_ban(
-                    ip, f"decoy_maze_flood:{detail[:60]}",
-                    confidence=decision["confidence"],
-                    ttl_sec=decision["ttl_sec"],
-                )
+            if not is_ban_allowlisted(ip, dict(request.headers)):
+                decision = record_hit_and_decide(ip, "decoy_maze")
+                if decision is not None:
+                    from backend.routers.canary import _trigger_cf_auto_ban
+                    _trigger_cf_auto_ban(
+                        ip, f"decoy_maze_flood:{detail[:60]}",
+                        confidence=decision["confidence"],
+                        ttl_sec=decision["ttl_sec"],
+                    )
         except Exception:
             pass
     # cap 越えで即 return (攻撃者には「速く返ってきた」とだけ見える)
