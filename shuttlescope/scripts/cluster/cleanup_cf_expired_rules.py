@@ -27,7 +27,42 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
 from typing import Optional
+
+
+def _load_local_env() -> None:
+    """Auto-load `.env.development` or `.env` from the repo root if present.
+
+    Backend は FastAPI settings 経由で読み込むが、本 CLI スクリプトは独立
+    起動なので明示的に dotenv-style load する。
+    """
+    here = Path(__file__).resolve()
+    # repo/shuttlescope/scripts/cluster/this.py → repo/shuttlescope/
+    candidates = [
+        here.parent.parent.parent / ".env.development",
+        here.parent.parent.parent / ".env",
+    ]
+    for c in candidates:
+        if not c.is_file():
+            continue
+        try:
+            with open(c, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, _, v = line.partition("=")
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+            break  # 最初に見つかったものだけ
+        except Exception:
+            continue
+
+
+_load_local_env()
 
 
 _NOTES_EXPIRES_RE = re.compile(r"expires=(\d{10,12})")
