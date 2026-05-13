@@ -27,6 +27,7 @@ import { getVideoSrc } from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
 import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
+import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
 import { startBackgroundFlush, getStatus, retryAllManual } from '@/utils/mobileAnnotateQueue'
 
 type ScreenMode = 'play' | 'annotate'
@@ -357,20 +358,14 @@ export function MobileAnnotatePage() {
               onCancel={() => setScreen('play')}
             />
           ) : (
-            // Pass 3 placeholder (次 commit)
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3">
-              <div>Pass <span className="font-mono text-blue-400">{pass}</span> (実装中)</div>
-              <div className="text-xs text-gray-500">
-                pausedAt = {pausedAtSec.toFixed(2)}s
-              </div>
-              <button
-                type="button"
-                onClick={() => setScreen('play')}
-                className="px-3 py-1.5 bg-gray-700 rounded text-xs"
-              >
-                ← 動画に戻る
-              </button>
-            </div>
+            // Pass 3: ラリー選択 → ショット詳細
+            <Pass3RallyPicker
+              matchId={matchId ?? ''}
+              rallies={mergedRallies}
+              sets={allSets}
+              pausedAtSec={pausedAtSec}
+              onCancel={() => setScreen('play')}
+            />
           )}
         </div>
       </div>
@@ -479,6 +474,159 @@ function Pass2RallyPicker({
                 {r.pending && (
                   <span className="text-[10px] text-amber-400">pending</span>
                 )}
+              </button>
+            )
+          })
+        )}
+      </div>
+      <div className="px-3 py-2 border-t border-gray-800">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 rounded bg-gray-700 text-white text-xs"
+        >
+          ← 動画に戻る
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+/**
+ * Pass 3 のラリー picker。選択するとそのラリーの strokes を fetch して
+ * Pass3ShotDetail を起動。
+ */
+function Pass3RallyPicker({
+  matchId,
+  rallies,
+  sets,
+  pausedAtSec,
+  onCancel,
+}: {
+  matchId: string
+  rallies: RallyLite[]
+  sets: SetInfo[]
+  pausedAtSec: number
+  onCancel: () => void
+}) {
+  const [selected, setSelected] = useState<RallyLite | null>(null)
+  const [localStrokes, setLocalStrokes] = useState<Array<{
+    id?: number | null
+    rally_id: number
+    stroke_num: number
+    player: 'player_a' | 'player_b'
+    shot_type: string
+    hit_zone?: string | null
+    land_zone?: string | null
+    pending?: boolean
+  }>>([])
+
+  // 選択ラリーの stroke を fetch
+  const strokesQuery = useQuery({
+    queryKey: ['mobile-annot-strokes', selected?.id],
+    queryFn: () => apiGet<{ data: any[] }>(`/strokes?rally_id=${selected!.id}`),
+    enabled: !!selected?.id,
+  })
+
+  const sortedRallies = useMemo(() => {
+    return [...rallies].sort((a, b) => {
+      const da = Math.abs((a.video_timestamp_end ?? 0) - pausedAtSec)
+      const db = Math.abs((b.video_timestamp_end ?? 0) - pausedAtSec)
+      return da - db
+    })
+  }, [rallies, pausedAtSec])
+
+  if (selected) {
+    if (!selected.id) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 p-4">
+          <div className="text-center">
+            このラリーはまだサーバ保存中です。送信完了後に Pass 3 入力を行えます。
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelected(null)}
+            className="px-3 py-1.5 bg-gray-700 rounded text-xs"
+          >
+            ← 一覧に戻る
+          </button>
+        </div>
+      )
+    }
+    const setInfo = sets.find((s) => s.id === selected.set_id)
+    const serverStrokes = (strokesQuery.data?.data ?? []).map((s: any) => ({
+      id: s.id,
+      rally_id: s.rally_id,
+      stroke_num: s.stroke_num,
+      player: s.player,
+      shot_type: s.shot_type,
+      hit_zone: s.hit_zone,
+      land_zone: s.land_zone,
+      pending: false,
+    }))
+    const local = localStrokes.filter((s) => s.rally_id === selected.id)
+    const all = [...serverStrokes, ...local]
+    return (
+      <Pass3ShotDetail
+        rally={{
+          id: selected.id,
+          rally_num: selected.rally_num,
+          set_num: setInfo?.set_num ?? 1,
+          server: selected.server,
+          winner: selected.winner,
+        }}
+        strokes={all}
+        onStrokeAdded={(s) => {
+          setLocalStrokes((prev) => [...prev, { ...s, rally_id: selected.id! }])
+        }}
+        onStrokeUpdated={(s) => {
+          setLocalStrokes((prev) =>
+            prev.map((x) =>
+              x.rally_id === selected.id! && x.stroke_num === s.stroke_num
+                ? { ...x, shot_type: s.shot_type }
+                : x,
+            ),
+          )
+        }}
+        onClose={() => {
+          setSelected(null)
+          setLocalStrokes([])
+        }}
+      />
+    )
+  }
+
+  return (
+    <div className="flex-1 flex flex-col bg-black/90">
+      <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200">
+        Pass 3 入力するラリーを選択
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {sortedRallies.length === 0 ? (
+          <div className="text-gray-500 text-center text-sm py-8">
+            Pass 1 でラリーを記録してから戻ってきてください
+          </div>
+        ) : (
+          sortedRallies.map((r) => {
+            const setInfo = sets.find((s) => s.id === r.set_id)
+            return (
+              <button
+                key={`${r.set_id}-${r.rally_num}`}
+                type="button"
+                onClick={() => setSelected(r)}
+                className="w-full text-left px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 flex items-center gap-3"
+              >
+                <span className="font-mono text-[11px] text-gray-400">
+                  S{setInfo?.set_num ?? '?'}-R{r.rally_num}
+                </span>
+                <span className={r.winner === 'player_a' ? 'text-blue-400 text-xs' : 'text-pink-400 text-xs'}>
+                  {r.winner === 'player_a' ? 'A 得点' : 'B 得点'}
+                </span>
+                <div className="flex-1" />
+                <span className="font-mono text-[10px] text-gray-500">
+                  @{(r.video_timestamp_end ?? 0).toFixed(1)}s
+                </span>
               </button>
             )
           })
