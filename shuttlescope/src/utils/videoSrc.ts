@@ -39,12 +39,15 @@ export function getVideoSrc(match?: {
 
 
 /**
- * モバイルアノテ専用: video_token があれば即 stream URL を返す。
+ * モバイルアノテ専用: video_token + match.id があれば即 stream URL を返す。
  *
- * desktop の getVideoSrc は has_video_local を必須にしているため、
- * token 発行済だが flag が False の状況 (アップロード履歴同期遅延 / 旧データ)
- * で動画が出ない症状が発生する。モバイル UI は token があれば試行して、
- * 404 等は <video onError> で可視化する設計。
+ * `/api/videos/{token}/stream` は Bearer JWT を要求するため <video> タグから
+ * 直接読めない。代わりに `/api/v1/uploads/video/by_match/{id}/stream?token=...`
+ * を使う。これは `<video>` タグ用に query token 認証経路を持っていて、
+ * Range header にも対応している。
+ *
+ * has_video_local が False でも token があれば試行する (= サーバに動画ファイル
+ * があれば再生、無ければ <video onError> で 404 を可視化)。
  */
 export function getMobileVideoSrc(match?: {
   id?: number
@@ -53,12 +56,8 @@ export function getMobileVideoSrc(match?: {
   has_video_local?: boolean | null
 } | null): string {
   if (!match) return ''
-  if (match.has_video_local && match.id && match.video_token) {
+  if (match.id && match.video_token) {
     return `/api/v1/uploads/video/by_match/${match.id}/stream?token=${encodeURIComponent(match.video_token)}`
-  }
-  if (match.video_token) {
-    // token のみで解決する旧経路 (videos.py /videos/{token}/stream)
-    return `/api/videos/${encodeURIComponent(match.video_token)}/stream`
   }
   if (match.video_url) return match.video_url
   return ''
