@@ -20,7 +20,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Play, Crosshair, Layers } from 'lucide-react'
+import { ArrowLeft, Play, Crosshair, Layers, CloudOff, AlertTriangle } from 'lucide-react'
+import { startBackgroundFlush, getStatus, retryAllManual } from '@/utils/mobileAnnotateQueue'
 
 export type AnnotatePass = 'rally' | 'serve_final' | 'detail'
 
@@ -77,6 +78,10 @@ export function MobileAnnotatePage() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
   const [pass, setPass] = useState<AnnotatePass>('rally')
+  const [queueStatus, setQueueStatus] = useState<{
+    pending: number
+    manualRetry: number
+  }>({ pending: 0, manualRetry: 0 })
 
   // body スクロール抑止: 全画面で固定
   useEffect(() => {
@@ -84,6 +89,22 @@ export function MobileAnnotatePage() {
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = orig
+    }
+  }, [])
+
+  // 送信キューを起動 + ステータスを 2 秒ごとにポーリング (UI 表示用)
+  useEffect(() => {
+    startBackgroundFlush()
+    let cancelled = false
+    const tick = async () => {
+      const s = await getStatus()
+      if (!cancelled) setQueueStatus({ pending: s.pending, manualRetry: s.manualRetry })
+    }
+    void tick()
+    const id = window.setInterval(tick, 2000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
     }
   }, [])
 
@@ -103,6 +124,27 @@ export function MobileAnnotatePage() {
           <span className="font-mono text-[11px] text-gray-400">
             match #{matchId ?? '?'}
           </span>
+          {/* 未送信キュー状況 */}
+          {queueStatus.pending > 0 && (
+            <span
+              className="flex items-center gap-1 text-[10px] text-amber-300"
+              title={`未送信 ${queueStatus.pending} 件 (バックグラウンド再送中)`}
+            >
+              <CloudOff size={12} />
+              {queueStatus.pending}
+            </span>
+          )}
+          {queueStatus.manualRetry > 0 && (
+            <button
+              type="button"
+              onClick={() => void retryAllManual()}
+              className="flex items-center gap-1 text-[10px] text-red-300 hover:text-red-200 px-1 py-0.5 rounded border border-red-500"
+              title={`送信失敗 ${queueStatus.manualRetry} 件 — タップで再送`}
+            >
+              <AlertTriangle size={12} />
+              {queueStatus.manualRetry}
+            </button>
+          )}
           <div className="flex-1" />
           {/* Pass 切替チップ */}
           <div className="flex gap-1">
