@@ -17,11 +17,17 @@
  * 現状 (commit 1): scaffold + landscape guard + Pass 切替 UI 雛形のみ。
  * 次 commit で動画再生 + crop region。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Play, Crosshair, Layers, CloudOff, AlertTriangle } from 'lucide-react'
+import { apiGet } from '@/api/client'
+import { getVideoSrc } from '@/utils/videoSrc'
+import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
 import { startBackgroundFlush, getStatus, retryAllManual } from '@/utils/mobileAnnotateQueue'
+
+type ScreenMode = 'play' | 'annotate'
 
 export type AnnotatePass = 'rally' | 'serve_final' | 'detail'
 
@@ -78,10 +84,22 @@ export function MobileAnnotatePage() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
   const [pass, setPass] = useState<AnnotatePass>('rally')
+  const [screen, setScreen] = useState<ScreenMode>('play')
+  const [pausedAtSec, setPausedAtSec] = useState<number>(0)
+  const videoElRef = useRef<HTMLVideoElement | null>(null)
   const [queueStatus, setQueueStatus] = useState<{
     pending: number
     manualRetry: number
   }>({ pending: 0, manualRetry: 0 })
+
+  // match 情報を取得 (動画 URL を得るため)
+  const matchQuery = useQuery({
+    queryKey: ['match', matchId],
+    queryFn: () => apiGet<{ data: any }>(`/matches/${matchId}`),
+    enabled: !!matchId,
+  })
+  const match = matchQuery.data?.data
+  const videoSrc = getVideoSrc(match)
 
   // body スクロール抑止: 全画面で固定
   useEffect(() => {
@@ -166,14 +184,45 @@ export function MobileAnnotatePage() {
           </div>
         </div>
 
-        {/* 本体: 後続 commit で動画 + 入力 overlay を入れる */}
-        <div className="flex-1 flex items-center justify-center bg-gray-950">
-          <div className="text-center text-gray-500 text-sm">
-            {/* TODO commit 2: 動画再生 + クロップ + 下部コントロール */}
-            scaffold ready — pass = <span className="font-mono text-blue-400">{pass}</span>
-            <br />
-            次の commit で動画再生 / クロップ / 入力 overlay を実装します。
-          </div>
+        {/* 本体 */}
+        <div className="flex-1 flex flex-col min-h-0 bg-gray-950 relative">
+          {matchQuery.isLoading ? (
+            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+              読み込み中...
+            </div>
+          ) : matchQuery.error ? (
+            <div className="flex-1 flex items-center justify-center text-red-400 text-sm">
+              試合情報の取得に失敗しました
+            </div>
+          ) : screen === 'play' ? (
+            <PlayMode
+              matchId={matchId ?? ''}
+              videoSrc={videoSrc}
+              onTapVideo={(t) => {
+                setPausedAtSec(t)
+                setScreen('annotate')
+              }}
+              videoElRef={(el) => { videoElRef.current = el }}
+            />
+          ) : (
+            // Annotate mode: 後続 commit でコート overlay + 入力 UI を実装
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3">
+              <div>Annotate mode (pass = <span className="font-mono text-blue-400">{pass}</span>)</div>
+              <div className="text-xs text-gray-500">
+                pausedAt = {pausedAtSec.toFixed(2)}s
+              </div>
+              <button
+                type="button"
+                onClick={() => setScreen('play')}
+                className="px-3 py-1.5 bg-gray-700 rounded text-xs"
+              >
+                ← 動画に戻る
+              </button>
+              <div className="text-[10px] text-gray-600">
+                次 commit でコート overlay + 9 zone snap + 入力 step machine を実装
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </LandscapeGuard>
