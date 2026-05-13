@@ -97,6 +97,9 @@ export function Pass1RallyEnd({
       const newA = scoreA + (winner === 'player_a' ? 1 : 0)
       const newB = scoreB + (winner === 'player_b' ? 1 : 0)
       const rallyNum = (lastRally?.rally_num ?? 0) + 1
+      // backend RallyCreate schema (`extra='forbid'`) に合わせる:
+      // score_a_before/b_before, annotation_mode は schema 非対応のため body に含めない
+      // (DB model 側で default=0 / NULL に倒れる)。
       const body = {
         set_id: currentSet.id,
         rally_num: rallyNum,
@@ -104,14 +107,11 @@ export function Pass1RallyEnd({
         winner,
         end_type: 'unknown',         // Pass 2/3 で更新
         rally_length: 0,             // Pass 3 で stroke 追加につれ更新
-        score_a_before: scoreA,
-        score_b_before: scoreB,
         score_a_after: newA,
         score_b_after: newB,
         video_timestamp_end: pausedAtSec,
         video_timestamp_start: lastRally?.video_timestamp_end ?? null,
         is_deuce: newA >= 20 && newB >= 20,
-        annotation_mode: 'mobile_pass1',
       }
       const { clientUuid } = await enqueue('POST /api/rallies', body)
       const local: RallyLite = {

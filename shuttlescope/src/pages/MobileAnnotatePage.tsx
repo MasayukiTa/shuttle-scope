@@ -330,7 +330,28 @@ export function MobileAnnotatePage() {
                     setScreen('play')
                   }}
                   onCancel={() => setScreen('play')}
-                  onUndoLast={undefined /* TODO commit 6: enqueue DELETE */}
+                  onUndoLast={async () => {
+                    // 直前ラリーの Undo: server id があれば DELETE queue、
+                    // 無ければ local state からのみ削除。
+                    if (!currentSet) return
+                    const setRallies = mergedRallies.filter((r) => r.set_id === currentSet.id)
+                    const last = setRallies[setRallies.length - 1]
+                    if (!last) return
+                    if (last.id) {
+                      const { enqueue } = await import('@/utils/mobileAnnotateQueue')
+                      await enqueue('DELETE /api/rallies/:id', undefined, { id: last.id })
+                      // optimistic: 一覧から消し、server fetch も refresh
+                      setLocalRallies((prev) => prev.filter(
+                        (r) => !(r.set_id === last.set_id && r.rally_num === last.rally_num),
+                      ))
+                      ralliesQuery.refetch()
+                    } else {
+                      // local pending のみ → state から除外で完了
+                      setLocalRallies((prev) =>
+                        prev.filter((r) => r.client_uuid !== last.client_uuid),
+                      )
+                    }
+                  }}
                   onSetEnded={() => {
                     // 次セットへ: 既存なら index 進める、なければ作成
                     if (currentSetIdx + 1 < allSets.length) {

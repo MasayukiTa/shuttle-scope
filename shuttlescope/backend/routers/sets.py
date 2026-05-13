@@ -15,11 +15,11 @@ router = APIRouter()
 
 
 def _set_require_match_scope(request: Request, db: Session, match: Match) -> None:
-    """match に対する player 書込み拒否 + analyst/coach の team scope 検証"""
-    from backend.utils.auth import require_match_scope, get_auth
-    ctx = get_auth(request)
-    if ctx.is_player:
-        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    """match に対する team scope 検証。
+    R48: player は自分の出場試合に限り book / create / end 可 (mobile annotation 用)。
+    `require_match_scope` が user_can_access_match で player→match 判定する。
+    """
+    from backend.utils.auth import require_match_scope
     require_match_scope(request, match, db)
 
 

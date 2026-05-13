@@ -79,12 +79,12 @@ def rally_to_dict(r: Rally) -> dict:
 
 @router.post("/rallies", status_code=201)
 def create_rally(body: RallyCreate, request: Request, db: Session = Depends(get_db)):
-    """ラリー作成"""
-    # player 書込み拒否 + analyst/coach の team scope 検証
-    from backend.utils.auth import get_auth
-    ctx = get_auth(request)
-    if ctx.is_player:
-        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    """ラリー作成。
+    R48: player ロール (= 選手) が自分が出場する試合に対して mobile annotation
+    から書き込めるよう、明示拒否を削除。require_match_scope が
+    user_can_access_match (player は match.player_a/b_id == ctx.player_id のみ可)
+    で正しく弾く。他選手の試合に書き込もうとした player は依然 403。
+    """
     _rally_require_scope(request, db, body.set_id)
     rally = Rally(**body.model_dump())
     touch(rally)
@@ -98,11 +98,7 @@ def create_rally(body: RallyCreate, request: Request, db: Session = Depends(get_
 
 @router.put("/rallies/{rally_id}")
 def update_rally(rally_id: int, body: RallyUpdate, request: Request, db: Session = Depends(get_db)):
-    """ラリー更新"""
-    from backend.utils.auth import get_auth
-    ctx = get_auth(request)
-    if ctx.is_player:
-        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    """ラリー更新。R48: player は自分の試合に限り更新可 (scope 経由判定)。"""
     rally = db.get(Rally, rally_id)
     if not rally:
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")
@@ -119,11 +115,7 @@ def update_rally(rally_id: int, body: RallyUpdate, request: Request, db: Session
 
 @router.delete("/rallies/{rally_id}")
 def delete_rally(rally_id: int, request: Request, db: Session = Depends(get_db)):
-    """ラリー削除（アンドゥ用）"""
-    from backend.utils.auth import get_auth
-    ctx = get_auth(request)
-    if ctx.is_player:
-        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    """ラリー削除（アンドゥ用）。R48: player は自分の試合に限り delete 可。"""
     rally = db.get(Rally, rally_id)
     if not rally:
         raise HTTPException(status_code=404, detail="ラリーが見つかりません")

@@ -86,7 +86,11 @@ export function Pass3ShotDetail({
   // shot_type 更新中の stroke (= 既存 chip タップ)
   const [editingStrokeNum, setEditingStrokeNum] = useState<number | null>(null)
 
-  const nextStrokeNum = (sorted[sorted.length - 1]?.stroke_num ?? 0) + 1
+  // Pass 2 が "final" を sentinel 9999 で挿入するので、その手前に詰める。
+  // sentinel 以外の中で最大 stroke_num + 1 を採用。
+  const intermediates = sorted.filter((s) => s.stroke_num < 9000)
+  const finalSentinel = sorted.find((s) => s.stroke_num >= 9000) || null
+  const nextStrokeNum = (intermediates[intermediates.length - 1]?.stroke_num ?? 0) + 1
   // 前 stroke の player の逆
   const nextPlayer: 'player_a' | 'player_b' = (() => {
     const prev = sorted[sorted.length - 1]
@@ -96,14 +100,13 @@ export function Pass3ShotDetail({
 
   const commitShot = async (shotKey: ShotKey | 'other', hit: ZoneCode, land: ZoneCode) => {
     const body = {
-      rally_id: rally.id,
       stroke_num: nextStrokeNum,
       player: nextPlayer,
       shot_type: shotKey,
       hit_zone: hit,
       land_zone: land,
     }
-    await enqueue('POST /api/strokes', body)
+    await enqueue('POST /api/strokes?rally_id=:rally_id', body, { rally_id: rally.id })
     onStrokeAdded({
       id: null,
       stroke_num: nextStrokeNum,
@@ -113,6 +116,9 @@ export function Pass3ShotDetail({
       land_zone: land,
       pending: true,
     })
+    // rally.rally_length を「中間ストローク + 最終打 (sentinel が居れば +1)」に更新
+    const newLength = nextStrokeNum + (finalSentinel ? 1 : 0)
+    await enqueue('PUT /api/rallies/:id', { rally_length: newLength }, { id: rally.id })
     setAdd({ phase: 'idle' })
   }
 
@@ -122,7 +128,14 @@ export function Pass3ShotDetail({
       setEditingStrokeNum(null)
       return
     }
-    await enqueue('PATCH /api/strokes/:id', { shot_type: shotKey }, { id: s.id })
+    // PUT /api/strokes/:id は StrokeData full body を要求するため、現値で再送信
+    await enqueue('PUT /api/strokes/:id', {
+      stroke_num: s.stroke_num,
+      player: s.player,
+      shot_type: shotKey,
+      hit_zone: s.hit_zone,
+      land_zone: s.land_zone,
+    }, { id: s.id })
     onStrokeUpdated({ ...s, shot_type: shotKey })
     setEditingStrokeNum(null)
   }
