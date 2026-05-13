@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { HashRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart, ClipboardCheck, Users, LogOut, Bell } from 'lucide-react'
@@ -273,6 +273,28 @@ function PageAccessRoute({ pageKey, children }: { pageKey: string; children: Rea
   return <>{children}</>
 }
 
+/**
+ * `/annotator/:matchId` を viewport 幅で振り分けるラッパ。
+ * 768px 未満 (= ほぼスマホ) なら MobileAnnotatePage を内部 redirect で開く。
+ * ブラウザ width を監視するので、横向き iPad などで分岐が変わっても追従する。
+ */
+function AnnotatorOrMobileAnnotate() {
+  const { matchId } = useParams<{ matchId: string }>()
+  const [isSmall, setIsSmall] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false,
+  )
+  useEffect(() => {
+    const onResize = () => setIsSmall(window.innerWidth < 768)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  if (isSmall && matchId) {
+    return <Navigate to={`/m/annotate/${matchId}`} replace />
+  }
+  return <AnnotatorPage />
+}
+
+
 function MainLayout() {
   const { t } = useTranslation()
 
@@ -284,8 +306,11 @@ function MainLayout() {
           <Routes>
             <Route path="/" element={<Navigate to="/matches" replace />} />
             <Route path="/matches" element={<MatchListPage />} />
-            <Route path="/annotator/:matchId" element={<AnnotatorPage />} />
-            {/* R48: スマホ専用アノテーション (横向き、Pass 切替、即サーバ保存) */}
+            {/* R48: スマホからのアクセス時は MobileAnnotatePage に redirect。
+                 既存の `navigate('/annotator/N')` 呼び出しを直接書き換えずに切替。
+                 判定は viewport 幅 (< 768px) のみで、ロールは見ない (analyst/coach
+                 が誤ってスマホで開いた場合も mobile UI が出る方が UX 良い)。 */}
+            <Route path="/annotator/:matchId" element={<AnnotatorOrMobileAnnotate />} />
             <Route path="/m/annotate/:matchId" element={<MobileAnnotatePage />} />
             {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
             <Route path="/live/:matchId" element={<LiveInputPage />} />

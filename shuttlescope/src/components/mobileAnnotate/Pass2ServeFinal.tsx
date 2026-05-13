@@ -66,24 +66,24 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
     // 4 step 全部揃った → 2 stroke を enqueue
     setSubmitting(true)
     try {
-      // Stroke 1: serve
-      await enqueue('POST /api/strokes', {
-        rally_id: rally.id,
+      // backend POST /api/strokes は rally_id を QUERY PARAM で受ける。
+      // body には StrokeData (extra='forbid') のフィールドのみ。
+      // 「最終打点」は 9999 番で確保し、Pass 3 で間に挿入された際に
+      // renumber する余地を持たせる。
+      await enqueue('POST /api/strokes?rally_id=:rally_id', {
         stroke_num: 1,
         player: rally.server,
         shot_type: 'serve',
         hit_zone: next.serve_hit,
         land_zone: next.serve_land,
-      })
-      // Stroke 2: final (placeholder shot_type — Pass 3 で更新)
-      await enqueue('POST /api/strokes', {
-        rally_id: rally.id,
-        stroke_num: 2,
+      }, { rally_id: rally.id })
+      await enqueue('POST /api/strokes?rally_id=:rally_id', {
+        stroke_num: 9999,            // sentinel: 最後尾
         player: rally.winner,
-        shot_type: '__final_pending',
+        shot_type: '__final_pending', // Pass 3 で更新
         hit_zone: next.final_hit,
         land_zone: next.final_land,
-      })
+      }, { rally_id: rally.id })
       onCompleted()
     } finally {
       setSubmitting(false)

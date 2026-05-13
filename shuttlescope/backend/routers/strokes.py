@@ -26,10 +26,9 @@ def _stroke_require_scope(request: Request, db: Session, rally_id: int) -> Match
     match = db.get(Match, gs.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    from backend.utils.auth import require_match_scope, get_auth
-    ctx = get_auth(request)
-    if ctx.is_player:
-        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    # R48: player ロールの明示拒否を撤去。require_match_scope が
+    # user_can_access_match (player は自分の試合だけ) で正しく弾く。
+    from backend.utils.auth import require_match_scope
     require_match_scope(request, match, db)
     return match
 
@@ -143,11 +142,8 @@ def stroke_to_dict(s: Stroke) -> dict:
 @router.post("/strokes/batch", status_code=201)
 def batch_save_rally(body: BatchSaveRequest, request: Request, db: Session = Depends(get_db)):
     """ラリー確定時の一括保存（個別保存より効率的）"""
-    # セット存在確認 + team scope
-    from backend.utils.auth import get_auth, require_match_scope
-    ctx = get_auth(request)
-    if ctx.is_player:
-        raise HTTPException(status_code=403, detail="この操作を行う権限がありません")
+    # セット存在確認 + team scope (R48: player は自分の試合のみ可、scope 経由判定)
+    from backend.utils.auth import require_match_scope
     game_set = db.get(GameSet, body.rally.set_id)
     if not game_set:
         raise HTTPException(status_code=404, detail="セットが見つかりません")
