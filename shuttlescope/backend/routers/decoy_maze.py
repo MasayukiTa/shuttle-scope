@@ -17,10 +17,29 @@
 from __future__ import annotations
 
 import asyncio
+import html as _html
 import logging
 import random
+import re as _re_decoy
 import time
 from typing import Optional
+
+
+# CodeQL py/reflective-xss 対策: URL path 由来の `rest` を HTML テンプレートに
+# 直挿しすると XSS リフレクション。decoy 用途であっても admin が phishing
+# 経由で踏むと自身のブラウザでスクリプトが実行されうるので、必ず sanitize する。
+_SAFE_PATH_RE = _re_decoy.compile(r"[^A-Za-z0-9._\-/]")
+
+
+def _safe_path_segment(s: str, max_len: int = 200) -> str:
+    """URL path 由来の文字列を HTML / URL に埋めるための sanitize。
+    `[A-Za-z0-9._\\-/]` 以外を `_` に置換し、長さも制限する。
+    """
+    if not isinstance(s, str):
+        s = str(s)
+    if len(s) > max_len:
+        s = s[:max_len]
+    return _SAFE_PATH_RE.sub("_", s)
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
@@ -475,7 +494,10 @@ _DEEP_RABBIT_HOLE_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><ti
 
 
 def _gen_rabbit_links(base: str) -> str:
-    """与えられた base path から、もっともらしいリンクをランダム生成する。"""
+    """与えられた base path から、もっともらしいリンクをランダム生成する。
+    base は URL path 由来 (user-controlled) なので _safe_path_segment + html.escape
+    を必ず通す。"""
+    safe_base = _safe_path_segment(base)
     leaves = [
         "config", "settings", "users", "tokens", "secrets", "backup",
         "export", "dump", "logs", "audit", "v1", "v2", "v3", "internal",
@@ -484,8 +506,9 @@ def _gen_rabbit_links(base: str) -> str:
     picked = random.sample(leaves, k=random.randint(4, 8))
     items = []
     for leaf in picked:
-        url = f"{base.rstrip('/')}/{leaf}"
-        items.append(f'<li><a href="{url}">{url}</a></li>')
+        url = f"{safe_base.rstrip('/')}/{leaf}"
+        esc = _html.escape(url, quote=True)
+        items.append(f'<li><a href="{esc}">{esc}</a></li>')
     return "\n".join(items)
 
 
@@ -510,11 +533,15 @@ async def maze_admin_catchall(request: Request, rest: str):
                 "the prize is just around the corner", "あと一歩",
             ])},
         })
+    # CodeQL py/reflective-xss: rest は URL path 由来 (user-controlled) なので、
+    # HTML テンプレートに渡す前に _safe_path_segment + html.escape を通す。
+    safe_rest = _safe_path_segment(rest)
+    title_raw = safe_rest.split('/')[-1] or 'index'
     return HTMLResponse(_DEEP_RABBIT_HOLE_HTML.format(
-        title=f"Admin :: {rest.split('/')[-1] or 'index'}",
+        title=_html.escape(f"Admin :: {title_raw}"),
         taunt=_taunt(),
-        path=f"/admin/{rest}",
-        links=_gen_rabbit_links(f"/admin/{rest}"),
+        path=_html.escape(f"/admin/{safe_rest}"),
+        links=_gen_rabbit_links(f"/admin/{safe_rest}"),
         ver=f"{random.randint(1,3)}.{random.randint(0,9)}.{random.randint(0,99)}",
         seed=random.randint(100000, 999999),
     ))
