@@ -17,17 +17,36 @@
  * 現状 (commit 1): scaffold + landscape guard + Pass 切替 UI 雛形のみ。
  * 次 commit で動画再生 + crop region。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Play, Crosshair, Layers, CloudOff, AlertTriangle } from 'lucide-react'
-import { apiGet } from '@/api/client'
+import { apiGet, apiPost } from '@/api/client'
 import { getVideoSrc } from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
+import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
 import { startBackgroundFlush, getStatus, retryAllManual } from '@/utils/mobileAnnotateQueue'
 
 type ScreenMode = 'play' | 'annotate'
+
+interface RallyLite {
+  id?: number | null
+  client_uuid: string
+  set_id: number
+  rally_num: number
+  server: 'player_a' | 'player_b'
+  winner: 'player_a' | 'player_b'
+  score_a_after: number
+  score_b_after: number
+  video_timestamp_end: number
+  pending?: boolean
+}
+
+interface SetInfo {
+  id: number
+  set_num: number
+}
 
 export type AnnotatePass = 'rally' | 'serve_final' | 'detail'
 
@@ -100,6 +119,69 @@ export function MobileAnnotatePage() {
   })
   const match = matchQuery.data?.data
   const videoSrc = getVideoSrc(match)
+
+  // セット一覧 + 既存ラリー取得 (Pass 1 用)
+  const setsQuery = useQuery({
+    queryKey: ['mobile-annot-sets', matchId],
+    queryFn: () => apiGet<{ data: any[] }>(`/sets?match_id=${matchId}`),
+    enabled: !!matchId,
+  })
+  const ralliesQuery = useQuery({
+    queryKey: ['mobile-annot-rallies', matchId],
+    queryFn: () => apiGet<{ data: any[] }>(`/rallies?match_id=${matchId}`),
+    enabled: !!matchId,
+  })
+
+  const [localRallies, setLocalRallies] = useState<RallyLite[]>([])
+  const [currentSetIdx, setCurrentSetIdx] = useState<number>(0)
+
+  const allSets: SetInfo[] = useMemo(() => {
+    const rows = setsQuery.data?.data ?? []
+    return rows.map((s: any) => ({ id: s.id, set_num: s.set_num }))
+      .sort((a: SetInfo, b: SetInfo) => a.set_num - b.set_num)
+  }, [setsQuery.data])
+
+  const serverRallies: RallyLite[] = useMemo(() => {
+    const rows = ralliesQuery.data?.data ?? []
+    return rows.map((r: any) => ({
+      id: r.id,
+      client_uuid: r.uuid ?? '',
+      set_id: r.set_id,
+      rally_num: r.rally_num,
+      server: r.server,
+      winner: r.winner,
+      score_a_after: r.score_a_after ?? 0,
+      score_b_after: r.score_b_after ?? 0,
+      video_timestamp_end: r.video_timestamp_end ?? 0,
+      pending: false,
+    }))
+  }, [ralliesQuery.data])
+
+  const mergedRallies = useMemo(() => {
+    // server + local の合算、rally_num で順序
+    const all = [...serverRallies, ...localRallies]
+    return all.sort((a, b) => {
+      if (a.set_id !== b.set_id) return a.set_id - b.set_id
+      return a.rally_num - b.rally_num
+    })
+  }, [serverRallies, localRallies])
+
+  const currentSet = allSets[currentSetIdx]
+
+  const ensureSet = async (): Promise<SetInfo | null> => {
+    if (currentSet) return currentSet
+    if (!matchId) return null
+    try {
+      const resp: any = await apiPost(`/sets`, {
+        match_id: Number(matchId), set_num: 1,
+      })
+      const newSet: SetInfo = { id: resp.data?.id ?? resp.id, set_num: 1 }
+      setsQuery.refetch()
+      return newSet
+    } catch {
+      return null
+    }
+  }
 
   // body スクロール抑止: 全画面で固定
   useEffect(() => {
@@ -204,10 +286,71 @@ export function MobileAnnotatePage() {
               }}
               videoElRef={(el) => { videoElRef.current = el }}
             />
+          ) : pass === 'rally' ? (
+            // Pass 1: 得点ラリー区切り
+            (() => {
+              if (!currentSet) {
+                // セットが未作成: 1 タップで作る誘導
+                return (
+                  <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3">
+                    <div className="text-sm">
+                      この試合にはまだセットが登録されていません
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const s = await ensureSet()
+                        if (s) setCurrentSetIdx(0)
+                      }}
+                      className="px-4 py-2 rounded bg-blue-600 text-white text-sm"
+                    >
+                      セット 1 を作成して開始
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScreen('play')}
+                      className="px-3 py-1.5 bg-gray-700 rounded text-xs"
+                    >
+                      ← 動画に戻る
+                    </button>
+                  </div>
+                )
+              }
+              return (
+                <Pass1RallyEnd
+                  matchId={matchId ?? ''}
+                  currentSet={currentSet}
+                  rallies={mergedRallies}
+                  pausedAtSec={pausedAtSec}
+                  onRallyAdded={(r) => {
+                    setLocalRallies((prev) => [...prev, r])
+                    // 入力後は動画に戻す → 次のラリーへ視聴を続ける流れ
+                    setScreen('play')
+                  }}
+                  onCancel={() => setScreen('play')}
+                  onUndoLast={undefined /* TODO commit 6: enqueue DELETE */}
+                  onSetEnded={() => {
+                    // 次セットへ: 既存なら index 進める、なければ作成
+                    if (currentSetIdx + 1 < allSets.length) {
+                      setCurrentSetIdx(currentSetIdx + 1)
+                    } else {
+                      apiPost(`/sets`, {
+                        match_id: Number(matchId),
+                        set_num: (currentSet.set_num + 1),
+                      }).then(() => {
+                        setsQuery.refetch().then(() => {
+                          setCurrentSetIdx(currentSetIdx + 1)
+                        })
+                      })
+                    }
+                  }}
+                />
+              )
+            })()
           ) : (
-            // Annotate mode: 後続 commit でコート overlay + 入力 UI を実装
+            // Pass 2 / Pass 3 placeholder (後続 commit)
             <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3">
-              <div>Annotate mode (pass = <span className="font-mono text-blue-400">{pass}</span>)</div>
+              <div>Pass <span className="font-mono text-blue-400">{pass}</span> (実装中)</div>
               <div className="text-xs text-gray-500">
                 pausedAt = {pausedAtSec.toFixed(2)}s
               </div>
@@ -218,9 +361,6 @@ export function MobileAnnotatePage() {
               >
                 ← 動画に戻る
               </button>
-              <div className="text-[10px] text-gray-600">
-                次 commit でコート overlay + 9 zone snap + 入力 step machine を実装
-              </div>
             </div>
           )}
         </div>

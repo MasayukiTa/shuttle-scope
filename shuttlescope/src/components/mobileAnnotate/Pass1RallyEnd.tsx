@@ -1,0 +1,220 @@
+/**
+ * Pass 1: ラリー区切り (得点が入った瞬間 = rally end timestamp)
+ * R48 step 5.
+ *
+ * 動作:
+ *   - 動画タップ → pause → このコンポーネント表示
+ *   - 「A 得点」「B 得点」の 2 つの大ボタンだけ
+ *   - タップで「直前のラリー終了 + 得点」として enqueue
+ *   - サーブ権 / score は前ラリーから自動算出
+ *
+ * 認知負荷を下げるため:
+ *   - 画面上に「現在の score」「セット番号」を常時表示
+ *   - 入力するのは「A か B か」だけ
+ *   - end_type / rally_length / ストローク詳細は Pass 2/3 で埋める
+ *   - set rollover (21 点 + 2 点差) はバナーで通知のみ、自動切替はしない
+ *     (誤判定を避けるため、Set 終了ボタンを明示タップで進める)
+ */
+import { useMemo, useState } from 'react'
+import { Undo2 } from 'lucide-react'
+import { enqueue } from '@/utils/mobileAnnotateQueue'
+
+interface RallyLite {
+  id?: number | null
+  client_uuid: string
+  set_id: number
+  rally_num: number
+  server: 'player_a' | 'player_b'
+  winner: 'player_a' | 'player_b'
+  score_a_after: number
+  score_b_after: number
+  video_timestamp_end: number
+  pending?: boolean
+}
+
+interface SetInfo {
+  id: number
+  set_num: number
+}
+
+interface Props {
+  matchId: string | number
+  currentSet: SetInfo
+  /** 既存ラリー (最新が末尾) — サーバ取得済 + ローカル追加分の合算 */
+  rallies: RallyLite[]
+  /** 動画 pause 位置 (= rally end timestamp) */
+  pausedAtSec: number
+  /** ラリー追加時に親に通知 (UI 反映用) */
+  onRallyAdded: (rally: RallyLite) => void
+  /** 入力キャンセル (動画に戻る) */
+  onCancel: () => void
+  /** Undo: 直前のラリーを取消す */
+  onUndoLast?: () => void
+  /** 「セット終了 → 次のセット開始」ボタン押下時 */
+  onSetEnded?: () => void
+}
+
+export function Pass1RallyEnd({
+  matchId,
+  currentSet,
+  rallies,
+  pausedAtSec,
+  onRallyAdded,
+  onCancel,
+  onUndoLast,
+  onSetEnded,
+}: Props) {
+  const [busy, setBusy] = useState(false)
+
+  // 現スコア計算: 同セット内の最新ラリーから (1-based set_num のラリーだけ集計)
+  const { scoreA, scoreB, lastRally } = useMemo(() => {
+    const setRallies = rallies.filter((r) => r.set_id === currentSet.id)
+    if (setRallies.length === 0) {
+      return { scoreA: 0, scoreB: 0, lastRally: null as RallyLite | null }
+    }
+    const last = setRallies[setRallies.length - 1]
+    return {
+      scoreA: last.score_a_after,
+      scoreB: last.score_b_after,
+      lastRally: last,
+    }
+  }, [rallies, currentSet.id])
+
+  // サーブ権 (= 直前のラリーの winner、初回は player_a 既定)
+  const nextServer: 'player_a' | 'player_b' = lastRally?.winner ?? 'player_a'
+
+  // 21 点 + 2 点差なら set 終了候補
+  const setEndingSoon = (() => {
+    const max = Math.max(scoreA, scoreB)
+    const diff = Math.abs(scoreA - scoreB)
+    return (max >= 21 && diff >= 2) || max >= 30
+  })()
+
+  const submit = async (winner: 'player_a' | 'player_b') => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const newA = scoreA + (winner === 'player_a' ? 1 : 0)
+      const newB = scoreB + (winner === 'player_b' ? 1 : 0)
+      const rallyNum = (lastRally?.rally_num ?? 0) + 1
+      const body = {
+        set_id: currentSet.id,
+        rally_num: rallyNum,
+        server: nextServer,
+        winner,
+        end_type: 'unknown',         // Pass 2/3 で更新
+        rally_length: 0,             // Pass 3 で stroke 追加につれ更新
+        score_a_before: scoreA,
+        score_b_before: scoreB,
+        score_a_after: newA,
+        score_b_after: newB,
+        video_timestamp_end: pausedAtSec,
+        video_timestamp_start: lastRally?.video_timestamp_end ?? null,
+        is_deuce: newA >= 20 && newB >= 20,
+        annotation_mode: 'mobile_pass1',
+      }
+      const { clientUuid } = await enqueue('POST /api/rallies', body)
+      const local: RallyLite = {
+        id: null,
+        client_uuid: clientUuid,
+        set_id: currentSet.id,
+        rally_num: rallyNum,
+        server: nextServer,
+        winner,
+        score_a_after: newA,
+        score_b_after: newB,
+        video_timestamp_end: pausedAtSec,
+        pending: true,
+      }
+      onRallyAdded(local)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 大ボタン: A 側は左, B 側は右
+  return (
+    <div className="absolute inset-0 bg-black/85 flex flex-col">
+      {/* ヘッダ: セット番号 + score */}
+      <div className="bg-black/90 px-3 py-2 flex items-center gap-3 border-b border-gray-800 text-xs">
+        <div className="text-yellow-200 font-bold">
+          Pass 1 — 得点が入った瞬間に A / B
+        </div>
+        <div className="flex-1" />
+        <div className="text-gray-300">Set {currentSet.set_num}</div>
+        <div className="font-mono text-lg text-white">
+          <span className="text-blue-400">{scoreA}</span>
+          <span className="mx-1 text-gray-500">-</span>
+          <span className="text-pink-400">{scoreB}</span>
+        </div>
+        <div className="font-mono text-[10px] text-gray-500">
+          @{pausedAtSec.toFixed(1)}s
+        </div>
+      </div>
+
+      {/* set 終了候補バナー */}
+      {setEndingSoon && (
+        <div className="bg-amber-900/40 border-b border-amber-700/40 text-amber-200 text-xs px-3 py-1.5 text-center">
+          このセットは終了している可能性があります。終わったら下の「セット終了」を押してください。
+        </div>
+      )}
+
+      {/* 2 ボタン */}
+      <div className="flex-1 flex">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => submit('player_a')}
+          className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-blue-700 active:bg-blue-600 disabled:opacity-50 border-2 border-blue-400"
+        >
+          <div className="text-5xl font-bold text-white">A</div>
+          <div className="text-xs text-blue-200">プレイヤーA 得点</div>
+          <div className="text-[10px] text-blue-300/80">
+            → {scoreA + 1} - {scoreB}
+          </div>
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => submit('player_b')}
+          className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-pink-700 active:bg-pink-600 disabled:opacity-50 border-2 border-pink-400"
+        >
+          <div className="text-5xl font-bold text-white">B</div>
+          <div className="text-xs text-pink-200">プレイヤーB 得点</div>
+          <div className="text-[10px] text-pink-300/80">
+            → {scoreA} - {scoreB + 1}
+          </div>
+        </button>
+      </div>
+
+      {/* 下部: Undo / Set終了 / 動画に戻る */}
+      <div className="bg-black/90 px-3 py-2 flex items-center gap-2 border-t border-gray-800 text-xs">
+        <button
+          type="button"
+          onClick={onUndoLast}
+          disabled={!onUndoLast || !lastRally}
+          className="px-3 py-2 rounded bg-gray-800 text-white disabled:opacity-30 flex items-center gap-1"
+          title="直前のラリーを取消"
+        >
+          <Undo2 size={14} /> 直前取消
+        </button>
+        <button
+          type="button"
+          onClick={onSetEnded}
+          disabled={!onSetEnded || !setEndingSoon}
+          className="px-3 py-2 rounded bg-amber-700 text-white disabled:opacity-30"
+        >
+          セット終了
+        </button>
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-2 rounded bg-gray-700 text-white"
+        >
+          ← 動画に戻る
+        </button>
+      </div>
+    </div>
+  )
+}
