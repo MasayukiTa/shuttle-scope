@@ -26,6 +26,7 @@ import { apiGet, apiPost } from '@/api/client'
 import { getVideoSrc } from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
+import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
 import { startBackgroundFlush, getStatus, retryAllManual } from '@/utils/mobileAnnotateQueue'
 
 type ScreenMode = 'play' | 'annotate'
@@ -347,8 +348,16 @@ export function MobileAnnotatePage() {
                 />
               )
             })()
+          ) : pass === 'serve_final' ? (
+            // Pass 2: 該当ラリーを picker で選んで 4-step に入る
+            <Pass2RallyPicker
+              rallies={mergedRallies}
+              sets={allSets}
+              pausedAtSec={pausedAtSec}
+              onCancel={() => setScreen('play')}
+            />
           ) : (
-            // Pass 2 / Pass 3 placeholder (後続 commit)
+            // Pass 3 placeholder (次 commit)
             <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3">
               <div>Pass <span className="font-mono text-blue-400">{pass}</span> (実装中)</div>
               <div className="text-xs text-gray-500">
@@ -366,5 +375,124 @@ export function MobileAnnotatePage() {
         </div>
       </div>
     </LandscapeGuard>
+  )
+}
+
+
+/**
+ * Pass 2 のラリー picker。pausedAtSec 付近のラリーから順にリスト表示し、
+ * 選択するとそのラリーに対する Pass2ServeFinal step machine を起動する。
+ */
+function Pass2RallyPicker({
+  rallies,
+  sets,
+  pausedAtSec,
+  onCancel,
+}: {
+  rallies: RallyLite[]
+  sets: SetInfo[]
+  pausedAtSec: number
+  onCancel: () => void
+}) {
+  const [selected, setSelected] = useState<RallyLite | null>(null)
+
+  // pausedAtSec に近い順
+  const sortedRallies = useMemo(() => {
+    return [...rallies].sort((a, b) => {
+      const da = Math.abs((a.video_timestamp_end ?? 0) - pausedAtSec)
+      const db = Math.abs((b.video_timestamp_end ?? 0) - pausedAtSec)
+      return da - db
+    })
+  }, [rallies, pausedAtSec])
+
+  if (selected) {
+    const setInfo = sets.find((s) => s.id === selected.set_id)
+    if (!setInfo || !selected.id) {
+      // ローカル pending (まだサーバ id がない) なら入れない
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 p-4">
+          <div className="text-center">
+            このラリーはまだサーバ保存中です。
+            <br />
+            送信完了後に Pass 2 入力を行えます。
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelected(null)}
+            className="px-3 py-1.5 bg-gray-700 rounded text-xs"
+          >
+            ← 一覧に戻る
+          </button>
+        </div>
+      )
+    }
+    return (
+      <Pass2ServeFinal
+        rally={{
+          id: selected.id,
+          rally_num: selected.rally_num,
+          set_num: setInfo.set_num,
+          server: selected.server,
+          winner: selected.winner,
+        }}
+        onCompleted={() => setSelected(null)}
+        onCancel={() => setSelected(null)}
+      />
+    )
+  }
+
+  return (
+    <div className="flex-1 flex flex-col bg-black/90">
+      <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200">
+        Pass 2 入力するラリーを選択 (タップ位置 @{pausedAtSec.toFixed(1)}s に近い順)
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {sortedRallies.length === 0 ? (
+          <div className="text-gray-500 text-center text-sm py-8">
+            Pass 1 でラリーを記録してから戻ってきてください
+          </div>
+        ) : (
+          sortedRallies.map((r) => {
+            const setInfo = sets.find((s) => s.id === r.set_id)
+            return (
+              <button
+                key={`${r.set_id}-${r.rally_num}`}
+                type="button"
+                onClick={() => setSelected(r)}
+                className="w-full text-left px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 flex items-center gap-3"
+              >
+                <span className="font-mono text-[11px] text-gray-400">
+                  S{setInfo?.set_num ?? '?'}-R{r.rally_num}
+                </span>
+                <span className="font-mono text-xs">
+                  <span className={r.winner === 'player_a' ? 'text-blue-400' : 'text-pink-400'}>
+                    {r.winner === 'player_a' ? 'A' : 'B'} 得点
+                  </span>
+                </span>
+                <span className="text-[11px] text-gray-500">
+                  {r.score_a_after}-{r.score_b_after}
+                </span>
+                <div className="flex-1" />
+                <span className="font-mono text-[10px] text-gray-500">
+                  @{(r.video_timestamp_end ?? 0).toFixed(1)}s
+                </span>
+                {r.pending && (
+                  <span className="text-[10px] text-amber-400">pending</span>
+                )}
+              </button>
+            )
+          })
+        )}
+      </div>
+      <div className="px-3 py-2 border-t border-gray-800">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 rounded bg-gray-700 text-white text-xs"
+        >
+          ← 動画に戻る
+        </button>
+      </div>
+    </div>
   )
 }
