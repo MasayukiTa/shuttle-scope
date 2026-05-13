@@ -311,7 +311,8 @@ function MainLayout() {
                  判定は viewport 幅 (< 768px) のみで、ロールは見ない (analyst/coach
                  が誤ってスマホで開いた場合も mobile UI が出る方が UX 良い)。 */}
             <Route path="/annotator/:matchId" element={<AnnotatorOrMobileAnnotate />} />
-            <Route path="/m/annotate/:matchId" element={<MobileAnnotatePage />} />
+            {/* /m/annotate/:matchId は ProtectedMainRoute レベルで full-bleed
+                 描画される (この Routes は MainLayout 内なので到達しない)。 */}
             {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
             <Route path="/live/:matchId" element={<LiveInputPage />} />
             <Route path="/condition" element={<ConditionPage />} />
@@ -445,7 +446,15 @@ function ProtectedMainRoute() {
     return <OnboardingConsentPage onCompleted={() => setConsentRequired(false)} />
   }
 
-  return <MainLayout />
+  // R48: /m/annotate/:matchId は MainLayout (Sidebar / bottom nav) を完全に
+  // バイパスしてフルブリード描画する。スマホアノテで「下に設定タブが居る」
+  // 「動画上部が URL バーに被る」問題を構造的に潰す。
+  return (
+    <Routes>
+      <Route path="/m/annotate/:matchId" element={<MobileAnnotatePage />} />
+      <Route path="*" element={<MainLayout />} />
+    </Routes>
+  )
 }
 
 function App() {
