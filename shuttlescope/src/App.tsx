@@ -22,6 +22,7 @@ import { ExpertLabelerAnnotatePage } from '@/pages/ExpertLabelerAnnotatePage'
 import { useAuth } from '@/hooks/useAuth'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { LoginPage } from '@/pages/LoginPage'
+import { MobileAnnotatePage } from '@/pages/MobileAnnotatePage'
 // M-A6: Self-service auth pages (register / verify / password reset / invitation)
 import RegisterPage from '@/pages/RegisterPage'
 import EmailVerifyPage from '@/pages/EmailVerifyPage'
@@ -284,6 +285,8 @@ function MainLayout() {
             <Route path="/" element={<Navigate to="/matches" replace />} />
             <Route path="/matches" element={<MatchListPage />} />
             <Route path="/annotator/:matchId" element={<AnnotatorPage />} />
+            {/* R48: スマホ専用アノテーション (横向き、Pass 切替、即サーバ保存) */}
+            <Route path="/m/annotate/:matchId" element={<MobileAnnotatePage />} />
             {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
             <Route path="/live/:matchId" element={<LiveInputPage />} />
             <Route path="/condition" element={<ConditionPage />} />
