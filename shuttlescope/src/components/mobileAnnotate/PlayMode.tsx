@@ -223,16 +223,43 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
         onTouchStart={cropEditing ? onCropTouch : undefined}
       >
         {!videoSrc ? (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
-            動画が登録されていません
+          <div className="absolute inset-0 flex items-center justify-center text-white text-sm p-4">
+            <div className="text-center max-w-md">
+              <div className="text-base font-bold mb-2">動画が再生できません</div>
+              <div className="text-xs text-white/80 leading-relaxed">
+                考えられる原因:<br />
+                ・この試合にまだ動画が登録されていない<br />
+                ・動画 token (video_token) が発行されていない<br />
+                ・サーバから動画ファイルが取得できない
+              </div>
+              <div className="text-[10px] text-white/50 mt-3 font-mono break-all">
+                match_id={matchId}
+              </div>
+            </div>
           </div>
         ) : (
           <video
-            ref={videoRef}
+            ref={(el) => {
+              videoRef.current = el
+              // iOS Safari の旧版互換属性 (TS の型に無いので ref で setAttribute)
+              if (el && !el.hasAttribute('webkit-playsinline')) {
+                el.setAttribute('webkit-playsinline', '')
+              }
+            }}
             src={videoSrc}
             playsInline
             preload="metadata"
             style={cropStyle}
+            onError={(e) => {
+              const v = e.currentTarget
+              // β 中に拾うため console に詳細
+              console.error('[mobile-annot] video error', {
+                error: v.error?.code,
+                networkState: v.networkState,
+                readyState: v.readyState,
+                src: v.src,
+              })
+            }}
           />
         )}
 

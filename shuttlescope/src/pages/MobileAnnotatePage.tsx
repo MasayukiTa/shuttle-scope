@@ -21,9 +21,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Play, Crosshair, Layers, CloudOff, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Play, Crosshair, Layers, CloudOff, AlertTriangle, RotateCw, Maximize2, Smartphone } from 'lucide-react'
 import { apiGet, apiPost } from '@/api/client'
-import { getVideoSrc } from '@/utils/videoSrc'
+import { getMobileVideoSrc } from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
 import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
@@ -87,11 +87,25 @@ function LandscapeGuard({ children }: { children: React.ReactNode }) {
   if (isPortrait) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black text-white p-6 text-center">
-        <div className="text-5xl mb-4">📱↻</div>
-        <h2 className="text-lg font-semibold mb-2">端末を横向きに</h2>
-        <p className="text-sm text-gray-300">
+        {/* lucide の白抜きアイコンを使う (絵文字だと OS の黒塗りで読めない) */}
+        <div className="relative mb-4">
+          <Smartphone className="text-white" size={64} strokeWidth={1.5} />
+          <RotateCw
+            className="text-white absolute -top-3 -right-3"
+            size={28}
+            strokeWidth={2}
+          />
+        </div>
+        <h2 className="text-xl font-bold mb-2 text-white">端末を横向きに</h2>
+        <p className="text-sm text-white/90">
           スマホアノテーションは横向き専用です。<br />
           端末を回転させてください。
+        </p>
+        <p className="text-[11px] text-white/60 mt-6 max-w-xs">
+          Safari でアドレスバーが邪魔な場合は、<br />
+          画面下から上にスワイプすると一時的に隠れます。<br />
+          長期的にはホーム画面に追加 (aA → 共有 → 「ホーム画面に追加」) で
+          フルスクリーン化を推奨。
         </p>
       </div>
     )
@@ -120,7 +134,7 @@ export function MobileAnnotatePage() {
     enabled: !!matchId,
   })
   const match = matchQuery.data?.data
-  const videoSrc = getVideoSrc(match)
+  const videoSrc = getMobileVideoSrc(match)
 
   // セット一覧 + 既存ラリー取得 (Pass 1 用)
   const setsQuery = useQuery({
@@ -185,14 +199,34 @@ export function MobileAnnotatePage() {
     }
   }
 
-  // body スクロール抑止: 全画面で固定
+  // body スクロール抑止 + iOS Safari URL バー minimize
   useEffect(() => {
-    const orig = document.body.style.overflow
+    const origBodyOverflow = document.body.style.overflow
+    const origHtmlOverflow = document.documentElement.style.overflow
+    const origHtmlHeight = document.documentElement.style.height
     document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    // iOS Safari: html 高さを 100vh + 1px にして 1 度だけ scroll させると
+    // 上部 URL バーが minimize される
+    document.documentElement.style.height = '100vh'
+    // 微小 scroll trick (iOS Safari の上部 URL バー / 下部タブバーを minimize)
+    window.scrollTo(0, 1)
     return () => {
-      document.body.style.overflow = orig
+      document.body.style.overflow = origBodyOverflow
+      document.documentElement.style.overflow = origHtmlOverflow
+      document.documentElement.style.height = origHtmlHeight
     }
   }, [])
+
+  // フルスクリーン API (iOS Safari は video element に対してのみ可)
+  // 任意のタイミングでユーザがタップして full screen に入れるよう関数を用意
+  const requestVideoFullscreen = () => {
+    const v = videoElRef.current
+    if (!v) return
+    const anyV = v as any
+    if (anyV.webkitEnterFullscreen) anyV.webkitEnterFullscreen()
+    else if (v.requestFullscreen) v.requestFullscreen().catch(() => {})
+  }
 
   // 送信キューを起動 + ステータスを 2 秒ごとにポーリング (UI 表示用)
   useEffect(() => {

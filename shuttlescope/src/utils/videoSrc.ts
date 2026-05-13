@@ -37,6 +37,34 @@ export function getVideoSrc(match?: {
   return ''
 }
 
+
+/**
+ * モバイルアノテ専用: video_token があれば即 stream URL を返す。
+ *
+ * desktop の getVideoSrc は has_video_local を必須にしているため、
+ * token 発行済だが flag が False の状況 (アップロード履歴同期遅延 / 旧データ)
+ * で動画が出ない症状が発生する。モバイル UI は token があれば試行して、
+ * 404 等は <video onError> で可視化する設計。
+ */
+export function getMobileVideoSrc(match?: {
+  id?: number
+  video_token?: string | null
+  video_url?: string | null
+  has_video_local?: boolean | null
+} | null): string {
+  if (!match) return ''
+  if (match.has_video_local && match.id && match.video_token) {
+    return `/api/v1/uploads/video/by_match/${match.id}/stream?token=${encodeURIComponent(match.video_token)}`
+  }
+  if (match.video_token) {
+    // token のみで解決する旧経路 (videos.py /videos/{token}/stream)
+    return `/api/videos/${encodeURIComponent(match.video_token)}/stream`
+  }
+  if (match.video_url) return match.video_url
+  return ''
+}
+
+
 /**
  * 動画が登録されているかを判定する。
  */
