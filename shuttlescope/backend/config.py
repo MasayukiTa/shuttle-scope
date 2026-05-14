@@ -167,6 +167,10 @@ class Settings(BaseSettings):
     class Config:
         # .env.development を優先、なければ .env を読む（絶対パス指定でCWD非依存）
         env_file = (str(_ROOT / ".env.development"), str(_ROOT / ".env"))
+        # extra="ignore": .env に Settings 未定義の key (vite_* / 古い experimental
+        # フラグ / 別 process 用 secret 等) があっても起動失敗させない。
+        # forbid のままだと dep バンプ後の pydantic 2.x 厳格化で本番起動できなくなる。
+        extra = "ignore"
 
     # ── 本番姿勢判定 (SEC-001) ────────────────────────────────────────────
     # 本番姿勢である = OpenAPI/docs 露出を切る、benchmark / cluster ルータを
