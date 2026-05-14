@@ -106,12 +106,22 @@ export function newClientUuid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }
-  // RFC4122 v4-ish fallback (= 暗号強度低下、ただし衝突確率は実用無視可)
-  const r = () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
+  // RFC4122 v4 fallback using crypto.getRandomValues (CSPRNG)
+  // Math.random() は CodeQL (js/insecure-randomness) に引っかかるため使用禁止
+  const buf = new Uint8Array(16)
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(buf)
+  } else {
+    // 最後の保険: getRandomValues も無い極古環境 (理論上現代ブラウザでは到達しない)
+    throw new Error('crypto.getRandomValues is not available')
+  }
+  // RFC4122 §4.4: バージョン(4) と variant(10) を埋める
+  buf[6] = (buf[6] & 0x0f) | 0x40
+  buf[8] = (buf[8] & 0x3f) | 0x80
+  const hex = Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
   return (
-    `${r()}${r()}${r()}${r()}-${r()}${r()}-` +
-    `4${r().slice(1)}-${(Math.floor(Math.random() * 4) + 8).toString(16)}${r().slice(1)}-` +
-    `${r()}${r()}${r()}${r()}${r()}${r()}`
+    `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-` +
+    `${hex.slice(16, 20)}-${hex.slice(20, 32)}`
   )
 }
 
