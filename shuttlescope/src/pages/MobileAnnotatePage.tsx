@@ -375,7 +375,7 @@ export function MobileAnnotatePage() {
           )}
         </div>
 
-        {/* 左上オーバーレイ: 戻る + match #id + キュー */}
+        {/* 左上オーバーレイ: 戻る + match #id + キュー (白基調) */}
         <div
           className="absolute left-2 z-30 flex items-center gap-1.5 text-xs"
           style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
@@ -383,22 +383,22 @@ export function MobileAnnotatePage() {
           <button
             type="button"
             onClick={() => navigate('/matches')}
-            className="p-2 rounded text-white"
-            style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+            className="p-2 rounded shadow"
+            style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
             aria-label="戻る"
           >
             <ArrowLeft size={16} />
           </button>
           <span
-            className="font-mono text-[10px] text-white/80 px-1.5 py-1 rounded"
-            style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+            className="font-mono text-[10px] px-1.5 py-1 rounded shadow"
+            style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: '#0f172a' }}
           >
             #{matchId ?? '?'}
           </span>
           {queueStatus.pending > 0 && (
             <span
-              className="flex items-center gap-1 text-[10px] text-amber-300 px-1.5 py-1 rounded"
-              style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+              className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow"
+              style={{ backgroundColor: 'rgba(254,243,199,0.95)', color: '#92400e' }}
               title={`未送信 ${queueStatus.pending} 件 (再送中)`}
             >
               <CloudOff size={12} />
@@ -409,8 +409,8 @@ export function MobileAnnotatePage() {
             <button
               type="button"
               onClick={() => void retryAllManual()}
-              className="flex items-center gap-1 text-[10px] text-red-300 px-1.5 py-1 rounded border border-red-500"
-              style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+              className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow"
+              style={{ backgroundColor: 'rgba(254,226,226,0.95)', color: '#991b1b', border: '1px solid #fca5a5' }}
               title={`送信失敗 ${queueStatus.manualRetry} 件 — タップで再送`}
             >
               <AlertTriangle size={12} />
@@ -419,7 +419,7 @@ export function MobileAnnotatePage() {
           )}
         </div>
 
-        {/* 右側中央オーバーレイ: Pass 切替 (縦並びチップ) */}
+        {/* 右側中央オーバーレイ: Pass 切替 (白チップ + 橙アクセント) */}
         <div
           className="absolute right-2 z-30 flex flex-col gap-1.5"
           style={{ top: '50%', transform: 'translateY(-50%)' }}
@@ -429,10 +429,10 @@ export function MobileAnnotatePage() {
               key={p}
               type="button"
               onClick={() => setPass(p)}
-              className="flex items-center gap-1 px-2 py-1.5 rounded text-[10px] font-medium text-white"
+              className="flex items-center gap-1 px-2 py-1.5 rounded text-[10px] font-medium shadow"
               style={{
-                backgroundColor: pass === p ? 'rgba(37,99,235,0.95)' : 'rgba(0,0,0,0.6)',
-                border: pass === p ? '1px solid rgba(96,165,250,0.9)' : '1px solid rgba(255,255,255,0.1)',
+                backgroundColor: pass === p ? 'rgba(245,158,11,0.98)' : 'rgba(255,255,255,0.95)',
+                color: pass === p ? '#ffffff' : '#0f172a',
               }}
               title={PASS_LABELS[p]}
             >
