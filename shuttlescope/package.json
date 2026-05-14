@@ -31,7 +31,7 @@
     "material-symbols": "^0.44.6",
     "psl": "^1.15.0",
     "qrcode": "^1.5.4",
-    "react-i18next": "^14.0.0",
+    "react-i18next": "^17.0.7",
     "react-router-dom": "^7.15.0",
     "recharts": "^2.12.0",
     "tailwind-merge": "^3.6.0",
