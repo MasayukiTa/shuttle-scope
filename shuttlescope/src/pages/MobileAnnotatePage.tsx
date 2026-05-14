@@ -252,64 +252,9 @@ export function MobileAnnotatePage() {
 
   return (
     <LandscapeGuard>
-      <div className="fixed inset-0 bg-black text-white flex flex-col touch-none select-none">
-        {/* ヘッダ: 戻る + 試合 + Pass 切替 */}
-        <div className="flex items-center gap-2 bg-black/80 backdrop-blur px-2 py-1.5 border-b border-gray-800 text-xs">
-          <button
-            type="button"
-            onClick={() => navigate('/matches')}
-            className="p-1.5 rounded hover:bg-gray-800"
-            aria-label="戻る"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <span className="font-mono text-[11px] text-gray-400">
-            match #{matchId ?? '?'}
-          </span>
-          {/* 未送信キュー状況 */}
-          {queueStatus.pending > 0 && (
-            <span
-              className="flex items-center gap-1 text-[10px] text-amber-300"
-              title={`未送信 ${queueStatus.pending} 件 (バックグラウンド再送中)`}
-            >
-              <CloudOff size={12} />
-              {queueStatus.pending}
-            </span>
-          )}
-          {queueStatus.manualRetry > 0 && (
-            <button
-              type="button"
-              onClick={() => void retryAllManual()}
-              className="flex items-center gap-1 text-[10px] text-red-300 hover:text-red-200 px-1 py-0.5 rounded border border-red-500"
-              title={`送信失敗 ${queueStatus.manualRetry} 件 — タップで再送`}
-            >
-              <AlertTriangle size={12} />
-              {queueStatus.manualRetry}
-            </button>
-          )}
-          <div className="flex-1" />
-          {/* Pass 切替チップ */}
-          <div className="flex gap-1">
-            {(Object.keys(PASS_LABELS) as AnnotatePass[]).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPass(p)}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                  pass === p
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                {PASS_ICONS[p]}
-                <span>{PASS_LABELS[p]}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 本体 */}
-        <div className="flex-1 flex flex-col min-h-0 bg-gray-950 relative">
+      <div className="fixed inset-0 bg-black text-white touch-none select-none">
+        {/* 本体: viewport 全面に動画 / アノテ画面が広がる */}
+        <div className="absolute inset-0 bg-gray-950">
           {matchQuery.isLoading ? (
             <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
               読み込み中...
@@ -428,6 +373,73 @@ export function MobileAnnotatePage() {
               onCancel={() => setScreen('play')}
             />
           )}
+        </div>
+
+        {/* 左上オーバーレイ: 戻る + match #id + キュー */}
+        <div
+          className="absolute left-2 z-30 flex items-center gap-1.5 text-xs"
+          style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
+        >
+          <button
+            type="button"
+            onClick={() => navigate('/matches')}
+            className="p-2 rounded text-white"
+            style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+            aria-label="戻る"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <span
+            className="font-mono text-[10px] text-white/80 px-1.5 py-1 rounded"
+            style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          >
+            #{matchId ?? '?'}
+          </span>
+          {queueStatus.pending > 0 && (
+            <span
+              className="flex items-center gap-1 text-[10px] text-amber-300 px-1.5 py-1 rounded"
+              style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+              title={`未送信 ${queueStatus.pending} 件 (再送中)`}
+            >
+              <CloudOff size={12} />
+              {queueStatus.pending}
+            </span>
+          )}
+          {queueStatus.manualRetry > 0 && (
+            <button
+              type="button"
+              onClick={() => void retryAllManual()}
+              className="flex items-center gap-1 text-[10px] text-red-300 px-1.5 py-1 rounded border border-red-500"
+              style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+              title={`送信失敗 ${queueStatus.manualRetry} 件 — タップで再送`}
+            >
+              <AlertTriangle size={12} />
+              {queueStatus.manualRetry}
+            </button>
+          )}
+        </div>
+
+        {/* 右側中央オーバーレイ: Pass 切替 (縦並びチップ) */}
+        <div
+          className="absolute right-2 z-30 flex flex-col gap-1.5"
+          style={{ top: '50%', transform: 'translateY(-50%)' }}
+        >
+          {(Object.keys(PASS_LABELS) as AnnotatePass[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPass(p)}
+              className="flex items-center gap-1 px-2 py-1.5 rounded text-[10px] font-medium text-white"
+              style={{
+                backgroundColor: pass === p ? 'rgba(37,99,235,0.95)' : 'rgba(0,0,0,0.6)',
+                border: pass === p ? '1px solid rgba(96,165,250,0.9)' : '1px solid rgba(255,255,255,0.1)',
+              }}
+              title={PASS_LABELS[p]}
+            >
+              {PASS_ICONS[p]}
+              <span className="hidden xs:inline">{PASS_LABELS[p]}</span>
+            </button>
+          ))}
         </div>
       </div>
     </LandscapeGuard>

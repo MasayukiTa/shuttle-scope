@@ -19,7 +19,7 @@
  *     コートタップが矩形ハンドル操作になり、再生は強制停止される。
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Play, Pause, Scissors, RotateCcw, Check } from 'lucide-react'
+import { Play, Pause, Scissors, RotateCcw, Check, Maximize2, Square } from 'lucide-react'
 
 export interface CropRect {
   x: number; y: number; w: number; h: number  // 0..1 normalized
@@ -66,6 +66,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
   const [crop, setCrop] = useState<CropRect>(() => loadCrop(matchId))
   const [cropEditing, setCropEditing] = useState(false)
   const [pendingCrop, setPendingCrop] = useState<CropRect>(crop)
+  // cover = 動画で viewport を埋める (フル幅、上下 crop)。contain = レターボックスで全面表示。
+  // モバイルアノテはコート中央を大きく見たいので cover を default。
+  const [fitMode, setFitMode] = useState<'cover' | 'contain'>('cover')
 
   // 親に videoRef を露出
   useEffect(() => {
@@ -127,7 +130,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
    */
   const cropStyle: React.CSSProperties = (() => {
     const { x, y, w, h } = crop
-    if (w >= 0.99 && h >= 0.99) return { width: '100%', height: '100%', objectFit: 'contain' }
+    if (w >= 0.99 && h >= 0.99) {
+      return { width: '100%', height: '100%', objectFit: fitMode }
+    }
     const scale = Math.min(1 / w, 1 / h)
     // 中心オフセット
     const cx = x + w / 2
@@ -137,11 +142,20 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
     return {
       width: '100%',
       height: '100%',
-      objectFit: 'contain',
+      objectFit: fitMode,
       transform: `translate(${translateX}%, ${translateY}%) scale(${scale})`,
       transformOrigin: 'center',
     }
   })()
+
+  // iOS Safari native fullscreen (動画 element only)
+  const enterFullscreen = useCallback(() => {
+    const v = videoRef.current
+    if (!v) return
+    const anyV = v as any
+    if (anyV.webkitEnterFullscreen) anyV.webkitEnterFullscreen()
+    else if (v.requestFullscreen) v.requestFullscreen().catch(() => {})
+  }, [])
 
   const startCropEdit = () => {
     const v = videoRef.current
@@ -206,15 +220,14 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
   const visibleCrop = cropEditing ? pendingCrop : crop
 
   return (
-    <div className="flex flex-col h-full w-full">
-      {/* 動画領域 */}
+    <div className="absolute inset-0 w-full h-full bg-black">
+      {/* 動画領域: viewport 全面 */}
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-hidden bg-black"
+        className="absolute inset-0 overflow-hidden bg-black"
         onClick={(e) => {
           // 動画タップ = pause + Annotate mode へ
           if (cropEditing) return
-          // コントロールバーは別領域 (下部) なのでここに来るのは動画タップだけ
           e.stopPropagation()
           const v = videoRef.current
           if (v && !v.paused) v.pause()
@@ -283,39 +296,68 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
           </>
         )}
 
-        {/* クロップ編集ボタン (右上) */}
-        <div className="absolute top-2 right-2 flex gap-1">
+        {/* 右上ツールクラスタ: 切り抜き / fit / フルスクリーン */}
+        <div
+          className="absolute right-2 flex gap-1 z-20"
+          style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
+        >
           {!cropEditing ? (
-            <button
-              type="button"
-              onClick={startCropEdit}
-              className="p-2 rounded bg-black/70 text-white hover:bg-black"
-              aria-label="切り抜き編集"
-              title="鳥瞰カメラの不要部分を切り抜く"
-            >
-              <Scissors size={16} />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setFitMode(fitMode === 'cover' ? 'contain' : 'cover') }}
+                className="p-2 rounded text-white"
+                style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+                aria-label="表示モード切替"
+                title={fitMode === 'cover' ? '全体表示 (contain) に切替' : 'フル表示 (cover) に切替'}
+              >
+                <Square size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); enterFullscreen() }}
+                className="p-2 rounded text-white"
+                style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+                aria-label="フルスクリーン"
+                title="iOS native フルスクリーンに入る"
+              >
+                <Maximize2 size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); startCropEdit() }}
+                className="p-2 rounded text-white"
+                style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+                aria-label="切り抜き編集"
+                title="鳥瞰カメラの不要部分を切り抜く"
+              >
+                <Scissors size={16} />
+              </button>
+            </>
           ) : (
             <>
               <button
                 type="button"
-                onClick={resetCrop}
-                className="p-2 rounded bg-black/70 text-white hover:bg-black"
+                onClick={(e) => { e.stopPropagation(); resetCrop() }}
+                className="p-2 rounded text-white"
+                style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
                 aria-label="全画面に戻す"
               >
                 <RotateCcw size={16} />
               </button>
               <button
                 type="button"
-                onClick={cancelCrop}
-                className="px-2 py-1 rounded bg-gray-700 text-white text-xs"
+                onClick={(e) => { e.stopPropagation(); cancelCrop() }}
+                className="px-2 py-1 rounded text-white text-xs"
+                style={{ backgroundColor: 'rgba(75,85,99,0.85)' }}
               >
                 取消
               </button>
               <button
                 type="button"
-                onClick={commitCrop}
-                className="px-2 py-1 rounded bg-green-600 text-white text-xs flex items-center gap-1"
+                onClick={(e) => { e.stopPropagation(); commitCrop() }}
+                className="px-2 py-1 rounded text-white text-xs flex items-center gap-1"
+                style={{ backgroundColor: 'rgba(22,163,74,0.9)' }}
               >
                 <Check size={12} /> 確定
               </button>
@@ -324,21 +366,34 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
         </div>
       </div>
 
-      {/* 下部コントロールバー: 再生 + シーク + 速度 */}
-      <div className="bg-black/95 border-t border-gray-800 px-2 py-1.5 flex items-center gap-1 text-xs">
+      {/* 下部コントロールオーバーレイ: 動画上に重ねる (フッタは別 row にせず absolute) */}
+      <div
+        className="absolute left-0 right-0 px-2 py-1.5 flex items-center gap-1 text-xs z-20"
+        style={{
+          bottom: 'env(safe-area-inset-bottom)',
+          background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 70%, rgba(0,0,0,0) 100%)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+      >
         <button type="button" onClick={() => seekBy(-5)}
-                className="px-2 py-1 rounded bg-gray-800 text-white">◀◀5</button>
+                className="px-2 py-1 rounded text-white"
+                style={{ backgroundColor: 'rgba(31,41,55,0.85)' }}>◀◀5</button>
         <button type="button" onClick={() => seekBy(-1)}
-                className="px-2 py-1 rounded bg-gray-800 text-white">◀1</button>
+                className="px-2 py-1 rounded text-white"
+                style={{ backgroundColor: 'rgba(31,41,55,0.85)' }}>◀1</button>
         <button type="button" onClick={togglePlay}
-                className="px-2.5 py-1.5 rounded bg-blue-600 text-white flex items-center">
+                className="px-2.5 py-1.5 rounded text-white flex items-center"
+                style={{ backgroundColor: 'rgba(37,99,235,0.95)' }}>
           {playing ? <Pause size={14} /> : <Play size={14} />}
         </button>
         <button type="button" onClick={() => seekBy(1)}
-                className="px-2 py-1 rounded bg-gray-800 text-white">1▶</button>
+                className="px-2 py-1 rounded text-white"
+                style={{ backgroundColor: 'rgba(31,41,55,0.85)' }}>1▶</button>
         <button type="button" onClick={() => seekBy(5)}
-                className="px-2 py-1 rounded bg-gray-800 text-white">5▶</button>
-        <span className="font-mono text-[10px] text-gray-400 mx-1 shrink-0">
+                className="px-2 py-1 rounded text-white"
+                style={{ backgroundColor: 'rgba(31,41,55,0.85)' }}>5▶</button>
+        <span className="font-mono text-[10px] text-white/80 mx-1 shrink-0">
           {fmt(currentTime)} / {fmt(duration)}
         </span>
         <input
@@ -356,9 +411,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
             key={s}
             type="button"
             onClick={() => setSpeed(s)}
-            className={`px-1.5 py-1 rounded text-[10px] font-mono ${
-              speed === s ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300'
-            }`}
+            className="px-1.5 py-1 rounded text-[10px] font-mono text-white"
+            style={{ backgroundColor: speed === s ? 'rgba(37,99,235,0.95)' : 'rgba(31,41,55,0.85)' }}
           >
             {s}x
           </button>
