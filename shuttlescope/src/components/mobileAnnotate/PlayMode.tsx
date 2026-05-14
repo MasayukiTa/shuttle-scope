@@ -148,13 +148,43 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
     }
   })()
 
-  // iOS Safari native fullscreen (動画 element only)
+  // iOS Safari native fullscreen.
+  // 仕様: webkitEnterFullscreen() は HAVE_METADATA (readyState >= 1) 以上、かつ
+  // ユーザ gesture コンテキストで呼ぶ必要がある。metadata 未取得なら play() を
+  // 試みて load を強制してから、loadedmetadata イベントで再試行する。
+  // 加えて iOS は <video controls> でないと UI が出ないので、フルスクリーン突入
+  // 時に controls を一時的に true にしておく (ネイティブプレーヤーで戻る/再生
+  // が可能になる)。
   const enterFullscreen = useCallback(() => {
     const v = videoRef.current
     if (!v) return
+    v.controls = true
     const anyV = v as any
-    if (anyV.webkitEnterFullscreen) anyV.webkitEnterFullscreen()
-    else if (v.requestFullscreen) v.requestFullscreen().catch(() => {})
+    const tryGo = () => {
+      try {
+        if (anyV.webkitEnterFullscreen) {
+          anyV.webkitEnterFullscreen()
+          return true
+        }
+        if (v.requestFullscreen) {
+          void v.requestFullscreen().catch(() => {})
+          return true
+        }
+      } catch {}
+      return false
+    }
+    if (v.readyState >= 1) {
+      tryGo()
+      return
+    }
+    // readyState 0 (HAVE_NOTHING): metadata 未取得 → load() で強制取得して
+    // loadedmetadata 受信後に再試行
+    const onMeta = () => {
+      v.removeEventListener('loadedmetadata', onMeta)
+      tryGo()
+    }
+    v.addEventListener('loadedmetadata', onMeta)
+    try { v.load() } catch {}
   }, [])
 
   const startCropEdit = () => {
@@ -296,7 +326,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
           </>
         )}
 
-        {/* 右上ツールクラスタ: 切り抜き / fit / フルスクリーン */}
+        {/* 右上ツールクラスタ: 白基調 (動画背景は何色でも来るので濃いアイコンで
+            高コントラスト)。アクセントは橙 (ダーク青の house violation を避ける) */}
         <div
           className="absolute right-2 flex gap-1 z-20"
           style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
@@ -306,8 +337,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setFitMode(fitMode === 'cover' ? 'contain' : 'cover') }}
-                className="p-2 rounded text-white"
-                style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+                className="p-2 rounded shadow"
+                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
                 aria-label="表示モード切替"
                 title={fitMode === 'cover' ? '全体表示 (contain) に切替' : 'フル表示 (cover) に切替'}
               >
@@ -316,8 +347,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); enterFullscreen() }}
-                className="p-2 rounded text-white"
-                style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+                className="p-2 rounded shadow"
+                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
                 aria-label="フルスクリーン"
                 title="iOS native フルスクリーンに入る"
               >
@@ -326,8 +357,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); startCropEdit() }}
-                className="p-2 rounded text-white"
-                style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+                className="p-2 rounded shadow"
+                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
                 aria-label="切り抜き編集"
                 title="鳥瞰カメラの不要部分を切り抜く"
               >
@@ -339,8 +370,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); resetCrop() }}
-                className="p-2 rounded text-white"
-                style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+                className="p-2 rounded shadow"
+                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
                 aria-label="全画面に戻す"
               >
                 <RotateCcw size={16} />
@@ -348,16 +379,16 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); cancelCrop() }}
-                className="px-2 py-1 rounded text-white text-xs"
-                style={{ backgroundColor: 'rgba(75,85,99,0.85)' }}
+                className="px-2 py-1 rounded text-xs shadow"
+                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
               >
                 取消
               </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); commitCrop() }}
-                className="px-2 py-1 rounded text-white text-xs flex items-center gap-1"
-                style={{ backgroundColor: 'rgba(22,163,74,0.9)' }}
+                className="px-2 py-1 rounded text-xs flex items-center gap-1 shadow"
+                style={{ backgroundColor: 'rgba(245,158,11,0.98)', color: '#ffffff' }}
               >
                 <Check size={12} /> 確定
               </button>
@@ -366,34 +397,34 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
         </div>
       </div>
 
-      {/* 下部コントロールオーバーレイ: 動画上に重ねる (フッタは別 row にせず absolute) */}
+      {/* 下部コントロールオーバーレイ: 白チップ + 橙アクセント (house style) */}
       <div
-        className="absolute left-0 right-0 px-2 py-1.5 flex items-center gap-1 text-xs z-20"
-        style={{
-          bottom: 'env(safe-area-inset-bottom)',
-          background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 70%, rgba(0,0,0,0) 100%)',
-        }}
+        className="absolute left-0 right-0 px-2 py-2 flex items-center gap-1.5 text-xs z-20"
+        style={{ bottom: 'env(safe-area-inset-bottom)' }}
         onClick={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
       >
         <button type="button" onClick={() => seekBy(-5)}
-                className="px-2 py-1 rounded text-white"
-                style={{ backgroundColor: 'rgba(31,41,55,0.85)' }}>◀◀5</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px]"
+                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}>◀◀5</button>
         <button type="button" onClick={() => seekBy(-1)}
-                className="px-2 py-1 rounded text-white"
-                style={{ backgroundColor: 'rgba(31,41,55,0.85)' }}>◀1</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px]"
+                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}>◀1</button>
         <button type="button" onClick={togglePlay}
-                className="px-2.5 py-1.5 rounded text-white flex items-center"
-                style={{ backgroundColor: 'rgba(37,99,235,0.95)' }}>
+                className="px-2.5 py-1.5 rounded shadow flex items-center"
+                style={{ backgroundColor: 'rgba(245,158,11,0.98)', color: '#ffffff' }}>
           {playing ? <Pause size={14} /> : <Play size={14} />}
         </button>
         <button type="button" onClick={() => seekBy(1)}
-                className="px-2 py-1 rounded text-white"
-                style={{ backgroundColor: 'rgba(31,41,55,0.85)' }}>1▶</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px]"
+                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}>1▶</button>
         <button type="button" onClick={() => seekBy(5)}
-                className="px-2 py-1 rounded text-white"
-                style={{ backgroundColor: 'rgba(31,41,55,0.85)' }}>5▶</button>
-        <span className="font-mono text-[10px] text-white/80 mx-1 shrink-0">
+                className="px-2 py-1 rounded shadow font-mono text-[11px]"
+                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}>5▶</button>
+        <span
+          className="font-mono text-[10px] mx-1 shrink-0 px-1.5 py-0.5 rounded"
+          style={{ backgroundColor: 'rgba(255,255,255,0.85)', color: '#0f172a' }}
+        >
           {fmt(currentTime)} / {fmt(duration)}
         </span>
         <input
@@ -403,7 +434,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
           step={0.1}
           value={currentTime}
           onChange={onScrub}
-          className="flex-1 mx-1 accent-blue-500"
+          className="flex-1 mx-1"
+          style={{ accentColor: '#f59e0b' }}
         />
         {/* 速度切替 */}
         {[0.5, 1, 1.5, 2].map((s) => (
@@ -411,8 +443,11 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
             key={s}
             type="button"
             onClick={() => setSpeed(s)}
-            className="px-1.5 py-1 rounded text-[10px] font-mono text-white"
-            style={{ backgroundColor: speed === s ? 'rgba(37,99,235,0.95)' : 'rgba(31,41,55,0.85)' }}
+            className="px-1.5 py-1 rounded text-[10px] font-mono shadow"
+            style={{
+              backgroundColor: speed === s ? 'rgba(245,158,11,0.98)' : 'rgba(255,255,255,0.95)',
+              color: speed === s ? '#ffffff' : '#0f172a',
+            }}
           >
             {s}x
           </button>
