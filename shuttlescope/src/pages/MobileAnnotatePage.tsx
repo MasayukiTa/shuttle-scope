@@ -85,23 +85,29 @@ function LandscapeGuard({ children }: { children: React.ReactNode }) {
   }, [])
 
   if (isPortrait) {
+    // インライン style で確実に白を適用 (Tailwind purge / dark-mode 変数の予期せぬ
+    // 上書きで暗くなる事象を抑制する。lucide-react は stroke=currentColor なので
+    // 親 color が白なら icon も白になる。)
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black text-white p-6 text-center">
-        {/* lucide の白抜きアイコンを使う (絵文字だと OS の黒塗りで読めない) */}
-        <div className="relative mb-4">
-          <Smartphone className="text-white" size={64} strokeWidth={1.5} />
+      <div
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 text-center"
+        style={{ backgroundColor: '#000000', color: '#ffffff' }}
+      >
+        <div className="relative mb-4" style={{ color: '#ffffff' }}>
+          <Smartphone size={64} strokeWidth={1.5} style={{ color: '#ffffff', stroke: '#ffffff' }} />
           <RotateCw
-            className="text-white absolute -top-3 -right-3"
+            className="absolute -top-3 -right-3"
             size={28}
             strokeWidth={2}
+            style={{ color: '#ffffff', stroke: '#ffffff' }}
           />
         </div>
-        <h2 className="text-xl font-bold mb-2 text-white">端末を横向きに</h2>
-        <p className="text-sm text-white/90">
+        <h2 className="text-xl font-bold mb-2" style={{ color: '#ffffff' }}>端末を横向きに</h2>
+        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.9)' }}>
           スマホアノテーションは横向き専用です。<br />
           端末を回転させてください。
         </p>
-        <p className="text-[11px] text-white/60 mt-6 max-w-xs">
+        <p className="text-[11px] mt-6 max-w-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
           Safari でアドレスバーが邪魔な場合は、<br />
           画面下から上にスワイプすると一時的に隠れます。<br />
           長期的にはホーム画面に追加 (aA → 共有 → 「ホーム画面に追加」) で
