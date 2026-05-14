@@ -18,7 +18,7 @@ mako>=1.3.12                 # CVE-2026-44307 (Windows path traversal in templat
 psycopg2-binary==2.9.11      # PostgreSQL ドライバ（SQLite → PG 移行後に使用）
 
 # ── データ分析 ────────────────────────────────────────────────────
-pandas==2.2.0
+pandas==3.0.3
 numpy==1.26.4
 scipy==1.12.0
 scikit-learn>=1.5.0          # CVE-2024-5206 修正
