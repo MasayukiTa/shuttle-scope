@@ -69,6 +69,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
   // cover = 動画で viewport を埋める (フル幅、上下 crop)。contain = レターボックスで全面表示。
   // モバイルアノテはコート中央を大きく見たいので cover を default。
   const [fitMode, setFitMode] = useState<'cover' | 'contain'>('cover')
+  // 再生エラーを onscreen に出す (β: Safari Web Inspector に繋げない端末でも見えるよう)
+  const [playError, setPlayError] = useState<string>('')
 
   // 親に videoRef を露出
   useEffect(() => {
@@ -104,8 +106,28 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
   const togglePlay = useCallback(() => {
     const v = videoRef.current
     if (!v) return
-    if (v.paused) v.play().catch(() => {})
-    else v.pause()
+    if (!v.paused) {
+      v.pause()
+      return
+    }
+    setPlayError('')
+    // iOS Safari: 初回 play 前に load() を打って metadata 取得を確実にする
+    if (v.readyState < 2) {
+      try { v.load() } catch {}
+    }
+    const p = v.play()
+    if (p && typeof p.catch === 'function') {
+      p.catch((err: unknown) => {
+        const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+        console.error('[mobile-annot] play() rejected', msg, {
+          readyState: v.readyState,
+          networkState: v.networkState,
+          error: v.error?.code,
+          src: v.src,
+        })
+        setPlayError(msg)
+      })
+    }
   }, [])
 
   const seekBy = useCallback((delta: number) => {
@@ -159,6 +181,17 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
     const v = videoRef.current
     if (!v) return
     v.controls = true
+    // fullscreen 解除時に controls を戻す (戻さないと page 上で iOS native overlay が
+    // 残り、自前の play ボタンと干渉する)
+    const onExit = () => {
+      v.controls = false
+      v.removeEventListener('webkitendfullscreen', onExit)
+      document.removeEventListener('fullscreenchange', onExit)
+    }
+    v.addEventListener('webkitendfullscreen', onExit)
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement) onExit()
+    })
     const anyV = v as any
     const tryGo = () => {
       try {
@@ -295,13 +328,15 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
             style={cropStyle}
             onError={(e) => {
               const v = e.currentTarget
-              // β 中に拾うため console に詳細
-              console.error('[mobile-annot] video error', {
-                error: v.error?.code,
-                networkState: v.networkState,
-                readyState: v.readyState,
-                src: v.src,
-              })
+              const codeMap: Record<number, string> = {
+                1: 'MEDIA_ERR_ABORTED',
+                2: 'MEDIA_ERR_NETWORK',
+                3: 'MEDIA_ERR_DECODE',
+                4: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
+              }
+              const detail = `video err ${codeMap[v.error?.code ?? -1] ?? v.error?.code} net=${v.networkState} ready=${v.readyState}`
+              console.error('[mobile-annot] video error', detail, { src: v.src })
+              setPlayError(detail)
             }}
           />
         )}
@@ -324,6 +359,18 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               切り抜き範囲をドラッグで指定 → 右下 ✓ で確定
             </div>
           </>
+        )}
+
+        {/* 再生エラー banner (β デバッグ用、原因不明な play 失敗を即視認できるよう
+            画面上に表示する) */}
+        {playError && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 z-30 px-3 py-1.5 rounded text-[11px] font-mono shadow ss-overlay-chip-danger"
+            style={{ top: 'max(2.6rem, calc(env(safe-area-inset-top) + 2.2rem))' }}
+            onClick={(e) => { e.stopPropagation(); setPlayError('') }}
+          >
+            {playError} (タップで閉じる)
+          </div>
         )}
 
         {/* 右上ツールクラスタ: house セマンティックトークンでテーマ自動切替 */}
