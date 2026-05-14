@@ -197,6 +197,17 @@ export function MobileAnnotatePage() {
   const availableQualities: { quality: string; height: number; ready: boolean }[] =
     match?.available_qualities || [{ quality: 'source', height: 0, ready: true }]
   // 現在選択中 quality が ready でないなら最初の ready な quality に fallback
+  // 「過去アノテの続きから再開」用: 既存ラリーの最新 video_timestamp_end を取る。
+  // PlayMode の上部に "前回 M:SS から再開" chip を出し、タップで seek する。
+  const resumeFromSec = useMemo<number>(() => {
+    let best = 0
+    for (const r of mergedRallies) {
+      const t = r?.video_timestamp_end
+      if (typeof t === 'number' && t > best) best = t
+    }
+    return best
+  }, [mergedRallies])
+
   const effectiveQuality = useMemo<'source' | 'uhd' | 'fhd' | 'hd'>(() => {
     const found = availableQualities.find((q) => q.quality === videoQuality && q.ready)
     if (found) return videoQuality
@@ -339,6 +350,7 @@ export function MobileAnnotatePage() {
               currentQuality={effectiveQuality}
               onQualityChange={(q) => setVideoQuality(q as 'source' | 'uhd' | 'fhd' | 'hd')}
               cvCandidateTimestamps={cvCandidateTimestamps}
+              resumeFromSec={resumeFromSec}
             />
           ) : pass === 'rally' ? (
             // Pass 1: 得点ラリー区切り

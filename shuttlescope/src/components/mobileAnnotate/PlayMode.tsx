@@ -69,9 +69,11 @@ interface Props {
   onQualityChange?: (q: 'source' | 'uhd' | 'fhd' | 'hd' | string) => void
   /** CV 候補のタイムスタンプ配列。seek bar 上にマーカー描画 */
   cvCandidateTimestamps?: number[]
+  /** 過去アノテの続きから再開するための時刻 (秒)。0 なら chip 非表示。 */
+  resumeFromSec?: number
 }
 
-export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps }: Props) {
+export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -89,6 +91,10 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   const [playError, setPlayError] = useState<string>('')
   // iOS Safari は要素単位 requestFullscreen を持たないため、ホーム画面追加を促す
   const [iosFsHint, setIosFsHint] = useState(false)
+  // 画質切替時に「現在の currentTime + 再生中フラグ」を保持して、新 src の
+  // loadedmetadata 後に復元する。これをしないと src 変更 = 動画 element が再 load
+  // して 0 秒から再生になる。
+  const pendingResume = useRef<{ time: number; wasPlaying: boolean } | null>(null)
   // CV オーバーレイの可視性 (個別 toggle で重ね描きの ON/OFF 切替可能)
   const [showCourt, setShowCourt] = useState(true)
   const [showShuttle, setShowShuttle] = useState(true)
@@ -121,12 +127,44 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
     if (videoRef.current) videoRef.current.playbackRate = speed
   }, [speed])
 
+  // 画質切替 (videoSrc 変更) で再 load される際の seek 位置 + 再生状態を保持
+  // src 変更 *前* に現状を pendingResume に保存し、新 src の loadedmetadata 受信後
+  // に restore する。
+  const prevSrcRef = useRef<string>(videoSrc)
+  useEffect(() => {
+    if (videoSrc === prevSrcRef.current) return
+    const v = videoRef.current
+    if (v && v.readyState >= 1) {
+      pendingResume.current = {
+        time: v.currentTime,
+        wasPlaying: !v.paused,
+      }
+    }
+    prevSrcRef.current = videoSrc
+  }, [videoSrc])
+
   // events
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
     const onTime = () => setCurrentTime(v.currentTime)
-    const onMeta = () => setDuration(v.duration || 0)
+    const onMeta = () => {
+      setDuration(v.duration || 0)
+      // 画質切替後の seek + 再生復元
+      const pending = pendingResume.current
+      if (pending) {
+        pendingResume.current = null
+        try {
+          // duration が確定したら seek 可能。pending.time が duration を超える場合は
+          // clamp する (variant の長さが微妙に違う可能性に備える)。
+          const target = Math.max(0, Math.min(v.duration || pending.time, pending.time))
+          v.currentTime = target
+          if (pending.wasPlaying) {
+            v.play().catch(() => { /* autoplay block 等は無視 */ })
+          }
+        } catch { /* ignore */ }
+      }
+    }
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
     v.addEventListener('timeupdate', onTime)
@@ -396,6 +434,27 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               切り抜き範囲をドラッグで指定 → 右下 ✓ で確定
             </div>
           </>
+        )}
+
+        {/* 「前回の続きから再開」chip — 既存ラリーがあって、現在の再生位置が
+            最後のラリー終了時刻に近くないときだけ表示 */}
+        {!cropEditing && resumeFromSec !== undefined && resumeFromSec > 1
+          && Math.abs(currentTime - resumeFromSec) > 3 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              const v = videoRef.current
+              if (v) {
+                try { v.currentTime = resumeFromSec } catch { /* ignore */ }
+              }
+            }}
+            className="absolute left-2 z-30 px-2 py-1 rounded shadow text-[11px] font-mono ss-overlay-chip-accent"
+            style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 2.5rem)' }}
+            title="前回ラリー終了位置に seek"
+          >
+            ▶ {fmt(resumeFromSec)} から再開
+          </button>
         )}
 
         {/* iOS Safari フルスクリーン案内: requestFullscreen 非対応端末用 */}
