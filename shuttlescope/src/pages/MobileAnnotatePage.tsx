@@ -327,7 +327,10 @@ export function MobileAnnotatePage() {
   return (
     <LandscapeGuard>
       <div className="fixed inset-0 bg-black text-white touch-none select-none">
-        {/* 本体: viewport 全面に動画 / アノテ画面が広がる */}
+        {/* 本体: viewport 全面に動画 / アノテ画面が広がる
+            PlayMode は screen state に依存せず常時 mount しておく (= video element を
+            unmount しないので、annotate ↔ play を往復しても src が 0 秒から再 load
+            しない)。Pass1/2/3 は overlay として PlayMode の **上に** 重ねる。 */}
         <div className="absolute inset-0 bg-gray-950">
           {matchQuery.isLoading ? (
             <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
@@ -337,7 +340,7 @@ export function MobileAnnotatePage() {
             <div className="flex-1 flex items-center justify-center text-red-400 text-sm">
               試合情報の取得に失敗しました
             </div>
-          ) : screen === 'play' ? (
+          ) : (
             <PlayMode
               matchId={matchId ?? ''}
               videoSrc={videoSrc}
@@ -352,37 +355,38 @@ export function MobileAnnotatePage() {
               cvCandidateTimestamps={cvCandidateTimestamps}
               resumeFromSec={resumeFromSec}
             />
-          ) : pass === 'rally' ? (
-            // Pass 1: 得点ラリー区切り
-            (() => {
-              if (!currentSet) {
-                // セットが未作成: 1 タップで作る誘導
-                return (
-                  <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3">
-                    <div className="text-sm">
-                      この試合にはまだセットが登録されていません
-                    </div>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const s = await ensureSet()
-                        if (s) setCurrentSetIdx(0)
-                      }}
-                      className="px-4 py-2 rounded bg-blue-600 text-white text-sm"
-                    >
-                      セット 1 を作成して開始
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setScreen('play')}
-                      className="px-3 py-1.5 bg-gray-700 rounded text-xs"
-                    >
-                      ← 動画に戻る
-                    </button>
-                  </div>
-                )
-              }
+          )}
+
+          {/* Pass overlay: annotate モード時に PlayMode 上に被せる */}
+          {screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'rally' && (() => {
+            if (!currentSet) {
               return (
+                <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 z-40">
+                  <div className="text-sm">
+                    この試合にはまだセットが登録されていません
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const s = await ensureSet()
+                      if (s) setCurrentSetIdx(0)
+                    }}
+                    className="px-4 py-2 rounded bg-blue-600 text-white text-sm"
+                  >
+                    セット 1 を作成して開始
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScreen('play')}
+                    className="px-3 py-1.5 bg-gray-700 rounded text-xs"
+                  >
+                    ← 動画に戻る
+                  </button>
+                </div>
+              )
+            }
+            return (
+              <div className="absolute inset-0 z-40">
                 <Pass1RallyEnd
                   matchId={matchId ?? ''}
                   currentSet={currentSet}
@@ -433,25 +437,31 @@ export function MobileAnnotatePage() {
                     }
                   }}
                 />
-              )
-            })()
-          ) : pass === 'serve_final' ? (
-            // Pass 2: 該当ラリーを picker で選んで 4-step に入る
-            <Pass2RallyPicker
-              rallies={mergedRallies}
-              sets={allSets}
-              pausedAtSec={pausedAtSec}
-              onCancel={() => setScreen('play')}
-            />
-          ) : (
-            // Pass 3: ラリー選択 → ショット詳細
-            <Pass3RallyPicker
-              matchId={matchId ?? ''}
-              rallies={mergedRallies}
-              sets={allSets}
-              pausedAtSec={pausedAtSec}
-              onCancel={() => setScreen('play')}
-            />
+              </div>
+            )
+          })()}
+
+          {screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'serve_final' && (
+            <div className="absolute inset-0 z-40 bg-black/85">
+              <Pass2RallyPicker
+                rallies={mergedRallies}
+                sets={allSets}
+                pausedAtSec={pausedAtSec}
+                onCancel={() => setScreen('play')}
+              />
+            </div>
+          )}
+
+          {screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'detail' && (
+            <div className="absolute inset-0 z-40 bg-black/85">
+              <Pass3RallyPicker
+                matchId={matchId ?? ''}
+                rallies={mergedRallies}
+                sets={allSets}
+                pausedAtSec={pausedAtSec}
+                onCancel={() => setScreen('play')}
+              />
+            </div>
           )}
         </div>
 
