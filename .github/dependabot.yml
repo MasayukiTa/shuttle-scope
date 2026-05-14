@@ -5,10 +5,11 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     groups:
-      python-deps:
-        patterns: ["*"]
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+    # major は個別 PR (breaking change を 1 つずつ check できる)
     commit-message:
       prefix: "deps(py)"
     labels: ["dependencies", "python"]
@@ -18,10 +19,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
     groups:
-      worker-deps:
-        patterns: ["*"]
+      worker-minor-patch:
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: "deps(py-worker)"
     labels: ["dependencies", "python"]
@@ -31,10 +32,11 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     groups:
-      js-deps:
-        patterns: ["*"]
+      js-minor-patch:
+        update-types: ["minor", "patch"]
+    # React/Electron/Tailwind 等の major は個別 PR で慎重に評価
     commit-message:
       prefix: "deps(js)"
     labels: ["dependencies", "javascript"]
@@ -43,7 +45,10 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: "deps(actions)"
     labels: ["dependencies", "github-actions"]
