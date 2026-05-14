@@ -1,0 +1,52 @@
+name: pip-audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - "shuttlescope/backend/requirements.txt"
+      - "shuttlescope/requirements_worker.txt"
+      - ".github/workflows/pip-audit.yml"
+  pull_request:
+    paths:
+      - "shuttlescope/backend/requirements.txt"
+      - "shuttlescope/requirements_worker.txt"
+  schedule:
+    - cron: "0 5 * * 1"  # weekly Monday 05:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  pip-audit:
+    name: pip-audit (PyPA advisory DB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Run pip-audit (backend)
+        run: |
+          pip-audit -r shuttlescope/backend/requirements.txt -f sarif -o pip-audit-backend.sarif || true
+      - name: Run pip-audit (worker)
+        run: |
+          pip-audit -r shuttlescope/requirements_worker.txt -f sarif -o pip-audit-worker.sarif || true
+      - name: Merge SARIF
+        run: |
+          # SARIF 上げ は 1 ファイル指定なので backend をメインに、worker は別 category で上げる
+          cp pip-audit-backend.sarif pip-audit.sarif
+      - name: Upload SARIF (backend)
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: pip-audit-backend.sarif
+          category: pip-audit-backend
+      - name: Upload SARIF (worker)
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: pip-audit-worker.sarif
+          category: pip-audit-worker
