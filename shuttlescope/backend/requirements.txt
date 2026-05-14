@@ -5,34 +5,34 @@
 # ── Web フレームワーク ────────────────────────────────────────────
 fastapi>=0.136.0              # CVE-2024-47874 / CVE-2025-54121 (via starlette) 修正のため bump
 starlette>=1.0.0
-uvicorn[standard]==0.27.0
-python-multipart==0.0.27   # CVE-2026-42561 (multipart header parser DoS) 修正のため bump
-pydantic-settings==2.1.0
+uvicorn[standard]==0.46.0
+python-multipart==0.0.28   # CVE-2026-42561 (multipart header parser DoS) 修正のため bump
+pydantic-settings==2.14.1
 # pydantic.EmailStr 用バリデータ（pydantic[email] と同等）
 email-validator>=2.3.0
 
 # ── データベース ──────────────────────────────────────────────────
-sqlalchemy==2.0.27
-alembic==1.13.1
+sqlalchemy==2.0.49
+alembic==1.18.4
 mako>=1.3.12                 # CVE-2026-44307 (Windows path traversal in template lookup) 修正のため pin (alembic 経由)
-psycopg2-binary==2.9.11      # PostgreSQL ドライバ（SQLite → PG 移行後に使用）
+psycopg2-binary==2.9.12      # PostgreSQL ドライバ（SQLite → PG 移行後に使用）
 
 # ── データ分析 ────────────────────────────────────────────────────
 pandas==2.2.0
 numpy==1.26.4
-scipy==1.12.0
+scipy==1.17.1
 scikit-learn>=1.5.0          # CVE-2024-5206 修正
 matplotlib>=3.10.9
 polars>=1.40.1                # 高速 DataFrame（ベンチマーク・バルク集計で使用）
 
 # ── レポート生成 ──────────────────────────────────────────────────
-reportlab==4.1.0
+reportlab==4.5.1
 fpdf2>=2.7.0                 # PDF 代替ライブラリ
 
 # ── 動画・ネットワーク ─────────────────────────────────────────────
 yt-dlp>=2026.02.21           # CVE-2024-22423 / CVE-2024-38519 / CVE-2026-26331 / GHSA-3v33-3wmw-3785 / GHSA-g3gw-q23r-pgqm (netrc command injection) 修正
 imageio-ffmpeg>=0.6.0         # bundled ffmpeg (SYSTEM サービスから WinGet AppX shim が解決できない問題の回避)
-httpx==0.26.0
+httpx==0.28.1
 
 # ── クラスタ / システム監視 ────────────────────────────────────────
 pyyaml>=6.0.3                  # cluster.config.yaml の読み書き
