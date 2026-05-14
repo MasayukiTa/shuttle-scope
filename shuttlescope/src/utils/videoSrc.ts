@@ -49,15 +49,23 @@ export function getVideoSrc(match?: {
  * has_video_local が False でも token があれば試行する (= サーバに動画ファイル
  * があれば再生、無ければ <video onError> で 404 を可視化)。
  */
-export function getMobileVideoSrc(match?: {
-  id?: number
-  video_token?: string | null
-  video_url?: string | null
-  has_video_local?: boolean | null
-} | null): string {
+export function getMobileVideoSrc(
+  match?: {
+    id?: number
+    video_token?: string | null
+    video_url?: string | null
+    has_video_local?: boolean | null
+  } | null,
+  quality?: 'source' | 'uhd' | 'fhd' | 'hd' | null,
+): string {
   if (!match) return ''
   if (match.id && match.video_token) {
-    return `/api/v1/uploads/video/by_match/${match.id}/stream?token=${encodeURIComponent(match.video_token)}`
+    const base = `/api/v1/uploads/video/by_match/${match.id}/stream?token=${encodeURIComponent(match.video_token)}`
+    // quality 未指定 / "source" は base のまま (backend が source ファイルを返す)
+    if (quality && quality !== 'source') {
+      return `${base}&quality=${encodeURIComponent(quality)}`
+    }
+    return base
   }
   if (match.video_url) return match.video_url
   return ''

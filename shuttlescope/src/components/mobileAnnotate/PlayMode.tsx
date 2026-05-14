@@ -47,6 +47,12 @@ function saveCrop(matchId: string | number, c: CropRect): void {
 }
 
 
+export interface QualityOption {
+  quality: 'source' | 'uhd' | 'fhd' | 'hd' | string
+  height: number
+  ready: boolean
+}
+
 interface Props {
   matchId: string | number
   videoSrc: string
@@ -54,9 +60,15 @@ interface Props {
   onTapVideo: (currentTime: number) => void
   /** 動画再生時間取得 / 操作のため、親に ref を渡したい場合に */
   videoElRef?: (el: HTMLVideoElement | null) => void
+  /** 利用可能な画質一覧 (backend の match レスポンスから) */
+  qualities?: QualityOption[]
+  /** 現在選択中の画質 ('source' / 'fhd' / 'hd') */
+  currentQuality?: 'source' | 'uhd' | 'fhd' | 'hd' | string
+  /** 画質変更コールバック */
+  onQualityChange?: (q: 'source' | 'uhd' | 'fhd' | 'hd' | string) => void
 }
 
-export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
+export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -479,6 +491,38 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
             {s}x
           </button>
         ))}
+        {/* 画質切替: backend が 1080p/720p variant を生成済みなら選択肢に出す。
+            ready=false (生成中) は disabled + 補助ラベル。 */}
+        {qualities && qualities.length > 1 && onQualityChange && (
+          <div className="flex gap-1">
+            {qualities.map((q) => {
+              const label =
+                q.quality === 'source'
+                  ? (q.height > 0 ? `${q.height}p` : 'src')
+                  : q.quality === 'uhd'
+                  ? '4K'
+                  : q.quality === 'fhd'
+                  ? '1080p'
+                  : q.quality === 'hd'
+                  ? '720p'
+                  : String(q.quality)
+              const isCurrent = (currentQuality || 'source') === q.quality
+              return (
+                <button
+                  key={q.quality}
+                  type="button"
+                  disabled={!q.ready}
+                  onClick={() => q.ready && onQualityChange(q.quality)}
+                  className={`px-1.5 py-1 rounded text-[10px] font-mono shadow ${isCurrent ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
+                  title={q.ready ? `画質 ${label}` : `画質 ${label} (準備中)`}
+                  style={!q.ready ? { opacity: 0.5 } : undefined}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

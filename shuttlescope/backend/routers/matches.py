@@ -411,6 +411,39 @@ def _effective_status(
     return "pending"
 
 
+def _compute_available_qualities(m: Match) -> list:
+    """match レスポンス用の available_qualities リストを生成する。
+
+    server:// 経路のサーバ保管動画のみ post-process 対象。それ以外 (localfile / 外部
+    URL) は ["source"] のみ返す。
+
+    各要素は {"quality":"source|fhd|hd", "height": int, "ready": bool}。
+    upscale 不要 (source.height <= target_h) のターゲットはリストに含めない。
+    """
+    vlp = (m.video_local_path or "")
+    if not vlp.startswith("server://"):
+        return [{"quality": "source", "height": 0, "ready": bool(vlp)}]
+    rest = vlp[len("server://"):]
+    upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
+    try:
+        from backend.services.video_variants import (
+            list_available_qualities, probe_source,
+        )
+        from backend.routers.uploads import UPLOAD_DIR
+        from backend.utils.safe_path import safe_path
+
+        src = safe_path(UPLOAD_DIR, rest)
+        h = 0
+        if src is not None and src.exists():
+            pr = probe_source(src)
+            if pr:
+                h = pr.height
+        return list_available_qualities(UPLOAD_DIR, upload_id, h)
+    except Exception:
+        # 失敗時は source のみ
+        return [{"quality": "source", "height": 0, "ready": True}]
+
+
 def match_to_dict(
     m: Match,
     include_players: bool = True,
@@ -442,6 +475,7 @@ def match_to_dict(
         "video_filename": _video_filename(m),
         "has_video_local": bool(m.video_local_path),
         "video_quality": m.video_quality,
+        "available_qualities": _compute_available_qualities(m),
         "camera_angle": m.camera_angle,
         "annotator_id": m.annotator_id,
         "annotation_status": _effective_status(m, db, has_sets_ids=has_sets_ids, has_cv_ids=has_cv_ids),
@@ -1109,7 +1143,10 @@ def get_match_rallies(match_id: int, request: Request, db: Session = Depends(get
 
 class DownloadRequest(BaseModel):
     model_config = {"extra": "forbid"}
-    quality: str = Field("720", max_length=10)            # "360" / "480" / "720" / "1080" / "best"
+    # YouTube DL は 4K (2160) でハードキャップ。配信側 (mobile annotate / web) も
+    # 4K を超えない前提で variant 生成ロジックを設計しているため、ここで弾く。
+    # "best" は 2160 にマップされる (video_downloader 側既存挙動)。
+    quality: str = Field("720", pattern=r"^(360|480|720|1080|1440|2160|best)$")
     # Electron 限定互換フィールド。Web からは使用不可（下で 403）。
     cookie_browser: str = Field("", max_length=32)
     # cookies.txt 本文（ユーザが UI からアップロード）。
@@ -1398,8 +1435,45 @@ def get_download_status(match_id: int, job_id: str, request: Request, db: Sessio
         existing = (match.video_local_path or "").strip()
         new_path = progress["filepath"]
         if not existing or existing == new_path:
+            # 4K cap: yt-dlp format selector が緩い / cookie 経由で 4K 超を引いてきた
+            # 場合に備えて DL 完了後に再 probe。> 2160 は削除して error 化。
+            try:
+                if new_path.startswith("server://"):
+                    from backend.routers.uploads import UPLOAD_DIR as _UD
+                    from backend.utils.safe_path import safe_path as _sp
+                    from backend.services.video_variants import probe_source as _pr
+                    rest = new_path[len("server://"):]
+                    f = _sp(_UD, rest)
+                    if f is not None and f.exists():
+                        pr = _pr(f)
+                        if pr and pr.height > 2160:
+                            try:
+                                f.unlink()
+                            except OSError:
+                                pass
+                            import logging as _lg_q
+                            _lg_q.getLogger(__name__).warning(
+                                "[download] rejected video > 4K: %dx%d match_id=%s",
+                                pr.width, pr.height, match_id,
+                            )
+                            raise HTTPException(
+                                status_code=413,
+                                detail=f"動画解像度が 4K 上限を超えています: {pr.height}p",
+                            )
+            except HTTPException:
+                raise
+            except Exception as _exc_re:
+                import logging as _lg_rp
+                _lg_rp.getLogger(__name__).warning("[download] post-DL probe failed: %s", _exc_re)
             match.video_local_path = new_path
             db.commit()
+            # post-process: 1080p / 720p variant 生成ジョブを enqueue (best-effort)
+            try:
+                from backend.pipeline.jobs import enqueue as _enqueue_v
+                _enqueue_v(db, match_id, job_type="video_variant")
+            except Exception as _exc_v:
+                import logging as _lg_v
+                _lg_v.getLogger(__name__).warning("[download] variant enqueue failed: %s", _exc_v)
         else:
             # 別 path が既にある → 攻撃の可能性。ログだけ残して書込みしない。
             import logging as _lg_dl

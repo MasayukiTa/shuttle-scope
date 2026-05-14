@@ -750,6 +750,17 @@ async def finalize_upload(
 
         db.commit()
 
+        # post-process: 1080p / 720p variant 生成ジョブを enqueue。
+        # source 解像度に対して upscale 不要なら service 側で自動 skip。
+        # 失敗してもアップロード成功は変えない (best-effort)。
+        if session.match_id is not None:
+            try:
+                from backend.pipeline.jobs import enqueue as _enqueue_job
+                _enqueue_job(db, session.match_id, job_type="video_variant")
+            except Exception as _exc:
+                import logging as _lg_v
+                _lg_v.getLogger(__name__).warning("[uploads] variant job enqueue failed: %s", _exc)
+
         # R39 fix (F-005): 絶対 path は返さず、basename だけ露出。
         from pathlib import Path as _PathFin
         _basename = ""
@@ -798,6 +809,7 @@ def stream_video_for_match(
     request: Request,
     db: Session = Depends(get_db),
     token: Optional[str] = Query(default=None),
+    quality: Optional[str] = Query(default=None, max_length=10),
 ):
     """match に紐づくサーバ保管動画を Range 対応でストリーミング。
 
@@ -831,7 +843,22 @@ def stream_video_for_match(
     if vlp.startswith("server://"):
         # server://{upload_id}{ext} → UPLOAD_DIR 配下に解決
         rest = vlp[len("server://"):]
-        file = safe_path(UPLOAD_DIR, rest)
+        # quality 指定があり、対応 variant が存在すれば variant ファイルを返す。
+        # 未指定 / "source" / variant 不在 → source ファイルを返す。
+        # quality は service の variant_specs キーのみ許可 (= 任意文字列でファイル
+        # 名走査されないように厳格に validate)。
+        if quality:
+            from backend.services.video_variants import variant_specs, variant_path
+            q = quality.strip().lower()
+            if q not in ("source", "src", ""):
+                if q not in variant_specs():
+                    raise HTTPException(status_code=400, detail=f"unknown quality: {q}")
+                upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
+                vpath = variant_path(UPLOAD_DIR, upload_id, q)
+                if vpath.exists() and vpath.stat().st_size > 0:
+                    file = vpath
+        if file is None:
+            file = safe_path(UPLOAD_DIR, rest)
     elif vlp.startswith("localfile:///"):
         # 24h 経過アーカイブ移動後の絶対パス。path_jail で
         # ss_live_archive_root / ss_video_extra_roots 内であることを確認。

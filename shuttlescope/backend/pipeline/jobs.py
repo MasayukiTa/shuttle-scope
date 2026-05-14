@@ -25,7 +25,28 @@ _POLL_INTERVAL_SEC = 2.0
 
 
 def enqueue(db: Session, match_id: int, job_type: str = "full_pipeline") -> AnalysisJob:
-    """新しいジョブをキューに投入する。"""
+    """新しいジョブをキューに投入する。
+
+    Idempotency: 同 match_id + 同 job_type で `queued` or `running` 状態のジョブが
+    既に存在する場合は新規 enqueue せず既存を返す。これは finalize や DL 完了 hook
+    が複数回呼ばれた場合に variant 生成が重複起動するのを防ぐため。
+    """
+    existing = (
+        db.query(AnalysisJob)
+        .filter(
+            AnalysisJob.match_id == match_id,
+            AnalysisJob.job_type == job_type,
+            AnalysisJob.status.in_(("queued", "running")),
+        )
+        .order_by(AnalysisJob.enqueued_at.desc())
+        .first()
+    )
+    if existing is not None:
+        logger.info(
+            "enqueue noop (already %s) id=%d match_id=%d type=%s",
+            existing.status, existing.id, match_id, job_type,
+        )
+        return existing
     job = AnalysisJob(match_id=match_id, job_type=job_type, status="queued", progress=0.0)
     db.add(job)
     db.flush()
