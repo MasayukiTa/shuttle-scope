@@ -141,6 +141,57 @@ export function MobileAnnotatePage() {
     queryFn: () => apiGet<{ data: any }>(`/matches/${matchId}`),
     enabled: !!matchId,
   })
+
+  // CV 候補を取得 (タイムライン マーカー + Pass1 hint 用)
+  // 失敗しても UI は壊さない (= retry 1 回、empty 配列を fallback)
+  const cvCandidatesQuery = useQuery({
+    queryKey: ['mobile-cv-candidates', matchId],
+    queryFn: () => apiGet<{ rallies?: Record<string, any> }>(`/cv-candidates/${matchId}`),
+    enabled: !!matchId,
+    retry: 1,
+    staleTime: 60_000,
+  })
+  // CV 候補の stroke timestamp を平坦化 (seek bar マーカー用)
+  const cvCandidateTimestamps = useMemo<number[]>(() => {
+    const ral = cvCandidatesQuery.data?.rallies
+    if (!ral || typeof ral !== 'object') return []
+    const out: number[] = []
+    for (const r of Object.values(ral) as any[]) {
+      for (const s of (r?.strokes || [])) {
+        if (typeof s?.timestamp_sec === 'number') out.push(s.timestamp_sec)
+      }
+    }
+    return out.sort((a, b) => a - b)
+  }, [cvCandidatesQuery.data])
+
+  // Pass1 へ渡す CV hint: pausedAtSec の直前 3 秒以内で最も近い stroke の hitter を
+  // 推奨 winner とする (= ラリー最後の打者 = 次失点を喫した側を相手にした打者)。
+  // 厳密推論ではなく hint なので user が override 可能。
+  const pass1CvHint = useMemo(() => {
+    const ral = cvCandidatesQuery.data?.rallies
+    if (!ral || typeof ral !== 'object') return null
+    let best: any = null
+    let bestGap = Infinity
+    for (const r of Object.values(ral) as any[]) {
+      for (const s of (r?.strokes || [])) {
+        const t = s?.timestamp_sec
+        if (typeof t !== 'number') continue
+        const gap = pausedAtSec - t  // pause 時点の直前 (負なら未来 = 除外)
+        if (gap >= 0 && gap < 3.0 && gap < bestGap) {
+          bestGap = gap
+          best = s
+        }
+      }
+    }
+    if (!best) return null
+    const hitterVal = best?.hitter?.value as ('player_a' | 'player_b' | undefined)
+    if (hitterVal !== 'player_a' && hitterVal !== 'player_b') return null
+    return {
+      suggestedWinner: hitterVal,
+      confidence: best?.hitter?.confidence_score as number | undefined,
+      mode: best?.hitter?.decision_mode as string | undefined,
+    }
+  }, [cvCandidatesQuery.data, pausedAtSec])
   const match = matchQuery.data?.data
   // available_qualities は backend が `[{quality, height, ready}, ...]` で返す
   const availableQualities: { quality: string; height: number; ready: boolean }[] =
@@ -287,6 +338,7 @@ export function MobileAnnotatePage() {
               qualities={availableQualities}
               currentQuality={effectiveQuality}
               onQualityChange={(q) => setVideoQuality(q as 'source' | 'uhd' | 'fhd' | 'hd')}
+              cvCandidateTimestamps={cvCandidateTimestamps}
             />
           ) : pass === 'rally' ? (
             // Pass 1: 得点ラリー区切り
@@ -324,6 +376,7 @@ export function MobileAnnotatePage() {
                   currentSet={currentSet}
                   rallies={mergedRallies}
                   pausedAtSec={pausedAtSec}
+                  cvHint={pass1CvHint}
                   onRallyAdded={(r) => {
                     setLocalRallies((prev) => [...prev, r])
                     // 入力後は動画に戻す → 次のラリーへ視聴を続ける流れ
