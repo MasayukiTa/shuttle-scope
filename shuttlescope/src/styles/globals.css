@@ -980,3 +980,41 @@ html[data-theme="light"] .recharts-tooltip-label {
 html[data-theme="light"] .recharts-tooltip-item {
   color: #0f172a !important;
 }
+
+/* ─── 20. モバイルアノテ オーバーレイ chip (両テーマ対応) ─────────
+ * 動画上に重なる UI は、テーマに応じてダーク/ライト両対応する。
+ * ダークモード: ダーク半透明 bg + 明るい text
+ * ライトモード: 明るい半透明 bg + ダーク text
+ * accent (再生 / アクティブ Pass) は --ss-accent-primary を使用 */
+.ss-overlay-chip {
+  background-color: rgba(31, 41, 55, 0.92);
+  color: var(--ss-text-primary);
+  border: 1px solid var(--ss-border-subtle);
+}
+html[data-theme="light"] .ss-overlay-chip {
+  background-color: rgba(255, 255, 255, 0.95);
+  color: var(--ss-text-primary);
+  border: 1px solid var(--ss-border-default);
+}
+
+.ss-overlay-chip-accent {
+  background-color: var(--ss-accent-primary);
+  color: #ffffff;
+  border: 1px solid var(--ss-accent-primary-hover);
+}
+
+.ss-overlay-chip-warning {
+  background-color: var(--ss-warning-bg);
+  color: var(--ss-warning-text);
+  border: 1px solid var(--ss-warning-border);
+}
+
+.ss-overlay-chip-danger {
+  background-color: var(--ss-danger-bg);
+  color: var(--ss-danger-text);
+  border: 1px solid var(--ss-danger-border);
+}
+
+.ss-overlay-range {
+  accent-color: var(--ss-accent-primary);
+}

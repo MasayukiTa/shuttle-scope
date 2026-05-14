@@ -326,8 +326,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
           </>
         )}
 
-        {/* 右上ツールクラスタ: 白基調 (動画背景は何色でも来るので濃いアイコンで
-            高コントラスト)。アクセントは橙 (ダーク青の house violation を避ける) */}
+        {/* 右上ツールクラスタ: house セマンティックトークンでテーマ自動切替 */}
         <div
           className="absolute right-2 flex gap-1 z-20"
           style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
@@ -337,8 +336,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setFitMode(fitMode === 'cover' ? 'contain' : 'cover') }}
-                className="p-2 rounded shadow"
-                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
+                className="p-2 rounded shadow ss-overlay-chip"
                 aria-label="表示モード切替"
                 title={fitMode === 'cover' ? '全体表示 (contain) に切替' : 'フル表示 (cover) に切替'}
               >
@@ -347,8 +345,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); enterFullscreen() }}
-                className="p-2 rounded shadow"
-                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
+                className="p-2 rounded shadow ss-overlay-chip"
                 aria-label="フルスクリーン"
                 title="iOS native フルスクリーンに入る"
               >
@@ -357,8 +354,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); startCropEdit() }}
-                className="p-2 rounded shadow"
-                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
+                className="p-2 rounded shadow ss-overlay-chip"
                 aria-label="切り抜き編集"
                 title="鳥瞰カメラの不要部分を切り抜く"
               >
@@ -370,8 +366,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); resetCrop() }}
-                className="p-2 rounded shadow"
-                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
+                className="p-2 rounded shadow ss-overlay-chip"
                 aria-label="全画面に戻す"
               >
                 <RotateCcw size={16} />
@@ -379,16 +374,14 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); cancelCrop() }}
-                className="px-2 py-1 rounded text-xs shadow"
-                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}
+                className="px-2 py-1 rounded text-xs shadow ss-overlay-chip"
               >
                 取消
               </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); commitCrop() }}
-                className="px-2 py-1 rounded text-xs flex items-center gap-1 shadow"
-                style={{ backgroundColor: 'rgba(245,158,11,0.98)', color: '#ffffff' }}
+                className="px-2 py-1 rounded text-xs flex items-center gap-1 shadow ss-overlay-chip-accent"
               >
                 <Check size={12} /> 確定
               </button>
@@ -397,7 +390,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
         </div>
       </div>
 
-      {/* 下部コントロールオーバーレイ: 白チップ + 橙アクセント (house style) */}
+      {/* 下部コントロールオーバーレイ: テーマ追従の chip 群 */}
       <div
         className="absolute left-0 right-0 px-2 py-2 flex items-center gap-1.5 text-xs z-20"
         style={{ bottom: 'env(safe-area-inset-bottom)' }}
@@ -405,26 +398,18 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
         onTouchStart={(e) => e.stopPropagation()}
       >
         <button type="button" onClick={() => seekBy(-5)}
-                className="px-2 py-1 rounded shadow font-mono text-[11px]"
-                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}>◀◀5</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">◀◀5</button>
         <button type="button" onClick={() => seekBy(-1)}
-                className="px-2 py-1 rounded shadow font-mono text-[11px]"
-                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}>◀1</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">◀1</button>
         <button type="button" onClick={togglePlay}
-                className="px-2.5 py-1.5 rounded shadow flex items-center"
-                style={{ backgroundColor: 'rgba(245,158,11,0.98)', color: '#ffffff' }}>
+                className="px-2.5 py-1.5 rounded shadow flex items-center ss-overlay-chip-accent">
           {playing ? <Pause size={14} /> : <Play size={14} />}
         </button>
         <button type="button" onClick={() => seekBy(1)}
-                className="px-2 py-1 rounded shadow font-mono text-[11px]"
-                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}>1▶</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">1▶</button>
         <button type="button" onClick={() => seekBy(5)}
-                className="px-2 py-1 rounded shadow font-mono text-[11px]"
-                style={{ backgroundColor: 'rgba(255,255,255,0.95)', color: '#0f172a' }}>5▶</button>
-        <span
-          className="font-mono text-[10px] mx-1 shrink-0 px-1.5 py-0.5 rounded"
-          style={{ backgroundColor: 'rgba(255,255,255,0.85)', color: '#0f172a' }}
-        >
+                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">5▶</button>
+        <span className="font-mono text-[10px] mx-1 shrink-0 px-1.5 py-0.5 rounded ss-overlay-chip">
           {fmt(currentTime)} / {fmt(duration)}
         </span>
         <input
@@ -434,8 +419,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
           step={0.1}
           value={currentTime}
           onChange={onScrub}
-          className="flex-1 mx-1"
-          style={{ accentColor: '#f59e0b' }}
+          className="flex-1 mx-1 ss-overlay-range"
         />
         {/* 速度切替 */}
         {[0.5, 1, 1.5, 2].map((s) => (
@@ -443,11 +427,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef }: Props) {
             key={s}
             type="button"
             onClick={() => setSpeed(s)}
-            className="px-1.5 py-1 rounded text-[10px] font-mono shadow"
-            style={{
-              backgroundColor: speed === s ? 'rgba(245,158,11,0.98)' : 'rgba(255,255,255,0.95)',
-              color: speed === s ? '#ffffff' : '#0f172a',
-            }}
+            className={`px-1.5 py-1 rounded text-[10px] font-mono shadow ${speed === s ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
           >
             {s}x
           </button>
