@@ -225,7 +225,13 @@ function Sidebar() {
       {!isFullBleedPage && (
         <div
           className={`md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t ${sidebarBg}`}
-          style={{ paddingBottom: 'env(safe-area-inset-bottom, 8px)', height: '56px' }}
+          style={{
+            // PWA standalone モード (iPhone home-indicator) では env(safe-area-inset-bottom)
+            // が ~34px になり、固定高さ 56px だと nav 中身が 22px に圧縮されて欠ける。
+            // height ではなく min-height + 内部 56px 確保で対応。
+            paddingBottom: 'env(safe-area-inset-bottom, 8px)',
+            minHeight: 'calc(56px + env(safe-area-inset-bottom, 0px))',
+          }}
         >
           {navItems.map(({ to, label, shortLabel, icon: Icon, badge }) => (
             <NavLink
@@ -301,7 +307,7 @@ function MainLayout() {
   return (
     <div className="flex h-screen">
       <Sidebar />
-      <div className="flex-1 overflow-hidden pb-14 md:pb-0">
+      <div className="flex-1 overflow-hidden ss-main-shell">
         <ErrorBoundary>
           <Routes>
             <Route path="/" element={<Navigate to="/matches" replace />} />

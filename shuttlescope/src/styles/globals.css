@@ -1018,3 +1018,24 @@ html[data-theme="light"] .ss-overlay-chip {
 .ss-overlay-range {
   accent-color: var(--ss-accent-primary);
 }
+
+/* ─── 21. PWA standalone safe-area shell ───────────────────────────
+ * iPhone ホーム画面追加で起動した PWA は status bar (top) と home indicator
+ * (bottom) 領域に web view が重なる。pb-14 / md:pb-0 だけだとモバイル
+ * ボトムナビが home indicator (~34px) に潜り、ヘッダ (新規試合登録ボタン等)
+ * が status bar (47px) に隠れる。
+ *
+ * 解決策:
+ *   - 共通: padding-top に env(safe-area-inset-top) を入れる
+ *   - mobile (< 768px): pb = nav 56px + env(safe-area-inset-bottom)
+ *   - md+: pb = 0 (デスクトップサイドバーで bottom nav 無し)
+ */
+.ss-main-shell {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: 0;
+}
+@media (max-width: 767px) {
+  .ss-main-shell {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
