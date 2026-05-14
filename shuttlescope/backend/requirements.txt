@@ -19,7 +19,7 @@ psycopg2-binary==2.9.12      # PostgreSQL ドライバ（SQLite → PG 移行後
 
 # ── データ分析 ────────────────────────────────────────────────────
 pandas==3.0.3
-numpy==1.26.4
+numpy==2.4.4
 scipy==1.17.1
 scikit-learn>=1.5.0          # CVE-2024-5206 修正
 matplotlib>=3.10.9
