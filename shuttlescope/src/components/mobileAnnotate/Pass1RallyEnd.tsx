@@ -52,6 +52,13 @@ interface Props {
   onUndoLast?: () => void
   /** 「セット終了 → 次のセット開始」ボタン押下時 */
   onSetEnded?: () => void
+  /** CV 推奨ヒント (任意): pausedAtSec 付近の候補 stroke から計算した winner 候補。
+      hint だけ表示、確定は user タップ。 */
+  cvHint?: {
+    suggestedWinner?: 'player_a' | 'player_b'
+    confidence?: number
+    mode?: string  // 'auto_filled' | 'suggested' | 'review_required'
+  } | null
 }
 
 export function Pass1RallyEnd({
@@ -63,6 +70,7 @@ export function Pass1RallyEnd({
   onCancel,
   onUndoLast,
   onSetEnded,
+  cvHint,
 }: Props) {
   const [busy, setBusy] = useState(false)
 
@@ -159,14 +167,22 @@ export function Pass1RallyEnd({
         </div>
       )}
 
-      {/* 2 ボタン */}
+      {/* 2 ボタン: CV 推奨側は左上に「CV 推奨」バッジ */}
       <div className="flex-1 flex">
         <button
           type="button"
           disabled={busy}
           onClick={() => submit('player_a')}
-          className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-blue-700 active:bg-blue-600 disabled:opacity-50 border-2 border-blue-400"
+          className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-blue-700 active:bg-blue-600 disabled:opacity-50 border-2 border-blue-400 relative"
         >
+          {cvHint?.suggestedWinner === 'player_a' && (
+            <span
+              className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
+              style={{ backgroundColor: 'rgba(245,158,11,0.95)', color: '#ffffff' }}
+            >
+              CV {cvHint.confidence ? `${Math.round(cvHint.confidence * 100)}%` : ''}
+            </span>
+          )}
           <div className="text-5xl font-bold text-white">A</div>
           <div className="text-xs text-blue-200">プレイヤーA 得点</div>
           <div className="text-[10px] text-blue-300/80">
@@ -177,8 +193,16 @@ export function Pass1RallyEnd({
           type="button"
           disabled={busy}
           onClick={() => submit('player_b')}
-          className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-pink-700 active:bg-pink-600 disabled:opacity-50 border-2 border-pink-400"
+          className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-pink-700 active:bg-pink-600 disabled:opacity-50 border-2 border-pink-400 relative"
         >
+          {cvHint?.suggestedWinner === 'player_b' && (
+            <span
+              className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-mono"
+              style={{ backgroundColor: 'rgba(245,158,11,0.95)', color: '#ffffff' }}
+            >
+              CV {cvHint.confidence ? `${Math.round(cvHint.confidence * 100)}%` : ''}
+            </span>
+          )}
           <div className="text-5xl font-bold text-white">B</div>
           <div className="text-xs text-pink-200">プレイヤーB 得点</div>
           <div className="text-[10px] text-pink-300/80">

@@ -19,7 +19,8 @@
  *     コートタップが矩形ハンドル操作になり、再生は強制停止される。
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Play, Pause, Scissors, RotateCcw, Check, Maximize2, Square } from 'lucide-react'
+import { Play, Pause, Scissors, RotateCcw, Check, Maximize2, Square, Grid3x3, Target, Users } from 'lucide-react'
+import { MobileCVOverlay } from '@/components/mobileAnnotate/MobileCVOverlay'
 
 export interface CropRect {
   x: number; y: number; w: number; h: number  // 0..1 normalized
@@ -66,9 +67,11 @@ interface Props {
   currentQuality?: 'source' | 'uhd' | 'fhd' | 'hd' | string
   /** 画質変更コールバック */
   onQualityChange?: (q: 'source' | 'uhd' | 'fhd' | 'hd' | string) => void
+  /** CV 候補のタイムスタンプ配列。seek bar 上にマーカー描画 */
+  cvCandidateTimestamps?: number[]
 }
 
-export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange }: Props) {
+export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -83,12 +86,32 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   const [fitMode, setFitMode] = useState<'cover' | 'contain'>('cover')
   // 再生エラーを onscreen に出す (β: Safari Web Inspector に繋げない端末でも見えるよう)
   const [playError, setPlayError] = useState<string>('')
+  // CV オーバーレイの可視性 (個別 toggle で重ね描きの ON/OFF 切替可能)
+  const [showCourt, setShowCourt] = useState(true)
+  const [showShuttle, setShowShuttle] = useState(true)
+  const [showPlayers, setShowPlayers] = useState(false)  // bbox は視認性影響大なので default OFF
+  // overlay 描画用に video element の実描画サイズを track する
+  const [videoBox, setVideoBox] = useState({ w: 0, h: 0 })
 
   // 親に videoRef を露出
   useEffect(() => {
     videoElRef?.(videoRef.current)
     return () => { videoElRef?.(null) }
   }, [videoElRef])
+
+  // overlay 用にコンテナ実寸を計測 (object-fit cover/contain でも overlay は
+  // コンテナ全体に重ねるので、コンテナサイズと一致させる)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const update = () => {
+      setVideoBox({ w: el.clientWidth || 0, h: el.clientHeight || 0 })
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // playback rate
   useEffect(() => {
@@ -353,6 +376,21 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
           />
         )}
 
+        {/* CV オーバーレイ (コートグリッド / シャトル軌跡 / プレイヤー bbox)
+            video element の上に z-index 11/12/13 で重ねる。タップ透過させるので
+            コートタップ判定 (= setScreen annotate) は阻害しない。 */}
+        {!cropEditing && videoBox.w > 0 && videoBox.h > 0 && (
+          <MobileCVOverlay
+            matchId={matchId}
+            currentSec={currentTime}
+            videoWidth={videoBox.w}
+            videoHeight={videoBox.h}
+            showCourt={showCourt}
+            showShuttle={showShuttle}
+            showPlayers={showPlayers}
+          />
+        )}
+
         {/* クロップ編集 overlay: 現在の pending crop を視覚化 */}
         {cropEditing && (
           <>
@@ -392,6 +430,34 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         >
           {!cropEditing ? (
             <>
+              {/* オーバーレイトグル 3 種 (コート / シャトル / プレイヤー) */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowCourt(!showCourt) }}
+                className={`p-2 rounded shadow ${showCourt ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
+                aria-label="コートグリッド"
+                title="コートグリッド表示切替"
+              >
+                <Grid3x3 size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowShuttle(!showShuttle) }}
+                className={`p-2 rounded shadow ${showShuttle ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
+                aria-label="シャトル軌跡"
+                title="シャトル軌跡表示切替"
+              >
+                <Target size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowPlayers(!showPlayers) }}
+                className={`p-2 rounded shadow ${showPlayers ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
+                aria-label="プレイヤー位置"
+                title="プレイヤー位置 bbox 表示切替"
+              >
+                <Users size={16} />
+              </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setFitMode(fitMode === 'cover' ? 'contain' : 'cover') }}
@@ -471,15 +537,49 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         <span className="font-mono text-[10px] mx-1 shrink-0 px-1.5 py-0.5 rounded ss-overlay-chip">
           {fmt(currentTime)} / {fmt(duration)}
         </span>
-        <input
-          type="range"
-          min={0}
-          max={duration || 0}
-          step={0.1}
-          value={currentTime}
-          onChange={onScrub}
-          className="flex-1 mx-1 ss-overlay-range"
-        />
+        {/* シーク bar + CV 候補マーカー (タップで該当時刻へ jump) */}
+        <div className="flex-1 mx-1 relative h-5 flex items-center">
+          <input
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={0.1}
+            value={currentTime}
+            onChange={onScrub}
+            className="w-full ss-overlay-range"
+            style={{ position: 'relative', zIndex: 2 }}
+          />
+          {/* CV candidate ドット: bar 上に分布。タップで video.currentTime にセット */}
+          {duration > 0 && cvCandidateTimestamps && cvCandidateTimestamps.length > 0 && (
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 pointer-events-none" style={{ zIndex: 1, height: 6 }}>
+              {cvCandidateTimestamps.map((t, i) => {
+                const ratio = Math.max(0, Math.min(1, t / duration))
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const v = videoRef.current
+                      if (v) v.currentTime = t
+                    }}
+                    className="absolute -translate-x-1/2 rounded-full pointer-events-auto"
+                    style={{
+                      left: `${ratio * 100}%`,
+                      top: -2,
+                      width: 8,
+                      height: 8,
+                      backgroundColor: 'rgba(245,158,11,0.9)',
+                      border: '1px solid rgba(0,0,0,0.5)',
+                    }}
+                    title={`候補 #${i + 1} @ ${t.toFixed(1)}s`}
+                    aria-label={`候補 ${i + 1}`}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
         {/* 速度切替 */}
         {[0.5, 1, 1.5, 2].map((s) => (
           <button
