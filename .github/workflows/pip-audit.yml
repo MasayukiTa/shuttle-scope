@@ -21,7 +21,7 @@ jobs:
     name: pip-audit (backend)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: shuttlescope/backend/requirements.txt
@@ -32,7 +32,7 @@ jobs:
     name: pip-audit (worker)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: shuttlescope/requirements_worker.txt
