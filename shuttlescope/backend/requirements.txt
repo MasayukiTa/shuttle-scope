@@ -35,7 +35,7 @@ imageio-ffmpeg>=0.6.0         # bundled ffmpeg (SYSTEM サービスから WinGet
 httpx==0.26.0
 
 # ── クラスタ / システム監視 ────────────────────────────────────────
-pyyaml>=6.0                  # cluster.config.yaml の読み書き
+pyyaml>=6.0.3                  # cluster.config.yaml の読み書き
 psutil>=5.9                  # CPU / メモリ / ネットワーク IF 監視
 # ray>=2.54.0                # 分散推論。pip install "ray[default]" で別途導入（大容量）。
 #                            # 2.54 未満は複数 CVE あり (GHSA-w4rh-fgx7-q63m / q279-jhrf-cc6v / q5fh-2hc8-f6rq)。
