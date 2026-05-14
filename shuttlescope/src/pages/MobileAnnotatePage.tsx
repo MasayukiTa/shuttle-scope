@@ -127,6 +127,8 @@ export function MobileAnnotatePage() {
   const [pass, setPass] = useState<AnnotatePass>('rally')
   const [screen, setScreen] = useState<ScreenMode>('play')
   const [pausedAtSec, setPausedAtSec] = useState<number>(0)
+  // 配信画質: モバイル既定は 'hd' (720p) → 帯域節約。fhd/source へユーザが任意切替可。
+  const [videoQuality, setVideoQuality] = useState<'source' | 'uhd' | 'fhd' | 'hd'>('hd')
   const videoElRef = useRef<HTMLVideoElement | null>(null)
   const [queueStatus, setQueueStatus] = useState<{
     pending: number
@@ -140,7 +142,17 @@ export function MobileAnnotatePage() {
     enabled: !!matchId,
   })
   const match = matchQuery.data?.data
-  const videoSrc = getMobileVideoSrc(match)
+  // available_qualities は backend が `[{quality, height, ready}, ...]` で返す
+  const availableQualities: { quality: string; height: number; ready: boolean }[] =
+    match?.available_qualities || [{ quality: 'source', height: 0, ready: true }]
+  // 現在選択中 quality が ready でないなら最初の ready な quality に fallback
+  const effectiveQuality = useMemo<'source' | 'uhd' | 'fhd' | 'hd'>(() => {
+    const found = availableQualities.find((q) => q.quality === videoQuality && q.ready)
+    if (found) return videoQuality
+    const firstReady = availableQualities.find((q) => q.ready)
+    return (firstReady?.quality || 'source') as 'source' | 'uhd' | 'fhd' | 'hd'
+  }, [availableQualities, videoQuality])
+  const videoSrc = getMobileVideoSrc(match, effectiveQuality)
 
   // セット一覧 + 既存ラリー取得 (Pass 1 用)
   const setsQuery = useQuery({
@@ -272,6 +284,9 @@ export function MobileAnnotatePage() {
                 setScreen('annotate')
               }}
               videoElRef={(el) => { videoElRef.current = el }}
+              qualities={availableQualities}
+              currentQuality={effectiveQuality}
+              onQualityChange={(q) => setVideoQuality(q as 'source' | 'uhd' | 'fhd' | 'hd')}
             />
           ) : pass === 'rally' ? (
             // Pass 1: 得点ラリー区切り

@@ -221,22 +221,59 @@ def run_pipeline(db: Session, match_id: int, *, use_gpu: bool = False) -> dict:
 
 
 def execute_job(db: Session, job: AnalysisJob) -> None:
-    """AnalysisJob を実行し、ステータスを更新する。"""
+    """AnalysisJob を実行し、ステータスを更新する。
+
+    job_type による dispatch:
+      - "video_variant": post-process で 1080p / 720p variant を生成
+                         (不要 upscale は service 側で自動 skip)
+      - "full_pipeline" / その他: 既定の解析パイプライン
+    """
     job.status = "running"
     job.started_at = datetime.utcnow()
     job.worker_host = socket.gethostname()
     db.flush()
     try:
-        counts = run_pipeline(db, job.match_id, use_gpu=False)
+        if (job.job_type or "").strip() == "video_variant":
+            counts = _run_video_variant_job(db, job.match_id)
+        else:
+            counts = run_pipeline(db, job.match_id, use_gpu=False)
         job.progress = 1.0
         job.status = "done"
         job.finished_at = datetime.utcnow()
         # エラーをクリア
         job.error = None
-        logger.info("job done id=%d counts=%s", job.id, counts)
+        logger.info("job done id=%d type=%s counts=%s", job.id, job.job_type, counts)
     except Exception as exc:  # pragma: no cover - 防御的
-        logger.exception("job failed id=%d: %s", job.id, exc)
+        logger.exception("job failed id=%d type=%s: %s", job.id, job.job_type, exc)
         job.status = "failed"
         job.error = str(exc)[:1000]
         job.finished_at = datetime.utcnow()
     db.flush()
+
+
+def _run_video_variant_job(db: Session, match_id: int) -> dict:
+    """video_variant ジョブの本体。
+
+    Match.video_local_path が server:// の場合のみ処理 (= サーバ保管動画のみ)。
+    localfile:/// やアーカイブ済みアクセス経路は対象外 (= 旧 / 外部動画は variant
+    を作らない)。
+    """
+    from backend.db.models import Match
+    from backend.services.video_variants import generate_all_for_source
+    from backend.routers.uploads import UPLOAD_DIR
+    from backend.utils.safe_path import safe_path
+
+    m = db.get(Match, match_id)
+    if m is None:
+        raise RuntimeError(f"match {match_id} not found")
+    vlp = m.video_local_path or ""
+    if not vlp.startswith("server://"):
+        return {"skipped": "video_local_path not server://"}
+    rest = vlp[len("server://"):]
+    src = safe_path(UPLOAD_DIR, rest)
+    if src is None or not src.exists():
+        raise RuntimeError(f"source file missing: {rest}")
+    # upload_id は server://{upload_id}{ext} の {upload_id} 部分。拡張子を除いた basename。
+    upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
+    result = generate_all_for_source(src, UPLOAD_DIR, upload_id)
+    return {"variants": result}
