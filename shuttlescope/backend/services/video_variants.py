@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -30,6 +31,47 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_bin(name: str) -> Optional[str]:
+    """ffmpeg / ffprobe のフルパスを解決する。
+
+    SYSTEM 権限のサービス文脈では PATH に WinGet/Links が無いため、
+    shutil.which が None を返す。video_downloader._resolve_ffmpeg と同じ順序で
+    解決する (PATH → imageio_ffmpeg bundled → 既知パス → WinGet Links 直指定)。
+    """
+    p = shutil.which(name)
+    if p:
+        return p
+    # imageio-ffmpeg bundled (ffmpeg のみ — ffprobe は提供しないので fall-through)
+    if name == "ffmpeg":
+        try:
+            import imageio_ffmpeg as _iio
+            bundled = _iio.get_ffmpeg_exe()
+            if bundled and os.path.isfile(bundled):
+                return bundled
+        except Exception:
+            pass
+    candidates = [
+        rf"C:\Program Files\ffmpeg\bin\{name}.exe",
+        rf"C:\ProgramData\chocolatey\bin\{name}.exe",
+        rf"C:\ffmpeg\bin\{name}.exe",
+    ]
+    # SYSTEM 権限で動作時は USERPROFILE が SYSTEM の home を指す可能性が高いが、
+    # 想定として kiyus のインストールを参照する場合のフォールバックも残す
+    for env_user in ("USERPROFILE", "HOME"):
+        home = os.environ.get(env_user)
+        if home:
+            candidates.append(os.path.join(home, "AppData", "Local", "Microsoft", "WinGet", "Links", f"{name}.exe"))
+    # 既知のユーザ配置 (SYSTEM 権限から直指定)
+    candidates.append(rf"C:\Users\kiyus\AppData\Local\Microsoft\WinGet\Links\{name}.exe")
+    for c in candidates:
+        try:
+            if os.path.isfile(c):
+                return c
+        except OSError:
+            continue
+    return None
 
 
 # ─── 設定 ────────────────────────────────────────────────────────────────
@@ -93,7 +135,7 @@ def probe_source(path: Path) -> Optional[ProbeResult]:
     rotation メタデータがある (= 90/270 度回転) 場合は width/height をスワップ
     した値を返す (人間が見たときの解像度に揃える)。
     """
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = _resolve_bin("ffprobe")
     if not ffprobe:
         logger.warning("[video_variants] ffprobe not found in PATH; cannot probe")
         return None
@@ -256,7 +298,7 @@ def generate_variant(
     audio は AAC 128kbps (モバイル用なので過剰品質不要)。
     """
     import os as _os
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = _resolve_bin("ffmpeg")
     if not ffmpeg:
         return False, "ffmpeg not found"
     # 出力先の parent 確保
