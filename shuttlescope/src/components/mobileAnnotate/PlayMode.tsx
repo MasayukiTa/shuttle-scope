@@ -81,9 +81,10 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   const [crop, setCrop] = useState<CropRect>(() => loadCrop(matchId))
   const [cropEditing, setCropEditing] = useState(false)
   const [pendingCrop, setPendingCrop] = useState<CropRect>(crop)
-  // cover = 動画で viewport を埋める (フル幅、上下 crop)。contain = レターボックスで全面表示。
-  // モバイルアノテはコート中央を大きく見たいので cover を default。
-  const [fitMode, setFitMode] = useState<'cover' | 'contain'>('cover')
+  // contain = レターボックスで全面表示 (短辺基準、欠けない)。cover = viewport を
+  // 埋める (長辺基準、上下/左右 crop)。アノテはコート全体が見えないと打点判定
+  // できないので contain を default。Square ボタンで cover にも切替可。
+  const [fitMode, setFitMode] = useState<'cover' | 'contain'>('contain')
   // 再生エラーを onscreen に出す (β: Safari Web Inspector に繋げない端末でも見えるよう)
   const [playError, setPlayError] = useState<string>('')
   // iOS Safari は要素単位 requestFullscreen を持たないため、ホーム画面追加を促す

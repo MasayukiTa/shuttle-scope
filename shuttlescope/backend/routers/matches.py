@@ -1111,6 +1111,47 @@ def quick_start_match(body: QuickStartBody, request: Request, db: Session = Depe
     }
 
 
+@router.post("/matches/{match_id}/regenerate_variants", status_code=202)
+def regenerate_video_variants(
+    match_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """既存 match の動画 variant (1080p / 720p / 4K) を再生成する。
+
+    新規 upload や YouTube DL は finalize 時に自動 enqueue されるが、それ以前から
+    存在していた match や variant が消えてしまった場合に手動で再生成する経路。
+
+    認可: admin / analyst / coach (= 試合書込み可能なロール) のみ。
+    冪等: 既に queued/running があれば既存 job を返す (= jobs.enqueue 側の冪等性)。
+    """
+    from backend.utils.auth import get_auth as _get_auth, require_match_scope as _req
+    from backend.pipeline.jobs import enqueue as _enqueue
+    ctx = _get_auth(request)
+    if ctx.role not in ("admin", "analyst", "coach"):
+        raise HTTPException(status_code=403, detail="権限が足りません")
+    m = db.get(Match, match_id)
+    if m is None:
+        raise HTTPException(status_code=404, detail="試合が見つかりません")
+    _req(request, m, db)
+    vlp = m.video_local_path or ""
+    if not vlp.startswith("server://"):
+        raise HTTPException(
+            status_code=400,
+            detail="サーバ保管動画 (server://) のみ variant 生成可能",
+        )
+    job = _enqueue(db, match_id, job_type="video_variant")
+    return {
+        "success": True,
+        "data": {
+            "job_id": job.id,
+            "match_id": match_id,
+            "status": job.status,
+            "job_type": job.job_type,
+        },
+    }
+
+
 @router.get("/matches/{match_id}/rallies")
 def get_match_rallies(match_id: int, request: Request, db: Session = Depends(get_db)):
     """試合のラリー一覧 (BOLA/IDOR: ロール別スコープ検証 + Phase B-6)"""
