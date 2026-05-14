@@ -86,6 +86,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   const [fitMode, setFitMode] = useState<'cover' | 'contain'>('cover')
   // 再生エラーを onscreen に出す (β: Safari Web Inspector に繋げない端末でも見えるよう)
   const [playError, setPlayError] = useState<string>('')
+  // iOS Safari は要素単位 requestFullscreen を持たないため、ホーム画面追加を促す
+  const [iosFsHint, setIosFsHint] = useState(false)
   // CV オーバーレイの可視性 (個別 toggle で重ね描きの ON/OFF 切替可能)
   const [showCourt, setShowCourt] = useState(true)
   const [showShuttle, setShowShuttle] = useState(true)
@@ -205,54 +207,38 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
     }
   })()
 
-  // iOS Safari native fullscreen.
-  // 仕様: webkitEnterFullscreen() は HAVE_METADATA (readyState >= 1) 以上、かつ
-  // ユーザ gesture コンテキストで呼ぶ必要がある。metadata 未取得なら play() を
-  // 試みて load を強制してから、loadedmetadata イベントで再試行する。
-  // 加えて iOS は <video controls> でないと UI が出ないので、フルスクリーン突入
-  // 時に controls を一時的に true にしておく (ネイティブプレーヤーで戻る/再生
-  // が可能になる)。
+  // フルスクリーン: **document.documentElement 全体** を全画面化することで
+  // overlay (コートグリッド / シャトル / Pass ボタン / 右上 chip 等) を保ったまま
+  // 画面いっぱいに広げる。
+  //
+  // 旧実装は videoRef.webkitEnterFullscreen() を呼んでいたが、これは iOS 純正
+  // 動画プレーヤーに飛ぶので overlay / アノテボタンが全消失する (= ただの動画
+  // 視聴になる) ため使用禁止。
+  //
+  // 戦略:
+  //  - 標準 Fullscreen API (Desktop / Android Chrome) → requestFullscreen
+  //  - iOS Safari は要素単位 requestFullscreen 非対応 → 「ホーム画面に追加」を
+  //    1 回だけガイド (Add-to-Home-Screen で PWA フルスクリーン化が可能)
   const enterFullscreen = useCallback(() => {
-    const v = videoRef.current
-    if (!v) return
-    v.controls = true
-    // fullscreen 解除時に controls を戻す (戻さないと page 上で iOS native overlay が
-    // 残り、自前の play ボタンと干渉する)
-    const onExit = () => {
-      v.controls = false
-      v.removeEventListener('webkitendfullscreen', onExit)
-      document.removeEventListener('fullscreenchange', onExit)
-    }
-    v.addEventListener('webkitendfullscreen', onExit)
-    document.addEventListener('fullscreenchange', () => {
-      if (!document.fullscreenElement) onExit()
-    })
-    const anyV = v as any
-    const tryGo = () => {
+    const target: any = document.documentElement
+    const reqFs =
+      target.requestFullscreen ||
+      target.webkitRequestFullscreen ||
+      target.mozRequestFullScreen ||
+      target.msRequestFullscreen
+    if (typeof reqFs === 'function') {
       try {
-        if (anyV.webkitEnterFullscreen) {
-          anyV.webkitEnterFullscreen()
-          return true
+        const p = reqFs.call(target)
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => setIosFsHint(true))
         }
-        if (v.requestFullscreen) {
-          void v.requestFullscreen().catch(() => {})
-          return true
-        }
-      } catch {}
-      return false
+        return
+      } catch {
+        // fallthrough
+      }
     }
-    if (v.readyState >= 1) {
-      tryGo()
-      return
-    }
-    // readyState 0 (HAVE_NOTHING): metadata 未取得 → load() で強制取得して
-    // loadedmetadata 受信後に再試行
-    const onMeta = () => {
-      v.removeEventListener('loadedmetadata', onMeta)
-      tryGo()
-    }
-    v.addEventListener('loadedmetadata', onMeta)
-    try { v.load() } catch {}
+    // iOS Safari (要素単位 requestFullscreen 不可)
+    setIosFsHint(true)
   }, [])
 
   const startCropEdit = () => {
@@ -409,6 +395,19 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               切り抜き範囲をドラッグで指定 → 右下 ✓ で確定
             </div>
           </>
+        )}
+
+        {/* iOS Safari フルスクリーン案内: requestFullscreen 非対応端末用 */}
+        {iosFsHint && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 z-30 px-3 py-2 rounded shadow text-[11px] ss-overlay-chip"
+            style={{ top: 'max(2.6rem, calc(env(safe-area-inset-top) + 2.2rem))', maxWidth: '90vw' }}
+            onClick={(e) => { e.stopPropagation(); setIosFsHint(false) }}
+          >
+            iPhone Safari は要素単位の全画面非対応です。
+            <br />Safari 共有ボタン → <b>「ホーム画面に追加」</b> で PWA 起動すると
+            URL バー無しの本物フルスクリーンになります。(タップで閉じる)
+          </div>
         )}
 
         {/* 再生エラー banner (β デバッグ用、原因不明な play 失敗を即視認できるよう
