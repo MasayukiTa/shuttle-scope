@@ -854,9 +854,18 @@ def stream_video_for_match(
                 if q not in variant_specs():
                     raise HTTPException(status_code=400, detail=f"unknown quality: {q}")
                 upload_id = rest.rsplit(".", 1)[0] if "." in rest else rest
+                # upload_id は UUID (uuid.uuid4) のはずだが、DB 由来文字列のため
+                # path traversal セーフのため安全側で jail する。defensive 二重チェック。
+                if "/" in upload_id or "\\" in upload_id or ".." in upload_id:
+                    raise HTTPException(status_code=400, detail="不正な upload_id 形式")
                 vpath = variant_path(UPLOAD_DIR, upload_id, q)
-                if vpath.exists() and vpath.stat().st_size > 0:
-                    file = vpath
+                # safe_path で UPLOAD_DIR/variants/ 配下に jail 済かを resolve 後に検証
+                try:
+                    vpath_safe = safe_path(UPLOAD_DIR, str(vpath.relative_to(Path(UPLOAD_DIR).resolve())))
+                except (ValueError, HTTPException):
+                    vpath_safe = None
+                if vpath_safe is not None and vpath_safe.exists() and vpath_safe.stat().st_size > 0:
+                    file = vpath_safe
         if file is None:
             file = safe_path(UPLOAD_DIR, rest)
     elif vlp.startswith("localfile:///"):
