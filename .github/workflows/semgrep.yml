@@ -6,14 +6,16 @@ on:
   schedule:
     - cron: "0 3 * * 1"  # weekly Monday 03:00 UTC
 
-permissions:
-  contents: read
-  security-events: write  # SARIF upload
+# 最小権限: top-level は空、job 単位で必要な分のみ宣言。
+permissions: {}
 
 jobs:
   semgrep:
     name: semgrep scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # SARIF upload
     container:
       image: returntocorp/semgrep
     steps:
