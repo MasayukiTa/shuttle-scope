@@ -32,6 +32,7 @@ If someone opens ShuttleScope today, the parts they can realistically expect to 
 - configure Ray / cluster routing from Settings and inspect worker availability, load limits, and network health
 - share sessions on nearby devices over LAN with password-protected join flow
 - use the same workflow on phone / tablet widths with mobile cards, bottom navigation, and a player-selector sheet, sharing an underlying `useBreakpoint` ladder (xs / sm / md / lg / xl / 2xl) so the layout stays coherent rather than guessing per-component
+- annotate from an iPhone / iPad in landscape via the dedicated `/m/annotate/:matchId` flow (mobile-only routing on viewport width < 768px). Three Pass screens (rally scoring → serve/final stroke → per-stroke shot type) overlay a full-bleed video that keeps `currentTime` across submits and quality switches, with read-only CV overlays (court grid + shuttle trajectory + player bboxes + timeline CV-candidate markers) and a `▶ M:SS から再開` chip that jumps to the last rally's end timestamp. Works as a PWA when added to the iPhone home screen for true URL-bar-free fullscreen.
 
 The parts that still need more real-world proof are:
 
@@ -151,7 +152,8 @@ These areas are usable for internal exploration, but they are still a step behin
 - OS-level screen recording for any HTTPS streaming site the user has a licensed view of. Recording is OBS-equivalent pixel capture only — no DRM, CDM, or HDCP defeat is implemented anywhere, and HDCP-protected content typically yields a black recording on purpose.
 - Quality preset (low / med / high) selectable from the recorder UI.
 - A post-recording check surfaces a warning when the captured video is mostly black, so a useless capture is caught immediately.
-- yt-dlp downloads accept a `cookies.txt` upload from the web build, browser-cookie selection from the desktop build, and an optional video password for password-protected videos like Vimeo Showcase. Sensitive inputs are not logged.
+- yt-dlp downloads accept a `cookies.txt` upload from the web build, browser-cookie selection from the desktop build, and an optional video password for password-protected videos like Vimeo Showcase. Sensitive inputs are not logged. Download quality is hard-capped at 4K (2160p), and the server re-probes the downloaded file post-hoc and rejects (deletes + 413) if a stream slipped through above the cap.
+- Post-upload variant pipeline generates 4K / 1080p / 720p mp4s alongside the original so mobile delivery doesn't ship the full source. No upscale is ever attempted (a 480p source produces zero variants); sources larger than 8192×4320 skip variant generation entirely so a pathological upload cannot drive ffmpeg out of memory. Variants are written via `.mp4.tmp` + `os.replace()` so the stream endpoint never serves a half-written file.
 
 These areas are useful for development and internal testing, but CV quality still depends heavily on real-video validation.
 
@@ -264,7 +266,7 @@ shuttle-scope/
 
 - Windows as the main target environment
 - Node.js 18+
-- Python 3.10+
+- Python 3.11+ (CI bumped from 3.10 on 2026-05-14 to satisfy newer scipy / pandas wheels)
 - optional: `ffmpeg`
 - optional: `ngrok`
 - optional: `cloudflared`
@@ -429,6 +431,11 @@ GitHub Actions workflows are included for:
 - OSV-Scanner and OSV-Scanner PR (Python dependency vulnerabilities)
 - Microsoft Defender For Devops (MSDO)
 - OpenSSF Scorecard (supply-chain posture)
+- Semgrep (`p/default + p/python + p/react + p/typescript + p/owasp-top-ten` rulesets)
+- Gitleaks (full-history secret scan on every push)
+- pip-audit (PyPA advisory DB, broader than OSV for Python)
+- Trivy filesystem (IaC + secrets + misconfig)
+- Dependabot (weekly grouped minor/patch PRs for pip / npm / github-actions; majors come as individual PRs for case-by-case review)
 
 Recent CI hardening:
 
