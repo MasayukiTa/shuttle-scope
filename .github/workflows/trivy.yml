@@ -6,14 +6,17 @@ on:
   schedule:
     - cron: "0 6 * * 1"  # weekly Monday 06:00 UTC
 
-permissions:
-  contents: read
-  security-events: write
+# 最小権限: top-level は read-all 削除、各 job が必要な分のみ宣言する。
+# (Scorecard TokenPermissionsID: top-level に security-events:write は付けない)
+permissions: {}
 
 jobs:
   trivy-fs:
     name: trivy filesystem (IaC + config + deps)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Run Trivy filesystem scan
