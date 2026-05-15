@@ -14,6 +14,140 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-05-15
+
+### Mobile Annotation Hardening + Supply-Chain Pin
+
+A polish + safety pass on the new mobile annotation UI and the surrounding CI surface.
+
+- **PlayMode stays mounted across pass switches.** Tapping `A` / `B` in `Pass1RallyEnd` used to flip `screen='play' <-> 'annotate'`, which conditionally rendered `PlayMode` and forced the `<video>` element to remount each time — `currentTime` reset to 0 on every rally submit, making real annotation impossible. Restructured: `PlayMode` is always mounted; `Pass1` / `Pass2` / `Pass3` render as `absolute z-40` overlays on top. The video element keeps its `src`, `currentTime`, and play state across submits.
+- **Quality switch preserves seek + play state.** Switching 720p ↔ 1080p (`videoSrc` changes) used to re-load the video from 0s. A `pendingResume` ref now captures `currentTime` + `wasPlaying` on `videoSrc` change, then restores on the new src's `loadedmetadata` — with a `duration` clamp in case the variant length differs from the source.
+- **"Resume from last rally" chip.** PlayMode now shows a `▶ M:SS から再開` overlay chip when existing rallies (server + local queue) put the most recent `video_timestamp_end` more than 3s away from the current playback position. Tap = seek. The rally / score state itself was already resuming via `mergedRallies`; this fills in the missing video-position step.
+- **`object-fit: contain` default (short-side basis).** Mobile annotate used to default to `cover`, which on landscape iPhone cropped the top/bottom of the badminton frame and hid where the shuttle landed. Default is now `contain` (letterboxed, no crop). The Square toggle still flips to `cover` for users who want full-screen fill.
+- **PWA standalone safe-area.** Add-to-Home iPhone mode hid the `試合登録` button under the iOS status bar (~47px overlay) and pushed the mobile bottom nav under the home indicator (~34px), squeezing nav content to ~22px usable. New `.ss-main-shell` utility uses `env(safe-area-inset-top/bottom)` on the main wrapper; bottom nav switches to `min-height: calc(56px + env(safe-area-inset-bottom))` so its 56px content area is preserved.
+- **Defense-in-depth path jail on variant streaming.** `stream_video_for_match` originally derived the variant path from `upload_id` parsed out of DB `Match.video_local_path`. `upload_id` is server-generated UUID in normal writers (upload finalize / yt-dlp / archiver), but the stream code now explicitly rejects `/` `\` `..` in the parsed id and runs `safe_path()` on the resolved variant path. Closes the CodeQL `py/path-injection` family on this endpoint.
+- **Manual variant regeneration endpoint.** `POST /matches/{id}/regenerate_variants` (admin / analyst / coach) enqueues a `video_variant` job for an existing match. Idempotent via `jobs.enqueue` dedup on `(match_id, job_type)` for `queued|running`. Used to fill in variants for matches uploaded before the variant pipeline existed.
+- **Supply-chain: all GitHub Actions pinned to commit SHA.** Triggered by the OpenSSF Scorecard `PinnedDependenciesID` review and the March-2025 `tj-actions/changed-files` incident as motivation. The newly added `gitleaks` / `semgrep` / `pip-audit` / `trivy` workflows had `@v6` / `@v0.36.0` / `@v1.1.0` tag references that could be re-pointed by an action maintainer compromise. All 8 references switched to 40-char SHA with the version kept as a trailing comment so Dependabot still groups bumps by semver.
+- **CI permissions: top-level write removed.** `trivy.yml` and `semgrep.yml` had `permissions: { contents: read, security-events: write }` at the top level. Moved `security-events: write` down to job level (`permissions: {}` at top, declared on each job) so other steps that don't upload SARIF run with no write permissions at all. Aligns with the existing `bandit.yml` pattern.
+- **Code-scanning triage pass.** Confirmed 0 actionable open alerts after a rule-by-rule audit:
+  - `B110/B112` defensive `try/except` patterns in migrations, JWT legacy parse, env-var loaders — sample-verified, batch-dismissed
+  - `B501/B507/B601` SSH AutoAddPolicy + paramiko shell + `requests verify=False` — intentional for cluster bootstrap, hardcoded literal commands, F-001 canary MITM gate
+  - `B608` SQLAlchemy `text()` with f-string — hardcoded table list in one-shot migration, `nosec`-annotated allow-list in field rotation, hardcoded cascade tuple in match delete
+  - `B613` + `contains-bidirectional-characters` — BIDI Unicode codepoints declared in validator sets (defensive sanitization for filename / annotation text), not exploit payloads
+  - `detect-insecure-websocket` — match was on Japanese comment string `ws://localhost:8765`; actual code uses `wsProto = isHttps ? 'wss' : 'ws'`
+  - TLS-laxity rules on `scripts/security_ci/` — TLS attack-test fixtures, weak settings are the test design
+  - `python.lang.security.audit.logging.logger-credential-leak` — log statements emit `user_id` / `jti` / metadata only; token values are hashed before any persist
+  - `wildcard-cors` — `allow_credentials=False` makes wildcard origin acceptable for public API surface
+  - `pickles-in-pytorch` — `torch.load` on bundled first-party model weights, not user uploads
+
+## 2026-05-14
+
+### Mobile Annotation: Beta Polish + CV Overlay + Video Variants
+
+Heavy iteration on the mobile annotation surface based on iPhone Safari + PWA testing, plus the new video-quality variant pipeline and a security-tool addition pass.
+
+- **Full-bleed video + overlay-style controls** (`fix(mobile-annot): full-bleed video + overlay controls (1/3-width bug)`). The previous header bar + footer flex layout consumed ~25-30% of vertical space and `object-fit: contain` letterboxed the badminton video into ~1/3 of the iPhone landscape width. `PlayMode` now uses `absolute inset-0` for the video container with overlay-style controls; pass switcher chips moved to a right-center vertical strip so they don't steal video width. Back / match-id / queue chips collapse into a top-left cluster.
+- **Theme-aware overlay chips.** Overlay buttons originally used dark blue accents on dark backgrounds (violating the house dark/light color spec and the `feedback_color_contrast` rule against dark text on dark backgrounds). Introduced `.ss-overlay-chip` / `.ss-overlay-chip-accent` / `.ss-overlay-chip-warning` / `.ss-overlay-chip-danger` utility classes in `globals.css` that swap `bg` / `color` based on `html[data-theme="light"]`. All mobile overlays migrated.
+- **Fullscreen takes the whole UI, not the iOS native player.** `videoRef.webkitEnterFullscreen()` flipped to the iOS native video player and stripped every React overlay (court grid, CV chips, A/B buttons). Replaced with `document.documentElement.requestFullscreen()` on Desktop / Android Chrome; iOS Safari (which has no `requestFullscreen` on non-`<video>` elements) shows a one-time `Add-to-Home-Screen` hint since that's the only iOS path to true URL-bar-free fullscreen with React overlays alive.
+- **Landscape prompt + iconography contrast.** Portrait-orientation guard's icons and text rendered dark on a dark background on production despite `text-white` in source (likely cache / dark-mode-variable override). Switched to inline `style={{ color: '#ffffff', stroke: '#ffffff' }}` to force white regardless of CSS cascade.
+- **CV overlay (court / shuttle / players) and timeline markers.** `MobileCVOverlay` orchestrates three read-only layers reusing the desktop components:
+  - 18-cell court grid (SVG) from `/matches/{id}/court_calibration` + shared `court-calib-{matchId}` localStorage with the desktop annotator
+  - shuttle trajectory canvas (±2s trail) from `/api/tracknet/shuttle_track/{match_id}`
+  - YOLO player bboxes (±1.5s) from `/api/yolo/results/{match_id}` (default OFF — bbox can obscure on small screens)
+  PlayMode top-right gains 3 toggle chips (`Grid3x3` / `Target` / `Users`). The bottom seek bar wears amber dots at each CV stroke-candidate timestamp (`/cv-candidates/{matchId}`) — tap = `video.currentTime` jump. `Pass1RallyEnd` accepts an optional `cvHint` (suggested winner + confidence%) and renders a `CV NN%` badge on the recommended A/B side. Final confirmation still requires a tap; no autofill.
+- **Video variant pipeline (4K / 1080p / 720p).** New `backend/services/video_variants.py` post-processes uploaded videos into smaller variants for mobile delivery while keeping the raw source for the analysis pipeline. Designed conservatively:
+  - **No upscale ever**: `decide_variants` only generates `q` when `src.height > target_h`. e.g., a 480p source produces zero variants (zero CPU, zero disk).
+  - **Source-pixel cap**: sources larger than 8192×4320 (~35 megapixels, 8K) skip the variant phase entirely to avoid pathological ffmpeg memory blow-up.
+  - **Atomic write**: ffmpeg writes to `{name}.mp4.tmp`, then `os.replace()` renames in place. The stream endpoint never serves a half-written variant.
+  - **Idempotent enqueue**: `jobs.enqueue()` checks for existing `queued|running` `(match_id, job_type)` rows so double finalize / DL hooks don't stack jobs.
+  - **YouTube DL cap**: `DownloadRequest.quality` is now a `pattern=^(360|480|720|1080|1440|2160|best)$` whitelist and the `/matches/{id}/download/status` poll re-probes the downloaded file, deleting and returning 413 if `> 2160p` slipped through yt-dlp's format selector.
+  - **PATH resolution under Windows service**: `shutil.which("ffprobe")` returns `None` in SYSTEM service context because WinGet Links is not in SYSTEM PATH; service-aware `_resolve_bin()` falls back to known install locations.
+- **Quality picker UI**: `getMobileVideoSrc(match, quality)` appends `&quality=<q>` to the stream URL. PlayMode renders an extra chip row for each ready variant (`source` / `4K` / `1080p` / `720p`); not-ready (generating) appears at 50% opacity. `available_qualities` is part of the standard `match_to_dict` response.
+- **`Settings.extra = "ignore"`.** After the dependency bumps (next bullet) pydantic 2.x started enforcing `extra="forbid"` strictly. Production `.env` legitimately holds `vite_ss_turnstile_site_key` / `ss_cf_ban_token` / `ss_ban_allowlist_*` / `ss_tor_exit_list_path` / `ss_db_migration_url` that `Settings` doesn't declare. Switched to `extra="ignore"` so the backend boots; declared fields keep their type-safety.
+- **Dependabot + Gitleaks + Semgrep + pip-audit + Trivy added.** Defense-in-depth on top of the existing Bandit / CodeQL / DevSkim / OSV / Scorecard / Defender for DevOps stack:
+  - Dependabot: weekly grouped minor/patch PRs for pip (backend + worker) / npm / github-actions, plus individual PRs for major bumps (config tuned after the first run produced a 28-pkg grouped PR that bundled React 18→19, Tailwind 3→4, Electron 39→42)
+  - Gitleaks: full-history secret scan every push + weekly
+  - Semgrep: SAST with `p/default + p/python + p/react + p/typescript + p/owasp-top-ten`
+  - pip-audit: PyPA advisory DB (broader than OSV for Python)
+  - Trivy filesystem: IaC + secrets + misconfig (covers `infra/cloudflared/`, PM2 ecosystem, `cluster.config.yaml`)
+- **Dependency bumps (25 merged, 3 closed).** Bumped Python 3.10 → 3.11 to satisfy newer scipy / pandas wheels. Merged ~25 individual + grouped bumps including `react-router-dom 6→7`, `vitest 3→4`, `tailwind-merge 2→3`, `eslint 8→10`, `react-i18next 14→17`, `numpy 1→2`, `pandas 2→3`, `openvino`, plus minor/patch groups. Closed 3 PRs that needed coordinated peer-dep bumps (`react 18→19` needed `@testing-library/react 14→16`, `vite 7→8` needed `electron-vite 5→6`, `@vitejs/plugin-react 5→6` needed paired vitest peer update).
+- **`crypto.getRandomValues` fallback in `mobileAnnotateQueue.newClientUuid`.** CodeQL `js/insecure-randomness` flagged the `Math.random()` fallback in the UUID v4 generator. Replaced with `crypto.getRandomValues` (CSPRNG) plus RFC4122 v4 version/variant bit fix-up.
+- **`test_conditions` aligned with R47 admin Tier 4 access.** The test was asserting `general_comment` should be absent on GET (assuming the old admin → analyst demotion); R47 had removed that demotion deliberately. Test updated to expect `general_comment` present for admin.
+
+## 2026-05-13
+
+### Mobile Annotation Scaffold (Pass 1 / 2 / 3)
+
+First end-to-end iteration of the new mobile annotation surface targeting iPhone Safari for the Resonac badminton team beta. Scaffolded over a single day in seven incremental commits.
+
+- **Scaffold** (`scaffold mobile annotation page`): `/m/annotate/:matchId` route + `MobileAnnotatePage` + portrait `LandscapeGuard` overlay that prompts the user to rotate the device. Mobile/desktop split is by viewport width (< 768px) so coach/analyst that accidentally opens on phone also gets the touch UI.
+- **IndexedDB offline queue** (`add IndexedDB-backed offline queue for per-input save`): every per-input save (`enqueue('POST /api/rallies', ...)`, stroke updates, etc.) goes through a local IndexedDB queue with X-Idempotency-Key on each request, exponential backoff, and a per-failure cap before flipping into `manualRetry` state. UI surfaces pending / retry counts in the top-left chip cluster.
+- **Play mode** (`play mode (video stream + bottom controls + crop region)`): video stream via `/api/v1/uploads/video/by_match/{id}/stream?token=...` (browser-friendly query-param auth). Bottom controls: ◀◀5 / ◀1 / ▶❚❚ / 1▶ / 5▶ + scrub slider + 0.5/1/1.5/2x. Crop region (Scissors) editable via touch drag, persisted to `localStorage` per-match.
+- **Annotate overlay with 9-zone snap and touch magnifier** (`annotate overlay with 9-zone snap and touch magnifier`): tap to annotate, magnifier circle for sub-zone precision, snap to court 9-zone grid.
+- **Pass 1: rally scoring UI** — two oversized A / B buttons; server / score auto-computed from previous rally; deuce / set-end banner. Submit enqueues `POST /api/rallies` and returns to play mode for the next rally.
+- **Pass 2: four-step serve / final stroke entry** — picker shows recent rallies, then steps through `service direction → return direction → final hitter → final-stroke land_zone`.
+- **Pass 3: per-stroke shot type entry** — picker → per-stroke type entry, server queues `PUT /api/strokes/{id}` updates.
+- **Security: escape user-controlled path before reflecting into HTML** — CodeQL `js/reflected-xss` in the (separate) `decoy_maze` deception layer fixed; reflected `path` now `escape()`-encoded before HTML interpolation.
+
+## 2026-05-11
+
+### Mobile Layout Stabilization + Conditions Tier-4 Admin Fix + Round 258 Final State Defense (R35-R41)
+
+A mix of UI-layer fixes for the new mobile flows, a regression unblock on the conditions router, and the closing rounds of the Round 258 deep defense pass.
+
+- **Mobile global guards triage** (`fix(mobile): triage global guards so pages don't squish into vertical text`): pages that lacked `min-width: 0` on flex children were squishing labels into vertical character columns on phone widths. Added per-page minimum-width guards and pill-nowrap rules. Separate follow-up (`specific badge / pill / confidence overflow fixes`) cleans up badge / confidence widget overflow.
+- **R47-style admin demotion removed from `resolve_role`** (`stop silently downgrading admin to analyst in resolve_role`): the previous behavior demoted JWT/X-Role admin to analyst before passing into `_serialize`. With `ROLE_MAX_TIER=4` admins ended up reading only Tier 1, which broke the dashboard scatter / top-profile views. Removed the demotion; admin keeps Tier 4. `test_conditions.test_post_and_get_roundtrip` was updated in the 2026-05-14 dep-bump pass to match.
+- **Player self-view** (`allow self-viewing player to see own analytics`): a `player` who logged in as their own player_id (Phase A linkage) was being treated as a generic "player" role for conditions visibility. Now their `ctx.player_id == target.player_id` is recognized and they see their own analytics.
+- **Frontend: scrub URL hash on logout** (`fix(security): scrub URL hash on logout so protected paths aren't leaked`): logging out at `/dashboard/research/...` left the hash in the URL bar; if the next user shoulder-surfed they could see the restricted path. Logout now sets `location.hash = ''`.
+- **Bundle-endpoint UI unblock** (`unblock per-card fetches while bundle endpoint is still loading`): cards were waiting for the spine/bundle response and blanked out for 1-2s on slow links. Per-card fetches now run in parallel; the spine merge happens when it arrives.
+- **Tor exit list load at startup** (`load Tor exit list at startup so cf_ban_policy.is_tor_exit() works`): the policy module was loading the list lazily but only on first call from a single coroutine, so subsequent callers raced. Moved to startup pre-load.
+- **Allowlist for firewall-action escalation path** (`feat: add allowlist for the firewall-action escalation path`): the canary auto-ban pipeline now honors an `SS_BAN_ALLOWLIST_*` config (IP + custom HTTP header) so testing infrastructure isn't accidentally banned during a security drill.
+- **Routing: monitored sink paths bypass global auth gate** (`fix(routing): allow specific monitored sink paths through global auth gate`): `decoy_maze` / `csp_report` / honeypot sinks must accept anonymous traffic to actually catch attackers — they were briefly being 401'd by the global gate after a route-order regression.
+- **Operator scripts polish** (`admin UI polish, operator scripts, traffic pattern aggregator`): admin UI cleanup and a traffic-pattern aggregator script for after-action review.
+- **Migrations: savepoint for guarded REVOKE statements** (`fix(migration): use savepoint for guarded REVOKE statements in 0028`): in migration 0028 (role lockdown) some REVOKE statements fail when the function being revoked doesn't exist on the local PG version. Each REVOKE is now wrapped in a SAVEPOINT so one missing function doesn't roll back the whole migration.
+- **CF cleanup script auto-loads `.env`** (`auto-load .env in CF cleanup script`): the standalone `cleanup_cf_expired_rules.py` wasn't reading the same `.env` as the API, so credentials had to be exported manually. Now imports the same loader.
+- **Round 258 R35-R41 — closing rounds.** The continuation of the R9-R34 sweep (described under 2026-05-10) closed the final regression / hardening backlog:
+  - R35.1: hotfix R35 test regression on analyst tier-1 expected field.
+  - R36 / R36.1: sync remaining test assertions to new secure ABC+α behavior + fix R36's own assertion drift against the actual implementation semantics.
+  - R37: Windows CI 60-min hang on WS threading tests fixed by skipping the offending tests on Windows only.
+  - R37.1: skip the last `WebSocketDisconnect inside lifespan` test on Windows.
+  - R37.2: Linux CI hang fix (test_turnstile network call needed a timeout method to bound execution).
+  - R38: `/api/csp_report` multi-layer hardening (defense-in-depth: size cap + content-type + rate-limit + per-IP daily budget).
+  - R39: closed Codex review F-001 through F-008.
+  - R40 + R41: state-level defense build-out — PostgreSQL hardening + the canary subsystem.
+- **`chore: admin UI polish` + `chore: misc backend cleanup and compatibility shims`** — assorted no-functional-change cleanup pulled together at the end of the day.
+
+## 2026-05-10
+
+### Round 258 Deep Security Audit (R9 — R34)
+
+A 25-round continuation of the multi-agent independent audit pass that started on 2026-05-09 (R1 — R8, recorded in that day's entry). Each round either closed findings from the prior round's audit or closed CodeQL alerts in the same area, with the explicit intent of converging the open backlog to zero.
+
+- **R9** — 9 cache / idempotency / race / DoS findings (`bandit-found` patterns + earlier P0s left after R8's deep-audit).
+- **R10** — 7 regressions introduced inside R7/R8/R9 fixes (over-tight cache key, missing rollback path, etc).
+- **R11 / R12 / R13** — three sequential regression-audit rounds closing 3 P0 + 9 P1 + 4 P2 over R10's fixes.
+- **R14** — 3 P0 + 1 P1 from R13 regression audit (auth / refresh-token edge cases).
+- **R15** — closed R13/R14 leftover P1/P2/P3 + hardened the `mfa_pending` token path so it can never satisfy access-tier checks even by mistake.
+- **R16** — 4 frontend / Electron findings (1 P0 + 3 P1/P2): contextIsolation enforcement, file-protocol jail audit, IPC payload validation.
+- **R17** — hotfix R16 regression + 4 new findings (CSRF on benchmark POST, billing webhook timing oracle, etc).
+- **R18 — Three-agent independent audit.** Ran three independent agents in parallel on the same codebase and merged the unique findings: 3 P0 + 4 P1 + 1 P2.
+- **R19** — 1 P0 + 1 P1 + 6 P2/P3 from R18's backlog.
+- **R20** — 2 P1 + 3 P2 introduced inside R19's own fixes; R7-R19 long-tail backlog closed.
+- **R21** — closed R20's introduced P0 + 4 P1 + R7-R19 long-tail backlog.
+- **R22** — 1 P0 + 4 P1 + 2 P2 in R20 → R21 regression audit.
+- **R23 / R23.1** — 2 P1 + 3 P2 closed; hotfix on sentinel `jti` length regression introduced by R23.
+- **R24** — 4 P1 + 3 P2 from R23-audit, all in admin tooling and DB maintenance paths.
+- **R25 / R25.1 / R25.2 / R25.3** — atomic `.env` write for `toggle_lan_mode` (read-modify-write race against the file watcher), Punycode review marker, jitter reverify on rate-limit decision boundaries, R22 cache bug + R24-audit P1/P2/P3.
+- **R26** — closed R25 P1/P2/P3 leftovers (1 P1 + 1 P2 + 1 P3).
+- **R27** — R26 audit P1 + P2 (1 P1 + 1 P2).
+- **R28** — R27 audit P3 + R28 audit P2 (3 P2 + 2 P3).
+- **R29 / R29.2 / R29.3** — startup warning for multi-process auth deployment (jti revocation cache only valid in-process); CodeQL `py/weak-sensitive-data-hashing` on cache key (switched to SHA-256); applied R28-audit P2/P3 (5 total).
+- **R30 / R30.2** — closed R29 P2-3 cross-team prediction leak; R30-audit P2-2 + P2-3 (2 P2).
+- **R31 / R31.2 / R31.3** — closed 2 CodeScanning HIGH alerts (path injection family); restored `list_cloud_packages` contract under the new path-injection guard; basename allowlist applied for the rest.
+- **R32** — finished R30a P2-1 across 4 prediction endpoints + 2 helpers.
+- **R33** — recorder hidden-window preload (R6 deferred P1): the recorder window now preloads a hidden helper that can't be navigated by user input.
+- **CI: split Backend tests step** (`split Backend tests step — Windows runs serial to avoid xdist 3.8 race`): pytest-xdist 3.8 has a worker IPC race on Windows that surfaced as `gw0` / `gw1` AssertionError at test start. Windows now runs the suite serially (no `-n auto`); Linux still uses `-n auto --dist loadfile` for parallel coverage.
+
 ## 2026-05-09
 
 ### Audit Log FK Drop + Player Dashboard Gate (User-directed remediation #2 + #3)
