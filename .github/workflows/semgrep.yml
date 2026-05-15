@@ -17,7 +17,7 @@ jobs:
     container:
       image: returntocorp/semgrep
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Run Semgrep
         run: |
           semgrep ci \
@@ -29,7 +29,7 @@ jobs:
             --config=p/owasp-top-ten \
             --sarif --output=semgrep.sarif || true
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@7fd177fa680c9881b53cdab4d346d32574c9f7f4 # v3
         if: always()
         with:
           sarif_file: semgrep.sarif
