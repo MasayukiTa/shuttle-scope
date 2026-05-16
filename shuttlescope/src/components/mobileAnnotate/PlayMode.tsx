@@ -387,8 +387,15 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         ref={containerRef}
         className="absolute inset-0 overflow-hidden bg-black"
         onClick={(e) => {
-          // 動画タップ = pause + Annotate mode へ
+          // 動画タップ = pause + Annotate mode へ。
+          // ⚠️ 子の chip / overlay 上のタップが bubble して誤発火するのを防ぐため、
+          // タップ対象が **container 自身 or <video> element のとき限定** で反応。
+          // (旧版は子 div からの bubble で set 1 prompt が誤って出る事象あり)
           if (cropEditing) return
+          const target = e.target as Element | null
+          const isContainer = target === e.currentTarget
+          const isVideo = target?.tagName === 'VIDEO'
+          if (!isContainer && !isVideo) return
           e.stopPropagation()
           const v = videoRef.current
           if (v && !v.paused) v.pause()
@@ -546,6 +553,10 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         <div
           className="absolute right-2 flex gap-1"
           style={{ top: 'max(0.5rem, env(safe-area-inset-top))', zIndex: 45 }}
+          // 親 containerRef の onClick (= 動画タップ → annotate モード) に伝播させない
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
         >
           {!cropEditing ? (
             <>

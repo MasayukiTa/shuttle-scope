@@ -25,6 +25,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
 import { ShuttleTrackOverlay, type ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import { PlayerPositionOverlay } from '@/components/annotation/PlayerPositionOverlay'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   matchId: string | number
@@ -370,8 +371,16 @@ export function MobileCVOverlay({
         <div
           className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
           style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 2.5rem)' }}
+          // chip 自体への tap が video に bubble して "セット1 prompt" を誤発火するのを防ぐ
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
         >
-          コート未キャリブ (右上 ✎ から編集)
+          <span className="inline-flex items-center gap-1">
+            コート未キャリブ (右上
+            <MIcon name="edit" size={11} />
+            から編集)
+          </span>
         </div>
       )}
       {/* 右上ツール (z-45) と Pass switcher (z-45 right-center) を避けるため、
@@ -386,7 +395,10 @@ export function MobileCVOverlay({
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="TrackNet をリモート実行"
         >
-          ▶ シャトル解析を実行
+          <span className="inline-flex items-center gap-1">
+            <MIcon name="play_arrow" size={11} />
+            シャトル解析を実行
+          </span>
         </button>
       )}
       {showShuttle && tracknetCompleted && shuttleFrames.length === 0 && (
@@ -397,13 +409,18 @@ export function MobileCVOverlay({
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="タップで閉じる"
         >
-          ✓ TrackNet 完了 (0 frames — Pass1 でラリーを記録してから再実行)
+          <span className="inline-flex items-center gap-1">
+            <MIcon name="check" size={11} />
+            TrackNet 完了 (0 frames — Pass1 でラリーを記録してから再実行)
+          </span>
         </button>
       )}
       {showShuttle && isTracknetRunning && (
         <div
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
         >
           TrackNet 実行中… {Math.round((tracknetJob?.progress ?? 0) * 100)}%
         </div>
@@ -428,7 +445,10 @@ export function MobileCVOverlay({
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="YOLO をリモート実行"
         >
-          ▶ プレイヤー検出を実行
+          <span className="inline-flex items-center gap-1">
+            <MIcon name="play_arrow" size={11} />
+            プレイヤー検出を実行
+          </span>
         </button>
       )}
       {showPlayers && yoloCompleted && yoloFrames.length === 0 && (
@@ -439,13 +459,18 @@ export function MobileCVOverlay({
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="タップで閉じる"
         >
-          ✓ YOLO 完了 (0 frames — ROI / 動画範囲を確認)
+          <span className="inline-flex items-center gap-1">
+            <MIcon name="check" size={11} />
+            YOLO 完了 (0 frames — ROI / 動画範囲を確認)
+          </span>
         </button>
       )}
       {showPlayers && isYoloRunning && (
         <div
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
         >
           YOLO 実行中… {Math.round((yoloJob?.progress ?? 0) * 100)}%
         </div>

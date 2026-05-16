@@ -16,7 +16,8 @@
  *     (誤判定を避けるため、Set 終了ボタンを明示タップで進める)
  */
 import { useMemo, useState } from 'react'
-import { Undo2 } from 'lucide-react'
+// 規約: lucide-react は段階廃止。Material Symbols (MIcon) を使う。
+import { MIcon } from '@/components/common/MIcon'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 
 interface RallyLite {
@@ -220,7 +221,7 @@ export function Pass1RallyEnd({
           className="px-3 py-2 rounded bg-gray-800 text-white disabled:opacity-30 flex items-center gap-1"
           title="直前のラリーを取消"
         >
-          <Undo2 size={14} /> 直前取消
+          <MIcon name="undo" size={14} /> 直前取消
         </button>
         <button
           type="button"
@@ -236,7 +237,10 @@ export function Pass1RallyEnd({
           onClick={onCancel}
           className="px-3 py-2 rounded bg-gray-700 text-white"
         >
-          ← 動画に戻る
+          <span className="inline-flex items-center gap-1">
+            <MIcon name="arrow_back" size={14} />
+            動画に戻る
+          </span>
         </button>
       </div>
     </div>
