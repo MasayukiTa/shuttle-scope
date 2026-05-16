@@ -3022,21 +3022,32 @@ async def serve_assets(asset_path: str):
     return FileResponse(str(candidate), media_type=media_type)
 
 
+_SPA_NOCACHE_HEADERS = {
+    # iOS Safari / PWA はアグレッシブにキャッシュするため、HTML は常に最新を
+    # 取得させる。/assets/* の JS/CSS は content hash 付きで long-cache 安全。
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
 @app.get("/")
 async def spa_root(request: StarletteRequest):
     """React SPA エントリポイント（ブラウザ / LAN / トンネルアクセス用）"""
     if public_site.should_serve_public_site(request):
         return public_site.render_public_home(request)
     if _INDEX_HTML.exists():
-        return FileResponse(str(_INDEX_HTML), media_type="text/html; charset=utf-8")
-    return HTMLResponse(content=_FALLBACK_HTML)
+        return FileResponse(str(_INDEX_HTML), media_type="text/html; charset=utf-8",
+                            headers=_SPA_NOCACHE_HEADERS)
+    return HTMLResponse(content=_FALLBACK_HTML, headers=_SPA_NOCACHE_HEADERS)
 
 
 @app.get("/index.html")
 async def spa_index():
     if _INDEX_HTML.exists():
-        return FileResponse(str(_INDEX_HTML), media_type="text/html; charset=utf-8")
-    return HTMLResponse(content=_FALLBACK_HTML)
+        return FileResponse(str(_INDEX_HTML), media_type="text/html; charset=utf-8",
+                            headers=_SPA_NOCACHE_HEADERS)
+    return HTMLResponse(content=_FALLBACK_HTML, headers=_SPA_NOCACHE_HEADERS)
 
 
 @app.get("/{path:path}")
