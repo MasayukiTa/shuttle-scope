@@ -500,6 +500,10 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             showCourt={showCourt}
             showShuttle={showShuttle}
             showPlayers={showPlayers}
+            videoTransform={{
+              transform: cropStyle.transform,
+              transformOrigin: cropStyle.transformOrigin,
+            }}
           />
         )}
 

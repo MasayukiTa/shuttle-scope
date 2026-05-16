@@ -36,6 +36,9 @@ interface Props {
   showCourt: boolean
   showShuttle: boolean
   showPlayers: boolean
+  /** <video> 要素に適用している crop+zoom transform。grid/軌跡/bbox も同じ
+     transform を適用して視覚的に動画と一致させる。 */
+  videoTransform?: { transform?: string; transformOrigin?: string }
 }
 
 type Pt = { x: number; y: number }
@@ -121,6 +124,7 @@ export function MobileCVOverlay({
   showCourt,
   showShuttle,
   showPlayers,
+  videoTransform,
 }: Props) {
   const queryClient = useQueryClient()
   // CV ジョブ進捗 (TrackNet / YOLO 共通)
@@ -315,7 +319,7 @@ export function MobileCVOverlay({
           width="100%"
           height="100%"
           viewBox={`0 0 ${videoWidth} ${videoHeight}`}
-          style={{ zIndex: 11 }}
+          style={{ zIndex: 11, ...videoTransform }}
         >
           {gridLines.map((l, i) => (
             <g key={i}>
@@ -339,7 +343,7 @@ export function MobileCVOverlay({
       {/* 2) シャトル軌跡 */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{ zIndex: 12 }}
+        style={{ zIndex: 12, ...videoTransform }}
       >
         <ShuttleTrackOverlay
           frames={shuttleFrames}
@@ -353,7 +357,7 @@ export function MobileCVOverlay({
       {/* 3) プレイヤー bbox */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{ zIndex: 13 }}
+        style={{ zIndex: 13, ...videoTransform }}
       >
         <PlayerPositionOverlay
           frames={yoloFrames}
