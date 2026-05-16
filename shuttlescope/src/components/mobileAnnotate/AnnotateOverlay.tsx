@@ -15,6 +15,7 @@
  *   実 DB 書き込みは親の Pass 別 step machine が enqueue する。
  */
 import { useRef, useState, useCallback, useEffect } from 'react'
+import { MIcon } from '@/components/common/MIcon'
 
 export type ZoneCode =
   | 'BL' | 'BC' | 'BR'
@@ -141,8 +142,9 @@ export function AnnotateOverlay({
                     {z}
                   </span>
                   {isStaged && (
-                    <span className="text-[11px] text-white font-bold">
-                      ✓ {ZONE_LABEL_JP[z]}
+                    <span className="text-[11px] text-white font-bold inline-flex items-center gap-1">
+                      <MIcon name="check" size={11} />
+                      {ZONE_LABEL_JP[z]}
                     </span>
                   )}
                 </div>
@@ -195,7 +197,10 @@ export function AnnotateOverlay({
             staged ? 'bg-green-600' : 'bg-gray-700 opacity-40'
           }`}
         >
-          {primaryLabel} ▶
+          <span className="inline-flex items-center gap-1 justify-center">
+            {primaryLabel}
+            <MIcon name="play_arrow" size={14} />
+          </span>
         </button>
       </div>
     </div>

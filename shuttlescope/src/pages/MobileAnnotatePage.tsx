@@ -388,8 +388,11 @@ export function MobileAnnotatePage() {
           {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'rally' && (() => {
             if (!currentSet) {
               return (
-                <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 z-40 px-4 text-center">
-                  <div className="text-sm">
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-40 px-4 text-center"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.9)', color: '#ffffff' }}
+                >
+                  <div className="text-sm font-bold" style={{ color: '#ffffff' }}>
                     この試合にはまだセットが登録されていません
                   </div>
                   <button
@@ -398,20 +401,32 @@ export function MobileAnnotatePage() {
                       const s = await ensureSet()
                       if (s) setCurrentSetIdx(0)
                     }}
-                    className="px-4 py-2 rounded bg-blue-600 text-white text-sm"
+                    className="px-4 py-2 rounded text-sm font-bold"
+                    style={{ backgroundColor: '#2563eb', color: '#ffffff' }}
                   >
                     セット 1 を作成して開始
                   </button>
                   <button
                     type="button"
                     onClick={() => setScreen('play')}
-                    className="px-3 py-1.5 bg-gray-700 rounded text-xs"
+                    className="px-3 py-1.5 rounded text-xs font-bold"
+                    style={{ backgroundColor: '#4b5563', color: '#ffffff' }}
                   >
-                    ← 動画に戻る
+                    <span className="inline-flex items-center gap-1">
+                      <MIcon name="arrow_back" size={14} style={{ color: '#ffffff' }} />
+                      動画に戻る
+                    </span>
                   </button>
-                  <div className="text-[10px] text-gray-500 max-w-xs mt-4">
-                    💡 先にコートグリッドを設定するなら、右上の <b>✎</b>{' '}
-                    ボタンから 6 点キャリブできます (この set 1 画面を閉じずに開けます)
+                  <div
+                    className="text-[11px] max-w-xs mt-4 flex items-center gap-1 justify-center"
+                    style={{ color: 'rgba(255,255,255,0.85)' }}
+                  >
+                    <MIcon name="lightbulb" size={14} style={{ color: '#fde047' }} />
+                    <span>
+                      先にコートグリッドを設定するなら、右上の{' '}
+                      <MIcon name="edit" size={12} style={{ color: '#ffffff' }} />{' '}
+                      ボタンから 6 点キャリブできます
+                    </span>
                   </div>
                 </div>
               )
