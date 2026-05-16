@@ -33,7 +33,13 @@
           'padding:10px 14px;font:12px/1.4 -apple-system,sans-serif;' +
           'background:#7f1d1d;color:#fff;white-space:pre-wrap;' +
           'word-break:break-all;max-height:60vh;overflow:auto;' +
-          'border-bottom:2px solid #f87171';
+          'border-bottom:2px solid #f87171;' +
+          // ★ pointer-events:none 必須。 これを auto のままにすると
+          //  Promise rejection 等で bar が高さ 60vh まで成長したとき、
+          //  画面上半分をまるごと占有 (z=99999) してその下にある UI
+          //  (mobile annotate calib の 6 点設置画面など) のタップを完全に
+          //  横取りしてしまう。bar 自体には interaction 不要なので透過させる。
+          'pointer-events:none';
         (document.body || document.documentElement).appendChild(bar);
       }
       var t = new Date().toISOString().slice(11, 19);
