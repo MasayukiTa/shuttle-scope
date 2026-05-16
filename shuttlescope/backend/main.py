@@ -3064,6 +3064,23 @@ async def spa_catch_all(path: str, request: StarletteRequest):
     safe_path = path.lstrip("/").lstrip("\\")
     if safe_path.startswith("api/") or safe_path == "api" or safe_path.startswith("ws/"):
         raise HTTPException(status_code=404, detail="Not Found")
+
+    # ルート直下の静的ファイル (vite publicDir 由来: error-reporter.js / favicon.png 等) を
+    # SPA リダイレクト前に配信する。安全のため拡張子ホワイトリストで限定。
+    if "/" not in safe_path and "." in safe_path:
+        ext = "." + safe_path.rsplit(".", 1)[1].lower()
+        _ROOT_PUBLIC_EXTS = {".js", ".css", ".png", ".jpg", ".jpeg", ".gif",
+                             ".svg", ".ico", ".webmanifest", ".txt", ".json"}
+        if ext in _ROOT_PUBLIC_EXTS and _re_acl.match(r"^[A-Za-z0-9_.\-]+$", safe_path):
+            candidate = (_RENDERER_DIR / safe_path).resolve()
+            try:
+                candidate.relative_to(_RENDERER_DIR.resolve())
+            except ValueError:
+                raise HTTPException(status_code=404)
+            if candidate.exists() and candidate.is_file():
+                media = _MIME_MAP.get(ext, "application/octet-stream")
+                return FileResponse(str(candidate), media_type=media)
+
     from fastapi.responses import RedirectResponse
     # Open-redirect 防止: スキーム/プロトコル相対 URL/逆スラッシュを禁止し、英数と一部記号のみ許容
     if "://" in safe_path or safe_path.startswith(("/", "\\")) or "\\" in safe_path:
