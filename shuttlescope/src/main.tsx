@@ -27,7 +27,11 @@ if (typeof window !== 'undefined') {
           'padding:10px 14px;font:12px/1.4 -apple-system,sans-serif;' +
           'background:#7f1d1d;color:#fff;white-space:pre-wrap;' +
           'word-break:break-all;max-height:50vh;overflow:auto;' +
-          'border-bottom:2px solid #f87171'
+          'border-bottom:2px solid #f87171;' +
+          // pointer-events:none — bar 自体は情報表示のみで操作不要。
+          // auto のままだと max-height 50vh まで膨らんだとき画面上半分の
+          // タップ (mobile calib 6 点設置等) を z=99999 で横取りしてしまう。
+          'pointer-events:none'
         document.body.appendChild(bar)
       }
       const t = new Date().toISOString().slice(11, 19)
