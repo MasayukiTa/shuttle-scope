@@ -19,8 +19,9 @@
  *     コートタップが矩形ハンドル操作になり、再生は強制停止される。
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Play, Pause, Scissors, RotateCcw, Check, Maximize2, Square, Grid3x3, Target, Users } from 'lucide-react'
+import { Play, Pause, Scissors, RotateCcw, Check, Maximize2, Square, Grid3x3, Target, Users, Pencil } from 'lucide-react'
 import { MobileCVOverlay } from '@/components/mobileAnnotate/MobileCVOverlay'
+import { MobileCourtCalib } from '@/components/mobileAnnotate/MobileCourtCalib'
 
 export interface CropRect {
   x: number; y: number; w: number; h: number  // 0..1 normalized
@@ -99,6 +100,23 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   const [showCourt, setShowCourt] = useState(true)
   const [showShuttle, setShowShuttle] = useState(true)
   const [showPlayers, setShowPlayers] = useState(false)  // bbox は視認性影響大なので default OFF
+  // コートキャリブ編集モード
+  const [calibEditing, setCalibEditing] = useState(false)
+  // 既存キャリブ点 (編集モードに渡す初期値 + 保存後に上書き)
+  const [calibPoints, setCalibPoints] = useState<{ x: number; y: number }[]>([])
+  // 保存後に MobileCVOverlay を強制再 fetch させる version カウンタ
+  const [calibVersion, setCalibVersion] = useState(0)
+
+  // 既存キャリブ点を初回読み込み (localStorage 共有経路 → backend fetch は MobileCVOverlay 側)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`court-calib-${matchId}`)
+      if (saved) {
+        const pts = JSON.parse(saved)
+        if (Array.isArray(pts) && pts.length === 6) setCalibPoints(pts)
+      }
+    } catch { /* ignore */ }
+  }, [matchId, calibVersion])
   // overlay 描画用に video element の実描画サイズを track する
   const [videoBox, setVideoBox] = useState({ w: 0, h: 0 })
 
@@ -404,8 +422,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         {/* CV オーバーレイ (コートグリッド / シャトル軌跡 / プレイヤー bbox)
             video element の上に z-index 11/12/13 で重ねる。タップ透過させるので
             コートタップ判定 (= setScreen annotate) は阻害しない。 */}
-        {!cropEditing && videoBox.w > 0 && videoBox.h > 0 && (
+        {!cropEditing && !calibEditing && videoBox.w > 0 && videoBox.h > 0 && (
           <MobileCVOverlay
+            key={`cv-${calibVersion}`}
             matchId={matchId}
             currentSec={currentTime}
             videoWidth={videoBox.w}
@@ -413,6 +432,22 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             showCourt={showCourt}
             showShuttle={showShuttle}
             showPlayers={showPlayers}
+          />
+        )}
+
+        {/* コートキャリブ編集 overlay (動画 pause 状態で 6 点設置 / 微調整) */}
+        {calibEditing && videoBox.w > 0 && videoBox.h > 0 && (
+          <MobileCourtCalib
+            matchId={matchId}
+            initial={calibPoints}
+            videoWidth={videoBox.w}
+            videoHeight={videoBox.h}
+            onClose={() => setCalibEditing(false)}
+            onSaved={(pts) => {
+              setCalibPoints(pts)
+              setCalibVersion((n) => n + 1)
+              setCalibEditing(false)
+            }}
           />
         )}
 
@@ -498,6 +533,21 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 title="コートグリッド表示切替"
               >
                 <Grid3x3 size={16} />
+              </button>
+              {/* コートキャリブ編集 (動画 pause + 6 点設置 + 保存) */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const v = videoRef.current
+                  if (v && !v.paused) v.pause()
+                  setCalibEditing(true)
+                }}
+                className="p-2 rounded shadow ss-overlay-chip"
+                aria-label="コートキャリブ編集"
+                title="コート 4 隅 + ネット 2 点を設置 / 微調整"
+              >
+                <Pencil size={16} />
               </button>
               <button
                 type="button"
