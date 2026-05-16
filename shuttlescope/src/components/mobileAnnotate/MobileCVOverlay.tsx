@@ -139,6 +139,13 @@ export function MobileCVOverlay({
   const tracknetCompleted = tracknetJob?.status === 'complete' || tracknetJob?.status === 'stopped'
   const yoloCompleted = yoloJob?.status === 'complete' || yoloJob?.status === 'stopped'
 
+  // backend エラー (409 等) メッセージから既存 job_id を救出する正規表現
+  const extractJobIdFromConflict = (msg: string): string | null => {
+    // 例: "この試合は既に TrackNet バッチ処理中です (job_id=a60e9524)。"
+    const m = msg.match(/job_id=([a-zA-Z0-9-]+)/)
+    return m ? m[1] : null
+  }
+
   const startTracknet = async () => {
     if (isTracknetRunning) return
     setJobErr('')
@@ -152,7 +159,16 @@ export function MobileCVOverlay({
         setTracknetJob({ status: 'pending', progress: 0 })
       }
     } catch (err) {
-      setJobErr('TrackNet 起動失敗: ' + (err instanceof Error ? err.message : String(err)))
+      const msg = err instanceof Error ? err.message : String(err)
+      // 「既に処理中」エラーから job_id を抽出して進捗を引き継ぐ
+      const existing = extractJobIdFromConflict(msg)
+      if (existing) {
+        setTracknetJobId(existing)
+        setTracknetJob({ status: 'running', progress: 0 })
+        setJobErr('')  // 既存ジョブを引き継いだのでエラーは消す
+      } else {
+        setJobErr('TrackNet 起動失敗: ' + msg.slice(0, 200))
+      }
     }
   }
 
@@ -169,7 +185,15 @@ export function MobileCVOverlay({
         setYoloJob({ status: 'pending', progress: 0 })
       }
     } catch (err) {
-      setJobErr('YOLO 起動失敗: ' + (err instanceof Error ? err.message : String(err)))
+      const msg = err instanceof Error ? err.message : String(err)
+      const existing = extractJobIdFromConflict(msg)
+      if (existing) {
+        setYoloJobId(existing)
+        setYoloJob({ status: 'running', progress: 0 })
+        setJobErr('')
+      } else {
+        setJobErr('YOLO 起動失敗: ' + msg.slice(0, 200))
+      }
     }
   }
 
@@ -358,8 +382,8 @@ export function MobileCVOverlay({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); startTracknet() }}
-          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="TrackNet をリモート実行"
         >
           ▶ シャトル解析を実行
@@ -369,8 +393,8 @@ export function MobileCVOverlay({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setTracknetJob(null); setTracknetJobId(null) }}
-          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="タップで閉じる"
         >
           ✓ TrackNet 完了 (0 frames — Pass1 でラリーを記録してから再実行)
@@ -378,8 +402,8 @@ export function MobileCVOverlay({
       )}
       {showShuttle && isTracknetRunning && (
         <div
-          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
         >
           TrackNet 実行中… {Math.round((tracknetJob?.progress ?? 0) * 100)}%
         </div>
@@ -388,8 +412,8 @@ export function MobileCVOverlay({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setTracknetJob(null); setTracknetJobId(null) }}
-          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="タップで閉じる"
         >
           TrackNet エラー: {tracknetError.slice(0, 80)}
@@ -400,8 +424,8 @@ export function MobileCVOverlay({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); startYolo() }}
-          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)' }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="YOLO をリモート実行"
         >
           ▶ プレイヤー検出を実行
@@ -411,8 +435,8 @@ export function MobileCVOverlay({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setYoloJob(null); setYoloJobId(null) }}
-          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)' }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="タップで閉じる"
         >
           ✓ YOLO 完了 (0 frames — ROI / 動画範囲を確認)
@@ -420,8 +444,8 @@ export function MobileCVOverlay({
       )}
       {showPlayers && isYoloRunning && (
         <div
-          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)' }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
         >
           YOLO 実行中… {Math.round((yoloJob?.progress ?? 0) * 100)}%
         </div>
@@ -430,8 +454,8 @@ export function MobileCVOverlay({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setYoloJob(null); setYoloJobId(null) }}
-          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)' }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="タップで閉じる"
         >
           YOLO エラー: {yoloError.slice(0, 80)}
@@ -441,8 +465,8 @@ export function MobileCVOverlay({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setJobErr('') }}
-          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 9.5rem)' }}
+          className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 9.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title="タップで閉じる"
         >
           {jobErr}

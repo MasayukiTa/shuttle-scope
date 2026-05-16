@@ -37,6 +37,10 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string>('')
+  // 下端ツールバーを一時的に隠す (= コート底辺の点を BL/BR に置きたい時用)
+  const [toolbarHidden, setToolbarHidden] = useState(false)
+  // 初期で既存点が入った場合の「復元済み」インジケータを保持
+  const [restoredFromExisting] = useState<boolean>(initial.length === 6)
   const containerRef = useRef<HTMLDivElement | null>(null)
 
   // 次に追加する点の index (0-5)。6 点埋まったら null。
@@ -143,7 +147,9 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
     <div
       ref={containerRef}
       className="absolute inset-0 z-50"
-      style={{ touchAction: 'none', background: 'rgba(0,0,0,0.55)' }}
+      // 下層 (Pass1 set 1 prompt 等) が透けないよう不透明 0.92。動画フレームは
+      // 編集中 pause しているので透ける必要はない。
+      style={{ touchAction: 'none', background: 'rgba(0,0,0,0.92)' }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -189,24 +195,67 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
         })}
       </svg>
 
-      {/* 上部ガイド bar */}
+      {/* 上部ガイド bar (#ffffff 強制 — グレー背景に同色文字回避) */}
       <div
-        className="absolute left-2 right-2 z-10 px-3 py-2 rounded text-xs text-white ss-overlay-chip-accent"
-        style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
+        className="absolute z-10 px-3 py-2 rounded text-xs font-bold"
+        style={{
+          top: 'max(0.5rem, calc(env(safe-area-inset-top) + 0.5rem))',
+          left: 'max(0.5rem, calc(env(safe-area-inset-left) + 0.5rem))',
+          right: 'max(0.5rem, calc(env(safe-area-inset-right) + 0.5rem))',
+          color: '#ffffff',
+          backgroundColor: 'rgba(37,99,235,0.95)',
+          border: '1px solid rgba(255,255,255,0.3)',
+        }}
       >
         {nextIdx !== null ? (
-          <span>
-            <b>{STEP_LABELS[nextIdx]}</b> をタップで設置 ({points.length}/6)
+          <span style={{ color: '#ffffff' }}>
+            <b style={{ color: '#ffffff' }}>{STEP_LABELS[nextIdx]}</b> をタップで設置 ({points.length}/6)
+            {restoredFromExisting && (
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '10px', marginLeft: 8 }}>
+                / 前回セッションから {initial.length} 点復元済 (調整して保存 or 全消去)
+              </span>
+            )}
           </span>
         ) : (
-          <span>全 6 点設置完了。ハンドルをドラッグで微調整 → 保存</span>
+          <span style={{ color: '#ffffff' }}>
+            全 6 点設置完了。ハンドルをドラッグで微調整 → 保存
+            {restoredFromExisting && (
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '10px', marginLeft: 8 }}>
+                (前回セッションから復元)
+              </span>
+            )}
+          </span>
         )}
       </div>
 
-      {/* 下部操作 bar */}
+      {/* 下端ツールバー隠し toggle (BL/BR を画面最下端で置きたい時用)。
+         隠した時も再表示できるよう、極小の chip だけは常時表示。 */}
+      {toolbarHidden && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setToolbarHidden(false) }}
+          onTouchStart={(e) => e.stopPropagation()}
+          className="absolute z-10 px-2 py-1 rounded text-[10px] font-bold"
+          style={{
+            bottom: 'max(0.5rem, calc(env(safe-area-inset-bottom) + 0.5rem))',
+            left: 'max(0.5rem, calc(env(safe-area-inset-left) + 0.5rem))',
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.5)',
+          }}
+        >
+          ⊥ ツールバー再表示
+        </button>
+      )}
+      {/* 下部操作 bar (safe-area-left/right 対応) */}
+      {!toolbarHidden && (
       <div
-        className="absolute left-2 right-2 z-10 flex items-center gap-2 px-2 py-1.5 rounded ss-overlay-chip"
-        style={{ bottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+        className="absolute z-10 flex items-center gap-2 px-2 py-1.5 rounded ss-overlay-chip"
+        style={{
+          bottom: 'max(0.5rem, calc(env(safe-area-inset-bottom) + 0.5rem))',
+          left: 'max(0.5rem, calc(env(safe-area-inset-left) + 0.5rem))',
+          right: 'max(0.5rem, calc(env(safe-area-inset-right) + 0.5rem))',
+        }}
         onTouchStart={(e) => e.stopPropagation()}
       >
         <button
@@ -265,7 +314,22 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
         >
           {saving ? '保存中…' : '保存'}
         </button>
+        {/* ツールバー隠す toggle: コートの底辺ラインに点を置く時用 */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setToolbarHidden(true) }}
+          className="px-2 py-1.5 rounded text-xs font-bold"
+          style={{
+            backgroundColor: 'rgba(75,85,99,0.95)',
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.2)',
+          }}
+          title="一時的に隠す (底辺点を置きやすくする)"
+        >
+          ⊥ 隠す
+        </button>
       </div>
+      )}
     </div>
   )
 }
