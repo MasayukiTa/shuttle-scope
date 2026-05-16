@@ -369,7 +369,7 @@ export function MobileAnnotatePage() {
           {screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'rally' && (() => {
             if (!currentSet) {
               return (
-                <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 z-40">
+                <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 z-40 px-4 text-center">
                   <div className="text-sm">
                     この試合にはまだセットが登録されていません
                   </div>
@@ -390,6 +390,10 @@ export function MobileAnnotatePage() {
                   >
                     ← 動画に戻る
                   </button>
+                  <div className="text-[10px] text-gray-500 max-w-xs mt-4">
+                    💡 先にコートグリッドを設定するなら、右上の <b>✎</b>{' '}
+                    ボタンから 6 点キャリブできます (この set 1 画面を閉じずに開けます)
+                  </div>
                 </div>
               )
             }
@@ -475,8 +479,8 @@ export function MobileAnnotatePage() {
 
         {/* 左上オーバーレイ: 戻る + match #id + キュー (テーマ追従) */}
         <div
-          className="absolute left-2 z-30 flex items-center gap-1.5 text-xs"
-          style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
+          className="absolute left-2 flex items-center gap-1.5 text-xs"
+          style={{ top: 'max(0.5rem, env(safe-area-inset-top))', zIndex: 45 }}
         >
           <button
             type="button"
@@ -511,10 +515,12 @@ export function MobileAnnotatePage() {
           )}
         </div>
 
-        {/* 右側中央オーバーレイ: Pass 切替 (テーマ追従) */}
+        {/* 右側中央オーバーレイ: Pass 切替 (テーマ追従)。
+            z-45 = Pass1/2/3 overlay (z-40) より上。annotate モード中でも Pass を
+            切替できないと set 1 prompt から抜けられない事象を防ぐ。 */}
         <div
-          className="absolute right-2 z-30 flex flex-col gap-1.5"
-          style={{ top: '50%', transform: 'translateY(-50%)' }}
+          className="absolute right-2 flex flex-col gap-1.5"
+          style={{ top: '50%', transform: 'translateY(-50%)', zIndex: 45 }}
         >
           {(Object.keys(PASS_LABELS) as AnnotatePass[]).map((p) => (
             <button

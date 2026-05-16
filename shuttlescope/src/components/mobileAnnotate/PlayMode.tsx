@@ -517,10 +517,13 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
           </div>
         )}
 
-        {/* 右上ツールクラスタ: house セマンティックトークンでテーマ自動切替 */}
+        {/* 右上ツールクラスタ: house セマンティックトークンでテーマ自動切替。
+            z-45 (= Pass1/2/3 overlay z-40 より上、calib editor z-50 より下)。
+            set 1 未作成画面が出てもキャリブやフルスクリーンに到達できないと
+            操作詰みになるため。 */}
         <div
-          className="absolute right-2 flex gap-1 z-20"
-          style={{ top: 'max(0.5rem, env(safe-area-inset-top))' }}
+          className="absolute right-2 flex gap-1"
+          style={{ top: 'max(0.5rem, env(safe-area-inset-top))', zIndex: 45 }}
         >
           {!cropEditing ? (
             <>
