@@ -132,6 +132,9 @@ export function MobileAnnotatePage() {
   // 配信画質: モバイル既定は 'hd' (720p) → 帯域節約。fhd/source へユーザが任意切替可。
   const [videoQuality, setVideoQuality] = useState<'source' | 'uhd' | 'fhd' | 'hd'>('hd')
   const videoElRef = useRef<HTMLVideoElement | null>(null)
+  // calib 編集中フラグ: PlayMode 内 state だがこちらの overlay/chip も隠したいので
+  // PlayMode 側から callback で同期する
+  const [calibEditingTop, setCalibEditingTop] = useState(false)
   const [queueStatus, setQueueStatus] = useState<{
     pending: number
     manualRetry: number
@@ -343,11 +346,23 @@ export function MobileAnnotatePage() {
             しない)。Pass1/2/3 は overlay として PlayMode の **上に** 重ねる。 */}
         <div className="absolute inset-0 bg-gray-950">
           {matchQuery.isLoading ? (
-            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-              読み込み中...
+            // 真ん中で確実に視認できる spinner + ラベル。Material Symbols font が
+            // ロード中に raw 文字列が見えないよう、ここでは plain CSS の spinner を使う。
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm" style={{ color: '#e5e7eb', backgroundColor: '#0f172a' }}>
+              <div
+                style={{
+                  width: 48, height: 48, border: '4px solid rgba(255,255,255,0.18)',
+                  borderTopColor: '#60a5fa', borderRadius: '50%',
+                  animation: 'ssMobileSpin 0.9s linear infinite',
+                }}
+              />
+              <div>動画情報を読み込み中…</div>
+              <style>{`
+                @keyframes ssMobileSpin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+              `}</style>
             </div>
           ) : matchQuery.error ? (
-            <div className="flex-1 flex items-center justify-center text-red-400 text-sm">
+            <div className="absolute inset-0 flex items-center justify-center text-sm" style={{ color: '#fca5a5', backgroundColor: '#0f172a' }}>
               試合情報の取得に失敗しました
             </div>
           ) : (
@@ -364,11 +379,13 @@ export function MobileAnnotatePage() {
               onQualityChange={(q) => setVideoQuality(q as 'source' | 'uhd' | 'fhd' | 'hd')}
               cvCandidateTimestamps={cvCandidateTimestamps}
               resumeFromSec={resumeFromSec}
+              onCalibEditingChange={setCalibEditingTop}
             />
           )}
 
-          {/* Pass overlay: annotate モード時に PlayMode 上に被せる */}
-          {screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'rally' && (() => {
+          {/* Pass overlay: annotate モード時に PlayMode 上に被せる
+             ⚠️ calib 編集中は隠す (= 編集に集中させる) */}
+          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'rally' && (() => {
             if (!currentSet) {
               return (
                 <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 z-40 px-4 text-center">
@@ -455,7 +472,7 @@ export function MobileAnnotatePage() {
             )
           })()}
 
-          {screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'serve_final' && (
+          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'serve_final' && (
             <div className="absolute inset-0 z-40 bg-black/85">
               <Pass2RallyPicker
                 rallies={mergedRallies}
@@ -466,7 +483,7 @@ export function MobileAnnotatePage() {
             </div>
           )}
 
-          {screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'detail' && (
+          {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'detail' && (
             <div className="absolute inset-0 z-40 bg-black/85">
               <Pass3RallyPicker
                 matchId={matchId ?? ''}
@@ -479,7 +496,9 @@ export function MobileAnnotatePage() {
           )}
         </div>
 
-        {/* 左上オーバーレイ: 戻る + match #id + キュー (テーマ追従) */}
+        {/* 左上オーバーレイ: 戻る + match #id + キュー (テーマ追従)。
+           calib 中は隠す (= 編集集中)。 */}
+        {!calibEditingTop && (
         <div
           className="absolute left-2 flex items-center gap-1.5 text-xs"
           style={{ top: 'max(0.5rem, env(safe-area-inset-top))', zIndex: 45 }}
@@ -516,10 +535,12 @@ export function MobileAnnotatePage() {
             </button>
           )}
         </div>
+        )}
 
-        {/* 右側中央オーバーレイ: Pass 切替 (テーマ追従)。
+        {/* 右側中央オーバーレイ: Pass 切替 (テーマ追従)。calib 中は隠す。
             z-45 = Pass1/2/3 overlay (z-40) より上。annotate モード中でも Pass を
             切替できないと set 1 prompt から抜けられない事象を防ぐ。 */}
+        {!calibEditingTop && (
         <div
           className="absolute right-2 flex flex-col gap-1.5"
           style={{ top: '50%', transform: 'translateY(-50%)', zIndex: 45 }}
@@ -537,6 +558,7 @@ export function MobileAnnotatePage() {
             </button>
           ))}
         </div>
+        )}
       </div>
     </LandscapeGuard>
   )

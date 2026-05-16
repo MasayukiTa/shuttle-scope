@@ -73,9 +73,11 @@ interface Props {
   cvCandidateTimestamps?: number[]
   /** 過去アノテの続きから再開するための時刻 (秒)。0 なら chip 非表示。 */
   resumeFromSec?: number
+  /** calib 編集中フラグを親に伝える (= 親側の overlay / chip を隠すため) */
+  onCalibEditingChange?: (editing: boolean) => void
 }
 
-export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec }: Props) {
+export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec, onCalibEditingChange }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -114,8 +116,12 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   const [showCourt, setShowCourt] = useState(true)
   const [showShuttle, setShowShuttle] = useState(true)
   const [showPlayers, setShowPlayers] = useState(false)  // bbox は視認性影響大なので default OFF
-  // コートキャリブ編集モード
-  const [calibEditing, setCalibEditing] = useState(false)
+  // コートキャリブ編集モード (親にも同期して overlay 隠す)
+  const [calibEditing, _setCalibEditing] = useState(false)
+  const setCalibEditing = useCallback((v: boolean) => {
+    _setCalibEditing(v)
+    onCalibEditingChange?.(v)
+  }, [onCalibEditingChange])
   // 既存キャリブ点 (編集モードに渡す初期値 + 保存後に上書き)
   const [calibPoints, setCalibPoints] = useState<{ x: number; y: number }[]>([])
   // 保存後に MobileCVOverlay を強制再 fetch させる version カウンタ
@@ -534,7 +540,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         {/* 右上ツールクラスタ: house セマンティックトークンでテーマ自動切替。
             z-45 (= Pass1/2/3 overlay z-40 より上、calib editor z-50 より下)。
             set 1 未作成画面が出てもキャリブやフルスクリーンに到達できないと
-            操作詰みになるため。 */}
+            操作詰みになるため。
+            ⚠️ calib 編集中は隠す (= 編集集中、calib editor 自身に専用ボタンあり) */}
+        {!calibEditing && (
         <div
           className="absolute right-2 flex gap-1"
           style={{ top: 'max(0.5rem, env(safe-area-inset-top))', zIndex: 45 }}
@@ -643,9 +651,11 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             </>
           )}
         </div>
+        )}
       </div>
 
-      {/* 下部コントロールオーバーレイ: テーマ追従の chip 群 */}
+      {/* 下部コントロールオーバーレイ: テーマ追従の chip 群。calib 中は隠す。 */}
+      {!calibEditing && (
       <div
         className="absolute left-0 right-0 px-2 py-2 flex items-center gap-1.5 text-xs z-20"
         style={{ bottom: 'env(safe-area-inset-bottom)' }}
@@ -754,6 +764,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

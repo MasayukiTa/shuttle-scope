@@ -43,6 +43,15 @@ if (typeof window !== 'undefined') {
   })
 }
 
+// Material Symbols フォント (3.9 MB) ロード前に MIcon の raw テキスト
+// ("play_arrow" 等) が見えてしまうのを防ぐ。fonts.ready で `ss-fonts-ready` を
+// body に付与し、CSS 側で .material-symbols-outlined を visibility:hidden で隠す。
+if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
+  ;(document as any).fonts.ready
+    .then(() => document.body.classList.add('ss-fonts-ready'))
+    .catch(() => document.body.classList.add('ss-fonts-ready'))  // fail-safe: 失敗時も表示
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
