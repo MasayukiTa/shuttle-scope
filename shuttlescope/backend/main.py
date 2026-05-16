@@ -3031,6 +3031,25 @@ _SPA_NOCACHE_HEADERS = {
 }
 
 
+# SPA catch-all で配信を許す root-public ファイルの完全 whitelist。
+# vite publicDir から `out/renderer/` 直下に置かれる固定 file 群のみ。
+# CodeQL py/path-injection: ユーザ入力を FileResponse に渡さず、key 一致時に
+# 事前定義 Path 定数だけを返すことで taint flow を断ち切る。
+_SPA_ROOT_PUBLIC: dict[str, Path] = {
+    name: _RENDERER_DIR / name
+    for name in (
+        "error-reporter.js",
+        "favicon.png",
+        "apple-touch-icon.png",
+        "og-image.png",
+        "robots.txt",
+        "manifest.json",
+        "site.webmanifest",
+        "sw.js",
+    )
+}
+
+
 @app.get("/")
 async def spa_root(request: StarletteRequest):
     """React SPA エントリポイント（ブラウザ / LAN / トンネルアクセス用）"""
@@ -3065,21 +3084,17 @@ async def spa_catch_all(path: str, request: StarletteRequest):
     if safe_path.startswith("api/") or safe_path == "api" or safe_path.startswith("ws/"):
         raise HTTPException(status_code=404, detail="Not Found")
 
-    # ルート直下の静的ファイル (vite publicDir 由来: error-reporter.js / favicon.png 等) を
-    # SPA リダイレクト前に配信する。安全のため拡張子ホワイトリストで限定。
-    if "/" not in safe_path and "." in safe_path:
-        ext = "." + safe_path.rsplit(".", 1)[1].lower()
-        _ROOT_PUBLIC_EXTS = {".js", ".css", ".png", ".jpg", ".jpeg", ".gif",
-                             ".svg", ".ico", ".webmanifest", ".txt", ".json"}
-        if ext in _ROOT_PUBLIC_EXTS and _re_acl.match(r"^[A-Za-z0-9_.\-]+$", safe_path):
-            candidate = (_RENDERER_DIR / safe_path).resolve()
-            try:
-                candidate.relative_to(_RENDERER_DIR.resolve())
-            except ValueError:
-                raise HTTPException(status_code=404)
-            if candidate.exists() and candidate.is_file():
-                media = _MIME_MAP.get(ext, "application/octet-stream")
-                return FileResponse(str(candidate), media_type=media)
+    # Root-level static files served by Vite's publicDir (error-reporter.js,
+    # favicon.png, etc). To eliminate user-controlled path from FileResponse
+    # entirely (CodeQL py/path-injection compliance), match against an
+    # explicit hardcoded whitelist. The mapping is intentionally a literal
+    # dict — every entry is a constant Path produced at module load time, so
+    # no taint can flow into FileResponse here.
+    file_name = _SPA_ROOT_PUBLIC.get(safe_path)
+    if file_name is not None and file_name.exists() and file_name.is_file():
+        ext = file_name.suffix.lower()
+        media = _MIME_MAP.get(ext, "application/octet-stream")
+        return FileResponse(str(file_name), media_type=media)
 
     from fastapi.responses import RedirectResponse
     # Open-redirect 防止: スキーム/プロトコル相対 URL/逆スラッシュを禁止し、英数と一部記号のみ許容
