@@ -236,6 +236,33 @@ export function MobileCVOverlay({
           visible={showPlayers && yoloFrames.length > 0}
         />
       </div>
+
+      {/* 4) データ未整備時の説明 chip (右上ツールから少し下、トグルが ON なのに
+         空 → "壊れてる" と誤認されないよう状態を可視化する) */}
+      {showCourt && !hasCalib && (
+        <div
+          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
+          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 2.5rem)' }}
+        >
+          コート未キャリブ (デスクトップで設定要)
+        </div>
+      )}
+      {showShuttle && !shuttleQuery.isLoading && shuttleFrames.length === 0 && (
+        <div
+          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
+          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 5rem)' }}
+        >
+          シャトル解析未実行 (TrackNet 走行要)
+        </div>
+      )}
+      {showPlayers && !yoloQuery.isLoading && yoloFrames.length === 0 && (
+        <div
+          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
+          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 7.5rem)' }}
+        >
+          プレイヤー検出未実行 (YOLO 走行要)
+        </div>
+      )}
     </>
   )
 }

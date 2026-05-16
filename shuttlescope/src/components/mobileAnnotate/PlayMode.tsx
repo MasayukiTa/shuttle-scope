@@ -127,12 +127,12 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
     if (videoRef.current) videoRef.current.playbackRate = speed
   }, [speed])
 
-  // 画質切替 (videoSrc 変更) で再 load される際の seek 位置 + 再生状態を保持
-  // src 変更 *前* に現状を pendingResume に保存し、新 src の loadedmetadata 受信後
-  // に restore する。
-  const prevSrcRef = useRef<string>(videoSrc)
-  useEffect(() => {
-    if (videoSrc === prevSrcRef.current) return
+  // 画質切替で再 load される際の seek 位置 + 再生状態を保持。
+  // useEffect で videoSrc 変化を検知すると、ブラウザが既に新 src で 0 秒から
+  // ロードし始めた "後" になり currentTime が 0 で読み取られてしまう。
+  // 解決: 画質 chip クリック ハンドラ内 (= React 再 render 前) で時刻 capture して
+  // から onQualityChange を呼ぶ。
+  const requestQualityChange = useCallback((q: string) => {
     const v = videoRef.current
     if (v && v.readyState >= 1) {
       pendingResume.current = {
@@ -140,8 +140,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         wasPlaying: !v.paused,
       }
     }
-    prevSrcRef.current = videoSrc
-  }, [videoSrc])
+    onQualityChange?.(q)
+  }, [onQualityChange])
 
   // events
   useEffect(() => {
@@ -671,7 +671,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   key={q.quality}
                   type="button"
                   disabled={!q.ready}
-                  onClick={() => q.ready && onQualityChange(q.quality)}
+                  onClick={() => q.ready && requestQualityChange(q.quality)}
                   className={`px-1.5 py-1 rounded text-[10px] font-mono shadow ${isCurrent ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
                   title={q.ready ? `画質 ${label}` : `画質 ${label} (準備中)`}
                   style={!q.ready ? { opacity: 0.5 } : undefined}
