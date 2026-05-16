@@ -510,6 +510,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             initial={calibPoints}
             videoWidth={videoBox.w}
             videoHeight={videoBox.h}
+            snapshot={calibSnapshot}
             onClose={() => setCalibEditing(false)}
             onSaved={(pts) => {
               setCalibPoints(pts)

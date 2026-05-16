@@ -315,7 +315,6 @@ export function MobileCVOverlay({
           width="100%"
           height="100%"
           viewBox={`0 0 ${videoWidth} ${videoHeight}`}
-          preserveAspectRatio="none"
           style={{ zIndex: 11 }}
         >
           {gridLines.map((l, i) => (
