@@ -21,7 +21,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Play, Crosshair, Layers, CloudOff, AlertTriangle, RotateCw, Maximize2, Smartphone } from 'lucide-react'
+// CLAUDE.md / メモリ規約: 新規 UI は Material Symbols (MIcon)。lucide は段階廃止。
+import { MIcon } from '@/components/common/MIcon'
 import { apiGet, apiPost } from '@/api/client'
 import { getMobileVideoSrc } from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
@@ -59,9 +60,9 @@ const PASS_LABELS: Record<AnnotatePass, string> = {
 }
 
 const PASS_ICONS: Record<AnnotatePass, React.ReactNode> = {
-  rally: <Play size={14} />,
-  serve_final: <Crosshair size={14} />,
-  detail: <Layers size={14} />,
+  rally: <MIcon name="play_arrow" size={14} />,
+  serve_final: <MIcon name="center_focus_strong" size={14} />,
+  detail: <MIcon name="layers" size={14} />,
 }
 
 
@@ -98,13 +99,10 @@ function LandscapeGuard({ children }: { children: React.ReactNode }) {
           style={{ backgroundColor: '#000000', color: '#ffffff' }}
         >
           <div className="relative mb-4" style={{ color: '#ffffff' }}>
-            <Smartphone size={64} strokeWidth={1.5} style={{ color: '#ffffff', stroke: '#ffffff' }} />
-            <RotateCw
-              className="absolute -top-3 -right-3"
-              size={28}
-              strokeWidth={2}
-              style={{ color: '#ffffff', stroke: '#ffffff' }}
-            />
+            <MIcon name="smartphone" size={64} style={{ color: '#ffffff' }} />
+            <span className="absolute -top-3 -right-3" style={{ color: '#ffffff' }}>
+              <MIcon name="screen_rotation" size={28} style={{ color: '#ffffff' }} />
+            </span>
           </div>
           <h2 className="text-xl font-bold mb-2" style={{ color: '#ffffff' }}>端末を横向きに</h2>
           <p className="text-sm" style={{ color: 'rgba(255,255,255,0.9)' }}>
@@ -492,7 +490,7 @@ export function MobileAnnotatePage() {
             className="p-2 rounded shadow ss-overlay-chip"
             aria-label="戻る"
           >
-            <ArrowLeft size={16} />
+            <MIcon name="arrow_back" size={16} />
           </button>
           <span className="font-mono text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip">
             #{matchId ?? '?'}
@@ -502,7 +500,7 @@ export function MobileAnnotatePage() {
               className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-warning"
               title={`未送信 ${queueStatus.pending} 件 (再送中)`}
             >
-              <CloudOff size={12} />
+              <MIcon name="cloud_off" size={12} />
               {queueStatus.pending}
             </span>
           )}
@@ -513,7 +511,7 @@ export function MobileAnnotatePage() {
               className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded shadow ss-overlay-chip-danger"
               title={`送信失敗 ${queueStatus.manualRetry} 件 — タップで再送`}
             >
-              <AlertTriangle size={12} />
+              <MIcon name="warning" size={12} />
               {queueStatus.manualRetry}
             </button>
           )}

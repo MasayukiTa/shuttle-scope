@@ -18,8 +18,9 @@
  *   - クロップ編集モードはツールバー右上の ✂ ボタンから入る。編集中は
  *     コートタップが矩形ハンドル操作になり、再生は強制停止される。
  */
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { Play, Pause, Scissors, RotateCcw, Check, Maximize2, Square, Grid3x3, Target, Users, Pencil } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+// CLAUDE.md / メモリ規約に従い Material Symbols (MIcon) を使う。lucide-react は段階廃止。
+import { MIcon } from '@/components/common/MIcon'
 import { MobileCVOverlay } from '@/components/mobileAnnotate/MobileCVOverlay'
 import { MobileCourtCalib } from '@/components/mobileAnnotate/MobileCourtCalib'
 
@@ -96,6 +97,19 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   // loadedmetadata 後に復元する。これをしないと src 変更 = 動画 element が再 load
   // して 0 秒から再生になる。
   const pendingResume = useRef<{ time: number; wasPlaying: boolean } | null>(null)
+  // PWA standalone モード判定 (= iOS ホーム画面追加 or Android インストール時)。
+  // PWA はすでに URL バーなしフル表示なので Fullscreen ボタンを出しても役立たない。
+  const isPwaStandalone = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      // iOS Safari: navigator.standalone
+      if ((navigator as any).standalone === true) return true
+      // Android Chrome / desktop PWA: matchMedia
+      if (window.matchMedia('(display-mode: standalone)').matches) return true
+    } catch { /* ignore */ }
+    return false
+  }, [])
+
   // CV オーバーレイの可視性 (個別 toggle で重ね描きの ON/OFF 切替可能)
   const [showCourt, setShowCourt] = useState(true)
   const [showShuttle, setShowShuttle] = useState(true)
@@ -535,7 +549,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 aria-label="コートグリッド"
                 title="コートグリッド表示切替"
               >
-                <Grid3x3 size={16} />
+                <MIcon name="grid_on" size={16} />
               </button>
               {/* コートキャリブ編集 (動画 pause + 6 点設置 + 保存) */}
               <button
@@ -550,7 +564,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 aria-label="コートキャリブ編集"
                 title="コート 4 隅 + ネット 2 点を設置 / 微調整"
               >
-                <Pencil size={16} />
+                <MIcon name="edit" size={16} />
               </button>
               <button
                 type="button"
@@ -559,7 +573,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 aria-label="シャトル軌跡"
                 title="シャトル軌跡表示切替"
               >
-                <Target size={16} />
+                <MIcon name="my_location" size={16} />
               </button>
               <button
                 type="button"
@@ -568,7 +582,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 aria-label="プレイヤー位置"
                 title="プレイヤー位置 bbox 表示切替"
               >
-                <Users size={16} />
+                <MIcon name="group" size={16} />
               </button>
               <button
                 type="button"
@@ -577,17 +591,21 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 aria-label="表示モード切替"
                 title={fitMode === 'cover' ? '全体表示 (contain) に切替' : 'フル表示 (cover) に切替'}
               >
-                <Square size={16} />
+                <MIcon name="crop_square" size={16} />
               </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); enterFullscreen() }}
-                className="p-2 rounded shadow ss-overlay-chip"
-                aria-label="フルスクリーン"
-                title="iOS native フルスクリーンに入る"
-              >
-                <Maximize2 size={16} />
-              </button>
+              {/* Fullscreen ボタン: PWA standalone モードでは既にフル表示なので非表示。
+                   通常 Safari でしか役に立たない (それでも iOS は <video> 以外 不可 → hint)。 */}
+              {!isPwaStandalone && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); enterFullscreen() }}
+                  className="p-2 rounded shadow ss-overlay-chip"
+                  aria-label="フルスクリーン"
+                  title="Desktop/Android: 全画面化。iOS Safari: ホーム画面追加を案内"
+                >
+                  <MIcon name="fullscreen" size={16} />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); startCropEdit() }}
@@ -595,7 +613,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 aria-label="切り抜き編集"
                 title="鳥瞰カメラの不要部分を切り抜く"
               >
-                <Scissors size={16} />
+                <MIcon name="content_cut" size={16} />
               </button>
             </>
           ) : (
@@ -606,7 +624,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 className="p-2 rounded shadow ss-overlay-chip"
                 aria-label="全画面に戻す"
               >
-                <RotateCcw size={16} />
+                <MIcon name="restart_alt" size={16} />
               </button>
               <button
                 type="button"
@@ -620,7 +638,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 onClick={(e) => { e.stopPropagation(); commitCrop() }}
                 className="px-2 py-1 rounded text-xs flex items-center gap-1 shadow ss-overlay-chip-accent"
               >
-                <Check size={12} /> 確定
+                <MIcon name="check" size={12} /> 確定
               </button>
             </>
           )}
@@ -640,7 +658,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">◀1</button>
         <button type="button" onClick={togglePlay}
                 className="px-2.5 py-1.5 rounded shadow flex items-center ss-overlay-chip-accent">
-          {playing ? <Pause size={14} /> : <Play size={14} />}
+          {playing ? <MIcon name="pause" size={14} /> : <MIcon name="play_arrow" size={14} />}
         </button>
         <button type="button" onClick={() => seekBy(1)}
                 className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">1▶</button>
