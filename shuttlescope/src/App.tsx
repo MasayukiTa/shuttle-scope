@@ -455,9 +455,21 @@ function ProtectedMainRoute() {
   // R48: /m/annotate/:matchId は MainLayout (Sidebar / bottom nav) を完全に
   // バイパスしてフルブリード描画する。スマホアノテで「下に設定タブが居る」
   // 「動画上部が URL バーに被る」問題を構造的に潰す。
+  //
+  // ⚠️ /m/annotate は MainLayout の ErrorBoundary をバイパスするため、
+  // ここで明示的に ErrorBoundary を被せて throw を可視化する (PWA 標準モード
+  // では Safari Web Inspector に繋ぐ手段が無いユーザのため、画面に出すのが
+  // 唯一の診断パス)。
   return (
     <Routes>
-      <Route path="/m/annotate/:matchId" element={<MobileAnnotatePage />} />
+      <Route
+        path="/m/annotate/:matchId"
+        element={
+          <ErrorBoundary>
+            <MobileAnnotatePage />
+          </ErrorBoundary>
+        }
+      />
       <Route path="*" element={<MainLayout />} />
     </Routes>
   )
