@@ -125,6 +125,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   // で代替表示することで、iOS native overlay の発生原因 (= 可視 paused video)
   // を構造的に取り除く。
   const [calibSnapshot, setCalibSnapshot] = useState<string | null>(null)
+  // calib 中に <video> を unmount するため、再 mount 時に復元する currentTime
+  const savedCurrentTimeRef = useRef<number>(0)
   const setCalibEditing = useCallback((v: boolean) => {
     _setCalibEditing(v)
     onCalibEditingChange?.(v)
@@ -430,7 +432,14 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               </div>
             </div>
           </div>
-        ) : (
+        ) : calibEditing ? null : (
+          // calib 編集中は <video> 自体を **DOM から完全 unmount**。
+              // 理由: iOS Safari の media compositor layer は display:none でも
+          // 残り続け、画面中央 (≒動画フレーム矩形) の touch を横取りする。
+          // elementsFromPoint には DOM 外なので映らないため、過去の対策
+              // (pointer-events:none / display:none / webkit-controls CSS) は無効。
+          // 完全 unmount すれば layer も消える。currentTime は外側の
+          // savedCurrentTimeRef で保存して再 mount 時に復元する。
           <video
             ref={(el) => {
               videoRef.current = el
@@ -438,19 +447,19 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               if (el && !el.hasAttribute('webkit-playsinline')) {
                 el.setAttribute('webkit-playsinline', '')
               }
+              // 再 mount 時に保存した currentTime を復元
+              if (el && savedCurrentTimeRef.current > 0) {
+                const t = savedCurrentTimeRef.current
+                savedCurrentTimeRef.current = 0
+                const restore = () => { try { el.currentTime = t } catch { /* ignore */ } }
+                if (el.readyState >= 1) restore()
+                else el.addEventListener('loadedmetadata', restore, { once: true })
+              }
             }}
             src={videoSrc}
             playsInline
             preload="metadata"
-            // calib 編集中は iOS Safari の native 'tap to play' overlay が
-            // 画面中央でタップを横取りしてしまう (= ハンドル設置の中央域不反応)。
-            // pointer-events:none / ::-webkit-media-controls 抑止だけでは
-            // iOS の中央 big-play-button overlay は完全に消えないため、
-            // calibEditing 中は display:none + snapshot <img> で代替する。
-            style={{
-              ...cropStyle,
-              ...(calibEditing ? { display: 'none' } : {}),
-            }}
+            style={cropStyle}
             onError={(e) => {
               const v = e.currentTarget
               const codeMap: Record<number, string> = {
@@ -609,8 +618,11 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   e.stopPropagation()
                   const v = videoRef.current
                   if (v && !v.paused) v.pause()
+                  // calib 中は video unmount → currentTime を ref に退避し
+                  // 再 mount 時に loadedmetadata 後に復元する。
+                  if (v) savedCurrentTimeRef.current = v.currentTime || 0
                   // 現フレームを canvas に焼く → dataURL を <img> に流し込み、
-                  // video element は display:none。iOS native overlay 回避。
+                  // video element は unmount。iOS native overlay 完全回避。
                   try {
                     if (v && v.videoWidth > 0 && v.videoHeight > 0) {
                       const cvs = document.createElement('canvas')
