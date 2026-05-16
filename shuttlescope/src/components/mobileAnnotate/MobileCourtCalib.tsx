@@ -168,6 +168,30 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
     return () => { document.body.style.overflow = orig }
   }, [])
 
+  // 🩺 document-level capture: React touchstart に来ない touch を確認する。
+  // 「下 3/4 タップしても何も起きない」 = (A) touch 自体が来ていない (= 何かが
+  // pre-react レベルで止めている) か、(B) touch は来ているが calib container
+  // 以外がターゲット (= 透明何かが上に乗ってる) のいずれか。これで切り分け。
+  useEffect(() => {
+    const onTouch = (ev: TouchEvent) => {
+      const t = ev.touches[0]
+      if (!t) return
+      const tgt = ev.target as Element | null
+      const W = window.innerWidth
+      const H = window.innerHeight
+      const tag = tgt?.tagName
+      const cls = (tgt && typeof tgt.className === 'string')
+        ? tgt.className.slice(0, 30) : ''
+      setDiag(
+        `DOC-TOUCH(${Math.round(t.clientX)},${Math.round(t.clientY)}) ` +
+        `vp=${W}x${H} tgt=${tag}.${cls} ` +
+        `pts=${points.length}/6`,
+      )
+    }
+    document.addEventListener('touchstart', onTouch, true) // capture phase
+    return () => document.removeEventListener('touchstart', onTouch, true)
+  }, [points.length])
+
   // 🩺 診断: calib mount 直後に、viewport 中央/上下左右の各点に何が乗っているか
   // dump する。"透明な何かが center をブロック" 疑惑を即時確認する。
   useEffect(() => {
