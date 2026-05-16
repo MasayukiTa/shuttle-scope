@@ -201,6 +201,10 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             v.play().catch(() => { /* autoplay block 等は無視 */ })
           }
         } catch { /* ignore */ }
+      } else {
+        // 初回ロード時の自動再生試行 (iOS は user gesture が必要なケースが多いので
+        // 失敗時は静かに無視。ユーザは下端 Play ボタンで開始できる)。
+        v.play().catch(() => { /* autoplay block 等は無視 */ })
       }
     }
     const onPlay = () => setPlaying(true)

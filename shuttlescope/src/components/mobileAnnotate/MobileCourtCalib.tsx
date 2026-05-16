@@ -15,6 +15,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { apiPost } from '@/api/client'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Pt { x: number; y: number }
 
