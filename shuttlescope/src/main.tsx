@@ -45,6 +45,11 @@ if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (e) => {
     const reason: any = e.reason
     const msg = (reason && (reason.stack || reason.message)) || String(reason)
+    // AbortError は video unmount/seek 時に必ず出る既知良性エラー。bar に
+    // 出すと calib 出入りのたび煩雑になるので suppress (error-reporter.js
+    // 側でも同じ suppress を実装している)。
+    if (reason && reason.name === 'AbortError') return
+    if (/The operation was aborted/i.test(msg)) return
     showError('PromiseRejection', msg)
   })
 }
