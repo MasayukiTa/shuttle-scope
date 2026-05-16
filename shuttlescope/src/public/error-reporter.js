@@ -60,6 +60,12 @@
   window.addEventListener('unhandledrejection', function (e) {
     var r = e.reason;
     var msg = (r && (r.stack || r.message)) || String(r);
+    // AbortError: video element の load/play を unmount や seek でキャンセル
+    // した時に発火する既知良性エラー (mobile calib 出入りで video 再 mount
+    // するたびに出る)。実害無く noise なので無視する。
+    var name = r && r.name;
+    if (name === 'AbortError') return;
+    if (/The operation was aborted/i.test(msg)) return;
     show('PromiseRejection', msg);
   });
 })();
