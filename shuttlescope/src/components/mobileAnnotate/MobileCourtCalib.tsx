@@ -231,11 +231,19 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchEnd}
     >
-      {/* SVG オーバーレイ: 既存点 + 結線 */}
+      {/* SVG オーバーレイ: 既存点 + 結線
+         ⚠️ viewBox を明示 (= videoWidth x videoHeight)。
+         iOS Safari は viewBox 無し + width/height=100% の SVG で coordinate
+         system を intrinsic 300x150 に縮退させる既知バグがあり、cy>150 の
+         描画が消える (= 画面下 3/4 のハンドルが見えない症状)。
+         viewBox を渡せば SVG ユーザ空間 (px) = videoWidth×videoHeight に
+         固定される。preserveAspectRatio="none" で素直に伸縮させる。 */}
       <svg
         className="absolute inset-0 pointer-events-none"
         width="100%"
         height="100%"
+        viewBox={`0 0 ${videoWidth} ${videoHeight}`}
+        preserveAspectRatio="none"
       >
         {/* ネット線 (NL-NR があれば描画) */}
         {points.length >= 6 && (
