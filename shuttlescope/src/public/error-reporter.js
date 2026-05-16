@@ -4,7 +4,24 @@
    - React の ErrorBoundary が捕捉できない module-level throw (ESM import 時の
      sync エラー) もここで確実に拾う。
    - PWA / iOS Safari で Web Inspector が無いユーザのための唯一の診断手段。 */
+/* DIAG_BUILD_TAG: 2026-05-16T04:15:00Z */
 (function () {
+  /* 起動確認 chip: error-reporter.js が実際に実行されたかを画面右下に常時表示する。
+     これが出ていれば「ファイルが load されてない / CSP 拒否」は除外できる。 */
+  try {
+    var tag = document.createElement('div');
+    tag.id = '__ss_diag_tag__';
+    tag.style.cssText =
+      'position:fixed;bottom:4px;right:4px;z-index:99998;' +
+      'padding:3px 6px;font:10px/1 monospace;' +
+      'background:rgba(34,197,94,0.85);color:#fff;' +
+      'border-radius:3px;pointer-events:none';
+    tag.textContent = 'diag@2026-05-16T04:15Z';
+    var attach = function () { (document.body || document.documentElement).appendChild(tag); };
+    if (document.body) attach();
+    else document.addEventListener('DOMContentLoaded', attach);
+  } catch (_e) { /* ignore */ }
+
   var show = function (label, msg) {
     try {
       var bar = document.getElementById('__ss_error_bar__');
