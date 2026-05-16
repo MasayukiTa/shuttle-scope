@@ -46,10 +46,29 @@ if (typeof window !== 'undefined') {
 // Material Symbols フォント (3.9 MB) ロード前に MIcon の raw テキスト
 // ("play_arrow" 等) が見えてしまうのを防ぐ。fonts.ready で `ss-fonts-ready` を
 // body に付与し、CSS 側で .material-symbols-outlined を visibility:hidden で隠す。
-if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
-  ;(document as any).fonts.ready
-    .then(() => document.body.classList.add('ss-fonts-ready'))
-    .catch(() => document.body.classList.add('ss-fonts-ready'))  // fail-safe: 失敗時も表示
+//
+// ⚠️ 1.2 秒経過してもロード完了しなければ諦めて表示する (= "アイコン全消失で
+// 画面が極端に遅く見える" 問題を防ぐ)。フォントが間に合わない場合は raw text が
+// 一瞬出るが、空白 5 秒よりは UX 上はるかにマシ。
+if (typeof document !== 'undefined' && (document as any).fonts) {
+  const fontsApi = (document as any).fonts
+  const markReady = () => {
+    if (document.body) document.body.classList.add('ss-fonts-ready')
+    else document.addEventListener('DOMContentLoaded', markReady)
+  }
+  // 既にロード済 (= キャッシュ) なら即座に
+  try {
+    if (typeof fontsApi.check === 'function' &&
+        fontsApi.check('24px "Material Symbols Outlined"')) {
+      markReady()
+    }
+  } catch { /* ignore */ }
+  // ready Promise 解決時
+  if (fontsApi.ready) {
+    fontsApi.ready.then(markReady).catch(markReady)
+  }
+  // ハードタイムアウト: 1.2 秒で諦める
+  setTimeout(markReady, 1200)
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

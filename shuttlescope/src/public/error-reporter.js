@@ -45,6 +45,10 @@
   window.addEventListener('error', function (e) {
     var src = e.error && (e.error.stack || e.error.message);
     var msg = src || e.message || String(e);
+    // "Script error." は cross-origin script のエラーで Safari 等が詳細を秘匿
+    // するときの generic noise (e.filename / lineno / colno = 0)。実害なく
+    // 表示すると share ボタン押下時等に誤発火するので無視する。
+    if ((msg === 'Script error.' || msg === 'Script error') && !e.filename) return;
     show('Error', msg + '\n  at ' + (e.filename || '?') + ':' + e.lineno + ':' + e.colno);
   });
   window.addEventListener('unhandledrejection', function (e) {
