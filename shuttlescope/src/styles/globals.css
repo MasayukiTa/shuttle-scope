@@ -1039,3 +1039,10 @@ html[data-theme="light"] .ss-overlay-chip {
     padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Material Symbols フォント (3.9 MB) ロード完了前は MIcon の raw text
+   ("play_arrow" 等) を見せない。main.tsx で document.fonts.ready 後に
+   body へ `ss-fonts-ready` を付与する。 */
+body:not(.ss-fonts-ready) .material-symbols-outlined {
+  visibility: hidden;
+}

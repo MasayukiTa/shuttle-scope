@@ -147,9 +147,10 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
     <div
       ref={containerRef}
       className="absolute inset-0 z-50"
-      // 下層 (Pass1 set 1 prompt 等) が透けないよう不透明 0.92。動画フレームは
-      // 編集中 pause しているので透ける必要はない。
-      style={{ touchAction: 'none', background: 'rgba(0,0,0,0.92)' }}
+      // ⚠️ 編集中は動画が見えないと点が置けない。背景は薄い dim のみ。
+      // Pass1 prompt 等が透けて見える事象は PlayMode 側で「calib 中は Pass1 を隠す」
+      // (= MobileAnnotatePage で `!calibEditing &&` で gate) ことで構造的に防ぐ。
+      style={{ touchAction: 'none', background: 'rgba(0,0,0,0.15)' }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -228,32 +229,13 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
         )}
       </div>
 
-      {/* 下端ツールバー隠し toggle (BL/BR を画面最下端で置きたい時用)。
-         隠した時も再表示できるよう、極小の chip だけは常時表示。 */}
-      {toolbarHidden && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setToolbarHidden(false) }}
-          onTouchStart={(e) => e.stopPropagation()}
-          className="absolute z-10 px-2 py-1 rounded text-[10px] font-bold"
-          style={{
-            bottom: 'max(0.5rem, calc(env(safe-area-inset-bottom) + 0.5rem))',
-            left: 'max(0.5rem, calc(env(safe-area-inset-left) + 0.5rem))',
-            backgroundColor: 'rgba(0,0,0,0.85)',
-            color: '#ffffff',
-            border: '1px solid rgba(255,255,255,0.5)',
-          }}
-        >
-          ⊥ ツールバー再表示
-        </button>
-      )}
-      {/* 下部操作 bar (safe-area-left/right 対応) */}
-      {!toolbarHidden && (
+      {/* 操作ボタン: 画面右辺 縦並びアイコン (動画底辺をふさがない設計)。
+         lucide → MIcon (Material Symbols) で規約遵守。 */}
       <div
-        className="absolute z-10 flex items-center gap-2 px-2 py-1.5 rounded ss-overlay-chip"
+        className="absolute z-10 flex flex-col gap-2 pointer-events-auto"
         style={{
-          bottom: 'max(0.5rem, calc(env(safe-area-inset-bottom) + 0.5rem))',
-          left: 'max(0.5rem, calc(env(safe-area-inset-left) + 0.5rem))',
+          top: '50%',
+          transform: 'translateY(-50%)',
           right: 'max(0.5rem, calc(env(safe-area-inset-right) + 0.5rem))',
         }}
         onTouchStart={(e) => e.stopPropagation()}
@@ -262,73 +244,86 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           type="button"
           onClick={undo}
           disabled={points.length === 0 || saving}
-          className="px-2 py-1.5 rounded text-xs font-bold"
+          title="直前 1 点を戻す"
+          className="rounded-full"
           style={{
-            backgroundColor: 'rgba(75,85,99,0.95)',
+            width: 44, height: 44,
+            backgroundColor: 'rgba(0,0,0,0.85)',
             color: '#ffffff',
-            opacity: points.length === 0 ? 0.5 : 1,
-            border: '1px solid rgba(255,255,255,0.2)',
+            border: '1px solid rgba(255,255,255,0.4)',
+            opacity: points.length === 0 ? 0.35 : 1,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          ← 戻す
+          <MIcon name="undo" size={20} style={{ color: '#ffffff' }} />
         </button>
         <button
           type="button"
           onClick={reset}
           disabled={points.length === 0 || saving}
-          className="px-2 py-1.5 rounded text-xs font-bold"
+          title="全消去"
+          className="rounded-full"
           style={{
-            backgroundColor: 'rgba(75,85,99,0.95)',
+            width: 44, height: 44,
+            backgroundColor: 'rgba(0,0,0,0.85)',
             color: '#ffffff',
-            opacity: points.length === 0 ? 0.5 : 1,
-            border: '1px solid rgba(255,255,255,0.2)',
+            border: '1px solid rgba(255,255,255,0.4)',
+            opacity: points.length === 0 ? 0.35 : 1,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          全消去
-        </button>
-        <div className="flex-1 text-[10px] text-white/80 text-center">
-          {err || (points.length === 6 ? '保存で desktop と共有' : '')}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={saving}
-          className="px-2 py-1.5 rounded text-xs font-bold"
-          style={{
-            backgroundColor: 'rgba(75,85,99,0.95)',
-            color: '#ffffff',
-            border: '1px solid rgba(255,255,255,0.2)',
-          }}
-        >
-          キャンセル
+          <MIcon name="delete_sweep" size={20} style={{ color: '#ffffff' }} />
         </button>
         <button
           type="button"
           onClick={save}
           disabled={points.length !== 6 || saving}
-          className="px-3 py-1.5 rounded text-xs text-white font-bold"
+          title={points.length === 6 ? '保存 (desktop と共有)' : '6 点設置で有効化'}
+          className="rounded-full"
           style={{
-            backgroundColor: points.length === 6 ? 'rgba(22,163,74,0.95)' : 'rgba(75,85,99,0.85)',
+            width: 48, height: 48,
+            backgroundColor: points.length === 6 ? 'rgba(22,163,74,0.98)' : 'rgba(0,0,0,0.6)',
+            color: '#ffffff',
+            border: '2px solid #ffffff',
             opacity: points.length !== 6 || saving ? 0.5 : 1,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          {saving ? '保存中…' : '保存'}
+          <MIcon name={saving ? 'hourglass_top' : 'check'} size={22} style={{ color: '#ffffff' }} />
         </button>
-        {/* ツールバー隠す toggle: コートの底辺ラインに点を置く時用 */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setToolbarHidden(true) }}
-          className="px-2 py-1.5 rounded text-xs font-bold"
+          onClick={onClose}
+          disabled={saving}
+          title="キャンセル"
+          className="rounded-full"
           style={{
-            backgroundColor: 'rgba(75,85,99,0.95)',
+            width: 44, height: 44,
+            backgroundColor: 'rgba(0,0,0,0.85)',
             color: '#ffffff',
-            border: '1px solid rgba(255,255,255,0.2)',
+            border: '1px solid rgba(255,255,255,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
-          title="一時的に隠す (底辺点を置きやすくする)"
         >
-          ⊥ 隠す
+          <MIcon name="close" size={20} style={{ color: '#ffffff' }} />
         </button>
       </div>
+
+      {/* エラー banner (出ても OK な位置に最小限) */}
+      {err && (
+        <div
+          className="absolute z-10 px-3 py-1.5 rounded text-[11px] font-bold"
+          style={{
+            bottom: 'max(0.5rem, calc(env(safe-area-inset-bottom) + 0.5rem))',
+            left: 'max(0.5rem, calc(env(safe-area-inset-left) + 0.5rem))',
+            right: 'max(4rem, calc(env(safe-area-inset-right) + 4rem))',
+            backgroundColor: 'rgba(127,29,29,0.95)',
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.4)',
+          }}
+        >
+          {err}
+        </div>
       )}
     </div>
   )
