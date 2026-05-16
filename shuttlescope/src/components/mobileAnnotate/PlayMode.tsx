@@ -118,9 +118,17 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   const [showPlayers, setShowPlayers] = useState(false)  // bbox は視認性影響大なので default OFF
   // コートキャリブ編集モード (親にも同期して overlay 隠す)
   const [calibEditing, _setCalibEditing] = useState(false)
+  // calib 中に video element を hide して見せる "静止画" snapshot (data URL)。
+  // iOS Safari は paused playsInline video の中央に消せない native overlay
+  // (big play button) を出すため、pointer-events:none / ::webkit CSS では消えない。
+  // → video 自体を display:none し、その瞬間のフレームを canvas → dataURL → <img>
+  // で代替表示することで、iOS native overlay の発生原因 (= 可視 paused video)
+  // を構造的に取り除く。
+  const [calibSnapshot, setCalibSnapshot] = useState<string | null>(null)
   const setCalibEditing = useCallback((v: boolean) => {
     _setCalibEditing(v)
     onCalibEditingChange?.(v)
+    if (!v) setCalibSnapshot(null)
   }, [onCalibEditingChange])
   // 既存キャリブ点 (編集モードに渡す初期値 + 保存後に上書き)
   const [calibPoints, setCalibPoints] = useState<{ x: number; y: number }[]>([])
@@ -435,10 +443,14 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             playsInline
             preload="metadata"
             // calib 編集中は iOS Safari の native 'tap to play' overlay が
-            // 画面中央でタップを横取りしてしまう (ハンドル設置の中央域が反応しない)。
-            // pointer-events: none で video element 自体を非反応にして
-            // 上層 (MobileCourtCalib) に全タップを渡す。
-            style={{ ...cropStyle, ...(calibEditing ? { pointerEvents: 'none' } : {}) }}
+            // 画面中央でタップを横取りしてしまう (= ハンドル設置の中央域不反応)。
+            // pointer-events:none / ::-webkit-media-controls 抑止だけでは
+            // iOS の中央 big-play-button overlay は完全に消えないため、
+            // calibEditing 中は display:none + snapshot <img> で代替する。
+            style={{
+              ...cropStyle,
+              ...(calibEditing ? { display: 'none' } : {}),
+            }}
             onError={(e) => {
               const v = e.currentTarget
               const codeMap: Record<number, string> = {
@@ -451,6 +463,18 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               console.error('[mobile-annot] video error', detail, { src: v.src })
               setPlayError(detail)
             }}
+          />
+        )}
+
+        {/* calib 中の静止画 background (iOS native overlay 回避: video を display:none
+            にする代わりに最後のフレームを <img> として同じ位置に表示)。
+            pointer-events:none で calib container のタップを阻害しない。 */}
+        {calibEditing && calibSnapshot && (
+          <img
+            src={calibSnapshot}
+            alt=""
+            draggable={false}
+            style={{ ...cropStyle, pointerEvents: 'none', userSelect: 'none' }}
           />
         )}
 
@@ -585,6 +609,24 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   e.stopPropagation()
                   const v = videoRef.current
                   if (v && !v.paused) v.pause()
+                  // 現フレームを canvas に焼く → dataURL を <img> に流し込み、
+                  // video element は display:none。iOS native overlay 回避。
+                  try {
+                    if (v && v.videoWidth > 0 && v.videoHeight > 0) {
+                      const cvs = document.createElement('canvas')
+                      cvs.width = v.videoWidth
+                      cvs.height = v.videoHeight
+                      const ctx = cvs.getContext('2d')
+                      if (ctx) {
+                        ctx.drawImage(v, 0, 0, cvs.width, cvs.height)
+                        // jpeg quality 0.85 で十分 (背景画像用途)
+                        setCalibSnapshot(cvs.toDataURL('image/jpeg', 0.85))
+                      }
+                    }
+                  } catch (err) {
+                    // CORS / tainted canvas は無視 (snapshot 無しでも calib 自体は可)
+                    console.warn('[calib] snapshot failed', err)
+                  }
                   setCalibEditing(true)
                 }}
                 className="p-2 rounded shadow ss-overlay-chip"

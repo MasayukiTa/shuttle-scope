@@ -43,6 +43,8 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
   // 初期で既存点が入った場合の「復元済み」インジケータを保持
   const [restoredFromExisting] = useState<boolean>(initial.length === 6)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  // 🩺 オンスクリーン診断テキスト (PWA で console 見えないため画面に出す)
+  const [diag, setDiag] = useState<string>('')
 
   // 次に追加する点の index (0-5)。6 点埋まったら null。
   const nextIdx = points.length < 6 ? points.length : null
@@ -75,6 +77,23 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
     e.preventDefault()
     e.stopPropagation()
     const t = e.touches[0]
+    // 🩺 診断: タップ位置にスタックされている全 element を console に dump。
+    // 「中央が反応しない / 透明な何かが上に乗っている」疑惑を DOM レベルで検証する。
+    // PWA 実機で Safari Web Inspector に繋いで確認する。
+    try {
+      const stack = document.elementsFromPoint(t.clientX, t.clientY)
+      const desc = stack.slice(0, 5).map((el) => {
+        const tag = el.tagName
+        const cls = (el.className && typeof el.className === 'string')
+          ? el.className.slice(0, 30) : ''
+        const id = el.id ? `#${el.id}` : ''
+        const cs = window.getComputedStyle(el)
+        return `${tag}${id}.${cls}[z=${cs.zIndex},pe=${cs.pointerEvents}]`
+      })
+      // eslint-disable-next-line no-console
+      console.log('[calib-tap]', `(${Math.round(t.clientX)},${Math.round(t.clientY)})`, desc)
+      setDiag(`TAP(${Math.round(t.clientX)},${Math.round(t.clientY)}) ` + desc.slice(0, 3).join(' | '))
+    } catch { /* ignore */ }
     const hit = hitHandle(t.clientX, t.clientY)
     if (hit !== null) {
       setDragIdx(hit)
@@ -142,6 +161,32 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
     const orig = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = orig }
+  }, [])
+
+  // 🩺 診断: calib mount 直後に、viewport 中央/上下左右の各点に何が乗っているか
+  // dump する。"透明な何かが center をブロック" 疑惑を即時確認する。
+  useEffect(() => {
+    const dump = () => {
+      const W = window.innerWidth
+      const H = window.innerHeight
+      try {
+        const stack = document.elementsFromPoint(W / 2, H / 2)
+        const desc = stack.slice(0, 5).map((el) => {
+          const tag = el.tagName
+          const cls = (el.className && typeof el.className === 'string')
+            ? el.className.slice(0, 30) : ''
+          const id = el.id ? `#${el.id}` : ''
+          const cs = window.getComputedStyle(el)
+          return `${tag}${id}.${cls}[z=${cs.zIndex},pe=${cs.pointerEvents}]`
+        })
+        // eslint-disable-next-line no-console
+        console.log('[calib-probe] center', desc)
+        setDiag(`CENTER(${Math.round(W/2)},${Math.round(H/2)}) ` + desc.slice(0, 3).join(' | '))
+      } catch { /* ignore */ }
+    }
+    // mount 直後 (paint 後) に dump
+    const id = setTimeout(dump, 100)
+    return () => clearTimeout(id)
   }, [])
 
   return (
@@ -309,6 +354,26 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           <MIcon name="close" size={20} style={{ color: '#ffffff' }} />
         </button>
       </div>
+
+      {/* 🩺 オンスクリーン診断 (中央 element stack / 最終 tap 位置の stack) */}
+      {diag && (
+        <div
+          className="absolute z-10 px-2 py-1 rounded text-[9px] font-mono pointer-events-none"
+          style={{
+            bottom: 'max(0.5rem, calc(env(safe-area-inset-bottom) + 0.5rem))',
+            left: 'max(0.5rem, calc(env(safe-area-inset-left) + 0.5rem))',
+            right: 'max(4rem, calc(env(safe-area-inset-right) + 4rem))',
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            color: '#ffe066',
+            border: '1px solid rgba(255,255,255,0.3)',
+            wordBreak: 'break-all',
+            maxHeight: '30vh',
+            overflow: 'auto',
+          }}
+        >
+          {diag}
+        </div>
+      )}
 
       {/* エラー banner (出ても OK な位置に最小限) */}
       {err && (
