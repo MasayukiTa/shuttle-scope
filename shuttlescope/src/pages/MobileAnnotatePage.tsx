@@ -276,7 +276,11 @@ export function MobileAnnotatePage() {
         match_id: Number(matchId), set_num: 1,
       })
       const newSet: SetInfo = { id: resp.data?.id ?? resp.id, set_num: 1 }
-      setsQuery.refetch()
+      // 旧コードは refetch() を await せず即 return していたため、呼び出し側で
+      // setCurrentSetIdx(0) しても allSets が空のままで Pass1RallyEnd が現れず
+      // 「セット 1 を作成して開始」が押せないように見える事象が発生していた。
+      // refetch を待ってから return する。
+      await setsQuery.refetch()
       return newSet
     } catch {
       return null
