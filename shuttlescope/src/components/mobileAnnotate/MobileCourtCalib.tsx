@@ -26,13 +26,14 @@ interface Props {
   videoHeight: number
   onClose: () => void                  // キャンセル / 保存後に呼ばれる
   onSaved: (pts: Pt[]) => void         // 親 (PlayMode 側) で再描画
+  snapshot?: string | null             // ルーペ表示用 dataURL (動画 frame)
 }
 
 // 順番ラベル (TL, TR, BR, BL, NL, NR)
 const STEP_LABELS = ['TL 左上', 'TR 右上', 'BR 右下', 'BL 左下', 'NL ネット左', 'NR ネット右']
 const HANDLE_R = 18  // タッチ判定半径 (px)
 
-export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, onClose, onSaved }: Props) {
+export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, onClose, onSaved, snapshot }: Props) {
   // 既存 6 点があれば初期表示、なければ空配列
   const [points, setPoints] = useState<Pt[]>(() => initial.length === 6 ? [...initial] : [])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -45,6 +46,9 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
   const containerRef = useRef<HTMLDivElement | null>(null)
   // 🩺 オンスクリーン診断テキスト (PWA で console 見えないため画面に出す)
   const [diag, setDiag] = useState<string>('')
+  // ルーペ UX: 指で隠れる領域を画面上部に拡大表示する。
+  // touchstart で表示開始、touchmove で位置更新、touchend で非表示。
+  const [loupe, setLoupe] = useState<{ x: number; y: number } | null>(null)
 
   // 次に追加する点の index (0-5)。6 点埋まったら null。
   const nextIdx = points.length < 6 ? points.length : null
@@ -99,6 +103,8 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
         desc.slice(0, 2).join(' | '),
       )
     } catch { /* ignore */ }
+    // ルーペ表示開始
+    setLoupe({ x: t.clientX, y: t.clientY })
     const hit = hitHandle(t.clientX, t.clientY)
     if (hit !== null) {
       setDragIdx(hit)
@@ -111,9 +117,12 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
   }
 
   const onTouchMove = (e: React.TouchEvent) => {
+    const t = e.touches[0]
+    if (!t) return
+    // ルーペは指が動いている間は常に追従
+    setLoupe({ x: t.clientX, y: t.clientY })
     if (dragIdx === null) return
     e.preventDefault()
-    const t = e.touches[0]
     const p = touchToNorm(t.clientX, t.clientY)
     if (!p) return
     setPoints((prev) => {
@@ -125,6 +134,8 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
 
   const onTouchEnd = () => {
     setDragIdx(null)
+    // 指離したら少し残してから消す (= 配置位置の最終確認時間)
+    setTimeout(() => setLoupe(null), 350)
   }
 
   const undo = () => {
@@ -243,7 +254,6 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
         width="100%"
         height="100%"
         viewBox={`0 0 ${videoWidth} ${videoHeight}`}
-        preserveAspectRatio="none"
       >
         {/* ネット線 (NL-NR があれば描画) */}
         {points.length >= 6 && (
@@ -391,6 +401,73 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           <MIcon name="close" size={20} style={{ color: '#ffffff' }} />
         </button>
       </div>
+
+      {/* ルーペ: 指の真下を拡大表示 (画面上端中央)。snapshot 取れていれば
+         video frame 画像を 2.2 倍拡大、無ければ薄背景 + 十字のみ。
+         指 (X, Y) を中心に zoom 倍の領域を 132px の円窓に表示する。
+         背景画像座標: 容器サイズ * zoom の中で (X*zoom, Y*zoom) が円窓中央
+         (66, 66) になるよう負の offset。 */}
+      {loupe && (() => {
+        const zoom = 2.2
+        const size = 132
+        const half = size / 2
+        const bgW = videoWidth * zoom
+        const bgH = videoHeight * zoom
+        const bgX = -(loupe.x * zoom - half)
+        const bgY = -(loupe.y * zoom - half)
+        // 指から離した位置を選ぶ: 通常は画面上端中央。ただし指自身が上端
+        // 付近にあると重なるので、その時は下端に逃がす。
+        const loupeTop = loupe.y < size + 60 ? undefined : 24
+        const loupeBottom = loupe.y < size + 60 ? 24 : undefined
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              ...(loupeTop !== undefined ? { top: loupeTop } : { bottom: loupeBottom }),
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: size,
+              height: size,
+              borderRadius: '50%',
+              border: '3px solid #ffffff',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+              backgroundColor: 'rgba(20,20,20,0.85)',
+              backgroundImage: snapshot ? `url(${snapshot})` : undefined,
+              backgroundRepeat: 'no-repeat',
+              backgroundSize: `${bgW}px ${bgH}px`,
+              backgroundPosition: `${bgX}px ${bgY}px`,
+              zIndex: 20,
+              overflow: 'hidden',
+            }}
+          >
+            {/* 十字 (中央 = 指の真下 = 配置位置) */}
+            <div
+              style={{
+                position: 'absolute', left: '50%', top: 0, bottom: 0,
+                width: 1, marginLeft: -0.5,
+                background: 'rgba(255,255,255,0.85)',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute', top: '50%', left: 0, right: 0,
+                height: 1, marginTop: -0.5,
+                background: 'rgba(255,255,255,0.85)',
+              }}
+            />
+            {/* 中心の小さい円 */}
+            <div
+              style={{
+                position: 'absolute', left: '50%', top: '50%',
+                width: 10, height: 10, marginLeft: -5, marginTop: -5,
+                borderRadius: '50%',
+                border: '2px solid #22c55e',
+                background: 'rgba(34,197,94,0.3)',
+              }}
+            />
+          </div>
+        )
+      })()}
 
       {/* 🩺 オンスクリーン診断 (中央 element stack / 最終 tap 位置の stack) */}
       {diag && (
