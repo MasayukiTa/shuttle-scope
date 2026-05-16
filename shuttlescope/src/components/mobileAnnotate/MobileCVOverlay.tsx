@@ -21,8 +21,8 @@
  *   - canvas は dpr 補正済みで物理ピクセル使用。
  */
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { apiGet } from '@/api/client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiGet, apiPost } from '@/api/client'
 import { ShuttleTrackOverlay, type ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import { PlayerPositionOverlay } from '@/components/annotation/PlayerPositionOverlay'
 
@@ -100,6 +100,12 @@ function halfGridLines(
 }
 
 
+type CvJobStatus = {
+  status: 'pending' | 'running' | 'complete' | 'error' | 'stopped'
+  progress: number
+  error?: string | null
+} | null
+
 export function MobileCVOverlay({
   matchId,
   currentSec,
@@ -109,6 +115,89 @@ export function MobileCVOverlay({
   showShuttle,
   showPlayers,
 }: Props) {
+  const queryClient = useQueryClient()
+  // CV ジョブ進捗 (TrackNet / YOLO 共通)
+  const [tracknetJobId, setTracknetJobId] = useState<string | null>(null)
+  const [tracknetJob, setTracknetJob] = useState<CvJobStatus>(null)
+  const [yoloJobId, setYoloJobId] = useState<string | null>(null)
+  const [yoloJob, setYoloJob] = useState<CvJobStatus>(null)
+  // 起動失敗時のエラー表示
+  const [jobErr, setJobErr] = useState<string>('')
+
+  const isTracknetRunning = !!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')
+  const isYoloRunning = !!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')
+
+  const startTracknet = async () => {
+    if (isTracknetRunning) return
+    setJobErr('')
+    try {
+      const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
+        `/tracknet/batch/${matchId}`,
+        { confidence_threshold: 0.5, resume: false, roi_rect: null, prev_roi: null },
+      )
+      if (res.success) {
+        setTracknetJobId(res.data.job_id)
+        setTracknetJob({ status: 'pending', progress: 0 })
+      }
+    } catch (err) {
+      setJobErr('TrackNet 起動失敗: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  const startYolo = async () => {
+    if (isYoloRunning) return
+    setJobErr('')
+    try {
+      const res = await apiPost<{ success: boolean; data: { job_id: string } }>(
+        `/yolo/batch/${matchId}`,
+        { resume: false, roi_rect: null, prev_roi: null },
+      )
+      if (res.success) {
+        setYoloJobId(res.data.job_id)
+        setYoloJob({ status: 'pending', progress: 0 })
+      }
+    } catch (err) {
+      setJobErr('YOLO 起動失敗: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  // TrackNet ジョブ進捗 polling (2 秒間隔)
+  useEffect(() => {
+    if (!tracknetJobId || !isTracknetRunning) return
+    const id = setInterval(async () => {
+      try {
+        const res = await apiGet<{ success: boolean; data: CvJobStatus }>(
+          `/tracknet/batch/${tracknetJobId}/status`,
+        )
+        if (res.success && res.data) {
+          setTracknetJob(res.data)
+          if (res.data.status === 'complete') {
+            queryClient.invalidateQueries({ queryKey: ['mobile-shuttle-track', matchId] })
+          }
+        }
+      } catch { /* keep polling */ }
+    }, 2000)
+    return () => clearInterval(id)
+  }, [tracknetJobId, isTracknetRunning, matchId, queryClient])
+
+  // YOLO ジョブ進捗 polling
+  useEffect(() => {
+    if (!yoloJobId || !isYoloRunning) return
+    const id = setInterval(async () => {
+      try {
+        const res = await apiGet<{ success: boolean; data: CvJobStatus }>(
+          `/yolo/batch/${yoloJobId}/status`,
+        )
+        if (res.success && res.data) {
+          setYoloJob(res.data)
+          if (res.data.status === 'complete') {
+            queryClient.invalidateQueries({ queryKey: ['mobile-yolo-frames', matchId] })
+          }
+        }
+      } catch { /* keep polling */ }
+    }, 2000)
+    return () => clearInterval(id)
+  }, [yoloJobId, isYoloRunning, matchId, queryClient])
   // ─── court calibration ──────────────────────────────────────────────
   // localStorage cache を desktop と共有 (`court-calib-{id}`) するので、デスクトップで
   // キャリブレーション済みなら即座に表示される。backend 失敗時の fallback も同じ。
@@ -237,30 +326,63 @@ export function MobileCVOverlay({
         />
       </div>
 
-      {/* 4) データ未整備時の説明 chip (右上ツールから少し下、トグルが ON なのに
-         空 → "壊れてる" と誤認されないよう状態を可視化する) */}
+      {/* 4) データ未整備時の説明 chip → タップで CV パイプ起動。進捗も同 chip に表示。
+         - コートキャリブはモバイルから編集できる (Pencil ボタン) のでこの chip は説明のみ。
+         - TrackNet / YOLO はクラスタ実行になるため backend POST → 進捗ポーリング → 完了で
+           react-query キャッシュ invalidate → overlay 再 fetch のフロー。 */}
       {showCourt && !hasCalib && (
         <div
           className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
           style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 2.5rem)' }}
         >
-          コート未キャリブ (デスクトップで設定要)
+          コート未キャリブ (右上 ✎ から編集)
         </div>
       )}
-      {showShuttle && !shuttleQuery.isLoading && shuttleFrames.length === 0 && (
-        <div
+      {showShuttle && !shuttleQuery.isLoading && shuttleFrames.length === 0 && !isTracknetRunning && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); startTracknet() }}
           className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
           style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 5rem)' }}
+          title="TrackNet をリモート実行"
         >
-          シャトル解析未実行 (TrackNet 走行要)
+          ▶ シャトル解析を実行 (タップ)
+        </button>
+      )}
+      {showShuttle && isTracknetRunning && (
+        <div
+          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
+          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 5rem)' }}
+        >
+          TrackNet 実行中… {Math.round((tracknetJob?.progress ?? 0) * 100)}%
         </div>
       )}
-      {showPlayers && !yoloQuery.isLoading && yoloFrames.length === 0 && (
-        <div
+      {showPlayers && !yoloQuery.isLoading && yoloFrames.length === 0 && !isYoloRunning && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); startYolo() }}
           className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
           style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 7.5rem)' }}
+          title="YOLO をリモート実行"
         >
-          プレイヤー検出未実行 (YOLO 走行要)
+          ▶ プレイヤー検出を実行 (タップ)
+        </button>
+      )}
+      {showPlayers && isYoloRunning && (
+        <div
+          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
+          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 7.5rem)' }}
+        >
+          YOLO 実行中… {Math.round((yoloJob?.progress ?? 0) * 100)}%
+        </div>
+      )}
+      {jobErr && (
+        <div
+          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[60vw]"
+          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 10rem)' }}
+          onClick={() => setJobErr('')}
+        >
+          {jobErr}
         </div>
       )}
     </>
