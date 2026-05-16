@@ -434,7 +434,11 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             src={videoSrc}
             playsInline
             preload="metadata"
-            style={cropStyle}
+            // calib 編集中は iOS Safari の native 'tap to play' overlay が
+            // 画面中央でタップを横取りしてしまう (ハンドル設置の中央域が反応しない)。
+            // pointer-events: none で video element 自体を非反応にして
+            // 上層 (MobileCourtCalib) に全タップを渡す。
+            style={{ ...cropStyle, ...(calibEditing ? { pointerEvents: 'none' } : {}) }}
             onError={(e) => {
               const v = e.currentTarget
               const codeMap: Record<number, string> = {

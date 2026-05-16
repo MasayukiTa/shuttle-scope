@@ -1046,3 +1046,15 @@ html[data-theme="light"] .ss-overlay-chip {
 body:not(.ss-fonts-ready) .material-symbols-outlined {
   visibility: hidden;
 }
+
+/* iOS Safari は <video> 停止中に画面中央へ native 'tap to play' overlay を描画し
+   タップを横取りする (= mobile court calib editor で点設置できない症状の原因)。
+   pseudo-element 全部を非表示にして overlay 自体を消す。 */
+video::-webkit-media-controls,
+video::-webkit-media-controls-overlay-play-button,
+video::-webkit-media-controls-start-playback-button,
+video::-webkit-media-controls-panel,
+video::-webkit-media-controls-play-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+}

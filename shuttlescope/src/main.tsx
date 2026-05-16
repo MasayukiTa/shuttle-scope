@@ -2,9 +2,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './styles/globals.css'
-// Material Symbols (Outlined) ローカルフォント。CSP / 外部 CDN 不要。
+// Material Symbols (Outlined) サブセットフォント (3.8MB → 232KB)。
+// scripts/subset_material_symbols.py で MIcon name="..." を grep して使用 icon のみ
+// 含む subset を生成。新規 icon 追加時は同 script を再実行。
 // 新規 UI のアイコンは @/components/common/MIcon 経由で利用する。
-import 'material-symbols/outlined.css'
+import './styles/material-symbols-subset.css'
 // R43 honeypot bundle: 死コードとして bundle に残し、reverse engineer 検知に使う。
 // この import は副作用 (console.debug 1 行) しか起こさない。
 import './utils/legacyCompat'
