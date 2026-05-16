@@ -71,6 +71,9 @@ def _validate_public_https_url(value: str) -> str:
 
 
 class StartRequest(BaseModel):
+    # mass-assignment 防御: schema に無いフィールド (archive_dir 等) は 422 で拒否。
+    # R271 attack で archive_dir が silent ignore されていたため明示化。
+    model_config = {"extra": "forbid"}
     url: str = Field(..., min_length=10, max_length=500)
     quality: str = Field("best", pattern=r"^(best|1080p|720p|480p|360p)$")
     # 認証あり配信用: ブラウザ名 ("chrome","firefox","edge","brave") またはクッキーファイルパス
