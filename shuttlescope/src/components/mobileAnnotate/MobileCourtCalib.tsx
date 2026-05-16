@@ -92,7 +92,12 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
       })
       // eslint-disable-next-line no-console
       console.log('[calib-tap]', `(${Math.round(t.clientX)},${Math.round(t.clientY)})`, desc)
-      setDiag(`TAP(${Math.round(t.clientX)},${Math.round(t.clientY)}) ` + desc.slice(0, 3).join(' | '))
+      setDiag(
+        `TAP(${Math.round(t.clientX)},${Math.round(t.clientY)}) ` +
+        `pts=${points.length}/6 nextIdx=${nextIdx} ` +
+        `vw=${videoWidth} vh=${videoHeight} ` +
+        desc.slice(0, 2).join(' | '),
+      )
     } catch { /* ignore */ }
     const hit = hitHandle(t.clientX, t.clientY)
     if (hit !== null) {
