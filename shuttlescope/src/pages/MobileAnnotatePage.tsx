@@ -135,6 +135,15 @@ export function MobileAnnotatePage() {
   // calib 編集中フラグ: PlayMode 内 state だがこちらの overlay/chip も隠したいので
   // PlayMode 側から callback で同期する
   const [calibEditingTop, setCalibEditingTop] = useState(false)
+  // 診断: calib 中に "セット未登録" バナー等が裏で render されていないか確認。
+  // 本来 !calibEditingTop で gate しているが、user 報告で center タップ阻害の
+  // 可能性指摘あり。実機検証用 console.log。
+  useEffect(() => {
+    if (calibEditingTop) {
+      console.log('[calib-diag] entered calib, screen=', screen, 'pass=', pass)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calibEditingTop])
   const [queueStatus, setQueueStatus] = useState<{
     pending: number
     manualRetry: number
@@ -379,7 +388,14 @@ export function MobileAnnotatePage() {
               onQualityChange={(q) => setVideoQuality(q as 'source' | 'uhd' | 'fhd' | 'hd')}
               cvCandidateTimestamps={cvCandidateTimestamps}
               resumeFromSec={resumeFromSec}
-              onCalibEditingChange={setCalibEditingTop}
+              onCalibEditingChange={(v) => {
+                setCalibEditingTop(v)
+                // calib 開始時は screen を 'play' に強制 → annotate モードで
+                // 出る "セット未登録" 等のフルスクリーンバナー (z-40 inset-0
+                // bg-black/0.9) が確実に unmount される。banner が見えなくても
+                // DOM 上残ると iOS で center タップを横取りする可能性があるため。
+                if (v) setScreen('play')
+              }}
             />
           )}
 
