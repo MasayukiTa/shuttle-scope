@@ -104,6 +104,12 @@ type CvJobStatus = {
   status: 'pending' | 'running' | 'complete' | 'error' | 'stopped'
   progress: number
   error?: string | null
+  processed_rallies?: number
+  total_rallies?: number
+  updated_strokes?: number
+  processed_frames?: number
+  total_frames?: number
+  detected_players?: number
 } | null
 
 export function MobileCVOverlay({
@@ -126,6 +132,12 @@ export function MobileCVOverlay({
 
   const isTracknetRunning = !!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')
   const isYoloRunning = !!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')
+  const tracknetError = tracknetJob?.status === 'error' ? (tracknetJob.error || 'TrackNet 実行失敗') : null
+  const yoloError = yoloJob?.status === 'error' ? (yoloJob.error || 'YOLO 実行失敗') : null
+  // ジョブが complete/stopped (= 正常終了したが結果が 0 frames だったケースを含む) を
+  // 「実行履歴あり」chip として残すため、別途追跡。ユーザがタップで dismiss できる。
+  const tracknetCompleted = tracknetJob?.status === 'complete' || tracknetJob?.status === 'stopped'
+  const yoloCompleted = yoloJob?.status === 'complete' || yoloJob?.status === 'stopped'
 
   const startTracknet = async () => {
     if (isTracknetRunning) return
@@ -338,52 +350,103 @@ export function MobileCVOverlay({
           コート未キャリブ (右上 ✎ から編集)
         </div>
       )}
-      {showShuttle && !shuttleQuery.isLoading && shuttleFrames.length === 0 && !isTracknetRunning && (
+      {/* 右上ツール (z-45) と Pass switcher (z-45 right-center) を避けるため、
+         警告 chip は **左下** 領域に集約。Pass1 採点ボタン (A/B) は中央〜下なので
+         左下なら被らない。 */}
+      {showShuttle && !shuttleQuery.isLoading && shuttleFrames.length === 0
+       && !isTracknetRunning && !tracknetError && !tracknetCompleted && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); startTracknet() }}
-          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
-          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 5rem)' }}
+          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
           title="TrackNet をリモート実行"
         >
-          ▶ シャトル解析を実行 (タップ)
+          ▶ シャトル解析を実行
+        </button>
+      )}
+      {showShuttle && tracknetCompleted && shuttleFrames.length === 0 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setTracknetJob(null); setTracknetJobId(null) }}
+          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
+          title="タップで閉じる"
+        >
+          ✓ TrackNet 完了 (0 frames — Pass1 でラリーを記録してから再実行)
         </button>
       )}
       {showShuttle && isTracknetRunning && (
         <div
-          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
-          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 5rem)' }}
+          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
         >
           TrackNet 実行中… {Math.round((tracknetJob?.progress ?? 0) * 100)}%
         </div>
       )}
-      {showPlayers && !yoloQuery.isLoading && yoloFrames.length === 0 && !isYoloRunning && (
+      {showShuttle && tracknetError && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setTracknetJob(null); setTracknetJobId(null) }}
+          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
+          title="タップで閉じる"
+        >
+          TrackNet エラー: {tracknetError.slice(0, 80)}
+        </button>
+      )}
+      {showPlayers && !yoloQuery.isLoading && yoloFrames.length === 0
+       && !isYoloRunning && !yoloError && !yoloCompleted && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); startYolo() }}
-          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
-          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 7.5rem)' }}
+          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)' }}
           title="YOLO をリモート実行"
         >
-          ▶ プレイヤー検出を実行 (タップ)
+          ▶ プレイヤー検出を実行
+        </button>
+      )}
+      {showPlayers && yoloCompleted && yoloFrames.length === 0 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setYoloJob(null); setYoloJobId(null) }}
+          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)' }}
+          title="タップで閉じる"
+        >
+          ✓ YOLO 完了 (0 frames — ROI / 動画範囲を確認)
         </button>
       )}
       {showPlayers && isYoloRunning && (
         <div
-          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
-          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 7.5rem)' }}
+          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-accent"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)' }}
         >
           YOLO 実行中… {Math.round((yoloJob?.progress ?? 0) * 100)}%
         </div>
       )}
+      {showPlayers && yoloError && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setYoloJob(null); setYoloJobId(null) }}
+          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)' }}
+          title="タップで閉じる"
+        >
+          YOLO エラー: {yoloError.slice(0, 80)}
+        </button>
+      )}
       {jobErr && (
-        <div
-          className="absolute right-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[60vw]"
-          style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 10rem)' }}
-          onClick={() => setJobErr('')}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setJobErr('') }}
+          className="absolute left-2 z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 9.5rem)' }}
+          title="タップで閉じる"
         >
           {jobErr}
-        </div>
+        </button>
       )}
     </>
   )

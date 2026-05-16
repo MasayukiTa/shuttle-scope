@@ -213,8 +213,13 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           type="button"
           onClick={undo}
           disabled={points.length === 0 || saving}
-          className="px-2 py-1.5 rounded text-xs text-white"
-          style={{ backgroundColor: 'rgba(75,85,99,0.85)', opacity: points.length === 0 ? 0.4 : 1 }}
+          className="px-2 py-1.5 rounded text-xs font-bold"
+          style={{
+            backgroundColor: 'rgba(75,85,99,0.95)',
+            color: '#ffffff',
+            opacity: points.length === 0 ? 0.5 : 1,
+            border: '1px solid rgba(255,255,255,0.2)',
+          }}
         >
           ← 戻す
         </button>
@@ -222,8 +227,13 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           type="button"
           onClick={reset}
           disabled={points.length === 0 || saving}
-          className="px-2 py-1.5 rounded text-xs text-white"
-          style={{ backgroundColor: 'rgba(75,85,99,0.85)', opacity: points.length === 0 ? 0.4 : 1 }}
+          className="px-2 py-1.5 rounded text-xs font-bold"
+          style={{
+            backgroundColor: 'rgba(75,85,99,0.95)',
+            color: '#ffffff',
+            opacity: points.length === 0 ? 0.5 : 1,
+            border: '1px solid rgba(255,255,255,0.2)',
+          }}
         >
           全消去
         </button>
@@ -234,8 +244,12 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           type="button"
           onClick={onClose}
           disabled={saving}
-          className="px-2 py-1.5 rounded text-xs text-white"
-          style={{ backgroundColor: 'rgba(75,85,99,0.85)' }}
+          className="px-2 py-1.5 rounded text-xs font-bold"
+          style={{
+            backgroundColor: 'rgba(75,85,99,0.95)',
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.2)',
+          }}
         >
           キャンセル
         </button>
