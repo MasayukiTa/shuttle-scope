@@ -70,6 +70,30 @@ class TestFieldSensitivity:
         row = {"brand_new_field": "value"}
         assert fs.filter_condition_fields(row, "player") == row
 
+    def test_analyst_can_see_body_data_only_if_consented(self):
+        # owner が body_disclose_to_analyst 同意してれば analyst も Tier 3 まで OK
+        row = {"validity_flag": True, "weight_kg": 70.0, "injury_notes": "x"}
+        # 同意なし → Tier 1 のまま
+        got_no = fs.filter_condition_fields(row, "analyst", None)
+        assert "weight_kg" not in got_no
+        # 同意あり → Tier 3 まで → weight_kg は OK, injury_notes (Tier 4) はまだ drop
+        got_yes = fs.filter_condition_fields(row, "analyst", {"body_disclose_to_analyst": True})
+        assert got_yes.get("weight_kg") == 70.0
+        assert "injury_notes" not in got_yes
+
+    def test_coach_default_off_for_body_data(self):
+        # coach は default で body を見られない (同意なしは Tier 1)
+        row = {"weight_kg": 70.0}
+        assert "weight_kg" not in fs.filter_condition_fields(row, "coach", None)
+        # 同意 True なら Tier 3 まで
+        assert fs.filter_condition_fields(row, "coach", {"body_disclose_to_coach": True}).get("weight_kg") == 70.0
+        # 別 type の同意 (analyst 用) では coach には開放されない
+        assert "weight_kg" not in fs.filter_condition_fields(row, "coach", {"body_disclose_to_analyst": True})
+
+    def test_admin_unaffected_by_consents(self):
+        row = {"weight_kg": 70.0, "injury_notes": "x"}
+        assert fs.filter_condition_fields(row, "admin", None) == row
+
 
 class TestMatchPlayers:
     def _mk_match(self, db, **kwargs):

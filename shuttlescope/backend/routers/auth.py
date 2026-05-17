@@ -2449,7 +2449,16 @@ CURRENT_DCT_VERSION = "1.0"
 # ユーザが同意可能な目的。各 type は独立して give/withdraw 可能 (GDPR Article 7(2))。
 # service_delivery のみ必須 (これに同意しない限り Service 提供不可)、他は opt-in。
 _REQUIRED_CONSENT_TYPES = {"service_delivery", "beta_agreement"}
-_OPTIONAL_CONSENT_TYPES = {"ai_training", "research_participation", "cross_border_transfer"}
+_OPTIONAL_CONSENT_TYPES = {
+    "ai_training",
+    "research_participation",
+    "cross_border_transfer",
+    # 同意書 第5条 アライメント: 体組成 (Tier 3) は通常 admin / 本人のみ。
+    # player が明示的に "analyst / coach に開示" 同意を ON にすると、
+    # それぞれのロールが Tier 3 まで閲覧可になる。default は OFF。
+    "body_disclose_to_analyst",
+    "body_disclose_to_coach",
+}
 _ALL_CONSENT_TYPES = _REQUIRED_CONSENT_TYPES | _OPTIONAL_CONSENT_TYPES
 
 

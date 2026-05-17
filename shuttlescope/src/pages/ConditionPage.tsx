@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Heart, User, Trash2, FileDown } from 'lucide-react'
-import { apiGet, apiDelete, API_BASE_URL } from '@/api/client'
+import { apiGet, apiPost, apiDelete, API_BASE_URL } from '@/api/client'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -48,6 +48,85 @@ function todayYmd(): string {
 }
 
 type InputMode = 'weekly' | 'prematch' | 'body'
+
+/**
+ * player 専用: 体組成データ (Tier 3) を analyst / coach に開示するかの toggle。
+ * UserConsent (consent_type = body_disclose_to_analyst / body_disclose_to_coach)
+ * に書き込み。 default OFF。
+ */
+function BodyDataConsentToggles() {
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
+  const queryClient = useQueryClient()
+
+  const { data, isLoading } = useQuery<{
+    data?: {
+      consents?: Array<{ consent_type: string; consent_given: boolean }>
+      current_versions?: { privacy_policy?: string; terms?: string }
+    }
+  }>({
+    queryKey: ['my-consents'],
+    queryFn: () => apiGet('/auth/consents'),
+    staleTime: 30_000,
+  })
+  const consents = data?.data?.consents ?? []
+  const vPrivacy = data?.data?.current_versions?.privacy_policy ?? ''
+  const vTerms = data?.data?.current_versions?.terms ?? ''
+  const analystOn = consents.some((c) => c.consent_type === 'body_disclose_to_analyst' && c.consent_given)
+  const coachOn = consents.some((c) => c.consent_type === 'body_disclose_to_coach' && c.consent_given)
+
+  const submit = async (consent_type: string, consent_given: boolean) => {
+    // 既存の他 type の同意も同じバージョンで再送する必要があるため、現在の dict を構成
+    const body = {
+      privacy_policy_version: vPrivacy,
+      terms_version: vTerms,
+      consents: [{ consent_type, consent_given }],
+    }
+    try {
+      await apiPost('/auth/consents', body)
+      queryClient.invalidateQueries({ queryKey: ['my-consents'] })
+    } catch (e) {
+      // backend が version mismatch (409) 等を返す場合はユーザに知らせる
+      // eslint-disable-next-line no-alert
+      alert(`同意の更新に失敗しました: ${String(e).slice(0, 200)}`)
+    }
+  }
+
+  return (
+    <div
+      className={`rounded-lg border p-3 text-xs ${
+        isLight ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-blue-900/20 border-blue-700/40 text-blue-200'
+      }`}
+    >
+      <div className="font-semibold mb-1.5">体組成データ (体重・体脂肪率・筋肉量等) の開示設定</div>
+      <div className="opacity-80 mb-2 leading-relaxed">
+        通常は本人と開発者 (admin) のみが閲覧可能です。アナリスト / コーチに開示する場合は下のスイッチを ON にしてください。いつでも撤回できます。
+      </div>
+      {isLoading ? (
+        <div className="opacity-60">読み込み中…</div>
+      ) : (
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={analystOn}
+              onChange={(e) => submit('body_disclose_to_analyst', e.target.checked)}
+            />
+            <span>アナリストに開示する</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={coachOn}
+              onChange={(e) => submit('body_disclose_to_coach', e.target.checked)}
+            />
+            <span>コーチに開示する (default OFF)</span>
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function ConditionPage() {
   const { t } = useTranslation()
@@ -172,8 +251,11 @@ export function ConditionPage() {
         </div>
 
         {role === 'player' ? (
-          <div className={`text-xs ${textMuted} italic`}>
-            {t('condition.player_notice')}
+          <div className="space-y-3">
+            <div className={`text-xs ${textMuted} italic`}>
+              {t('condition.player_notice')}
+            </div>
+            <BodyDataConsentToggles />
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">

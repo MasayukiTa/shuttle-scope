@@ -88,9 +88,40 @@ def get_max_tier(role: Optional[str]) -> int:
     return ROLE_MAX_TIER.get(role, 0)
 
 
-def filter_condition_fields(data: dict, role: Optional[str]) -> dict:
-    """ロールに応じてコンディションデータのフィールドをフィルタ。"""
-    max_tier = get_max_tier(role)
+def get_effective_max_tier(
+    role: Optional[str],
+    owner_consents: Optional[dict[str, bool]] = None,
+) -> int:
+    """ロール + 当該 player 本人の同意状態から実効最大ティアを返す。
+
+    - admin: 常に Tier 4
+    - player: ROLE_MAX_TIER 通り (owner check は呼び出し側)
+    - analyst: 通常 Tier 1。owner の 'body_disclose_to_analyst' が True なら
+      Tier 3 まで開放 (= 体組成データ閲覧可)。
+    - coach: 通常 Tier 1。owner の 'body_disclose_to_coach' が True なら
+      Tier 3 まで開放。default OFF。
+    """
+    base = get_max_tier(role)
+    if not owner_consents:
+        return base
+    if role == "analyst" and owner_consents.get("body_disclose_to_analyst"):
+        return max(base, 3)
+    if role == "coach" and owner_consents.get("body_disclose_to_coach"):
+        return max(base, 3)
+    return base
+
+
+def filter_condition_fields(
+    data: dict,
+    role: Optional[str],
+    owner_consents: Optional[dict[str, bool]] = None,
+) -> dict:
+    """ロール + owner consent に応じてコンディションデータのフィールドをフィルタ。
+
+    owner_consents は当該データの "本人" (= player) が submit した consent の
+    {consent_type: consent_given} dict。後方互換のため省略可能 (None = 旧挙動)。
+    """
+    max_tier = get_effective_max_tier(role, owner_consents)
     return {
         k: v for k, v in data.items()
         if CONDITION_FIELD_TIERS.get(k, 0) <= max_tier

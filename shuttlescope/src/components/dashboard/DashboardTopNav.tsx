@@ -14,9 +14,10 @@ const PAGES = [
 ] as const
 
 // CLAUDE.md non-negotiable rule: player には確信の持てない解析 (research /
-// advanced) や弱点ベース解析 (review) を出さない。逆に overview と growth
-// (伸びしろ) は player にも見せる。
-const PLAYER_ALLOWED_KEYS = new Set(['overview', 'growth'])
+// advanced) や弱点ベース解析 (review) を出さない。
+// 試合中ライブ (live) は試合の score/状況がメインで weakness 表現が薄いため
+// player にも開放する (user 仕様)。
+const PLAYER_ALLOWED_KEYS = new Set(['overview', 'live', 'growth'])
 
 export function DashboardTopNav() {
   const { t } = useTranslation()

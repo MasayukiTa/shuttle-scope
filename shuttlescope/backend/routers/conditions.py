@@ -36,6 +36,7 @@ from backend.analysis.condition_analytics import (
 from backend.db.database import get_db
 from backend.db.models import Condition, Match, Player
 from backend.utils.field_sensitivity import filter_condition_fields
+from backend.db.models import UserConsent
 
 router = APIRouter(prefix="/api/conditions", tags=["conditions"])
 
@@ -361,20 +362,51 @@ def _coach_view(c: Condition) -> dict:
     return base
 
 
-def _serialize(c: Condition, role: str) -> dict:
+def _get_owner_body_consents(db: Session, player_id: int) -> dict[str, bool]:
+    """player → user の体組成開示同意状態を取得する。
+
+    UserConsent には複数の同意 type が混在するため、body_disclose_to_analyst /
+    body_disclose_to_coach の最新行 (give または withdraw) を抽出して dict 化。
+    """
+    from backend.db.models import Player as _Player
+    player = db.get(_Player, player_id)
+    if not player or not player.user_id:
+        return {}
+    rows = (
+        db.query(UserConsent)
+        .filter(
+            UserConsent.user_id == player.user_id,
+            UserConsent.consent_type.in_([
+                "body_disclose_to_analyst",
+                "body_disclose_to_coach",
+            ]),
+        )
+        .order_by(UserConsent.given_at.desc())
+        .all()
+    )
+    result: dict[str, bool] = {}
+    for r in rows:
+        if r.consent_type in result:
+            continue
+        result[r.consent_type] = bool(r.consent_given) and r.withdrawn_at is None
+    return result
+
+
+def _serialize(c: Condition, role: str, db: Optional[Session] = None) -> dict:
     """同意書 第5条 アライメント。
 
     - player: 自身のデータ前提 (ownership は呼び出し側で担保)。派生統計のみの軽量ビュー。
     - admin:  生データ全件 (開発者・モデル監査)。
-    - coach / analyst: filter_condition_fields() で Tier 1 (識別子 + 妥当性) まで縮約。
-      raw factor / 体組成 / 医療自由記述は全てマスクされる。
+    - coach / analyst: filter_condition_fields() で Tier 1 まで縮約が default。
+      ただし当該 player が 'body_disclose_to_analyst' / 'body_disclose_to_coach'
+      を明示同意していれば、対応ロールには Tier 3 (体組成) まで開放。
     """
     if role == "player":
         return _player_view(c)
     if role == "admin":
         return _full_dict(c)
-    # coach / analyst / その他: ROLE_MAX_TIER に従って自動マスク
-    return filter_condition_fields(_full_dict(c), role)
+    owner_consents = _get_owner_body_consents(db, c.player_id) if db is not None else None
+    return filter_condition_fields(_full_dict(c), role, owner_consents)
 
 
 # ─── マスター ────────────────────────────────────────────────────────────────
@@ -492,7 +524,8 @@ def submit_questionnaire(body: QuestionnaireSubmit, request: Request, db: Sessio
     db.refresh(cond)
     # 同意書 第5条: 提出した本人 (player) と admin のみ生データ可。
     # coach/analyst が代理提出した場合は ROLE_MAX_TIER に従って自動マスクされる。
-    return {"success": True, "data": filter_condition_fields(_full_dict(cond), _ctx_q.role)}
+    owner_consents = _get_owner_body_consents(db, cond.player_id)
+    return {"success": True, "data": filter_condition_fields(_full_dict(cond), _ctx_q.role, owner_consents)}
 
 
 # ─── 直接入力 CRUD ───────────────────────────────────────────────────────────
@@ -575,7 +608,7 @@ def create_condition(body: ConditionCreate, request: Request, db: Session = Depe
     # Round 258 P0 fix: 同意書 第5条 — coach/analyst には生スコア・体組成・医療
     # 自由記述を返さない。_serialize() は role に応じた masking を適用する
     # (player=自身データ前提で full / admin=full / coach・analyst=Tier 1 まで縮約)。
-    return {"success": True, "data": _serialize(cond, ctx.role or "")}
+    return {"success": True, "data": _serialize(cond, ctx.role or "", db)}
 
 
 @router.get("")
@@ -624,7 +657,7 @@ def list_conditions(
     if since is not None:
         q = q.filter(Condition.measured_at >= since)
     rows = q.order_by(Condition.measured_at.desc(), Condition.id.desc()).limit(limit).all()
-    return {"success": True, "data": [_serialize(c, role) for c in rows]}
+    return {"success": True, "data": [_serialize(c, role, db) for c in rows]}
 
 
 @router.patch("/{condition_id}")
@@ -661,7 +694,7 @@ def update_condition(condition_id: int, body: ConditionUpdate, request: Request,
     # 生スコア・体組成を含めない。role 別 masking は _serialize() に統合済み。
     from backend.utils.auth import get_auth as _ga_resp
     _resp_ctx = _ga_resp(request)
-    return {"success": True, "data": _serialize(cond, _resp_ctx.role or "")}
+    return {"success": True, "data": _serialize(cond, _resp_ctx.role or "", db)}
 
 
 # ─── Phase 3: 解析系エンドポイント ───────────────────────────────────────────
@@ -972,7 +1005,7 @@ def get_condition(
     if not cond:
         raise HTTPException(status_code=404, detail="コンディション記録が見つかりません")
     _require_condition_access(request, cond)
-    return {"success": True, "data": _serialize(cond, role)}
+    return {"success": True, "data": _serialize(cond, role, db)}
 
 
 @router.delete("/{condition_id}")
