@@ -7,7 +7,6 @@ import { clsx } from 'clsx'
 
 import '@/i18n'
 import { MatchListPage } from '@/pages/MatchListPage'
-import { AnalysisPage } from '@/pages/AnalysisPage'
 import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { LiveInputPage } from '@/pages/LiveInputPage'
 import { DashboardShell } from '@/pages/dashboard/DashboardShell'
@@ -109,26 +108,16 @@ function Sidebar() {
   const navItems: NavItem[] = [
     { to: '/matches', label: t('nav.matches'), icon: List },
     { to: '/condition', label: t('nav.condition'), icon: Heart },
-    // 解析タブ: player には /analysis (player-safe summary), 他ロールは
-    // /dashboard (詳細解析) を表示。両者を同時に出さない (label 衝突回避)。
-    // CLAUDE.md non-negotiable rule に従い player にも "解析" の入口は必要。
-    ...(role === 'player'
-      ? [{ to: '/analysis', label: t('nav.dashboard'), icon: BarChart2 }]
-      : []),
-    // Round 228 R228-F1: dashboard を player に表示しない (review/research タブ内に
-    // 弱点系ラベルが含まれるため CLAUDE.md non-negotiable rule 違反)。
-    // hasPageAccess は coach/analyst/admin に対しては自動で true を返すので
-    // 既存ロールには影響なし。player は明示 grant が必要 (現状は grant されない)。
-    // dashboard / prediction / expert_labeler は player には表示しない。
-    // - prediction: 勝率予測 = CLAUDE.md "Never show player-facing screens
+    // 解析タブ: 全ロールが /dashboard にアクセス可。player には
+    // DashboardTopNav 側で overview / growth のみ表示し、review / advanced /
+    // research は個別 route で /dashboard/overview に redirect する。
+    // CLAUDE.md non-negotiable rule (確信が持てない解析は player に出さない)
+    // は dashboard 内部で守られる。
+    { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
+    // prediction / expert_labeler は引き続き player 非表示。
+    // - prediction: 絶対勝率 = CLAUDE.md "Never show player-facing screens
     //   raw absolute win-rate style judgments" 違反。
-    // - dashboard: 既存ルール (R228-F1) で player には禁止 (弱点系含む)。
     // - expert_labeler: 専門ラベラー、player 業務外。
-    // 過去 pageAccess に誤って 'prediction' 等が grant された player でも
-    // sidebar には出さないよう role check を二重化する。
-    ...(role !== 'player' && hasPageAccess('dashboard')
-      ? [{ to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 }]
-      : []),
     ...(role !== 'player' && hasPageAccess('prediction')
       ? [{ to: '/prediction', label: t('nav.prediction'), icon: TrendingUp }]
       : []),
@@ -336,7 +325,9 @@ function MainLayout() {
             {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
             <Route path="/live/:matchId" element={<LiveInputPage />} />
             <Route path="/condition" element={<ConditionPage />} />
-            <Route path="/analysis" element={<AnalysisPage />} />
+            {/* /analysis は使用しない (dashboard に統一)。古い bookmark から
+               飛んできた人を考慮して dashboard へ redirect。 */}
+            <Route path="/analysis" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard/*" element={<DashboardShell />} />
             <Route path="/prediction" element={<PageAccessRoute pageKey="prediction"><PredictionPage /></PageAccessRoute>} />
             <Route path="/expert-labeler" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerPage /></PageAccessRoute>} />

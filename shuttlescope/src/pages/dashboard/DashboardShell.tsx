@@ -114,14 +114,9 @@ export function DashboardShell() {
   const { theme } = useTheme()
   const isLight = theme === 'light'
 
-  // Round 228 R228-F2 (B 案): player ロールが直接 /dashboard URL を typing して
-  // たどり着いた場合は /matches にリダイレクト。CLAUDE.md non-negotiable rule
-  // (Never show players direct 'weakness' framing) を /dashboard/review 等の
-  // 子 route に到達する前に守る。sidebar nav の方は App.tsx の hasPageAccess
-  // gate で player には表示されない (R228-F1 fix と併用)。
-  if (role === 'player') {
-    return <Navigate to="/matches" replace />
-  }
+  // player には dashboard 全体を許可。確信のある解析 (overview / growth) のみ
+  // 表示する。weakness 系 (review) や信頼性低 (advanced / research) は
+  // DashboardTopNav と route 側で個別に gate するため、ここでは redirect しない。
 
   const dlReport = (path: string, filename: string) => {
     const token = sessionStorage.getItem('shuttlescope_token')
@@ -448,11 +443,13 @@ export function DashboardShell() {
                   <Route
                     path="review"
                     element={
-                      <DashboardReviewPage
-                        playerId={selectedPlayerId}
-                        filters={filters}
-                        matches={matches}
-                      />
+                      role === 'player'
+                        ? <Navigate to="/dashboard/overview" replace />
+                        : <DashboardReviewPage
+                            playerId={selectedPlayerId}
+                            filters={filters}
+                            matches={matches}
+                          />
                     }
                   />
                   <Route
@@ -468,21 +465,25 @@ export function DashboardShell() {
                   <Route
                     path="advanced"
                     element={
-                      <DashboardAdvancedPage
-                        playerId={selectedPlayerId}
-                        filters={filters}
-                        matches={matches}
-                        sortedPlayers={sortedPlayers}
-                      />
+                      role === 'player'
+                        ? <Navigate to="/dashboard/overview" replace />
+                        : <DashboardAdvancedPage
+                            playerId={selectedPlayerId}
+                            filters={filters}
+                            matches={matches}
+                            sortedPlayers={sortedPlayers}
+                          />
                     }
                   />
                   <Route
                     path="research"
                     element={
-                      <DashboardResearchPage
-                        playerId={selectedPlayerId}
-                        filters={filters}
-                      />
+                      role === 'player'
+                        ? <Navigate to="/dashboard/overview" replace />
+                        : <DashboardResearchPage
+                            playerId={selectedPlayerId}
+                            filters={filters}
+                          />
                     }
                   />
                 </Routes>
