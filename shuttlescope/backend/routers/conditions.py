@@ -365,17 +365,23 @@ def _coach_view(c: Condition) -> dict:
 def _get_owner_body_consents(db: Session, player_id: int) -> dict[str, bool]:
     """player → user の体組成開示同意状態を取得する。
 
-    UserConsent には複数の同意 type が混在するため、body_disclose_to_analyst /
-    body_disclose_to_coach の最新行 (give または withdraw) を抽出して dict 化。
+    Player 自体に user_id は無く、逆向き (User.player_id → Player.id) で
+    紐づいているため、users テーブル経由で対応 user_id を引いてくる。
+    UserConsent の body_disclose_to_{analyst,coach} の最新行を dict 化する。
     """
-    from backend.db.models import Player as _Player
-    player = db.get(_Player, player_id)
-    if not player or not player.user_id:
+    from backend.db.models import User as _User
+    user = (
+        db.query(_User)
+        .filter(_User.player_id == player_id)
+        .order_by(_User.id.asc())
+        .first()
+    )
+    if not user:
         return {}
     rows = (
         db.query(UserConsent)
         .filter(
-            UserConsent.user_id == player.user_id,
+            UserConsent.user_id == user.id,
             UserConsent.consent_type.in_([
                 "body_disclose_to_analyst",
                 "body_disclose_to_coach",
