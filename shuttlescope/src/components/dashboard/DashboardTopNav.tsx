@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { useTheme } from '@/hooks/useTheme'
+import { useAuth } from '@/hooks/useAuth'
 
 const PAGES = [
   { path: '/dashboard/overview',  key: 'overview'  },
@@ -12,10 +13,19 @@ const PAGES = [
   { path: '/dashboard/research',  key: 'research'   },
 ] as const
 
+// CLAUDE.md non-negotiable rule: player には確信の持てない解析 (research /
+// advanced) や弱点ベース解析 (review) を出さない。逆に overview と growth
+// (伸びしろ) は player にも見せる。
+const PLAYER_ALLOWED_KEYS = new Set(['overview', 'growth'])
+
 export function DashboardTopNav() {
   const { t } = useTranslation()
   const { theme } = useTheme()
+  const { role } = useAuth()
   const isLight = theme === 'light'
+  const visiblePages = role === 'player'
+    ? PAGES.filter((p) => PLAYER_ALLOWED_KEYS.has(p.key))
+    : PAGES
 
   return (
     <div className={clsx(
@@ -24,7 +34,7 @@ export function DashboardTopNav() {
     )}>
       <div className="relative">
         <div className="flex overflow-x-auto scrollbar-hide gap-1 px-2 py-2">
-          {PAGES.map(({ path, key }) => (
+          {visiblePages.map(({ path, key }) => (
             <NavLink
               key={key}
               to={path}
