@@ -677,8 +677,12 @@ export function UserManagementPage() {
         {loading ? (
           <div className={`text-sm ${textMuted}`}>{t('users.manage.loading')}</div>
         ) : (
-          <div className={`${panelBg} border ${border} rounded-xl overflow-hidden`}>
-            <table className="w-full text-sm">
+          // overflow-hidden → overflow-x-auto: モバイル幅で table が overflow
+          // するとき action 列 (右端の編集/削除アイコン) が clip され "アイコン
+          // が消えた" 事象を起こしていた。x-auto なら右スクロールで到達可能。
+          // minWidth=640 で table が自然幅を持てるようにする。
+          <div className={`${panelBg} border ${border} rounded-xl overflow-x-auto`}>
+            <table className="w-full text-sm" style={{ minWidth: 640 }}>
               <thead>
                 <tr className={`border-b ${border} text-left`}>
                   <th className={`px-4 py-2.5 text-xs font-medium ${textMuted}`}>{t('users.manage.col_role')}</th>

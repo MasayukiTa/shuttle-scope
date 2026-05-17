@@ -7,6 +7,7 @@ import { clsx } from 'clsx'
 
 import '@/i18n'
 import { MatchListPage } from '@/pages/MatchListPage'
+import { AnalysisPage } from '@/pages/AnalysisPage'
 import { AnnotatorPage } from '@/pages/AnnotatorPage'
 import { LiveInputPage } from '@/pages/LiveInputPage'
 import { DashboardShell } from '@/pages/dashboard/DashboardShell'
@@ -108,6 +109,12 @@ function Sidebar() {
   const navItems: NavItem[] = [
     { to: '/matches', label: t('nav.matches'), icon: List },
     { to: '/condition', label: t('nav.condition'), icon: Heart },
+    // 解析タブ: player には /analysis (player-safe summary), 他ロールは
+    // /dashboard (詳細解析) を表示。両者を同時に出さない (label 衝突回避)。
+    // CLAUDE.md non-negotiable rule に従い player にも "解析" の入口は必要。
+    ...(role === 'player'
+      ? [{ to: '/analysis', label: t('nav.dashboard'), icon: BarChart2 }]
+      : []),
     // Round 228 R228-F1: dashboard を player に表示しない (review/research タブ内に
     // 弱点系ラベルが含まれるため CLAUDE.md non-negotiable rule 違反)。
     // hasPageAccess は coach/analyst/admin に対しては自動で true を返すので
@@ -329,6 +336,7 @@ function MainLayout() {
             {/* Phase C: 試合中専用フルブリード入力 (mobile-first MVP) */}
             <Route path="/live/:matchId" element={<LiveInputPage />} />
             <Route path="/condition" element={<ConditionPage />} />
+            <Route path="/analysis" element={<AnalysisPage />} />
             <Route path="/dashboard/*" element={<DashboardShell />} />
             <Route path="/prediction" element={<PageAccessRoute pageKey="prediction"><PredictionPage /></PageAccessRoute>} />
             <Route path="/expert-labeler" element={<PageAccessRoute pageKey="expert_labeler"><ExpertLabelerPage /></PageAccessRoute>} />
