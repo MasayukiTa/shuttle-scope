@@ -128,8 +128,6 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   // で代替表示することで、iOS native overlay の発生原因 (= 可視 paused video)
   // を構造的に取り除く。
   const [calibSnapshot, setCalibSnapshot] = useState<string | null>(null)
-  // calib 中に <video> を unmount するため、再 mount 時に復元する currentTime
-  const savedCurrentTimeRef = useRef<number>(0)
   const setCalibEditing = useCallback((v: boolean) => {
     _setCalibEditing(v)
     onCalibEditingChange?.(v)
@@ -455,33 +453,27 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               </div>
             </div>
           </div>
-        ) : calibEditing ? null : (
-          // calib 編集中は <video> 自体を **DOM から完全 unmount**。
-              // 理由: iOS Safari の media compositor layer は display:none でも
-          // 残り続け、画面中央 (≒動画フレーム矩形) の touch を横取りする。
-          // elementsFromPoint には DOM 外なので映らないため、過去の対策
-              // (pointer-events:none / display:none / webkit-controls CSS) は無効。
-          // 完全 unmount すれば layer も消える。currentTime は外側の
-          // savedCurrentTimeRef で保存して再 mount 時に復元する。
+        ) : (
+          // <video> は **常時 mount**。
+          // 当初 calib 中の中央タップ阻害を iOS native overlay と疑って unmount
+          // したが、実際の犯人は __ss_error_bar__ (z=99999) で pe:none 修正済。
+          // unmount すると `src` の再 load (HTTP Range + デコードバッファ再構築)
+          // が走り、calib を閉じる度に "動画読み込み中" → 数秒のラグ + 帯域浪費。
+          // 常時 mount にすればブラウザのバッファ・currentTime が保持され、
+          // calib 出入りは無コストになる。
+          // preload="auto" でアノテーション開始時にできる限り先読みさせる
+          // (モバイル PWA は metered ネットワークの可能性あるが、アノテはローカル
+          // LAN 経由想定なので積極的にバッファして良い)。
           <video
             ref={(el) => {
               videoRef.current = el
-              // iOS Safari の旧版互換属性 (TS の型に無いので ref で setAttribute)
               if (el && !el.hasAttribute('webkit-playsinline')) {
                 el.setAttribute('webkit-playsinline', '')
-              }
-              // 再 mount 時に保存した currentTime を復元
-              if (el && savedCurrentTimeRef.current > 0) {
-                const t = savedCurrentTimeRef.current
-                savedCurrentTimeRef.current = 0
-                const restore = () => { try { el.currentTime = t } catch { /* ignore */ } }
-                if (el.readyState >= 1) restore()
-                else el.addEventListener('loadedmetadata', restore, { once: true })
               }
             }}
             src={videoSrc}
             playsInline
-            preload="metadata"
+            preload="auto"
             style={cropStyle}
             onError={(e) => {
               const v = e.currentTarget
@@ -498,17 +490,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
           />
         )}
 
-        {/* calib 中の静止画 background (iOS native overlay 回避: video を display:none
-            にする代わりに最後のフレームを <img> として同じ位置に表示)。
-            pointer-events:none で calib container のタップを阻害しない。 */}
-        {calibEditing && calibSnapshot && (
-          <img
-            src={calibSnapshot}
-            alt=""
-            draggable={false}
-            style={{ ...cropStyle, pointerEvents: 'none', userSelect: 'none' }}
-          />
-        )}
+        {/* calib 中の snapshot img はもう画面に出さない (live video が下に
+            常時表示されるため不要)。snapshot は MobileCourtCalib にルーペ用に
+            渡すだけ。これにより calib 出入りで video の再 load が走らない。 */}
 
         {/* CV オーバーレイ (コートグリッド / シャトル軌跡 / プレイヤー bbox)
             video element の上に z-index 11/12/13 で重ねる。タップ透過させるので
@@ -649,11 +633,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   e.stopPropagation()
                   const v = videoRef.current
                   if (v && !v.paused) v.pause()
-                  // calib 中は video unmount → currentTime を ref に退避し
-                  // 再 mount 時に loadedmetadata 後に復元する。
-                  if (v) savedCurrentTimeRef.current = v.currentTime || 0
-                  // 現フレームを canvas に焼く → dataURL を <img> に流し込み、
-                  // video element は unmount。iOS native overlay 完全回避。
+                  // 現フレームを canvas に焼いて dataURL → MobileCourtCalib に渡し
+                  // ルーペで指の真下を拡大表示する用途のみ (背景には live video が
+                  // 見えているので img として上書き render はしない)。
                   try {
                     if (v && v.videoWidth > 0 && v.videoHeight > 0) {
                       const cvs = document.createElement('canvas')
