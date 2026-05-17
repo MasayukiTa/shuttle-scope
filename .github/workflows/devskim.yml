@@ -44,14 +44,18 @@ jobs:
         run: dotnet tool install --global Microsoft.CST.DevSkim.CLI
 
       - name: Run DevSkim scanner
+        # 検出があっても CI は失敗させず、SARIF を Security tab に upload して
+        # GitHub 側で alert として管理する。`|| true` で exit code を握り潰す。
+        # `--exit-code-on-recommendation` は古い Action 由来の flag で 1.0.70 の
+        # CLI には存在しないため使わない。
         run: |
           devskim analyze \
             --source-code . \
             --output-file devskim-results.sarif \
-            --file-format sarif \
-            --exit-code-on-recommendation 0 || true
-        # 検出があっても CI は失敗させず、SARIF を Security tab に upload して
-        # GitHub 側で alert として管理する。CI の成否は infra/auth エラーだけで判定。
+            --file-format sarif || true
+          # SARIF が生成されなかった場合 (= 真の失敗) も後段の upload で気付ける
+          # よう、ここでファイル存在のみ最終確認 (デバッグ用)。
+          ls -la devskim-results.sarif || echo "::warning::SARIF not generated"
 
       - name: Upload DevSkim scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
