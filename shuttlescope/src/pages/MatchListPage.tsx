@@ -632,7 +632,13 @@ export function MatchListPage() {
   const showBTeamField = playerBQuery.trim().length >= 1 || partnerBQuery.trim().length >= 1
 
   return (
-    <div className={`flex flex-col h-full ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
+    // h-full + overflow-y-auto: 親 (MainLayout) は overflow-hidden で高さ固定なので、
+    // 狭い viewport (横向きスマホ ~390px tall) では header + filter で枠を使い切り、
+    // 内部の list が高さ 0 になって "試合一覧が出ない" 事象が起きる。
+    // 内側の flex-1 overflow-y-auto に頼らず、ページ全体を 1 つの scroll container
+    // にすることで、filter を含めて自然にスクロール出来るようにする。
+    // ※ 並んで sticky にすべき要素 (header) があれば後で position:sticky で対処。
+    <div className={`h-full overflow-y-auto flex flex-col ${bodyBg} ${isLight ? 'text-gray-900' : 'text-white'}`}>
       {/* ヘッダー */}
       <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
         <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.matches')}</h1>
@@ -800,8 +806,10 @@ export function MatchListPage() {
         </div>
       )}
 
-      {/* 試合一覧 */}
-      <div className="flex-1 overflow-y-auto px-3 md:px-6 py-4">
+      {/* 試合一覧
+         ⚠️ flex-1 overflow-y-auto はやめ、外側の scroll に委ねる (height < 500px
+         の landscape phone で内側 scroll が高さ 0 になり list 行が見えない問題対策)。 */}
+      <div className="px-3 md:px-6 py-4">
         {/* モバイル用フィルター（スクロールで上に消える） */}
         <div className={`md:hidden flex flex-col gap-2 -mx-3 px-3 py-3 mb-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
           <div className="relative">
