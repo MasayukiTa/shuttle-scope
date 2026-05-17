@@ -2663,7 +2663,7 @@
       "credential_hint_update": "空欄なら変更しません",
       "credential_hint_player_new": "選手も通常のパスワードとして設定できます",
       "team_name": "チーム名",
-      "team_name_placeholder": "ACT SAIKYO",
+      "team_name_placeholder": "Sample Team",
       "player_link": "選手紐付け",
       "player_unselected": "未選択",
       "page_access": "ページアクセス",
