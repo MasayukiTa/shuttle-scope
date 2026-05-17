@@ -112,13 +112,20 @@ function Sidebar() {
     // 弱点系ラベルが含まれるため CLAUDE.md non-negotiable rule 違反)。
     // hasPageAccess は coach/analyst/admin に対しては自動で true を返すので
     // 既存ロールには影響なし。player は明示 grant が必要 (現状は grant されない)。
-    ...(hasPageAccess('dashboard')
+    // dashboard / prediction / expert_labeler は player には表示しない。
+    // - prediction: 勝率予測 = CLAUDE.md "Never show player-facing screens
+    //   raw absolute win-rate style judgments" 違反。
+    // - dashboard: 既存ルール (R228-F1) で player には禁止 (弱点系含む)。
+    // - expert_labeler: 専門ラベラー、player 業務外。
+    // 過去 pageAccess に誤って 'prediction' 等が grant された player でも
+    // sidebar には出さないよう role check を二重化する。
+    ...(role !== 'player' && hasPageAccess('dashboard')
       ? [{ to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 }]
       : []),
-    ...(hasPageAccess('prediction')
+    ...(role !== 'player' && hasPageAccess('prediction')
       ? [{ to: '/prediction', label: t('nav.prediction'), icon: TrendingUp }]
       : []),
-    ...(hasPageAccess('expert_labeler')
+    ...(role !== 'player' && hasPageAccess('expert_labeler')
       ? [{ to: '/expert-labeler', label: t('nav.expert'), icon: ClipboardCheck }]
       : []),
     ...(role === 'admin'
