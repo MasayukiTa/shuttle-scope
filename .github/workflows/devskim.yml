@@ -32,8 +32,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      # microsoft/DevSkim-Action は内部で Docker build → mcr.microsoft.com から
+      # dotnet/sdk:8.0 を pull するが、MCR が 403 を返して落ちる事象が継続。
+      # 代わりに .NET tool として DevSkim.CLI を直接インストールして実行する。
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install DevSkim CLI
+        run: dotnet tool install --global Microsoft.CST.DevSkim.CLI
+
       - name: Run DevSkim scanner
-        uses: microsoft/DevSkim-Action@4b5047945a44163b94642a1cecc0d93a3f428cc6 # v1
+        run: |
+          devskim analyze \
+            --source-code . \
+            --output-file devskim-results.sarif \
+            --file-format sarif \
+            --exit-code-on-recommendation 0 || true
+        # 検出があっても CI は失敗させず、SARIF を Security tab に upload して
+        # GitHub 側で alert として管理する。CI の成否は infra/auth エラーだけで判定。
 
       - name: Upload DevSkim scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
