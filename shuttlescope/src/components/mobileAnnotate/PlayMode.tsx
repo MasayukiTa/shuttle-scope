@@ -473,7 +473,11 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             }}
             src={videoSrc}
             playsInline
-            preload="auto"
+            // preload="auto" は iOS Safari PWA で大量のバッファロード起動 +
+            // メディア decoder スレッド占有で UI 応答性が壊滅する事象あり。
+            // "metadata" に戻して、ブラウザ既定の playback buffer に任せる。
+            // video element を unmount しなければ常識的な範囲で bufferd は保持。
+            preload="metadata"
             style={cropStyle}
             onError={(e) => {
               const v = e.currentTarget
