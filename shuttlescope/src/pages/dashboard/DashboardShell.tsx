@@ -433,6 +433,8 @@ export function DashboardShell() {
                   <Route
                     path="live"
                     element={
+                      // live は player にも開放 (score 中心で weakness 薄)。
+                      // 内部で role-aware に weakness 表示は抑制する想定。
                       <DashboardLivePage
                         playerId={selectedPlayerId}
                         filters={filters}
