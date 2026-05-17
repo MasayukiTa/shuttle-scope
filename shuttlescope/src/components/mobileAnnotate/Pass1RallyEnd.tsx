@@ -19,6 +19,7 @@ import { useMemo, useState } from 'react'
 // 規約: lucide-react は段階廃止。Material Symbols (MIcon) を使う。
 import { MIcon } from '@/components/common/MIcon'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
+import { setWinner, isSetPoint, isDeuce, isGoldenPoint } from '@/utils/badmintonRules'
 
 interface RallyLite {
   id?: number | null
@@ -92,12 +93,11 @@ export function Pass1RallyEnd({
   // サーブ権 (= 直前のラリーの winner、初回は player_a 既定)
   const nextServer: 'player_a' | 'player_b' = lastRally?.winner ?? 'player_a'
 
-  // 21 点 + 2 点差なら set 終了候補
-  const setEndingSoon = (() => {
-    const max = Math.max(scoreA, scoreB)
-    const diff = Math.abs(scoreA - scoreB)
-    return (max >= 21 && diff >= 2) || max >= 30
-  })()
+  // 共通ルール util を使って厳密判定 (PC と一致)
+  const setEndingSoon = setWinner({ scoreA, scoreB }) !== null
+  const setPoint = isSetPoint({ scoreA, scoreB })
+  const deuceFlag = isDeuce({ scoreA, scoreB })
+  const goldenFlag = isGoldenPoint({ scoreA, scoreB })
 
   const submit = async (winner: 'player_a' | 'player_b') => {
     if (busy) return
@@ -161,12 +161,24 @@ export function Pass1RallyEnd({
         </div>
       </div>
 
-      {/* set 終了候補バナー */}
-      {setEndingSoon && (
-        <div className="bg-amber-900/40 border-b border-amber-700/40 text-amber-200 text-xs px-3 py-1.5 text-center">
-          このセットは終了している可能性があります。終わったら下の「セット終了」を押してください。
+      {/* ルール状態バナー (deuce / golden / setPoint / setEnding) */}
+      {setEndingSoon ? (
+        <div className="bg-amber-900/60 border-b border-amber-600/60 text-amber-100 text-xs px-3 py-1.5 text-center">
+          このセットは終了条件 (21+2 / 30) を満たしました。下の「セット終了」を押してください。
         </div>
-      )}
+      ) : goldenFlag ? (
+        <div className="bg-red-900/60 border-b border-red-600/60 text-red-100 text-xs px-3 py-1.5 text-center font-bold">
+          29-29 ゴールデンポイント — 次の 1 点で勝敗確定
+        </div>
+      ) : deuceFlag ? (
+        <div className="bg-purple-900/50 border-b border-purple-600/50 text-purple-100 text-xs px-3 py-1.5 text-center">
+          デュース ({scoreA}-{scoreB}) — 2 点差で勝ち / 30 点先取
+        </div>
+      ) : setPoint ? (
+        <div className="bg-blue-900/50 border-b border-blue-600/50 text-blue-100 text-xs px-3 py-1.5 text-center">
+          {setPoint === 'A' ? 'A' : 'B'} のセットポイント
+        </div>
+      ) : null}
 
       {/* 2 ボタン: CV 推奨側は左上に「CV 推奨」バッジ */}
       <div className="flex-1 flex">

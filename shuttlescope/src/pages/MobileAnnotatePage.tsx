@@ -30,6 +30,7 @@ import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
 import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
 import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
 import { startBackgroundFlush, getStatus, retryAllManual } from '@/utils/mobileAnnotateQueue'
+import { setWinner, matchWinner } from '@/utils/badmintonRules'
 
 type ScreenMode = 'play' | 'annotate'
 
@@ -230,6 +231,19 @@ export function MobileAnnotatePage() {
     queryFn: () => apiGet<{ data: any[] }>(`/rallies?match_id=${matchId}`),
     enabled: !!matchId,
   })
+  // PC AnnotatorPage と同じ resume データソース: /annotation/{id}/state は
+  // current_set_num / current_rally_num / score_a / score_b を返す。
+  // PC で途中まで入力した状態をモバイルから引き継ぐためここを source of truth に。
+  const annotStateQuery = useQuery({
+    queryKey: ['mobile-annot-state', matchId],
+    queryFn: () => apiGet<{ data?: {
+      current_set_num?: number; current_rally_num?: number;
+      score_a?: number; score_b?: number;
+      updated_at?: string;
+    } }>(`/annotation/${matchId}/state`),
+    enabled: !!matchId,
+    staleTime: 5_000,
+  })
 
   const [localRallies, setLocalRallies] = useState<RallyLite[]>([])
   const [currentSetIdx, setCurrentSetIdx] = useState<number>(0)
@@ -281,6 +295,39 @@ export function MobileAnnotatePage() {
   }, [mergedRallies])
 
   const currentSet = allSets[currentSetIdx]
+
+  // 各セットの最終 rally の score から勝者を判定して "completed sets" を作る。
+  const completedSetWinners = useMemo(() => {
+    const bySet = new Map<number, { setNum: number; lastA: number; lastB: number }>()
+    for (const s of allSets) bySet.set(s.id, { setNum: s.set_num, lastA: 0, lastB: 0 })
+    for (const r of mergedRallies) {
+      const e = bySet.get(r.set_id)
+      if (e) { e.lastA = r.score_a_after; e.lastB = r.score_b_after }
+    }
+    return Array.from(bySet.values())
+      .sort((a, b) => a.setNum - b.setNum)
+      .map((e) => setWinner({ scoreA: e.lastA, scoreB: e.lastB }))
+      .filter((w): w is 'A' | 'B' => w !== null)
+  }, [allSets, mergedRallies])
+
+  // match.format (singles / doubles_md / doubles_xd 等) は best-of-3 が一般。
+  // 正式 best-of は将来 match レコードに持たせるが、当面 3 固定。
+  const bestOf = 3
+  const matchOver = matchWinner({ completedSetWinners, bestOf })
+
+  // /annotation/state を読んで、PC 側で進行中の set_num に追従する。
+  // PC で第2セット中盤までやって離脱 → mobile 起動時、ここで第2セットに自動 jump。
+  useEffect(() => {
+    const state = annotStateQuery.data?.data
+    if (!state || allSets.length === 0) return
+    const targetSetNum = state.current_set_num
+    if (!targetSetNum) return
+    const idx = allSets.findIndex((s) => s.set_num === targetSetNum)
+    if (idx >= 0 && idx !== currentSetIdx) {
+      setCurrentSetIdx(idx)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotStateQuery.data, allSets.length])
 
   const [ensureSetState, setEnsureSetState] = useState<{ loading: boolean; error: string | null }>({
     loading: false, error: null,
@@ -535,6 +582,39 @@ export function MobileAnnotatePage() {
               </div>
             )
           })()}
+
+          {/* 試合終了 overlay: best-of-N のセット先取が確定したら表示。
+             共通 util の matchWinner で判定。tap で閉じて確認のみ。 */}
+          {!calibEditingTop && matchOver && (
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center"
+              style={{
+                backgroundColor: 'rgba(0,0,0,0.92)', color: '#ffffff',
+                zIndex: 49,  // Pass overlay (z-40) より上、calib (z-50) より下
+                pointerEvents: 'auto', touchAction: 'manipulation',
+              }}
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              <div className="text-base font-bold" style={{ color: '#ffffff' }}>
+                マッチ終了 — {matchOver === 'A' ? 'プレイヤーA' : 'プレイヤーB'} 勝利
+              </div>
+              <div className="text-xs font-mono" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                Best-of-{bestOf} / セット獲得: A {completedSetWinners.filter((w) => w === 'A').length} - B {completedSetWinners.filter((w) => w === 'B').length}
+              </div>
+              <button
+                type="button"
+                onClick={() => setScreen('play')}
+                className="px-3 py-1.5 rounded text-xs font-bold"
+                style={{ backgroundColor: '#4b5563', color: '#ffffff' }}
+              >
+                結果を確認 (動画に戻る)
+              </button>
+              <div className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                試合データは保存済です。後から PC で詳細確認・修正できます。
+              </div>
+            </div>
+          )}
 
           {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'serve_final' && (
             <div className="absolute inset-0 z-40 bg-black/85">
