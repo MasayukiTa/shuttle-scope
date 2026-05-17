@@ -547,11 +547,19 @@ export function MobileAnnotatePage() {
           className="absolute left-2 flex items-center gap-1.5 text-xs"
           style={{ top: 'max(0.5rem, env(safe-area-inset-top))', zIndex: 45 }}
         >
+          {/* 戻るボタン: 誤タップで作業中の試合から離脱しないよう確認ダイアログを挟む */}
           <button
             type="button"
-            onClick={() => navigate('/matches')}
+            onClick={() => {
+              // window.confirm はネイティブダイアログで PWA/iOS でも確実に動く。
+              // OK = navigate, Cancel = 留まる。
+              if (window.confirm('試合一覧に戻りますか？\n未送信のアノテーションは送信キュー (cloud_off) に残ります。')) {
+                navigate('/matches')
+              }
+            }}
             className="p-2 rounded shadow ss-overlay-chip"
             aria-label="戻る"
+            title="試合一覧に戻る (確認あり)"
           >
             <MIcon name="arrow_back" size={16} />
           </button>
