@@ -282,9 +282,17 @@ export function MobileAnnotatePage() {
 
   const currentSet = allSets[currentSetIdx]
 
+  const [ensureSetState, setEnsureSetState] = useState<{ loading: boolean; error: string | null }>({
+    loading: false, error: null,
+  })
+
   const ensureSet = async (): Promise<SetInfo | null> => {
     if (currentSet) return currentSet
-    if (!matchId) return null
+    if (!matchId) {
+      setEnsureSetState({ loading: false, error: 'matchId が未設定です' })
+      return null
+    }
+    setEnsureSetState({ loading: true, error: null })
     try {
       const resp: any = await apiPost(`/sets`, {
         match_id: Number(matchId), set_num: 1,
@@ -295,8 +303,11 @@ export function MobileAnnotatePage() {
       // 「セット 1 を作成して開始」が押せないように見える事象が発生していた。
       // refetch を待ってから return する。
       await setsQuery.refetch()
+      setEnsureSetState({ loading: false, error: null })
       return newSet
-    } catch {
+    } catch (e: any) {
+      const msg = (e?.message || e?.toString() || '不明なエラー').slice(0, 200)
+      setEnsureSetState({ loading: false, error: msg })
       return null
     }
   }
@@ -426,15 +437,24 @@ export function MobileAnnotatePage() {
                   </div>
                   <button
                     type="button"
+                    disabled={ensureSetState.loading}
                     onClick={async () => {
                       const s = await ensureSet()
                       if (s) setCurrentSetIdx(0)
                     }}
-                    className="px-4 py-2 rounded text-sm font-bold"
+                    className="px-4 py-2 rounded text-sm font-bold disabled:opacity-60"
                     style={{ backgroundColor: '#2563eb', color: '#ffffff' }}
                   >
-                    セット 1 を作成して開始
+                    {ensureSetState.loading ? 'セット作成中…' : 'セット 1 を作成して開始'}
                   </button>
+                  {ensureSetState.error && (
+                    <div
+                      className="text-[11px] font-mono px-2 py-1 rounded mt-1 max-w-[90vw] break-all"
+                      style={{ backgroundColor: 'rgba(127,29,29,0.95)', color: '#ffffff' }}
+                    >
+                      {ensureSetState.error}
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => setScreen('play')}
