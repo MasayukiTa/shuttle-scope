@@ -405,8 +405,21 @@ export function MobileAnnotatePage() {
             if (!currentSet) {
               return (
                 <div
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-40 px-4 text-center"
-                  style={{ backgroundColor: 'rgba(0,0,0,0.9)', color: '#ffffff' }}
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center"
+                  // z-index と pointer-events を明示。 (a) z=50 で右側 Pass
+                  // chip (z=45) や CV overlay より上に確実に。(b) pointer-events
+                  // auto を明示して、親の inherited none 等で吸われない。
+                  // (c) touch-action:manipulation で iOS の 300ms click 遅延 +
+                  // 一部の touch→click 抑制を回避。
+                  style={{
+                    backgroundColor: 'rgba(0,0,0,0.9)',
+                    color: '#ffffff',
+                    zIndex: 50,
+                    pointerEvents: 'auto',
+                    touchAction: 'manipulation',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
                 >
                   <div className="text-sm font-bold" style={{ color: '#ffffff' }}>
                     この試合にはまだセットが登録されていません

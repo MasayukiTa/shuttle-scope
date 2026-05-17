@@ -500,10 +500,13 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             showCourt={showCourt}
             showShuttle={showShuttle}
             showPlayers={showPlayers}
-            videoTransform={{
-              transform: cropStyle.transform,
-              transformOrigin: cropStyle.transformOrigin,
-            }}
+            // ⚠️ videoTransform は意図的に渡さない。
+            // calib 中の snapshot は cropStyle (transform) 適用、calib SVG は
+            // 非適用。なので点は "transform 後の見た目" 基準で norm 化される。
+            // 確定後の grid にも transform を適用すると二重適用となり横に
+            // 引き延ばされる。crop は calib 時と display 時で同一前提なので、
+            // 両方とも grid は素の座標で描く方が整合する。
+            // (crop を後から変更すると grid がズレるが、それは別途要対応)
           />
         )}
 
