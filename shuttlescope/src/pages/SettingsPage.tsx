@@ -1146,8 +1146,11 @@ export function SettingsPage() {
                             <button
                               onClick={() => markVerified.mutate(p.id)}
                               disabled={markVerified.isPending}
-                              className="p-1.5 rounded bg-green-800 hover:bg-green-700 text-green-300"
+                              // 濃色背景 (green-800) には白文字 (memory rule)。
+                              // 以前は text-green-300 = 同系色で読めなかった。
+                              className="p-1.5 rounded bg-green-700 hover:bg-green-600 text-white"
                               title={t('review.mark_verified')}
+                              aria-label={t('review.mark_verified') as string}
                             >
                               <CheckCircle size={12} />
                             </button>

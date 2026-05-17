@@ -2372,7 +2372,7 @@
       "credential_hint_update": "Leave blank to keep unchanged",
       "credential_hint_player_new": "Players can also set a regular password",
       "team_name": "Team name",
-      "team_name_placeholder": "ACT SAIKYO",
+      "team_name_placeholder": "Sample Team",
       "player_link": "Linked player",
       "player_unselected": "Not selected",
       "page_access": "Page access",

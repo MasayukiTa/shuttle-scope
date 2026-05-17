@@ -40,6 +40,11 @@ if (typeof window !== 'undefined') {
   }
   window.addEventListener('error', (e) => {
     const msg = (e.error && (e.error.stack || e.error.message)) || e.message || String(e)
+    // cross-origin script の "Script error." 系は origin 不明 (lineno 0 / filename 空)
+    // で実害なし。iOS Safari 共有シート等で自動発火するため抑止。
+    const isGeneric = /^Script error\.?$/.test(msg)
+    const noOrigin = !e.filename && (!e.lineno || e.lineno === 0)
+    if (isGeneric && noOrigin) return
     showError('Error', `${msg}\n  at ${e.filename}:${e.lineno}:${e.colno}`)
   })
   window.addEventListener('unhandledrejection', (e) => {
