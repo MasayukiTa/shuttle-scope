@@ -19,6 +19,9 @@
  *     コートタップが矩形ハンドル操作になり、再生は強制停止される。
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
+
+import { apiGet } from '@/api/client'
 // CLAUDE.md / メモリ規約に従い Material Symbols (MIcon) を使う。lucide-react は段階廃止。
 import { MIcon } from '@/components/common/MIcon'
 import { MobileCVOverlay } from '@/components/mobileAnnotate/MobileCVOverlay'
@@ -136,6 +139,26 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   const [calibPoints, setCalibPoints] = useState<{ x: number; y: number }[]>([])
   // 保存後に MobileCVOverlay を強制再 fetch させる version カウンタ
   const [calibVersion, setCalibVersion] = useState(0)
+
+  // 過去解析の存在確認 (toggle OFF でも "解析済" バッジを出すため)。
+  // 結果数だけ知りたいので length のみ抽出して keep。表示 toggle と独立に常時 fetch。
+  const shuttleExistsQuery = useQuery({
+    queryKey: ['mobile-shuttle-exists', matchId],
+    queryFn: () => apiGet<{ success?: boolean; data?: unknown[] }>(`/api/tracknet/shuttle_track/${matchId}`),
+    enabled: !!matchId,
+    staleTime: 60_000,
+    retry: 0,
+  })
+  const shuttleFrameCount = Array.isArray(shuttleExistsQuery.data?.data) ? shuttleExistsQuery.data!.data!.length : 0
+
+  const yoloExistsQuery = useQuery({
+    queryKey: ['mobile-yolo-exists', matchId],
+    queryFn: () => apiGet<{ frames?: unknown[] }>(`/api/yolo/results/${matchId}`),
+    enabled: !!matchId,
+    staleTime: 60_000,
+    retry: 0,
+  })
+  const yoloFrameCount = Array.isArray(yoloExistsQuery.data?.frames) ? yoloExistsQuery.data!.frames!.length : 0
 
   // 既存キャリブ点を初回読み込み (localStorage 共有経路 → backend fetch は MobileCVOverlay 側)
   useEffect(() => {
@@ -658,20 +681,45 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setShowShuttle(!showShuttle) }}
-                className={`p-2 rounded shadow ${showShuttle ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
+                className={`relative p-2 rounded shadow ${showShuttle ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
                 aria-label="シャトル軌跡"
-                title="シャトル軌跡表示切替"
+                title={shuttleFrameCount > 0 ? `シャトル軌跡 (解析済 ${shuttleFrameCount} frames)` : 'シャトル軌跡表示切替 (未解析)'}
               >
                 <MIcon name="my_location" size={16} />
+                {shuttleFrameCount > 0 && (
+                  // 解析済バッジ: 緑のドット + フレーム数。toggle OFF でも見える。
+                  <span
+                    className="absolute -top-1 -right-1 inline-flex items-center justify-center text-[8px] font-bold rounded-full"
+                    style={{
+                      minWidth: 14, height: 14, padding: '0 3px',
+                      backgroundColor: '#16a34a', color: '#ffffff',
+                      border: '1px solid #ffffff', lineHeight: 1,
+                    }}
+                  >
+                    ✓
+                  </span>
+                )}
               </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setShowPlayers(!showPlayers) }}
-                className={`p-2 rounded shadow ${showPlayers ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
+                className={`relative p-2 rounded shadow ${showPlayers ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
                 aria-label="プレイヤー位置"
-                title="プレイヤー位置 bbox 表示切替"
+                title={yoloFrameCount > 0 ? `プレイヤー位置 (解析済 ${yoloFrameCount} frames)` : 'プレイヤー位置 bbox 表示切替 (未解析)'}
               >
                 <MIcon name="group" size={16} />
+                {yoloFrameCount > 0 && (
+                  <span
+                    className="absolute -top-1 -right-1 inline-flex items-center justify-center text-[8px] font-bold rounded-full"
+                    style={{
+                      minWidth: 14, height: 14, padding: '0 3px',
+                      backgroundColor: '#16a34a', color: '#ffffff',
+                      border: '1px solid #ffffff', lineHeight: 1,
+                    }}
+                  >
+                    ✓
+                  </span>
+                )}
               </button>
               <button
                 type="button"
