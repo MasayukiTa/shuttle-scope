@@ -243,17 +243,14 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
       onTouchCancel={onTouchEnd}
     >
       {/* SVG オーバーレイ: 既存点 + 結線
-         ⚠️ viewBox を明示 (= videoWidth x videoHeight)。
-         iOS Safari は viewBox 無し + width/height=100% の SVG で coordinate
-         system を intrinsic 300x150 に縮退させる既知バグがあり、cy>150 の
-         描画が消える (= 画面下 3/4 のハンドルが見えない症状)。
-         viewBox を渡せば SVG ユーザ空間 (px) = videoWidth×videoHeight に
-         固定される。preserveAspectRatio="none" で素直に伸縮させる。 */}
+         ⚠️ width/height は **明示 px** (videoWidth x videoHeight) + viewBox 同値。
+         width="100%" + viewBox では iOS Safari PWA で aspect 演算がぶれて
+         描画位置がズレる事象あり。明示 px なら 1:1 mapping が必ず成立する。 */}
       <svg
-        className="absolute inset-0 pointer-events-none"
-        width="100%"
-        height="100%"
+        width={videoWidth}
+        height={videoHeight}
         viewBox={`0 0 ${videoWidth} ${videoHeight}`}
+        style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}
       >
         {/* ネット線 (NL-NR があれば描画) */}
         {points.length >= 6 && (
@@ -402,21 +399,18 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
         </button>
       </div>
 
-      {/* ルーペ: 指の真下を拡大表示 (画面上端中央)。snapshot 取れていれば
-         video frame 画像を 2.2 倍拡大、無ければ薄背景 + 十字のみ。
-         指 (X, Y) を中心に zoom 倍の領域を 132px の円窓に表示する。
-         背景画像座標: 容器サイズ * zoom の中で (X*zoom, Y*zoom) が円窓中央
-         (66, 66) になるよう負の offset。 */}
+      {/* ルーペ: 指の真下を拡大表示 (画面上端中央)。
+         旧実装は背景画像で snapshot を videoWidth×videoHeight 比に強制
+         stretch していたため、native aspect (16:9) と container aspect
+         (例 2.16:1) が違うと水平方向にズレた。
+         新実装: ルーペ内に同サイズの <img objectFit:cover> ステージを置き、
+         CSS transform で zoom + 指位置 (X, Y) を中央 (66, 66) に持ってくる。
+         これで snapshot 表示と underlying video 表示が完全一致する。 */}
       {loupe && (() => {
         const zoom = 2.2
         const size = 132
         const half = size / 2
-        const bgW = videoWidth * zoom
-        const bgH = videoHeight * zoom
-        const bgX = -(loupe.x * zoom - half)
-        const bgY = -(loupe.y * zoom - half)
-        // 指から離した位置を選ぶ: 通常は画面上端中央。ただし指自身が上端
-        // 付近にあると重なるので、その時は下端に逃がす。
+        // 指から離した位置: 上端中央が基本。指が上端付近 (~ルーペ+余白) なら下端へ逃げる。
         const loupeTop = loupe.y < size + 60 ? undefined : 24
         const loupeBottom = loupe.y < size + 60 ? 24 : undefined
         return (
@@ -425,21 +419,40 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
             style={{
               ...(loupeTop !== undefined ? { top: loupeTop } : { bottom: loupeBottom }),
               left: '50%',
-              transform: 'translateX(-50%)',
+              marginLeft: -half,
               width: size,
               height: size,
               borderRadius: '50%',
               border: '3px solid #ffffff',
               boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
               backgroundColor: 'rgba(20,20,20,0.85)',
-              backgroundImage: snapshot ? `url(${snapshot})` : undefined,
-              backgroundRepeat: 'no-repeat',
-              backgroundSize: `${bgW}px ${bgH}px`,
-              backgroundPosition: `${bgX}px ${bgY}px`,
               zIndex: 20,
               overflow: 'hidden',
             }}
           >
+            {/* zoom stage: video element 同じサイズの <img objectFit:cover>
+               を、(指位置を中央に持ってくる) 位置に top-left を置いてから scale。
+               transform-origin: 0 0 で原点固定 → top/left の値が直接効く。 */}
+            {snapshot && (
+              <div
+                style={{
+                  position: 'absolute',
+                  width: videoWidth,
+                  height: videoHeight,
+                  left: half - loupe.x * zoom,
+                  top: half - loupe.y * zoom,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: '0 0',
+                }}
+              >
+                <img
+                  src={snapshot}
+                  alt=""
+                  draggable={false}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              </div>
+            )}
             {/* 十字 (中央 = 指の真下 = 配置位置) */}
             <div
               style={{
@@ -455,7 +468,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
                 background: 'rgba(255,255,255,0.85)',
               }}
             />
-            {/* 中心の小さい円 */}
+            {/* 中心の小さい円 (= 配置確定位置) */}
             <div
               style={{
                 position: 'absolute', left: '50%', top: '50%',

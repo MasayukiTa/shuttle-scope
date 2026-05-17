@@ -315,11 +315,14 @@ export function MobileCVOverlay({
       {/* 1) コートグリッド SVG (最背面オーバーレイ) */}
       {showCourt && hasCalib && videoWidth > 0 && videoHeight > 0 && (
         <svg
-          className="absolute inset-0 pointer-events-none"
-          width="100%"
-          height="100%"
+          width={videoWidth}
+          height={videoHeight}
           viewBox={`0 0 ${videoWidth} ${videoHeight}`}
-          style={{ zIndex: 11, ...videoTransform }}
+          style={{
+            position: 'absolute', left: 0, top: 0,
+            pointerEvents: 'none',
+            zIndex: 11, ...videoTransform,
+          }}
         >
           {gridLines.map((l, i) => (
             <g key={i}>
