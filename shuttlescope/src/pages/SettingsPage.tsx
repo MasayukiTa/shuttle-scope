@@ -123,6 +123,15 @@ export function SettingsPage() {
     queryFn: () => apiGet('/health'),
     staleTime: 60_000,
   })
+  // /auth/me から username を取得 (useAuth は username を保持しないので別 fetch)。
+  // アカウント設定タブで「ログインユーザ名」を正確に表示するため。
+  const { data: meData } = useQuery<{ username?: string; display_name?: string | null }>({
+    queryKey: ['auth-me'],
+    queryFn: () => apiGet('/auth/me'),
+    staleTime: 60_000,
+    retry: 0,
+  })
+  const loginUsername = meData?.username ?? null
   const isPublicMode = healthData?.public_mode === true
 
   const [showPlayerForm, setShowPlayerForm] = useState(false)
@@ -2604,9 +2613,12 @@ export function SettingsPage() {
                 The active role is fixed by login. To switch users or roles, log out and sign in again.
               </p>
               <div className={`rounded-lg border p-4 space-y-2 ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-800'}`}>
+                {/* "Display name" と "User ID" が両方 displayName を出していた
+                   copy-paste bug の修正。User ID は /auth/me の username (= ログ
+                   イン ID) と useAuth の userId (= 数値 PK) を併記する。 */}
                 <div className={`text-sm ${textSecondary}`}>Display name: <span className={textHeading}>{displayName ?? 'Unset'}</span></div>
                 <div className={`text-sm ${textSecondary}`}>Role: <span className={textHeading}>{role ? t(`auth.role.${role}`) : 'Not logged in'}</span></div>
-                <div className={`text-sm ${textSecondary}`}>User ID: <span className={textHeading}>{displayName ?? '-'}</span></div>
+                <div className={`text-sm ${textSecondary}`}>Username: <span className={textHeading}>{loginUsername ?? '-'}</span>{userId != null && <span className={`${textMuted} ml-2`}>(#{userId})</span>}</div>
                 <div className={`text-sm ${textSecondary}`}>Team: <span className={textHeading}>{teamName ?? '-'}</span></div>
               </div>
               <div className="mt-4 flex flex-col gap-3">
