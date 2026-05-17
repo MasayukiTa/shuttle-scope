@@ -638,22 +638,36 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   const v = videoRef.current
                   if (v && !v.paused) v.pause()
                   // 現フレームを canvas に焼いて dataURL → MobileCourtCalib に渡し
-                  // ルーペで指の真下を拡大表示する用途のみ (背景には live video が
-                  // 見えているので img として上書き render はしない)。
+                  // ルーペで指の真下を拡大表示する。
+                  // ⚠️ canvas は **container サイズ** で作り、video の native frame
+                  // (1920x1080 等) を objectFit:cover 相当に縮小+クロップして焼く。
+                  // これで snapshot 1px = container 1px が成立 → ルーペ側で touch
+                  // 座標をそのまま使える (objectFit による offset 計算不要)。
+                  // 旧実装は snapshot を native サイズで作って ルーペ img に
+                  // objectFit:cover を後付けしていたため、stage 内の box サイズ次第で
+                  // cover の crop offset がズレ、左右タップで loupe 内容が大きくズレた。
                   try {
-                    if (v && v.videoWidth > 0 && v.videoHeight > 0) {
+                    const cw = videoBox.w | 0
+                    const ch = videoBox.h | 0
+                    if (v && v.videoWidth > 0 && v.videoHeight > 0 && cw > 0 && ch > 0) {
+                      const sw = v.videoWidth, sh = v.videoHeight
                       const cvs = document.createElement('canvas')
-                      cvs.width = v.videoWidth
-                      cvs.height = v.videoHeight
+                      cvs.width = cw
+                      cvs.height = ch
                       const ctx = cvs.getContext('2d')
                       if (ctx) {
-                        ctx.drawImage(v, 0, 0, cvs.width, cvs.height)
-                        // jpeg quality 0.85 で十分 (背景画像用途)
+                        // objectFit:cover 相当: video 全体を container を覆うよう
+                        // 等比拡大 + 中央クロップ。
+                        const scale = Math.max(cw / sw, ch / sh)
+                        const dw = sw * scale
+                        const dh = sh * scale
+                        const dx = (cw - dw) / 2
+                        const dy = (ch - dh) / 2
+                        ctx.drawImage(v, 0, 0, sw, sh, dx, dy, dw, dh)
                         setCalibSnapshot(cvs.toDataURL('image/jpeg', 0.85))
                       }
                     }
                   } catch (err) {
-                    // CORS / tainted canvas は無視 (snapshot 無しでも calib 自体は可)
                     console.warn('[calib] snapshot failed', err)
                   }
                   setCalibEditing(true)

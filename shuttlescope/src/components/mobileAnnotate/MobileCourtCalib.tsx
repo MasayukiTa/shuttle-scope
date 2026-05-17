@@ -430,11 +430,15 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
               overflow: 'hidden',
             }}
           >
-            {/* zoom stage: video element 同じサイズの <img objectFit:cover>
-               を、(指位置を中央に持ってくる) 位置に top-left を置いてから scale。
-               transform-origin: 0 0 で原点固定 → top/left の値が直接効く。 */}
+            {/* snapshot は container サイズ (videoWidth×videoHeight) で cover-fit
+               焼き付け済 → 1 snapshot px = 1 container px。img は **native サイズ**
+               (= width:videoWidth, height:videoHeight) で配置し、transform scale で
+               拡大。touch (X, Y) を中央 (half, half) に持ってくる left/top 計算: */}
             {snapshot && (
-              <div
+              <img
+                src={snapshot}
+                alt=""
+                draggable={false}
                 style={{
                   position: 'absolute',
                   width: videoWidth,
@@ -443,15 +447,9 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
                   top: half - loupe.y * zoom,
                   transform: `scale(${zoom})`,
                   transformOrigin: '0 0',
+                  display: 'block',
                 }}
-              >
-                <img
-                  src={snapshot}
-                  alt=""
-                  draggable={false}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                />
-              </div>
+              />
             )}
             {/* 十字 (中央 = 指の真下 = 配置位置) */}
             <div
