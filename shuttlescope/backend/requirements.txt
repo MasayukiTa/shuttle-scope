@@ -5,8 +5,8 @@
 # ── Web フレームワーク ────────────────────────────────────────────
 fastapi>=0.136.0              # CVE-2024-47874 / CVE-2025-54121 (via starlette) 修正のため bump
 starlette>=1.0.0
-uvicorn[standard]==0.46.0
-python-multipart==0.0.28   # CVE-2026-42561 (multipart header parser DoS) 修正のため bump
+uvicorn[standard]==0.47.0
+python-multipart==0.0.29   # CVE-2026-42561 (multipart header parser DoS) 修正のため bump
 pydantic-settings==2.14.1
 # pydantic.EmailStr 用バリデータ（pydantic[email] と同等）
 email-validator>=2.3.0
@@ -19,7 +19,7 @@ psycopg2-binary==2.9.12      # PostgreSQL ドライバ（SQLite → PG 移行後
 
 # ── データ分析 ────────────────────────────────────────────────────
 pandas==3.0.3
-numpy==2.4.4
+numpy==2.4.5
 scipy==1.17.1
 scikit-learn>=1.5.0          # CVE-2024-5206 修正
 matplotlib>=3.10.9
