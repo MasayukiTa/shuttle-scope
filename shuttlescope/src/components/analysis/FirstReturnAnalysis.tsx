@@ -40,14 +40,14 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading, isPending, isFetching } = useQuery({
+  const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-first-return', playerId, filters],
     queryFn: () =>
       apiGet<FirstReturnResponse>('/analysis/first_return_analysis', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
@@ -56,7 +56,7 @@ export function FirstReturnAnalysis({ playerId, filters = DEFAULT_FILTERS }: Fir
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (zones.length === 0 || sampleSize === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="リターン" loading={isPending || isFetching} />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="リターン" />
   }
 
   return (

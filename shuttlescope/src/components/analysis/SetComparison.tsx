@@ -83,7 +83,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
   const resp = bundled ?? indiv.data
   const isLoading = provided ? bundleLoading : indiv.isLoading
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return (
       <div className="text-gray-500 text-sm py-8 text-center">{t('auto.SetComparison.k1')}</div>
     )

@@ -65,7 +65,7 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
   const subText = isLight ? '#64748b' : '#9ca3af'
   const neutral = isLight ? '#334155' : '#d1d5db'
 
-  const { data: resp, isLoading, isPending, isFetching } = useQuery({
+  const { data: resp, isLoading } = useQuery({
     queryKey: ['prediction-fatigue-risk', playerId, tournamentLevel],
     queryFn: () =>
       apiGet<FatigueResponse>('/prediction/fatigue_risk', {
@@ -75,13 +75,13 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
     enabled: !!playerId,
   })
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('prediction.loading')}</div>
   }
 
   const d = resp?.data
   if (!d || d.breakdown.total_rallies < 10) {
-    return <NoDataMessage sampleSize={d?.breakdown.total_rallies ?? 0} minRequired={30} unit="ラリー" loading={isPending || isFetching} />
+    return <NoDataMessage sampleSize={d?.breakdown.total_rallies ?? 0} minRequired={30} unit="ラリー" />
   }
 
   const riskPct = Math.round(d.risk_score * 100)

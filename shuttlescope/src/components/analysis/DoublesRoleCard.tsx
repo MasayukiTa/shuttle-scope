@@ -171,7 +171,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
   const data = bundled ?? indiv.data
   const isLoading = provided ? bundleLoading : indiv.isLoading
 
-  const { data: stabilityResp, isPending, isFetching } = useQuery({
+  const { data: stabilityResp } = useQuery({
     queryKey: ['doubles-role-stability', playerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: StabilityData; meta: Meta }>(

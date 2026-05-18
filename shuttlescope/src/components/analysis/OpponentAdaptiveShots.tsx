@@ -66,13 +66,13 @@ function Inner({ playerId }: { playerId: number }) {
 
   const [selected, setSelected] = useState<number | null>(null)
 
-  const { data: resp, isLoading, isPending, isFetching } = useQuery({
+  const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-opponent-adaptive-shots', playerId],
     queryFn: () => apiGet<Response>('/analysis/opponent_adaptive_shots', { player_id: playerId }),
     enabled: !!playerId,
   })
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('auto.OpponentAdaptiveShots.k1')}</div>
   }
 
@@ -80,7 +80,7 @@ function Inner({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (opponents.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="試合" loading={isPending || isFetching} />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="試合" />
   }
 
   const activeOpp = selected !== null ? opponents.find(o => o.opponent_id === selected) : opponents[0]
@@ -115,7 +115,7 @@ function Inner({ playerId }: { playerId: number }) {
             <span className="text-gray-500">{t('auto.OpponentAdaptiveShots.k2')}</span>
           </div>
           {activeOpp.shot_effectiveness.length === 0 ? (
-            <NoDataMessage sampleSize={0} minRequired={3} unit="回" loading={isPending || isFetching} />
+            <NoDataMessage sampleSize={0} minRequired={3} unit="回" />
           ) : (
             activeOpp.shot_effectiveness.map(s => (
               <ShotBar

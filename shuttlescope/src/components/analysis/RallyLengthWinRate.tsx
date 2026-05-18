@@ -88,7 +88,7 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading, isPending, isFetching } = useQuery({
+  const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-rally-length-win-rate', playerId, filters],
     queryFn: () =>
       apiGet<RallyLengthResponse>('/analysis/rally_length_vs_winrate', {
@@ -98,7 +98,7 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
     enabled: !!playerId,
   })
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return (
       <div className="text-gray-500 text-sm py-8 text-center">{t('auto.RallyLengthWinRate.k1')}</div>
     )

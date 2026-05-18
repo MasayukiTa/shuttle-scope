@@ -76,14 +76,14 @@ export function ShotWinLoss({ playerId, filters = DEFAULT_FILTERS }: ShotWinLoss
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading, isPending, isFetching } = useQuery({
+  const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-shot-win-loss', playerId, filters],
     queryFn: () =>
       apiGet<ShotWinLossResponse>('/analysis/shot_win_loss', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return (
       <div className="text-gray-500 text-sm py-8 text-center">{t('auto.ShotWinLoss.k1')}</div>
     )

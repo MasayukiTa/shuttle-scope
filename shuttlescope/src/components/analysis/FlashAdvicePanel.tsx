@@ -97,13 +97,13 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
     params.as_of_rally_num = asOfRallyNum
   }
 
-  const { data: resp, isLoading, isPending, isFetching } = useQuery({
+  const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-flash-advice', matchId, asOfSet, asOfRallyNum, playerId],
     queryFn: () => apiGet<FlashAdviceResponse>('/analysis/flash_advice', params),
     enabled: !!matchId && !!asOfSet && !!playerId,
   })
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
@@ -112,7 +112,7 @@ export function FlashAdvicePanel({ matchId, asOfSet, asOfRallyNum, playerId }: F
   const extended = resp?.data?.extended_items_included ?? false
 
   if (sampleSize === 0 || items.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ラリー" loading={isPending || isFetching} />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="ラリー" />
   }
 
   return (
