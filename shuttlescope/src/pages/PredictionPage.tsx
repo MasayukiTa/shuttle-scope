@@ -8,6 +8,7 @@
  */
 import { useState, useEffect } from 'react'
 import { analyticsViewLifecycle, trackAnalysisInteraction } from '@/utils/analytics'
+import { AdviceStrip } from '@/components/common/AdviceStrip'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
@@ -157,6 +158,17 @@ export function PredictionPage() {
               className="min-w-[280px]"
             />
           </div>
+
+          {/* 4. Prediction タブ: 実データ起点の advice strip (head-to-head 実績 or 過去 90 日サマリ) */}
+          {selectedPlayerId && (
+            <div className="mt-3">
+              <AdviceStrip
+                context="prediction.tab"
+                playerId={selectedPlayerId}
+                opponentId={opponentId || undefined}
+              />
+            </div>
+          )}
 
           {/* 相手・大会レベルセレクター行（preview サブタブ + 選手選択済み時のみ） */}
           {selectedPlayerId && subTab === 'preview' && (

@@ -7,6 +7,7 @@ import { GrowthJudgmentCard } from '@/components/analysis/GrowthJudgmentCard'
 import { GrowthTimeline } from '@/components/analysis/GrowthTimeline'
 import { PairCombinedView } from '@/components/analysis/PairCombinedView'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { AdviceStrip } from '@/components/common/AdviceStrip'
 
 interface Props {
   playerId: number
@@ -28,6 +29,8 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
 
   return (
     <div className="space-y-5">
+      {/* 5. Growth Timeline 上部: 実データ起点の advice strip (8w vs 8w 比較) */}
+      {playerId && <AdviceStrip context="growth.timeline" playerId={playerId} />}
       {/* ペアモードトグル（is_target 選手が2人以上いる場合のみ表示） */}
       {sortedPlayers.filter((p) => p.is_target).length >= 2 && (
         <div className={`flex items-center gap-3 ${card} rounded-lg px-4 py-3`}>

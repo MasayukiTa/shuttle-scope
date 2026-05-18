@@ -117,6 +117,7 @@ from backend.routers import billing as billing_router
 from backend.routers import internal_videos as internal_videos_router
 from backend.routers import telemetry as telemetry_router
 from backend.routers import _comprehensive_report_endpoints as comprehensive_report_router
+from backend.routers import advice as advice_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -2380,6 +2381,7 @@ app.include_router(billing_router.router, prefix="/api")
 app.include_router(internal_videos_router.router, prefix="/api")
 app.include_router(telemetry_router.router, prefix="/api")
 app.include_router(comprehensive_report_router.router, prefix="/api")
+app.include_router(advice_router.router, prefix="/api")
 app.include_router(public_site.router)
 app.include_router(legal_docs.router)
 

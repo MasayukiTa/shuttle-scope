@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { DashboardTopNav } from '@/components/dashboard/DashboardTopNav'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { AdviceStrip } from '@/components/common/AdviceStrip'
 import { DashboardOverviewPage } from './DashboardOverviewPage'
 import { DashboardLivePage } from './DashboardLivePage'
 import { DashboardReviewPage } from './DashboardReviewPage'
@@ -438,13 +439,22 @@ export function DashboardShell() {
                   <Route
                     path="overview"
                     element={
-                      <DashboardOverviewPage
-                        playerId={selectedPlayerId}
-                        filters={filters}
-                        filterApiParams={filterApiParams}
-                        matches={matches}
-                        loadingMatches={loadingMatches}
-                      />
+                      <div className="space-y-3">
+                        {/* 1. ダッシュボード Overview 最上部: 実データから計算したアドバイス strip */}
+                        {selectedPlayerId && (
+                          <AdviceStrip
+                            context={role === 'player' ? 'player.home' : 'dashboard.overview'}
+                            playerId={selectedPlayerId}
+                          />
+                        )}
+                        <DashboardOverviewPage
+                          playerId={selectedPlayerId}
+                          filters={filters}
+                          filterApiParams={filterApiParams}
+                          matches={matches}
+                          loadingMatches={loadingMatches}
+                        />
+                      </div>
                     }
                   />
                   <Route
