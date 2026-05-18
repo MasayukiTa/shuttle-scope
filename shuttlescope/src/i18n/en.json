@@ -3052,6 +3052,8 @@
       "view_terms": "View Terms of Service",
       "print": "Print",
       "read_done": "read",
+      "back": "Back to previous document",
+      "view_dct": "Data Contribution Terms",
       "scroll_hint": "Open both 'View Privacy Notice' and 'View Terms of Service' above and scroll each document to the bottom. Once both are read, the mandatory checkboxes become enabled.",
       "required_section": "Mandatory (contractual basis)",
       "required_hint": "These are required for the service to operate (GDPR Art 6(1)(b) / APPI Art 18). Withdrawing is equivalent to ending service use.",
