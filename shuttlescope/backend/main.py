@@ -3068,8 +3068,15 @@ _SPA_ROOT_PUBLIC: dict[str, Path] = {
     name: _RENDERER_DIR / name
     for name in (
         "error-reporter.js",
-        "favicon.png",
-        "apple-touch-icon.png",
+        "favicon.ico",                # multi-size ICO (16/32/48) — Google 等
+        "favicon.png",                # 96x96 PNG (fallback / og)
+        "favicon-16.png",
+        "favicon-32.png",
+        "favicon-48.png",
+        "favicon-96.png",
+        "favicon-192.png",
+        "favicon-512.png",
+        "apple-touch-icon.png",       # 180x180 iOS ホーム追加用
         "og-image.png",
         "robots.txt",
         "manifest.json",
