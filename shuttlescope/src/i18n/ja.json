@@ -3419,7 +3419,7 @@
       "body_disclose_to_coach_desc": "体重・体脂肪率・筋肉量等のデータをコーチに開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。OFF にした場合 coach の画面では体組成データが非表示になります。",
       "submit": "確認・同意して開始",
       "submit_optional": "回答して保存",
-      "later": "後で回答する",
+      "later": "任意項目は後で回答する",
       "view_privacy": "プライバシーポリシーを表示",
       "view_terms": "利用規約を表示",
       "print": "印刷",

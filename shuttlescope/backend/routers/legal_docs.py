@@ -118,7 +118,10 @@ def _render_markdown_page(slug: str, lang: str = "ja") -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <style>
-  :root {{ color-scheme: light dark; }}
+  /* 法務文書は端末の dark mode 設定にかかわらず常にライトモード固定。
+     スマホで自動的に暗背景になると条文が読みにくいため、可読性優先で
+     light を強制する。color-scheme も明示で light のみに。 */
+  :root {{ color-scheme: light; }}
   body {{
     margin: 0;
     padding: 16px 20px 48px;
@@ -129,12 +132,6 @@ def _render_markdown_page(slug: str, lang: str = "ja") -> str:
     color: #222;
     background: #fff;
     max-width: 920px;
-  }}
-  @media (prefers-color-scheme: dark) {{
-    body {{ color: #e5e7eb; background: #111827; }}
-    a {{ color: #93c5fd; }}
-    code {{ background: #1f2937; color: #f3f4f6; }}
-    blockquote {{ border-left-color: #374151; color: #9ca3af; }}
   }}
   h1 {{ font-size: 22px; margin-top: 0; border-bottom: 2px solid #d1d5db; padding-bottom: 6px; }}
   h2 {{ font-size: 18px; margin-top: 28px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }}
