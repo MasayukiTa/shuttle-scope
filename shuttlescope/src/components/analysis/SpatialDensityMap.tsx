@@ -28,13 +28,13 @@ const SVG_H = 360
 export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
   const { t } = useTranslation()
 
-  const { data: resp, isLoading, isPending, isFetching } = useQuery({
+  const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-spatial-density', playerId],
     queryFn: () => apiGet<Response>('/analysis/spatial_density', { player_id: playerId }),
     enabled: !!playerId,
   })
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
@@ -50,7 +50,7 @@ export function SpatialDensityMap({ playerId }: SpatialDensityMapProps) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.SpatialDensityMap.k1')}</h3>
-        <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ストローク" loading={isPending || isFetching} />
+        <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ストローク" />
       </div>
     )
   }

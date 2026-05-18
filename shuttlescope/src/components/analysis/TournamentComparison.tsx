@@ -49,14 +49,14 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading, isPending, isFetching } = useQuery({
+  const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-tournament-comparison', playerId, filters],
     queryFn: () =>
       apiGet<TournamentResponse>('/analysis/tournament_level_comparison', { player_id: playerId, ...fp }),
     enabled: !!playerId,
   })
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
@@ -64,7 +64,7 @@ export function TournamentComparison({ playerId, filters = DEFAULT_FILTERS }: To
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (levels.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="試合" loading={isPending || isFetching} />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit="試合" />
   }
 
   // 大会重要度 → coolwarm 位置（色ルール §4: 高重要=熱=赤、低重要=冷=青）

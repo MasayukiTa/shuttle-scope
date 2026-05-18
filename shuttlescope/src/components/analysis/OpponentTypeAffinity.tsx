@@ -62,13 +62,13 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
 
-  const { data: resp, isLoading, isPending, isFetching } = useQuery({
+  const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-opponent-type-affinity', playerId, filters],
     queryFn: () => apiGet<OpponentTypeAffinityResponse>('/analysis/opponent_type_affinity', fp),
     enabled: !!playerId,
   })
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
@@ -76,7 +76,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
   const summary = resp?.data?.summary ?? []
 
   if (sampleSize === 0 || summary.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" loading={isPending || isFetching} />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" />
   }
 
   const labelColor = isLight ? '#475569' : '#9ca3af'

@@ -1,12 +1,18 @@
 /**
  * データ不足時の案内メッセージ。
  *
- * 重要 (2026-05-19): 「データ不足」と断言することは「本来あるはずのデータが
+ * 重要 (2026-05-19 v2): 「データ不足」と断言することは「本来あるはずのデータが
  * ない」という強い主張に等しい。誤って表示されたユーザは「アプリが嘘をついた」
- * と認識する。そのため、loading フラグ (= useQuery の isPending / isFetching /
- * 未解決 disabled) が真の間は決して "不足" と表示せず、明示的な「計算中…」を
- * 出す。呼び出し側は必ず loading を渡すこと。
+ * と認識する。
+ *
+ * 解決策: 内部に GRACE_MS の grace period を持ち、mount 直後は必ず「計算中…」を
+ * 表示する。GRACE_MS 経過後に sampleSize がまだ不足なら本来のメッセージを出す。
+ *
+ * caller が `loading` prop を渡せばそれを優先する (loading=true なら強制計算中)。
+ * 渡さなくても内部 grace period で安全に倒れるので、scope 問題で props を
+ * 渡せない caller でも問題ない (= 旧 API 互換)。
  */
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 interface NoDataMessageProps {
@@ -15,17 +21,27 @@ interface NoDataMessageProps {
   unit?: string
   /**
    * クエリが pending/fetching/idle(disabled) なら true。
-   * 真なら「データ不足」と判断せず「計算中…」を表示する (誤判定で
-   * ユーザに虚偽情報を見せないため)。
+   * 渡されなくても内部 grace period で 1.2 秒は「計算中」表示。
    */
   loading?: boolean
 }
 
+// mount 直後の grace period (ms)。この間は「計算中」、経過後に「不足」表示。
+// useQuery の典型的な初回応答時間より長め (実測 200〜600ms)。
+const GRACE_MS = 1200
+
 export function NoDataMessage({ sampleSize, minRequired = 1, unit, loading }: NoDataMessageProps) {
   const { t } = useTranslation()
   const u = unit ?? t('no_data_message.unit_default')
-  // ── 安全側に倒す: loading 中は「データ不足」を絶対に表示しない ─────
-  if (loading) {
+  const [graceElapsed, setGraceElapsed] = useState(false)
+
+  useEffect(() => {
+    const id = setTimeout(() => setGraceElapsed(true), GRACE_MS)
+    return () => clearTimeout(id)
+  }, [])
+
+  // ── 安全側に倒す: loading 中 or grace period 中は「データ不足」を絶対に出さない ─
+  if (loading || !graceElapsed) {
     return (
       <div className="py-4 text-center">
         <div className="inline-flex items-center gap-2 text-sm text-gray-500">

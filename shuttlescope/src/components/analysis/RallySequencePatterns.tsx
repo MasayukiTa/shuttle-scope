@@ -91,7 +91,7 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
   const resp = bundled ?? indiv.data
   const isLoading = provided ? bundleLoading : indiv.isLoading
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('auto.RallySequencePatterns.k2')}</div>
   }
 
@@ -104,7 +104,7 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
     return (
       <div className="bg-gray-800 rounded-lg p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.RallySequencePatterns.k3')}</h3>
-        <NoDataMessage sampleSize={totalRallies} minRequired={20} unit="ラリー" loading={isPending || isFetching} />
+        <NoDataMessage sampleSize={totalRallies} minRequired={20} unit="ラリー" />
       </div>
     )
   }

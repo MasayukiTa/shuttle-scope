@@ -114,7 +114,7 @@ function Inner({ playerId }: { playerId: number }) {
   const resp = bundled ?? indiv.data
   const isLoading = provided ? bundleLoading : indiv.isLoading
 
-  if (isLoading || isPending || isFetching) {
+  if (isLoading) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('auto.CounterfactualShots.k1')}</div>
   }
 
@@ -122,7 +122,7 @@ function Inner({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (comparisons.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={30} unit="ラリー" loading={isPending || isFetching} />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={30} unit="ラリー" />
   }
 
   return (
