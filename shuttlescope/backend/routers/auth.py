@@ -2591,15 +2591,22 @@ def submit_consents(
                 status_code=422,
                 detail=f"未知の consent_type: {t!r}",
             )
-    for required in _REQUIRED_CONSENT_TYPES:
-        if not given_types.get(required, False):
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"必須同意 ({required}) が未取得です。Service 提供のため "
-                    f"以下の同意が必要です: {sorted(_REQUIRED_CONSENT_TYPES)}"
-                ),
-            )
+    # 必須同意は **初回 (= consent_required=True) のみ** 全項目を要求する。
+    # 既に onboarding 済みのユーザが optional consent (body_disclose_to_* 等) を
+    # 個別に on/off する場合は partial submit を許可する。
+    # こうしないと「同意撤回 → 再同意」が partial submit になり 422 で蹴られていた。
+    user_initial = db.get(User, ctx.user_id)
+    is_initial_consent = bool(user_initial.consent_required) if user_initial else True
+    if is_initial_consent:
+        for required in _REQUIRED_CONSENT_TYPES:
+            if not given_types.get(required, False):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"必須同意 ({required}) が未取得です。Service 提供のため "
+                        f"以下の同意が必要です: {sorted(_REQUIRED_CONSENT_TYPES)}"
+                    ),
+                )
 
     ip = _client_ip(request)
     ua = _hash_user_agent(request.headers.get("user-agent"))
