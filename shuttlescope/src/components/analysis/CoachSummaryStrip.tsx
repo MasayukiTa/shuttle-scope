@@ -121,11 +121,17 @@ export function CoachSummaryStrip({
           )}
         </div>
 
-        {/* 推奨アクション */}
+        {/* 推奨アクション
+           色の意味づけ規則 (2026-05-19):
+             - 緑 (WIN) は「勝ち方向 / 改善方向」専用。
+             - 推奨アクションは戦術指示であり「良い/悪い」を含意しない中立情報なので
+               neutral 色で表示する。リスクと並列に置いていても緑にして「対比」しない
+               (赤=悪/緑=良 のストップライト誤読を避ける)。
+           方向性は色ではなく `→` 記号で示す。 */}
         <div className="sm:col-span-1 min-w-0">
           {topAction ? (
             <>
-              <p className="text-xs font-medium leading-snug line-clamp-2" style={{ color: WIN }} title={topAction}>→ {topAction}</p>
+              <p className="text-xs font-medium leading-snug line-clamp-2" style={{ color: neutral }} title={topAction}>→ {topAction}</p>
               <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.top_action')}</p>
             </>
           ) : (
