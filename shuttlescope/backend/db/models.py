@@ -73,6 +73,9 @@ class User(Base):
     consent_required: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default="1"
     )
+    # 0031: AI 学習データ抽出の default 除外判定 + 同意 UI 分岐の根拠。
+    # NULL = 未提供 (大人として扱われる、ただし captured_minor_flag は別途 NULL)。
+    date_of_birth: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
 
 class UserConsent(Base):
@@ -335,6 +338,10 @@ class Match(Base):
     metadata_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="minimal")  # minimal/partial/verified
     # 途中終了: retired_a（自棄権）/ retired_b（相手棄権）/ abandoned（外的中断）
     exception_reason: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    # 0031: 撮影時点で参加選手のいずれかが未成年だったかを示すフラグ。
+    # True = 未成年期撮影、False = 全員大人、NULL = 判定不能 (dob 未提供等)。
+    # AI 学習データ抽出は default で True を除外する。
+    captured_minor_flag: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     # ── Phase B-3: チーム境界 ────────────────────────────────────────────────
     # owner_team_id: 試合を登録したチーム（データ所有・閲覧主体）
     # is_public_pool: True で全チーム参照可能（admin による BWF 等の登録）
@@ -1435,3 +1442,122 @@ class ServerVideoArtifact(Base):
     worker_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+# ─── 0031: 製品テレメトリ ─────────────────────────────────────────────────
+class ProductEvent(Base):
+    """高密度イベントログ。プロダクト改善目的の仮名化テレメトリ。
+
+    GDPR Art 6(1)(f) legitimate interest / APPI 第18条但書 を法的根拠とし、
+    Privacy Notice §テレメトリで開示。同意 popup での opt-in は取らず、
+    Art 21 objection 受付窓口で停止対応する設計。
+
+    PostgreSQL では server_ts で月次パーティション (migration 0031)。
+    user_id / team_id は HMAC で hash 化し、DB ダンプから逆引き不可とする。
+    """
+    __tablename__ = "product_events"
+    __table_args__ = (
+        Index("ix_pe_type_ts_app", "event_type", "server_ts"),
+    )
+
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    team_id_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    role: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    # JSONB (PG) / TEXT (SQLite). アクセスは backend.utils.telemetry helpers 経由で。
+    props: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    client_ts: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    server_ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    app_version: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    platform: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # desktop/mobile_web/mobile_pwa
+
+
+class TutorialCompletion(Base):
+    """ユーザー × チュートリアル ID ごとの進行状態。
+
+    Settings > ヘルプ > チュートリアル から replay 可能。
+    status: 'in_progress' | 'completed' | 'skipped'
+    """
+    __tablename__ = "tutorial_completion"
+    __table_args__ = (
+        UniqueConstraint("user_id", "tutorial_id", name="uq_tutorial_user_tut"),
+        Index("ix_tutorial_completion_user", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    tutorial_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="in_progress")
+    last_step: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    replay_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+# ─── 0031: captured_minor_flag 自動計算 (SQLAlchemy event) ───────────────
+def _compute_captured_minor_flag(session, match_obj):
+    """Match.date 時点で player_a / player_b のいずれかが未成年だったか判定。
+
+    判定基準: その match の date (撮影日) において、参加選手の date_of_birth
+    が分かる範囲で <18 歳の者が 1 人でもいれば True。全員 dob 不明なら NULL。
+    """
+    from backend.db.models import Player  # 局所 import (循環回避)
+    if match_obj.date is None:
+        return
+    pids = [match_obj.player_a_id, match_obj.player_b_id,
+            match_obj.partner_a_id, match_obj.partner_b_id]
+    pids = [p for p in pids if p is not None]
+    if not pids:
+        match_obj.captured_minor_flag = None
+        return
+    players = session.query(Player).filter(Player.id.in_(pids)).all()
+    has_any_age_info = False
+    any_minor = False
+    capture_year = match_obj.date.year
+    for p in players:
+        by = getattr(p, "birth_year", None)
+        if by is None:
+            continue
+        has_any_age_info = True
+        # 撮影年時点の年齢 (year 粒度なので保守側に倒し最大年齢で判定: 18 未満=未成年)
+        try:
+            age = capture_year - int(by)
+            if age < 18:
+                any_minor = True
+                break
+        except (TypeError, ValueError):
+            continue
+    if not has_any_age_info:
+        match_obj.captured_minor_flag = None
+    else:
+        match_obj.captured_minor_flag = any_minor
+
+
+from sqlalchemy import event as _sa_event  # noqa: E402
+
+@_sa_event.listens_for(Match, "before_insert")
+def _match_before_insert(_mapper, conn, target):
+    # Session 取得 (event 内では非標準だが連携用)
+    from sqlalchemy.orm import Session as _Session
+    sess = _Session.object_session(target)
+    if sess is None:
+        return
+    try:
+        _compute_captured_minor_flag(sess, target)
+    except Exception:
+        # 例外で insert を止めない
+        pass
+
+@_sa_event.listens_for(Match, "before_update")
+def _match_before_update(_mapper, conn, target):
+    from sqlalchemy.orm import Session as _Session
+    sess = _Session.object_session(target)
+    if sess is None:
+        return
+    try:
+        _compute_captured_minor_flag(sess, target)
+    except Exception:
+        pass

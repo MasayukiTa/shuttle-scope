@@ -4,6 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { setLanguage, SUPPORTED_LANGS, type SupportedLang } from '@/i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut, ScrollText } from 'lucide-react'
+import { MIcon } from '@/components/common/MIcon'
+import { TUTORIALS } from '@/components/tutorial/tutorials'
+import { replayTutorial, useTutorialState } from '@/components/tutorial/useTutorial'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { Player, TeamHistoryEntry, SharedSession, NetworkDiagnostics } from '@/types'
@@ -2054,6 +2057,30 @@ export function SettingsPage() {
               </section>
             )}
 
+            <TutorialReplaySection card={card} />
+
+            {role === 'admin' && (
+              <section className={`${card} rounded-lg p-5 space-y-3`}>
+                <div className="flex items-center gap-2">
+                  <MIcon name="analytics" size={16} className="text-emerald-400" />
+                  <h2 className="text-base font-semibold">
+                    {t('settings.ui.analytics_title') || 'Product Analytics'}
+                  </h2>
+                </div>
+                <p className="text-xs text-gray-400">
+                  {t('settings.ui.analytics_desc') ||
+                    'WAU/MAU、アノテーション完遂ファネル、分析画面の実需、学習曲線、体調入力品質。PRIVACY §IX-bis 仮名化テレメトリ。'}
+                </p>
+                <button
+                  onClick={() => navigate('/admin/analytics')}
+                  className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-lg"
+                >
+                  <MIcon name="analytics" size={14} />
+                  {t('settings.ui.analytics_open') || 'Analytics を開く'}
+                </button>
+              </section>
+            )}
+
             {/* ── エクスポート ──────────────────────────────── */}
             <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
@@ -2895,6 +2922,53 @@ function BackendConsole({
             {t('settings.ui.clear')}
           </button>
           <span className={`text-[10px] ${textMuted}`}>{lines.length} 行 — Ctrl+A → Ctrl+C でコピー可</span>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function TutorialReplaySection({ card }: { card: string }) {
+  const { state, loading, refresh } = useTutorialState()
+  return (
+    <section className={`${card} rounded-lg p-5 space-y-3`}>
+      <div className="flex items-center gap-2">
+        <MIcon name="school" size={16} className="text-sky-400" />
+        <h2 className="text-base font-semibold">チュートリアル</h2>
+      </div>
+      <p className="text-xs text-gray-400">
+        操作方法を再生できます。完了済みの項目もいつでも再生可能です。
+      </p>
+      {loading ? (
+        <div className="text-xs text-gray-500">読み込み中…</div>
+      ) : (
+        <div className="space-y-2">
+          {Object.values(TUTORIALS).map((tut) => {
+            const rec = state.find((s) => s.tutorial_id === tut.id)
+            return (
+              <div
+                key={tut.id}
+                className="flex flex-wrap items-center justify-between gap-2 border border-gray-700 rounded p-2"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">{tut.title}</div>
+                  <div className="text-xs text-gray-400">
+                    {tut.steps.length} ステップ
+                    {rec && (
+                      <> · ステータス: <span className="text-gray-200">{rec.status}</span> · replay 回数: {rec.replay_count}</>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={async () => { await replayTutorial(tut.id); void refresh() }}
+                  className="text-xs px-3 py-1 rounded bg-sky-600 hover:bg-sky-700 text-white inline-flex items-center gap-1 shrink-0"
+                >
+                  <MIcon name="play_arrow" size={14} />
+                  再生
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
     </section>

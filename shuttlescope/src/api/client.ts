@@ -279,6 +279,9 @@ export interface ConsentStateDTO {
   required_types: ConsentType[]
   optional_types: ConsentType[]
   consents: ConsentRecord[]
+  // PRIVACY §9ter: ユーザが未成年と判明している場合 True。
+  // True なら AI 学習チェックを default off で表示し、注意書きを出す。
+  viewer_is_minor?: boolean
 }
 
 export function getMyConsents(): Promise<{ success: boolean; data: ConsentStateDTO }> {

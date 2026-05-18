@@ -115,6 +115,7 @@ from backend.routers import admin_security as admin_security_router
 from backend.routers import auth_email as auth_email_router
 from backend.routers import billing as billing_router
 from backend.routers import internal_videos as internal_videos_router
+from backend.routers import telemetry as telemetry_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
 import json as _json_cache
@@ -2376,6 +2377,7 @@ app.include_router(auth_email_router.router, prefix="/api")
 app.include_router(billing_router.router, prefix="/api")
 # R-3: Worker 共有 (HTTP only、予備実装、X-Worker-Token 認証)
 app.include_router(internal_videos_router.router, prefix="/api")
+app.include_router(telemetry_router.router, prefix="/api")
 app.include_router(public_site.router)
 app.include_router(legal_docs.router)
 
