@@ -276,6 +276,8 @@ def _public_nav(login_href: str, lang_href: str = "/en") -> str:
 
 
 def _public_nav_en(login_href: str, lang_href: str = "/") -> str:
+    # EN nav からは ?lang=en を付けて SPA に渡し、起動時の言語検出で英語に揃える。
+    # (src/i18n/index.ts の detectInitialLang が URLSearchParams を読む)
     return f"""
     <div class="topbar">
       <a class="brand" href="https://shuttle-scope.com">Shuttle<span>Scope</span></a>
@@ -284,7 +286,7 @@ def _public_nav_en(login_href: str, lang_href: str = "/") -> str:
         <a href="/en/terms">Terms of Use</a>
         <a href="/en/privacy">Privacy Policy</a>
         <a href="/en/contact">Contact</a>
-        <a href="https://app.shuttle-scope.com/#/register">Register</a>
+        <a href="https://app.shuttle-scope.com/?lang=en#/register">Register</a>
         <a href="{login_href}">Login</a>
         <a href="{lang_href}" style="font-size:.8rem;opacity:.65;letter-spacing:.04em">JP</a>
       </div>
@@ -292,8 +294,12 @@ def _public_nav_en(login_href: str, lang_href: str = "/") -> str:
     """
 
 
-def _public_login_href(request: Request) -> str:
-    return "https://app.shuttle-scope.com/login"
+def _public_login_href(request: Request, lang: str = "ja") -> str:
+    # SPA の hash router は ?lang= を起動時の言語選択に使う (i18n.detectInitialLang)。
+    # EN ページから来た場合は ?lang=en を付ける。
+    if lang == "en":
+        return "https://app.shuttle-scope.com/?lang=en#/login"
+    return "https://app.shuttle-scope.com/#/login"
 
 
 def should_serve_public_site(request: Request) -> bool:
@@ -770,6 +776,18 @@ if(lang==='en'){
   document.querySelectorAll('a[href="/terms"]').forEach(a=>a.setAttribute('href','/en/terms'));
   document.querySelectorAll('a[href="/privacy"]').forEach(a=>a.setAttribute('href','/en/privacy'));
   document.querySelectorAll('a[href="/contact"]').forEach(a=>a.setAttribute('href','/en/contact'));
+  // SPA への遷移 link に ?lang=en を付けて、起動時の言語選択
+  // (i18n.detectInitialLang) で英語が選ばれるようにする。
+  // - https://app.shuttle-scope.com/#/register  ← hash 形式: そのまま lang 付与
+  // - https://app.shuttle-scope.com/login       ← path 形式: hash に変換 + lang 付与
+  //   (backend の spa_catch_all は /login を /#/login に redirect するが、その際
+  //    ?lang=en は脱落するので、最初から hash 形式に書き換えておく)
+  document.querySelectorAll('a[href^="https://app.shuttle-scope.com/"]').forEach(a=>{
+    const u=new URL(a.href);
+    if(u.pathname && u.pathname!=='/'){u.hash='#'+u.pathname;u.pathname='/';}
+    if(!u.searchParams.get('lang')){u.searchParams.set('lang','en');}
+    a.setAttribute('href',u.toString());
+  });
 }
 // hamburger
 const ham=document.getElementById('ham'),mm=document.getElementById('mmenu');
@@ -1273,7 +1291,7 @@ def _base_layout_str_en(title: str, body: str, *, canonical_path: str = "/en", n
 
 
 def _render_terms_str_en(request: Request) -> str:
-    login_href = _public_login_href(request)
+    login_href = _public_login_href(request, lang='en')
     body = f"""
     <div class="shell legal">
       {_public_nav_en(login_href, lang_href="/terms")}
@@ -1382,7 +1400,7 @@ def _render_terms_str_en(request: Request) -> str:
 
 
 def _render_privacy_str_en(request: Request) -> str:
-    login_href = _public_login_href(request)
+    login_href = _public_login_href(request, lang='en')
     body = f"""
     <div class="shell legal">
       {_public_nav_en(login_href, lang_href="/privacy")}
@@ -1446,7 +1464,7 @@ def _render_privacy_str_en(request: Request) -> str:
 
 
 def _render_contact_str_en(request: Request) -> str:
-    login_href = _public_login_href(request)
+    login_href = _public_login_href(request, lang='en')
     submit_path = "/api/public/contact"
     body = f"""
     <div class="shell">
