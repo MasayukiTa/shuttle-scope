@@ -1563,8 +1563,39 @@ async def favicon_png():
 
 @router.get("/favicon.ico")
 async def favicon_ico():
-    # 古い User-Agent 向けに .ico も同じ PNG で返す
-    return _serve_public_asset("favicon.png", "image/png")
+    # real multi-size ICO (16/32/48 embedded)。Google crawler 等の strict 検証器
+    # は ICO magic bytes を読むので、PNG を .ico として返してはいけない。
+    return _serve_public_asset("favicon.ico", "image/x-icon")
+
+
+@router.get("/favicon-16.png")
+async def favicon_16():
+    return _serve_public_asset("favicon-16.png", "image/png")
+
+
+@router.get("/favicon-32.png")
+async def favicon_32():
+    return _serve_public_asset("favicon-32.png", "image/png")
+
+
+@router.get("/favicon-48.png")
+async def favicon_48():
+    return _serve_public_asset("favicon-48.png", "image/png")
+
+
+@router.get("/favicon-96.png")
+async def favicon_96():
+    return _serve_public_asset("favicon-96.png", "image/png")
+
+
+@router.get("/favicon-192.png")
+async def favicon_192():
+    return _serve_public_asset("favicon-192.png", "image/png")
+
+
+@router.get("/favicon-512.png")
+async def favicon_512():
+    return _serve_public_asset("favicon-512.png", "image/png")
 
 
 @router.get("/apple-touch-icon.png")
