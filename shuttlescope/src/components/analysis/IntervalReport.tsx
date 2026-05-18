@@ -7,6 +7,9 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 interface IntervalReportProps {
   matchId: number
   completedSet: number
+  /** セット行クリック時の callback。セットの詳細モーダル (SetIntervalSummary) を開く用途。
+   *  未指定なら行はクリック不可。 */
+  onSetClick?: (setNum: number) => void
 }
 
 interface SetReport {
@@ -39,7 +42,7 @@ interface IntervalReportResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-export function IntervalReport({ matchId, completedSet }: IntervalReportProps) {
+export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalReportProps) {
   const { t } = useTranslation()
 
   const { data: resp, isLoading } = useQuery({
@@ -84,29 +87,50 @@ export function IntervalReport({ matchId, completedSet }: IntervalReportProps) {
       {/* セットごとの詳細 */}
       {data.sets.length > 0 && (
         <div className="space-y-2">
-          {data.sets.map((setReport) => (
-            <div
-              key={setReport.set_num}
-              className="bg-gray-700/50 rounded-lg p-2.5 flex items-center justify-between"
-            >
-              <div>
-                <span className="text-sm font-medium text-white">
-                  {t('analysis.interval_report.set')} {setReport.set_num}
-                </span>
-                <span className="text-xs text-gray-400 ml-2">
-                  {setReport.wins}/{setReport.rally_count}ラリー
-                </span>
+          {data.sets.map((setReport) => {
+            const clickable = !!onSetClick
+            const Inner = (
+              <>
+                <div>
+                  <span className="text-sm font-medium text-white">
+                    {t('analysis.interval_report.set')} {setReport.set_num}
+                  </span>
+                  <span className="text-xs text-gray-400 ml-2">
+                    {setReport.wins}/{setReport.rally_count}ラリー
+                  </span>
+                </div>
+                <div className="text-right flex items-center gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {(setReport.posterior_mean * 100).toFixed(1)}%
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      [{(setReport.ci_low * 100).toFixed(1)}, {(setReport.ci_high * 100).toFixed(1)}]
+                    </p>
+                  </div>
+                  {clickable && <span className="text-blue-400 text-xs">詳細 ›</span>}
+                </div>
+              </>
+            )
+            return clickable ? (
+              <button
+                key={setReport.set_num}
+                type="button"
+                onClick={() => onSetClick!(setReport.set_num)}
+                className="w-full bg-gray-700/50 hover:bg-gray-700 rounded-lg p-2.5 flex items-center justify-between text-left transition-colors"
+                title="セットの詳細解析を開く"
+              >
+                {Inner}
+              </button>
+            ) : (
+              <div
+                key={setReport.set_num}
+                className="bg-gray-700/50 rounded-lg p-2.5 flex items-center justify-between"
+              >
+                {Inner}
               </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold text-white">
-                  {(setReport.posterior_mean * 100).toFixed(1)}%
-                </p>
-                <p className="text-[10px] text-gray-500">
-                  [{(setReport.ci_low * 100).toFixed(1)}, {(setReport.ci_high * 100).toFixed(1)}]
-                </p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
