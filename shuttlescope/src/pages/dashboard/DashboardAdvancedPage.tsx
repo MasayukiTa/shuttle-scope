@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
@@ -52,6 +53,7 @@ interface Props {
 }
 
 export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayers }: Props) {
+  useEffect(() => analyticsViewLifecycle('dashboard.advanced'), [])
   const { t } = useTranslation()
   const [section, setSection] = useState<AdvancedSection>('shot')
   const [pairMode, setPairMode] = useState(false)

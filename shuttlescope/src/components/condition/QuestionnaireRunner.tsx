@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { QuestionItem, ScaleKind } from '@/hooks/useConditions'
+import { trackConditionInput } from '@/utils/analytics'
 
 interface Props {
   items: QuestionItem[]
@@ -15,8 +16,28 @@ export function QuestionnaireRunner({ items, responses, onChange, isLight }: Pro
   const panelCls = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
   const labelMuted = isLight ? 'text-gray-600' : 'text-gray-400'
 
+  // 質問ごとに入力開始時刻と value 変更回数を保持 (テレメトリ用)
+  const startedAtRef = useRef<Record<string, number>>({})
+  const changeCountRef = useRef<Record<string, number>>({})
+
   const set = (id: string | number, v: number) => {
-    onChange({ ...responses, [String(id)]: v })
+    const key = String(id)
+    // 初回 tap: 開始時刻記録 / 既存: 変更回数 ++
+    if (!startedAtRef.current[key]) {
+      startedAtRef.current[key] = performance.now()
+      changeCountRef.current[key] = 1
+    } else {
+      changeCountRef.current[key] = (changeCountRef.current[key] || 0) + 1
+    }
+    // テレメトリ送出 (PII なし: question_id + elapsed_ms + 変更回数のみ。値は送らない)
+    try {
+      trackConditionInput(
+        key,
+        Math.round(performance.now() - startedAtRef.current[key]),
+        changeCountRef.current[key] || 1,
+      )
+    } catch { /* ignore */ }
+    onChange({ ...responses, [key]: v })
   }
 
   return (

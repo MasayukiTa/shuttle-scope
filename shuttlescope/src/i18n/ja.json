@@ -108,6 +108,8 @@
       "password": "パスワード (8 文字以上)",
       "password_hint": "大文字・小文字・数字・記号 から少なくとも 3 種類を含めてください",
       "display_name_optional": "表示名 (任意)",
+      "dob_optional": "生年月日 (任意)",
+      "dob_hint": "任意入力。AI 学習・研究利用への同意 UI で未成年配慮（PRIVACY §IX-ter）を適用するために使用します。",
       "submit": "登録する",
       "success_title": "確認メールを送信しました",
       "success_body": "登録したメールアドレスに確認リンクをお送りしました。リンクをクリックして確認を完了してください。",

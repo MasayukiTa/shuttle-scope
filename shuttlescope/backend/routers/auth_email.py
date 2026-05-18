@@ -172,6 +172,9 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
     display_name: Optional[str] = Field(None, max_length=100)
     turnstile_token: Optional[str] = Field(None, max_length=2048)
+    # 任意入力。PRIVACY §IX-ter (未成年配慮) と AI 学習除外判定の根拠。
+    # ISO 8601 yyyy-mm-dd。未入力 = NULL = 大人として扱われる。
+    date_of_birth: Optional[str] = Field(None, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
 class PasswordResetRequest(BaseModel):
@@ -304,6 +307,20 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
         return {"success": True, "data": {"user_id": None}}
 
     hashed = _hash_password_or_422(body.password)
+    # PRIVACY §IX-ter: dob 任意入力。届いていれば parse、失敗時は None で続行。
+    dob_val = None
+    if body.date_of_birth:
+        try:
+            from datetime import date as _date
+            y, m, d = body.date_of_birth.split("-")
+            parsed = _date(int(y), int(m), int(d))
+            # 妥当性チェック: 1900〜今日。未来 dob と歴史 dob は黙って棄却。
+            from datetime import date as _today_date
+            today = _today_date.today()
+            if 1900 <= parsed.year <= today.year and parsed <= today:
+                dob_val = parsed
+        except (ValueError, TypeError):
+            dob_val = None
     user = User(
         username=body.username,
         email=body.email,
@@ -313,6 +330,7 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
         # admin が「保留中ユーザー一覧」から承認するまで全 API 403 になる。
         role="player",
         awaiting_admin_approval=True,
+        date_of_birth=dob_val,
     )
     db.add(user)
     db.commit()

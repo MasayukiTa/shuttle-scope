@@ -11,6 +11,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [dob, setDob] = useState('')  // yyyy-mm-dd
   const [tsToken, setTsToken] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,6 +38,7 @@ export default function RegisterPage() {
         password,
         display_name: displayName || null,
         turnstile_token: tsToken || null,
+        date_of_birth: dob || null,
       })
       setSuccess(true)
     } catch (err: any) {
@@ -118,6 +120,19 @@ export default function RegisterPage() {
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                  maxLength={100}
                  className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            {t('auth.register.dob_optional') || '生年月日（任意）'}
+          </label>
+          <input type="date" value={dob} onChange={(e) => setDob(e.target.value)}
+                 max={new Date().toISOString().slice(0, 10)}
+                 className="w-full rounded border px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600" />
+          <p className="mt-1 text-xs text-gray-500">
+            {t('auth.register.dob_hint') ||
+              '任意入力。AI 学習・研究利用への同意 UI で未成年配慮（PRIVACY §IX-ter）を適用するために使用します。'}
+          </p>
         </div>
 
         <TurnstileWidget onToken={setTsToken} />
