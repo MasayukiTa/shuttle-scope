@@ -500,6 +500,19 @@ function DocButton({
   )
 }
 
+// 現在 path から header に出す文書名を解決する。クロスリンクで navigate した
+// 先 (license / data_contribution 等) も初期 doc と同じくらい綺麗に表示するため。
+function _titleForPath(path: string, fallbackKind: 'privacy' | 'terms', t: (k: string) => string): string {
+  const norm = (path || '').replace(/^\/en/, '')
+  if (norm.includes('/legal/privacy')) return t('onboarding.consent.view_privacy') || 'プライバシーポリシー'
+  if (norm.includes('/legal/terms')) return t('onboarding.consent.view_terms') || '利用規約'
+  if (norm.includes('/legal/license')) return 'LICENSE'
+  if (norm.includes('/legal/data_contribution')) return t('onboarding.consent.view_dct') || 'データ提供規約'
+  return fallbackKind === 'privacy'
+    ? (t('onboarding.consent.view_privacy') || 'プライバシーポリシー')
+    : (t('onboarding.consent.view_terms') || '利用規約')
+}
+
 // 文書 popup modal: 利用規約 / プライバシーポリシー の HTML を iframe で表示。
 // scroll を最下部まで到達したら onReachedBottom() を call、parent は scrolled flag を立てる。
 // 印刷ボタンで iframe.contentWindow.print()。
@@ -515,6 +528,12 @@ function DocModal({
 }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [reached, setReached] = useState<boolean>(alreadyScrolled)
+  // 同 modal 内で別 doc に navigate した回数。> 0 で「戻る」ボタンを enable。
+  const [visitDepth, setVisitDepth] = useState<number>(0)
+  // 現在 iframe が表示している path (header の文書名表示用)
+  const [currentPath, setCurrentPath] = useState<string>('')
+  // 各 load の reached 状態判定で 1 度目 (= 初期 src 読込) は visitDepth を加算しない
+  const isFirstLoadRef = useRef<boolean>(true)
 
   useEffect(() => {
     const iframe = iframeRef.current
@@ -525,6 +544,15 @@ function DocModal({
         const win = iframe.contentWindow
         const doc = iframe.contentDocument
         if (!win || !doc) return
+        // navigate (link click) で再 load されたら visit depth を増やす。
+        if (isFirstLoadRef.current) {
+          isFirstLoadRef.current = false
+        } else {
+          setVisitDepth((d) => d + 1)
+          // 新規 doc を開いた瞬間は scroll 未到達扱いに戻す。
+          setReached(false)
+        }
+        try { setCurrentPath(win.location.pathname || '') } catch { /* ignore */ }
         const check = () => {
           // 下端に近い (誤差 50px 以内) ら reached 判定
           const scroller = (doc.scrollingElement || doc.documentElement || doc.body) as HTMLElement
@@ -532,7 +560,14 @@ function DocModal({
           const remaining = scroller.scrollHeight - (scroller.scrollTop + win.innerHeight)
           if (remaining <= 50) {
             setReached(true)
-            onReachedBottom()
+            // 初期 doc (= 必須同意対象) のみ親 parent 側 scroll flag を立てる。
+            // クロスリンクで開いた license/data_contribution は scroll 強制対象外。
+            try {
+              const path = win.location.pathname || ''
+              if (path === `/legal/${docKind}` || path === `/en/legal/${docKind}`) {
+                onReachedBottom()
+              }
+            } catch { /* ignore */ }
           }
         }
         // 初期チェック (短い文書は最初から下端まで見えてる)
@@ -548,7 +583,16 @@ function DocModal({
       iframe.removeEventListener('load', onLoad)
       cleanup?.()
     }
-  }, [onReachedBottom])
+  }, [onReachedBottom, docKind])
+
+  // 戻る: iframe の session history を 1 つ戻す。
+  const onBack = () => {
+    try {
+      iframeRef.current?.contentWindow?.history.back()
+      // visitDepth は次の load event で再計測 (= 単純に -1 で良いが本物の history 不一致を避ける)
+      setVisitDepth((d) => Math.max(0, d - 1))
+    } catch { /* ignore */ }
+  }
 
   const onPrint = () => {
     try {
@@ -567,18 +611,29 @@ function DocModal({
         className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[85vh] rounded-lg shadow-xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {docKind === 'privacy'
-              ? (t('onboarding.consent.view_privacy') || 'プライバシーポリシー')
-              : (t('onboarding.consent.view_terms') || '利用規約')}
-            {reached && (
-              <span className="ml-2 text-emerald-600 dark:text-emerald-400 text-xs">
-                ✓ {t('onboarding.consent.read_done') || '読了'}
-              </span>
-            )}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {/* 戻る: クロスリンクで別 doc に navigate していたら 1 つ前に戻る */}
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={visitDepth <= 0}
+              title={t('onboarding.consent.back') || '前の文書に戻る'}
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <MIcon name="arrow_back" size={18} />
+            </button>
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+              {_titleForPath(currentPath, docKind, t)}
+              {reached && (
+                <span className="ml-2 inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 text-xs">
+                  <MIcon name="check" size={12} />
+                  {t('onboarding.consent.read_done') || '読了'}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={onPrint}
