@@ -290,6 +290,16 @@ export default function OnboardingConsentPage({
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {t('onboarding.consent.optional_hint') ||
               '以下の任意同意は GDPR Article 6(1)(a) / APPI に基づく同意です。撤回はお問い合わせフォームまたは contact@shuttle-scope.com 宛てメールで受け付けます（受領から 14 日以内に処理）。'}
+            {/* 「その他の規約」リンクは任意同意 hint 文の末尾にひっそり配置 (= スマホでも
+               独立行にならず文中の青リンクとして目立ちすぎない)。 */}
+            {' '}
+            <button
+              type="button"
+              onClick={() => setOtherDocsOpen(true)}
+              className="underline text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+            >
+              {t('onboarding.consent.other_docs_link') || 'その他の規約はこちら'}
+            </button>
           </p>
 
           <ConsentCheckbox
@@ -382,7 +392,7 @@ export default function OnboardingConsentPage({
               }}
               className="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
             >
-              {t('onboarding.consent.later') || '後で回答する'}
+              {t('onboarding.consent.later') || '任意項目は後で回答する'}
             </button>
           )}
           <button
@@ -402,14 +412,6 @@ export default function OnboardingConsentPage({
         <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
           {t('onboarding.consent.withdraw_notice') ||
             '必須確認事項は契約履行のため撤回は行えません（撤回はサービス利用終了と等価です）。任意同意は 設定 → 体調タブ → 体組成データの開示設定、またはお問い合わせフォーム / contact@shuttle-scope.com 宛てメールでいつでも変更・撤回できます。'}
-          {' '}
-          <button
-            type="button"
-            onClick={() => setOtherDocsOpen(true)}
-            className="underline text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-          >
-            {t('onboarding.consent.other_docs_link') || 'その他の規約はこちら'}
-          </button>
         </p>
       </div>
 
