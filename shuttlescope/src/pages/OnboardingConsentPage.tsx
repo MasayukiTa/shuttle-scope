@@ -378,7 +378,7 @@ export default function OnboardingConsentPage({
               }}
               className="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
             >
-              {t('onboarding.consent.later') || 'あとで見るよ'}
+              {t('onboarding.consent.later') || '後で回答する'}
             </button>
           )}
           <button
