@@ -36,11 +36,14 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # allowed slug -> filename (path traversal の余地を作らない whitelist)
 # LICENSE は plain text、他は markdown。
+# contracts/ 配下のファイルは「その他の規約」として popup から閲覧用。
 _DOC_MAP: dict[str, str] = {
     "privacy": "PRIVACY.md",
     "terms": "TERMS_OF_SERVICE.md",
     "data_contribution": "DATA_CONTRIBUTION_TERMS.md",
     "license": "LICENSE",
+    "dpa_template": "contracts/DPA_TEMPLATE.md",
+    "beta_agreement": "contracts/BETA_DATA_HANDLING_AGREEMENT.md",
 }
 
 # 同じドキュメントの英語版があれば差し替える (今は同一ファイルを再利用)。
@@ -196,6 +199,28 @@ def legal_license_ja() -> HTMLResponse:
 @router.get("/en/legal/license", response_class=HTMLResponse)
 def legal_license_en() -> HTMLResponse:
     return HTMLResponse(_render_markdown_page("license", "en"))
+
+
+# --- その他の規約 (popup の「その他」link から閲覧用、必須同意対象外) ---
+
+@router.get("/legal/dpa_template", response_class=HTMLResponse)
+def legal_dpa_ja() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("dpa_template", "ja"))
+
+
+@router.get("/en/legal/dpa_template", response_class=HTMLResponse)
+def legal_dpa_en() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("dpa_template", "en"))
+
+
+@router.get("/legal/beta_agreement", response_class=HTMLResponse)
+def legal_beta_ja() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("beta_agreement", "ja"))
+
+
+@router.get("/en/legal/beta_agreement", response_class=HTMLResponse)
+def legal_beta_en() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("beta_agreement", "en"))
 
 
 @router.get("/en/legal/privacy", response_class=HTMLResponse)
