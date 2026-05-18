@@ -17,6 +17,7 @@ import {
   getMyConsents,
   submitConsents,
 } from '@/api/client'
+import { MIcon } from '@/components/common/MIcon'
 
 // 必須項目は GDPR Article 6(1)(b) (契約履行) / APPI 第18条 を法的根拠とし、
 // 「同意」ではなく「契約条項の確認」として扱う。撤回はサービス利用終了と等価。
@@ -481,7 +482,10 @@ function DocButton({
           : 'border-blue-400 dark:border-blue-600 bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 animate-pulse-slow'
       }`}
     >
-      {scrolled ? '✓' : '📖'} {label}
+      {/* CLAUDE.md / memory: アイコンは絶対 Google Material Symbols (MIcon) を使う。
+         emoji や lucide は使わない。subset CSS 経由でロードされる icon のみ表示可。 */}
+      <MIcon name={scrolled ? 'check' : 'visibility'} size={14} />
+      {label}
       {scrolled && <span className="ml-1 text-[10px] opacity-80">({doneLabel})</span>}
     </button>
   )

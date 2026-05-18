@@ -1962,6 +1962,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             else:
                 # 開発・テスト: 緩く (localhost backend / Vite dev server / electron-vite)
                 connect_src = "connect-src 'self' wss: https: http://localhost:* ws://localhost:*"
+            # frame-ancestors: 通常 'none' (clickjacking 防御)、ただし
+            # OnboardingConsentPage が iframe 内で読ませる法務 HTML は 'self'
+            # に緩めて同一オリジン SPA からの iframe を許可。X-Frame-Options
+            # SAMEORIGIN だけだと CSP frame-ancestors 'none' に override される
+            # ため、CSP 側もここで合わせて変える必要がある。
+            frame_anc = "frame-ancestors 'none'"
+            if (
+                path in ("/privacy", "/terms", "/contact",
+                         "/en/privacy", "/en/terms", "/en/contact")
+                or path.startswith("/public-preview/")
+            ):
+                frame_anc = "frame-ancestors 'self'"
             csp_parts = [
                 "default-src 'self'",
                 script_src,
@@ -1973,7 +1985,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "object-src 'none'",
                 "base-uri 'self'",
                 "form-action 'self'",
-                "frame-ancestors 'none'",
+                frame_anc,
                 "upgrade-insecure-requests",
                 "report-uri /api/csp_report",
             ]
