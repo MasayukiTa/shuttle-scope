@@ -1453,7 +1453,8 @@
     "unit_default": "件",
     "prefix": "あと",
     "suffix": "のデータで表示できます",
-    "current": "現在"
+    "current": "現在",
+    "loading": "データを取得しています…"
   },
   "video": {
     "play": "再生",

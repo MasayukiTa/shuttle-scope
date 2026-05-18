@@ -156,7 +156,7 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
         <p className="text-xs font-semibold mb-1" style={{ color: subText }}>
           {t('prediction.growth_trend')}
         </p>
-        <NoDataMessage sampleSize={0} minRequired={4} unit="試合" />
+        <NoDataMessage sampleSize={0} minRequired={4} unit="試合" loading={isPending || isFetching} />
       </div>
     )
   }
@@ -386,7 +386,7 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
   const isLight = useIsLightMode()
   const subText = isLight ? '#64748b' : '#9ca3af'
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isPending, isFetching } = useQuery({
     queryKey: ['prediction-analyst-depth', playerId, opponentId, tournamentLevel],
     queryFn: () =>
       apiGet<{ success: boolean; data: AnalystDepthData }>('/prediction/analyst_depth', {
@@ -397,7 +397,7 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
     enabled: !!playerId,
   })
 
-  if (isLoading) {
+  if (isLoading || isPending || isFetching) {
     return <p className="text-xs text-gray-500 py-2">{t('prediction.loading')}</p>
   }
 

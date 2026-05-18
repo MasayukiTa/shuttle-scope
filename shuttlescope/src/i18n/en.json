@@ -1182,7 +1182,8 @@
     "unit_default": "items",
     "prefix": "Needs",
     "suffix": "more data to display",
-    "current": "Current"
+    "current": "Current",
+    "loading": "Fetching data…"
   },
   "video": {
     "play": "Play",

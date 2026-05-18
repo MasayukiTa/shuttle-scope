@@ -235,7 +235,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isPending, isFetching } = useQuery({
     queryKey: ['analysis-shot-transition-matrix', playerId, filters],
     queryFn: () =>
       apiGet<TransitionMatrixResponse>('/analysis/shot_transition_matrix', {
@@ -259,7 +259,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
     }
   }, [matrixData, isLight])
 
-  if (isLoading) {
+  if (isLoading || isPending || isFetching) {
     return (
       <div className="text-gray-500 text-sm py-8 text-center">{t('auto.TransitionMatrix.k1')}</div>
     )
