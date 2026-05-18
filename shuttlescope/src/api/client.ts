@@ -258,6 +258,8 @@ export type ConsentType =
   | 'ai_training'
   | 'research_participation'
   | 'cross_border_transfer'
+  | 'body_disclose_to_analyst'
+  | 'body_disclose_to_coach'
 
 export interface ConsentRecord {
   consent_type: ConsentType

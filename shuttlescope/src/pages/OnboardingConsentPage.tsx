@@ -25,7 +25,14 @@ const REQUIRED: ConsentType[] = ['service_delivery', 'beta_agreement']
 // per Article 7(2)。撤回は contact@shuttle-scope.com / 問い合わせフォーム経由。
 // cross_border_transfer は EU-Japan 十分性認定 (2019-01) により追加同意不要のため
 // UI 提示しない (CONSENT_UI_LEGAL_ANALYSIS §2.5 選択肢 A 採用)。
-const OPTIONAL: ConsentType[] = ['ai_training', 'research_participation']
+// body_disclose_to_analyst / body_disclose_to_coach: 体組成データ (Tier 3) の
+// 開示先制御。default 表示は ON (β期間運用ポリシー)、設定でいつでも変更可。
+const OPTIONAL: ConsentType[] = [
+  'ai_training',
+  'research_participation',
+  'body_disclose_to_analyst',
+  'body_disclose_to_coach',
+]
 
 interface OnboardingConsentPageProps {
   onCompleted: () => void
@@ -47,6 +54,10 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
     // cross_border_transfer は UI に出さないが backend 側の互換のため keep。
     // 送信時は false のまま (撤回扱い) で送り、backend は OPTIONAL として記録する。
     cross_border_transfer: false,
+    // 体組成データの開示: β期間運用方針として default ON で表示する。
+    // ユーザが見たうえで OFF にしたければチェックを外せる (= consent withdraw)。
+    body_disclose_to_analyst: true,
+    body_disclose_to_coach: true,
   })
 
   useEffect(() => {
@@ -228,6 +239,26 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
             description={
               t('onboarding.consent.research_desc') ||
               '匿名化のうえスポーツ科学研究、論文発表等への利用を許可します。事前説明と同意撤回権を保持します。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。'
+            }
+          />
+
+          <ConsentCheckbox
+            checked={given.body_disclose_to_analyst}
+            onChange={(v) => setGiven((g) => ({ ...g, body_disclose_to_analyst: v }))}
+            label={t('onboarding.consent.body_disclose_to_analyst_label') || '体組成データをアナリストに開示します'}
+            description={
+              t('onboarding.consent.body_disclose_to_analyst_desc') ||
+              '体重・体脂肪率・筋肉量等のデータをチーム解析担当 (analyst) に開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。'
+            }
+          />
+
+          <ConsentCheckbox
+            checked={given.body_disclose_to_coach}
+            onChange={(v) => setGiven((g) => ({ ...g, body_disclose_to_coach: v }))}
+            label={t('onboarding.consent.body_disclose_to_coach_label') || '体組成データをコーチに開示します'}
+            description={
+              t('onboarding.consent.body_disclose_to_coach_desc') ||
+              '体重・体脂肪率・筋肉量等のデータをコーチに開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。'
             }
           />
         </section>

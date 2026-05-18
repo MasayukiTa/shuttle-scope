@@ -3413,9 +3413,13 @@
       "ai_training_desc": "匿名化・集計化されたデータを将来的なモデル精度向上のために利用します。同意は任意であり、いつでも撤回できます。撤回時は以後の学習対象から除外されます。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。",
       "research_label": "学術研究への利用に同意します",
       "research_desc": "匿名化のうえスポーツ科学研究、論文発表等への利用を許可します。事前説明と同意撤回権を保持します。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。",
+      "body_disclose_to_analyst_label": "体組成データをアナリストに開示します",
+      "body_disclose_to_analyst_desc": "体重・体脂肪率・筋肉量等のデータをチーム解析担当 (analyst) に開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。OFF にした場合 analyst の画面では体組成データが非表示になります。",
+      "body_disclose_to_coach_label": "体組成データをコーチに開示します",
+      "body_disclose_to_coach_desc": "体重・体脂肪率・筋肉量等のデータをコーチに開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。OFF にした場合 coach の画面では体組成データが非表示になります。",
       "submit": "確認・同意して開始",
       "submitting": "送信中...",
-      "withdraw_notice": "必須確認事項は契約履行のため撤回は行えません（撤回はサービス利用終了と等価です）。任意同意は問い合わせフォームまたは contact@shuttle-scope.com 宛てメールでいつでも撤回でき、本サービスの利用には影響しません。設定画面内の同意撤回 UI は順次提供予定です。",
+      "withdraw_notice": "必須確認事項は契約履行のため撤回は行えません（撤回はサービス利用終了と等価です）。任意同意は **設定 → 体調タブ → 体組成データの開示設定**、またはお問い合わせフォーム / contact@shuttle-scope.com 宛てメールでいつでも変更・撤回できます。",
       "error_required_missing": "必須確認事項にすべてチェックを入れてください",
       "error_submit": "同意送信に失敗しました"
     }

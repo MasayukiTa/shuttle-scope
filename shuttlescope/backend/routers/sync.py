@@ -42,7 +42,7 @@ def _sanitize_errors(errors):
     return [f"{len(errors)} 件の内部エラーが発生しました"]
 
 
-from backend.db.models import SyncConflict, Match
+from backend.db.models import SyncConflict, Match, Player, User, UserConsent
 from backend.utils.auth import (
     get_auth,
     require_analyst,
@@ -52,6 +52,98 @@ from backend.utils.auth import (
 from pydantic import BaseModel as _BaseModel
 
 router = APIRouter(prefix="/sync", tags=["sync"])
+
+
+# ─── 同意 manifest (ML パイプライン向け) ─────────────────────────────────────
+
+# ML 学習データ作成側が「この player の試合データを学習に使ってよいか」を
+# 1 ファイルで把握するための整列済 view。
+# 設計:
+#  - 出力は player_id 単位。各 player の最新同意状態を bool で羅列。
+#  - 主軸は `ai_training` (これが False の player は学習対象から除外する)。
+#  - 補助フラグも返す: research_participation, body_disclose_to_analyst,
+#    body_disclose_to_coach, service_delivery, beta_agreement。
+#  - 試合/コンディションデータをまるごと dump する時は、必ずこの manifest と
+#    結合して flag が True の player のみを採用する。
+#  - admin / analyst のみ取得可。
+
+_CONSENT_TYPES_OUTPUT = [
+    "service_delivery",
+    "beta_agreement",
+    "ai_training",
+    "research_participation",
+    "body_disclose_to_analyst",
+    "body_disclose_to_coach",
+]
+
+
+@router.get("/consent_manifest")
+def consent_manifest(request: Request, db: Session = Depends(get_db)):
+    """全 player の同意状態を 1 まとめにして返す ML パイプライン向け manifest。
+
+    ML 学習に使う前にこれを取得し、`ai_training=False` の player を学習対象
+    から除外する用途。output は安定キーで列挙される (差分管理が容易)。
+    """
+    ctx = get_auth(request)
+    if not ctx.user_id:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    if ctx.role not in ("admin", "analyst"):
+        raise HTTPException(status_code=403, detail="admin / analyst のみ取得可能")
+
+    # 全 player (delete されてないもの) を user join で取得
+    rows = (
+        db.query(Player, User)
+        .outerjoin(User, User.player_id == Player.id)
+        .filter(Player.deleted_at.is_(None))
+        .all()
+    )
+
+    # 同意は UserConsent の最新行を見る。1 user × type ごとに最新 1 件。
+    # まとめて 1 クエリで pull して dict 化することで N+1 を避ける。
+    user_ids = [u.id for (_p, u) in rows if u is not None]
+    consent_map: dict[tuple[int, str], UserConsent] = {}
+    if user_ids:
+        all_consents = (
+            db.query(UserConsent)
+            .filter(UserConsent.user_id.in_(user_ids))
+            .order_by(UserConsent.given_at.desc())
+            .all()
+        )
+        for c in all_consents:
+            key = (c.user_id, c.consent_type)
+            if key in consent_map:
+                continue
+            consent_map[key] = c
+
+    def _consent_bool(user_id: Optional[int], ctype: str) -> bool:
+        if user_id is None:
+            return False
+        rec = consent_map.get((user_id, ctype))
+        if rec is None:
+            return False
+        return bool(rec.consent_given) and rec.withdrawn_at is None
+
+    out = []
+    for (player, user) in rows:
+        flags = {ct: _consent_bool(user.id if user else None, ct) for ct in _CONSENT_TYPES_OUTPUT}
+        out.append({
+            "player_id": player.id,
+            "player_name": player.name,
+            "team": player.team,
+            "user_id": user.id if user else None,
+            "has_user_account": user is not None,
+            **flags,
+            # 派生フラグ: ML 学習対象に含めて良いか
+            "ml_eligible": flags["ai_training"],
+        })
+
+    return {
+        "success": True,
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "row_count": len(out),
+        "ml_eligible_count": sum(1 for r in out if r["ml_eligible"]),
+        "data": out,
+    }
 
 
 # ─── エクスポート ──────────────────────────────────────────────────────────────
