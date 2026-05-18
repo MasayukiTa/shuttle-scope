@@ -408,3 +408,123 @@ arrangements appropriate to a small-scale beta deployment. These interim
 arrangements are reviewed at the end of the beta period and replaced or
 upgraded as the Service matures, with the resulting changes reflected in
 subsequent updates to `PRIVACY.md`.
+
+## 18. Security Practices and Data-Breach Disclaimer
+
+### 18.1 Security Controls in Place
+
+The developer applies reasonable, industry-aligned security measures
+appropriate to the scale and stage of the Service, including (without
+limitation): TLS in transit, scoped role-based access control, secret
+isolation, automated dependency and static-analysis scanning (CodeQL,
+Semgrep, Bandit, DevSkim, Gitleaks, Trivy, OSV-Scanner, Microsoft
+Defender), continuous adversarial test suites that probe authentication,
+authorization, mass-assignment, SSRF, path traversal, and rate-limit
+boundaries, request rate limiting, lockouts for credential brute force,
+audit logging for sensitive operations, and at-rest protection for
+backups via filesystem-level controls. Cryptographic database encryption
+posture (column-level or whole-DB) is implemented incrementally — its
+precise scope at any given point in time is described in `PRIVACY.md`
+Article IX, not in this Section.
+
+### 18.2 No Warranty of Absolute Security
+
+You expressly acknowledge that **no information system can be made
+absolutely secure**. Despite the controls in Section 18.1, the developer
+makes no representation or warranty that the Service, its infrastructure,
+or any data it processes — including personal data and body-composition
+data — cannot be compromised. Breaches may occur via, without limitation:
+novel or zero-day vulnerabilities in third-party dependencies or
+operating systems; cryptographic algorithms weakening over time
+(including future quantum-class attacks against algorithms currently
+considered safe); credential theft outside the developer's
+infrastructure (phishing, malware on Your devices, password reuse);
+supply-chain compromise of upstream packages; hardware-level fault
+injection; insider compromise; social engineering; lawful or unlawful
+state-level access; or catastrophic events of a scope that no reasonable
+individual operator could withstand.
+
+### 18.3 Breach Notification
+
+If the developer becomes aware of a personal-data breach affecting You,
+the developer will, consistent with `PRIVACY.md` Article IX (漏洩・滅失
+等 notification commitments) and the GDPR Article 33 / APPI Article 26
+frameworks where applicable, notify You without undue delay using the
+contact channel on file. Best-effort notification does not constitute
+admission of fault, nor does it imply that timely notification will
+always be technically achievable.
+
+### 18.4 Your Security Responsibilities
+
+You are responsible for protecting Your own credentials, devices, and
+network. The developer is not liable for compromises that originate
+outside the Service boundary — including but not limited to phishing,
+re-use of Service passwords on other sites, leaving devices unlocked,
+unauthorized sharing of MFA codes, or use of compromised browsers or
+operating systems. Promptly report any suspected unauthorized access to
+the contact in `PRIVACY.md`.
+
+### 18.5 Liability Cap for Security Incidents
+
+To the extent permitted by law, any liability of the developer arising
+out of or relating to a security incident — including breaches of
+personal data, body-composition data, or any other Service-held data —
+is subject to the overall Limitation of Liability in Section 11. No
+separate or higher liability cap is created by this Section.
+
+## 19. Analytical Output Disclaimer
+
+### 19.1 Statistical Nature
+
+All match-, player-, and condition-related metrics surfaced by the
+Service — including but not limited to win-rate estimates, expected
+point value (EPV), Hooper Index, validity scores, growth trends,
+shot-zone heatmaps, and CV-derived player or shuttle tracks — are
+**statistical inferences subject to uncertainty**. The Service attempts
+to communicate that uncertainty (sample-size caveats, confidence
+intervals, "伸びしろ" framing), but no number on screen is guaranteed
+to be accurate, complete, or actionable.
+
+### 19.2 Not Medical, Not Legal, Not a Substitute for Coaching
+
+Nothing in the Service is medical advice, physiotherapy advice,
+psychological assessment, legal advice, or a recommended training
+program. Body-composition readings, fatigue scores, and condition
+metrics are decision-support inputs only. Use of these inputs to make
+training, recovery, injury, or eligibility decisions is at Your sole
+risk and judgment. Consult a qualified medical professional for any
+health-related concern.
+
+### 19.3 No Outcome Guarantee
+
+The Service does not guarantee any improvement in player performance,
+match results, recruitment outcomes, or any other competitive metric.
+
+## 20. Account Security and Minor Users
+
+### 20.1 Credentials
+
+You are responsible for keeping account credentials confidential,
+choosing a strong unique password, and enabling MFA where offered. You
+agree not to share credentials, not to embed them in shared tooling,
+and to notify the developer immediately of suspected unauthorized use.
+
+### 20.2 Minor Users (Athletes Under 18)
+
+Where the Service is used by an athlete under 18 years of age (as is
+common for junior badminton players), the registering organization
+(school, club, regional association) or guardian represents that they
+have obtained the documented consent described in `PRIVACY.md` and in
+the participant consent form (`ShuttleScope_同意書`), including any
+required guardian co-signature, before submitting that minor's
+identifying information, video, condition data, or body-composition
+data. The developer relies on this representation; the minor or guardian
+retains the right at any time to withdraw consent and request deletion.
+
+### 20.3 Account Deletion and Data Withdrawal
+
+A request to delete an account or withdraw consent is processed under
+the timeline and scope described in `PRIVACY.md` and the consent form.
+Aggregated statistical outputs that cannot technically be re-attributed
+to a specific individual may persist after deletion; the developer will
+discuss this with affected parties on request.
