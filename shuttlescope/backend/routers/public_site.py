@@ -278,9 +278,10 @@ def _public_nav(login_href: str, lang_href: str = "/en") -> str:
 def _public_nav_en(login_href: str, lang_href: str = "/") -> str:
     # EN nav からは ?lang=en を付けて SPA に渡し、起動時の言語検出で英語に揃える。
     # (src/i18n/index.ts の detectInitialLang が URLSearchParams を読む)
+    # brand リンクは EN home (/en) に飛ばす (JA home に戻さない)。
     return f"""
     <div class="topbar">
-      <a class="brand" href="https://shuttle-scope.com">Shuttle<span>Scope</span></a>
+      <a class="brand" href="/en">Shuttle<span>Scope</span></a>
       <div class="nav">
         <a href="/en">Overview</a>
         <a href="/en/terms">Terms of Use</a>
@@ -776,6 +777,11 @@ if(lang==='en'){
   document.querySelectorAll('a[href="/terms"]').forEach(a=>a.setAttribute('href','/en/terms'));
   document.querySelectorAll('a[href="/privacy"]').forEach(a=>a.setAttribute('href','/en/privacy'));
   document.querySelectorAll('a[href="/contact"]').forEach(a=>a.setAttribute('href','/en/contact'));
+  // ブランド/ロゴ link を EN home (/en) に書き換える。
+  // (デフォルトは / = JA home なので、EN モードのまま戻ると JA 側に飛んでしまう)
+  document.querySelectorAll('a.logo, a.footer-logo, a.brand').forEach(a=>{
+    if(a.getAttribute('href')==='/') a.setAttribute('href','/en');
+  });
   // SPA への遷移 link に ?lang=en を付けて、起動時の言語選択
   // (i18n.detectInitialLang) で英語が選ばれるようにする。
   // - https://app.shuttle-scope.com/#/register  ← hash 形式: そのまま lang 付与
