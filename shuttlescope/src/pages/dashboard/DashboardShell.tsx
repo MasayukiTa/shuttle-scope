@@ -306,28 +306,45 @@ export function DashboardShell() {
             <div className="px-6 pt-4 pb-0">
               <div className="flex flex-wrap items-center justify-end gap-1.5">
                 <FileDown size={13} className={textMuted} />
-                {(role === 'admin' || role === 'analyst' || role === 'coach') && (
-                  <button
-                    onClick={() => dlReport(`/api/reports/scouting?player_id=${selectedPlayerId}`, `scouting_${selectedPlayerId}.pdf`)}
-                    className={`text-xs px-2.5 py-1 rounded border transition-colors ${
-                      isLight
-                        ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
-                        : 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                    }`}
-                  >
-                    PDF
-                  </button>
-                )}
+                {/* 包括レポート: 現 role が見られる解析項目を全て含む。
+                   PDF = 印刷して選手+コーチが議論するための整形レポート (試合単位は除外)。
+                   JSON = 試合単位データ込みの完全 dump (数値解析用)。 */}
                 <button
-                  onClick={() => dlReport(`/api/reports/player_growth?player_id=${selectedPlayerId}`, `growth_${selectedPlayerId}.json`)}
+                  onClick={() => dlReport(`/api/reports/comprehensive_pdf?player_id=${selectedPlayerId}`, `report_player${selectedPlayerId}.pdf`)}
+                  title="解析タブの全項目を含む包括 PDF レポート (印刷向け)"
                   className={`text-xs px-2.5 py-1 rounded border transition-colors ${
                     isLight
                       ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
                       : 'border-gray-600 text-gray-300 hover:bg-gray-700'
                   }`}
                 >
-                  JSON
+                  PDF (包括)
                 </button>
+                <button
+                  onClick={() => dlReport(`/api/reports/comprehensive?player_id=${selectedPlayerId}`, `report_player${selectedPlayerId}.json`)}
+                  title="解析全項目 + 試合単位データの完全 JSON dump"
+                  className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                    isLight
+                      ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                      : 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  JSON (完全)
+                </button>
+                {/* 旧 scouting / growth は残しておく (短い要約版が欲しい場合) */}
+                {(role === 'admin' || role === 'analyst' || role === 'coach') && (
+                  <button
+                    onClick={() => dlReport(`/api/reports/scouting?player_id=${selectedPlayerId}`, `scouting_${selectedPlayerId}.pdf`)}
+                    title="従来の要約スカウティング PDF"
+                    className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                      isLight
+                        ? 'border-gray-300 text-gray-500 hover:bg-gray-100 opacity-70'
+                        : 'border-gray-600 text-gray-400 hover:bg-gray-700 opacity-70'
+                    }`}
+                  >
+                    要約 PDF
+                  </button>
+                )}
               </div>
             </div>
 
