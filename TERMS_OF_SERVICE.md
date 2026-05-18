@@ -1,6 +1,6 @@
 # Terms of Service
 
-## Version 1.2 — Effective 2026-05-08 (supersedes Version 1.1)
+## Version 1.3 — Effective 2026-05-18 (supersedes Version 1.2)
 
 ## 1. Purpose
 
@@ -100,13 +100,74 @@ The developer may suspend or terminate access, in whole or in part, if:
 Upon termination, Your right to access hosted or connected features ends
 immediately, subject to any mandatory legal retention requirements.
 
-## 9. No Guarantee of Availability
+## 9. Service Availability and Service Level Disclaimer
 
-The software and any related service may be unavailable because of maintenance,
-network failure, hardware issues, third-party dependency failure, security
-response, or force majeure.
+### 9.1 No Service Level Guarantee
 
-The developer does not guarantee uninterrupted or error-free availability.
+ShuttleScope is offered without any Service Level Agreement (SLA). The developer
+makes no commitment to a target uptime, latency, response time, or recovery time
+objective. The service may be unavailable, degraded, or slow at any time without
+prior notice. Use of the service in any capacity that requires guaranteed
+availability is at Your own risk.
+
+### 9.2 Operational Topology Disclosure
+
+You acknowledge that ShuttleScope is, as of this version, operated by a single
+individual developer using self-hosted hardware located at the developer's
+private residence. This means:
+
+- there is no 24/7 operations team;
+- there is no geographically redundant data center;
+- there is no third-party hosting provider standing behind the service;
+- recovery from any outage depends on the developer's personal availability.
+
+You agree to this topology as a condition of use.
+
+### 9.3 Power, Network, and Other Force Majeure Events
+
+The host server is connected to an Uninterruptible Power Supply (UPS) sized for
+short-term outages (on the order of three minutes of continuous power). Power
+outages exceeding the UPS runtime, brownouts, voltage instability, grid
+disconnection, or any other power-distribution event originating with the
+electric utility, the building, or surrounding infrastructure are treated as
+**force majeure** events outside the developer's control. The developer is not
+liable for any loss, delay, or service interruption caused by such events.
+
+The same exclusion applies to: internet connectivity loss at the host site,
+ISP outages, upstream network operator incidents, DNS / certificate authority
+failures, Cloudflare or other CDN/tunnel provider outages, natural disasters,
+fire, flood, earthquake, governmental action, and labor disruptions.
+
+### 9.4 Recovery — Best Effort Only
+
+The developer will use commercially reasonable best efforts to restore service
+as soon as practicable after an outage becomes known. "Best efforts" explicitly
+**do not** create a binding recovery commitment. You should not rely on
+ShuttleScope being restored within any particular time window.
+
+### 9.5 Planned Absences and Extended Unavailability
+
+Because the service is operated by an individual, there will be periods —
+including but not limited to weekends, public holidays, the Japanese New Year
+holiday, the May Golden Week, the August Obon period, year-end / new-year
+shutdowns, illness, and personal travel — during which the developer may be
+**fully unreachable** and outages occurring in those periods may persist until
+the developer returns. The developer will, where practical, post advance notice
+of known extended absences, but is not obligated to do so. You agree to plan
+Your usage accordingly and to maintain Your own backups of any critical data.
+
+### 9.6 Maintenance Windows
+
+The developer may take the service offline for upgrades, security patches,
+schema migrations, or hardware maintenance at any time, including without
+advance notice when an immediate change is necessary for safety, security, or
+data integrity.
+
+### 9.7 No Guarantee of Availability (General)
+
+Notwithstanding any other statement in these Terms or in any documentation,
+the developer does not guarantee uninterrupted, error-free, or continuously
+available operation of the software or any related service.
 
 ## 10. Warranty Disclaimer
 

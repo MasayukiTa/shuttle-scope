@@ -14,6 +14,34 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-05-18
+
+### Terms of Service v1.3 — explicit SLA disclaimer
+
+Reworked TERMS_OF_SERVICE.md §9 (previously a single "No Guarantee of
+Availability" paragraph) into a full availability disclaimer block:
+
+- §9.1 No Service Level Guarantee — no uptime / latency / RTO commitment.
+- §9.2 Operational Topology Disclosure — single-operator self-hosted setup
+  in the developer's residence; no 24/7 ops team, no geo-redundancy, no
+  third-party hosting provider.
+- §9.3 Power, Network, and Force Majeure Events — UPS is sized for ~3 min
+  runtime; anything beyond that (utility outage, brownout, grid loss) is
+  force majeure and not the developer's responsibility. Same exclusion for
+  ISP, CDN, DNS, CA, and natural-disaster events.
+- §9.4 Recovery — Best Effort Only — restoration is commercially reasonable
+  best-effort, never a binding commitment.
+- §9.5 Planned Absences and Extended Unavailability — names the obvious
+  cases (weekends, public holidays, New Year, Golden Week, Obon, year-end,
+  illness, travel) and tells users to keep their own backups.
+- §9.6 Maintenance Windows — service may go offline at any time, with or
+  without advance notice, for security/integrity reasons.
+- §9.7 No Guarantee of Availability (General) — retained as a catch-all.
+
+Backend `CURRENT_TERMS_VERSION` bumped 1.2 → 1.3. Existing consent rows
+remain in the DB; new consent submissions will require terms_version=1.3,
+which triggers the standard re-consent flow.
+
 ## 2026-05-15
 
 ### Mobile Annotation Hardening + Supply-Chain Pin
