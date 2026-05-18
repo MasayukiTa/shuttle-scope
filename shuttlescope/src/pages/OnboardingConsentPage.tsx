@@ -53,8 +53,12 @@ export default function OnboardingConsentPage({
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // 文書 popup. null = 閉、'privacy' / 'terms' = 表示中
-  const [docModal, setDocModal] = useState<null | 'privacy' | 'terms'>(null)
+  // 文書 popup. null = 閉、各 slug = 表示中。
+  // privacy / terms は必須同意の読了対象、それ以外は「その他の規約」リンクから開かれる。
+  type DocSlug = 'privacy' | 'terms' | 'license' | 'data_contribution' | 'dpa_template' | 'beta_agreement'
+  const [docModal, setDocModal] = useState<null | DocSlug>(null)
+  // 「その他の規約」一覧 overlay の表示状態
+  const [otherDocsOpen, setOtherDocsOpen] = useState<boolean>(false)
   // 各文書を最後までスクロールしたか。両方 true にしないと必須チェックを許可しない。
   // (典型的な法務同意 UI パターン: 「読んだ」を擬制するための強制スクロール)
   const [scrolledPrivacy, setScrolledPrivacy] = useState(false)
@@ -398,8 +402,65 @@ export default function OnboardingConsentPage({
         <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
           {t('onboarding.consent.withdraw_notice') ||
             '必須確認事項は契約履行のため撤回は行えません（撤回はサービス利用終了と等価です）。任意同意は 設定 → 体調タブ → 体組成データの開示設定、またはお問い合わせフォーム / contact@shuttle-scope.com 宛てメールでいつでも変更・撤回できます。'}
+          {' '}
+          <button
+            type="button"
+            onClick={() => setOtherDocsOpen(true)}
+            className="underline text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+          >
+            {t('onboarding.consent.other_docs_link') || 'その他の規約はこちら'}
+          </button>
         </p>
       </div>
+
+      {/* 「その他の規約」一覧 overlay — LICENSE / DATA_CONTRIBUTION / DPA / β契約書。
+         クリックで DocModal を開いて iframe 表示。必須同意とは紐付かない。 */}
+      {otherDocsOpen && (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setOtherDocsOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 w-full max-w-md rounded-lg shadow-xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {t('onboarding.consent.other_docs_title') || 'その他の規約・契約書類'}
+              </div>
+              <button
+                type="button"
+                onClick={() => setOtherDocsOpen(false)}
+                className="text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-3 space-y-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('onboarding.consent.other_docs_hint') ||
+                  '同意必須ではありませんが、利用目的に応じて参照できる文書です。'}
+              </p>
+              {([
+                { slug: 'beta_agreement' as DocSlug, label: t('onboarding.consent.doc_beta') || 'β期間データ取り扱い同意書 (公開版)' },
+                { slug: 'dpa_template' as DocSlug, label: t('onboarding.consent.doc_dpa') || 'Data Processing Agreement テンプレート (GDPR Art 28)' },
+                { slug: 'data_contribution' as DocSlug, label: t('onboarding.consent.doc_dct') || 'データ提供規約' },
+                { slug: 'license' as DocSlug, label: t('onboarding.consent.doc_license') || 'ソフトウェアライセンス' },
+              ]).map(({ slug, label }) => (
+                <button
+                  key={slug}
+                  type="button"
+                  onClick={() => { setOtherDocsOpen(false); setDocModal(slug) }}
+                  className="w-full text-left text-sm px-3 py-2 rounded border border-gray-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"
+                >
+                  <MIcon name="visibility" size={14} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 文書 popup modal. iframe で backend の HTML view を表示。
          JA/EN は i18n.language で path を出し分け。
@@ -411,10 +472,16 @@ export default function OnboardingConsentPage({
           lang={(i18n.language as string)?.startsWith('en') ? 'en' : 'ja'}
           onClose={() => setDocModal(null)}
           onReachedBottom={() => {
+            // 必須読了対象 (privacy / terms) のみ scroll flag を立てる。
+            // その他の規約 (license / dpa / β etc) はスクロール完了しても
+            // 必須 checkbox の解放には影響させない (任意参照のため)。
             if (docModal === 'privacy') setScrolledPrivacy(true)
-            else setScrolledTerms(true)
+            else if (docModal === 'terms') setScrolledTerms(true)
           }}
-          alreadyScrolled={docModal === 'privacy' ? scrolledPrivacy : scrolledTerms}
+          alreadyScrolled={
+            docModal === 'privacy' ? scrolledPrivacy :
+            docModal === 'terms' ? scrolledTerms : false
+          }
           t={t}
         />
       )}
@@ -502,15 +569,25 @@ function DocButton({
 
 // 現在 path から header に出す文書名を解決する。クロスリンクで navigate した
 // 先 (license / data_contribution 等) も初期 doc と同じくらい綺麗に表示するため。
-function _titleForPath(path: string, fallbackKind: 'privacy' | 'terms', t: (k: string) => string): string {
+type DocKindAll = 'privacy' | 'terms' | 'license' | 'data_contribution' | 'dpa_template' | 'beta_agreement'
+function _titleForPath(path: string, fallbackKind: DocKindAll, t: (k: string) => string): string {
   const norm = (path || '').replace(/^\/en/, '')
   if (norm.includes('/legal/privacy')) return t('onboarding.consent.view_privacy') || 'プライバシーポリシー'
   if (norm.includes('/legal/terms')) return t('onboarding.consent.view_terms') || '利用規約'
-  if (norm.includes('/legal/license')) return 'LICENSE'
-  if (norm.includes('/legal/data_contribution')) return t('onboarding.consent.view_dct') || 'データ提供規約'
-  return fallbackKind === 'privacy'
-    ? (t('onboarding.consent.view_privacy') || 'プライバシーポリシー')
-    : (t('onboarding.consent.view_terms') || '利用規約')
+  if (norm.includes('/legal/license')) return t('onboarding.consent.doc_license') || 'ソフトウェアライセンス'
+  if (norm.includes('/legal/data_contribution')) return t('onboarding.consent.doc_dct') || 'データ提供規約'
+  if (norm.includes('/legal/dpa_template')) return t('onboarding.consent.doc_dpa') || 'Data Processing Agreement'
+  if (norm.includes('/legal/beta_agreement')) return t('onboarding.consent.doc_beta') || 'β期間データ取り扱い同意書'
+  // fallback: 初期 docKind から
+  const fb: Record<DocKindAll, string> = {
+    privacy: t('onboarding.consent.view_privacy') || 'プライバシーポリシー',
+    terms: t('onboarding.consent.view_terms') || '利用規約',
+    license: t('onboarding.consent.doc_license') || 'ソフトウェアライセンス',
+    data_contribution: t('onboarding.consent.doc_dct') || 'データ提供規約',
+    dpa_template: t('onboarding.consent.doc_dpa') || 'Data Processing Agreement',
+    beta_agreement: t('onboarding.consent.doc_beta') || 'β期間データ取り扱い同意書',
+  }
+  return fb[fallbackKind]
 }
 
 // 文書 popup modal: 利用規約 / プライバシーポリシー の HTML を iframe で表示。
@@ -519,7 +596,8 @@ function _titleForPath(path: string, fallbackKind: 'privacy' | 'terms', t: (k: s
 function DocModal({
   docKind, lang, onClose, onReachedBottom, alreadyScrolled, t,
 }: {
-  docKind: 'privacy' | 'terms'
+  // privacy / terms は必須同意の読了対象、他は「その他の規約」リンク経由。
+  docKind: 'privacy' | 'terms' | 'license' | 'data_contribution' | 'dpa_template' | 'beta_agreement'
   lang: 'ja' | 'en'
   onClose: () => void
   onReachedBottom: () => void
