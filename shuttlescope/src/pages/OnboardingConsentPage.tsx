@@ -85,18 +85,27 @@ export default function OnboardingConsentPage({
       .then((r) => {
         if (cancelled) return
         setState(r.data)
-        // 既存の同意状態を反映 (再同意要求時の利便性、必須は手動チェックを再要求)
+        // 既存 consent record の反映ポリシー:
+        //   - 現行 terms_version ('1.3' 等) の record のみ尊重する。
+        //   - 旧 version の record は文書改定で stale になっているため
+        //     opt-out default (= initial true) に戻す。
+        //   - ユーザが現行版で意図的に外した record (consent_given=false) は
+        //     そのまま尊重 (GDPR Article 7(3) withdraw)。
+        const currentTerms = r.data.current_versions?.terms
         const existing: Record<string, ConsentRecord> = {}
-        for (const c of r.data.consents) existing[c.consent_type] = c
+        for (const c of r.data.consents) {
+          if (!currentTerms || c.terms_version === currentTerms) {
+            existing[c.consent_type] = c
+          }
+        }
         setGiven((prev) => {
           const next = { ...prev }
           for (const t of OPTIONAL) {
-            // 既存 record があれば、それを優先して反映 (給与/撤回どちらも)。
-            // record が無い場合は initial value (= opt-out 既定値) を保持する。
             const rec = existing[t]
             if (rec) {
               next[t] = !!rec.consent_given
             }
+            // rec 無し / stale 版のみ → initial (opt-out true) を保持
           }
           return next
         })
