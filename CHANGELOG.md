@@ -16,6 +16,31 @@ Read it together with:
 
 ## 2026-05-18
 
+### Terms of Service v1.3 — security, analytics, and minor-user scope
+
+Same v1.3 cycle also adds three further sections beyond the §9 availability
+rewrite:
+
+- **§18 Security Practices and Data-Breach Disclaimer.** Enumerates the
+  controls actually in place (TLS, RBAC, CodeQL/Semgrep/Bandit/DevSkim/
+  Gitleaks/Trivy/OSV/Defender scans, adversarial test loops, rate-limit
+  and lockout, audit logs, filesystem-level at-rest protection of backups).
+  Then explicitly states no absolute security warranty: zero-days,
+  quantum-class cryptographic breakthroughs, supply-chain compromise,
+  hardware fault injection, social engineering, and lawful/unlawful
+  state-level access are out of scope. Breach notification commitment
+  ties back to PRIVACY.md Art IX + GDPR 33 / APPI 26. User-side
+  responsibilities (credential hygiene, MFA, device safety) carved out.
+  Security-incident liability is folded under the §11 cap, no separate
+  uplift.
+- **§19 Analytical Output Disclaimer.** EPV / win-rate / Hooper /
+  validity / heatmap / CV tracks are statistical inferences, not
+  guarantees. Not medical, not legal, not a replacement for coaching.
+  No outcome guarantee.
+- **§20 Account Security and Minor Users.** Credential responsibility;
+  documented guardian consent required for minors (junior badminton
+  players); deletion timeline ties to consent form + PRIVACY.md.
+
 ### Terms of Service v1.3 — explicit SLA disclaimer
 
 Reworked TERMS_OF_SERVICE.md §9 (previously a single "No Guarantee of
