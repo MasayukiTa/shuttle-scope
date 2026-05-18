@@ -373,6 +373,9 @@ function ProtectedMainRoute() {
   const [checkingAuth, setCheckingAuth] = useState(true)
   // GDPR Article 7 / APPI 第18条: 同意未取得なら OnboardingConsentPage に誘導
   const [consentRequired, setConsentRequired] = useState<boolean>(false)
+  // 任意同意 (体組成開示 / AI 学習 等) の "未回答" 状態。consent_required と
+  // 違ってこちらは "あとで" を選んで先送りできる。
+  const [optionalConsentPending, setOptionalConsentPending] = useState<boolean>(false)
 
   useIdleLogout({
     enabled: !!token,
@@ -405,6 +408,7 @@ function ProtectedMainRoute() {
           pageAccess: me.page_access ?? [],
         })
         setConsentRequired(!!me.consent_required)
+        setOptionalConsentPending(!!me.optional_consent_pending)
       })
       .catch(() => {
         if (cancelled) return
@@ -454,8 +458,22 @@ function ProtectedMainRoute() {
 
   // 同意未取得 → 必須同意取得画面 (フェーズ 1 / GDPR Article 7)。
   // ここで gate されている間、MainLayout 内のすべてのページにアクセス不可。
-  if (consentRequired) {
-    return <OnboardingConsentPage onCompleted={() => setConsentRequired(false)} />
+  // 任意同意のみ未回答の場合 (optionalOnly): popup は出すが「あとで」で skip 可。
+  if (consentRequired || optionalConsentPending) {
+    return (
+      <OnboardingConsentPage
+        optionalOnly={!consentRequired && optionalConsentPending}
+        onCompleted={() => {
+          setConsentRequired(false)
+          setOptionalConsentPending(false)
+        }}
+        onDeferred={() => {
+          // 「あとで」: optional は記録せず先送り。次回ログイン時に再 popup。
+          // 必須は満たしているので consent_required は False のまま。
+          setOptionalConsentPending(false)
+        }}
+      />
+    )
   }
 
   // R48: /m/annotate/:matchId は MainLayout (Sidebar / bottom nav) を完全に

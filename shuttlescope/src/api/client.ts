@@ -245,6 +245,9 @@ export interface AuthMeDTO {
   email_verified?: boolean
   // GDPR Article 7 / APPI 第18条: 同意未取得なら frontend は OnboardingConsent へ誘導
   consent_required?: boolean
+  // 任意同意のうち 1 度も回答していない type が残っているか。
+  // True: popup を出す。ユーザは「あとで」も選べる。
+  optional_consent_pending?: boolean
 }
 
 export function authMe(): Promise<AuthMeDTO> {
