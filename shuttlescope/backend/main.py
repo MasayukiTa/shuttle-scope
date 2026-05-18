@@ -107,6 +107,7 @@ from backend.routers import data_package as data_package_router
 from backend.routers import cluster as cluster_router
 from backend.routers import auth as auth_router
 from backend.routers import public_site
+from backend.routers import legal_docs
 from backend.routers import uploads as uploads_router
 from backend.routers import youtube_live as youtube_live_router
 from backend.routers import videos as videos_router
@@ -1903,6 +1904,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             path in ("/privacy", "/terms", "/contact",
                      "/en/privacy", "/en/terms", "/en/contact")
             or path.startswith("/public-preview/")
+            or path.startswith("/legal/")
+            or path.startswith("/en/legal/")
         ):
             response.headers["X-Frame-Options"] = "SAMEORIGIN"
         else:
@@ -1972,6 +1975,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 path in ("/privacy", "/terms", "/contact",
                          "/en/privacy", "/en/terms", "/en/contact")
                 or path.startswith("/public-preview/")
+                or path.startswith("/legal/")
+                or path.startswith("/en/legal/")
             ):
                 frame_anc = "frame-ancestors 'self'"
             csp_parts = [
@@ -2368,6 +2373,7 @@ app.include_router(billing_router.router, prefix="/api")
 # R-3: Worker 共有 (HTTP only、予備実装、X-Worker-Token 認証)
 app.include_router(internal_videos_router.router, prefix="/api")
 app.include_router(public_site.router)
+app.include_router(legal_docs.router)
 
 
 
