@@ -2442,8 +2442,9 @@ def delete_team(
 # 現行 PRIVACY.md / TERMS_OF_SERVICE.md / DATA_CONTRIBUTION_TERMS.md の version。
 # 文書改定時はここを更新し、frontend 側にも反映する (再同意取得の判定根拠)。
 # 2026-05-08: PRIVACY v1.2 (Article IX §9.3 追加) / TERMS v1.2 (§16/§17 追加) で更新。
+# 2026-05-18: TERMS v1.3 (§9 を SLA 免責 + 不可抗力 + 個人運営の透明開示で大幅拡張)。
 CURRENT_PRIVACY_VERSION = "1.2"
-CURRENT_TERMS_VERSION = "1.2"
+CURRENT_TERMS_VERSION = "1.3"
 CURRENT_DCT_VERSION = "1.0"
 
 # ユーザが同意可能な目的。各 type は独立して give/withdraw 可能 (GDPR Article 7(2))。
