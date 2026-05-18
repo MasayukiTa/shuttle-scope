@@ -34,19 +34,40 @@ router = APIRouter(tags=["legal-docs"])
 # repo root を解決 (backend/routers/ から 3 つ上が repo root)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# allowed slug -> .md filename (path traversal の余地を作らない whitelist)
+# allowed slug -> filename (path traversal の余地を作らない whitelist)
+# LICENSE は plain text、他は markdown。
 _DOC_MAP: dict[str, str] = {
     "privacy": "PRIVACY.md",
     "terms": "TERMS_OF_SERVICE.md",
     "data_contribution": "DATA_CONTRIBUTION_TERMS.md",
+    "license": "LICENSE",
 }
 
-# 同じドキュメントの英語版があれば差し替える (今は同一 .md を再利用)。
-_DOC_MAP_EN: dict[str, str] = {
-    "privacy": "PRIVACY.md",
-    "terms": "TERMS_OF_SERVICE.md",
-    "data_contribution": "DATA_CONTRIBUTION_TERMS.md",
-}
+# 同じドキュメントの英語版があれば差し替える (今は同一ファイルを再利用)。
+_DOC_MAP_EN: dict[str, str] = dict(_DOC_MAP)
+
+
+def _linkify_legal_refs(html: str) -> str:
+    """rendered HTML 内に出現する `<code>LICENSE</code>` /
+    `<code>PRIVACY.md</code>` 等を /legal/* への anchor link に置換する。
+    backtick で囲まれた markdown 由来の inline code を対象に、popup 内 iframe
+    から同じ legal_docs router の別ドキュメントに飛べるようにする。
+    """
+    import re
+    mapping = {
+        "LICENSE": "/legal/license",
+        "PRIVACY.md": "/legal/privacy",
+        "TERMS_OF_SERVICE.md": "/legal/terms",
+        "DATA_CONTRIBUTION_TERMS.md": "/legal/data_contribution",
+    }
+    out = html
+    for needle, href in mapping.items():
+        pat = re.compile(rf"<code>{re.escape(needle)}</code>")
+        out = pat.sub(
+            f'<a href="{href}" class="legal-ref"><code>{needle}</code></a>',
+            out,
+        )
+    return out
 
 
 def _render_markdown_page(slug: str, lang: str = "ja") -> str:
@@ -62,17 +83,26 @@ def _render_markdown_page(slug: str, lang: str = "ja") -> str:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"read failed: {e}") from None
 
-    html_body = _md.markdown(
-        md_text,
-        extensions=["extra", "sane_lists", "toc"],
-        output_format="html5",
-    )
+    # LICENSE は plain-text なので markdown 化せず <pre> でラップ。
+    if slug == "license":
+        # HTML エスケープして preserve whitespace で表示
+        from html import escape as _esc
+        html_body = f'<pre class="legal-pre">{_esc(md_text)}</pre>'
+    else:
+        html_body = _md.markdown(
+            md_text,
+            extensions=["extra", "sane_lists", "toc"],
+            output_format="html5",
+        )
+        # 関連法務文書への参照を anchor link に置換
+        html_body = _linkify_legal_refs(html_body)
 
     title = {
         "privacy": "Privacy Notice" if lang == "en" else "プライバシーポリシー",
         "terms": "Terms of Service" if lang == "en" else "利用規約",
         "data_contribution":
             "Data Contribution Terms" if lang == "en" else "データ提供規約",
+        "license": "License",
     }.get(slug, slug)
 
     # スタンドアロン HTML — popup iframe で表示するので body だけで十分。
@@ -112,6 +142,19 @@ def _render_markdown_page(slug: str, lang: str = "ja") -> str:
   li {{ margin: 4px 0; }}
   code {{ background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; }}
   pre {{ background: #f3f4f6; padding: 10px; border-radius: 4px; overflow-x: auto; }}
+  pre.legal-pre {{
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: transparent;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+                 "Yu Gothic UI", "Meiryo", sans-serif;
+    font-size: 13px;
+  }}
+  a {{ color: #2563eb; text-decoration: none; }}
+  a:hover {{ text-decoration: underline; }}
+  a.legal-ref code {{ background: #dbeafe; color: #1d4ed8; }}
+  a.legal-ref:hover code {{ background: #bfdbfe; }}
   table {{ border-collapse: collapse; margin: 10px 0; width: 100%; }}
   th, td {{ border: 1px solid #d1d5db; padding: 6px 10px; text-align: left; }}
   th {{ background: #f3f4f6; }}
@@ -143,6 +186,16 @@ def legal_terms_ja() -> HTMLResponse:
 @router.get("/legal/data_contribution", response_class=HTMLResponse)
 def legal_dct_ja() -> HTMLResponse:
     return HTMLResponse(_render_markdown_page("data_contribution", "ja"))
+
+
+@router.get("/legal/license", response_class=HTMLResponse)
+def legal_license_ja() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("license", "ja"))
+
+
+@router.get("/en/legal/license", response_class=HTMLResponse)
+def legal_license_en() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("license", "en"))
 
 
 @router.get("/en/legal/privacy", response_class=HTMLResponse)
