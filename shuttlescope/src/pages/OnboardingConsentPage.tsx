@@ -62,15 +62,18 @@ export default function OnboardingConsentPage({
 
   // 同意/確認状態。initial は false、ユーザーが明示的にチェックしない限り送信されない。
   const [given, setGiven] = useState<Record<ConsentType, boolean>>({
+    // 必須 (契約履行) — ユーザに明示 check させるため initial=false。
     service_delivery: false,
     beta_agreement: false,
-    ai_training: false,
-    research_participation: false,
+    // 任意同意 — β期間 opt-out モデル: initial=true。
+    // ユーザは見て自分でチェックを外せばその場で「同意しない」記録になる。
+    // (利用には影響しない設計)
+    ai_training: true,
+    research_participation: true,
     // cross_border_transfer は UI に出さないが backend 側の互換のため keep。
-    // 送信時は false のまま (撤回扱い) で送り、backend は OPTIONAL として記録する。
-    cross_border_transfer: false,
-    // 体組成データの開示: β期間運用方針として default ON で表示する。
-    // ユーザが見たうえで OFF にしたければチェックを外せる (= consent withdraw)。
+    // EU-Japan 十分性認定済みなので default=true でも問題なし。
+    cross_border_transfer: true,
+    // 体組成データの開示: β期間 default ON。
     body_disclose_to_analyst: true,
     body_disclose_to_coach: true,
   })
@@ -87,7 +90,12 @@ export default function OnboardingConsentPage({
         setGiven((prev) => {
           const next = { ...prev }
           for (const t of OPTIONAL) {
-            if (existing[t]?.consent_given) next[t] = true
+            // 既存 record があれば、それを優先して反映 (給与/撤回どちらも)。
+            // record が無い場合は initial value (= opt-out 既定値) を保持する。
+            const rec = existing[t]
+            if (rec) {
+              next[t] = !!rec.consent_given
+            }
           }
           return next
         })
