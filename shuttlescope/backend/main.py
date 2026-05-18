@@ -1964,7 +1964,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 )
             else:
                 # 開発・テスト: 緩く (localhost backend / Vite dev server / electron-vite)
-                connect_src = "connect-src 'self' wss: https: http://localhost:* ws://localhost:*"
+                # 本番経路 (_is_prod) では到達しない dev-only fallback。CodeQL/DevSkim の
+                # DS162092 "DoNotLeaveDebugCodeInProduction" は localhost 文字列だけ見て
+                # 警告を上げるが、上の if _is_prod 分岐で本番では使わないことが構造的に
+                # 保証されているため抑制する。
+                connect_src = "connect-src 'self' wss: https: http://localhost:* ws://localhost:*"  # DevSkim: ignore DS162092
             # frame-ancestors: 通常 'none' (clickjacking 防御)、ただし
             # OnboardingConsentPage が iframe 内で読ませる法務 HTML は 'self'
             # に緩めて同一オリジン SPA からの iframe を許可。X-Frame-Options
