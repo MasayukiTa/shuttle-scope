@@ -36,9 +36,17 @@ const OPTIONAL: ConsentType[] = [
 
 interface OnboardingConsentPageProps {
   onCompleted: () => void
+  // optionalOnly: 必須同意は既に取得済で、任意同意のみ未回答が残っているケース。
+  //   - 必須セクションは hide
+  //   - 「あとで」ボタンが表示される
+  optionalOnly?: boolean
+  // 「あとで」が押された時の callback (App.tsx で popup を閉じる、optional は未提出)。
+  onDeferred?: () => void
 }
 
-export default function OnboardingConsentPage({ onCompleted }: OnboardingConsentPageProps) {
+export default function OnboardingConsentPage({
+  onCompleted, optionalOnly, onDeferred,
+}: OnboardingConsentPageProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<ConsentStateDTO | null>(null)
   const [loading, setLoading] = useState(true)
@@ -90,17 +98,21 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
     () => REQUIRED.every((t) => given[t] === true),
     [given]
   )
+  // optionalOnly mode: 必須は backend で既に取得済 → check 不要、submit 時にも送らない。
+  const canSubmit = optionalOnly ? true : allRequiredChecked
 
   const onSubmit = async () => {
     if (!state) return
-    if (!allRequiredChecked) {
+    if (!optionalOnly && !allRequiredChecked) {
       setError(t('onboarding.consent.error_required_missing') || '必須同意項目にすべてチェックを入れてください')
       return
     }
     setSubmitting(true)
     setError(null)
     try {
-      const consents = [...REQUIRED, ...OPTIONAL].map((t) => ({
+      // optionalOnly: optional のみ submit (必須は既に backend にある)。
+      const types = optionalOnly ? OPTIONAL : [...REQUIRED, ...OPTIONAL]
+      const consents = types.map((t) => ({
         consent_type: t,
         consent_given: !!given[t],
       }))
@@ -181,7 +193,9 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
           </ul>
         </header>
 
-        <section className="space-y-4">
+        {/* optionalOnly mode では必須セクションを丸ごと hide。次回ログイン時に
+           任意同意の再確認だけしたい人 (「あとで」を押した人) 用。 */}
+        <section className={`space-y-4 ${optionalOnly ? 'hidden' : ''}`}>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             {t('onboarding.consent.required_section') || '必須確認事項（契約履行に基づく処理）'}
           </h2>
@@ -270,15 +284,29 @@ export default function OnboardingConsentPage({ onCompleted }: OnboardingConsent
         ) : null}
 
         <footer className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+          {/* あとで: optionalOnly mode のみ表示。任意同意を skip して通常画面に進む。
+             次回ログイン時に再度 popup が出る (= optional_consent_pending=True が続く)。 */}
+          {optionalOnly && onDeferred && (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={onDeferred}
+              className="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+            >
+              {t('onboarding.consent.later') || 'あとで決める'}
+            </button>
+          )}
           <button
             type="button"
-            disabled={!allRequiredChecked || submitting}
+            disabled={!canSubmit || submitting}
             onClick={onSubmit}
             className="px-4 py-2 rounded bg-blue-600 text-white font-medium disabled:bg-gray-400 hover:bg-blue-700 transition"
           >
             {submitting
               ? t('onboarding.consent.submitting') || '送信中...'
-              : t('onboarding.consent.submit') || '確認・同意して開始'}
+              : optionalOnly
+                ? (t('onboarding.consent.submit_optional') || '回答して保存')
+                : (t('onboarding.consent.submit') || '確認・同意して開始')}
           </button>
         </footer>
 

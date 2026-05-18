@@ -1118,6 +1118,21 @@ def me(request: Request, db: Session = Depends(get_db)):
     else:
         page_access = list(GRANTABLE_PAGES)
 
+    # 任意同意の未回答検出: 必須同意 (consent_required) が落ちていても、optional
+    # 同意で 1 度も回答していない type があれば popup を再表示する。
+    # 「あとで」を押したユーザの再促し用 (実装方針: optional は record 無し=未回答)。
+    optional_pending = False
+    if user is not None:
+        recorded_optional_types = {
+            row[0]
+            for row in db.query(UserConsent.consent_type)
+            .filter(UserConsent.user_id == user.id)
+            .filter(UserConsent.consent_type.in_(list(_OPTIONAL_CONSENT_TYPES)))
+            .distinct()
+            .all()
+        }
+        optional_pending = len(_OPTIONAL_CONSENT_TYPES - recorded_optional_types) > 0
+
     return {
         "role": ctx.role,
         "player_id": ctx.player_id,
@@ -1132,6 +1147,9 @@ def me(request: Request, db: Session = Depends(get_db)):
         # GDPR Article 7 / APPI 第18条: 同意未取得の場合 frontend は
         # /onboarding/consent へリダイレクトする
         "consent_required": bool(getattr(user, "consent_required", True)) if user else True,
+        # 任意同意のうち 1 度も回答していない type が残っているか。
+        # True なら frontend は popup を表示するが「あとで」だけは押せる軽量 mode。
+        "optional_consent_pending": optional_pending,
     }
 
 
