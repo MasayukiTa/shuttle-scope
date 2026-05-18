@@ -1895,7 +1895,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
+        # 通常 path は DENY (clickjacking 防御)。ただし /privacy /terms /contact
+        # 等の法務 HTML は OnboardingConsentPage が popup 内 iframe で表示するため
+        # SAMEORIGIN に緩める。同オリジン内のみ iframe 可、外部サイトには出さない。
+        path = request.url.path or ""
+        if (
+            path in ("/privacy", "/terms", "/contact",
+                     "/en/privacy", "/en/terms", "/en/contact")
+            or path.startswith("/public-preview/")
+        ):
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        else:
+            response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         # camera=(self): R-1 sender 機能で getUserMedia() を許可するために必要 (空 () だと拒否される)
         # microphone=(self): 将来的な録音機能のため self 許可 (現状未使用だが将来需要見越し)
