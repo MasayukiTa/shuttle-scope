@@ -89,6 +89,10 @@ export default function OnboardingConsentPage({
       .then((r) => {
         if (cancelled) return
         setState(r.data)
+        // PRIVACY §9ter: 未成年は AI 学習チェックを default off に倒す
+        if (r.data?.viewer_is_minor) {
+          setGiven((g) => ({ ...g, ai_training: false }))
+        }
         // 既存 consent record の反映ポリシー:
         //   - 現行 terms_version ('1.3' 等) の record のみ尊重する。
         //   - 旧 version の record は文書改定で stale になっているため
@@ -309,8 +313,12 @@ export default function OnboardingConsentPage({
             onChange={(v) => setGiven((g) => ({ ...g, ai_training: v }))}
             label={t('onboarding.consent.ai_training_label') || 'AI モデル学習への利用に同意します'}
             description={
-              t('onboarding.consent.ai_training_desc') ||
-              '匿名化・集計化されたデータを将来的なモデル精度向上のために利用します。同意は任意であり、いつでも撤回できます。撤回時は以後の学習対象から除外されます。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。'
+              (state.viewer_is_minor
+                ? (t('onboarding.consent.ai_training_minor_notice') ||
+                   '【未成年の方向け】このチェックは default で外れています。法定代理人とご相談の上、明示的に同意される場合のみチェックを入れてください。 ')
+                : '') +
+              (t('onboarding.consent.ai_training_desc') ||
+              '匿名化・集計化されたデータを将来的なモデル精度向上のために利用します。同意は任意であり、いつでも撤回できます。撤回時は以後の学習対象から除外されます。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。')
             }
             docButtons={
               <div className="mt-2 flex flex-wrap gap-2">

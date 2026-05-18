@@ -706,6 +706,107 @@ in subsequent updates to this Notice.
 
 ---
 
+### ARTICLE IX-bis — PRODUCT TELEMETRY (PSEUDONYMOUS EVENT LOG)
+
+**9bis.1 Purpose.**
+The Software collects pseudonymous, event-level telemetry from authenticated
+users for the sole purposes of (a) measuring product reliability and
+performance, (b) identifying user-experience friction (drop-off points,
+input latency, screen dwell), (c) prioritising product improvements, and
+(d) generating internal product KPIs (weekly active users, annotation
+completion funnel, feature adoption). No content of matches, no shot
+coordinates, no body-composition values, and no free-text user input are
+collected through this channel.
+
+**9bis.2 Legal Basis.**
+Processing under this Article is conducted under the **legitimate interests**
+basis of GDPR Article 6(1)(f) and the equivalent ground in APPI Article 18
+(legitimate business operation purpose disclosed at the time of acquisition).
+A standalone consent prompt is not presented because the data are
+pseudonymised, the events are minimal in scope, no third-party processor is
+involved, and the processing is integral to ordinary product operation.
+
+**9bis.3 Identifiers.**
+User and team identifiers are not stored in the telemetry table in raw form.
+Each identifier is transformed into a 64-character HMAC-SHA256 digest under
+a server-side secret before being persisted. The mapping table from raw
+identifier to digest is not maintained, but the digest is deterministic for
+a given user under a fixed secret, enabling longitudinal analysis without
+direct re-identification from a database dump.
+
+**9bis.4 Event Categories.**
+The Software persists the following event types only: `session_start`,
+`session_end`, `page_view`, `pass_started`, `pass_completed`,
+`pass_abandoned`, `input_event` (elapsed time only, no input value),
+`analysis_view`, `analysis_dwell`, `analysis_interaction` (action name only,
+no value content), `condition_input` (question identifier and elapsed time
+only, no answer value), `tutorial_step`, `error_event` (error class only),
+`network_slow` (endpoint and latency only), and a generic `ui_event` for
+future extension. The complete and current allowlist is enumerated in the
+source file `backend/utils/telemetry.py`.
+
+**9bis.5 No Third-Party Disclosure.**
+Telemetry events are not transmitted to any third-party analytics provider,
+advertising network, or data broker. No cookies are set for the purposes of
+this Article. All processing occurs on infrastructure operated by the
+Licensor.
+
+**9bis.6 Retention.**
+Telemetry events are retained as a product asset and are not subject to a
+fixed deletion schedule. Storage is partitioned by month for query locality.
+Aggregated derived datasets (e.g., weekly funnel rollups) may be retained
+indefinitely.
+
+**9bis.7 Right to Object (GDPR Article 21) and Equivalent.**
+A Data Subject who objects to the processing described in this Article may
+submit a request to the contact address in Article X. Upon verification, the
+Licensor will exclude that Data Subject's future events from ingest by
+pseudonym suppression at the application boundary. Aggregated statistics
+already computed need not be retroactively recomputed where the contribution
+of a single subject cannot be technically isolated without re-aggregation
+of the entire historical dataset.
+
+**9bis.8 Right of Access (GDPR Article 15 / APPI 第28条).**
+A Data Subject may obtain a copy of the telemetry events tied to their
+pseudonymous identifier through the in-application data export endpoint
+documented in Article VIII of this Notice.
+
+### ARTICLE IX-ter — MINORS AND AGE-AWARE PROCESSING
+
+**9ter.1 Age Information.**
+The Software may collect, on a voluntary basis at registration or at any
+later point, the Data Subject's date of birth (for user accounts) or birth
+year (for player profiles). Provision is not required to use the Software.
+
+**9ter.2 Capture-Time Minor Flag.**
+When a match record is created, the Software computes a `captured_minor_flag`
+field by comparing the match date against the birth year of each
+participating player whose birth year is known. If any participant was under
+eighteen (18) years of age at the time of capture, the flag is set to
+`True`; if all known participants were adults, the flag is set to `False`;
+if no participating player's age is known, the flag is set to `NULL`
+(unknown).
+
+**9ter.3 Default Exclusion from AI Training Extraction.**
+Datasets prepared for AI / machine-learning training are by default filtered
+to exclude records where `captured_minor_flag = True`. An explicit operator
+override is technically possible and is recorded in an audit log. The default
+exclusion exists to minimise the legal and reputational risk surface
+associated with the processing of minor-captured data and does not constitute
+a representation that minor-captured data may never be used; rather, it
+shifts the decision from default-inclusion to deliberate, audited
+inclusion.
+
+**9ter.4 Consent UI for Minors.**
+Where the Software can determine that the current user is a minor (date of
+birth known and indicating an age below eighteen), the optional consent for
+AI / machine-learning training is presented with its checkbox in the
+**unchecked** state by default, and an inline notice is displayed
+recommending that the consent be granted, if at all, only after consultation
+with a legal guardian.
+
+---
+
 ### ARTICLE X — CONTACT AND REVISION
 
 **10.1 Contact.**  

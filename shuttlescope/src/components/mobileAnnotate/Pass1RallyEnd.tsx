@@ -15,9 +15,10 @@
  *   - set rollover (21 点 + 2 点差) はバナーで通知のみ、自動切替はしない
  *     (誤判定を避けるため、Set 終了ボタンを明示タップで進める)
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 // 規約: lucide-react は段階廃止。Material Symbols (MIcon) を使う。
 import { MIcon } from '@/components/common/MIcon'
+import { trackInput, trackPassAbandoned, trackPassCompleted, trackPassStarted } from '@/utils/analytics'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { setWinner, isSetPoint, isDeuce, isGoldenPoint } from '@/utils/badmintonRules'
 
@@ -75,6 +76,24 @@ export function Pass1RallyEnd({
   cvHint,
 }: Props) {
   const [busy, setBusy] = useState(false)
+  // テレメトリ: pass 開始時刻と直前入力時刻
+  const passStartRef = useRef<number>(performance.now())
+  const lastInputRef = useRef<number>(performance.now())
+  const inputCountRef = useRef<number>(0)
+  const lastInputTypeRef = useRef<string>('none')
+  useEffect(() => {
+    passStartRef.current = performance.now()
+    inputCountRef.current = 0
+    trackPassStarted(1, String(matchId))
+    return () => {
+      // unmount 時に未完了なら abandoned とみなす (onSetEnded → completed は別途呼ぶ)
+      if (inputCountRef.current === 0) {
+        const elapsed = Math.round(performance.now() - passStartRef.current)
+        trackPassAbandoned(1, elapsed, lastInputTypeRef.current)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 現スコア計算: 同セット内の最新ラリーから (1-based set_num のラリーだけ集計)
   const { scoreA, scoreB, lastRally } = useMemo(() => {
@@ -136,6 +155,12 @@ export function Pass1RallyEnd({
         pending: true,
       }
       onRallyAdded(local)
+      // テレメトリ: 1 入力 = 1 rally 入力
+      const now = performance.now()
+      trackInput('rally_winner', Math.round(now - lastInputRef.current))
+      lastInputRef.current = now
+      inputCountRef.current += 1
+      lastInputTypeRef.current = `rally_winner_${winner}`
     } finally {
       setBusy(false)
     }

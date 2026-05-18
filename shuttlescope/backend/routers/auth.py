@@ -2461,7 +2461,8 @@ def delete_team(
 # 文書改定時はここを更新し、frontend 側にも反映する (再同意取得の判定根拠)。
 # 2026-05-08: PRIVACY v1.2 (Article IX §9.3 追加) / TERMS v1.2 (§16/§17 追加) で更新。
 # 2026-05-18: TERMS v1.3 (§9 を SLA 免責 + 不可抗力 + 個人運営の透明開示で大幅拡張)。
-CURRENT_PRIVACY_VERSION = "1.2"
+# 2026-05-19: PRIVACY v1.3 (Article IX-bis テレメトリ + IX-ter 未成年配慮 を追加)。
+CURRENT_PRIVACY_VERSION = "1.3"
 CURRENT_TERMS_VERSION = "1.3"
 CURRENT_DCT_VERSION = "1.0"
 
@@ -2550,6 +2551,18 @@ def get_my_consents(request: Request, db: Session = Depends(get_db)):
             "withdrawn_at": r.withdrawn_at.isoformat() if r.withdrawn_at else None,
         }
     user = db.get(User, ctx.user_id)
+    # PRIVACY §9ter: 未成年判定 (date_of_birth が分かる場合のみ)
+    viewer_is_minor = False
+    try:
+        if user and getattr(user, "date_of_birth", None):
+            from datetime import date as _date
+            today = _date.today()
+            age = today.year - user.date_of_birth.year - (
+                (today.month, today.day) < (user.date_of_birth.month, user.date_of_birth.day)
+            )
+            viewer_is_minor = age < 18
+    except Exception:
+        viewer_is_minor = False
     return {
         "success": True,
         "data": {
@@ -2562,6 +2575,7 @@ def get_my_consents(request: Request, db: Session = Depends(get_db)):
             "required_types": sorted(_REQUIRED_CONSENT_TYPES),
             "optional_types": sorted(_OPTIONAL_CONSENT_TYPES),
             "consents": list(latest.values()),
+            "viewer_is_minor": viewer_is_minor,
         },
     }
 

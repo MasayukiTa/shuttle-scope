@@ -3066,6 +3066,7 @@
       "doc_research": "Academic research use terms (full)",
       "doc_body_analyst": "Body composition disclosure to analyst (full)",
       "doc_body_coach": "Body composition disclosure to coach (full)",
+      "ai_training_minor_notice": "[For minors] This checkbox is unchecked by default. Please consult a legal guardian and tick it only if you explicitly intend to consent. ",
       "scroll_hint": "Open both 'View Privacy Notice' and 'View Terms of Service' above and scroll each document to the bottom. Once both are read, the mandatory checkboxes become enabled.",
       "required_section": "Mandatory (contractual basis)",
       "required_hint": "These are required for the service to operate (GDPR Art 6(1)(b) / APPI Art 18). Withdrawing is equivalent to ending service use.",

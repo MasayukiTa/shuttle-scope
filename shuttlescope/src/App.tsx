@@ -36,6 +36,10 @@ import PendingUsersPage from '@/pages/PendingUsersPage'
 // Phase Pay-1: 課金 UI (VITE_SS_BILLING_UI_ENABLED=false の間は各ページが <Navigate to="/"> で空遷移)
 import AccountOrdersPage from '@/pages/AccountOrdersPage'
 import AdminBillingPage from '@/pages/AdminBillingPage'
+import AdminAnalyticsPage from '@/pages/AdminAnalyticsPage'
+import { TutorialOverlay } from '@/components/tutorial/TutorialOverlay'
+import { TUTORIALS } from '@/components/tutorial/tutorials'
+import { closeTutorial, useTutorialChannel } from '@/components/tutorial/useTutorial'
 import CommerceLawPage from '@/pages/CommerceLawPage'
 import { AuditLogPage } from '@/pages/AuditLogPage'
 import { TeamManagementPage } from '@/pages/TeamManagementPage'
@@ -338,6 +342,7 @@ function MainLayout() {
             {/* Phase Pay-1: 課金 UI ルート。各ページは内部で BILLING_UI_ENABLED チェック */}
             <Route path="/account/orders" element={<AccountOrdersPage />} />
             <Route path="/admin/billing" element={<AdminRoute><AdminBillingPage /></AdminRoute>} />
+            <Route path="/admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
             <Route path="/legal/commerce" element={<CommerceLawPage />} />
             <Route path="/audit-logs" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
             <Route path="/teams" element={<TeamManagementPage />} />
@@ -520,6 +525,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeApplier>
+        <GlobalTutorialMount />
         <HashRouter>
           <Routes>
             <Route path="/video-only" element={<VideoOnlyPage />} />
@@ -539,6 +545,14 @@ function App() {
       </ThemeApplier>
     </QueryClientProvider>
   )
+}
+
+function GlobalTutorialMount() {
+  const id = useTutorialChannel()
+  if (!id) return null
+  const tut = TUTORIALS[id as keyof typeof TUTORIALS]
+  if (!tut) return null
+  return <TutorialOverlay tutorial={tut} onClose={() => closeTutorial()} />
 }
 
 export default App

@@ -10,6 +10,7 @@ import './styles/material-symbols-subset.css'
 // R43 honeypot bundle: 死コードとして bundle に残し、reverse engineer 検知に使う。
 // この import は副作用 (console.debug 1 行) しか起こさない。
 import './utils/legacyCompat'
+import { startTelemetry } from './utils/analytics'
 
 // PWA 標準モードや Web Inspector を繋げない iOS 端末で render 前 throw が
 // 起きると画面が白くなるだけで原因が見えない。window.onerror で拾って画面
@@ -86,6 +87,9 @@ if (typeof document !== 'undefined' && (document as any).fonts) {
   // ハードタイムアウト: 1.2 秒で諦める
   setTimeout(markReady, 1200)
 }
+
+// 製品テレメトリ起動 (PRIVACY §テレメトリ; GDPR Art 6(1)(f) / APPI 第18条但書)
+try { startTelemetry() } catch { /* ignore */ }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

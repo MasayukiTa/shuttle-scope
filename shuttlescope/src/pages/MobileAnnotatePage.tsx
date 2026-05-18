@@ -24,6 +24,7 @@ import { useQuery } from '@tanstack/react-query'
 // CLAUDE.md / メモリ規約: 新規 UI は Material Symbols (MIcon)。lucide は段階廃止。
 import { MIcon } from '@/components/common/MIcon'
 import { apiGet, apiPost } from '@/api/client'
+import { useAutoTutorial } from '@/components/tutorial/useTutorial'
 import { getMobileVideoSrc } from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
@@ -127,6 +128,8 @@ export function MobileAnnotatePage() {
   const { t } = useTranslation()
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
+  // 初回 mount でモバイルアノテーションのチュートリアル自動起動 (未完なら)
+  useAutoTutorial('mobile_annotate_pass')
   const [pass, setPass] = useState<AnnotatePass>('rally')
   const [screen, setScreen] = useState<ScreenMode>('play')
   const [pausedAtSec, setPausedAtSec] = useState<number>(0)
