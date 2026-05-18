@@ -84,7 +84,7 @@ export function GrowthTimeline({
   const isPairMode = !!partnerPlayerId
 
   // メインプレイヤーのクエリ
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isPending, isFetching } = useQuery({
     queryKey: ['analysis-growth-timeline', playerId, metric, windowSize],
     queryFn: () =>
       apiGet<GrowthTimelineResponse>('/analysis/growth_timeline', {
@@ -117,7 +117,7 @@ export function GrowthTimeline({
   const trendDelta = resp?.data?.trend_delta ?? 0
 
   if (sampleSize === 0 || points.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" loading={isPending || isFetching} />
   }
 
   const cfg = METRIC_CONFIG[metric]

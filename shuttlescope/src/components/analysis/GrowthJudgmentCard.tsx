@@ -47,7 +47,7 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
   const { t } = useTranslation()
   const isLight = useIsLightMode()
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isPending, isFetching } = useQuery({
     queryKey: ['analysis-growth-judgment', playerId, minMatches],
     queryFn: () =>
       apiGet<GrowthJudgmentResponse>('/analysis/growth_judgment', {
@@ -57,14 +57,14 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
     enabled: !!playerId,
   })
 
-  if (isLoading) {
+  if (isLoading || isPending || isFetching) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('analysis.loading')}</div>
   }
 
   const sampleSize = resp?.meta?.sample_size ?? 0
   const data = resp?.data
   if (!data || sampleSize === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={minMatches} unit="試合" />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={minMatches} unit="試合" loading={isPending || isFetching} />
   }
 
   const style = JUDGMENT_STYLE[data.judgment] ?? JUDGMENT_STYLE.pending

@@ -126,7 +126,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
   const [showLayerB, setShowLayerB] = useState(!isCoach)
   const [showLayerC, setShowLayerC] = useState(!isCoach)
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isPending, isFetching } = useQuery({
     queryKey: ['prediction-match-preview', playerId, opponentId, tournamentLevel],
     queryFn: () =>
       apiGet<PredictionResponse>('/prediction/match_preview', {
@@ -164,7 +164,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
     )
   }
 
-  if (isLoading) {
+  if (isLoading || isPending || isFetching) {
     return (
       <div className="text-gray-500 text-sm py-8 text-center">{t('prediction.loading')}</div>
     )
@@ -173,7 +173,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
   if (!d || d.sample_size === 0) {
     return (
       <div className="space-y-4">
-        <NoDataMessage sampleSize={0} minRequired={1} unit="試合" />
+        <NoDataMessage sampleSize={0} minRequired={1} unit="試合" loading={isPending || isFetching} />
       </div>
     )
   }

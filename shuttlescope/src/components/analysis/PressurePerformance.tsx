@@ -83,7 +83,7 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
     ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
     ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
   }
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isPending, isFetching } = useQuery({
     queryKey: ['analysis-pressure-performance', playerId, filters],
     queryFn: () =>
       apiGet<PressureResponse>('/analysis/pressure_performance', {
@@ -93,7 +93,7 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
     enabled: !!playerId,
   })
 
-  if (isLoading) {
+  if (isLoading || isPending || isFetching) {
     return (
       <div className="text-gray-500 text-sm py-8 text-center">{t('auto.PressurePerformance.k1')}</div>
     )

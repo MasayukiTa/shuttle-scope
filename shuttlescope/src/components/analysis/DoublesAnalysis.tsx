@@ -50,7 +50,7 @@ interface PartnerItem {
 function PartnerComparison({ playerId }: { playerId: number }) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isPending, isFetching } = useQuery({
     queryKey: ['analysis-partner-comparison', playerId],
     queryFn: () =>
       apiGet<{ success: boolean; data: { partners: PartnerItem[] }; meta: any }>(
@@ -66,7 +66,7 @@ function PartnerComparison({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (partners.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit={t('doubles_analysis.unit_doubles_match')} />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit={t('doubles_analysis.unit_doubles_match')} loading={isPending || isFetching} />
   }
 
   return (
@@ -135,7 +135,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (!d || sampleSize === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit={t('doubles_analysis.unit_doubles_match')} />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit={t('doubles_analysis.unit_doubles_match')} loading={isPending || isFetching} />
   }
 
   const srData = [
@@ -241,7 +241,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (!d || sampleSize === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit={t('doubles_analysis.unit_doubles_match')} />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={1} unit={t('doubles_analysis.unit_doubles_match')} loading={isPending || isFetching} />
   }
 
   const shareData = [

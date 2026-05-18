@@ -62,13 +62,13 @@ function SynergyBar({ score }: { score: number }) {
 function Inner({ playerId }: { playerId: number }) {
   const { t } = useTranslation()
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isPending, isFetching } = useQuery({
     queryKey: ['analysis-pair-synergy', playerId],
     queryFn: () => apiGet<Response>('/analysis/pair_synergy', { player_id: playerId }),
     enabled: !!playerId,
   })
 
-  if (isLoading) {
+  if (isLoading || isPending || isFetching) {
     return <div className="text-gray-500 text-sm py-4 text-center">{t('auto.PairSynergyCard.k1')}</div>
   }
 
@@ -77,7 +77,7 @@ function Inner({ playerId }: { playerId: number }) {
   const sampleSize = resp?.meta?.sample_size ?? 0
 
   if (pairs.length === 0) {
-    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" />
+    return <NoDataMessage sampleSize={sampleSize} minRequired={3} unit="試合" loading={isPending || isFetching} />
   }
 
   return (

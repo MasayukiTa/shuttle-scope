@@ -83,13 +83,13 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
   const { role } = useAuth()
   const isPlayer = role === 'player'
 
-  const { data: resp, isLoading } = useQuery({
+  const { data: resp, isLoading, isPending, isFetching } = useQuery({
     queryKey: ['analysis-recommendation-ranking', playerId],
     queryFn: () => apiGet<Response>('/analysis/recommendation_ranking', { player_id: playerId }),
     enabled: !!playerId,
   })
 
-  if (isLoading) {
+  if (isLoading || isPending || isFetching) {
     return (
       <div className="bg-gray-800 rounded-lg p-4">
         <h3 className="text-sm font-semibold text-gray-200 mb-3">{t('auto.RecommendationRanking.k1')}</h3>
@@ -108,7 +108,7 @@ export function RecommendationRanking({ playerId }: RecommendationRankingProps) 
       </h3>
 
       {items.length === 0 ? (
-        <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ラリー" />
+        <NoDataMessage sampleSize={sampleSize} minRequired={5} unit="ラリー" loading={isPending || isFetching} />
       ) : (
         <div className="space-y-2">
           <ConfidenceBadge sampleSize={sampleSize} />
