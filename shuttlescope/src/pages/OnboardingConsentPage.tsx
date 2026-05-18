@@ -47,11 +47,13 @@ interface OnboardingConsentPageProps {
 export default function OnboardingConsentPage({
   onCompleted, optionalOnly, onDeferred,
 }: OnboardingConsentPageProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [state, setState] = useState<ConsentStateDTO | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 文書 popup. null = 閉、'privacy' / 'terms' = 表示中
+  const [docModal, setDocModal] = useState<null | 'privacy' | 'terms'>(null)
 
   // 同意/確認状態。initial は false、ユーザーが明示的にチェックしない限り送信されない。
   const [given, setGiven] = useState<Record<ConsentType, boolean>>({
@@ -152,45 +154,56 @@ export default function OnboardingConsentPage({
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4">
       <div className="max-w-3xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
         <header className="border-b border-gray-200 dark:border-gray-700 pb-4">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            {t('onboarding.consent.title') || 'データ取り扱いに関する確認・同意'}
-          </h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              {t('onboarding.consent.title') || 'データ取り扱いに関する確認・同意'}
+            </h1>
+            {/* 言語切替: site-wide な i18n を即座に変更。GitHub に access 出来ない
+               選手も使うため、popup 内で完結する操作に統一。 */}
+            <div className="shrink-0 flex items-center gap-1 text-xs">
+              <button
+                type="button"
+                onClick={() => i18n.changeLanguage('ja')}
+                className={`px-2 py-1 rounded border ${
+                  (i18n.language as string)?.startsWith('ja')
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200'
+                }`}
+              >日本語</button>
+              <button
+                type="button"
+                onClick={() => i18n.changeLanguage('en')}
+                className={`px-2 py-1 rounded border ${
+                  (i18n.language as string)?.startsWith('en')
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200'
+                }`}
+              >EN</button>
+            </div>
+          </div>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
             {t('onboarding.consent.intro') ||
               '本サービス (ShuttleScope) のご利用にあたり、以下の文書をお読みいただき、内容をご確認の上、任意同意項目について同意の可否をご判断ください。'}
           </p>
-          <ul className="mt-3 text-sm space-y-1">
-            <li>
-              <a
-                href="https://github.com/MasayukiTa/shuttle-scope/blob/main/PRIVACY.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline dark:text-blue-400"
-              >
-                Privacy Notice (Version {ppv})
-              </a>
-            </li>
-            <li>
-              <a
-                href="https://github.com/MasayukiTa/shuttle-scope/blob/main/TERMS_OF_SERVICE.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline dark:text-blue-400"
-              >
-                Terms of Service (Version {tv})
-              </a>
-            </li>
-            <li>
-              <a
-                href="https://github.com/MasayukiTa/shuttle-scope/blob/main/DATA_CONTRIBUTION_TERMS.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline dark:text-blue-400"
-              >
-                Data Contribution Terms
-              </a>
-            </li>
-          </ul>
+          {/* GitHub リンクは廃止。社内/学校ネットワークから github が見えないユーザも
+             居るため、backend が serve している HTML を popup modal に iframe で表示。
+             /privacy /terms (JA), /en/privacy /en/terms (EN) — i18n.language で出し分け。 */}
+          <div className="mt-3 flex flex-wrap gap-2 text-sm">
+            <button
+              type="button"
+              onClick={() => setDocModal('privacy')}
+              className="px-3 py-1.5 rounded border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+            >
+              {t('onboarding.consent.view_privacy') || 'プライバシーポリシーを表示'} (v{ppv})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDocModal('terms')}
+              className="px-3 py-1.5 rounded border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+            >
+              {t('onboarding.consent.view_terms') || '利用規約を表示'} (v{tv})
+            </button>
+          </div>
         </header>
 
         {/* optionalOnly mode では必須セクションを丸ごと hide。次回ログイン時に
@@ -284,18 +297,49 @@ export default function OnboardingConsentPage({
         ) : null}
 
         <footer className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
-          {/* あとで: optionalOnly mode のみ表示。任意同意を skip して通常画面に進む。
-             次回ログイン時に再度 popup が出る (= optional_consent_pending=True が続く)。 */}
-          {optionalOnly && onDeferred && (
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={onDeferred}
-              className="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-            >
-              {t('onboarding.consent.later') || 'あとで決める'}
-            </button>
-          )}
+          {/* 「あとで見るよ」: 必須同意 (= 初回 mode) も含めて全 mode で表示する。
+             - 初回 mode: 必須が check 済なら submit (required のみ) + 任意は skip。
+               必須未 check なら error 表示。次回ログインで再 popup。
+             - optionalOnly: rows 書き込まずに popup 閉じ。次回再 popup。
+             配置: 「確認・同意して開始」の **左**。 */}
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={async () => {
+              if (optionalOnly) {
+                // 何も書き込まず popup を閉じる
+                onDeferred?.()
+                return
+              }
+              // 初回 mode: 必須を submit し optional は skip → 次回 popup で再促し
+              if (!state) return
+              if (!allRequiredChecked) {
+                setError(t('onboarding.consent.error_required_missing') || '必須同意項目にすべてチェックを入れてください')
+                return
+              }
+              setSubmitting(true)
+              setError(null)
+              try {
+                const consents = REQUIRED.map((t) => ({
+                  consent_type: t,
+                  consent_given: true,
+                }))
+                await submitConsents({
+                  consents,
+                  privacy_policy_version: state.current_versions.privacy_policy,
+                  terms_version: state.current_versions.terms,
+                })
+                onCompleted()
+              } catch (e) {
+                setError((e as Error).message || t('onboarding.consent.error_submit') || '同意送信に失敗しました')
+              } finally {
+                setSubmitting(false)
+              }
+            }}
+            className="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+          >
+            {t('onboarding.consent.later') || 'あとで見るよ'}
+          </button>
           <button
             type="button"
             disabled={!canSubmit || submitting}
@@ -312,9 +356,43 @@ export default function OnboardingConsentPage({
 
         <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
           {t('onboarding.consent.withdraw_notice') ||
-            '必須確認事項は契約履行のため撤回は行えません（撤回はサービス利用終了と等価です）。任意同意は問い合わせフォームまたは contact@shuttle-scope.com 宛てメールでいつでも撤回でき、本サービスの利用には影響しません。設定画面内の同意撤回 UI は順次提供予定です。'}
+            '必須確認事項は契約履行のため撤回は行えません（撤回はサービス利用終了と等価です）。任意同意は 設定 → 体調タブ → 体組成データの開示設定、またはお問い合わせフォーム / contact@shuttle-scope.com 宛てメールでいつでも変更・撤回できます。'}
         </p>
       </div>
+
+      {/* 文書 popup modal. iframe で backend の HTML view を表示。
+         JA/EN は i18n.language で path を出し分け。 */}
+      {docModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setDocModal(null)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[85vh] rounded-lg shadow-xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {docModal === 'privacy'
+                  ? (t('onboarding.consent.view_privacy') || 'プライバシーポリシー')
+                  : (t('onboarding.consent.view_terms') || '利用規約')}
+              </div>
+              <button
+                type="button"
+                onClick={() => setDocModal(null)}
+                className="text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+            <iframe
+              title={docModal}
+              src={`${(i18n.language as string)?.startsWith('en') ? '/en' : ''}/${docModal}`}
+              className="flex-1 w-full bg-white"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

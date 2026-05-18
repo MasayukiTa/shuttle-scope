@@ -3043,5 +3043,36 @@
       "k7": "Receiving",
       "k8": "e.g. Coach PC"
     }
+  },
+  "onboarding": {
+    "consent": {
+      "title": "Data handling consent",
+      "intro": "Before using ShuttleScope, please review the documents below and decide on the optional consents.",
+      "view_privacy": "View Privacy Notice",
+      "view_terms": "View Terms of Service",
+      "required_section": "Mandatory (contractual basis)",
+      "required_hint": "These are required for the service to operate (GDPR Art 6(1)(b) / APPI Art 18). Withdrawing is equivalent to ending service use.",
+      "optional_section": "Optional (you can use the service without checking these)",
+      "optional_hint": "Optional consents are based on GDPR Art 6(1)(a) / APPI consent. You can change them at any time from Settings → Condition → Body composition disclosure.",
+      "service_delivery_label": "I have reviewed the Privacy Notice and Terms of Service",
+      "service_delivery_desc": "The processing described in those documents (match data, player profile, analysis results, authentication, audit logging) is necessary to provide the service. Stopping the processing is equivalent to terminating service use.",
+      "beta_agreement_label": "I have reviewed the Beta data handling notice (Terms of Service Section 14)",
+      "beta_agreement_desc": "Beta-period data scope, purpose, retention, and third-party-sharing posture are described in TERMS §14. Objections during beta are accepted via the contact form per §14.5.",
+      "ai_training_label": "I consent to use of my data for AI model training",
+      "ai_training_desc": "Anonymized/aggregated data may be used to improve model accuracy. Optional and withdrawable at any time; withdrawal excludes future training. Withdrawal: contact form or contact@shuttle-scope.com.",
+      "research_label": "I consent to use of my data for academic research",
+      "research_desc": "Allows anonymized use for sports-science research and publications. Prior notice and right of withdrawal preserved. Withdrawal: contact form or contact@shuttle-scope.com.",
+      "body_disclose_to_analyst_label": "Share body-composition data with the analyst",
+      "body_disclose_to_analyst_desc": "Weight, body-fat %, muscle mass, etc. visible to your team analyst. Default is ON; toggle anytime in Settings → Condition → Body composition disclosure.",
+      "body_disclose_to_coach_label": "Share body-composition data with the coach",
+      "body_disclose_to_coach_desc": "Weight, body-fat %, muscle mass, etc. visible to your coach. Default is ON; toggle anytime in Settings → Condition → Body composition disclosure.",
+      "submit": "Confirm and continue",
+      "submit_optional": "Save responses",
+      "later": "Decide later",
+      "submitting": "Submitting...",
+      "withdraw_notice": "Mandatory items cannot be withdrawn (withdrawal equals ending service use). Optional consents can be changed anytime via Settings → Condition → Body composition disclosure, or via the contact form / contact@shuttle-scope.com.",
+      "error_required_missing": "Please check all mandatory items",
+      "error_submit": "Failed to submit consents"
+    }
   }
 }
