@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useTranslation } from 'react-i18next'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { AnalysisFilters } from '@/types'
@@ -44,6 +45,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 export function DashboardLivePage({ playerId, matches }: Props) {
+  useEffect(() => analyticsViewLifecycle('dashboard.live'), [])
   const { t } = useTranslation()
   const { card, textMuted } = useCardTheme()
   const isLight = useIsLightMode()

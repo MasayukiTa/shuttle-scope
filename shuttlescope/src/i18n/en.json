@@ -101,6 +101,8 @@
       "password": "Password (8 characters or more)",
       "password_hint": "Include at least 3 of: uppercase, lowercase, digits, symbols",
       "display_name_optional": "Display name (optional)",
+      "dob_optional": "Date of birth (optional)",
+      "dob_hint": "Optional. Used to apply minor-aware defaults on the consent UI (PRIVACY §IX-ter).",
       "submit": "Create account",
       "success_title": "Verification email sent",
       "success_body": "A verification link has been sent to your email address. Please click the link to complete the verification.",

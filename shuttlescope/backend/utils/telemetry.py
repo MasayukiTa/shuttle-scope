@@ -160,6 +160,10 @@ def ensure_next_partition(db: Session) -> None:
     if bind.dialect.name != "postgresql":
         return
     from sqlalchemy import text
+    # ss_migration ロールは pg_role_lockdown 後 CREATE 権限を持たないため、
+    # この関数は postgres superuser 経路 (scheduled task) からの呼び出しか、
+    # CREATE on schema public が一時的に再付与されている前提で動く。
+    # CREATE 失敗時は黙って無視し、既存パーティションに書き続ける。
     sql = text(
         """
         DO $$
@@ -172,8 +176,25 @@ def ensure_next_partition(db: Session) -> None:
             'CREATE TABLE IF NOT EXISTS %I PARTITION OF product_events FOR VALUES FROM (%L) TO (%L)',
             pname, nxt2, nxt3
           );
+          -- ss_user に DML 権限を付与 (app から書けるように)
+          EXECUTE format(
+            'GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO ss_user',
+            pname
+          );
+        EXCEPTION
+          WHEN insufficient_privilege THEN
+            -- ss_migration 経由ではここで停止する。superuser 経路から retry すること。
+            NULL;
+          WHEN OTHERS THEN
+            NULL;
         END $$;
         """
     )
-    db.execute(sql)
-    db.commit()
+    try:
+        db.execute(sql)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass

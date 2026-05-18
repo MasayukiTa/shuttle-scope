@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useTranslation } from 'react-i18next'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { AnalysisFilters, Player } from '@/types'
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props) {
+  useEffect(() => analyticsViewLifecycle('dashboard.growth'), [])
   const { t } = useTranslation()
   const [pairMode, setPairMode] = useState(false)
   const [partnerPlayerId, setPartnerPlayerId] = useState<number | null>(null)

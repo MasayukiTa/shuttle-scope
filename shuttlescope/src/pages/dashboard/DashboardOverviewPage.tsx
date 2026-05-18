@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -86,6 +87,8 @@ interface Props {
 export function DashboardOverviewPage({ playerId, filters, filterApiParams, matches, loadingMatches }: Props) {
   const { t } = useTranslation()
   const { card, textHeading, textSecondary, textMuted, textFaint, loading: loadingClass, isLight } = useCardTheme()
+  // テレメトリ: 滞在 dwell
+  useEffect(() => analyticsViewLifecycle('dashboard.overview', { playerId }), [])
 
   const TOOLTIP_STYLE = getTooltipStyle(isLight)
   const AXIS_TICK = isLight ? AXIS_TICK_LIGHT : '#9ca3af'

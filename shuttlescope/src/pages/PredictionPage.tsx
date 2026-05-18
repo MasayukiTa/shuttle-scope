@@ -7,6 +7,7 @@
  * player / coach 向けロール制限あり
  */
 import { useState, useEffect } from 'react'
+import { analyticsViewLifecycle, trackAnalysisInteraction } from '@/utils/analytics'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
@@ -36,6 +37,8 @@ type SubTab = 'preview' | 'pair' | 'lineup' | 'forecast'
 export function PredictionPage() {
   const { t } = useTranslation()
   const { role } = useAuth()
+  // テレメトリ: page 滞在 dwell 計測 (view_id ベース)
+  useEffect(() => analyticsViewLifecycle('prediction.page'), [])
   const { card, textHeading, textSecondary, textMuted, isLight } = useCardTheme()
   const [searchParams] = useSearchParams()
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(() => {
@@ -210,7 +213,10 @@ export function PredictionPage() {
           ).map(({ key, label, labelShort }) => (
             <button
               key={key}
-              onClick={() => setSubTab(key)}
+              onClick={() => {
+                setSubTab(key)
+                trackAnalysisInteraction('prediction.page', 'subtab_change', key)
+              }}
               disabled={!selectedPlayerId}
               className={`px-3 py-1 rounded text-sm font-medium transition-colors whitespace-nowrap ${
                 subTab === key ? tabActive : tabInactive
