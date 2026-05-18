@@ -190,25 +190,8 @@ export default function OnboardingConsentPage({
             {t('onboarding.consent.intro') ||
               '本サービス (ShuttleScope) のご利用にあたり、以下の文書をお読みいただき、内容をご確認の上、任意同意項目について同意の可否をご判断ください。'}
           </p>
-          {/* GitHub リンクは廃止。社内/学校ネットワークから github が見えないユーザも
-             居るため、backend が serve している HTML を popup modal に iframe で表示。
-             /privacy /terms (JA), /en/privacy /en/terms (EN) — i18n.language で出し分け。 */}
-          <div className="mt-3 flex flex-wrap gap-2 text-sm">
-            <button
-              type="button"
-              onClick={() => setDocModal('privacy')}
-              className="px-3 py-1.5 rounded border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30"
-            >
-              {t('onboarding.consent.view_privacy') || 'プライバシーポリシーを表示'} (v{ppv})
-            </button>
-            <button
-              type="button"
-              onClick={() => setDocModal('terms')}
-              className="px-3 py-1.5 rounded border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30"
-            >
-              {t('onboarding.consent.view_terms') || '利用規約を表示'} (v{tv})
-            </button>
-          </div>
+          {/* 文書表示ボタンは各 checkbox 横に inline で配置するため、
+             ヘッダの top 一括ボタンは削除した (UX 集約)。 */}
         </header>
 
         {/* optionalOnly mode では必須セクションを丸ごと hide。次回ログイン時に
@@ -222,21 +205,10 @@ export default function OnboardingConsentPage({
               'これらに同意いただかないと本サービスをご利用いただけません。これらは GDPR Article 6(1)(b)（契約履行）および APPI 第18条に基づく処理であり、撤回はサービス利用の終了と等価となります。'}
           </p>
 
-          {/* 必須 checkbox は **両方の文書を最後までスクロール** しないと
-             enable されない。typical legal-consent UI パターン (読了擬制)。
-             典型的回避経路: DevTools で disabled 属性を外す。これは UI nudge
-             なので技術的には bypass 可能だが、submit 時に backend 側でも
-             required-types 検証を行うため、最低限 service_delivery=true /
-             beta_agreement=true は明示送信が必要 = 法的「同意の機会を提供」
-             要件は満たす。 */}
-          {!bothDocsScrolled && (
-            <div className="text-xs px-3 py-2 rounded border border-amber-300 dark:border-amber-700/40 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200">
-              {t('onboarding.consent.scroll_hint') || '上の「プライバシーポリシーを表示」「利用規約を表示」を開き、各文書を最後までスクロールして読了してください (済むとチェックが有効になります)'}
-              <span className="ml-2 font-mono text-[10px]">
-                Privacy:{scrolledPrivacy ? '✓' : '…'} Terms:{scrolledTerms ? '✓' : '…'}
-              </span>
-            </div>
-          )}
+          {/* 必須 checkbox 各々に inline で「文書を読む」ボタンを並置。
+             - service_delivery: Privacy + Terms 両方の読了で enable
+             - beta_agreement: Terms の読了で enable (= §14 を参照)
+             各 docs ボタンは「未読/読了」を色 + ✓ で表示。 */}
 
           <ConsentCheckbox
             checked={given.service_delivery}
@@ -248,6 +220,22 @@ export default function OnboardingConsentPage({
             }
             required
             disabled={!bothDocsScrolled}
+            docButtons={
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DocButton
+                  onClick={() => setDocModal('privacy')}
+                  scrolled={scrolledPrivacy}
+                  label={`${t('onboarding.consent.view_privacy') || 'プライバシーポリシーを表示'} (v${ppv})`}
+                  doneLabel={t('onboarding.consent.read_done') || '読了'}
+                />
+                <DocButton
+                  onClick={() => setDocModal('terms')}
+                  scrolled={scrolledTerms}
+                  label={`${t('onboarding.consent.view_terms') || '利用規約を表示'} (v${tv})`}
+                  doneLabel={t('onboarding.consent.read_done') || '読了'}
+                />
+              </div>
+            }
           />
 
           <ConsentCheckbox
@@ -260,6 +248,16 @@ export default function OnboardingConsentPage({
             }
             required
             disabled={!bothDocsScrolled}
+            docButtons={
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DocButton
+                  onClick={() => setDocModal('terms')}
+                  scrolled={scrolledTerms}
+                  label={`${t('onboarding.consent.view_terms') || '利用規約を表示'} (v${tv})`}
+                  doneLabel={t('onboarding.consent.read_done') || '読了'}
+                />
+              </div>
+            }
           />
         </section>
 
@@ -413,6 +411,7 @@ function ConsentCheckbox({
   description,
   required,
   disabled,
+  docButtons,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
@@ -420,12 +419,15 @@ function ConsentCheckbox({
   description: string
   required?: boolean
   disabled?: boolean
+  // 関連文書ボタン (各 checkbox の下に inline 表示)。
+  // 「文書を読んでから check」のフローを各 box に集約する UX 改善。
+  docButtons?: React.ReactNode
 }) {
   return (
     <label
       className={`flex items-start gap-3 p-3 rounded border ${
         disabled
-          ? 'border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed'
+          ? 'border-gray-200 dark:border-gray-700 opacity-90 cursor-not-allowed bg-gray-50/40 dark:bg-gray-800/30'
           : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer'
       }`}
     >
@@ -442,8 +444,38 @@ function ConsentCheckbox({
           {required ? <span className="ml-2 text-red-600 text-xs">契約履行（必須）</span> : null}
         </div>
         <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{description}</p>
+        {docButtons}
       </div>
     </label>
+  )
+}
+
+/**
+ * 関連文書 modal を開くボタン。読了 (scrolled) なら緑 ✓、未読なら青で目立たせる。
+ * label に渡された文字列を表示。
+ */
+function DocButton({
+  onClick, scrolled, label, doneLabel,
+}: {
+  onClick: () => void
+  scrolled: boolean
+  label: string
+  doneLabel: string
+}) {
+  return (
+    <button
+      type="button"
+      // 親 <label> の click が transmit して checkbox を toggle しないよう block。
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick() }}
+      className={`text-xs px-2.5 py-1 rounded border inline-flex items-center gap-1 ${
+        scrolled
+          ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+          : 'border-blue-400 dark:border-blue-600 bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 animate-pulse-slow'
+      }`}
+    >
+      {scrolled ? '✓' : '📖'} {label}
+      {scrolled && <span className="ml-1 text-[10px] opacity-80">({doneLabel})</span>}
+    </button>
   )
 }
 
