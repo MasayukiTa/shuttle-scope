@@ -55,7 +55,7 @@ export default function OnboardingConsentPage({
   const [error, setError] = useState<string | null>(null)
   // 文書 popup. null = 閉、各 slug = 表示中。
   // privacy / terms は必須同意の読了対象、それ以外は「その他の規約」リンクから開かれる。
-  type DocSlug = 'privacy' | 'terms' | 'license' | 'data_contribution' | 'dpa_template' | 'beta_agreement'
+  type DocSlug = 'privacy' | 'terms' | 'license' | 'data_contribution' | 'dpa_template' | 'beta_agreement' | 'ai_training' | 'research' | 'body_analyst' | 'body_coach'
   const [docModal, setDocModal] = useState<null | DocSlug>(null)
   // 「その他の規約」一覧 overlay の表示状態
   const [otherDocsOpen, setOtherDocsOpen] = useState<boolean>(false)
@@ -241,6 +241,7 @@ export default function OnboardingConsentPage({
               'これらの文書に記載されたデータ処理（試合データ・選手プロフィール・解析結果の処理、認証、監査ログ等）は本サービス提供に必要な処理であり、GDPR Article 6(1)(b) および APPI 第18条に基づき行われます。これらの処理を停止する場合はサービスの利用終了をお選びください。'
             }
             required
+            requiredMarker={t('onboarding.consent.required_marker') || '契約履行（必須）'}
             disabled={!bothDocsScrolled}
             docButtons={
               <div className="mt-2 flex flex-wrap gap-2">
@@ -269,6 +270,7 @@ export default function OnboardingConsentPage({
               'β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 14.5 の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。'
             }
             required
+            requiredMarker={t('onboarding.consent.required_marker') || '契約履行（必須）'}
             disabled={!bothDocsScrolled}
             docButtons={
               <div className="mt-2 flex flex-wrap gap-2">
@@ -310,6 +312,11 @@ export default function OnboardingConsentPage({
               t('onboarding.consent.ai_training_desc') ||
               '匿名化・集計化されたデータを将来的なモデル精度向上のために利用します。同意は任意であり、いつでも撤回できます。撤回時は以後の学習対象から除外されます。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。'
             }
+            docButtons={
+              <div className="mt-2 flex flex-wrap gap-2">
+                <OptionalDocLink onClick={() => setDocModal('ai_training')} label={t('onboarding.consent.doc_ai_training') || 'AI モデル学習利用規約 (詳細)'} />
+              </div>
+            }
           />
 
           <ConsentCheckbox
@@ -319,6 +326,11 @@ export default function OnboardingConsentPage({
             description={
               t('onboarding.consent.research_desc') ||
               '匿名化のうえスポーツ科学研究、論文発表等への利用を許可します。事前説明と同意撤回権を保持します。撤回方法：お問い合わせフォーム（https://shuttle-scope.com/contact）または contact@shuttle-scope.com 宛てメール。'
+            }
+            docButtons={
+              <div className="mt-2 flex flex-wrap gap-2">
+                <OptionalDocLink onClick={() => setDocModal('research')} label={t('onboarding.consent.doc_research') || '学術研究利用規約 (詳細)'} />
+              </div>
             }
           />
 
@@ -330,6 +342,11 @@ export default function OnboardingConsentPage({
               t('onboarding.consent.body_disclose_to_analyst_desc') ||
               '体重・体脂肪率・筋肉量等のデータをチーム解析担当 (analyst) に開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。'
             }
+            docButtons={
+              <div className="mt-2 flex flex-wrap gap-2">
+                <OptionalDocLink onClick={() => setDocModal('body_analyst')} label={t('onboarding.consent.doc_body_analyst') || '体組成データ アナリスト開示規約 (詳細)'} />
+              </div>
+            }
           />
 
           <ConsentCheckbox
@@ -339,6 +356,11 @@ export default function OnboardingConsentPage({
             description={
               t('onboarding.consent.body_disclose_to_coach_desc') ||
               '体重・体脂肪率・筋肉量等のデータをコーチに開示します。default は ON ですが、いつでも設定画面 (体調タブ) からトグルで変更できます。'
+            }
+            docButtons={
+              <div className="mt-2 flex flex-wrap gap-2">
+                <OptionalDocLink onClick={() => setDocModal('body_coach')} label={t('onboarding.consent.doc_body_coach') || '体組成データ コーチ開示規約 (詳細)'} />
+              </div>
             }
           />
         </section>
@@ -497,6 +519,7 @@ function ConsentCheckbox({
   label,
   description,
   required,
+  requiredMarker,
   disabled,
   docButtons,
 }: {
@@ -505,9 +528,10 @@ function ConsentCheckbox({
   label: string
   description: string
   required?: boolean
+  // i18n-resolved label for the red "必須" badge. Passed in so this component
+  // does not need its own useTranslation hook.
+  requiredMarker?: string
   disabled?: boolean
-  // 関連文書ボタン (各 checkbox の下に inline 表示)。
-  // 「文書を読んでから check」のフローを各 box に集約する UX 改善。
   docButtons?: React.ReactNode
 }) {
   return (
@@ -528,7 +552,7 @@ function ConsentCheckbox({
       <div className="flex-1">
         <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
           {label}
-          {required ? <span className="ml-2 text-red-600 text-xs">契約履行（必須）</span> : null}
+          {required ? <span className="ml-2 text-red-600 text-xs">{requiredMarker}</span> : null}
         </div>
         <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{description}</p>
         {docButtons}
@@ -569,9 +593,25 @@ function DocButton({
   )
 }
 
+/**
+ * 任意同意項目の補足規約への中立 link button。読了強制はしないので scroll 追跡なし。
+ */
+function OptionalDocLink({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick() }}
+      className="text-xs px-2.5 py-1 rounded border inline-flex items-center gap-1 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+    >
+      <MIcon name="description" size={14} />
+      {label}
+    </button>
+  )
+}
+
 // 現在 path から header に出す文書名を解決する。クロスリンクで navigate した
 // 先 (license / data_contribution 等) も初期 doc と同じくらい綺麗に表示するため。
-type DocKindAll = 'privacy' | 'terms' | 'license' | 'data_contribution' | 'dpa_template' | 'beta_agreement'
+type DocKindAll = 'privacy' | 'terms' | 'license' | 'data_contribution' | 'dpa_template' | 'beta_agreement' | 'ai_training' | 'research' | 'body_analyst' | 'body_coach'
 function _titleForPath(path: string, fallbackKind: DocKindAll, t: (k: string) => string): string {
   const norm = (path || '').replace(/^\/en/, '')
   if (norm.includes('/legal/privacy')) return t('onboarding.consent.view_privacy') || 'プライバシーポリシー'
@@ -580,6 +620,10 @@ function _titleForPath(path: string, fallbackKind: DocKindAll, t: (k: string) =>
   if (norm.includes('/legal/data_contribution')) return t('onboarding.consent.doc_dct') || 'データ提供規約'
   if (norm.includes('/legal/dpa_template')) return t('onboarding.consent.doc_dpa') || 'Data Processing Agreement'
   if (norm.includes('/legal/beta_agreement')) return t('onboarding.consent.doc_beta') || 'β期間データ取り扱い同意書'
+  if (norm.includes('/legal/ai_training')) return t('onboarding.consent.doc_ai_training') || 'AI モデル学習利用規約 (詳細)'
+  if (norm.includes('/legal/research')) return t('onboarding.consent.doc_research') || '学術研究利用規約 (詳細)'
+  if (norm.includes('/legal/body_analyst')) return t('onboarding.consent.doc_body_analyst') || '体組成データ アナリスト開示規約 (詳細)'
+  if (norm.includes('/legal/body_coach')) return t('onboarding.consent.doc_body_coach') || '体組成データ コーチ開示規約 (詳細)'
   // fallback: 初期 docKind から
   const fb: Record<DocKindAll, string> = {
     privacy: t('onboarding.consent.view_privacy') || 'プライバシーポリシー',
@@ -588,6 +632,10 @@ function _titleForPath(path: string, fallbackKind: DocKindAll, t: (k: string) =>
     data_contribution: t('onboarding.consent.doc_dct') || 'データ提供規約',
     dpa_template: t('onboarding.consent.doc_dpa') || 'Data Processing Agreement',
     beta_agreement: t('onboarding.consent.doc_beta') || 'β期間データ取り扱い同意書',
+    ai_training: t('onboarding.consent.doc_ai_training') || 'AI モデル学習利用規約 (詳細)',
+    research: t('onboarding.consent.doc_research') || '学術研究利用規約 (詳細)',
+    body_analyst: t('onboarding.consent.doc_body_analyst') || '体組成データ アナリスト開示規約 (詳細)',
+    body_coach: t('onboarding.consent.doc_body_coach') || '体組成データ コーチ開示規約 (詳細)',
   }
   return fb[fallbackKind]
 }
@@ -599,7 +647,7 @@ function DocModal({
   docKind, lang, onClose, onReachedBottom, alreadyScrolled, t,
 }: {
   // privacy / terms は必須同意の読了対象、他は「その他の規約」リンク経由。
-  docKind: 'privacy' | 'terms' | 'license' | 'data_contribution' | 'dpa_template' | 'beta_agreement'
+  docKind: 'privacy' | 'terms' | 'license' | 'data_contribution' | 'dpa_template' | 'beta_agreement' | 'ai_training' | 'research' | 'body_analyst' | 'body_coach'
   lang: 'ja' | 'en'
   onClose: () => void
   onReachedBottom: () => void

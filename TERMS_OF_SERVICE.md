@@ -515,11 +515,12 @@ Where the Service is used by an athlete under 18 years of age (as is
 common for junior badminton players), the registering organization
 (school, club, regional association) or guardian represents that they
 have obtained the documented consent described in `PRIVACY.md` and in
-the participant consent form (`ShuttleScope_同意書`), including any
-required guardian co-signature, before submitting that minor's
-identifying information, video, condition data, or body-composition
-data. The developer relies on this representation; the minor or guardian
-retains the right at any time to withdraw consent and request deletion.
+the applicable participant consent instrument used at the point of
+enrollment, including any required guardian co-signature, before
+submitting that minor's identifying information, video, condition
+data, or body-composition data. The developer relies on this
+representation; the minor or guardian retains the right at any time
+to withdraw consent and request deletion.
 
 ### 20.3 Account Deletion and Data Withdrawal
 
