@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { analyticsViewLifecycle } from '@/utils/analytics'
 import { useTranslation } from 'react-i18next'
+import { apiGet } from '@/api/client'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { AnalysisFilters } from '@/types'
 import { FlashAdvicePanel } from '@/components/analysis/FlashAdvicePanel'
@@ -61,7 +62,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   const [intervalSet, setIntervalSet] = useState(1)
 
   // セット間解析モーダル用ステート
-  const [intervalSummaryMatchId, setIntervalSummaryMatchId] = useState<number | null>(null)
+  const [intervalSummarySetId, setIntervalSummarySetIdValue] = useState<number | null>(null)
   const [showIntervalSummary, setShowIntervalSummary] = useState(false)
 
   const matchOptions = matches.map((m) => ({
@@ -214,7 +215,26 @@ export function DashboardLivePage({ playerId, matches }: Props) {
             </div>
           </div>
           {selectedMatchId ? (
-            <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
+            <IntervalReport
+              matchId={selectedMatchId}
+              completedSet={intervalSet}
+              onSetClick={async (setNum) => {
+                if (!selectedMatchId) return
+                try {
+                  // match の sets 一覧から set_num に対応する set_id を解決
+                  const resp = await apiGet<{ success: boolean; data: Array<{ id: number; set_num: number }> }>(
+                    `/sets/match/${selectedMatchId}`,
+                  )
+                  const found = resp.data?.find((s) => s.set_num === setNum)
+                  if (found) {
+                    setIntervalSummarySetIdValue(found.id)
+                    setShowIntervalSummary(true)
+                  }
+                } catch {
+                  /* 失敗時は静かに無視 (ユーザに虚偽情報を出さない) */
+                }
+              }}
+            />
           ) : (
             <p className={`text-sm text-center py-6 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.DashboardLivePage.k3')}</p>
           )}
@@ -222,12 +242,12 @@ export function DashboardLivePage({ playerId, matches }: Props) {
       </ErrorBoundary>
 
       {/* SetIntervalSummary モーダル */}
-      {showIntervalSummary && intervalSummaryMatchId && (
+      {showIntervalSummary && intervalSummarySetId && (
         <ErrorBoundary>
           <SetIntervalSummary
-            setId={intervalSummaryMatchId}
+            setId={intervalSummarySetId}
             playerAName="選手"
-            playerBName={matches.find((m) => m.match_id === intervalSummaryMatchId)?.opponent ?? 'B'}
+            playerBName={matches.find((m) => m.match_id === selectedMatchId)?.opponent ?? 'B'}
             onClose={() => setShowIntervalSummary(false)}
             onNextSet={() => setShowIntervalSummary(false)}
             isMidGame={false}

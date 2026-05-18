@@ -32,14 +32,32 @@ interface FlashAdviceResponse {
 }
 
 // カテゴリ別スタイル定義
-const CATEGORY_STYLE: Record<string, { border: string; bg: string; badge: string; lightBorder: string; lightBg: string }> = {
-  danger:       { border: '#ef4444', bg: 'rgba(239,68,68,0.08)',   badge: '#ef4444', lightBorder: '#dc2626', lightBg: 'rgba(239,68,68,0.06)' },
-  opportunity:  { border: '#3b82f6', bg: 'rgba(59,130,246,0.08)', badge: '#3b82f6', lightBorder: '#2563eb', lightBg: 'rgba(59,130,246,0.06)' },
-  pattern:      { border: '#8b5cf6', bg: 'rgba(139,92,246,0.08)', badge: '#8b5cf6', lightBorder: '#7c3aed', lightBg: 'rgba(139,92,246,0.06)' },
-  opponent:     { border: '#f59e0b', bg: 'rgba(245,158,11,0.08)', badge: '#f59e0b', lightBorder: '#d97706', lightBg: 'rgba(245,158,11,0.06)' },
-  next_action:  { border: '#eab308', bg: 'rgba(234,179,8,0.10)',  badge: '#eab308', lightBorder: '#ca8a04', lightBg: 'rgba(234,179,8,0.08)' },
-  trend:        { border: '#06b6d4', bg: 'rgba(6,182,212,0.08)',  badge: '#06b6d4', lightBorder: '#0891b2', lightBg: 'rgba(6,182,212,0.06)' },
-  fatigue_signal: { border: '#ec4899', bg: 'rgba(236,72,153,0.08)', badge: '#ec4899', lightBorder: '#db2777', lightBg: 'rgba(236,72,153,0.06)' },
+//
+// 色の意味づけ規則 (2026-05-19 改訂):
+//   - 色は「緊急度・性質」だけを表す。カテゴリ識別は priority バッジと title で行う。
+//   - 虹色 (紫/ピンク/シアン) を区別目的で並べるとストップライト誤読 + 視認価値の希釈で
+//     "decoration" になる (悪いデザイン)。
+//
+// 採用する 3 階層:
+//   warning (赤)   : 即座に注意が必要。danger 専用。
+//   caution (橙)   : 注意喚起。相手の脅威・自軍疲労サイン等、即時アクション必須ではないが
+//                    無視できない情報。
+//   info (青/中立) : 中立的観測・パターン提示・トレンド (良し悪し含意なし)。
+//   highlight     : next_action は「今やるべき推奨」として太枠 + 中立色で目立たせる
+//                   (色そのものは中立、ボーダーの太さで強調)。
+const _DANGER  = { border: '#ef4444', bg: 'rgba(239,68,68,0.08)', badge: '#ef4444', lightBorder: '#dc2626', lightBg: 'rgba(239,68,68,0.06)' }
+const _CAUTION = { border: '#f59e0b', bg: 'rgba(245,158,11,0.08)', badge: '#f59e0b', lightBorder: '#d97706', lightBg: 'rgba(245,158,11,0.06)' }
+const _INFO    = { border: '#3b82f6', bg: 'rgba(59,130,246,0.06)', badge: '#3b82f6', lightBorder: '#2563eb', lightBg: 'rgba(59,130,246,0.05)' }
+const _NEUTRAL = { border: '#94a3b8', bg: 'rgba(148,163,184,0.06)', badge: '#64748b', lightBorder: '#475569', lightBg: 'rgba(148,163,184,0.05)' }
+
+const CATEGORY_STYLE: Record<string, typeof _DANGER> = {
+  danger:         _DANGER,    // 即時注意
+  fatigue_signal: _CAUTION,   // 疲労サイン (注意、ピンクは廃止 — 装飾色だった)
+  opponent:       _CAUTION,   // 相手の脅威 (注意)
+  opportunity:    _INFO,      // 中立情報
+  pattern:        _NEUTRAL,   // 観測パターン (紫は廃止 — 装飾色だった)
+  trend:          _NEUTRAL,   // 傾向 (シアンは廃止 — 装飾色だった)
+  next_action:    _INFO,      // 推奨アクション (太枠で別途強調)
 }
 
 // playerロールに見せるカテゴリ（next_action + opportunity のみ）
