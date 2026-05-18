@@ -1676,6 +1676,37 @@ async def jp_redirect(request: Request):
     return _RR(url="/", status_code=301)
 
 
+# /register, /login: public host (apex/www) では SPA を持たないため、
+# app.shuttle-scope.com の SPA HashRouter (#/register, #/login) にリダイレクト。
+# EN ページから来た場合は ?lang=en を付けて SPA 側で初期言語を英語に。
+# SPA 側 (App.tsx) は ?lang= を i18n.changeLanguage に流す想定。
+_APP_HOST = "https://app.shuttle-scope.com"
+
+
+@router.get("/register")
+async def register_redirect(request: Request):
+    from fastapi.responses import RedirectResponse as _RR
+    return _RR(url=f"{_APP_HOST}/#/register", status_code=302)
+
+
+@router.get("/login")
+async def login_redirect(request: Request):
+    from fastapi.responses import RedirectResponse as _RR
+    return _RR(url=f"{_APP_HOST}/#/login", status_code=302)
+
+
+@router.get("/en/register")
+async def en_register_redirect(request: Request):
+    from fastapi.responses import RedirectResponse as _RR
+    return _RR(url=f"{_APP_HOST}/?lang=en#/register", status_code=302)
+
+
+@router.get("/en/login")
+async def en_login_redirect(request: Request):
+    from fastapi.responses import RedirectResponse as _RR
+    return _RR(url=f"{_APP_HOST}/?lang=en#/login", status_code=302)
+
+
 @router.post("/api/public/contact")
 async def submit_public_contact(body: PublicInquiryCreate, request: Request, db: Session = Depends(get_db)):
     if body.website:
