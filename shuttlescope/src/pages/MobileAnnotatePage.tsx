@@ -25,6 +25,7 @@ import { useQuery } from '@tanstack/react-query'
 import { MIcon } from '@/components/common/MIcon'
 import { apiGet, apiPost } from '@/api/client'
 import { useAutoTutorial } from '@/components/tutorial/useTutorial'
+import { AdviceStrip } from '@/components/common/AdviceStrip'
 import { getMobileVideoSrc } from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
@@ -616,6 +617,17 @@ export function MobileAnnotatePage() {
               <div className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
                 試合データは保存済です。後から PC で詳細確認・修正できます。
               </div>
+              {/* 2. 試合保存直後の advice strip — 本試合の実測値ベース */}
+              {matchId && (
+                <div className="mt-3 w-full max-w-xs" style={{ pointerEvents: 'auto' }}>
+                  <AdviceStrip
+                    context="post_match_save"
+                    playerId={undefined /* 自分の player_id は backend が ctx から解決 */}
+                    matchId={Number(matchId)}
+                    hideWhenInsufficient={false}
+                  />
+                </div>
+              )}
             </div>
           )}
 

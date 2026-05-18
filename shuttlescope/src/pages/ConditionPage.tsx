@@ -7,6 +7,7 @@ import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { AdviceStrip } from '@/components/common/AdviceStrip'
 import { InBodyForm } from '@/components/condition/InBodyForm'
 import { HooperRpeForm } from '@/components/condition/HooperRpeForm'
 import { AuxiliaryForm } from '@/components/condition/AuxiliaryForm'
@@ -353,6 +354,11 @@ export function ConditionPage() {
           />
         ) : subtab === 'analytics' ? (
           <div className="space-y-4">
+            {/* 3. 体調タブヘッダ: 実データ起点の advice strip */}
+            {effectivePlayerId && (
+              <AdviceStrip context="condition.header" playerId={effectivePlayerId} />
+            )}
+
             {/* 全ロール: 伸びしろインサイト（全幅リスト） */}
             <GrowthInsights playerId={effectivePlayerId} isLight={isLight} />
 
