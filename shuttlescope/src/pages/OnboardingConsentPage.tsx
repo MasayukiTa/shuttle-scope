@@ -8,7 +8,7 @@
  *
  * 表示テキストは i18n keys を経由する (CLAUDE.md ルール)。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ConsentRecord,
@@ -54,6 +54,11 @@ export default function OnboardingConsentPage({
   const [error, setError] = useState<string | null>(null)
   // 文書 popup. null = 閉、'privacy' / 'terms' = 表示中
   const [docModal, setDocModal] = useState<null | 'privacy' | 'terms'>(null)
+  // 各文書を最後までスクロールしたか。両方 true にしないと必須チェックを許可しない。
+  // (典型的な法務同意 UI パターン: 「読んだ」を擬制するための強制スクロール)
+  const [scrolledPrivacy, setScrolledPrivacy] = useState(false)
+  const [scrolledTerms, setScrolledTerms] = useState(false)
+  const bothDocsScrolled = scrolledPrivacy && scrolledTerms
 
   // 同意/確認状態。initial は false、ユーザーが明示的にチェックしない限り送信されない。
   const [given, setGiven] = useState<Record<ConsentType, boolean>>({
@@ -217,6 +222,22 @@ export default function OnboardingConsentPage({
               'これらに同意いただかないと本サービスをご利用いただけません。これらは GDPR Article 6(1)(b)（契約履行）および APPI 第18条に基づく処理であり、撤回はサービス利用の終了と等価となります。'}
           </p>
 
+          {/* 必須 checkbox は **両方の文書を最後までスクロール** しないと
+             enable されない。typical legal-consent UI パターン (読了擬制)。
+             典型的回避経路: DevTools で disabled 属性を外す。これは UI nudge
+             なので技術的には bypass 可能だが、submit 時に backend 側でも
+             required-types 検証を行うため、最低限 service_delivery=true /
+             beta_agreement=true は明示送信が必要 = 法的「同意の機会を提供」
+             要件は満たす。 */}
+          {!bothDocsScrolled && (
+            <div className="text-xs px-3 py-2 rounded border border-amber-300 dark:border-amber-700/40 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200">
+              {t('onboarding.consent.scroll_hint') || '上の「プライバシーポリシーを表示」「利用規約を表示」を開き、各文書を最後までスクロールして読了してください (済むとチェックが有効になります)'}
+              <span className="ml-2 font-mono text-[10px]">
+                Privacy:{scrolledPrivacy ? '✓' : '…'} Terms:{scrolledTerms ? '✓' : '…'}
+              </span>
+            </div>
+          )}
+
           <ConsentCheckbox
             checked={given.service_delivery}
             onChange={(v) => setGiven((g) => ({ ...g, service_delivery: v }))}
@@ -226,6 +247,7 @@ export default function OnboardingConsentPage({
               'これらの文書に記載されたデータ処理（試合データ・選手プロフィール・解析結果の処理、認証、監査ログ等）は本サービス提供に必要な処理であり、GDPR Article 6(1)(b) および APPI 第18条に基づき行われます。これらの処理を停止する場合はサービスの利用終了をお選びください。'
             }
             required
+            disabled={!bothDocsScrolled}
           />
 
           <ConsentCheckbox
@@ -237,6 +259,7 @@ export default function OnboardingConsentPage({
               'β期間中のデータ利用範囲、目的、保管期間、第三者提供の有無について記載された文書を読了したことを表明します。Terms of Service Section 14.5 の規定により、β期間中のデータ利用への異議申立ては問い合わせフォーム経由で随時受け付けます。'
             }
             required
+            disabled={!bothDocsScrolled}
           />
         </section>
 
@@ -297,49 +320,51 @@ export default function OnboardingConsentPage({
         ) : null}
 
         <footer className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
-          {/* 「あとで見るよ」: 必須同意 (= 初回 mode) も含めて全 mode で表示する。
-             - 初回 mode: 必須が check 済なら submit (required のみ) + 任意は skip。
-               必須未 check なら error 表示。次回ログインで再 popup。
-             - optionalOnly: rows 書き込まずに popup 閉じ。次回再 popup。
-             配置: 「確認・同意して開始」の **左**。 */}
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={async () => {
-              if (optionalOnly) {
-                // 何も書き込まず popup を閉じる
-                onDeferred?.()
-                return
-              }
-              // 初回 mode: 必須を submit し optional は skip → 次回 popup で再促し
-              if (!state) return
-              if (!allRequiredChecked) {
-                setError(t('onboarding.consent.error_required_missing') || '必須同意項目にすべてチェックを入れてください')
-                return
-              }
-              setSubmitting(true)
-              setError(null)
-              try {
-                const consents = REQUIRED.map((t) => ({
-                  consent_type: t,
-                  consent_given: true,
-                }))
-                await submitConsents({
-                  consents,
-                  privacy_policy_version: state.current_versions.privacy_policy,
-                  terms_version: state.current_versions.terms,
-                })
-                onCompleted()
-              } catch (e) {
-                setError((e as Error).message || t('onboarding.consent.error_submit') || '同意送信に失敗しました')
-              } finally {
-                setSubmitting(false)
-              }
-            }}
-            className="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-          >
-            {t('onboarding.consent.later') || 'あとで見るよ'}
-          </button>
+          {/* 「あとで見るよ」:
+             - optionalOnly mode: 常時表示。書き込まず popup 閉じ→次回再 popup
+             - 初回 mode: **必須 check 完了後** にのみ表示 (条件付き render)。
+               必須未 check の状態で submit を回避する経路を UI から潰す。
+               (※ backend 側で別途必須 check も実施しているので二重防御。) */}
+          {(optionalOnly || allRequiredChecked) && (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={async () => {
+                if (optionalOnly) {
+                  // 何も書き込まず popup を閉じる
+                  onDeferred?.()
+                  return
+                }
+                // 初回 mode: 必須を submit し optional は skip → 次回 popup で再促し
+                if (!state) return
+                if (!allRequiredChecked) {
+                  setError(t('onboarding.consent.error_required_missing') || '必須同意項目にすべてチェックを入れてください')
+                  return
+                }
+                setSubmitting(true)
+                setError(null)
+                try {
+                  const consents = REQUIRED.map((t) => ({
+                    consent_type: t,
+                    consent_given: true,
+                  }))
+                  await submitConsents({
+                    consents,
+                    privacy_policy_version: state.current_versions.privacy_policy,
+                    terms_version: state.current_versions.terms,
+                  })
+                  onCompleted()
+                } catch (e) {
+                  setError((e as Error).message || t('onboarding.consent.error_submit') || '同意送信に失敗しました')
+                } finally {
+                  setSubmitting(false)
+                }
+              }}
+              className="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+            >
+              {t('onboarding.consent.later') || 'あとで見るよ'}
+            </button>
+          )}
           <button
             type="button"
             disabled={!canSubmit || submitting}
@@ -361,37 +386,21 @@ export default function OnboardingConsentPage({
       </div>
 
       {/* 文書 popup modal. iframe で backend の HTML view を表示。
-         JA/EN は i18n.language で path を出し分け。 */}
+         JA/EN は i18n.language で path を出し分け。
+         - 最下部までスクロールすると scrolled[doc]=True にする (典型的な法務同意 UI)。
+         - 「印刷」ボタンで iframe.contentWindow.print()。 */}
       {docModal && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          onClick={() => setDocModal(null)}
-        >
-          <div
-            className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[85vh] rounded-lg shadow-xl flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {docModal === 'privacy'
-                  ? (t('onboarding.consent.view_privacy') || 'プライバシーポリシー')
-                  : (t('onboarding.consent.view_terms') || '利用規約')}
-              </div>
-              <button
-                type="button"
-                onClick={() => setDocModal(null)}
-                className="text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
-              >
-                ✕
-              </button>
-            </div>
-            <iframe
-              title={docModal}
-              src={`${(i18n.language as string)?.startsWith('en') ? '/en' : ''}/${docModal}`}
-              className="flex-1 w-full bg-white"
-            />
-          </div>
-        </div>
+        <DocModal
+          docKind={docModal}
+          lang={(i18n.language as string)?.startsWith('en') ? 'en' : 'ja'}
+          onClose={() => setDocModal(null)}
+          onReachedBottom={() => {
+            if (docModal === 'privacy') setScrolledPrivacy(true)
+            else setScrolledTerms(true)
+          }}
+          alreadyScrolled={docModal === 'privacy' ? scrolledPrivacy : scrolledTerms}
+          t={t}
+        />
       )}
     </div>
   )
@@ -403,20 +412,29 @@ function ConsentCheckbox({
   label,
   description,
   required,
+  disabled,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
   label: string
   description: string
   required?: boolean
+  disabled?: boolean
 }) {
   return (
-    <label className="flex items-start gap-3 p-3 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
+    <label
+      className={`flex items-start gap-3 p-3 rounded border ${
+        disabled
+          ? 'border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed'
+          : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer'
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-1 h-5 w-5 text-blue-600 rounded"
+        className="mt-1 h-5 w-5 text-blue-600 rounded disabled:cursor-not-allowed"
       />
       <div className="flex-1">
         <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -426,5 +444,111 @@ function ConsentCheckbox({
         <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{description}</p>
       </div>
     </label>
+  )
+}
+
+// 文書 popup modal: 利用規約 / プライバシーポリシー の HTML を iframe で表示。
+// scroll を最下部まで到達したら onReachedBottom() を call、parent は scrolled flag を立てる。
+// 印刷ボタンで iframe.contentWindow.print()。
+function DocModal({
+  docKind, lang, onClose, onReachedBottom, alreadyScrolled, t,
+}: {
+  docKind: 'privacy' | 'terms'
+  lang: 'ja' | 'en'
+  onClose: () => void
+  onReachedBottom: () => void
+  alreadyScrolled: boolean
+  t: (k: string) => string
+}) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  const [reached, setReached] = useState<boolean>(alreadyScrolled)
+
+  useEffect(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+    let cleanup: (() => void) | null = null
+    const onLoad = () => {
+      try {
+        const win = iframe.contentWindow
+        const doc = iframe.contentDocument
+        if (!win || !doc) return
+        const check = () => {
+          // 下端に近い (誤差 50px 以内) ら reached 判定
+          const scroller = (doc.scrollingElement || doc.documentElement || doc.body) as HTMLElement
+          if (!scroller) return
+          const remaining = scroller.scrollHeight - (scroller.scrollTop + win.innerHeight)
+          if (remaining <= 50) {
+            setReached(true)
+            onReachedBottom()
+          }
+        }
+        // 初期チェック (短い文書は最初から下端まで見えてる)
+        check()
+        win.addEventListener('scroll', check, { passive: true })
+        cleanup = () => win.removeEventListener('scroll', check)
+      } catch {
+        // cross-origin の場合は読めない — UI のみ noop
+      }
+    }
+    iframe.addEventListener('load', onLoad)
+    return () => {
+      iframe.removeEventListener('load', onLoad)
+      cleanup?.()
+    }
+  }, [onReachedBottom])
+
+  const onPrint = () => {
+    try {
+      iframeRef.current?.contentWindow?.print()
+    } catch {
+      // ignore
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-gray-800 w-full max-w-4xl h-[85vh] rounded-lg shadow-xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            {docKind === 'privacy'
+              ? (t('onboarding.consent.view_privacy') || 'プライバシーポリシー')
+              : (t('onboarding.consent.view_terms') || '利用規約')}
+            {reached && (
+              <span className="ml-2 text-emerald-600 dark:text-emerald-400 text-xs">
+                ✓ {t('onboarding.consent.read_done') || '読了'}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onPrint}
+              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              {t('onboarding.consent.print') || '印刷'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+        <iframe
+          ref={iframeRef}
+          title={docKind}
+          src={`${lang === 'en' ? '/en' : ''}/${docKind}`}
+          className="flex-1 w-full bg-white"
+        />
+      </div>
+    </div>
   )
 }
