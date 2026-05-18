@@ -586,10 +586,12 @@ function DocModal({
             </button>
           </div>
         </div>
+        {/* /legal/privacy /legal/terms はフル版の MD レンダ。
+           top page の /privacy /terms (簡易版) ではなく、こちらを popup 表示。 */}
         <iframe
           ref={iframeRef}
           title={docKind}
-          src={`${lang === 'en' ? '/en' : ''}/${docKind}`}
+          src={`${lang === 'en' ? '/en' : ''}/legal/${docKind}`}
           className="flex-1 w-full bg-white"
         />
       </div>
