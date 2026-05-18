@@ -44,6 +44,11 @@ _DOC_MAP: dict[str, str] = {
     "license": "LICENSE",
     "dpa_template": "contracts/DPA_TEMPLATE.md",
     "beta_agreement": "contracts/BETA_DATA_HANDLING_AGREEMENT.md",
+    # 任意同意項目に紐づく補足規約 (consents/ 配下)
+    "ai_training": "consents/AI_TRAINING_DATA_USE.md",
+    "research": "consents/RESEARCH_PARTICIPATION.md",
+    "body_analyst": "consents/BODY_DISCLOSURE_TO_ANALYST.md",
+    "body_coach": "consents/BODY_DISCLOSURE_TO_COACH.md",
 }
 
 # 同じドキュメントの英語版があれば差し替える (今は同一ファイルを再利用)。
@@ -106,6 +111,10 @@ def _render_markdown_page(slug: str, lang: str = "ja") -> str:
         "data_contribution":
             "Data Contribution Terms" if lang == "en" else "データ提供規約",
         "license": "License",
+        "ai_training": "AI Training Data Use Terms",
+        "research": "Academic Research Use Terms",
+        "body_analyst": "Body-Composition Disclosure to Analyst",
+        "body_coach": "Body-Composition Disclosure to Coach",
     }.get(slug, slug)
 
     # スタンドアロン HTML — popup iframe で表示するので body だけで十分。
@@ -233,3 +242,45 @@ def legal_terms_en() -> HTMLResponse:
 @router.get("/en/legal/data_contribution", response_class=HTMLResponse)
 def legal_dct_en() -> HTMLResponse:
     return HTMLResponse(_render_markdown_page("data_contribution", "en"))
+
+
+# --- 任意同意項目に紐づく補足規約 (consents/ 配下、ja/en 共通) ---
+
+@router.get("/legal/ai_training", response_class=HTMLResponse)
+def legal_ai_training_ja() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("ai_training", "ja"))
+
+
+@router.get("/en/legal/ai_training", response_class=HTMLResponse)
+def legal_ai_training_en() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("ai_training", "en"))
+
+
+@router.get("/legal/research", response_class=HTMLResponse)
+def legal_research_ja() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("research", "ja"))
+
+
+@router.get("/en/legal/research", response_class=HTMLResponse)
+def legal_research_en() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("research", "en"))
+
+
+@router.get("/legal/body_analyst", response_class=HTMLResponse)
+def legal_body_analyst_ja() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("body_analyst", "ja"))
+
+
+@router.get("/en/legal/body_analyst", response_class=HTMLResponse)
+def legal_body_analyst_en() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("body_analyst", "en"))
+
+
+@router.get("/legal/body_coach", response_class=HTMLResponse)
+def legal_body_coach_ja() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("body_coach", "ja"))
+
+
+@router.get("/en/legal/body_coach", response_class=HTMLResponse)
+def legal_body_coach_en() -> HTMLResponse:
+    return HTMLResponse(_render_markdown_page("body_coach", "en"))
