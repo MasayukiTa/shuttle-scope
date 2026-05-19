@@ -1,8 +1,14 @@
 // セット間速報レポートコンポーネント（ベイズ推定による推定勝率）
+//
+// Design Language v1.2 準拠 (2026-05-19):
+//   - カード bg は無彩色 (N_GRAY)
+//   - 数値の符号 (≥0.55 / ≤0.45) で A_GOOD / B_BAD 文字色のみ
+//   - セット行は背景無彩色、クリック可能なら左罫線で affordance
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { A_GOOD, B_BAD, N_GRAY } from '@/styles/colors'
 
 interface IntervalReportProps {
   matchId: number
@@ -71,18 +77,29 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} />
 
-      {/* 現在の推定勝率 */}
-      {currentEst && (
-        <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-3 text-center">
-          <p className="text-xs text-blue-300 mb-1">{t('analysis.interval_report.current_estimate')}</p>
-          <p className="text-2xl font-bold text-blue-400">
-            {(currentEst.mean * 100).toFixed(1)}%
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            95%CI: [{(currentEst.ci_low * 100).toFixed(1)}%, {(currentEst.ci_high * 100).toFixed(1)}%]
-          </p>
-        </div>
-      )}
+      {/* 現在の推定勝率 — 無彩色カード、数値の符号のみ A/B 色 */}
+      {currentEst && (() => {
+        const winColor =
+          currentEst.mean >= 0.55 ? A_GOOD
+          : currentEst.mean <= 0.45 ? B_BAD
+          : N_GRAY[100]
+        return (
+          <div
+            className="rounded-lg p-3 text-center"
+            style={{ backgroundColor: N_GRAY[800], border: `1px solid ${N_GRAY[700]}` }}
+          >
+            <p className="text-[10px] tracking-[0.18em] uppercase mb-1" style={{ color: N_GRAY[400] }}>
+              {t('analysis.interval_report.current_estimate')}
+            </p>
+            <p className="text-2xl font-bold tabular-nums" style={{ color: winColor }}>
+              {(currentEst.mean * 100).toFixed(1)}%
+            </p>
+            <p className="text-[10px] mt-1 font-mono tabular-nums" style={{ color: N_GRAY[400] }}>
+              95% CI [{(currentEst.ci_low * 100).toFixed(1)}, {(currentEst.ci_high * 100).toFixed(1)}]
+            </p>
+          </div>
+        )
+      })()}
 
       {/* セットごとの詳細 */}
       {data.sets.length > 0 && (
