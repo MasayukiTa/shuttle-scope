@@ -119,8 +119,9 @@ export function AdviceStrip({
         <MIcon name="lightbulb" size={14} className="mt-0.5 shrink-0 opacity-80" />
         <div className="flex-1 min-w-0">
           <div className="text-sm leading-snug">{a.text}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] opacity-75">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] opacity-80">
             <span>{CONFIDENCE_LABEL[a.confidence] || a.confidence}</span>
+            <span aria-hidden="true" className="opacity-50">·</span>
             <button
               type="button"
               onClick={() => {
@@ -132,10 +133,13 @@ export function AdviceStrip({
               {showBasis ? '根拠を隠す' : 'ⓘ 根拠'}
             </button>
             {a.cta && (
-              <span className="ml-1 inline-flex items-center gap-1">
-                <MIcon name="arrow_right_alt" size={11} />
-                <span>{a.cta.label}</span>
-              </span>
+              <>
+                <span aria-hidden="true" className="opacity-50">·</span>
+                <span className="inline-flex items-center gap-1">
+                  <MIcon name="arrow_right_alt" size={11} />
+                  <span>{a.cta.label}</span>
+                </span>
+              </>
             )}
           </div>
           {showBasis && (
