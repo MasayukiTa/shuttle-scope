@@ -1,15 +1,21 @@
 /**
- * ShuttleScope 統一カラーシステム
+ * ShuttleScope 統一カラーシステム (Design Language v1.1)
  *
- * ルール:
- *   1. ヒートマップ・密度・連続値    → coolwarm スケール（CW_*）を使う
- *   2. 勝敗・正負のセマンティック    → WIN / LOSS を使う（coolwarm 端点と同じ色）
- *   3. 単系列の棒グラフ              → BAR を使う（coolwarm 低端の薄青）
- *   4. 複合チャートの折れ線          → LINE を使う（coolwarm 高端寄りのサーモン）
- *   5. 複数カテゴリの識別            → CATS を使う（coolwarm を等間隔で 4 色サンプリング）
- *   6. 散布・ツールチップ背景など    → SURFACE / BORDER を使う
+ * 設計原則: グレースケール先行ビルド
+ *   - UI は N_GRAY だけで成立する設計を骨格とする
+ *   - 色は **意味を運ぶ** 場合だけ追加する (装飾色ゼロ)
  *
- * NG: amber / cyan / purple / green など独自色を個別コンポーネントに書かない
+ * 採用される色のセット:
+ *   - **A_GOOD**     : 良い結果 (勝率 ≥ 0.55, 改善, positive)
+ *   - **B_BAD**      : 悪い結果 (勝率 ≤ 0.45, 悪化, negative)
+ *   - **E_EMPHASIS** : 「今これを見て」緊急注意。1 画面に 1 箇所まで
+ *   - **N_GRAY[]**   : 中立階調 (背景・罫線・テキスト・カテゴリ識別)
+ *   - **CW_***       : 連続値 (ヒートマップ・密度) の coolwarm スケール
+ *
+ * 詳細仕様: private_docs/ShuttleScope_DESIGN_LANGUAGE_v1.md
+ *
+ * NG: amber / cyan / purple / green / pink 等を個別コンポーネントに直書きしない。
+ *     必要に応じて A_GOOD / B_BAD / E_EMPHASIS / N_GRAY[] を import する。
  */
 
 // ── Coolwarm スケール（matplotlib 実値） ──────────────────────────────────────
@@ -153,3 +159,63 @@ export function lightSafe(color: string, isDark: boolean): string {
   const scale = Math.sqrt(0.18 / lum)
   return `rgb(${Math.round(r * scale)},${Math.round(g * scale)},${Math.round(b * scale)})`
 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Design Language v1.1 トークン
+// 詳細仕様: private_docs/ShuttleScope_DESIGN_LANGUAGE_v1.md
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * A_GOOD — 良い結果 (勝率 ≥ 0.55, 改善トレンド, positive)。
+ * coolwarm 低端 (#3b4cc0) を採用 (既存 WIN と同一)。
+ * 背景上で柔らかく見せたい場合は A_GOOD_SOFT を使う。
+ */
+export const A_GOOD      = CW_MIN          // '#3b4cc0'
+export const A_GOOD_SOFT = '#4f6dd1'       // ダーク背景での柔らか版
+export const A_GOOD_DEEP = '#2d3a96'       // 強調 / ボタン押下
+
+/**
+ * B_BAD — 悪い結果 (勝率 ≤ 0.45, 悪化, negative)。
+ * coolwarm 高端 (#b40426) を採用 (既存 LOSS と同一)。
+ */
+export const B_BAD      = CW_MAX          // '#b40426'
+export const B_BAD_SOFT = '#c64a5c'        // ダーク背景での柔らか版
+export const B_BAD_DEEP = '#8a0320'        // 強調 / ボタン押下
+
+/**
+ * E_EMPHASIS — 「今これを見て」。**1 画面に 1 箇所まで**。
+ * 「通知」「警告」全般に使い始めると元の虹色状態に逆戻りするので、
+ * 用途は「ユーザの能動的アクションを要求する」場面のみ。
+ * オレンジ寄り赤を採用 (色弱でも識別可)。
+ */
+export const E_EMPHASIS      = '#ea580c'
+export const E_EMPHASIS_SOFT = '#fb923c'   // ダーク背景での柔らか版
+export const E_EMPHASIS_DEEP = '#c2410c'
+
+/**
+ * N_GRAY — 中立階調 10 段階。
+ * 背景・罫線・テキスト・カテゴリ識別。
+ * 「色を使わない場面」のすべてを担当する。
+ *
+ * ダーク基調 / ライト基調どちらでもこの階調を共通に使う
+ * (どちらの基調かは theme で切り替え、階調自体は同じ)。
+ */
+export const N_GRAY = {
+  50:  '#f8fafc',
+  100: '#f1f5f9',
+  200: '#e2e8f0',
+  300: '#cbd5e1',
+  400: '#94a3b8',
+  500: '#64748b',
+  600: '#475569',
+  700: '#334155',
+  800: '#1e293b',
+  900: '#0f172a',
+  950: '#0b1220',
+} as const
+
+/**
+ * 録画 indicator 専用 (業界慣習)。それ以外には使わない。
+ */
+export const RECORDING_RED = '#dc2626'
