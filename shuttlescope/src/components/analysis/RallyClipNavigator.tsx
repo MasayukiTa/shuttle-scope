@@ -89,7 +89,11 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
           <Play size={14} className="text-blue-500" />
           <span className={`text-sm font-semibold ${textPrimary}`}>{t('auto.RallyClipNavigator.k1')}</span>
           {!hasVideo && (
-            <span className={`text-xs px-2 py-0.5 rounded ${isLight ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-yellow-900/30 text-yellow-400 border border-yellow-700/40'}`}>
+            // Design Language v1.2: 警告状態は B_BAD 文字色 + 無彩色 bg (同色相重ね禁止)
+            <span
+              className={`text-xs px-2 py-0.5 rounded border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-gray-800 border-gray-700'}`}
+              style={{ color: '#b40426' /* B_BAD */ }}
+            >
               動画未保存
             </span>
           )}
@@ -210,20 +214,26 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
               onClick={() => jumpTo(r)}
               className={`w-full text-left flex items-center gap-3 px-4 py-2.5 border-b transition-colors
                 ${isActive
-                  ? (isLight ? 'bg-blue-50 border-blue-100' : 'bg-blue-900/20 border-blue-800/30')
+                  ? (isLight ? 'bg-gray-50' : 'bg-gray-700')
                   : `${border} ${rowHover}`
                 }
                 ${(!hasVideo || !hasTs) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               `}
+              style={isActive ? { borderLeft: '3px solid #3b4cc0' /* A_GOOD */ } : undefined}
             >
-              {/* ジャンプアイコン */}
-              <div className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center
-                ${isActive
-                  ? 'bg-blue-500 text-white'
-                  : hasTs
-                    ? (isLight ? 'bg-gray-100 text-gray-500' : 'bg-gray-700 text-gray-400')
-                    : (isLight ? 'bg-gray-50 text-gray-300' : 'bg-gray-800 text-gray-600')
-                }`}>
+              {/* ジャンプアイコン: active のみ A_GOOD 色、それ以外無彩色 */}
+              <div
+                className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
+                  hasTs
+                    ? (isLight ? 'bg-gray-200' : 'bg-gray-700')
+                    : (isLight ? 'bg-gray-100' : 'bg-gray-800')
+                }`}
+                style={{
+                  color: isActive
+                    ? '#3b4cc0' /* A_GOOD */
+                    : (isLight ? '#64748b' : '#94a3b8') /* N_GRAY[500]/[400] */,
+                }}
+              >
                 {hasTs ? <Play size={10} /> : <Clock size={10} />}
               </div>
 
