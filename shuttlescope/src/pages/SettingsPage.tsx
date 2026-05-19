@@ -126,15 +126,20 @@ export function SettingsPage() {
     queryFn: () => apiGet('/health'),
     staleTime: 60_000,
   })
-  // /auth/me から username を取得 (useAuth は username を保持しないので別 fetch)。
-  // アカウント設定タブで「ログインユーザ名」を正確に表示するため。
+  // /auth/me から username + display_name を取得。
+  // useAuth().displayName はログイン時のスナップショットなので、
+  // admin が user 管理画面で表示名を編集しても反映されない。
+  // /auth/me を SoT として扱い、staleTime を短くしてタブ切替直後に再取得。
   const { data: meData } = useQuery<{ username?: string; display_name?: string | null }>({
     queryKey: ['auth-me'],
     queryFn: () => apiGet('/auth/me'),
-    staleTime: 60_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
     retry: 0,
   })
   const loginUsername = meData?.username ?? null
+  // SoT 優先順: /auth/me の最新 → useAuth の session キャッシュ → 'Unset'
+  const effectiveDisplayName = meData?.display_name ?? displayName ?? null
   const isPublicMode = healthData?.public_mode === true
 
   const [showPlayerForm, setShowPlayerForm] = useState(false)
@@ -2643,7 +2648,7 @@ export function SettingsPage() {
                 {/* "Display name" と "User ID" が両方 displayName を出していた
                    copy-paste bug の修正。User ID は /auth/me の username (= ログ
                    イン ID) と useAuth の userId (= 数値 PK) を併記する。 */}
-                <div className={`text-sm ${textSecondary}`}>Display name: <span className={textHeading}>{displayName ?? 'Unset'}</span></div>
+                <div className={`text-sm ${textSecondary}`}>Display name: <span className={textHeading}>{effectiveDisplayName ?? 'Unset'}</span></div>
                 <div className={`text-sm ${textSecondary}`}>Role: <span className={textHeading}>{role ? t(`auth.role.${role}`) : 'Not logged in'}</span></div>
                 <div className={`text-sm ${textSecondary}`}>Username: <span className={textHeading}>{loginUsername ?? '-'}</span>{userId != null && <span className={`${textMuted} ml-2`}>(#{userId})</span>}</div>
                 <div className={`text-sm ${textSecondary}`}>Team: <span className={textHeading}>{teamName ?? '-'}</span></div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound, ChevronDown, RotateCcw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess, listTeams, type TeamDTO } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -130,9 +131,10 @@ function SecretField(props: {
 export function UserManagementPage() {
   type SortKey = 'display_name' | 'username' | 'player_name' | 'team_name' | 'active_uploads' | 'exfil_requests' | 'is_limited'
 
-  const { role: myRole } = useAuth()
+  const { role: myRole, userId: myUserId } = useAuth()
   const isLight = useIsLightMode()
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const [resetResult, setResetResult] = useState<{ username: string; password: string } | null>(null)
   const [resetBusyId, setResetBusyId] = useState<number | null>(null)
   const [limits, setLimits] = useState<Record<number, LimitInfo>>({})
@@ -381,6 +383,12 @@ export function UserManagementPage() {
         }
         if (form.credential.trim()) body.password = form.credential.trim()
         await apiPost('/auth/users', body)
+      }
+      // 編集対象が自分自身なら、SettingsPage 等が参照する /auth/me キャッシュを
+      // 無効化して即時反映させる (旧: 更新後もログイン時の displayName が
+      // session キャッシュに残り続けていた)。他人を編集した場合も影響なし。
+      if (editId != null && myUserId != null && editId === myUserId) {
+        await queryClient.invalidateQueries({ queryKey: ['auth-me'] })
       }
       closeAll()
       await load()
