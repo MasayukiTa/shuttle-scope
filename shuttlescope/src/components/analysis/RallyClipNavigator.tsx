@@ -219,7 +219,8 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
                 }
                 ${(!hasVideo || !hasTs) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               `}
-              style={isActive ? { borderLeft: '3px solid #3b4cc0' /* A_GOOD */ } : undefined}
+              /* active 状態の表現: 左罫線縦バーは禁止 (詐欺サイト感)。
+                 代わりにアイコン色と font-weight で示す (下記 div / span 側)。 */
             >
               {/* ジャンプアイコン: active のみ A_GOOD 色、それ以外無彩色 */}
               <div

@@ -70,25 +70,29 @@ const LEVEL_META: Record<string, { Icon: typeof AlertTriangle; iconColor?: strin
 function CardItem({ card, tokens }: { card: SummaryCard; tokens: Tokens }) {
   const meta = LEVEL_META[card.level] ?? LEVEL_META.info
   const Icon = meta.Icon
-  // 色を出す権利は accent があるレベルのみ。背景塗りなし。
-  // 「左罫線 3px」のみで意味付け (Design Language §13.3)
+  // Design Language v1.2 (改訂):
+  //   - **左罫線縦バー方式は禁止** (詐欺サイト感が出るため)。
+  //   - 色を出す権利は accent があるレベルのみ、表現は:
+  //       1. leading icon を accent 色で
+  //       2. title を bold (warn のみ accent 色)
+  //   - 背景は完全無彩色、罫線も全周 1px 均等。
   return (
     <div
       className="flex items-start gap-2.5 rounded px-3 py-2.5"
-      style={{
-        backgroundColor: tokens.bgRow,
-        borderLeft: meta.accent ? `3px solid ${meta.accent}` : `3px solid transparent`,
-      }}
+      style={{ backgroundColor: tokens.bgRow }}
     >
       <Icon
-        size={14}
+        size={15}
         className="shrink-0 mt-0.5"
         style={{ color: meta.accent ?? tokens.textMuted }}
       />
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p
-          className="text-xs font-semibold leading-tight"
-          style={{ color: tokens.textStrong }}
+          className="text-xs font-bold leading-tight"
+          style={{
+            // warn 時のみ title に accent 色、それ以外は中立
+            color: card.level === 'warn' ? (meta.accent ?? tokens.textStrong) : tokens.textStrong,
+          }}
         >
           {card.title}
         </p>

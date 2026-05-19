@@ -68,27 +68,27 @@ const PLAYER_VISIBLE_CATEGORIES = new Set(['next_action', 'opportunity'])
 
 function AdviceCard({ item, isLight }: { item: AdviceItem; isLight: boolean }) {
   const style = CATEGORY_STYLE[item.category] ?? CATEGORY_STYLE.pattern
-  // Design Language v1.2:
-  //   - bg は無彩色固定 (背景塗りや半透明色面を使わない)
-  //   - 色は **左罫線のみ** で意味付け (next_action は太罫線 5px)
-  //   - 文字色も無彩色 (タイトルだけ少し強)
-  //   - priority バッジは accent ある場合のみ accent + 白文字、無い場合 N_GRAY
-  const bg = isLight ? N_GRAY[50] : N_GRAY[800]
+  // Design Language v1.2 (改訂):
+  //   - **左罫線縦バーは禁止** (詐欺サイト感が出るため二度と使わない)。
+  //   - bg は無彩色固定、罫線は全周 1px 均等。
+  //   - 重要度の表現は:
+  //       1. priority バッジ (accent 色)
+  //       2. title font-bold (warn 級は accent 色)
+  //       3. next_action のみ ▶ chevron prefix で行動を示唆
+  const bg = isLight ? '#ffffff' : N_GRAY[800]
   const borderBase = isLight ? N_GRAY[200] : N_GRAY[700]
   const titleColor = isLight ? N_GRAY[900] : N_GRAY[50]
-  const bodyColor  = isLight ? N_GRAY[800] : N_GRAY[100]
-  const badgeBg = style.accent ?? (isLight ? N_GRAY[400] : N_GRAY[600])
+  const bodyColor  = isLight ? N_GRAY[700] : N_GRAY[200]
+  const accent = style.accent  // null か A/B/E
+  const isHighPriority = item.category === 'danger' || item.category === 'fatigue_signal' || item.category === 'opponent'
+  const badgeBg = accent ?? (isLight ? N_GRAY[400] : N_GRAY[600])
 
   return (
     <div
       className="rounded p-3 space-y-1.5"
       style={{
         backgroundColor: bg,
-        // 上下右は薄い罫線、左だけ accent または無彩色の太罫線
-        borderTop: `1px solid ${borderBase}`,
-        borderRight: `1px solid ${borderBase}`,
-        borderBottom: `1px solid ${borderBase}`,
-        borderLeft: `${style.borderWidth}px solid ${style.accent ?? borderBase}`,
+        border: `1px solid ${borderBase}`,
       }}
     >
       <div className="flex items-center gap-2">
@@ -99,8 +99,11 @@ function AdviceCard({ item, isLight }: { item: AdviceItem; isLight: boolean }) {
           {item.priority}
         </span>
         <span
-          className="text-xs font-semibold"
-          style={{ color: titleColor }}
+          className="text-xs font-bold"
+          style={{
+            // 警告系のみタイトルに accent 色、それ以外は中立
+            color: isHighPriority && accent ? accent : titleColor,
+          }}
         >
           {item.title}
         </span>
@@ -109,6 +112,9 @@ function AdviceCard({ item, isLight }: { item: AdviceItem; isLight: boolean }) {
         className="text-sm leading-relaxed"
         style={{ color: bodyColor }}
       >
+        {item.category === 'next_action' && accent ? (
+          <span style={{ color: accent, marginRight: '0.25em' }}>▶</span>
+        ) : null}
         {item.body}
       </p>
     </div>
