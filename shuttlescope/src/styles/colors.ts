@@ -23,8 +23,9 @@
 export const CW_MIN  = '#3b4cc0'
 /** 0.25 — 薄青         */
 export const CW_LOW  = '#8db0fe'
-/** 0.50 — 白/ニュートラル */
-export const CW_MID  = '#dddddd'
+/** 0.50 — 白 (本物の coolwarm 中央色は白 #ffffff。
+   旧 '#dddddd' グレーは divergent スケールの中立性を弱めるため不可) */
+export const CW_MID  = '#ffffff'
 /** 0.75 — サーモン     */
 export const CW_HIGH = '#f38a64'
 /** 1.00 — 深赤 (hot)   */
@@ -34,7 +35,7 @@ export const CW_MAX  = '#b40426'
 export const CW_STOPS: [number, number, number][] = [
   [59,  76,  192],   // 0.00
   [141, 176, 254],   // 0.25
-  [221, 221, 221],   // 0.50
+  [255, 255, 255],   // 0.50 (本物の coolwarm 中央色)
   [243, 138, 100],   // 0.75
   [180,   4,  38],   // 1.00
 ]

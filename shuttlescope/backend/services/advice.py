@@ -366,20 +366,39 @@ def advice_prediction_tab(db: Session, player_id: int, opponent_id: Optional[int
         )
 
     if not opponent_id:
-        # 対戦相手未指定 → 一般的な過去戦績の事実のみ
+        # 対戦相手未指定 → 一般的な過去戦績の事実のみ。
+        # 予測タブで信頼度を表示する以上、ゲート (§12.3) を厳格適用:
+        #   - 10 試合未満 OR 200 ラリー未満 → 計測中 (advice 出さない)
+        #   - 10〜30 試合 → "low" (sample_size 4 で "medium" を出す虚偽を防ぐ)
+        #   - 30 試合以上 AND 600 ラリー以上 → "medium"
+        #   - 60 試合以上 AND 1500 ラリー以上 → "high"
         cur = _gather_window(db, player_id, days=90)
-        if cur["match_count"] < MIN_MATCHES:
+        PRED_MIN_MATCHES = 10
+        PRED_MIN_RALLIES = 200
+        if cur["match_count"] < PRED_MIN_MATCHES or cur["rally_count"] < PRED_MIN_RALLIES:
             return _empty_response(
-                f"直近 90 日の試合数が {cur['match_count']} 件です (予測根拠に 3 件以上必要)。"
+                f"直近 90 日: 試合 {cur['match_count']} 件 / ラリー {cur['rally_count']} 件。"
+                f"予測タブのサマリ表示には最低 {PRED_MIN_MATCHES} 試合 / "
+                f"{PRED_MIN_RALLIES} ラリーが必要です (信頼度を語れるサンプル数の下限)。"
             )
+        if cur["match_count"] >= 60 and cur["rally_count"] >= 1500:
+            conf = "high"
+        elif cur["match_count"] >= 30 and cur["rally_count"] >= 600:
+            conf = "medium"
+        else:
+            conf = "low"
         text = (
             f"直近 90 日: 試合 {cur['match_count']} / ラリー {cur['rally_count']} を蓄積。"
-            f"対戦相手を選択すると head-to-head 予測が出ます。"
+            f" 対戦相手を選択すると head-to-head 予測が出ます。"
         )
         return _ok_response(AdviceCard(
             text=text,
-            basis={"source": "rally_aggregate_90d", "sample_size": cur["match_count"]},
-            confidence="medium",
+            basis={
+                "source": "rally_aggregate_90d",
+                "sample_size": {"matches": cur["match_count"], "rallies": cur["rally_count"]},
+                "gate": f"matches >= {PRED_MIN_MATCHES} AND rallies >= {PRED_MIN_RALLIES}",
+            },
+            confidence=conf,
             severity="info",
             cta={"label": "対戦相手を選択", "action": "select_opponent"},
         ))

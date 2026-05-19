@@ -159,10 +159,18 @@ function Sidebar() {
        * 全幅 56 (~224px) は SPEC が想定していた iPad 横持ち向け labeled sidebar の幅。
        */}
       <div className={clsx('hidden md:flex w-16 lg:w-56 flex-col border-r', sidebarBg, isFullBleedPage && 'md:hidden')}>
-        {/* ロゴ帯: favicon 画像が白背景のため、ダークモードでも常に白背景を維持する */}
-        <div className="w-full flex items-center justify-center lg:justify-start lg:px-3 lg:gap-2 py-2 bg-white border-b border-gray-200">
+        {/* ロゴ帯: theme に応じて bg と text を切り替える。
+           ダークモードでフレームだけ白く残るバグ修正 (2026-05-19)。
+           favicon が白背景でも、コンテナ側を theme に合わせ、画像はそのまま乗せる。 */}
+        <div className={clsx(
+          'w-full flex items-center justify-center lg:justify-start lg:px-3 lg:gap-2 py-2 border-b',
+          isLight ? 'bg-white border-gray-200' : 'bg-gray-900 border-gray-700',
+        )}>
           <img src="/favicon.png" alt="ShuttleScope" className="w-10 h-10 object-contain" />
-          <span className="hidden lg:inline text-sm font-bold text-gray-900 truncate">ShuttleScope</span>
+          <span className={clsx(
+            'hidden lg:inline text-sm font-bold truncate',
+            isLight ? 'text-gray-900' : 'text-gray-100',
+          )}>ShuttleScope</span>
         </div>
         <div className="pt-4" />
         {navItems.map(({ to, label, shortLabel, icon: Icon, badge }) => (
