@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, X, AlertCircle, Loader2 } from 'lucide-react'
-import { getMyConsents, withdrawConsent, type ConsentType } from '@/api/client'
+import { getMyConsents, withdrawConsent, submitConsents, type ConsentType } from '@/api/client'
 
 /**
  * ユーザーが任意同意を撤回できる UI。GDPR Article 7(3) /
@@ -28,6 +28,25 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
 
   const withdrawMutation = useMutation({
     mutationFn: (type: ConsentType) => withdrawConsent(type),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['my-consents'] })
+      setPending(null)
+    },
+  })
+
+  // 再承認 mutation: 撤回後に再度同意を付与できる (GDPR Article 7(3) は
+  // 撤回が容易であることを要求するが、撤回後の再付与を妨げる規定はない。
+  // むしろ「いつでも撤回・再付与できる」のがユーザ自決の本来形)
+  const regrantMutation = useMutation({
+    mutationFn: async (type: ConsentType) => {
+      const current = consentQuery.data?.data
+      if (!current) throw new Error('consent state not loaded')
+      return submitConsents({
+        consents: [{ consent_type: type, consent_given: true }],
+        privacy_policy_version: current.current_versions.privacy_policy,
+        terms_version: current.current_versions.terms,
+      })
+    },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['my-consents'] })
       setPending(null)
@@ -75,6 +94,11 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
     if (!ok) return
     setPending(type)
     withdrawMutation.mutate(type)
+  }
+
+  function handleRegrant(type: ConsentType) {
+    setPending(type)
+    regrantMutation.mutate(type)
   }
 
   const cardCls = `rounded-lg border p-4 ${
@@ -145,14 +169,24 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                       {t('settings.consent.required_note', '撤回不可')}
                     </span>
                   ) : isWithdrawn ? (
-                    <span
-                      className={`flex items-center gap-1 text-xs ${
-                        isLight ? 'text-gray-500' : 'text-gray-400'
-                      }`}
+                    // 撤回後の再承認ボタン (一方向ではなく双方向に修正、2026-05-19)
+                    // GDPR Art 7(3) は撤回の容易性を要求するが、再付与を妨げない。
+                    <button
+                      onClick={() => handleRegrant(type)}
+                      disabled={pending === type}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                        isLight
+                          ? 'border-gray-300 text-gray-700 hover:bg-gray-100'
+                          : 'border-gray-600 text-gray-200 hover:bg-gray-700'
+                      } ${pending === type ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      <X size={12} />
-                      {t('settings.consent.withdrawn_label', '撤回済み')}
-                    </span>
+                      {pending === type ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Check size={12} />
+                      )}
+                      {t('settings.consent.regrant_btn', '再承認')}
+                    </button>
                   ) : (
                     <button
                       onClick={() => handleWithdraw(type)}
