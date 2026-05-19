@@ -443,6 +443,47 @@ export default function OnboardingConsentPage({
           {t('onboarding.consent.withdraw_notice') ||
             '必須確認事項は契約履行のため撤回は行えません（撤回はサービス利用終了と等価です）。任意同意は 設定 → 体調タブ → 体組成データの開示設定、またはお問い合わせフォーム / contact@shuttle-scope.com 宛てメールでいつでも変更・撤回できます。'}
         </p>
+
+        {/* 同意できない場合の退出経路。
+           「同意しないと先に進めない」UI で「ブラウザを閉じる以外の選択肢」を
+           ユーザに提示するのは GDPR Art 7(4) (consent freely given) の精神に
+           合致する。サイトトップ (apex) かログイン画面のいずれかへ戻れるよう
+           にする。 */}
+        <footer className="pt-3 mt-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className="text-gray-500 dark:text-gray-400">
+            {t('onboarding.consent.exit_hint') || '同意せずに離れる場合:'}
+          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <a
+              href="https://shuttle-scope.com/"
+              className="underline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+            >
+              {t('onboarding.consent.back_to_site') || 'shuttle-scope.com に戻る'}
+            </a>
+            <span aria-hidden="true" className="text-gray-400">·</span>
+            <button
+              type="button"
+              onClick={() => {
+                // セッションをクリアしてログイン画面に戻す
+                try {
+                  sessionStorage.removeItem('shuttlescope_token')
+                  sessionStorage.removeItem('shuttlescope_refresh_token')
+                  sessionStorage.removeItem('shuttlescope_role')
+                  sessionStorage.removeItem('shuttlescope_user_id')
+                  sessionStorage.removeItem('shuttlescope_display_name')
+                  sessionStorage.removeItem('shuttlescope_player_id')
+                  sessionStorage.removeItem('shuttlescope_team_name')
+                } catch { /* ignore */ }
+                // フルリロード (App ルートが /login へ誘導)
+                window.location.href = '/#/'
+                setTimeout(() => window.location.reload(), 50)
+              }}
+              className="underline text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+            >
+              {t('onboarding.consent.back_to_login') || 'ログイン画面に戻る'}
+            </button>
+          </div>
+        </footer>
       </div>
 
       {/* 「その他の規約」一覧 overlay — LICENSE / DATA_CONTRIBUTION / DPA / β契約書。
