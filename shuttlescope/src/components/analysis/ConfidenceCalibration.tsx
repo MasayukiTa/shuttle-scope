@@ -29,9 +29,9 @@ interface Response {
 }
 
 const TIER_COLORS: Record<string, string> = {
-  insufficient: 'bg-red-900/40 border-red-700 text-red-300',
-  low:          'bg-yellow-900/40 border-yellow-700 text-yellow-300',
-  medium:       'bg-blue-900/30 border-blue-700 text-blue-300',
+  insufficient: 'bg-gray-800 border-gray-700 text-red-300',
+  low:          'bg-gray-800 border-gray-700 text-amber-400',
+  medium:       'bg-gray-800 border-gray-700 text-blue-300',
   high:         'bg-blue-700/50 border-blue-500 text-blue-200',
 }
 

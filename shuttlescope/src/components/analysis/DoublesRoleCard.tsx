@@ -305,10 +305,10 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
                 </p>
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
                   cvRoleSignal.agreement === 'consistent'
-                    ? isLight ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-900/40 text-emerald-300'
+                    ? isLight ? 'bg-white text-blue-700' : 'bg-gray-800 text-blue-300'
                     : cvRoleSignal.agreement === 'inconsistent'
-                    ? isLight ? 'bg-red-100 text-red-700' : 'bg-red-900/40 text-red-300'
-                    : isLight ? 'bg-amber-100 text-amber-700' : 'bg-amber-900/40 text-amber-300'
+                    ? isLight ? 'bg-white text-red-700' : 'bg-gray-800 text-red-300'
+                    : isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
                 }`}>
                   {cvRoleSignal.agreement === 'consistent' ? '一致'
                     : cvRoleSignal.agreement === 'inconsistent' ? '不一致'

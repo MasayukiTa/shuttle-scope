@@ -497,8 +497,8 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded cursor-pointer transition-colors ${
                 selectedIds.has(p.id)
                   ? isLight
-                    ? 'bg-blue-50 border border-blue-300 text-blue-800'
-                    : 'bg-blue-900/30 border border-blue-600 text-blue-300'
+                    ? 'bg-white border border-gray-200 text-blue-700'
+                    : 'bg-gray-800 border border-gray-700 text-blue-300'
                   : isLight
                   ? 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
                   : 'bg-gray-700 border border-gray-600 text-gray-300 hover:bg-gray-600'

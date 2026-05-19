@@ -51,11 +51,11 @@ interface RallyLengthResponse {
 function playerTypeBadgeClass(typeKey: string): string {
   switch (typeKey) {
     case 'short_specialist':
-      return 'bg-orange-900/40 border-orange-500 text-orange-300'
+      return 'bg-gray-800 border-gray-700 text-amber-400'
     case 'long_specialist':
-      return 'bg-purple-900/40 border-purple-500 text-purple-300'
+      return 'bg-gray-800 border-gray-700 text-gray-200'
     case 'balanced':
-      return 'bg-green-900/40 border-green-500 text-green-300'
+      return 'bg-gray-800 border-gray-700 text-blue-300'
     default:
       return 'bg-gray-700 border-gray-500 text-gray-300'
   }

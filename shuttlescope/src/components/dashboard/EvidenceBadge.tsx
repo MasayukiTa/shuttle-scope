@@ -21,14 +21,14 @@ const TIER_LABELS: Record<Tier, string> = {
 }
 
 const TIER_COLORS_DARK: Record<Tier, string> = {
-  stable: 'bg-emerald-900/70 border-emerald-500 text-emerald-200',
-  advanced: 'bg-blue-900/70 border-blue-500 text-blue-200',
-  research: 'bg-amber-900/70 border-amber-500 text-amber-200',
+  stable: 'bg-gray-800 border-gray-700 text-blue-300',
+  advanced: 'bg-gray-800 border-gray-700 text-blue-300',
+  research: 'bg-gray-800 border-gray-700 text-amber-400',
 }
 const TIER_COLORS_LIGHT: Record<Tier, string> = {
-  stable: 'bg-emerald-50 border-emerald-400 text-emerald-700',
-  advanced: 'bg-blue-50 border-blue-400 text-blue-700',
-  research: 'bg-amber-50 border-amber-400 text-amber-700',
+  stable: 'bg-white border-gray-200 text-blue-700',
+  advanced: 'bg-white border-gray-200 text-blue-700',
+  research: 'bg-white border-gray-200 text-amber-700',
 }
 
 const EVIDENCE_LABELS: Record<EvidenceLevel, string> = {

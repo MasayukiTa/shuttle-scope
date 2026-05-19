@@ -322,7 +322,7 @@ function EvaluationRow({
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusCfg.dot}`} />
         <span className={`text-xs flex-1 text-left ${textHeading}`}>{entry.analysis_type}</span>
         {override && (
-          <span className={`text-[9px] px-1 py-0.5 rounded ${isLight ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-blue-900/40 text-blue-400 border border-blue-700'}`}>
+          <span className={`text-[9px] px-1 py-0.5 rounded ${isLight ? 'bg-white text-blue-700 border border-gray-200' : 'bg-gray-800 text-blue-300 border border-gray-700'}`}>
             Override
           </span>
         )}
