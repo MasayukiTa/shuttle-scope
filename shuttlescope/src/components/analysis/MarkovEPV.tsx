@@ -33,12 +33,14 @@ interface EPVResponse {
 }
 
 function EPVCard({ pattern, isPositive, rank }: { pattern: EPVPattern; isPositive: boolean; rank: number }) {
+  // Design Language v1.2 §2.7.0: 左罫線縦バー禁止。
+  // 色は EPV バー (長さ + accent) と数値文字色で運ぶ。
   const accentColor = isPositive ? WIN : LOSS
   const epvSign = pattern.epv >= 0 ? '+' : ''
   const barWidth = Math.min(Math.abs(pattern.epv) * 400, 100)
 
   return (
-    <div className="rounded-lg p-3 bg-gray-750 border border-gray-700 border-l-4" style={{ borderLeftColor: accentColor }}>
+    <div className="rounded-lg p-3 bg-gray-750 border border-gray-700">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
