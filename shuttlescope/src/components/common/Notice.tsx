@@ -48,10 +48,10 @@ export function NoticeBanner({ notice, onDismiss }: NoticeBannerProps) {
   if (!notice) return null
 
   const palette = notice.kind === 'error'
-    ? 'bg-red-900/95 border-red-500 text-red-100'
+    ? 'bg-gray-800 border-gray-700 text-red-100'
     : notice.kind === 'warn'
-      ? 'bg-amber-900/95 border-amber-500 text-amber-100'
-      : 'bg-blue-900/95 border-blue-500 text-blue-100'
+      ? 'bg-gray-800 border-gray-700 text-amber-100'
+      : 'bg-gray-800 border-gray-700 text-blue-100'
 
   return (
     <div
