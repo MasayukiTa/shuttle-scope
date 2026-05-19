@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
-import { perfColor, BAR } from '@/styles/colors'
+import { perfColor, N_GRAY, A_GOOD } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
 
 interface RecommendationRankingProps {
@@ -42,26 +42,49 @@ function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
     ? item.body.replace('勝率', '活躍率').replace('弱点', '伸びしろ')
     : item.body
 
+  // Design Language v1.2 §12.4 色予算: rank 1 のみ色を出す、それ以外は無彩色。
+  // Rank 1 は意思決定上「まずこれ」を意味する (= 決定支援としての色)。
+  // 旧版: BAR (#8db0fe 薄青) + text-white (コントラスト ~1.8:1 WCAG 失格)
+  // 新版: rank=1 は A_GOOD + 白文字 (§2.7 contrast OK)
+  //        rank>=2 は N_GRAY[600] + 白文字 (こちらも contrast 充分)
+  const isTop = item.rank === 1
+  const badgeBg = isTop ? A_GOOD : N_GRAY[600]
   return (
-    <div className="flex gap-3 items-start bg-gray-750 rounded-lg p-3 border border-gray-700">
+    <div
+      className="flex gap-3 items-start rounded p-3 border"
+      style={{
+        backgroundColor: N_GRAY[800],
+        borderColor: isTop ? A_GOOD : N_GRAY[700],
+        borderLeftWidth: isTop ? 3 : 1,
+      }}
+    >
       {/* ランクバッジ */}
       <div
-        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-        style={{ backgroundColor: BAR, opacity: 1 - item.rank * 0.1 + 0.3 }}
+        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+        style={{ backgroundColor: badgeBg, color: '#ffffff' }}
       >
         {item.rank}
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-medium text-gray-200 leading-tight">{displayTitle}</p>
-          <span className="text-xs text-gray-400 shrink-0">{item.confidence_level}</span>
+          <p className="text-sm font-medium leading-tight" style={{ color: N_GRAY[100] }}>
+            {displayTitle}
+          </p>
+          <span className="text-xs shrink-0" style={{ color: N_GRAY[400] }}>
+            {item.confidence_level}
+          </span>
         </div>
-        <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{displayBody}</p>
+        <p className="text-xs mt-0.5 leading-relaxed" style={{ color: N_GRAY[300] }}>
+          {displayBody}
+        </p>
 
-        {/* 優先度バー */}
+        {/* 優先度バー: 長さで読む。色は perfColor (coolwarm 連続) のみ許可 */}
         <div className="mt-2 flex items-center gap-2">
-          <div className="flex-1 bg-gray-700 rounded h-1.5">
+          <div
+            className="flex-1 rounded h-1.5"
+            style={{ backgroundColor: N_GRAY[700] }}
+          >
             <div
               className="h-full rounded"
               style={{
@@ -70,7 +93,12 @@ function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
               }}
             />
           </div>
-          <span className="text-xs text-gray-500 font-mono">{Math.round(item.priority_score * 100)}pt</span>
+          <span
+            className="text-xs font-mono tabular-nums"
+            style={{ color: N_GRAY[500] }}
+          >
+            {Math.round(item.priority_score * 100)}pt
+          </span>
         </div>
       </div>
     </div>
