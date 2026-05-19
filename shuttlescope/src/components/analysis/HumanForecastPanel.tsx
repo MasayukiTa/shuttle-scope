@@ -137,7 +137,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
           onClick={() => setOutcome('win')}
           className={`flex-1 py-1.5 rounded text-sm font-medium border transition-colors ${
             outcome === 'win'
-              ? 'border-green-500 bg-green-900/30 text-green-300'
+              ? 'border-gray-700 bg-gray-800 text-blue-300'
               : 'border-gray-600 bg-gray-700 text-gray-400 hover:border-gray-500'
           }`}
         >
@@ -147,7 +147,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
           onClick={() => setOutcome('loss')}
           className={`flex-1 py-1.5 rounded text-sm font-medium border transition-colors ${
             outcome === 'loss'
-              ? 'border-red-500 bg-red-900/30 text-red-300'
+              ? 'border-gray-700 bg-gray-800 text-red-300'
               : 'border-gray-600 bg-gray-700 text-gray-400 hover:border-gray-500'
           }`}
         >

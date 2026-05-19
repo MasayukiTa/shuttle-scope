@@ -54,7 +54,7 @@ export function HitZoneSelector({
           // 旧: text-[10px] で WCAG AA 失敗 (小文字 + orange-400 on dark = ~3.5:1)
           // 新: text-xs (12px) + text-orange-300 + 丸枠で視認性確保
           <span
-            className="inline-flex items-center px-1 py-0.5 rounded border border-orange-500/50 bg-orange-900/40 text-xs text-orange-300 font-semibold leading-none"
+            className="inline-flex items-center px-1 py-0.5 rounded border border-gray-700 bg-gray-800 text-xs text-amber-400 font-semibold leading-none"
             aria-label={t('annotator.hit_zone_overridden')}
           >
             ✎ {t('annotator.hit_zone_overridden')}
@@ -89,7 +89,7 @@ export function HitZoneSelector({
                   : isCvMatch
                     ? 'bg-blue-600 text-white border-2 border-blue-300'
                     : isCv
-                      ? 'bg-blue-900/60 text-blue-200 border border-blue-500/60'
+                      ? 'bg-gray-800 text-blue-300 border border-gray-700'
                       : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600',
                 disabled && 'opacity-40 cursor-not-allowed',
               )}

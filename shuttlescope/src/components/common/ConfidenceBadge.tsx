@@ -29,15 +29,15 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
   if (size < 500) {
     stars = '★☆☆'
     label = t('confidence.low_label')
-    colorClass = 'border-red-400 bg-red-900/30 text-red-300'
+    colorClass = 'border-red-400 bg-gray-800 text-red-300'
   } else if (size < 2000) {
     stars = '★★☆'
     label = t('confidence.medium_label')
-    colorClass = 'border-yellow-400 bg-yellow-900/30 text-yellow-300'
+    colorClass = 'border-yellow-400 bg-gray-800 text-amber-400'
   } else {
     stars = '★★★'
     label = t('confidence.high_label')
-    colorClass = 'border-green-400 bg-green-900/30 text-green-300'
+    colorClass = 'border-green-400 bg-gray-800 text-blue-300'
   }
 
   if (compact) {

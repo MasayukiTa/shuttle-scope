@@ -418,7 +418,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                         {m.date}{m.tournament_level ? ` · ${m.tournament_level}` : ''} · {m.rally_count} {t('auto.DashboardOverviewPage.k27')}
                       </div>
                     </div>
-                    <span className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-blue-900 text-blue-300' : 'bg-red-900 text-red-300'}`}>
+                    <span className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
                       {m.result === 'win' ? '勝' : '負'}
                     </span>
                   </div>
@@ -468,7 +468,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                       <td className="py-2 pr-3 text-center"><span className={`text-xs ${textMuted}`}>{m.tournament_level ?? '—'}</span></td>
                       <td className={`py-2 pr-3 ${textSecondary} num-cell`}>{m.date}</td>
                       <td className="py-2 pr-3 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-blue-900 text-blue-300' : 'bg-red-900 text-red-300'}`}>
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
                           {m.result === 'win' ? '勝' : '負'}
                         </span>
                       </td>

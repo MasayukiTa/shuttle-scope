@@ -1059,7 +1059,7 @@ export function SettingsPage() {
                       <td className="py-2">
                         {deleteConfirmId === p.id ? (
                           // インライン削除確認
-                          <div className={`flex items-center gap-1 px-2 py-1 rounded border border-white text-xs ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
+                          <div className={`flex items-center gap-1 px-2 py-1 rounded border border-white text-xs ${isLight ? 'bg-white text-red-700' : 'bg-gray-800 text-red-300'}`}>
                             <button
                               onClick={() => { deletePlayer.mutate(p.id); setDeleteConfirmId(null) }}
                               className="font-medium hover:opacity-80"
@@ -1084,7 +1084,7 @@ export function SettingsPage() {
                             </button>
                             <button
                               onClick={() => setDeleteConfirmId(p.id)}
-                              className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
+                              className="p-1.5 rounded bg-gray-800 hover:bg-red-700 text-red-300"
                             >
                               <Trash2 size={12} />
                             </button>
@@ -1283,7 +1283,7 @@ export function SettingsPage() {
                     onClick={() => updateSettings({ tracknet_mode: opt.value })}
                     className={`flex-1 py-2 px-3 rounded text-sm border transition-colors ${
                       appSettings.tracknet_mode === opt.value
-                        ? 'border-blue-500 bg-blue-900/30 text-blue-300'
+                        ? 'border-gray-700 bg-gray-800 text-blue-300'
                         : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
                     }`}
                   >
@@ -1468,9 +1468,9 @@ export function SettingsPage() {
                         key={p}
                         className={`text-[10px] px-2 py-0.5 rounded ${
                           p === 'CUDAExecutionProvider'
-                            ? 'bg-green-900/40 text-green-300 border border-green-700'
+                            ? 'bg-gray-800 text-blue-300 border border-gray-700'
                             : p === 'DmlExecutionProvider'
-                            ? 'bg-blue-900/40 text-blue-300 border border-blue-700'
+                            ? 'bg-gray-800 text-blue-300 border border-gray-700'
                             : `${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-800 text-gray-400'} border border-gray-600`
                         }`}
                       >
@@ -1688,7 +1688,7 @@ export function SettingsPage() {
                   {tunnelStatus?.data?.ngrok_authtoken_from_env ? (
                     /* env から自動適用済み */
                     <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${
-                      isLight ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-green-900/20 border border-green-700/40 text-green-400'
+                      isLight ? 'bg-white border border-gray-200 text-blue-700' : 'bg-gray-800 border border-gray-700 text-blue-300'
                     }`}>
                       <CheckCircle2 size={12} />
                       {t('sharing.ngrok_authtoken_from_env')}
@@ -1730,7 +1730,7 @@ export function SettingsPage() {
                 <div className="space-y-3">
                   {tunnelStatus?.data?.providers?.cloudflare?.available && (
                     <div className={`rounded border px-3 py-2 text-xs ${
-                      isLight ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-blue-800 bg-blue-950/30 text-blue-300'
+                      isLight ? 'border-gray-200 bg-white text-blue-700' : 'border-gray-700 bg-gray-800 text-blue-300'
                     }`}>
                       <div className="font-medium">Cloudflare named tunnel</div>
                       <div className="mt-1 font-mono break-all">
@@ -1843,7 +1843,7 @@ export function SettingsPage() {
 
                   {/* TURN なし警告 */}
                   {!appSettings.turn_enabled && (
-                    <div className={`flex items-start gap-2 text-xs rounded p-2 ${isLight ? 'bg-amber-50 text-amber-700' : 'bg-amber-900/20 text-amber-400'}`}>
+                    <div className={`flex items-start gap-2 text-xs rounded p-2 ${isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'}`}>
                       <AlertCircle size={12} className="flex-shrink-0 mt-0.5" />
                       {t('sharing.webrtc_best_effort_warning')}
                     </div>
@@ -1976,7 +1976,7 @@ export function SettingsPage() {
                       ['TCP 80', netDiag.data.capabilities.tcp_80.ok],
                       ['Localhost', netDiag.data.capabilities.localhost_bridge.ok],
                     ] as [string, boolean][]).map(([label, ok]) => (
-                      <div key={label} className={`rounded px-2 py-1 text-center ${ok ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>
+                      <div key={label} className={`rounded px-2 py-1 text-center ${ok ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
                         {ok ? '✓' : '✗'} {label}
                       </div>
                     ))}
@@ -2154,7 +2154,7 @@ export function SettingsPage() {
                               }}
                               className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
                                 exportMatchIds.split(',').map((s: string) => s.trim()).includes(String(m.id))
-                                  ? 'bg-blue-900/40 text-blue-300' : 'text-gray-300 hover:bg-gray-700'
+                                  ? 'bg-gray-800 text-blue-300' : 'text-gray-300 hover:bg-gray-700'
                               }`}
                             >
                               <span>[{m.id}] {m.date} {m.tournament}</span>
@@ -2528,7 +2528,7 @@ export function SettingsPage() {
               )}
 
               {dbAvMessage && (
-                <div className="text-xs rounded px-3 py-2 bg-blue-900/40 text-blue-300">
+                <div className="text-xs rounded px-3 py-2 bg-gray-800 text-blue-300">
                   {dbAvMessage}
                 </div>
               )}
@@ -2542,7 +2542,7 @@ export function SettingsPage() {
               {dbMaintResult && (
                 <div className={`text-xs rounded px-3 py-2 ${
                   dbMaintResult.freed_mb > 0
-                    ? 'bg-green-900/40 text-green-300'
+                    ? 'bg-gray-800 text-blue-300'
                     : 'bg-gray-700 text-gray-300'
                 }`}>
                   {dbMaintResult.freed_mb > 0

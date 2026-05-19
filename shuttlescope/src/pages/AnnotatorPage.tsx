@@ -1873,7 +1873,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={handleYoloBatch}
                     disabled={!!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-blue-900/30 text-blue-300 hover:bg-blue-800/50 disabled:opacity-50"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-800 text-blue-300 hover:bg-gray-800 disabled:opacity-50"
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>directions_run</span>
                     {t('annotator.ux.menu_yolo_run')}
@@ -1883,7 +1883,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={handleTracknetBatch}
                     disabled={!!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-purple-900/30 text-purple-300 hover:bg-purple-800/50 disabled:opacity-50"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-800 text-gray-200 hover:bg-gray-800 disabled:opacity-50"
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>route</span>
                     {t('annotator.ux.menu_tracknet_run')}
@@ -1896,7 +1896,7 @@ export function AnnotatorPage() {
             <TopBarMenuSection title={t('annotator.ux.menu_section_danger')}>
               <button
                 onClick={() => setShowExceptionDialog(true)}
-                className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-red-900/30 text-red-300 hover:bg-red-800/50"
+                className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-800 text-red-300 hover:bg-gray-800"
               >
                 <OctagonX size={14} />
                 {t('exception.title')}
@@ -1957,7 +1957,7 @@ export function AnnotatorPage() {
               className={clsx(
                 'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors border shrink-0',
                 cvToolsExpanded
-                  ? isLight ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-blue-900/40 text-blue-300 border-blue-800'
+                  ? isLight ? 'bg-white text-blue-700 border-gray-200' : 'bg-gray-800 text-blue-300 border-gray-700'
                   : isLight ? 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-50' : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-blue-900/20',
               )}
               aria-expanded={cvToolsExpanded}
@@ -1983,14 +1983,14 @@ export function AnnotatorPage() {
           {cvToolsExpanded && appSettings.tracknet_enabled && hasVideo(match) && (
             tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') ? (
               <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
-                isLight ? 'bg-purple-100 text-purple-700' : 'bg-purple-900/40 text-purple-300'
+                isLight ? 'bg-white text-gray-700' : 'bg-gray-800 text-gray-200'
               }`}>
                 <span className="animate-pulse">●</span>
                 {t('tracknet.batch_running')} {Math.round(tracknetJob.progress * 100)}%
                 <button
                   onClick={handleTracknetBatchStop}
                   className={`ml-1 px-1 py-0.5 rounded text-[9px] font-medium transition-colors ${
-                    isLight ? 'bg-red-200 text-red-700 hover:bg-red-300' : 'bg-red-900/60 text-red-300 hover:bg-red-800/80'
+                    isLight ? 'bg-white text-red-700 hover:bg-red-300' : 'bg-gray-800 text-red-300 hover:bg-gray-800'
                   }`}
                   title={t('auto.AnnotatorPage.k3')}
                 >
@@ -2000,14 +2000,14 @@ export function AnnotatorPage() {
             ) : tracknetJob?.status === 'stopped' ? (
               <div className="flex items-center gap-1">
                 <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
-                  isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
+                  isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
                 }`}>
                   {t('annotator.ui.stopped_with_pct', { defaultValue: '⏸ 停止済 {{pct}}%', pct: Math.round(tracknetJob.progress * 100) })}
                 </div>
                 <button
                   onClick={handleTracknetBatchResume}
                   className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
-                    isLight ? 'bg-purple-50 text-purple-500 hover:bg-purple-100 border border-purple-200' : 'bg-purple-900/20 text-purple-400 hover:bg-purple-900/40 border border-purple-800/50'
+                    isLight ? 'bg-purple-50 text-gray-200 hover:bg-purple-100 border border-purple-200' : 'bg-gray-800 text-gray-200 hover:bg-gray-800 border border-gray-700'
                   }`}
                   title={t('auto.AnnotatorPage.k4')}
                 >
@@ -2016,7 +2016,7 @@ export function AnnotatorPage() {
               </div>
             ) : tracknetJob?.status === 'complete' ? (
               <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
-                isLight ? 'bg-green-100 text-green-700' : 'bg-green-900/40 text-green-300'
+                isLight ? 'bg-white text-blue-700' : 'bg-gray-800 text-blue-300'
               }`}>
                 ✓ {t('tracknet.updated_strokes', { count: tracknetJob.updated_strokes })}
               </div>
@@ -2025,7 +2025,7 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => setTracknetJob(null)}
                   className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors border border-white/60 ${
-                    isLight ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
+                    isLight ? 'bg-white text-red-700 hover:bg-white' : 'bg-gray-800 text-red-300 hover:bg-gray-800'
                   }`}
                   title={tracknetJob.error ?? t('tracknet.batch_error')}
                 >
@@ -2042,7 +2042,7 @@ export function AnnotatorPage() {
                 <button
                   onClick={handleTracknetBatch}
                   className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                    isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
+                    isLight ? 'bg-white text-gray-700 hover:bg-white' : 'bg-gray-800 text-gray-200 hover:bg-gray-800'
                   }`}
                   title={t('tracknet.batch_start')}
                 >
@@ -2052,7 +2052,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={handleTracknetBatchResume}
                     className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
-                      isLight ? 'bg-purple-50 text-purple-500 hover:bg-purple-100 border border-purple-200' : 'bg-purple-900/20 text-purple-400 hover:bg-purple-900/40 border border-purple-800/50'
+                      isLight ? 'bg-purple-50 text-gray-200 hover:bg-purple-100 border border-purple-200' : 'bg-gray-800 text-gray-200 hover:bg-gray-800 border border-gray-700'
                     }`}
                     title={t('auto.AnnotatorPage.k4')}
                   >
@@ -2079,14 +2079,14 @@ export function AnnotatorPage() {
               {/* YOLO プレイヤー検出 */}
               {yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running') ? (
                 <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
-                  isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/40 text-blue-300'
+                  isLight ? 'bg-white text-blue-700' : 'bg-gray-800 text-blue-300'
                 }`}>
                   <span className="animate-pulse">●</span>
                   {t('annotator.ui.person_with_pct', { defaultValue: '人物 {{pct}}%', pct: Math.round(yoloJob.progress * 100) })}
                   <button
                     onClick={handleYoloBatchStop}
                     className={`ml-0.5 px-1 py-0.5 rounded text-[9px] font-medium transition-colors ${
-                      isLight ? 'bg-red-200 text-red-700 hover:bg-red-300' : 'bg-red-900/60 text-red-300 hover:bg-red-800/80'
+                      isLight ? 'bg-white text-red-700 hover:bg-red-300' : 'bg-gray-800 text-red-300 hover:bg-gray-800'
                     }`}
                     title={t('auto.AnnotatorPage.k5')}
                   >
@@ -2096,14 +2096,14 @@ export function AnnotatorPage() {
               ) : yoloJob?.status === 'stopped' ? (
                 <div className="flex items-center gap-1">
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
-                    isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
+                    isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
                   }`}>
                     ⏸ {Math.round(yoloJob.progress * 100)}%
                   </div>
                   <button
                     onClick={handleYoloBatchResume}
                     className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                      isLight ? 'bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200' : 'bg-blue-900/20 text-blue-400 hover:bg-blue-900/40 border border-blue-800/50'
+                      isLight ? 'bg-blue-50 text-blue-300 hover:bg-blue-100 border border-blue-200' : 'bg-gray-800 text-blue-300 hover:bg-gray-800 border border-gray-700'
                     }`}
                     title={t('auto.AnnotatorPage.k6')}
                   >
@@ -2127,7 +2127,7 @@ export function AnnotatorPage() {
                       })
                     }}
                     className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                      isLight ? 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/50'
+                      isLight ? 'bg-red-50 text-red-300 hover:bg-red-100 border border-red-200' : 'bg-gray-800 text-red-300 hover:bg-gray-800 border border-gray-700'
                     }`}
                     title={t('auto.AnnotatorPage.k7')}
                   >
@@ -2139,7 +2139,7 @@ export function AnnotatorPage() {
                   onClick={() => setYoloOverlayVisible((v) => !v)}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
                     yoloOverlayVisible
-                      ? isLight ? 'bg-blue-200 text-blue-800' : 'bg-blue-700/60 text-blue-200'
+                      ? isLight ? 'bg-white text-blue-700' : 'bg-blue-700/60 text-blue-200'
                       : isLight ? 'bg-gray-200 text-gray-600 hover:bg-blue-100' : 'bg-gray-700 text-gray-400 hover:bg-blue-900/40'
                   }`}
                   title={yoloOverlayVisible ? t('annotator.ui.person_overlay_hide', { defaultValue: '人物オーバーレイを非表示' }) : t('annotator.ui.person_overlay_show', { defaultValue: '人物オーバーレイを表示' })}
@@ -2151,7 +2151,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={() => setYoloJob(null)}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium border border-white/60 ${
-                      isLight ? 'bg-red-100 text-red-600' : 'bg-red-900/40 text-red-300'
+                      isLight ? 'bg-white text-red-700' : 'bg-gray-800 text-red-300'
                     }`}
                     title={yoloJob.error ?? t('yolo.batch_error')}
                   >
@@ -2172,7 +2172,7 @@ export function AnnotatorPage() {
                       handleYoloBatch()
                     }}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
-                      isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                      isLight ? 'bg-white text-blue-700 hover:bg-white' : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
                     }`}
                     title={t('yolo.batch_start')}
                   >
@@ -2182,7 +2182,7 @@ export function AnnotatorPage() {
                     <button
                       onClick={handleYoloBatchResume}
                       className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                        isLight ? 'bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200' : 'bg-blue-900/20 text-blue-400 hover:bg-blue-900/40 border border-blue-800/50'
+                        isLight ? 'bg-blue-50 text-blue-300 hover:bg-blue-100 border border-blue-200' : 'bg-gray-800 text-blue-300 hover:bg-gray-800 border border-gray-700'
                       }`}
                       title={t('auto.AnnotatorPage.k6')}
                     >
@@ -2208,7 +2208,7 @@ export function AnnotatorPage() {
                         })
                       }}
                       className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                        isLight ? 'bg-red-50 text-red-500 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/50'
+                        isLight ? 'bg-red-50 text-red-300 hover:bg-red-100 border border-red-200' : 'bg-gray-800 text-red-300 hover:bg-gray-800 border border-gray-700'
                       }`}
                       title={t('auto.AnnotatorPage.k7')}
                     >
@@ -2219,7 +2219,7 @@ export function AnnotatorPage() {
                     <button
                       onClick={handleYoloBatchDiff}
                       className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                        isLight ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200' : 'bg-amber-900/20 text-amber-400 hover:bg-amber-900/40 border border-amber-700/50'
+                        isLight ? 'bg-white text-amber-700 hover:bg-white border border-gray-200' : 'bg-gray-800 text-amber-400 hover:bg-gray-800 border border-gray-700'
                       }`}
                       title={t('auto.AnnotatorPage.k8')}
                     >
@@ -2266,7 +2266,7 @@ export function AnnotatorPage() {
                     >{t('app.back')}</button>
                     <button
                       onClick={skipCurrentSample}
-                      className={`px-1.5 py-0.5 rounded text-[10px] ${isLight ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60'}`}
+                      className={`px-1.5 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-amber-700 hover:bg-white' : 'bg-gray-800 text-amber-400 hover:bg-gray-800'}`}
                       title={t('auto.AnnotatorPage.k13')}
                     >{t('annotator.ui.skip')}</button>
                     {samplerIdx < samplerSamples.length - 1 ? (
@@ -2324,7 +2324,7 @@ export function AnnotatorPage() {
                     onClick={startSampler}
                     disabled={frameDetectLoading}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
+                      isLight ? 'bg-white text-gray-700 hover:bg-white' : 'bg-gray-800 text-gray-200 hover:bg-gray-800'
                     }`}
                     title={trackFrames.length > 0
                       ? t('annotator.ui.track_identify_redo', { defaultValue: 'コート離脱・衣装変更などで識別をやり直す（10サンプル）' })
@@ -2341,7 +2341,7 @@ export function AnnotatorPage() {
                   disabled={trackFrames.length === 0}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     trackingVisible && trackFrames.length > 0
-                      ? isLight ? 'bg-purple-200 text-purple-800' : 'bg-purple-700/60 text-purple-200'
+                      ? isLight ? 'bg-white text-gray-700' : 'bg-purple-700/60 text-purple-200'
                       : isLight ? 'bg-gray-200 text-gray-600 hover:bg-purple-100 disabled:hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-purple-900/40 disabled:hover:bg-gray-700'
                   }`}
                   title={
@@ -2360,7 +2360,7 @@ export function AnnotatorPage() {
                   onClick={() => setShuttleOverlayVisible((v) => !v)}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
                     shuttleOverlayVisible
-                      ? isLight ? 'bg-yellow-200 text-yellow-800' : 'bg-yellow-700/60 text-yellow-200'
+                      ? isLight ? 'bg-white text-amber-700' : 'bg-yellow-700/60 text-yellow-200'
                       : isLight ? 'bg-gray-200 text-gray-600 hover:bg-yellow-100' : 'bg-gray-700 text-gray-400 hover:bg-yellow-900/40'
                   }`}
                   title={shuttleOverlayVisible ? t('annotator.ui.shuttle_hide', { defaultValue: 'シャトル軌跡を非表示' }) : t('annotator.ui.shuttle_show', { defaultValue: 'シャトル軌跡を表示' })}
@@ -2374,7 +2374,7 @@ export function AnnotatorPage() {
                 onClick={() => setCourtGridVisible((v) => !v)}
                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
                   courtGridVisible
-                    ? isLight ? 'bg-cyan-200 text-cyan-800' : 'bg-cyan-800/60 text-cyan-200'
+                    ? isLight ? 'bg-white text-gray-700' : 'bg-gray-800 text-gray-200'
                     : isLight ? 'bg-gray-200 text-gray-600 hover:bg-cyan-100' : 'bg-gray-700 text-gray-400 hover:bg-cyan-900/40'
                 }`}
                 title={courtGridVisible ? t('annotator.ui.court_grid_hide', { defaultValue: 'コートグリッドを非表示' }) : t('annotator.ui.court_grid_show', { defaultValue: 'コートグリッドを表示' })}
@@ -2395,9 +2395,9 @@ export function AnnotatorPage() {
                 }}
                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
                   roiEditing
-                    ? isLight ? 'bg-amber-200 text-amber-800' : 'bg-amber-700/60 text-amber-200'
+                    ? isLight ? 'bg-white text-amber-700' : 'bg-amber-700/60 text-amber-200'
                     : roiRect
-                      ? isLight ? 'bg-amber-100 text-amber-700' : 'bg-amber-900/40 text-amber-300'
+                      ? isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
                       : isLight ? 'bg-gray-200 text-gray-600 hover:bg-amber-100' : 'bg-gray-700 text-gray-400 hover:bg-amber-900/40'
                 }`}
                 title={roiEditing ? t('annotator.ui.roi_editing_title', { defaultValue: '解析領域の指定を確定（クリックで終了）' }) : roiRect ? t('annotator.ui.roi_change_title', { defaultValue: '解析領域を変更（ドラッグ）' }) : t('annotator.ui.roi_set_title', { defaultValue: '解析領域を指定（TrackNet/YOLO）' })}
@@ -2416,7 +2416,7 @@ export function AnnotatorPage() {
                   }}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
                     yoloOverlayVisible && shuttleOverlayVisible
-                      ? isLight ? 'bg-green-200 text-green-800' : 'bg-green-700/60 text-green-200'
+                      ? isLight ? 'bg-white text-blue-700' : 'bg-green-700/60 text-green-200'
                       : isLight ? 'bg-gray-200 text-gray-500 hover:bg-green-100' : 'bg-gray-700 text-gray-500 hover:bg-green-900/40'
                   }`}
                   title={t('auto.AnnotatorPage.k15')}
@@ -2440,7 +2440,7 @@ export function AnnotatorPage() {
                 disabled={cvBuildLoading}
                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
                   candidatesData
-                    ? isLight ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/60'
+                    ? isLight ? 'bg-white text-blue-700 hover:bg-white' : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
                     : isLight ? 'bg-gray-200 text-gray-600 hover:bg-emerald-100' : 'bg-gray-700 text-gray-400 hover:bg-emerald-900/40'
                 }`}
                 title={candidatesData ? t('annotator.ui.cv_assist_built_at', { defaultValue: '候補生成済み ({{date}}) — 再生成', date: candidatesData.built_at?.slice(0, 10) }) : t('annotator.ui.cv_assist_build_title', { defaultValue: 'CV候補を生成する' })}
@@ -2454,7 +2454,7 @@ export function AnnotatorPage() {
                     onClick={() => applyCandidates('auto_filled', ['land_zone', 'hitter'])}
                     disabled={cvBuildLoading || cvApplyLoading}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                      isLight ? 'bg-white text-blue-700 hover:bg-white' : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
                     }`}
                     title={t('auto.AnnotatorPage.k16')}
                   >
@@ -2464,7 +2464,7 @@ export function AnnotatorPage() {
                     onClick={() => applyCandidates('auto_filled', ['land_zone'])}
                     disabled={cvBuildLoading || cvApplyLoading}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/60'
+                      isLight ? 'bg-white text-blue-700 hover:bg-white' : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
                     }`}
                     title={t('auto.AnnotatorPage.k17')}
                   >
@@ -2474,7 +2474,7 @@ export function AnnotatorPage() {
                     onClick={() => applyCandidates('auto_filled', ['hitter'])}
                     disabled={cvBuildLoading || cvApplyLoading}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-indigo-900/40 text-indigo-300 hover:bg-indigo-800/60'
+                      isLight ? 'bg-white text-gray-700 hover:bg-white' : 'bg-gray-800 text-gray-200 hover:bg-gray-800'
                     }`}
                     title={t('auto.AnnotatorPage.k18')}
                   >
@@ -2484,7 +2484,7 @@ export function AnnotatorPage() {
                     onClick={() => applyCandidates('suggested', ['land_zone', 'hitter'])}
                     disabled={cvBuildLoading || cvApplyLoading}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                      isLight ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-900/40 text-purple-300 hover:bg-purple-800/60'
+                      isLight ? 'bg-white text-gray-700 hover:bg-white' : 'bg-gray-800 text-gray-200 hover:bg-gray-800'
                     }`}
                     title={t('auto.AnnotatorPage.k19')}
                   >
@@ -2498,7 +2498,7 @@ export function AnnotatorPage() {
                   onClick={() => setShowCVAssistPanel((v) => !v)}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
                     showCVAssistPanel
-                      ? isLight ? 'bg-purple-200 text-purple-800' : 'bg-purple-700/60 text-purple-200'
+                      ? isLight ? 'bg-white text-gray-700' : 'bg-purple-700/60 text-purple-200'
                       : isLight ? 'bg-gray-200 text-gray-500 hover:bg-purple-100' : 'bg-gray-700 text-gray-500 hover:bg-purple-900/40'
                   }`}
                   title={t('auto.AnnotatorPage.k20')}
@@ -2512,8 +2512,8 @@ export function AnnotatorPage() {
                   onClick={() => setCVReviewQueueOpen((v) => !v)}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
                     cvReviewQueueOpen
-                      ? isLight ? 'bg-amber-200 text-amber-800' : 'bg-amber-700/60 text-amber-200'
-                      : isLight ? 'bg-amber-100 text-amber-700' : 'bg-amber-900/40 text-amber-300'
+                      ? isLight ? 'bg-white text-amber-700' : 'bg-amber-700/60 text-amber-200'
+                      : isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
                   }`}
                   title={t('auto.AnnotatorPage.k21')}
                 >
@@ -2554,11 +2554,11 @@ export function AnnotatorPage() {
                 className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
                   tunnelPending
                     ? isLight
-                      ? 'bg-amber-100 text-amber-600 cursor-wait'
-                      : 'bg-amber-900/40 text-amber-400 cursor-wait'
+                      ? 'bg-white text-amber-700 cursor-wait'
+                      : 'bg-gray-800 text-amber-400 cursor-wait'
                     : isLight
-                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                      : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'
+                      ? 'bg-white text-blue-700 hover:bg-white'
+                      : 'bg-gray-800 text-blue-300 hover:bg-gray-800'
                 }`}
                 title={tunnelPending ? t('annotator.ui.tunnel_pending_title', { defaultValue: 'トンネルURL取得中... しばらくお待ちください' }) : t('annotator.ui.tunnel_show_qr_title', { defaultValue: 'クリックしてQRコード・URLを表示' })}
               >
@@ -2576,8 +2576,8 @@ export function AnnotatorPage() {
                   className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors disabled:opacity-50 ${
                     tunnelStatus?.data?.running
                       ? isLight
-                        ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-600'
-                        : 'bg-green-800/60 text-green-300 hover:bg-red-900/50 hover:text-red-300'
+                        ? 'bg-white text-blue-700 hover:bg-white hover:text-red-700'
+                        : 'bg-gray-800 text-blue-300 hover:bg-gray-800 hover:text-red-300'
                       : isLight
                         ? 'bg-gray-200 text-gray-500 hover:text-gray-700'
                         : 'bg-gray-700 text-gray-500 hover:text-gray-300'
@@ -2787,7 +2787,7 @@ export function AnnotatorPage() {
                     }
                     setReviewQueueOpen(false)
                   }}
-                  className="px-2 py-0.5 bg-amber-800/40 hover:bg-amber-700/60 text-amber-200 rounded text-xs border border-amber-700/30"
+                  className="px-2 py-0.5 bg-gray-800 hover:bg-amber-700/60 text-amber-400 rounded text-xs border border-gray-700"
                 >
                   {t('annotator.ui.rally_review_label', { defaultValue: 'ラリー #{{id}}', id: bm.rally_id ?? '?' })}
                   {bm.video_timestamp_sec != null && (
@@ -3296,10 +3296,10 @@ export function AnnotatorPage() {
               store.inputStep === 'idle' && !store.isRallyActive
                 ? 'text-gray-400 bg-gray-800'                          // pre-rally idle (待機)
                 : store.inputStep === 'idle'
-                  ? 'text-emerald-300 bg-emerald-900/30'                // in-rally idle (ショット待ち) — 緑
+                  ? 'text-blue-300 bg-gray-800'                // in-rally idle (ショット待ち) — 緑
                   : store.inputStep === 'land_zone'
-                    ? 'text-blue-300 bg-blue-900/30'                    // 着地点入力中 — 青
-                    : 'text-orange-300 bg-orange-900/30'                // rally_end — 橙
+                    ? 'text-blue-300 bg-gray-800'                    // 着地点入力中 — 青
+                    : 'text-amber-400 bg-gray-800'                // rally_end — 橙
             )}
           >
             <span>{initialized ? stepLabel : t('annotator.ui.loading_dots', { defaultValue: '読み込み中…' })}</span>
@@ -3601,8 +3601,8 @@ export function AnnotatorPage() {
                                     : 'bg-orange-500 hover:bg-orange-400 text-white ring-2 ring-orange-300'
                                   : dimmed
                                     ? color === 'blue'
-                                      ? 'bg-blue-900/40 hover:bg-blue-800/60 text-blue-300'
-                                      : 'bg-orange-900/40 hover:bg-orange-800/60 text-orange-300'
+                                      ? 'bg-gray-800 hover:bg-gray-800 text-blue-300'
+                                      : 'bg-gray-800 hover:bg-gray-800 text-amber-400'
                                     : color === 'blue'
                                       ? 'bg-blue-600 hover:bg-blue-500 text-white'
                                       : 'bg-orange-600 hover:bg-orange-500 text-white'
@@ -4279,7 +4279,7 @@ export function AnnotatorPage() {
                 <button
                   onClick={() => store.resetRally()}
                   className={clsx(
-                    'w-full bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded border border-white/60',
+                    'w-full bg-gray-800 hover:bg-gray-800 text-red-300 rounded border border-white/60',
                     useLargeTouch ? 'py-2.5 text-sm' : 'py-1.5 text-xs'
                   )}
                 >
@@ -4565,7 +4565,7 @@ export function AnnotatorPage() {
                   className={clsx(
                     'w-full py-2 px-3 rounded text-sm text-left transition-colors border',
                     exceptionReason === value
-                      ? 'bg-red-800/50 border-red-500 text-red-200'
+                      ? 'bg-gray-800 border-gray-700 text-red-300'
                       : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
                   )}
                 >

@@ -15,11 +15,11 @@ function statusClass(status?: string): string {
     case 'queued':
       return 'bg-slate-700 text-slate-200 border-slate-500'
     case 'running':
-      return 'bg-blue-900/40 text-blue-300 border-blue-500'
+      return 'bg-gray-800 text-blue-300 border-gray-700'
     case 'done':
-      return 'bg-emerald-900/40 text-emerald-300 border-emerald-500'
+      return 'bg-gray-800 text-blue-300 border-gray-700'
     case 'failed':
-      return 'bg-red-900/40 text-red-300 border-red-500'
+      return 'bg-gray-800 text-red-300 border-gray-700'
     default:
       return 'bg-gray-800 text-gray-400 border-gray-600'
   }

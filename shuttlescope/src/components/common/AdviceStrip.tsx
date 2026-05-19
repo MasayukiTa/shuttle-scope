@@ -49,10 +49,20 @@ interface Props {
   className?: string
 }
 
+// Design Language v1.2 §12: bg は neutral 固定、severity は文字色で運ぶ。
+// 旧版は bg-{color}-50 / bg-{color}-900/20 の同色相 bg+text でカード全体が
+// 色塗りされていたが、Design Language §12.4 (1 画面の色付き要素を絞る) に
+// 違反。今は bg を完全に neutral 化し、icon と border 強調だけで識別する。
 const SEVERITY_CLASS: Record<string, string> = {
-  info:     'border-blue-300 dark:border-blue-700/60 bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-100',
-  positive: 'border-emerald-300 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-900 dark:text-emerald-100',
-  warning:  'border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-100',
+  info:     'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+  positive: 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+  warning:  'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+}
+// severity 別 icon 色 (色は icon + 文字符号のみで運ぶ)
+const SEVERITY_ICON_COLOR: Record<string, string> = {
+  info:     'text-gray-400 dark:text-gray-500',
+  positive: 'text-blue-600 dark:text-blue-300',   // A_GOOD
+  warning:  'text-amber-600 dark:text-amber-400', // CAUTION
 }
 
 const CONFIDENCE_LABEL: Record<string, string> = {
@@ -113,10 +123,11 @@ export function AdviceStrip({
 
   const a = resp.advice
   const cls = SEVERITY_CLASS[a.severity] || SEVERITY_CLASS.info
+  const iconCls = SEVERITY_ICON_COLOR[a.severity] || SEVERITY_ICON_COLOR.info
   return (
     <div className={`rounded-md border px-3 py-2 ${cls} ${className || ''}`}>
       <div className="flex items-start gap-2">
-        <MIcon name="lightbulb" size={14} className="mt-0.5 shrink-0 opacity-80" />
+        <MIcon name="lightbulb" size={14} className={`mt-0.5 shrink-0 ${iconCls}`} />
         <div className="flex-1 min-w-0">
           <div className="text-sm leading-snug">{a.text}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] opacity-80">

@@ -217,7 +217,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                           <User size={12} className="text-gray-400 shrink-0" />
                           <span className="truncate">{p.name}</span>
                           {p.team && (
-                            <span className="text-xs text-blue-300 bg-blue-900/30 px-1.5 rounded shrink-0">{p.team}</span>
+                            <span className="text-xs text-blue-300 bg-gray-800 px-1.5 rounded shrink-0">{p.team}</span>
                           )}
                           {p.needs_review && (
                             <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded shrink-0">{t('quick_start.provisional')}</span>

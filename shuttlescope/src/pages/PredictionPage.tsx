@@ -113,10 +113,10 @@ export function PredictionPage() {
     player: '選手',
   }
   const ROLE_BADGE_CLASS: Record<string, string> = {
-    admin: 'bg-red-900/50 border-red-500 text-red-300',
-    analyst: 'bg-blue-900/50 border-blue-500 text-blue-300',
-    coach: 'bg-emerald-900/50 border-emerald-500 text-emerald-300',
-    player: 'bg-purple-900/50 border-purple-500 text-purple-300',
+    admin: 'bg-gray-800 border-gray-700 text-red-300',
+    analyst: 'bg-gray-800 border-gray-700 text-blue-300',
+    coach: 'bg-gray-800 border-gray-700 text-blue-300',
+    player: 'bg-gray-800 border-gray-700 text-gray-200',
   }
 
   return (

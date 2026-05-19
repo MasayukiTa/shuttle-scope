@@ -211,7 +211,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
       {isError && errorKind && (
         <div
           className={`flex items-start gap-2 rounded-md px-3 py-2 text-xs ${
-            isLight ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-red-900/20 text-red-400 border border-red-800/40'
+            isLight ? 'bg-white text-red-700 border border-gray-200' : 'bg-gray-800 text-red-300 border border-gray-700'
           }`}
           data-testid={`error-state-${errorKind}`}
         >
