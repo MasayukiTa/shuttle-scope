@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
+import { catColor } from '@/styles/categoricalPalette'
 
 // 体調タブ解析サブタブ用: 時系列トレンドチャート
 // - CCS 折れ線 + 28日移動平均
@@ -157,7 +158,7 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                 type="monotone"
                 dataKey="ccs"
                 name={t('condition.trend.ccs_line')}
-                stroke="#3b82f6"
+                stroke={catColor('Cool', isLight)}
                 strokeWidth={2}
                 dot={false}
                 connectNulls={false}
@@ -167,7 +168,7 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                 type="monotone"
                 dataKey="ccs_ma28"
                 name={t('condition.trend.ccs_ma28')}
-                stroke="#f59e0b"
+                stroke={catColor('Amber', isLight)}
                 strokeWidth={2}
                 strokeDasharray="4 4"
                 dot={false}
@@ -193,11 +194,14 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                 <YAxis tick={axisTick} />
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
+                {/* Design Language v1.3 §6: CAT_ORDER の固定識別子で同じ系列が
+                   mode 切替後も identity を保つ (F1 は常に Cool 青)。
+                   F1〜F5 を Cool/Warm/Green/Magenta/Amber に固定割当。 */}
                 <Line
                   type="monotone"
                   dataKey="f1"
                   name={`F1 ${t('condition.factor.F1')}`}
-                  stroke="#ef4444"
+                  stroke={catColor('Cool', isLight)}
                   dot={false}
                   connectNulls={false}
                   isAnimationActive={false}
@@ -206,7 +210,7 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                   type="monotone"
                   dataKey="f2"
                   name={`F2 ${t('condition.factor.F2')}`}
-                  stroke="#f59e0b"
+                  stroke={catColor('Warm', isLight)}
                   dot={false}
                   connectNulls={false}
                   isAnimationActive={false}
@@ -215,7 +219,7 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                   type="monotone"
                   dataKey="f3"
                   name={`F3 ${t('condition.factor.F3')}`}
-                  stroke="#10b981"
+                  stroke={catColor('Green', isLight)}
                   dot={false}
                   connectNulls={false}
                   isAnimationActive={false}
@@ -224,7 +228,7 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                   type="monotone"
                   dataKey="f4"
                   name={`F4 ${t('condition.factor.F4')}`}
-                  stroke="#3b82f6"
+                  stroke={catColor('Magenta', isLight)}
                   dot={false}
                   connectNulls={false}
                   isAnimationActive={false}
@@ -233,7 +237,7 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                   type="monotone"
                   dataKey="f5"
                   name={`F5 ${t('condition.factor.F5')}`}
-                  stroke="#a855f7"
+                  stroke={catColor('Amber', isLight)}
                   dot={false}
                   connectNulls={false}
                   isAnimationActive={false}
@@ -265,7 +269,7 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                     type="monotone"
                     dataKey="weight_kg"
                     name={t('condition.trend.metric.weight_kg')}
-                    stroke="#3b82f6"
+                    stroke={catColor('Cool', isLight)}
                     dot={false}
                     connectNulls
                     isAnimationActive={false}
@@ -277,7 +281,7 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                     type="monotone"
                     dataKey="muscle_mass_kg"
                     name={t('condition.trend.metric.muscle_mass_kg')}
-                    stroke="#10b981"
+                    stroke={catColor('Green', isLight)}
                     dot={false}
                     connectNulls
                     isAnimationActive={false}
@@ -289,7 +293,7 @@ export function ConditionTrendChart({ playerId, isLight }: Props) {
                     type="monotone"
                     dataKey="body_fat_pct"
                     name={t('condition.trend.metric.body_fat_pct')}
-                    stroke="#f59e0b"
+                    stroke={catColor('Amber', isLight)}
                     dot={false}
                     connectNulls
                     isAnimationActive={false}
