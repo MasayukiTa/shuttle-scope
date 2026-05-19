@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
-import { WIN, LOSS, BAR, LINE } from '@/styles/colors'
+import { WIN, LOSS, BAR, LINE, N_GRAY } from '@/styles/colors'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface PostLongRallyStatsProps {
   playerId: number
@@ -38,22 +39,39 @@ function ComparisonCard({
 }) {
   const { t } = useTranslation()
 
+  // Design Language v1.2 §2.7.0: **左罫線縦バー (border-l-4) は禁止** (詐欺サイト感)。
+  // 区別は **タイトル文字色** で行う。post_long のみ accent 色を付ける。
+  // bg / border は theme 連動の N_GRAY。
+  const isLight = useIsLightMode()
   const accentColor = highlight === 'normal' ? BAR : LINE
+  const cardBg     = isLight ? '#ffffff' : N_GRAY[800]
+  const cardBorder = isLight ? N_GRAY[200] : N_GRAY[700]
+  const labelColor = isLight ? N_GRAY[600] : N_GRAY[400]
+  const valueColor = isLight ? N_GRAY[900] : N_GRAY[50]
   return (
-    <div className="bg-gray-700/50 rounded-lg p-3 border-l-4" style={{ borderLeftColor: accentColor }}>
-      <p className="text-xs font-semibold mb-2" style={{ color: accentColor }}>{label}</p>
+    <div
+      className="rounded-lg p-3"
+      style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}` }}
+    >
+      {/* タイトル: highlight === 'post_long' のみ accent 色、それ以外は中立 */}
+      <p
+        className="text-xs font-semibold mb-2"
+        style={{ color: highlight === 'post_long' ? accentColor : (isLight ? N_GRAY[700] : N_GRAY[200]) }}
+      >
+        {label}
+      </p>
       <div className="space-y-1.5">
         <div className="flex justify-between text-xs">
-          <span className="text-gray-400">{t('auto.PostLongRallyStats.k1')}</span>
-          <span className="text-gray-100 font-semibold">{(stats.win_rate * 100).toFixed(1)}%</span>
+          <span style={{ color: labelColor }}>{t('auto.PostLongRallyStats.k1')}</span>
+          <span className="font-semibold tabular-nums" style={{ color: valueColor }}>{(stats.win_rate * 100).toFixed(1)}%</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-gray-400">{t('auto.PostLongRallyStats.k2')}</span>
-          <span className="text-gray-100">{stats.avg_rally_length.toFixed(1)}</span>
+          <span style={{ color: labelColor }}>{t('auto.PostLongRallyStats.k2')}</span>
+          <span className="tabular-nums" style={{ color: valueColor }}>{stats.avg_rally_length.toFixed(1)}</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-gray-400">{t('auto.PostLongRallyStats.k3')}</span>
-          <span className="text-gray-300">{stats.count}</span>
+          <span style={{ color: labelColor }}>{t('auto.PostLongRallyStats.k3')}</span>
+          <span className="tabular-nums" style={{ color: valueColor }}>{stats.count}</span>
         </div>
       </div>
     </div>
