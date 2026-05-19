@@ -106,19 +106,24 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
         <EvidenceBadge tier="advanced" evidenceLevel="practical_candidate" className="shrink-0" />
       </div>
 
-      {/* Override summary バナー: admin/analyst/coach のみ、active override がある場合に表示 */}
+      {/* Override summary バナー: admin/analyst/coach のみ、active override がある場合に表示
+         Design Language v1.2 §12: bg は neutral、警告意味は文字色 + ⚠ で運ぶ
+         (装飾 amber bg + 左罫線縦バーは禁止) */}
       {activeOverrides.length > 0 && (role === 'admin' || role === 'analyst' || role === 'coach') && (
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border-l-4 text-xs ${
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
           isLight
-            ? 'bg-amber-50 border-amber-400 text-amber-800'
-            : 'bg-amber-900/20 border-amber-600 text-amber-300'
+            ? 'bg-white border-gray-200'
+            : 'bg-gray-800 border-gray-700'
         }`}>
-          <span className="font-medium min-w-0 flex-1 truncate">
-            {activeOverrides.length}件の分析に手動 Override が設定されています
+          <span
+            className="font-medium min-w-0 flex-1 truncate"
+            style={{ color: isLight ? '#b45309' /* amber-700 */ : '#fbbf24' /* amber-400 */ }}
+          >
+            ⚠ {activeOverrides.length}件の分析に手動 Override が設定されています
           </span>
           {holdCount > 0 && (
-            <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-              isLight ? 'bg-orange-100 text-orange-700' : 'bg-orange-900/40 text-orange-300'
+            <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+              isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200'
             }`}>
               保留 {holdCount}件
             </span>
