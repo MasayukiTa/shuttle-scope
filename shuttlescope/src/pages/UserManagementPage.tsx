@@ -182,7 +182,12 @@ export function UserManagementPage() {
   const inlinePanelBg = isLight ? 'bg-blue-50 border-blue-100' : 'bg-gray-750 border-blue-900/40'
 
   const isPlayerRole = form.role === 'player'
-  const needsTeam = form.role !== 'admin'
+  // 旧版: admin は team_name 必須でないため UI ごと出していなかった。
+  // しかし「admin だが特定チームに所属する」運用 (= コーチ兼 admin 等) があり、
+  // 所属チームを設定する手段が UI から失われていた (2026-05-19 修正)。
+  // admin にも team セレクタを表示する。バリデーションは「admin は team 任意」のまま。
+  const needsTeam = true
+  const teamOptional = form.role === 'admin'
 
   const credentialLabel = useMemo(() => {
     if (isPlayerRole) {
@@ -476,7 +481,9 @@ export function UserManagementPage() {
 
         {needsTeam && myRole === 'admin' ? (
           <div className="col-span-2">
-            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>所属チーム</label>
+            <label className={`block text-xs font-medium mb-1 ${textMuted}`}>
+              所属チーム{teamOptional ? '（任意）' : ''}
+            </label>
             <select
               value={form.team_id}
               onChange={(e) => {
