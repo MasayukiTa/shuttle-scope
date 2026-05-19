@@ -1,13 +1,34 @@
 // CoachSummaryStrip — 試合前コーチ向け圧縮サマリー (Spec §3.1 / §10)
-// 5スロット固定。常時表示、折りたたみなし。
+//
+// Design Language v1.1 グレースケール先行ビルド (2026-05-19 改訂)
+//   1. 骨格は N_GRAY だけで完成させる
+//   2. 「結果の評価 (勝率) と recentForm」だけに A_GOOD / B_BAD を許す
+//   3. 「最大リスク」は B_BAD で警告意味付け (装飾ではない)
+//   4. 「推奨アクション」「最頻結果」は無彩色 (中立情報)
+//   5. E_EMPHASIS は不使用 (本コンポーネントは passive 表示で能動アクション要求はない)
+//
+// 詳細仕様: private_docs/ShuttleScope_DESIGN_LANGUAGE_v1.md
 import { useTranslation } from 'react-i18next'
-import { WIN, LOSS } from '@/styles/colors'
+import {
+  A_GOOD, B_BAD, N_GRAY,
+} from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface TacticalNote {
   note: string
   estimated_impact: string
   basis: string
+}
+
+interface Tokens {
+  bgCard: string
+  bgInner: string
+  border: string
+  textStrong: string
+  textPrimary: string
+  textMuted: string
+  textFaint: string
+  divider: string
 }
 
 interface CoachSummaryStripProps {
@@ -25,9 +46,13 @@ interface CoachSummaryStripProps {
   }
 }
 
+/**
+ * 勝率の符号色。中立帯 (0.45〜0.55) は色を付けない (= 微妙な差で
+ * ユーザを誤誘導しない)。
+ */
 function winColor(p: number, neutral: string): string {
-  if (p >= 0.55) return WIN
-  if (p <= 0.45) return LOSS
+  if (p >= 0.55) return A_GOOD
+  if (p <= 0.45) return B_BAD
   return neutral
 }
 
@@ -47,101 +72,213 @@ export function CoachSummaryStrip({
 }: CoachSummaryStripProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
-  const neutral = isLight ? '#334155' : '#e2e8f0'
-  const subText = isLight ? '#64748b' : '#9ca3af'
-  const bg = isLight ? 'bg-blue-50 border-blue-200' : 'bg-gray-900 border-gray-700'
+
+  // ── トークン (ライト/ダーク共通の N_GRAY 階調) ─────────────────────
+  const tokens = isLight
+    ? {
+        bgCard:      N_GRAY[50],   // パネル背景
+        bgInner:     '#ffffff',     // 内部カード背景
+        border:      N_GRAY[200],
+        textStrong:  N_GRAY[900],
+        textPrimary: N_GRAY[800],
+        textMuted:   N_GRAY[500],
+        textFaint:   N_GRAY[400],
+        divider:     N_GRAY[200],
+      }
+    : {
+        bgCard:      N_GRAY[900],
+        bgInner:     N_GRAY[800],
+        border:      N_GRAY[700],
+        textStrong:  N_GRAY[50],
+        textPrimary: N_GRAY[100],
+        textMuted:   N_GRAY[400],
+        textFaint:   N_GRAY[500],
+        divider:     N_GRAY[700],
+      }
 
   const winPct = Math.round(winProbability * 100)
   const confPct = Math.round(confidence * 100)
   const topResult = topOutcome(setDistribution)
-
-  // 最大リスク: caution_flags > "リスクなし"
   const topRisk = cautionFlags[0] ?? null
-
-  // 推奨アクション: tactical_notes[0]
   const firstNote = tacticalNotes[0]
   const topAction = firstNote
     ? (typeof firstNote === 'string' ? firstNote : firstNote.note)
     : null
 
+  const winColorVal = winColor(winProbability, tokens.textStrong)
+  const lowSample = sampleSize < 10
+
   return (
-    <div className={`rounded-lg border px-4 py-3 mb-4 ${bg}`}>
-      <p className="text-[10px] font-semibold tracking-widest uppercase mb-2" style={{ color: subText }}>
-        {t('prediction.coach_summary')}
-      </p>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {/* 勝率 */}
-        <div>
-          <p className="text-2xl font-bold leading-none" style={{ color: winColor(winProbability, neutral) }}>
-            {winPct}%
-          </p>
-          <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.win_probability')}</p>
+    <section
+      className="rounded-md border mb-4"
+      style={{ backgroundColor: tokens.bgCard, borderColor: tokens.border }}
+      aria-label={t('prediction.coach_summary') || 'コーチ向けサマリー'}
+    >
+      {/* ヘッダ */}
+      <header
+        className="flex items-center justify-between px-4 py-2 border-b"
+        style={{ borderColor: tokens.divider }}
+      >
+        <span
+          className="text-[10px] font-semibold tracking-[0.18em] uppercase"
+          style={{ color: tokens.textMuted }}
+        >
+          {t('prediction.coach_summary') || 'コーチ向けサマリー'}
+        </span>
+        <span className="text-[10px]" style={{ color: tokens.textFaint }}>
+          サンプル {sampleSize}
+        </span>
+      </header>
+
+      {/* 本体 grid: PowerPoint 流に左から「最重要 → 補助」 */}
+      <div className="grid grid-cols-2 sm:grid-cols-5">
+        {/* 1. 勝率 (最重要、最大の数字) — A/B/中立 で意味色 */}
+        <Cell tokens={tokens} label={t('prediction.win_probability') || '予測勝率'} divide>
+          <div className="flex items-baseline gap-1">
+            <span
+              className="text-[28px] font-bold leading-none tabular-nums"
+              style={{ color: winColorVal }}
+            >
+              {winPct}
+            </span>
+            <span className="text-xs" style={{ color: tokens.textMuted }}>%</span>
+          </div>
           {recentForm && recentForm.sample > 0 && (
-            <p className="text-[10px] mt-0.5 font-medium" style={{
-              color: recentForm.trend === 'improving' ? WIN
-                   : recentForm.trend === 'declining' ? LOSS
-                   : subText,
-            }}>
-              {recentForm.trend === 'improving' ? t('prediction.recent_form_improving')
-             : recentForm.trend === 'declining' ? t('prediction.recent_form_declining')
-             : t('prediction.recent_form_stable')}
+            <RecentForm trend={recentForm.trend} tokens={tokens} />
+          )}
+        </Cell>
+
+        {/* 2. 信頼度 — 数値 + バー (色ではなく長さで読む) */}
+        <Cell tokens={tokens} label={t('prediction.confidence') || '信頼度'} divide>
+          <div className="flex items-baseline gap-1">
+            <span
+              className="text-[20px] font-semibold leading-none tabular-nums"
+              style={{ color: tokens.textStrong }}
+            >
+              {confPct}
+            </span>
+            <span className="text-xs" style={{ color: tokens.textMuted }}>%</span>
+            <span className="ml-1 text-xs" style={{ color: tokens.textFaint }}>
+              {confidenceStars}
+            </span>
+          </div>
+          {/* 信頼度バー (色は中立、長さで情報を運ぶ) */}
+          <div
+            className="mt-1.5 h-1 rounded-full overflow-hidden"
+            style={{ backgroundColor: tokens.divider }}
+          >
+            <div
+              className="h-full"
+              style={{
+                width: `${Math.max(0, Math.min(100, confPct))}%`,
+                backgroundColor: tokens.textMuted,
+              }}
+            />
+          </div>
+          {lowSample && (
+            <p
+              className="mt-1 text-[10px]"
+              style={{ color: B_BAD }}
+              title="サンプル不足 (< 10)"
+            >
+              {t('auto.CoachSummaryStrip.k1') || '※ サンプル少'}
             </p>
           )}
-        </div>
+        </Cell>
 
-        {/* 信頼度 */}
-        <div>
-          <p className="text-lg font-bold leading-none" style={{ color: neutral }}>
-            {confPct}% <span className="text-sm font-normal">{confidenceStars}</span>
-          </p>
-          <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.confidence')}</p>
-          {sampleSize < 10 && (
-            <p className="text-[10px]" style={{ color: LOSS }}>{t('auto.CoachSummaryStrip.k1')}</p>
-          )}
-        </div>
+        {/* 3. 最頻結果 — 中立 (良し悪し含意なし) */}
+        <Cell tokens={tokens} label={t('prediction.most_likely') || '最頻結果'} divide>
+          <span
+            className="text-[20px] font-semibold leading-none tabular-nums"
+            style={{ color: tokens.textStrong }}
+          >
+            {topResult}
+          </span>
+        </Cell>
 
-        {/* 最頻結果 */}
-        <div>
-          <p className="text-2xl font-bold leading-none" style={{ color: neutral }}>{topResult}</p>
-          <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.most_likely')}</p>
-        </div>
-
-        {/* 最大リスク */}
-        <div className="sm:col-span-1 min-w-0">
+        {/* 4. 最大リスク — B_BAD (警告として色を意味付け) */}
+        <Cell tokens={tokens} label={t('prediction.biggest_risk') || '最大リスク'} divide>
           {topRisk ? (
-            <>
-              <p className="text-xs font-medium leading-snug line-clamp-2" style={{ color: LOSS }} title={topRisk}>⚠ {topRisk}</p>
-              <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.biggest_risk')}</p>
-            </>
+            <p
+              className="text-xs font-medium leading-snug line-clamp-2"
+              style={{ color: B_BAD }}
+              title={topRisk}
+            >
+              {topRisk}
+            </p>
           ) : (
-            <>
-              <p className="text-xs font-medium" style={{ color: subText }}>—</p>
-              <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.biggest_risk')}</p>
-            </>
+            <p className="text-xs" style={{ color: tokens.textFaint }}>—</p>
           )}
-        </div>
+        </Cell>
 
-        {/* 推奨アクション
-           色の意味づけ規則 (2026-05-19):
-             - 緑 (WIN) は「勝ち方向 / 改善方向」専用。
-             - 推奨アクションは戦術指示であり「良い/悪い」を含意しない中立情報なので
-               neutral 色で表示する。リスクと並列に置いていても緑にして「対比」しない
-               (赤=悪/緑=良 のストップライト誤読を避ける)。
-           方向性は色ではなく `→` 記号で示す。 */}
-        <div className="sm:col-span-1 min-w-0">
+        {/* 5. 推奨アクション — 中立 (戦術指示は良し悪し含意なし) */}
+        <Cell tokens={tokens} label={t('prediction.top_action') || '推奨アクション'}>
           {topAction ? (
-            <>
-              <p className="text-xs font-medium leading-snug line-clamp-2" style={{ color: neutral }} title={topAction}>→ {topAction}</p>
-              <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.top_action')}</p>
-            </>
+            <p
+              className="text-xs font-medium leading-snug line-clamp-2"
+              style={{ color: tokens.textPrimary }}
+              title={topAction}
+            >
+              {topAction}
+            </p>
           ) : (
-            <>
-              <p className="text-xs font-medium" style={{ color: subText }}>—</p>
-              <p className="text-[10px] mt-0.5" style={{ color: subText }}>{t('prediction.top_action')}</p>
-            </>
+            <p className="text-xs" style={{ color: tokens.textFaint }}>—</p>
           )}
-        </div>
+        </Cell>
       </div>
+    </section>
+  )
+}
+
+/**
+ * 5 セルの 1 つを描画。右に縦罫線 (divide) で区切る。
+ * 内側余白・タイポグラフィを統一して PowerPoint 流の整列感を作る。
+ */
+function Cell({
+  tokens, label, divide, children,
+}: {
+  tokens: Tokens
+  label: string
+  divide?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={`px-4 py-3 ${divide ? 'sm:border-r' : ''}`}
+      style={divide ? { borderColor: tokens.divider } : undefined}
+    >
+      <p
+        className="text-[10px] mb-1.5 tracking-wide"
+        style={{ color: tokens.textMuted }}
+      >
+        {label}
+      </p>
+      {children}
     </div>
   )
 }
+
+/**
+ * 最近のフォーム表示。↑↓→ で方向を示し、色は A/B の符号のみ。
+ * 形状でも識別できるので色弱対応。
+ */
+function RecentForm({
+  trend, tokens,
+}: {
+  trend: 'improving' | 'declining' | 'stable'
+  tokens: Tokens
+}) {
+  const map = {
+    improving: { glyph: '↑', color: A_GOOD,  label: '改善' },
+    declining: { glyph: '↓', color: B_BAD,   label: '悪化' },
+    stable:    { glyph: '→', color: tokens.textMuted, label: '横ばい' },
+  } as const
+  const cfg = map[trend]
+  return (
+    <p className="mt-1 text-[10px] inline-flex items-center gap-0.5" style={{ color: cfg.color }}>
+      <span aria-hidden="true">{cfg.glyph}</span>
+      <span>{cfg.label}</span>
+    </p>
+  )
+}
+
