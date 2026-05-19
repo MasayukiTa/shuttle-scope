@@ -7,6 +7,7 @@ import { apiGet, API_BASE_URL } from '@/api/client'
 import { Player, AnalysisFilters } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
+import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { DashboardTopNav } from '@/components/dashboard/DashboardTopNav'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
@@ -70,21 +71,40 @@ function StatCard({
   value: string | number | undefined
   sampleSize?: number
 }) {
+  // 旧版は bg-gray-800 を完全ハードコードしていてライトモードでも濃紺カード
+  // のままになっていた (2026-05-19 修正)。
+  const isLight = useIsLightMode()
   const stars = sampleSize === undefined ? null
     : sampleSize < 500 ? '★☆☆'
     : sampleSize < 2000 ? '★★☆'
     : '★★★'
 
+  const cls = isLight
+    ? {
+        card:        'bg-white border border-gray-200',
+        icon:        'text-gray-600',
+        label:       'text-gray-500',
+        value:       'text-gray-900',
+        sampleNote:  'text-gray-400',
+      }
+    : {
+        card:        'bg-gray-800 border border-gray-700',
+        icon:        'text-gray-300',
+        label:       'text-gray-400',
+        value:       'text-white',
+        sampleNote:  'text-gray-500',
+      }
+
   return (
-    <div className="bg-gray-800 rounded-lg p-4 flex items-start gap-3 min-w-0">
-      <div className="text-blue-400 mt-0.5 shrink-0">{icon}</div>
+    <div className={`${cls.card} rounded-lg p-4 flex items-start gap-3 min-w-0`}>
+      <div className={`${cls.icon} mt-0.5 shrink-0`}>{icon}</div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-gray-400 mb-1 truncate" title={label}>{label}</p>
-        <p className="text-xl font-semibold text-white num-cell">
+        <p className={`text-xs ${cls.label} mb-1 truncate`} title={label}>{label}</p>
+        <p className={`text-xl font-semibold ${cls.value} num-cell tabular-nums`}>
           {value !== undefined && value !== null ? value : '—'}
         </p>
         {sampleSize !== undefined && (
-          <p className="text-[10px] text-gray-500 mt-0.5 num-cell">
+          <p className={`text-[10px] ${cls.sampleNote} mt-0.5 num-cell tabular-nums`}>
             {stars} N={sampleSize.toLocaleString()}ラリー
           </p>
         )}
@@ -100,11 +120,21 @@ const ROLE_LABELS: Record<string, string> = {
   player: '選手',
 }
 
-const ROLE_BADGE_CLASS: Record<string, string> = {
-  admin: 'bg-red-900/50 border-red-500 text-red-300',
-  analyst: 'bg-blue-900/50 border-blue-500 text-blue-300',
-  coach: 'bg-emerald-900/50 border-emerald-500 text-emerald-300',
-  player: 'bg-purple-900/50 border-purple-500 text-purple-300',
+// ロールバッジ: 元はダーク基調しか想定していなかった hardcoded 色。
+// ライトモードでも読めるよう 2 セット用意し、isLight で切替える (2026-05-19)。
+// 色設計: admin だけ B_BAD (= 警告/特権操作の含意)、それ以外は無彩色 + テキスト色のみ。
+// 装飾的に役割ごとに違う色を当てない (Design Language §12 装飾色禁止)。
+const ROLE_BADGE_CLASS_DARK: Record<string, string> = {
+  admin:   'bg-gray-800 border-red-700 text-red-300',
+  analyst: 'bg-gray-800 border-gray-600 text-gray-200',
+  coach:   'bg-gray-800 border-gray-600 text-gray-200',
+  player:  'bg-gray-800 border-gray-600 text-gray-200',
+}
+const ROLE_BADGE_CLASS_LIGHT: Record<string, string> = {
+  admin:   'bg-white border-red-300 text-red-700',
+  analyst: 'bg-white border-gray-300 text-gray-700',
+  coach:   'bg-white border-gray-300 text-gray-700',
+  player:  'bg-white border-gray-300 text-gray-700',
 }
 
 // ── Main Shell ────────────────────────────────────────────────────────────────
@@ -257,7 +287,7 @@ export function DashboardShell() {
               {sortedPlayers.find((p) => p.id === selectedPlayerId)?.name ?? '—'}
             </span>
             {role && (
-              <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${ROLE_BADGE_CLASS[role] ?? 'bg-gray-700 border-gray-500 text-gray-300'}`}>
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
                 {ROLE_LABELS[role] ?? role}
               </span>
             )}
@@ -271,7 +301,7 @@ export function DashboardShell() {
             <BarChart2 className="text-blue-400" size={20} />
             <h1 className="text-xl font-semibold">{t('nav.dashboard_title', 'ダッシュボード')}</h1>
             {role && (
-              <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${ROLE_BADGE_CLASS[role] ?? 'bg-gray-700 border-gray-500 text-gray-300'}`}>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
                 {ROLE_LABELS[role] ?? role}
               </span>
             )}
