@@ -2007,7 +2007,7 @@ export function AnnotatorPage() {
                 <button
                   onClick={handleTracknetBatchResume}
                   className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
-                    isLight ? 'bg-purple-50 text-gray-200 hover:bg-purple-100 border border-purple-200' : 'bg-gray-800 text-gray-200 hover:bg-gray-800 border border-gray-700'
+                    isLight ? 'bg-white text-gray-200 hover:bg-white border border-gray-200' : 'bg-gray-800 text-gray-200 hover:bg-gray-800 border border-gray-700'
                   }`}
                   title={t('auto.AnnotatorPage.k4')}
                 >
@@ -2052,7 +2052,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={handleTracknetBatchResume}
                     className={`flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
-                      isLight ? 'bg-purple-50 text-gray-200 hover:bg-purple-100 border border-purple-200' : 'bg-gray-800 text-gray-200 hover:bg-gray-800 border border-gray-700'
+                      isLight ? 'bg-white text-gray-200 hover:bg-white border border-gray-200' : 'bg-gray-800 text-gray-200 hover:bg-gray-800 border border-gray-700'
                     }`}
                     title={t('auto.AnnotatorPage.k4')}
                   >
@@ -2103,7 +2103,7 @@ export function AnnotatorPage() {
                   <button
                     onClick={handleYoloBatchResume}
                     className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                      isLight ? 'bg-blue-50 text-blue-300 hover:bg-blue-100 border border-blue-200' : 'bg-gray-800 text-blue-300 hover:bg-gray-800 border border-gray-700'
+                      isLight ? 'bg-white text-blue-300 hover:bg-white border border-gray-200' : 'bg-gray-800 text-blue-300 hover:bg-gray-800 border border-gray-700'
                     }`}
                     title={t('auto.AnnotatorPage.k6')}
                   >
@@ -2127,7 +2127,7 @@ export function AnnotatorPage() {
                       })
                     }}
                     className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                      isLight ? 'bg-red-50 text-red-300 hover:bg-red-100 border border-red-200' : 'bg-gray-800 text-red-300 hover:bg-gray-800 border border-gray-700'
+                      isLight ? 'bg-white text-red-300 hover:bg-white border border-gray-200' : 'bg-gray-800 text-red-300 hover:bg-gray-800 border border-gray-700'
                     }`}
                     title={t('auto.AnnotatorPage.k7')}
                   >
@@ -2182,7 +2182,7 @@ export function AnnotatorPage() {
                     <button
                       onClick={handleYoloBatchResume}
                       className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                        isLight ? 'bg-blue-50 text-blue-300 hover:bg-blue-100 border border-blue-200' : 'bg-gray-800 text-blue-300 hover:bg-gray-800 border border-gray-700'
+                        isLight ? 'bg-white text-blue-300 hover:bg-white border border-gray-200' : 'bg-gray-800 text-blue-300 hover:bg-gray-800 border border-gray-700'
                       }`}
                       title={t('auto.AnnotatorPage.k6')}
                     >
@@ -2208,7 +2208,7 @@ export function AnnotatorPage() {
                         })
                       }}
                       className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                        isLight ? 'bg-red-50 text-red-300 hover:bg-red-100 border border-red-200' : 'bg-gray-800 text-red-300 hover:bg-gray-800 border border-gray-700'
+                        isLight ? 'bg-white text-red-300 hover:bg-white border border-gray-200' : 'bg-gray-800 text-red-300 hover:bg-gray-800 border border-gray-700'
                       }`}
                       title={t('auto.AnnotatorPage.k7')}
                     >
@@ -2233,7 +2233,7 @@ export function AnnotatorPage() {
               {!!hasVideo(match) && (
                 samplerActive ? (
                   <div className={`flex items-center gap-1 flex-wrap px-1.5 py-0.5 rounded ${
-                    isLight ? 'bg-purple-50 border border-purple-200' : 'bg-purple-900/20 border border-purple-700/40'
+                    isLight ? 'bg-white border border-gray-200' : 'bg-gray-800 border border-gray-700'
                   }`}>
                     <span className={`text-xs font-medium ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
                       {samplerIdx + 1}/{samplerSamples.length}
@@ -2342,7 +2342,7 @@ export function AnnotatorPage() {
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     trackingVisible && trackFrames.length > 0
                       ? isLight ? 'bg-white text-gray-700' : 'bg-purple-700/60 text-purple-200'
-                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-purple-100 disabled:hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-purple-900/40 disabled:hover:bg-gray-700'
+                      : isLight ? 'bg-gray-200 text-gray-600 hover:bg-white disabled:hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-800 disabled:hover:bg-gray-700'
                   }`}
                   title={
                     trackFrames.length === 0
@@ -2375,7 +2375,7 @@ export function AnnotatorPage() {
                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
                   courtGridVisible
                     ? isLight ? 'bg-white text-gray-700' : 'bg-gray-800 text-gray-200'
-                    : isLight ? 'bg-gray-200 text-gray-600 hover:bg-cyan-100' : 'bg-gray-700 text-gray-400 hover:bg-cyan-900/40'
+                    : isLight ? 'bg-gray-200 text-gray-600 hover:bg-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-800'
                 }`}
                 title={courtGridVisible ? t('annotator.ui.court_grid_hide', { defaultValue: 'コートグリッドを非表示' }) : t('annotator.ui.court_grid_show', { defaultValue: 'コートグリッドを表示' })}
               >
@@ -2499,7 +2499,7 @@ export function AnnotatorPage() {
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
                     showCVAssistPanel
                       ? isLight ? 'bg-white text-gray-700' : 'bg-purple-700/60 text-purple-200'
-                      : isLight ? 'bg-gray-200 text-gray-500 hover:bg-purple-100' : 'bg-gray-700 text-gray-500 hover:bg-purple-900/40'
+                      : isLight ? 'bg-gray-200 text-gray-500 hover:bg-white' : 'bg-gray-700 text-gray-500 hover:bg-gray-800'
                   }`}
                   title={t('auto.AnnotatorPage.k20')}
                 >
@@ -4016,7 +4016,7 @@ export function AnnotatorPage() {
             {/* CV補助アノテーションパネル（showCVAssistPanel=true かつ候補あり） */}
             {!isMobile && showCVAssistPanel && candidatesData && (
               <div className={`rounded border p-2 shrink-0 ${
-                isLight ? 'bg-purple-50 border-purple-200' : 'bg-purple-900/10 border-purple-700/30'
+                isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
               }`}>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className={`text-[10px] font-semibold ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
