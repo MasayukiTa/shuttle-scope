@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { useConditions, ConditionRecord } from '@/hooks/useConditions'
 import { mean } from '@/utils/stats'
+import { catColor } from '@/styles/categoricalPalette'
 
 // 季節性・曜日効果コンポーネント (coach / analyst 限定)
 // 月次 / 四半期 / 曜日別に各指標の平均を集計して表示する。
@@ -36,7 +37,6 @@ const METRIC_KEYS = [
 type MetricKey = (typeof METRIC_KEYS)[number]
 
 const MIN_N = 3
-const PRIMARY_COLOR = '#3b82f6'
 
 function getMetric(rec: ConditionRecord, key: MetricKey): number | null {
   const v = (rec as unknown as Record<string, unknown>)[key]
@@ -238,7 +238,7 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
                     ]
                   }}
                 />
-                <Bar dataKey="value" fill={PRIMARY_COLOR} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill={catColor('Cool', isLight)} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

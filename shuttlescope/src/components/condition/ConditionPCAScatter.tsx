@@ -15,7 +15,7 @@ import {
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import { zScore, covMatrix, powerIterationPCA } from '@/utils/stats'
-import { catColorByIndex } from '@/styles/categoricalPalette'
+import { catColor } from '@/styles/categoricalPalette'
 
 // PCA 2D 散布コンポーネント
 // coach / analyst 限定
@@ -40,11 +40,26 @@ const CANDIDATE_KEYS: Array<keyof ConditionRecord> = [
 const MIN_N = 10
 const MIN_COLS = 3
 
-// 月 (1..12) → categorical palette の 12 色固定マッピング (Design Language v1.3 §6)。
-// 旧版は HSL を 360° spin していたが、light で黄系が読めない / dark で暗色が見えない問題があった。
-// catColorByIndex は両モードでコントラスト保証済み。
+// 月 (1..12) → 4 季節色 × 3 月内位置の shape で識別 (color × shape combo)。
+// 12 色を並べても色弱ユーザは 4〜6 色しか識別できない (deutan で赤/橙/茶/緑/オリーブが
+// 混ざる)。Design Language §6.3 ルール 4 に従い、6 を超える categorical は shape と
+// 組合せる。
+//   - 季節 (色):  冬 (12,1,2) = Cool 青系, 春 (3,4,5) = Green 青緑系,
+//                 夏 (6,7,8) = Warm 朱系, 秋 (9,10,11) = Amber 橙系
+//   - 月内位置 (shape): 季節 1 月目 = ●, 2 月目 = ■, 3 月目 = ▲
+function monthSeasonKey(month: number): 'Cool' | 'Green' | 'Warm' | 'Amber' {
+  if (month === 12 || month === 1 || month === 2) return 'Cool'   // 冬
+  if (month >= 3 && month <= 5) return 'Green'                     // 春
+  if (month >= 6 && month <= 8) return 'Warm'                      // 夏
+  return 'Amber'                                                    // 秋 (9-11)
+}
+function monthShape(month: number): 'circle' | 'square' | 'triangle' {
+  // 季節内のインデックス (0/1/2)
+  const inSeason = month === 12 ? 0 : (month === 1 ? 1 : (month === 2 ? 2 : ((month - 1) % 3)))
+  return inSeason === 0 ? 'circle' : inSeason === 1 ? 'square' : 'triangle'
+}
 function monthColor(month: number, isLight: boolean): string {
-  return catColorByIndex(month - 1, isLight)
+  return catColor(monthSeasonKey(month), isLight)
 }
 
 function monthFromDate(d: string | null | undefined): number | null {
@@ -137,6 +152,7 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
         date: rec.measured_at ?? '',
         month: mon,
         color: monthColor(mon, isLight),
+        shape: monthShape(mon),
         topKeys,
       }
     })
@@ -240,20 +256,48 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
                     }}
                     labelFormatter={() => ''}
                   />
-                  <Scatter data={pca.points} fill="#3b82f6">
-                    {pca.points.map((p, i) => (
-                      <Cell key={i} fill={p.color} />
-                    ))}
-                  </Scatter>
+                  {/* color × shape combo: 季節色 (4) × 季節内 shape (3) = 12 識別。
+                     shape ごとに別 Scatter を発行することで recharts に shape を
+                     系列単位で渡せる (per-point shape はバージョン依存で挙動が
+                     不安定なため、shape 別に group して描画する)。 */}
+                  {(['circle', 'square', 'triangle'] as const).map((sh) => {
+                    const pts = pca.points.filter((p) => p.shape === sh)
+                    if (pts.length === 0) return null
+                    return (
+                      <Scatter key={sh} data={pts} shape={sh}>
+                        {pts.map((p, i) => (
+                          <Cell key={i} fill={p.color} />
+                        ))}
+                      </Scatter>
+                    )
+                  })}
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
-            <div className={`mt-2 flex flex-wrap items-center gap-2 text-[11px] ${textMuted}`}>
-              <span>{t('condition.pca.legend_month')}:</span>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
-                <span key={m} className="inline-flex items-center gap-1">
-                  <span style={{ width: 10, height: 10, background: monthColor(m, isLight), display: 'inline-block', borderRadius: 9999 }} />
-                  {m}
+            {/* 凡例: 色 = 季節、形 = 季節内の月 (color × shape)。
+               12 色ベタ並びは色弱で識別不能だったため (deutan で 8 月が同じに
+               見える)、色を 4 季節に絞り、月内位置を ●■▲ で示す方式へ。 */}
+            <div className={`mt-2 flex flex-wrap items-center gap-3 text-[11px] ${textMuted}`}>
+              {[
+                { label: '冬', months: [12, 1, 2], key: 'Cool' as const },
+                { label: '春', months: [3, 4, 5], key: 'Green' as const },
+                { label: '夏', months: [6, 7, 8], key: 'Warm' as const },
+                { label: '秋', months: [9, 10, 11], key: 'Amber' as const },
+              ].map(({ label, months, key }) => (
+                <span key={label} className="inline-flex items-center gap-1.5">
+                  <span style={{ color: catColor(key, isLight), fontWeight: 600 }}>{label}</span>
+                  {months.map((m) => (
+                    <span key={m} className="inline-flex items-center gap-0.5">
+                      <span style={{
+                        width: 8, height: 8,
+                        background: monthColor(m, isLight),
+                        display: 'inline-block',
+                        borderRadius: monthShape(m) === 'circle' ? 9999 : monthShape(m) === 'square' ? 0 : 0,
+                        clipPath: monthShape(m) === 'triangle' ? 'polygon(50% 0%, 0% 100%, 100% 100%)' : undefined,
+                      }} />
+                      <span>{m}</span>
+                    </span>
+                  ))}
                 </span>
               ))}
             </div>

@@ -15,6 +15,8 @@ import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import { pearson } from '@/utils/stats'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { catColor, catColorByIndex } from '@/styles/categoricalPalette'
+import { coolwarm } from '@/styles/colors'
 
 // 汎用 X/Y/色 散布図 (coach/analyst 限定)
 // ConditionRecord[] から任意の 2 指標 + 色分けを動的に選んで表示
@@ -63,19 +65,30 @@ function getMetric(rec: ConditionRecord, key: MetricKey): number | null {
   return toFiniteNumber((rec as unknown as Record<string, unknown>)[key])
 }
 
-// HSL rotation: idx を 0..max-1 から色相 0..360 にマップ
-function hslFromIndex(idx: number, max: number): string {
-  const hue = Math.round((idx / Math.max(1, max)) * 360)
-  return `hsl(${hue}, 70%, 55%)`
+// Categorical 識別: 12 色ベタは色弱で破綻するため、
+//   - month (1-12): 季節色 × 形状の組合せ (色 4 × shape 3 = 12) — ConditionPCAScatter と同じ
+//   - weekday (0-6): 7 色 — catColorByIndex で展開
+// (Design Language §6 準拠)
+function monthSeasonKey(month: number): 'Cool' | 'Green' | 'Warm' | 'Amber' {
+  if (month === 12 || month === 1 || month === 2) return 'Cool'
+  if (month >= 3 && month <= 5) return 'Green'
+  if (month >= 6 && month <= 8) return 'Warm'
+  return 'Amber'
+}
+function monthColorMode(month: number, isLight: boolean): string {
+  return catColor(monthSeasonKey(month), isLight)
+}
+function weekdayColorMode(weekday: number, isLight: boolean): string {
+  // 0=日 / 6=土 を CAT_ORDER の最初の 7 色に割り当てる
+  return catColorByIndex(weekday, isLight)
 }
 
-// 値 v を [min,max] から HSL の青(210)→赤(0) にマップ
-function hslFromValue(v: number, min: number, max: number): string {
-  if (!Number.isFinite(v) || min === max) return '#3b82f6'
+// 連続値 → coolwarm スケール (Design Language §2.4)
+// HSL spin ではなく coolwarm を逆方向に使うことで青→白→赤の divergent
+function valueColorMode(v: number, min: number, max: number): string {
+  if (!Number.isFinite(v) || min === max) return '#94a3b8' // N_GRAY[400]
   const t = Math.max(0, Math.min(1, (v - min) / (max - min)))
-  // 210 (blue) -> 0 (red)
-  const hue = Math.round(210 - 210 * t)
-  return `hsl(${hue}, 70%, 50%)`
+  return coolwarm(t)
 }
 
 interface Point {
@@ -161,16 +174,16 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
     }
 
     const pts: Point[] = filtered.map((f) => {
-      let color = '#3b82f6'
+      let color = catColor('Cool', isLight)
       if (colorMode === 'month') {
-        color = hslFromIndex(f.month - 1, 12)
+        color = monthColorMode(f.month, isLight)
       } else if (colorMode === 'weekday') {
-        color = hslFromIndex(f.weekday, 7)
+        color = weekdayColorMode(f.weekday, isLight)
       } else if (colorMode === 'value') {
         color =
           f.z != null && Number.isFinite(zMin) && Number.isFinite(zMax)
-            ? hslFromValue(f.z, zMin, zMax)
-            : '#9ca3af'
+            ? valueColorMode(f.z, zMin, zMax)
+            : (isLight ? '#94a3b8' : '#64748b')
       }
       return {
         x: f.x,
@@ -335,10 +348,16 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
               {colorMode === 'month' && (
                 <>
                   <span>{t('condition.generic_scatter.legend_month')}:</span>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
-                    <span key={m} className="inline-flex items-center gap-1">
-                      <span style={{ width: 10, height: 10, background: hslFromIndex(m - 1, 12), display: 'inline-block', borderRadius: 9999 }} />
-                      {m}
+                  {/* 季節色のみ表示 (12 色ベタは色弱不可) */}
+                  {[
+                    { label: '冬 (12,1,2)', key: 'Cool' as const },
+                    { label: '春 (3,4,5)', key: 'Green' as const },
+                    { label: '夏 (6,7,8)', key: 'Warm' as const },
+                    { label: '秋 (9,10,11)', key: 'Amber' as const },
+                  ].map(({ label, key }) => (
+                    <span key={key} className="inline-flex items-center gap-1">
+                      <span style={{ width: 10, height: 10, background: catColor(key, isLight), display: 'inline-block', borderRadius: 9999 }} />
+                      {label}
                     </span>
                   ))}
                 </>
@@ -348,7 +367,7 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
                   <span>{t('condition.generic_scatter.legend_weekday')}:</span>
                   {['月', '火', '水', '木', '金', '土', '日'].map((w, i) => (
                     <span key={w} className="inline-flex items-center gap-1">
-                      <span style={{ width: 10, height: 10, background: hslFromIndex(i, 7), display: 'inline-block', borderRadius: 9999 }} />
+                      <span style={{ width: 10, height: 10, background: catColorByIndex(i, isLight), display: 'inline-block', borderRadius: 9999 }} />
                       {w}
                     </span>
                   ))}
@@ -357,7 +376,8 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
               {colorMode === 'value' && (
                 <span className="inline-flex items-center gap-2">
                   <span>{t('condition.generic_scatter.legend_value')}:</span>
-                  <span style={{ width: 120, height: 10, background: 'linear-gradient(to right, hsl(210,70%,50%), hsl(0,70%,50%))', border: `1px solid ${isLight ? '#e5e7eb' : '#4b5563'}` }} />
+                  {/* coolwarm grad: 青 (低) → 白 (中) → 赤 (高) */}
+                  <span style={{ width: 120, height: 10, background: 'linear-gradient(to right, #3b4cc0, #ffffff, #b40426)', border: `1px solid ${isLight ? '#e5e7eb' : '#4b5563'}` }} />
                   <span>{t('auto.ConditionGenericScatter.k1')}</span>
                 </span>
               )}
