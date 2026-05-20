@@ -17,6 +17,7 @@ export function AuditLogPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionFilter, setActionFilter] = useState('')
   const [userFilter, setUserFilter] = useState('')
+  const [ipFilter, setIpFilter] = useState('')
   const [limit, setLimit] = useState(500)
   // action 名一覧 (dropdown 用)。backend で count desc に並べたものをそのまま表示。
   const [actionOptions, setActionOptions] = useState<AuditLogActionItem[]>([])
@@ -35,10 +36,11 @@ export function AuditLogPage() {
     setLoading(true)
     setError(null)
     try {
-      const params: { action?: string; user_id?: number; limit?: number } = { limit }
+      const params: { action?: string; user_id?: number; ip?: string; limit?: number } = { limit }
       if (actionFilter.trim()) params.action = actionFilter.trim()
       const uid = parseInt(userFilter, 10)
       if (Number.isFinite(uid) && uid > 0) params.user_id = uid
+      if (ipFilter.trim()) params.ip = ipFilter.trim()
       const res = await authAuditLogs(params)
       setRows(res.data)
     } catch (err) {
@@ -177,6 +179,18 @@ export function AuditLogPage() {
             className={inputCls}
             placeholder="数値 user_id (例: 123)"
             inputMode="numeric"
+          />
+        </div>
+        <div>
+          <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_ip', 'IP')}</label>
+          {/* 部分一致 (LIKE %ip%)。"192.168." のような prefix も "203.0.113.5" の
+              ような完全 IP も同じ入力欄で扱える。空欄でフィルタなし。 */}
+          <input
+            value={ipFilter}
+            onChange={(e) => setIpFilter(e.target.value)}
+            className={`${inputCls} w-40`}
+            placeholder={t('auth.audit_log.filter_ip_placeholder', 'e.g. 192.168. or 203.0.113.5')}
+            inputMode="text"
           />
         </div>
         <div>

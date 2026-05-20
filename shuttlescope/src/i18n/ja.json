@@ -199,7 +199,9 @@
       "column_user": "ユーザ",
       "column_ip": "IP",
       "column_details": "詳細",
-      "empty": "該当するログがありません"
+      "empty": "該当するログがありません",
+      "filter_ip": "IP",
+      "filter_ip_placeholder": "例: 192.168. または 203.0.113.5"
     }
   },
   "condition": {
