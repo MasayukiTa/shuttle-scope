@@ -396,7 +396,7 @@ _V7_HOME_HTML = r"""<!DOCTYPE html>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=MigMix+1P:wght@400;700&family=Barlow+Condensed:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&display=swap" rel="stylesheet">
+<!-- Material Symbols CDN は廃止: theme トグルはインライン SVG に置換済み (外部依存/プライバシー/未ロード時の生テキスト化を排除) -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
@@ -440,7 +440,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:58px;display:flex;ali
 .nav-links a:hover{color:var(--t1)}
 .nav-right{display:flex;align-items:center;gap:8px}
 .theme-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:6px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;transition:background .15s,border-color .15s;color:var(--t2)}
-.msym{font-family:'Material Symbols Outlined';font-weight:normal;font-style:normal;font-size:20px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;direction:ltr;-webkit-font-feature-settings:'liga';font-feature-settings:'liga';-webkit-font-smoothing:antialiased}
+.theme-toggle svg{width:17px;height:17px;display:block}
+/* light テーマ時は月(=dark へ切替), dark テーマ時は太陽(=light へ切替)を表示 */
+[data-theme="light"] .theme-toggle .ic-sun{display:none}
+[data-theme="dark"] .theme-toggle .ic-moon{display:none}
 .theme-toggle:hover{background:var(--blue-lt);border-color:var(--blue)}
 .lang-toggle{width:34px;height:34px;border:1px solid var(--bdr2);border-radius:6px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--t2);transition:background .15s,border-color .15s,color .15s}
 .lang-toggle:hover{background:var(--blue-lt);border-color:var(--blue);color:var(--blue)}
@@ -606,7 +609,7 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
     <li><a href="/contact"><span class="ja">お問い合わせ</span><span class="en">Contact</span></a></li>
   </ul>
   <div class="nav-right">
-    <button class="theme-toggle" id="theme-btn" title="テーマ切り替え" aria-label="テーマ切り替え"><span class="msym" id="theme-icon">dark_mode</span></button>
+    <button class="theme-toggle" id="theme-btn" title="テーマ切り替え" aria-label="テーマ切り替え"><svg class="ic-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.11-1.36a5.39 5.39 0 0 1-7.53-7.53A9.05 9.05 0 0 0 12 3z"/></svg><svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
     <button class="lang-toggle" id="lang-btn">EN</button>
     <a href="https://app.shuttle-scope.com/login" class="btn-login"><span class="ja">ログイン</span><span class="en">Login</span></a>
     <button class="hamburger" id="ham" aria-label="メニュー"><span></span><span></span><span></span></button>
@@ -762,14 +765,12 @@ footer{background:var(--footer-bg);padding:24px 40px;display:flex;align-items:ce
 const html=document.documentElement;
 // theme
 const tbtn=document.getElementById('theme-btn');
-const ticon=document.getElementById('theme-icon');
-// dark テーマ時は太陽 (light に切替える意味)、light 時は月。Material Symbols ligature。
-const themeIcon=(t)=>t==='dark'?'light_mode':'dark_mode';
+// アイコン表示は data-theme に応じた CSS (.ic-sun/.ic-moon) が制御するため JS は data-theme の切替のみ。
 const savedTheme=localStorage.getItem('ss-theme');
-if(savedTheme){html.dataset.theme=savedTheme;ticon.textContent=themeIcon(savedTheme)}
+if(savedTheme){html.dataset.theme=savedTheme}
 tbtn.addEventListener('click',()=>{
   const next=html.dataset.theme==='dark'?'light':'dark';
-  html.dataset.theme=next;ticon.textContent=themeIcon(next);
+  html.dataset.theme=next;
   localStorage.setItem('ss-theme',next);
 });
 // lang — URL-based: /en = English, / = Japanese

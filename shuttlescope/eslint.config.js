@@ -58,10 +58,8 @@ export default tseslint.config(
       complexity: ['warn', 20],
 
       // ── React Hooks 規約 ────────────────────────────────────────
-      // 本来 error にすべき(条件付き hook 呼び出し等は実バグ)だが、既存 18 件の
-      // 違反を一括 error 化すると lint が常時失敗するため段階導入で warn。
-      // TODO: 既存 18 件を解消後 'error' へ昇格する。
-      'react-hooks/rules-of-hooks': 'warn',
+      // 既存 18 件を wrapper 分離で解消済み → error 昇格(以後 条件付き hook を禁止)。
+      'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
 
       // ── 既存負債の段階降格(壊れ系ではないため warn)─────────────
