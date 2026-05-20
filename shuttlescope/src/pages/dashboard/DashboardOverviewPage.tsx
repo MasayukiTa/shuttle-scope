@@ -400,6 +400,81 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       {/* データ品質概況 */}
       <ConfidenceCalibration playerId={playerId} />
 
+      {/* スコア推移 / インターバルレポート 共通試合選択 */}
+      <div className={`${card} rounded-lg p-4`}>
+        {/* 試合セレクタ（前後ナビ付き） */}
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => setSelectedMatchId(matchOptions[matchNavIdx - 1].value as number)}
+              disabled={!canGoPrev}
+              title={t('auto.DashboardOverviewPage.k19')}
+              className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+            >
+              <ChevronLeft size={14} className={textMuted} />
+            </button>
+            <SearchableSelect
+              options={matchOptions}
+              value={selectedMatchId}
+              onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
+              emptyLabel="— 試合を選択 —"
+              placeholder={t('auto.DashboardOverviewPage.k21')}
+              dropdownAlign="right"
+              className="w-[210px]"
+            />
+            <button
+              onClick={() => setSelectedMatchId(matchOptions[matchNavIdx + 1].value as number)}
+              disabled={!canGoNext}
+              title={t('auto.DashboardOverviewPage.k20')}
+              className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
+            >
+              <ChevronRight size={14} className={textMuted} />
+            </button>
+          </div>
+        </div>
+        {/* 選択中の試合：大会名を補足表示 */}
+        {selectedMatchId && (() => {
+          const m = matches.find((mx) => mx.match_id === selectedMatchId)
+          const sub = [m?.tournament, m?.tournament_level].filter(Boolean).join(' · ')
+          return sub ? <p className={`text-xs ${textMuted} mb-3 truncate`}>{sub}</p> : <div className="mb-3" />
+        })()}
+        {selectedMatchId ? (
+          <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
+        ) : (
+          <p className={`${textMuted} text-sm text-center py-6`}>{t('auto.DashboardOverviewPage.k13')}</p>
+        )}
+      </div>
+
+      {/* インターバルレポート */}
+      <div className={`${card} rounded-lg p-4`}>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
+          {selectedMatchId && (
+            <div className="flex gap-1 shrink-0">
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setIntervalSet(n)}
+                  className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+                    intervalSet === n
+                      ? 'bg-blue-600 text-white'
+                      : isLight ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  }`}
+                >
+                  Set {n}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {selectedMatchId ? (
+          <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
+        ) : (
+          <p className={`${textMuted} text-sm text-center py-6`}>{t('auto.DashboardOverviewPage.k14')}</p>
+        )}
+      </div>
+
       {/* 試合一覧テーブル (最下部に配置) — 全試合数百件規模になると下のスコア推移
          に届かなくなるため、概要タブの最下部へ移動 (2026-05-19)。
          また期間フィルタ (mlFrom/mlTo) をこのセクション専用に持ち、ほかの
@@ -519,81 +594,6 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               </table>
             </div>
           </>
-        )}
-      </div>
-
-      {/* スコア推移 / インターバルレポート 共通試合選択 */}
-      <div className={`${card} rounded-lg p-4`}>
-        {/* 試合セレクタ（前後ナビ付き） */}
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <SectionTitle>{t('analysis.score_progression.title')}</SectionTitle>
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={() => setSelectedMatchId(matchOptions[matchNavIdx - 1].value as number)}
-              disabled={!canGoPrev}
-              title={t('auto.DashboardOverviewPage.k19')}
-              className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
-            >
-              <ChevronLeft size={14} className={textMuted} />
-            </button>
-            <SearchableSelect
-              options={matchOptions}
-              value={selectedMatchId}
-              onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
-              emptyLabel="— 試合を選択 —"
-              placeholder={t('auto.DashboardOverviewPage.k21')}
-              dropdownAlign="right"
-              className="w-[210px]"
-            />
-            <button
-              onClick={() => setSelectedMatchId(matchOptions[matchNavIdx + 1].value as number)}
-              disabled={!canGoNext}
-              title={t('auto.DashboardOverviewPage.k20')}
-              className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
-            >
-              <ChevronRight size={14} className={textMuted} />
-            </button>
-          </div>
-        </div>
-        {/* 選択中の試合：大会名を補足表示 */}
-        {selectedMatchId && (() => {
-          const m = matches.find((mx) => mx.match_id === selectedMatchId)
-          const sub = [m?.tournament, m?.tournament_level].filter(Boolean).join(' · ')
-          return sub ? <p className={`text-xs ${textMuted} mb-3 truncate`}>{sub}</p> : <div className="mb-3" />
-        })()}
-        {selectedMatchId ? (
-          <ScoreProgression matchId={selectedMatchId} onSetPointClick={handleSetPointClick} />
-        ) : (
-          <p className={`${textMuted} text-sm text-center py-6`}>{t('auto.DashboardOverviewPage.k13')}</p>
-        )}
-      </div>
-
-      {/* インターバルレポート */}
-      <div className={`${card} rounded-lg p-4`}>
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <SectionTitle>{t('analysis.interval_report.title')}</SectionTitle>
-          {selectedMatchId && (
-            <div className="flex gap-1 shrink-0">
-              {[1, 2, 3].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setIntervalSet(n)}
-                  className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
-                    intervalSet === n
-                      ? 'bg-blue-600 text-white'
-                      : isLight ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                  }`}
-                >
-                  Set {n}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {selectedMatchId ? (
-          <IntervalReport matchId={selectedMatchId} completedSet={intervalSet} />
-        ) : (
-          <p className={`${textMuted} text-sm text-center py-6`}>{t('auto.DashboardOverviewPage.k14')}</p>
         )}
       </div>
 

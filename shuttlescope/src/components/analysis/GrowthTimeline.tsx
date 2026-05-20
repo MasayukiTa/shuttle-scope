@@ -1,5 +1,6 @@
 // Phase 2: 成長タイムライン（試合軸×指標のLineChart + 移動平均）
 // partnerPlayerId を指定するとペア比較モード（2ライン表示）
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -9,6 +10,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { N_GRAY } from '@/styles/colors'
 
 type Metric = 'win_rate' | 'avg_rally_length' | 'serve_win_rate'
 
@@ -81,6 +83,14 @@ export function GrowthTimeline({
 }: GrowthTimelineProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  // クリックされた成長ポイントの比較ポップアップ用 (#8: スコア推移パターン継承)
+  const [comparePoint, setComparePoint] = useState<{
+    index: number
+    date: string
+    value: number
+    movingAvg: number | null
+    matchId: number | null
+  } | null>(null)
   const isPairMode = !!partnerPlayerId
 
   // メインプレイヤーのクエリ
@@ -218,7 +228,27 @@ export function GrowthTimeline({
       </div>
 
       <ResponsiveContainer width="100%" height={180}>
-        <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+        <LineChart
+          data={chartData}
+          margin={{ top: 4, right: 8, bottom: 0, left: -20 }}
+          style={{ cursor: 'pointer' }}
+          onClick={(chart: any) => {
+            // recharts: クリックされたポイントは chart.activePayload[0].payload
+            const p = chart?.activePayload?.[0]?.payload
+            if (!p || isPairMode) return  // ペア比較モードでは比較ポップアップ非対応
+            const idx = chartData.indexOf(p)
+            if (idx < 0) return
+            const orig = points[idx]
+            if (!orig) return
+            setComparePoint({
+              index: idx,
+              date: orig.date,
+              value: isRate ? orig.value : orig.value,
+              movingAvg: orig.moving_avg,
+              matchId: orig.match_id,
+            })
+          }}
+        >
           <XAxis dataKey="name" tick={{ fill: axisTick, fontSize: 9 }} tickLine={false} axisLine={false} />
           <YAxis
             tick={{ fill: axisTick, fontSize: 9 }}
@@ -273,6 +303,89 @@ export function GrowthTimeline({
           )}
         </LineChart>
       </ResponsiveContainer>
+
+      {/* 比較ポップアップ: クリックしたポイントを周辺データと統計的に比較。
+         「何が良かった/改善が必要」をテンプレで断言しない (信頼性最優先)。
+         数値の差分と sample size を提示し、ユーザに判断材料を渡す。 */}
+      {comparePoint && (() => {
+        const others = points.filter((_, i) => i !== comparePoint.index).map((p) => p.value)
+        const seasonMean = others.length > 0 ? others.reduce((a, b) => a + b, 0) / others.length : null
+        const recent5 = points.slice(Math.max(0, comparePoint.index - 5), comparePoint.index).map((p) => p.value)
+        const recent5Mean = recent5.length >= 3 ? recent5.reduce((a, b) => a + b, 0) / recent5.length : null
+        const formatVal = (v: number | null) => v == null ? '—' : (isRate ? `${(v * 100).toFixed(1)}%` : `${v.toFixed(2)}${cfg.unit}`)
+        const formatDelta = (a: number, b: number) => {
+          const d = a - b
+          const sign = d >= 0 ? '+' : ''
+          if (isRate) return `${sign}${(d * 100).toFixed(1)}pp`
+          return `${sign}${d.toFixed(2)}${cfg.unit}`
+        }
+        return (
+          <div
+            className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4"
+            onClick={() => setComparePoint(null)}
+          >
+            <div
+              className="w-full max-w-lg rounded-lg overflow-hidden"
+              style={{
+                backgroundColor: isLight ? '#ffffff' : N_GRAY[800],
+                border: `1px solid ${isLight ? N_GRAY[200] : N_GRAY[700]}`,
+                color: isLight ? N_GRAY[900] : N_GRAY[50],
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <header
+                className="flex items-center justify-between px-4 py-2 border-b"
+                style={{ borderColor: isLight ? N_GRAY[200] : N_GRAY[700] }}
+              >
+                <div className="text-sm font-semibold">
+                  {comparePoint.date} の {cfg.label} 比較
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setComparePoint(null)}
+                  className="text-sm px-2 py-0.5"
+                  style={{ color: isLight ? N_GRAY[500] : N_GRAY[400] }}
+                >✕</button>
+              </header>
+              <div className="px-4 py-3 space-y-2 text-sm">
+                <div>
+                  この試合 <span className="font-mono font-semibold">{formatVal(comparePoint.value)}</span>
+                  {comparePoint.movingAvg != null && (
+                    <span className="ml-2 text-xs" style={{ color: isLight ? N_GRAY[500] : N_GRAY[400] }}>
+                      / 移動平均 {formatVal(comparePoint.movingAvg)}
+                    </span>
+                  )}
+                </div>
+
+                {recent5Mean != null && (
+                  <div className="text-xs" style={{ color: isLight ? N_GRAY[700] : N_GRAY[200] }}>
+                    直近 5 試合の平均 (この試合除く) {formatVal(recent5Mean)} — 差分 <strong>{formatDelta(comparePoint.value, recent5Mean)}</strong>
+                  </div>
+                )}
+
+                {seasonMean != null && (
+                  <div className="text-xs" style={{ color: isLight ? N_GRAY[700] : N_GRAY[200] }}>
+                    全期間平均 (この試合除く、n={others.length}) {formatVal(seasonMean)} — 差分 <strong>{formatDelta(comparePoint.value, seasonMean)}</strong>
+                  </div>
+                )}
+
+                {recent5Mean == null && (
+                  <div className="text-xs" style={{ color: isLight ? N_GRAY[500] : N_GRAY[400] }}>
+                    直近 5 試合のサンプルが不足 (3 件以上必要)。比較は全期間平均のみ表示。
+                  </div>
+                )}
+
+                <div className="text-[10px] pt-2 border-t mt-2" style={{
+                  borderColor: isLight ? N_GRAY[200] : N_GRAY[700],
+                  color: isLight ? N_GRAY[500] : N_GRAY[400],
+                }}>
+                  数値の符号のみを示します。「何が良かった/改善が必要」の断言は意図的に行いません — 差分とサンプル数から、コーチ・選手で判断してください (信頼性最優先方針)。
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
