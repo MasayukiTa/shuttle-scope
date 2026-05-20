@@ -34,7 +34,8 @@ def emit_security_event(
 ) -> None:
     """security_events に 1 行追加。例外は飲み込んで stdlib log に流す。"""
     try:
-        body = json.dumps(details or {}, ensure_ascii=False, separators=(",", ":"))[:4096]
+        # JSON column 型なので dict をそのまま渡す (SA が dialect 別に変換)
+        body = details or {}
         db: Session = SessionLocal()
         try:
             row = SecurityEvent(

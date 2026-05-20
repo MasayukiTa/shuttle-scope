@@ -2137,7 +2137,12 @@ def list_security_events(
                 "method": r.method,
                 "ua": r.ua,
                 "request_id": r.request_id,
-                "details": r.details,
+                # details が dict (PG JSONB) でも str (SQLite TEXT) でも文字列で返す
+                "details": (
+                    __import__("json").dumps(r.details, ensure_ascii=False)
+                    if isinstance(r.details, (dict, list))
+                    else (r.details or "")
+                ),
             }
             for r in rows
         ],
