@@ -66,17 +66,18 @@ function getMetric(rec: ConditionRecord, key: MetricKey): number | null {
 }
 
 // Categorical 識別: 12 色ベタは色弱で破綻するため、
-//   - month (1-12): 季節色 × 形状の組合せ (色 4 × shape 3 = 12) — ConditionPCAScatter と同じ
+//   - month (1-12): 月の四半期 (1-3/4-6/7-9/10-12) を 4 色に集約。「春夏秋冬」
+//     表記は東南アジア / 南半球で誤解になるため使わない (四半期グループのみ)。
 //   - weekday (0-6): 7 色 — catColorByIndex で展開
 // (Design Language §6 準拠)
-function monthSeasonKey(month: number): 'Cool' | 'Green' | 'Warm' | 'Amber' {
-  if (month === 12 || month === 1 || month === 2) return 'Cool'
-  if (month >= 3 && month <= 5) return 'Green'
-  if (month >= 6 && month <= 8) return 'Warm'
+function monthQuarterKey(month: number): 'Cool' | 'Green' | 'Warm' | 'Amber' {
+  if (month <= 3) return 'Cool'
+  if (month <= 6) return 'Green'
+  if (month <= 9) return 'Warm'
   return 'Amber'
 }
 function monthColorMode(month: number, isLight: boolean): string {
-  return catColor(monthSeasonKey(month), isLight)
+  return catColor(monthQuarterKey(month), isLight)
 }
 function weekdayColorMode(weekday: number, isLight: boolean): string {
   // 0=日 / 6=土 を CAT_ORDER の最初の 7 色に割り当てる
@@ -348,12 +349,12 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
               {colorMode === 'month' && (
                 <>
                   <span>{t('condition.generic_scatter.legend_month')}:</span>
-                  {/* 季節色のみ表示 (12 色ベタは色弱不可) */}
+                  {/* 月の四半期グループ (12 色ベタは色弱不可、季節呼称は地域依存なので使わない) */}
                   {[
-                    { label: '冬 (12,1,2)', key: 'Cool' as const },
-                    { label: '春 (3,4,5)', key: 'Green' as const },
-                    { label: '夏 (6,7,8)', key: 'Warm' as const },
-                    { label: '秋 (9,10,11)', key: 'Amber' as const },
+                    { label: '1-3月', key: 'Cool' as const },
+                    { label: '4-6月', key: 'Green' as const },
+                    { label: '7-9月', key: 'Warm' as const },
+                    { label: '10-12月', key: 'Amber' as const },
                   ].map(({ label, key }) => (
                     <span key={key} className="inline-flex items-center gap-1">
                       <span style={{ width: 10, height: 10, background: catColor(key, isLight), display: 'inline-block', borderRadius: 9999 }} />

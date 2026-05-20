@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -11,7 +12,7 @@ import {
 } from 'recharts'
 import { useConditions, ConditionRecord } from '@/hooks/useConditions'
 import { mean } from '@/utils/stats'
-import { catColor } from '@/styles/categoricalPalette'
+import { coolwarm } from '@/styles/colors'
 
 // 季節性・曜日効果コンポーネント (coach / analyst 限定)
 // 月次 / 四半期 / 曜日別に各指標の平均を集計して表示する。
@@ -142,21 +143,31 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
     [records, mode, availableMetrics, t],
   )
 
-  // チャート用データ (選択指標のみ)
-  const chartData = useMemo(
-    () =>
-      buckets.map((b) => {
-        const arr = b.values[effectiveMetric] ?? []
-        const n = arr.length
-        const m = n >= MIN_N ? mean(arr) : null
-        return {
-          label: b.label,
-          n,
-          value: m,
-        }
-      }),
-    [buckets, effectiveMetric],
-  )
+  // チャート用データ (選択指標のみ) + 全期間平均からの偏差で色付け
+  const chartData = useMemo(() => {
+    const points = buckets.map((b) => {
+      const arr = b.values[effectiveMetric] ?? []
+      const n = arr.length
+      const m = n >= MIN_N ? mean(arr) : null
+      return { label: b.label, n, value: m as number | null }
+    })
+    // 全 bucket の平均と min/max から divergent スケールの正規化幅を決める
+    const valid = points.map((p) => p.value).filter((v): v is number => v != null)
+    const overall = valid.length > 0 ? mean(valid) : null
+    if (overall == null || valid.length < 2) {
+      // 比較すべき平均が定まらないなら全部中立 (青ベタ = 「全て良い」誤読を避ける)
+      return points.map((p) => ({ ...p, deviation: 0, overall: overall ?? 0 }))
+    }
+    const maxAbs = Math.max(
+      ...valid.map((v) => Math.abs(v - overall)),
+      1e-6,
+    )
+    return points.map((p) => ({
+      ...p,
+      deviation: p.value == null ? 0 : (p.value - overall) / maxAbs, // -1..1
+      overall,
+    }))
+  }, [buckets, effectiveMetric])
 
   const hasAnyData = records.length > 0
 
@@ -238,7 +249,19 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
                     ]
                   }}
                 />
-                <Bar dataKey="value" fill={catColor('Cool', isLight)} radius={[4, 4, 0, 0]} />
+                {/* 各 bar を「全期間平均からの偏差」で coolwarm 着色。
+                   - 平均より大きい (positive deviation) → 青 (Cool 側)
+                   - 平均より小さい (negative deviation) → 赤 (Warm 側)
+                   - 平均近辺 → 白〜灰色
+                   全て同色だと「全部良い/悪い」のミスリードになるため、
+                   差分の符号と大きさを色で示す。 */}
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                  {chartData.map((d, i) => {
+                    // deviation: -1..1 → coolwarm 0..1 (0 = warm 赤, 1 = cool 青)
+                    const ratio = 0.5 + d.deviation * 0.5
+                    return <Cell key={i} fill={coolwarm(ratio)} />
+                  })}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
