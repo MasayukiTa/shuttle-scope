@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw, ArrowUp, ArrowDown, Download } from 'lucide-react'
-import { authAuditLogs, AuditLogEntry } from '@/api/client'
+import { authAuditLogs, authAuditLogActions, AuditLogEntry, AuditLogActionItem } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -18,6 +18,8 @@ export function AuditLogPage() {
   const [actionFilter, setActionFilter] = useState('')
   const [userFilter, setUserFilter] = useState('')
   const [limit, setLimit] = useState(500)
+  // action 名一覧 (dropdown 用)。backend で count desc に並べたものをそのまま表示。
+  const [actionOptions, setActionOptions] = useState<AuditLogActionItem[]>([])
   // ソート状態
   const [sortKey, setSortKey] = useState<SortKey>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -50,6 +52,10 @@ export function AuditLogPage() {
   useEffect(() => {
     if (role === 'admin') {
       load()
+      // action dropdown 用に distinct action 一覧を取得
+      authAuditLogActions()
+        .then((r) => setActionOptions(r.data || []))
+        .catch(() => { /* 失敗時は dropdown 空のまま、free text 入力で動く */ })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role])
@@ -147,12 +153,21 @@ export function AuditLogPage() {
       <div className="flex flex-wrap items-end gap-3 flex-shrink-0">
         <div>
           <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_action')}</label>
-          <input
+          {/* dropdown: distinct action 一覧。空 = フィルタなし。typo 防止と
+             どの action が存在するかの可視化を兼ねる。dropdown 不可時の保険として
+             /audit-logs/actions が失敗したら空配列のまま (action filter 無効化)。 */}
+          <select
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
-            className={inputCls}
-            placeholder="login_failed"
-          />
+            className={`${inputCls} min-w-[180px]`}
+          >
+            <option value="">— すべて —</option>
+            {actionOptions.map((o) => (
+              <option key={o.action} value={o.action}>
+                {o.action} ({o.count})
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.filter_user')}</label>
@@ -160,14 +175,17 @@ export function AuditLogPage() {
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value)}
             className={inputCls}
-            placeholder="123"
+            placeholder="数値 user_id (例: 123)"
             inputMode="numeric"
           />
         </div>
         <div>
           <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.limit')}</label>
+          {/* backend cap は 5000。それ以上入力しても backend で clamp される */}
           <input
             type="number"
+            min={1}
+            max={5000}
             value={limit}
             onChange={(e) => setLimit(Math.max(1, Math.min(5000, parseInt(e.target.value, 10) || 500)))}
             className={`${inputCls} w-24`}
