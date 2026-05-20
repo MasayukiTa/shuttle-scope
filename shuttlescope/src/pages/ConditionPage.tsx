@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
+import { ConditionGlossary } from '@/components/condition/ConditionGlossary'
 import { InBodyForm } from '@/components/condition/InBodyForm'
 import { HooperRpeForm } from '@/components/condition/HooperRpeForm'
 import { AuxiliaryForm } from '@/components/condition/AuxiliaryForm'
@@ -166,6 +167,7 @@ export function ConditionPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [latestResult, setLatestResult] = useState<ConditionResultType | null>(null)
   const [detailRecord, setDetailRecord] = useState<Record<string, unknown> | null>(null)
+  const [glossaryOpen, setGlossaryOpen] = useState(false)
 
   const patch = (p: Partial<ConditionPayload>) => {
     setFormState((prev) => ({ ...prev, ...p }))
@@ -190,15 +192,16 @@ export function ConditionPage() {
   const handleBodySubmit = async () => {
     setErrorMsg(null)
     setSuccessMsg(null)
-    if (!effectivePlayerId) {
-      setErrorMsg(t('condition.save_failed'))
+    // 入力は常にログインユーザ自身 (authPlayerId)。代理入力は不可。
+    if (!authPlayerId) {
+      setErrorMsg('選手レコードに紐付いたアカウントでのみ入力できます')
       return
     }
     const err = validate()
     if (err) { setErrorMsg(err); return }
     const payload: ConditionPayload = {
       ...formState,
-      player_id: effectivePlayerId,
+      player_id: authPlayerId,
       measured_at: measuredAt,
       condition_type: 'weekly',
     }
@@ -249,6 +252,15 @@ export function ConditionPage() {
         <div className="flex items-center gap-3 mb-4">
           <Heart className="text-pink-500" size={20} />
           <h1 className="text-xl font-semibold">{t('condition.title')}</h1>
+          <button
+            type="button"
+            onClick={() => setGlossaryOpen(true)}
+            title="CCS / F1〜F5 / Hooper Sleep / RPE 等の用語解説"
+            className={`ml-auto inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border ${isLight ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'}`}
+          >
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border" style={{ borderColor: isLight ? '#94a3b8' : '#94a3b8' }}>?</span>
+            用語解説
+          </button>
         </div>
 
         {role === 'player' ? (
@@ -406,8 +418,45 @@ export function ConditionPage() {
             </>
 
           </div>
+        ) : !authPlayerId ? (
+          // 入力タブ: ログインユーザが選手として登録されていない (coach / analyst /
+          // admin で player_id 未紐付) 場合、コンディション入力は無効。
+          // 過去仕様: 選択した選手の代理入力ができていたが、誰のデータか曖昧になる
+          // ため廃止 (2026-05-19)。
+          <div className={`max-w-2xl p-4 rounded-lg border ${borderColor} ${panelBg}`}>
+            <div className="flex items-start gap-2">
+              <div className="text-xs leading-relaxed" style={{ color: isLight ? '#374151' : '#e2e8f0' }}>
+                <div className="font-semibold mb-1">
+                  コンディション入力は「自分自身」の選手アカウントでのみ可能です
+                </div>
+                <p>
+                  あなたのログインユーザに選手レコードが紐付いていないため入力できません。
+                  選手として登録されている場合は管理者にアカウントの player_id 設定を
+                  依頼してください。
+                </p>
+                <p className="mt-2">
+                  履歴・分析タブは選手セレクタから誰のデータでも閲覧できます。
+                </p>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="space-y-5 max-w-4xl">
+            {/* 入力対象明示: 必ず「自分自身」(authPlayerId) のレコードになる。
+               選択した選手の代理入力はできない設計 (誰が入力したか曖昧になるのを防ぐ)。 */}
+            <div
+              className="text-xs px-3 py-2 rounded border"
+              style={{
+                color: isLight ? '#1e40af' : '#bfdbfe',
+                backgroundColor: isLight ? '#eff6ff' : '#1e3a8a33',
+                borderColor: isLight ? '#bfdbfe' : '#1e40af',
+              }}
+            >
+              入力対象: <strong>自分</strong> (
+              {players.find((p) => p.id === authPlayerId)?.name ?? `選手 #${authPlayerId}`}
+              ) — 他選手の代理入力はできません。
+            </div>
+
             {/* モード切替 */}
             <div className="flex overflow-x-auto scrollbar-hide gap-1">
               {availableModes.map((m) => (
@@ -455,7 +504,7 @@ export function ConditionPage() {
 
             {mode === 'weekly' && (
               <WeeklyQuestionnaire
-                playerId={effectivePlayerId}
+                playerId={authPlayerId!}
                 measuredAt={measuredAt}
                 isLight={isLight}
                 onSubmitted={handleQuestionnaireSubmitted}
@@ -464,7 +513,7 @@ export function ConditionPage() {
 
             {mode === 'prematch' && (
               <PreMatchQuestionnaire
-                playerId={effectivePlayerId}
+                playerId={authPlayerId!}
                 measuredAt={measuredAt}
                 isLight={isLight}
                 onSubmitted={handleQuestionnaireSubmitted}
@@ -521,6 +570,9 @@ export function ConditionPage() {
           onClose={() => setDetailRecord(null)}
         />
       )}
+
+      {/* CCS / F1-F5 / Hooper / RPE などの用語解説 */}
+      <ConditionGlossary open={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
     </div>
   )
 }
