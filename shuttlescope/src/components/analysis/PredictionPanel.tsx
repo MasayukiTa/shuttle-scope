@@ -107,7 +107,28 @@ interface PredictionPanelProps {
   tournamentLevel: string
 }
 
+// LEVEL_OPTIONS: 値は backend が保存している enum (現状日本語)。値は変えず、表示のみ
+// t() で解決する。将来的に backend を英語 enum に切り替える際は両方をサポートしてから移行する。
 const LEVEL_OPTIONS = ['', 'IC', 'IS', 'SJL', '全日本', '国内', 'その他']
+function tournamentLevelLabel(value: string, t: (k: string, d: string) => string): string {
+  // 単純な辞書 lookup (backend 値 -> i18n key)
+  const map: Record<string, [string, string]> = {
+    '全日本': ['tournament.national', '全日本'],
+    '国内':   ['tournament.domestic', '国内'],
+    'その他': ['tournament.other',    'その他'],
+  }
+  const hit = map[value]
+  return hit ? t(hit[0], hit[1]) : value
+}
+
+// impact を表示色決定用に正規化する。バックエンドが日本語/英語どちらを返しても安定動作する。
+function normalizeImpact(s: string | null | undefined): 'high' | 'mid' | 'low' {
+  if (!s) return 'mid'
+  const t = s.toString().toLowerCase()
+  if (s === '高' || t === 'high') return 'high'
+  if (s === '低' || t === 'low') return 'low'
+  return 'mid'
+}
 
 function winProbColor(p: number, isLight: boolean): string {
   const neutral = isLight ? '#1e293b' : '#e2e8f0'
@@ -345,18 +366,23 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                   <li key={i} className="flex items-start gap-2 text-xs">
                     <span className="text-gray-500 shrink-0 w-4 text-right">{i + 1}.</span>
                     <span style={{ color: neutral }}>{note}</span>
-                    {impact && (
-                      <span
-                        className="shrink-0 text-[10px] px-1 py-0.5 rounded font-medium"
-                        style={{
-                          color: impact === '高' ? WIN : impact === '低' ? '#6b7280' : '#d97706',
-                          backgroundColor: impact === '高' ? WIN + '20' : impact === '低' ? '#37415120' : '#d9770620',
-                          border: `1px solid ${impact === '高' ? WIN + '60' : impact === '低' ? '#37415160' : '#d9770660'}`,
-                        }}
-                      >
-                        {impact}
-                      </span>
-                    )}
+                    {impact && (() => {
+                      const ni = normalizeImpact(impact)
+                      const color = ni === 'high' ? WIN : ni === 'low' ? '#6b7280' : '#d97706'
+                      const bg    = ni === 'high' ? WIN + '20' : ni === 'low' ? '#37415120' : '#d9770620'
+                      const bord  = ni === 'high' ? WIN + '60' : ni === 'low' ? '#37415160' : '#d9770660'
+                      const label = ni === 'high' ? t('prediction.impact_high', 'High')
+                                  : ni === 'low' ? t('prediction.impact_low', 'Low')
+                                  : t('prediction.impact_mid', 'Mid')
+                      return (
+                        <span
+                          className="shrink-0 text-[10px] px-1 py-0.5 rounded font-medium"
+                          style={{ color, backgroundColor: bg, border: `1px solid ${bord}` }}
+                        >
+                          {label}
+                        </span>
+                      )
+                    })()}
                   </li>
                 )
               })}
@@ -397,7 +423,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                 <MatchScoreBand
                   scoreBands={d.score_bands}
                   playerName={playerName}
-                  opponentName={opponentId ? (players.find((p) => p.id === opponentId)?.name ?? '相手') : '相手'}
+                  opponentName={opponentId ? (players.find((p) => p.id === opponentId)?.name ?? t('common.opponent', 'Opponent')) : t('common.opponent', 'Opponent')}
                 />
               </div>
             )}
@@ -573,7 +599,7 @@ function FilterBar({
       >
         <option value="">{t('prediction.select_level')}</option>
         {LEVEL_OPTIONS.filter(Boolean).map((lv) => (
-          <option key={lv} value={lv}>{lv}</option>
+          <option key={lv} value={lv}>{tournamentLevelLabel(lv, t)}</option>
         ))}
       </select>
     </div>

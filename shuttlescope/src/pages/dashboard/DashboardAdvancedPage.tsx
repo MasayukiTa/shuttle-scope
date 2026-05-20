@@ -119,17 +119,17 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
             className="font-medium min-w-0 flex-1 truncate"
             style={{ color: isLight ? '#b45309' /* amber-700 */ : '#fbbf24' /* amber-400 */ }}
           >
-            ⚠ {activeOverrides.length}件の分析に手動 Override が設定されています
+            ⚠ {t('advanced.manual_override_notice', { count: activeOverrides.length, defaultValue: 'Manual Override is set on {{count}} analyses' })}
           </span>
           {holdCount > 0 && (
             <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
               isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200'
             }`}>
-              保留 {holdCount}件
+              {t('advanced.hold_count', { count: holdCount, defaultValue: 'Hold: {{count}}' })}
             </span>
           )}
           <span className={`shrink-0 text-[10px] ${isLight ? 'text-amber-600' : 'text-amber-500'}`}>
-            Research タブで詳細確認
+            {t('advanced.see_research_for_detail', 'See Research tab for detail')}
           </span>
         </div>
       )}

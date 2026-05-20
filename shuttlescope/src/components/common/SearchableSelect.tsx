@@ -5,6 +5,7 @@
  * ネイティブ <select> の代替として、テキスト入力でフィルタリング可能。
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Search, X, ChevronDown } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -39,14 +40,17 @@ export function SearchableSelect({
   options,
   value,
   onChange,
-  placeholder = '検索...',
-  emptyLabel = '— 選択 —',
+  placeholder,
+  emptyLabel,
   disabled = false,
   className,
   maxHeight = 240,
   loading = false,
   dropdownAlign = 'left',
 }: SearchableSelectProps) {
+  const { t } = useTranslation()
+  const effectivePlaceholder = placeholder ?? t('common.search_placeholder', 'Search...')
+  const effectiveEmptyLabel = emptyLabel ?? t('common.select_placeholder', '— Select —')
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [highlightIdx, setHighlightIdx] = useState(0)
@@ -146,13 +150,13 @@ export function SearchableSelect({
         )}
       >
         <span className={clsx('flex-1 truncate', !selectedOption && 'text-gray-500')}>
-          {loading ? '読み込み中...' : selectedOption ? (
+          {loading ? t('common.loading', 'Loading...') : selectedOption ? (
             <>
               {selectedOption.prefix && <span className="mr-1">{selectedOption.prefix}</span>}
               {selectedOption.label}
               {selectedOption.suffix && <span className="ml-1 text-gray-400 text-xs">{selectedOption.suffix}</span>}
             </>
-          ) : emptyLabel}
+          ) : effectiveEmptyLabel}
         </span>
         {value != null && !disabled && (
           <X size={14} className="text-gray-500 hover:text-white shrink-0" onClick={handleClear} />
@@ -172,7 +176,7 @@ export function SearchableSelect({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={placeholder}
+              placeholder={effectivePlaceholder}
               className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
             />
             {query && (
@@ -186,7 +190,7 @@ export function SearchableSelect({
           <div ref={listRef} className="overflow-y-auto" style={{ maxHeight }}>
             {filtered.length === 0 ? (
               <div className="px-3 py-3 text-sm text-gray-500 text-center">
-                {query ? '該当なし' : '選択肢がありません'}
+                {query ? t('common.no_matches', 'No matches') : t('common.no_options', 'No options')}
               </div>
             ) : (
               filtered.map((opt, idx) => (

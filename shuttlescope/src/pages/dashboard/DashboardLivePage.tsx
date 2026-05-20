@@ -70,8 +70,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
 
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
-    label: `${m.date ?? '日付不明'} vs ${m.opponent}`,
-    suffix: m.result === 'win' ? '勝' : '負',
+    label: `${m.date ?? t('common.unknown_date', 'Date unknown')} vs ${m.opponent}`,
+    suffix: m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L'),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
 
@@ -94,7 +94,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                     return {
                       value: m.match_id,
                       label: `${m.date} vs ${m.opponent}`,
-                      suffix: scoreStr || (m.result === 'win' ? '勝' : '負'),
+                      suffix: scoreStr || (m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L')),
                       searchText: `${m.date} ${m.opponent} ${m.tournament}`,
                     }
                   })}
@@ -135,7 +135,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                   title={flashRallyNum ? `Set ${flashSet} — R.${flashRallyNum}` : undefined}
                   className={`px-3 py-1 text-xs rounded font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed truncate max-w-full ${isLight ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'}`}
                 >
-                  {flashRallyNum ? `Set ${flashSet} — R.${flashRallyNum}` : '全ラリー（グラフから選択）'}
+                  {flashRallyNum ? `Set ${flashSet} — R.${flashRallyNum}` : t('live.all_rallies_pick_from_chart', 'All rallies (pick from chart)')}
                 </button>
               </div>
             </div>
@@ -161,7 +161,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
             </div>
           ) : (
             <div className={`${card} rounded-lg p-6 text-center text-sm ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
-              試合と選手を選択すると速報アドバイスが表示されます
+              {t('live.pick_to_see_advice', 'Pick a match and player to see live advice')}
             </div>
           )}
 
@@ -198,7 +198,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                 options={matchOptions}
                 value={selectedMatchId}
                 onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
-                emptyLabel="— 試合を選択 —"
+                emptyLabel={t('common.select_match', 'Select match')}
                 placeholder={t('auto.DashboardLivePage.k4')}
                 className="max-w-[260px]"
               />
@@ -238,7 +238,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
         <ErrorBoundary>
           <SetIntervalSummary
             setId={intervalSummarySetId}
-            playerAName="選手"
+            playerAName={t('common.player', 'Player')}
             playerBName={matches.find((m) => m.match_id === selectedMatchId)?.opponent ?? 'B'}
             onClose={() => setShowIntervalSummary(false)}
             onNextSet={() => setShowIntervalSummary(false)}
