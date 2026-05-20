@@ -2271,7 +2271,10 @@
       "clear": "Clear",
       "importing": "Importing...",
       "import_run": "Run import",
-      "import_complete": "Import complete"
+      "import_complete": "Import complete",
+      "security_logs_title": "Security monitoring",
+      "security_logs_desc": "External HTTP requests & attack detection (probe / rate limit). Separate from the in-app action audit log.",
+      "security_logs_open": "Open security monitoring"
     },
     "consent": {
       "title": "Consent status & withdrawal",
@@ -3203,5 +3206,12 @@
     "manual_override_notice": "Manual Override is set on {{count}} analyses",
     "hold_count": "Hold: {{count}}",
     "see_research_for_detail": "See Research tab for detail"
+  },
+  "security_log": {
+    "title": "Security monitoring",
+    "hint": "External HTTP request & attack-detection logs. For in-app action audit, see Audit Log.",
+    "tab_security": "Security events",
+    "tab_request": "HTTP requests",
+    "admin_required": "admin role required"
   }
 }
