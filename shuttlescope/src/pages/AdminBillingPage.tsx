@@ -11,7 +11,10 @@ import {
  */
 export default function AdminBillingPage() {
   if (!BILLING_UI_ENABLED) return <Navigate to="/" replace />
+  return <AdminBillingPageInner />
+}
 
+function AdminBillingPageInner() {
   const [orders, setOrders] = useState<AdminOrder[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [statusFilter, setStatusFilter] = useState<string>('')

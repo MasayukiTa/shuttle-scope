@@ -13,7 +13,10 @@ import { BILLING_UI_ENABLED, getLegalInfo, LegalInfo } from '@/api/billing'
  */
 export default function CommerceLawPage() {
   if (!BILLING_UI_ENABLED) return <Navigate to="/" replace />
+  return <CommerceLawPageInner />
+}
 
+function CommerceLawPageInner() {
   const [info, setInfo] = useState<LegalInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

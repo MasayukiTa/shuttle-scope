@@ -8,8 +8,12 @@ import { BILLING_UI_ENABLED, OrderSummary, receiptDownloadUrl } from '@/api/bill
  * VITE_SS_BILLING_UI_ENABLED=false のときは / にリダイレクト。
  */
 export default function AccountOrdersPage() {
+  // フラグ判定は hook を持たない外側で行う (rules-of-hooks 準拠)
   if (!BILLING_UI_ENABLED) return <Navigate to="/" replace />
+  return <AccountOrdersPageInner />
+}
 
+function AccountOrdersPageInner() {
   const [orders, setOrders] = useState<OrderSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
