@@ -42,6 +42,7 @@ import { TUTORIALS } from '@/components/tutorial/tutorials'
 import { closeTutorial, useTutorialChannel } from '@/components/tutorial/useTutorial'
 import CommerceLawPage from '@/pages/CommerceLawPage'
 import { AuditLogPage } from '@/pages/AuditLogPage'
+import { SecurityLogPage } from '@/pages/SecurityLogPage'
 import { TeamManagementPage } from '@/pages/TeamManagementPage'
 import { useTheme } from '@/hooks/useTheme'
 import { authLogout, authMe, checkHealth, publicInquiryUnreadCount } from '@/api/client'
@@ -352,6 +353,7 @@ function MainLayout() {
             <Route path="/admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
             <Route path="/legal/commerce" element={<CommerceLawPage />} />
             <Route path="/audit-logs" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
+            <Route path="/admin/security" element={<AdminRoute><SecurityLogPage /></AdminRoute>} />
             <Route path="/teams" element={<TeamManagementPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

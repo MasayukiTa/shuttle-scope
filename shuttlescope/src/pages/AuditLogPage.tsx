@@ -181,25 +181,8 @@ export function AuditLogPage() {
       <div className="flex-shrink-0">
         <h1 className={`text-xl font-semibold ${textHeading}`}>{t('auth.audit_log.title')}</h1>
         <p className={`text-xs mt-1 ${textMuted}`}>{t('auth.audit_log.hint')}</p>
-        <div className="mt-2 flex gap-1 text-xs">
-          {([
-            ['audit', t('auth.audit_log.tab_audit', '内部監査')],
-            ['request', t('auth.audit_log.tab_request', 'HTTP リクエスト')],
-            ['security', t('auth.audit_log.tab_security', 'セキュリティイベント')],
-          ] as const).map(([k, label]) => (
-            <button
-              key={k}
-              onClick={() => setTab(k)}
-              className={`px-3 py-1 rounded border ${
-                tab === k
-                  ? (isLight ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-700 text-white border-blue-700')
-                  : (isLight ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700')
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* HTTP リクエスト / セキュリティイベントは「セキュリティ監視」(/admin/security) へ分離。
+            この画面はアプリ内操作 (access_logs) の監査専用。 */}
       </div>
 
       <div className="flex flex-wrap items-end gap-3 flex-shrink-0">

@@ -2062,6 +2062,26 @@ export function SettingsPage() {
               </section>
             )}
 
+            {/* ── セキュリティ監視 (admin only) ─────────────────── */}
+            {role === 'admin' && (
+              <section className={`${card} rounded-lg p-5 space-y-3`}>
+                <div className="flex items-center gap-2">
+                  <MIcon name="security" size={16} className="text-red-400" />
+                  <h2 className="text-base font-semibold">{t('settings.ui.security_logs_title', 'セキュリティ監視')}</h2>
+                </div>
+                <p className="text-xs text-gray-400">
+                  {t('settings.ui.security_logs_desc', '外部からの HTTP リクエスト・攻撃検知 (probe / rate limit 等) ログ。アプリ内操作の監査ログとは分離。')}
+                </p>
+                <button
+                  onClick={() => navigate('/admin/security')}
+                  className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-3 py-2 rounded-lg"
+                >
+                  <MIcon name="security" size={14} />
+                  {t('settings.ui.security_logs_open', 'セキュリティ監視を開く')}
+                </button>
+              </section>
+            )}
+
             <TutorialReplaySection card={card} />
 
             {role === 'admin' && (

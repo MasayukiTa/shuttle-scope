@@ -2566,7 +2566,10 @@
       "clear": "クリア",
       "importing": "インポート中...",
       "import_run": "インポート実行",
-      "import_complete": "インポート完了"
+      "import_complete": "インポート完了",
+      "security_logs_title": "セキュリティ監視",
+      "security_logs_desc": "外部からの HTTP リクエスト・攻撃検知 (probe / rate limit 等) ログ。アプリ内操作の監査ログとは分離。",
+      "security_logs_open": "セキュリティ監視を開く"
     }
   },
   "doubles_analysis": {
@@ -3536,5 +3539,12 @@
     "manual_override_notice": "{{count}}件の分析に手動 Override が設定されています",
     "hold_count": "保留 {{count}}件",
     "see_research_for_detail": "Research タブで詳細確認"
+  },
+  "security_log": {
+    "title": "セキュリティ監視",
+    "hint": "外部からの HTTP リクエスト・攻撃検知ログ。アプリ内操作の監査は「監査ログ」を参照。",
+    "tab_security": "セキュリティイベント",
+    "tab_request": "HTTP リクエスト",
+    "admin_required": "admin 権限が必要です"
   }
 }
