@@ -3212,6 +3212,7 @@
     "hint": "External HTTP request & attack-detection logs. For in-app action audit, see Audit Log.",
     "tab_security": "Security events",
     "tab_request": "HTTP requests",
-    "admin_required": "admin role required"
+    "admin_required": "admin role required",
+    "tab_error": "Errors"
   }
 }

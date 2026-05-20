@@ -2149,6 +2149,58 @@ def list_security_events(
     }
 
 
+@router.get("/audit-logs/errors")
+def list_error_logs(
+    request: Request,
+    exc_type: Optional[str] = None,
+    path_prefix: Optional[str] = None,
+    request_id: Optional[str] = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。error_logs を新しい順に返す。
+
+    Query:
+      - exc_type: 例外クラス名の完全一致 (例 ValueError)
+      - path_prefix: path LIKE 'prefix%'
+      - request_id: request_logs と相関する request_id
+      - limit: 1..2000 (default 200)
+    """
+    from backend.db.models import ErrorLog
+    _require_admin(request)
+    limit = max(1, min(int(limit or 200), 2000))
+    q = db.query(ErrorLog)
+    if exc_type:
+        q = q.filter(ErrorLog.exc_type == exc_type)
+    if path_prefix:
+        esc = path_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        q = q.filter(ErrorLog.path.like(f"{esc}%", escape="\\"))
+    if request_id:
+        q = q.filter(ErrorLog.request_id == request_id)
+    rows = q.order_by(ErrorLog.id.desc()).limit(limit).all()
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": r.id,
+                "ts": r.ts,
+                "request_id": r.request_id,
+                "method": r.method,
+                "path": r.path,
+                "status": r.status,
+                "exc_type": r.exc_type,
+                "message": r.message,
+                "traceback": r.traceback,
+                "input_repr": r.input_repr,
+                "internal_code": r.internal_code,
+                "user_id": r.user_id,
+                "ip_addr": r.ip_addr,
+            }
+            for r in rows
+        ],
+    }
+
+
 @router.get("/audit-logs/actions")
 def list_audit_log_actions(request: Request, db: Session = Depends(get_db)):
     """admin のみ。access_logs に出現する distinct な action 名一覧 (件数付き)。

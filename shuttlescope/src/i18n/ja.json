@@ -3545,6 +3545,7 @@
     "hint": "外部からの HTTP リクエスト・攻撃検知ログ。アプリ内操作の監査は「監査ログ」を参照。",
     "tab_security": "セキュリティイベント",
     "tab_request": "HTTP リクエスト",
-    "admin_required": "admin 権限が必要です"
+    "admin_required": "admin 権限が必要です",
+    "tab_error": "エラー"
   }
 }

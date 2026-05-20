@@ -14,7 +14,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from backend.db.database import SessionLocal
-from backend.db.models import RequestLog, SecurityEvent
+from backend.db.models import RequestLog, SecurityEvent, ErrorLog
 
 
 _log = logging.getLogger("shuttlescope.security_log")
@@ -106,3 +106,42 @@ def emit_request_log(
             db.close()
     except Exception as exc:
         _log.warning("emit_request_log failed: %s (path=%s)", exc, path)
+
+
+def emit_error_log(
+    *,
+    exc_type: str,
+    message: str,
+    traceback_str: Optional[str] = None,
+    request_id: Optional[str] = None,
+    method: Optional[str] = None,
+    path: Optional[str] = None,
+    status: Optional[int] = None,
+    input_repr: Optional[str] = None,
+    internal_code: Optional[str] = None,
+    user_id: Optional[int] = None,
+    ip_addr: Optional[str] = None,
+) -> None:
+    """error_logs に未処理例外を 1 行追加。失敗は飲み込む。"""
+    try:
+        db: Session = SessionLocal()
+        try:
+            row = ErrorLog(
+                request_id=(request_id or "")[:36] or None,
+                method=(method or "")[:8] or None,
+                path=(path or "")[:512] or None,
+                status=status,
+                exc_type=(exc_type or "")[:120] or None,
+                message=(message or "")[:8000] or None,
+                traceback=(traceback_str or "")[:16000] or None,
+                input_repr=(input_repr or "")[:4000] or None,
+                internal_code=(internal_code or "")[:40] or None,
+                user_id=user_id,
+                ip_addr=(ip_addr or "")[:64] or None,
+            )
+            db.add(row)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        _log.warning("emit_error_log failed: %s (exc_type=%s)", exc, exc_type)
