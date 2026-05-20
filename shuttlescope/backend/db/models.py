@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import uuid4
 from sqlalchemy import (
     Integer, String, Float, Boolean, DateTime, Date,
-    ForeignKey, Text, UniqueConstraint, Index, LargeBinary
+    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -1561,3 +1561,47 @@ def _match_before_update(_mapper, conn, target):
         _compute_captured_minor_flag(sess, target)
     except Exception:
         pass
+
+
+# ─── 0032: request_logs / security_events (外部攻撃可視化) ─────────────────
+class RequestLog(Base):
+    """HTTP リクエスト単位の生ログ。攻撃判定 / フォレンジック用一次ソース。
+    HMAC chain は付けない (高頻度書き込みで lock 競合するため)。
+    PostgreSQL では月次 RANGE partition (migration 0032 で構築)。"""
+    __tablename__ = "request_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    method: Mapped[str] = mapped_column(String(8), nullable=False)
+    path: Mapped[str] = mapped_column(String(512), nullable=False)
+    query: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    status: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    ip_addr: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    xff: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    ua: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    referer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    request_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    bytes_in: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    bytes_out: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    cf_ray: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+
+
+class SecurityEvent(Base):
+    """攻撃検知イベント (rate_limit_hit, probe_attempt, honeytoken_hit,
+    path_normalization_block 等)。重要度別 severity を持つ。"""
+    __tablename__ = "security_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    severity: Mapped[str] = mapped_column(String(10), nullable=False, default="info")
+    ip_addr: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    method: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    ua: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    request_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    details: Mapped[str] = mapped_column(Text, nullable=False, default="{}")

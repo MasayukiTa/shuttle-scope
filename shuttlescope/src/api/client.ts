@@ -352,6 +352,70 @@ export function authAuditLogs(params?: {
   return apiGet('/auth/audit-logs', p)
 }
 
+export interface RequestLogEntry {
+  id: number
+  ts: string
+  method: string
+  path: string
+  query: string | null
+  status: number
+  duration_ms: number
+  user_id: number | null
+  ip_addr: string | null
+  xff: string | null
+  ua: string | null
+  request_id: string | null
+  country: string | null
+}
+
+export function authRequestLogs(params?: {
+  method?: string
+  path_prefix?: string
+  status_min?: number
+  status_max?: number
+  ip?: string
+  user_id?: number
+  limit?: number
+}): Promise<{ success: boolean; data: RequestLogEntry[] }> {
+  const p: Record<string, string | number> = {}
+  if (params?.method) p.method = params.method
+  if (params?.path_prefix) p.path_prefix = params.path_prefix
+  if (params?.status_min != null) p.status_min = params.status_min
+  if (params?.status_max != null) p.status_max = params.status_max
+  if (params?.ip) p.ip = params.ip
+  if (params?.user_id != null) p.user_id = params.user_id
+  if (params?.limit != null) p.limit = params.limit
+  return apiGet('/auth/audit-logs/request', p)
+}
+
+export interface SecurityEventEntry {
+  id: number
+  ts: string
+  event_type: string
+  severity: string
+  ip_addr: string | null
+  user_id: number | null
+  path: string | null
+  method: string | null
+  ua: string | null
+  request_id: string | null
+  details: string | null
+}
+
+export function authSecurityEvents(params?: {
+  event_type?: string
+  severity?: string
+  ip?: string
+  limit?: number
+}): Promise<{ success: boolean; data: SecurityEventEntry[] }> {
+  const p: Record<string, string | number> = {}
+  if (params?.event_type) p.event_type = params.event_type
+  if (params?.severity) p.severity = params.severity
+  if (params?.ip) p.ip = params.ip
+  if (params?.limit != null) p.limit = params.limit
+  return apiGet('/auth/audit-logs/security', p)
+}
+
 export interface AuditLogActionItem {
   action: string
   count: number

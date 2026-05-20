@@ -1169,6 +1169,22 @@ class ExfilRateLimitMiddleware(BaseHTTPMiddleware):
                     "exfil HARD BLOCK user_id=%s role=%s bytes=%s req=%s path=%s",
                     uid, role, st[1], st[2], path,
                 )
+                # security_events に rate_limit_hit を 1 行残す (audit 用)
+                try:
+                    from backend.utils.security_log import emit_security_event as _emit_se
+                    _emit_se(
+                        "rate_limit_hit",
+                        severity="warn",
+                        ip_addr=(request.client.host if request.client else None),
+                        user_id=uid if isinstance(uid, int) else None,
+                        path=path,
+                        method=request.method,
+                        ua=request.headers.get("user-agent"),
+                        request_id=getattr(request.state, "request_id", None),
+                        details={"kind": "exfil", "bytes": st[1], "req": st[2], "role": role},
+                    )
+                except Exception:
+                    pass
                 return StarletteResponse(
                     '{"detail":"短時間に極端に大量のリクエストを検出しました。しばらくしてから再試行してください。"}',
                     status_code=429,
@@ -1327,6 +1343,21 @@ class AdminWriteRateLimitMiddleware(BaseHTTPMiddleware):
                     "admin write rate limit user_id=%s class=%s count=%s limit=%s path=%s",
                     uid, klass, st[1], limit, path,
                 )
+                try:
+                    from backend.utils.security_log import emit_security_event as _emit_se
+                    _emit_se(
+                        "rate_limit_hit",
+                        severity="warn",
+                        ip_addr=(request.client.host if request.client else None),
+                        user_id=uid if isinstance(uid, int) else None,
+                        path=path,
+                        method=request.method,
+                        ua=request.headers.get("user-agent"),
+                        request_id=getattr(request.state, "request_id", None),
+                        details={"kind": "admin_write", "class": klass, "count": st[1], "limit": limit},
+                    )
+                except Exception:
+                    pass
                 return StarletteResponse(
                     f'{{"detail":"admin {klass} 書込みレート上限 ({limit}/min) に達しました。{retry_after}s 後に再試行してください。"}}',
                     status_code=429,
@@ -2287,6 +2318,18 @@ class StagedHoneytokenResponseMiddleware(_HT_BaseMW):
 
 
 app.add_middleware(StagedHoneytokenResponseMiddleware)
+
+
+# ─── Round 259 R44: Request-level observability + Probe detection ───────
+# RequestLogMiddleware は外側 (最後に add) で全 response を捕捉する。
+# ProbeDetectionMiddleware はその直内側で典型攻撃 path を early 404 する。
+# Starlette は add 順の逆で実行する仕様: 最後に add したものが最外周。
+from backend.middleware.security_observability import (
+    RequestLogMiddleware as _RequestLogMW,
+    ProbeDetectionMiddleware as _ProbeDetectionMW,
+)
+app.add_middleware(_ProbeDetectionMW)
+app.add_middleware(_RequestLogMW)
 
 
 # Round 258 R41: Canary endpoints — 攻撃者だけが叩く path を register。
