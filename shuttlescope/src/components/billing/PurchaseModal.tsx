@@ -27,9 +27,12 @@ interface Props {
   onClose: () => void
 }
 
-export function PurchaseModal({ productCode, productLabel, priceJpy, extraMetadata, onClose }: Props) {
+export function PurchaseModal(props: Props) {
   if (!BILLING_UI_ENABLED) return null
+  return <PurchaseModalInner {...props} />
+}
 
+function PurchaseModalInner({ productCode, productLabel, priceJpy, extraMetadata, onClose }: Props) {
   const [paymentMethod, setPaymentMethod] = useState<string>('credit_card')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
