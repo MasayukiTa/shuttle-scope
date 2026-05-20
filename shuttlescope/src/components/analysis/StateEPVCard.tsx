@@ -80,9 +80,11 @@ export function StateEPVCard({ playerId, filters }: Props) {
                     style={{ background: 'rgba(107,114,128,0.15)' }}>
                     {RALLY_BUCKET_LABELS[row.state.rally_bucket] ?? row.state.rally_bucket}
                   </span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                    row.state.player_role === 'server' ? 'bg-green-500/15 text-green-400' : 'bg-orange-500/15 text-orange-400'
-                  }`}>
+                  {/* server / receiver は単なる役割識別、勝敗ではない。
+                     旧版は server=緑 / receiver=橙 で「緑=良」誤読を生んでいた。
+                     役割識別なら categorical (Cool / Warm) で意味中立に。 */}
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${textFaint}`}
+                    style={{ background: 'rgba(148,163,184,0.15)' }}>
                     {ROLE_LABELS[row.state.player_role] ?? row.state.player_role}
                   </span>
                 </div>

@@ -12,7 +12,20 @@ import {
 } from 'recharts'
 import { useConditions, ConditionRecord } from '@/hooks/useConditions'
 import { mean } from '@/utils/stats'
-import { coolwarm } from '@/styles/colors'
+import { catColor } from '@/styles/categoricalPalette'
+
+// 平均からの偏差 d (-1..1) → 赤・灰・青の 3 色 divergent。
+// coolwarm を直接使うと中央が白 (CW_MID = #ffffff) になり light mode で背景と
+// 同化して bar が見えなくなるため、中央近辺は visible gray に固定する。
+function deviationBarFill(d: number, isLight: boolean): string {
+  const abs = Math.abs(d)
+  if (abs < 0.10) {
+    // 平均近辺は中立 (灰)。light でも dark でも視認可能な mid 灰。
+    return isLight ? '#94a3b8' : '#64748b'
+  }
+  if (d > 0) return catColor('Cool', isLight)   // 平均より上 = 青
+  return catColor('Warm', isLight)               // 平均より下 = 赤
+}
 
 // 季節性・曜日効果コンポーネント (coach / analyst 限定)
 // 月次 / 四半期 / 曜日別に各指標の平均を集計して表示する。
@@ -255,12 +268,10 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
                    - 平均近辺 → 白〜灰色
                    全て同色だと「全部良い/悪い」のミスリードになるため、
                    差分の符号と大きさを色で示す。 */}
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {chartData.map((d, i) => {
-                    // deviation: -1..1 → coolwarm 0..1 (0 = warm 赤, 1 = cool 青)
-                    const ratio = 0.5 + d.deviation * 0.5
-                    return <Cell key={i} fill={coolwarm(ratio)} />
-                  })}
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} stroke={isLight ? '#cbd5e1' : '#475569'} strokeWidth={1}>
+                  {chartData.map((d, i) => (
+                    <Cell key={i} fill={deviationBarFill(d.deviation, isLight)} />
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

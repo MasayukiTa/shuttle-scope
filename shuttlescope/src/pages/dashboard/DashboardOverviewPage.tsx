@@ -116,6 +116,10 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
   const [intervalSet, setIntervalSet] = useState(1)
   const [expandedChart, setExpandedChart] = useState<string | null>(null)
+  // 試合一覧セクションのローカル期間フィルタ (上部のグローバル filter とは独立)。
+  // 試合一覧の表示行のみに作用し、グラフや他セクションへの影響なし。
+  const [mlFrom, setMlFrom] = useState<string>('')
+  const [mlTo,   setMlTo]   = useState<string>('')
   const [courtHeatOpen, setCourtHeatOpen] = useState(false)
   const [matchSort, setMatchSort] = useState<{ col: SortCol; order: 'asc' | 'desc' }>({ col: 'date', order: 'desc' })
   const [pointAnalysis, setPointAnalysis] = useState<{
@@ -191,6 +195,14 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         default:                 return 0
       }
     })
+
+  // 試合一覧専用ローカル期間フィルタ。グローバル filter + これ で表示行を絞る。
+  // 他セクション (KPI / グラフ / advice) には影響しない (= sort/filter とは独立)。
+  const displayMatches = filteredMatches.filter((m) => {
+    if (mlFrom && (m.date ?? '') < mlFrom) return false
+    if (mlTo && (m.date ?? '') > mlTo) return false
+    return true
+  })
 
   const endTypeData = descriptive
     ? Object.entries(descriptive.end_type_distribution).map(([key, count]) => ({
@@ -388,13 +400,41 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       {/* データ品質概況 */}
       <ConfidenceCalibration playerId={playerId} />
 
-      {/* 試合一覧テーブル */}
+      {/* 試合一覧テーブル (最下部に配置) — 全試合数百件規模になると下のスコア推移
+         に届かなくなるため、概要タブの最下部へ移動 (2026-05-19)。
+         また期間フィルタ (mlFrom/mlTo) をこのセクション専用に持ち、ほかの
+         KPI / グラフ / advice には影響しない (sort も同様にローカル)。 */}
       <div className={`${card} rounded-lg p-4`}>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <SectionTitle>{t('auto.DashboardOverviewPage.k12')}</SectionTitle>
-          <span className={`text-xs ${textMuted}`}>{filteredMatches.length} / {matches.length} 試合</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className={`text-[10px] ${textMuted}`}>表示期間 (このリストのみ):</label>
+            <input
+              type="date"
+              value={mlFrom}
+              onChange={(e) => setMlFrom(e.target.value)}
+              className={`text-[11px] rounded px-1.5 py-0.5 ${isLight ? 'bg-white border border-gray-300 text-gray-900' : 'bg-gray-700 border border-gray-600 text-gray-100'}`}
+            />
+            <span className={`text-[10px] ${textMuted}`}>〜</span>
+            <input
+              type="date"
+              value={mlTo}
+              onChange={(e) => setMlTo(e.target.value)}
+              className={`text-[11px] rounded px-1.5 py-0.5 ${isLight ? 'bg-white border border-gray-300 text-gray-900' : 'bg-gray-700 border border-gray-600 text-gray-100'}`}
+            />
+            {(mlFrom || mlTo) && (
+              <button
+                type="button"
+                onClick={() => { setMlFrom(''); setMlTo('') }}
+                className={`text-[10px] underline ${textMuted}`}
+              >
+                クリア
+              </button>
+            )}
+            <span className={`text-xs ${textMuted}`}>{displayMatches.length} / {matches.length} 試合</span>
+          </div>
         </div>
-        {loadingMatches ? <LoadingRow /> : filteredMatches.length === 0 ? (
+        {loadingMatches ? <LoadingRow /> : displayMatches.length === 0 ? (
           <p className={`${textMuted} text-sm text-center py-4`}>
             {matches.length > 0 ? 'フィルター条件に一致する試合がありません' : 'データなし'}
           </p>
@@ -402,7 +442,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
           <>
             {/* モバイル: カードリスト (md 未満)。情報量は維持しつつ縦並びで横スクロール回避 */}
             <ul className="md:hidden space-y-2">
-              {filteredMatches.map((m) => (
+              {displayMatches.map((m) => (
                 <li
                   key={m.match_id}
                   onClick={() => setSelectedMatchId(m.match_id)}
@@ -453,7 +493,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredMatches.map((m) => (
+                  {displayMatches.map((m) => (
                     <tr
                       key={m.match_id}
                       className={`border-b ${isLight ? 'border-gray-100 hover:bg-gray-50' : 'border-gray-700/50 hover:bg-gray-700/30'} transition-colors cursor-pointer`}
