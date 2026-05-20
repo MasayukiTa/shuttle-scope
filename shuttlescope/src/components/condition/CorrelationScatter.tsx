@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { useCorrelation } from '@/hooks/useConditionAnalytics'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { catColor } from '@/styles/categoricalPalette'
 
 // 相関散布図（coach/analyst 専用）
 // x/y: コンディション指標または試合指標キー
@@ -110,7 +111,7 @@ export function CorrelationScatter({ playerId, isLight }: Props) {
                     fontSize: 12,
                   }}
                 />
-                <Scatter data={points} fill="#3b82f6" />
+                <Scatter data={points} fill={catColor('Cool', isLight)} />
               </ScatterChart>
             </ResponsiveContainer>
           </div>

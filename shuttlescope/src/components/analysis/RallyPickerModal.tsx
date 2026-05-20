@@ -13,6 +13,7 @@ import { X } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { catColor } from '@/styles/categoricalPalette'
 
 interface RallyPoint {
   rally_num: number
@@ -154,18 +155,18 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
                   {selectedRallyNum != null && (currentSet?.set_num ?? activeSet) === activeSet && (
                     <ReferenceLine
                       x={selectedRallyNum}
-                      stroke="#f59e0b"
+                      stroke={catColor('Amber', isLight)}
                       strokeWidth={2}
-                      label={{ value: `R.${selectedRallyNum}`, fill: '#f59e0b', fontSize: 10, position: 'top' }}
+                      label={{ value: `R.${selectedRallyNum}`, fill: catColor('Amber', isLight), fontSize: 10, position: 'top' }}
                     />
                   )}
                   {currentSet?.momentum_changes.map((rn) => (
-                    <ReferenceLine key={rn} x={rn} stroke="#f59e0b" strokeDasharray="4 2" strokeWidth={1} />
+                    <ReferenceLine key={rn} x={rn} stroke={catColor('Amber', isLight)} strokeDasharray="4 2" strokeWidth={1} />
                   ))}
                   <Line
                     type="monotone"
                     dataKey="point_diff"
-                    stroke="#3b82f6"
+                    stroke={catColor('Cool', isLight)}
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 5, fill: '#60a5fa', stroke: '#ffffff', strokeWidth: 1.5 }}

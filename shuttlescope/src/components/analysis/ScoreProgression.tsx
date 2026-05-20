@@ -16,6 +16,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { catColor } from '@/styles/categoricalPalette'
 
 interface ScoreProgressionProps {
   matchId: number
@@ -285,12 +286,12 @@ export function ScoreProgression({ matchId, onSetPointClick, initialSet }: Score
             <Tooltip content={<CustomTooltip />} />
             {/* 0点ライン — 中間グレーで明暗どちらの背景でも視認できる */}
             <ReferenceLine y={0} stroke="#6b7280" strokeWidth={2} strokeDasharray="none" />
-            {/* モメンタム変化点 */}
+            {/* モメンタム変化点 — Amber (caution-ish reference line) */}
             {currentSet.momentum_changes.map((rallyNum) => (
               <ReferenceLine
                 key={rallyNum}
                 x={rallyNum}
-                stroke="#f59e0b"
+                stroke={catColor('Amber', isLight)}
                 strokeDasharray="4 2"
                 strokeWidth={1}
               />
@@ -298,10 +299,10 @@ export function ScoreProgression({ matchId, onSetPointClick, initialSet }: Score
             <Line
               type="monotone"
               dataKey="point_diff"
-              stroke="#3b82f6"
+              stroke={catColor('Cool', isLight)}
               strokeWidth={2}
               dot={false}
-              activeDot={{ r: 4, fill: '#60a5fa' }}
+              activeDot={{ r: 4, fill: catColor('Cool', isLight) }}
               name={t('analysis.score_progression.point_diff')}
             />
           </LineChart>

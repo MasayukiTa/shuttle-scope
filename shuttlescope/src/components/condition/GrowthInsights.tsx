@@ -8,6 +8,7 @@ import { ChevronDown, ChevronUp, Info } from 'lucide-react'
 import { useInsights } from '@/hooks/useConditionAnalytics'
 import type { GrowthCard } from '@/hooks/useConditionAnalytics'
 import { useAuth } from '@/hooks/useAuth'
+import { catColor } from '@/styles/categoricalPalette'
 
 interface Props {
   playerId: number
@@ -245,7 +246,7 @@ export function GrowthInsights({ playerId, isLight }: Props) {
                             fontSize: 11,
                           }}
                         />
-                        <Line type="monotone" dataKey="value" stroke="#3b82f6" dot={false} strokeWidth={2} />
+                        <Line type="monotone" dataKey="value" stroke={catColor('Cool', isLight)} dot={false} strokeWidth={2} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
