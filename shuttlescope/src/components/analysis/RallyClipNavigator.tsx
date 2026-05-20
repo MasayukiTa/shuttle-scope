@@ -47,9 +47,13 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
   const [filterSetNum, setFilterSetNum] = useState<string>('')
   const [showFilters, setShowFilters] = useState(false)
 
-  // 動画 ref（親コンポーネントが <video> を持っている場合に使う代わりに
-  // ここで独立した <video> タグを管理する）
+  // 動画 ref。ポップアップ内 <video> を制御するために保持。
+  // 旧版は in-frame に video を埋め込んでいたが、フレームサイズ依存で
+  // 全画面切替時にエラーが頻発するため、オーバーレイポップアップ方式に変更
+  // (2026-05-19、YouTube ポップアップに倣う構造)。
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  // ポップアップ表示状態 + 開いたときに jump する rally timestamp
+  const [popupRally, setPopupRally] = useState<PlaylistRally | null>(null)
   const [currentRallyId, setCurrentRallyId] = useState<number | null>(null)
 
   const { data, isLoading } = useQuery({
@@ -74,9 +78,45 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
 
   function jumpTo(rally: PlaylistRally) {
     setCurrentRallyId(rally.id)
-    if (!videoRef.current || rally.video_timestamp_start == null) return
-    videoRef.current.currentTime = rally.video_timestamp_start
-    videoRef.current.play().catch(() => {})
+    // ポップアップ表示で再生する。動画パスが無いラリーは popup は開かない。
+    if (rally.video_timestamp_start != null && hasVideo) {
+      setPopupRally(rally)
+    }
+  }
+
+  // popup 内 video が mount したら timestamp に seek + 再生
+  function onPopupVideoMount(el: HTMLVideoElement | null) {
+    videoRef.current = el
+    if (el && popupRally?.video_timestamp_start != null) {
+      try {
+        el.currentTime = popupRally.video_timestamp_start
+        void el.play().catch(() => { /* autoplay 失敗は無視、ユーザクリックで再生 */ })
+      } catch { /* ignore */ }
+    }
+  }
+
+  // popup 内で次/前ラリーへ
+  function popupNext() {
+    if (!popupRally) return
+    const idx = rallies.findIndex((r) => r.id === popupRally.id)
+    for (let i = idx + 1; i < rallies.length; i++) {
+      if (rallies[i].video_timestamp_start != null) {
+        setPopupRally(rallies[i])
+        setCurrentRallyId(rallies[i].id)
+        return
+      }
+    }
+  }
+  function popupPrev() {
+    if (!popupRally) return
+    const idx = rallies.findIndex((r) => r.id === popupRally.id)
+    for (let i = idx - 1; i >= 0; i--) {
+      if (rallies[i].video_timestamp_start != null) {
+        setPopupRally(rallies[i])
+        setCurrentRallyId(rallies[i].id)
+        return
+      }
+    }
   }
 
   const setNums = [...new Set(rallies.map((r) => r.set_num))].sort((a, b) => a - b)
@@ -169,26 +209,19 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
         </div>
       )}
 
-      {/* 動画プレイヤー（動画あるとき） */}
-      {hasVideo && (
-        <div className={`px-4 pt-3 pb-1`}>
-          <video
-            ref={videoRef}
-            src={videoPath}
-            controls
-            className="w-full rounded max-h-56 bg-black"
-            style={{ outline: 'none' }}
-          />
-          {currentRallyId != null && (() => {
-            const r = rallies.find((x) => x.id === currentRallyId)
-            return r ? (
-              <p className={`text-[10px] mt-1 ${textMuted}`}>
-                Set {r.set_num} — R.{r.rally_num}（{r.score_a_before}–{r.score_b_before}）
-              </p>
-            ) : null
-          })()}
-        </div>
-      )}
+      {/* 動画プレイヤーはオーバーレイポップアップで表示する (この位置では in-frame
+         レンダしない)。フレーム内 video は全画面切替・サイズ変化でエラーが
+         多発したため (YouTube ポップアップに倣う)。
+         ポップアップは render 関数末尾で fixed inset-0 overlay として描画。 */}
+      {hasVideo && currentRallyId != null && (() => {
+        const r = rallies.find((x) => x.id === currentRallyId)
+        return r ? (
+          <div className={`px-4 pt-3 pb-1 text-[11px] ${textMuted}`}>
+            選択中: Set {r.set_num} R.{r.rally_num} ({r.score_a_before}–{r.score_b_before})
+            {r.video_timestamp_start != null && ' — クリックでポップアップ再生'}
+          </div>
+        ) : null
+      })()}
 
       {/* ラリーリスト */}
       <div className="overflow-y-auto" style={{ maxHeight: '320px' }}>
@@ -285,6 +318,58 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
           <span>{rallies.filter((r) => r.video_timestamp_start != null).length} 件にタイムスタンプあり</span>
         )}
       </div>
+
+      {/* オーバーレイポップアップ: 動画を全画面に近い大きさで再生。
+         フレーム内 embed と違いサイズ変化やレイアウト依存エラーが起きない。
+         背景クリック / ✕ / Esc で閉じる。 */}
+      {popupRally && hasVideo && (
+        <div
+          className="fixed inset-0 z-[300] bg-black/85 flex items-center justify-center p-4"
+          onClick={() => setPopupRally(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setPopupRally(null) }}
+          tabIndex={-1}
+        >
+          <div
+            className="w-full max-w-5xl bg-black rounded-lg overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-900 text-gray-100">
+              <span className="text-sm font-medium">
+                Set {popupRally.set_num} — R.{popupRally.rally_num} ({popupRally.score_a_before}–{popupRally.score_b_before})
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={popupPrev}
+                  className="px-2 py-1 text-xs rounded hover:bg-gray-700 disabled:opacity-30"
+                  title="前のラリー"
+                >‹ 前</button>
+                <button
+                  type="button"
+                  onClick={popupNext}
+                  className="px-2 py-1 text-xs rounded hover:bg-gray-700 disabled:opacity-30"
+                  title="次のラリー"
+                >次 ›</button>
+                <button
+                  type="button"
+                  onClick={() => setPopupRally(null)}
+                  className="px-2 py-1 text-sm rounded hover:bg-gray-700"
+                  title="閉じる (Esc)"
+                >✕</button>
+              </div>
+            </div>
+            <video
+              key={popupRally.id /* rally 切替で video element を作り直して seek を確実に */}
+              ref={onPopupVideoMount}
+              src={videoPath}
+              controls
+              autoPlay
+              className="w-full bg-black"
+              style={{ maxHeight: '75vh', outline: 'none' }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
