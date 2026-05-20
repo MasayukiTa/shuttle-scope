@@ -160,21 +160,42 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                     )
                   }
 
+                  // 詳細説明: target_mean / rest_mean / direction から自動生成
+                  // (それっぽい文言ではなく実数値ベース)。サンプル数下限を満たさない
+                  // factor は文章を出さず数値だけ並べる。
+                  const targetMean = (f as { target_mean?: number | null }).target_mean ?? null
+                  const restMean = (f as { rest_mean?: number | null }).rest_mean ?? null
+                  const direction = (f as { direction?: string | null }).direction ?? null
+                  const showDetail = targetMean != null && restMean != null && Math.abs(targetMean - restMean) > 0.01
+                  let detailText: string | null = null
+                  if (showDetail) {
+                    const isHigherBetter = direction === 'higher_when_winning'
+                    const winSide = isHigherBetter ? '高い' : '低い'
+                    const diffPp = Math.abs(targetMean - restMean).toFixed(1)
+                    detailText = `勝った試合では ${targetMean.toFixed(1)}${unit}、負けた試合では ${restMean.toFixed(1)}${unit}（差 ${diffPp}${unit}、勝つときの方が${winSide}）。`
+                  }
+
                   return (
-                    <li key={f.key} className={`flex items-center gap-2 py-1.5 ${sepColor}`}>
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-pink-500 shrink-0" />
-                      <span className={`text-xs font-medium ${textStrong} shrink-0`}>{label}</span>
-                      {cur != null && (
-                        <span className={`text-xs font-mono ${textMuted} shrink-0`}>
-                          <strong>{cur.toFixed(1)}{unit}</strong>
-                        </span>
+                    <li key={f.key} className={`py-1.5 ${sepColor}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs font-medium ${textStrong} shrink-0`}>{label}</span>
+                        {cur != null && (
+                          <span className={`text-xs font-mono ${textMuted} shrink-0`}>
+                            現在 <strong>{cur.toFixed(1)}{unit}</strong>
+                          </span>
+                        )}
+                        {targetRange && (
+                          <span className={`text-[11px] font-mono ${textMuted} shrink-0`}>
+                            目標 [{targetRange}]
+                          </span>
+                        )}
+                        {gapNode && <span className="text-xs shrink-0">{gapNode}</span>}
+                      </div>
+                      {detailText && (
+                        <div className={`text-[11px] mt-0.5 leading-snug ${textMuted}`}>
+                          {detailText}
+                        </div>
                       )}
-                      {targetRange && (
-                        <span className={`text-[11px] font-mono ${textMuted} shrink-0`}>
-                          [{targetRange}]
-                        </span>
-                      )}
-                      {gapNode && <span className="text-xs shrink-0">{gapNode}</span>}
                     </li>
                   )
                 })}

@@ -13,6 +13,7 @@ import {
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import { mean, sampleStd } from '@/utils/stats'
+import { catColor } from '@/styles/categoricalPalette'
 
 // 変動係数ランキング (coach / analyst 限定)
 // 対象列ごとに CV(=SD/Mean) と週次差分 SD を算出し、横棒グラフで並び替える。
@@ -111,8 +112,9 @@ export function ConditionVolatilityRanking({ playerId, isLight }: Props) {
   const gridColor = isLight ? '#e5e7eb' : '#374151'
   const tickColor = isLight ? '#374151' : '#9ca3af'
 
-  const cvColor = '#3b82f6'
-  const diffColor = '#f59e0b'
+  // Design Language §6: helper 経由のみ。CV = Cool (主指標)、差分 = Amber。
+  const cvColor = catColor('Cool', isLight)
+  const diffColor = catColor('Amber', isLight)
 
   const cvData = rows.map((r) => ({
     label: r.label,
