@@ -546,9 +546,15 @@ export function LineupOptimizerPanel({ players, role }: Props) {
           className={inputClass}
         >
           <option value="">{t('prediction.select_level')}</option>
-          {LEVEL_OPTIONS.filter(Boolean).map((lv) => (
-            <option key={lv} value={lv}>{lv}</option>
-          ))}
+          {LEVEL_OPTIONS.filter(Boolean).map((lv) => {
+            const map: Record<string, [string, string]> = {
+              '全日本': ['tournament.national', '全日本'],
+              '国内':   ['tournament.domestic', '国内'],
+              'その他': ['tournament.other',    'その他'],
+            }
+            const hit = map[lv]
+            return <option key={lv} value={lv}>{hit ? t(hit[0], hit[1]) : lv}</option>
+          })}
         </select>
       </div>
 
@@ -562,7 +568,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
       </button>
       {!canRun && (
         <p className="text-[11px]" style={{ color: subText }}>
-          2名以上の選手を選択してください
+          {t('lineup.select_at_least_two', 'Please select at least 2 players')}
         </p>
       )}
 

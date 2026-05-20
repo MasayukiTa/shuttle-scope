@@ -80,7 +80,9 @@
   "roles": {
     "analyst": "Analyst",
     "coach": "Coach",
-    "player": "Player"
+    "player": "Player",
+    "admin": "Admin",
+    "operator": "Operator"
   },
   "auth": {
     "subtitle": "Please log in",
@@ -843,7 +845,15 @@
         "muscle_mass_kg": "Muscle mass (kg)",
         "body_fat_pct": "Body fat (%)"
       }
-    }
+    },
+    "consent_update_failed": "Failed to update consent",
+    "body_disclose_title": "Body composition data (weight / body fat / muscle mass etc.) disclosure",
+    "body_disclose_help": "By default only you and the admin (developer) can view this. Toggle the switches below to share with analyst / coach. You can withdraw at any time.",
+    "body_disclose_to_analyst": "Disclose to analyst",
+    "body_disclose_to_coach": "Disclose to coach (default OFF)",
+    "player_only_input": "Only accounts linked to a player record can submit",
+    "glossary_tooltip": "Definitions for CCS / F1–F5 / Hooper Sleep / RPE etc.",
+    "glossary_btn": "Glossary"
   },
   "research": {
     "epv_state": "State-conditioned EPV",
@@ -1816,7 +1826,10 @@
     "benchmark_advantage": "Model advantage",
     "benchmark_human": "Human",
     "benchmark_model": "Model",
-    "benchmark_no_data": "No benchmark data (enter pre-match forecasts)"
+    "benchmark_no_data": "No benchmark data (enter pre-match forecasts)",
+    "impact_high": "High",
+    "impact_mid": "Mid",
+    "impact_low": "Low"
   },
   "observation_analytics": {
     "title": "Auxiliary observation insights",
@@ -3119,5 +3132,74 @@
       "error_required_missing": "Please check all mandatory items",
       "error_submit": "Failed to submit consents"
     }
+  },
+  "common": {
+    "search_placeholder": "Search...",
+    "select_placeholder": "— Select —",
+    "no_matches": "No matches",
+    "no_options": "No options",
+    "select_player": "Select player",
+    "select_match": "Select match",
+    "close": "Close",
+    "player": "Player",
+    "loading": "Loading...",
+    "please_select_player": "Please select a player",
+    "win_short": "W",
+    "lose_short": "L",
+    "unknown_date": "Date unknown",
+    "all_time": "All time",
+    "recent_n_matches": "Recent {{count}} matches",
+    "opponent": "Opponent"
+  },
+  "advice": {
+    "confidence_high": "Confidence: High",
+    "confidence_medium": "Confidence: Medium",
+    "confidence_low": "Confidence: Low",
+    "calculating": "Calculating advice…",
+    "measuring_title": "Advice is being measured",
+    "measuring_body": "Concrete observations will appear once enough data is collected. We do not show guess-based comments before then (reliability first).",
+    "hide_basis": "Hide basis",
+    "show_basis": "ⓘ Basis"
+  },
+  "shot_end_type": {
+    "ace": "Ace",
+    "forced_error": "Forced error",
+    "unforced_error": "Unforced error",
+    "net_error": "Net error",
+    "net": "Net error",
+    "out": "Out",
+    "winner": "Winner",
+    "cant_reach": "Out of reach"
+  },
+  "chart": {
+    "count": "Count",
+    "shots": "Shots"
+  },
+  "shotmap": {
+    "hit_point": "Hit point",
+    "land_point": "Land point"
+  },
+  "stats": {
+    "match_count": "Matches",
+    "rally_count": "Rallies",
+    "win_rate": "Win rate",
+    "avg_rally_len": "Avg rally length"
+  },
+  "tournament": {
+    "national": "All Japan",
+    "domestic": "Domestic",
+    "other": "Other"
+  },
+  "lineup": {
+    "select_at_least_two": "Please select at least 2 players"
+  },
+  "live": {
+    "all_rallies_pick_from_chart": "All rallies (pick from chart)",
+    "pick_to_see_advice": "Pick a match and player to see live advice"
+  },
+  "advanced": {
+    "manual_override_notice": "Manual Override is set on {{count}} analyses",
+    "hold_count": "Hold: {{count}}",
+    "see_research_for_detail": "See Research tab for detail"
   }
 }

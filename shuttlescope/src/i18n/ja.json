@@ -87,7 +87,9 @@
   "roles": {
     "analyst": "アナリスト",
     "coach": "コーチ",
-    "player": "選手"
+    "player": "選手",
+    "admin": "管理者",
+    "operator": "運用"
   },
   "auth": {
     "subtitle": "ログインしてください",
@@ -852,7 +854,15 @@
         "muscle_mass_kg": "筋肉量 (kg)",
         "body_fat_pct": "体脂肪率 (%)"
       }
-    }
+    },
+    "consent_update_failed": "同意の更新に失敗しました",
+    "body_disclose_title": "体組成データ (体重・体脂肪率・筋肉量等) の開示設定",
+    "body_disclose_help": "通常は本人と開発者 (admin) のみが閲覧可能です。アナリスト / コーチに開示する場合は下のスイッチを ON にしてください。いつでも撤回できます。",
+    "body_disclose_to_analyst": "アナリストに開示する",
+    "body_disclose_to_coach": "コーチに開示する (default OFF)",
+    "player_only_input": "選手レコードに紐付いたアカウントでのみ入力できます",
+    "glossary_tooltip": "CCS / F1〜F5 / Hooper Sleep / RPE 等の用語解説",
+    "glossary_btn": "用語解説"
   },
   "research": {
     "epv_state": "状態別EPV",
@@ -2087,7 +2097,10 @@
     "benchmark_advantage": "モデル優位",
     "benchmark_human": "人間",
     "benchmark_model": "モデル",
-    "benchmark_no_data": "ベンチマークデータなし（試合前予測を入力してください）"
+    "benchmark_no_data": "ベンチマークデータなし（試合前予測を入力してください）",
+    "impact_high": "高",
+    "impact_mid": "中",
+    "impact_low": "低"
   },
   "observation_analytics": {
     "title": "補助観察インサイト",
@@ -3454,6 +3467,72 @@
     }
   },
   "common": {
-    "loading": "読み込み中..."
+    "loading": "読み込み中...",
+    "search_placeholder": "検索...",
+    "select_placeholder": "— 選択 —",
+    "no_matches": "該当なし",
+    "no_options": "選択肢がありません",
+    "select_player": "選手を選択",
+    "select_match": "試合を選択",
+    "close": "閉じる",
+    "player": "選手",
+    "please_select_player": "選手を選択してください",
+    "win_short": "勝",
+    "lose_short": "負",
+    "unknown_date": "日付不明",
+    "all_time": "全期間",
+    "recent_n_matches": "直近{{count}}試合",
+    "opponent": "相手"
+  },
+  "advice": {
+    "confidence_high": "信頼度: 高",
+    "confidence_medium": "信頼度: 中",
+    "confidence_low": "信頼度: 低",
+    "calculating": "アドバイスを計算しています…",
+    "measuring_title": "アドバイスは計測中です",
+    "measuring_body": "データが揃い次第、具体的な観測を表示します。それまで推測ベースのコメントは出しません (信頼性最優先)。",
+    "hide_basis": "根拠を隠す",
+    "show_basis": "ⓘ 根拠"
+  },
+  "shot_end_type": {
+    "ace": "エース",
+    "forced_error": "強制エラー",
+    "unforced_error": "非強制エラー",
+    "net_error": "ネットエラー",
+    "net": "ネットエラー",
+    "out": "アウト",
+    "winner": "ウィナー",
+    "cant_reach": "届かず"
+  },
+  "chart": {
+    "count": "件数",
+    "shots": "打数"
+  },
+  "shotmap": {
+    "hit_point": "打点",
+    "land_point": "着地点"
+  },
+  "stats": {
+    "match_count": "試合数",
+    "rally_count": "ラリー数",
+    "win_rate": "勝率",
+    "avg_rally_len": "平均ラリー長"
+  },
+  "tournament": {
+    "national": "全日本",
+    "domestic": "国内",
+    "other": "その他"
+  },
+  "lineup": {
+    "select_at_least_two": "2名以上の選手を選択してください"
+  },
+  "live": {
+    "all_rallies_pick_from_chart": "全ラリー（グラフから選択）",
+    "pick_to_see_advice": "試合と選手を選択すると速報アドバイスが表示されます"
+  },
+  "advanced": {
+    "manual_override_notice": "{{count}}件の分析に手動 Override が設定されています",
+    "hold_count": "保留 {{count}}件",
+    "see_research_for_detail": "Research タブで詳細確認"
   }
 }

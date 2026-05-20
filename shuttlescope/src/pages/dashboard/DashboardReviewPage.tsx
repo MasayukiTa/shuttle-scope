@@ -57,8 +57,8 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
 
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
-    label: `${m.date ?? '日付不明'} vs ${m.opponent}`,
-    suffix: m.result === 'win' ? '勝' : '負',
+    label: `${m.date ?? t('common.unknown_date', 'Date unknown')} vs ${m.opponent}`,
+    suffix: m.result === 'win' ? t('common.win_short', 'W') : t('common.lose_short', 'L'),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament}`,
   }))
 
@@ -136,7 +136,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
                 options={matchOptions}
                 value={selectedMatchId}
                 onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
-                emptyLabel="— 試合を選択 —"
+                emptyLabel={t('common.select_match', 'Select match')}
                 placeholder={t('auto.DashboardReviewPage.k4')}
                 className="w-full sm:max-w-[260px]"
               />
@@ -159,7 +159,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
           {selectedMatchId ? (
             <RallyClipNavigator
               matchId={selectedMatchId}
-              playerAName="選手"
+              playerAName={t('common.player', 'Player')}
               playerBName={matches.find((m) => m.match_id === selectedMatchId)?.opponent ?? 'B'}
             />
           ) : (
@@ -198,7 +198,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
         <ErrorBoundary>
           <SetIntervalSummary
             setId={pointAnalysis.setId}
-            playerAName="選手"
+            playerAName={t('common.player', 'Player')}
             playerBName={matches.find((m) => m.match_id === selectedMatchId)?.opponent ?? 'B'}
             onClose={() => setPointAnalysis(null)}
             onNextSet={() => setPointAnalysis(null)}
@@ -207,7 +207,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
             midGameScoreB={pointAnalysis.scoreB}
             maxRallyNum={pointAnalysis.rallyNum}
             titleOverride={`Set ${pointAnalysis.setNum} 途中解析（ラリー ${pointAnalysis.rallyNum}）`}
-            closeLabel="閉じる"
+            closeLabel={t('common.close', 'Close')}
             rally={pointAnalysis.rally}
             setRallies={pointAnalysis.setRallies}
           />

@@ -58,6 +58,7 @@ type InputMode = 'weekly' | 'prematch' | 'body'
  * に書き込み。 default OFF。
  */
 function BodyDataConsentToggles() {
+  const { t } = useTranslation()
   const { theme } = useTheme()
   const isLight = theme === 'light'
   const queryClient = useQueryClient()
@@ -93,7 +94,7 @@ function BodyDataConsentToggles() {
     } catch (e) {
       // backend が version mismatch (409) 等を返す場合はユーザに知らせる
       // eslint-disable-next-line no-alert
-      alert(`同意の更新に失敗しました: ${String(e).slice(0, 200)}`)
+      alert(`${t('condition.consent_update_failed', 'Failed to update consent')}: ${String(e).slice(0, 200)}`)
     }
   }
 
@@ -103,12 +104,12 @@ function BodyDataConsentToggles() {
         isLight ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-blue-900/20 border-blue-700/40 text-blue-200'
       }`}
     >
-      <div className="font-semibold mb-1.5">体組成データ (体重・体脂肪率・筋肉量等) の開示設定</div>
+      <div className="font-semibold mb-1.5">{t('condition.body_disclose_title', 'Body composition data (weight / body fat / muscle mass etc.) disclosure')}</div>
       <div className="opacity-80 mb-2 leading-relaxed">
-        通常は本人と開発者 (admin) のみが閲覧可能です。アナリスト / コーチに開示する場合は下のスイッチを ON にしてください。いつでも撤回できます。
+        {t('condition.body_disclose_help', 'By default only you and the admin (developer) can view this. Toggle the switches below to share with analyst / coach. You can withdraw at any time.')}
       </div>
       {isLoading ? (
-        <div className="opacity-60">読み込み中…</div>
+        <div className="opacity-60">{t('common.loading', 'Loading...')}</div>
       ) : (
         <div className="space-y-1.5">
           <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -117,7 +118,7 @@ function BodyDataConsentToggles() {
               checked={analystOn}
               onChange={(e) => submit('body_disclose_to_analyst', e.target.checked)}
             />
-            <span>アナリストに開示する</span>
+            <span>{t('condition.body_disclose_to_analyst', 'Disclose to analyst')}</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
@@ -125,7 +126,7 @@ function BodyDataConsentToggles() {
               checked={coachOn}
               onChange={(e) => submit('body_disclose_to_coach', e.target.checked)}
             />
-            <span>コーチに開示する (default OFF)</span>
+            <span>{t('condition.body_disclose_to_coach', 'Disclose to coach (default OFF)')}</span>
           </label>
         </div>
       )}
@@ -197,7 +198,7 @@ export function ConditionPage() {
     setSuccessMsg(null)
     // 入力は常にログインユーザ自身 (authPlayerId)。代理入力は不可。
     if (!authPlayerId) {
-      setErrorMsg('選手レコードに紐付いたアカウントでのみ入力できます')
+      setErrorMsg(t('condition.player_only_input', 'Only accounts linked to a player record can submit'))
       return
     }
     const err = validate()
@@ -258,11 +259,11 @@ export function ConditionPage() {
           <button
             type="button"
             onClick={() => setGlossaryOpen(true)}
-            title="CCS / F1〜F5 / Hooper Sleep / RPE 等の用語解説"
+            title={t('condition.glossary_tooltip', 'Definitions for CCS / F1–F5 / Hooper Sleep / RPE etc.')}
             className={`ml-auto inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border ${isLight ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700'}`}
           >
             <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border" style={{ borderColor: isLight ? '#94a3b8' : '#94a3b8' }}>?</span>
-            用語解説
+            {t('condition.glossary_btn', 'Glossary')}
           </button>
         </div>
 
@@ -304,7 +305,7 @@ export function ConditionPage() {
               }))}
               value={selectedPlayerId}
               onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
-              emptyLabel="— 選手を選択 —"
+              emptyLabel={t('common.select_player', 'Select player')}
               placeholder={t('auto.ConditionPage.k2')}
               className="w-full sm:min-w-[280px] sm:max-w-md"
             />

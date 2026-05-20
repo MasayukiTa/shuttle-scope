@@ -59,16 +59,8 @@ interface MatchSummary {
   set_scores: SetScore[]
 }
 
-const END_TYPE_LABELS: Record<string, string> = {
-  ace: 'エース',
-  forced_error: '強制エラー',
-  unforced_error: '非強制エラー',
-  net_error: 'ネットエラー',
-  net: 'ネットエラー',
-  out: 'アウト',
-  winner: 'ウィナー',
-  cant_reach: '届かず',
-}
+// END_TYPE_LABELS は t('shot_end_type.<key>') で参照する (関数経由で動的に解決)
+const END_TYPE_KEYS = ['ace', 'forced_error', 'unforced_error', 'net_error', 'net', 'out', 'winner', 'cant_reach'] as const
 
 function pct(value: number) {
   return `${(value * 100).toFixed(1)}%`
@@ -206,15 +198,15 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
 
   const endTypeData = descriptive
     ? Object.entries(descriptive.end_type_distribution).map(([key, count]) => ({
-        name: END_TYPE_LABELS[key] ?? key,
+        name: t(`shot_end_type.${key}`, key),
         count,
       }))
     : []
 
   const matchOptions = matches.map((m) => ({
     value: m.match_id,
-    label: `${m.date ?? '日付不明'} vs ${m.opponent}`,
-    suffix: [m.tournament_level, m.result === 'win' ? '勝' : '負'].filter(Boolean).join(' '),
+    label: `${m.date ?? t('common.unknown_date', '日付不明')} vs ${m.opponent}`,
+    suffix: [m.tournament_level, m.result === 'win' ? t('common.win_short', '勝') : t('common.lose_short', '負')].filter(Boolean).join(' '),
     searchText: `${m.date ?? ''} ${m.opponent} ${m.tournament} ${m.tournament_level}`,
   }))
 
@@ -253,7 +245,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   <XAxis type="number" tick={{ fill: AXIS_TICK, fontSize: 11 }} />
                   <YAxis type="category" dataKey="name" width={80} tick={{ fill: AXIS_TICK, fontSize: 11 }} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)' }} />
-                  <Bar dataKey="count" fill={BAR} radius={[0, 3, 3, 0]} name="件数" />
+                  <Bar dataKey="count" fill={BAR} radius={[0, 3, 3, 0]} name={t('chart.count', 'Count')} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -278,10 +270,10 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   data={descriptive.rally_length_histogram.filter((d) => d.length <= 20).map((d) => ({ name: String(d.length), count: d.count }))}
                   margin={{ top: 0, right: 8, left: 0, bottom: 0 }}
                 >
-                  <XAxis dataKey="name" tick={{ fill: AXIS_TICK, fontSize: 11 }} label={{ value: '打数', position: 'insideBottomRight', offset: -4, fill: AXIS_TICK, fontSize: 10 }} />
+                  <XAxis dataKey="name" tick={{ fill: AXIS_TICK, fontSize: 11 }} label={{ value: t('chart.shots', 'Shots'), position: 'insideBottomRight', offset: -4, fill: AXIS_TICK, fontSize: 10 }} />
                   <YAxis tick={{ fill: AXIS_TICK, fontSize: 11 }} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)' }} />
-                  <Bar dataKey="count" fill={BAR} radius={[3, 3, 0, 0]} name="件数" />
+                  <Bar dataKey="count" fill={BAR} radius={[3, 3, 0, 0]} name={t('chart.count', 'Count')} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -309,7 +301,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   onClick={() => setHeatmapTab(tab)}
                   className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${heatmapTab === tab ? (isLight ? 'bg-gray-400 text-white' : 'bg-gray-600 text-white') : (isLight ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600')}`}
                 >
-                  {tab === 'hit' ? '打点' : '着地点'}
+                  {tab === 'hit' ? t('shotmap.hit_point', 'Hit point') : t('shotmap.land_point', 'Land point')}
                 </button>
               ))}
             </div>
@@ -322,7 +314,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                     disabled={heatmapMatchId != null}
                     className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${heatmapMatchId == null && heatmapLastN === n ? (isLight ? 'bg-gray-400 border-gray-300 text-white' : 'bg-gray-500 border-gray-400 text-white') : (isLight ? 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-40' : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600 disabled:opacity-40')}`}
                   >
-                    {n == null ? '全期間' : `直近${n}試合`}
+                    {n == null ? t('common.all_time', 'All time') : t('common.recent_n_matches', { count: n, defaultValue: 'Recent {{count}} matches' })}
                   </button>
                 ))}
               </div>
@@ -418,7 +410,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               options={matchOptions}
               value={selectedMatchId}
               onChange={(v) => setSelectedMatchId(v != null ? Number(v) : null)}
-              emptyLabel="— 試合を選択 —"
+              emptyLabel={t('common.select_match', 'Select match')}
               placeholder={t('auto.DashboardOverviewPage.k21')}
               dropdownAlign="right"
               className="w-[210px]"
@@ -611,7 +603,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   <XAxis type="number" tick={{ fill: AXIS_TICK, fontSize: 13 }} />
                   <YAxis type="category" dataKey="name" width={100} tick={{ fill: AXIS_TICK, fontSize: 13 }} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Bar dataKey="count" fill={BAR} radius={[0, 4, 4, 0]} name="件数" />
+                  <Bar dataKey="count" fill={BAR} radius={[0, 4, 4, 0]} name={t('chart.count', 'Count')} />
                 </BarChart>
               </ResponsiveContainer>
             )
@@ -624,7 +616,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                   <XAxis dataKey="name" tick={{ fill: AXIS_TICK, fontSize: 13 }} />
                   <YAxis tick={{ fill: AXIS_TICK, fontSize: 13 }} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Bar dataKey="count" fill={BAR} radius={[4, 4, 0, 0]} name="件数" />
+                  <Bar dataKey="count" fill={BAR} radius={[4, 4, 0, 0]} name={t('chart.count', 'Count')} />
                 </BarChart>
               </ResponsiveContainer>
             )
@@ -673,7 +665,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         <ErrorBoundary>
           <SetIntervalSummary
             setId={pointAnalysis.setId}
-            playerAName="選手"
+            playerAName={t('common.player', 'Player')}
             playerBName={matches.find((m) => m.match_id === selectedMatchId)?.opponent ?? 'B'}
             onClose={() => setPointAnalysis(null)}
             onNextSet={() => setPointAnalysis(null)}
@@ -682,7 +674,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
             midGameScoreB={pointAnalysis.scoreB}
             maxRallyNum={pointAnalysis.rallyNum}
             titleOverride={`Set ${pointAnalysis.setNum} 途中解析（ラリー ${pointAnalysis.rallyNum}）`}
-            closeLabel="閉じる"
+            closeLabel={t('common.close', 'Close')}
             rally={pointAnalysis.rally}
             setRallies={pointAnalysis.setRallies}
           />

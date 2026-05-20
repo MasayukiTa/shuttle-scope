@@ -11,6 +11,7 @@
  *   ユーザは「ⓘ 根拠」リンクから根拠を辿れる。
  */
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 import { trackAnalysisInteraction } from '@/utils/analytics'
@@ -65,15 +66,15 @@ const SEVERITY_ICON_COLOR: Record<string, string> = {
   warning:  'text-amber-600 dark:text-amber-400', // CAUTION
 }
 
-const CONFIDENCE_LABEL: Record<string, string> = {
-  high: '信頼度: 高',
-  medium: '信頼度: 中',
-  low: '信頼度: 低',
-}
-
 export function AdviceStrip({
   context, playerId, matchId, opponentId, hideWhenInsufficient, className,
 }: Props) {
+  const { t } = useTranslation()
+  const CONFIDENCE_LABEL: Record<string, string> = {
+    high: t('advice.confidence_high', 'Confidence: High'),
+    medium: t('advice.confidence_medium', 'Confidence: Medium'),
+    low: t('advice.confidence_low', 'Confidence: Low'),
+  }
   const [resp, setResp] = useState<AdviceResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [showBasis, setShowBasis] = useState(false)
@@ -97,7 +98,7 @@ export function AdviceStrip({
       <div className={`rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2 ${className || ''}`}>
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <span className="inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-          アドバイスを計算しています…
+          {t('advice.calculating', 'Calculating advice…')}
         </div>
       </div>
     )
@@ -111,9 +112,9 @@ export function AdviceStrip({
         <div className="flex items-start gap-2">
           <MIcon name="analytics" size={14} className="text-gray-400 mt-0.5 shrink-0" />
           <div className="text-xs text-gray-600 dark:text-gray-300">
-            <div className="font-medium">アドバイスは計測中です</div>
+            <div className="font-medium">{t('advice.measuring_title', 'Advice is being measured')}</div>
             <div className="mt-0.5 text-gray-500 dark:text-gray-400">
-              {resp?.reason || 'データが揃い次第、具体的な観測を表示します。それまで推測ベースのコメントは出しません (信頼性最優先)。'}
+              {resp?.reason || t('advice.measuring_body', 'Concrete observations will appear once enough data is collected. We do not show guess-based comments before then (reliability first).')}
             </div>
           </div>
         </div>
@@ -141,7 +142,7 @@ export function AdviceStrip({
               }}
               className="underline hover:no-underline"
             >
-              {showBasis ? '根拠を隠す' : 'ⓘ 根拠'}
+              {showBasis ? t('advice.hide_basis', 'Hide basis') : t('advice.show_basis', 'ⓘ Basis')}
             </button>
             {a.cta && (
               <>

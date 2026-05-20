@@ -138,7 +138,7 @@ function PartnerRankingSection({
             }))}
             value={anchorId}
             onChange={(v) => { setAnchorId(v != null ? Number(v) : null); setRun(false) }}
-            emptyLabel="— 選手を選択 —"
+            emptyLabel={t('common.select_player', 'Select player')}
             placeholder={t('auto.PairSimulationPanel.k7')}
           />
         </div>

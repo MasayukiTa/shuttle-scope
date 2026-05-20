@@ -152,7 +152,7 @@ export function PredictionPage() {
               }))}
               value={selectedPlayerId}
               onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
-              emptyLabel="— 選手を選択 —"
+              emptyLabel={t('common.select_player', 'Select player')}
               placeholder={t('auto.PredictionPage.k5')}
               loading={loadingPlayers}
               className="min-w-[280px]"
@@ -204,9 +204,15 @@ export function PredictionPage() {
                   }`}
                 >
                   <option value="">{t('auto.PredictionPage.k4')}</option>
-                  {LEVEL_OPTIONS.map((lv) => (
-                    <option key={lv} value={lv}>{lv}</option>
-                  ))}
+                  {LEVEL_OPTIONS.map((lv) => {
+                    const map: Record<string, [string, string]> = {
+                      '全日本': ['tournament.national', '全日本'],
+                      '国内':   ['tournament.domestic', '国内'],
+                      'その他': ['tournament.other',    'その他'],
+                    }
+                    const hit = map[lv]
+                    return <option key={lv} value={lv}>{hit ? t(hit[0], hit[1]) : lv}</option>
+                  })}
                 </select>
               </div>
             </div>
@@ -308,7 +314,7 @@ export function PredictionPage() {
                   }))}
                   value={forecastMatchId}
                   onChange={(v) => setForecastMatchId(v != null ? Number(v) : null)}
-                  emptyLabel="— 試合を選択 —"
+                  emptyLabel={t('common.select_match', 'Select match')}
                   placeholder={t('auto.PredictionPage.k7')}
                   loading={forecastMatches.length === 0 && !!selectedPlayerId}
                 />

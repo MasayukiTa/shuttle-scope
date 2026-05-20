@@ -324,7 +324,7 @@ export function DashboardShell() {
               }))}
               value={selectedPlayerId}
               onChange={(v) => setSelectedPlayerId(v != null ? Number(v) : null)}
-              emptyLabel="— 選手を選択 —"
+              emptyLabel={t('common.select_player', 'Select player')}
               placeholder={t('auto.DashboardShell.k3')}
               loading={loadingPlayers}
               className="min-w-[280px]"
@@ -334,7 +334,7 @@ export function DashboardShell() {
 
         {!selectedPlayerId ? (
           <div className="flex min-h-[40vh] items-center justify-center text-gray-500 text-sm">
-            選手を選択してください
+            {t('common.please_select_player', '選手を選択してください')}
           </div>
         ) : (
           <>
