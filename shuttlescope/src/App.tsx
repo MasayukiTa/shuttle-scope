@@ -232,12 +232,8 @@ function Sidebar() {
           </button>
         </div>
 
-        {/* サイドバー下端のロール表示。AD 等の 2 文字略は「広告」と誤認されるので
-            i18n 経由でフル表記する。 */}
-        <div className={clsx('text-[9px] pb-2 text-center lg:text-left lg:px-3', isLight ? 'text-gray-500' : 'text-gray-500')}
-             title={role ? t('roles.' + role, role) : ''}>
-          {role ? t('roles.' + role, role) : ''}
-        </div>
+        {/* サイドバー下端のロール表示は廃止 (2 文字略は「広告」と誤読される。
+            フル表記する必要性も低いため UI には出さない方針)。 */}
       </div>
 
       {!isFullBleedPage && (
