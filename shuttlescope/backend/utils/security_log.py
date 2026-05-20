@@ -1,0 +1,107 @@
+"""security_events / request_logs への低レベル書き込みヘルパ。
+
+設計方針:
+  - 失敗しても上位処理を絶対に止めない (DB 落ち時も request は通る)
+  - 大量 row に耐えるよう、access_log.py の HMAC chain は使わない
+  - request_logs はホットパスから呼ばれるので合成 cost を最小化
+"""
+from __future__ import annotations
+
+import json
+import logging
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from backend.db.database import SessionLocal
+from backend.db.models import RequestLog, SecurityEvent
+
+
+_log = logging.getLogger("shuttlescope.security_log")
+
+
+def emit_security_event(
+    event_type: str,
+    *,
+    severity: str = "info",
+    ip_addr: Optional[str] = None,
+    user_id: Optional[int] = None,
+    path: Optional[str] = None,
+    method: Optional[str] = None,
+    ua: Optional[str] = None,
+    request_id: Optional[str] = None,
+    details: Optional[dict] = None,
+) -> None:
+    """security_events に 1 行追加。例外は飲み込んで stdlib log に流す。"""
+    try:
+        body = json.dumps(details or {}, ensure_ascii=False, separators=(",", ":"))[:4096]
+        db: Session = SessionLocal()
+        try:
+            row = SecurityEvent(
+                event_type=event_type[:40],
+                severity=severity[:10],
+                ip_addr=(ip_addr or "")[:64] or None,
+                user_id=user_id,
+                path=(path or "")[:512] or None,
+                method=(method or "")[:8] or None,
+                ua=(ua or "")[:255] or None,
+                request_id=(request_id or "")[:36] or None,
+                details=body,
+            )
+            db.add(row)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        _log.warning("emit_security_event failed: %s (event_type=%s)", exc, event_type)
+
+
+def emit_request_log(
+    *,
+    method: str,
+    path: str,
+    status: int,
+    duration_ms: int,
+    query: Optional[str] = None,
+    user_id: Optional[int] = None,
+    ip_addr: Optional[str] = None,
+    xff: Optional[str] = None,
+    ua: Optional[str] = None,
+    referer: Optional[str] = None,
+    request_id: Optional[str] = None,
+    bytes_in: Optional[int] = None,
+    bytes_out: Optional[int] = None,
+    cf_ray: Optional[str] = None,
+    country: Optional[str] = None,
+) -> None:
+    """request_logs に 1 行追加。例外は飲み込む。
+
+    現状: 同期 INSERT。 1M req/月 (≒ 25 req/min 平均) 程度なら問題なし。
+    その上の段階では asyncio.Queue + 背景 flush + COPY に置き換える (Round 2)。
+    """
+    try:
+        db: Session = SessionLocal()
+        try:
+            row = RequestLog(
+                method=method[:8],
+                path=(path or "")[:512],
+                query=(query or "")[:1024] or None,
+                status=int(status),
+                duration_ms=int(duration_ms),
+                user_id=user_id,
+                ip_addr=(ip_addr or "")[:64] or None,
+                xff=(xff or "")[:255] or None,
+                ua=(ua or "")[:255] or None,
+                referer=(referer or "")[:255] or None,
+                request_id=(request_id or "")[:36] or None,
+                bytes_in=bytes_in,
+                bytes_out=bytes_out,
+                cf_ray=(cf_ray or "")[:32] or None,
+                country=(country or "")[:2] or None,
+            )
+            db.add(row)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        _log.warning("emit_request_log failed: %s (path=%s)", exc, path)

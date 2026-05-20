@@ -2028,6 +2028,122 @@ def list_audit_logs(
     return {"success": True, "data": [e.model_dump() for e in entries]}
 
 
+@router.get("/audit-logs/request")
+def list_request_logs(
+    request: Request,
+    method: Optional[str] = None,
+    path_prefix: Optional[str] = None,
+    status_min: Optional[int] = None,
+    status_max: Optional[int] = None,
+    ip: Optional[str] = None,
+    user_id: Optional[int] = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。request_logs を新しい順に最大 limit 件返す。
+
+    Query:
+      - method: 'GET' / 'POST' 等の完全一致
+      - path_prefix: path LIKE 'prefix%'
+      - status_min / status_max: status 範囲 (例 400-599 でエラーのみ)
+      - ip: ip_addr の部分一致
+      - user_id: 該当 user_id
+      - limit: 1..5000 (default 200)
+    """
+    from backend.db.models import RequestLog
+    _require_admin(request)
+    limit = max(1, min(int(limit or 200), 5000))
+    q = db.query(RequestLog)
+    if method:
+        q = q.filter(RequestLog.method == method.upper())
+    if path_prefix:
+        esc = path_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        q = q.filter(RequestLog.path.like(f"{esc}%", escape="\\"))
+    if status_min is not None:
+        q = q.filter(RequestLog.status >= int(status_min))
+    if status_max is not None:
+        q = q.filter(RequestLog.status <= int(status_max))
+    if ip:
+        esc = ip.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        if esc:
+            q = q.filter(RequestLog.ip_addr.like(f"%{esc}%", escape="\\"))
+    if user_id is not None:
+        q = q.filter(RequestLog.user_id == user_id)
+    rows = q.order_by(RequestLog.id.desc()).limit(limit).all()
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": r.id,
+                "ts": r.ts,
+                "method": r.method,
+                "path": r.path,
+                "query": r.query,
+                "status": r.status,
+                "duration_ms": r.duration_ms,
+                "user_id": r.user_id,
+                "ip_addr": r.ip_addr,
+                "xff": r.xff,
+                "ua": r.ua,
+                "request_id": r.request_id,
+                "country": r.country,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/audit-logs/security")
+def list_security_events(
+    request: Request,
+    event_type: Optional[str] = None,
+    severity: Optional[str] = None,
+    ip: Optional[str] = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    """admin のみ。security_events を新しい順に返す。
+
+    Query:
+      - event_type: probe_attempt / rate_limit_hit / honeytoken_hit 等
+      - severity: info / warn / critical
+      - ip: ip_addr 部分一致
+      - limit: 1..5000 (default 200)
+    """
+    from backend.db.models import SecurityEvent
+    _require_admin(request)
+    limit = max(1, min(int(limit or 200), 5000))
+    q = db.query(SecurityEvent)
+    if event_type:
+        q = q.filter(SecurityEvent.event_type == event_type)
+    if severity:
+        q = q.filter(SecurityEvent.severity == severity)
+    if ip:
+        esc = ip.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        if esc:
+            q = q.filter(SecurityEvent.ip_addr.like(f"%{esc}%", escape="\\"))
+    rows = q.order_by(SecurityEvent.id.desc()).limit(limit).all()
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": r.id,
+                "ts": r.ts,
+                "event_type": r.event_type,
+                "severity": r.severity,
+                "ip_addr": r.ip_addr,
+                "user_id": r.user_id,
+                "path": r.path,
+                "method": r.method,
+                "ua": r.ua,
+                "request_id": r.request_id,
+                "details": r.details,
+            }
+            for r in rows
+        ],
+    }
+
+
 @router.get("/audit-logs/actions")
 def list_audit_log_actions(request: Request, db: Session = Depends(get_db)):
     """admin のみ。access_logs に出現する distinct な action 名一覧 (件数付き)。
