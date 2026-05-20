@@ -2037,6 +2037,7 @@ def list_request_logs(
     status_max: Optional[int] = None,
     ip: Optional[str] = None,
     user_id: Optional[int] = None,
+    source: Optional[str] = None,
     limit: int = 200,
     db: Session = Depends(get_db),
 ):
@@ -2069,6 +2070,8 @@ def list_request_logs(
             q = q.filter(RequestLog.ip_addr.like(f"%{esc}%", escape="\\"))
     if user_id is not None:
         q = q.filter(RequestLog.user_id == user_id)
+    if source:
+        q = q.filter(RequestLog.source == source)
     rows = q.order_by(RequestLog.id.desc()).limit(limit).all()
     return {
         "success": True,
@@ -2087,6 +2090,7 @@ def list_request_logs(
                 "ua": r.ua,
                 "request_id": r.request_id,
                 "country": r.country,
+                "source": getattr(r, "source", None),
             }
             for r in rows
         ],

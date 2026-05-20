@@ -366,6 +366,7 @@ export interface RequestLogEntry {
   ua: string | null
   request_id: string | null
   country: string | null
+  source?: string | null
 }
 
 export function authRequestLogs(params?: {
@@ -375,6 +376,7 @@ export function authRequestLogs(params?: {
   status_max?: number
   ip?: string
   user_id?: number
+  source?: string
   limit?: number
 }): Promise<{ success: boolean; data: RequestLogEntry[] }> {
   const p: Record<string, string | number> = {}
@@ -384,6 +386,7 @@ export function authRequestLogs(params?: {
   if (params?.status_max != null) p.status_max = params.status_max
   if (params?.ip) p.ip = params.ip
   if (params?.user_id != null) p.user_id = params.user_id
+  if (params?.source) p.source = params.source
   if (params?.limit != null) p.limit = params.limit
   return apiGet('/auth/audit-logs/request', p)
 }

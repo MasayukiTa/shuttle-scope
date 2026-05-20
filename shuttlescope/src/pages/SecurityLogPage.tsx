@@ -33,6 +33,7 @@ export function SecurityLogPage() {
   const [reqStatusMin, setReqStatusMin] = useState('')
   const [reqStatusMax, setReqStatusMax] = useState('')
   const [reqIp, setReqIp] = useState('')
+  const [reqSource, setReqSource] = useState('')
   // security event フィルタ
   const [secType, setSecType] = useState('')
   const [secSeverity, setSecSeverity] = useState('')
@@ -50,12 +51,13 @@ export function SecurityLogPage() {
     setError(null)
     try {
       if (tab === 'request') {
-        const params: { method?: string; path_prefix?: string; status_min?: number; status_max?: number; ip?: string; limit?: number } = { limit }
+        const params: { method?: string; path_prefix?: string; status_min?: number; status_max?: number; ip?: string; source?: string; limit?: number } = { limit }
         if (reqMethod.trim()) params.method = reqMethod.trim().toUpperCase()
         if (reqPath.trim()) params.path_prefix = reqPath.trim()
         const lo = parseInt(reqStatusMin, 10); if (Number.isFinite(lo)) params.status_min = lo
         const hi = parseInt(reqStatusMax, 10); if (Number.isFinite(hi)) params.status_max = hi
         if (reqIp.trim()) params.ip = reqIp.trim()
+        if (reqSource.trim()) params.source = reqSource.trim()
         const res = await authRequestLogs(params)
         setReqRows(res.data)
       } else if (tab === 'security') {
@@ -143,6 +145,14 @@ export function SecurityLogPage() {
           <div>
             <label className={`block text-xs mb-1 ${textMuted}`}>IP</label>
             <input value={reqIp} onChange={(e) => setReqIp(e.target.value)} className={`${inputCls} w-40`} placeholder="192.168. or full" />
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>Source</label>
+            <select value={reqSource} onChange={(e) => setReqSource(e.target.value)} className={inputCls}>
+              <option value="">— all —</option>
+              <option value="nginx">nginx (edge)</option>
+              <option value="backend">backend (app)</option>
+            </select>
           </div>
         </>}
         {tab === 'security' && <>
@@ -235,6 +245,7 @@ export function SecurityLogPage() {
               <tr className={textMuted}>
                 <th className="text-left px-2 py-2">ID</th>
                 <th className="text-left px-2 py-2">Time</th>
+                <th className="text-left px-2 py-2">Src</th>
                 <th className="text-left px-2 py-2">Method</th>
                 <th className="text-left px-2 py-2">Path</th>
                 <th className="text-left px-2 py-2">Status</th>
@@ -247,11 +258,12 @@ export function SecurityLogPage() {
             </thead>
             <tbody>
               {reqRows.length === 0 ? (
-                <tr><td colSpan={10} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty', 'データなし')}</td></tr>
+                <tr><td colSpan={11} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty', 'データなし')}</td></tr>
               ) : reqRows.map((r) => (
                 <tr key={r.id} className={`border-t ${borderLine}`}>
                   <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
                   <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={r.ts}>{fmtTs(r.ts)}</td>
+                  <td className={`px-2 py-1.5 font-mono ${r.source === 'nginx' ? 'text-blue-500' : textMuted}`}>{r.source || '—'}</td>
                   <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.method}</td>
                   <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path}</td>
                   <td className={`px-2 py-1.5 font-mono ${r.status >= 500 ? 'text-red-500' : r.status >= 400 ? 'text-amber-500' : textSecondary}`}>{r.status}</td>

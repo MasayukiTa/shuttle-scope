@@ -74,6 +74,7 @@ def emit_request_log(
     bytes_out: Optional[int] = None,
     cf_ray: Optional[str] = None,
     country: Optional[str] = None,
+    source: str = "backend",
 ) -> None:
     """request_logs に 1 行追加。例外は飲み込む。
 
@@ -99,6 +100,7 @@ def emit_request_log(
                 bytes_out=bytes_out,
                 cf_ray=(cf_ray or "")[:32] or None,
                 country=(country or "")[:2] or None,
+                source=(source or "backend")[:10],
             )
             db.add(row)
             db.commit()
