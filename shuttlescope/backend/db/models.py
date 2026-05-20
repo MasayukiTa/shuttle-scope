@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import uuid4
 from sqlalchemy import (
     Integer, String, Float, Boolean, DateTime, Date,
-    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func
+    ForeignKey, Text, UniqueConstraint, Index, LargeBinary, func, JSON
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.database import Base
@@ -1604,4 +1604,6 @@ class SecurityEvent(Base):
     method: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
     ua: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     request_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
-    details: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    # PostgreSQL では JSONB、SQLite では TEXT として保存される (SA の JSON 型が
+    # dialect ごとに切替える)。emit_security_event() からは dict を渡す。
+    details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
