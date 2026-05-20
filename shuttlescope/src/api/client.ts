@@ -350,6 +350,15 @@ export function authAuditLogs(params?: {
   return apiGet('/auth/audit-logs', p)
 }
 
+export interface AuditLogActionItem {
+  action: string
+  count: number
+}
+
+export function authAuditLogActions(): Promise<{ success: boolean; data: AuditLogActionItem[] }> {
+  return apiGet('/auth/audit-logs/actions')
+}
+
 export function authLogout(): Promise<{ success: boolean }> {
   const rt = (() => { try { return sessionStorage.getItem(REFRESH_KEY) } catch { return null } })()
   return apiPost<{ success: boolean }>('/auth/logout', rt ? { refresh_token: rt } : {})

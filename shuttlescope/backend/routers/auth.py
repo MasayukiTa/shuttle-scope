@@ -1971,7 +1971,10 @@ def list_audit_logs(
     from backend.db.models import AccessLog
     _require_admin(request)
 
-    limit = max(1, min(int(limit or 100), 500))
+    # 旧 cap 500 だと「件数変更しても 500 件のまま」になりユーザが「動かない」
+    # と感じる。admin の audit 用途では数千件まで取得したいケースが普通 (CSV
+    # 出力前提)。5000 件まで許容、過大入力は clamp。
+    limit = max(1, min(int(limit or 100), 5000))
     q = db.query(AccessLog)
     if action:
         q = q.filter(AccessLog.action == action)
@@ -2013,6 +2016,26 @@ def list_audit_logs(
         for r in rows
     ]
     return {"success": True, "data": [e.model_dump() for e in entries]}
+
+
+@router.get("/audit-logs/actions")
+def list_audit_log_actions(request: Request, db: Session = Depends(get_db)):
+    """admin のみ。access_logs に出現する distinct な action 名一覧 (件数付き)。
+    フロント側で action filter を dropdown 化するために使う。"""
+    from backend.db.models import AccessLog
+    from sqlalchemy import func
+    _require_admin(request)
+    rows = (
+        db.query(AccessLog.action, func.count(AccessLog.id))
+        .group_by(AccessLog.action)
+        .order_by(func.count(AccessLog.id).desc())
+        .limit(500)
+        .all()
+    )
+    return {
+        "success": True,
+        "data": [{"action": a, "count": int(c)} for a, c in rows if a],
+    }
 
 
 @router.get("/audit-logs/verify")
