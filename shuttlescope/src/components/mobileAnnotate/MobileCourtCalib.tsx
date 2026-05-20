@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiPost } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
+import { useAutoTutorial } from '@/components/tutorial/useTutorial'
 
 interface Pt { x: number; y: number }
 
@@ -34,6 +35,8 @@ const STEP_LABELS = ['TL 左上', 'TR 右上', 'BR 右下', 'BL 左下', 'NL ネ
 const HANDLE_R = 18  // タッチ判定半径 (px)
 
 export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, onClose, onSaved, snapshot }: Props) {
+  // 初回キャリブ起動時にチュートリアルを自動再生 (指ルーペ操作・点位置の解説)
+  useAutoTutorial('mobile_court_calibration')
   // 既存 6 点があれば初期表示、なければ空配列
   const [points, setPoints] = useState<Pt[]>(() => initial.length === 6 ? [...initial] : [])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
