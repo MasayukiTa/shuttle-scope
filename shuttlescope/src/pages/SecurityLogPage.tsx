@@ -140,6 +140,8 @@ export function SecurityLogPage() {
             <select value={secType} onChange={(e) => setSecType(e.target.value)} className={inputCls}>
               <option value="">— all —</option>
               <option>probe_attempt</option>
+              <option>nginx_probe_block</option>
+              <option>nginx_rate_limit</option>
               <option>rate_limit_hit</option>
               <option>honeytoken_hit</option>
               <option>path_normalization_block</option>
