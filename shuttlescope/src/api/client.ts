@@ -339,12 +339,14 @@ export interface AuditLogEntry {
 export function authAuditLogs(params?: {
   action?: string
   user_id?: number
+  ip?: string
   since?: string
   limit?: number
 }): Promise<{ success: boolean; data: AuditLogEntry[] }> {
   const p: Record<string, string | number> = {}
   if (params?.action) p.action = params.action
   if (params?.user_id != null) p.user_id = params.user_id
+  if (params?.ip) p.ip = params.ip
   if (params?.since) p.since = params.since
   if (params?.limit != null) p.limit = params.limit
   return apiGet('/auth/audit-logs', p)

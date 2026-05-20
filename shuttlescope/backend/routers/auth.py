@@ -1956,6 +1956,7 @@ def list_audit_logs(
     request: Request,
     action: Optional[str] = None,
     user_id: Optional[int] = None,
+    ip: Optional[str] = None,
     since: Optional[str] = None,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -1965,8 +1966,11 @@ def list_audit_logs(
     Query:
       - action: 完全一致フィルタ (例 "login_failed")
       - user_id: 該当 user_id のみ
+      - ip: ip_addr の部分一致 (LIKE %ip%)。プレフィックス (例 "192.168.") や
+            完全一致 IP どちらでも使える。`%` `_` は LIKE のメタ文字なので
+            エスケープしてから当てる。
       - since: ISO8601 datetime 以降 (created_at >= since)
-      - limit: 1..500 (default 100)
+      - limit: 1..5000 (default 100)
     """
     from backend.db.models import AccessLog
     _require_admin(request)
@@ -1980,6 +1984,12 @@ def list_audit_logs(
         q = q.filter(AccessLog.action == action)
     if user_id is not None:
         q = q.filter(AccessLog.user_id == user_id)
+    if ip:
+        ip_clean = ip.strip()
+        if ip_clean:
+            # LIKE メタ文字をエスケープしてから %.. % で囲む
+            esc = ip_clean.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            q = q.filter(AccessLog.ip_addr.like(f"%{esc}%", escape="\\"))
     if since:
         try:
             since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
