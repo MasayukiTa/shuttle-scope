@@ -235,6 +235,7 @@ export function AuditLogPage() {
         <table className="min-w-full text-sm">
           <thead className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
             <tr className={textMuted}>
+              <th className="text-left px-3 py-2">ID</th>
               <th
                 className="text-left px-3 py-2 cursor-pointer select-none"
                 onClick={() => handleSort('created_at')}
@@ -273,13 +274,14 @@ export function AuditLogPage() {
           <tbody>
             {sortedRows.length === 0 ? (
               <tr>
-                <td colSpan={5} className={`px-3 py-6 text-center ${textMuted}`}>
+                <td colSpan={6} className={`px-3 py-6 text-center ${textMuted}`}>
                   {t('auth.audit_log.empty')}
                 </td>
               </tr>
             ) : (
               sortedRows.map((r) => (
                 <tr key={r.id} className={`border-t ${borderLine}`}>
+                  <td className={`px-3 py-2 whitespace-nowrap font-mono text-xs ${textMuted}`}>{r.id}</td>
                   <td className={`px-3 py-2 whitespace-nowrap ${textSecondary}`} title={r.created_at}>
                     {(() => {
                       // backend は UTC+Z を返す。JST (Asia/Tokyo) で表示する
