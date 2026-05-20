@@ -1607,3 +1607,24 @@ class SecurityEvent(Base):
     # PostgreSQL では JSONB、SQLite では TEXT として保存される (SA の JSON 型が
     # dialect ごとに切替える)。emit_security_event() からは dict を渡す。
     details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+# ─── 0033: error_logs (未処理例外のスタックトレース捕捉) ───────────────────
+class ErrorLog(Base):
+    """グローバル例外ハンドラが拾った unhandled exception を記録。
+    request_id で request_logs と相関できる。"""
+    __tablename__ = "error_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    request_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    method: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    exc_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    traceback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    input_repr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    internal_code: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    ip_addr: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

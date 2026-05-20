@@ -416,6 +416,36 @@ export function authSecurityEvents(params?: {
   return apiGet('/auth/audit-logs/security', p)
 }
 
+export interface ErrorLogEntry {
+  id: number
+  ts: string
+  request_id: string | null
+  method: string | null
+  path: string | null
+  status: number | null
+  exc_type: string | null
+  message: string | null
+  traceback: string | null
+  input_repr: string | null
+  internal_code: string | null
+  user_id: number | null
+  ip_addr: string | null
+}
+
+export function authErrorLogs(params?: {
+  exc_type?: string
+  path_prefix?: string
+  request_id?: string
+  limit?: number
+}): Promise<{ success: boolean; data: ErrorLogEntry[] }> {
+  const p: Record<string, string | number> = {}
+  if (params?.exc_type) p.exc_type = params.exc_type
+  if (params?.path_prefix) p.path_prefix = params.path_prefix
+  if (params?.request_id) p.request_id = params.request_id
+  if (params?.limit != null) p.limit = params.limit
+  return apiGet('/auth/audit-logs/errors', p)
+}
+
 export interface AuditLogActionItem {
   action: string
   count: number

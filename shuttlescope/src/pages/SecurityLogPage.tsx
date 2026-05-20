@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw } from 'lucide-react'
 import {
-  authRequestLogs, authSecurityEvents,
-  RequestLogEntry, SecurityEventEntry,
+  authRequestLogs, authSecurityEvents, authErrorLogs,
+  RequestLogEntry, SecurityEventEntry, ErrorLogEntry,
 } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 
 // 外部からの挙動を見る画面 (アプリ内操作の監査ログ = /audit-logs とは分離)。
-// request_logs (全 HTTP) と security_events (probe / rate limit 等) の 2 タブ。
-type SecTab = 'request' | 'security'
+// security_events / request_logs / error_logs の 3 タブ。
+type SecTab = 'request' | 'security' | 'error'
 
 export function SecurityLogPage() {
   const { t } = useTranslation()
@@ -23,6 +23,10 @@ export function SecurityLogPage() {
 
   const [reqRows, setReqRows] = useState<RequestLogEntry[]>([])
   const [secRows, setSecRows] = useState<SecurityEventEntry[]>([])
+  const [errRows, setErrRows] = useState<ErrorLogEntry[]>([])
+  // error log フィルタ
+  const [errExcType, setErrExcType] = useState('')
+  const [errPath, setErrPath] = useState('')
   // request log フィルタ
   const [reqMethod, setReqMethod] = useState('')
   const [reqPath, setReqPath] = useState('')
@@ -54,13 +58,19 @@ export function SecurityLogPage() {
         if (reqIp.trim()) params.ip = reqIp.trim()
         const res = await authRequestLogs(params)
         setReqRows(res.data)
-      } else {
+      } else if (tab === 'security') {
         const params: { event_type?: string; severity?: string; ip?: string; limit?: number } = { limit }
         if (secType.trim()) params.event_type = secType.trim()
         if (secSeverity.trim()) params.severity = secSeverity.trim()
         if (secIp.trim()) params.ip = secIp.trim()
         const res = await authSecurityEvents(params)
         setSecRows(res.data)
+      } else {
+        const params: { exc_type?: string; path_prefix?: string; limit?: number } = { limit }
+        if (errExcType.trim()) params.exc_type = errExcType.trim()
+        if (errPath.trim()) params.path_prefix = errPath.trim()
+        const res = await authErrorLogs(params)
+        setErrRows(res.data)
       }
     } catch (err) {
       setError((err as Error).message || 'error')
@@ -92,6 +102,7 @@ export function SecurityLogPage() {
           {([
             ['security', t('security_log.tab_security', 'セキュリティイベント')],
             ['request', t('security_log.tab_request', 'HTTP リクエスト')],
+            ['error', t('security_log.tab_error', 'エラー')],
           ] as const).map(([k, label]) => (
             <button
               key={k}
@@ -160,6 +171,16 @@ export function SecurityLogPage() {
             <input value={secIp} onChange={(e) => setSecIp(e.target.value)} className={`${inputCls} w-40`} placeholder="192.168. or full" />
           </div>
         </>}
+        {tab === 'error' && <>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>Exception type</label>
+            <input value={errExcType} onChange={(e) => setErrExcType(e.target.value)} className={`${inputCls} w-48`} placeholder="ValueError" />
+          </div>
+          <div>
+            <label className={`block text-xs mb-1 ${textMuted}`}>Path prefix</label>
+            <input value={errPath} onChange={(e) => setErrPath(e.target.value)} className={`${inputCls} w-60`} placeholder="/api/" />
+          </div>
+        </>}
         <div>
           <label className={`block text-xs mb-1 ${textMuted}`}>{t('auth.audit_log.limit', '件数')}</label>
           <input type="number" min={1} max={5000} value={limit}
@@ -173,13 +194,42 @@ export function SecurityLogPage() {
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           {t('auth.audit_log.refresh', '再読込')}
         </button>
-        <span className={`text-xs ${textMuted}`}>表示: {tab === 'request' ? reqRows.length : secRows.length} 件</span>
+        <span className={`text-xs ${textMuted}`}>表示: {tab === 'request' ? reqRows.length : tab === 'security' ? secRows.length : errRows.length} 件</span>
       </div>
 
       {error && <div className="text-sm text-red-400 flex-shrink-0">{error}</div>}
 
       <div className={`flex-1 min-h-0 overflow-auto rounded border ${borderLine} ${cardBg}`}>
-        {tab === 'request' ? (
+        {tab === 'error' ? (
+          <table className="min-w-full text-xs">
+            <thead className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
+              <tr className={textMuted}>
+                <th className="text-left px-2 py-2">ID</th>
+                <th className="text-left px-2 py-2">Time</th>
+                <th className="text-left px-2 py-2">Exception</th>
+                <th className="text-left px-2 py-2">Method</th>
+                <th className="text-left px-2 py-2">Path</th>
+                <th className="text-left px-2 py-2 hidden md:table-cell">Message</th>
+                <th className="text-left px-2 py-2 hidden lg:table-cell">request_id</th>
+              </tr>
+            </thead>
+            <tbody>
+              {errRows.length === 0 ? (
+                <tr><td colSpan={7} className={`px-3 py-6 text-center ${textMuted}`}>{t('auth.audit_log.empty', 'データなし')}</td></tr>
+              ) : errRows.map((r) => (
+                <tr key={r.id} className={`border-t ${borderLine} align-top`}>
+                  <td className={`px-2 py-1.5 font-mono ${textMuted}`}>{r.id}</td>
+                  <td className={`px-2 py-1.5 whitespace-nowrap ${textSecondary}`} title={r.ts}>{fmtTs(r.ts)}</td>
+                  <td className={`px-2 py-1.5 font-mono text-red-500`}>{r.exc_type || '—'}</td>
+                  <td className={`px-2 py-1.5 font-mono ${textHeading}`}>{r.method || '—'}</td>
+                  <td className={`px-2 py-1.5 font-mono break-all ${textSecondary}`}>{r.path || '—'}</td>
+                  <td className={`px-2 py-1.5 hidden md:table-cell font-mono text-[10px] break-all max-w-md ${textMuted}`} title={r.traceback || ''}>{r.message || ''}</td>
+                  <td className={`px-2 py-1.5 hidden lg:table-cell font-mono text-[10px] ${textMuted}`}>{r.request_id || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : tab === 'request' ? (
           <table className="min-w-full text-xs">
             <thead className={`sticky top-0 z-10 ${isLight ? 'bg-gray-50' : 'bg-gray-900'}`}>
               <tr className={textMuted}>

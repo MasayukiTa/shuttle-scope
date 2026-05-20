@@ -1906,6 +1906,31 @@ async def _global_exception_handler(request: StarletteRequest, exc: Exception):
 
     _logger = logging.getLogger("shuttlescope.unhandled")
     _logger.error("Unhandled exception %s %s", request.method, request.url.path, exc_info=exc)
+    # error_logs へ DB 記録 (request_id で request_logs と相関)。失敗しても応答は返す。
+    try:
+        from backend.utils.security_log import emit_error_log as _emit_err
+        _rid = getattr(request.state, "request_id", None)
+        _uid = getattr(request.state, "user_id", None)
+        _ip = None
+        try:
+            _ip = (request.headers.get("cf-connecting-ip")
+                   or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+                   or (request.client.host if request.client else None))
+        except Exception:
+            pass
+        _emit_err(
+            exc_type=type(exc).__name__,
+            message=str(exc),
+            traceback_str=_traceback.format_exc(),
+            request_id=_rid,
+            method=request.method,
+            path=request.url.path,
+            status=500,
+            user_id=_uid if isinstance(_uid, int) else None,
+            ip_addr=_ip,
+        )
+    except Exception:
+        pass
     if app_settings.PUBLIC_MODE or app_settings.HIDE_STACK_TRACES:
         return StarletteResponse(
             '{"detail":"内部エラーが発生しました"}',
