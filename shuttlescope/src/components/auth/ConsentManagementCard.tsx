@@ -132,30 +132,55 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                 }`}
               >
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* 状態 pill: ON は塗りつぶし Cool blue / OFF は塗りつぶし gray
+                        どちらも solid 塗りで「色弱でも一目でわかる」コントラストにする */}
+                    {isWithdrawn ? (
+                      <span
+                        className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
+                        style={{ background: '#6b7280', color: '#fff' }}
+                      >
+                        {t('settings.consent.status_off', 'NOT GRANTED')}
+                      </span>
+                    ) : (
+                      <span
+                        className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
+                        style={{ background: '#3b4cc0', color: '#fff' }}
+                      >
+                        {t('settings.consent.status_on', 'GRANTED')}
+                      </span>
+                    )}
                     <span className={`text-sm font-medium ${isLight ? 'text-gray-900' : 'text-white'}`}>
                       {t(`settings.consent.types.${type}`, type)}
                     </span>
                     {isRequired ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/40">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                        isLight
+                          ? 'bg-blue-50 text-blue-700 border-blue-300'
+                          : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                      }`}>
                         {t('settings.consent.required_label', '契約履行（必須）')}
                       </span>
                     ) : (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 border border-gray-500/40">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                        isLight
+                          ? 'bg-gray-100 text-gray-700 border-gray-300'
+                          : 'bg-gray-500/20 text-gray-300 border-gray-500/40'
+                      }`}>
                         {t('settings.consent.optional_label', '任意')}
                       </span>
                     )}
                   </div>
-                  <div className={`text-xs mt-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {isWithdrawn
-                      ? t('settings.consent.state_withdrawn', '未付与または撤回済')
-                      : t('settings.consent.state_active', '有効')}
-                    {rec?.given_at && (
-                      <span className="ml-2 opacity-70">
-                        {new Date(rec.given_at).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
+                  {rec?.given_at && !isWithdrawn && (
+                    <div className={`text-xs mt-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {t('settings.consent.granted_on', '承認日')}: {new Date(rec.given_at).toLocaleDateString()}
+                    </div>
+                  )}
+                  {rec?.withdrawn_at && (
+                    <div className={`text-xs mt-1 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {t('settings.consent.withdrawn_label', '撤回済み')}: {new Date(rec.withdrawn_at).toLocaleDateString()}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center">

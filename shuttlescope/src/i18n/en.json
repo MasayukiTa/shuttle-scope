@@ -2257,6 +2257,30 @@
       "importing": "Importing...",
       "import_run": "Run import",
       "import_complete": "Import complete"
+    },
+    "consent": {
+      "title": "Consent status & withdrawal",
+      "description": "Optional consents can be withdrawn at any time under GDPR Article 7(3) / APPI Article 18. Required consents (contractual basis) can only be withdrawn by deleting your account.",
+      "required_label": "Contractual (required)",
+      "optional_label": "Optional",
+      "required_note": "Cannot be withdrawn",
+      "withdraw_btn": "Withdraw",
+      "regrant_btn": "Re-grant",
+      "withdrawn_label": "Withdrawn",
+      "state_active": "Active",
+      "state_withdrawn": "Not granted / withdrawn",
+      "status_on": "GRANTED",
+      "status_off": "NOT GRANTED",
+      "granted_on": "Granted on",
+      "confirm_withdraw": "Withdraw consent \"{{type}}\"?\n\nAfter withdrawal you will be excluded from the related processing (e.g. AI model training). Withdrawal history is retained for GDPR / APPI monitoring purposes.\n\nIf you also wish to have related data deleted, please contact contact@shuttle-scope.com separately (handled within 30 days per Consent Form §8(2)).",
+      "error": "Failed to withdraw. Please retry.",
+      "types": {
+        "service_delivery": "Data processing required to deliver the service",
+        "beta_agreement": "Beta data handling agreement",
+        "ai_training": "Use for AI model training",
+        "research_participation": "Use for academic research",
+        "cross_border_transfer": "Cross-border transfer from EU/EEA"
+      }
     }
   },
   "doubles_analysis": {

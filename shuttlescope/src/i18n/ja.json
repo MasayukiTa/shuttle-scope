@@ -2488,7 +2488,11 @@
         "ai_training": "AI モデル学習への利用",
         "research_participation": "学術研究への利用",
         "cross_border_transfer": "EU/EEA からの越境移転"
-      }
+      },
+      "regrant_btn": "再承認",
+      "status_on": "承認中",
+      "status_off": "撤回済",
+      "granted_on": "承認日"
     },
     "ui": {
       "player_list": "選手一覧",
