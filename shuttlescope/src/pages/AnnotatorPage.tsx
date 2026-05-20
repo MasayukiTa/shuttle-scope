@@ -7,6 +7,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
 import { VideoPlayer } from '@/components/video/VideoPlayer'
+import { useAutoTutorial, openTutorial } from '@/components/tutorial/useTutorial'
 import { getVideoSrc, hasVideo, getVideoLabel } from '@/utils/videoSrc'
 import { StreamingDownloadPanel } from '@/components/video/StreamingDownloadPanel'
 import { WebViewPlayer } from '@/components/video/WebViewPlayer'
@@ -195,6 +196,9 @@ function isWinnerBlocked(
 
 export function AnnotatorPage() {
   const { matchId } = useParams<{ matchId: string }>()
+  // 初回 mount でデスクトップ アノテーターの操作チュートリアルを自動起動
+  // (未完了ユーザのみ、再生済はスキップ)
+  useAutoTutorial('desktop_annotator')
   // Phase A: オフライン未送信ラリーの自動再送
   useOfflineSync(matchId ? Number(matchId) : null)
   // Phase C speed: 触覚フィードバック (モバイル/タブレットのみ実効)

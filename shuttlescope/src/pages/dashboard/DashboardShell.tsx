@@ -12,6 +12,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { DashboardTopNav } from '@/components/dashboard/DashboardTopNav'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
+import { useAutoTutorial, openTutorial } from '@/components/tutorial/useTutorial'
 import { DashboardOverviewPage } from './DashboardOverviewPage'
 import { DashboardLivePage } from './DashboardLivePage'
 import { DashboardReviewPage } from './DashboardReviewPage'
@@ -144,6 +145,9 @@ export function DashboardShell() {
   const { role } = useAuth()
   const { theme } = useTheme()
   const isLight = theme === 'light'
+  // 初回 dashboard アクセス時に「分析画面の読み方」チュートリアルを自動起動
+  // (信頼度バッジ / EPV / 伸びしろ表現 / sample size 警告の意味)
+  useAutoTutorial('analysis_reading')
 
   // player には dashboard 全体を許可。確信のある解析 (overview / growth) のみ
   // 表示する。weakness 系 (review) や信頼性低 (advanced / research) は

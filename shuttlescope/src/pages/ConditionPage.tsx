@@ -31,6 +31,7 @@ import { ConditionPostMatchChange } from '@/components/condition/ConditionPostMa
 import { ConditionTagManager } from '@/components/condition/ConditionTagManager'
 import { ConditionTagCompare } from '@/components/condition/ConditionTagCompare'
 import { HistoryDetailModal } from '@/components/condition/HistoryDetailModal'
+import { useAutoTutorial } from '@/components/tutorial/useTutorial'
 import {
   useCreateCondition,
   useConditions,
@@ -60,6 +61,8 @@ function BodyDataConsentToggles() {
   const { theme } = useTheme()
   const isLight = theme === 'light'
   const queryClient = useQueryClient()
+  // 体組成データ開示トグル初回表示時にチュートリアルを自動起動
+  useAutoTutorial('body_disclosure_toggle')
 
   const { data, isLoading } = useQuery<{
     data?: {
