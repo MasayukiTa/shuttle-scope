@@ -15,6 +15,7 @@ import {
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
 import { zScore, covMatrix, powerIterationPCA } from '@/utils/stats'
+import { catColorByIndex } from '@/styles/categoricalPalette'
 
 // PCA 2D 散布コンポーネント
 // coach / analyst 限定
@@ -39,10 +40,11 @@ const CANDIDATE_KEYS: Array<keyof ConditionRecord> = [
 const MIN_N = 10
 const MIN_COLS = 3
 
-// 月 (1..12) を HSL で回すカラースケール
-function monthColor(month: number): string {
-  const h = ((month - 1) / 12) * 360
-  return `hsl(${h}, 70%, 50%)`
+// 月 (1..12) → categorical palette の 12 色固定マッピング (Design Language v1.3 §6)。
+// 旧版は HSL を 360° spin していたが、light で黄系が読めない / dark で暗色が見えない問題があった。
+// catColorByIndex は両モードでコントラスト保証済み。
+function monthColor(month: number, isLight: boolean): string {
+  return catColorByIndex(month - 1, isLight)
 }
 
 function monthFromDate(d: string | null | undefined): number | null {
@@ -134,7 +136,7 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
         pc2,
         date: rec.measured_at ?? '',
         month: mon,
-        color: monthColor(mon),
+        color: monthColor(mon, isLight),
         topKeys,
       }
     })
@@ -250,7 +252,7 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
               <span>{t('condition.pca.legend_month')}:</span>
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
                 <span key={m} className="inline-flex items-center gap-1">
-                  <span style={{ width: 10, height: 10, background: monthColor(m), display: 'inline-block', borderRadius: 9999 }} />
+                  <span style={{ width: 10, height: 10, background: monthColor(m, isLight), display: 'inline-block', borderRadius: 9999 }} />
                   {m}
                 </span>
               ))}
