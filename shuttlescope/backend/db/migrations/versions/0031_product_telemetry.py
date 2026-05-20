@@ -30,33 +30,57 @@ def _is_postgres() -> bool:
     return bind.dialect.name == "postgresql"
 
 
+def _col_exists(table: str, col: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if table not in insp.get_table_names():
+        return False
+    return any(c["name"] == col for c in insp.get_columns(table))
+
+
+def _table_exists(table: str) -> bool:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    return table in insp.get_table_names()
+
+
 def upgrade() -> None:
     # 1. users.date_of_birth (NULLABLE) ─────────────────────────────────────
-    with op.batch_alter_table("users") as batch:
-        batch.add_column(sa.Column("date_of_birth", sa.Date(), nullable=True))
+    # 冪等化: ORM create_all で先に列が作成されている legacy bootstrap でも壊れない
+    if not _col_exists("users", "date_of_birth"):
+        with op.batch_alter_table("users") as batch:
+            batch.add_column(sa.Column("date_of_birth", sa.Date(), nullable=True))
 
     # 2. matches.captured_minor_flag (NULLABLE) ─────────────────────────────
-    with op.batch_alter_table("matches") as batch:
-        batch.add_column(sa.Column("captured_minor_flag", sa.Boolean(), nullable=True))
+    if not _col_exists("matches", "captured_minor_flag"):
+        with op.batch_alter_table("matches") as batch:
+            batch.add_column(sa.Column("captured_minor_flag", sa.Boolean(), nullable=True))
 
     # 3. tutorial_completion ────────────────────────────────────────────────
-    op.create_table(
-        "tutorial_completion",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("tutorial_id", sa.String(64), nullable=False),
-        sa.Column("status", sa.String(20), nullable=False, server_default="in_progress"),  # in_progress / completed / skipped
-        sa.Column("last_step", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("started_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.Column("completed_at", sa.DateTime(), nullable=True),
-        sa.Column("replay_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.UniqueConstraint("user_id", "tutorial_id", name="uq_tutorial_user_tut"),
-    )
-    op.create_index("ix_tutorial_completion_user", "tutorial_completion", ["user_id"])
+    if not _table_exists("tutorial_completion"):
+        op.create_table(
+            "tutorial_completion",
+            sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+            sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("tutorial_id", sa.String(64), nullable=False),
+            sa.Column("status", sa.String(20), nullable=False, server_default="in_progress"),
+            sa.Column("last_step", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("started_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+            sa.Column("completed_at", sa.DateTime(), nullable=True),
+            sa.Column("replay_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.UniqueConstraint("user_id", "tutorial_id", name="uq_tutorial_user_tut"),
+        )
+    # index は冪等に
+    try:
+        op.create_index("ix_tutorial_completion_user", "tutorial_completion", ["user_id"])
+    except Exception:
+        pass
 
     # 4. product_events ─────────────────────────────────────────────────────
     # PostgreSQL: native RANGE partition on server_ts (monthly).
     # SQLite: plain table (dev only; we don't run prod telemetry on SQLite).
+    if _table_exists("product_events"):
+        return
     if _is_postgres():
         op.execute(
             """
