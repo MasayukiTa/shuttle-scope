@@ -205,6 +205,7 @@ export function RallyDetailBanner({
 
 export function ScoreProgression({ matchId, onSetPointClick, initialSet }: ScoreProgressionProps) {
   const { t } = useTranslation()
+  const isLight = useIsLightMode()
   const [selectedSet, setSelectedSet] = useState<number>(initialSet ?? 1)
 
   const { data: resp, isLoading } = useQuery({

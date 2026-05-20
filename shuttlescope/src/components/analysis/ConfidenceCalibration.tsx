@@ -28,11 +28,14 @@ interface Response {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
+// Design Language v1.2 §2.7: 同色相 bg + text 禁止。
+// 旧 'high' は bg-blue-700/50 + text-blue-200 で青背景に薄い青文字 (= ユーザ
+// 報告の「高信頼が読めない」)。全 tier neutral bg + accent text に統一。
 const TIER_COLORS: Record<string, string> = {
   insufficient: 'bg-gray-800 border-gray-700 text-red-300',
   low:          'bg-gray-800 border-gray-700 text-amber-400',
   medium:       'bg-gray-800 border-gray-700 text-blue-300',
-  high:         'bg-blue-700/50 border-blue-500 text-blue-200',
+  high:         'bg-gray-800 border-blue-500 text-blue-300',
 }
 
 export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) {

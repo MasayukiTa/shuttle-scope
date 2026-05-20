@@ -59,7 +59,10 @@ export function DashboardLivePage({ playerId, matches }: Props) {
 
   // インターバルレポート用ステート
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null)
-  const [intervalSet, setIntervalSet] = useState(1)
+  // intervalSet=3 (= 全セット) を default。旧版は 1/2/3 を選ばせていたが、
+  // 「セット間 = 試合進行に伴うセット推移」を見るのが目的なら全セット表示が
+  // 正解 (ユーザ報告: 「選ばせる意味がない」)。
+  const [intervalSet, setIntervalSet] = useState(3)
 
   // セット間解析モーダル用ステート
   const [intervalSummarySetId, setIntervalSummarySetIdValue] = useState<number | null>(null)
@@ -199,19 +202,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                 placeholder={t('auto.DashboardLivePage.k4')}
                 className="max-w-[260px]"
               />
-              {selectedMatchId && (
-                <>
-                  <label className={`text-xs ${textMuted}`}>{t('auto.DashboardLivePage.k2')}</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={3}
-                    value={intervalSet}
-                    onChange={(e) => setIntervalSet(Number(e.target.value))}
-                    className={`w-12 text-xs rounded px-2 py-1 ${isLight ? 'bg-white border border-gray-300 text-gray-900' : 'bg-gray-700 border border-gray-600 text-white'}`}
-                  />
-                </>
-              )}
+              {/* セット選択 input は廃止 (default で全 3 セット表示する仕様)。
+                 完了セットだけを部分表示したいケースは通常無いため。 */}
             </div>
           </div>
           {selectedMatchId ? (
