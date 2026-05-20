@@ -32,21 +32,30 @@ CSS_OUT = ROOT / "src" / "styles" / "material-symbols-subset.css"
 
 
 def collect_icon_names() -> list[str]:
-    """src/ 配下から MIcon name="..." を grep して unique 一覧を返す。"""
-    pattern = re.compile(r'MIcon\s+name=["\']([a-z_]+)["\']')
+    """src/ 配下から MIcon name="..." と name={...} の両方を grep して unique 一覧を返す。
+
+    static: MIcon name="play_arrow"
+    dynamic: MIcon name={open ? 'expand_more' : 'expand_less'}
+           → 'expand_more' / 'expand_less' 両方拾う
+    """
+    # static literal: MIcon name="foo" / name='foo'
+    static_pat = re.compile(r'MIcon\s+name=["\']([a-z_][a-z_0-9]*)["\']')
+    # dynamic expr inside braces: 名前候補は 'foo' / "foo" 形のリテラルだけを抽出
+    dynamic_pat = re.compile(r'MIcon[^>]{0,200}name=\{([^}]+)\}', re.DOTALL)
+    literal_in_expr = re.compile(r"['\"]([a-z_][a-z_0-9]*)['\"]")
     names: set[str] = set()
-    for p in SRC.rglob("*.tsx"):
+    for p in list(SRC.rglob("*.tsx")) + list(SRC.rglob("*.ts")):
         try:
             text = p.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
-        names.update(pattern.findall(text))
-    for p in SRC.rglob("*.ts"):
-        try:
-            text = p.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            continue
-        names.update(pattern.findall(text))
+        names.update(static_pat.findall(text))
+        for expr in dynamic_pat.findall(text):
+            # 三項や OR の中の 'foo' 'bar' 等を全部拾う
+            for lit in literal_in_expr.findall(expr):
+                # Material Symbols の典型 icon 名 (snake_case 英小文字数字のみ)
+                if 2 <= len(lit) <= 40 and lit.replace("_", "").isalnum():
+                    names.add(lit)
     return sorted(names)
 
 

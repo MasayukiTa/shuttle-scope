@@ -2966,10 +2966,14 @@ function TutorialReplaySection({ card }: { card: string }) {
                 </div>
                 <button
                   onClick={async () => { await replayTutorial(tut.id); void refresh() }}
-                  className="text-xs px-3 py-1 rounded bg-sky-600 hover:bg-sky-700 text-white inline-flex items-center gap-1 shrink-0"
+                  // Design Language §2.7: primary CTA は bg-blue-600 + text-white (確実な
+                  // AAA コントラスト)。bg-sky-* は明るすぎて mode によって白文字が読めない
+                  // ケースが起きていたため変更 (2026-05-19)。
+                  className="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 inline-flex items-center gap-1 shrink-0"
+                  style={{ color: '#ffffff' }}
                 >
                   <MIcon name="play_arrow" size={14} />
-                  再生
+                  <span style={{ color: '#ffffff' }}>再生</span>
                 </button>
               </div>
             )

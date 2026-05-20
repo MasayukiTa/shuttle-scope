@@ -40,26 +40,32 @@ const CANDIDATE_KEYS: Array<keyof ConditionRecord> = [
 const MIN_N = 10
 const MIN_COLS = 3
 
-// 月 (1..12) → 4 季節色 × 3 月内位置の shape で識別 (color × shape combo)。
+// 月 (1..12) → 月の四半期グループ × 月内位置の shape で識別 (color × shape combo)。
 // 12 色を並べても色弱ユーザは 4〜6 色しか識別できない (deutan で赤/橙/茶/緑/オリーブが
 // 混ざる)。Design Language §6.3 ルール 4 に従い、6 を超える categorical は shape と
 // 組合せる。
-//   - 季節 (色):  冬 (12,1,2) = Cool 青系, 春 (3,4,5) = Green 青緑系,
-//                 夏 (6,7,8) = Warm 朱系, 秋 (9,10,11) = Amber 橙系
-//   - 月内位置 (shape): 季節 1 月目 = ●, 2 月目 = ■, 3 月目 = ▲
-function monthSeasonKey(month: number): 'Cool' | 'Green' | 'Warm' | 'Amber' {
-  if (month === 12 || month === 1 || month === 2) return 'Cool'   // 冬
-  if (month >= 3 && month <= 5) return 'Green'                     // 春
-  if (month >= 6 && month <= 8) return 'Warm'                      // 夏
-  return 'Amber'                                                    // 秋 (9-11)
+//
+// **季節 (春夏秋冬) を意味付けにしない**: 東南アジア (年中夏) / 南半球 (季節逆) で
+// 「夏が緑」「冬が青」は誤った意味になるため、**1-3月 / 4-6月 / 7-9月 / 10-12月** の
+// 四半期 (Q1〜Q4) を identity の根拠にする。色はカテゴリ識別だけで、季節の symbolism は
+// 持たせない。
+//   - Q1 (1-3月)   = Cool 青系  × {1:●, 2:■, 3:▲}
+//   - Q2 (4-6月)   = Green 青緑 × {4:●, 5:■, 6:▲}
+//   - Q3 (7-9月)   = Warm 朱系  × {7:●, 8:■, 9:▲}
+//   - Q4 (10-12月) = Amber 橙系 × {10:●, 11:■, 12:▲}
+function monthQuarterKey(month: number): 'Cool' | 'Green' | 'Warm' | 'Amber' {
+  if (month <= 3) return 'Cool'    // Q1
+  if (month <= 6) return 'Green'   // Q2
+  if (month <= 9) return 'Warm'    // Q3
+  return 'Amber'                    // Q4
 }
 function monthShape(month: number): 'circle' | 'square' | 'triangle' {
-  // 季節内のインデックス (0/1/2)
-  const inSeason = month === 12 ? 0 : (month === 1 ? 1 : (month === 2 ? 2 : ((month - 1) % 3)))
-  return inSeason === 0 ? 'circle' : inSeason === 1 ? 'square' : 'triangle'
+  // 四半期内のインデックス (0/1/2)
+  const inQuarter = (month - 1) % 3
+  return inQuarter === 0 ? 'circle' : inQuarter === 1 ? 'square' : 'triangle'
 }
 function monthColor(month: number, isLight: boolean): string {
-  return catColor(monthSeasonKey(month), isLight)
+  return catColor(monthQuarterKey(month), isLight)
 }
 
 function monthFromDate(d: string | null | undefined): number | null {
@@ -274,15 +280,16 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
-            {/* 凡例: 色 = 季節、形 = 季節内の月 (color × shape)。
-               12 色ベタ並びは色弱で識別不能だったため (deutan で 8 月が同じに
-               見える)、色を 4 季節に絞り、月内位置を ●■▲ で示す方式へ。 */}
+            {/* 凡例: 色 = 月の四半期 (Q1〜Q4)、形 = 四半期内の月 (color × shape)。
+               12 色ベタ並びは色弱で識別不能だったため、色を 4 グループに絞って
+               月内位置を ●■▲ で示す方式へ。「春夏秋冬」表記は東南アジア / 南半球で
+               誤解されるため使わない (四半期グループのみ)。 */}
             <div className={`mt-2 flex flex-wrap items-center gap-3 text-[11px] ${textMuted}`}>
               {[
-                { label: '冬', months: [12, 1, 2], key: 'Cool' as const },
-                { label: '春', months: [3, 4, 5], key: 'Green' as const },
-                { label: '夏', months: [6, 7, 8], key: 'Warm' as const },
-                { label: '秋', months: [9, 10, 11], key: 'Amber' as const },
+                { label: '1-3月', months: [1, 2, 3], key: 'Cool' as const },
+                { label: '4-6月', months: [4, 5, 6], key: 'Green' as const },
+                { label: '7-9月', months: [7, 8, 9], key: 'Warm' as const },
+                { label: '10-12月', months: [10, 11, 12], key: 'Amber' as const },
               ].map(({ label, months, key }) => (
                 <span key={label} className="inline-flex items-center gap-1.5">
                   <span style={{ color: catColor(key, isLight), fontWeight: 600 }}>{label}</span>
