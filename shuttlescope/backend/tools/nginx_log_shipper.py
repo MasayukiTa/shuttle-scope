@@ -31,7 +31,7 @@ _THIS = Path(__file__).resolve()
 _BACKEND_ROOT = _THIS.parent.parent.parent  # shuttlescope/
 sys.path.insert(0, str(_BACKEND_ROOT))
 
-from backend.utils.security_log import emit_security_event  # noqa: E402
+from backend.utils.security_log import emit_security_event, emit_request_log  # noqa: E402
 
 # nginx ログの場所 (本番固定。環境変数で上書き可)
 NGINX_LOG_DIR = Path(os.environ.get("SS_NGINX_LOG_DIR", r"C:\tools\nginx-1.31.0\logs"))
@@ -108,31 +108,67 @@ def _ship_probe_log(state: dict) -> int:
     return n
 
 
-def _ship_access_429(state: dict) -> int:
+def _to_ms(rt) -> int:
+    # nginx $request_time は秒 (小数)。ms に変換。
+    try:
+        return int(round(float(rt) * 1000))
+    except Exception:
+        return 0
+
+
+def _split_uri(uri: str):
+    # "/path?query" -> ("/path", "query")
+    if not uri:
+        return "", None
+    if "?" in uri:
+        p, q = uri.split("?", 1)
+        return p, q
+    return uri, None
+
+
+def _ship_access_log(state: dict) -> int:
+    """ss_access.log 全行を request_logs(source='nginx') に取り込む。
+    backend RequestLogMiddleware の source='backend' 行とは区別される
+    (proxy された request は 2 行になるが source で識別可能)。
+    加えて status==429 は nginx limit_req 由来として security_events にも残す。"""
     n = 0
     for line in _iter_new_lines(NGINX_LOG_DIR / "ss_access.log", state):
         try:
             d = json.loads(line)
         except Exception:
             continue
-        if str(d.get("status")) != "429":
-            continue
-        emit_security_event(
-            "nginx_rate_limit",
-            severity="warn",
+        path, query = _split_uri(d.get("uri") or "")
+        try:
+            status = int(d.get("status") or 0)
+        except Exception:
+            status = 0
+        emit_request_log(
+            method=d.get("method") or "",
+            path=path,
+            status=status,
+            duration_ms=_to_ms(d.get("rt")),
+            query=query,
             ip_addr=d.get("cf") or d.get("remote"),
-            path=d.get("uri"),
-            method=d.get("method"),
+            xff=d.get("xff"),
             ua=d.get("ua"),
-            details={
-                "country": d.get("country"),
-                "ray": d.get("ray"),
-                "host": d.get("host"),
-                "rt": d.get("rt"),
-                "source": "nginx_limit_req",
-            },
+            referer=d.get("ref"),
+            cf_ray=d.get("ray"),
+            country=d.get("country"),
+            bytes_out=(int(d["bytes"]) if str(d.get("bytes", "")).isdigit() else None),
+            source="nginx",
         )
         n += 1
+        if status == 429:
+            emit_security_event(
+                "nginx_rate_limit",
+                severity="warn",
+                ip_addr=d.get("cf") or d.get("remote"),
+                path=path,
+                method=d.get("method"),
+                ua=d.get("ua"),
+                details={"country": d.get("country"), "ray": d.get("ray"),
+                         "host": d.get("host"), "source": "nginx_limit_req"},
+            )
     return n
 
 
@@ -140,9 +176,9 @@ def main() -> int:
     state = _load_state()
     try:
         probe = _ship_probe_log(state)
-        rl = _ship_access_429(state)
+        access = _ship_access_log(state)
         _save_state(state)
-        print(f"[shipper] probe={probe} rate_limit={rl}")
+        print(f"[shipper] probe={probe} access={access}")
         return 0
     except Exception as exc:
         print(f"[shipper] error: {exc}", file=sys.stderr)

@@ -1587,6 +1587,8 @@ class RequestLog(Base):
     bytes_out: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     cf_ray: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     country: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    # 0034: 'backend' (FastAPI 到達) / 'nginx' (エッジ access ログ取り込み)
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="backend")
 
 
 class SecurityEvent(Base):
