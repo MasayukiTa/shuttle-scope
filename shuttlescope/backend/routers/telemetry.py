@@ -115,8 +115,23 @@ def _is_pg(db: Session) -> bool:
     return db.get_bind().dialect.name == "postgresql"
 
 
+import re as _re_prop
+
+# props JSON から取り出してよいキーの許可リスト。
+# 全呼び出し元はリテラルのみ渡すが、SQL 断片に文字列補間するため
+# 多層防御として「英小文字 / 数字 / アンダースコア」以外を物理的に拒否する。
+# これにより SQL インジェクションは構造上不可能 (Bandit B608 / Semgrep
+# avoid-sqlalchemy-text はこの保証の上での既知 false positive)。
+_PROP_KEY_RE = _re_prop.compile(r"^[a-z0-9_]{1,64}$")
+
+
 def _prop_get(db: Session, key: str) -> str:
-    """props JSON から key の値を文字列で取り出す SQL 式 (dialect 依存)。"""
+    """props JSON から key の値を文字列で取り出す SQL 式 (dialect 依存)。
+
+    key は許可リスト検証済みのリテラルのみ。検証失敗は ValueError。
+    """
+    if not _PROP_KEY_RE.match(key):
+        raise ValueError(f"invalid props key: {key!r}")
     if _is_pg(db):
         return f"(props->>'{key}')"
     return f"json_extract(props, '$.{key}')"
