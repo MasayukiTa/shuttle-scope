@@ -3526,7 +3526,9 @@
     "all_time": "全期間",
     "recent_n_matches": "直近{{count}}試合",
     "opponent": "相手",
-    "paren": "（{{v}}）"
+    "paren": "（{{v}}）",
+    "filter": "フィルター",
+    "clear": "クリア"
   },
   "advice": {
     "confidence_high": "信頼度: 高",
@@ -3606,5 +3608,22 @@
     "small_sample_note": "※ 少数サンプル（3試合未満）は統計的信頼性が低い",
     "no_candidates": "候補データがありません",
     "compute_ranking": "ランキング算出"
+  },
+  "rally": {
+    "no_video": "動画未保存",
+    "no_timestamps": "タイムスタンプ未記録",
+    "set_n": "Set {{n}}",
+    "selected": "選択中: Set {{set}} R.{{rally}} ({{a}}–{{b}})",
+    "click_popup": " — クリックでポップアップ再生",
+    "no_rallies": "該当ラリーがありません",
+    "s_r": "S{{s}} R.{{r}}",
+    "winner_strokes": "勝: {{winner}}　{{len}} ストローク",
+    "n_rallies": "{{n}} ラリー",
+    "n_with_timestamps": "{{n}} 件にタイムスタンプあり",
+    "popup_title": "Set {{set}} — R.{{rally}} ({{a}}–{{b}})",
+    "prev": "‹ 前",
+    "next": "次 ›",
+    "prev_title": "前のラリー",
+    "next_title": "次のラリー"
   }
 }

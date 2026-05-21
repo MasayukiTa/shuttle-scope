@@ -90,6 +90,7 @@ export default tseslint.config(
             '^\\d+p$',                                      // 解像度 360p..1080p
             '^(Chrome|Edge|Firefox|Brave|Safari|Opera)$',   // ブラウザ名
             '^(H2H|EPV|RPE|CCS|PCA|MA|CV|GPU|CPU|API|URL|ID|UI|OK|NG)$', // 略語
+            '^(s|ms|m|h|km|kg|MB|KB|GB|px|fps|pt|%)$',                   // 単位
           ],
         },
       }],
