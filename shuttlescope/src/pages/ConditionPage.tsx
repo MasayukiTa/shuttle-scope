@@ -100,6 +100,7 @@ function BodyDataConsentToggles() {
 
   return (
     <div
+      data-tutorial="condition.disclosureToggle"
       className={`rounded-lg border p-3 text-xs ${
         isLight ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-blue-900/20 border-blue-700/40 text-blue-200'
       }`}

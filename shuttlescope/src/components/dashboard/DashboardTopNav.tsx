@@ -34,7 +34,7 @@ export function DashboardTopNav() {
       isLight ? 'border-gray-200 bg-white' : 'border-gray-700 bg-gray-900'
     )}>
       <div className="relative">
-        <div className="flex overflow-x-auto scrollbar-hide gap-1 px-2 py-2">
+        <div className="flex overflow-x-auto scrollbar-hide gap-1 px-2 py-2" data-tutorial="dashboard.topNav">
           {visiblePages.map(({ path, key }) => (
             <NavLink
               key={key}
