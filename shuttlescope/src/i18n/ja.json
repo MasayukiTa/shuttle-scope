@@ -3567,7 +3567,18 @@
     "other": "その他"
   },
   "lineup": {
-    "select_at_least_two": "2名以上の選手を選択してください"
+    "select_at_least_two": "2名以上の選手を選択してください",
+    "candidate_disclaimer": "候補生成（参考）— 自動決定ではありません。単独で起用を決めないでください。",
+    "ref_insufficient": "（参考: データ不足）",
+    "n_matches": "{{n}}試合",
+    "candidate_note": "※ 候補は相手・条件に応じた参考情報です。最終的な起用判断はコーチの裁量で行ってください。",
+    "no_data": "データなし",
+    "no_record_n": "実績データなし — {{count}}名（クリックで展開）",
+    "winrate_note": "※ 勝率はキャリブレーション済み多特徴量モデルによる予測値です",
+    "selected_count": "（{{selected}}名選択中 / {{total}}名）",
+    "clear_selection": "選択クリア",
+    "showing_count": "{{shown}}名表示中（全{{total}}名）",
+    "no_matching_players": "該当する選手がいません"
   },
   "live": {
     "all_rallies_pick_from_chart": "全ラリー（グラフから選択）",

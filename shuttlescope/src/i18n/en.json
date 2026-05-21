@@ -3234,7 +3234,18 @@
     "other": "Other"
   },
   "lineup": {
-    "select_at_least_two": "Please select at least 2 players"
+    "select_at_least_two": "Please select at least 2 players",
+    "candidate_disclaimer": "Candidate generation (reference) — not an automatic decision. Do not decide a lineup on this alone.",
+    "ref_insufficient": "(reference: insufficient data)",
+    "n_matches": "{{n}} matches",
+    "candidate_note": "* Candidates are reference info based on opponent and conditions. The final lineup decision is at the coach’s discretion.",
+    "no_data": "No data",
+    "no_record_n": "No record — {{count}} players (click to expand)",
+    "winrate_note": "* Win rates are predictions from a calibrated multi-feature model.",
+    "selected_count": "({{selected}} selected / {{total}})",
+    "clear_selection": "Clear selection",
+    "showing_count": "Showing {{shown}} (of {{total}})",
+    "no_matching_players": "No matching players"
   },
   "live": {
     "all_rallies_pick_from_chart": "All rallies (pick from chart)",

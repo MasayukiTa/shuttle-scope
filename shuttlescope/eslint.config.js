@@ -86,9 +86,10 @@ export default tseslint.config(
         words: {
           // 普遍的に翻訳不要なものを除外: 記号/数字のみ・解像度・ブランド名
           exclude: [
-            '^\\s*[!-/:-@[-`{-~\\d\\s✓✕→▶■・…％⚠⚡🔄📁★☆]+\\s*$', // 記号・絵文字・数字のみ
+            '^\\s*[!-/:-@[-`{-~\\d\\s✓✕→▶■・…％⚠⚡🔄📁★☆–—]+\\s*$', // 記号・絵文字・数字のみ
             '^\\d+p$',                                      // 解像度 360p..1080p
             '^(Chrome|Edge|Firefox|Brave|Safari|Opera)$',   // ブラウザ名
+            '^(H2H|EPV|RPE|CCS|PCA|MA|CV|GPU|CPU|API|URL|ID|UI|OK|NG)$', // 略語
           ],
         },
       }],
