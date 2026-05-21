@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     ShuttleScope デプロイスクリプト
     git pull origin main → 起動 bat（cloudflared + backend を同時起動するもの）を叩く
