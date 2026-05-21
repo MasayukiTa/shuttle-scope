@@ -24,6 +24,23 @@ class UserRole(str, Enum):
     ANALYST = "analyst"
     COACH = "coach"
     PLAYER = "player"
+    # demo: チュートリアル用デモ口座ロール（最小権限・read-only）。
+    DEMO = "demo"
+
+
+def is_demo_read(request: Request) -> bool:
+    """検証済みの demo read かどうか。
+
+    main.py の demo ゲート (`_try_demo_read`) が、リクエスト内の全対象が
+    demo データであることを検証できた時だけ `request.state.demo_read=True` を
+    立てる。client からは偽装不可能。
+    これを見て team/player スコープ判定を bypass しても、実データが混ざる
+    リクエストでは絶対にフラグが立たないため実データ漏洩は起きない。
+    """
+    try:
+        return bool(getattr(request.state, "demo_read", False))
+    except Exception:
+        return False
 
 
 # playerロールに見せてはいけないデータキー

@@ -682,12 +682,18 @@ def get_match(
         raise HTTPException(status_code=422, detail="match_id out of range")
     ctx = get_auth(request)
     match = db.get(Match, match_id)
-    if not match or not user_can_access_match(ctx, match):
-        # 存在自体を隠す（403 ではなく 404）
+    if not match:
         raise HTTPException(status_code=404, detail="試合が見つかりません")
-    # player/coach は require_match_scope で自分/自チームに関わる試合のみ許可
-    from backend.utils.auth import require_match_scope
-    require_match_scope(request, match, db)
+    # 検証済み demo read（チュートリアル用 read-only 越権参照）はスコープ判定を bypass。
+    # 対象が demo データであることは middleware で検証済み。
+    from backend.utils.auth import is_demo_read as _idr
+    if not _idr(request):
+        if not user_can_access_match(ctx, match):
+            # 存在自体を隠す（403 ではなく 404）
+            raise HTTPException(status_code=404, detail="試合が見つかりません")
+        # player/coach は require_match_scope で自分/自チームに関わる試合のみ許可
+        from backend.utils.auth import require_match_scope
+        require_match_scope(request, match, db)
     return {"success": True, "data": match_to_dict(match, include_players=True, db=db)}
 
 

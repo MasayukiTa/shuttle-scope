@@ -42,7 +42,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    role: Mapped[str] = mapped_column(String(20), nullable=False, default="analyst")  # analyst/coach/player
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="analyst")  # analyst/coach/player/demo
     player_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("players.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     hashed_credential: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
