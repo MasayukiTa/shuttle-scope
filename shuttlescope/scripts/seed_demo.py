@@ -303,7 +303,9 @@ def main():
         db.commit()
         print("\n" + "=" * 60)
         print(f"  完了: team_id={team.id} demo_player_id={players[0].id}")
-        print(f"  demo ログイン: {DEMO_USERNAME} / {DEMO_PASSWORD}")
+        # パスワードは平文ログしない（CodeQL py/clear-text-logging-sensitive-data）。
+        # 値はこのファイル冒頭の DEMO_PASSWORD 定数を参照。
+        print(f"  demo ログイン: {DEMO_USERNAME} / (パスワードは DEMO_PASSWORD 定数を参照)")
         print("=" * 60)
     except Exception:
         db.rollback()
