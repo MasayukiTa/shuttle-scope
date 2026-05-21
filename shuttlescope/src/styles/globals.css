@@ -1058,3 +1058,17 @@ video::-webkit-media-controls-play-button {
   display: none !important;
   -webkit-appearance: none !important;
 }
+
+/* チュートリアル: target を赤くチカチカ強調するリング (TutorialOverlay 用) */
+@keyframes tutorial-ring-pulse {
+  0%   { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.95), 0 0 0 6px rgba(220, 38, 38, 0.35); }
+  50%  { box-shadow: 0 0 0 4px rgba(248, 113, 113, 1), 0 0 14px 6px rgba(220, 38, 38, 0.55); }
+  100% { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.95), 0 0 0 6px rgba(220, 38, 38, 0.35); }
+}
+.tutorial-ring {
+  position: fixed;
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 301;
+  animation: tutorial-ring-pulse 1s ease-in-out infinite;
+}
