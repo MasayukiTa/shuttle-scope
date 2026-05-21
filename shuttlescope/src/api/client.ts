@@ -14,6 +14,17 @@ const AUTH_CHANGED_EVENT = 'shuttlescope:auth-changed'
 
 export const API_BASE_URL = BASE_URL
 
+// ── demo モード（チュートリアル限定 read-only 越権参照） ────────────────────
+// active の間、GET リクエストに `?demo=1` を付与する。バックエンドは検証済み
+// demo データのみ返すため、実データが漏れることはない（書き込みは常に拒否）。
+let _demoMode = false
+export function setDemoMode(on: boolean): void {
+  _demoMode = on
+}
+export function isDemoMode(): boolean {
+  return _demoMode
+}
+
 export function getAuthHeaders(): Record<string, string> {
   return authHeaders()
 }
@@ -163,6 +174,11 @@ export async function apiGet<T>(
       url.searchParams.set(k, String(v))
     })
   }
+  // demo モード中は GET に demo=1 を付与（read-only 越権参照）。
+  // /tutorials/* と /auth/* は自分自身の状態取得なので付けない。
+  if (_demoMode && !path.startsWith('/tutorials/') && !path.startsWith('/auth/')) {
+    url.searchParams.set('demo', '1')
+  }
   const res = await fetchWithAutoRefresh(url.toString(), { headers: authHeaders() })
   if (!res.ok) {
     const text = await res.text()
@@ -252,6 +268,18 @@ export interface AuthMeDTO {
 
 export function authMe(): Promise<AuthMeDTO> {
   return apiGet<AuthMeDTO>('/auth/me')
+}
+
+// ─── チュートリアル demo データ対象 ─────────────────────────────────────────
+export interface TutorialDemoTarget {
+  team_id: number
+  player_id: number
+  player_name: string
+  match_id: number | null
+}
+
+export function getTutorialDemoTarget(): Promise<{ success: boolean; data: TutorialDemoTarget | null }> {
+  return apiGet('/tutorials/demo-target')
 }
 
 // ─── 同意取得 (GDPR Article 7 / APPI 第18条) ────────────────────────────

@@ -1464,7 +1464,7 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     ctx = get_auth(request)
     if not (ctx.is_admin or ctx.is_analyst):
         raise HTTPException(status_code=403, detail="ユーザー作成は admin / analyst のみ可能です")
-    allowed_roles = {"admin", "analyst", "coach", "player"}
+    allowed_roles = {"admin", "analyst", "coach", "player", "demo"}
     # role は string の完全一致のみ許可（list/空白混入/enum-bypass を遮断）
     if not isinstance(body.role, str) or body.role not in allowed_roles:
         raise HTTPException(status_code=422, detail=f"invalid role: {body.role!r}")
@@ -1481,8 +1481,8 @@ def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db
     if _re_dn.search(r"</?(script|iframe|object|embed|svg|style|link|meta|form|img)[\s>/]", body.display_name, _re_dn.IGNORECASE):
         raise HTTPException(status_code=422, detail="display_name contains disallowed HTML tags")
     # analyst は admin / analyst アカウントを作成できない（権限昇格防止）
-    if ctx.is_analyst and body.role in ("admin", "analyst"):
-        raise HTTPException(status_code=403, detail="admin/analyst アカウントは admin のみ作成できます")
+    if ctx.is_analyst and body.role in ("admin", "analyst", "demo"):
+        raise HTTPException(status_code=403, detail="admin/analyst/demo アカウントは admin のみ作成できます")
     # analyst/coach/player は team 必須 (cross-team 漏洩防止)。
     # admin のみ team 未指定を許容（システム横断管理者として扱う）。
     # Phase B-2: team_name もしくは team_id もしくは independent=True で OK。
@@ -1689,7 +1689,7 @@ def update_user(target_id: int, body: UserUpdate, request: Request, db: Session 
         user.username = login_id
     # role は admin のみ書換可能 (上で既にガード済なのでここでは admin 限定で適用)
     if body.role is not None and ctx.is_admin:
-        if body.role not in ("admin", "analyst", "coach", "player"):
+        if body.role not in ("admin", "analyst", "coach", "player", "demo"):
             raise HTTPException(status_code=422, detail=f"invalid role: {body.role}")
         user.role = body.role
     # team_name / player_id は admin のみ書換可能 (上でガード済)

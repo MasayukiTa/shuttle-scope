@@ -799,6 +799,141 @@ def _extract_id(path: str, patterns) -> int | None:
     return None
 
 
+# ─── demo ロール: チュートリアル限定の read-only 越権参照 ──────────────────────
+# 設計: private_docs/TUTORIAL_REVAMP_2026-05-21.md
+# - role=`demo` ユーザ (testtest) のデータは完全ランダム生成（実在人物なし）。
+# - player / coach / analyst は **GET かつ `?demo=1` かつ対象が検証済み demo データ**
+#   の時だけ越権参照を許可する（チュートリアルでデモ機能を体感させるため）。
+# - 書き込み系 (POST/PUT/PATCH/DELETE) は demo 対象でも一切許可しない。
+# - リクエスト中に 1 つでも非 demo の対象が混ざる場合は例外を発動しない
+#   （実データへの横展開を完全に防ぐ）。
+# - 例外を発動した read は security_events(event_type=demo_access) に記録する。
+_DEMO_TEAM_CACHE: dict = {"team_id": None, "ts": 0.0}
+
+
+def _get_demo_team_id() -> int | None:
+    """role=demo ユーザの team_id を返す（60s キャッシュ）。未設定なら None。"""
+    import time as _t
+    now = _t.time()
+    if _DEMO_TEAM_CACHE["team_id"] is not None and (now - _DEMO_TEAM_CACHE["ts"]) < 60:
+        return _DEMO_TEAM_CACHE["team_id"]
+    try:
+        from backend.db.database import SessionLocal as _SL
+        from backend.db.models import User as _U
+        with _SL() as _db:
+            u = _db.query(_U).filter(_U.role == "demo").first()
+            tid = u.team_id if u else None
+    except Exception:
+        tid = None
+    _DEMO_TEAM_CACHE["team_id"] = tid
+    _DEMO_TEAM_CACHE["ts"] = now
+    return tid
+
+
+def _demo_requested(request: StarletteRequest) -> bool:
+    v = (request.query_params.get("demo") or "").strip().lower()
+    return v in ("1", "true", "yes")
+
+
+def _verify_demo_targets(request: StarletteRequest, demo_team_id: int) -> bool | None:
+    """リクエスト中の全対象 (match / player) が demo データかを検証する。
+
+    戻り値: True=全対象が demo / False=非 demo が混在 / None=対象 ID が無い。
+    """
+    from backend.db.database import SessionLocal as _SL
+    from backend.db.models import Match as _M, Player as _P
+    path = request.url.path
+    found_any = False
+    try:
+        with _SL() as _db:
+            mid = _extract_id(path, _MATCH_ID_PATTERNS)
+            if mid is not None:
+                found_any = True
+                m = _db.get(_M, mid)
+                if m is None:
+                    return False
+                pids = [m.player_a_id, m.partner_a_id, m.player_b_id, m.partner_b_id]
+                owner_ok = getattr(m, "owner_team_id", None) == demo_team_id
+                part_ok = False
+                if pids:
+                    hit = (
+                        _db.query(_P.id)
+                        .filter(_P.id.in_([p for p in pids if p]), _P.team_id == demo_team_id)
+                        .first()
+                    )
+                    part_ok = hit is not None
+                if not (owner_ok or part_ok):
+                    return False
+
+            tgt_pid = _extract_id(path, _PLAYER_ID_PATTERNS)
+            qp_pids = [q for q in request.query_params.getlist("player_id") if q]
+            check_pids = []
+            if tgt_pid is not None:
+                check_pids.append(tgt_pid)
+            for q in qp_pids:
+                try:
+                    check_pids.append(int(q))
+                except (ValueError, TypeError):
+                    return False  # 不正な player_id は安全側で例外不発動
+            for cpid in check_pids:
+                found_any = True
+                p = _db.get(_P, cpid)
+                if p is None or p.team_id != demo_team_id:
+                    return False
+    except Exception:
+        return False
+    return True if found_any else None
+
+
+def _mark_demo_read(request: StarletteRequest, role, payload) -> bool:
+    """検証済みの demo GET 参照かを判定し、そうなら request.state を立てて監査する。
+
+    重要な設計方針（ユーザ確認 2026-05-21）:
+      demo は「閲覧アカウントのロール権限の範囲で」demo データを見せる。
+      よって本フラグが緩めるのは **データ所有境界（team/player の IDOR スコープ）のみ**。
+      ロール階層の制限（player に EPV/research/弱点を見せない等、
+      `_PLAYER_FORBIDDEN_ANALYSIS_PATHS`）は **bypass しない**。
+      → player が demo を見れば player 視点、analyst が見れば analyst 視点になる。
+      admin は元々全データ参照可なので demo フラグ無しでも閲覧できる（独立）。
+
+    戻り値: True=検証済み demo read（state を設定済み） / False=対象外。
+    多重呼び出し時は最初の判定をキャッシュし、監査は 1 回だけ行う。
+    """
+    cached = getattr(request.state, "demo_read", None)
+    if cached is not None:
+        return bool(cached)
+    ok = False
+    if (
+        request.method.upper() == "GET"
+        and role in ("player", "coach", "analyst", "admin", "demo")
+        and request.url.path.startswith("/api/")
+        and _demo_requested(request)
+    ):
+        demo_team_id = _get_demo_team_id()
+        if demo_team_id is not None and _verify_demo_targets(request, demo_team_id) is True:
+            ok = True
+    try:
+        request.state.demo_read = ok
+    except Exception:
+        pass
+    if ok:
+        try:
+            from backend.utils.security_log import emit_security_event
+            emit_security_event(
+                "demo_access",
+                severity="info",
+                ip_addr=request.headers.get("X-Forwarded-For", "") or (request.client.host if request.client else ""),
+                user_id=(int(payload.get("sub")) if payload and str(payload.get("sub", "")).isdigit() else None),
+                path=request.url.path,
+                method="GET",
+                ua=request.headers.get("User-Agent", ""),
+                details={"role": role},
+            )
+        except Exception:
+            pass
+    return ok
+
+
 class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
     """role=player と role=coach のリクエストに対し、対象リソースへのアクセス可否を DB 検証する。
 
@@ -823,12 +958,16 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
                 pid_raw = str(payload.get("player_id", "")) if payload.get("player_id") else ""
                 team_name = payload.get("team_name", "") or ""
 
+        # ── demo ロール: 検証済み demo read かを判定（データ所有境界のみ緩める） ──
+        # ロール階層の制限 (_PLAYER_FORBIDDEN_ANALYSIS_PATHS 等) は緩めない。
+        _demo_read = _mark_demo_read(request, role, payload)
+
         # ── coach: クエリ ?player_id= に対する team scope 強制 ──
         # CLAUDE.md "coach: 自チーム所属選手" の原則を analysis / conditions /
         # reports / human_forecast / warmup に貫徹する。
         # round 4 の live attack で coach が他チーム player の EPV/heatmap/insights
         # を取得できる scope leak を確認したため middleware で塞ぐ。
-        if role == "coach":
+        if role == "coach" and not _demo_read:
             path_co = request.url.path
             if (
                 path_co.startswith("/api/analysis/")
@@ -963,9 +1102,9 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
                     status_code=403,
                 )
 
-        # ── match スコープ ──
+        # ── match スコープ（demo read は所有境界のみ緩める） ──
         mid = _extract_id(path, _MATCH_ID_PATTERNS)
-        if mid is not None:
+        if mid is not None and not _demo_read:
             from backend.db.database import SessionLocal
             from backend.db.models import Match
             db = SessionLocal()
@@ -989,9 +1128,9 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
             finally:
                 db.close()
 
-        # ── player スコープ（パスパラメータ） ──
+        # ── player スコープ（パスパラメータ。demo read は所有境界のみ緩める） ──
         tgt_pid = _extract_id(path, _PLAYER_ID_PATTERNS)
-        if tgt_pid is not None and tgt_pid != pid:
+        if tgt_pid is not None and tgt_pid != pid and not _demo_read:
             try:
                 from backend.utils.access_log import log_access
                 from backend.db.database import SessionLocal
@@ -1011,7 +1150,7 @@ class PlayerAccessControlMiddleware(BaseHTTPMiddleware):
         # (`/api/conditions/insights` や `/api/conditions/best_profile` で他選手の
         #  ?player_id を指定すると 200 が返る IDOR を round 4 で検出。
         #  middleware 側で広めに塞ぐ。)
-        if (
+        if not _demo_read and (
             path.startswith("/api/analysis/")
             or path.startswith("/api/reports/")
             or path.startswith("/api/conditions/")
@@ -1387,6 +1526,8 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
         if not payload:
             return await call_next(request)
         role = payload.get("role")
+        # ── demo ロール: 検証済み demo read かを判定（所有境界のみ緩める） ──
+        _demo_read = _mark_demo_read(request, role, payload)
         # admin / player はスキップ（admin は全許可、player は別ミドルウェアで処理）
         if role not in ("coach", "analyst"):
             return await call_next(request)
@@ -1397,6 +1538,9 @@ class TeamScopeAccessControlMiddleware(BaseHTTPMiddleware):
             team_id = None
 
         path = request.url.path
+        # 検証済み demo read は所有境界を緩める（demo team の試合を閲覧可能に）。
+        if _demo_read:
+            return await call_next(request)
         mid = _extract_id(path, _MATCH_ID_PATTERNS)
         if mid is None:
             return await call_next(request)
@@ -1691,7 +1835,7 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                     media_type="application/json",
                 )
             # mfa/* パスは継続。MFA 自体のチェックはハンドラに任せる。
-        elif token_role not in ("admin", "analyst", "coach", "player"):
+        elif token_role not in ("admin", "analyst", "coach", "player", "demo"):
             # 想定外 role (壊れた JWT 等) は拒否
             return StarletteResponse(
                 '{"detail":"トークンの role が不正です"}',
@@ -1955,6 +2099,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
+        # demo read（チュートリアル用 read-only 越権参照）の応答に印を付ける。
+        # フロントの「デモデータ（編集不可）」表示の補助。client 偽装不可。
+        try:
+            if getattr(request.state, "demo_read", False):
+                response.headers["X-Is-Demo"] = "1"
+        except Exception:
+            pass
         # 通常 path は DENY (clickjacking 防御)。ただし /privacy /terms /contact
         # 等の法務 HTML は OnboardingConsentPage が popup 内 iframe で表示するため
         # SAMEORIGIN に緩める。同オリジン内のみ iframe 可、外部サイトには出さない。

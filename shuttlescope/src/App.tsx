@@ -40,6 +40,9 @@ import AdminAnalyticsPage from '@/pages/AdminAnalyticsPage'
 import { TutorialOverlay } from '@/components/tutorial/TutorialOverlay'
 import { TUTORIALS } from '@/components/tutorial/tutorials'
 import { closeTutorial, useTutorialChannel } from '@/components/tutorial/useTutorial'
+import { DemoModeBanner } from '@/components/tutorial/DemoModeBanner'
+import { useDemoModeStore } from '@/store/demoModeStore'
+import { getTutorialDemoTarget } from '@/api/client'
 import CommerceLawPage from '@/pages/CommerceLawPage'
 import { AuditLogPage } from '@/pages/AuditLogPage'
 import { SecurityLogPage } from '@/pages/SecurityLogPage'
@@ -534,6 +537,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeApplier>
+        <DemoModeBanner />
         <GlobalTutorialMount />
         <HashRouter>
           <Routes>
@@ -556,8 +560,27 @@ function App() {
   )
 }
 
+// demo データを見せるチュートリアル ID（解析画面の読み方）。
+// ここに登録された tutorial が開いている間だけ demo モードを有効化する。
+const DEMO_TUTORIAL_IDS = new Set<string>(['analysis_reading'])
+
 function GlobalTutorialMount() {
   const id = useTutorialChannel()
+  const enableDemo = useDemoModeStore((s) => s.enable)
+  const disableDemo = useDemoModeStore((s) => s.disable)
+
+  useEffect(() => {
+    let cancelled = false
+    if (id && DEMO_TUTORIAL_IDS.has(id)) {
+      getTutorialDemoTarget()
+        .then((r) => { if (!cancelled) enableDemo(r.data ?? null) })
+        .catch(() => { if (!cancelled) enableDemo(null) })
+    } else {
+      disableDemo()
+    }
+    return () => { cancelled = true; disableDemo() }
+  }, [id, enableDemo, disableDemo])
+
   if (!id) return null
   const tut = TUTORIALS[id as keyof typeof TUTORIALS]
   if (!tut) return null

@@ -1,4 +1,7 @@
 {
+  "demo": {
+    "banner": "Showing demo data (read-only)"
+  },
   "app": {
     "name": "ShuttleScope",
     "loading": "Loading...",

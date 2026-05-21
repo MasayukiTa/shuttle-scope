@@ -269,7 +269,8 @@ END_TYPES = ["ace", "forced_error", "unforced_error", "net", "out", "cant_reach"
 TOURNAMENT_LEVELS = ["IC", "IS", "SJL", "全日本", "国内", "その他"]
 
 # ユーザーロール
-USER_ROLES = ["analyst", "coach", "player"]
+# demo: チュートリアル用デモ口座専用ロール（最小権限・実データ不可・編集不可）。
+USER_ROLES = ["analyst", "coach", "player", "demo"]
 
 # 信頼度レベル（ストローク数ベース）
 CONFIDENCE_LEVELS = {

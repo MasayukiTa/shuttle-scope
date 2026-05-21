@@ -440,7 +440,10 @@ def create_player(
 def _player_scope_check(request: Request, player) -> None:
     """analyst/coach は自チームの player のみ閲覧/編集可能 (cross-team 漏洩・改竄防止)。
     admin / player は呼び出し元のロジックで別途処理。"""
-    from backend.utils.auth import get_auth as _ga
+    from backend.utils.auth import get_auth as _ga, is_demo_read as _idr
+    # 検証済み demo read はチュートリアル用 read-only 越権参照（全対象が demo データ）。
+    if _idr(request):
+        return
     ctx = _ga(request)
     if ctx.is_admin:
         return
@@ -463,9 +466,12 @@ def get_player(player_id: Annotated[int, Path(ge=1, le=2_147_483_647)], request:
     if not player:
         raise HTTPException(status_code=404, detail="選手が見つかりません")
     # player ロールは自分のレコードのみ
-    from backend.utils.auth import get_auth as _ga
+    from backend.utils.auth import get_auth as _ga, is_demo_read as _idr
     ctx = _ga(request)
-    if ctx.is_player:
+    if _idr(request):
+        # 検証済み demo read: スコープ判定を bypass（対象は demo データ確定）
+        pass
+    elif ctx.is_player:
         if not ctx.player_id or ctx.player_id != player_id:
             raise HTTPException(status_code=404, detail="選手が見つかりません")
     else:

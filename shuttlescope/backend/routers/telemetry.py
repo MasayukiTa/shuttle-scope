@@ -425,6 +425,49 @@ def tutorial_state(
     }
 
 
+@router.get("/tutorials/demo-target")
+def tutorial_demo_target(
+    db: Session = Depends(get_db),
+    ctx: AuthCtx = Depends(get_auth),
+):
+    """チュートリアルで見せる demo データの対象 ID を返す。
+
+    どのロールでも参照可能だが、返すのは demo チームの **対象選手 ID と
+    代表 match ID** のみ（実データは一切含まない）。フロントはこの ID に
+    `?demo=1` を付けて read-only 表示する。demo seed 未投入時は null を返す。
+    """
+    if not ctx.user_id:
+        raise HTTPException(status_code=401, detail="auth required")
+    from backend.db.models import Player, Team
+    demo_team = db.query(Team).filter(Team.display_id == "__demo__").first()
+    if demo_team is None:
+        return {"success": True, "data": None}
+    player = (
+        db.query(Player)
+        .filter(Player.team_id == demo_team.id, Player.is_target.is_(True))
+        .first()
+    )
+    if player is None:
+        player = db.query(Player).filter(Player.team_id == demo_team.id).first()
+    if player is None:
+        return {"success": True, "data": None}
+    match = (
+        db.query(Match)
+        .filter(Match.owner_team_id == demo_team.id, Match.deleted_at.is_(None))
+        .order_by(Match.date.desc())
+        .first()
+    )
+    return {
+        "success": True,
+        "data": {
+            "team_id": demo_team.id,
+            "player_id": player.id,
+            "player_name": player.name,
+            "match_id": match.id if match else None,
+        },
+    }
+
+
 @router.post("/tutorials/{tutorial_id}/step")
 def tutorial_step(
     tutorial_id: str,
