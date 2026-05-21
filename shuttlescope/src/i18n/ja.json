@@ -3625,5 +3625,19 @@
     "next": "次 ›",
     "prev_title": "前のラリー",
     "next_title": "次のラリー"
+  },
+  "movement": {
+    "court_dims": "コート: {{len}}m × {{width}}m",
+    "calib_relative_note": " ※キャリブ未設定・相対値",
+    "conf_high": "高信頼度",
+    "conf_medium": "中信頼度",
+    "conf_low": "低信頼度",
+    "grid_local_unsaved": "⚠ グリッドはローカルに設定済みですが DB への保存が未完了です。",
+    "no_calib": "⚠ コートキャリブレーションが未設定のため相対値表示です。",
+    "n_frames": "{{n}}フレーム",
+    "dir_lateral": "横 {{pct}}%",
+    "dir_diagonal": "斜 {{pct}}%",
+    "dir_depth": "前後 {{pct}}%",
+    "zone_note": "ゾーン内の数字はフレーム数。濃いほど長時間滞在。A: 自コート上部 / B: 相手コート下部。"
   }
 }

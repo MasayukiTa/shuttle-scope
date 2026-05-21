@@ -3292,5 +3292,19 @@
     "next": "Next ›",
     "prev_title": "Previous rally",
     "next_title": "Next rally"
+  },
+  "movement": {
+    "court_dims": "Court: {{len}}m × {{width}}m",
+    "calib_relative_note": " (no calibration · relative)",
+    "conf_high": "High confidence",
+    "conf_medium": "Medium confidence",
+    "conf_low": "Low confidence",
+    "grid_local_unsaved": "⚠ Grid is set locally but not yet saved to the DB.",
+    "no_calib": "⚠ Court calibration not set; showing relative values.",
+    "n_frames": "{{n}} frames",
+    "dir_lateral": "Lateral {{pct}}%",
+    "dir_diagonal": "Diagonal {{pct}}%",
+    "dir_depth": "Depth {{pct}}%",
+    "zone_note": "Numbers in zones are frame counts; darker = longer dwell. A: own court (top) / B: opponent court (bottom)."
   }
 }
