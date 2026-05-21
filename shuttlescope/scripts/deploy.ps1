@@ -32,8 +32,8 @@ $ErrorActionPreference = "Stop"
 $StartBat = ""   # 例: "C:\Users\M118A8586\shuttle_start.bat"
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-$RepoRoot = Split-Path -Parent $PSScriptRoot   # shuttlescope/ の親 = リポジトリルート
-$AppRoot  = $PSScriptRoot                       # shuttlescope/
+$AppRoot  = Split-Path -Parent $PSScriptRoot   # scripts/ の親 = shuttlescope/
+$RepoRoot = Split-Path -Parent $AppRoot        # shuttlescope/ の親 = リポジトリルート
 $LogFile  = Join-Path $AppRoot "deploy.log"
 
 function Log([string]$msg) {
