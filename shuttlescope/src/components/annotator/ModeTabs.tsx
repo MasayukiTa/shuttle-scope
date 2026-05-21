@@ -35,6 +35,7 @@ export function ModeTabs({ isMobile, className }: ModeTabsProps) {
       className={clsx('flex items-center gap-0.5 shrink-0', className)}
       role="tablist"
       aria-label={t('annotator.ux.mode_aria')}
+      data-tutorial="annotator.modeTabs"
     >
       {TABS.map(({ key, labelKey, icon }) => {
         const active = mode === key
