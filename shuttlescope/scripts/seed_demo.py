@@ -1,4 +1,4 @@
-"""
+r"""
 demo ロール用デモデータ投入スクリプト（seed_demo.py）
 
 設計: private_docs/TUTORIAL_REVAMP_2026-05-21.md
