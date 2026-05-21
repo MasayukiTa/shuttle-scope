@@ -354,12 +354,12 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
         <div>
           <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.PlayerMovementCard.k2')}</h3>
           <p className={`text-[10px] ${textFaint}`}>
-            コート: {stats.court_length_m}m × {stats.court_width_m}m
-            {!stats.has_calibration && ' ※キャリブ未設定・相対値'}
+            {t('movement.court_dims', { len: stats.court_length_m, width: stats.court_width_m, defaultValue: 'Court: {{len}}m × {{width}}m' })}
+            {!stats.has_calibration && t('movement.calib_relative_note', ' (no calibration · relative)')}
           </p>
         </div>
         <span className={`text-[10px] font-medium ${CONF_COLORS[conf.level]}`}>
-          {conf.level === 'high' ? '高' : conf.level === 'medium' ? '中' : '低'}信頼度
+          {conf.level === 'high' ? t('movement.conf_high', 'High confidence') : conf.level === 'medium' ? t('movement.conf_medium', 'Medium confidence') : t('movement.conf_low', 'Low confidence')}
         </span>
       </div>
 
@@ -380,7 +380,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
           >
             {isLocal ? (
               <span>
-                ⚠ グリッドはローカルに設定済みですが DB への保存が未完了です。
+                {t('movement.grid_local_unsaved', '⚠ Grid is set locally but not yet saved to the DB.')}
                 {onSyncGridFromLocal ? (
                   <button
                     type="button"
@@ -418,7 +418,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
               </span>
             ) : (
               <span>
-                ⚠ コートキャリブレーションが未設定のため相対値表示です。
+                {t('movement.no_calib', '⚠ Court calibration not set; showing relative values.')}
                 {canClick && <span className="underline ml-1">{t('auto.PlayerMovementCard.k4')}</span>}
               </span>
             )}
@@ -442,7 +442,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
                   <span className={`w-2 h-2 rounded-full ${col.bg}`} />
                   <span className={`text-xs font-semibold ${textHeading}`}>{name}</span>
                 </div>
-                <span className={`text-[10px] ${textFaint}`}>{p.frames_tracked}フレーム</span>
+                <span className={`text-[10px] ${textFaint}`}>{t('movement.n_frames', { n: p.frames_tracked, defaultValue: '{{n}} frames' })}</span>
               </div>
 
               {/* 3指標グリッド */}
@@ -488,9 +488,9 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
                   )}
                 </div>
                 <div className={`flex gap-3 mt-0.5 text-[9px] ${textFaint}`}>
-                  <span><span className="text-teal-400">■</span> 横 {fmt1(dir.lateral_pct)}%</span>
-                  <span><span className="text-purple-400">■</span> 斜 {fmt1(dir.diagonal_pct)}%</span>
-                  <span><span className="text-blue-400">■</span> 前後 {fmt1(dir.depth_pct)}%</span>
+                  <span><span className="text-teal-400">■</span> {t('movement.dir_lateral', { pct: fmt1(dir.lateral_pct), defaultValue: 'Lateral {{pct}}%' })}</span>
+                  <span><span className="text-purple-400">■</span> {t('movement.dir_diagonal', { pct: fmt1(dir.diagonal_pct), defaultValue: 'Diagonal {{pct}}%' })}</span>
+                  <span><span className="text-blue-400">■</span> {t('movement.dir_depth', { pct: fmt1(dir.depth_pct), defaultValue: 'Depth {{pct}}%' })}</span>
                 </div>
               </div>
             </div>
@@ -544,7 +544,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
             })}
           </div>
           <p className={`text-[9px] ${textFaint}`}>
-            ゾーン内の数字はフレーム数。濃いほど長時間滞在。A: 自コート上部 / B: 相手コート下部。
+            {t('movement.zone_note', 'Numbers in zones are frame counts; darker = longer dwell. A: own court (top) / B: opponent court (bottom).')}
           </p>
         </div>
       )}
