@@ -75,11 +75,22 @@ export default tseslint.config(
       // ── i18n: JSX 直書き文字列の検出 ───────────────────────────
       // 現状大量にあるため warn。markupOnly で JSX テキストのみ対象、
       // 記号・数字のみは除外。
+      // eslint-plugin-i18next v6 スキーマ: mode / jsx-attributes / words.exclude
       'i18next/no-literal-string': ['warn', {
-        markupOnly: true,
-        ignoreAttribute: ['className', 'class', 'id', 'key', 'type', 'name',
-          'data-testid', 'aria-hidden', 'role', 'href', 'to', 'path', 'rel',
-          'target', 'style', 'fill', 'stroke', 'viewBox', 'd', 'xmlns'],
+        mode: 'jsx-text-only',  // JSX のテキストノードのみ対象 (旧 markupOnly 相当)
+        'jsx-attributes': {
+          exclude: ['className', 'class', 'id', 'key', 'type', 'name',
+            'data-testid', 'aria-hidden', 'role', 'href', 'to', 'path', 'rel',
+            'target', 'style', 'fill', 'stroke', 'viewBox', 'd', 'xmlns'],
+        },
+        words: {
+          // 普遍的に翻訳不要なものを除外: 記号/数字のみ・解像度・ブランド名
+          exclude: [
+            '^\\s*[!-/:-@[-`{-~\\d\\s✓✕→▶■・…％⚠⚡🔄📁★☆]+\\s*$', // 記号・絵文字・数字のみ
+            '^\\d+p$',                                      // 解像度 360p..1080p
+            '^(Chrome|Edge|Firefox|Brave|Safari|Opera)$',   // ブラウザ名
+          ],
+        },
       }],
 
       // ── dead code / 型の規律 ───────────────────────────────────
@@ -89,6 +100,21 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'eqeqeq': ['warn', 'smart'],
+    },
+  },
+
+  // ── admin 限定の運用画面は i18n 対象外 ──────────────────────────
+  // 攻撃ログ等の技術ラベル (Method/Path/Status 等) は英語固定で読めれば十分、
+  // と運用方針で合意 (2026-05-21)。i18n burndown のカウントから除外する。
+  {
+    files: [
+      'src/pages/SecurityLogPage.tsx',
+      'src/pages/AuditLogPage.tsx',
+      'src/pages/AdminAnalyticsPage.tsx',
+      'src/pages/AdminBillingPage.tsx',
+    ],
+    rules: {
+      'i18next/no-literal-string': 'off',
     },
   },
 )

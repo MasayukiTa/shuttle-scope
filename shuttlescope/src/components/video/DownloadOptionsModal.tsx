@@ -70,10 +70,11 @@ function estimateSizeMB(quality: string, durationSec: number): number {
 
 type TabId = 'full' | 'manual' | 'pin'
 
-const TABS: { id: TabId; label: string; hint?: string }[] = [
-  { id: 'full',   label: '全部DL' },
-  { id: 'pin',    label: 'ピン留め', hint: '(YouTube のみ、Phase 2)' },
-  { id: 'manual', label: '手入力' },
+// ラベル/ヒントは render 時に t() で解決する (i18n)
+const TABS: { id: TabId; labelKey: string; hintKey?: string }[] = [
+  { id: 'full',   labelKey: 'video.dl.tab_full' },
+  { id: 'pin',    labelKey: 'video.dl.tab_pin', hintKey: 'video.dl.tab_pin_hint' },
+  { id: 'manual', labelKey: 'video.dl.tab_manual' },
 ]
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -108,7 +109,7 @@ export function DownloadOptionsModal({
   initialCookieBrowser = '',
   isElectronLocal = false,
 }: Props) {
-  const { t: _t } = useTranslation()
+  const { t } = useTranslation()
   const isLight = useIsLightMode()
 
   const [tab, setTab] = useState<TabId>('full')
@@ -268,14 +269,14 @@ export function DownloadOptionsModal({
             <Download size={18} className="text-blue-400 shrink-0" />
             <div className="min-w-0">
               <h2 id="download-modal-title" className="text-base font-semibold truncate">
-                動画ダウンロード
+                {t('video.dl.title', 'Download video')}
               </h2>
               {matchLabel && (
                 <p className={`text-xs truncate ${muteColor}`}>{matchLabel}</p>
               )}
             </div>
           </div>
-          <button onClick={onClose} aria-label="閉じる" className={muteColor + ' hover:opacity-80'}>
+          <button onClick={onClose} aria-label={t('common.close', 'Close')} className={muteColor + ' hover:opacity-80'}>
             <X size={18} />
           </button>
         </div>
@@ -293,11 +294,11 @@ export function DownloadOptionsModal({
               className={`px-3 py-1.5 rounded text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 tab === tabDef.id ? tabActive : tabInactive
               }`}
-              title={tabDef.hint}
+              title={tabDef.hintKey ? t(tabDef.hintKey) : undefined}
               aria-selected={tab === tabDef.id}
             >
-              {tabDef.label}
-              {tabDef.hint && <span className="ml-1 text-[10px] opacity-70">{tabDef.hint}</span>}
+              {t(tabDef.labelKey)}
+              {tabDef.hintKey && <span className="ml-1 text-[10px] opacity-70">{t(tabDef.hintKey)}</span>}
             </button>
           ))}
         </div>
@@ -306,9 +307,9 @@ export function DownloadOptionsModal({
         <div className="px-5 py-3 flex-1 overflow-y-auto flex flex-col gap-3">
           {tab === 'full' && (
             <div className={`text-sm ${labelColor}`}>
-              <p>動画全体をダウンロードします。</p>
+              <p>{t('video.dl.full_desc', 'Downloads the entire video.')}</p>
               <p className={`text-xs mt-1 ${muteColor}`}>
-                Live 配信が長時間 (3時間以上) の場合は<strong>「手入力」タブ</strong>で範囲を指定すると容量を節約できます。
+                {t('video.dl.full_hint', 'For long live streams (3h+), use the Manual tab to specify a range and save space.')}
               </p>
             </div>
           )}
@@ -317,39 +318,42 @@ export function DownloadOptionsModal({
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <Scissors size={14} className={muteColor} />
-                <span className={`text-sm ${labelColor}`}>切り抜き範囲 (HH:MM:SS / MM:SS / 秒)</span>
+                <span className={`text-sm ${labelColor}`}>{t('video.dl.range_label', 'Clip range (HH:MM:SS / MM:SS / sec)')}</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="flex flex-col gap-1">
-                  <span className={`text-xs ${muteColor}`}>開始</span>
+                  <span className={`text-xs ${muteColor}`}>{t('video.dl.start', 'Start')}</span>
                   <input
                     type="text"
                     value={startInput}
                     onChange={(e) => setStartInput(e.target.value)}
                     placeholder="00:30:00"
                     className={`text-sm rounded px-2 py-1.5 ${inputCls}`}
-                    aria-label="開始時刻"
+                    aria-label={t('video.dl.start', 'Start')}
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className={`text-xs ${muteColor}`}>終了</span>
+                  <span className={`text-xs ${muteColor}`}>{t('video.dl.end', 'End')}</span>
                   <input
                     type="text"
                     value={endInput}
                     onChange={(e) => setEndInput(e.target.value)}
                     placeholder="01:30:00"
                     className={`text-sm rounded px-2 py-1.5 ${inputCls}`}
-                    aria-label="終了時刻"
+                    aria-label={t('video.dl.end', 'End')}
                   />
                 </label>
               </div>
               {/* 範囲・推定サイズ */}
               {rangeSeconds !== null && (
                 <div className={`text-xs ${muteColor}`}>
-                  範囲: <strong>{formatTime(rangeSeconds)}</strong>
-                  {' '}(約 {rangeSeconds.toFixed(0)} 秒)
-                  {' / '}推定サイズ: <strong>~{estimateSizeMB(quality, rangeSeconds)} MB</strong>
-                  {' '}({quality === 'best' ? 'best' : `${quality}p`} 想定)
+                  {t('video.dl.range_estimate', {
+                    time: formatTime(rangeSeconds),
+                    sec: rangeSeconds.toFixed(0),
+                    size: estimateSizeMB(quality, rangeSeconds),
+                    q: quality === 'best' ? 'best' : `${quality}p`,
+                    defaultValue: 'Range: {{time}} (~{{sec}}s) / Est. size: ~{{size}} MB (assuming {{q}})',
+                  })}
                 </div>
               )}
               {rangeError && (
@@ -360,16 +364,16 @@ export function DownloadOptionsModal({
 
           {tab === 'pin' && (
             <div className={`text-sm ${labelColor}`}>
-              <p>ピン留め (YouTube iframe で再生中の位置を ▶開始 / ■終了 でピン留め) は Phase 2 で実装予定です。</p>
+              <p>{t('video.dl.pin_desc', 'Pinning is planned for Phase 2.')}</p>
               <p className={`text-xs mt-1 ${muteColor}`}>
-                現状は「手入力」タブで HH:MM:SS を指定してください。
+                {t('video.dl.pin_hint', 'For now, specify HH:MM:SS in the Manual tab.')}
               </p>
             </div>
           )}
 
           {/* 共通: 画質 */}
           <div className="flex items-center gap-2">
-            <label className={`text-sm ${labelColor}`}>画質</label>
+            <label className={`text-sm ${labelColor}`}>{t('video.dl.quality', 'Quality')}</label>
             <select
               value={quality}
               onChange={(e) => setQuality(e.target.value)}
@@ -379,7 +383,7 @@ export function DownloadOptionsModal({
               <option value="480">480p</option>
               <option value="720">720p</option>
               <option value="1080">1080p</option>
-              <option value="best">最高画質</option>
+              <option value="best">{t('video.dl.quality_best', 'Best')}</option>
             </select>
           </div>
 
@@ -387,13 +391,13 @@ export function DownloadOptionsModal({
           {isElectronLocal && (
             <div className="flex items-center gap-2">
               <Cookie size={14} className={muteColor} />
-              <label className={`text-sm ${labelColor}`}>Cookie ブラウザ</label>
+              <label className={`text-sm ${labelColor}`}>{t('video.dl.cookie_browser', 'Cookie browser')}</label>
               <select
                 value={cookieBrowser}
                 onChange={(e) => setCookieBrowser(e.target.value)}
                 className={`text-sm rounded px-2 py-1 flex-1 ${inputCls}`}
               >
-                <option value="">使用しない</option>
+                <option value="">{t('video.dl.cookie_none', 'None')}</option>
                 <option value="chrome">Chrome</option>
                 <option value="edge">Edge</option>
                 <option value="firefox">Firefox</option>
@@ -410,10 +414,10 @@ export function DownloadOptionsModal({
             aria-expanded={authPanelOpen}
           >
             <ChevronDown size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
-            会員限定サイト・パスワード保護動画
+            {t('video.dl.auth_panel', 'Member-only sites · password-protected video')}
             {(cookiesFileName || videoPassword) && (
               <span className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
-                ✓ 設定済
+                ✓ {t('video.dl.configured', 'Configured')}
               </span>
             )}
           </button>
@@ -421,7 +425,7 @@ export function DownloadOptionsModal({
             <div className="flex flex-col gap-2 pl-4 border-l border-dashed" style={{ borderColor: isLight ? '#cbd5e1' : '#374151' }}>
               {/* cookies.txt */}
               <div className="flex flex-col gap-1">
-                <span className={`text-xs ${muteColor}`}>cookies.txt (Netscape 形式、1MB 以下)</span>
+                <span className={`text-xs ${muteColor}`}>{t('video.dl.cookies_label', 'cookies.txt (Netscape format, ≤1MB)')}</span>
                 <div className="flex items-center gap-2">
                   <input
                     type="file"
@@ -441,7 +445,7 @@ export function DownloadOptionsModal({
                 </div>
                 {cookiesFileName && !cookiesError && (
                   <div className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
-                    ✓ {cookiesFileName} ({Math.round(cookiesTxt.length / 1024)} KB)
+                    {t('video.dl.cookies_ok', { name: cookiesFileName, kb: Math.round(cookiesTxt.length / 1024), defaultValue: '✓ {{name}} ({{kb}} KB)' })}
                   </div>
                 )}
                 {cookiesError && (
@@ -451,13 +455,13 @@ export function DownloadOptionsModal({
 
               {/* video_password */}
               <div className="flex flex-col gap-1">
-                <span className={`text-xs ${muteColor}`}>動画パスワード (Vimeo Showcase 等)</span>
+                <span className={`text-xs ${muteColor}`}>{t('video.dl.video_password_label', 'Video password (Vimeo Showcase etc.)')}</span>
                 <div className="flex items-center gap-2">
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={videoPassword}
                     onChange={(e) => setVideoPassword(e.target.value)}
-                    placeholder="動画パスワード"
+                    placeholder={t('video.dl.video_password_ph', 'Video password')}
                     autoComplete="off"
                     maxLength={1024}
                     className={`text-sm rounded px-2 py-1 flex-1 ${inputCls}`}
@@ -467,7 +471,7 @@ export function DownloadOptionsModal({
                     onClick={() => setShowPassword((v) => !v)}
                     className={`text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'}`}
                   >
-                    {showPassword ? '隠す' : '表示'}
+                    {showPassword ? t('video.dl.hide', 'Hide') : t('video.dl.show', 'Show')}
                   </button>
                 </div>
               </div>
@@ -491,7 +495,7 @@ export function DownloadOptionsModal({
               isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
             }`}
           >
-            キャンセル
+            {t('app.cancel', 'Cancel')}
           </button>
           <button
             onClick={handleSubmit}
@@ -499,7 +503,7 @@ export function DownloadOptionsModal({
             className="text-sm px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium flex items-center gap-1.5"
           >
             <Download size={14} />
-            {submitting ? '開始中...' : tab === 'manual' ? '範囲をダウンロード' : 'ダウンロード'}
+            {submitting ? t('video.dl.starting', 'Starting...') : tab === 'manual' ? t('video.dl.download_range', 'Download range') : t('video.dl.download', 'Download')}
           </button>
         </div>
       </div>
