@@ -3193,7 +3193,9 @@
     "all_time": "All time",
     "recent_n_matches": "Recent {{count}} matches",
     "opponent": "Opponent",
-    "paren": "({{v}})"
+    "paren": "({{v}})",
+    "filter": "Filter",
+    "clear": "Clear"
   },
   "advice": {
     "confidence_high": "Confidence: High",
@@ -3273,5 +3275,22 @@
     "small_sample_note": "* Small samples (under 3 matches) have low statistical reliability.",
     "no_candidates": "No candidate data",
     "compute_ranking": "Compute ranking"
+  },
+  "rally": {
+    "no_video": "Video not saved",
+    "no_timestamps": "No timestamps",
+    "set_n": "Set {{n}}",
+    "selected": "Selected: Set {{set}} R.{{rally}} ({{a}}–{{b}})",
+    "click_popup": " — click to play in popup",
+    "no_rallies": "No matching rallies",
+    "s_r": "S{{s}} R.{{r}}",
+    "winner_strokes": "Winner: {{winner}} · {{len}} strokes",
+    "n_rallies": "{{n}} rallies",
+    "n_with_timestamps": "{{n}} with timestamps",
+    "popup_title": "Set {{set}} — R.{{rally}} ({{a}}–{{b}})",
+    "prev": "‹ Prev",
+    "next": "Next ›",
+    "prev_title": "Previous rally",
+    "next_title": "Next rally"
   }
 }

@@ -134,12 +134,12 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
               className={`text-xs px-2 py-0.5 rounded border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-gray-800 border-gray-700'}`}
               style={{ color: '#b40426' /* B_BAD */ }}
             >
-              動画未保存
+              {t('rally.no_video', 'Video not saved')}
             </span>
           )}
           {hasVideo && !hasTimestamps && (
             <span className={`text-xs px-2 py-0.5 rounded ${isLight ? 'bg-gray-100 text-gray-500' : 'bg-gray-700 text-gray-400'}`}>
-              タイムスタンプ未記録
+              {t('rally.no_timestamps', 'No timestamps')}
             </span>
           )}
         </div>
@@ -150,7 +150,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
           }`}
         >
           <Filter size={12} />
-          フィルター
+          {t('common.filter', 'Filter')}
           <ChevronDown size={12} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
         </button>
       </div>
@@ -193,7 +193,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
               >
                 <option value="">{t('auto.RallyClipNavigator.k6')}</option>
                 {setNums.map((n) => (
-                  <option key={n} value={String(n)}>Set {n}</option>
+                  <option key={n} value={String(n)}>{t('rally.set_n', { n, defaultValue: 'Set {{n}}' })}</option>
                 ))}
               </select>
             </div>
@@ -203,7 +203,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
               onClick={() => { setFilterWinner(''); setFilterEndType(''); setFilterSetNum('') }}
               className={`text-xs px-2 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-500 hover:bg-gray-100' : 'border-gray-600 text-gray-400 hover:bg-gray-700'}`}
             >
-              クリア
+              {t('common.clear', 'Clear')}
             </button>
           </div>
         </div>
@@ -217,8 +217,8 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
         const r = rallies.find((x) => x.id === currentRallyId)
         return r ? (
           <div className={`px-4 pt-3 pb-1 text-[11px] ${textMuted}`}>
-            選択中: Set {r.set_num} R.{r.rally_num} ({r.score_a_before}–{r.score_b_before})
-            {r.video_timestamp_start != null && ' — クリックでポップアップ再生'}
+            {t('rally.selected', { set: r.set_num, rally: r.rally_num, a: r.score_a_before, b: r.score_b_before, defaultValue: 'Selected: Set {{set}} R.{{rally}} ({{a}}–{{b}})' })}
+            {r.video_timestamp_start != null && t('rally.click_popup', ' — click to play in popup')}
           </div>
         ) : null
       })()}
@@ -230,7 +230,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
         )}
         {!isLoading && rallies.length === 0 && (
           <div className={`px-4 py-6 text-center text-sm ${textMuted}`}>
-            該当ラリーがありません
+            {t('rally.no_rallies', 'No matching rallies')}
           </div>
         )}
         {!isLoading && rallies.map((r) => {
@@ -274,7 +274,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
               {/* セット / ラリー番号 */}
               <div className="shrink-0 w-20">
                 <span className={`text-xs font-medium ${isActive ? 'text-blue-400' : textSecondary}`}>
-                  S{r.set_num} R.{r.rally_num}
+                  {t('rally.s_r', { s: r.set_num, r: r.rally_num, defaultValue: 'S{{s}} R.{{r}}' })}
                 </span>
                 <div className={`text-[10px] ${textMuted}`}>
                   {r.score_a_before}–{r.score_b_before}
@@ -296,7 +296,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
               <div className="flex-1 min-w-0">
                 <span className={`text-xs ${textPrimary}`}>{endLabel}</span>
                 <div className={`text-[10px] truncate ${textMuted}`}>
-                  勝: {winner}　{r.rally_length} ストローク
+                  {t('rally.winner_strokes', { winner, len: r.rally_length, defaultValue: 'Winner: {{winner}} · {{len}} strokes' })}
                 </div>
               </div>
 
@@ -313,9 +313,9 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
 
       {/* フッター */}
       <div className={`px-4 py-2 text-[10px] ${textMuted} flex justify-between`}>
-        <span>{rallies.length} ラリー</span>
+        <span>{t('rally.n_rallies', { n: rallies.length, defaultValue: '{{n}} rallies' })}</span>
         {hasTimestamps && (
-          <span>{rallies.filter((r) => r.video_timestamp_start != null).length} 件にタイムスタンプあり</span>
+          <span>{t('rally.n_with_timestamps', { n: rallies.filter((r) => r.video_timestamp_start != null).length, defaultValue: '{{n}} with timestamps' })}</span>
         )}
       </div>
 
@@ -335,21 +335,21 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
           >
             <div className="flex items-center justify-between px-3 py-2 bg-gray-900 text-gray-100">
               <span className="text-sm font-medium">
-                Set {popupRally.set_num} — R.{popupRally.rally_num} ({popupRally.score_a_before}–{popupRally.score_b_before})
+                {t('rally.popup_title', { set: popupRally.set_num, rally: popupRally.rally_num, a: popupRally.score_a_before, b: popupRally.score_b_before, defaultValue: 'Set {{set}} — R.{{rally}} ({{a}}–{{b}})' })}
               </span>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={popupPrev}
                   className="px-2 py-1 text-xs rounded hover:bg-gray-700 disabled:opacity-30"
-                  title="前のラリー"
-                >‹ 前</button>
+                  title={t('rally.prev_title', 'Previous rally')}
+                >{t('rally.prev', '‹ Prev')}</button>
                 <button
                   type="button"
                   onClick={popupNext}
                   className="px-2 py-1 text-xs rounded hover:bg-gray-700 disabled:opacity-30"
-                  title="次のラリー"
-                >次 ›</button>
+                  title={t('rally.next_title', 'Next rally')}
+                >{t('rally.next', 'Next ›')}</button>
                 <button
                   type="button"
                   onClick={() => setPopupRally(null)}
