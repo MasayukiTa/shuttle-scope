@@ -23,7 +23,7 @@ export function HistoryStrip({ strokes, onSeek, maxItems = 5 }: HistoryStripProp
   const recent = strokes.slice(-maxItems)
 
   return (
-    <div className="border-t border-gray-700 bg-gray-900/80 shrink-0">
+    <div className="border-t border-gray-700 bg-gray-900/80 shrink-0" data-tutorial="annotator.historyStrip">
       <button
         onClick={() => setCollapsed((v) => !v)}
         className="w-full flex items-center justify-between px-3 py-1 text-[10px] text-gray-500 hover:text-gray-300"
