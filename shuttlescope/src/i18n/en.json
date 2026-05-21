@@ -3192,7 +3192,8 @@
     "unknown_date": "Date unknown",
     "all_time": "All time",
     "recent_n_matches": "Recent {{count}} matches",
-    "opponent": "Opponent"
+    "opponent": "Opponent",
+    "paren": "({{v}})"
   },
   "advice": {
     "confidence_high": "Confidence: High",
@@ -3263,5 +3264,14 @@
     "tab_request": "HTTP requests",
     "admin_required": "admin role required",
     "tab_error": "Errors"
+  },
+  "pair": {
+    "title": "Analyst only — partner candidate ranking (record-based)",
+    "desc": "Win rates are computed from pair match records. Players with no data are listed at the end.",
+    "ranking_for": "Pair record ranking for {{name}}",
+    "no_record_n": "No pair record — {{count}} players (click to expand)",
+    "small_sample_note": "* Small samples (under 3 matches) have low statistical reliability.",
+    "no_candidates": "No candidate data",
+    "compute_ranking": "Compute ranking"
   }
 }
