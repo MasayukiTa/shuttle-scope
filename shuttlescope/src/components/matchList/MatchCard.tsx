@@ -52,7 +52,7 @@ export function MatchCard({
       <div className="flex items-center gap-1 mb-1 text-sm">
         <span className={`text-[10px] ${textMuted} shrink-0`}>{t(`match.formats.${m.format}`)}</span>
         <span className={`${textSecondary} truncate`}>
-          vs {m.player_b?.name ?? `#${m.player_b_id}`}
+          {t('match.list.vs', 'vs')} {m.player_b?.name ?? `#${m.player_b_id}`}
           {m.partner_b?.name && ` / ${m.partner_b.name}`}
         </span>
         {m.player_b?.needs_review && (
@@ -89,7 +89,7 @@ export function MatchCard({
           className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium shrink-0"
         >
           <Play size={12} />
-          開く
+          {t('match.list.open', 'Open')}
         </button>
         {m.player_a_id && (
           <button
@@ -111,7 +111,7 @@ export function MatchCard({
             title={`DL 失敗: ${dl.error ?? ''}\nクリックで再試行 (オプション選択あり)`}
           >
             <AlertCircle size={12} />
-            失敗・再試行
+            {t('match.list.dl_failed_retry', 'Failed · Retry')}
           </button>
         )}
         {dl && dl.status !== 'error' && (
@@ -155,11 +155,11 @@ export function MatchCard({
               onClick={() => { onDeleteExecute(m.id); onDeleteConfirm(null) }}
               className="font-medium hover:opacity-80"
             >
-              削除
+              {t('match.list.delete_confirm', 'Delete')}
             </button>
             <span className="opacity-50">|</span>
             <button onClick={() => onDeleteConfirm(null)} className="hover:opacity-80">
-              取消
+              {t('match.list.cancel_short', 'Cancel')}
             </button>
           </div>
         ) : (

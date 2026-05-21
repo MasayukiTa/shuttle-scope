@@ -984,7 +984,15 @@
       "tentative": "暫定",
       "registered": "登録済",
       "duplicate_hint": "（同姓同名の識別に使用）",
-      "existing_team_hint": "既存選手のチーム（変更可）"
+      "existing_team_hint": "既存選手のチーム（変更可）",
+      "vs": "vs",
+      "open": "開く",
+      "dl_failed_retry": "失敗・再試行",
+      "delete_confirm": "削除",
+      "cancel_short": "取消",
+      "public_pool_badge": "共有",
+      "public_pool_title": "全チームから閲覧可能な公開プール試合",
+      "create_tentative": "「{{name}}」を暫定登録して作成"
     }
   },
   "player": {
