@@ -10,7 +10,7 @@
  *   - 切断後自動再接続（5 秒後リトライ × 3 回）
  *   - RTCPeerConnection.getStats() ネットワーク品質ヒント
  *   - navigator.getBattery() バッテリー残量表示
- *   - 非技術ユーザー向け丁寧な状態テキスト
+ *   - 非技術ユーザ向け丁寧な状態テキスト
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useLocation } from 'react-router-dom'

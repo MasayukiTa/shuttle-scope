@@ -68,7 +68,7 @@ describe('shotTypeColors', () => {
     }
   })
 
-  it('mid category uses white text on amber-600 (WCAG AA, ユーザー要望で全カテゴリ統一白文字)', () => {
+  it('mid category uses white text on amber-600 (WCAG AA, ユーザ要望で全カテゴリ統一白文字)', () => {
     // 旧 yellow-500 + text-gray-900 はカラフルタイル群で「黒文字だけ浮く」見栄え不良
     // のため amber-600 + text-white に変更 (white と amber-600 #d97706 で contrast ≈ 3.6:1, AA pass)
     expect(CATEGORY_STYLES.mid.text).toBe('text-white')
@@ -76,7 +76,7 @@ describe('shotTypeColors', () => {
   })
 
   it('全カテゴリーが白文字 (タイル群でテキスト色を統一する規約)', () => {
-    // ユーザー要望: 「カラーのボタンの中が黒文字はありえない。fff にしないと読めない」
+    // ユーザ要望: 「カラーのボタンの中が黒文字はありえない。fff にしないと読めない」
     for (const cat of Object.keys(CATEGORY_STYLES) as Array<keyof typeof CATEGORY_STYLES>) {
       expect(CATEGORY_STYLES[cat].text).toBe('text-white')
     }
