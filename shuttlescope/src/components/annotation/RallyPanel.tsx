@@ -29,7 +29,7 @@ export function RallyPanel({
   const { t } = useTranslation()
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" data-tutorial="annotator.rallyPanel">
       {/* スコア表示 */}
       <div className="flex items-center justify-between bg-gray-800 rounded p-2">
         <div className="text-center">

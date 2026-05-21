@@ -231,7 +231,7 @@ export function AnnotatorVideoPane({
   )
 
   return (
-    <div ref={videoContainerRef} className="w-full">
+    <div ref={videoContainerRef} className="w-full" data-tutorial="annotator.videoPane">
       <VideoPlayer
         videoRefProp={videoRef}
         src={src}

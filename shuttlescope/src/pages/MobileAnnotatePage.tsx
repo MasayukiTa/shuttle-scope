@@ -711,6 +711,7 @@ export function MobileAnnotatePage() {
         <div
           className="absolute right-2 flex flex-col gap-1.5"
           style={{ top: '50%', transform: 'translateY(-50%)', zIndex: 45 }}
+          data-tutorial="mobileAnnotate.passSwitch"
         >
           {(Object.keys(PASS_LABELS) as AnnotatePass[]).map((p) => (
             <button

@@ -47,7 +47,7 @@ export function HitZoneSelector({
   const { t } = useTranslation()
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex flex-col items-center gap-1" data-tutorial="annotator.hitZone">
       <div className="text-xs font-medium text-blue-300 flex items-center gap-1">
         <span>{t('annotator.hit_zone')}</span>
         {isOverridden && (
