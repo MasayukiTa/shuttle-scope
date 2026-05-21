@@ -81,7 +81,7 @@ function CoachCandidateView({
       >
         <AlertCircle size={13} className="shrink-0 mt-0.5" style={{ color: '#16a34a' }} />
         <p className="text-[11px]" style={{ color: isLight ? '#15803d' : '#86efac' }}>
-          候補生成（参考）— 自動決定ではありません。単独で起用を決めないでください。
+          {t('lineup.candidate_disclaimer', 'Candidate generation (reference) — not an automatic decision. Do not decide a lineup on this alone.')}
         </p>
       </div>
 
@@ -149,7 +149,7 @@ function CoachCandidateView({
                   </span>
                   {rp.sample_size < 10 && (
                     <span className="text-[10px]" style={{ color: subText }}>
-                      （参考: データ不足）
+                      {t('lineup.ref_insufficient', '(reference: insufficient data)')}
                     </span>
                   )}
                 </div>
@@ -160,7 +160,7 @@ function CoachCandidateView({
                   </span>
                 </div>
                 <span className="text-[10px]" style={{ color: subText }}>
-                  {rp.sample_size}試合
+                  {t('lineup.n_matches', { n: rp.sample_size, defaultValue: '{{n}} matches' })}
                 </span>
               </div>
             </div>
@@ -169,7 +169,7 @@ function CoachCandidateView({
       </div>
 
       <p className="text-[10px]" style={{ color: subText }}>
-        ※ 候補は相手・条件に応じた参考情報です。最終的な起用判断はコーチの裁量で行ってください。
+        {t('lineup.candidate_note', '* Candidates are reference info based on opponent and conditions. The final lineup decision is at the coach’s discretion.')}
       </p>
     </div>
   )
@@ -230,7 +230,7 @@ function AnalystRankingView({
           </span>
         )}
         <span className="hidden sm:inline text-[11px] shrink-0 num-cell" style={{ color: subText }}>
-          {rp.sample_size > 0 ? `${rp.sample_size}試合` : 'データなし'}
+          {rp.sample_size > 0 ? t('lineup.n_matches', { n: rp.sample_size, defaultValue: '{{n}} matches' }) : t('lineup.no_data', 'No data')}
         </span>
         {rp.sample_size > 0 && (
           <div className="flex items-center gap-1.5 shrink-0">
@@ -266,7 +266,7 @@ function AnalystRankingView({
       {noData.length > 0 && (
         <details>
           <summary className="text-[11px] cursor-pointer select-none" style={{ color: subText }}>
-            実績データなし — {noData.length}名（クリックで展開）
+            {t('lineup.no_record_n', { count: noData.length, defaultValue: 'No record — {{count}} players (click to expand)' })}
           </summary>
           <div className="mt-1 space-y-1">
             {noData.map((rp) => renderRow(rp, null))}
@@ -275,7 +275,7 @@ function AnalystRankingView({
       )}
 
       <p className="text-[10px]" style={{ color: subText }}>
-        ※ 勝率はキャリブレーション済み多特徴量モデルによる予測値です
+        {t('lineup.winrate_note', '* Win rates are predictions from a calibrated multi-feature model.')}
       </p>
     </div>
   )
@@ -377,7 +377,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
           <p className="text-xs font-semibold" style={{ color: subText }}>
             {t('prediction.lineup_add_player')}
             <span className="ml-1 font-normal">
-              （{selectedIds.size}名選択中 / {players.length}名）
+              {t('lineup.selected_count', { selected: selectedIds.size, total: players.length, defaultValue: '({{selected}} selected / {{total}})' })}
             </span>
           </p>
           {selectedIds.size > 0 && (
@@ -386,7 +386,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               className="text-[10px] flex items-center gap-0.5 hover:opacity-70 transition-opacity"
               style={{ color: subText }}
             >
-              <X size={10} /> 選択クリア
+              <X size={10} /> {t('lineup.clear_selection', 'Clear selection')}
             </button>
           )}
         </div>
@@ -482,7 +482,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
         {/* 件数表示 */}
         {(nameFilter || teamFilter) && (
           <p className="text-[10px]" style={{ color: subText }}>
-            {filteredPlayers.length}名表示中（全{players.length}名）
+            {t('lineup.showing_count', { shown: filteredPlayers.length, total: players.length, defaultValue: 'Showing {{shown}} (of {{total}})' })}
           </p>
         )}
 
@@ -518,7 +518,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
           ))}
           {filteredPlayers.length === 0 && (
             <p className="col-span-2 text-xs text-center py-3" style={{ color: subText }}>
-              該当する選手がいません
+              {t('lineup.no_matching_players', 'No matching players')}
             </p>
           )}
         </div>
