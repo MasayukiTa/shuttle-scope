@@ -3525,7 +3525,8 @@
     "unknown_date": "日付不明",
     "all_time": "全期間",
     "recent_n_matches": "直近{{count}}試合",
-    "opponent": "相手"
+    "opponent": "相手",
+    "paren": "（{{v}}）"
   },
   "advice": {
     "confidence_high": "信頼度: 高",
@@ -3596,5 +3597,14 @@
     "tab_request": "HTTP リクエスト",
     "admin_required": "admin 権限が必要です",
     "tab_error": "エラー"
+  },
+  "pair": {
+    "title": "アナリスト専用 — パートナー候補ランキング（実績ベース）",
+    "desc": "ペア試合実績から勝率を算出します。データなし選手は末尾に別掲。",
+    "ranking_for": "{{name}} のペア実績ランキング",
+    "no_record_n": "ペア実績なし — {{count}}名（クリックで展開）",
+    "small_sample_note": "※ 少数サンプル（3試合未満）は統計的信頼性が低い",
+    "no_candidates": "候補データがありません",
+    "compute_ranking": "ランキング算出"
   }
 }

@@ -117,12 +117,12 @@ function PartnerRankingSection({
       <div className="flex items-center gap-2">
         <Medal size={14} style={{ color: '#3b82f6' }} />
         <span className="text-xs font-semibold" style={{ color: '#3b82f6' }}>
-          アナリスト専用 — パートナー候補ランキング（実績ベース）
+          {t('pair.title', 'Analyst only — partner candidate ranking (record-based)')}
         </span>
       </div>
 
       <p className="text-[11px]" style={{ color: subText }}>
-        ペア試合実績から勝率を算出します。データなし選手は末尾に別掲。
+        {t('pair.desc', 'Win rates are computed from pair match records. Players with no data are listed at the end.')}
       </p>
 
       {/* 選手1 + 大会レベル */}
@@ -160,7 +160,7 @@ function PartnerRankingSection({
           disabled={!anchorId}
           className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          ランキング算出
+          {t('pair.compute_ranking', 'Compute ranking')}
         </button>
       </div>
 
@@ -173,7 +173,7 @@ function PartnerRankingSection({
       {!isLoading && (withData.length > 0 || noData.length > 0) && (
         <div className="space-y-2">
           <p className="text-[11px] font-medium" style={{ color: subText }}>
-            {anchor?.name} のペア実績ランキング
+            {t('pair.ranking_for', { name: anchor?.name, defaultValue: 'Pair record ranking for {{name}}' })}
           </p>
 
           {/* データあり */}
@@ -205,13 +205,13 @@ function PartnerRankingSection({
                   >
                     {r.partner_name}
                     {r.partner_team && (
-                      <span className="ml-1 opacity-50 font-normal">（{r.partner_team}）</span>
+                      <span className="ml-1 opacity-50 font-normal">{t('common.paren', { v: r.partner_team, defaultValue: '({{v}})' })}</span>
                     )}
                   </span>
                   {/* xs: ConfidenceBadge と試合数を hide して名前領域を確保 */}
                   <span className="hidden sm:inline-flex"><ConfidenceBadge sampleSize={r.sample_size} /></span>
                   <span className="hidden sm:inline text-[10px] shrink-0 num-cell" style={{ color: subText }}>
-                    {r.sample_size}試合
+                    {t('lineup.n_matches', { n: r.sample_size, defaultValue: '{{n}} matches' })}
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
                     <div className="w-14 h-1.5 rounded-full overflow-hidden" style={{ background: isLight ? '#e2e8f0' : '#374151' }}>
@@ -239,7 +239,7 @@ function PartnerRankingSection({
                 className="text-[11px] cursor-pointer select-none"
                 style={{ color: subText }}
               >
-                ペア実績なし — {noData.length}名（クリックで展開）
+                {t('pair.no_record_n', { count: noData.length, defaultValue: 'No pair record — {{count}} players (click to expand)' })}
               </summary>
               <div className="mt-1 space-y-1">
                 {noData.map((r) => (
@@ -254,7 +254,7 @@ function PartnerRankingSection({
                     <span className="text-[10px] w-5 text-center shrink-0" style={{ color: subText }}>—</span>
                     <span className="flex-1 text-xs truncate" style={{ color: subText }}>
                       {r.partner_name}
-                      {r.partner_team && <span className="ml-1 opacity-50">（{r.partner_team}）</span>}
+                      {r.partner_team && <span className="ml-1 opacity-50">{t('common.paren', { v: r.partner_team, defaultValue: '({{v}})' })}</span>}
                     </span>
                     <span className="text-[10px] shrink-0" style={{ color: subText }}>{t('auto.PairSimulationPanel.k5')}</span>
                   </div>
@@ -264,14 +264,14 @@ function PartnerRankingSection({
           )}
 
           <p className="text-[10px]" style={{ color: subText }}>
-            ※ 少数サンプル（3試合未満）は統計的信頼性が低い
+            {t('pair.small_sample_note', '* Small samples (under 3 matches) have low statistical reliability.')}
           </p>
         </div>
       )}
 
       {!isLoading && run && withData.length === 0 && noData.length === 0 && (
         <p className="text-xs text-center py-3" style={{ color: subText }}>
-          候補データがありません
+          {t('pair.no_candidates', 'No candidate data')}
         </p>
       )}
     </div>
@@ -378,7 +378,7 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold min-w-0 truncate max-w-full" style={{ color: neutral }} title={d.pair_name}>{d.pair_name}</span>
             <ConfidenceBadge sampleSize={d.sample_size} />
-            <span className="text-xs num-cell" style={{ color: subText }}>{d.sample_size}試合</span>
+            <span className="text-xs num-cell" style={{ color: subText }}>{t('lineup.n_matches', { n: d.sample_size, defaultValue: '{{n}} matches' })}</span>
           </div>
 
           <div className="text-center">
