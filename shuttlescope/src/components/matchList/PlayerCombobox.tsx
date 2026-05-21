@@ -96,7 +96,7 @@ export function PlayerCombobox({
             className={`w-full text-left px-3 py-2 hover:bg-blue-500/10 text-sm flex items-center gap-2 text-blue-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}
           >
             <UserPlus size={12} className="shrink-0" />
-            <span>「{query.trim()}」を暫定登録して作成</span>
+            <span>{t('match.list.create_tentative', { name: query.trim(), defaultValue: 'Create "{{name}}" as tentative' })}</span>
           </button>
         </div>
       )}

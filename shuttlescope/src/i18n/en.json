@@ -966,7 +966,15 @@
       "tentative": "Tentative",
       "registered": "Registered",
       "duplicate_hint": "(used to distinguish same-name players)",
-      "existing_team_hint": "Team of the existing player (editable)"
+      "existing_team_hint": "Team of the existing player (editable)",
+      "vs": "vs",
+      "open": "Open",
+      "dl_failed_retry": "Failed · Retry",
+      "delete_confirm": "Delete",
+      "cancel_short": "Cancel",
+      "public_pool_badge": "Shared",
+      "public_pool_title": "Public-pool match visible to all teams",
+      "create_tentative": "Create \"{{name}}\" as tentative"
     }
   },
   "player": {

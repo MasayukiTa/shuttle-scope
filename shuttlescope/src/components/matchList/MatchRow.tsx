@@ -43,8 +43,8 @@ export function MatchRow({
       <td className="py-2 pr-4">
         <span className={`px-1.5 py-0.5 rounded text-xs ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-700'}`}>{m.tournament_level}</span>
         {m.is_public_pool && (
-          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400" title="全チームから閲覧可能な公開プール試合">
-            共有
+          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400" title={t('match.list.public_pool_title', 'Public-pool match visible to all teams')}>
+            {t('match.list.public_pool_badge', 'Shared')}
           </span>
         )}
         {m.owner_team_display_id && (
@@ -61,7 +61,7 @@ export function MatchRow({
         </span>
         {m.player_b?.needs_review && (
           <span className="ml-1 text-xs text-yellow-400 bg-yellow-400/10 px-1 rounded" title={t('player.profile_status_provisional')}>
-            暫定
+            {t('match.list.tentative', 'Tentative')}
           </span>
         )}
       </td>
@@ -141,11 +141,11 @@ export function MatchRow({
                 onClick={() => { onDeleteExecute(m.id); onDeleteConfirm(null) }}
                 className="font-medium hover:opacity-80"
               >
-                削除
+                {t('match.list.delete_confirm', 'Delete')}
               </button>
               <span className="opacity-50">|</span>
               <button onClick={() => onDeleteConfirm(null)} className="hover:opacity-80">
-                取消
+                {t('match.list.cancel_short', 'Cancel')}
               </button>
             </div>
           ) : (
