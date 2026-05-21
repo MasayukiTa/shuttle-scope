@@ -347,7 +347,7 @@ export function ClusterSettingsPanel() {
   }
 
   const remoteRayJoin = async (workerIp: string, idx: number) => {
-    if (!sshUser) { setRemoteJoinMsg(m => ({ ...m, [idx]: 'SSHユーザー名を入力してください' })); return }
+    if (!sshUser) { setRemoteJoinMsg(m => ({ ...m, [idx]: 'SSHユーザ名を入力してください' })); return }
     setRemoteJoinLoading(l => ({ ...l, [idx]: true }))
     setRemoteJoinMsg(m => { const n = { ...m }; delete n[idx]; return n })
     try {
@@ -404,7 +404,7 @@ export function ClusterSettingsPanel() {
 
   const disableWorkerSleep = async (ip: string, idx: number) => {
     if (!ip || !sshUser) {
-      setSleepDisableMsg(m => ({ ...m, [idx]: 'SSHユーザー名を入力してください' }))
+      setSleepDisableMsg(m => ({ ...m, [idx]: 'SSHユーザ名を入力してください' }))
       return
     }
     setSleepDisableLoading(l => ({ ...l, [idx]: true }))

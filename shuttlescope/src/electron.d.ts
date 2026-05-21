@@ -45,7 +45,7 @@ interface WebviewHTMLAttributes extends React.HTMLAttributes<HTMLElement> {
   src?: string
   /** Cookie を永続化するパーティション（例: "persist:streaming"） */
   partition?: string
-  /** 使用するユーザーエージェント */
+  /** 使用するユーザエージェント */
   useragent?: string
   /** Node.js 統合を無効化（セキュリティのため常に false を推奨） */
   nodeintegration?: string

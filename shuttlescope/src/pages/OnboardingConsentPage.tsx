@@ -65,7 +65,7 @@ export default function OnboardingConsentPage({
   const [scrolledTerms, setScrolledTerms] = useState(false)
   const bothDocsScrolled = scrolledPrivacy && scrolledTerms
 
-  // 同意/確認状態。initial は false、ユーザーが明示的にチェックしない限り送信されない。
+  // 同意/確認状態。initial は false、ユーザが明示的にチェックしない限り送信されない。
   const [given, setGiven] = useState<Record<ConsentType, boolean>>({
     // 必須 (契約履行) — ユーザに明示 check させるため initial=false。
     service_delivery: false,

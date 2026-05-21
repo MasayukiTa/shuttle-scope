@@ -366,7 +366,7 @@ export function AnnotatorPage() {
   // P4: デュアルモニター
   const [displays, setDisplays] = useState<DisplayInfo[]>([])
   const [videoWindowOpen, setVideoWindowOpen] = useState(false)
-  // 複数の非プライマリモニタがある場合にユーザーが選択した表示先ID
+  // 複数の非プライマリモニタがある場合にユーザが選択した表示先ID
   const [selectedDisplayId, setSelectedDisplayId] = useState<number | null>(null)
 
   // U-001: ブックマーク

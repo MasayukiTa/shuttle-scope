@@ -364,7 +364,7 @@ export function TeamManagementPage() {
                       <div className="mt-3 pt-3 border-t">
                         <div className="text-xs text-gray-500 mb-1">メンバー（{members.length} 名）</div>
                         {members.length === 0 ? (
-                          <div className="text-xs text-gray-400">所属ユーザーはいません。</div>
+                          <div className="text-xs text-gray-400">所属ユーザはいません。</div>
                         ) : (
                           <ul className="space-y-1 text-sm">
                             {members.map((u) => (
@@ -510,7 +510,7 @@ export function TeamManagementPage() {
                   <td colSpan={6} className="px-4 py-2">
                     <div className="text-xs text-gray-500 mb-1">「{t.name}」のメンバー（{members.length} 名）</div>
                     {members.length === 0 ? (
-                      <div className="text-xs text-gray-400">所属ユーザーはいません。</div>
+                      <div className="text-xs text-gray-400">所属ユーザはいません。</div>
                     ) : (
                       <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1 text-sm">
                         {members.map((u) => (
@@ -570,7 +570,7 @@ export function TeamManagementPage() {
                 <div className="text-xs text-gray-500 mb-1">紐付いている現役レコード:</div>
                 <ul className="text-sm space-y-0.5 mb-3">
                   <li>
-                    ユーザー:{' '}
+                    ユーザ:{' '}
                     <span className={deleteDeps.counts.users ? 'font-medium text-red-700' : 'text-gray-500'}>
                       {deleteDeps.counts.users}
                     </span>{' '}

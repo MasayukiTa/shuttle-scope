@@ -5,7 +5,7 @@ import { Check, X, AlertCircle, Loader2 } from 'lucide-react'
 import { getMyConsents, withdrawConsent, submitConsents, type ConsentType } from '@/api/client'
 
 /**
- * ユーザーが任意同意を撤回できる UI。GDPR Article 7(3) /
+ * ユーザが任意同意を撤回できる UI。GDPR Article 7(3) /
  * APPI 第18条 4 項の「同意取得と同じくらい容易に撤回可能」要件を満たすため
  * SettingsPage 内 account タブから到達可能にする。
  *
