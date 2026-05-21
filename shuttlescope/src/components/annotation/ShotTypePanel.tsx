@@ -145,7 +145,7 @@ export function ShotTypePanel({ selected, onSelect, disabled = false, strokeNum,
   const groups = buildGroups(context)
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" data-tutorial="annotator.shotTypes">
       {groups.map((group) => (
         <div key={group.labelKey}>
           <div className="text-xs text-gray-500 mb-1 px-1">{t(group.labelKey)}</div>
