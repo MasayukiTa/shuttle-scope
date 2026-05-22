@@ -111,14 +111,13 @@ function LandscapeGuard({ children }: { children: React.ReactNode }) {
           </div>
           <h2 className="text-xl font-bold mb-2" style={{ color: '#ffffff' }}>{t('auto.MobileAnnotatePage.k1')}</h2>
           <p className="text-sm" style={{ color: 'rgba(255,255,255,0.9)' }}>
-            スマホアノテーションは横向き専用です。<br />
-            端末を回転させてください。
+            {t('auto.MobileAnnotatePage.landscape_only')}<br />
+            {t('auto.MobileAnnotatePage.rotate_device')}
           </p>
           <p className="text-[11px] mt-6 max-w-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            Safari でアドレスバーが邪魔な場合は、<br />
-            画面下から上にスワイプすると一時的に隠れます。<br />
-            長期的にはホーム画面に追加 (aA → 共有 → 「ホーム画面に追加」) で
-            フルスクリーン化を推奨。
+            {t('auto.MobileAnnotatePage.safari_addressbar_1')}<br />
+            {t('auto.MobileAnnotatePage.safari_addressbar_2')}<br />
+            {t('auto.MobileAnnotatePage.add_to_home')}
           </p>
         </div>
       )}
@@ -436,7 +435,7 @@ export function MobileAnnotatePage() {
             </div>
           ) : matchQuery.error ? (
             <div className="absolute inset-0 flex items-center justify-center text-sm" style={{ color: '#fca5a5', backgroundColor: '#0f172a' }}>
-              試合情報の取得に失敗しました
+              {t('auto.MobileAnnotatePage.match_fetch_failed')}
             </div>
           ) : (
             <PlayMode
@@ -486,7 +485,7 @@ export function MobileAnnotatePage() {
                   onTouchStart={(e) => e.stopPropagation()}
                 >
                   <div className="text-sm font-bold" style={{ color: '#ffffff' }}>
-                    この試合にはまだセットが登録されていません
+                    {t('auto.MobileAnnotatePage.no_sets_registered')}
                   </div>
                   <button
                     type="button"
@@ -498,7 +497,7 @@ export function MobileAnnotatePage() {
                     className="px-4 py-2 rounded text-sm font-bold disabled:opacity-60"
                     style={{ backgroundColor: '#2563eb', color: '#ffffff' }}
                   >
-                    {ensureSetState.loading ? 'セット作成中…' : 'セット 1 を作成して開始'}
+                    {ensureSetState.loading ? t('auto.MobileAnnotatePage.creating_set') : t('auto.MobileAnnotatePage.create_set1_start')}
                   </button>
                   {ensureSetState.error && (
                     <div
@@ -516,7 +515,7 @@ export function MobileAnnotatePage() {
                   >
                     <span className="inline-flex items-center gap-1">
                       <MIcon name="arrow_back" size={14} style={{ color: '#ffffff' }} />
-                      動画に戻る
+                      {t('auto.MobileAnnotatePage.back_to_video')}
                     </span>
                   </button>
                   <div
@@ -525,9 +524,9 @@ export function MobileAnnotatePage() {
                   >
                     <MIcon name="lightbulb" size={14} style={{ color: '#fde047' }} />
                     <span>
-                      先にコートグリッドを設定するなら、右上の{' '}
+                      {t('auto.MobileAnnotatePage.calib_hint_1')}{' '}
                       <MIcon name="edit" size={12} style={{ color: '#ffffff' }} />{' '}
-                      ボタンから 6 点キャリブできます
+                      {t('auto.MobileAnnotatePage.calib_hint_2')}
                     </span>
                   </div>
                 </div>
@@ -603,10 +602,10 @@ export function MobileAnnotatePage() {
               onTouchStart={(e) => e.stopPropagation()}
             >
               <div className="text-base font-bold" style={{ color: '#ffffff' }}>
-                マッチ終了 — {matchOver === 'A' ? 'プレイヤーA' : 'プレイヤーB'} 勝利
+                {t('auto.MobileAnnotatePage.match_over', { player: matchOver === 'A' ? t('auto.MobileAnnotatePage.player_a') : t('auto.MobileAnnotatePage.player_b') })}
               </div>
               <div className="text-xs font-mono" style={{ color: 'rgba(255,255,255,0.8)' }}>
-                Best-of-{bestOf} / セット獲得: A {completedSetWinners.filter((w) => w === 'A').length} - B {completedSetWinners.filter((w) => w === 'B').length}
+                {t('auto.MobileAnnotatePage.bestof_sets_won', { n: bestOf, a: completedSetWinners.filter((w) => w === 'A').length, b: completedSetWinners.filter((w) => w === 'B').length })}
               </div>
               <button
                 type="button"
@@ -614,10 +613,10 @@ export function MobileAnnotatePage() {
                 className="px-3 py-1.5 rounded text-xs font-bold"
                 style={{ backgroundColor: '#4b5563', color: '#ffffff' }}
               >
-                結果を確認 (動画に戻る)
+                {t('auto.MobileAnnotatePage.check_result_back')}
               </button>
               <div className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                試合データは保存済です。後から PC で詳細確認・修正できます。
+                {t('auto.MobileAnnotatePage.match_saved_pc_edit')}
               </div>
               {/* 2. 試合保存直後の advice strip — 本試合の実測値ベース */}
               {matchId && (
@@ -750,6 +749,7 @@ function Pass2RallyPicker({
   pausedAtSec: number
   onCancel: () => void
 }) {
+  const { t } = useTranslation()
   const [selected, setSelected] = useState<RallyLite | null>(null)
 
   // pausedAtSec に近い順
@@ -768,16 +768,16 @@ function Pass2RallyPicker({
       return (
         <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 p-4">
           <div className="text-center">
-            このラリーはまだサーバ保存中です。
+            {t('auto.MobileAnnotatePage.rally_saving_server')}
             <br />
-            送信完了後に Pass 2 入力を行えます。
+            {t('auto.MobileAnnotatePage.pass2_after_save')}
           </div>
           <button
             type="button"
             onClick={() => setSelected(null)}
             className="px-3 py-1.5 bg-gray-700 rounded text-xs"
           >
-            ← 一覧に戻る
+            {t('auto.MobileAnnotatePage.back_to_list')}
           </button>
         </div>
       )
@@ -800,12 +800,12 @@ function Pass2RallyPicker({
   return (
     <div className="flex-1 flex flex-col bg-black/90">
       <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200">
-        Pass 2 入力するラリーを選択 (タップ位置 @{pausedAtSec.toFixed(1)}s に近い順)
+        {t('auto.MobileAnnotatePage.pass2_select_rally', { sec: pausedAtSec.toFixed(1) })}
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {sortedRallies.length === 0 ? (
           <div className="text-gray-500 text-center text-sm py-8">
-            Pass 1 でラリーを記録してから戻ってきてください
+            {t('auto.MobileAnnotatePage.record_pass1_first')}
           </div>
         ) : (
           sortedRallies.map((r) => {
@@ -818,11 +818,11 @@ function Pass2RallyPicker({
                 className="w-full text-left px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 flex items-center gap-3"
               >
                 <span className="font-mono text-[11px] text-gray-400">
-                  S{setInfo?.set_num ?? '?'}-R{r.rally_num}
+                  {t('auto.MobileAnnotatePage.set_rally_label', { s: setInfo?.set_num ?? '?', r: r.rally_num })}
                 </span>
                 <span className="font-mono text-xs">
                   <span className={r.winner === 'player_a' ? 'text-blue-400' : 'text-pink-400'}>
-                    {r.winner === 'player_a' ? 'A' : 'B'} 得点
+                    {t('auto.MobileAnnotatePage.player_point', { p: r.winner === 'player_a' ? 'A' : 'B' })}
                   </span>
                 </span>
                 <span className="text-[11px] text-gray-500">
@@ -833,7 +833,7 @@ function Pass2RallyPicker({
                   @{(r.video_timestamp_end ?? 0).toFixed(1)}s
                 </span>
                 {r.pending && (
-                  <span className="text-[10px] text-amber-400">pending</span>
+                  <span className="text-[10px] text-amber-400">{t('auto.MobileAnnotatePage.pending')}</span>
                 )}
               </button>
             )
@@ -846,7 +846,7 @@ function Pass2RallyPicker({
           onClick={onCancel}
           className="px-3 py-1.5 rounded bg-gray-700 text-white text-xs"
         >
-          ← 動画に戻る
+          {t('auto.MobileAnnotatePage.back_to_video_arrow')}
         </button>
       </div>
     </div>
@@ -871,6 +871,7 @@ function Pass3RallyPicker({
   pausedAtSec: number
   onCancel: () => void
 }) {
+  const { t } = useTranslation()
   const [selected, setSelected] = useState<RallyLite | null>(null)
   const [localStrokes, setLocalStrokes] = useState<Array<{
     id?: number | null
@@ -903,14 +904,14 @@ function Pass3RallyPicker({
       return (
         <div className="flex-1 flex flex-col items-center justify-center text-gray-300 text-sm gap-3 p-4">
           <div className="text-center">
-            このラリーはまだサーバ保存中です。送信完了後に Pass 3 入力を行えます。
+            {t('auto.MobileAnnotatePage.rally_saving_pass3')}
           </div>
           <button
             type="button"
             onClick={() => setSelected(null)}
             className="px-3 py-1.5 bg-gray-700 rounded text-xs"
           >
-            ← 一覧に戻る
+            {t('auto.MobileAnnotatePage.back_to_list')}
           </button>
         </div>
       )
@@ -961,12 +962,12 @@ function Pass3RallyPicker({
   return (
     <div className="flex-1 flex flex-col bg-black/90">
       <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200">
-        Pass 3 入力するラリーを選択
+        {t('auto.MobileAnnotatePage.pass3_select_rally')}
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {sortedRallies.length === 0 ? (
           <div className="text-gray-500 text-center text-sm py-8">
-            Pass 1 でラリーを記録してから戻ってきてください
+            {t('auto.MobileAnnotatePage.record_pass1_first')}
           </div>
         ) : (
           sortedRallies.map((r) => {
@@ -979,10 +980,10 @@ function Pass3RallyPicker({
                 className="w-full text-left px-3 py-2 rounded bg-gray-800 hover:bg-gray-700 flex items-center gap-3"
               >
                 <span className="font-mono text-[11px] text-gray-400">
-                  S{setInfo?.set_num ?? '?'}-R{r.rally_num}
+                  {t('auto.MobileAnnotatePage.set_rally_label', { s: setInfo?.set_num ?? '?', r: r.rally_num })}
                 </span>
                 <span className={r.winner === 'player_a' ? 'text-blue-400 text-xs' : 'text-pink-400 text-xs'}>
-                  {r.winner === 'player_a' ? 'A 得点' : 'B 得点'}
+                  {t('auto.MobileAnnotatePage.player_point', { p: r.winner === 'player_a' ? 'A' : 'B' })}
                 </span>
                 <div className="flex-1" />
                 <span className="font-mono text-[10px] text-gray-500">
@@ -999,7 +1000,7 @@ function Pass3RallyPicker({
           onClick={onCancel}
           className="px-3 py-1.5 rounded bg-gray-700 text-white text-xs"
         >
-          ← 動画に戻る
+          {t('auto.MobileAnnotatePage.back_to_video_arrow')}
         </button>
       </div>
     </div>
