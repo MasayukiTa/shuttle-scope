@@ -257,7 +257,7 @@ export function NotificationInboxPage() {
                             // 通常 inquiry より優先度高として目立つ赤バッジを付与。
                             <span
                               className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-600 text-white shrink-0"
-                              title="Cloudflare 自動 ban の誤検知申し立て"
+                              title={t('auto.NotificationInboxPage.k34')}
                             >
                               BAN APPEAL
                             </span>

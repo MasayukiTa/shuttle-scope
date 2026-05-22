@@ -56,6 +56,8 @@ function getDeviceTypeLabel(): string {
 // ─── バッテリー表示 ──────────────────────────────────────────────────────────
 
 function BatteryIndicator({ level, charging }: { level: number; charging: boolean }) {
+  const { t } = useTranslation()
+
   const pct = Math.round(level * 100)
   const Icon = pct > 60 ? BatteryFull : pct > 25 ? BatteryMedium : BatteryLow
   const color = pct > 60 ? 'text-green-400' : pct > 25 ? 'text-yellow-400' : 'text-red-400'
@@ -541,7 +543,7 @@ export function CameraSenderPage() {
                 type="text"
                 value={form.deviceName}
                 onChange={(e) => setForm((f) => ({ ...f, deviceName: e.target.value }))}
-                placeholder="例: コートサイドiPhone"
+                placeholder={t('auto.CameraSenderPage.k2')}
                 className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -630,7 +632,7 @@ export function CameraSenderPage() {
                   <button
                     onClick={() => { setNameInput(savedDeviceNameRef.current || getDeviceTypeLabel()); setEditingName(true) }}
                     className="p-1 text-gray-500 hover:text-gray-300 rounded"
-                    title="端末名を編集"
+                    title={t('auto.CameraSenderPage.k1')}
                   >
                     <Pencil size={12} />
                   </button>

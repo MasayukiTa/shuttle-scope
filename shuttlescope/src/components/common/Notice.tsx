@@ -8,6 +8,7 @@
  */
 import { useEffect } from 'react'
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 
 export interface NoticeState {
   kind: 'error' | 'info' | 'warn'
@@ -26,6 +27,8 @@ interface NoticeBannerProps {
  * `notice` が null なら描画しない。
  */
 export function NoticeBanner({ notice, onDismiss }: NoticeBannerProps) {
+  const { t } = useTranslation()
+
   // auto-dismiss
   useEffect(() => {
     if (!notice) return
@@ -70,7 +73,7 @@ export function NoticeBanner({ notice, onDismiss }: NoticeBannerProps) {
         <button
           type="button"
           onClick={onDismiss}
-          aria-label="閉じる"
+          aria-label={t('auto.Notice.k1')}
           className="shrink-0 text-lg leading-none opacity-70 hover:opacity-100 px-1"
         >
           ×

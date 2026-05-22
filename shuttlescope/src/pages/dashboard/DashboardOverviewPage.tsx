@@ -475,7 +475,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <SectionTitle>{t('auto.DashboardOverviewPage.k12')}</SectionTitle>
           <div className="flex items-center gap-2 flex-wrap">
-            <label className={`text-[10px] ${textMuted}`}>表示期間 (このリストのみ):</label>
+            <label className={`text-[10px] ${textMuted}`}>{t('auto.DashboardOverviewPage.k28')}</label>
             <input
               type="date"
               value={mlFrom}

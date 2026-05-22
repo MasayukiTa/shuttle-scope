@@ -125,7 +125,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
                       [{(setReport.ci_low * 100).toFixed(1)}, {(setReport.ci_high * 100).toFixed(1)}]
                     </p>
                   </div>
-                  {clickable && <span className="text-blue-400 text-xs">詳細 ›</span>}
+                  {clickable && <span className="text-blue-400 text-xs">{t('auto.IntervalReport.k1')}</span>}
                 </div>
               </>
             )
@@ -135,7 +135,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
                 type="button"
                 onClick={() => onSetClick!(setReport.set_num)}
                 className="w-full bg-gray-700/50 hover:bg-gray-700 rounded-lg p-2.5 flex items-center justify-between text-left transition-colors"
-                title="セットの詳細解析を開く"
+                title={t('auto.IntervalReport.k2')}
               >
                 {Inner}
               </button>

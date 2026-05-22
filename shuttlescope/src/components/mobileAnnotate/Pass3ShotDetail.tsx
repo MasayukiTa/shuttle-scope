@@ -24,16 +24,17 @@
 import { useMemo, useState } from 'react'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
+import { useTranslation } from 'react-i18next'
 
 const COMMON_SHOTS = [
-  { key: 'smash',    label: 'スマッシュ' },
-  { key: 'clear',    label: 'クリア' },
-  { key: 'drop',     label: 'ドロップ' },
-  { key: 'net',      label: 'ヘアピン' },
-  { key: 'push',     label: 'プッシュ' },
-  { key: 'drive',    label: 'ドライブ' },
-  { key: 'lift',     label: 'ロブ' },
-  { key: 'cross',    label: 'クロス' },
+  { key: 'smash',    label: t('auto.Pass3ShotDetail.k1') },
+  { key: 'clear',    label: t('auto.Pass3ShotDetail.k2') },
+  { key: 'drop',     label: t('auto.Pass3ShotDetail.k3') },
+  { key: 'net',      label: t('auto.Pass3ShotDetail.k4') },
+  { key: 'push',     label: t('auto.Pass3ShotDetail.k5') },
+  { key: 'drive',    label: t('auto.Pass3ShotDetail.k6') },
+  { key: 'lift',     label: t('auto.Pass3ShotDetail.k7') },
+  { key: 'cross',    label: t('auto.Pass3ShotDetail.k8') },
 ] as const
 
 type ShotKey = typeof COMMON_SHOTS[number]['key']

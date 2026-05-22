@@ -12,6 +12,7 @@
  */
 import { useRef, useState, useCallback, useEffect, type RefObject } from 'react'
 import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 type Pt = { x: number; y: number }
 
@@ -223,7 +224,7 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
               zIndex: 31,
             }}
             onClick={(e) => { e.stopPropagation(); onChange(null) }}
-            title="解析領域をリセット"
+            title={t('auto.RoiRectOverlay.k1')}
           >
             <X size={10} />
           </button>

@@ -74,6 +74,8 @@ const PASS_ICONS: Record<AnnotatePass, React.ReactNode> = {
  * 画面サイズで縦向きを検知して overlay を出す。
  */
 function LandscapeGuard({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
+
   const [isPortrait, setIsPortrait] = useState<boolean>(() =>
     typeof window !== 'undefined' && window.innerHeight > window.innerWidth,
   )
@@ -107,7 +109,7 @@ function LandscapeGuard({ children }: { children: React.ReactNode }) {
               <MIcon name="screen_rotation" size={28} style={{ color: '#ffffff' }} />
             </span>
           </div>
-          <h2 className="text-xl font-bold mb-2" style={{ color: '#ffffff' }}>端末を横向きに</h2>
+          <h2 className="text-xl font-bold mb-2" style={{ color: '#ffffff' }}>{t('auto.MobileAnnotatePage.k1')}</h2>
           <p className="text-sm" style={{ color: 'rgba(255,255,255,0.9)' }}>
             スマホアノテーションは横向き専用です。<br />
             端末を回転させてください。
@@ -427,7 +429,7 @@ export function MobileAnnotatePage() {
                   animation: 'ssMobileSpin 0.9s linear infinite',
                 }}
               />
-              <div>動画情報を読み込み中…</div>
+              <div>{t('auto.MobileAnnotatePage.k2')}</div>
               <style>{`
                 @keyframes ssMobileSpin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
               `}</style>
@@ -673,8 +675,8 @@ export function MobileAnnotatePage() {
               }
             }}
             className="p-2 rounded shadow ss-overlay-chip"
-            aria-label="戻る"
-            title="試合一覧に戻る (確認あり)"
+            aria-label={t('auto.MobileAnnotatePage.k4')}
+            title={t('auto.MobileAnnotatePage.k3')}
           >
             <MIcon name="arrow_back" size={16} />
           </button>

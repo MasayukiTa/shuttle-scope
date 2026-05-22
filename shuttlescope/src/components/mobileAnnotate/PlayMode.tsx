@@ -26,6 +26,7 @@ import { apiGet } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 import { MobileCVOverlay } from '@/components/mobileAnnotate/MobileCVOverlay'
 import { MobileCourtCalib } from '@/components/mobileAnnotate/MobileCourtCalib'
+import { useTranslation } from 'react-i18next'
 
 export interface CropRect {
   x: number; y: number; w: number; h: number  // 0..1 normalized
@@ -441,7 +442,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         {!videoSrc ? (
           <div className="absolute inset-0 flex items-center justify-center text-white text-sm p-4">
             <div className="text-center max-w-md">
-              <div className="text-base font-bold mb-2">動画が再生できません</div>
+              <div className="text-base font-bold mb-2">{t('auto.PlayMode.k1')}</div>
               <div className="text-xs text-white/80 leading-relaxed">
                 考えられる原因:<br />
                 ・この試合にまだ動画が登録されていない<br />
@@ -573,7 +574,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             }}
             className="absolute left-2 z-30 px-2 py-1 rounded shadow text-[11px] font-mono ss-overlay-chip-accent"
             style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 2.5rem)' }}
-            title="前回ラリー終了位置に seek"
+            title={t('auto.PlayMode.k4')}
           >
             ▶ {fmt(resumeFromSec)} から再開
           </button>
@@ -587,7 +588,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             onClick={(e) => { e.stopPropagation(); setIosFsHint(false) }}
           >
             iPhone Safari は要素単位の全画面非対応です。
-            <br />Safari 共有ボタン → <b>「ホーム画面に追加」</b> で PWA 起動すると
+            <br />{t('auto.PlayMode.k2')} <b>{t('auto.PlayMode.k3')}</b> で PWA 起動すると
             URL バー無しの本物フルスクリーンになります。(タップで閉じる)
           </div>
         )}
@@ -625,8 +626,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setShowCourt(!showCourt) }}
                 className={`p-2 rounded shadow ${showCourt ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
-                aria-label="コートグリッド"
-                title="コートグリッド表示切替"
+                aria-label={t('auto.PlayMode.k9')}
+                title={t('auto.PlayMode.k5')}
               >
                 <MIcon name="grid_on" size={16} />
               </button>
@@ -673,8 +674,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   setCalibEditing(true)
                 }}
                 className="p-2 rounded shadow ss-overlay-chip"
-                aria-label="コートキャリブ編集"
-                title="コート 4 隅 + ネット 2 点を設置 / 微調整"
+                aria-label={t('auto.PlayMode.k10')}
+                title={t('auto.PlayMode.k6')}
               >
                 <MIcon name="edit" size={16} />
               </button>
@@ -682,7 +683,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setShowShuttle(!showShuttle) }}
                 className={`relative p-2 rounded shadow ${showShuttle ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
-                aria-label="シャトル軌跡"
+                aria-label={t('auto.PlayMode.k11')}
                 title={shuttleFrameCount > 0 ? `シャトル軌跡 (解析済 ${shuttleFrameCount} frames)` : 'シャトル軌跡表示切替 (未解析)'}
               >
                 <MIcon name="my_location" size={16} />
@@ -704,7 +705,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setShowPlayers(!showPlayers) }}
                 className={`relative p-2 rounded shadow ${showPlayers ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
-                aria-label="プレイヤー位置"
+                aria-label={t('auto.PlayMode.k12')}
                 title={yoloFrameCount > 0 ? `プレイヤー位置 (解析済 ${yoloFrameCount} frames)` : 'プレイヤー位置 bbox 表示切替 (未解析)'}
               >
                 <MIcon name="group" size={16} />
@@ -725,7 +726,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setFitMode(fitMode === 'cover' ? 'contain' : 'cover') }}
                 className="p-2 rounded shadow ss-overlay-chip"
-                aria-label="表示モード切替"
+                aria-label={t('auto.PlayMode.k13')}
                 title={fitMode === 'cover' ? '全体表示 (contain) に切替' : 'フル表示 (cover) に切替'}
               >
                 <MIcon name="crop_square" size={16} />
@@ -737,8 +738,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                   type="button"
                   onClick={(e) => { e.stopPropagation(); enterFullscreen() }}
                   className="p-2 rounded shadow ss-overlay-chip"
-                  aria-label="フルスクリーン"
-                  title="Desktop/Android: 全画面化。iOS Safari: ホーム画面追加を案内"
+                  aria-label={t('auto.PlayMode.k14')}
+                  title={t('auto.PlayMode.k7')}
                 >
                   <MIcon name="fullscreen" size={16} />
                 </button>
@@ -747,8 +748,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 type="button"
                 onClick={(e) => { e.stopPropagation(); startCropEdit() }}
                 className="p-2 rounded shadow ss-overlay-chip"
-                aria-label="切り抜き編集"
-                title="鳥瞰カメラの不要部分を切り抜く"
+                aria-label={t('auto.PlayMode.k15')}
+                title={t('auto.PlayMode.k8')}
               >
                 <MIcon name="content_cut" size={16} />
               </button>
@@ -759,7 +760,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 type="button"
                 onClick={(e) => { e.stopPropagation(); resetCrop() }}
                 className="p-2 rounded shadow ss-overlay-chip"
-                aria-label="全画面に戻す"
+                aria-label={t('auto.PlayMode.k16')}
               >
                 <MIcon name="restart_alt" size={16} />
               </button>

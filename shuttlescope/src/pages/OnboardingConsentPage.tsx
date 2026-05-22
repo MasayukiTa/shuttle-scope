@@ -200,7 +200,7 @@ export default function OnboardingConsentPage({
                     ? 'bg-blue-600 text-white border-blue-600'
                     : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200'
                 }`}
-              >日本語</button>
+              >{t('auto.OnboardingConsentPage.k1')}</button>
               <button
                 type="button"
                 onClick={() => i18n.changeLanguage('en')}

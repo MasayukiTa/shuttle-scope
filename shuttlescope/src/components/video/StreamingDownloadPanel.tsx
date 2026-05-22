@@ -423,7 +423,7 @@ export function StreamingDownloadPanel({
                   type="button"
                   onClick={() => handleCookiesFile(null)}
                   className={`text-[10px] px-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                  title="cookies.txt をクリア"
+                  title={t('auto.StreamingDownloadPanel.k15')}
                 >
                   ✕
                 </button>
@@ -455,7 +455,7 @@ export function StreamingDownloadPanel({
             >
               <ChevronDown size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
               パスワード保護動画 (Vimeo Showcase 等)
-              {videoPassword && <span className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>✓ 設定済</span>}
+              {videoPassword && <span className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>{t('auto.StreamingDownloadPanel.k14')}</span>}
             </button>
             {authPanelOpen && (
               <div className="flex flex-col gap-1 pl-4">
@@ -464,7 +464,7 @@ export function StreamingDownloadPanel({
                     type={showPassword ? 'text' : 'password'}
                     value={videoPassword}
                     onChange={(e) => setVideoPassword(e.target.value)}
-                    placeholder="動画パスワード"
+                    placeholder={t('auto.StreamingDownloadPanel.k17')}
                     autoComplete="off"
                     maxLength={1024}
                     className={`text-xs flex-1 min-w-0 rounded px-2 py-1 border ${
@@ -472,7 +472,7 @@ export function StreamingDownloadPanel({
                         ? 'bg-white border-gray-300 text-gray-800'
                         : 'bg-gray-700 border-gray-600 text-gray-200'
                     }`}
-                    aria-label="動画パスワード"
+                    aria-label={t('auto.StreamingDownloadPanel.k17')}
                   />
                   <button
                     type="button"
@@ -510,7 +510,7 @@ export function StreamingDownloadPanel({
                 ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                 : 'bg-gray-700/60 hover:bg-gray-700 text-gray-300'
             }`}
-            title="区間指定 / cookies.txt / video password 等の詳細オプションを開く"
+            title={t('auto.StreamingDownloadPanel.k16')}
           >
             <Scissors size={12} />
             範囲指定 / 詳細オプション...

@@ -346,7 +346,7 @@ export function DashboardShell() {
                    JSON = 試合単位データ込みの完全 dump (数値解析用)。 */}
                 <button
                   onClick={() => dlReport(`/api/reports/comprehensive_pdf?player_id=${selectedPlayerId}`, `report_player${selectedPlayerId}.pdf`)}
-                  title="解析タブの全項目を含む包括 PDF レポート (印刷向け)"
+                  title={t('auto.DashboardShell.k4')}
                   className={`text-xs px-2.5 py-1 rounded border transition-colors ${
                     isLight
                       ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
@@ -357,7 +357,7 @@ export function DashboardShell() {
                 </button>
                 <button
                   onClick={() => dlReport(`/api/reports/comprehensive?player_id=${selectedPlayerId}`, `report_player${selectedPlayerId}.json`)}
-                  title="解析全項目 + 試合単位データの完全 JSON dump"
+                  title={t('auto.DashboardShell.k5')}
                   className={`text-xs px-2.5 py-1 rounded border transition-colors ${
                     isLight
                       ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
@@ -370,7 +370,7 @@ export function DashboardShell() {
                 {(role === 'admin' || role === 'analyst' || role === 'coach') && (
                   <button
                     onClick={() => dlReport(`/api/reports/scouting?player_id=${selectedPlayerId}`, `scouting_${selectedPlayerId}.pdf`)}
-                    title="従来の要約スカウティング PDF"
+                    title={t('auto.DashboardShell.k6')}
                     className={`text-xs px-2.5 py-1 rounded border transition-colors ${
                       isLight
                         ? 'border-gray-300 text-gray-500 hover:bg-gray-100 opacity-70'

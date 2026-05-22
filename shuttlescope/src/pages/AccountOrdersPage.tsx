@@ -2,18 +2,23 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { apiGet } from '@/api/client'
 import { BILLING_UI_ENABLED, OrderSummary, receiptDownloadUrl } from '@/api/billing'
+import { useTranslation } from 'react-i18next'
 
 /**
  * 注文履歴ページ (Phase Pay-1、フロント非公開)。
  * VITE_SS_BILLING_UI_ENABLED=false のときは / にリダイレクト。
  */
 export default function AccountOrdersPage() {
+  const { t } = useTranslation()
+
   // フラグ判定は hook を持たない外側で行う (rules-of-hooks 準拠)
   if (!BILLING_UI_ENABLED) return <Navigate to="/" replace />
   return <AccountOrdersPageInner />
 }
 
 function AccountOrdersPageInner() {
+  const { t } = useTranslation()
+
   const [orders, setOrders] = useState<OrderSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -43,12 +48,12 @@ function AccountOrdersPageInner() {
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
-      <h1 className="text-xl font-bold mb-2">購入履歴</h1>
+      <h1 className="text-xl font-bold mb-2">{t('auto.AccountOrdersPage.k1')}</h1>
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
         過去のご購入履歴と領収書のダウンロードができます。
       </p>
 
-      {loading && <div className="text-sm">読み込み中...</div>}
+      {loading && <div className="text-sm">{t('auto.AccountOrdersPage.k2')}</div>}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && orders.length === 0 && (
         <div className="rounded border border-gray-200 dark:border-gray-700 p-6 text-center text-sm text-gray-500">

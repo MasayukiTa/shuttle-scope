@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { MIcon } from '@/components/common/MIcon'
 import { N_GRAY } from '@/styles/colors'
+import { useTranslation } from 'react-i18next'
 
 interface TermDef {
   term: string
@@ -106,6 +107,8 @@ interface Props {
 }
 
 export function ConditionGlossary({ open, onClose }: Props) {
+  const { t } = useTranslation()
+
   const isLight = useIsLightMode()
   if (!open) return null
 
@@ -168,7 +171,7 @@ export function GlossaryHint({ onOpen }: { onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      title="用語解説を開く"
+      title={t('auto.ConditionGlossary.k1')}
       className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px]"
       style={{
         color: isLight ? N_GRAY[500] : N_GRAY[400],

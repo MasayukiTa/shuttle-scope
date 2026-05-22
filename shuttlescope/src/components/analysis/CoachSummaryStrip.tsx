@@ -179,7 +179,7 @@ export function CoachSummaryStrip({
             <p
               className="mt-1 text-[10px]"
               style={{ color: B_BAD }}
-              title="サンプル不足 (< 10)"
+              title={t('auto.CoachSummaryStrip.k2')}
             >
               {t('auto.CoachSummaryStrip.k1') || '※ サンプル少'}
             </p>
@@ -242,6 +242,8 @@ function Cell({
   divide?: boolean
   children: React.ReactNode
 }) {
+  const { t } = useTranslation()
+
   return (
     <div
       className={`px-4 py-3 ${divide ? 'sm:border-r' : ''}`}
@@ -268,10 +270,12 @@ function RecentForm({
   trend: 'improving' | 'declining' | 'stable'
   tokens: Tokens
 }) {
+  const { t } = useTranslation()
+
   const map = {
-    improving: { glyph: '↑', color: A_GOOD,  label: '改善' },
-    declining: { glyph: '↓', color: B_BAD,   label: '悪化' },
-    stable:    { glyph: '→', color: tokens.textMuted, label: '横ばい' },
+    improving: { glyph: '↑', color: A_GOOD,  label: t('auto.CoachSummaryStrip.k3') },
+    declining: { glyph: '↓', color: B_BAD,   label: t('auto.CoachSummaryStrip.k4') },
+    stable:    { glyph: '→', color: tokens.textMuted, label: t('auto.CoachSummaryStrip.k5') },
   } as const
   const cfg = map[trend]
   return (

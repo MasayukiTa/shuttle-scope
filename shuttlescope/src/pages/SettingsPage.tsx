@@ -2954,18 +2954,20 @@ function BackendConsole({
 }
 
 function TutorialReplaySection({ card }: { card: string }) {
+  const { t } = useTranslation()
+
   const { state, loading, refresh } = useTutorialState()
   return (
     <section className={`${card} rounded-lg p-5 space-y-3`}>
       <div className="flex items-center gap-2">
         <MIcon name="school" size={16} className="text-sky-400" />
-        <h2 className="text-base font-semibold">チュートリアル</h2>
+        <h2 className="text-base font-semibold">{t('auto.SettingsPage.k42')}</h2>
       </div>
       <p className="text-xs text-gray-400">
         操作方法を再生できます。完了済みの項目もいつでも再生可能です。
       </p>
       {loading ? (
-        <div className="text-xs text-gray-500">読み込み中…</div>
+        <div className="text-xs text-gray-500">{t('auto.SettingsPage.k43')}</div>
       ) : (
         <div className="space-y-2">
           {Object.values(TUTORIALS).map((tut) => {
@@ -2980,7 +2982,7 @@ function TutorialReplaySection({ card }: { card: string }) {
                   <div className="text-xs text-gray-400">
                     {tut.steps.length} ステップ
                     {rec && (
-                      <> · ステータス: <span className="text-gray-200">{rec.status}</span> · replay 回数: {rec.replay_count}</>
+                      <> {t('auto.SettingsPage.k44')} <span className="text-gray-200">{rec.status}</span> · replay 回数: {rec.replay_count}</>
                     )}
                   </div>
                 </div>
@@ -2993,7 +2995,7 @@ function TutorialReplaySection({ card }: { card: string }) {
                   style={{ color: '#ffffff' }}
                 >
                   <MIcon name="play_arrow" size={14} />
-                  <span style={{ color: '#ffffff' }}>再生</span>
+                  <span style={{ color: '#ffffff' }}>{t('auto.SettingsPage.k45')}</span>
                 </button>
               </div>
             )

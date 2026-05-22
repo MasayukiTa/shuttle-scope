@@ -1201,7 +1201,7 @@ export function MatchListPage() {
                             <div className={`flex items-start gap-1.5 text-xs flex-1 min-w-0 ${isLight ? 'text-red-700' : 'text-red-300'}`}>
                               <AlertCircle size={14} className="shrink-0 mt-0.5" />
                               <div className="min-w-0">
-                                <div className="font-medium">ダウンロード失敗</div>
+                                <div className="font-medium">{t('auto.MatchListPage.k27')}</div>
                                 {dl.error && (
                                   <div className={`text-[11px] mt-0.5 break-words ${textMuted}`}>{dl.error}</div>
                                 )}
@@ -1372,7 +1372,7 @@ export function MatchListPage() {
                         checked={form.is_public_pool}
                         onChange={(e) => setForm({ ...form, is_public_pool: e.target.checked })}
                       />
-                      <span>全チーム共有（公開プール: BWF などの公開試合用。チェックすると全チームから閲覧可）</span>
+                      <span>{t('auto.MatchListPage.k28')}</span>
                     </label>
                   </div>
                 )}
