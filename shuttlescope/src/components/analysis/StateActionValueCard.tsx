@@ -69,7 +69,7 @@ export function StateActionValueCard({ playerId, filters }: Props) {
                 <th className="text-left py-1.5 pr-2">{t('auto.StateActionValueCard.k4')}</th>
                 <th className="text-left py-1.5 pr-2">{t('auto.StateActionValueCard.k5')}</th>
                 <th className="text-right py-1.5 pr-2">{t('auto.StateActionValueCard.k6')}</th>
-                <th className="text-right py-1.5">CI [95%]</th>
+                <th className="text-right py-1.5">{t('auto.StateActionValueCard.ci_header')}</th>
               </tr>
             </thead>
             <tbody>
@@ -83,7 +83,7 @@ export function StateActionValueCard({ playerId, filters }: Props) {
                   <td className={`py-1.5 pr-2 font-medium ${textSecondary}`}>{row.best_action}</td>
                   <td className="py-1.5 pr-2 text-right num-cell">
                     <span className={row.best_q > 0 ? 'text-emerald-500' : 'text-orange-500'}>
-                      {row.best_q > 0 ? '+' : ''}{(row.best_q * 100).toFixed(1)}pp
+                      {t('auto.StateActionValueCard.pp_value', { v: `${row.best_q > 0 ? '+' : ''}${(row.best_q * 100).toFixed(1)}` })}
                     </span>
                   </td>
                   <td className={`py-1.5 text-right text-[10px] num-cell ${textFaint}`}>

@@ -90,7 +90,7 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
         </div>
         <div className="ml-auto text-right">
           <p className="text-xs" style={{ color: mutedColor }}>
-            {t('auto._shared.n_matches', { n: data.annotated_match_count ?? data.match_count })}分析済
+            {t('auto._shared.n_matches', { n: data.annotated_match_count ?? data.match_count })}{t('auto.GrowthJudgmentCard.analyzed')}
           </p>
           {data.judgment === 'pending' && (
             <p className="text-[10px]" style={{ color: mutedColor }}>

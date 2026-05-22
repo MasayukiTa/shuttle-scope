@@ -29,7 +29,7 @@ export function MatchScoreBand({ scoreBands, playerName, opponentName }: MatchSc
   if (entries.length === 0) {
     return (
       <p className="text-xs text-gray-500 text-center py-2">
-        スコアデータが不足しています
+        {t('auto.MatchScoreBand.no_score_data')}
       </p>
     )
   }
@@ -46,7 +46,7 @@ export function MatchScoreBand({ scoreBands, playerName, opponentName }: MatchSc
         const setNum = key.replace('set', '')
         return (
           <div key={key} className="grid grid-cols-4 gap-2 text-xs items-center">
-            <span className="font-medium" style={{ color: textColor }}>Set {setNum}</span>
+            <span className="font-medium" style={{ color: textColor }}>{t('auto.MatchScoreBand.set_n', { n: setNum })}</span>
             <span className="text-center font-mono" style={{ color: textColor }}>
               {band.my_low}–{band.my_high}
             </span>
@@ -60,7 +60,7 @@ export function MatchScoreBand({ scoreBands, playerName, opponentName }: MatchSc
         )
       })}
       <p className="text-[10px] text-gray-600 pt-1">
-        25–75 パーセンタイル帯
+        {t('auto.MatchScoreBand.percentile_band')}
       </p>
     </div>
   )
