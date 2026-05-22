@@ -521,15 +521,15 @@ export function ClusterSettingsPanel() {
             }`} />
             <div>
               <p className={`text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white'}`}>
-                Ray クラスタ
+                {t('auto.ClusterSettingsPanel.ray_cluster')}
                 <span className={`ml-2 text-xs font-normal ${textMuted}`}>
-                  {cfg.mode === 'single' ? 'シングル' : cfg.mode === 'primary' ? 'プライマリ' : 'ワーカー'}
+                  {cfg.mode === 'single' ? t('auto.ClusterSettingsPanel.mode_single') : cfg.mode === 'primary' ? t('auto.ClusterSettingsPanel.mode_primary') : t('auto.ClusterSettingsPanel.mode_worker')}
                 </span>
               </p>
               <p className={`text-xs ${textMuted}`}>
-                {rayConnecting ? '接続確認中...' :
-                 rayRunning    ? `稼働中 — ${status?.ray.nodes.filter(n => n.alive).length ?? 0} ノード接続` :
-                                 '停止中'}
+                {rayConnecting ? t('auto.ClusterSettingsPanel.connecting') :
+                 rayRunning    ? t('auto.ClusterSettingsPanel.running_nodes', { n: status?.ray.nodes.filter(n => n.alive).length ?? 0 }) :
+                                 t('auto.ClusterSettingsPanel.stopped')}
               </p>
             </div>
           </div>
@@ -541,7 +541,7 @@ export function ClusterSettingsPanel() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-red-800 hover:bg-red-700 text-white disabled:opacity-50"
               >
                 {rayStopMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Square size={11} />}
-                停止
+                {t('auto.ClusterSettingsPanel.stop')}
               </button>
             ) : (
               <button
@@ -550,7 +550,7 @@ export function ClusterSettingsPanel() {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded bg-green-700 hover:bg-green-600 text-white disabled:opacity-40"
               >
                 {startHeadLoading ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                Ray 起動
+                {t('auto.ClusterSettingsPanel.ray_start')}
               </button>
             )}
             <button onClick={() => refetchStatus()} className={`${textMuted} hover:text-white`}>
@@ -563,7 +563,7 @@ export function ClusterSettingsPanel() {
         {needsIp && (
           <div className="space-y-1.5">
             <p className="text-xs text-yellow-400 flex items-center gap-1">
-              <Wifi size={11} /> このPCのIPを選んでからRayを起動してください
+              <Wifi size={11} /> {t('auto.ClusterSettingsPanel.select_ip_first')}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {ifOptions.map(iface => (
@@ -635,7 +635,7 @@ export function ClusterSettingsPanel() {
               onChange={e => setCfg(c => ({ ...c, ray: { ...c.ray, auto_start: e.target.checked } }))}
               className="accent-blue-500"
             />
-            アプリ起動時にRayを自動起動する
+            {t('auto.ClusterSettingsPanel.auto_start')}
           </label>
         )}
       </section>
@@ -646,13 +646,13 @@ export function ClusterSettingsPanel() {
       {cfg.mode === 'primary' && (rayRunning || workerCmds.length > 0) && cfg.network?.primary_ip && (
         <section className={`${cardBg} border ${border} rounded-lg p-4 space-y-3`}>
           <h3 className={`text-sm font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
-            ワーカーをクラスタに参加させる
+            {t('auto.ClusterSettingsPanel.join_worker')}
           </h3>
 
           {/* irm ワンライナー */}
           <div className={`p-3 rounded border ${border} ${isLight ? 'bg-blue-50' : 'bg-blue-950/30'}`}>
             <p className={`text-[11px] font-medium mb-1.5 ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>
-              K10 の PowerShell でこれだけ打てばOK:
+              {t('auto.ClusterSettingsPanel.k10_oneliner')}
             </p>
             <div className="flex items-center gap-2">
               <code className="text-[11px] font-mono flex-1 break-all text-green-400">
@@ -671,7 +671,7 @@ export function ClusterSettingsPanel() {
           {workerCmds.length > 0 && (
             <div className="space-y-2">
               <div className={`flex items-center gap-2 p-2 rounded border ${border}`}>
-                <span className={`text-[11px] ${textMuted} shrink-0`}>SSH</span>
+                <span className={`text-[11px] ${textMuted} shrink-0`}>{t('auto.ClusterSettingsPanel.ssh')}</span>
                 <input className={`${inputCls} w-28 text-[11px]`} placeholder={t('auto.ClusterSettingsPanel.k8')}
                   value={sshUser} onChange={e => setSshUser(e.target.value)} />
                 <input type="password" className={`${inputCls} w-28 text-[11px]`} placeholder={t('auto.ClusterSettingsPanel.k9')}
@@ -691,7 +691,7 @@ export function ClusterSettingsPanel() {
                       className="shrink-0 flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-indigo-700 hover:bg-indigo-600 text-white disabled:opacity-50"
                     >
                       {remoteJoinLoading[idx] ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-                      SSH実行
+                      {t('auto.ClusterSettingsPanel.ssh_exec')}
                     </button>
                   </div>
                   {remoteJoinMsg[idx] && (
@@ -718,7 +718,7 @@ export function ClusterSettingsPanel() {
         >
           <span className="flex items-center gap-2">
             <Server size={13} />
-            詳細設定（ネットワーク・ワーカー・リソース）
+            {t('auto.ClusterSettingsPanel.advanced_settings')}
           </span>
           <span className={`text-xs ${textMuted} transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>▼</span>
         </button>
@@ -911,7 +911,7 @@ export function ClusterSettingsPanel() {
                     title={t('auto.ClusterSettingsPanel.k5')}
                   >
                     {wakeLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Power size={11} />}
-                    Wake (WOL)
+                    {t('auto.ClusterSettingsPanel.wake_wol')}
                   </button>
                   <button
                     onClick={() => disableWorkerSleep(w.ip, i)}
@@ -920,7 +920,7 @@ export function ClusterSettingsPanel() {
                     title={t('auto.ClusterSettingsPanel.k6')}
                   >
                     {sleepDisableLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Moon size={11} />}
-                    スリープ無効化
+                    {t('auto.ClusterSettingsPanel.disable_sleep')}
                   </button>
                   <button
                     onClick={() => restartWorkerRay(w.ip, i)}
@@ -929,7 +929,7 @@ export function ClusterSettingsPanel() {
                     title={t('auto.ClusterSettingsPanel.k7')}
                   >
                     {rayRestartLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-                    Ray 再起動
+                    {t('auto.ClusterSettingsPanel.ray_restart')}
                   </button>
                   {rayRestartMsg[i] && (
                     <span className={`text-[10px] ${rayRestartMsg[i].includes('完了') ? 'text-green-400' : 'text-red-400'}`}>
