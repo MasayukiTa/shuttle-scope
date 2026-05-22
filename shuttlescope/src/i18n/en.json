@@ -2498,6 +2498,15 @@
     }
   },
   "auto": {
+    "_shared": {
+      "n_points": "{{n}} won",
+      "n_losses": "{{n}} lost",
+      "n_rallies": "{{n}} rallies",
+      "n_matches": "{{n}} matches",
+      "n_times": "{{n}}",
+      "n_strokes": "{{n}} strokes",
+      "n_wins_losses": "{{w}}W {{l}}L"
+    },
     "App": {
       "k1": "Checking authentication status...",
       "k2": "Notifications"
@@ -2595,6 +2604,7 @@
     },
     "EffectiveDistributionMap": {
       "k1": "Opponent court (landing point)",
+      "own_court": "Own court (hit point) ",
       "k2": "Click a zone for details",
       "k3": "Points won",
       "k4": "Maximize for details"

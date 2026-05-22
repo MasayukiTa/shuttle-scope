@@ -121,7 +121,7 @@ export function TemporalPerformance({ playerId, chartHeight = 180, filters = DEF
             >
               {p.phase}
             </span>
-            <span className="text-gray-400">{p.rally_count}ラリー</span>
+            <span className="text-gray-400">{t('auto._shared.n_rallies', { n: p.rally_count })}</span>
             <span className="font-semibold" style={{ color: chartData[i]?.color }}>
               {(p.win_rate * 100).toFixed(1)}%
             </span>

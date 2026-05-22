@@ -261,7 +261,7 @@ export function SetIntervalSummary({
                               <div className="w-16 bg-gray-700 rounded-full h-1.5">
                                 <div className="h-1.5 rounded-full" style={{ width: `${(p.pct * 100).toFixed(0)}%`, backgroundColor: LOSS }} />
                               </div>
-                              <span className="text-gray-400 w-8 text-right">{p.count}回</span>
+                              <span className="text-gray-400 w-8 text-right">{t('auto._shared.n_times', { n: p.count })}</span>
                             </div>
                           </div>
                         ))}

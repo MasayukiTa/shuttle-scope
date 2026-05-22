@@ -138,7 +138,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                           {(d.win_rate * 100).toFixed(0)}%
                         </p>
                         <p className="text-[9px]" style={{ color: isLight ? '#475569' : '#9ca3af' }}>
-                          {d.win_count}得点
+                          {t('auto._shared.n_points', { n: d.win_count })}
                         </p>
                       </>
                     ) : (
@@ -150,7 +150,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
             </div>
           ))}
           <p className="text-[10px] text-gray-500 text-center mt-1">
-            自コート（打点）　<span className="opacity-60">{t('auto.EffectiveDistributionMap.k2')}</span>
+            {t('auto.EffectiveDistributionMap.own_court')}<span className="opacity-60">{t('auto.EffectiveDistributionMap.k2')}</span>
           </p>
         </div>
 

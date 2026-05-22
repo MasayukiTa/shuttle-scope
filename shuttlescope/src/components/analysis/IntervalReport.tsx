@@ -113,7 +113,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
                     {t('analysis.interval_report.set')} {setReport.set_num}
                   </span>
                   <span className="text-xs text-gray-400 ml-2">
-                    {setReport.wins}/{setReport.rally_count}ラリー
+                    {setReport.wins}/{t('auto._shared.n_rallies', { n: setReport.rally_count })}
                   </span>
                 </div>
                 <div className="text-right flex items-center gap-2">

@@ -96,7 +96,7 @@ export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerB
         </div>
         <div className="ml-auto text-right">
           <p className="text-xs" style={{ color: labelColor }}>
-            {d.metrics.match_count}試合
+            {t('auto._shared.n_matches', { n: d.metrics.match_count })}
           </p>
         </div>
       </div>
