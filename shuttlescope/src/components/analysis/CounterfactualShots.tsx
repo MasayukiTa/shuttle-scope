@@ -60,7 +60,7 @@ function ChoiceBar({ choice, recommended }: { choice: ShotChoice; recommended: s
           className="text-xs px-1.5 py-0.5 rounded font-semibold shrink-0"
           style={{ backgroundColor: WIN, color: 'white' }}
         >
-          推奨
+          {t('auto.CounterfactualShots.recommended')}
         </span>
       )}
     </div>
@@ -83,7 +83,7 @@ function ComparisonAccordion({ comp }: { comp: Comparison }) {
             className="text-xs px-1.5 py-0.5 rounded shrink-0"
             style={{ backgroundColor: WIN + '33', color: WIN, border: `1px solid ${WIN}` }}
           >
-            lift +{Math.round(comp.lift * 100)}%
+            {t('auto.CounterfactualShots.lift', { n: Math.round(comp.lift * 100) })}
           </span>
         </div>
         <span className="text-gray-400 ml-2">{open ? '▲' : '▼'}</span>

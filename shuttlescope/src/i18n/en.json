@@ -2555,6 +2555,8 @@
       "k2": "Loading..."
     },
     "CounterfactualShots": {
+      "recommended": "Recommended",
+      "lift": "lift +{{n}}%",
       "k1": "Loading...",
       "k2": "Compares which return is most effective in each situation",
       "k3": "Counterfactual shot comparison"
@@ -2672,7 +2674,10 @@
       "knowns": "Known before the match"
     },
     "MatchScoreBand": {
-      "k1": "Set"
+      "k1": "Set",
+      "no_score_data": "Insufficient score data",
+      "set_n": "Set {{n}}",
+      "percentile_band": "25–75 percentile band"
     },
     "OpponentAdaptiveShots": {
       "k1": "Loading...",
@@ -2930,6 +2935,8 @@
       "k7": "High"
     },
     "StateActionValueCard": {
+      "ci_header": "CI [95%]",
+      "pp_value": "{{v}}pp",
       "k1": "State-action value (Q) best shots",
       "k2": "Computing...",
       "k3": "Not enough data",

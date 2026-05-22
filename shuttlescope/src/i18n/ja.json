@@ -2830,6 +2830,8 @@
       "k2": "読み込み中..."
     },
     "CounterfactualShots": {
+      "recommended": "推奨",
+      "lift": "lift +{{n}}%",
       "k1": "読み込み中...",
       "k2": "各状況でどの返球が最も効果的かを比較します",
       "k3": "反事実的ショット比較"
@@ -2947,7 +2949,10 @@
       "knowns": "試合前に分かっていること"
     },
     "MatchScoreBand": {
-      "k1": "セット"
+      "k1": "セット",
+      "no_score_data": "スコアデータが不足しています",
+      "set_n": "Set {{n}}",
+      "percentile_band": "25–75 パーセンタイル帯"
     },
     "OpponentAdaptiveShots": {
       "k1": "読み込み中...",
@@ -3205,6 +3210,8 @@
       "k7": "高"
     },
     "StateActionValueCard": {
+      "ci_header": "CI [95%]",
+      "pp_value": "{{v}}pp",
       "k1": "状態-行動価値（Q値）最善手",
       "k2": "計算中...",
       "k3": "十分なデータがありません",
@@ -3642,7 +3649,9 @@
       "k7": "受信中",
       "k8": "例: コーチPC"
     },
-    "GrowthJudgmentCard": {},
+    "GrowthJudgmentCard": {
+      "analyzed": "分析済"
+    },
     "GrowthTimeline": {
       "k1": "勝率",
       "k2": "サーブ勝率",
