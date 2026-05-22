@@ -3373,6 +3373,7 @@
       "k13": "このPCのみで動作。タブレット等には影響しません"
     },
     "LiveSourceSelector": {
+      "active": "アクティブ",
       "k1": "候補",
       "k2": "待機"
     },
@@ -3426,6 +3427,10 @@
       "k17": "動画パスワード"
     },
     "WebViewPlayer": {
+      "saved": "✓ 保存済",
+      "record": "録画",
+      "record_error": "録画エラー: {{err}}",
+      "close": "閉じる",
       "k1": "読み込み中...",
       "k2": "戻る",
       "k3": "進む",
@@ -3820,9 +3825,12 @@
     },
     "TutorialOverlay": {},
     "RoiRectOverlay": {
+      "analysis_region": "解析領域",
+      "drag_hint": "ドラッグして解析領域を指定",
       "k1": "解析領域をリセット"
     },
     "VideoPlayer": {
+      "speed": "{{rate}}x",
       "k1": "10秒戻し (Shift+←)",
       "k2": "1フレーム戻し (←)",
       "k3": "1フレーム進め (→)",

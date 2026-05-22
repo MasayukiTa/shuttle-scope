@@ -406,7 +406,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
             <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
               isLight ? 'bg-green-100 text-green-700' : 'bg-green-900/40 text-green-300'
             }`}>
-              ✓ 保存済
+              {t('auto.WebViewPlayer.saved')}
             </span>
           ) : (
             <button
@@ -417,7 +417,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
               title={t('auto.WebViewPlayer.k11')}
             >
               <Circle size={10} className="fill-current" />
-              録画
+              {t('auto.WebViewPlayer.record')}
             </button>
           )
         )}
@@ -436,12 +436,12 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       {recordState === 'error' && recordError && (
         <div className={`flex items-start gap-2 px-3 py-1.5 shrink-0 text-xs ${errorBanner}`}>
           <AlertCircle size={12} className="shrink-0 mt-0.5" />
-          <span className="flex-1 break-words">録画エラー: {recordError}</span>
+          <span className="flex-1 break-words">{t('auto.WebViewPlayer.record_error', { err: recordError })}</span>
           <button
             onClick={() => { setRecordState('idle'); setRecordError(''); setRecordJobId(null) }}
             className="text-xs underline shrink-0"
           >
-            閉じる
+            {t('auto.WebViewPlayer.close')}
           </button>
         </div>
       )}
@@ -460,7 +460,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
             className="text-xs underline shrink-0"
             aria-label={t('auto.WebViewPlayer.k13')}
           >
-            閉じる
+            {t('auto.WebViewPlayer.close')}
           </button>
         </div>
       )}

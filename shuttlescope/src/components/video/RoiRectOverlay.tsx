@@ -61,6 +61,7 @@ function cornersToRect(corners: [Pt, Pt, Pt, Pt]): RoiRect {
 // ── コンポーネント ─────────────────────────────────────────────────────────────
 
 export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props) {
+  const { t } = useTranslation()
   // コンテナの実ピクセルサイズ（SVG polygon の座標計算用）
   const [size, setSize] = useState({ w: 1, h: 1 })
   useEffect(() => {
@@ -210,7 +211,7 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
               zIndex: 31,
             }}
           >
-            解析領域
+            {t('auto.RoiRectOverlay.analysis_region')}
           </div>
 
           {/* × ボタン（TR コーナー右上・白文字） */}
@@ -260,7 +261,7 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
             className="bg-black/70 text-xs px-3 py-1.5 rounded-full"
             style={{ color: '#ffffff', fontWeight: 500 }}
           >
-            ドラッグして解析領域を指定
+            {t('auto.RoiRectOverlay.drag_hint')}
           </span>
         </div>
       )}
