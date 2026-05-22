@@ -250,17 +250,17 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
             <div className={`flex items-center gap-3 text-[10px] ${textMuted}`}>
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm bg-sky-600 inline-block" />
-                フロント {pct(roleData.front_ratio)}
+                {t('auto.DoublesRoleCard.front_pct', { v: pct(roleData.front_ratio) })}
               </span>
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm bg-amber-600 inline-block" />
-                バック {pct(roleData.back_ratio)}
+                {t('auto.DoublesRoleCard.back_pct', { v: pct(roleData.back_ratio) })}
               </span>
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm bg-gray-500 inline-block" />
-                ニュートラル {pct(roleData.neutral_ratio)}
+                {t('auto.DoublesRoleCard.neutral_pct', { v: pct(roleData.neutral_ratio) })}
               </span>
-              <span className="ml-auto">N={roleData.total_shots}</span>
+              <span className="ml-auto">{t('auto.DoublesRoleCard.n_shots', { n: roleData.total_shots })}</span>
             </div>
           </div>
 
@@ -283,7 +283,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
                       neutral={ph.neutral_ratio}
                     />
                   </div>
-                  <span className={`shrink-0 ${textFaint}`}>N={ph.n_shots}</span>
+                  <span className={`shrink-0 ${textFaint}`}>{t('auto.DoublesRoleCard.n_shots', { n: ph.n_shots })}</span>
                 </div>
               ))}
             </div>
@@ -298,9 +298,9 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
             <div className={`${cardInnerAlt} rounded px-3 py-2 space-y-1.5`}>
               <div className="flex items-center justify-between">
                 <p className={`text-[10px] font-medium ${textSecondary}`}>
-                  CV 位置照合
+                  {t('auto.DoublesRoleCard.cv_match')}
                   {recentMatchId && (
-                    <span className={`ml-1 font-normal ${textFaint}`}>試合 #{recentMatchId}</span>
+                    <span className={`ml-1 font-normal ${textFaint}`}>{t('auto.DoublesRoleCard.match_hash', { id: recentMatchId })}</span>
                   )}
                 </p>
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
@@ -310,10 +310,10 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
                     ? isLight ? 'bg-white text-red-700' : 'bg-gray-800 text-red-300'
                     : isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
                 }`}>
-                  {cvRoleSignal.agreement === 'consistent' ? '一致'
-                    : cvRoleSignal.agreement === 'inconsistent' ? '不一致'
-                    : cvRoleSignal.agreement === 'partial' ? '部分一致'
-                    : '不明'}
+                  {cvRoleSignal.agreement === 'consistent' ? t('auto.DoublesRoleCard.agree_consistent')
+                    : cvRoleSignal.agreement === 'inconsistent' ? t('auto.DoublesRoleCard.agree_inconsistent')
+                    : cvRoleSignal.agreement === 'partial' ? t('auto.DoublesRoleCard.agree_partial')
+                    : t('auto.DoublesRoleCard.agree_unknown')}
                 </span>
               </div>
               <div className={`flex items-center gap-3 text-[10px] ${textMuted}`}>
@@ -323,10 +323,10 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
               {(cvRoleSignal.player_a_cv_role_hint || cvRoleSignal.player_b_cv_role_hint) && (
                 <div className={`flex gap-3 text-[10px] ${textFaint}`}>
                   {cvRoleSignal.player_a_cv_role_hint && (
-                    <span>A: <span className="text-blue-400">{cvRoleSignal.player_a_cv_role_hint}</span></span>
+                    <span>{t('auto.DoublesRoleCard.label_a')} <span className="text-blue-400">{cvRoleSignal.player_a_cv_role_hint}</span></span>
                   )}
                   {cvRoleSignal.player_b_cv_role_hint && (
-                    <span>B: <span className="text-amber-400">{cvRoleSignal.player_b_cv_role_hint}</span></span>
+                    <span>{t('auto.DoublesRoleCard.label_b')} <span className="text-amber-400">{cvRoleSignal.player_b_cv_role_hint}</span></span>
                   )}
                 </div>
               )}
@@ -347,12 +347,12 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
               </div>
               <div className="flex items-center gap-3 text-[10px]">
                 <span className={textMuted}>
-                  安定性スコア:
+                  {t('auto.DoublesRoleCard.stability_score')}
                   <span className={`ml-1 font-medium ${getConsistencyColor(stability.consistency_label, isLight)}`}>
                     {pct(stability.role_stability_score)}
                   </span>
                 </span>
-                <span className={textFaint}>({stability.n_matches_analyzed}試合で分析)</span>
+                <span className={textFaint}>{t('auto.DoublesRoleCard.analyzed_matches', { n: stability.n_matches_analyzed })}</span>
               </div>
               {/* シーズン変動 */}
               {stability.season_variation.length > 1 && (
@@ -363,7 +363,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
                       <span className={`${getRoleColor(sv.dominant_role, isLight)} font-medium`}>
                         {ROLE_LABELS[sv.dominant_role] ?? sv.dominant_role}
                       </span>
-                      <span className={textFaint}> ({sv.n_matches}試)</span>
+                      <span className={textFaint}> {t('auto.DoublesRoleCard.n_matches_short', { n: sv.n_matches })}</span>
                     </span>
                   ))}
                 </div>
@@ -375,7 +375,7 @@ export function DoublesRoleCard({ playerId, filters }: Props) {
           )}
 
           <p className={`text-[10px] ${textFaint}`}>
-            バー左（青）= フロント系ショット比率、中央（橙）= バック系、右（灰）= ニュートラル。
+            {t('auto.DoublesRoleCard.bar_legend')}
           </p>
         </div>
       )}
