@@ -3801,7 +3801,17 @@
     "MobileCVOverlay": {
       "k1": "TrackNet をリモート実行",
       "k2": "タップで閉じる",
-      "k3": "YOLO をリモート実行"
+      "k3": "YOLO をリモート実行",
+      "court_uncalibrated_pre": "コート未キャリブ (右上",
+      "court_uncalibrated_post": "から編集)",
+      "run_shuttle_analysis": "シャトル解析を実行",
+      "tracknet_done_zero": "TrackNet 完了 (0 frames — Pass1 でラリーを記録してから再実行)",
+      "tracknet_running": "TrackNet 実行中… {{n}}%",
+      "tracknet_error": "TrackNet エラー: {{msg}}",
+      "run_player_detection": "プレイヤー検出を実行",
+      "yolo_done_zero": "YOLO 完了 (0 frames — ROI / 動画範囲を確認)",
+      "yolo_running": "YOLO 実行中… {{n}}%",
+      "yolo_error": "YOLO エラー: {{msg}}"
     },
     "MobileCourtCalib": {
       "tap_to_place_suffix": " をタップで設置 ({{n}}/6)",
@@ -3839,7 +3849,15 @@
       "k5": "プッシュ",
       "k6": "ドライブ",
       "k7": "ロブ",
-      "k8": "クロス"
+      "k8": "クロス",
+      "header": "Pass 3 · ラリー {{rally}} (set {{set}})",
+      "stroke_count": "stroke {{n}} 件",
+      "close": "閉じる",
+      "empty_hint": "Pass 2 でサーブと決定打を入れてから Pass 3 に来てください",
+      "pending": "pending",
+      "add_stroke": "+ #{{n}} のストロークを追加 ({{player}})",
+      "other_later": "その他 (後で詳細入力)",
+      "cancel": "取消"
     },
     "PlayMode": {
       "k1": "動画が再生できません",
@@ -3857,7 +3875,22 @@
       "k13": "表示モード切替",
       "k14": "フルスクリーン",
       "k15": "切り抜き編集",
-      "k16": "全画面に戻す"
+      "k16": "全画面に戻す",
+      "no_video_cause_title": "考えられる原因:",
+      "no_video_cause_1": "・この試合にまだ動画が登録されていない",
+      "no_video_cause_2": "・動画 token (video_token) が発行されていない",
+      "no_video_cause_3": "・サーバから動画ファイルが取得できない",
+      "match_id": "match_id={{id}}",
+      "crop_drag_hint": "切り抜き範囲をドラッグで指定 → 右下 ✓ で確定",
+      "resume_from": "▶ {{time}} から再開",
+      "ios_fs_hint_1": "iPhone Safari は要素単位の全画面非対応です。",
+      "ios_fs_hint_2": "で PWA 起動すると URL バー無しの本物フルスクリーンになります。(タップで閉じる)",
+      "play_error": "{{msg}} (タップで閉じる)",
+      "cancel": "取消",
+      "confirm": "確定",
+      "seek_back_5": "◀◀5",
+      "seek_back_1": "◀1",
+      "speed_x": "{{n}}x"
     },
     "TutorialOverlay": {},
     "RoiRectOverlay": {
