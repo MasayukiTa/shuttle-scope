@@ -338,7 +338,7 @@ export function GrowthTimeline({
                 style={{ borderColor: isLight ? N_GRAY[200] : N_GRAY[700] }}
               >
                 <div className="text-sm font-semibold">
-                  {comparePoint.date} の {cfg.label} 比較
+                  {t('auto.GrowthTimeline.compare_title', { date: comparePoint.date, label: cfg.label })}
                 </div>
                 <button
                   type="button"
@@ -349,29 +349,29 @@ export function GrowthTimeline({
               </header>
               <div className="px-4 py-3 space-y-2 text-sm">
                 <div>
-                  この試合 <span className="font-mono font-semibold">{formatVal(comparePoint.value)}</span>
+                  {t('auto.GrowthTimeline.this_match')} <span className="font-mono font-semibold">{formatVal(comparePoint.value)}</span>
                   {comparePoint.movingAvg != null && (
                     <span className="ml-2 text-xs" style={{ color: isLight ? N_GRAY[500] : N_GRAY[400] }}>
-                      / 移動平均 {formatVal(comparePoint.movingAvg)}
+                      {t('auto.GrowthTimeline.moving_avg', { val: formatVal(comparePoint.movingAvg) })}
                     </span>
                   )}
                 </div>
 
                 {recent5Mean != null && (
                   <div className="text-xs" style={{ color: isLight ? N_GRAY[700] : N_GRAY[200] }}>
-                    直近 5 試合の平均 (この試合除く) {formatVal(recent5Mean)} — 差分 <strong>{formatDelta(comparePoint.value, recent5Mean)}</strong>
+                    {t('auto.GrowthTimeline.recent5_avg', { val: formatVal(recent5Mean) })}<strong>{formatDelta(comparePoint.value, recent5Mean)}</strong>
                   </div>
                 )}
 
                 {seasonMean != null && (
                   <div className="text-xs" style={{ color: isLight ? N_GRAY[700] : N_GRAY[200] }}>
-                    全期間平均 (この試合除く、n={others.length}) {formatVal(seasonMean)} — 差分 <strong>{formatDelta(comparePoint.value, seasonMean)}</strong>
+                    {t('auto.GrowthTimeline.season_avg', { n: others.length, val: formatVal(seasonMean) })}<strong>{formatDelta(comparePoint.value, seasonMean)}</strong>
                   </div>
                 )}
 
                 {recent5Mean == null && (
                   <div className="text-xs" style={{ color: isLight ? N_GRAY[500] : N_GRAY[400] }}>
-                    直近 5 試合のサンプルが不足 (3 件以上必要)。比較は全期間平均のみ表示。
+                    {t('auto.GrowthTimeline.recent5_insufficient')}
                   </div>
                 )}
 
@@ -379,7 +379,7 @@ export function GrowthTimeline({
                   borderColor: isLight ? N_GRAY[200] : N_GRAY[700],
                   color: isLight ? N_GRAY[500] : N_GRAY[400],
                 }}>
-                  数値の符号のみを示します。「何が良かった/改善が必要」の断言は意図的に行いません — 差分とサンプル数から、コーチ・選手で判断してください (信頼性最優先方針)。
+                  {t('auto.GrowthTimeline.sign_only_note')}
                 </div>
               </div>
             </div>
