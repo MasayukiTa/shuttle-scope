@@ -83,7 +83,7 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
         </span>
         {overallWinRate != null && (
           <span className="text-xs font-semibold text-blue-400">
-            通算 {(overallWinRate * 100).toFixed(0)}% ({t('auto._shared.n_matches', { n: sampleSize })})
+            {t('auto.PartnerTimeline.overall', { pct: (overallWinRate * 100).toFixed(0) })} ({t('auto._shared.n_matches', { n: sampleSize })})
           </span>
         )}
       </div>

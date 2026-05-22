@@ -95,7 +95,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
               {(currentEst.mean * 100).toFixed(1)}%
             </p>
             <p className="text-[10px] mt-1 font-mono tabular-nums" style={{ color: N_GRAY[400] }}>
-              95% CI [{(currentEst.ci_low * 100).toFixed(1)}, {(currentEst.ci_high * 100).toFixed(1)}]
+              {t('auto.IntervalReport.ci_interval', { lo: (currentEst.ci_low * 100).toFixed(1), hi: (currentEst.ci_high * 100).toFixed(1) })}
             </p>
           </div>
         )
@@ -156,7 +156,7 @@ export function IntervalReport({ matchId, completedSet, onSetClick }: IntervalRe
       )}
 
       <p className="text-[10px] text-gray-600 text-center">
-        ※ ベイズ推定による勝率推定。このデータは相関を示すものであり、因果関係を示すものではありません。
+        {t('auto.IntervalReport.bayes_note')}
       </p>
     </div>
   )

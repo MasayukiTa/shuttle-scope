@@ -63,7 +63,7 @@ export function ScorelineHistogram({ data }: ScorelineHistogramProps) {
         )
       })}
       <p className="text-[10px] text-gray-600 mt-1">
-        {t('prediction.frequency')} — 実測スコアライン（統計ベース）
+        {t('prediction.frequency')}{t('auto.ScorelineHistogram.freq_note')}
       </p>
     </div>
   )

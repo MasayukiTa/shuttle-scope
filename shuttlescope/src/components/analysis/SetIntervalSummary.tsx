@@ -250,7 +250,7 @@ export function SetIntervalSummary({
                     <div>
                       <p className="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-1">
                         <AlertTriangle size={12} style={{ color: LOSS }} />
-                        {t('analysis.set_summary.recent_loss_patterns')}（直近 10 失点）
+                        {t('analysis.set_summary.recent_loss_patterns')}{t('auto.SetIntervalSummary.recent_loss_paren')}
                       </p>
                       <div className="space-y-1.5">
                         {data.recent_loss_patterns.slice(0, 3).map((p, i) => (
