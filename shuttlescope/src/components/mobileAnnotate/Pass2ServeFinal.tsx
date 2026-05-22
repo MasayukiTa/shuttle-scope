@@ -24,6 +24,7 @@
  *     最初に戻る選択肢
  */
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 
@@ -51,6 +52,7 @@ interface Props {
 }
 
 export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
+  const { t } = useTranslation()
   const [stepIdx, setStepIdx] = useState(0)
   const [zones, setZones] = useState<Partial<Record<Step, ZoneCode>>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -95,7 +97,7 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
       {/* 上部: 進捗ドット + step 名 */}
       <div className="bg-black/90 px-3 py-2 flex items-center gap-3 border-b border-gray-800 text-xs">
         <div className="text-yellow-200 font-bold">
-          Pass 2 · ラリー {rally.rally_num} (set {rally.set_num})
+          {t('auto.Pass2ServeFinal.header', { n: rally.rally_num, m: rally.set_num })}
         </div>
         <div className="flex-1" />
         <div className="flex gap-1">
@@ -117,7 +119,7 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
           onClick={onCancel}
           className="px-2 py-1 rounded bg-gray-700 text-white text-[10px]"
         >
-          途中保存して戻る
+          {t('auto.Pass2ServeFinal.save_and_back')}
         </button>
       </div>
 
@@ -139,7 +141,7 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
         />
         {submitting && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-yellow-200 text-sm">
-            保存中 ...
+            {t('auto.Pass2ServeFinal.saving')}
           </div>
         )}
       </div>

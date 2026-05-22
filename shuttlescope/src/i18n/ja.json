@@ -3804,6 +3804,10 @@
       "k3": "YOLO をリモート実行"
     },
     "MobileCourtCalib": {
+      "tap_to_place_suffix": " をタップで設置 ({{n}}/6)",
+      "restored": "/ 前回セッションから {{n}} 点復元済 (調整して保存 or 全消去)",
+      "all_placed": "全 6 点設置完了。ハンドルをドラッグで微調整 → 保存",
+      "restored_short": "(前回セッションから復元)",
       "k1": "直前 1 点を戻す",
       "k2": "全消去",
       "k3": "キャンセル"
@@ -3813,7 +3817,11 @@
       "k2": "プレイヤーB 得点",
       "k3": "直前のラリーを取消"
     },
-    "Pass2ServeFinal": {},
+    "Pass2ServeFinal": {
+      "header": "Pass 2 · ラリー {{n}} (set {{m}})",
+      "save_and_back": "途中保存して戻る",
+      "saving": "保存中 ..."
+    },
     "Pass3ShotDetail": {
       "k1": "スマッシュ",
       "k2": "クリア",
