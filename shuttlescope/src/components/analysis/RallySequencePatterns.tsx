@@ -112,7 +112,7 @@ export function RallySequencePatterns({ playerId }: RallySequencePatternsProps) 
   return (
     <div className="bg-gray-800 rounded-lg p-4">
       <h3 className="text-sm font-semibold text-gray-200 mb-1">{t('auto.RallySequencePatterns.k3')}</h3>
-      <p className="text-xs text-gray-500 mb-3">分析ラリー数: {totalRallies}</p>
+      <p className="text-xs text-gray-500 mb-3">{t('auto.RallySequencePatterns.analyzed_rallies', { n: totalRallies })}</p>
       <ConfidenceBadge sampleSize={sampleSize} />
       <div className="flex gap-4 mt-3">
         <SequenceList sequences={winSeqs} accent={WIN} title={t('auto.RallySequencePatterns.k4')} />

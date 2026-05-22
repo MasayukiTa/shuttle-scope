@@ -88,7 +88,7 @@ export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerB
       >
         <div>
           <p className="text-xs" style={{ color: labelColor }}>
-            {playerAName} / {playerBName} のプレースタイル
+            {t('auto.PairPlaystyle.playstyle_of', { a: playerAName, b: playerBName })}
           </p>
           <p className="text-lg font-bold" style={{ color: textColor }}>
             {d.playstyle}

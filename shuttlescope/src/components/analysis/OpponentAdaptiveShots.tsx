@@ -111,7 +111,7 @@ function Inner({ playerId }: { playerId: number }) {
       {activeOpp && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
-            <span>ショット種別 勝率 vs {activeOpp.opponent_name}</span>
+            <span>{t('auto.OpponentAdaptiveShots.shot_winrate_vs', { name: activeOpp.opponent_name })}</span>
             <span className="text-gray-500">{t('auto.OpponentAdaptiveShots.k2')}</span>
           </div>
           {activeOpp.shot_effectiveness.length === 0 ? (

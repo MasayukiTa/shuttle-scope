@@ -513,7 +513,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                     ? t('prediction.data_source_h2h')
                     : t('prediction.data_source_all')}
                   {' — '}
-                  {t('auto._shared.n_matches', { n: d.sample_size })}から算出（統計ベース）
+                  {t('auto._shared.n_matches', { n: d.sample_size })}{t('auto.PredictionPanel.computed_stat')}
                 </p>
                 {meta?.confidence.warning && (
                   <p className="text-[11px] mt-1" style={{ color: subText }}>

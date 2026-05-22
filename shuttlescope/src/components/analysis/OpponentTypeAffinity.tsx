@@ -134,7 +134,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
       </div>
 
       <p className="text-[10px]" style={{ color: labelColor }}>
-        ※ 相手タイプはラリー長・スマッシュ率から自動判定
+        {t('auto.OpponentTypeAffinity.auto_type_note')}
       </p>
     </div>
   )

@@ -134,7 +134,7 @@ export function PostLongRallyStats({ playerId, filters = DEFAULT_FILTERS }: Post
       </div>
 
       <p className="text-xs text-gray-500 text-center">
-        ※ 10打以上のラリーを長ラリーとして判定
+        {t('auto.PostLongRallyStats.long_rally_note')}
       </p>
     </div>
   )

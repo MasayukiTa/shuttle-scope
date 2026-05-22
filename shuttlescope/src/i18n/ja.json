@@ -2955,6 +2955,7 @@
       "percentile_band": "25–75 パーセンタイル帯"
     },
     "OpponentAdaptiveShots": {
+      "shot_winrate_vs": "ショット種別 勝率 vs {{name}}",
       "k1": "読み込み中...",
       "k2": "lift=全体比",
       "k3": "対戦相手別ショット有効性"
@@ -3023,6 +3024,7 @@
       "k14": "最大瞬間速度"
     },
     "PostLongRallyStats": {
+      "long_rally_note": "※ 10打以上のラリーを長ラリーとして判定",
       "k1": "勝率",
       "k2": "平均ラリー長",
       "k3": "ラリー数",
@@ -3034,6 +3036,7 @@
       "computed_post": " を使用して算出"
     },
     "PredictionPanel": {
+      "computed_stat": "から算出（統計ベース）",
       "k1": "相手チームを選択すると予測が表示されます",
       "k2": "ヘッダーの「相手」セレクターから対戦相手を選んでください"
     },
@@ -3125,6 +3128,7 @@
       "analyze_all": "全ラリーで解析"
     },
     "RallySequencePatterns": {
+      "analyzed_rallies": "分析ラリー数: {{n}}",
       "k1": "データなし",
       "k2": "読み込み中...",
       "k3": "ラリー3連ショットパターン",
@@ -3132,6 +3136,7 @@
       "k5": "負けパターン"
     },
     "ReceivedVulnerabilityMap": {
+      "own_court_received": "← 自コート（被打球エリア）　",
       "k1": "相手コート（打点）→ 自コート（着地）",
       "k2": "ゾーンをクリックで詳細",
       "k3": "失点数",
@@ -3143,6 +3148,7 @@
       "k2": "読み込み中..."
     },
     "ScorelineHistogram": {
+      "freq_note": " — 実測スコアライン（統計ベース）",
       "k1": "詳細"
     },
     "ScoreProgression": {
@@ -3173,6 +3179,7 @@
       "n_rallies": "{{n}} ラリー"
     },
     "SetIntervalSummary": {
+      "recent_loss_paren": "（直近 10 失点）",
       "k1": "ラリー数",
       "k2": "平均球数",
       "k3": "ラリー傾向",
@@ -3665,6 +3672,8 @@
       "sign_only_note": "数値の符号のみを示します。「何が良かった/改善が必要」の断言は意図的に行いません — 差分とサンプル数から、コーチ・選手で判断してください (信頼性最優先方針)。"
     },
     "IntervalReport": {
+      "ci_interval": "95% CI [{{lo}}, {{hi}}]",
+      "bayes_note": "※ ベイズ推定による勝率推定。このデータは相関を示すものであり、因果関係を示すものではありません。",
       "k1": "詳細 ›",
       "k2": "セットの詳細解析を開く"
     },
@@ -3674,15 +3683,20 @@
       "effective_patterns": "（有効パターン）",
       "improve_patterns": "（要改善パターン）"
     },
-    "OpponentTypeAffinity": {},
+    "OpponentTypeAffinity": {
+      "auto_type_note": "※ 相手タイプはラリー長・スマッシュ率から自動判定"
+    },
     "PairPlaystyle": {
+      "playstyle_of": "{{a}} / {{b}} のプレースタイル",
       "k1": "ネット前配球率",
       "k2": "奥配球率",
       "k3": "中間配球率",
       "k4": "スマッシュ率",
       "k5": "ネットショット率"
     },
-    "PartnerTimeline": {},
+    "PartnerTimeline": {
+      "overall": "通算 {{pct}}%"
+    },
     "PreMatchObservationAnalytics": {
       "n_matches": "　N={{n}}試合",
       "win_loss": "{{w}}勝{{l}}敗",
