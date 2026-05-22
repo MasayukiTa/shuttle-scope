@@ -84,10 +84,10 @@ function CustomTooltip({ active, payload }: any) {
   const subColor = isLight ? '#475569' : '#d1d5db'
   return (
     <div style={style} className="px-3 py-2">
-      <p className="font-semibold mb-1" style={{ color: headingColor }}>ラリー {d.rally_num}</p>
-      <p style={{ color: WIN }}>A: {d.score_a}</p>
-      <p style={{ color: LOSS }}>B: {d.score_b}</p>
-      <p style={{ color: subColor }}>点差: {d.point_diff > 0 ? '+' : ''}{d.point_diff}</p>
+      <p className="font-semibold mb-1" style={{ color: headingColor }}>{t('auto.ScoreProgression.rally_n', { n: d.rally_num })}</p>
+      <p style={{ color: WIN }}>{t('auto.ScoreProgression.score_a', { n: d.score_a })}</p>
+      <p style={{ color: LOSS }}>{t('auto.ScoreProgression.score_b', { n: d.score_b })}</p>
+      <p style={{ color: subColor }}>{t('auto.ScoreProgression.point_diff', { v: `${d.point_diff > 0 ? '+' : ''}${d.point_diff}` })}</p>
     </div>
   )
 }
@@ -151,13 +151,13 @@ export function RallyDetailBanner({
       {/* ヘッダー */}
       <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-2 pr-16">
         <span className="font-semibold text-white">
-          Set {rally.set_num} Rally {rally.rally_num}
+          {t('auto.ScoreProgression.set_rally', { set: rally.set_num, rally: rally.rally_num })}
         </span>
-        <span className="text-gray-500 text-[10px]">{serverLabel} サーブ</span>
-        <span className="text-gray-500 text-[10px]">{rally.rally_length} 打</span>
+        <span className="text-gray-500 text-[10px]">{t('auto.ScoreProgression.server_serve', { label: serverLabel })}</span>
+        <span className="text-gray-500 text-[10px]">{t('auto.ScoreProgression.rally_strokes', { n: rally.rally_length })}</span>
         <span className="text-gray-500 text-[10px]">{endTypeLabel}</span>
         <span style={{ color: rally.winner === 'player_a' ? WIN : LOSS }} className="font-medium">
-          {winnerLabel} 得点
+          {t('auto.ScoreProgression.winner_point', { label: winnerLabel })}
         </span>
         <span className="ml-auto text-gray-400 text-[10px]">
           {rally.score_a} – {rally.score_b}
@@ -313,11 +313,11 @@ export function ScoreProgression({ matchId, onSetPointClick, initialSet }: Score
       <div className="flex gap-4 text-xs text-gray-500">
         <span className="flex items-center gap-1">
           <span className="inline-block w-3 h-0.5 bg-blue-500" />
-          A側リード ↑ / B側リード ↓
+          {t('auto.ScoreProgression.legend_lead')}
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-3 h-0.5 bg-yellow-500" style={{ borderTop: '1px dashed' }} />
-          流れの変化点
+          {t('auto.ScoreProgression.legend_turning')}
         </span>
         {onSetPointClick && <span className="text-blue-400">{t('auto.ScoreProgression.k4')}</span>}
       </div>
