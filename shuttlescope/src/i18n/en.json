@@ -2839,7 +2839,13 @@
       "k5": "Top shots by state"
     },
     "ShotWinLoss": {
-      "k1": "Loading..."
+      "k1": "Loading...",
+      "points_won": "Won: {{n}}",
+      "points_lost": "Lost: {{n}}",
+      "win_rate": "Win rate: {{n}}%",
+      "insufficient": "Insufficient data (available after annotation)",
+      "won": "Won",
+      "lost": "Lost"
     },
     "SpatialDensityMap": {
       "k1": "Court density map",

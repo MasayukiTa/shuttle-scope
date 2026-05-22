@@ -3114,7 +3114,13 @@
       "k5": "状態別トップショット"
     },
     "ShotWinLoss": {
-      "k1": "読み込み中..."
+      "k1": "読み込み中...",
+      "points_won": "得点: {{n}}",
+      "points_lost": "失点: {{n}}",
+      "win_rate": "勝率: {{n}}%",
+      "insufficient": "データ不足（アノテーション後に解析可能）",
+      "won": "得点",
+      "lost": "失点"
     },
     "SpatialDensityMap": {
       "k1": "コート密度マップ",

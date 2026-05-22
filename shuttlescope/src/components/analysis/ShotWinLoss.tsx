@@ -60,9 +60,9 @@ function CustomTooltip({ active, payload, label }: any) {
   return (
     <div style={getTooltipStyle(isLight)} className="px-3 py-2">
       <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
-      <p style={{ color: WIN }}>得点: {win}</p>
-      <p style={{ color: LOSS }}>失点: {lose}</p>
-      <p style={{ color: subColor }}>勝率: {rate}%</p>
+      <p style={{ color: WIN }}>{t('auto.ShotWinLoss.points_won', { n: win })}</p>
+      <p style={{ color: LOSS }}>{t('auto.ShotWinLoss.points_lost', { n: lose })}</p>
+      <p style={{ color: subColor }}>{t('auto.ShotWinLoss.win_rate', { n: rate })}</p>
     </div>
   )
 }
@@ -96,7 +96,7 @@ export function ShotWinLoss({ playerId, filters = DEFAULT_FILTERS }: ShotWinLoss
   if (rows.length === 0 || sampleSize === 0) {
     return (
       <div className="text-gray-500 text-sm py-4 text-center">
-        データ不足（アノテーション後に解析可能）
+        {t('auto.ShotWinLoss.insufficient')}
       </div>
     )
   }
@@ -172,11 +172,11 @@ export function ShotWinLoss({ playerId, filters = DEFAULT_FILTERS }: ShotWinLoss
       <div className="flex gap-4 text-xs text-gray-400 pt-1">
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: WIN }} />
-          得点
+          {t('auto.ShotWinLoss.won')}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: LOSS }} />
-          失点
+          {t('auto.ShotWinLoss.lost')}
         </span>
       </div>
     </div>
