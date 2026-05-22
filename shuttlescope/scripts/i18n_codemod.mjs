@@ -56,6 +56,12 @@ let totalReplacements = 0
 const perFileStats = []
 
 for (const rel of files) {
+  // テストファイルは i18n 対象外。t() を注入すると useTranslation スコープが
+  // 無くランタイム ReferenceError になる (CI vitest で検出済み)。
+  if (/\.test\.tsx?$/.test(rel) || /[\\/]__tests__[\\/]/.test(rel)) {
+    perFileStats.push({ rel, reps: 0 })
+    continue
+  }
   const abs = path.join(ROOT, rel)
   let src = fs.readFileSync(abs, 'utf8')
   const basename = path.basename(rel, '.tsx')
