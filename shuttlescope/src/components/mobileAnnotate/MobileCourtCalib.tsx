@@ -36,6 +36,7 @@ const STEP_LABELS = ['TL 左上', 'TR 右上', 'BR 右下', 'BL 左下', 'NL ネ
 const HANDLE_R = 18  // タッチ判定半径 (px)
 
 export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, onClose, onSaved, snapshot }: Props) {
+  const { t } = useTranslation()
   // 初回キャリブ起動時にチュートリアルを自動再生 (指ルーペ操作・点位置の解説)
   useAutoTutorial('mobile_court_calibration')
   // 既存 6 点があれば初期表示、なければ空配列
@@ -304,19 +305,19 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
       >
         {nextIdx !== null ? (
           <span style={{ color: '#ffffff' }}>
-            <b style={{ color: '#ffffff' }}>{STEP_LABELS[nextIdx]}</b> をタップで設置 ({points.length}/6)
+            <b style={{ color: '#ffffff' }}>{STEP_LABELS[nextIdx]}</b>{t('auto.MobileCourtCalib.tap_to_place_suffix', { n: points.length })}
             {restoredFromExisting && (
               <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '10px', marginLeft: 8 }}>
-                / 前回セッションから {initial.length} 点復元済 (調整して保存 or 全消去)
+                {t('auto.MobileCourtCalib.restored', { n: initial.length })}
               </span>
             )}
           </span>
         ) : (
           <span style={{ color: '#ffffff' }}>
-            全 6 点設置完了。ハンドルをドラッグで微調整 → 保存
+            {t('auto.MobileCourtCalib.all_placed')}
             {restoredFromExisting && (
               <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '10px', marginLeft: 8 }}>
-                (前回セッションから復元)
+                {t('auto.MobileCourtCalib.restored_short')}
               </span>
             )}
           </span>
