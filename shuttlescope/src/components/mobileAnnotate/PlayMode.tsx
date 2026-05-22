@@ -82,6 +82,7 @@ interface Props {
 }
 
 export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities, currentQuality, onQualityChange, cvCandidateTimestamps, resumeFromSec, onCalibEditingChange }: Props) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -444,13 +445,13 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             <div className="text-center max-w-md">
               <div className="text-base font-bold mb-2">{t('auto.PlayMode.k1')}</div>
               <div className="text-xs text-white/80 leading-relaxed">
-                考えられる原因:<br />
-                ・この試合にまだ動画が登録されていない<br />
-                ・動画 token (video_token) が発行されていない<br />
-                ・サーバから動画ファイルが取得できない
+                {t('auto.PlayMode.no_video_cause_title')}<br />
+                {t('auto.PlayMode.no_video_cause_1')}<br />
+                {t('auto.PlayMode.no_video_cause_2')}<br />
+                {t('auto.PlayMode.no_video_cause_3')}
               </div>
               <div className="text-[10px] text-white/50 mt-3 font-mono break-all">
-                match_id={matchId}
+                {t('auto.PlayMode.match_id', { id: matchId })}
               </div>
             </div>
           </div>
@@ -554,7 +555,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
               }}
             />
             <div className="absolute top-2 left-2 right-2 text-center text-[11px] text-yellow-300 bg-black/60 rounded px-2 py-1">
-              切り抜き範囲をドラッグで指定 → 右下 ✓ で確定
+              {t('auto.PlayMode.crop_drag_hint')}
             </div>
           </>
         )}
@@ -576,7 +577,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             style={{ top: 'calc(max(0.5rem, env(safe-area-inset-top)) + 2.5rem)' }}
             title={t('auto.PlayMode.k4')}
           >
-            ▶ {fmt(resumeFromSec)} から再開
+            {t('auto.PlayMode.resume_from', { time: fmt(resumeFromSec) })}
           </button>
         )}
 
@@ -587,9 +588,8 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             style={{ top: 'max(2.6rem, calc(env(safe-area-inset-top) + 2.2rem))', maxWidth: '90vw' }}
             onClick={(e) => { e.stopPropagation(); setIosFsHint(false) }}
           >
-            iPhone Safari は要素単位の全画面非対応です。
-            <br />{t('auto.PlayMode.k2')} <b>{t('auto.PlayMode.k3')}</b> で PWA 起動すると
-            URL バー無しの本物フルスクリーンになります。(タップで閉じる)
+            {t('auto.PlayMode.ios_fs_hint_1')}
+            <br />{t('auto.PlayMode.k2')} <b>{t('auto.PlayMode.k3')}</b> {t('auto.PlayMode.ios_fs_hint_2')}
           </div>
         )}
 
@@ -601,7 +601,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             style={{ top: 'max(2.6rem, calc(env(safe-area-inset-top) + 2.2rem))' }}
             onClick={(e) => { e.stopPropagation(); setPlayError('') }}
           >
-            {playError} (タップで閉じる)
+            {t('auto.PlayMode.play_error', { msg: playError })}
           </div>
         )}
 
@@ -769,14 +769,14 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                 onClick={(e) => { e.stopPropagation(); cancelCrop() }}
                 className="px-2 py-1 rounded text-xs shadow ss-overlay-chip"
               >
-                取消
+                {t('auto.PlayMode.cancel')}
               </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); commitCrop() }}
                 className="px-2 py-1 rounded text-xs flex items-center gap-1 shadow ss-overlay-chip-accent"
               >
-                <MIcon name="check" size={12} /> 確定
+                <MIcon name="check" size={12} /> {t('auto.PlayMode.confirm')}
               </button>
             </>
           )}
@@ -793,9 +793,9 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
         onTouchStart={(e) => e.stopPropagation()}
       >
         <button type="button" onClick={() => seekBy(-5)}
-                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">◀◀5</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">{t('auto.PlayMode.seek_back_5')}</button>
         <button type="button" onClick={() => seekBy(-1)}
-                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">◀1</button>
+                className="px-2 py-1 rounded shadow font-mono text-[11px] ss-overlay-chip">{t('auto.PlayMode.seek_back_1')}</button>
         <button type="button" onClick={togglePlay}
                 className="px-2.5 py-1.5 rounded shadow flex items-center ss-overlay-chip-accent">
           {playing ? <MIcon name="pause" size={14} /> : <MIcon name="play_arrow" size={14} />}
@@ -858,7 +858,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             onClick={() => setSpeed(s)}
             className={`px-1.5 py-1 rounded text-[10px] font-mono shadow ${speed === s ? 'ss-overlay-chip-accent' : 'ss-overlay-chip'}`}
           >
-            {s}x
+            {t('auto.PlayMode.speed_x', { n: s })}
           </button>
         ))}
         {/* 画質切替: backend が 1080p/720p variant を生成済みなら選択肢に出す。

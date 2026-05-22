@@ -127,6 +127,7 @@ export function MobileCVOverlay({
   showPlayers,
   videoTransform,
 }: Props) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   // CV ジョブ進捗 (TrackNet / YOLO 共通)
   const [tracknetJobId, setTracknetJobId] = useState<string | null>(null)
@@ -386,9 +387,9 @@ export function MobileCVOverlay({
           onTouchEnd={(e) => e.stopPropagation()}
         >
           <span className="inline-flex items-center gap-1">
-            コート未キャリブ (右上
+            {t('auto.MobileCVOverlay.court_uncalibrated_pre')}
             <MIcon name="edit" size={11} />
-            から編集)
+            {t('auto.MobileCVOverlay.court_uncalibrated_post')}
           </span>
         </div>
       )}
@@ -406,7 +407,7 @@ export function MobileCVOverlay({
         >
           <span className="inline-flex items-center gap-1">
             <MIcon name="play_arrow" size={11} />
-            シャトル解析を実行
+            {t('auto.MobileCVOverlay.run_shuttle_analysis')}
           </span>
         </button>
       )}
@@ -420,7 +421,7 @@ export function MobileCVOverlay({
         >
           <span className="inline-flex items-center gap-1">
             <MIcon name="check" size={11} />
-            TrackNet 完了 (0 frames — Pass1 でラリーを記録してから再実行)
+            {t('auto.MobileCVOverlay.tracknet_done_zero')}
           </span>
         </button>
       )}
@@ -431,7 +432,7 @@ export function MobileCVOverlay({
           onClick={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
         >
-          TrackNet 実行中… {Math.round((tracknetJob?.progress ?? 0) * 100)}%
+          {t('auto.MobileCVOverlay.tracknet_running', { n: Math.round((tracknetJob?.progress ?? 0) * 100) })}
         </div>
       )}
       {showShuttle && tracknetError && (
@@ -442,7 +443,7 @@ export function MobileCVOverlay({
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title={t('auto.MobileCVOverlay.k2')}
         >
-          TrackNet エラー: {tracknetError.slice(0, 80)}
+          {t('auto.MobileCVOverlay.tracknet_error', { msg: tracknetError.slice(0, 80) })}
         </button>
       )}
       {showPlayers && !yoloQuery.isLoading && yoloFrames.length === 0
@@ -456,7 +457,7 @@ export function MobileCVOverlay({
         >
           <span className="inline-flex items-center gap-1">
             <MIcon name="play_arrow" size={11} />
-            プレイヤー検出を実行
+            {t('auto.MobileCVOverlay.run_player_detection')}
           </span>
         </button>
       )}
@@ -470,7 +471,7 @@ export function MobileCVOverlay({
         >
           <span className="inline-flex items-center gap-1">
             <MIcon name="check" size={11} />
-            YOLO 完了 (0 frames — ROI / 動画範囲を確認)
+            {t('auto.MobileCVOverlay.yolo_done_zero')}
           </span>
         </button>
       )}
@@ -481,7 +482,7 @@ export function MobileCVOverlay({
           onClick={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
         >
-          YOLO 実行中… {Math.round((yoloJob?.progress ?? 0) * 100)}%
+          {t('auto.MobileCVOverlay.yolo_running', { n: Math.round((yoloJob?.progress ?? 0) * 100) })}
         </div>
       )}
       {showPlayers && yoloError && (
@@ -492,7 +493,7 @@ export function MobileCVOverlay({
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
           title={t('auto.MobileCVOverlay.k2')}
         >
-          YOLO エラー: {yoloError.slice(0, 80)}
+          {t('auto.MobileCVOverlay.yolo_error', { msg: yoloError.slice(0, 80) })}
         </button>
       )}
       {jobErr && (

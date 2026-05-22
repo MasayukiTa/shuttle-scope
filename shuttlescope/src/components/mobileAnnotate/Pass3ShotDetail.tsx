@@ -71,6 +71,7 @@ export function Pass3ShotDetail({
   onStrokeUpdated,
   onClose,
 }: Props) {
+  const { t } = useTranslation()
   const sorted = useMemo(
     () => [...strokes].sort((a, b) => a.stroke_num - b.stroke_num),
     [strokes],
@@ -186,23 +187,23 @@ export function Pass3ShotDetail({
     <div className="absolute inset-0 bg-black/90 flex flex-col">
       <div className="bg-black/95 px-3 py-2 flex items-center gap-3 border-b border-gray-800 text-xs">
         <div className="text-yellow-200 font-bold">
-          Pass 3 · ラリー {rally.rally_num} (set {rally.set_num})
+          {t('auto.Pass3ShotDetail.header', { rally: rally.rally_num, set: rally.set_num })}
         </div>
         <div className="flex-1" />
-        <div className="text-gray-400">stroke {sorted.length} 件</div>
+        <div className="text-gray-400">{t('auto.Pass3ShotDetail.stroke_count', { n: sorted.length })}</div>
         <button
           type="button"
           onClick={onClose}
           className="px-2 py-1 rounded bg-gray-700 text-white text-[10px]"
         >
-          閉じる
+          {t('auto.Pass3ShotDetail.close')}
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {sorted.length === 0 && (
           <div className="text-gray-500 text-sm text-center py-4">
-            Pass 2 でサーブと決定打を入れてから Pass 3 に来てください
+            {t('auto.Pass3ShotDetail.empty_hint')}
           </div>
         )}
         {sorted.map((s) => (
@@ -229,7 +230,7 @@ export function Pass3ShotDetail({
               {s.hit_zone ?? '-'} → {s.land_zone ?? '-'}
             </span>
             {s.pending && (
-              <span className="text-[10px] text-amber-400">pending</span>
+              <span className="text-[10px] text-amber-400">{t('auto.Pass3ShotDetail.pending')}</span>
             )}
           </button>
         ))}
@@ -240,7 +241,7 @@ export function Pass3ShotDetail({
           onClick={() => setAdd({ phase: 'pickShot' })}
           className="w-full px-3 py-3 rounded-lg border-2 border-dashed border-gray-600 text-gray-300 text-sm hover:bg-gray-800"
         >
-          + #{nextStrokeNum} のストロークを追加 ({nextPlayer === 'player_a' ? 'A' : 'B'})
+          {t('auto.Pass3ShotDetail.add_stroke', { n: nextStrokeNum, player: nextPlayer === 'player_a' ? 'A' : 'B' })}
         </button>
       </div>
     </div>
@@ -257,6 +258,7 @@ function ShotChipPicker({
   onPick: (key: ShotKey | 'other') => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="absolute inset-0 bg-black/95 flex flex-col">
       <div className="px-3 py-2 border-b border-gray-800 text-xs text-yellow-200 font-bold">
@@ -280,7 +282,7 @@ function ShotChipPicker({
           className="col-span-2 px-3 py-2 rounded-lg bg-gray-700 text-gray-200 text-xs"
           style={{ minHeight: '44px' }}
         >
-          その他 (後で詳細入力)
+          {t('auto.Pass3ShotDetail.other_later')}
         </button>
       </div>
       <div className="px-3 py-2 border-t border-gray-800">
@@ -289,7 +291,7 @@ function ShotChipPicker({
           onClick={onCancel}
           className="px-3 py-1.5 rounded bg-gray-700 text-white text-xs"
         >
-          取消
+          {t('auto.Pass3ShotDetail.cancel')}
         </button>
       </div>
     </div>
