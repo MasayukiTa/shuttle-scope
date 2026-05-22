@@ -141,7 +141,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
               : 'border-gray-600 bg-gray-700 text-gray-400 hover:border-gray-500'
           }`}
         >
-          {t('prediction.human_forecast_win')} (W)
+          {t('prediction.human_forecast_win')}{t('auto.HumanForecastPanel.w_label')}
         </button>
         <button
           onClick={() => setOutcome('loss')}
@@ -151,7 +151,7 @@ function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => v
               : 'border-gray-600 bg-gray-700 text-gray-400 hover:border-gray-500'
           }`}
         >
-          {t('prediction.human_forecast_loss')} (L)
+          {t('prediction.human_forecast_loss')}{t('auto.HumanForecastPanel.l_label')}
         </button>
       </div>
 
@@ -250,7 +250,7 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
                   <tr key={i} className="border-t border-gray-700">
                     <td className="py-1 pr-3" style={{ color: neutral }}>
                       <span className="cell-name-clip" title={`${s.role === 'coach' ? 'コーチ' : 'アナリスト'} (${s.n}試合)`}>
-                        {s.role === 'coach' ? 'コーチ' : 'アナリスト'} ({s.n}試合)
+                        {t('auto.HumanForecastPanel.evaluator', { label: s.role === 'coach' ? t('roles.coach') : t('roles.analyst'), n: s.n })}
                       </span>
                     </td>
                     <td className="text-right pr-3 num-cell" style={{ color: neutral }}>
@@ -283,7 +283,7 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
       {d.match_comparisons.length > 0 && (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: subText }}>
-            試合別比較（直近{Math.min(5, d.match_comparisons.length)}件）
+            {t('auto.HumanForecastPanel.match_compare', { n: Math.min(5, d.match_comparisons.length) })}
           </p>
           <div className="space-y-1">
             {d.match_comparisons.slice(0, 5).map((c, i) => (
@@ -294,13 +294,13 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
                   className="font-bold"
                   style={{ color: c.actual_outcome === 'win' ? WIN : LOSS }}
                 >
-                  実:{c.actual_outcome === 'win' ? 'W' : 'L'}
+                  {t('auto.HumanForecastPanel.actual_label')}{c.actual_outcome === 'win' ? 'W' : 'L'}
                 </span>
                 <span style={{ color: c.human_correct ? WIN : LOSS }}>
-                  人:{c.human_predicted === 'win' ? 'W' : 'L'}{c.human_correct ? '✓' : '✗'}
+                  {t('auto.HumanForecastPanel.human_label')}{c.human_predicted === 'win' ? 'W' : 'L'}{c.human_correct ? '✓' : '✗'}
                 </span>
                 <span style={{ color: c.model_correct ? WIN : LOSS }}>
-                  機:{c.model_win_prob}%{c.model_correct ? '✓' : '✗'}
+                  {t('auto.HumanForecastPanel.model_label')}{c.model_win_prob}%{c.model_correct ? '✓' : '✗'}
                 </span>
               </div>
             ))}
