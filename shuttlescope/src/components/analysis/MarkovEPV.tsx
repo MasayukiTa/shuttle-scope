@@ -55,7 +55,7 @@ function EPVCard({ pattern, isPositive, rank }: { pattern: EPVPattern; isPositiv
                 style={{ width: `${barWidth}%`, backgroundColor: accentColor }}
               />
             </div>
-            <span className="text-[10px] text-gray-500 shrink-0">{pattern.count}回</span>
+            <span className="text-[10px] text-gray-500 shrink-0">{t('auto.MarkovEPV.n_times', { n: pattern.count })}</span>
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -108,7 +108,7 @@ export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProp
       <div className="flex items-center gap-3">
         <ConfidenceBadge sampleSize={sampleSize} />
         <span className="text-[11px] text-gray-500">
-          EPV = ベースライン勝率との差分（±100基準）
+          {t('auto.MarkovEPV.epv_def')}
         </span>
       </div>
 
@@ -117,7 +117,7 @@ export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProp
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wider mb-2.5 flex items-center gap-1.5" style={{ color: WIN }}>
             <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: WIN }} />
-            {t('analysis.epv.top_patterns')}（有効パターン）
+            {t('analysis.epv.top_patterns')}{t('auto.MarkovEPV.effective_patterns')}
           </h3>
           {topPatterns.length === 0 ? (
             <p className="text-gray-500 text-xs">{t('analysis.no_data')}</p>
@@ -135,7 +135,7 @@ export function MarkovEPV({ playerId, filters = DEFAULT_FILTERS }: MarkovEPVProp
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider mb-2.5 flex items-center gap-1.5" style={{ color: LOSS }}>
               <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: LOSS }} />
-              {t('analysis.epv.bottom_patterns')}（要改善パターン）
+              {t('analysis.epv.bottom_patterns')}{t('auto.MarkovEPV.improve_patterns')}
             </h3>
             {bottomPatterns.length === 0 ? (
               <p className="text-gray-500 text-xs">{t('analysis.no_data')}</p>

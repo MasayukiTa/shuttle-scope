@@ -2813,6 +2813,10 @@
       "k5": "横ばい"
     },
     "ConfidenceCalibration": {
+      "overall_quality": "全体品質:",
+      "n_matches": "{{n}}試合",
+      "need_more_pre": "高信頼分析にはあと",
+      "need_more_post": "のデータが必要です（現在: {{m}}試合）",
       "k1": "データ品質概況",
       "k2": "読み込み中..."
     },
@@ -2971,6 +2975,10 @@
       "k7": "選手名で検索..."
     },
     "PairSynergyCard": {
+      "avg_wr": "全試合平均勝率:",
+      "n_matches": "{{n}}試合",
+      "avg_rally": "平均ラリー長: {{n}}球",
+      "stroke_share": "打球分担: {{n}}%",
       "k1": "読み込み中...",
       "k2": "勝率",
       "k3": "シナジー",
@@ -3071,7 +3079,12 @@
       "k7": "読み込み中..."
     },
     "RallyLengthWinRate": {
-      "k1": "読み込み中..."
+      "k1": "読み込み中...",
+      "count": "件数: {{n}}",
+      "win_rate": "勝率: {{v}}%",
+      "insufficient": "データ不足（アノテーション後に解析可能）",
+      "count_legend": "件数",
+      "rate_legend": "勝率"
     },
     "RallyPickerModal": {
       "k1": "クリックで選択",
@@ -3613,7 +3626,12 @@
       "k1": "詳細 ›",
       "k2": "セットの詳細解析を開く"
     },
-    "MarkovEPV": {},
+    "MarkovEPV": {
+      "n_times": "{{n}}回",
+      "epv_def": "EPV = ベースライン勝率との差分（±100基準）",
+      "effective_patterns": "（有効パターン）",
+      "improve_patterns": "（要改善パターン）"
+    },
     "OpponentTypeAffinity": {},
     "PairPlaystyle": {
       "k1": "ネット前配球率",

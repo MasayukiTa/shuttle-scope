@@ -66,7 +66,7 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
         <h3 className="text-sm font-semibold text-gray-200">{t('auto.ConfidenceCalibration.k1')}</h3>
         {d && (
           <span className="text-xs text-gray-400">
-            全体品質: <span className="text-gray-200 font-semibold">{d.overall_quality}</span>
+            {t('auto.ConfidenceCalibration.overall_quality')} <span className="text-gray-200 font-semibold">{d.overall_quality}</span>
           </span>
         )}
       </div>
@@ -108,11 +108,11 @@ export function ConfidenceCalibration({ playerId }: ConfidenceCalibrationProps) 
           {/* ガイダンステキスト */}
           {d.current_match_count < d.min_matches_for_high && (
             <p className="mt-2 text-xs text-gray-400">
-              高信頼分析にはあと
+              {t('auto.ConfidenceCalibration.need_more_pre')}
               <span className="mx-1 font-semibold text-gray-200">
-                {d.min_matches_for_high - d.current_match_count}試合
+                {t('auto.ConfidenceCalibration.n_matches', { n: d.min_matches_for_high - d.current_match_count })}
               </span>
-              のデータが必要です（現在: {d.current_match_count}試合）
+              {t('auto.ConfidenceCalibration.need_more_post', { m: d.current_match_count })}
             </p>
           )}
         </>

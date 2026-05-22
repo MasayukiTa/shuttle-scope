@@ -73,8 +73,8 @@ function CustomTooltip({ active, payload, label }: any) {
   return (
     <div style={getTooltipStyle(isLight)} className="px-3 py-2">
       <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
-      <p style={{ color: BAR }}>件数: {count}</p>
-      <p style={{ color: LINE }}>勝率: {typeof winRate === 'number' ? winRate.toFixed(1) : winRate}%</p>
+      <p style={{ color: BAR }}>{t('auto.RallyLengthWinRate.count', { n: count })}</p>
+      <p style={{ color: LINE }}>{t('auto.RallyLengthWinRate.win_rate', { v: typeof winRate === 'number' ? winRate.toFixed(1) : winRate })}</p>
     </div>
   )
 }
@@ -111,7 +111,7 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
   if (buckets.length === 0 || sampleSize === 0) {
     return (
       <div className="text-gray-500 text-sm py-4 text-center">
-        データ不足（アノテーション後に解析可能）
+        {t('auto.RallyLengthWinRate.insufficient')}
       </div>
     )
   }
@@ -186,11 +186,11 @@ export function RallyLengthWinRate({ playerId, chartHeight = 220, filters = DEFA
       <div className="flex gap-4 text-xs text-gray-400">
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-3 h-3 rounded-sm opacity-75" style={{ backgroundColor: BAR }} />
-          件数
+          {t('auto.RallyLengthWinRate.count_legend')}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-3 h-0.5" style={{ backgroundColor: LINE }} />
-          勝率
+          {t('auto.RallyLengthWinRate.rate_legend')}
         </span>
       </div>
     </div>
