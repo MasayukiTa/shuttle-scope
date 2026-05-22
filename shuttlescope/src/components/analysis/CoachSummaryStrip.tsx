@@ -126,7 +126,7 @@ export function CoachSummaryStrip({
           {t('prediction.coach_summary') || 'コーチ向けサマリー'}
         </span>
         <span className="text-[10px]" style={{ color: tokens.textFaint }}>
-          サンプル {sampleSize}
+          {t('analysis.sample_size', { count: sampleSize })}
         </span>
       </header>
 
