@@ -2780,7 +2780,16 @@
       "k4": "観察補正",
       "k5": "全試合統計",
       "k6": "直近フォーム",
-      "k7": "直接対戦"
+      "k7": "直接対戦",
+      "recent_n_matches": "直近{{n}}試合",
+      "recent_wr": "直近勝率 {{wr}}%",
+      "overall_wr": "全体 {{wr}}%",
+      "slope_per_bucket": "傾き {{v}}% / バケット",
+      "n_matches": "{{n}}試合",
+      "brier_insufficient": "データ不足（{{n}}試合 / 最低5試合必要）",
+      "loo_estimate": "{{n}}試合のLOO推定",
+      "set_model_label": "セットモデル:",
+      "calibration_line": "v1勝率 {{v1}}% → キャリブレーション済み {{v2}}%"
     },
     "BayesMatchupCard": {
       "k1": "ベイズ対戦予測（相手別勝率）",
