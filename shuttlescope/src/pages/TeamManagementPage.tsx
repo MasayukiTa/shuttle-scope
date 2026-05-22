@@ -252,7 +252,7 @@ export function TeamManagementPage() {
               disabled={creating}
               className="px-3 py-2 border rounded disabled:opacity-50 w-full sm:w-auto"
             >
-              キャンセル
+              {t('auto.TeamManagementPage.k23')}
             </button>
             <button
               onClick={handleCreate}
@@ -260,7 +260,7 @@ export function TeamManagementPage() {
               className="px-3 py-2 bg-blue-600 text-white rounded disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 w-full sm:w-auto"
             >
               {creating && <Loader2 size={14} className="animate-spin" />}
-              {creating ? '作成中…' : '作成'}
+              {creating ? t('auto.TeamManagementPage.k27') : t('auto.TeamManagementPage.k28')}
             </button>
           </div>
         </div>
@@ -273,12 +273,12 @@ export function TeamManagementPage() {
           {teams.length === 0 && (
             <div className="py-6 text-center text-sm text-gray-500">{t('auto.TeamManagementPage.k11')}</div>
           )}
-          {teams.map((t) => {
-            const editing = editingId === t.id
-            const expanded = expandedTeamId === t.id
-            const members = usersByTeam[t.id] || []
+          {teams.map((tm) => {
+            const editing = editingId === tm.id
+            const expanded = expandedTeamId === tm.id
+            const members = usersByTeam[tm.id] || []
             return (
-              <div key={t.id} className="border rounded p-3 bg-white">
+              <div key={tm.id} className="border rounded p-3 bg-white">
                 {editing ? (
                   <div className="space-y-2">
                     <input
@@ -302,17 +302,17 @@ export function TeamManagementPage() {
                     <div className="flex gap-2 justify-end">
                       <button
                         onClick={() => setEditingId(null)}
-                        disabled={savingId === t.id}
+                        disabled={savingId === tm.id}
                         className="p-2 text-gray-500 border rounded disabled:opacity-50"
                       >
                         <X size={16} />
                       </button>
                       <button
-                        onClick={() => handleSave(t.id)}
-                        disabled={savingId === t.id}
+                        onClick={() => handleSave(tm.id)}
+                        disabled={savingId === tm.id}
                         className="p-2 bg-green-600 text-white rounded inline-flex items-center gap-1 disabled:opacity-60"
                       >
-                        {savingId === t.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={16} />}
+                        {savingId === tm.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={16} />}
                       </button>
                     </div>
                   </div>
@@ -320,11 +320,11 @@ export function TeamManagementPage() {
                   <>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium truncate">{t.name}</div>
+                        <div className="font-medium truncate">{tm.name}</div>
                         <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
-                          <code className="bg-gray-100 px-1 rounded">{t.display_id || '—'}</code>
-                          {t.short_name && <span>({t.short_name})</span>}
-                          {t.is_independent ? (
+                          <code className="bg-gray-100 px-1 rounded">{tm.display_id || '—'}</code>
+                          {tm.short_name && <span>({tm.short_name})</span>}
+                          {tm.is_independent ? (
                             <span className="px-1.5 rounded bg-yellow-100 text-yellow-700">{t('auto.TeamManagementPage.k12')}</span>
                           ) : (
                             <span className="px-1.5 rounded bg-blue-100 text-blue-700">{t('auto.TeamManagementPage.k13')}</span>
@@ -333,7 +333,7 @@ export function TeamManagementPage() {
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <button
-                          onClick={() => setExpandedTeamId((cur) => (cur === t.id ? null : t.id))}
+                          onClick={() => setExpandedTeamId((cur) => (cur === tm.id ? null : tm.id))}
                           className="p-1.5 text-gray-600 border rounded inline-flex items-center gap-1"
                         >
                           <Users size={14} />
@@ -341,7 +341,7 @@ export function TeamManagementPage() {
                         </button>
                         {(isAdmin || isCoach) && (
                           <button
-                            onClick={() => startEdit(t)}
+                            onClick={() => startEdit(tm)}
                             className="p-1.5 text-blue-600 border rounded"
                           >
                             <Pencil size={14} />
@@ -349,12 +349,12 @@ export function TeamManagementPage() {
                         )}
                         {isAdmin && (
                           <button
-                            onClick={() => startDelete(t)}
-                            disabled={deletingId === t.id}
+                            onClick={() => startDelete(tm)}
+                            disabled={deletingId === tm.id}
                             className="p-1.5 text-red-600 border rounded disabled:opacity-50"
                             title={t('auto.TeamManagementPage.k20')}
                           >
-                            {deletingId === t.id ? (
+                            {deletingId === tm.id ? (
                               <Loader2 size={14} className="animate-spin" />
                             ) : (
                               <Trash2 size={14} />
@@ -365,7 +365,7 @@ export function TeamManagementPage() {
                     </div>
                     {expanded && (
                       <div className="mt-3 pt-3 border-t">
-                        <div className="text-xs text-gray-500 mb-1">メンバー（{members.length} 名）</div>
+                        <div className="text-xs text-gray-500 mb-1">{t('auto.TeamManagementPage.k29', { n: members.length })}</div>
                         {members.length === 0 ? (
                           <div className="text-xs text-gray-400">{t('auto.TeamManagementPage.k14')}</div>
                         ) : (
@@ -399,12 +399,12 @@ export function TeamManagementPage() {
             </tr>
           </thead>
           <tbody>
-            {teams.map((t) => {
-              const editing = editingId === t.id
+            {teams.map((tm) => {
+              const editing = editingId === tm.id
               const canEdit = isAdmin || (isCoach && false) // coach は自チームのみ。サーバ側で権限制御。
               return (
-                <tr key={t.id} className="border-b">
-                  <td className="py-2 pr-2 text-xs text-gray-500">{t.id}</td>
+                <tr key={tm.id} className="border-b">
+                  <td className="py-2 pr-2 text-xs text-gray-500">{tm.id}</td>
                   <td className="py-2 pr-2">
                     {editing ? (
                       <input
@@ -413,7 +413,7 @@ export function TeamManagementPage() {
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     ) : (
-                      <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">{t.display_id || '—'}</code>
+                      <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">{tm.display_id || '—'}</code>
                     )}
                   </td>
                   <td className="py-2 pr-2">
@@ -424,7 +424,7 @@ export function TeamManagementPage() {
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     ) : (
-                      <span>{t.name}</span>
+                      <span>{tm.name}</span>
                     )}
                   </td>
                   <td className="py-2 pr-2">
@@ -435,11 +435,11 @@ export function TeamManagementPage() {
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     ) : (
-                      <span className="text-sm text-gray-600">{t.short_name || '—'}</span>
+                      <span className="text-sm text-gray-600">{tm.short_name || '—'}</span>
                     )}
                   </td>
                   <td className="py-2 pr-2 text-xs">
-                    {t.is_independent ? (
+                    {tm.is_independent ? (
                       <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">{t('auto.TeamManagementPage.k12')}</span>
                     ) : (
                       <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">{t('auto.TeamManagementPage.k13')}</span>
@@ -449,23 +449,23 @@ export function TeamManagementPage() {
                     <div className="flex gap-1 justify-end items-center">
                       {!editing && (
                         <button
-                          onClick={() => setExpandedTeamId((cur) => (cur === t.id ? null : t.id))}
+                          onClick={() => setExpandedTeamId((cur) => (cur === tm.id ? null : tm.id))}
                           className="p-1 text-gray-600 hover:bg-gray-100 rounded inline-flex items-center gap-1"
                           title={t('auto.TeamManagementPage.k21')}
                         >
                           <Users size={14} />
-                          <span className="text-xs">{(usersByTeam[t.id] || []).length}</span>
+                          <span className="text-xs">{(usersByTeam[tm.id] || []).length}</span>
                         </button>
                       )}
                       {editing ? (
                         <>
                           <button
-                            onClick={() => handleSave(t.id)}
-                            disabled={savingId === t.id}
+                            onClick={() => handleSave(tm.id)}
+                            disabled={savingId === tm.id}
                             className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
                             title={t('auto.TeamManagementPage.k22')}
                           >
-                            {savingId === t.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                            {savingId === tm.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
@@ -478,7 +478,7 @@ export function TeamManagementPage() {
                       ) : canEdit || isCoach ? (
                         <>
                           <button
-                            onClick={() => startEdit(t)}
+                            onClick={() => startEdit(tm)}
                             className="p-1 text-blue-600 hover:bg-blue-50 rounded"
                             title={t('auto.TeamManagementPage.k24')}
                           >
@@ -486,12 +486,12 @@ export function TeamManagementPage() {
                           </button>
                           {isAdmin && (
                             <button
-                              onClick={() => startDelete(t)}
+                              onClick={() => startDelete(tm)}
                               className="p-1 text-red-600 hover:bg-red-50 rounded"
                               title={t('auto.TeamManagementPage.k20')}
-                              disabled={deletingId === t.id}
+                              disabled={deletingId === tm.id}
                             >
-                              {deletingId === t.id ? (
+                              {deletingId === tm.id ? (
                                 <Loader2 size={16} className="animate-spin" />
                               ) : (
                                 <Trash2 size={16} />
@@ -505,13 +505,13 @@ export function TeamManagementPage() {
                 </tr>
               )
             })}
-            {teams.map((t) => {
-              if (expandedTeamId !== t.id) return null
-              const members = usersByTeam[t.id] || []
+            {teams.map((tm) => {
+              if (expandedTeamId !== tm.id) return null
+              const members = usersByTeam[tm.id] || []
               return (
-                <tr key={`${t.id}-members-row`} className="bg-gray-50/60">
+                <tr key={`${tm.id}-members-row`} className="bg-gray-50/60">
                   <td colSpan={6} className="px-4 py-2">
-                    <div className="text-xs text-gray-500 mb-1">「{t.name}」のメンバー（{members.length} 名）</div>
+                    <div className="text-xs text-gray-500 mb-1">{t('auto.TeamManagementPage.k30', { name: tm.name, n: members.length })}</div>
                     {members.length === 0 ? (
                       <div className="text-xs text-gray-400">{t('auto.TeamManagementPage.k14')}</div>
                     ) : (
@@ -532,7 +532,7 @@ export function TeamManagementPage() {
             {teams.length === 0 && (
               <tr>
                 <td colSpan={6} className="py-6 text-center text-sm text-gray-500">
-                  表示できるチームがありません。
+                  {t('auto.TeamManagementPage.k11')}
                 </td>
               </tr>
             )}
@@ -560,55 +560,52 @@ export function TeamManagementPage() {
               <h2 className="text-lg font-semibold">{t('auto.TeamManagementPage.k18')}</h2>
             </div>
             <p className="text-sm text-gray-700 mb-3">
-              チーム「<span className="font-medium">{deleteTarget.name}</span>」を soft-delete します。
-              物理削除ではないため過去データは保全されます（audit chain 維持のため）。
+              {t('auto.TeamManagementPage.k31')}「<span className="font-medium">{deleteTarget.name}</span>」{t('auto.TeamManagementPage.k32')}
             </p>
 
             {!deleteDeps ? (
               <div className="text-sm text-gray-500 flex items-center gap-2 py-2">
-                <Loader2 size={14} className="animate-spin" /> 依存関係を確認中…
+                <Loader2 size={14} className="animate-spin" /> {t('auto.TeamManagementPage.k33')}
               </div>
             ) : (
               <div className="mb-4">
                 <div className="text-xs text-gray-500 mb-1">{t('auto.TeamManagementPage.k19')}</div>
                 <ul className="text-sm space-y-0.5 mb-3">
                   <li>
-                    ユーザ:{' '}
+                    {t('auto.TeamManagementPage.k34')}{' '}
                     <span className={deleteDeps.counts.users ? 'font-medium text-red-700' : 'text-gray-500'}>
                       {deleteDeps.counts.users}
                     </span>{' '}
-                    名
+                    {t('auto.TeamManagementPage.k35')}
                   </li>
                   <li>
-                    選手:{' '}
+                    {t('auto.TeamManagementPage.k36')}{' '}
                     <span
                       className={deleteDeps.counts.players ? 'font-medium text-red-700' : 'text-gray-500'}
                     >
                       {deleteDeps.counts.players}
                     </span>{' '}
-                    名
+                    {t('auto.TeamManagementPage.k35')}
                   </li>
                   <li>
-                    試合:{' '}
+                    {t('auto.TeamManagementPage.k37')}{' '}
                     <span
                       className={deleteDeps.counts.matches ? 'font-medium text-red-700' : 'text-gray-500'}
                     >
                       {deleteDeps.counts.matches}
                     </span>{' '}
-                    件
+                    {t('auto.TeamManagementPage.k38')}
                   </li>
                 </ul>
                 {(deleteDeps.counts.users ||
                   deleteDeps.counts.players ||
                   deleteDeps.counts.matches) > 0 ? (
                   <div className="text-xs bg-yellow-50 border border-yellow-200 text-yellow-800 p-2 rounded">
-                    依存レコードが存在します。「孤児化して削除」を選ぶと、上記レコードの
-                    team_id を NULL にしてから team を soft-delete します。
-                    後から admin が手動で再割当する想定です。
+                    {t('auto.TeamManagementPage.k39')}
                   </div>
                 ) : (
                   <div className="text-xs bg-green-50 border border-green-200 text-green-800 p-2 rounded">
-                    依存レコードはありません。安全に削除できます。
+                    {t('auto.TeamManagementPage.k40')}
                   </div>
                 )}
               </div>
@@ -625,7 +622,7 @@ export function TeamManagementPage() {
                 disabled={deletingId != null}
                 className="px-3 py-2 border rounded disabled:opacity-50"
               >
-                キャンセル
+                {t('auto.TeamManagementPage.k23')}
               </button>
               {deleteDeps &&
                 (deleteDeps.counts.users ||
@@ -637,7 +634,7 @@ export function TeamManagementPage() {
                     className="px-3 py-2 bg-orange-600 text-white rounded disabled:opacity-60 inline-flex items-center gap-2"
                   >
                     {deletingId != null && <Loader2 size={14} className="animate-spin" />}
-                    孤児化して削除
+                    {t('auto.TeamManagementPage.k41')}
                   </button>
                 )}
               {deleteDeps &&
@@ -650,7 +647,7 @@ export function TeamManagementPage() {
                     className="px-3 py-2 bg-red-600 text-white rounded disabled:opacity-60 inline-flex items-center gap-2"
                   >
                     {deletingId != null && <Loader2 size={14} className="animate-spin" />}
-                    削除
+                    {t('auto.TeamManagementPage.k20')}
                   </button>
                 )}
             </div>

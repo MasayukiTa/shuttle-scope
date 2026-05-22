@@ -549,7 +549,7 @@ export function MatchListPage() {
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
           >
             <Plus size={16} />
-            試合登録
+            {t('auto.MatchListPage.k29')}
           </button>
         </div>
       </div>
@@ -633,8 +633,8 @@ export function MatchListPage() {
               <option value="firefox">Firefox</option>
               <option value="brave">Brave</option>
               <option value="opera">Opera</option>
-              <option value="vivaldi">Vivaldi</option>
-              <option value="chromium">Chromium</option>
+              <option value="vivaldi">{t('auto.MatchListPage.k61')}</option>
+              <option value="chromium">{t('auto.MatchListPage.k62')}</option>
             </select>
           </div>
         </div>
@@ -663,7 +663,7 @@ export function MatchListPage() {
                   : 'border-gray-600 text-gray-400 hover:bg-gray-700'
               }`}
             >
-              {p === 'week' ? '直近1週' : p === 'month' ? '直近1ヶ月' : '直近3ヶ月'}
+              {p === 'week' ? t('auto.MatchListPage.k30') : p === 'month' ? t('auto.MatchListPage.k31') : t('auto.MatchListPage.k32')}
             </button>
           ))}
           {(filterDateFrom || filterDateTo) && (
@@ -671,7 +671,7 @@ export function MatchListPage() {
               className="text-xs text-blue-400 hover:text-blue-300"
               onClick={() => { setFilterDateFrom(null); setFilterDateTo(null) }}
             >
-              リセット
+              {t('auto.MatchListPage.k33')}
             </button>
           )}
         </div>
@@ -680,7 +680,7 @@ export function MatchListPage() {
       {/* 一括選択バー（選択時のみ表示） */}
       {selectedMatchIds.size > 0 && (
         <div className="flex items-center gap-3 px-6 py-2 bg-blue-600 text-white text-sm shrink-0">
-          <span className="font-medium">{selectedMatchIds.size}件選択中</span>
+          <span className="font-medium">{t('auto.MatchListPage.k34', { n: selectedMatchIds.size })}</span>
           <button
             onClick={() => {
               const ids = [...selectedMatchIds].join(',')
@@ -690,13 +690,13 @@ export function MatchListPage() {
             className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm"
           >
             <Download size={13} />
-            エクスポート
+            {t('auto.MatchListPage.k35')}
           </button>
           <button
             onClick={() => setSelectedMatchIds(new Set())}
             className="ml-auto text-white/70 hover:text-white text-xs"
           >
-            選択解除
+            {t('auto.MatchListPage.k36')}
           </button>
         </div>
       )}
@@ -774,7 +774,7 @@ export function MatchListPage() {
                     : 'border-gray-600 text-gray-400 hover:bg-gray-700'
                 }`}
               >
-                {p === 'week' ? '直近1週' : p === 'month' ? '直近1ヶ月' : '直近3ヶ月'}
+                {p === 'week' ? t('auto.MatchListPage.k30') : p === 'month' ? t('auto.MatchListPage.k31') : t('auto.MatchListPage.k32')}
               </button>
             ))}
             {(filterDateFrom || filterDateTo) && (
@@ -782,7 +782,7 @@ export function MatchListPage() {
                 className="text-xs text-blue-400 hover:text-blue-300"
                 onClick={() => { setFilterDateFrom(null); setFilterDateTo(null) }}
               >
-                リセット
+                {t('auto.MatchListPage.k33')}
               </button>
             )}
           </div>
@@ -791,7 +791,7 @@ export function MatchListPage() {
           <div className={`text-center ${textMuted} py-8`}>{t('app.loading')}</div>
         ) : matches.length === 0 ? (
           <div className={`text-center ${textMuted} py-8`}>
-            試合が登録されていません。「試合登録」ボタンで追加してください。
+            {t('auto.MatchListPage.k37')}
           </div>
         ) : (
           <>
@@ -831,7 +831,7 @@ export function MatchListPage() {
                     onClick={() => handleMatchSort('date')}
                   >
                     <span className="inline-flex items-center gap-0.5">
-                      日付
+                      {t('auto.MatchListPage.k38')}
                       {matchSortKey === 'date'
                         ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
                         : <ChevronsUpDown size={12} className="opacity-30" />}
@@ -843,7 +843,7 @@ export function MatchListPage() {
                     onClick={() => handleMatchSort('tournament')}
                   >
                     <span className="inline-flex items-center gap-0.5">
-                      大会名
+                      {t('auto.MatchListPage.k39')}
                       {matchSortKey === 'tournament'
                         ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
                         : <ChevronsUpDown size={12} className="opacity-30" />}
@@ -858,7 +858,7 @@ export function MatchListPage() {
                     onClick={() => handleMatchSort('result')}
                   >
                     <span className="inline-flex items-center gap-0.5">
-                      結果
+                      {t('auto.MatchListPage.k40')}
                       {matchSortKey === 'result'
                         ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
                         : <ChevronsUpDown size={12} className="opacity-30" />}
@@ -873,9 +873,9 @@ export function MatchListPage() {
                           setShowStatusDropdown((v) => !v)
                         }}
                       >
-                        進捗
+                        {t('auto.MatchListPage.k41')}
                         {statusSortTarget ? (
-                          <span className="text-blue-400 text-[9px] ml-0.5 font-bold">●</span>
+                          <span className="text-blue-400 text-[9px] ml-0.5 font-bold">{t('auto.MatchListPage.k63')}</span>
                         ) : (
                           <ChevronDown size={12} className="opacity-30" />
                         )}
@@ -949,7 +949,7 @@ export function MatchListPage() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className={`${card} rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
-              <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? '試合編集' : '試合登録'}</h2>
+              <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? t('auto.MatchListPage.k42') : t('auto.MatchListPage.k29')}</h2>
               <button onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}>✕</button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
@@ -1019,7 +1019,7 @@ export function MatchListPage() {
 
                 {/* 選手欄: 自チーム（左） / 相手チーム（右） */}
                 <PlayerCombobox
-                  label="対象選手（A）"
+                  label={t('auto.MatchListPage.k43')}
                   required
                   value={form.player_a_id}
                   query={playerAQuery}
@@ -1031,7 +1031,7 @@ export function MatchListPage() {
                   placeholder={t('auto.MatchListPage.k16')}
                 />
                 <PlayerCombobox
-                  label="対戦相手（B）"
+                  label={t('auto.MatchListPage.k44')}
                   required
                   value={form.player_b_id}
                   query={playerBQuery}
@@ -1047,7 +1047,7 @@ export function MatchListPage() {
                 {isDoubles && (
                   <>
                     <PlayerCombobox
-                      label="自チーム相方"
+                      label={t('auto.MatchListPage.k45')}
                       value={form.partner_a_id}
                       query={partnerAQuery}
                       setQuery={setPartnerAQuery}
@@ -1058,7 +1058,7 @@ export function MatchListPage() {
                       placeholder={t('auto.MatchListPage.k16')}
                     />
                     <PlayerCombobox
-                      label="相手チーム相方"
+                      label={t('auto.MatchListPage.k46')}
                       value={form.partner_b_id}
                       query={partnerBQuery}
                       setQuery={setPartnerBQuery}
@@ -1075,7 +1075,7 @@ export function MatchListPage() {
                 {showATeamField && (
                   <div>
                     <label className={`block text-sm ${textSecondary} mb-1`}>
-                      自チーム名
+                      {t('auto.MatchListPage.k47')}
                       <span className={`ml-1 ${textFaint} text-xs`}>{t('auto.MatchListPage.k2')}</span>
                     </label>
                     <input
@@ -1101,7 +1101,7 @@ export function MatchListPage() {
                 {showBTeamField && (
                   <div>
                     <label className={`block text-sm ${textSecondary} mb-1`}>
-                      相手チーム名
+                      {t('auto.MatchListPage.k48')}
                       <span className={`ml-1 ${textFaint} text-xs`}>{t('auto.MatchListPage.k2')}</span>
                     </label>
                     <input
@@ -1158,7 +1158,7 @@ export function MatchListPage() {
                         className={`flex items-center gap-1 px-2 py-2 ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300' : 'bg-gray-700 hover:bg-gray-600 text-gray-200 border-gray-600'} rounded text-xs whitespace-nowrap border`}
                       >
                         <FolderOpen size={13} />
-                        ファイルを選択
+                        {t('auto.MatchListPage.k49')}
                       </button>
                     )}
                     <input
@@ -1221,7 +1221,7 @@ export function MatchListPage() {
                               }`}
                             >
                               <Download size={12} />
-                              再試行
+                              {t('auto.MatchListPage.k50')}
                             </button>
                           </div>
                         </div>
@@ -1237,17 +1237,17 @@ export function MatchListPage() {
                           <span className={`flex items-center gap-1.5 font-medium ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>
                             <Download size={13} className="animate-pulse shrink-0" />
                             <span className="truncate">
-                              {dl.status === 'queued' && '待機中…'}
-                              {dl.status === 'pending' && '準備中…'}
-                              {dl.status === 'downloading' && `ダウンロード中 ${dl.percent ?? ''}`}
-                              {dl.status === 'processing' && '変換中…'}
-                              {dl.status === 'starting' && '開始中…'}
+                              {dl.status === 'queued' && t('auto.MatchListPage.k51')}
+                              {dl.status === 'pending' && t('auto.MatchListPage.k52')}
+                              {dl.status === 'downloading' && t('auto.MatchListPage.k53', { percent: dl.percent ?? '' })}
+                              {dl.status === 'processing' && t('auto.MatchListPage.k54')}
+                              {dl.status === 'starting' && t('auto.MatchListPage.k55')}
                             </span>
                           </span>
                           <span className={`flex items-center gap-2 ${textMuted} text-[11px] flex-wrap`}>
                             {dl.speed && <span className="whitespace-nowrap">{dl.speed}</span>}
                             {dl.eta && dl.status === 'downloading' && (
-                              <span className="whitespace-nowrap">残り {dl.eta}</span>
+                              <span className="whitespace-nowrap">{t('auto.MatchListPage.k56', { eta: dl.eta })}</span>
                             )}
                           </span>
                         </div>
@@ -1384,8 +1384,8 @@ export function MatchListPage() {
                   className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium disabled:opacity-50"
                 >
                   {editingMatchId !== null
-                    ? (updateMatch.isPending ? '保存中...' : '保存')
-                    : (createMatch.isPending ? '登録中...' : '登録')}
+                    ? (updateMatch.isPending ? t('auto.MatchListPage.k57') : t('auto.MatchListPage.k58'))
+                    : (createMatch.isPending ? t('auto.MatchListPage.k59') : t('auto.MatchListPage.k60'))}
                 </button>
                 <button
                   type="button"
