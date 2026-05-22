@@ -2509,7 +2509,16 @@
       "k4": "Observation adjustment",
       "k5": "All-match stats",
       "k6": "Recent form",
-      "k7": "Head-to-head"
+      "k7": "Head-to-head",
+      "recent_n_matches": "Last {{n}} matches",
+      "recent_wr": "Recent win rate {{wr}}%",
+      "overall_wr": "Overall {{wr}}%",
+      "slope_per_bucket": "Slope {{v}}% / bucket",
+      "n_matches": "{{n}} matches",
+      "brier_insufficient": "Insufficient data ({{n}} matches / min 5 required)",
+      "loo_estimate": "LOO estimate over {{n}} matches",
+      "set_model_label": "Set model:",
+      "calibration_line": "v1 win rate {{v1}}% → calibrated {{v2}}%"
     },
     "BayesMatchupCard": {
       "k1": "Bayesian matchup prediction (per-opponent win rate)",

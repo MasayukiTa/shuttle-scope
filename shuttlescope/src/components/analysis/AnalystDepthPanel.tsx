@@ -124,11 +124,11 @@ function RecentFormSection({ data, isLight }: { data: RecentForm; isLight: boole
         {/* 数値 */}
         <div className="space-y-0.5">
           <p className="text-sm font-bold" style={{ color: trendColor }}>
-            {trendLabel} <span className="font-normal text-xs" style={{ color: subText }}>直近{data.sample}試合</span>
+            {trendLabel} <span className="font-normal text-xs" style={{ color: subText }}>{t('auto.AnalystDepthPanel.recent_n_matches', { n: data.sample })}</span>
           </p>
           <p className="text-xs" style={{ color: subText }}>
-            直近勝率 {Math.round(data.win_rate * 100)}%
-            <span className="ml-2">全体 {Math.round(data.overall_wr * 100)}%</span>
+            {t('auto.AnalystDepthPanel.recent_wr', { wr: Math.round(data.win_rate * 100) })}
+            <span className="ml-2">{t('auto.AnalystDepthPanel.overall_wr', { wr: Math.round(data.overall_wr * 100) })}</span>
           </p>
         </div>
       </div>
@@ -191,8 +191,8 @@ function GrowthTrendSection({ data, isLight }: { data: GrowthTrend; isLight: boo
         ))}
       </div>
       <p className="text-[10px] mt-1" style={{ color: subText }}>
-        傾き {data.slope > 0 ? '+' : ''}{(data.slope * 100).toFixed(1)}% / バケット
-        <span className="ml-2">{data.sample}試合</span>
+        {t('auto.AnalystDepthPanel.slope_per_bucket', { v: `${data.slope > 0 ? '+' : ''}${(data.slope * 100).toFixed(1)}` })}
+        <span className="ml-2">{t('auto.AnalystDepthPanel.n_matches', { n: data.sample })}</span>
       </p>
     </div>
   )
@@ -209,7 +209,7 @@ function BrierScoreSection({ data, isLight }: { data: BrierScore; isLight: boole
           {t('prediction.brier_score')}
         </p>
         <p className="text-xs" style={{ color: subText }}>
-          データ不足（{data.sample}試合 / 最低5試合必要）
+          {t('auto.AnalystDepthPanel.brier_insufficient', { n: data.sample })}
         </p>
       </div>
     )
@@ -253,7 +253,7 @@ function BrierScoreSection({ data, isLight }: { data: BrierScore; isLight: boole
           <p className="text-[10px]" style={{ color: gradeColor }}>{gradeLabel}</p>
         </div>
       </div>
-      <p className="text-[10px] mt-1" style={{ color: subText }}>{data.sample}試合のLOO推定</p>
+      <p className="text-[10px] mt-1" style={{ color: subText }}>{t('auto.AnalystDepthPanel.loo_estimate', { n: data.sample })}</p>
     </div>
   )
 }
@@ -434,13 +434,12 @@ function Inner({ playerId, opponentId, tournamentLevel }: Props) {
 
       {/* セットモデルタイプ表示 */}
       <p className="text-[10px]" style={{ color: subText }}>
-        セットモデル:{' '}
+        {t('auto.AnalystDepthPanel.set_model_label')}{' '}
         {d.set_model_type === 'observed'
           ? t('prediction.set_model_observed')
           : t('prediction.set_model_momentum')}
         {'  '}
-        v1勝率 {Math.round(d.win_prob_v1 * 100)}% →
-        キャリブレーション済み {Math.round(d.win_prob_v2 * 100)}%
+        {t('auto.AnalystDepthPanel.calibration_line', { v1: Math.round(d.win_prob_v1 * 100), v2: Math.round(d.win_prob_v2 * 100) })}
       </p>
     </div>
   )
