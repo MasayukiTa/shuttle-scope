@@ -121,4 +121,14 @@ export default tseslint.config(
       'i18next/no-literal-string': 'off',
     },
   },
+
+  // ── テストファイルは i18n 対象外 ───────────────────────────────
+  // テストはユーザに表示されない。t() 注入は useTranslation スコープが無く
+  // ランタイムエラーになるため、リテラル文字列のままで正しい。
+  {
+    files: ['**/*.test.tsx', '**/*.test.ts', '**/__tests__/**'],
+    rules: {
+      'i18next/no-literal-string': 'off',
+    },
+  },
 )
