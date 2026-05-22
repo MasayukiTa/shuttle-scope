@@ -3005,7 +3005,15 @@
     },
     "PrematchStatCard": {
       "k1": "勝率（統計）",
-      "k2": "再計算"
+      "k2": "再計算",
+      "computing": "試合前統計を計算中...",
+      "stat_pred": "統計予測 — {{date}} 以前のデータ使用",
+      "h2h_count": "（対戦実績 {{n}}試合）",
+      "h2h_none": "（対戦実績なし）",
+      "computed_at": "算出: {{date}}",
+      "no_prior_data": "この試合より前のデータがありません（統計予測不可）",
+      "n_matches_data": "{{n}}試合のデータ",
+      "top_script": "最有力展開"
     },
     "PressurePerformance": {
       "k1": "読み込み中...",
@@ -3068,7 +3076,14 @@
     "RallyPickerModal": {
       "k1": "クリックで選択",
       "k2": "読み込み中...",
-      "k3": "データがありません"
+      "k3": "データがありません",
+      "rally_n": "ラリー {{n}}",
+      "score_a": "A: {{n}}",
+      "score_b": "B: {{n}}",
+      "select_point": "ラリー地点を選択",
+      "set_n": "Set {{n}}",
+      "click_hint": "グラフの点をクリックして地点を選択してください",
+      "analyze_all": "全ラリーで解析"
     },
     "RallySequencePatterns": {
       "k1": "データなし",
@@ -3608,7 +3623,11 @@
       "k5": "ネットショット率"
     },
     "PartnerTimeline": {},
-    "PreMatchObservationAnalytics": {},
+    "PreMatchObservationAnalytics": {
+      "n_matches": "　N={{n}}試合",
+      "win_loss": "{{w}}勝{{l}}敗",
+      "footer_note": "※ 参考傾向（観察ベースの補助分析）。主要分析の補足として参照してください。"
+    },
     "TemporalPerformance": {},
     "OpponentPolicyCard_test": {},
     "AttributePanel": {},

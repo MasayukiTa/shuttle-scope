@@ -93,8 +93,8 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
   return (
     <div className="space-y-4">
       <p className="text-[10px]" style={{ color: labelColor }}>
-        {t('observation_analytics.subtitle', '試合前観察記録に基づく参考傾向（少数サンプル・主観的データを含む）')}
-        　N={sampleSize}試合
+        {t('observation_analytics.subtitle')}
+        {t('auto.PreMatchObservationAnalytics.n_matches', { n: sampleSize })}
       </p>
 
       {Object.entries(grouped).map(([obsType, entries]) => (
@@ -142,7 +142,7 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
                         {(wr * 100).toFixed(0)}%
                       </span>
                       <span className="text-[10px]" style={{ color: labelColor }}>
-                        {entry.wins}勝{entry.match_count - entry.wins}敗
+                        {t('auto.PreMatchObservationAnalytics.win_loss', { w: entry.wins, l: entry.match_count - entry.wins })}
                       </span>
                     </div>
                   </div>
@@ -198,7 +198,7 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
                           {(wr * 100).toFixed(0)}%
                         </span>
                         <span className="text-[10px]" style={{ color: labelColor }}>
-                          {entry.wins}勝{entry.match_count - entry.wins}敗
+                          {t('auto.PreMatchObservationAnalytics.win_loss', { w: entry.wins, l: entry.match_count - entry.wins })}
                         </span>
                       </div>
                     )
@@ -211,7 +211,7 @@ export function PreMatchObservationAnalytics({ playerId }: PreMatchObservationAn
       )}
 
       <p className="text-[9px]" style={{ color: labelColor }}>
-        ※ 参考傾向（観察ベースの補助分析）。主要分析の補足として参照してください。
+        {t('auto.PreMatchObservationAnalytics.footer_note')}
       </p>
     </div>
   )

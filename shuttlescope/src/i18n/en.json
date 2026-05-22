@@ -2730,7 +2730,15 @@
     },
     "PrematchStatCard": {
       "k1": "Win rate (statistical)",
-      "k2": "Recompute"
+      "k2": "Recompute",
+      "computing": "Computing pre-match stats...",
+      "stat_pred": "Statistical prediction — using data before {{date}}",
+      "h2h_count": "(H2H {{n}} matches)",
+      "h2h_none": "(no H2H record)",
+      "computed_at": "Computed: {{date}}",
+      "no_prior_data": "No data before this match (statistical prediction unavailable)",
+      "n_matches_data": "{{n}} matches of data",
+      "top_script": "Most likely script"
     },
     "PressurePerformance": {
       "k1": "Loading...",
@@ -2793,7 +2801,14 @@
     "RallyPickerModal": {
       "k1": "Click to select",
       "k2": "Loading...",
-      "k3": "No data"
+      "k3": "No data",
+      "rally_n": "Rally {{n}}",
+      "score_a": "A: {{n}}",
+      "score_b": "B: {{n}}",
+      "select_point": "Select a rally point",
+      "set_n": "Set {{n}}",
+      "click_hint": "Click a point on the chart to select",
+      "analyze_all": "Analyze all rallies"
     },
     "RallySequencePatterns": {
       "k1": "No data",
