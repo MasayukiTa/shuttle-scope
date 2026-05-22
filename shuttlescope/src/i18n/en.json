@@ -2731,7 +2731,11 @@
       "k3": "Rallies",
       "k4": "Win-rate diff after long rallies:"
     },
-    "PredictionDriversBlock": {},
+    "PredictionDriversBlock": {
+      "computed_pre": "Computed mainly using ",
+      "primary_source": "{{label}} ({{n}} matches)",
+      "computed_post": ""
+    },
     "PredictionPanel": {
       "k1": "Select an opponent team to see the prediction",
       "k2": "Choose an opponent from the header \"Opponent\" selector"
@@ -2884,7 +2888,11 @@
       "k2": "Computing...",
       "k3": "Not enough data",
       "k4": "Avg influence by shot type (state-adjusted)",
-      "k5": "Top shots by state"
+      "k5": "Top shots by state",
+      "total_rallies": "Total rallies: {{n}}",
+      "usable": "Usable: {{n}}",
+      "epv_n": "EPV={{epv}} N={{n}}",
+      "influence_note": "Influence = shot contribution score after state-EPV adjustment. Higher means greater contribution to winning (correlation-based)."
     },
     "ShotWinLoss": {
       "k1": "Loading...",
@@ -2922,7 +2930,11 @@
       "k6": "Serving side",
       "k7": "Win rate",
       "k8": "Top EPV shots",
-      "k9": "Only states with confidence ≥ 50% are shown. Interpret rows with wide CIs cautiously."
+      "k9": "Only states with confidence ≥ 50% are shown. Interpret rows with wide CIs cautiously.",
+      "n_only": "N={{n}}",
+      "shot_pp": "{{shot}} ({{v}}pp)",
+      "shot_pp_compact": "{{shot}}({{v}}pp)",
+      "ci_header": "CI"
     },
     "TransitionMatrix": {
       "insufficient": "Insufficient data (available after annotation)",
@@ -2961,7 +2973,11 @@
       "k2": "Loading...",
       "k3": "Total strokes",
       "k4": "No data for this zone",
-      "k5": "Close (Esc)"
+      "k5": "Close (Esc)",
+      "n_points": "{{n}} won",
+      "n_losses": "{{n}} lost",
+      "n_only": "N={{n}}",
+      "click_zone_hint": "Click a zone on the left to see details"
     },
     "TargetSelector": {
       "k1": "Frames"

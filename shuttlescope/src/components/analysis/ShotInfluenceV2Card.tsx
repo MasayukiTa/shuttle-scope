@@ -127,8 +127,8 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
       ) : (
         <div className="space-y-3">
           <div className={`flex items-center justify-between text-[10px] ${textMuted}`}>
-            <span>総ラリー: {influenceData?.total_rallies ?? 0}</span>
-            <span>有効: {influenceData?.usable_rallies ?? 0}</span>
+            <span>{t('auto.ShotInfluenceV2Card.total_rallies', { n: influenceData?.total_rallies ?? 0 })}</span>
+            <span>{t('auto.ShotInfluenceV2Card.usable', { n: influenceData?.usable_rallies ?? 0 })}</span>
           </div>
 
           {/* ショット種別ランキング */}
@@ -158,7 +158,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
                     <div className="flex items-center justify-between mb-1">
                       <span className={`text-[10px] font-mono ${textSecondary}`}>{sb.state_key}</span>
                       <span className={`text-[10px] ${textFaint}`}>
-                        EPV={`${(sb.state_epv * 100).toFixed(1)}%`} N={sb.n_rallies}
+                        {t('auto.ShotInfluenceV2Card.epv_n', { epv: `${(sb.state_epv * 100).toFixed(1)}%`, n: sb.n_rallies })}
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -176,7 +176,7 @@ export function ShotInfluenceV2Card({ playerId, filters }: Props) {
           )}
 
           <p className={`text-[10px] ${textFaint}`}>
-            影響度 = 状態EPV補正後のショット寄与スコア。スコアが大きいほど勝利への貢献度が高い（相関ベース）。
+            {t('auto.ShotInfluenceV2Card.influence_note')}
           </p>
         </div>
       )}

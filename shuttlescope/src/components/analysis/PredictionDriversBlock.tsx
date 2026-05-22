@@ -53,7 +53,7 @@ export function PredictionDriversBlock({
     <div className="space-y-2">
       {/* 主要データソースサマリー */}
       <p className="text-xs" style={{ color: neutral }}>
-        主に <span style={{ color: WIN }} className="font-medium">{primaryLabel}（{primaryCount}試合）</span> を使用して算出
+        {t('auto.PredictionDriversBlock.computed_pre')}<span style={{ color: WIN }} className="font-medium">{t('auto.PredictionDriversBlock.primary_source', { label: primaryLabel, n: primaryCount })}</span>{t('auto.PredictionDriversBlock.computed_post')}
       </p>
 
       {/* ドライバーリスト */}
