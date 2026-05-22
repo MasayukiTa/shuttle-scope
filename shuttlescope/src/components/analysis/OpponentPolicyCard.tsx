@@ -203,7 +203,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
       {/* 最終取得時刻 */}
       {dataUpdatedAt > 0 && !isError && (
         <p className={`text-[10px] ${textFaint}`} data-testid="last-fetched">
-          最終取得: {formatUpdatedAt(dataUpdatedAt)}
+          {t('auto.OpponentPolicyCard.last_fetched', { ts: formatUpdatedAt(dataUpdatedAt) })}
         </p>
       )}
 
@@ -236,9 +236,9 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
         <div className={`text-center py-6 space-y-1`} data-testid="empty-state">
           <p className={`text-sm ${textMuted}`}>{t('auto.OpponentPolicyCard.k3')}</p>
           <p className={`text-[10px] ${textFaint}`}>
-            アノテーションが増えるとポリシー分析が表示されます
+            {t('auto.OpponentPolicyCard.empty_hint')}
             {meta?.sample_size != null && meta.sample_size > 0 && (
-              <span>（現在 N={meta.sample_size}）</span>
+              <span>{t('auto.OpponentPolicyCard.current_n', { n: meta.sample_size })}</span>
             )}
           </p>
         </div>
@@ -249,7 +249,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
             <div className="flex items-center justify-between">
               <span className={`text-[11px] ${textSecondary}`}>{t('auto.OpponentPolicyCard.k4')}</span>
               <span className={`text-[10px] ${textFaint}`}>
-                N={policyData?.total_strokes ?? 0} ストローク（フィルター適用後）
+                {t('auto.OpponentPolicyCard.n_strokes_filtered', { n: policyData?.total_strokes ?? 0 })}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -277,16 +277,18 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
           {/* コンテキスト別 */}
           {contexts.length > 0 && (
             <div className="space-y-1">
-              <p className={`text-[10px] ${textMuted}`}>コンテキスト別ポリシー（上位{contexts.length}件）</p>
+              <p className={`text-[10px] ${textMuted}`}>{t('auto.OpponentPolicyCard.context_policy_top', { n: contexts.length })}</p>
               {contexts.map((ctx, i) => {
                 const policy = ctx.policy!
                 return (
                   <div key={i} className={`${cardInnerAlt} rounded px-2 py-1.5 flex items-center justify-between`}>
                     <div className="space-y-0.5">
                       <div className={`text-[10px] ${textSecondary}`}>
-                        {SCORE_PHASE_LABELS[ctx.context.score_phase] ?? ctx.context.score_phase}
-                        / {RALLY_BUCKET_LABELS[ctx.context.rally_bucket] ?? ctx.context.rally_bucket}ラリー
-                        {ctx.context.zone && ` / ${ctx.context.zone}`}
+                        {t('auto.OpponentPolicyCard.context_label', {
+                          phase: SCORE_PHASE_LABELS[ctx.context.score_phase] ?? ctx.context.score_phase,
+                          bucket: RALLY_BUCKET_LABELS[ctx.context.rally_bucket] ?? ctx.context.rally_bucket,
+                          zone: ctx.context.zone ? ` / ${ctx.context.zone}` : '',
+                        })}
                       </div>
                       <div className="text-[10px]">
                         <span className={`font-medium ${textHeading}`}>{policy.dominant_shot}</span>
@@ -301,7 +303,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
                     </div>
                     <div className="text-right">
                       <EntropyBar entropy={policy.entropy} isLight={isLight} />
-                      <span className={`text-[10px] ${textFaint}`}>N={policy.n}</span>
+                      <span className={`text-[10px] ${textFaint}`}>{t('auto.OpponentPolicyCard.n_only', { n: policy.n })}</span>
                     </div>
                   </div>
                 )
@@ -317,7 +319,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
 
           {/* 横連携ヒント */}
           <p className={`text-[10px] ${textFaint} border-t pt-2 ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
-            詳細分析: OpponentStats・ShotWinLoss・PredictionPanel も併せて確認してください。
+            {t('auto.OpponentPolicyCard.detail_hint')}
           </p>
         </div>
       )}
