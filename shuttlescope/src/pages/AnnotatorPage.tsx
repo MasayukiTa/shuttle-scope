@@ -1799,9 +1799,9 @@ export function AnnotatorPage() {
           title={t('annotator.ux.command_button_title')}
           className="hidden md:flex items-center gap-1 shrink-0 mr-1 px-2 py-1 rounded text-xs text-gray-300 bg-gray-700/60 hover:bg-gray-700 transition-colors"
         >
-          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>search</span>
+          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{t('auto.AnnotatorPage.icon_search')}</span>
           <span className="hidden lg:inline">{t('annotator.ux.command_button_label')}</span>
-          <kbd className="text-[10px] font-mono opacity-70 bg-black/30 px-1 rounded">⌘K</kbd>
+          <kbd className="text-[10px] font-mono opacity-70 bg-black/30 px-1 rounded">{t('auto.AnnotatorPage.kbd_cmd_k')}</kbd>
         </button>
 
         {/* U1: メニュー (md+ で常時表示。xl+ でも直接ボタン廃止し統一入口に集約) */}
@@ -1868,7 +1868,7 @@ export function AnnotatorPage() {
                   )}
                 >
                   <span className="flex items-center gap-2">
-                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>visibility</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{t('auto.AnnotatorPage.icon_visibility')}</span>
                     {t('annotator.ui.cv_tools_label', { defaultValue: 'CV ツール (BBOX / 軌跡 / グリッド / 領域)' })}
                   </span>
                   <span className="text-[10px] opacity-80">{cvToolsExpanded ? 'ON' : 'OFF'}</span>
@@ -1879,7 +1879,7 @@ export function AnnotatorPage() {
                     disabled={!!yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')}
                     className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-800 text-blue-300 hover:bg-gray-800 disabled:opacity-50"
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>directions_run</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{t('auto.AnnotatorPage.icon_directions_run')}</span>
                     {t('annotator.ux.menu_yolo_run')}
                   </button>
                 )}
@@ -1889,7 +1889,7 @@ export function AnnotatorPage() {
                     disabled={!!tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running')}
                     className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-800 text-gray-200 hover:bg-gray-800 disabled:opacity-50"
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>route</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{t('auto.AnnotatorPage.icon_route')}</span>
                     {t('annotator.ux.menu_tracknet_run')}
                   </button>
                 )}
@@ -1967,7 +1967,7 @@ export function AnnotatorPage() {
               aria-expanded={cvToolsExpanded}
               title={cvToolsExpanded ? t('annotator.ui.cv_tools_collapse_title', { defaultValue: 'CV ツールを折り畳む' }) : t('annotator.ui.cv_tools_expand_title', { defaultValue: 'CV ツール (TrackNet / 人物検出 / 表示) を展開' })}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: 13 }}>visibility</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 13 }}>{t('auto.AnnotatorPage.icon_visibility')}</span>
               <span>CV</span>
               {/* 圧縮ステータス: 解析中 % または 完了 ✓ */}
               {tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') && (
@@ -1989,7 +1989,7 @@ export function AnnotatorPage() {
               <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
                 isLight ? 'bg-white text-gray-700' : 'bg-gray-800 text-gray-200'
               }`}>
-                <span className="animate-pulse">●</span>
+                <span className="animate-pulse">{t('auto.AnnotatorPage.dot_running')}</span>
                 {t('tracknet.batch_running')} {Math.round(tracknetJob.progress * 100)}%
                 <button
                   onClick={handleTracknetBatchStop}
@@ -2085,7 +2085,7 @@ export function AnnotatorPage() {
                 <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
                   isLight ? 'bg-white text-blue-700' : 'bg-gray-800 text-blue-300'
                 }`}>
-                  <span className="animate-pulse">●</span>
+                  <span className="animate-pulse">{t('auto.AnnotatorPage.dot_running')}</span>
                   {t('annotator.ui.person_with_pct', { defaultValue: '人物 {{pct}}%', pct: Math.round(yoloJob.progress * 100) })}
                   <button
                     onClick={handleYoloBatchStop}
@@ -2102,7 +2102,7 @@ export function AnnotatorPage() {
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
                     isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
                   }`}>
-                    ⏸ {Math.round(yoloJob.progress * 100)}%
+                    {t('auto.AnnotatorPage.paused_pct', { n: Math.round(yoloJob.progress * 100) })}
                   </div>
                   <button
                     onClick={handleYoloBatchResume}
@@ -2135,7 +2135,7 @@ export function AnnotatorPage() {
                     }`}
                     title={t('auto.AnnotatorPage.k7')}
                   >
-                    🗑
+                    {t('auto.AnnotatorPage.icon_trash')}
                   </button>
                 </div>
               ) : yoloJob?.status === 'complete' ? (
@@ -2216,7 +2216,7 @@ export function AnnotatorPage() {
                       }`}
                       title={t('auto.AnnotatorPage.k7')}
                     >
-                      🗑
+                      {t('auto.AnnotatorPage.icon_trash')}
                     </button>
                   )}
                   {yoloArtifactExists && yoloRoiExpanded && (
@@ -2246,22 +2246,22 @@ export function AnnotatorPage() {
                       onClick={() => seekRel(-5)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
                       title={t('auto.AnnotatorPage.k9')}
-                    >⏮-5s</button>
+                    >{t('auto.AnnotatorPage.seek_back_5s')}</button>
                     <button
                       onClick={() => stepFrame(-1)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
                       title={t('auto.AnnotatorPage.k10')}
-                    >-1f</button>
+                    >{t('auto.AnnotatorPage.step_back_1f')}</button>
                     <button
                       onClick={() => stepFrame(1)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
                       title={t('auto.AnnotatorPage.k11')}
-                    >+1f</button>
+                    >{t('auto.AnnotatorPage.step_fwd_1f')}</button>
                     <button
                       onClick={() => seekRel(5)}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300' : 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'}`}
                       title={t('auto.AnnotatorPage.k12')}
-                    >+5s⏭</button>
+                    >{t('auto.AnnotatorPage.seek_fwd_5s')}</button>
                     <span className={`mx-0.5 ${isLight ? 'text-gray-300' : 'text-gray-600'}`}>|</span>
                     <button
                       onClick={prevSample}
@@ -2354,7 +2354,7 @@ export function AnnotatorPage() {
                       : trackingVisible ? t('annotator.ui.bbox_hide', { defaultValue: 'BBOX を非表示' }) : t('annotator.ui.bbox_show', { defaultValue: 'BBOX を表示' })
                   }
                 >
-                  {trackingVisible && trackFrames.length > 0 ? '◉' : '○'} BBOX
+                  {trackingVisible && trackFrames.length > 0 ? '◉' : '○'} {t('auto.AnnotatorPage.bbox_label')}
                 </button>
               )}
 
@@ -2650,7 +2650,7 @@ export function AnnotatorPage() {
                 </span>
               )}
               {tunnelStatus?.data?.running === false && (
-                <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>LAN</span>
+                <span className={isLight ? 'text-gray-500' : 'text-gray-400'}>{t('auto.AnnotatorPage.net_lan')}</span>
               )}
               <span className={
                 remoteHealth.wsConnected
@@ -2660,10 +2660,10 @@ export function AnnotatorPage() {
                 {remoteHealth.wsConnected ? t('annotator.ui.remote_health_connected', { defaultValue: '接続' }) : t('annotator.ui.remote_health_reconnecting', { defaultValue: '再接続中' })}
               </span>
               {remoteHealth.connectionState === 'connected' && (
-                <span className={`ml-1 ${isLight ? 'text-red-600' : 'text-red-400'}`}>● LIVE</span>
+                <span className={`ml-1 ${isLight ? 'text-red-600' : 'text-red-400'}`}>{t('auto.AnnotatorPage.net_live')}</span>
               )}
               {remoteHealth.turnInUse === true && (
-                <span className={`ml-1 ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>TURN</span>
+                <span className={`ml-1 ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>{t('auto.AnnotatorPage.net_turn')}</span>
               )}
             </div>
           )}
@@ -3093,7 +3093,7 @@ export function AnnotatorPage() {
                 <div className="flex items-center justify-between text-[11px] text-gray-300 mb-1">
                   <span className="truncate mr-2">{uploadProgress.fileName}</span>
                   <span className="tabular-nums whitespace-nowrap">
-                    {(uploadProgress.ratio * 100).toFixed(1)}% / {uploadProgress.mbps.toFixed(1)} Mbps
+                    {t('auto.AnnotatorPage.upload_progress', { pct: (uploadProgress.ratio * 100).toFixed(1), mbps: uploadProgress.mbps.toFixed(1) })}
                   </span>
                 </div>
                 <div className="h-1 bg-gray-700 rounded overflow-hidden">
@@ -3514,7 +3514,7 @@ export function AnnotatorPage() {
                   >
                     <Users size={useLargeTouch ? 16 : 12} />
                     {!isMobile && (
-                      <kbd className="text-[9px] font-mono opacity-60 bg-black/20 px-1 rounded">Tab</kbd>
+                      <kbd className="text-[9px] font-mono opacity-60 bg-black/20 px-1 rounded">{t('auto.AnnotatorPage.kbd_tab')}</kbd>
                     )}
                   </button>
                   <button
@@ -3776,7 +3776,7 @@ export function AnnotatorPage() {
                       {store.isDoubles ? (
                         <>
                           {t('annotator.ui.hit_zone_hint_doubles', { defaultValue: '打点:' })} <kbd className="font-mono px-1 bg-gray-800 rounded">1</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">6</kbd>
-                          {' '}{t('annotator.ui.hit_zone_hint_doubles_extra', { defaultValue: '／ 7-9 は' })} <kbd className="font-mono px-1 bg-gray-800 rounded">Shift+7</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
+                          {' '}{t('annotator.ui.hit_zone_hint_doubles_extra', { defaultValue: '／ 7-9 は' })} <kbd className="font-mono px-1 bg-gray-800 rounded">{t('auto.AnnotatorPage.kbd_shift_7')}</kbd>-<kbd className="font-mono px-1 bg-gray-800 rounded">9</kbd>
                         </>
                       ) : (
                         <>
@@ -4000,7 +4000,7 @@ export function AnnotatorPage() {
                       : ''}
                   </span>
                   <span className="text-gray-600">
-                    {store.currentStrokes.length} shots
+                    {t('auto._shared.n_strokes', { n: store.currentStrokes.length })}
                   </span>
                 </div>
               )
@@ -4663,7 +4663,7 @@ export function AnnotatorPage() {
                     <div className="flex items-center gap-1">
                       <button onClick={() => setVal(Math.max(0, val - 1))} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">−</button>
                       <span className="flex-1 text-center text-lg font-bold text-white">{val}</span>
-                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">＋</button>
+                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">{t('auto.AnnotatorPage.plus')}</button>
                     </div>
                   </div>
                 ))}
@@ -4730,7 +4730,7 @@ export function AnnotatorPage() {
                     <div className="flex items-center gap-1">
                       <button onClick={() => setVal(Math.max(0, val - 1))} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">−</button>
                       <span className="flex-1 text-center text-lg font-bold text-white">{val}</span>
-                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">＋</button>
+                      <button onClick={() => setVal(val + 1)} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded text-gray-300 font-bold">{t('auto.AnnotatorPage.plus')}</button>
                     </div>
                   </div>
                 ))}
