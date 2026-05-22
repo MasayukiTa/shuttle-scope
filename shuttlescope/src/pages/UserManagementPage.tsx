@@ -482,7 +482,7 @@ export function UserManagementPage() {
         {needsTeam && myRole === 'admin' ? (
           <div className="col-span-2">
             <label className={`block text-xs font-medium mb-1 ${textMuted}`}>
-              所属チーム{teamOptional ? '（任意）' : ''}
+              {t('auto.UserManagementPage.k12')}{teamOptional ? t('auto.UserManagementPage.k13') : ''}
             </label>
             <select
               value={form.team_id}
@@ -515,7 +515,7 @@ export function UserManagementPage() {
               placeholder={t('users.manage.team_name_placeholder')}
             />
             <p className={`mt-1 text-[11px] ${textMuted}`}>
-              既存チームから選択するか、上にない新規チーム名を入力してください（自動作成）。
+              {t('auto.UserManagementPage.k14')}
             </p>
           </div>
         ) : needsTeam ? (
@@ -633,7 +633,7 @@ export function UserManagementPage() {
           {myRole === 'admin' && (
             <a href="#/users/pending"
                className="inline-block mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300">
-              → 保留中ユーザ一覧 (admin 承認待ち)
+              {t('auto.UserManagementPage.k15')}
             </a>
           )}
         </div>
@@ -713,21 +713,21 @@ export function UserManagementPage() {
                         title={t('auto.UserManagementPage.k3')}
                         onClick={() => setSortKey('is_limited')}
                       >
-                        制限
+                        {t('auto.UserManagementPage.k16')}
                       </th>
                       <th
                         className={`px-3 py-2.5 text-xs font-medium ${textMuted} hidden md:table-cell cursor-pointer select-none`}
                         title={t('auto.UserManagementPage.k4')}
                         onClick={() => setSortKey('active_uploads')}
                       >
-                        UL
+                        {t('auto.UserManagementPage.k17')}
                       </th>
                       <th
                         className={`px-3 py-2.5 text-xs font-medium ${textMuted} hidden lg:table-cell cursor-pointer select-none`}
                         title={t('auto.UserManagementPage.k5')}
                         onClick={() => setSortKey('exfil_requests')}
                       >
-                        req/60s
+                        {t('auto.UserManagementPage.k18')}
                       </th>
                     </>
                   )}
@@ -747,7 +747,7 @@ export function UserManagementPage() {
                       <td className={`px-4 py-2.5 ${textMuted} text-xs hidden sm:table-cell`}>
                         <div>{u.username || '—'}</div>
                         <div>
-                          team: {u.team_display_name || u.team_name || '—'}
+                          {t('auto.UserManagementPage.k19')} {u.team_display_name || u.team_name || '—'}
                           {u.team_display_id ? ` (${u.team_display_id})` : ''}
                           {u.team_is_independent ? ' ［無所属］' : ''}
                         </div>
@@ -766,33 +766,33 @@ export function UserManagementPage() {
                               if (L.is_locked) {
                                 badges.push(
                                   <span key="lock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700" title={
-                                    `アカウントロック中  failed=${L.failed_attempts}  until=${L.locked_until ?? '—'}`
+                                    t('auto.UserManagementPage.k20', { failed: L.failed_attempts, until: L.locked_until ?? '—' })
                                   }>
-                                    🔒 ロック
+                                    {t('auto.UserManagementPage.k21')}
                                   </span>,
                                 )
                               } else if (L.near_lock) {
                                 badges.push(
                                   <span key="nearlock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700" title={
-                                    `ログイン失敗 ${L.failed_attempts}/3  あと ${3 - L.failed_attempts} 回でロック`
+                                    t('auto.UserManagementPage.k22', { failed: L.failed_attempts, remaining: 3 - L.failed_attempts })
                                   }>
-                                    ⚠ 失敗{L.failed_attempts}
+                                    ⚠ {t('auto.UserManagementPage.k23', { failed: L.failed_attempts })}
                                   </span>,
                                 )
                               }
                               if (L.active_uploads >= 2) {
                                 badges.push(
                                   <span key="ul" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700" title={t('auto.UserManagementPage.k6')}>
-                                    UL満杯
+                                    {t('auto.UserManagementPage.k24')}
                                   </span>,
                                 )
                               }
                               if (L.exfil_alerted || L.exfil_near_hard_block) {
                                 badges.push(
                                   <span key="exfil" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700" title={
-                                    `exfil  req=${L.exfil_requests}  bytes=${L.exfil_bytes}  alerted=${L.exfil_alerted}  near_block=${L.exfil_near_hard_block}`
+                                    t('auto.UserManagementPage.k25', { req: L.exfil_requests, bytes: L.exfil_bytes, alerted: String(L.exfil_alerted), near_block: String(L.exfil_near_hard_block) })
                                   }>
-                                    EXFIL
+                                    {t('auto.UserManagementPage.k26')}
                                   </span>,
                                 )
                               }
@@ -819,7 +819,7 @@ export function UserManagementPage() {
                             <div className="flex items-center gap-1">
                               {limits[u.id]?.is_locked && (
                                 <button onClick={() => handleResetLimits(u, 'lock')} disabled={limitResetBusyId === u.id}
-                                  title={t('auto.UserManagementPage.k7')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>🔒</button>
+                                  title={t('auto.UserManagementPage.k7')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>{t('auto.UserManagementPage.k28')}</button>
                               )}
                               {(limits[u.id]?.failed_attempts ?? 0) > 0 && (
                                 <button onClick={() => handleResetLimits(u, 'failed_attempts')} disabled={limitResetBusyId === u.id}
@@ -827,11 +827,11 @@ export function UserManagementPage() {
                               )}
                               {(limits[u.id]?.active_uploads ?? 0) >= 2 && (
                                 <button onClick={() => handleResetLimits(u, 'uploads')} disabled={limitResetBusyId === u.id}
-                                  title={t('auto.UserManagementPage.k9')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>UL</button>
+                                  title={t('auto.UserManagementPage.k9')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>{t('auto.UserManagementPage.k17')}</button>
                               )}
                               {(limits[u.id]?.exfil_alerted || limits[u.id]?.exfil_near_hard_block) && (
                                 <button onClick={() => handleResetLimits(u, 'exfil')} disabled={limitResetBusyId === u.id}
-                                  title={t('auto.UserManagementPage.k10')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>EX</button>
+                                  title={t('auto.UserManagementPage.k10')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>{t('auto.UserManagementPage.k27')}</button>
                               )}
                               <button onClick={() => handleResetLimits(u, 'all')} disabled={limitResetBusyId === u.id}
                                 title={t('auto.UserManagementPage.k11')} className={`${textMuted} hover:text-emerald-500 disabled:opacity-50`}>
