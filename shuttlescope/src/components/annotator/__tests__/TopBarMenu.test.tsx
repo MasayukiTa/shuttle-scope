@@ -5,7 +5,6 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 import { TopBarMenu, TopBarMenuSection } from '../TopBarMenu'
-import { useTranslation } from 'react-i18next'
 
 describe('TopBarMenu', () => {
   it('初期状態は閉じている (children は描画されない)', () => {
@@ -46,7 +45,7 @@ describe('TopBarMenu', () => {
 describe('TopBarMenuSection', () => {
   it('title が見出しとして表示される', () => {
     render(
-      <TopBarMenuSection title={t('auto.TopBarMenu_test.k1')} firstSection>
+      <TopBarMenuSection title="記録モード" firstSection>
         <button>item</button>
       </TopBarMenuSection>,
     )
