@@ -811,31 +811,31 @@ export function SettingsPage() {
       {cvBatchConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className={`rounded-xl p-6 max-w-sm w-full mx-4 space-y-4 border ${isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-600'}`}>
-            <p className="text-sm font-medium">{cvBatchConfirm.label} — 処理時間の目安</p>
+            <p className="text-sm font-medium">{t('auto.SettingsPage.cv_batch_title', { label: cvBatchConfirm.label })}</p>
             <p className={`text-sm ${isLight ? 'text-gray-700' : 'text-gray-300'}`}>
-              動画1時間あたり約{' '}
+              {t('auto.SettingsPage.cv_batch_estimate_prefix')}
               <span className="text-yellow-400 font-bold">
                 {cvBatchConfirm.estimatedHours >= 1
-                  ? `${cvBatchConfirm.estimatedHours.toFixed(1)} 時間`
-                  : `${Math.round(cvBatchConfirm.estimatedHours * 60)} 分`}
-              </span>{' '}
-              の処理が見込まれます。
+                  ? t('auto.SettingsPage.cv_batch_hours', { n: cvBatchConfirm.estimatedHours.toFixed(1) })
+                  : t('auto.SettingsPage.cv_batch_minutes', { n: Math.round(cvBatchConfirm.estimatedHours * 60) })}
+              </span>
+              {t('auto.SettingsPage.cv_batch_estimate_suffix')}
             </p>
             <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
-              バックグラウンドで実行されるため、処理中もアノテーション作業は継続できます。
+              {t('auto.SettingsPage.cv_batch_background_note')}
             </p>
             <div className="flex gap-3">
               <button
                 onClick={cvBatchConfirm.onConfirm}
                 className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white"
               >
-                OK（この設定で進める）
+                {t('auto.SettingsPage.cv_batch_confirm')}
               </button>
               <button
                 onClick={() => setCvBatchConfirm(null)}
                 className={`flex-1 py-2 rounded text-sm ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
               >
-                キャンセル
+                {t('auto.SettingsPage.cv_batch_cancel')}
               </button>
             </div>
           </div>
@@ -983,7 +983,7 @@ export function SettingsPage() {
                       onClick={() => handlePlayerSort('world_ranking')}
                     >
                       <span className="inline-flex items-center gap-0.5">
-                        Rk
+                        {t('auto.SettingsPage.col_rk')}
                         {playerSortKey === 'world_ranking' ? (
                           playerSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
                         ) : (
@@ -1024,11 +1024,11 @@ export function SettingsPage() {
                             <span className="cell-name-clip">{p.name}</span>
                             {copiedPlayerId === p.id ? (
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500 text-white border border-white font-medium shrink-0">
-                                コピー済
+                                {t('auto.SettingsPage.copied')}
                               </span>
                             ) : (
                               <span className={`text-[10px] opacity-0 group-hover:opacity-60 transition-opacity shrink-0 ${textMuted}`}>
-                                コピー
+                                {t('auto.SettingsPage.k21')}
                               </span>
                             )}
                           </button>
@@ -1043,7 +1043,7 @@ export function SettingsPage() {
                               title={p.team_history.map(h => `${h.team}${h.until ? ` (〜${h.until})` : ''}`).join(' → ')}
                               className="text-[10px] px-1 rounded bg-gray-600/50 text-gray-400 cursor-default"
                             >
-                              履歴{p.team_history.length}
+                              {t('auto.SettingsPage.history_count', { n: p.team_history.length })}
                             </span>
                           )}
                         </div>
@@ -1064,14 +1064,14 @@ export function SettingsPage() {
                               onClick={() => { deletePlayer.mutate(p.id); setDeleteConfirmId(null) }}
                               className="font-medium hover:opacity-80"
                             >
-                              削除
+                              {t('auto.SettingsPage.delete')}
                             </button>
                             <span className="opacity-50">|</span>
                             <button
                               onClick={() => setDeleteConfirmId(null)}
                               className="hover:opacity-80"
                             >
-                              取消
+                              {t('auto.SettingsPage.cancel_short')}
                             </button>
                           </div>
                         ) : (
@@ -1212,9 +1212,9 @@ export function SettingsPage() {
                   </div>
                 <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3 text-xs font-mono space-y-1 ${textMuted}`}>
                     <p className="text-gray-300 font-sans font-medium text-xs mb-1">{t('tracknet.setup_instructions')}</p>
-                    <p>python -m backend.tracknet.setup download</p>
-                    <p>python -m backend.tracknet.setup export</p>
-                    <p>python -m backend.tracknet.setup convert</p>
+                    <p>{t('auto.SettingsPage.tracknet_cmd_download')}</p>
+                    <p>{t('auto.SettingsPage.tracknet_cmd_export')}</p>
+                    <p>{t('auto.SettingsPage.tracknet_cmd_convert')}</p>
                     <p className="text-gray-500 font-sans">{t('auto.SettingsPage.k1')}</p>
                   </div>
                 </div>
@@ -1344,9 +1344,9 @@ export function SettingsPage() {
                     return (
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-emerald-400">●</span>
+                          <span className="text-emerald-400">{t('auto.SettingsPage.status_dot')}</span>
                           <span className={isLight ? 'text-emerald-700' : 'text-emerald-300'}>
-                            推論可能 — {yoloStatus.data?.backend ?? 'ultralytics'}
+                            {t('auto.SettingsPage.yolo_ready', { backend: yoloStatus.data?.backend ?? 'ultralytics' })}
                           </span>
                         </div>
                       </div>
@@ -1356,9 +1356,9 @@ export function SettingsPage() {
                     return (
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-blue-400">●</span>
+                          <span className="text-blue-400">{t('auto.SettingsPage.status_dot')}</span>
                           <span className={isLight ? 'text-blue-700' : 'text-blue-300'}>
-                            パッケージ導入済み（初回実行時に自動DL）
+                            {t('auto.SettingsPage.yolo_weights_missing')}
                           </span>
                         </div>
                         {msg && <p className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>{msg}</p>}
@@ -1369,7 +1369,7 @@ export function SettingsPage() {
                     return (
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-red-400">●</span>
+                          <span className="text-red-400">{t('auto.SettingsPage.status_dot')}</span>
                           <span className={isLight ? 'text-red-700' : 'text-red-300'}>{t('settings.ui.load_failed')}</span>
                         </div>
                         {msg && <p className={`text-[10px] font-mono break-all ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>{msg}</p>}
@@ -1380,11 +1380,11 @@ export function SettingsPage() {
                   return (
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-orange-400">●</span>
+                        <span className="text-orange-400">{t('auto.SettingsPage.status_dot')}</span>
                         <span className={isLight ? 'text-orange-700' : 'text-orange-300'}>{t('settings.ui.package_missing')}</span>
                       </div>
                       <code className={`block text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 text-gray-700' : 'bg-gray-800 text-gray-300'}`}>
-                        pip install ultralytics
+                        {t('auto.SettingsPage.pip_install_ultralytics')}
                       </code>
                     </div>
                   )
@@ -1400,7 +1400,7 @@ export function SettingsPage() {
               <div className="flex items-center justify-between">
                 <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
                   <Cpu size={14} className="text-purple-400" />
-                  GPU / コンピュートデバイス設定
+                  {t('auto.SettingsPage.gpu_device_heading')}
                 </h3>
                 <button
                   onClick={() => refetchDevices()}
@@ -1488,9 +1488,9 @@ export function SettingsPage() {
                     if (hasCuda || hasDml) return null
                     return (
                       <p className="text-[10px] text-amber-400 mt-1.5">
-                        GPU推論を有効にするには{' '}
-                        <code className="bg-gray-800 px-1 rounded">onnxruntime-gpu</code>（CUDA）または{' '}
-                        <code className="bg-gray-800 px-1 rounded">onnxruntime-directml</code>（DirectML）をインストールしてください
+                        {t('auto.SettingsPage.gpu_hint_prefix')}
+                        <code className="bg-gray-800 px-1 rounded">{t('auto.SettingsPage.pkg_onnxruntime_gpu')}</code>{t('auto.SettingsPage.gpu_hint_cuda_or')}
+                        <code className="bg-gray-800 px-1 rounded">{t('auto.SettingsPage.pkg_onnxruntime_directml')}</code>{t('auto.SettingsPage.gpu_hint_directml_suffix')}
                       </p>
                     )
                   })()}
@@ -1599,7 +1599,7 @@ export function SettingsPage() {
               <div className="bg-blue-900/30 border border-blue-500/40 rounded-lg p-4 space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-blue-300">
                   <Globe size={14} />
-                  トンネル接続中 — このURLを使用してください
+                  {t('auto.SettingsPage.tunnel_connected')}
                 </div>
                 <LanUrlCard url={tunnelStatus.data.url} hint="iOSを含む全デバイスからHTTPSでアクセス可能" />
               </div>
@@ -1732,7 +1732,7 @@ export function SettingsPage() {
                     <div className={`rounded border px-3 py-2 text-xs ${
                       isLight ? 'border-gray-200 bg-white text-blue-700' : 'border-gray-700 bg-gray-800 text-blue-300'
                     }`}>
-                      <div className="font-medium">Cloudflare named tunnel</div>
+                      <div className="font-medium">{t('auto.SettingsPage.cloudflare_named_tunnel')}</div>
                       <div className="mt-1 font-mono break-all">
                         {tunnelStatus.data.providers.cloudflare.hostname
                           ? `https://${tunnelStatus.data.providers.cloudflare.hostname}`
@@ -1985,7 +1985,7 @@ export function SettingsPage() {
                   {/* LAN 情報 */}
                   {netDiag.data.lan.lan_ips.length > 0 && (
                     <div className="text-xs text-gray-400">
-                      LAN IP: {netDiag.data.lan.lan_ips.join(', ')}
+                      {t('auto.SettingsPage.lan_ip', { ips: netDiag.data.lan.lan_ips.join(', ') })}
                     </div>
                   )}
 
@@ -2113,7 +2113,7 @@ export function SettingsPage() {
                 <h2 className="text-base font-semibold">{t('settings.ui.export')}</h2>
               </div>
               <p className="text-xs text-gray-400">
-                試合データを <code className="bg-gray-700 px-1 rounded">.sspkg</code> 形式でダウンロード。別 PC へのデータ持ち運びや引き継ぎに使用します。
+                {t('auto.SettingsPage.export_desc_prefix')}<code className="bg-gray-700 px-1 rounded">{t('auto.SettingsPage.ext_sspkg')}</code>{t('auto.SettingsPage.export_desc_suffix')}
               </p>
 
               {/* エクスポートモード切替 */}
@@ -2192,7 +2192,7 @@ export function SettingsPage() {
                       className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
                     >
                       <Download size={14} />
-                      ダウンロード
+                      {t('auto.SettingsPage.download')}
                     </button>
                   </div>
                 </div>
@@ -2213,7 +2213,7 @@ export function SettingsPage() {
                       className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
                     >
                       <Download size={14} />
-                      差分DL
+                      {t('auto.SettingsPage.diff_download')}
                     </button>
                   </div>
                 </div>
@@ -2227,7 +2227,7 @@ export function SettingsPage() {
                 <h2 className="text-base font-semibold">{t('settings.ui.import')}</h2>
               </div>
               <p className="text-xs text-gray-400">
-                別 PC からエクスポートされた <code className="bg-gray-700 px-1 rounded">.sspkg</code> ファイルを取り込みます。既存データはレコード単位でマージされます。
+                {t('auto.SettingsPage.import_desc_prefix')}<code className="bg-gray-700 px-1 rounded">{t('auto.SettingsPage.ext_sspkg')}</code>{t('auto.SettingsPage.import_desc_suffix')}
               </p>
 
               <div>
@@ -2277,7 +2277,7 @@ export function SettingsPage() {
                       </div>
                       {(importPreview.data?.merge_preview?.conflicts ?? 0) > 0 && (
                         <p className="text-xs text-orange-400">
-                          ⚠ 競合 {importPreview.data.merge_preview.conflicts} 件はローカルを優先して保持します（Phase 2 で個別解決予定）
+                          {t('auto.SettingsPage.conflict_warning', { n: importPreview.data.merge_preview.conflicts })}
                         </p>
                       )}
                       {!importResult && (
@@ -2302,7 +2302,7 @@ export function SettingsPage() {
                     <>
                       <p className="font-medium text-emerald-300 mb-1">{t('auto.SettingsPage.k15')}</p>
                       <p className="text-xs text-gray-300">
-                        追加 {importResult.data?.added} / 更新 {importResult.data?.updated} / 保持 {importResult.data?.kept} / 競合 {importResult.data?.conflicts}
+                        {t('auto.SettingsPage.import_result_summary', { added: importResult.data?.added, updated: importResult.data?.updated, kept: importResult.data?.kept, conflicts: importResult.data?.conflicts })}
                       </p>
                     </>
                   ) : (
@@ -2319,7 +2319,7 @@ export function SettingsPage() {
                 <h2 className="text-base font-semibold">{t('settings.ui.backup')}</h2>
               </div>
               <p className="text-xs text-gray-400">
-                現行データベースをローカルにバックアップします。最大 10 世代を自動ローテーション保持します。
+                {t('auto.SettingsPage.backup_desc')}
               </p>
 
               <div className="flex items-center gap-3">
@@ -2372,7 +2372,7 @@ export function SettingsPage() {
                       <div key={pkg.filename} className="flex items-center justify-between px-3 py-2 text-xs gap-3">
                         <div className="min-w-0">
                           <p className="text-gray-200 font-mono truncate">{pkg.filename}</p>
-                          <p className="text-gray-500">{(pkg.size_bytes / 1024).toFixed(0)} KB · {pkg.modified_at?.slice(0, 10)}</p>
+                          <p className="text-gray-500">{t('auto.SettingsPage.pkg_size_date', { kb: (pkg.size_bytes / 1024).toFixed(0), date: pkg.modified_at?.slice(0, 10) })}</p>
                         </div>
                         <button
                           onClick={async () => {
@@ -2407,7 +2407,7 @@ export function SettingsPage() {
                   <button onClick={() => refetchConflicts()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>{t('auto.SettingsPage.k16')}</button>
                 </div>
                 <p className="text-xs text-gray-400">
-                  インポート時に検出された競合レコードです。ローカルを維持するか、取込データで上書きするかを選択してください。
+                  {t('auto.SettingsPage.conflict_review_desc')}
                 </p>
                 <div className="space-y-2 max-h-80 overflow-y-auto">
                   {conflicts.map((c: any) => (
@@ -2419,7 +2419,7 @@ export function SettingsPage() {
                           </p>
                           <p className="text-[11px] text-gray-400 mt-0.5 break-words">{c.reason}</p>
                           <p className="text-[11px] text-gray-500 num-cell">
-                            ローカル: {c.local_updated_at?.slice(0, 16)} ／ 取込: {c.import_updated_at?.slice(0, 16)}
+                            {t('auto.SettingsPage.conflict_timestamps', { local: c.local_updated_at?.slice(0, 16), incoming: c.import_updated_at?.slice(0, 16) })}
                             {c.import_device ? ` (${c.import_device})` : ''}
                           </p>
                         </div>
@@ -2448,7 +2448,7 @@ export function SettingsPage() {
             <section>
               <h2 className="text-base font-semibold">{t('settings.ui.json_package_import')}</h2>
               <p className={`text-xs ${textMuted} mt-1 mb-3`}>
-                試合一覧ページからエクスポートした JSON ファイルをインポートします。
+                {t('auto.SettingsPage.json_import_desc')}
               </p>
               <div className={`space-y-3 p-3 rounded border ${isLight ? 'bg-gray-50 border-gray-200' : 'bg-gray-900/40 border-gray-700'}`}>
                 <input
@@ -2463,7 +2463,7 @@ export function SettingsPage() {
                   }`}
                 />
                 {pkgImportFile && (
-                  <p className={`text-xs ${textSecondary}`}>選択: {pkgImportFile.name}</p>
+                  <p className={`text-xs ${textSecondary}`}>{t('auto.SettingsPage.selected_file', { name: pkgImportFile.name })}</p>
                 )}
                 <div className="flex gap-2">
                   <button
@@ -2517,7 +2517,7 @@ export function SettingsPage() {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className={textSecondary}>auto_vacuum</span>
+                    <span className={textSecondary}>{t('auto.SettingsPage.auto_vacuum_label')}</span>
                     <div className="flex items-center gap-2">
                       <span className={`font-mono text-xs ${dbStats.auto_vacuum === 2 ? 'text-green-400' : 'text-yellow-400'}`}>
                         {dbStats.auto_vacuum === 0 ? 'OFF' : dbStats.auto_vacuum === 1 ? 'FULL' : 'INCREMENTAL'}
@@ -2555,8 +2555,7 @@ export function SettingsPage() {
 
               <p className="text-xs text-gray-400 leading-relaxed">
                 <span className="font-medium text-gray-300">{t('auto.SettingsPage.k17')}</span>
-                WAL チェックポイントと incremental vacuum を実行します（auto_vacuum=INCREMENTAL 時に空きページを回収）。
-                大量削除後や定期メンテとして実行してください。
+                {t('auto.SettingsPage.db_optimize_desc')}
               </p>
 
               {dbMaintResult && (
@@ -2660,18 +2659,18 @@ export function SettingsPage() {
 
             {/* ロール設定 */}
             <section>
-              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>Account</h2>
+              <h2 className={`text-lg font-medium ${textHeading} mb-1`}>{t('auto.SettingsPage.account')}</h2>
               <p className={`text-xs ${textMuted} mb-3`}>
-                The active role is fixed by login. To switch users or roles, log out and sign in again.
+                {t('auto.SettingsPage.account_role_note')}
               </p>
               <div className={`rounded-lg border p-4 space-y-2 ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-800'}`}>
                 {/* "Display name" と "User ID" が両方 displayName を出していた
                    copy-paste bug の修正。User ID は /auth/me の username (= ログ
                    イン ID) と useAuth の userId (= 数値 PK) を併記する。 */}
-                <div className={`text-sm ${textSecondary}`}>Display name: <span className={textHeading}>{effectiveDisplayName ?? 'Unset'}</span></div>
-                <div className={`text-sm ${textSecondary}`}>Role: <span className={textHeading}>{role ? t(`auth.role.${role}`) : 'Not logged in'}</span></div>
-                <div className={`text-sm ${textSecondary}`}>Username: <span className={textHeading}>{loginUsername ?? '-'}</span>{userId != null && <span className={`${textMuted} ml-2`}>(#{userId})</span>}</div>
-                <div className={`text-sm ${textSecondary}`}>Team: <span className={textHeading}>{teamName ?? '-'}</span></div>
+                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.display_name_label')}<span className={textHeading}>{effectiveDisplayName ?? t('auto.SettingsPage.unset')}</span></div>
+                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.role_label')}<span className={textHeading}>{role ? t(`auth.role.${role}`) : t('auto.SettingsPage.not_logged_in')}</span></div>
+                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.username_label')}<span className={textHeading}>{loginUsername ?? '-'}</span>{userId != null && <span className={`${textMuted} ml-2`}>(#{userId})</span>}</div>
+                <div className={`text-sm ${textSecondary}`}>{t('auto.SettingsPage.team_label')}<span className={textHeading}>{teamName ?? '-'}</span></div>
               </div>
               <div className="mt-4 flex flex-col gap-3">
                 <button
@@ -2684,7 +2683,7 @@ export function SettingsPage() {
                   {t('auth.logout')}
                 </button>
                 <p className={`text-xs ${textMuted}`}>
-                  Auth state is stored per session. After closing the app or browser, the next launch starts from the login screen.
+                  {t('auto.SettingsPage.auth_state_note')}
                 </p>
               </div>
             </section>
@@ -2700,7 +2699,7 @@ export function SettingsPage() {
               <section>
                 <h2 className={`text-lg font-medium ${textHeading} mb-1`}>{t('settings.ui.restart_app')}</h2>
                 <p className={`text-xs ${textMuted} mb-3`}>
-                  設定変更や不具合が発生した際にアプリを再起動します。未保存のアノテーションデータは失われます。
+                  {t('auto.SettingsPage.restart_desc')}
                 </p>
                 <button
                   onClick={() => {
@@ -2775,7 +2774,7 @@ export function SettingsPage() {
                           <span className={`px-1.5 py-0.5 rounded ${isLight ? 'bg-gray-100 text-gray-600' : 'bg-gray-700 text-gray-400'}`}>
                             {h.team}
                           </span>
-                          {h.until && <span className="text-gray-500">〜{h.until}</span>}
+                          {h.until && <span className="text-gray-500">{t('auto.SettingsPage.until_prefix', { until: h.until })}</span>}
                           {h.note && <span className="text-gray-500 italic">{h.note}</span>}
                         </div>
                       ))}
@@ -2830,7 +2829,7 @@ export function SettingsPage() {
                   onChange={(e) => setPlayerForm({ ...playerForm, is_target: e.target.checked })}
                   className="w-4 h-4"
                 />
-                <span className={`text-sm ${textSecondary}`}>{t('player.is_target')}（解析メイン対象）</span>
+                <span className={`text-sm ${textSecondary}`}>{t('player.is_target')}{t('auto.SettingsPage.is_target_suffix')}</span>
               </label>
               <div>
                 <label className={`block text-sm ${textSecondary} mb-1`}>{t('player.notes')}</label>
@@ -2924,7 +2923,7 @@ function BackendConsole({
         </button>
       </div>
       <p className={`text-xs ${textMuted} mb-2`}>
-        Pythonバックエンドのログ（YOLO検出エラーや推論スコアを確認できます）
+        {t('auto.SettingsPage.backend_log_desc')}
       </p>
       {open && (
         <textarea
@@ -2946,7 +2945,7 @@ function BackendConsole({
           >
             {t('settings.ui.clear')}
           </button>
-          <span className={`text-[10px] ${textMuted}`}>{lines.length} 行 — Ctrl+A → Ctrl+C でコピー可</span>
+          <span className={`text-[10px] ${textMuted}`}>{t('auto.SettingsPage.log_lines_hint', { n: lines.length })}</span>
         </div>
       )}
     </section>
@@ -2964,7 +2963,7 @@ function TutorialReplaySection({ card }: { card: string }) {
         <h2 className="text-base font-semibold">{t('auto.SettingsPage.k42')}</h2>
       </div>
       <p className="text-xs text-gray-400">
-        操作方法を再生できます。完了済みの項目もいつでも再生可能です。
+        {t('auto.SettingsPage.tutorial_desc')}
       </p>
       {loading ? (
         <div className="text-xs text-gray-500">{t('auto.SettingsPage.k43')}</div>
@@ -2980,9 +2979,9 @@ function TutorialReplaySection({ card }: { card: string }) {
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{tut.title}</div>
                   <div className="text-xs text-gray-400">
-                    {tut.steps.length} ステップ
+                    {t('auto.SettingsPage.step_count', { n: tut.steps.length })}
                     {rec && (
-                      <> {t('auto.SettingsPage.k44')} <span className="text-gray-200">{rec.status}</span> · replay 回数: {rec.replay_count}</>
+                      <> {t('auto.SettingsPage.k44')} <span className="text-gray-200">{rec.status}</span>{t('auto.SettingsPage.replay_count', { n: rec.replay_count })}</>
                     )}
                   </div>
                 </div>
