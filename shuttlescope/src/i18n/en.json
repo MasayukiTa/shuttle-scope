@@ -2635,7 +2635,15 @@
       "k7": "Entropy:",
       "k8": "High entropy = diverse shot selection (hard to predict). Low entropy = concentrated on specific shots (predictable).",
       "k9": "Predictable ▶ easier to narrow return patterns. Unpredictable ▶ watch for varied placement.",
-      "k10": "Refresh"
+      "k10": "Refresh",
+      "last_fetched": "Last fetched: {{ts}}",
+      "empty_hint": "Policy analysis appears as annotations accumulate",
+      "current_n": "(currently N={{n}})",
+      "n_strokes_filtered": "N={{n}} strokes (after filtering)",
+      "context_policy_top": "Policy by context (top {{n}})",
+      "context_label": "{{phase}} / {{bucket}} rallies{{zone}}",
+      "n_only": "N={{n}}",
+      "detail_hint": "Details: also check OpponentStats, ShotWinLoss and PredictionPanel."
     },
     "PairCombinedView": {
       "k1": "Pair win rate",

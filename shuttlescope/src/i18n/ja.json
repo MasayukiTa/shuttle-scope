@@ -2910,7 +2910,15 @@
       "k7": "エントロピー:",
       "k8": "エントロピー高 = ショット選択が多様（予測困難）。エントロピー低 = 特定ショットに集中（予測可能）。",
       "k9": "予測可能 ▶ 返球パターンを絞りやすい。予測困難 ▶ 配球の多様性に注意。",
-      "k10": "再取得"
+      "k10": "再取得",
+      "last_fetched": "最終取得: {{ts}}",
+      "empty_hint": "アノテーションが増えるとポリシー分析が表示されます",
+      "current_n": "（現在 N={{n}}）",
+      "n_strokes_filtered": "N={{n}} ストローク（フィルター適用後）",
+      "context_policy_top": "コンテキスト別ポリシー（上位{{n}}件）",
+      "context_label": "{{phase}} / {{bucket}}ラリー{{zone}}",
+      "n_only": "N={{n}}",
+      "detail_hint": "詳細分析: OpponentStats・ShotWinLoss・PredictionPanel も併せて確認してください。"
     },
     "PairCombinedView": {
       "k1": "ペア勝率",
