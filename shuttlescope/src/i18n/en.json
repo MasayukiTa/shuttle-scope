@@ -2542,7 +2542,19 @@
     },
     "CounterfactualV2Card": {
       "k1": "Counterfactual shot comparison",
-      "k2": "CF-3 Per opponent"
+      "k2": "CF-3 Per opponent",
+      "computing": "Computing ({{label}} estimation)...",
+      "insufficient": "Not enough data (each context needs at least 10 samples)",
+      "usable_contexts": "Usable contexts: {{n}} (top by lift)",
+      "lift": "({{v}} lift)",
+      "n_only": "N={{n}}",
+      "context_label": "{{phase}} / {{bucket}} rallies{{prev}}",
+      "actual_wr": "Actual win rate: {{wr}}",
+      "ci_range": "[CI: {{lo}}–{{hi}}]",
+      "alt_line": "Alt {{shot}}: {{wr}} [CI: {{lo}}–{{hi}}]",
+      "ipw": "IPW: {{v}}",
+      "n_eff": "N_eff={{v}}",
+      "ci_overlap": "(large CI overlap, uncertain)"
     },
     "DoublesRoleCard": {
       "k1": "Doubles role estimation (DB-1/2)",
