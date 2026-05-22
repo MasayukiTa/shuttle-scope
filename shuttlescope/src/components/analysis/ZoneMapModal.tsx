@@ -172,7 +172,7 @@ export function ZoneMapModal({
       return (
         <>
           <p className="font-bold text-sm" style={{ color: WIN }}>{(d.win_rate * 100).toFixed(0)}%</p>
-          <p className="text-[10px]" style={{ color: isLight ? '#475569' : '#9ca3af' }}>{d.win_count}得点</p>
+          <p className="text-[10px]" style={{ color: isLight ? '#475569' : '#9ca3af' }}>{t('auto.ZoneMapModal.n_points', { n: d.win_count })}</p>
         </>
       )
     } else {
@@ -181,7 +181,7 @@ export function ZoneMapModal({
       return (
         <>
           <p className="font-bold text-sm" style={{ color: LOSS }}>{(d.loss_rate * 100).toFixed(0)}%</p>
-          <p className="text-[10px]" style={{ color: isLight ? '#475569' : '#9ca3af' }}>{d.loss_count}失点</p>
+          <p className="text-[10px]" style={{ color: isLight ? '#475569' : '#9ca3af' }}>{t('auto.ZoneMapModal.n_losses', { n: d.loss_count })}</p>
         </>
       )
     }
@@ -193,7 +193,7 @@ export function ZoneMapModal({
       <div className={`flex items-center justify-between px-6 py-3 border-b shrink-0 ${isLight ? 'bg-white border-gray-200' : 'bg-gray-900 border-gray-700'}`}>
         <div>
           <span className={`font-semibold text-base ${textHeading}`}>{title}</span>
-          <span className={`ml-3 text-xs ${textMuted}`}>N={sampleSize}</span>
+          <span className={`ml-3 text-xs ${textMuted}`}>{t('auto.ZoneMapModal.n_only', { n: sampleSize })}</span>
         </div>
         <button
           onClick={onClose}
@@ -254,7 +254,7 @@ export function ZoneMapModal({
             {selectedZone == null ? (
               <div className={`flex items-center justify-center h-full min-h-[200px] rounded-lg ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
                 <p className={`text-sm text-center ${textMuted}`}>
-                  左のゾーンをクリックすると<br />詳細が表示されます
+                  {t('auto.ZoneMapModal.click_zone_hint')}
                 </p>
               </div>
             ) : loadingDetail ? (

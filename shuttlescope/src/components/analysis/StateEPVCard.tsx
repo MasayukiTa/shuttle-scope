@@ -96,7 +96,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
                   <span className={`text-[10px] ${textFaint}`}>
                     [{pct(row.ci_low)}–{pct(row.ci_high)}]
                   </span>
-                  <span className={`text-[10px] ${textFaint} ml-auto`}>N={row.n}</span>
+                  <span className={`text-[10px] ${textFaint} ml-auto`}>{t('auto.StateEPVCard.n_only', { n: row.n })}</span>
                 </div>
                 {/* 推奨ショット */}
                 {row.top_epv_shots.length > 0 && (
@@ -104,7 +104,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
                     {row.top_epv_shots.slice(0, 2).map((s) => (
                       <span key={s.shot_type}
                         className={`text-[10px] px-2 py-0.5 rounded ${s.epv > 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-orange-500/15 text-orange-400'}`}>
-                        {s.shot_type} ({s.epv > 0 ? '+' : ''}{(s.epv * 100).toFixed(1)}pp)
+                        {t('auto.StateEPVCard.shot_pp', { shot: s.shot_type, v: `${s.epv > 0 ? '+' : ''}${(s.epv * 100).toFixed(1)}` })}
                       </span>
                     ))}
                   </div>
@@ -123,7 +123,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
                   <th className="text-left py-1.5 pr-3">{t('auto.StateEPVCard.k6')}</th>
                   <th className="text-right py-1.5 pr-3">N</th>
                   <th className="text-right py-1.5 pr-3">{t('auto.StateEPVCard.k7')}</th>
-                  <th className="text-right py-1.5 pr-3">CI</th>
+                  <th className="text-right py-1.5 pr-3">{t('auto.StateEPVCard.ci_header')}</th>
                   <th className="text-left py-1.5">{t('auto.StateEPVCard.k8')}</th>
                 </tr>
               </thead>
@@ -143,7 +143,7 @@ export function StateEPVCard({ playerId, filters }: Props) {
                     <td className={`py-1.5 ${textMuted}`}>
                       {row.top_epv_shots.slice(0, 2).map((s) => (
                         <span key={s.shot_type} className={`mr-1 text-[10px] ${s.epv > 0 ? 'text-emerald-500' : 'text-orange-500'}`}>
-                          {s.shot_type}({s.epv > 0 ? '+' : ''}{(s.epv * 100).toFixed(1)}pp)
+                          {t('auto.StateEPVCard.shot_pp_compact', { shot: s.shot_type, v: `${s.epv > 0 ? '+' : ''}${(s.epv * 100).toFixed(1)}` })}
                         </span>
                       ))}
                     </td>
