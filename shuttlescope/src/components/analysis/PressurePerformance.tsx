@@ -67,7 +67,7 @@ function SegmentCard({
         />
       </div>
       <p className="text-xs text-gray-500">
-        ラリー数: <span className="text-gray-300">{segment.rally_count}</span>
+        {t('auto.PressurePerformance.rally_count_label')} <span className="text-gray-300">{segment.rally_count}</span>
       </p>
     </div>
   )
@@ -104,7 +104,7 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
   if (!resp?.data || sampleSize === 0) {
     return (
       <div className="text-gray-500 text-sm py-4 text-center">
-        データ不足（アノテーション後に解析可能）
+        {t('auto.PressurePerformance.insufficient')}
       </div>
     )
   }
@@ -141,10 +141,10 @@ export function PressurePerformance({ playerId, filters = DEFAULT_FILTERS }: Pre
       <div className="flex gap-3 text-xs">
         <div className="flex-1" />
         <div className="flex-1 flex items-center justify-center gap-1 text-gray-400">
-          通常比 <DeltaBadge base={normal.win_rate} target={endgame.win_rate} />
+          {t('auto.PressurePerformance.vs_normal')} <DeltaBadge base={normal.win_rate} target={endgame.win_rate} />
         </div>
         <div className="flex-1 flex items-center justify-center gap-1 text-gray-400">
-          通常比 <DeltaBadge base={normal.win_rate} target={deuce.win_rate} />
+          {t('auto.PressurePerformance.vs_normal')} <DeltaBadge base={normal.win_rate} target={deuce.win_rate} />
         </div>
       </div>
     </div>

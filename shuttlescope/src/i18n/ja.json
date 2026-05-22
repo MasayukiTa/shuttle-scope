@@ -2792,6 +2792,12 @@
       "calibration_line": "v1勝率 {{v1}}% → キャリブレーション済み {{v2}}%"
     },
     "BayesMatchupCard": {
+      "total_matches": "総試合数: {{n}}",
+      "global_wr": "全体勝率: {{v}}",
+      "n_only": "N={{n}}",
+      "ci_range": "CI {{lo}}–{{hi}}",
+      "ci_header": "CI [95%]",
+      "posterior_note": "事後勝率 = 事前分布への収縮補正後。CI幅が広い行はサンプル不足で信頼性が低いです。",
       "k1": "ベイズ対戦予測（相手別勝率）",
       "k2": "計算中...",
       "k3": "対戦データが不足しています",
@@ -2996,7 +3002,10 @@
       "k2": "再計算"
     },
     "PressurePerformance": {
-      "k1": "読み込み中..."
+      "k1": "読み込み中...",
+      "rally_count_label": "ラリー数:",
+      "insufficient": "データ不足（アノテーション後に解析可能）",
+      "vs_normal": "通常比"
     },
     "PromotionStatusCard": {
       "k1": "アナリスト判断 Override",
@@ -3096,7 +3105,12 @@
       "legend_turning": "流れの変化点"
     },
     "SetComparison": {
-      "k1": "読み込み中..."
+      "k1": "読み込み中...",
+      "win_rate": "勝率: {{v}}%",
+      "avg_rally": "平均ラリー長: {{v}}",
+      "insufficient": "データ不足（アノテーション後に解析可能）",
+      "avg_strokes": "平均 {{v}} 打",
+      "n_rallies": "{{n}} ラリー"
     },
     "SetIntervalSummary": {
       "k1": "ラリー数",

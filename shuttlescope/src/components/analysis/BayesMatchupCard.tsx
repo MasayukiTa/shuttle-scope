@@ -101,8 +101,8 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
       ) : (
         <div className="space-y-1">
           <div className={`flex items-center justify-between text-[10px] ${textMuted} pb-1`}>
-            <span>総試合数: {matchupData?.total_matches ?? 0}</span>
-            <span>全体勝率: {pct(matchupData?.global_win_rate ?? 0)}</span>
+            <span>{t('auto.BayesMatchupCard.total_matches', { n: matchupData?.total_matches ?? 0 })}</span>
+            <span>{t('auto.BayesMatchupCard.global_wr', { v: pct(matchupData?.global_win_rate ?? 0) })}</span>
           </div>
           {/* モバイル: カードリスト (md 未満)。情報量を維持しつつ縦並び */}
           <ul className="md:hidden space-y-1.5">
@@ -122,9 +122,9 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
                   </span>
                 </div>
                 <div className={`grid grid-cols-3 gap-1 mt-1 text-[10px] ${textFaint} num-cell`}>
-                  <span>N={est.n_matches}</span>
+                  <span>{t('auto.BayesMatchupCard.n_only', { n: est.n_matches })}</span>
                   <span>{t('auto.BayesMatchupCard.k5')} {pct(est.raw_win_rate)}</span>
-                  <span className="text-right">CI {pct(est.credible_interval[0])}–{pct(est.credible_interval[1])}</span>
+                  <span className="text-right">{t('auto.BayesMatchupCard.ci_range', { lo: pct(est.credible_interval[0]), hi: pct(est.credible_interval[1]) })}</span>
                 </div>
               </li>
             ))}
@@ -139,7 +139,7 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
                   <th className="text-right py-1.5 pr-2">N</th>
                   <th className="text-right py-1.5 pr-2">{t('auto.BayesMatchupCard.k5')}</th>
                   <th className="text-right py-1.5 pr-2">{t('auto.BayesMatchupCard.k6')}</th>
-                  <th className="text-right py-1.5">CI [95%]</th>
+                  <th className="text-right py-1.5">{t('auto.BayesMatchupCard.ci_header')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -169,7 +169,7 @@ export function BayesMatchupCard({ playerId, filters }: Props) {
             </table>
           </div>
           <p className={`text-[10px] ${textFaint} pt-1`}>
-            事後勝率 = 事前分布への収縮補正後。CI幅が広い行はサンプル不足で信頼性が低いです。
+            {t('auto.BayesMatchupCard.posterior_note')}
           </p>
         </div>
       )}

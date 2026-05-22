@@ -2521,6 +2521,12 @@
       "calibration_line": "v1 win rate {{v1}}% → calibrated {{v2}}%"
     },
     "BayesMatchupCard": {
+      "total_matches": "Total matches: {{n}}",
+      "global_wr": "Overall win rate: {{v}}",
+      "n_only": "N={{n}}",
+      "ci_range": "CI {{lo}}–{{hi}}",
+      "ci_header": "CI [95%]",
+      "posterior_note": "Posterior win rate = after shrinkage toward the prior. Rows with wide CI have low sample size and reliability.",
       "k1": "Bayesian matchup prediction (per-opponent win rate)",
       "k2": "Computing...",
       "k3": "Not enough matchup data",
@@ -2721,7 +2727,10 @@
       "k2": "Recompute"
     },
     "PressurePerformance": {
-      "k1": "Loading..."
+      "k1": "Loading...",
+      "rally_count_label": "Rallies:",
+      "insufficient": "Insufficient data (available after annotation)",
+      "vs_normal": "vs normal"
     },
     "PromotionStatusCard": {
       "k1": "Analyst override",
@@ -2821,7 +2830,12 @@
       "legend_turning": "Momentum shift"
     },
     "SetComparison": {
-      "k1": "Loading..."
+      "k1": "Loading...",
+      "win_rate": "Win rate: {{v}}%",
+      "avg_rally": "Avg rally length: {{v}}",
+      "insufficient": "Insufficient data (available after annotation)",
+      "avg_strokes": "Avg {{v}} strokes",
+      "n_rallies": "{{n}} rallies"
     },
     "SetIntervalSummary": {
       "k1": "Rallies",
