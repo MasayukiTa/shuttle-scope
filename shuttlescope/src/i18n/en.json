@@ -2621,6 +2621,13 @@
       "endgame": "Endgame: {{loss}} losses of {{total}}"
     },
     "HumanForecastPanel": {
+      "w_label": " (W)",
+      "l_label": " (L)",
+      "evaluator": "{{label}} ({{n}} matches)",
+      "match_compare": "Per-match comparison (last {{n}})",
+      "actual_label": "Act:",
+      "human_label": "Human:",
+      "model_label": "Model:",
       "k1": "Set path (optional)",
       "k2": "Save failed",
       "k3": "Role",

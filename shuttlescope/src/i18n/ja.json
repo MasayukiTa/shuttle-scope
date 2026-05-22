@@ -2896,6 +2896,13 @@
       "endgame": "終盤局面: {{total}}件中 {{loss}}失点"
     },
     "HumanForecastPanel": {
+      "w_label": " (W)",
+      "l_label": " (L)",
+      "evaluator": "{{label}}（{{n}}試合）",
+      "match_compare": "試合別比較（直近{{n}}件）",
+      "actual_label": "実:",
+      "human_label": "人:",
+      "model_label": "機:",
       "k1": "セットパス（任意）",
       "k2": "保存に失敗しました",
       "k3": "ロール",
