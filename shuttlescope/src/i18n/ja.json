@@ -3012,7 +3012,17 @@
       "k4": "クリックでラリー詳細",
       "k5": "閉じる",
       "k6": "前のラリー",
-      "k7": "次のラリー"
+      "k7": "次のラリー",
+      "rally_n": "ラリー {{n}}",
+      "score_a": "A: {{n}}",
+      "score_b": "B: {{n}}",
+      "point_diff": "点差: {{v}}",
+      "set_rally": "Set {{set}} Rally {{rally}}",
+      "server_serve": "{{label}} サーブ",
+      "rally_strokes": "{{n}} 打",
+      "winner_point": "{{label}} 得点",
+      "legend_lead": "A側リード ↑ / B側リード ↓",
+      "legend_turning": "流れの変化点"
     },
     "SetComparison": {
       "k1": "読み込み中..."

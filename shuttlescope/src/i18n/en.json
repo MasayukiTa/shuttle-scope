@@ -2736,7 +2736,17 @@
       "k4": "Click for rally details",
       "k5": "Close",
       "k6": "Previous rally",
-      "k7": "Next rally"
+      "k7": "Next rally",
+      "rally_n": "Rally {{n}}",
+      "score_a": "A: {{n}}",
+      "score_b": "B: {{n}}",
+      "point_diff": "Diff: {{v}}",
+      "set_rally": "Set {{set}} Rally {{rally}}",
+      "server_serve": "{{label}} serve",
+      "rally_strokes": "{{n}} strokes",
+      "winner_point": "{{label}} point",
+      "legend_lead": "A lead ↑ / B lead ↓",
+      "legend_turning": "Momentum shift"
     },
     "SetComparison": {
       "k1": "Loading..."
