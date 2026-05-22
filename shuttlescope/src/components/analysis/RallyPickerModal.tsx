@@ -53,8 +53,8 @@ function CustomTooltip({ active, payload }: any) {
   const hintColor = isLight ? '#2563eb' : '#93c5fd'
   return (
     <div style={{ backgroundColor: bg, border: `1px solid ${border}`, borderRadius: 6, color, fontSize: 12, padding: '6px 10px' }}>
-      <p className="font-semibold mb-0.5">ラリー {d.rally_num}</p>
-      <p style={{ color: WIN }}>A: {d.score_a} &nbsp; <span style={{ color: LOSS }}>B: {d.score_b}</span></p>
+      <p className="font-semibold mb-0.5">{t('auto.RallyPickerModal.rally_n', { n: d.rally_num })}</p>
+      <p style={{ color: WIN }}>{t('auto.RallyPickerModal.score_a', { n: d.score_a })} &nbsp; <span style={{ color: LOSS }}>{t('auto.RallyPickerModal.score_b', { n: d.score_b })}</span></p>
       <p className="text-[10px] mt-0.5" style={{ color: hintColor }}>{t('auto.RallyPickerModal.k1')}</p>
     </div>
   )
@@ -92,7 +92,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
         >
           <div>
             <p className="text-sm font-semibold" style={{ color: isLight ? '#1e293b' : '#f1f5f9' }}>
-              ラリー地点を選択
+              {t('auto.RallyPickerModal.select_point')}
             </p>
             <p className="text-xs mt-0.5" style={{ color: isLight ? '#64748b' : '#94a3b8' }}>
               {matchLabel}
@@ -117,7 +117,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
                       : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                   }`}
                 >
-                  Set {s.set_num}
+                  {t('auto.RallyPickerModal.set_n', { n: s.set_num })}
                 </button>
               ))}
             </div>
@@ -131,7 +131,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
           ) : (
             <>
               <p className="text-xs" style={{ color: isLight ? '#64748b' : '#94a3b8' }}>
-                グラフの点をクリックして地点を選択してください
+                {t('auto.RallyPickerModal.click_hint')}
               </p>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart
@@ -187,7 +187,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
               onClick={() => { onClear(); onClose() }}
               className="text-xs px-3 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
             >
-              全ラリーで解析
+              {t('auto.RallyPickerModal.analyze_all')}
             </button>
           </div>
         </div>

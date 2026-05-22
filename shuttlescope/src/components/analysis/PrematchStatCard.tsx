@@ -73,7 +73,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
   if (isLoading) {
     return (
       <div className="text-xs text-center py-4" style={{ color: subText }}>
-        試合前統計を計算中...
+        {t('auto.PrematchStatCard.computing')}
       </div>
     )
   }
@@ -93,13 +93,13 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
       >
         <Database size={11} style={{ color: '#3b82f6', flexShrink: 0 }} />
         <span className="flex-1" style={{ color: isLight ? '#1d4ed8' : '#93c5fd' }}>
-          統計予測 — {d.cutoff_date} 以前のデータ使用
+          {t('auto.PrematchStatCard.stat_pred', { date: d.cutoff_date })}
           {d.h2h_count > 0
-            ? `（対戦実績 ${d.h2h_count}試合）`
-            : '（対戦実績なし）'}
+            ? t('auto.PrematchStatCard.h2h_count', { n: d.h2h_count })
+            : t('auto.PrematchStatCard.h2h_none')}
           {resp?.cached && d.computed_at && (
             <span className="ml-2 opacity-60">
-              算出: {d.computed_at.slice(0, 10)}
+              {t('auto.PrematchStatCard.computed_at', { date: d.computed_at.slice(0, 10) })}
             </span>
           )}
         </span>
@@ -119,7 +119,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
           className="px-4 py-3 rounded text-xs text-center"
           style={{ background: cardBg, border: `1px solid ${cardBorder}`, color: subText }}
         >
-          この試合より前のデータがありません（統計予測不可）
+          {t('auto.PrematchStatCard.no_prior_data')}
         </div>
       )}
 
@@ -159,7 +159,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
                   {d.confidence_meta.stars}
                 </span>
               )}
-              <span>{d.sample_size}試合のデータ</span>
+              <span>{t('auto.PrematchStatCard.n_matches_data', { n: d.sample_size })}</span>
               {d.confidence_meta && (
                 <span>{d.confidence_meta.label}</span>
               )}
@@ -170,7 +170,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
           {d.most_likely_scorelines.length > 0 && (
             <div className="border-t pt-2" style={{ borderColor: cardBorder }}>
               <p className="text-[10px] font-semibold mb-1.5" style={{ color: subText }}>
-                最有力展開
+                {t('auto.PrematchStatCard.top_script')}
               </p>
               <div className="space-y-1">
                 {d.most_likely_scorelines.slice(0, 3).map((sl, i) => (
