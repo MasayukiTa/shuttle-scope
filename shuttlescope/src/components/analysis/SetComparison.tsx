@@ -51,8 +51,8 @@ function CustomTooltip({ active, payload, label }: any) {
   return (
     <div style={getTooltipStyle(isLight)} className="px-3 py-2">
       <p className="font-semibold mb-1" style={{ color: headingColor }}>{label}</p>
-      <p style={{ color: WIN }}>勝率: {typeof winRate === 'number' ? winRate.toFixed(1) : winRate}%</p>
-      <p style={{ color: subColor }}>平均ラリー長: {typeof avgRally === 'number' ? avgRally.toFixed(1) : avgRally}</p>
+      <p style={{ color: WIN }}>{t('auto.SetComparison.win_rate', { v: typeof winRate === 'number' ? winRate.toFixed(1) : winRate })}</p>
+      <p style={{ color: subColor }}>{t('auto.SetComparison.avg_rally', { v: typeof avgRally === 'number' ? avgRally.toFixed(1) : avgRally })}</p>
     </div>
   )
 }
@@ -95,7 +95,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
   if (sets.length === 0 || sampleSize === 0) {
     return (
       <div className="text-gray-500 text-sm py-4 text-center">
-        データ不足（アノテーション後に解析可能）
+        {t('auto.SetComparison.insufficient')}
       </div>
     )
   }
@@ -151,10 +151,10 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
               {(s.win_rate * 100).toFixed(1)}%
             </p>
             <p className="text-xs text-gray-500 mt-0.5">
-              平均 {s.avg_rally_length.toFixed(1)} 打
+              {t('auto.SetComparison.avg_strokes', { v: s.avg_rally_length.toFixed(1) })}
             </p>
             <p className="text-xs text-gray-600">
-              {s.total_rallies} ラリー
+              {t('auto.SetComparison.n_rallies', { n: s.total_rallies })}
             </p>
           </div>
         ))}
