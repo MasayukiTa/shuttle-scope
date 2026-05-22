@@ -3377,6 +3377,13 @@
       "k2": "待機"
     },
     "CourtGridOverlay": {
+      "click_point": "点{{n}}/{{total}}：{{label}} をクリック",
+      "recreate_grid": "グリッド線再作成",
+      "db_saved": "✓ DB保存済",
+      "local_only_sync": "⚠ ローカルのみ → 同期",
+      "db_saving": "💾 DBへ保存中...",
+      "db_save_done": "✓ DB保存完了",
+      "cancel": "キャンセル",
       "k1": "コートグリッドを設定",
       "k2": "4コーナーとネット支柱2点をクリックして設定",
       "k3": "ローカルのみ保存（バックエンド未保存）。クリックしてDBに同期"

@@ -364,7 +364,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
             stroke="#000" strokeWidth={3} paintOrder="stroke"
             style={{ pointerEvents: 'none', userSelect: 'none' }}
           >
-            点{nextPointIdx + 1}/{TOTAL_POINTS}：{POINT_LABELS[nextPointIdx]} をクリック
+            {t('auto.CourtGridOverlay.click_point', { n: nextPointIdx + 1, total: TOTAL_POINTS, label: POINT_LABELS[nextPointIdx] })}
           </text>
         )}
       </svg>
@@ -377,7 +377,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
             className="flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5 hover:bg-black/70 transition-colors"
             style={{ color: '#ffffff', fontSize: 9, fontWeight: 500, lineHeight: 1.4 }}
           >
-            グリッド線再作成
+            {t('auto.CourtGridOverlay.recreate_grid')}
           </button>
           {/* キャリブレーション保存状態インジケーター */}
           {calibSource === 'backend' && (
@@ -385,7 +385,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
               className="flex items-center gap-0.5 bg-green-900/70 rounded px-1 py-0.5"
               style={{ color: '#86efac', fontSize: 8, lineHeight: 1.4, pointerEvents: 'none' }}
             >
-              ✓ DB保存済
+              {t('auto.CourtGridOverlay.db_saved')}
             </span>
           )}
           {calibSource === 'local' && (
@@ -395,7 +395,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
               style={{ color: '#fde68a', fontSize: 8, lineHeight: 1.4 }}
               title={t('auto.CourtGridOverlay.k3')}
             >
-              ⚠ ローカルのみ → 同期
+              {t('auto.CourtGridOverlay.local_only_sync')}
             </button>
           )}
         </div>
@@ -407,7 +407,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded text-xs bg-blue-900/90 border border-blue-500 text-blue-100"
           style={{ pointerEvents: 'none', zIndex: 30 }}
         >
-          💾 DBへ保存中...
+          {t('auto.CourtGridOverlay.db_saving')}
         </div>
       )}
 
@@ -417,7 +417,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded text-xs bg-gray-900/90 border border-gray-600 text-gray-200"
           style={{ pointerEvents: 'none', zIndex: 30 }}
         >
-          ✓ DB保存完了
+          {t('auto.CourtGridOverlay.db_save_done')}
         </div>
       )}
 
@@ -474,7 +474,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           style={{ color: '#ffffff' }}
         >
           <span style={{ color: '#ffffff', fontSize: 12, lineHeight: 1 }}>✕</span>
-          キャンセル
+          {t('auto.CourtGridOverlay.cancel')}
         </button>
       </div>
     )}
