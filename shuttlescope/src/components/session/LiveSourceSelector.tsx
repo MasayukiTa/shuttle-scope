@@ -56,7 +56,7 @@ function StatusBadge({ status }: { status: string }) {
     return (
       <span className="flex items-center gap-0.5 text-[9px] text-red-400 font-medium">
         <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-        アクティブ
+        {t('auto.LiveSourceSelector.active')}
       </span>
     )
   }

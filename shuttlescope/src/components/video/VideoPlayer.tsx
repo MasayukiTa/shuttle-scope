@@ -189,7 +189,7 @@ export function VideoPlayer({
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               )}
             >
-              {rate}x
+              {t('auto.VideoPlayer.speed', { rate })}
             </button>
           ))}
         </div>
