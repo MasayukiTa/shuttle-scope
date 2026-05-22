@@ -76,6 +76,7 @@ export function Pass1RallyEnd({
   onSetEnded,
   cvHint,
 }: Props) {
+  const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   // テレメトリ: pass 開始時刻と直前入力時刻
   const passStartRef = useRef<number>(performance.now())
@@ -173,10 +174,10 @@ export function Pass1RallyEnd({
       {/* ヘッダ: セット番号 + score */}
       <div className="bg-black/90 px-3 py-2 flex items-center gap-3 border-b border-gray-800 text-xs">
         <div className="text-yellow-200 font-bold">
-          Pass 1 — 得点が入った瞬間に A / B
+          {t('auto.Pass1RallyEnd.pass1_header')}
         </div>
         <div className="flex-1" />
-        <div className="text-gray-300">Set {currentSet.set_num}</div>
+        <div className="text-gray-300">{t('auto.Pass1RallyEnd.set_n', { n: currentSet.set_num })}</div>
         <div className="font-mono text-lg text-white">
           <span className="text-blue-400">{scoreA}</span>
           <span className="mx-1 text-gray-500">-</span>
@@ -190,19 +191,19 @@ export function Pass1RallyEnd({
       {/* ルール状態バナー (deuce / golden / setPoint / setEnding) */}
       {setEndingSoon ? (
         <div className="bg-amber-900/60 border-b border-amber-600/60 text-amber-100 text-xs px-3 py-1.5 text-center">
-          このセットは終了条件 (21+2 / 30) を満たしました。下の「セット終了」を押してください。
+          {t('auto.Pass1RallyEnd.set_ending')}
         </div>
       ) : goldenFlag ? (
         <div className="bg-red-900/60 border-b border-red-600/60 text-red-100 text-xs px-3 py-1.5 text-center font-bold">
-          29-29 ゴールデンポイント — 次の 1 点で勝敗確定
+          {t('auto.Pass1RallyEnd.golden')}
         </div>
       ) : deuceFlag ? (
         <div className="bg-purple-900/50 border-b border-purple-600/50 text-purple-100 text-xs px-3 py-1.5 text-center">
-          デュース ({scoreA}-{scoreB}) — 2 点差で勝ち / 30 点先取
+          {t('auto.Pass1RallyEnd.deuce', { a: scoreA, b: scoreB })}
         </div>
       ) : setPoint ? (
         <div className="bg-blue-900/50 border-b border-blue-600/50 text-blue-100 text-xs px-3 py-1.5 text-center">
-          {setPoint === 'A' ? 'A' : 'B'} のセットポイント
+          {t('auto.Pass1RallyEnd.set_point', { side: setPoint === 'A' ? 'A' : 'B' })}
         </div>
       ) : null}
 
@@ -259,7 +260,7 @@ export function Pass1RallyEnd({
           className="px-3 py-2 rounded bg-gray-800 text-white disabled:opacity-30 flex items-center gap-1"
           title={t('auto.Pass1RallyEnd.k3')}
         >
-          <MIcon name="undo" size={14} /> 直前取消
+          <MIcon name="undo" size={14} /> {t('auto.Pass1RallyEnd.undo_last')}
         </button>
         <button
           type="button"
@@ -267,7 +268,7 @@ export function Pass1RallyEnd({
           disabled={!onSetEnded || !setEndingSoon}
           className="px-3 py-2 rounded bg-amber-700 text-white disabled:opacity-30"
         >
-          セット終了
+          {t('auto.Pass1RallyEnd.set_end')}
         </button>
         <div className="flex-1" />
         <button
@@ -277,7 +278,7 @@ export function Pass1RallyEnd({
         >
           <span className="inline-flex items-center gap-1">
             <MIcon name="arrow_back" size={14} />
-            動画に戻る
+            {t('auto.Pass1RallyEnd.back_to_video')}
           </span>
         </button>
       </div>
