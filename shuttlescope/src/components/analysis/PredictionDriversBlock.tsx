@@ -72,7 +72,7 @@ export function PredictionDriversBlock({
             </span>
             <span style={{ color: d.weight === 'primary' ? neutral : subText }}>{d.label}</span>
             <span className="font-mono" style={{ color: subText }}>
-              {d.type === 'observation' ? `${d.count}項目` : `${d.count}試合`}
+              {d.type === 'observation' ? `${d.count}項目` : `${t('auto._shared.n_matches', { n: d.count })}`}
             </span>
           </div>
         ))}

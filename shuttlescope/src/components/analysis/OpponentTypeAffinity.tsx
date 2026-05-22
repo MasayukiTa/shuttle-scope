@@ -113,7 +113,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
                     {(wr * 100).toFixed(0)}%
                   </span>
                   <span className="text-xs ml-1.5" style={{ color: labelColor }}>
-                    {entry.wins}勝{entry.match_count - entry.wins}敗
+                    {t('auto._shared.n_wins_losses', { w: entry.wins, l: entry.match_count - entry.wins })}
                   </span>
                 </div>
               </div>

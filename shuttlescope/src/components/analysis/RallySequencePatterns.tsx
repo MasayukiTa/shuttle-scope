@@ -67,7 +67,7 @@ function SequenceList({ sequences, accent, title }: { sequences: SequenceEntry[]
             <div key={i} className="space-y-1">
               <SequencePill labels={s.labels} winRate={s.win_rate} />
               <div className="flex gap-3 text-xs text-gray-400 pl-1">
-                <span>{s.count}回</span>
+                <span>{t('auto._shared.n_times', { n: s.count })}</span>
                 <span className="font-mono">{Math.round(s.win_rate * 100)}%</span>
               </div>
             </div>

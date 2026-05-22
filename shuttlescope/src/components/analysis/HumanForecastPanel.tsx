@@ -249,7 +249,7 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
                 {d.summary.map((s, i) => (
                   <tr key={i} className="border-t border-gray-700">
                     <td className="py-1 pr-3" style={{ color: neutral }}>
-                      <span className="cell-name-clip" title={`${s.role === 'coach' ? 'コーチ' : 'アナリスト'} (${s.n}試合)`}>
+                      <span className="cell-name-clip" title={`${s.role === 'coach' ? 'コーチ' : 'アナリスト'} (${t('auto._shared.n_matches', { n: s.n })})`}>
                         {t('auto.HumanForecastPanel.evaluator', { label: s.role === 'coach' ? t('roles.coach') : t('roles.analyst'), n: s.n })}
                       </span>
                     </td>

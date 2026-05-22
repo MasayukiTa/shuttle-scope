@@ -222,7 +222,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
         <div className="flex items-center gap-3 flex-wrap">
           {meta && <ConfidenceBadge sampleSize={d.sample_size} />}
           <span className="text-xs" style={{ color: subText }}>
-            {t('prediction.sample_size')}: {d.sample_size}試合
+            {t('prediction.sample_size')}: {t('auto._shared.n_matches', { n: d.sample_size })}
           </span>
           {d.similar_matches > 0 && (
             <span className="text-xs" style={{ color: subText }}>
@@ -513,7 +513,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                     ? t('prediction.data_source_h2h')
                     : t('prediction.data_source_all')}
                   {' — '}
-                  {d.sample_size}試合から算出（統計ベース）
+                  {t('auto._shared.n_matches', { n: d.sample_size })}から算出（統計ベース）
                 </p>
                 {meta?.confidence.warning && (
                   <p className="text-[11px] mt-1" style={{ color: subText }}>

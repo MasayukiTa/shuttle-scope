@@ -266,7 +266,7 @@ export function GrowthTimeline({
               if (name === 'valueB') return [`${v}${cfg.unit}`, labelB]
               if (name === 'movingAvgB') return [`${v}${cfg.unit}`, `${labelB} 移動平均`]
               if (name === 'value') return [`${v}${cfg.unit}`, cfg.label]
-              return [`${v}${cfg.unit}`, `移動平均(${windowSize}試合)`]
+              return [`${v}${cfg.unit}`, `移動平均(${t('auto._shared.n_matches', { n: windowSize })})`]
             }}
           />
           {yearBoundaryNames.map((name) => (

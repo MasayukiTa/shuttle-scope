@@ -90,12 +90,12 @@ export function GrowthJudgmentCard({ playerId, minMatches = 5 }: GrowthJudgmentC
         </div>
         <div className="ml-auto text-right">
           <p className="text-xs" style={{ color: mutedColor }}>
-            {data.annotated_match_count ?? data.match_count}試合分析済
+            {t('auto._shared.n_matches', { n: data.annotated_match_count ?? data.match_count })}分析済
           </p>
           {data.judgment === 'pending' && (
             <p className="text-[10px]" style={{ color: mutedColor }}>
               {(data.annotated_match_count ?? 0) < data.min_matches_required
-                ? `判定に${data.min_matches_required}試合以上のアノテーションが必要`
+                ? `判定に${t('auto._shared.n_matches', { n: data.min_matches_required })}以上のアノテーションが必要`
                 : 'データ蓄積中（傾向算出に時間が必要）'}
             </p>
           )}
