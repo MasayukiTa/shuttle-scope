@@ -133,7 +133,7 @@ export function ConditionGlossary({ open, onClose }: Props) {
           style={{ backgroundColor: bg, borderColor: border }}
         >
           <h2 className="text-base font-semibold" style={{ color: textTitle }}>
-            コンディション 用語解説
+            {t('auto.ConditionGlossary.title')}
           </h2>
           <button
             type="button"
@@ -151,8 +151,8 @@ export function ConditionGlossary({ open, onClose }: Props) {
               <div className="text-xs" style={{ color: textBody }}>{g.short}</div>
               <div className="text-xs leading-relaxed" style={{ color: textBody }}>{g.detail}</div>
               <div className="flex flex-wrap gap-4 text-[10px]" style={{ color: textMuted }}>
-                {g.range && <span>レンジ: {g.range}</span>}
-                {g.source && <span>出典: {g.source}</span>}
+                {g.range && <span>{t('auto.ConditionGlossary.range', { v: g.range })}</span>}
+                {g.source && <span>{t('auto.ConditionGlossary.source', { v: g.source })}</span>}
               </div>
             </div>
           ))}

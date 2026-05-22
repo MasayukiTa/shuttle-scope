@@ -114,7 +114,7 @@ export function TargetSelector({
               onChange={(e) => handleNumberInput(e.target.value)}
               className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-0.5 text-xs font-mono text-blue-300 text-right focus:outline-none focus:border-blue-500"
             />
-            <span className="text-gray-500">frames</span>
+            <span className="text-gray-500">{t('auto.TargetSelector.frames')}</span>
           </div>
         </div>
 
@@ -152,11 +152,11 @@ export function TargetSelector({
         {/* ドラッグ中: 大きく現在値を表示 */}
         {dragging && (
           <div className="text-center text-sm font-mono font-bold text-blue-300 tabular-nums">
-            {displayValue} frames
+            {t('auto.TargetSelector.frames_n', { n: displayValue })}
           </div>
         )}
         <p className="text-[10px] text-gray-600">
-          1フレーム単位で設定可。ドラッグ後は5の倍数にスナップします。
+          {t('auto.TargetSelector.frame_hint')}
         </p>
       </div>
     </div>

@@ -169,7 +169,7 @@ export function PlayerPositionOverlay({
       {/* research badge */}
       <div className="absolute top-1 right-1 flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5">
         <span className="text-amber-400 text-[9px] font-bold uppercase tracking-wide">
-          assisted
+          {t('auto.PlayerPositionOverlay.assisted')}
         </span>
       </div>
       {/* no-data hint */}

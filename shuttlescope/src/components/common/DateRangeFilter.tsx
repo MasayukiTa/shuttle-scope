@@ -5,6 +5,7 @@
  * プリセット（直近1ヶ月、3ヶ月、半年、1年、全期間）+ カスタム日付入力。
  */
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Calendar } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -47,6 +48,7 @@ const PRESET_LABELS: Record<Preset, string> = {
 }
 
 export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilterProps) {
+  const { t } = useTranslation()
   const [showCustom, setShowCustom] = useState(false)
   const activePreset = detectPreset(from)
 
@@ -81,7 +83,7 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
             : 'bg-gray-700 text-gray-400 hover:text-white hover:bg-gray-600',
         )}
       >
-        期間指定
+        {t('auto.DateRangeFilter.custom_range')}
       </button>
       {showCustom && (
         <div className="flex items-center gap-1 text-xs">
@@ -91,7 +93,7 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
             onChange={(e) => onChange(e.target.value, to)}
             className="bg-gray-700 border border-gray-600 rounded px-1.5 py-0.5 text-xs text-white"
           />
-          <span className="text-gray-500">〜</span>
+          <span className="text-gray-500">{t('auto.DateRangeFilter.range_sep')}</span>
           <input
             type="date"
             value={to}

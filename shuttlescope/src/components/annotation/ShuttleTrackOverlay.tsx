@@ -19,6 +19,7 @@
  *   visible    — オーバーレイ表示/非表示
  */
 import { useEffect, useRef, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export interface ShuttleFrame {
   timestamp_sec: number
@@ -61,6 +62,7 @@ export function ShuttleTrackOverlay({
   videoHeight,
   visible,
 }: Props) {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const nearestIdx = useMemo(
@@ -186,13 +188,13 @@ export function ShuttleTrackOverlay({
       {/* research badge */}
       <div className="absolute top-1 left-1 flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5">
         <span className="text-yellow-400 text-[9px] font-bold uppercase tracking-wide">
-          shuttle track
+          {t('auto.ShuttleTrackOverlay.shuttle_track')}
         </span>
       </div>
       {/* no-data hint */}
       {nearestIdx < 0 && frames.length > 0 && (
         <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 bg-black/50 rounded px-2 py-0.5">
-          この時刻のシャトルデータなし
+          {t('auto.ShuttleTrackOverlay.no_shuttle_data')}
         </div>
       )}
     </div>

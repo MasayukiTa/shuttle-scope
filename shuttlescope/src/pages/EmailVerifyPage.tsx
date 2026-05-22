@@ -36,7 +36,7 @@ export default function EmailVerifyPage() {
         {status === 'ok' && (
           <>
             <p className="text-green-700 dark:text-green-400">
-              ✅ {t('auth.verify.success')}
+              {t('auto.EmailVerifyPage.check_mark')} {t('auth.verify.success')}
             </p>
             {verifiedEmail && (
               <p className="text-sm text-gray-600 dark:text-gray-300">{verifiedEmail}</p>
@@ -48,7 +48,7 @@ export default function EmailVerifyPage() {
         )}
         {status === 'error' && (
           <>
-            <p className="text-red-600">❌ {errorMsg ?? t('auth.verify.failed')}</p>
+            <p className="text-red-600">{t('auto.EmailVerifyPage.cross_mark')} {errorMsg ?? t('auth.verify.failed')}</p>
             <Link to="/login" className="block text-blue-600 hover:underline text-sm">
               {t('auth.verify.go_login')}
             </Link>

@@ -63,7 +63,7 @@ function CommerceLawPageInner() {
       </table>
 
       <p className="mt-6 text-xs text-gray-500">
-        記載内容は予告なく変更される場合があります。最新の情報は本ページにてご確認ください。
+        {t('auto.CommerceLawPage.disclaimer')}
       </p>
     </div>
   )

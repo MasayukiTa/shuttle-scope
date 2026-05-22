@@ -104,9 +104,9 @@ function PendingUserRow({ user, onChange }: { user: PendingUser; onChange: () =>
           <div className="text-xs text-gray-500 dark:text-gray-400">
             {user.email ?? '(no email)'}
             {user.email_verified ? (
-              <span className="ml-2 text-green-600">verified</span>
+              <span className="ml-2 text-green-600">{t('auto.PendingUsersPage.verified')}</span>
             ) : (
-              <span className="ml-2 text-amber-600">unverified</span>
+              <span className="ml-2 text-amber-600">{t('auto.PendingUsersPage.unverified')}</span>
             )}
           </div>
           <div className="text-[10px] text-gray-400">{user.created_at}</div>

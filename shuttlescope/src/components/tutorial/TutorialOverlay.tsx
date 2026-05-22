@@ -12,6 +12,7 @@
  *   'aborted'    = 今回だけ閉じる (次回また自動表示される)
  */
 import { useEffect, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 import { trackTutorialStep } from '@/utils/analytics'
@@ -165,11 +166,12 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
 }
 
 function Header({ tutorialTitle, idx, total }: { tutorialTitle: string; idx: number; total: number }) {
+  const { t } = useTranslation()
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="text-xs text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
         <MIcon name="school" size={14} />
-        {tutorialTitle} · {idx + 1} / {total}
+        {t('auto.TutorialOverlay.header', { title: tutorialTitle, n: idx + 1, total })}
       </div>
     </div>
   )
@@ -181,6 +183,7 @@ function Controls({
   idx: number; last: boolean
   onPrev: () => void; onNext: () => void; onSkip: () => void; onNever: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="mt-3 space-y-2">
       <div className="flex items-center justify-between">
@@ -189,7 +192,7 @@ function Controls({
           disabled={idx === 0}
           className="text-xs px-3 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 disabled:opacity-40"
         >
-          前へ
+          {t('auto.TutorialOverlay.prev')}
         </button>
         <button
           onClick={onNext}
@@ -201,10 +204,10 @@ function Controls({
       </div>
       <div className="flex items-center justify-between text-[11px]">
         <button onClick={onSkip} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-200">
-          スキップ
+          {t('auto.TutorialOverlay.skip')}
         </button>
         <button onClick={onNever} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 underline">
-          次回は表示しない
+          {t('auto.TutorialOverlay.never')}
         </button>
       </div>
     </div>

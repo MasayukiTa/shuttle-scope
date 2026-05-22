@@ -52,7 +52,7 @@ export default function PasswordResetConfirmPage() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow p-6 text-center space-y-4">
           <p className="text-green-700 dark:text-green-400">
-            ✅ {t('auth.password_reset_confirm.done')}
+            {t('auto.PasswordResetConfirmPage.check_mark')} {t('auth.password_reset_confirm.done')}
           </p>
           <Link to="/login" className="block text-blue-600 hover:underline text-sm">
             {t('auth.back_to_login')}

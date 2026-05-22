@@ -126,7 +126,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
       <ErrorBoundary>
         <div>
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
-            STEP 3 — スコア推移
+            {t('auto.DashboardReviewPage.step3_score')}
           </p>
           <div className="bg-gray-800 rounded-lg p-4">
             {/* xs: タイトルと select を縦積みにして余白を確保、sm+: 横並び */}
@@ -154,7 +154,7 @@ export function DashboardReviewPage({ playerId, filters, matches }: Props) {
       <ErrorBoundary>
         <div>
           <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2 pl-1">
-            STEP 3.5 — ラリークリップ動画ジャンプ
+            {t('auto.DashboardReviewPage.step35_clip')}
           </p>
           {selectedMatchId ? (
             <RallyClipNavigator

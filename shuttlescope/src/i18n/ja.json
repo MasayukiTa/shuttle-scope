@@ -3286,7 +3286,10 @@
       "click_zone_hint": "左のゾーンをクリックすると詳細が表示されます"
     },
     "TargetSelector": {
-      "k1": "フレーム数"
+      "k1": "フレーム数",
+      "frames": "frames",
+      "frames_n": "{{n}} frames",
+      "frame_hint": "1フレーム単位で設定可。ドラッグ後は5の倍数にスナップします。"
     },
     "ClusterSettingsPanel": {
       "ray_cluster": "Ray クラスタ",
@@ -3318,7 +3321,10 @@
       "k8": "ユーザ名",
       "k9": "パスワード"
     },
-    "DateRangeFilter": {},
+    "DateRangeFilter": {
+      "custom_range": "期間指定",
+      "range_sep": "〜"
+    },
     "RolePicker": {
       "k1": "どの選手としてログインしますか？",
       "k2": "あなたが関与した試合のみが表示されます",
@@ -3336,7 +3342,12 @@
       "poc_note": "POCフェーズ: ロールはブラウザに保存されます"
     },
     "SearchableSelect": {},
-    "BestProfileCard": {},
+    "BestProfileCard": {
+      "n_matches_paren": "({{n}}試合)",
+      "rate_diff_pp": "+{{n}}pp",
+      "current_label": "現在",
+      "target_range": "目標 [{{r}}]"
+    },
     "ConditionGenericScatter": {
       "k1": "低 → 高"
     },
@@ -3345,13 +3356,17 @@
       "k1": "1-3月",
       "k2": "4-6月",
       "k3": "7-9月",
-      "k4": "10-12月"
+      "k4": "10-12月",
+      "variance_pc": "{{label}}: PC1 {{ev1}}% / PC2 {{ev2}}%"
     },
     "ConditionPostMatchChange": {},
     "ConditionResult": {
       "k1": "因子別",
       "k2": "詳細スコア",
-      "k3": "Analyst 詳細"
+      "k3": "Analyst 詳細",
+      "raw": "raw: {{v}}",
+      "total": "total",
+      "validity_score_label": "validity_score:"
     },
     "GrowthInsights": {
       "k_effect_winrate_up": "({{effect}} 勝率↑)",
@@ -3366,9 +3381,15 @@
       "k4": "自コート（打点）"
     },
     "EvidenceBadge": {
-      "k1": "推奨非対応"
+      "k1": "推奨非対応",
+      "n_eq": "N={{n}}"
     },
-    "ResearchNotice": {},
+    "ResearchNotice": {
+      "heading": "⚠ 研究段階の分析",
+      "assumptions": "前提: {{v}}",
+      "reason": "探索的理由: {{v}}",
+      "promotion": "実用移行条件: {{v}}"
+    },
     "DeviceManagerPanel": {
       "approved": "承認済み",
       "rejected": "拒否",
@@ -3561,7 +3582,8 @@
       "k1": "試合",
       "k2": "完了セット:",
       "k3": "試合を選択するとインターバルレポートが表示されます",
-      "k4": "日付・対戦相手で検索..."
+      "k4": "日付・対戦相手で検索...",
+      "set_n": "Set {{n}}"
     },
     "DashboardOverviewPage": {
       "k1": "読み込み中...",
@@ -3607,7 +3629,9 @@
       "k1": "試合を選択するとスコア推移が表示されます",
       "k2": "試合を選択するとラリー動画ジャンプが使えます",
       "k3": "セット別パフォーマンス",
-      "k4": "日付・対戦相手で検索..."
+      "k4": "日付・対戦相手で検索...",
+      "step3_score": "STEP 3 — スコア推移",
+      "step35_clip": "STEP 3.5 — ラリークリップ動画ジャンプ"
     },
     "DashboardShell": {
       "k1": "選手：",
@@ -3623,10 +3647,17 @@
       "k10": "〜",
       "k11": "リセット"
     },
-    "ExpertLabelerPage": {},
+    "ExpertLabelerPage": {
+      "check_mark": "✅",
+      "json": "JSON",
+      "csv": "CSV"
+    },
     "LoginPage": {
       "k1": "ログインID",
-      "k2": "ログインIDを入力"
+      "k2": "ログインIDを入力",
+      "session_expired": "セッションの有効期限が切れました。再度ログインしてください。",
+      "password_pin": "Password / PIN",
+      "back_to_site": "← shuttle-scope.com"
     },
     "MatchListPage": {
       "k1": "登録済",
@@ -3727,7 +3758,9 @@
       "k31": "削除しました",
       "k32": "{{n}}件を削除しました",
       "k33": "削除する対象がありません",
-      "k34": "Cloudflare 自動 ban の誤検知申し立て"
+      "k34": "Cloudflare 自動 ban の誤検知申し立て",
+      "ban_appeal": "BAN APPEAL",
+      "trash_icon": "🗑"
     },
     "PredictionPage": {
       "k1": "選手：",
@@ -3736,7 +3769,10 @@
       "k4": "— 全レベル —",
       "k5": "選手名で検索...",
       "k6": "相手選手名で検索...",
-      "k7": "日付・大会レベルで検索..."
+      "k7": "日付・大会レベルで検索...",
+      "pdf": "PDF",
+      "json": "JSON",
+      "select_match": "試合を選択"
     },
     "SettingsPage": {
       "k1": "# または一括: python -m backend.tracknet.setup all",
@@ -3915,7 +3951,10 @@
     },
     "TemporalPerformance": {},
     "OpponentPolicyCard_test": {},
-    "AttributePanel": {},
+    "AttributePanel": {
+      "bh": "(BH)",
+      "rh": "(RH)"
+    },
     "CVAssistPanel": {
       "k_role_a": "A:{{role}}",
       "k_role_b": "B:{{role}}",
@@ -3923,8 +3962,12 @@
       "k_label_a": "A:",
       "k_label_b": "B:"
     },
-    "HitZoneSelector": {},
-    "PlayerPositionOverlay": {},
+    "HitZoneSelector": {
+      "pencil": "✎"
+    },
+    "PlayerPositionOverlay": {
+      "assisted": "assisted"
+    },
     "PlayerTrackingOverlay": {
       "k_backend": "backend: {{backend}}",
       "k_frame_brightness": "frame brightness: {{value}}",
@@ -3935,34 +3978,68 @@
       "k_error": "error: {{error}}"
     },
     "RallyPanel": {},
-    "ShuttleTrackOverlay": {},
-    "AnalysisModePanel": {},
-    "CommandPalette": {
-      "k1": "コマンドパレット"
+    "ShuttleTrackOverlay": {
+      "shuttle_track": "shuttle track",
+      "no_shuttle_data": "この時刻のシャトルデータなし"
     },
-    "ScoreboardCompact": {},
+    "AnalysisModePanel": {
+      "set_rally": "G{{s}} / R{{r}}"
+    },
+    "CommandPalette": {
+      "k1": "コマンドパレット",
+      "key_enter": "Enter",
+      "key_esc": "Esc"
+    },
+    "ScoreboardCompact": {
+      "set_n": "Set {{n}}",
+      "rally_n": "Rally {{n}}",
+      "shots_n": "{{n}} shots"
+    },
     "TopBarMenu_test": {
       "k1": "記録モード"
     },
-    "ResultMatrix": {},
-    "PurchaseModal": {
-      "k1": "お支払い方法"
+    "ResultMatrix": {
+      "no_model": "モデルなし",
+      "err": "ERR",
+      "ms_p95": "{{avg}}ms / p95={{p95}}ms"
     },
-    "AdviceStrip": {},
+    "PurchaseModal": {
+      "k1": "お支払い方法",
+      "price": "¥{{n}}",
+      "cancel": "キャンセル",
+      "payment_notice": "決済画面は外部の決済代行サービス (Stripe / KOMOJU) に遷移します。カード情報は弊社サーバを通過しません。"
+    },
+    "AdviceStrip": {
+      "dot": "·"
+    },
     "ChartModal": {
-      "k1": "閉じる (Esc)"
+      "k1": "閉じる (Esc)",
+      "back_to_dashboard": "ダッシュボードへ戻る"
     },
     "Notice": {
       "k1": "閉じる"
     },
     "PlayerSelectorSheet": {},
-    "ConditionCorrelationHeatmap": {},
-    "ConditionGlossary": {
-      "k1": "用語解説を開く"
+    "ConditionCorrelationHeatmap": {
+      "n_label": "N: "
     },
-    "ConditionSeasonality": {},
-    "ConditionTagCompare": {},
-    "CorrelationScatter": {},
+    "ConditionGlossary": {
+      "k1": "用語解説を開く",
+      "title": "コンディション 用語解説",
+      "range": "レンジ: {{v}}",
+      "source": "出典: {{v}}"
+    },
+    "ConditionSeasonality": {
+      "n_count": "(N={{n}})"
+    },
+    "ConditionTagCompare": {
+      "n_in": "N",
+      "in": "in",
+      "out": "out"
+    },
+    "CorrelationScatter": {
+      "n_label": "N: "
+    },
     "MobileCVOverlay": {
       "k1": "TrackNet をリモート実行",
       "k2": "タップで閉じる",
@@ -4057,7 +4134,12 @@
       "seek_back_1": "◀1",
       "speed_x": "{{n}}x"
     },
-    "TutorialOverlay": {},
+    "TutorialOverlay": {
+      "header": "{{title}} · {{n}} / {{total}}",
+      "prev": "前へ",
+      "skip": "スキップ",
+      "never": "次回は表示しない"
+    },
     "RoiRectOverlay": {
       "analysis_region": "解析領域",
       "drag_hint": "ドラッグして解析領域を指定",
@@ -4096,15 +4178,27 @@
       "k3": "ストローク",
       "k4": "-- ストロークを選択 --",
       "k5": "サイド",
-      "k6": "両サイド"
+      "k6": "両サイド",
+      "left": "Left",
+      "right": "Right"
     },
     "CommerceLawPage": {
       "k1": "読み込み中...",
-      "k2": "特定商取引法に基づく表記"
+      "k2": "特定商取引法に基づく表記",
+      "disclaimer": "記載内容は予告なく変更される場合があります。最新の情報は本ページにてご確認ください。"
     },
-    "EmailVerifyPage": {},
-    "ExpertLabelerAnnotatePage": {},
-    "LiveInputPage": {},
+    "EmailVerifyPage": {
+      "check_mark": "✅",
+      "cross_mark": "❌"
+    },
+    "ExpertLabelerAnnotatePage": {
+      "json": "JSON",
+      "csv": "CSV",
+      "stroke_id": "stroke_id: {{n}}"
+    },
+    "LiveInputPage": {
+      "match_id_missing": "match id missing"
+    },
     "MobileAnnotatePage": {
       "k1": "端末を横向きに",
       "k2": "動画情報を読み込み中…",
@@ -4141,10 +4235,17 @@
       "pending": "pending"
     },
     "OnboardingConsentPage": {
-      "k1": "日本語"
+      "k1": "日本語",
+      "en": "EN",
+      "dot": "·"
     },
-    "PasswordResetConfirmPage": {},
-    "PendingUsersPage": {},
+    "PasswordResetConfirmPage": {
+      "check_mark": "✅"
+    },
+    "PendingUsersPage": {
+      "verified": "verified",
+      "unverified": "unverified"
+    },
     "TeamManagementPage": {
       "k1": "このページは admin / coach のみ利用できます。",
       "k2": "チーム管理",

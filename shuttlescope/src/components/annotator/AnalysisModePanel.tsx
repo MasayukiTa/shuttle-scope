@@ -51,7 +51,7 @@ export function AnalysisModePanel({
           <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">{t('annotator.ux.analysis_now')}</div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-mono font-bold tabular-nums">{scoreA}-{scoreB}</span>
-            <span className="text-gray-500">G{setNum} / R{rallyNum}</span>
+            <span className="text-gray-500">{t('auto.AnalysisModePanel.set_rally', { s: setNum, r: rallyNum })}</span>
           </div>
         </section>
 

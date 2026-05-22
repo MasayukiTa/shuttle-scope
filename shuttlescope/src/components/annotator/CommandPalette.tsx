@@ -138,8 +138,8 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
           />
           <div className="flex items-center gap-1 shrink-0">
             <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">↑↓</kbd>
-            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">Enter</kbd>
-            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">Esc</kbd>
+            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">{t('auto.CommandPalette.key_enter')}</kbd>
+            <kbd className="text-[10px] text-gray-400 border border-gray-700 rounded px-1.5 py-0.5 font-mono">{t('auto.CommandPalette.key_esc')}</kbd>
           </div>
         </div>
         <ul className="max-h-[50vh] overflow-y-auto py-1" role="listbox">

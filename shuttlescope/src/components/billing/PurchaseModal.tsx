@@ -61,7 +61,7 @@ function PurchaseModalInner({ productCode, productLabel, priceJpy, extraMetadata
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 space-y-4">
         <h2 className="text-lg font-bold">{productLabel}</h2>
-        <div className="text-2xl font-bold">¥{priceJpy.toLocaleString()}</div>
+        <div className="text-2xl font-bold">{t('auto.PurchaseModal.price', { n: priceJpy.toLocaleString() })}</div>
 
         <div>
           <label className="block text-sm font-medium mb-2">{t('auto.PurchaseModal.k1')}</label>
@@ -102,13 +102,12 @@ function PurchaseModalInner({ productCode, productLabel, priceJpy, extraMetadata
             disabled={loading}
             className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
           >
-            キャンセル
+            {t('auto.PurchaseModal.cancel')}
           </button>
         </div>
 
         <p className="text-[10px] text-gray-500 text-center">
-          決済画面は外部の決済代行サービス (Stripe / KOMOJU) に遷移します。
-          カード情報は弊社サーバを通過しません。
+          {t('auto.PurchaseModal.payment_notice')}
         </p>
       </div>
     </div>

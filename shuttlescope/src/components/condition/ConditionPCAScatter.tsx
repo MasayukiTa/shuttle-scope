@@ -193,8 +193,7 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
           <h2 className="text-sm font-semibold">{t('condition.pca.title')}</h2>
           {pca.ok && (
             <span className={`text-xs font-mono ${textMuted}`}>
-              {t('condition.pca.variance_explained')}: PC1 {(pca.ev1 * 100).toFixed(1)}% / PC2{' '}
-              {(pca.ev2 * 100).toFixed(1)}%
+              {t('auto.ConditionPCAScatter.variance_pc', { label: t('condition.pca.variance_explained'), ev1: (pca.ev1 * 100).toFixed(1), ev2: (pca.ev2 * 100).toFixed(1) })}
             </span>
           )}
         </div>

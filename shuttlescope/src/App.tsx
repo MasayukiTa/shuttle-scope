@@ -174,7 +174,7 @@ function Sidebar() {
           <span className={clsx(
             'hidden lg:inline text-sm font-bold truncate',
             isLight ? 'text-gray-900' : 'text-gray-100',
-          )}>ShuttleScope</span>
+          )}>{t('app.name')}</span>
         </div>
         <div className="pt-4" />
         {navItems.map(({ to, label, shortLabel, icon: Icon, badge }) => (
@@ -462,7 +462,7 @@ function ProtectedMainRoute() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
         <div className="text-center space-y-3">
-          <div className="text-2xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>ShuttleScope</div>
+          <div className="text-2xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
           <p className="text-sm" style={{ color: 'var(--ss-text-muted, #9ca3af)' }}>{t('auto.App.k1')}</p>
         </div>
       </div>
@@ -517,13 +517,14 @@ function ProtectedMainRoute() {
 }
 
 function App() {
+  const { t } = useTranslation()
   const { ready } = useBackendReady()
 
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--ss-bg-app, #111827)' }}>
         <div className="text-center">
-          <div className="text-3xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>ShuttleScope</div>
+          <div className="text-3xl font-bold" style={{ color: 'var(--ss-text-primary, #f9fafb)' }}>{t('app.name')}</div>
           <div className="mt-6 flex items-center justify-center gap-2">
             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />

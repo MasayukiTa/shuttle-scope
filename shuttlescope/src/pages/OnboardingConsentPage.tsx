@@ -209,7 +209,7 @@ export default function OnboardingConsentPage({
                     ? 'bg-blue-600 text-white border-blue-600'
                     : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200'
                 }`}
-              >EN</button>
+              >{t('auto.OnboardingConsentPage.en')}</button>
             </div>
           </div>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
@@ -460,7 +460,7 @@ export default function OnboardingConsentPage({
             >
               {t('onboarding.consent.back_to_site') || 'shuttle-scope.com に戻る'}
             </a>
-            <span aria-hidden="true" className="text-gray-400">·</span>
+            <span aria-hidden="true" className="text-gray-400">{t('auto.OnboardingConsentPage.dot')}</span>
             <button
               type="button"
               onClick={() => {
