@@ -262,8 +262,8 @@ export function StreamingDownloadPanel({
         <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerWarn}`}>
           <WifiOff size={13} className="shrink-0 mt-0.5" />
           <span>
-            <strong>{t('auto.StreamingDownloadPanel.k2')}</strong> のため、画質が制限される場合があります。
-            高画質が必要な場合は <code className={`px-1 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'}`}>winget install ffmpeg</code> でインストール後アプリを再起動してください。
+            <strong>{t('auto.StreamingDownloadPanel.k2')}</strong>{t('auto.StreamingDownloadPanel.ffmpeg_warn1')}
+            {t('auto.StreamingDownloadPanel.ffmpeg_warn2_pre')}<code className={`px-1 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'}`}>{t('auto.StreamingDownloadPanel.ffmpeg_cmd')}</code>{t('auto.StreamingDownloadPanel.ffmpeg_warn2_post')}
           </span>
         </div>
       )}
@@ -272,8 +272,7 @@ export function StreamingDownloadPanel({
       <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerInfo}`}>
         <AlertCircle size={13} className="shrink-0 mt-0.5" />
         <span>
-          配信URLはElectronで直接再生できません。yt-dlpでダウンロードしてから再生します。
-          ログイン必須サイトは「Cookieブラウザ」を選択してください。
+          {t('auto.StreamingDownloadPanel.info_banner')}
         </span>
       </div>
 
@@ -296,7 +295,7 @@ export function StreamingDownloadPanel({
             onClick={handleRetry}
             className={`text-xs underline text-left ${retryColor}`}
           >
-            やり直す
+            {t('auto.StreamingDownloadPanel.retry')}
           </button>
         </div>
       )}
@@ -309,15 +308,15 @@ export function StreamingDownloadPanel({
               <Loader2 size={12} className="animate-spin text-blue-400" />
               <span>
                 {dlState === 'starting'
-                  ? '開始中...'
+                  ? t('auto.StreamingDownloadPanel.starting')
                   : dlState === 'processing'
-                  ? 'マージ中...'
+                  ? t('auto.StreamingDownloadPanel.merging')
                   : progress.percent}
               </span>
             </div>
             <div className={`flex gap-3 ${muteColor}`}>
               {progress.speed && <span>{progress.speed}</span>}
-              {progress.eta && dlState === 'downloading' && <span>残り {progress.eta}</span>}
+              {progress.eta && dlState === 'downloading' && <span>{t('auto.StreamingDownloadPanel.remaining', { eta: progress.eta })}</span>}
             </div>
           </div>
           <div className={`h-2 rounded-full overflow-hidden ${progressTrack}`}>
@@ -334,7 +333,7 @@ export function StreamingDownloadPanel({
           </div>
           {showCookieHint && (
             <p className={`text-xs ${muteColor}`}>
-              🍪 {COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label ?? cookieBrowser} のCookieを使用中
+              {t('auto.StreamingDownloadPanel.using_cookie', { label: COOKIE_BROWSER_OPTIONS.find(o => o.value === cookieBrowser)?.label ?? cookieBrowser })}
             </p>
           )}
         </div>
@@ -371,7 +370,7 @@ export function StreamingDownloadPanel({
             {/* Cookie ブラウザ選択 */}
             <div className="flex items-center gap-1 flex-1 min-w-0">
               <Cookie size={12} className={`shrink-0 ${labelColor}`} />
-              <label className={`text-xs shrink-0 ${labelColor}`}>Cookie</label>
+              <label className={`text-xs shrink-0 ${labelColor}`}>{t('auto.StreamingDownloadPanel.cookie_label')}</label>
               <div className="relative flex-1 min-w-0">
                 <select
                   value={cookieBrowser}
@@ -409,7 +408,7 @@ export function StreamingDownloadPanel({
                style={{ borderColor: isLight ? '#cbd5e1' : '#374151' }}>
             <label className={`text-xs ${labelColor} flex items-center gap-1`}>
               <Cookie size={12} />
-              cookies.txt (Web 経由会員限定サイト用)
+              {t('auto.StreamingDownloadPanel.cookies_txt_label')}
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -431,7 +430,7 @@ export function StreamingDownloadPanel({
             </div>
             {cookiesFileName && !cookiesError && (
               <div className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
-                ✓ {cookiesFileName} ({Math.round(cookiesTxt.length / 1024)} KB) を投入済
+                {t('auto.StreamingDownloadPanel.cookies_loaded', { name: cookiesFileName, n: Math.round(cookiesTxt.length / 1024) })}
               </div>
             )}
             {cookiesError && (
@@ -440,7 +439,7 @@ export function StreamingDownloadPanel({
               </div>
             )}
             <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
-              ブラウザに「Cookie-Editor」「Get cookies.txt LOCALLY」等の拡張をインストール → 該当サイトで書き出し → ここにアップ
+              {t('auto.StreamingDownloadPanel.ext_hint')}
             </div>
           </div>
 
@@ -454,7 +453,7 @@ export function StreamingDownloadPanel({
               aria-expanded={authPanelOpen}
             >
               <ChevronDown size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
-              パスワード保護動画 (Vimeo Showcase 等)
+              {t('auto.StreamingDownloadPanel.pw_video_label')}
               {videoPassword && <span className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>{t('auto.StreamingDownloadPanel.k14')}</span>}
             </button>
             {authPanelOpen && (
@@ -484,8 +483,7 @@ export function StreamingDownloadPanel({
                   </button>
                 </div>
                 <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
-                  Vimeo / 一部メンバー限定動画など、再生時にパスワードを要求するコンテンツ用。
-                  サーバには保存されず、yt-dlp に渡された後即破棄されます。
+                  {t('auto.StreamingDownloadPanel.pw_hint')}
                 </div>
               </div>
             )}
@@ -497,7 +495,7 @@ export function StreamingDownloadPanel({
             className="flex items-center justify-center gap-2 w-full py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded text-sm font-medium transition-colors"
           >
             <Download size={15} />
-            ダウンロードして再生
+            {t('auto.StreamingDownloadPanel.download_play')}
             {ffmpegMissing && <span className="text-xs text-blue-300 ml-1">{t('auto.StreamingDownloadPanel.k9')}</span>}
           </button>
 
@@ -513,7 +511,7 @@ export function StreamingDownloadPanel({
             title={t('auto.StreamingDownloadPanel.k16')}
           >
             <Scissors size={12} />
-            範囲指定 / 詳細オプション...
+            {t('auto.StreamingDownloadPanel.range_options')}
           </button>
         </div>
       )}
