@@ -109,7 +109,7 @@ export function RolePicker({
               onClick={() => mode === 'initial' ? setStage({ kind: 'roles' }) : onCancel?.()}
               className={`text-xs underline ${isLight ? 'text-gray-500' : 'text-gray-400'}`}
             >
-              {mode === 'initial' ? '← ロール選択に戻る' : 'キャンセル'}
+              {mode === 'initial' ? t('auto.RolePicker.back_to_roles') : t('auto.RolePicker.cancel')}
             </button>
           </div>
         </div>
@@ -138,7 +138,7 @@ export function RolePicker({
             {!loadErr && players === null && <p className={`text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k3')}</p>}
             {players !== null && teams.length === 0 && !search.trim() && (
               <p className={`text-xs text-center py-4 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
-                登録チームがありません
+                {t('auto.RolePicker.no_teams')}
               </p>
             )}
             {teams.map((name) => (
@@ -161,7 +161,7 @@ export function RolePicker({
                   isLight ? 'border-gray-400 text-gray-700 hover:bg-blue-50' : 'border-gray-500 text-gray-300 hover:bg-gray-700'
                 }`}
               >
-                + 新規チーム「{search.trim()}」として登録
+                {t('auto.RolePicker.register_new_team', { name: search.trim() })}
               </button>
             )}
           </div>
@@ -170,7 +170,7 @@ export function RolePicker({
               onClick={() => mode === 'initial' ? setStage({ kind: 'roles' }) : onCancel?.()}
               className={`text-xs underline ${isLight ? 'text-gray-500' : 'text-gray-400'}`}
             >
-              {mode === 'initial' ? '← ロール選択に戻る' : 'キャンセル'}
+              {mode === 'initial' ? t('auto.RolePicker.back_to_roles') : t('auto.RolePicker.cancel')}
             </button>
           </div>
         </div>
@@ -183,7 +183,7 @@ export function RolePicker({
     <div className={wrapperCls}>
       <div className={`rounded-lg p-8 w-80 ${isLight ? 'bg-white shadow-lg border border-gray-200' : 'bg-gray-800'}`}>
         <div className="text-center mb-6">
-          <div className={`text-3xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>ShuttleScope</div>
+          <div className={`text-3xl font-bold mb-1 ${isLight ? 'text-gray-900' : 'text-white'}`}>{t('auto.RolePicker.app_name')}</div>
           <div className={`text-sm ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('auto.RolePicker.k6')}</div>
         </div>
         <div className="flex flex-col gap-3">
@@ -210,11 +210,11 @@ export function RolePicker({
             onClick={onCancel}
             className={`mt-4 w-full text-xs underline ${isLight ? 'text-gray-500' : 'text-gray-400'}`}
           >
-            キャンセル
+            {t('auto.RolePicker.cancel')}
           </button>
         )}
         <p className={`text-xs mt-4 text-center ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
-          POCフェーズ: ロールはブラウザに保存されます
+          {t('auto.RolePicker.poc_note')}
         </p>
       </div>
     </div>

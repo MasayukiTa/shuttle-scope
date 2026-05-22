@@ -2708,7 +2708,11 @@
     },
     "QuickSummaryCard": {
       "k1": "Loading...",
-      "k2": "Refresh"
+      "k2": "Refresh",
+      "k3": "Warning count",
+      "coach_summary": "Coach summary",
+      "recent_total": "Recent {{window}} / {{total}} rallies total",
+      "observing": "Observing…"
     },
     "RallyClipNavigator": {
       "k1": "Rally clip navigator",
@@ -2867,7 +2871,13 @@
       "k5": "Only matches of players in that team will be shown",
       "k6": "Please select a role",
       "k7": "Search by player name",
-      "k8": "Search by team name / type a team"
+      "k8": "Search by team name / type a team",
+      "no_teams": "No registered teams",
+      "register_new_team": "+ Register as new team “{{name}}”",
+      "back_to_roles": "← Back to role selection",
+      "cancel": "Cancel",
+      "app_name": "ShuttleScope",
+      "poc_note": "POC phase: the role is stored in your browser"
     },
     "SearchableSelect": {},
     "BestProfileCard": {},
