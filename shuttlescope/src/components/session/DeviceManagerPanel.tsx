@@ -79,19 +79,20 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 function ApprovalBadge({ status }: { status: string }) {
+  const { t } = useTranslation()
   if (status === 'approved') return (
     <span className="flex items-center gap-0.5 text-[10px] text-green-400">
-      <CheckCircle2 size={10} /> 承認済み
+      <CheckCircle2 size={10} /> {t('auto.DeviceManagerPanel.approved')}
     </span>
   )
   if (status === 'rejected') return (
     <span className="flex items-center gap-0.5 text-[10px] text-red-400">
-      <XCircle size={10} /> 拒否
+      <XCircle size={10} /> {t('auto.DeviceManagerPanel.rejected')}
     </span>
   )
   return (
     <span className="flex items-center gap-0.5 text-[10px] text-amber-400 animate-pulse">
-      <AlertTriangle size={10} /> 承認待ち
+      <AlertTriangle size={10} /> {t('auto.DeviceManagerPanel.pending')}
     </span>
   )
 }
@@ -431,12 +432,12 @@ function DeviceRow({ p, isLight, titleColor, subColor, rowBg, onApprove, onRejec
           </span>
           {p.connection_state === 'sending_video' && (
             <span className="text-red-400 flex items-center gap-0.5">
-              <Video size={10} />送信中
+              <Video size={10} />{t('auto.DeviceManagerPanel.sending')}
             </span>
           )}
           {p.connection_state === 'receiving_video' && (
             <span className="text-blue-400 flex items-center gap-0.5">
-              <Video size={10} />受信中
+              <Video size={10} />{t('auto.DeviceManagerPanel.receiving')}
             </span>
           )}
           {p.device_class && <span>{p.device_class}</span>}
@@ -832,9 +833,9 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           <div className="flex items-center justify-between mb-1">
             <p className={`text-[10px] ${subColor}`}>
               <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1 animate-pulse" />
-              リモート受信中（参加者 #{activeParticipantId}）
-              {turnInUse === true && <span className="ml-2 text-blue-400">TURN</span>}
-              {turnInUse === false && <span className="ml-2 text-gray-500">P2P</span>}
+              {t('auto.DeviceManagerPanel.remote_receiving', { id: activeParticipantId })}
+              {turnInUse === true && <span className="ml-2 text-blue-400">{t('auto.DeviceManagerPanel.turn')}</span>}
+              {turnInUse === false && <span className="ml-2 text-gray-500">{t('auto.DeviceManagerPanel.p2p')}</span>}
             </p>
             <button
               onClick={() => setRealtimeYoloOn((v) => !v)}
@@ -847,7 +848,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
               }`}
               title={t('auto.DeviceManagerPanel.k13')}
             >
-              リアルタイムYOLO {realtimeYoloOn ? 'ON' : 'OFF'}
+              {t('auto.DeviceManagerPanel.realtime_yolo', { state: realtimeYoloOn ? 'ON' : 'OFF' })}
               {realtimeYoloOn && realtimeYolo.inferMs != null && (
                 <span className="ml-1 opacity-70">{realtimeYolo.inferMs}ms</span>
               )}
@@ -883,7 +884,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           <div className="flex items-center justify-between mb-1">
             <p className={`text-[10px] ${subColor}`}>
               <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse" />
-              ローカルカメラ使用中
+              {t('auto.DeviceManagerPanel.local_camera')}
             </p>
             <button onClick={handleStopLocal} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
               <VideoOff size={12} />{t('lan_session.local_source_stop')}
@@ -906,7 +907,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
             <div className="mb-3 px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 flex items-center gap-2">
               <AlertTriangle size={12} className="text-amber-400 flex-shrink-0" />
               <p className="text-xs text-amber-400">
-                承認待ちのデバイスがあります
+                {t('auto.DeviceManagerPanel.pending_devices')}
               </p>
             </div>
           )}
