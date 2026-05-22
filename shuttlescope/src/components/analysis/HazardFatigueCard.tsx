@@ -76,7 +76,7 @@ export function HazardFatigueCard({ playerId, filters }: Props) {
               <p className={`text-lg font-bold ${BAND_COLORS[d.collapse_risk_band] ?? textSecondary}`}>
                 {BAND_LABELS[d.collapse_risk_band] ?? d.collapse_risk_band}
               </p>
-              <p className={`text-[10px] ${textMuted}`}>信頼度: {pct(d.calibrated_confidence)} (N={d.total_rallies})</p>
+              <p className={`text-[10px] ${textMuted}`}>{t('auto.HazardFatigueCard.confidence_n', { pct: pct(d.calibrated_confidence), n: d.total_rallies })}</p>
             </div>
             <div className="ml-auto text-right">
               <p className={`text-[10px] ${textMuted}`}>{t('auto.HazardFatigueCard.k5')}</p>
@@ -99,15 +99,15 @@ export function HazardFatigueCard({ playerId, filters }: Props) {
           </div>
           <div className={`text-[11px] space-y-0.5 ${textSecondary}`}>
             <p>
-              ロングラリー後 (8+打): {d.after_long_rally.n_long_rallies}件中 {d.after_long_rally.n_loss_after_long}失点
+              {t('auto.HazardFatigueCard.after_long', { total: d.after_long_rally.n_long_rallies, loss: d.after_long_rally.n_loss_after_long })}
               <span className={`ml-1 ${d.after_long_rally.vs_baseline > 0.05 ? 'text-orange-500' : textFaint}`}>
-                (ベースライン比 {d.after_long_rally.vs_baseline > 0 ? '+' : ''}{pct(d.after_long_rally.vs_baseline)})
+                {t('auto.HazardFatigueCard.vs_baseline', { v: `${d.after_long_rally.vs_baseline > 0 ? '+' : ''}${pct(d.after_long_rally.vs_baseline)}` })}
               </span>
             </p>
             <p>
-              終盤局面: {d.endgame_analysis.n_endgame}件中 {d.endgame_analysis.n_loss_endgame}失点
+              {t('auto.HazardFatigueCard.endgame', { total: d.endgame_analysis.n_endgame, loss: d.endgame_analysis.n_loss_endgame })}
               <span className={`ml-1 ${d.endgame_analysis.vs_baseline > 0.05 ? 'text-orange-500' : textFaint}`}>
-                (ベースライン比 {d.endgame_analysis.vs_baseline > 0 ? '+' : ''}{pct(d.endgame_analysis.vs_baseline)})
+                {t('auto.HazardFatigueCard.vs_baseline', { v: `${d.endgame_analysis.vs_baseline > 0 ? '+' : ''}${pct(d.endgame_analysis.vs_baseline)}` })}
               </span>
             </p>
           </div>

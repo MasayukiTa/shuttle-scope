@@ -2583,7 +2583,11 @@
       "k5": "Baseline point-lost rate",
       "k6": "Recent window",
       "k7": "After long rally",
-      "k8": "Late set (18+)"
+      "k8": "Late set (18+)",
+      "confidence_n": "Confidence: {{pct}} (N={{n}})",
+      "after_long": "After long rally (8+ strokes): {{loss}} losses of {{total}}",
+      "vs_baseline": "(vs baseline {{v}})",
+      "endgame": "Endgame: {{loss}} losses of {{total}}"
     },
     "HumanForecastPanel": {
       "k1": "Set path (optional)",
