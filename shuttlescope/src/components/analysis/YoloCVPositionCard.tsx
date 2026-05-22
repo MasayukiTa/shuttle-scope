@@ -178,10 +178,10 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
       <div className={`${card} rounded-lg p-4 space-y-2`}>
         <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.YoloCVPositionCard.k3')}</h3>
         <p className={`text-xs ${textMuted}`}>
-          試合 #{recentMatch.id} の YOLO 検出データがありません。
+          {t('auto.YoloCVPositionCard.no_yolo', { id: recentMatch.id })}
         </p>
         <p className={`text-xs ${textFaint}`}>
-          アノテーター画面で「プレイヤー検出」を実行してください。
+          {t('auto.YoloCVPositionCard.run_detection')}
         </p>
         {cv?.notes?.map((n, i) => (
           <p key={i} className={`text-[10px] ${textFaint}`}>{n}</p>
@@ -201,11 +201,12 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
         <div>
           <h3 className={`text-sm font-semibold ${textHeading}`}>{t('auto.YoloCVPositionCard.k3')}</h3>
           <p className={`text-[10px] ${textFaint}`}>
-            試合 #{recentMatch.id}
-            {recentMatch.match_date ? ` · ${recentMatch.match_date}` : ''}
-            {' · '}
-            {cv.yolo_frame_count ?? '?'} フレーム
-            {cv.backend_used ? ` · ${cv.backend_used}` : ''}
+            {t('auto.YoloCVPositionCard.match_meta', {
+              id: recentMatch.id,
+              date: recentMatch.match_date ? ` · ${recentMatch.match_date}` : '',
+              frames: cv.yolo_frame_count ?? '?',
+              backend: cv.backend_used ? ` · ${cv.backend_used}` : '',
+            })}
           </p>
         </div>
         <EvidenceBadge tier="research" evidenceLevel="directional" recommendationAllowed={false} />
@@ -237,7 +238,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
           {cv.rotation_transitions !== undefined && (
             <div className={`flex items-center justify-between text-[11px] ${textMuted} pt-1 border-t ${isLight ? 'border-gray-200' : 'border-gray-700'}`}>
               <span>{t('auto.YoloCVPositionCard.k5')}</span>
-              <span className={`font-bold ${textHeading}`}>{cv.rotation_transitions} 回</span>
+              <span className={`font-bold ${textHeading}`}>{t('auto.YoloCVPositionCard.rotations', { n: cv.rotation_transitions })}</span>
             </div>
           )}
         </div>
@@ -261,14 +262,14 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
           </div>
           <div className={`grid grid-cols-2 text-[10px] ${textMuted}`}>
             <div>
-              <span className="text-blue-400">A</span>: {hd.hitter_a_count}回 ({pct(hd.hitter_a_ratio)})
+              <span className="text-blue-400">A</span>{t('auto.YoloCVPositionCard.hitter_count', { n: hd.hitter_a_count, pct: pct(hd.hitter_a_ratio) })}
             </div>
             <div>
-              <span className="text-amber-400">B</span>: {hd.hitter_b_count}回 ({pct(hd.hitter_b_ratio)})
+              <span className="text-amber-400">B</span>{t('auto.YoloCVPositionCard.hitter_count', { n: hd.hitter_b_count, pct: pct(hd.hitter_b_ratio) })}
             </div>
           </div>
           <div className={`flex gap-3 text-[10px] ${textFaint}`}>
-            <span>ラリー主導: A={hd.rally_dominant['player_a'] ?? 0} B={hd.rally_dominant['player_b'] ?? 0} 均衡={hd.rally_dominant['balanced'] ?? 0}</span>
+            <span>{t('auto.YoloCVPositionCard.rally_dominant', { a: hd.rally_dominant['player_a'] ?? 0, b: hd.rally_dominant['player_b'] ?? 0, c: hd.rally_dominant['balanced'] ?? 0 })}</span>
           </div>
           <p className={`text-[9px] ${textFaint} italic`}>{hd.note}</p>
         </div>
@@ -291,7 +292,7 @@ export function YoloCVPositionCard({ playerId, filters }: Props) {
                   <div className="flex items-center gap-1.5">
                     <div className={`h-1 rounded-full bg-sky-500`} style={{ width: `${Math.round(zd.receiver_front_ratio * 32)}px`, minWidth: '2px' }} />
                     <span>{pct(zd.receiver_front_ratio)}</span>
-                    <span className={textFaint}>n={zd.sample_count}</span>
+                    <span className={textFaint}>{t('auto.YoloCVPositionCard.n_lower', { n: zd.sample_count })}</span>
                   </div>
                 </div>
               ))}

@@ -2888,7 +2888,14 @@
       "k5": "Between-rally formation switches",
       "k6": "Hitter-candidate distribution",
       "k7": "Receiver front-court rate by zone",
-      "k8": "Share of time the receiver (player_b) was in the front court. n is sample size."
+      "k8": "Share of time the receiver (player_b) was in the front court. n is sample size.",
+      "no_yolo": "No YOLO detection data for match #{{id}}.",
+      "run_detection": "Run player detection from the annotator screen.",
+      "match_meta": "Match #{{id}}{{date}} · {{frames}} frames{{backend}}",
+      "rotations": "{{n}} times",
+      "hitter_count": ": {{n}} ({{pct}})",
+      "rally_dominant": "Rally lead: A={{a}} B={{b}} balanced={{c}}",
+      "n_lower": "n={{n}}"
     },
     "ZoneMapModal": {
       "k1": "Click a zone for details",
