@@ -168,8 +168,8 @@ function StrokeRow({
           {sc.front_back_role && (sc.front_back_role.player_a !== 'unclear' || sc.front_back_role.player_b !== 'unclear') && (
             <div className="text-[9px] text-slate-500 flex items-center gap-1 mt-0.5">
               <span>{t('cv_assist.panel.position')}</span>
-              <span>A:{roleShort(sc.front_back_role.player_a)}</span>
-              <span>B:{roleShort(sc.front_back_role.player_b)}</span>
+              <span>{t('auto.CVAssistPanel.k_role_a', { role: roleShort(sc.front_back_role.player_a) })}</span>
+              <span>{t('auto.CVAssistPanel.k_role_b', { role: roleShort(sc.front_back_role.player_b) })}</span>
               <span className="text-slate-600">
                 ({Math.round(sc.front_back_role.confidence * 100)}%)
               </span>
@@ -194,7 +194,7 @@ function StrokeRow({
         <div className="ml-6 mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
           {uniqueReasons.map((code) => (
             <span key={code} className="text-[9px] text-amber-400/70">
-              · {reasonLabel(code)}
+              {t('auto.CVAssistPanel.k_reason_item', { label: reasonLabel(code) })}
             </span>
           ))}
         </div>
@@ -281,13 +281,13 @@ export function CVAssistPanel({
         <div className="text-[10px] text-slate-400 bg-white/5 rounded px-2 py-1 flex items-center gap-2 flex-wrap">
           <span className="text-slate-500 shrink-0">{t('cv_assist.panel.position_estimate')}</span>
           <span>
-            A:
+            {t('auto.CVAssistPanel.k_label_a')}
             <span className="font-semibold ml-0.5">
               {dominantLabel(rallyCandidates.front_back_role_signal.player_a_dominant)}
             </span>
           </span>
           <span>
-            B:
+            {t('auto.CVAssistPanel.k_label_b')}
             <span className="font-semibold ml-0.5">
               {dominantLabel(rallyCandidates.front_back_role_signal.player_b_dominant)}
             </span>

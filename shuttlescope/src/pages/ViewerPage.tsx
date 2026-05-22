@@ -237,7 +237,7 @@ export function ViewerPage() {
       <div className="mb-4 text-center">
         <div className="inline-flex items-center gap-2 text-blue-400 mb-1">
           <Eye size={24} />
-          <span className="text-lg font-bold">ShuttleScope</span>
+          <span className="text-lg font-bold">{t('app.name')}</span>
         </div>
         <p className="text-gray-400 text-sm">{t('auto.ViewerPage.k1')}</p>
         <p className="text-gray-600 text-xs mt-1">{t('auto.ViewerPage.k2')}</p>
@@ -288,7 +288,7 @@ export function ViewerPage() {
               disabled={!form.sessionCode}
               className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium"
             >
-              参加する
+              {t('auto.ViewerPage.k9')}
             </button>
           </div>
         </div>
@@ -314,17 +314,17 @@ export function ViewerPage() {
           </div>
           <p className="text-lg font-semibold mb-2">{t('auto.ViewerPage.k6')}</p>
           <p className="text-gray-400 text-sm leading-relaxed">
-            オペレーターが映像を開始するまでお待ちください。
+            {t('auto.ViewerPage.k10')}
           </p>
           <div className="mt-4 flex items-center justify-center gap-1.5 text-green-400 text-xs">
             <CheckCircle2 size={14} />
-            接続済み
+            {t('auto.ViewerPage.k11')}
             {reconnectCount > 0 && (
-              <span className="text-gray-500 ml-1">(再接続 {reconnectCount} 回)</span>
+              <span className="text-gray-500 ml-1">{t('auto.ViewerPage.k12', { n: reconnectCount })}</span>
             )}
           </div>
           <p className="mt-4 text-gray-600 text-xs">
-            タブレット・PC で映像を受信できます。スマートフォンは要約表示専用です。
+            {t('auto.ViewerPage.k13')}
           </p>
         </div>
       )}
@@ -341,7 +341,7 @@ export function ViewerPage() {
             />
             <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              LIVE
+              {t('auto.ViewerPage.k14')}
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
@@ -377,13 +377,13 @@ export function ViewerPage() {
                 }}
                 className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm"
               >
-                もう一度試す
+                {t('auto.ViewerPage.k15')}
               </button>
               <button
                 onClick={() => { setViewerState('join'); setErrorMsg('') }}
                 className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-gray-300"
               >
-                最初から
+                {t('auto.ViewerPage.k16')}
               </button>
             </div>
           </div>

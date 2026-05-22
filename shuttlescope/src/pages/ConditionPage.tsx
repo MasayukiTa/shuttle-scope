@@ -293,7 +293,7 @@ export function ConditionPage() {
             <div className="flex items-center gap-2 shrink-0">
               <User size={16} className={`${textMuted} shrink-0`} />
               <label className={`text-sm ${textMuted}`}>
-                {t('condition.player_select')}：
+                {t('auto.ConditionPage.k4')}
               </label>
             </div>
             <SearchableSelect
@@ -322,13 +322,13 @@ export function ConditionPage() {
             onClick={() => dlReport(`/api/reports/condition_pdf?player_id=${effectivePlayerId}`, `condition_${effectivePlayerId}.pdf`)}
             className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
           >
-            PDF
+            {t('auto.ConditionPage.k5')}
           </button>
           <button
             onClick={() => dlReport(`/api/reports/condition?player_id=${effectivePlayerId}`, `condition_${effectivePlayerId}.json`)}
             className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
           >
-            JSON
+            {t('auto.ConditionPage.k6')}
           </button>
         </div>
       )}
@@ -432,15 +432,13 @@ export function ConditionPage() {
             <div className="flex items-start gap-2">
               <div className="text-xs leading-relaxed" style={{ color: isLight ? '#374151' : '#e2e8f0' }}>
                 <div className="font-semibold mb-1">
-                  コンディション入力は「自分自身」の選手アカウントでのみ可能です
+                  {t('auto.ConditionPage.k7')}
                 </div>
                 <p>
-                  あなたのログインユーザに選手レコードが紐付いていないため入力できません。
-                  選手として登録されている場合は管理者にアカウントの player_id 設定を
-                  依頼してください。
+                  {t('auto.ConditionPage.k8')}
                 </p>
                 <p className="mt-2">
-                  履歴・分析タブは選手セレクタから誰のデータでも閲覧できます。
+                  {t('auto.ConditionPage.k9')}
                 </p>
               </div>
             </div>
@@ -457,9 +455,9 @@ export function ConditionPage() {
                 borderColor: isLight ? '#bfdbfe' : '#1e40af',
               }}
             >
-              入力対象: <strong>{t('auto.ConditionPage.k3')}</strong> (
-              {players.find((p) => p.id === authPlayerId)?.name ?? `選手 #${authPlayerId}`}
-              ) — 他選手の代理入力はできません。
+              {t('auto.ConditionPage.k10')} <strong>{t('auto.ConditionPage.k3')}</strong> (
+              {players.find((p) => p.id === authPlayerId)?.name ?? t('auto.ConditionPage.k11', { n: authPlayerId })}
+              {t('auto.ConditionPage.k12')}
             </div>
 
             {/* モード切替 */}
@@ -484,7 +482,7 @@ export function ConditionPage() {
             {/* 測定日 */}
             <div className="flex items-center gap-3">
               <label className={`text-xs ${textMuted} shrink-0`}>
-                {t('condition.measured_at')}：
+                {t('auto.ConditionPage.k13')}
               </label>
               <input
                 type="date"
