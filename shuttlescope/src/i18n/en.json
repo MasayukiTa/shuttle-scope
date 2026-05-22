@@ -2642,7 +2642,13 @@
       "k7": "Search opponent..."
     },
     "MatchNarrativeCard": {
-      "k1": "Most likely script"
+      "k1": "Most likely script",
+      "prematch_pred": "Pre-match prediction",
+      "vs": "vs {{name}}",
+      "verdict": "{{player}}: {{verdict}}",
+      "deciding": "Deciding factor",
+      "risk_zones": "Shaky situations",
+      "knowns": "Known before the match"
     },
     "MatchScoreBand": {
       "k1": "Set"
@@ -2891,6 +2897,11 @@
       "k9": "Only states with confidence ≥ 50% are shown. Interpret rows with wide CIs cautiously."
     },
     "TransitionMatrix": {
+      "insufficient": "Insufficient data (available after annotation)",
+      "total_transitions": "Total transitions: {{n}}",
+      "n_times": "{{n}}",
+      "show_full_matrix": "Show full transition matrix (scroll) ↓",
+      "top_patterns": "Main transition patterns",
       "k1": "Loading...",
       "k2": "Main transition patterns (by frequency)",
       "k3": "Low",

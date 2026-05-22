@@ -268,7 +268,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
   if (!matrixData || !matrixData.matrix?.length || sampleSize === 0) {
     return (
       <div className="text-gray-500 text-sm py-4 text-center">
-        データ不足（アノテーション後に解析可能）
+        {t('auto.TransitionMatrix.insufficient')}
       </div>
     )
   }
@@ -290,7 +290,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
       <div className="flex flex-wrap items-center gap-3">
         <ConfidenceBadge sampleSize={sampleSize} compact />
         <span className="text-xs text-gray-500">
-          総遷移数: {matrixData.total_transitions.toLocaleString()} 回
+          {t('auto.TransitionMatrix.total_transitions', { n: matrixData.total_transitions.toLocaleString() })}
         </span>
       </div>
 
@@ -310,7 +310,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
                 <span className="text-xs font-medium text-gray-400 shrink-0">
                   {(seq.probability * 100).toFixed(1)}%
                 </span>
-                <span className="text-xs text-gray-600 shrink-0">{seq.count}回</span>
+                <span className="text-xs text-gray-600 shrink-0">{t('auto.TransitionMatrix.n_times', { n: seq.count })}</span>
               </div>
             ))}
           </div>
@@ -321,7 +321,7 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
             }}
             className="mt-3 w-full text-xs text-blue-500 py-2 border border-blue-800/40 rounded-lg"
           >
-            全遷移マトリクスを表示（横スクロール）↓
+            {t('auto.TransitionMatrix.show_full_matrix')}
           </button>
         </div>
       )}
@@ -351,14 +351,14 @@ export function TransitionMatrix({ playerId, filters = DEFAULT_FILTERS }: Transi
       {matrixData.top_sequences?.length > 0 && (
         <div className="hidden md:block">
           <p className="text-xs font-semibold text-gray-400 mb-2">
-            主要遷移パターン
+            {t('auto.TransitionMatrix.top_patterns')}
           </p>
           <div className="space-y-1.5">
             {matrixData.top_sequences.slice(0, 5).map((seq, i) => (
               <div key={i} className="flex items-center gap-1.5 text-xs">
                 <span className="text-gray-600 shrink-0 w-4 text-right">{i + 1}.</span>
                 <span className="text-gray-300">{resolveLabel(seq.from)} → {resolveLabel(seq.to)}</span>
-                <span className="text-gray-500 shrink-0">{seq.count}回</span>
+                <span className="text-gray-500 shrink-0">{t('auto.TransitionMatrix.n_times', { n: seq.count })}</span>
                 <span className="text-gray-600 shrink-0 font-mono">
                   ({(seq.probability * 100).toFixed(1)}%)
                 </span>

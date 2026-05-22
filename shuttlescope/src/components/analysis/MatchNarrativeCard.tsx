@@ -63,13 +63,13 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
           <Swords size={15} style={{ color: verdictColor, flexShrink: 0 }} />
           <div className="min-w-0">
             <p className="text-xs font-medium" style={{ color: subText }}>
-              試合前予測
+              {t('auto.MatchNarrativeCard.prematch_pred')}
               {opponentName && (
-                <span className="ml-1">vs {opponentName}</span>
+                <span className="ml-1">{t('auto.MatchNarrativeCard.vs', { name: opponentName })}</span>
               )}
             </p>
             <p className="text-lg font-bold leading-tight" style={{ color: verdictColor }}>
-              {playerName}：{narrative.verdict}
+              {t('auto.MatchNarrativeCard.verdict', { player: playerName, verdict: narrative.verdict })}
             </p>
           </div>
         </div>
@@ -89,7 +89,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
           <Target size={13} style={{ color: verdictColor, flexShrink: 0, marginTop: 2 }} />
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: subText }}>
-              決め手
+              {t('auto.MatchNarrativeCard.deciding')}
             </p>
             <p className="text-xs leading-relaxed" style={{ color: neutral }}>
               {narrative.deciding_factor}
@@ -102,7 +102,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
           <AlertTriangle size={13} style={{ color: '#d97706', flexShrink: 0, marginTop: 2 }} />
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: subText }}>
-              ぐだりやすい局面
+              {t('auto.MatchNarrativeCard.risk_zones')}
             </p>
             <ul className="space-y-0.5">
               {narrative.risk_zones.map((z, i) => (
@@ -122,7 +122,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
           <Info size={12} style={{ color: subText, flexShrink: 0, marginTop: 2 }} />
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: subText }}>
-              試合前に分かっていること
+              {t('auto.MatchNarrativeCard.knowns')}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {narrative.knowns.map((k, i) => (
