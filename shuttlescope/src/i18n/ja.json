@@ -2817,7 +2817,19 @@
     },
     "CounterfactualV2Card": {
       "k1": "反事実的ショット比較",
-      "k2": "CF-3 対戦相手別"
+      "k2": "CF-3 対戦相手別",
+      "computing": "計算中（{{label}}推定中）...",
+      "insufficient": "十分なデータがありません（各コンテキストで最低10件以上が必要です）",
+      "usable_contexts": "有効コンテキスト: {{n}}件（lift 降順上位表示）",
+      "lift": "({{v}} lift)",
+      "n_only": "N={{n}}",
+      "context_label": "{{phase}} / {{bucket}}ラリー{{prev}}",
+      "actual_wr": "実際の勝率: {{wr}}",
+      "ci_range": "[CI: {{lo}}–{{hi}}]",
+      "alt_line": "代替 {{shot}}: {{wr}} [CI: {{lo}}–{{hi}}]",
+      "ipw": "IPW: {{v}}",
+      "n_eff": "N_eff={{v}}",
+      "ci_overlap": "(CI重複大・不確実)"
     },
     "DoublesRoleCard": {
       "k1": "ダブルスロール推定（DB-1/2）",

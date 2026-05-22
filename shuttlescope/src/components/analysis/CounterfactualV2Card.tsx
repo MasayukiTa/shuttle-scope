@@ -169,14 +169,14 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
       <p className={`text-[10px] ${textFaint}`}>{phaseConfig.additionalInfo}</p>
 
       {isLoading ? (
-        <p className={`text-sm text-center py-4 ${loading}`}>計算中（{phaseConfig.label}推定中）...</p>
+        <p className={`text-sm text-center py-4 ${loading}`}>{t('auto.CounterfactualV2Card.computing', { label: phaseConfig.label })}</p>
       ) : comparisons.length === 0 ? (
         <p className={`text-sm text-center py-4 ${loading}`}>
-          十分なデータがありません（各コンテキストで最低10件以上が必要です）
+          {t('auto.CounterfactualV2Card.insufficient')}
         </p>
       ) : (
         <div className="space-y-2">
-          <p className={`text-[10px] ${textMuted}`}>有効コンテキスト: {usable}件（lift 降順上位表示）</p>
+          <p className={`text-[10px] ${textMuted}`}>{t('auto.CounterfactualV2Card.usable_contexts', { n: usable })}</p>
           {comparisons.map((comp, i) => (
             <div key={i} className={`${cardInner} rounded px-3 py-2 space-y-1`}>
               <div className="flex items-center justify-between">
@@ -188,7 +188,7 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
                   </span>
                   {comp.max_lift !== 0 && (
                     <span className={`ml-1 ${comp.max_lift > 0 ? liftColor : textMuted}`}>
-                      ({comp.max_lift > 0 ? '+' : ''}{pct(comp.max_lift)} lift)
+                      {t('auto.CounterfactualV2Card.lift', { v: `${comp.max_lift > 0 ? '+' : ''}${pct(comp.max_lift)}` })}
                     </span>
                   )}
                 </div>
@@ -198,29 +198,31 @@ export function CounterfactualV2Card({ playerId, filters }: Props) {
                       {OPPONENT_TYPE_LABELS[comp.opponent_type_label] ?? comp.opponent_type_label}
                     </span>
                   )}
-                  <span className={`text-[10px] ${textFaint}`}>N={comp.actual_n}</span>
+                  <span className={`text-[10px] ${textFaint}`}>{t('auto.CounterfactualV2Card.n_only', { n: comp.actual_n })}</span>
                 </div>
               </div>
               <div className={`text-[10px] ${textFaint}`}>
-                {SCORE_PHASE_LABELS[comp.context.score_phase] ?? comp.context.score_phase}
-                / {RALLY_BUCKET_LABELS[comp.context.rally_bucket] ?? comp.context.rally_bucket}ラリー
-                {comp.context.prev_shot && ` / 直前: ${comp.context.prev_shot}`}
+                {t('auto.CounterfactualV2Card.context_label', {
+                  phase: SCORE_PHASE_LABELS[comp.context.score_phase] ?? comp.context.score_phase,
+                  bucket: RALLY_BUCKET_LABELS[comp.context.rally_bucket] ?? comp.context.rally_bucket,
+                  prev: comp.context.prev_shot ? ` / 直前: ${comp.context.prev_shot}` : '',
+                })}
               </div>
               <div className={`text-[10px] ${textMuted}`}>
-                実際の勝率: {pct(comp.actual_win_rate)}
-                <span className="ml-1">[CI: {pct(comp.actual_ci_low)}–{pct(comp.actual_ci_high)}]</span>
+                {t('auto.CounterfactualV2Card.actual_wr', { wr: pct(comp.actual_win_rate) })}
+                <span className="ml-1">{t('auto.CounterfactualV2Card.ci_range', { lo: pct(comp.actual_ci_low), hi: pct(comp.actual_ci_high) })}</span>
               </div>
               {comp.alternatives.slice(0, 2).map((alt) => (
                 <div key={alt.shot_type} className={`text-[10px] ${textMuted} ml-2`}>
-                  代替 {alt.shot_type}: {pct(alt.win_rate)} [CI: {pct(alt.ci_low)}–{pct(alt.ci_high)}]
+                  {t('auto.CounterfactualV2Card.alt_line', { shot: alt.shot_type, wr: pct(alt.win_rate), lo: pct(alt.ci_low), hi: pct(alt.ci_high) })}
                   {cfPhase === 'cf2' && alt.ipw_win_rate != null && (
                     <span className={`ml-1 ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
-                      IPW: {pct(alt.ipw_win_rate)}
-                      {alt.n_eff != null && <span className={textFaint}> N_eff={alt.n_eff.toFixed(1)}</span>}
+                      {t('auto.CounterfactualV2Card.ipw', { v: pct(alt.ipw_win_rate) })}
+                      {alt.n_eff != null && <span className={textFaint}> {t('auto.CounterfactualV2Card.n_eff', { v: alt.n_eff.toFixed(1) })}</span>}
                     </span>
                   )}
                   <span className={`ml-1 ${alt.overlap_score > 0.5 ? overlapWarnColor : textFaint}`}>
-                    {alt.overlap_score > 0.5 && '(CI重複大・不確実)'}
+                    {alt.overlap_score > 0.5 && t('auto.CounterfactualV2Card.ci_overlap')}
                   </span>
                 </div>
               ))}
