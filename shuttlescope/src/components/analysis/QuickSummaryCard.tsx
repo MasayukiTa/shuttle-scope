@@ -146,7 +146,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
             className="text-[10px] font-semibold tracking-[0.18em] uppercase"
             style={{ color: tokens.textMuted }}
           >
-            コーチ向けサマリー
+            {t('auto.QuickSummaryCard.coach_summary')}
           </span>
           {/* 警告件数バッジ: 件数だけ示す、色は B_BAD 文字のみ (背景なし) */}
           {warnCount > 0 && (
@@ -160,7 +160,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
           )}
           {data && (
             <span className="text-[10px]" style={{ color: tokens.textFaint }}>
-              直近 {data.window} / 計 {data.total_rallies} ラリー
+              {t('auto.QuickSummaryCard.recent_total', { window: data.window, total: data.total_rallies })}
             </span>
           )}
         </div>
@@ -188,7 +188,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
             className="text-xs text-center py-2"
             style={{ color: tokens.textFaint }}
           >
-            観測中…
+            {t('auto.QuickSummaryCard.observing')}
           </p>
         )}
         {!isLoading && cards.map((card, i) => (

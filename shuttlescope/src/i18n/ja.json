@@ -2984,7 +2984,10 @@
     "QuickSummaryCard": {
       "k1": "読み込み中...",
       "k2": "再取得",
-      "k3": "警告件数"
+      "k3": "警告件数",
+      "coach_summary": "コーチ向けサマリー",
+      "recent_total": "直近 {{window}} / 計 {{total}} ラリー",
+      "observing": "観測中…"
     },
     "RallyClipNavigator": {
       "k1": "ラリークリップナビゲーター",
@@ -3143,7 +3146,13 @@
       "k5": "チーム所属選手の試合のみが表示されます",
       "k6": "ロールを選択してください",
       "k7": "選手名で検索",
-      "k8": "チーム名で検索 / 直接入力"
+      "k8": "チーム名で検索 / 直接入力",
+      "no_teams": "登録チームがありません",
+      "register_new_team": "+ 新規チーム「{{name}}」として登録",
+      "back_to_roles": "← ロール選択に戻る",
+      "cancel": "キャンセル",
+      "app_name": "ShuttleScope",
+      "poc_note": "POCフェーズ: ロールはブラウザに保存されます"
     },
     "SearchableSelect": {},
     "BestProfileCard": {},
