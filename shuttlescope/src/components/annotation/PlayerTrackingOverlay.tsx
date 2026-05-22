@@ -195,26 +195,26 @@ export function PlayerTrackingOverlay({
               {/* 診断情報（検出ゼロ時のみ表示） */}
               {frameDetectDebug && (
                 <div className="bg-black/85 text-[9px] px-2 py-1.5 rounded font-mono text-left" style={{ color: '#94a3b8' }}>
-                  <div>backend: {frameDetectDebug.backend ?? '—'}</div>
+                  <div>{t('auto.PlayerTrackingOverlay.k_backend', { backend: frameDetectDebug.backend ?? '—' })}</div>
                   {frameDetectDebug.frame_mean_brightness !== undefined && (
-                    <div>frame brightness: {frameDetectDebug.frame_mean_brightness}</div>
+                    <div>{t('auto.PlayerTrackingOverlay.k_frame_brightness', { value: frameDetectDebug.frame_mean_brightness })}</div>
                   )}
                   {frameDetectDebug.person_score_max !== undefined && (
                     <div>
-                      max person score: <span style={{ color: frameDetectDebug.person_score_max >= 0.10 ? '#fbbf24' : '#ef4444' }}>
+                      {t('auto.PlayerTrackingOverlay.k_max_person_score')} <span style={{ color: frameDetectDebug.person_score_max >= 0.10 ? '#fbbf24' : '#ef4444' }}>
                         {frameDetectDebug.person_score_max}
                       </span>
-                      {' '}(閾値: {frameDetectDebug.threshold})
+                      {' '}{t('auto.PlayerTrackingOverlay.k_threshold', { threshold: frameDetectDebug.threshold })}
                     </div>
                   )}
                   {frameDetectDebug.person_score_top5 && (
-                    <div>top5: [{(frameDetectDebug.person_score_top5 as number[]).join(', ')}]</div>
+                    <div>{t('auto.PlayerTrackingOverlay.k_top5', { values: (frameDetectDebug.person_score_top5 as number[]).join(', ') })}</div>
                   )}
                   {frameDetectDebug.warning && (
-                    <div style={{ color: '#f87171' }}>⚠ {frameDetectDebug.warning}</div>
+                    <div style={{ color: '#f87171' }}>{t('auto.PlayerTrackingOverlay.k_warning', { warning: frameDetectDebug.warning })}</div>
                   )}
                   {frameDetectDebug.error && (
-                    <div style={{ color: '#f87171' }}>error: {frameDetectDebug.error}</div>
+                    <div style={{ color: '#f87171' }}>{t('auto.PlayerTrackingOverlay.k_error', { error: frameDetectDebug.error })}</div>
                   )}
                 </div>
               )}

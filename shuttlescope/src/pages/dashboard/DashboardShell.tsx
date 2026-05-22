@@ -72,6 +72,7 @@ function StatCard({
   value: string | number | undefined
   sampleSize?: number
 }) {
+  const { t } = useTranslation()
   // 旧版は bg-gray-800 を完全ハードコードしていてライトモードでも濃紺カード
   // のままになっていた (2026-05-19 修正)。
   const isLight = useIsLightMode()
@@ -106,7 +107,7 @@ function StatCard({
         </p>
         {sampleSize !== undefined && (
           <p className={`text-[10px] ${cls.sampleNote} mt-0.5 num-cell tabular-nums`}>
-            {stars} N={sampleSize.toLocaleString()}ラリー
+            {stars} {t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
           </p>
         )}
       </div>
@@ -353,7 +354,7 @@ export function DashboardShell() {
                       : 'border-gray-600 text-gray-300 hover:bg-gray-700'
                   }`}
                 >
-                  PDF (包括)
+                  {t('auto.DashboardShell.k7')}
                 </button>
                 <button
                   onClick={() => dlReport(`/api/reports/comprehensive?player_id=${selectedPlayerId}`, `report_player${selectedPlayerId}.json`)}
@@ -364,7 +365,7 @@ export function DashboardShell() {
                       : 'border-gray-600 text-gray-300 hover:bg-gray-700'
                   }`}
                 >
-                  JSON (完全)
+                  {t('auto.DashboardShell.k8')}
                 </button>
                 {/* 旧 scouting / growth は残しておく (短い要約版が欲しい場合) */}
                 {(role === 'admin' || role === 'analyst' || role === 'coach') && (
@@ -377,7 +378,7 @@ export function DashboardShell() {
                         : 'border-gray-600 text-gray-400 hover:bg-gray-700 opacity-70'
                     }`}
                   >
-                    要約 PDF
+                    {t('auto.DashboardShell.k9')}
                   </button>
                 )}
               </div>
@@ -432,7 +433,7 @@ export function DashboardShell() {
                   value={filterDateFrom ?? ''}
                   onChange={(e) => setFilterDateFrom(e.target.value || null)}
                 />
-                <span className={`text-xs ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>〜</span>
+                <span className={`text-xs ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('auto.DashboardShell.k10')}</span>
                 <input
                   type="date"
                   className={`border text-xs rounded px-2 py-1 focus:outline-none w-32 ${isLight ? 'bg-white border-gray-300 text-gray-800' : 'bg-gray-700 border-gray-600 text-white'}`}
@@ -458,7 +459,7 @@ export function DashboardShell() {
                       setFilterDateTo(null)
                     }}
                   >
-                    リセット
+                    {t('auto.DashboardShell.k11')}
                   </button>
                 )}
               </div>

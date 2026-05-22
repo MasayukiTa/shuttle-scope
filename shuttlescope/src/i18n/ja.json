@@ -3353,7 +3353,11 @@
       "k2": "詳細スコア",
       "k3": "Analyst 詳細"
     },
-    "GrowthInsights": {},
+    "GrowthInsights": {
+      "k_effect_winrate_up": "({{effect}} 勝率↑)",
+      "k_winrate_paren": "(勝率 {{rate}})",
+      "k_low_conf_hidden_count": "{{label}}（{{n}}件）"
+    },
     "HooperRpeForm": {},
     "CourtDiagram": {
       "k1": "相手コート（着地点）",
@@ -3530,7 +3534,17 @@
     "ConditionPage": {
       "k1": "選手を選択してください",
       "k2": "選手名で検索...",
-      "k3": "自分"
+      "k3": "自分",
+      "k4": "選手：",
+      "k5": "PDF",
+      "k6": "JSON",
+      "k7": "コンディション入力は「自分自身」の選手アカウントでのみ可能です",
+      "k8": "あなたのログインユーザに選手レコードが紐付いていないため入力できません。選手として登録されている場合は管理者にアカウントの player_id 設定を依頼してください。",
+      "k9": "履歴・分析タブは選手セレクタから誰のデータでも閲覧できます。",
+      "k10": "入力対象:",
+      "k11": "選手 #{{n}}",
+      "k12": ") — 他選手の代理入力はできません。",
+      "k13": "測定日："
     },
     "DashboardAdvancedPage": {
       "k1": "ショット別 得点・失点",
@@ -3577,7 +3591,12 @@
       "k25": "日付",
       "k26": "結果",
       "k27": "ラリー",
-      "k28": "表示期間 (このリストのみ):"
+      "k28": "表示期間 (このリストのみ):",
+      "k_set_n": "Set {{n}}",
+      "k_tilde": "〜",
+      "k_clear": "クリア",
+      "k_match_count": "{{shown}} / {{total}} 試合",
+      "k_match_meta": "{{date}}{{level}} · {{rallies}} ラリー"
     },
     "DashboardResearchPage": {
       "k1": "昇格ワークフローはアナリスト向けです",
@@ -3596,7 +3615,13 @@
       "k3": "選手名で検索...",
       "k4": "解析タブの全項目を含む包括 PDF レポート (印刷向け)",
       "k5": "解析全項目 + 試合単位データの完全 JSON dump",
-      "k6": "従来の要約スカウティング PDF"
+      "k6": "従来の要約スカウティング PDF",
+      "k_n_rallies": "N={{n}}ラリー",
+      "k7": "PDF (包括)",
+      "k8": "JSON (完全)",
+      "k9": "要約 PDF",
+      "k10": "〜",
+      "k11": "リセット"
     },
     "ExpertLabelerPage": {},
     "LoginPage": {
@@ -3832,7 +3857,15 @@
       "k5": "ビューワー名",
       "k6": "映像待機中",
       "k7": "受信中",
-      "k8": "例: コーチPC"
+      "k8": "例: コーチPC",
+      "k9": "参加する",
+      "k10": "オペレーターが映像を開始するまでお待ちください。",
+      "k11": "接続済み",
+      "k12": "(再接続 {{n}} 回)",
+      "k13": "タブレット・PC で映像を受信できます。スマートフォンは要約表示専用です。",
+      "k14": "LIVE",
+      "k15": "もう一度試す",
+      "k16": "最初から"
     },
     "GrowthJudgmentCard": {
       "analyzed": "分析済"
@@ -3883,10 +3916,24 @@
     "TemporalPerformance": {},
     "OpponentPolicyCard_test": {},
     "AttributePanel": {},
-    "CVAssistPanel": {},
+    "CVAssistPanel": {
+      "k_role_a": "A:{{role}}",
+      "k_role_b": "B:{{role}}",
+      "k_reason_item": "· {{label}}",
+      "k_label_a": "A:",
+      "k_label_b": "B:"
+    },
     "HitZoneSelector": {},
     "PlayerPositionOverlay": {},
-    "PlayerTrackingOverlay": {},
+    "PlayerTrackingOverlay": {
+      "k_backend": "backend: {{backend}}",
+      "k_frame_brightness": "frame brightness: {{value}}",
+      "k_max_person_score": "max person score:",
+      "k_threshold": "(閾値: {{threshold}})",
+      "k_top5": "top5: [{{values}}]",
+      "k_warning": "⚠ {{warning}}",
+      "k_error": "error: {{error}}"
+    },
     "RallyPanel": {},
     "ShuttleTrackOverlay": {},
     "AnalysisModePanel": {},
@@ -4026,11 +4073,22 @@
     "tunnelStatusDisplay_test": {},
     "AccountOrdersPage": {
       "k1": "購入履歴",
-      "k2": "読み込み中..."
+      "k2": "読み込み中...",
+      "k3": "過去のご購入履歴と領収書のダウンロードができます。",
+      "k4": "購入履歴はありません。",
+      "k5": "注文 ID: {{id}}…",
+      "k6": "{{date}} / 状態: {{status}}",
+      "k7": "¥{{amount}}",
+      "k8": "📄 領収書"
     },
     "CameraSenderPage": {
       "k1": "端末名を編集",
-      "k2": "例: コートサイドiPhone"
+      "k2": "例: コートサイドiPhone",
+      "k_device_name_label": "端末名:",
+      "k_fix_device": "コートを映せる場所に端末を固定してから起動してください。",
+      "k_wifi_check": "Wi-Fi に接続されているか確認してから再試行してください。",
+      "k_retry": "もう一度試す",
+      "k_restart": "最初から"
     },
     "CoGDetectionPage": {
       "k1": "試合",

@@ -508,7 +508,7 @@ export function CameraSenderPage() {
       <div className="mb-4 text-center">
         <div className="inline-flex items-center gap-2 text-blue-400 mb-1">
           <Camera size={24} />
-          <span className="text-lg font-bold">ShuttleScope</span>
+          <span className="text-lg font-bold">{t('app.name')}</span>
         </div>
         <p className="text-gray-400 text-sm">{t('camera_sender.join_title')}</p>
       </div>
@@ -627,7 +627,7 @@ export function CameraSenderPage() {
               ) : (
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-xs text-gray-400">
-                    端末名: <span className="text-gray-200 font-medium">{savedDeviceNameRef.current || getDeviceTypeLabel()}</span>
+                    {t('auto.CameraSenderPage.k_device_name_label')} <span className="text-gray-200 font-medium">{savedDeviceNameRef.current || getDeviceTypeLabel()}</span>
                   </span>
                   <button
                     onClick={() => { setNameInput(savedDeviceNameRef.current || getDeviceTypeLabel()); setEditingName(true) }}
@@ -653,7 +653,7 @@ export function CameraSenderPage() {
             </div>
             <p className="text-center text-lg font-semibold mb-2">{t('camera_sender.state_b_title')}</p>
             <p className="text-center text-xs text-gray-400 mb-5">
-              コートを映せる場所に端末を固定してから起動してください。
+              {t('auto.CameraSenderPage.k_fix_device')}
             </p>
             {errorMsg && (
               <div className="flex items-start gap-1.5 text-red-400 text-xs mb-3 bg-red-900/30 rounded-lg p-2">
@@ -729,7 +729,7 @@ export function CameraSenderPage() {
             <WifiOff size={36} className="text-red-400 mx-auto mb-3" />
             <p className="text-sm text-gray-300 mb-1">{errorMsg || t('camera_sender.join_error_network')}</p>
             <p className="text-xs text-gray-500 mb-4">
-              Wi-Fi に接続されているか確認してから再試行してください。
+              {t('auto.CameraSenderPage.k_wifi_check')}
             </p>
             <div className="flex gap-2 justify-center">
               <button
@@ -746,13 +746,13 @@ export function CameraSenderPage() {
                 }}
                 className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm"
               >
-                もう一度試す
+                {t('auto.CameraSenderPage.k_retry')}
               </button>
               <button
                 onClick={() => { setSenderState('join'); setErrorMsg('') }}
                 className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm text-gray-300"
               >
-                最初から
+                {t('auto.CameraSenderPage.k_restart')}
               </button>
             </div>
           </div>

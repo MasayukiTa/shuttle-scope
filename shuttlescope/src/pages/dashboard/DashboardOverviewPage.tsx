@@ -454,7 +454,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                       : isLight ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                   }`}
                 >
-                  Set {n}
+                  {t('auto.DashboardOverviewPage.k_set_n', { n })}
                 </button>
               ))}
             </div>
@@ -482,7 +482,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               onChange={(e) => setMlFrom(e.target.value)}
               className={`text-[11px] rounded px-1.5 py-0.5 ${isLight ? 'bg-white border border-gray-300 text-gray-900' : 'bg-gray-700 border border-gray-600 text-gray-100'}`}
             />
-            <span className={`text-[10px] ${textMuted}`}>〜</span>
+            <span className={`text-[10px] ${textMuted}`}>{t('auto.DashboardOverviewPage.k_tilde')}</span>
             <input
               type="date"
               value={mlTo}
@@ -495,10 +495,10 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                 onClick={() => { setMlFrom(''); setMlTo('') }}
                 className={`text-[10px] underline ${textMuted}`}
               >
-                クリア
+                {t('auto.DashboardOverviewPage.k_clear')}
               </button>
             )}
-            <span className={`text-xs ${textMuted}`}>{displayMatches.length} / {matches.length} 試合</span>
+            <span className={`text-xs ${textMuted}`}>{t('auto.DashboardOverviewPage.k_match_count', { shown: displayMatches.length, total: matches.length })}</span>
           </div>
         </div>
         {loadingMatches ? <LoadingRow /> : displayMatches.length === 0 ? (
@@ -522,7 +522,11 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
                       <div className={`text-sm font-medium truncate ${textHeading}`} title={m.opponent}>{m.opponent}</div>
                       <div className={`text-xs truncate ${textSecondary}`} title={m.tournament}>{m.tournament}</div>
                       <div className={`text-[11px] mt-0.5 ${textMuted} num-cell`}>
-                        {m.date}{m.tournament_level ? ` · ${m.tournament_level}` : ''} · {m.rally_count} {t('auto.DashboardOverviewPage.k27')}
+                        {t('auto.DashboardOverviewPage.k_match_meta', {
+                          date: m.date,
+                          level: m.tournament_level ? ` · ${m.tournament_level}` : '',
+                          rallies: m.rally_count,
+                        })}
                       </div>
                     </div>
                     <span className={`shrink-0 inline-block px-2 py-0.5 rounded text-xs font-semibold ${m.result === 'win' ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>

@@ -100,7 +100,7 @@ function GrowthCardRow({ c, isLight, sepColor }: {
             <span className={labelMuted}>→</span>
             <span className="font-mono font-semibold text-emerald-500">{winHigh}</span>
             {c.effect && (
-              <span className="font-bold text-emerald-500 ml-0.5">({c.effect} 勝率↑)</span>
+              <span className="font-bold text-emerald-500 ml-0.5">{t('auto.GrowthInsights.k_effect_winrate_up', { effect: c.effect })}</span>
             )}
           </div>
         </div>
@@ -124,11 +124,11 @@ function GrowthCardRow({ c, isLight, sepColor }: {
           <div className={`text-xs ${labelMuted} flex flex-wrap gap-4`}>
             <span>
               {t('condition.insights.growth_card.n_high_weeks', { n: nHigh })}
-              <span className="ml-1 text-emerald-500">(勝率 {winHigh})</span>
+              <span className="ml-1 text-emerald-500">{t('auto.GrowthInsights.k_winrate_paren', { rate: winHigh })}</span>
             </span>
             <span>
               {t('condition.insights.growth_card.n_other_weeks', { n: nOther })}
-              <span className="ml-1">(勝率 {winOther})</span>
+              <span className="ml-1">{t('auto.GrowthInsights.k_winrate_paren', { rate: winOther })}</span>
             </span>
             <span className={`font-mono text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
               {t('condition.insights.growth_card.basis_total', { n: nTotal })}
@@ -202,7 +202,7 @@ export function GrowthInsights({ playerId, isLight }: Props) {
               </div>
               {hiddenCount > 0 && (
                 <div className={`mt-2 text-[11px] ${textMuted}`}>
-                  {t('condition.insights.growth_card.low_confidence_hidden')}（{hiddenCount}件）
+                  {t('auto.GrowthInsights.k_low_conf_hidden_count', { label: t('condition.insights.growth_card.low_confidence_hidden'), n: hiddenCount })}
                 </div>
               )}
             </>
