@@ -2538,6 +2538,10 @@
       "k1": "Limited data"
     },
     "ConfidenceCalibration": {
+      "overall_quality": "Overall quality:",
+      "n_matches": "{{n}} matches",
+      "need_more_pre": "High-confidence analysis needs",
+      "need_more_post": "more matches of data (currently: {{m}} matches)",
       "k1": "Data quality overview",
       "k2": "Loading..."
     },
@@ -2696,6 +2700,10 @@
       "k7": "Search by player name..."
     },
     "PairSynergyCard": {
+      "avg_wr": "All-match avg win rate:",
+      "n_matches": "{{n}} matches",
+      "avg_rally": "Avg rally length: {{n}} strokes",
+      "stroke_share": "Stroke share: {{n}}%",
       "k1": "Loading...",
       "k2": "Win rate",
       "k3": "Synergy",
@@ -2796,7 +2804,12 @@
       "k7": "Loading..."
     },
     "RallyLengthWinRate": {
-      "k1": "Loading..."
+      "k1": "Loading...",
+      "count": "Count: {{n}}",
+      "win_rate": "Win rate: {{v}}%",
+      "insufficient": "Insufficient data (available after annotation)",
+      "count_legend": "Count",
+      "rate_legend": "Win rate"
     },
     "RallyPickerModal": {
       "k1": "Click to select",

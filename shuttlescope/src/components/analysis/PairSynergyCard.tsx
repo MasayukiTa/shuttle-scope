@@ -84,7 +84,7 @@ function Inner({ playerId }: { playerId: number }) {
     <div className="space-y-3">
       <ConfidenceBadge sampleSize={sampleSize} />
       <p className="text-xs text-gray-400">
-        全試合平均勝率: <span className="font-mono text-gray-200">{Math.round(avgWr * 100)}%</span>
+        {t('auto.PairSynergyCard.avg_wr')} <span className="font-mono text-gray-200">{Math.round(avgWr * 100)}%</span>
       </p>
 
       <div className="space-y-2">
@@ -92,7 +92,7 @@ function Inner({ playerId }: { playerId: number }) {
           <div key={p.partner_id} className="bg-gray-750 rounded p-3 border border-gray-700">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-200">{p.partner_name}</span>
-              <span className="text-xs text-gray-400">{p.match_count}試合</span>
+              <span className="text-xs text-gray-400">{t('auto.PairSynergyCard.n_matches', { n: p.match_count })}</span>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <div className="flex items-center gap-1">
@@ -116,8 +116,8 @@ function Inner({ playerId }: { playerId: number }) {
               </div>
             </div>
             <div className="flex gap-4 mt-1.5 text-xs text-gray-500">
-              <span>平均ラリー長: {p.avg_rally_length}球</span>
-              <span>打球分担: {Math.round(p.stroke_share * 100)}%</span>
+              <span>{t('auto.PairSynergyCard.avg_rally', { n: p.avg_rally_length })}</span>
+              <span>{t('auto.PairSynergyCard.stroke_share', { n: Math.round(p.stroke_share * 100) })}</span>
             </div>
           </div>
         ))}
