@@ -372,12 +372,12 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
                 ? 'bg-white border-gray-300 text-gray-700'
                 : 'bg-gray-700 border-gray-600 text-gray-300'
             }`}
-            title="録画画質: low (1.5Mbps/480p) / med (5Mbps/720p) / high (9Mbps/1080p)"
-            aria-label="録画画質"
+            title={t('auto.WebViewPlayer.k9')}
+            aria-label={t('auto.WebViewPlayer.k12')}
           >
-            <option value="low">低</option>
-            <option value="med">中</option>
-            <option value="high">高</option>
+            <option value="low">{t('auto.WebViewPlayer.k6')}</option>
+            <option value="med">{t('auto.WebViewPlayer.k7')}</option>
+            <option value="high">{t('auto.WebViewPlayer.k8')}</option>
           </select>
         )}
 
@@ -390,7 +390,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
               className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
                 isLight ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-red-900/40 text-red-300 hover:bg-red-800/60'
               }`}
-              title="画面録画を停止"
+              title={t('auto.WebViewPlayer.k10')}
             >
               <Square size={10} className="fill-current" />
               <span className="num-cell">{formatElapsed(recordElapsedMs)}</span>
@@ -414,7 +414,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
               className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
                 isLight ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200' : 'bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-800/40'
               }`}
-              title="この画面を録画開始 (会員限定 DRM 配信もライセンス済なら録画可能)"
+              title={t('auto.WebViewPlayer.k11')}
             >
               <Circle size={10} className="fill-current" />
               録画
@@ -458,7 +458,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
           <button
             onClick={() => setRecordWarning('')}
             className="text-xs underline shrink-0"
-            aria-label="警告を閉じる"
+            aria-label={t('auto.WebViewPlayer.k13')}
           >
             閉じる
           </button>

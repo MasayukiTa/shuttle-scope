@@ -4,6 +4,7 @@ import {
   ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 
 interface VideoPlayerProps {
   src: string
@@ -33,6 +34,8 @@ export function VideoPlayer({
   videoAreaRef,
   overlays,
 }: VideoPlayerProps) {
+  const { t } = useTranslation()
+
   const internalRef = useRef<HTMLVideoElement>(null)
   const videoRef = videoRefProp ?? internalRef
 
@@ -152,10 +155,10 @@ export function VideoPlayer({
       {/* コントロールバー */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <button onClick={seekBackward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title="10秒戻し (Shift+←)">
+          <button onClick={seekBackward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k1')}>
             <SkipBack size={16} />
           </button>
-          <button onClick={stepBackward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title="1フレーム戻し (←)">
+          <button onClick={stepBackward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k2')}>
             <ChevronLeft size={16} />
           </button>
           <button
@@ -165,10 +168,10 @@ export function VideoPlayer({
           >
             {isPlaying ? <Pause size={18} /> : <Play size={18} />}
           </button>
-          <button onClick={stepForward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title="1フレーム進め (→)">
+          <button onClick={stepForward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k3')}>
             <ChevronRight size={16} />
           </button>
-          <button onClick={seekForward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title="10秒進め (Shift+→)">
+          <button onClick={seekForward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k4')}>
             <SkipForward size={16} />
           </button>
         </div>

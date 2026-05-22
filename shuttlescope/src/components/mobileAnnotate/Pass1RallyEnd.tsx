@@ -21,6 +21,7 @@ import { MIcon } from '@/components/common/MIcon'
 import { trackInput, trackPassAbandoned, trackPassCompleted, trackPassStarted } from '@/utils/analytics'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { setWinner, isSetPoint, isDeuce, isGoldenPoint } from '@/utils/badmintonRules'
+import { useTranslation } from 'react-i18next'
 
 interface RallyLite {
   id?: number | null
@@ -222,7 +223,7 @@ export function Pass1RallyEnd({
             </span>
           )}
           <div className="text-5xl font-bold text-white">A</div>
-          <div className="text-xs text-blue-200">プレイヤーA 得点</div>
+          <div className="text-xs text-blue-200">{t('auto.Pass1RallyEnd.k1')}</div>
           <div className="text-[10px] text-blue-300/80">
             → {scoreA + 1} - {scoreB}
           </div>
@@ -242,7 +243,7 @@ export function Pass1RallyEnd({
             </span>
           )}
           <div className="text-5xl font-bold text-white">B</div>
-          <div className="text-xs text-pink-200">プレイヤーB 得点</div>
+          <div className="text-xs text-pink-200">{t('auto.Pass1RallyEnd.k2')}</div>
           <div className="text-[10px] text-pink-300/80">
             → {scoreA} - {scoreB + 1}
           </div>
@@ -256,7 +257,7 @@ export function Pass1RallyEnd({
           onClick={onUndoLast}
           disabled={!onUndoLast || !lastRally}
           className="px-3 py-2 rounded bg-gray-800 text-white disabled:opacity-30 flex items-center gap-1"
-          title="直前のラリーを取消"
+          title={t('auto.Pass1RallyEnd.k3')}
         >
           <MIcon name="undo" size={14} /> 直前取消
         </button>

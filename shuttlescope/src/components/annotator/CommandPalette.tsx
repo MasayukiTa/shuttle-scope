@@ -105,7 +105,7 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
       onClick={close}
       role="dialog"
       aria-modal="true"
-      aria-label="コマンドパレット"
+      aria-label={t('auto.CommandPalette.k1')}
     >
       <div
         className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl w-[520px] max-w-[90vw] overflow-hidden"

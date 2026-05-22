@@ -497,7 +497,7 @@ export function UserManagementPage() {
               }}
               className={inputCls}
             >
-              <option value="">— 既存チームから選択（または下に新規名を入力）—</option>
+              <option value="">{t('auto.UserManagementPage.k1')}</option>
               {teams.map((tm) => (
                 <option key={tm.id} value={tm.id}>
                   {tm.name} {tm.is_independent ? '［無所属］' : ''}
@@ -710,21 +710,21 @@ export function UserManagementPage() {
                     <>
                       <th
                         className={`px-3 py-2.5 text-xs font-medium ${textMuted} hidden md:table-cell cursor-pointer select-none`}
-                        title="rate-limit がかかっているユーザを一目で確認 (クリックで降順ソート)"
+                        title={t('auto.UserManagementPage.k3')}
                         onClick={() => setSortKey('is_limited')}
                       >
                         制限
                       </th>
                       <th
                         className={`px-3 py-2.5 text-xs font-medium ${textMuted} hidden md:table-cell cursor-pointer select-none`}
-                        title="進行中アップロード件数 (上限 2)"
+                        title={t('auto.UserManagementPage.k4')}
                         onClick={() => setSortKey('active_uploads')}
                       >
                         UL
                       </th>
                       <th
                         className={`px-3 py-2.5 text-xs font-medium ${textMuted} hidden lg:table-cell cursor-pointer select-none`}
-                        title="直近 60 秒の API リクエスト数 (exfil rate)"
+                        title={t('auto.UserManagementPage.k5')}
                         onClick={() => setSortKey('exfil_requests')}
                       >
                         req/60s
@@ -782,7 +782,7 @@ export function UserManagementPage() {
                               }
                               if (L.active_uploads >= 2) {
                                 badges.push(
-                                  <span key="ul" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700" title="同時アップロード上限 (2/2) 到達">
+                                  <span key="ul" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700" title={t('auto.UserManagementPage.k6')}>
                                     UL満杯
                                   </span>,
                                 )
@@ -819,22 +819,22 @@ export function UserManagementPage() {
                             <div className="flex items-center gap-1">
                               {limits[u.id]?.is_locked && (
                                 <button onClick={() => handleResetLimits(u, 'lock')} disabled={limitResetBusyId === u.id}
-                                  title="アカウントロックのみ解除" className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>🔒</button>
+                                  title={t('auto.UserManagementPage.k7')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>🔒</button>
                               )}
                               {(limits[u.id]?.failed_attempts ?? 0) > 0 && (
                                 <button onClick={() => handleResetLimits(u, 'failed_attempts')} disabled={limitResetBusyId === u.id}
-                                  title="ログイン失敗カウンタのみ 0 に" className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>失敗</button>
+                                  title={t('auto.UserManagementPage.k8')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>{t('auto.UserManagementPage.k2')}</button>
                               )}
                               {(limits[u.id]?.active_uploads ?? 0) >= 2 && (
                                 <button onClick={() => handleResetLimits(u, 'uploads')} disabled={limitResetBusyId === u.id}
-                                  title="進行中アップロードのみ expire" className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>UL</button>
+                                  title={t('auto.UserManagementPage.k9')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>UL</button>
                               )}
                               {(limits[u.id]?.exfil_alerted || limits[u.id]?.exfil_near_hard_block) && (
                                 <button onClick={() => handleResetLimits(u, 'exfil')} disabled={limitResetBusyId === u.id}
-                                  title="EXFIL レート状態のみクリア" className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>EX</button>
+                                  title={t('auto.UserManagementPage.k10')} className={`text-[10px] px-1 rounded border ${border} hover:text-emerald-500 disabled:opacity-50`}>EX</button>
                               )}
                               <button onClick={() => handleResetLimits(u, 'all')} disabled={limitResetBusyId === u.id}
-                                title="全部リセット (確認あり)" className={`${textMuted} hover:text-emerald-500 disabled:opacity-50`}>
+                                title={t('auto.UserManagementPage.k11')} className={`${textMuted} hover:text-emerald-500 disabled:opacity-50`}>
                                 <RotateCcw size={14} />
                               </button>
                             </div>

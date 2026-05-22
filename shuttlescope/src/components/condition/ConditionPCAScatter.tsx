@@ -286,10 +286,10 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
                誤解されるため使わない (四半期グループのみ)。 */}
             <div className={`mt-2 flex flex-wrap items-center gap-3 text-[11px] ${textMuted}`}>
               {[
-                { label: '1-3月', months: [1, 2, 3], key: 'Cool' as const },
-                { label: '4-6月', months: [4, 5, 6], key: 'Green' as const },
-                { label: '7-9月', months: [7, 8, 9], key: 'Warm' as const },
-                { label: '10-12月', months: [10, 11, 12], key: 'Amber' as const },
+                { label: t('auto.ConditionPCAScatter.k1'), months: [1, 2, 3], key: 'Cool' as const },
+                { label: t('auto.ConditionPCAScatter.k2'), months: [4, 5, 6], key: 'Green' as const },
+                { label: t('auto.ConditionPCAScatter.k3'), months: [7, 8, 9], key: 'Warm' as const },
+                { label: t('auto.ConditionPCAScatter.k4'), months: [10, 11, 12], key: 'Amber' as const },
               ].map(({ label, months, key }) => (
                 <span key={label} className="inline-flex items-center gap-1.5">
                   <span style={{ color: catColor(key, isLight), fontWeight: 600 }}>{label}</span>

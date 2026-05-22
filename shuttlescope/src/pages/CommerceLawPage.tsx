@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { BILLING_UI_ENABLED, getLegalInfo, LegalInfo } from '@/api/billing'
+import { useTranslation } from 'react-i18next'
 
 /**
  * 特定商取引法に基づく表記 (Phase Pay-1、フロント非公開)。
@@ -12,11 +13,15 @@ import { BILLING_UI_ENABLED, getLegalInfo, LegalInfo } from '@/api/billing'
  * Phase Pay-2 切替時には env を埋めるだけで内容が反映される。
  */
 export default function CommerceLawPage() {
+  const { t } = useTranslation()
+
   if (!BILLING_UI_ENABLED) return <Navigate to="/" replace />
   return <CommerceLawPageInner />
 }
 
 function CommerceLawPageInner() {
+  const { t } = useTranslation()
+
   const [info, setInfo] = useState<LegalInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -28,14 +33,14 @@ function CommerceLawPageInner() {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <div className="p-8">読み込み中...</div>
+  if (loading) return <div className="p-8">{t('auto.CommerceLawPage.k1')}</div>
   if (error || !info) return <div className="p-8 text-red-600">{error ?? '取得失敗'}</div>
 
   const phoneDisplay = info.phone || info.phone_disclosure_policy
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">特定商取引法に基づく表記</h1>
+      <h1 className="text-2xl font-bold mb-6">{t('auto.CommerceLawPage.k2')}</h1>
 
       <table className="w-full text-sm border border-gray-200 dark:border-gray-700">
         <tbody>

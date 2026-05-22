@@ -81,7 +81,7 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
           <div className="flex flex-wrap gap-4 items-end">
             {/* 試合選択 */}
             <div>
-              <label className="text-xs font-semibold block mb-1">試合</label>
+              <label className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k1')}</label>
               <select
                 className={selectCls}
                 value={matchId ?? ''}
@@ -91,7 +91,7 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
                   setStrokeId(null)
                 }}
               >
-                <option value="">-- 試合を選択 --</option>
+                <option value="">{t('auto.CoGDetectionPage.k2')}</option>
                 {(matchesQuery.data ?? []).map((m) => (
                   <option key={m.match_id} value={m.match_id}>{m.title}</option>
                 ))}
@@ -100,14 +100,14 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
 
             {/* ストローク選択 */}
             <div>
-              <label className="text-xs font-semibold block mb-1">ストローク</label>
+              <label className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k3')}</label>
               <select
                 className={selectCls}
                 value={strokeId ?? ''}
                 onChange={(e) => setStrokeId(Number(e.target.value) || null)}
                 disabled={!matchId || clips.length === 0}
               >
-                <option value="">-- ストロークを選択 --</option>
+                <option value="">{t('auto.CoGDetectionPage.k4')}</option>
                 {clips.map((c) => (
                   <option key={c.stroke_id} value={c.stroke_id}>
                     #{c.stroke_id}
@@ -119,13 +119,13 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
 
             {/* サイドフィルタ */}
             <div>
-              <label className="text-xs font-semibold block mb-1">サイド</label>
+              <label className="text-xs font-semibold block mb-1">{t('auto.CoGDetectionPage.k5')}</label>
               <select
                 className={selectCls}
                 value={side ?? ''}
                 onChange={(e) => setSide(e.target.value || undefined)}
               >
-                <option value="">両サイド</option>
+                <option value="">{t('auto.CoGDetectionPage.k6')}</option>
                 <option value="left">Left</option>
                 <option value="right">Right</option>
               </select>

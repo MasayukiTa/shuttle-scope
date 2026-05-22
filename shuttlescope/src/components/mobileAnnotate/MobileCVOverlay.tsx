@@ -26,6 +26,7 @@ import { apiGet, apiPost } from '@/api/client'
 import { ShuttleTrackOverlay, type ShuttleFrame } from '@/components/annotation/ShuttleTrackOverlay'
 import { PlayerPositionOverlay } from '@/components/annotation/PlayerPositionOverlay'
 import { MIcon } from '@/components/common/MIcon'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   matchId: string | number
@@ -401,7 +402,7 @@ export function MobileCVOverlay({
           onClick={(e) => { e.stopPropagation(); startTracknet() }}
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
-          title="TrackNet をリモート実行"
+          title={t('auto.MobileCVOverlay.k1')}
         >
           <span className="inline-flex items-center gap-1">
             <MIcon name="play_arrow" size={11} />
@@ -415,7 +416,7 @@ export function MobileCVOverlay({
           onClick={(e) => { e.stopPropagation(); setTracknetJob(null); setTracknetJobId(null) }}
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
-          title="タップで閉じる"
+          title={t('auto.MobileCVOverlay.k2')}
         >
           <span className="inline-flex items-center gap-1">
             <MIcon name="check" size={11} />
@@ -439,7 +440,7 @@ export function MobileCVOverlay({
           onClick={(e) => { e.stopPropagation(); setTracknetJob(null); setTracknetJobId(null) }}
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
-          title="タップで閉じる"
+          title={t('auto.MobileCVOverlay.k2')}
         >
           TrackNet エラー: {tracknetError.slice(0, 80)}
         </button>
@@ -451,7 +452,7 @@ export function MobileCVOverlay({
           onClick={(e) => { e.stopPropagation(); startYolo() }}
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-warning"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
-          title="YOLO をリモート実行"
+          title={t('auto.MobileCVOverlay.k3')}
         >
           <span className="inline-flex items-center gap-1">
             <MIcon name="play_arrow" size={11} />
@@ -465,7 +466,7 @@ export function MobileCVOverlay({
           onClick={(e) => { e.stopPropagation(); setYoloJob(null); setYoloJobId(null) }}
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
-          title="タップで閉じる"
+          title={t('auto.MobileCVOverlay.k2')}
         >
           <span className="inline-flex items-center gap-1">
             <MIcon name="check" size={11} />
@@ -489,7 +490,7 @@ export function MobileCVOverlay({
           onClick={(e) => { e.stopPropagation(); setYoloJob(null); setYoloJobId(null) }}
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 7rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
-          title="タップで閉じる"
+          title={t('auto.MobileCVOverlay.k2')}
         >
           YOLO エラー: {yoloError.slice(0, 80)}
         </button>
@@ -500,7 +501,7 @@ export function MobileCVOverlay({
           onClick={(e) => { e.stopPropagation(); setJobErr('') }}
           className="absolute z-30 px-2 py-1 rounded text-[10px] ss-overlay-chip-danger max-w-[70vw]"
           style={{ bottom: 'calc(env(safe-area-inset-bottom) + 9.5rem)', left: 'calc(env(safe-area-inset-left) + 0.5rem)' }}
-          title="タップで閉じる"
+          title={t('auto.MobileCVOverlay.k2')}
         >
           {jobErr}
         </button>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { createOrder, PAYMENT_METHODS, BILLING_UI_ENABLED } from '@/api/billing'
+import { useTranslation } from 'react-i18next'
 
 /**
  * 商品購入モーダル (Phase Pay-1、フロント非公開)。
@@ -28,11 +29,15 @@ interface Props {
 }
 
 export function PurchaseModal(props: Props) {
+  const { t } = useTranslation()
+
   if (!BILLING_UI_ENABLED) return null
   return <PurchaseModalInner {...props} />
 }
 
 function PurchaseModalInner({ productCode, productLabel, priceJpy, extraMetadata, onClose }: Props) {
+  const { t } = useTranslation()
+
   const [paymentMethod, setPaymentMethod] = useState<string>('credit_card')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,7 +64,7 @@ function PurchaseModalInner({ productCode, productLabel, priceJpy, extraMetadata
         <div className="text-2xl font-bold">¥{priceJpy.toLocaleString()}</div>
 
         <div>
-          <label className="block text-sm font-medium mb-2">お支払い方法</label>
+          <label className="block text-sm font-medium mb-2">{t('auto.PurchaseModal.k1')}</label>
           <div className="grid grid-cols-2 gap-2">
             {PAYMENT_METHODS.map((m) => (
               <button

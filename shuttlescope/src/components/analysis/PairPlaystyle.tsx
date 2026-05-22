@@ -39,11 +39,11 @@ const PLAYSTYLE_COLOR: Record<string, { text: string; lightText: string; bg: str
 }
 
 const METRIC_ROWS = [
-  { key: 'net_zone_rate',  label: 'ネット前配球率' },
-  { key: 'back_zone_rate', label: '奥配球率' },
-  { key: 'mid_zone_rate',  label: '中間配球率' },
-  { key: 'smash_rate',     label: 'スマッシュ率' },
-  { key: 'net_shot_rate',  label: 'ネットショット率' },
+  { key: 'net_zone_rate',  label: t('auto.PairPlaystyle.k1') },
+  { key: 'back_zone_rate', label: t('auto.PairPlaystyle.k2') },
+  { key: 'mid_zone_rate',  label: t('auto.PairPlaystyle.k3') },
+  { key: 'smash_rate',     label: t('auto.PairPlaystyle.k4') },
+  { key: 'net_shot_rate',  label: t('auto.PairPlaystyle.k5') },
 ]
 
 export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerBName = 'B' }: PairPlaystyleProps) {

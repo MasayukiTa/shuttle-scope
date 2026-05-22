@@ -13,6 +13,7 @@ import {
 } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useTranslation } from 'react-i18next'
 
 interface UserBrief {
   id: number
@@ -32,6 +33,8 @@ interface FormState {
 const emptyForm = (): FormState => ({ name: '', display_id: '', short_name: '', notes: '' })
 
 export function TeamManagementPage() {
+  const { t } = useTranslation()
+
   const { role } = useAuth()
   const isAdmin = role === 'admin'
   const isCoach = role === 'coach'
@@ -175,7 +178,7 @@ export function TeamManagementPage() {
   if (!isAdmin && !isCoach) {
     return (
       <div className="p-6">
-        <p className="text-sm text-gray-500">このページは admin / coach のみ利用できます。</p>
+        <p className="text-sm text-gray-500">{t('auto.TeamManagementPage.k1')}</p>
       </div>
     )
   }
@@ -183,13 +186,13 @@ export function TeamManagementPage() {
   return (
     <div className="p-3 sm:p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-4 gap-2">
-        <h1 className="text-xl font-bold truncate">チーム管理</h1>
+        <h1 className="text-xl font-bold truncate">{t('auto.TeamManagementPage.k2')}</h1>
         {isAdmin && (
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shrink-0"
           >
-            <Plus size={16} /> <span className="hidden sm:inline">新規作成</span><span className="sm:hidden">追加</span>
+            <Plus size={16} /> <span className="hidden sm:inline">{t('auto.TeamManagementPage.k3')}</span><span className="sm:hidden">{t('auto.TeamManagementPage.k4')}</span>
           </button>
         )}
       </div>
@@ -202,28 +205,28 @@ export function TeamManagementPage() {
 
       {showCreate && (
         <div className="mb-6 p-4 border rounded bg-gray-50">
-          <h2 className="font-semibold mb-3">新規チーム</h2>
+          <h2 className="font-semibold mb-3">{t('auto.TeamManagementPage.k5')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium mb-1">表示名（必須）</label>
+              <label className="block text-xs font-medium mb-1">{t('auto.TeamManagementPage.k6')}</label>
               <input
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="w-full px-3 py-2 border rounded"
-                placeholder="例: Resonac"
+                placeholder={t('auto.TeamManagementPage.k25')}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">識別子 (display_id)</label>
+              <label className="block text-xs font-medium mb-1">{t('auto.TeamManagementPage.k7')}</label>
               <input
                 value={form.display_id}
                 onChange={(e) => setForm({ ...form, display_id: e.target.value })}
                 className="w-full px-3 py-2 border rounded"
-                placeholder="任意の一意な文字列（例: RESO-001）"
+                placeholder={t('auto.TeamManagementPage.k26')}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">短縮名</label>
+              <label className="block text-xs font-medium mb-1">{t('auto.TeamManagementPage.k8')}</label>
               <input
                 value={form.short_name}
                 onChange={(e) => setForm({ ...form, short_name: e.target.value })}
@@ -231,7 +234,7 @@ export function TeamManagementPage() {
               />
             </div>
             <div className="md:col-span-2">
-              <label className="block text-xs font-medium mb-1">メモ</label>
+              <label className="block text-xs font-medium mb-1">{t('auto.TeamManagementPage.k9')}</label>
               <textarea
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -264,11 +267,11 @@ export function TeamManagementPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-500">読み込み中…</p>
+        <p className="text-sm text-gray-500">{t('auto.TeamManagementPage.k10')}</p>
       ) : isMobile ? (
         <div className="space-y-2">
           {teams.length === 0 && (
-            <div className="py-6 text-center text-sm text-gray-500">表示できるチームがありません。</div>
+            <div className="py-6 text-center text-sm text-gray-500">{t('auto.TeamManagementPage.k11')}</div>
           )}
           {teams.map((t) => {
             const editing = editingId === t.id
@@ -282,19 +285,19 @@ export function TeamManagementPage() {
                       value={editForm.name}
                       onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                       className="w-full px-2 py-1.5 border rounded text-sm"
-                      placeholder="表示名"
+                      placeholder={t('auto.TeamManagementPage.k16')}
                     />
                     <input
                       value={editForm.display_id}
                       onChange={(e) => setEditForm({ ...editForm, display_id: e.target.value })}
                       className="w-full px-2 py-1.5 border rounded text-sm"
-                      placeholder="識別子"
+                      placeholder={t('auto.TeamManagementPage.k15')}
                     />
                     <input
                       value={editForm.short_name}
                       onChange={(e) => setEditForm({ ...editForm, short_name: e.target.value })}
                       className="w-full px-2 py-1.5 border rounded text-sm"
-                      placeholder="短縮名"
+                      placeholder={t('auto.TeamManagementPage.k8')}
                     />
                     <div className="flex gap-2 justify-end">
                       <button
@@ -322,9 +325,9 @@ export function TeamManagementPage() {
                           <code className="bg-gray-100 px-1 rounded">{t.display_id || '—'}</code>
                           {t.short_name && <span>({t.short_name})</span>}
                           {t.is_independent ? (
-                            <span className="px-1.5 rounded bg-yellow-100 text-yellow-700">無所属</span>
+                            <span className="px-1.5 rounded bg-yellow-100 text-yellow-700">{t('auto.TeamManagementPage.k12')}</span>
                           ) : (
-                            <span className="px-1.5 rounded bg-blue-100 text-blue-700">チーム</span>
+                            <span className="px-1.5 rounded bg-blue-100 text-blue-700">{t('auto.TeamManagementPage.k13')}</span>
                           )}
                         </div>
                       </div>
@@ -349,7 +352,7 @@ export function TeamManagementPage() {
                             onClick={() => startDelete(t)}
                             disabled={deletingId === t.id}
                             className="p-1.5 text-red-600 border rounded disabled:opacity-50"
-                            title="削除"
+                            title={t('auto.TeamManagementPage.k20')}
                           >
                             {deletingId === t.id ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -364,7 +367,7 @@ export function TeamManagementPage() {
                       <div className="mt-3 pt-3 border-t">
                         <div className="text-xs text-gray-500 mb-1">メンバー（{members.length} 名）</div>
                         {members.length === 0 ? (
-                          <div className="text-xs text-gray-400">所属ユーザはいません。</div>
+                          <div className="text-xs text-gray-400">{t('auto.TeamManagementPage.k14')}</div>
                         ) : (
                           <ul className="space-y-1 text-sm">
                             {members.map((u) => (
@@ -388,10 +391,10 @@ export function TeamManagementPage() {
           <thead>
             <tr className="text-left border-b">
               <th className="py-2 pr-2">ID</th>
-              <th className="py-2 pr-2">識別子</th>
-              <th className="py-2 pr-2">表示名</th>
-              <th className="py-2 pr-2">短縮名</th>
-              <th className="py-2 pr-2">種別</th>
+              <th className="py-2 pr-2">{t('auto.TeamManagementPage.k15')}</th>
+              <th className="py-2 pr-2">{t('auto.TeamManagementPage.k16')}</th>
+              <th className="py-2 pr-2">{t('auto.TeamManagementPage.k8')}</th>
+              <th className="py-2 pr-2">{t('auto.TeamManagementPage.k17')}</th>
               <th className="py-2"></th>
             </tr>
           </thead>
@@ -437,9 +440,9 @@ export function TeamManagementPage() {
                   </td>
                   <td className="py-2 pr-2 text-xs">
                     {t.is_independent ? (
-                      <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">無所属</span>
+                      <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">{t('auto.TeamManagementPage.k12')}</span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">チーム</span>
+                      <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">{t('auto.TeamManagementPage.k13')}</span>
                     )}
                   </td>
                   <td className="py-2 text-right">
@@ -448,7 +451,7 @@ export function TeamManagementPage() {
                         <button
                           onClick={() => setExpandedTeamId((cur) => (cur === t.id ? null : t.id))}
                           className="p-1 text-gray-600 hover:bg-gray-100 rounded inline-flex items-center gap-1"
-                          title="メンバー一覧を表示"
+                          title={t('auto.TeamManagementPage.k21')}
                         >
                           <Users size={14} />
                           <span className="text-xs">{(usersByTeam[t.id] || []).length}</span>
@@ -460,14 +463,14 @@ export function TeamManagementPage() {
                             onClick={() => handleSave(t.id)}
                             disabled={savingId === t.id}
                             className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
-                            title="保存"
+                            title={t('auto.TeamManagementPage.k22')}
                           >
                             {savingId === t.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
                             className="p-1 text-gray-500 hover:bg-gray-50 rounded"
-                            title="キャンセル"
+                            title={t('auto.TeamManagementPage.k23')}
                           >
                             <X size={16} />
                           </button>
@@ -477,7 +480,7 @@ export function TeamManagementPage() {
                           <button
                             onClick={() => startEdit(t)}
                             className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                            title="編集"
+                            title={t('auto.TeamManagementPage.k24')}
                           >
                             <Pencil size={16} />
                           </button>
@@ -485,7 +488,7 @@ export function TeamManagementPage() {
                             <button
                               onClick={() => startDelete(t)}
                               className="p-1 text-red-600 hover:bg-red-50 rounded"
-                              title="削除"
+                              title={t('auto.TeamManagementPage.k20')}
                               disabled={deletingId === t.id}
                             >
                               {deletingId === t.id ? (
@@ -510,7 +513,7 @@ export function TeamManagementPage() {
                   <td colSpan={6} className="px-4 py-2">
                     <div className="text-xs text-gray-500 mb-1">「{t.name}」のメンバー（{members.length} 名）</div>
                     {members.length === 0 ? (
-                      <div className="text-xs text-gray-400">所属ユーザはいません。</div>
+                      <div className="text-xs text-gray-400">{t('auto.TeamManagementPage.k14')}</div>
                     ) : (
                       <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1 text-sm">
                         {members.map((u) => (
@@ -554,7 +557,7 @@ export function TeamManagementPage() {
           >
             <div className="flex items-center gap-2 mb-3">
               <AlertTriangle size={20} className="text-red-600" />
-              <h2 className="text-lg font-semibold">チームを削除しますか？</h2>
+              <h2 className="text-lg font-semibold">{t('auto.TeamManagementPage.k18')}</h2>
             </div>
             <p className="text-sm text-gray-700 mb-3">
               チーム「<span className="font-medium">{deleteTarget.name}</span>」を soft-delete します。
@@ -567,7 +570,7 @@ export function TeamManagementPage() {
               </div>
             ) : (
               <div className="mb-4">
-                <div className="text-xs text-gray-500 mb-1">紐付いている現役レコード:</div>
+                <div className="text-xs text-gray-500 mb-1">{t('auto.TeamManagementPage.k19')}</div>
                 <ul className="text-sm space-y-0.5 mb-3">
                   <li>
                     ユーザ:{' '}

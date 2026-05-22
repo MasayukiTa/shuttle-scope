@@ -103,12 +103,39 @@ for (const rel of files) {
 
   // Ensure useTranslation import
   if (!/from ['"]react-i18next['"]/.test(src)) {
-    // Add after first import line
+    // 先頭 import ブロックの末尾の直後に挿入する。
+    // 旧実装は「最初の import 行 +1」に入れていたため、複数行 import
+    //   import {\n  A,\n  B,\n} from 'x'
+    // の途中 (import { の直後) に割り込んでビルドを壊していた。
+    // 各 import 文の終端 (`from '...'` を含む行 / 単独 `import '...'` /
+    // `;` で終わる行) まで読み進めてから insertAt を更新する。
     const lines = src.split('\n')
     let insertAt = 0
-    for (let i = 0; i < lines.length; i++) {
-      if (/^import\s/.test(lines[i])) insertAt = i + 1
-      else if (insertAt > 0) break
+    let i = 0
+    while (i < lines.length) {
+      const L = lines[i]
+      const trimmed = L.trim()
+      // 先頭のコメント・空行はスキップ (import ブロックの前後)
+      if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+        i++
+        continue
+      }
+      if (/^\s*import\b/.test(L)) {
+        // この import 文の終端行まで進める
+        let j = i
+        while (
+          j < lines.length &&
+          !/from\s+['"][^'"]+['"]/.test(lines[j]) &&     // `} from 'x'`
+          !/^\s*import\s+['"][^'"]+['"]/.test(lines[j]) && // 副作用 import 'x'
+          !/;\s*$/.test(lines[j])                          // 末尾 ;
+        ) {
+          j++
+        }
+        insertAt = j + 1
+        i = j + 1
+      } else {
+        break
+      }
     }
     lines.splice(insertAt, 0, `import { useTranslation } from 'react-i18next'`)
     src = lines.join('\n')

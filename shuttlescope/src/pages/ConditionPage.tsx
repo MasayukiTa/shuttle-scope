@@ -457,7 +457,7 @@ export function ConditionPage() {
                 borderColor: isLight ? '#bfdbfe' : '#1e40af',
               }}
             >
-              入力対象: <strong>自分</strong> (
+              入力対象: <strong>{t('auto.ConditionPage.k3')}</strong> (
               {players.find((p) => p.id === authPlayerId)?.name ?? `選手 #${authPlayerId}`}
               ) — 他選手の代理入力はできません。
             </div>

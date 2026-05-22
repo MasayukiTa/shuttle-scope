@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react'
 import { apiPost } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 import { useAutoTutorial } from '@/components/tutorial/useTutorial'
+import { useTranslation } from 'react-i18next'
 
 interface Pt { x: number; y: number }
 
@@ -337,7 +338,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           type="button"
           onClick={undo}
           disabled={points.length === 0 || saving}
-          title="直前 1 点を戻す"
+          title={t('auto.MobileCourtCalib.k1')}
           className="rounded-full"
           style={{
             width: 44, height: 44,
@@ -354,7 +355,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           type="button"
           onClick={reset}
           disabled={points.length === 0 || saving}
-          title="全消去"
+          title={t('auto.MobileCourtCalib.k2')}
           className="rounded-full"
           style={{
             width: 44, height: 44,
@@ -388,7 +389,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
           type="button"
           onClick={onClose}
           disabled={saving}
-          title="キャンセル"
+          title={t('auto.MobileCourtCalib.k3')}
           className="rounded-full"
           style={{
             width: 44, height: 44,

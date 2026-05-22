@@ -68,6 +68,8 @@ const LEVEL_META: Record<string, { Icon: typeof AlertTriangle; iconColor?: strin
 }
 
 function CardItem({ card, tokens }: { card: SummaryCard; tokens: Tokens }) {
+  const { t } = useTranslation()
+
   const meta = LEVEL_META[card.level] ?? LEVEL_META.info
   const Icon = meta.Icon
   // Design Language v1.2 (改訂):
@@ -151,7 +153,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
             <span
               className="text-[10px] font-semibold tabular-nums"
               style={{ color: B_BAD }}
-              title="警告件数"
+              title={t('auto.QuickSummaryCard.k3')}
             >
               ⚠ {warnCount}
             </span>

@@ -44,9 +44,9 @@ interface GrowthTimelineResponse {
 }
 
 const METRIC_CONFIG: Record<Metric, { label: string; colorA: string; colorB: string; unit: string; domain: [number | 'auto', number | 'auto'] }> = {
-  win_rate:         { label: '勝率',         colorA: '#3b82f6', colorB: '#f97316', unit: '%',  domain: [0, 1] },
-  serve_win_rate:   { label: 'サーブ勝率',   colorA: '#06b6d4', colorB: '#a855f7', unit: '%',  domain: [0, 1] },
-  avg_rally_length: { label: '平均ラリー長', colorA: '#8b5cf6', colorB: '#10b981', unit: '球', domain: ['auto', 'auto'] },
+  win_rate:         { label: t('auto.GrowthTimeline.k1'),         colorA: '#3b82f6', colorB: '#f97316', unit: '%',  domain: [0, 1] },
+  serve_win_rate:   { label: t('auto.GrowthTimeline.k2'),   colorA: '#06b6d4', colorB: '#a855f7', unit: '%',  domain: [0, 1] },
+  avg_rally_length: { label: t('auto.GrowthTimeline.k3'), colorA: '#8b5cf6', colorB: '#10b981', unit: '球', domain: ['auto', 'auto'] },
 }
 
 const TREND_LABELS = {

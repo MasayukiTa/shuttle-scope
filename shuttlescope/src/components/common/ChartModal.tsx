@@ -1,5 +1,6 @@
 import { useEffect, ReactNode } from 'react'
 import { X, LayoutDashboard } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface ChartModalProps {
   title: string
@@ -13,6 +14,8 @@ interface ChartModalProps {
  * - 「元ダッシュボードへ戻る」ボタンで閉じる
  */
 export function ChartModal({ title, onClose, children }: ChartModalProps) {
+  const { t } = useTranslation()
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -44,7 +47,7 @@ export function ChartModal({ title, onClose, children }: ChartModalProps) {
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
-            title="閉じる (Esc)"
+            title={t('auto.ChartModal.k1')}
           >
             <X size={18} />
           </button>

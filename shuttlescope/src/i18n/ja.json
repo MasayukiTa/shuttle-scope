@@ -2791,7 +2791,11 @@
       "k6": "事後勝率"
     },
     "CoachSummaryStrip": {
-      "k1": "データ少"
+      "k1": "データ少",
+      "k2": "サンプル不足 (< 10)",
+      "k3": "改善",
+      "k4": "悪化",
+      "k5": "横ばい"
     },
     "ConfidenceCalibration": {
       "k1": "データ品質概況",
@@ -2960,7 +2964,8 @@
     },
     "QuickSummaryCard": {
       "k1": "読み込み中...",
-      "k2": "再取得"
+      "k2": "再取得",
+      "k3": "警告件数"
     },
     "RallyClipNavigator": {
       "k1": "ラリークリップナビゲーター",
@@ -3117,7 +3122,12 @@
       "k1": "低 → 高"
     },
     "ConditionLagCorrelation": {},
-    "ConditionPCAScatter": {},
+    "ConditionPCAScatter": {
+      "k1": "1-3月",
+      "k2": "4-6月",
+      "k3": "7-9月",
+      "k4": "10-12月"
+    },
     "ConditionPostMatchChange": {},
     "ConditionResult": {
       "k1": "因子別",
@@ -3173,14 +3183,26 @@
       "k10": "ffmpeg未インストールのため画質制限あり",
       "k11": "720p（推奨）",
       "k12": "最高画質",
-      "k13": "なし（公開動画）"
+      "k13": "なし（公開動画）",
+      "k14": "✓ 設定済",
+      "k15": "cookies.txt をクリア",
+      "k16": "区間指定 / cookies.txt / video password 等の詳細オプションを開く",
+      "k17": "動画パスワード"
     },
     "WebViewPlayer": {
       "k1": "読み込み中...",
       "k2": "戻る",
       "k3": "進む",
       "k4": "再読込",
-      "k5": "システムブラウザで開く"
+      "k5": "システムブラウザで開く",
+      "k6": "低",
+      "k7": "中",
+      "k8": "高",
+      "k9": "録画画質: low (1.5Mbps/480p) / med (5Mbps/720p) / high (9Mbps/1080p)",
+      "k10": "画面録画を停止",
+      "k11": "この画面を録画開始 (会員限定 DRM 配信もライセンス済なら録画可能)",
+      "k12": "録画画質",
+      "k13": "警告を閉じる"
     },
     "WebViewPlayer_test": {},
     "AnnotatorPage": {
@@ -3227,7 +3249,8 @@
     },
     "ConditionPage": {
       "k1": "選手を選択してください",
-      "k2": "選手名で検索..."
+      "k2": "選手名で検索...",
+      "k3": "自分"
     },
     "DashboardAdvancedPage": {
       "k1": "ショット別 得点・失点",
@@ -3273,7 +3296,8 @@
       "k24": "レベル",
       "k25": "日付",
       "k26": "結果",
-      "k27": "ラリー"
+      "k27": "ラリー",
+      "k28": "表示期間 (このリストのみ):"
     },
     "DashboardResearchPage": {
       "k1": "昇格ワークフローはアナリスト向けです",
@@ -3289,7 +3313,10 @@
     "DashboardShell": {
       "k1": "選手：",
       "k2": "期間:",
-      "k3": "選手名で検索..."
+      "k3": "選手名で検索...",
+      "k4": "解析タブの全項目を含む包括 PDF レポート (印刷向け)",
+      "k5": "解析全項目 + 試合単位データの完全 JSON dump",
+      "k6": "従来の要約スカウティング PDF"
     },
     "ExpertLabelerPage": {},
     "LoginPage": {
@@ -3322,7 +3349,9 @@
       "k23": "A側（自チーム）",
       "k24": "B側（相手）",
       "k25": "⬇ 画面下（手前）",
-      "k26": "⬆ 画面上（奥側）"
+      "k26": "⬆ 画面上（奥側）",
+      "k27": "ダウンロード失敗",
+      "k28": "全チーム共有（公開プール: BWF などの公開試合用。チェックすると全チームから閲覧可）"
     },
     "NotificationInboxPage": {
       "k1": "通知の確認は admin ロール専用です。",
@@ -3357,7 +3386,8 @@
       "k30": "メモを保存",
       "k31": "削除しました",
       "k32": "{{n}}件を削除しました",
-      "k33": "削除する対象がありません"
+      "k33": "削除する対象がありません",
+      "k34": "Cloudflare 自動 ban の誤検知申し立て"
     },
     "PredictionPage": {
       "k1": "選手：",
@@ -3409,7 +3439,11 @@
       "k38": "差分（更新日以降）",
       "k39": "追加",
       "k40": "保持",
-      "k41": "競合"
+      "k41": "競合",
+      "k42": "チュートリアル",
+      "k43": "読み込み中…",
+      "k44": "· ステータス:",
+      "k45": "再生"
     },
     "VideoOnlyPage": {},
     "ViewerPage": {
@@ -3421,6 +3455,193 @@
       "k6": "映像待機中",
       "k7": "受信中",
       "k8": "例: コーチPC"
+    },
+    "GrowthJudgmentCard": {},
+    "GrowthTimeline": {
+      "k1": "勝率",
+      "k2": "サーブ勝率",
+      "k3": "平均ラリー長"
+    },
+    "IntervalReport": {
+      "k1": "詳細 ›",
+      "k2": "セットの詳細解析を開く"
+    },
+    "MarkovEPV": {},
+    "OpponentTypeAffinity": {},
+    "PairPlaystyle": {
+      "k1": "ネット前配球率",
+      "k2": "奥配球率",
+      "k3": "中間配球率",
+      "k4": "スマッシュ率",
+      "k5": "ネットショット率"
+    },
+    "PartnerTimeline": {},
+    "PreMatchObservationAnalytics": {},
+    "TemporalPerformance": {},
+    "OpponentPolicyCard_test": {},
+    "AttributePanel": {},
+    "CVAssistPanel": {},
+    "HitZoneSelector": {},
+    "PlayerPositionOverlay": {},
+    "PlayerTrackingOverlay": {},
+    "RallyPanel": {},
+    "ShuttleTrackOverlay": {},
+    "AnalysisModePanel": {},
+    "CommandPalette": {
+      "k1": "コマンドパレット"
+    },
+    "ScoreboardCompact": {},
+    "TopBarMenu_test": {
+      "k1": "記録モード"
+    },
+    "ResultMatrix": {},
+    "PurchaseModal": {
+      "k1": "お支払い方法"
+    },
+    "AdviceStrip": {},
+    "ChartModal": {
+      "k1": "閉じる (Esc)"
+    },
+    "Notice": {
+      "k1": "閉じる"
+    },
+    "PlayerSelectorSheet": {},
+    "ConditionCorrelationHeatmap": {},
+    "ConditionGlossary": {
+      "k1": "用語解説を開く"
+    },
+    "ConditionSeasonality": {},
+    "ConditionTagCompare": {},
+    "CorrelationScatter": {},
+    "MobileCVOverlay": {
+      "k1": "TrackNet をリモート実行",
+      "k2": "タップで閉じる",
+      "k3": "YOLO をリモート実行"
+    },
+    "MobileCourtCalib": {
+      "k1": "直前 1 点を戻す",
+      "k2": "全消去",
+      "k3": "キャンセル"
+    },
+    "Pass1RallyEnd": {
+      "k1": "プレイヤーA 得点",
+      "k2": "プレイヤーB 得点",
+      "k3": "直前のラリーを取消"
+    },
+    "Pass2ServeFinal": {},
+    "Pass3ShotDetail": {
+      "k1": "スマッシュ",
+      "k2": "クリア",
+      "k3": "ドロップ",
+      "k4": "ヘアピン",
+      "k5": "プッシュ",
+      "k6": "ドライブ",
+      "k7": "ロブ",
+      "k8": "クロス"
+    },
+    "PlayMode": {
+      "k1": "動画が再生できません",
+      "k2": "Safari 共有ボタン →",
+      "k3": "「ホーム画面に追加」",
+      "k4": "前回ラリー終了位置に seek",
+      "k5": "コートグリッド表示切替",
+      "k6": "コート 4 隅 + ネット 2 点を設置 / 微調整",
+      "k7": "Desktop/Android: 全画面化。iOS Safari: ホーム画面追加を案内",
+      "k8": "鳥瞰カメラの不要部分を切り抜く",
+      "k9": "コートグリッド",
+      "k10": "コートキャリブ編集",
+      "k11": "シャトル軌跡",
+      "k12": "プレイヤー位置",
+      "k13": "表示モード切替",
+      "k14": "フルスクリーン",
+      "k15": "切り抜き編集",
+      "k16": "全画面に戻す"
+    },
+    "TutorialOverlay": {},
+    "RoiRectOverlay": {
+      "k1": "解析領域をリセット"
+    },
+    "VideoPlayer": {
+      "k1": "10秒戻し (Shift+←)",
+      "k2": "1フレーム戻し (←)",
+      "k3": "1フレーム進め (→)",
+      "k4": "10秒進め (Shift+→)"
+    },
+    "tunnelStatusDisplay_test": {},
+    "AccountOrdersPage": {
+      "k1": "購入履歴",
+      "k2": "読み込み中..."
+    },
+    "CameraSenderPage": {
+      "k1": "端末名を編集",
+      "k2": "例: コートサイドiPhone"
+    },
+    "CoGDetectionPage": {
+      "k1": "試合",
+      "k2": "-- 試合を選択 --",
+      "k3": "ストローク",
+      "k4": "-- ストロークを選択 --",
+      "k5": "サイド",
+      "k6": "両サイド"
+    },
+    "CommerceLawPage": {
+      "k1": "読み込み中...",
+      "k2": "特定商取引法に基づく表記"
+    },
+    "EmailVerifyPage": {},
+    "ExpertLabelerAnnotatePage": {},
+    "LiveInputPage": {},
+    "MobileAnnotatePage": {
+      "k1": "端末を横向きに",
+      "k2": "動画情報を読み込み中…",
+      "k3": "試合一覧に戻る (確認あり)",
+      "k4": "戻る"
+    },
+    "OnboardingConsentPage": {
+      "k1": "日本語"
+    },
+    "PasswordResetConfirmPage": {},
+    "PendingUsersPage": {},
+    "TeamManagementPage": {
+      "k1": "このページは admin / coach のみ利用できます。",
+      "k2": "チーム管理",
+      "k3": "新規作成",
+      "k4": "追加",
+      "k5": "新規チーム",
+      "k6": "表示名（必須）",
+      "k7": "識別子 (display_id)",
+      "k8": "短縮名",
+      "k9": "メモ",
+      "k10": "読み込み中…",
+      "k11": "表示できるチームがありません。",
+      "k12": "無所属",
+      "k13": "チーム",
+      "k14": "所属ユーザはいません。",
+      "k15": "識別子",
+      "k16": "表示名",
+      "k17": "種別",
+      "k18": "チームを削除しますか？",
+      "k19": "紐付いている現役レコード:",
+      "k20": "削除",
+      "k21": "メンバー一覧を表示",
+      "k22": "保存",
+      "k23": "キャンセル",
+      "k24": "編集",
+      "k25": "例: Resonac",
+      "k26": "任意の一意な文字列（例: RESO-001）"
+    },
+    "UserManagementPage": {
+      "k1": "— 既存チームから選択（または下に新規名を入力）—",
+      "k2": "失敗",
+      "k3": "rate-limit がかかっているユーザを一目で確認 (クリックで降順ソート)",
+      "k4": "進行中アップロード件数 (上限 2)",
+      "k5": "直近 60 秒の API リクエスト数 (exfil rate)",
+      "k6": "同時アップロード上限 (2/2) 到達",
+      "k7": "アカウントロックのみ解除",
+      "k8": "ログイン失敗カウンタのみ 0 に",
+      "k9": "進行中アップロードのみ expire",
+      "k10": "EXFIL レート状態のみクリア",
+      "k11": "全部リセット (確認あり)"
     }
   },
   "youtubeLive": {
