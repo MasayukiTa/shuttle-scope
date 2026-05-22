@@ -230,7 +230,7 @@ export function ConditionCorrelationHeatmap({ playerId, isLight }: Props) {
               <span className="font-mono">
                 {selected.r == null ? t('condition.corr_heatmap.na') : selected.r.toFixed(3)}
               </span>
-              {'  '}N: <span className="font-mono">{selected.n}</span>
+              {'  '}{t('auto.ConditionCorrelationHeatmap.n_label')} <span className="font-mono">{selected.n}</span>
               {selected.r != null && selected.n < MIN_N && (
                 <span className="italic ml-2">
                   {t('condition.corr_heatmap.insufficient_pair')}

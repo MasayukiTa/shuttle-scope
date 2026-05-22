@@ -91,7 +91,7 @@ export function LiveInputPage() {
   }, [store.inputStep, mode])
 
   if (!matchId) {
-    return <div className="p-4 text-sm">match id missing</div>
+    return <div className="p-4 text-sm">{t('auto.LiveInputPage.match_id_missing')}</div>
   }
   if (!match || !latestSet) {
     return <div className="p-4 text-sm text-gray-500">{t('annotator.loading', { defaultValue: '読み込み中...' })}</div>

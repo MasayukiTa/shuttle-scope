@@ -121,7 +121,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
                       onClick={() => setFlashSet(n)}
                       className={`px-3 py-1 text-xs rounded font-medium transition-colors ${flashSet === n ? 'bg-blue-600 text-white' : isLight ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
                     >
-                      Set {n}
+                      {t('auto.DashboardLivePage.set_n', { n })}
                     </button>
                   ))}
                 </div>

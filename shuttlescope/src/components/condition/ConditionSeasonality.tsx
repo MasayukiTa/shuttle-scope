@@ -305,12 +305,12 @@ export function ConditionSeasonality({ playerId, isLight }: Props) {
                           {m == null ? (
                             <span className={muted}>
                               {t('condition.seasonality.no_value')}
-                              <span className="ml-1">(N={n})</span>
+                              <span className="ml-1">{t('auto.ConditionSeasonality.n_count', { n })}</span>
                             </span>
                           ) : (
                             <>
                               {m.toFixed(2)}
-                              <span className={`ml-1 ${muted}`}>(N={n})</span>
+                              <span className={`ml-1 ${muted}`}>{t('auto.ConditionSeasonality.n_count', { n })}</span>
                             </>
                           )}
                         </td>

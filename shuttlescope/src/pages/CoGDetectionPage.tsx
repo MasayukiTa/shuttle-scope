@@ -126,8 +126,8 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
                 onChange={(e) => setSide(e.target.value || undefined)}
               >
                 <option value="">{t('auto.CoGDetectionPage.k6')}</option>
-                <option value="left">Left</option>
-                <option value="right">Right</option>
+                <option value="left">{t('auto.CoGDetectionPage.left')}</option>
+                <option value="right">{t('auto.CoGDetectionPage.right')}</option>
               </select>
             </div>
           </div>

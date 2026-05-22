@@ -171,7 +171,7 @@ function ExpertLabelerContent() {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="font-medium truncate">{label}</div>
-                        {done && <span className="text-green-500 text-sm">✅</span>}
+                        {done && <span className="text-green-500 text-sm">{t('auto.ExpertLabelerPage.check_mark')}</span>}
                       </div>
                       <div className={`mt-1 text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
                         {t('expert_labeler.miss_count')}: {v.miss_count} /{' '}
@@ -205,7 +205,7 @@ function ExpertLabelerContent() {
                               : 'border-gray-600 text-gray-400 hover:bg-gray-700'
                           }`}
                         >
-                          JSON
+                          {t('auto.ExpertLabelerPage.json')}
                         </a>
                         <a
                           href={`/api/v1/expert/export?match_id=${v.match_id}&fmt=csv`}
@@ -217,7 +217,7 @@ function ExpertLabelerContent() {
                               : 'border-gray-600 text-gray-400 hover:bg-gray-700'
                           }`}
                         >
-                          CSV
+                          {t('auto.ExpertLabelerPage.csv')}
                         </a>
                       </div>
                     )}

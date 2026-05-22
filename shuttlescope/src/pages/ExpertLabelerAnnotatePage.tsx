@@ -439,7 +439,7 @@ function AnnotateContent() {
                   : 'border-gray-600 text-gray-300 hover:bg-gray-700'
               }`}
             >
-              JSON
+              {t('auto.ExpertLabelerAnnotatePage.json')}
             </a>
             <a
               href={`/api/v1/expert/export?match_id=${matchId}&fmt=csv`}
@@ -451,7 +451,7 @@ function AnnotateContent() {
                   : 'border-gray-600 text-gray-300 hover:bg-gray-700'
               }`}
             >
-              CSV
+              {t('auto.ExpertLabelerAnnotatePage.csv')}
             </a>
           </div>
         </header>
@@ -504,7 +504,7 @@ function AnnotateContent() {
                   style={{ aspectRatio: '16 / 9', maxHeight: '60vh' }}
                 />
                 <div className={`mt-2 text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
-                  stroke_id: {currentClip.stroke_id}
+                  {t('auto.ExpertLabelerAnnotatePage.stroke_id', { n: currentClip.stroke_id })}
                   {currentClip.shot_type ? ` / ${currentClip.shot_type}` : ''}
                   {currentClip.miss_type ? ` / ${currentClip.miss_type}` : ''}
                 </div>
@@ -747,7 +747,7 @@ function AnnotateContent() {
                 }`}
                 style={{ minHeight: '56px' }}
               >
-                CSV
+                {t('auto.ExpertLabelerAnnotatePage.csv')}
               </a>
               <button
                 className={`${btnLarge} bg-green-600 hover:bg-green-700 text-white`}

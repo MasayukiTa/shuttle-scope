@@ -39,7 +39,7 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
             : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
         } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
       >
-        <span>{t('annotator.backhand')} (BH)</span>
+        <span>{t('annotator.backhand')} {t('auto.AttributePanel.bh')}</span>
         <kbd className="hidden md:inline text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">Q</kbd>
       </button>
 
@@ -56,7 +56,7 @@ export function AttributePanel({ attributes, onChange, disabled = false }: Attri
             : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
         } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
       >
-        <span>{t('annotator.around_head')} (RH)</span>
+        <span>{t('annotator.around_head')} {t('auto.AttributePanel.rh')}</span>
         <kbd className="hidden md:inline text-[10px] font-mono opacity-60 bg-black/20 px-1 rounded">W</kbd>
       </button>
 

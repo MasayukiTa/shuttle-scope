@@ -41,7 +41,7 @@ export function ChartModal({ title, onClose, children }: ChartModalProps) {
             className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 transition-colors px-3 py-1.5 rounded"
           >
             <LayoutDashboard size={13} />
-            ダッシュボードへ戻る
+            {t('auto.ChartModal.back_to_dashboard')}
           </button>
           {/* ✕ボタン */}
           <button

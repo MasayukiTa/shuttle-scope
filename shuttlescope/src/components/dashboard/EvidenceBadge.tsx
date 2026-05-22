@@ -65,7 +65,7 @@ export function EvidenceBadge({
         </span>
       )}
       {sampleSize != null && (
-        <span className={`text-[10px] ${sampleText}`}>N={sampleSize.toLocaleString()}</span>
+        <span className={`text-[10px] ${sampleText}`}>{t('auto.EvidenceBadge.n_eq', { n: sampleSize.toLocaleString() })}</span>
       )}
       {confidenceLevel != null && (
         <span className={`text-[10px] ${sampleText}`}>{(confidenceLevel * 100).toFixed(0)}%</span>

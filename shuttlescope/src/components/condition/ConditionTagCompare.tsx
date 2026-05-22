@@ -213,8 +213,8 @@ export function ConditionTagCompare({ playerId, isLight }: Props) {
                     <th className="text-right py-1 px-2">{t('condition.tags.in_mean')}</th>
                     <th className="text-right py-1 px-2">{t('condition.tags.out_mean')}</th>
                     <th className="text-right py-1 px-2">{t('condition.tags.diff_label')}</th>
-                    <th className="text-right py-1 px-2">N<sub>in</sub></th>
-                    <th className="text-right py-1 px-2">N<sub>out</sub></th>
+                    <th className="text-right py-1 px-2">{t('auto.ConditionTagCompare.n_in')}<sub>{t('auto.ConditionTagCompare.in')}</sub></th>
+                    <th className="text-right py-1 px-2">{t('auto.ConditionTagCompare.n_in')}<sub>{t('auto.ConditionTagCompare.out')}</sub></th>
                   </tr>
                 </thead>
                 <tbody className={isLight ? 'text-gray-800' : 'text-gray-100'}>

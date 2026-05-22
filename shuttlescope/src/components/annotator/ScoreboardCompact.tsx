@@ -12,6 +12,7 @@
  * TopBarScore (上バー大型表示) は別物 (役割が違う) のでそのまま残す。
  */
 import { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import type { Match } from '@/types'
 
@@ -42,6 +43,7 @@ export function ScoreboardCompact({
   middleExtra,
   className,
 }: ScoreboardCompactProps) {
+  const { t } = useTranslation()
   const isDoubles = match?.format !== 'singles'
   const minWPlayer = useLargeTouch ? 'min-w-[80px]' : 'min-w-[60px]'
   const scoreSize = useLargeTouch ? 'text-4xl' : 'text-2xl'
@@ -78,10 +80,10 @@ export function ScoreboardCompact({
     <div className={clsx('flex items-center justify-between', className)}>
       {renderSide('a')}
       <div className="text-center text-xs text-gray-500 num-cell">
-        <div>Set {setNum}</div>
-        <div>Rally {rallyNum}</div>
+        <div>{t('auto.ScoreboardCompact.set_n', { n: setNum })}</div>
+        <div>{t('auto.ScoreboardCompact.rally_n', { n: rallyNum })}</div>
         {strokeCount != null && strokeCount > 0 && (
-          <div className="text-[10px] text-blue-400 mt-0.5">{strokeCount} shots</div>
+          <div className="text-[10px] text-blue-400 mt-0.5">{t('auto.ScoreboardCompact.shots_n', { n: strokeCount })}</div>
         )}
         {middleExtra}
       </div>

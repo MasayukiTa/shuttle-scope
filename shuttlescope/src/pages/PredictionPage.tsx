@@ -253,13 +253,13 @@ export function PredictionPage() {
               onClick={() => dlReport(`/api/reports/prediction_pdf?player_id=${selectedPlayerId}`, `prediction_${selectedPlayerId}.pdf`)}
               className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
             >
-              PDF
+              {t('auto.PredictionPage.pdf')}
             </button>
             <button
               onClick={() => dlReport(`/api/reports/prediction?player_id=${selectedPlayerId}`, `prediction_${selectedPlayerId}.json`)}
               className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
             >
-              JSON
+              {t('auto.PredictionPage.json')}
             </button>
           </div>
         )}
@@ -303,7 +303,7 @@ export function PredictionPage() {
               {/* 試合セレクター */}
               <div className={`${card} rounded-lg p-4`}>
                 <p className={`text-xs font-semibold mb-2 ${textMuted}`}>
-                  試合を選択
+                  {t('auto.PredictionPage.select_match')}
                 </p>
                 <SearchableSelect
                   options={forecastMatches.map((m: any) => ({

@@ -59,7 +59,7 @@ function MatchConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
       title={`サンプル数: ${n}試合`}
     >
       {stars} <span className="font-sans">{label}</span>
-      <span className="font-sans ml-1 opacity-70">({n}試合)</span>
+      <span className="font-sans ml-1 opacity-70">{t('auto.BestProfileCard.n_matches_paren', { n })}</span>
     </span>
   )
 }
@@ -112,7 +112,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
               </div>
               {rateDiff != null && rateDiff > 0 && (
                 <span className="text-xs font-semibold text-emerald-500">
-                  +{rateDiff}pp
+                  {t('auto.BestProfileCard.rate_diff_pp', { n: rateDiff })}
                 </span>
               )}
             </div>
@@ -181,12 +181,12 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                         <span className={`text-xs font-medium ${textStrong} shrink-0`}>{label}</span>
                         {cur != null && (
                           <span className={`text-xs font-mono ${textMuted} shrink-0`}>
-                            現在 <strong>{cur.toFixed(1)}{unit}</strong>
+                            {t('auto.BestProfileCard.current_label')} <strong>{cur.toFixed(1)}{unit}</strong>
                           </span>
                         )}
                         {targetRange && (
                           <span className={`text-[11px] font-mono ${textMuted} shrink-0`}>
-                            目標 [{targetRange}]
+                            {t('auto.BestProfileCard.target_range', { r: targetRange })}
                           </span>
                         )}
                         {gapNode && <span className="text-xs shrink-0">{gapNode}</span>}

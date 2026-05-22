@@ -100,7 +100,7 @@ export function ResultMatrix({ job, devices, targets }: Props) {
                         className="px-2 py-2 text-center bg-yellow-900/30 text-yellow-400 rounded text-[10px]"
                         title={cell.error}
                       >
-                        モデルなし
+                        {t('auto.ResultMatrix.no_model')}
                       </td>
                     )
                   }
@@ -111,7 +111,7 @@ export function ResultMatrix({ job, devices, targets }: Props) {
                       className="px-2 py-2 text-center bg-red-900/40 text-red-400 rounded"
                       title={cell.error}
                     >
-                      ERR
+                      {t('auto.ResultMatrix.err')}
                     </td>
                   )
                 }
@@ -130,7 +130,7 @@ export function ResultMatrix({ job, devices, targets }: Props) {
                     </p>
                     {/* avg_ms / p95_ms は小字 */}
                     <p className="text-[10px] text-gray-500 mt-0.5">
-                      {cell.avg_ms.toFixed(1)}ms / p95={cell.p95_ms.toFixed(1)}ms
+                      {t('auto.ResultMatrix.ms_p95', { avg: cell.avg_ms.toFixed(1), p95: cell.p95_ms.toFixed(1) })}
                     </p>
                   </td>
                 )

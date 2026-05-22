@@ -6,6 +6,7 @@
 //   - 新版: bg は常に N_GRAY (theme に追従)、warning の意味は **左罫線でなく**
 //     amber 色の **タイトル文字 + ⚠ アイコン** で示す。
 //     左罫線 縦バー方式は禁止 (詐欺サイト感)。
+import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface ResearchNoticeProps {
@@ -23,6 +24,7 @@ export function ResearchNotice({
   promotionCriteria,
   className = '',
 }: ResearchNoticeProps) {
+  const { t } = useTranslation()
   const isLight = useIsLightMode()
 
   // bg / border は完全に N_GRAY (theme 連動)。
@@ -38,17 +40,17 @@ export function ResearchNotice({
   return (
     <div className={`rounded-lg px-4 py-3 space-y-1 ${containerClass} ${className}`}>
       <p className="text-[11px] font-semibold flex items-center gap-1" style={{ color: headingColor }}>
-        ⚠ 研究段階の分析
+        {t('auto.ResearchNotice.heading')}
       </p>
       <p className="text-[11px]" style={{ color: cautionColor }}>{caution}</p>
       {assumptions && (
-        <p className="text-[10px]" style={{ color: subColor }}>前提: {assumptions}</p>
+        <p className="text-[10px]" style={{ color: subColor }}>{t('auto.ResearchNotice.assumptions', { v: assumptions })}</p>
       )}
       {reason && (
-        <p className="text-[10px]" style={{ color: faintColor }}>探索的理由: {reason}</p>
+        <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.reason', { v: reason })}</p>
       )}
       {promotionCriteria && (
-        <p className="text-[10px]" style={{ color: faintColor }}>実用移行条件: {promotionCriteria}</p>
+        <p className="text-[10px]" style={{ color: faintColor }}>{t('auto.ResearchNotice.promotion', { v: promotionCriteria })}</p>
       )}
     </div>
   )

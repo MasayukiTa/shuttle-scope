@@ -121,7 +121,7 @@ export function CorrelationScatter({ playerId, isLight }: Props) {
               <span className="font-mono">{r != null ? r.toFixed(3) : '—'}</span>
             </span>
             <span>
-              N: <span className="font-mono">{n}</span>
+              {t('auto.CorrelationScatter.n_label')} <span className="font-mono">{n}</span>
             </span>
             <span>
               {t('condition.correlation.p_value')}:{' '}

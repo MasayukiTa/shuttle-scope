@@ -259,7 +259,7 @@ export function NotificationInboxPage() {
                               className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-600 text-white shrink-0"
                               title={t('auto.NotificationInboxPage.k34')}
                             >
-                              BAN APPEAL
+                              {t('auto.NotificationInboxPage.ban_appeal')}
                             </span>
                           )}
                           <span className="truncate">{item.name}</span>
@@ -293,7 +293,7 @@ export function NotificationInboxPage() {
                         title={t('auto.NotificationInboxPage.k12')}
                         aria-label={t('auto.NotificationInboxPage.k12')}
                       >
-                        🗑
+                        {t('auto.NotificationInboxPage.trash_icon')}
                       </button>
                     )}
                   </div>

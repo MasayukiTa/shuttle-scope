@@ -111,7 +111,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
                   {t(`condition.result.label.${f.label}` as unknown as string)}
                 </div>
                 {showCoach && f.raw != null && (
-                  <div className="text-[10px] opacity-70 mt-0.5">raw: {f.raw.toFixed(2)}</div>
+                  <div className="text-[10px] opacity-70 mt-0.5">{t('auto.ConditionResult.raw', { v: f.raw.toFixed(2) })}</div>
                 )}
               </div>
             ))}
@@ -136,7 +136,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
               </div>
             ))}
             <div className={`border rounded px-2 py-1 ${isLight ? 'border-gray-300' : 'border-gray-600'}`}>
-              <div className={`text-[10px] ${muted}`}>total</div>
+              <div className={`text-[10px] ${muted}`}>{t('auto.ConditionResult.total')}</div>
               <div className="font-mono">{result.total_score != null ? result.total_score.toFixed(1) : '—'}</div>
             </div>
           </div>
@@ -161,7 +161,7 @@ export function ConditionResult({ result, historyCount, isLight }: Props) {
           <div className="text-sm font-semibold mb-2">{t('auto.ConditionResult.k3')}</div>
           {result.validity_score != null && (
             <div className="text-xs mb-1">
-              validity_score: <span className="font-mono">{result.validity_score.toFixed(3)}</span>
+              {t('auto.ConditionResult.validity_score_label')} <span className="font-mono">{result.validity_score.toFixed(3)}</span>
             </div>
           )}
           {result.flags_list && result.flags_list.length > 0 && (

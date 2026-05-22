@@ -133,7 +133,7 @@ export function AdviceStrip({
           <div className="text-sm leading-snug">{a.text}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] opacity-80">
             <span>{CONFIDENCE_LABEL[a.confidence] || a.confidence}</span>
-            <span aria-hidden="true" className="opacity-50">·</span>
+            <span aria-hidden="true" className="opacity-50">{t('auto.AdviceStrip.dot')}</span>
             <button
               type="button"
               onClick={() => {
@@ -146,7 +146,7 @@ export function AdviceStrip({
             </button>
             {a.cta && (
               <>
-                <span aria-hidden="true" className="opacity-50">·</span>
+                <span aria-hidden="true" className="opacity-50">{t('auto.AdviceStrip.dot')}</span>
                 <span className="inline-flex items-center gap-1">
                   <MIcon name="arrow_right_alt" size={11} />
                   <span>{a.cta.label}</span>

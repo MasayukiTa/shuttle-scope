@@ -157,7 +157,7 @@ export function LoginPage({ onLogin }: Props) {
     <div className={`min-h-screen flex items-center justify-center p-4 ${isLight ? 'bg-gray-100' : 'bg-gray-900'}`}>
       <div className={`rounded-xl shadow-lg w-full max-w-md p-8 ${isLight ? 'bg-white' : 'bg-gray-800'}`}>
         <div className="text-center mb-6">
-          <h1 className={`text-2xl font-bold ${isLight ? 'text-gray-800' : 'text-white'}`}>ShuttleScope</h1>
+          <h1 className={`text-2xl font-bold ${isLight ? 'text-gray-800' : 'text-white'}`}>{t('app.name')}</h1>
           <p className={`text-sm mt-1 ${mutedCls}`}>{t('auth.subtitle')}</p>
         </div>
 
@@ -185,7 +185,7 @@ export function LoginPage({ onLogin }: Props) {
               ? 'bg-amber-50 border border-amber-200 text-amber-800'
               : 'bg-amber-900/20 border border-amber-800 text-amber-200'
           }`}>
-            セッションの有効期限が切れました。再度ログインしてください。
+            {t('auto.LoginPage.session_expired')}
           </div>
         )}
 
@@ -203,7 +203,7 @@ export function LoginPage({ onLogin }: Props) {
           </div>
 
           <div>
-            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>Password / PIN</label>
+            <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.password_pin')}</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -262,7 +262,7 @@ export function LoginPage({ onLogin }: Props) {
             href="https://shuttle-scope.com"
             className={`text-sm ${isLight ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'} transition-colors`}
           >
-            ← shuttle-scope.com
+            {t('auto.LoginPage.back_to_site')}
           </a>
         </div>
       </div>
