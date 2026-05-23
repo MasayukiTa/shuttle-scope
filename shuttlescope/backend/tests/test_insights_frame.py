@@ -73,21 +73,17 @@ def test_template_generator_english():
 
 
 def test_external_stub_unconfigured_raises(monkeypatch):
+    """env 未設定なら構築時点で NotImplementedError → factory が template に倒す。"""
     monkeypatch.delenv("NVIDIA_NIM_ENDPOINT", raising=False)
     monkeypatch.delenv("NVIDIA_NIM_API_KEY", raising=False)
-    ext = ExternalApiGenerator(
-        "nvidia",
-        endpoint_env="NVIDIA_NIM_ENDPOINT",
-        api_key_env="NVIDIA_NIM_API_KEY",
-    )
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("NVIDIA_BASE_URL", raising=False)
     with pytest.raises(NotImplementedError):
-        ext.generate({
-            "player_id": 1,
-            "period_days": 30,
-            "analytics": {},
-            "role": "player",
-            "lang": "ja",
-        })
+        ExternalApiGenerator(
+            "nvidia",
+            endpoint_env="NVIDIA_NIM_ENDPOINT",
+            api_key_env="NVIDIA_NIM_API_KEY",
+        )
 
 
 def test_factory_nvidia_falls_back_to_template(monkeypatch):
