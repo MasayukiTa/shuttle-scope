@@ -27,6 +27,158 @@ logger = logging.getLogger(__name__)
 
 PACKAGE_VERSION = "1.0"
 
+# Slice Z: セクション絞り込み許可リスト
+ALLOWED_SECTIONS = ("meta", "sets", "rallies", "strokes", "conditions", "reports")
+
+
+def _parse_sections(raw: Optional[str]) -> tuple[list[str], str]:
+    """sections クエリパラメータを解析する。
+
+    raw が None / 空文字列の場合は ALLOWED_SECTIONS 全部を返す。
+    csv で受け取り、ALLOWED_SECTIONS のサブセットだけ採用する。
+    返り値: (採用したセクション list, X-Sections-Applied 用の csv 文字列)
+    """
+    if raw is None or not raw.strip():
+        sections = list(ALLOWED_SECTIONS)
+        return sections, ",".join(sections)
+    requested = [s.strip() for s in raw.split(",") if s.strip()]
+    selected = [s for s in requested if s in ALLOWED_SECTIONS]
+    # 重複排除（順序保持）
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for s in selected:
+        if s not in seen:
+            seen.add(s)
+            uniq.append(s)
+    if not uniq:
+        # 不正値しか含まれていない場合はデフォルト動作（全部）に倒す
+        uniq = list(ALLOWED_SECTIONS)
+    return uniq, ",".join(uniq)
+
+
+def _condition_dict(c) -> dict:
+    return {
+        "id": c.id,
+        "player_id": c.player_id,
+        "measured_at": str(c.measured_at) if c.measured_at else None,
+        "condition_type": c.condition_type,
+        "ccs_score": c.ccs_score,
+        "hooper_index": c.hooper_index,
+        "session_rpe": c.session_rpe,
+        "sleep_hours": c.sleep_hours,
+        "weight_kg": c.weight_kg,
+    }
+
+
+def _build_match_package(
+    db: Session,
+    match: Match,
+    sections: list[str],
+) -> dict:
+    """match 1 件分の export package を sections フィルタ付きで構築する。
+
+    Slice Z: meta / sets / rallies / strokes / conditions / reports の 6 セクションを
+    任意に選択可能。選択されていないキーは結果から省略される。
+    """
+    payload: dict[str, Any] = {
+        "version": PACKAGE_VERSION,
+        "exported_at": datetime.utcnow().isoformat(),
+    }
+
+    # プレイヤー収集（meta / conditions で使用）
+    player_ids = {match.player_a_id, match.player_b_id}
+    if match.partner_a_id:
+        player_ids.add(match.partner_a_id)
+    if match.partner_b_id:
+        player_ids.add(match.partner_b_id)
+    player_ids.discard(None)
+
+    if "meta" in sections:
+        players = db.query(Player).filter(Player.id.in_(player_ids)).all() if player_ids else []
+        payload["match"] = _match_dict(match)
+        payload["players"] = [_player_dict(p) for p in players]
+
+    sets_rows: list[GameSet] = []
+    need_sets = any(k in sections for k in ("sets", "rallies", "strokes"))
+    if need_sets:
+        sets_rows = (
+            db.query(GameSet)
+            .filter(GameSet.match_id == match.id)
+            .order_by(GameSet.set_num)
+            .all()
+        )
+
+    if "sets" in sections:
+        payload["sets"] = [_set_dict(s) for s in sets_rows]
+
+    rallies_rows: list[Rally] = []
+    need_rallies = any(k in sections for k in ("rallies", "strokes"))
+    if need_rallies and sets_rows:
+        set_ids = [s.id for s in sets_rows]
+        rallies_rows = (
+            db.query(Rally)
+            .filter(Rally.set_id.in_(set_ids), Rally.deleted_at.is_(None))
+            .order_by(Rally.set_id, Rally.rally_num)
+            .all()
+        )
+
+    if "rallies" in sections:
+        payload["rallies"] = [_rally_dict(r) for r in rallies_rows]
+
+    if "strokes" in sections:
+        rally_ids = [r.id for r in rallies_rows]
+        strokes = (
+            db.query(Stroke)
+            .filter(Stroke.rally_id.in_(rally_ids), Stroke.deleted_at.is_(None))
+            .order_by(Stroke.rally_id, Stroke.stroke_num)
+            .all()
+        ) if rally_ids else []
+        payload["strokes"] = [_stroke_dict(s) for s in strokes]
+
+    if "conditions" in sections:
+        from backend.db.models import Condition
+        if player_ids:
+            conds = (
+                db.query(Condition)
+                .filter(Condition.player_id.in_(player_ids))
+                .order_by(Condition.measured_at.desc())
+                .limit(200)
+                .all()
+            )
+        else:
+            conds = []
+        payload["conditions"] = [_condition_dict(c) for c in conds]
+
+    if "reports" in sections:
+        # 軽量サマリーのみ。重い PDF 生成は /api/reports/* 側に委ねる。
+        if not rallies_rows and need_rallies:
+            r_total = len(rallies_rows)
+        else:
+            if not need_rallies:
+                # rallies を読まずに reports だけ要求された場合は最低限読む
+                _set_rows = sets_rows or (
+                    db.query(GameSet).filter(GameSet.match_id == match.id).all()
+                )
+                _set_ids = [s.id for s in _set_rows]
+                rallies_rows = (
+                    db.query(Rally)
+                    .filter(Rally.set_id.in_(_set_ids), Rally.deleted_at.is_(None))
+                    .all()
+                ) if _set_ids else []
+            r_total = len(rallies_rows)
+        a_wins = sum(1 for r in rallies_rows if r.winner == "player_a")
+        b_wins = sum(1 for r in rallies_rows if r.winner == "player_b")
+        payload["reports"] = {
+            "match_id": match.id,
+            "total_rallies": r_total,
+            "rally_wins_a": a_wins,
+            "rally_wins_b": b_wins,
+            "result": match.result,
+            "final_score": match.final_score,
+        }
+
+    return payload
+
 
 # ─── ヘルパー ─────────────────────────────────────────────────────────────────
 
@@ -144,7 +296,12 @@ def _stroke_dict(s: Stroke) -> dict:
 # ─── エクスポート ──────────────────────────────────────────────────────────────
 
 @router.get("/export/package")
-def export_package(match_id: int, request: Request, db: Session = Depends(get_db)):
+def export_package(
+    match_id: int,
+    request: Request,
+    sections: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """試合データを JSON パッケージとしてダウンロードする。
 
     レスポンスボディ形式:
@@ -226,9 +383,36 @@ def export_package(match_id: int, request: Request, db: Session = Depends(get_db
         "strokes": [_stroke_dict(s) for s in strokes],
     }
 
-    # Phase A3: HMAC 署名 + 有効期限 24h + nonce を埋め込み、改ざん検知 + 1回利用化
-    from backend.utils.export_signing import sign_package
-    payload = sign_package(payload)
+    # Slice Z: section フィルタ。sections クエリ未指定なら完全な従来出力。
+    # 指定された場合は不要キーを payload から除外して、HMAC 署名は付けない
+    # (subset を再 import すると schema 不一致になるため)。
+    sections_param_present = sections is not None
+    selected_sections, sections_csv = _parse_sections(sections)
+    if sections_param_present:
+        # meta = match + players
+        section_to_keys = {
+            "meta": {"match", "players"},
+            "sets": {"sets"},
+            "rallies": {"rallies"},
+            "strokes": {"strokes"},
+        }
+        keep_keys = {"version", "exported_at"}
+        for sec in selected_sections:
+            keep_keys.update(section_to_keys.get(sec, set()))
+        # conditions / reports は元 payload に存在しないので _build_match_package で補う
+        if "conditions" in selected_sections or "reports" in selected_sections:
+            extra = _build_match_package(db, match, [s for s in selected_sections if s in ("conditions", "reports")])
+            if "conditions" in extra:
+                payload["conditions"] = extra["conditions"]
+                keep_keys.add("conditions")
+            if "reports" in extra:
+                payload["reports"] = extra["reports"]
+                keep_keys.add("reports")
+        payload = {k: v for k, v in payload.items() if k in keep_keys}
+    else:
+        # Phase A3: HMAC 署名 + 有効期限 24h + nonce を埋め込み、改ざん検知 + 1回利用化
+        from backend.utils.export_signing import sign_package
+        payload = sign_package(payload)
 
     # access_log に記録（漏洩追跡用）
     try:
@@ -277,7 +461,10 @@ def export_package(match_id: int, request: Request, db: Session = Depends(get_db
     return Response(
         content=body,
         media_type="application/json",
-        headers={"Content-Disposition": disposition},
+        headers={
+            "Content-Disposition": disposition,
+            "X-Sections-Applied": sections_csv,
+        },
     )
 
 

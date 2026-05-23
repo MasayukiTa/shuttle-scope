@@ -1,10 +1,30 @@
 """レポートAPI（/api/reports）"""
 import io
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, date as _date
+from typing import Optional
 from xml.sax.saxutils import escape as _xml_escape
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+
+
+def _parse_iso_date_opt(value: Optional[str], field: str) -> Optional[_date]:
+    """Slice Z: YYYY-MM-DD パラメータを安全に parse する。"""
+    if value is None or not str(value).strip():
+        return None
+    try:
+        return _date.fromisoformat(str(value).strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field} は YYYY-MM-DD 形式で指定してください",
+        )
+
+
+def _date_range_header(date_from: Optional[str], date_to: Optional[str]) -> dict[str, str]:
+    if date_from or date_to:
+        return {"X-Date-Range": f"{date_from or ''}..{date_to or ''}"}
+    return {}
 
 
 def _safe_paragraph_text(s: object) -> str:
@@ -154,14 +174,27 @@ def _player_role_in_match(match: Match, player_id: int) -> str | None:
 # ---------------------------------------------------------------------------
 
 @router.get("/reports/scouting")
-def get_scouting_report(player_id: int, request: Request, db: Session = Depends(get_db)):
+def get_scouting_report(
+    player_id: int,
+    request: Request,
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
     """I-001: スカウティングレポートを生成する（reportlab があればPDF）。
-    player は自分のみ、coach は同チーム選手のみ閲覧可能（analyst / admin は無制限）。"""
+    player は自分のみ、coach は同チーム選手のみ閲覧可能（analyst / admin は無制限）。
+
+    Slice Z: date_from / date_to (YYYY-MM-DD) で対象試合の日付範囲を絞れる。
+    範囲は内部 200 件キャップより前に適用される（キャップは絞り込み後の集合に効く）。
+    """
     ctx = get_auth(request)
     check_export_player_scope(ctx, player_id, db)
     player = db.get(Player, player_id)
     if not player:
         return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
+
+    d_from = _parse_iso_date_opt(date_from, "date_from")
+    d_to = _parse_iso_date_opt(date_to, "date_to")
 
     # Round 258 R9 F-3 fix (deep audit): 試合数 / rally 数の上限を導入。
     # 旧コードは無制限の query→all() で多 GB 級の Python list と reportlab 描画を
@@ -169,15 +202,19 @@ def get_scouting_report(player_id: int, request: Request, db: Session = Depends(
     # FastAPI worker を OOM kill 可能だった。最も新しい 200 試合に絞り、それ以上は
     # admin に対して「期間指定 / job queue 経由のレポート生成」へ案内する。
     _MAX_MATCHES_PER_REPORT = 200
+    _q = db.query(Match).filter(
+        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
+    )
+    if d_from is not None:
+        _q = _q.filter(Match.date >= d_from)
+    if d_to is not None:
+        _q = _q.filter(Match.date <= d_to)
     matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .order_by(Match.date.desc().nullslast(), Match.id.desc())
+        _q.order_by(Match.date.desc().nullslast(), Match.id.desc())
         .limit(_MAX_MATCHES_PER_REPORT)
         .all()
     )
+    _extra_headers = _date_range_header(date_from, date_to)
 
     role_by_match = {
         m.id: _player_role_in_match(m, player_id) for m in matches
@@ -330,24 +367,31 @@ def get_scouting_report(player_id: int, request: Request, db: Session = Depends(
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=scouting_{player_id}.pdf"},
+            headers={
+                "Content-Disposition": f"attachment; filename=scouting_{player_id}.pdf",
+                **_extra_headers,
+            },
         )
 
     except Exception:
         # reportlab 利用不可またはエラー: JSON でフォールバック
-        return {
-            "success": True,
-            "data": {
-                "player_name": player.name,
-                "total_matches": len(matches),
-                "total_rallies": total_rallies,
-                "win_rate": win_rate,
-                "avg_rally_length": avg_rally,
-                "top_shots": top_shots,
-                "disclaimer": DISCLAIMER_JA,
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content={
+                "success": True,
+                "data": {
+                    "player_name": player.name,
+                    "total_matches": len(matches),
+                    "total_rallies": total_rallies,
+                    "win_rate": win_rate,
+                    "avg_rally_length": avg_rally,
+                    "top_shots": top_shots,
+                    "disclaimer": DISCLAIMER_JA,
+                },
+                "meta": {"sample_size": total_rallies, "confidence": confidence},
             },
-            "meta": {"sample_size": total_rallies, "confidence": confidence},
-        }
+            headers=_extra_headers or None,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -355,22 +399,36 @@ def get_scouting_report(player_id: int, request: Request, db: Session = Depends(
 # ---------------------------------------------------------------------------
 
 @router.get("/reports/player_growth")
-def get_player_growth_report(player_id: int, request: Request, db: Session = Depends(get_db)):
+def get_player_growth_report(
+    player_id: int,
+    request: Request,
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
     """I-002: 選手向けの成長レポートを生成する（禁止ワードをサニタイズ済み）。
-    player は自分のみ、coach は同チーム選手のみ閲覧可能。"""
+    player は自分のみ、coach は同チーム選手のみ閲覧可能。
+
+    Slice Z: date_from / date_to (YYYY-MM-DD) で対象試合の日付範囲を絞れる。
+    """
     ctx = get_auth(request)
     check_export_player_scope(ctx, player_id, db)
     player = db.get(Player, player_id)
     if not player:
         return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
 
-    matches = (
-        db.query(Match)
-        .filter(
-            (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
-        )
-        .all()
+    d_from = _parse_iso_date_opt(date_from, "date_from")
+    d_to = _parse_iso_date_opt(date_to, "date_to")
+
+    _q = db.query(Match).filter(
+        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
     )
+    if d_from is not None:
+        _q = _q.filter(Match.date >= d_from)
+    if d_to is not None:
+        _q = _q.filter(Match.date <= d_to)
+    matches = _q.all()
+    _extra_headers = _date_range_header(date_from, date_to)
 
     role_by_match = {
         m.id: _player_role_in_match(m, player_id) for m in matches
@@ -429,7 +487,7 @@ def get_player_growth_report(player_id: int, request: Request, db: Session = Dep
     safe_message = sanitize_player_text(growth_message)
     safe_player_name = sanitize_player_text(player.name)
 
-    return {
+    payload = {
         "success": True,
         "data": {
             "player_name": safe_player_name,
@@ -443,6 +501,10 @@ def get_player_growth_report(player_id: int, request: Request, db: Session = Dep
         },
         "meta": {"sample_size": total_rallies, "confidence": confidence},
     }
+    if _extra_headers:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(content=payload, headers=_extra_headers)
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -550,22 +612,30 @@ def get_interval_flash_report(
 def get_condition_report(
     player_id: int = Query(..., ge=1, le=2_147_483_647),
     request: Request = None,
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """I-004: 選手の体調データをJSON形式でエクスポートする。"""
+    """I-004: 選手の体調データをJSON形式でエクスポートする。
+
+    Slice Z: date_from / date_to (YYYY-MM-DD) で measured_at の日付範囲を絞れる。
+    """
     ctx = get_auth(request)
     check_export_player_scope(ctx, player_id, db)
     player = db.get(Player, player_id)
     if not player:
         return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
 
-    conditions = (
-        db.query(Condition)
-        .filter(Condition.player_id == player_id)
-        .order_by(Condition.measured_at.desc())
-        .limit(120)
-        .all()
-    )
+    d_from = _parse_iso_date_opt(date_from, "date_from")
+    d_to = _parse_iso_date_opt(date_to, "date_to")
+
+    _q = db.query(Condition).filter(Condition.player_id == player_id)
+    if d_from is not None:
+        _q = _q.filter(Condition.measured_at >= d_from)
+    if d_to is not None:
+        _q = _q.filter(Condition.measured_at <= d_to)
+    conditions = _q.order_by(Condition.measured_at.desc()).limit(120).all()
+    _extra_headers = _date_range_header(date_from, date_to)
 
     rows = [
         {
@@ -599,7 +669,7 @@ def get_condition_report(
         "avg_sleep_h": _avg([r["sleep_hours"] for r in rows]),
     }
 
-    return {
+    payload = {
         "success": True,
         "data": {
             "player_name": player.name,
@@ -609,6 +679,10 @@ def get_condition_report(
         },
         "meta": {"sample_size": len(rows), "confidence": check_confidence("descriptive_basic", len(rows))},
     }
+    if _extra_headers:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(content=payload, headers=_extra_headers)
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -753,22 +827,32 @@ def get_condition_report_pdf(
 def get_prediction_report(
     player_id: int = Query(..., ge=1, le=2_147_483_647),
     request: Request = None,
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """I-006: 選手の予測データをJSON形式でエクスポートする。"""
+    """I-006: 選手の予測データをJSON形式でエクスポートする。
+
+    Slice Z: date_from / date_to (YYYY-MM-DD) で対象試合の日付範囲を絞れる。
+    """
     ctx = get_auth(request)
     check_export_player_scope(ctx, player_id, db)
     player = db.get(Player, player_id)
     if not player:
         return {"success": False, "error": f"選手ID {player_id} が見つかりません"}
 
-    matches = (
-        db.query(Match)
-        .filter((Match.player_a_id == player_id) | (Match.player_b_id == player_id))
-        .order_by(Match.date.desc())
-        .limit(30)
-        .all()
+    d_from = _parse_iso_date_opt(date_from, "date_from")
+    d_to = _parse_iso_date_opt(date_to, "date_to")
+
+    _q = db.query(Match).filter(
+        (Match.player_a_id == player_id) | (Match.player_b_id == player_id)
     )
+    if d_from is not None:
+        _q = _q.filter(Match.date >= d_from)
+    if d_to is not None:
+        _q = _q.filter(Match.date <= d_to)
+    matches = _q.order_by(Match.date.desc()).limit(30).all()
+    _extra_headers = _date_range_header(date_from, date_to)
     match_ids = [m.id for m in matches]
     sets = db.query(GameSet).filter(GameSet.match_id.in_(match_ids)).all() if match_ids else []
     set_to_match = {s.id: s.match_id for s in sets}
@@ -801,7 +885,7 @@ def get_prediction_report(
     hoopers = [c.hooper_index for c in recent_conditions if c.hooper_index is not None]
     fatigue = round(sum(hoopers) / len(hoopers), 1) if hoopers else None
 
-    return {
+    payload = {
         "success": True,
         "data": {
             "player_name": player.name,
@@ -815,6 +899,10 @@ def get_prediction_report(
         },
         "meta": {"sample_size": total, "confidence": check_confidence("descriptive_basic", total)},
     }
+    if _extra_headers:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(content=payload, headers=_extra_headers)
+    return payload
 
 
 # ---------------------------------------------------------------------------

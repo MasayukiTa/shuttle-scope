@@ -104,6 +104,7 @@ from backend.routers import db_maintenance as db_maintenance_router
 from backend.routers import archive_ops as archive_ops_router
 from backend.routers import review as review_router
 from backend.routers import data_package as data_package_router
+from backend.routers import export_period as export_period_router
 from backend.routers import cluster as cluster_router
 from backend.routers import auth as auth_router
 from backend.routers import public_site
@@ -2565,6 +2566,8 @@ app.include_router(expert_router.router, prefix="/api")
 app.include_router(review_router.router, prefix="/api")
 # E: データ資産化 JSON パッケージ
 app.include_router(data_package_router.router, prefix="/api")
+# Slice Z: 期間バルクエクスポート
+app.include_router(export_period_router.router, prefix="/api")
 # 分割動画アップロード（ブラウザ用。iOS Safari 含む）
 app.include_router(uploads_router.router, prefix="/api")
 
