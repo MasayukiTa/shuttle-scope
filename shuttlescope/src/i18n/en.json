@@ -2773,6 +2773,21 @@
       "n_strokes": "{{n}} strokes",
       "n_wins_losses": "{{w}}W {{l}}L"
     },
+    "AdviceChat": {
+      "title": "Growth Advisor (β)",
+      "subtitle": "Conversational advice based on your data",
+      "placeholder": "Ask about your growth area…",
+      "empty_state": "Try asking something",
+      "send": "Send",
+      "reset": "Reset",
+      "reset_confirm": "Reset this conversation?",
+      "demo_chip": "Showing demo data",
+      "confidence": "Confidence {{n}}%",
+      "error_rate_limited": "Too fast — at most one message every 2 seconds",
+      "error_budget_exceeded": "Daily advice limit reached",
+      "error_network": "Connection error. Please try again shortly",
+      "error_generic": "Something went wrong"
+    },
     "App": {
       "k1": "Checking authentication status...",
       "k2": "Notifications"
