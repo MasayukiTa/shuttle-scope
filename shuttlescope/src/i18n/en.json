@@ -1,7 +1,8 @@
 {
   "demo": {
     "banner": "Showing demo data (read-only)",
-    "banner_player": "({{name}})"
+    "banner_player": "({{name}})",
+    "banner_help": "This is sample data. Your real data is not affected."
   },
   "app": {
     "name": "ShuttleScope",
@@ -4719,6 +4720,45 @@
       "closing": {
         "title": "All set!",
         "body": "This was demo data — once your real matches are annotated, you'll see your own analysis here. You can replay this tour anytime from Settings."
+      }
+    },
+    "settings_tour": {
+      "_title": "Settings page tour",
+      "welcome": {
+        "title": "Welcome to Settings",
+        "body": "This is the settings page. We'll point out the parts you'll use most."
+      },
+      "tabs": {
+        "title": "Tabs at the top",
+        "body": "Settings are grouped into tabs. Scroll sideways to see them all."
+      },
+      "account": {
+        "title": "Account",
+        "body": "View your login ID, role, and display name. Change your password or sign out from here."
+      },
+      "players": {
+        "title": "Player management",
+        "body": "Add, edit, and remove players here. Visible to analysts, coaches, and admins only."
+      },
+      "tracknet": {
+        "title": "TrackNet / YOLO models",
+        "body": "Shuttle trajectory and person-detection model setup. Admin only."
+      },
+      "export": {
+        "title": "Export data",
+        "body": "Save matches, players, and annotations to a file. Also useful for backups."
+      },
+      "import": {
+        "title": "Import data",
+        "body": "Load previously exported data. Use this to migrate or restore from another machine."
+      },
+      "tutorialReplay": {
+        "title": "Replay tutorials",
+        "body": "Run any past tutorial again from here, anytime."
+      },
+      "closing": {
+        "title": "All done",
+        "body": "If you ever get lost, press Ctrl+K to search anywhere."
       }
     },
     "body_disclosure_toggle": {

@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, _Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut, ScrollText } from 'lucide-react'
 import { MIcon } from '@/components/common/MIcon'
 import { TUTORIALS } from '@/components/tutorial/tutorials'
-import { replayTutorial, useTutorialState } from '@/components/tutorial/useTutorial'
+import { replayTutorial, useTutorialState, useAutoTutorial } from '@/components/tutorial/useTutorial'
 import QRCode from 'qrcode'
 import { errorMessage, errorStatus } from '@/utils/errors'
 import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
@@ -119,6 +119,7 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
 
 export function SettingsPage() {
   const { t, i18n } = useTranslation()
+  useAutoTutorial('settings_tour')
   const queryClient = useQueryClient()
   const { role, teamName, displayName, userId, clearRole } = useAuth()
 
@@ -882,7 +883,7 @@ export function SettingsPage() {
       </div>
 
       {/* タブ（horizontal scroll: モバイル対応） */}
-      <div className={`relative border-b ${borderLine}`}>
+      <div className={`relative border-b ${borderLine}`} data-tutorial="settings.tabs">
         <div className="flex overflow-x-auto scrollbar-hide">
           {([
             ...(canManagePlayers ? [
@@ -926,7 +927,7 @@ export function SettingsPage() {
       <div className="flex-1 overflow-y-auto p-3 sm:p-6">
         {/* 選手管理タブ */}
         {activeTab === 'players' && (
-          <div>
+          <div data-tutorial="settings.players">
             {/* ヘッダー行: タイトル＋追加ボタン */}
             <div className="flex items-center justify-between mb-3">
               <h2 className={`text-lg font-medium ${textHeading}`}>{t('settings.ui.player_list')}</h2>
@@ -1218,7 +1219,7 @@ export function SettingsPage() {
 
         {/* TrackNet設定タブ */}
         {activeTab === 'tracknet' && (
-          <div className="space-y-6">
+          <div className="space-y-6" data-tutorial="settings.tracknet">
             <h2 className={`text-lg font-medium ${textHeading}`}>{t('tracknet.tab_label')}</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2141,7 +2142,7 @@ export function SettingsPage() {
             )}
 
             {/* ── エクスポート ──────────────────────────────── */}
-            <section className={`${card} rounded-lg p-5 space-y-4`}>
+            <section className={`${card} rounded-lg p-5 space-y-4`} data-tutorial="settings.export">
               <div className="flex items-center gap-2">
                 <Download size={16} className="text-blue-400" />
                 <h2 className="text-base font-semibold">{t('settings.ui.export')}</h2>
@@ -2255,7 +2256,7 @@ export function SettingsPage() {
             </section>
 
             {/* ── インポート ────────────────────────────────── */}
-            <section className={`${card} rounded-lg p-5 space-y-4`}>
+            <section className={`${card} rounded-lg p-5 space-y-4`} data-tutorial="settings.import">
               <div className="flex items-center gap-2">
                 <Upload size={16} className="text-emerald-400" />
                 <h2 className="text-base font-semibold">{t('settings.ui.import')}</h2>
@@ -2692,7 +2693,7 @@ export function SettingsPage() {
             </section>
 
             {/* ロール設定 */}
-            <section>
+            <section data-tutorial="settings.account">
               <h2 className={`text-lg font-medium ${textHeading} mb-1`}>{t('auto.SettingsPage.account')}</h2>
               <p className={`text-xs ${textMuted} mb-3`}>
                 {t('auto.SettingsPage.account_role_note')}
@@ -2991,7 +2992,7 @@ function TutorialReplaySection({ card }: { card: string }) {
 
   const { state, loading, refresh } = useTutorialState()
   return (
-    <section className={`${card} rounded-lg p-5 space-y-3`}>
+    <section className={`${card} rounded-lg p-5 space-y-3`} data-tutorial="settings.tutorialReplay">
       <div className="flex items-center gap-2">
         <MIcon name="school" size={16} className="text-sky-400" />
         <h2 className="text-base font-semibold">{t('auto.SettingsPage.k42')}</h2>

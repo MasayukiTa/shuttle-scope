@@ -23,6 +23,13 @@ export function DemoModeBanner() {
         {t('demo.banner')}
         {target?.player_name ? t('demo.banner_player', { name: target.player_name }) : ''}
       </span>
+      <span
+        className="ml-1 inline-flex items-center opacity-90 cursor-help"
+        title={t('demo.banner_help')}
+        aria-label={t('demo.banner_help')}
+      >
+        <MIcon name="help" size={14} />
+      </span>
     </div>
   )
 }
