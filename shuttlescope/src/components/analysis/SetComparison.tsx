@@ -39,13 +39,13 @@ interface SetComparisonResponse {
   }
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes').RechartsTooltipProps) {
   const { t } = useTranslation()
 
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
-  const winRate = payload.find((p: any) => p.dataKey === 'win_rate_pct')?.value ?? 0
-  const avgRally = payload.find((p: any) => p.dataKey === 'avg_rally_length')?.value ?? 0
+  const winRate = payload.find((p) => p.dataKey === 'win_rate_pct')?.value ?? 0
+  const avgRally = payload.find((p) => p.dataKey === 'avg_rally_length')?.value ?? 0
   const headingColor = isLight ? '#0f172a' : '#f9fafb'
   const subColor = isLight ? '#475569' : '#d1d5db'
   return (

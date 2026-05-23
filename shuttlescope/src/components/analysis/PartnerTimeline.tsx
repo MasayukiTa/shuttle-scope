@@ -100,7 +100,10 @@ export function PartnerTimeline({ playerId, partnerId, partnerName }: PartnerTim
           />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelFormatter={(label, payload: any) => payload?.[0]?.payload?.fullDate ?? label}
+            labelFormatter={(label, payload) => {
+              const p = payload as Array<{ payload?: { fullDate?: string } }> | undefined
+              return p?.[0]?.payload?.fullDate ?? label
+            }}
             formatter={(v: number) => [`${v}%`, '累積勝率']}
           />
           <Line

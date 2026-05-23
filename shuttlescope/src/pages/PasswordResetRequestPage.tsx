@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
 import { TurnstileWidget } from '@/components/auth/TurnstileWidget'
+import { errorMessage } from '@/utils/errors'
 
 export default function PasswordResetRequestPage() {
   const { t } = useTranslation()
@@ -30,8 +31,8 @@ export default function PasswordResetRequestPage() {
         turnstile_token: tsToken || null,
       })
       setDone(true)
-    } catch (err: any) {
-      setError(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setError(errorMessage(err))
     } finally {
       setLoading(false)
     }

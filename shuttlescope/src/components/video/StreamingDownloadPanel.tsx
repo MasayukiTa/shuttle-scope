@@ -19,6 +19,7 @@ import { apiGet, apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
 import { DownloadOptionsModal } from '@/components/video/DownloadOptionsModal'
+import { errorMessage } from '@/utils/errors'
 
 interface StreamingDownloadPanelProps {
   /** 配信URL（表示 + ダウンロード元） */
@@ -166,9 +167,9 @@ export function StreamingDownloadPanel({
       )
       setJobId(res.data.job_id)
       setDlState('downloading')
-    } catch (err: any) {
+    } catch (err: unknown) {
       setDlState('error')
-      setErrorMsg(err?.message ?? 'ダウンロード開始に失敗しました')
+      setErrorMsg(errorMessage(err, 'ダウンロード開始に失敗しました'))
     }
   }, [matchId, quality, cookieBrowser, cookiesTxt, videoPassword])
 
@@ -193,8 +194,8 @@ export function StreamingDownloadPanel({
       }
       setCookiesTxt(text)
       setCookiesFileName(file.name)
-    } catch (err: any) {
-      setCookiesError(err?.message ?? 'ファイル読み込みに失敗しました')
+    } catch (err: unknown) {
+      setCookiesError(errorMessage(err, 'ファイル読み込みに失敗しました'))
     }
   }, [])
 

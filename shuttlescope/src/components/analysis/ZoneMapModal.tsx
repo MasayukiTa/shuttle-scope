@@ -264,7 +264,7 @@ export function ZoneMapModal({
             ) : detailData ? (
               <ZoneDetailPanel
                 type={type}
-                data={detailData as any}
+                data={detailData as ZoneDetailPanelProps['data']}
                 isLight={isLight}
                 card={card}
                 textHeading={textHeading}

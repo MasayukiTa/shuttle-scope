@@ -9,6 +9,7 @@ import { clsx } from 'clsx'
 import { _VideoPlayer } from '@/components/video/VideoPlayer'
 import { useAutoTutorial, _openTutorial } from '@/components/tutorial/useTutorial'
 import { getVideoSrc, hasVideo, getVideoLabel } from '@/utils/videoSrc'
+import { errorMessage } from '@/utils/errors'
 import { StreamingDownloadPanel } from '@/components/video/StreamingDownloadPanel'
 import { WebViewPlayer } from '@/components/video/WebViewPlayer'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
@@ -350,8 +351,7 @@ export function AnnotatorPage() {
   interface SamplerEntry {
     ts: number
     assignments: Record<number, string>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    detections: any[]  // 確定時に bbox/hist を取り出せるよう保持
+    detections: unknown[]  // 確定時に bbox/hist を取り出せるよう保持
     skipped: boolean
   }
   const [samplerSamples, setSamplerSamples] = useState<SamplerEntry[]>([])
@@ -494,9 +494,9 @@ export function AnnotatorPage() {
           state.score_b
         )
         setInitialized(true)
-      } catch (err: any) {
+      } catch (err: unknown) {
         initStartedRef.current = false // リトライ可能にする
-        setInitError(err?.message ?? t('annotator.ui.init_failed', { defaultValue: '初期化に失敗しました' }))
+        setInitError(errorMessage(err, t('annotator.ui.init_failed', { defaultValue: '初期化に失敗しました' })))
       }
     }
 
@@ -587,11 +587,11 @@ export function AnnotatorPage() {
         }
         // Phase A: 送信成功 → stash 削除
         void removePending(matchId!, setId, rallyNum)
-      }).catch((err: any) => {
+      }).catch((err: unknown) => {
         useAnnotationStore.getState().decrementPending()
         useAnnotationStore.getState().addSaveError({
           rallyNum,
-          error: err?.message ?? t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' }),
+          error: errorMessage(err, t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' })),
         })
         // stash は残す → useOfflineSync が再送する
       })
@@ -630,8 +630,8 @@ export function AnnotatorPage() {
       setIntervalSummarySetId(setId)
       setNextSetPending({ id: res.data.id, num: nextSetNum })
       setShowIntervalSummary(true)
-    } catch (err: any) {
-      showError(`${t('annotator.ui.set_change_error_prefix', { defaultValue: 'セット移行エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
+    } catch (err: unknown) {
+      showError(`${t('annotator.ui.set_change_error_prefix', { defaultValue: 'セット移行エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     }
   }, [matchId, t])
 
@@ -669,8 +669,8 @@ export function AnnotatorPage() {
         prevSet.score_b ?? 0
       )
       queryClient.invalidateQueries({ queryKey: ['sets', matchId] })
-    } catch (err: any) {
-      showError(`${t('annotator.ui.prev_set_error_prefix', { defaultValue: '前セット移行エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
+    } catch (err: unknown) {
+      showError(`${t('annotator.ui.prev_set_error_prefix', { defaultValue: '前セット移行エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     }
   }, [matchId, setsData, queryClient, t])
 
@@ -770,9 +770,9 @@ export function AnnotatorPage() {
       setUrlInput('')
       queryClient.invalidateQueries({ queryKey: ['match', matchId] })
       void result
-    } catch (err: any) {
-      if (err?.name !== 'AbortError') {
-        showError(`${t('annotator.ui.upload_error_prefix', { defaultValue: 'アップロードエラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
+    } catch (err: unknown) {
+      if ((err as { name?: string } | null)?.name !== 'AbortError') {
+        showError(`${t('annotator.ui.upload_error_prefix', { defaultValue: 'アップロードエラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
       }
       setUploadProgress(null)
     } finally {
@@ -797,8 +797,8 @@ export function AnnotatorPage() {
         await apiPut(`/matches/${matchId}`, { video_local_path: fileUrl, video_url: '' })
         setUrlInput('')
         queryClient.invalidateQueries({ queryKey: ['match', matchId] })
-      } catch (err: any) {
-        showError(`${t('annotator.ui.save_error_prefix', { defaultValue: '保存エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
+      } catch (err: unknown) {
+        showError(`${t('annotator.ui.save_error_prefix', { defaultValue: '保存エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
       }
       return
     }
@@ -813,8 +813,8 @@ export function AnnotatorPage() {
     try {
       await apiPut(`/matches/${matchId}`, { video_url: url, video_local_path: '' })
       queryClient.invalidateQueries({ queryKey: ['match', matchId] })
-    } catch (err: any) {
-      showError(`${t('annotator.ui.save_error_prefix', { defaultValue: '保存エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
+    } catch (err: unknown) {
+      showError(`${t('annotator.ui.save_error_prefix', { defaultValue: '保存エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     }
   }, [matchId, urlInput, queryClient, t])
 
@@ -945,10 +945,10 @@ export function AnnotatorPage() {
       setLastAutoSaveTime(now)
       // 一度成功したら過去の error は消す
       if (autoSaveError) setAutoSaveError(null)
-    } catch (err: any) {
+    } catch (err: unknown) {
       // QuotaExceededError / SecurityError / private mode の disabled etc.
       // ユーザがリアルタイムで「保存されてない」を知る経路として error を残す
-      const msg = err?.name === 'QuotaExceededError'
+      const msg = (err as { name?: string } | null)?.name === 'QuotaExceededError'
         ? t('annotator.ui.autosave_quota')
         : t('annotator.ui.autosave_failed', { defaultValue: '一時保存失敗' })
       setAutoSaveError(msg)
@@ -973,12 +973,15 @@ export function AnnotatorPage() {
     try {
       const raw = localStorage.getItem(autoSaveKey)
       if (!raw) return
+      // strokes / pendingStroke は store の型 (StrokeInput / PendingStroke) と一致するが、
+      // localStorage 由来の JSON なので構造的に同一として受け取り、復元時に setState 経由で
+      // store に書き戻す。
       const saved = JSON.parse(raw) as {
-        setId: number; rallyNum: number; strokes: any[]
-        pendingStroke?: any; inputStep?: string
+        setId: number; rallyNum: number; strokes: Array<Record<string, unknown>>
+        pendingStroke?: Record<string, unknown>; inputStep?: string
         savedAt: number; videoTimestamp?: number
       }
-      const hasContent = saved.strokes.length > 0 || !!saved.pendingStroke?.shot_type
+      const hasContent = saved.strokes.length > 0 || !!(saved.pendingStroke as { shot_type?: string } | undefined)?.shot_type
       if (
         hasContent &&
         saved.setId === store.currentSetId &&
@@ -1001,16 +1004,17 @@ export function AnnotatorPage() {
             store.startRally(store.rallyStartTimestamp ?? 0)
             for (const stroke of saved.strokes) {
               useAnnotationStore.setState((s) => ({
-                currentStrokes: [...s.currentStrokes, stroke],
+                currentStrokes: [...s.currentStrokes, stroke as unknown as (typeof s.currentStrokes)[number]],
                 currentStrokeNum: s.currentStrokeNum + 1,
               }))
             }
             // ペンディングストローク（ショット種別まで入力済み）も復元
-            if (saved.pendingStroke?.shot_type) {
-              useAnnotationStore.setState({
-                pendingStroke: saved.pendingStroke,
-                inputStep: (saved.inputStep as any) ?? 'idle',
-              })
+            const restoredPending = saved.pendingStroke as { shot_type?: string } | undefined
+            if (restoredPending?.shot_type) {
+              useAnnotationStore.setState((s) => ({
+                pendingStroke: restoredPending as unknown as typeof s.pendingStroke,
+                inputStep: (saved.inputStep as typeof s.inputStep) ?? 'idle',
+              }))
             }
             // 前回の動画再生位置に復元
             if (saved.videoTimestamp != null && videoRef.current) {
@@ -1317,8 +1321,8 @@ export function AnnotatorPage() {
       if (s.currentRallyNum === 1 && !s.isRallyActive) {
         s.setPlayer(server)
       }
-    } catch (err: any) {
-      showError(`${t('annotator.ui.first_serve_change_error_prefix', { defaultValue: '先サーブ変更エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
+    } catch (err: unknown) {
+      showError(`${t('annotator.ui.first_serve_change_error_prefix', { defaultValue: '先サーブ変更エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     }
   }, [matchId, queryClient, t])
 
@@ -1365,8 +1369,8 @@ export function AnnotatorPage() {
         metadata_status: 'partial',
       })
       handleLeaveMatch()
-    } catch (err: any) {
-      showError(`${t('annotator.ui.exception_save_failed_prefix', { defaultValue: '途中終了の保存に失敗しました:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
+    } catch (err: unknown) {
+      showError(`${t('annotator.ui.exception_save_failed_prefix', { defaultValue: '途中終了の保存に失敗しました:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     }
   }, [exceptionReason, matchId, handleLeaveMatch, t])
 
@@ -1407,9 +1411,9 @@ export function AnnotatorPage() {
     })).then(() => {
       useAnnotationStore.getState().decrementPending()
       queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
-    }).catch((err: any) => {
+    }).catch((err: unknown) => {
       useAnnotationStore.getState().decrementPending()
-      useAnnotationStore.getState().addSaveError({ rallyNum, error: err?.message ?? t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' }) })
+      useAnnotationStore.getState().addSaveError({ rallyNum, error: errorMessage(err, t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' })) })
     })
   }, [matchId, queryClient, isBasicMode, t])
 
@@ -1463,8 +1467,8 @@ export function AnnotatorPage() {
       useAnnotationStore.getState().applyScoreCorrection(correctionTargetA, correctionTargetB, rallyNum)
       queryClient.invalidateQueries({ queryKey: ['annotation-state', matchId] })
       setShowScoreCorrection(false)
-    } catch (err: any) {
-      showError(`${t('annotator.ui.score_correction_error_prefix', { defaultValue: 'スコア補正エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
+    } catch (err: unknown) {
+      showError(`${t('annotator.ui.score_correction_error_prefix', { defaultValue: 'スコア補正エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
@@ -1515,8 +1519,8 @@ export function AnnotatorPage() {
       setShowForceSetEnd(false)
       // セット終了フロー（handleNextSet と同じ）
       await handleNextSet()
-    } catch (err: any) {
-      showError(`${t('annotator.ui.force_set_end_error_prefix', { defaultValue: 'セット強制終了エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
+    } catch (err: unknown) {
+      showError(`${t('annotator.ui.force_set_end_error_prefix', { defaultValue: 'セット強制終了エラー:' })} ${errorMessage(err, t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' }))}`)
     } finally {
       useAnnotationStore.getState().decrementPending()
     }

@@ -84,13 +84,13 @@ export function PredictionPage() {
       ),
     enabled: !!selectedPlayerId && subTab === 'forecast',
   })
-  const forecastMatches = (matchesResp as any)?.data ?? []
+  const forecastMatches = matchesResp?.data ?? []
 
   const { data: playersResp, isLoading: loadingPlayers } = useQuery({
     queryKey: ['players-list'],
     queryFn: () => apiGet<{ data: PlayerSummary[] }>('/players'),
   })
-  const players: PlayerSummary[] = (playersResp as any)?.data ?? []
+  const players: PlayerSummary[] = playersResp?.data ?? []
   const sortedPlayers = [...players].sort((a, b) => {
     if (a.is_target !== b.is_target) return a.is_target ? -1 : 1
     return (b.match_count ?? 0) - (a.match_count ?? 0)
@@ -306,7 +306,7 @@ export function PredictionPage() {
                   {t('auto.PredictionPage.select_match')}
                 </p>
                 <SearchableSelect
-                  options={forecastMatches.map((m: any) => ({
+                  options={forecastMatches.map((m) => ({
                     value: m.id,
                     label: `${m.date} ${m.tournament_level ? `[${m.tournament_level}]` : ''}`,
                     suffix: m.result ? (m.result === 'win' ? 'W' : m.result === 'loss' ? 'L' : m.result) : '未確定',

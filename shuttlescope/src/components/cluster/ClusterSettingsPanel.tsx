@@ -246,7 +246,7 @@ export function ClusterSettingsPanel() {
       },
     }))
 
-  const updateWorker = (i: number, key: keyof WorkerNode, val: string) =>
+  const updateWorker = (i: number, key: keyof WorkerNode, val: string | number) =>
     setCfg(c => ({
       ...c,
       network: {
@@ -334,8 +334,8 @@ export function ClusterSettingsPanel() {
       setStartHeadMsg(res.ok ? 'Ray ヘッド起動完了' : res.message)
       if (res.worker_cmds?.length) setWorkerCmds(res.worker_cmds)
       if (res.ok) refetchStatus()
-    } catch (e: any) {
-      setStartHeadMsg(e?.message ?? 'エラー')
+    } catch (e: unknown) {
+      setStartHeadMsg(errorMessage(e, 'エラー'))
     } finally {
       setStartHeadLoading(false)
     }
@@ -356,8 +356,8 @@ export function ClusterSettingsPanel() {
       )
       setRemoteJoinMsg(m => ({ ...m, [idx]: res.ok ? '起動完了' : res.message }))
       if (res.ok) refetchStatus()
-    } catch (e: any) {
-      setRemoteJoinMsg(m => ({ ...m, [idx]: e?.message ?? 'エラー' }))
+    } catch (e: unknown) {
+      setRemoteJoinMsg(m => ({ ...m, [idx]: errorMessage(e, 'エラー') }))
     } finally {
       setRemoteJoinLoading(l => ({ ...l, [idx]: false }))
     }
@@ -372,8 +372,8 @@ export function ClusterSettingsPanel() {
         `/cluster/nodes/${ip}/wake`, {}
       )
       setWakeMsg(m => ({ ...m, [idx]: res.ok ? `WOL送信 (${res.mac ?? ''})` : (res.error ?? '失敗') }))
-    } catch (e: any) {
-      setWakeMsg(m => ({ ...m, [idx]: e?.message ?? 'エラー' }))
+    } catch (e: unknown) {
+      setWakeMsg(m => ({ ...m, [idx]: errorMessage(e, 'エラー') }))
     } finally {
       setWakeLoading(l => ({ ...l, [idx]: false }))
     }
@@ -394,8 +394,8 @@ export function ClusterSettingsPanel() {
         const tail = (res.stderr || res.stdout || res.message || '失敗').slice(-200)
         setRayRestartMsg(m => ({ ...m, [idx]: `失敗: ${tail}` }))
       }
-    } catch (e: any) {
-      setRayRestartMsg(m => ({ ...m, [idx]: e?.message ?? 'エラー' }))
+    } catch (e: unknown) {
+      setRayRestartMsg(m => ({ ...m, [idx]: errorMessage(e, 'エラー') }))
     } finally {
       setRayRestartLoading(l => ({ ...l, [idx]: false }))
     }
@@ -414,8 +414,8 @@ export function ClusterSettingsPanel() {
         { username: sshUser, password: sshPass }
       )
       setSleepDisableMsg(m => ({ ...m, [idx]: res.ok ? 'スリープ無効化完了' : (res.message ?? '失敗') }))
-    } catch (e: any) {
-      setSleepDisableMsg(m => ({ ...m, [idx]: e?.message ?? 'エラー' }))
+    } catch (e: unknown) {
+      setSleepDisableMsg(m => ({ ...m, [idx]: errorMessage(e, 'エラー') }))
     } finally {
       setSleepDisableLoading(l => ({ ...l, [idx]: false }))
     }
@@ -447,8 +447,8 @@ export function ClusterSettingsPanel() {
           }),
         },
       }))
-    } catch (e: any) {
-      const msg = e?.message ?? String(e)
+    } catch (e: unknown) {
+      const msg = errorMessage(e)
       setDetectErrors(d => ({ ...d, [idx]: msg }))
     } finally {
       setDetectingWorkers(d => ({ ...d, [idx]: false }))
@@ -771,7 +771,7 @@ export function ClusterSettingsPanel() {
               <span className={`${labelCls} w-36 shrink-0`}>{label}</span>
               <select
                 className={inputCls}
-                value={(cfg.network as any)?.[key] ?? ''}
+                value={(cfg.network as Record<string, string | undefined> | undefined)?.[key] ?? ''}
                 onChange={e => updateNetwork(key, e.target.value)}
               >
                 <option value="">{t('cluster.if_placeholder')}</option>
@@ -868,14 +868,14 @@ export function ClusterSettingsPanel() {
                     className={`${inputCls} w-16`}
                     value={w.num_cpus ?? ''}
                     placeholder="16"
-                    onChange={e => updateWorker(i, 'num_cpus', e.target.value as any)}
+                    onChange={e => updateWorker(i, 'num_cpus', e.target.value)}
                   />
                   <span className={`${labelCls} w-16 shrink-0`}>{t('cluster.worker_gpus')}</span>
                   <input type="number" min={0} max={8}
                     className={`${inputCls} w-12`}
                     value={w.num_gpus ?? ''}
                     placeholder="0"
-                    onChange={e => updateWorker(i, 'num_gpus', e.target.value as any)}
+                    onChange={e => updateWorker(i, 'num_gpus', e.target.value)}
                   />
                   <input
                     className={inputCls}
@@ -964,7 +964,7 @@ export function ClusterSettingsPanel() {
             { key: 'max_cpu_percent', label: t('cluster.max_cpu'), min: 30, max: 100 },
             { key: 'max_concurrent_inference', label: t('cluster.max_inf'), min: 1, max: 16 },
           ].map(({ key, label, min, max }) => {
-            const val = (cfg.load_limits as any)?.[key] ?? (key === 'max_concurrent_inference' ? 4 : 80)
+            const val = (cfg.load_limits as Record<string, number> | undefined)?.[key] ?? (key === 'max_concurrent_inference' ? 4 : 80)
             return (
               <div key={key} className="flex items-center gap-3">
                 <span className={`${labelCls} w-36 shrink-0`}>{label}</span>
@@ -992,7 +992,7 @@ export function ClusterSettingsPanel() {
             { key: 'gpu_vram_limit_gb',   label: t('cluster.gpu_vram_limit'),   max: Math.max(hardware?.vram_total_gb ?? 16, 16) },
             { key: 'system_ram_limit_gb', label: t('cluster.system_ram_limit'), max: Math.max(hardware?.system_ram_gb ?? 32, 16) },
           ].map(({ key, label, max }) => {
-            const val = (cfg.resources as any)?.[key] ?? 0
+            const val = (cfg.resources as Record<string, number> | undefined)?.[key] ?? 0
             return (
               <div key={key} className="flex items-center gap-3">
                 <span className={`${labelCls} w-44 shrink-0`}>{label}</span>

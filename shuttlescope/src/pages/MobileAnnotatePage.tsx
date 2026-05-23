@@ -28,6 +28,32 @@ import { useAutoTutorial } from '@/components/tutorial/useTutorial'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
 import { getMobileVideoSrc } from '@/utils/videoSrc'
 import { PlayMode } from '@/components/mobileAnnotate/PlayMode'
+import { errorMessage } from '@/utils/errors'
+
+// MobileAnnotate 用の最小型 (backend レスポンスの該当フィールドのみ)
+interface MatchLite {
+  available_qualities?: Array<{ quality: string; height: number; ready: boolean }>
+  [key: string]: unknown
+}
+interface CvStroke {
+  timestamp_sec?: number
+  hitter?: { value?: 'player_a' | 'player_b'; confidence_score?: number; decision_mode?: string }
+}
+interface CvRally {
+  strokes?: CvStroke[]
+}
+interface SetRow { id: number; set_num: number }
+interface RallyRow {
+  id: number
+  uuid?: string
+  set_id: number
+  rally_num: number
+  server?: 'player_a' | 'player_b'
+  winner?: 'player_a' | 'player_b'
+  score_a_after?: number
+  score_b_after?: number
+  video_timestamp_end?: number
+}
 import { Pass1RallyEnd } from '@/components/mobileAnnotate/Pass1RallyEnd'
 import { Pass2ServeFinal } from '@/components/mobileAnnotate/Pass2ServeFinal'
 import { Pass3ShotDetail } from '@/components/mobileAnnotate/Pass3ShotDetail'
@@ -152,7 +178,7 @@ export function MobileAnnotatePage() {
   // match 情報を取得 (動画 URL を得るため)
   const matchQuery = useQuery({
     queryKey: ['match', matchId],
-    queryFn: () => apiGet<{ data: any }>(`/matches/${matchId}`),
+    queryFn: () => apiGet<{ data: MatchLite }>(`/matches/${matchId}`),
     enabled: !!matchId,
   })
 
@@ -160,7 +186,7 @@ export function MobileAnnotatePage() {
   // 失敗しても UI は壊さない (= retry 1 回、empty 配列を fallback)
   const cvCandidatesQuery = useQuery({
     queryKey: ['mobile-cv-candidates', matchId],
-    queryFn: () => apiGet<{ rallies?: Record<string, any> }>(`/cv-candidates/${matchId}`),
+    queryFn: () => apiGet<{ rallies?: Record<string, CvRally> }>(`/cv-candidates/${matchId}`),
     enabled: !!matchId,
     retry: 1,
     staleTime: 60_000,
@@ -170,7 +196,7 @@ export function MobileAnnotatePage() {
     const ral = cvCandidatesQuery.data?.rallies
     if (!ral || typeof ral !== 'object') return []
     const out: number[] = []
-    for (const r of Object.values(ral) as any[]) {
+    for (const r of Object.values(ral)) {
       for (const s of (r?.strokes || [])) {
         if (typeof s?.timestamp_sec === 'number') out.push(s.timestamp_sec)
       }
@@ -184,9 +210,9 @@ export function MobileAnnotatePage() {
   const pass1CvHint = useMemo(() => {
     const ral = cvCandidatesQuery.data?.rallies
     if (!ral || typeof ral !== 'object') return null
-    let best: any = null
+    let best: CvStroke | null = null
     let bestGap = Infinity
-    for (const r of Object.values(ral) as any[]) {
+    for (const r of Object.values(ral)) {
       for (const s of (r?.strokes || [])) {
         const t = s?.timestamp_sec
         if (typeof t !== 'number') continue
@@ -224,12 +250,12 @@ export function MobileAnnotatePage() {
   // セット一覧 + 既存ラリー取得 (Pass 1 用)
   const setsQuery = useQuery({
     queryKey: ['mobile-annot-sets', matchId],
-    queryFn: () => apiGet<{ data: any[] }>(`/sets?match_id=${matchId}`),
+    queryFn: () => apiGet<{ data: SetRow[] }>(`/sets?match_id=${matchId}`),
     enabled: !!matchId,
   })
   const ralliesQuery = useQuery({
     queryKey: ['mobile-annot-rallies', matchId],
-    queryFn: () => apiGet<{ data: any[] }>(`/rallies?match_id=${matchId}`),
+    queryFn: () => apiGet<{ data: RallyRow[] }>(`/rallies?match_id=${matchId}`),
     enabled: !!matchId,
   })
   // PC AnnotatorPage と同じ resume データソース: /annotation/{id}/state は
@@ -251,13 +277,13 @@ export function MobileAnnotatePage() {
 
   const allSets: SetInfo[] = useMemo(() => {
     const rows = setsQuery.data?.data ?? []
-    return rows.map((s: any) => ({ id: s.id, set_num: s.set_num }))
+    return rows.map((s) => ({ id: s.id, set_num: s.set_num }))
       .sort((a: SetInfo, b: SetInfo) => a.set_num - b.set_num)
   }, [setsQuery.data])
 
   const serverRallies: RallyLite[] = useMemo(() => {
     const rows = ralliesQuery.data?.data ?? []
-    return rows.map((r: any) => ({
+    return rows.map((r) => ({
       id: r.id,
       client_uuid: r.uuid ?? '',
       set_id: r.set_id,
@@ -342,10 +368,10 @@ export function MobileAnnotatePage() {
     }
     setEnsureSetState({ loading: true, error: null })
     try {
-      const resp: any = await apiPost(`/sets`, {
+      const resp = await apiPost<{ data?: { id?: number }; id?: number }>(`/sets`, {
         match_id: Number(matchId), set_num: 1,
       })
-      const newSet: SetInfo = { id: resp.data?.id ?? resp.id, set_num: 1 }
+      const newSet: SetInfo = { id: resp.data?.id ?? resp.id ?? 0, set_num: 1 }
       // 旧コードは refetch() を await せず即 return していたため、呼び出し側で
       // setCurrentSetIdx(0) しても allSets が空のままで Pass1RallyEnd が現れず
       // 「セット 1 を作成して開始」が押せないように見える事象が発生していた。
@@ -353,8 +379,8 @@ export function MobileAnnotatePage() {
       await setsQuery.refetch()
       setEnsureSetState({ loading: false, error: null })
       return newSet
-    } catch (e: any) {
-      const msg = (e?.message || e?.toString() || '不明なエラー').slice(0, 200)
+    } catch (e: unknown) {
+      const msg = errorMessage(e, '不明なエラー').slice(0, 200)
       setEnsureSetState({ loading: false, error: msg })
       return null
     }
@@ -384,7 +410,7 @@ export function MobileAnnotatePage() {
   const _requestVideoFullscreen = () => {
     const v = videoElRef.current
     if (!v) return
-    const anyV = v as any
+    const anyV = v as HTMLVideoElement & { webkitEnterFullscreen?: () => void }
     if (anyV.webkitEnterFullscreen) anyV.webkitEnterFullscreen()
     else if (v.requestFullscreen) v.requestFullscreen().catch(() => {})
   }
@@ -883,7 +909,14 @@ function Pass3RallyPicker({
   // 選択ラリーの stroke を fetch
   const strokesQuery = useQuery({
     queryKey: ['mobile-annot-strokes', selected?.id],
-    queryFn: () => apiGet<{ data: any[] }>(`/strokes?rally_id=${selected!.id}`),
+    queryFn: () => apiGet<{ data: Array<{
+      id?: number
+      stroke_num: number
+      player: 'player_a' | 'player_b'
+      shot_type: string
+      hit_zone?: string | null
+      land_zone?: string | null
+    }> }>(`/strokes?rally_id=${selected!.id}`),
     enabled: !!selected?.id,
   })
 
@@ -913,7 +946,7 @@ function Pass3RallyPicker({
       )
     }
     const setInfo = sets.find((s) => s.id === selected.set_id)
-    const serverStrokes = (strokesQuery.data?.data ?? []).map((s: any) => ({
+    const serverStrokes = (strokesQuery.data?.data ?? []).map((s) => ({
       id: s.id,
       rally_id: s.rally_id,
       stroke_num: s.stroke_num,

@@ -8,6 +8,7 @@ import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS 
 import { QuickStartModal } from '@/components/annotation/QuickStartModal'
 import { SearchableSelect, SearchableOption } from '@/components/common/SearchableSelect'
 import { DateRangeFilter } from '@/components/common/DateRangeFilter'
+import { errorMessage, errorStatus } from '@/utils/errors'
 import { DateRangeSlider } from '@/components/common/DateRangeSlider'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useAuth } from '@/hooks/useAuth'
@@ -211,9 +212,10 @@ export function MatchListPage() {
 
   // 試合作成
   const createMatch = useMutation({
-    mutationFn: (body: any) => apiPost('/matches', body),
-    onSuccess: (data: any) => {
-      const newMatchId = data?.data?.id ?? data?.data?.match?.id
+    mutationFn: (body: Record<string, unknown>) => apiPost('/matches', body),
+    onSuccess: (data: unknown) => {
+      const d = data as { data?: { id?: number; match?: { id?: number } } } | null
+      const newMatchId = d?.data?.id ?? d?.data?.match?.id
       if (newMatchId) {
         localStorage.setItem(`shuttlescope.viewpoint.${newMatchId}`, analystSide)
       }
@@ -228,7 +230,7 @@ export function MatchListPage() {
 
   // 試合更新
   const updateMatch = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: any }) => apiPut(`/matches/${id}`, body),
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) => apiPut(`/matches/${id}`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['matches'] })
       setShowForm(false)
@@ -237,17 +239,19 @@ export function MatchListPage() {
       setAnalystSide('bottom')
       resetPlayerFields()
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
+      const msg = errorMessage(err)
       let detail: string
       try {
-        const parsed = JSON.parse(err.message)
+        const parsed = JSON.parse(msg) as { detail?: unknown }
         if (Array.isArray(parsed?.detail)) {
-          detail = parsed.detail.map((d: any) => `${d.loc?.join('.')}: ${d.msg}`).join('\n')
+          detail = (parsed.detail as Array<{ loc?: string[]; msg?: string }>)
+            .map((d) => `${d.loc?.join('.')}: ${d.msg}`).join('\n')
         } else {
-          detail = parsed?.detail ?? err.message ?? ''
+          detail = (typeof parsed?.detail === 'string' ? parsed.detail : msg) || ''
         }
-      } catch { detail = err.message ?? '' }
-      alert(`保存に失敗しました (HTTP ${err.status ?? '?'}):\n${detail || '不明なエラー'}`)
+      } catch { detail = msg }
+      alert(`保存に失敗しました (HTTP ${errorStatus(err) ?? '?'}):\n${detail || '不明なエラー'}`)
     },
   })
 
@@ -256,10 +260,14 @@ export function MatchListPage() {
     mutationFn: (id: number) =>
       apiDelete(`/matches/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches'] }),
-    onError: (err: any) => {
+    onError: (err: unknown) => {
+      const msg = errorMessage(err)
       let detail: string
-      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
-      alert(`削除に失敗しました (HTTP ${err.status ?? '?'}):\n${detail || '不明なエラー'}`)
+      try {
+        const parsed = JSON.parse(msg) as { detail?: unknown }
+        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
+      } catch { detail = msg }
+      alert(`削除に失敗しました (HTTP ${errorStatus(err) ?? '?'}):\n${detail || '不明なエラー'}`)
     },
   })
 
@@ -267,9 +275,10 @@ export function MatchListPage() {
   const _startDownload = useMutation({
     mutationFn: ({ matchId, quality, cookieBrowser }: { matchId: number; quality: string; cookieBrowser: string }) =>
       apiPost(`/matches/${matchId}/download`, { quality, cookie_browser: cookieBrowser }),
-    onSuccess: (data: any, { matchId }) => {
-      if (data?.data?.job_id) {
-        setDownloadJobIds((prev) => ({ ...prev, [matchId]: data.data.job_id }))
+    onSuccess: (data: unknown, { matchId }) => {
+      const d = data as { data?: { job_id?: string } } | null
+      if (d?.data?.job_id) {
+        setDownloadJobIds((prev) => ({ ...prev, [matchId]: d.data!.job_id! }))
       }
     },
   })
@@ -279,7 +288,7 @@ export function MatchListPage() {
     name: string,
     opts: { isTarget?: boolean; team?: string } = {}
   ): Promise<number> => {
-    const resp: any = await apiPost('/players', {
+    const resp = await apiPost<{ data?: { id?: number } }>('/players', {
       name,
       team: opts.team || undefined,
       is_target: opts.isTarget ?? false,
@@ -338,8 +347,8 @@ export function MatchListPage() {
       if (!name) { alert('対象選手（A）を入力または選択してください'); return }
       try {
         finalPlayerAId = await createProvisionalPlayer(name, { isTarget: true, team: aTeam || undefined })
-      } catch (err: any) {
-        alert(`対象選手登録エラー: ${err?.message ?? '不明なエラー'}`); return
+      } catch (err: unknown) {
+        alert(`対象選手登録エラー: ${errorMessage(err, '不明なエラー')}`); return
       }
     }
 
@@ -350,8 +359,8 @@ export function MatchListPage() {
       if (!name) { alert('対戦相手（B）を入力または選択してください'); return }
       try {
         finalPlayerBId = await createProvisionalPlayer(name, { team: bTeam || undefined })
-      } catch (err: any) {
-        alert(`対戦相手登録エラー: ${err?.message ?? '不明なエラー'}`); return
+      } catch (err: unknown) {
+        alert(`対戦相手登録エラー: ${errorMessage(err, '不明なエラー')}`); return
       }
     }
 
@@ -360,8 +369,8 @@ export function MatchListPage() {
     if (!finalPartnerAId && partnerAQuery.trim()) {
       try {
         finalPartnerAId = await createProvisionalPlayer(partnerAQuery.trim(), { team: aTeam || undefined })
-      } catch (err: any) {
-        alert(`自チーム相方登録エラー: ${err?.message ?? '不明なエラー'}`); return
+      } catch (err: unknown) {
+        alert(`自チーム相方登録エラー: ${errorMessage(err, '不明なエラー')}`); return
       }
     }
 
@@ -370,13 +379,13 @@ export function MatchListPage() {
     if (!finalPartnerBId && partnerBQuery.trim()) {
       try {
         finalPartnerBId = await createProvisionalPlayer(partnerBQuery.trim(), { team: bTeam || undefined })
-      } catch (err: any) {
-        alert(`相手チーム相方登録エラー: ${err?.message ?? '不明なエラー'}`); return
+      } catch (err: unknown) {
+        alert(`相手チーム相方登録エラー: ${errorMessage(err, '不明なエラー')}`); return
       }
     }
 
     // undefinedキーはJSON.stringifyで除去される。空文字も数値フィールドには送らない
-    const body: Record<string, any> = {
+    const body: Record<string, unknown> = {
       tournament: form.tournament,
       tournament_level: form.tournament_level,
       round: form.round,
@@ -1281,8 +1290,8 @@ export function MatchListPage() {
                             )
                             queryClient.invalidateQueries({ queryKey: ['matches'] })
                             alert(t('match.list.reissue_video_token_done'))
-                          } catch (err: any) {
-                            alert(t('match.list.reissue_video_token_failed') + ': ' + (err?.message ?? String(err)))
+                          } catch (err: unknown) {
+                            alert(t('match.list.reissue_video_token_failed') + ': ' + errorMessage(err))
                           }
                         }}
                         className={`text-xs px-3 py-1.5 rounded border ${

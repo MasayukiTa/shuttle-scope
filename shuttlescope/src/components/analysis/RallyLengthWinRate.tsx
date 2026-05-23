@@ -62,13 +62,13 @@ function playerTypeBadgeClass(typeKey: string): string {
 }
 
 // カスタムツールチップ
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes').RechartsTooltipProps) {
   const { t } = useTranslation()
 
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
-  const count = payload.find((p: any) => p.dataKey === 'count')?.value ?? 0
-  const winRate = payload.find((p: any) => p.dataKey === 'win_rate_pct')?.value ?? 0
+  const count = payload.find((p) => p.dataKey === 'count')?.value ?? 0
+  const winRate = payload.find((p) => p.dataKey === 'win_rate_pct')?.value ?? 0
   const headingColor = isLight ? '#0f172a' : '#f9fafb'
   return (
     <div style={getTooltipStyle(isLight)} className="px-3 py-2">

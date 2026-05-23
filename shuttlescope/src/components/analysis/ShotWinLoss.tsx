@@ -46,13 +46,13 @@ interface ShotWinLossResponse {
 }
 
 // カスタムツールチップ
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: import('@/utils/rechartsTypes').RechartsTooltipProps) {
   const { t } = useTranslation()
 
   const isLight = useIsLightMode()
   if (!active || !payload?.length) return null
-  const win = payload.find((p: any) => p.dataKey === 'win_count')?.value ?? 0
-  const lose = payload.find((p: any) => p.dataKey === 'lose_count')?.value ?? 0
+  const win = Number(payload.find((p) => p.dataKey === 'win_count')?.value ?? 0)
+  const lose = Number(payload.find((p) => p.dataKey === 'lose_count')?.value ?? 0)
   const total = win + lose
   const rate = total > 0 ? ((win / total) * 100).toFixed(1) : '0.0'
   const headingColor = isLight ? '#0f172a' : '#f9fafb'

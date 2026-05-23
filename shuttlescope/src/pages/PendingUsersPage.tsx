@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, newIdempotencyKey } from '@/api/client'
+import { errorMessage } from '@/utils/errors'
+
+type AssignableRole = 'player' | 'coach' | 'analyst'
 
 interface PendingUser {
   id: number
@@ -73,8 +76,8 @@ function PendingUserRow({ user, onChange }: { user: PendingUser; onChange: () =>
         team_name: teamName || null,
       }, { 'X-Idempotency-Key': newIdempotencyKey() })
       onChange()
-    } catch (err: any) {
-      setMsg(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setMsg(errorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -89,8 +92,8 @@ function PendingUserRow({ user, onChange }: { user: PendingUser; onChange: () =>
       await apiPost(`/auth/users/${user.id}/reject`, {},
         { 'X-Idempotency-Key': newIdempotencyKey() })
       onChange()
-    } catch (err: any) {
-      setMsg(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setMsg(errorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -114,7 +117,7 @@ function PendingUserRow({ user, onChange }: { user: PendingUser; onChange: () =>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <select value={role} onChange={(e) => setRole(e.target.value as any)}
+        <select value={role} onChange={(e) => setRole(e.target.value as AssignableRole)}
                 className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm">
           <option value="player">{t('pendingUsers.role.player')}</option>
           <option value="coach">{t('pendingUsers.role.coach')}</option>

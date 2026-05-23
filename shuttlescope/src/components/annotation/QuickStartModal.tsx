@@ -68,8 +68,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
   // クイックスタートミューテーション
   const quickStart = useMutation({
     mutationFn: (body: object) => apiPost('/matches/quick-start', body),
-    onSuccess: (data: any) => {
-      const matchId = data?.data?.match?.id
+    onSuccess: (data: unknown) => {
+      const matchId = (data as { data?: { match?: { id?: number } } } | null)?.data?.match?.id
       if (matchId) {
         // アナリスト視点をlocalStorageに保存（AnnotatorPageで読み込む）
         localStorage.setItem(`shuttlescope.viewpoint.${matchId}`, analystSide)

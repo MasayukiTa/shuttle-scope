@@ -26,10 +26,12 @@ function AccountOrdersPageInner() {
     // 自分の注文一覧 API はまだ提供していないので、admin_orders は使えない。
     // Phase Pay-2 で /api/_internal/billing/orders (自分の一覧) を追加する想定。
     // 現状は entitlements ベースで購入履歴の代替を表示。
-    apiGet<{ success: boolean; data: any[] }>('/_internal/billing/entitlements')
+    apiGet<{ success: boolean; data: Array<{ entitlement_type: string; valid_from: string }> }>(
+      '/_internal/billing/entitlements',
+    )
       .then((r) => {
         // entitlements を OrderSummary 風にアダプト (簡易表示)
-        const adapted: OrderSummary[] = (r.data || []).map((e: any) => ({
+        const adapted: OrderSummary[] = (r.data || []).map((e) => ({
           public_id: `ent-${e.entitlement_type}`,
           amount_jpy: 0,
           currency: 'JPY',

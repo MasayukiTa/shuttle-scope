@@ -70,7 +70,7 @@ interface ScoreProgressionResponse {
   meta: { sample_size: number }
 }
 
-function CustomTooltip({ active, payload }: any) {
+function CustomTooltip({ active, payload }: import('@/utils/rechartsTypes').RechartsTooltipProps) {
   const { t } = useTranslation()
 
   const isLight = useIsLightMode()

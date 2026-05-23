@@ -14,7 +14,7 @@ const baseCommands: PaletteCommand[] = [
 
 describe('CommandPalette', () => {
   beforeEach(() => {
-    baseCommands.forEach((c) => (c.run as any).mockClear?.())
+    baseCommands.forEach((c) => (c.run as unknown as { mockClear?: () => void }).mockClear?.())
   })
 
   it('初期状態は閉じている', () => {

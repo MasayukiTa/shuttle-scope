@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import { apiPost, apiGet } from '@/api/client'
 import { WarmupConfidence, PreMatchObservation } from '@/types'
+import { errorMessage } from '@/utils/errors'
 
 // 信頼度ボタンスタイル（選択時は常に text-white で視認性を確保）
 const CONFIDENCE_STYLE: Record<WarmupConfidence, string> = {
@@ -290,8 +291,8 @@ export function WarmupNotesPanel({
       }
       setSaved(true)
       setTimeout(() => onClose(), 800)
-    } catch (err: any) {
-      setError(err?.message ?? t('warmup.save_failed'))
+    } catch (err: unknown) {
+      setError(errorMessage(err, t('warmup.save_failed')))
       setSaving(false)
     }
   }
