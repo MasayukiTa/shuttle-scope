@@ -34,6 +34,8 @@ from backend.analysis.insights.safety import (
     check_and_record_budget,
     sanitize_user_input,
 )
+from backend.analysis.chat.slot_extractors import extract_all
+from backend.analysis.chat.scope_merger import merge_scope, clear_signals
 
 
 router = APIRouter()
@@ -147,6 +149,11 @@ class _SendMessageBody(BaseModel):
     content: str = Field(..., min_length=1, max_length=4000)
     date_from: Optional[str] = Field(default=None)
     date_to: Optional[str] = Field(default=None)
+    # 会話スコープ拡張: クライアント側 (composer chip UI) で確定済みの slot 値
+    shot_type: Optional[str] = Field(default=None)
+    zone: Optional[str] = Field(default=None)
+    # ユーザが明示的にクリアしたスロット名 (e.g. ["period", "zone"])
+    clear_slots: Optional[list[str]] = Field(default=None)
 
     @field_validator("date_from", "date_to")
     @classmethod
@@ -196,14 +203,23 @@ def list_chat_messages(
     ctx: AuthCtx = Depends(get_auth),
 ) -> dict:
     _require_chat_role(ctx)
-    _get_owned_session(db, sid, ctx)
+    sess = _get_owned_session(db, sid, ctx)
     msgs = (
         db.query(ChatMessage)
         .filter(ChatMessage.session_id == sid)
         .order_by(ChatMessage.turn.asc())
         .all()
     )
-    return {"messages": [_serialize_message(m) for m in msgs]}
+    scope = sess.current_scope if isinstance(sess.current_scope, dict) else None
+    applied_scope = {
+        "period": (scope or {}).get("period"),
+        "shot_type": (scope or {}).get("shot_type"),
+        "zone": (scope or {}).get("zone"),
+    } if scope else None
+    return {
+        "messages": [_serialize_message(m) for m in msgs],
+        "applied_scope": applied_scope,
+    }
 
 
 @router.post("/insights/chat/sessions/{sid}/messages")
@@ -255,6 +271,50 @@ def send_chat_message(
     )
     next_turn = (last_turn[0] + 1) if last_turn else 1
 
+    # ── 会話スコープのマージ ───────────────────────────────────────
+    # 1) サーバ側 rule-based 抽出
+    extracted = extract_all(cleaned, datetime.utcnow())
+    # 2) クライアント側で確定済みの slot 値が来た場合はそちらを優先
+    client_deltas: dict = {}
+    if body.date_from or body.date_to:
+        client_deltas["period"] = {
+            "date_from": body.date_from,
+            "date_to": body.date_to,
+            "label": f"{body.date_from or '…'} → {body.date_to or 'today'}",
+        }
+    if body.shot_type:
+        client_deltas["shot_type"] = {"code": body.shot_type, "label": body.shot_type}
+    if body.zone:
+        client_deltas["zone"] = {"code": body.zone, "label": body.zone}
+
+    # 3) 明示 clear 判定 (テキスト + クライアントから来た clear_slots)
+    text_clears = clear_signals(cleaned)
+    clear_all_signal = "__all__" in text_clears
+    explicit_clear_slots = sorted(
+        (set(body.clear_slots or []) | (text_clears - {"__all__"}))
+    )
+
+    # merge: extracted < client (last-write-wins)
+    deltas = {**extracted, **client_deltas}
+    if clear_all_signal:
+        deltas["clear_all_scope"] = True
+    if explicit_clear_slots:
+        deltas["clear_slots"] = explicit_clear_slots
+
+    prev_scope = sess.current_scope if isinstance(sess.current_scope, dict) else None
+    new_scope = merge_scope(
+        prev_scope,
+        deltas,
+        turn=next_turn,
+        source=("client" if client_deltas else "extracted"),
+    )
+    sess.current_scope = new_scope
+
+    # period を最終解決値として下流に流す (scope 優先, body fallback)
+    eff_period = new_scope.get("period") or {}
+    eff_date_from = eff_period.get("date_from") if isinstance(eff_period, dict) else None
+    eff_date_to = eff_period.get("date_to") if isinstance(eff_period, dict) else None
+
     # ── user message を永続化 ─────────────────────────────────────
     user_msg = ChatMessage(
         session_id=sid,
@@ -263,8 +323,8 @@ def send_chat_message(
         content=cleaned,
         tokens=_APPROX_TOKENS_PER_MESSAGE // 2,
         validation_reason=("injection_attempt" if injection else None),
-        date_from=body.date_from,
-        date_to=body.date_to,
+        date_from=eff_date_from,
+        date_to=eff_date_to,
     )
     db.add(user_msg)
     db.flush()
@@ -288,7 +348,7 @@ def send_chat_message(
     else:
         analytics = _build_analytics_context(
             db, ctx, sess, sess.lang,
-            date_from=body.date_from, date_to=body.date_to,
+            date_from=eff_date_from, date_to=eff_date_to,
         )
         insight_ctx: InsightContext = {
             "player_id": 0,
@@ -342,9 +402,21 @@ def send_chat_message(
     db.refresh(user_msg)
     db.refresh(ai_msg)
 
+    # applied_scope は frontend で "Active filters" バーを描画するために返す
+    applied_scope = {
+        "period": new_scope.get("period"),
+        "shot_type": new_scope.get("shot_type"),
+        "zone": new_scope.get("zone"),
+    }
+    user_payload = _serialize_message(user_msg)
+    if isinstance(new_scope.get("shot_type"), dict):
+        user_payload["shot_type"] = new_scope["shot_type"].get("code")
+    if isinstance(new_scope.get("zone"), dict):
+        user_payload["zone"] = new_scope["zone"].get("code")
     return {
-        "user_message": _serialize_message(user_msg),
+        "user_message": user_payload,
         "ai_message": _serialize_message(ai_msg),
+        "applied_scope": applied_scope,
     }
 
 

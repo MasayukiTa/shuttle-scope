@@ -2808,6 +2808,17 @@
         "popoverTo": "To",
         "popoverApply": "Apply",
         "today": "today"
+      },
+      "scope": {
+        "bar": {
+          "title": "Active filters"
+        },
+        "clearAll": "Clear all",
+        "slot": {
+          "period": "Period",
+          "shotType": "Shot",
+          "zone": "Zone"
+        }
       }
     },
     "App": {

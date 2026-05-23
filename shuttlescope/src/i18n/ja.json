@@ -2815,6 +2815,17 @@
         "popoverTo": "終了日",
         "popoverApply": "適用",
         "today": "今日"
+      },
+      "scope": {
+        "bar": {
+          "title": "適用中のフィルタ"
+        },
+        "clearAll": "全部クリア",
+        "slot": {
+          "period": "期間",
+          "shotType": "ショット",
+          "zone": "エリア"
+        }
       }
     },
     "App": {

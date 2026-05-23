@@ -12,6 +12,7 @@ import { forwardRef, KeyboardEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { parsePeriod, ParsedPeriod } from '@/utils/parsePeriod'
+import { parseShotType, parseZone } from '@/utils/parseSlots'
 
 const MAX_LEN = 2000
 const DEBOUNCE_MS = 150
@@ -21,10 +22,16 @@ export interface ComposerPeriod {
   dateTo: string | null
 }
 
+export interface ComposerExtras {
+  period: ComposerPeriod | null
+  shotType: string | null
+  zone: string | null
+}
+
 interface Props {
   value: string
   onChange: (v: string) => void
-  onSend: (period: ComposerPeriod | null) => void
+  onSend: (extras: ComposerExtras) => void
   isSending: boolean
 }
 
@@ -69,6 +76,9 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
       [debouncedValue, lang],
     )
 
+    const parsedShot = useMemo(() => parseShotType(debouncedValue), [debouncedValue])
+    const parsedZone = useMemo(() => parseZone(debouncedValue), [debouncedValue])
+
     const activePeriod: PeriodState | null = useMemo(() => {
       if (manualPeriod) return manualPeriod
       if (dismissed) return null
@@ -93,11 +103,15 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
     }, [value, ref])
 
     const handleSend = () => {
-      if (activePeriod && (activePeriod.dateFrom || activePeriod.dateTo)) {
-        onSend({ dateFrom: activePeriod.dateFrom, dateTo: activePeriod.dateTo })
-      } else {
-        onSend(null)
-      }
+      const periodOut: ComposerPeriod | null =
+        activePeriod && (activePeriod.dateFrom || activePeriod.dateTo)
+          ? { dateFrom: activePeriod.dateFrom, dateTo: activePeriod.dateTo }
+          : null
+      onSend({
+        period: periodOut,
+        shotType: parsedShot?.code ?? null,
+        zone: parsedZone?.code ?? null,
+      })
       setDismissed(false)
       setManualPeriod(null)
       setEditorOpen(false)
@@ -194,6 +208,23 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
             >
               <MIcon name="close" size={14} ariaHidden />
             </button>
+          </div>
+        )}
+
+        {(parsedShot || parsedZone) && (
+          <div className="flex items-center flex-wrap gap-1.5 text-[11px]">
+            {parsedShot && (
+              <span className="inline-flex items-center gap-1 bg-emerald-50 dark:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-700 text-emerald-900 dark:text-emerald-100 px-2 py-0.5 rounded-full">
+                <MIcon name="sports_tennis" size={12} ariaHidden />
+                <span>{parsedShot.label}</span>
+              </span>
+            )}
+            {parsedZone && (
+              <span className="inline-flex items-center gap-1 bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-700 text-amber-900 dark:text-amber-100 px-2 py-0.5 rounded-full">
+                <MIcon name="place" size={12} ariaHidden />
+                <span>{parsedZone.label}</span>
+              </span>
+            )}
           </div>
         )}
 

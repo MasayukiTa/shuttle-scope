@@ -1646,6 +1646,8 @@ class ChatSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     last_used_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 会話駆動スコープ (period / shot_type / zone …)。Migration 0037 で追加。
+    current_scope: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
 class ChatMessage(Base):

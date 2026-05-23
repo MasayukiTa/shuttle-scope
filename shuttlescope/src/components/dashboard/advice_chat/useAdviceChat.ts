@@ -33,9 +33,25 @@ export interface ChatMessage {
   validation_reason?: string | null
   date_from?: string | null
   date_to?: string | null
+  /** scope snapshot at the turn this message was sent (user msgs only) */
+  shot_type?: string | null
+  zone?: string | null
   created_at?: string | null
   /** Optimistic で生成中のメッセージは true。サーバ応答で false になる。 */
   _pending?: boolean
+}
+
+export interface AppliedScope {
+  period: { date_from: string | null; date_to: string | null; label?: string } | null
+  shot_type: { code: string; label?: string } | null
+  zone: { code: string; label?: string } | null
+}
+
+export interface SendOptions {
+  period?: { dateFrom: string | null; dateTo: string | null } | null
+  shotType?: string | null
+  zone?: string | null
+  clearSlots?: Array<'period' | 'shot_type' | 'zone'>
 }
 
 interface CreateSessionResp {
@@ -46,11 +62,13 @@ interface CreateSessionResp {
 
 interface ListMessagesResp {
   messages: ChatMessage[]
+  applied_scope?: AppliedScope | null
 }
 
 interface SendMessageResp {
   user_message: ChatMessage
   ai_message: ChatMessage
+  applied_scope?: AppliedScope | null
 }
 
 interface HttpErrorLike {
@@ -106,6 +124,7 @@ export function useAdviceChat() {
   const [isInitializing, setIsInitializing] = useState<boolean>(false)
   const [isSending, setIsSending] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const [appliedScope, setAppliedScope] = useState<AppliedScope | null>(null)
 
   // 同一マウント中の race condition 防止用
   const tempIdRef = useRef(0)
@@ -121,6 +140,7 @@ export function useAdviceChat() {
         if (cancelled) return
         setSessionId(sid)
         setMessages(resp.messages ?? [])
+        setAppliedScope(resp.applied_scope ?? null)
       })
       .catch((err: unknown) => {
         const { status } = parseErrorBody(err)
@@ -148,15 +168,18 @@ export function useAdviceChat() {
   const sendMessage = useCallback(
     async (
       content: string,
-      period?: { dateFrom: string | null; dateTo: string | null } | null,
+      opts?: SendOptions | null,
     ): Promise<void> => {
       const trimmed = content.trim()
       if (!trimmed || isSending) return
       setError(null)
       setIsSending(true)
 
-      const periodDateFrom = period?.dateFrom ?? null
-      const periodDateTo = period?.dateTo ?? null
+      const periodDateFrom = opts?.period?.dateFrom ?? null
+      const periodDateTo = opts?.period?.dateTo ?? null
+      const shotType = opts?.shotType ?? null
+      const zone = opts?.zone ?? null
+      const clearSlots = opts?.clearSlots ?? []
 
       // ── optimistic user message ──
       tempIdRef.current += 1
@@ -168,6 +191,8 @@ export function useAdviceChat() {
         content: trimmed,
         date_from: periodDateFrom,
         date_to: periodDateTo,
+        shot_type: shotType,
+        zone: zone,
         _pending: true,
       }
       setMessages((prev) => [...prev, optimistic])
@@ -180,12 +205,18 @@ export function useAdviceChat() {
             content: trimmed,
             date_from: periodDateFrom,
             date_to: periodDateTo,
+            shot_type: shotType,
+            zone: zone,
+            clear_slots: clearSlots,
           },
         )
         setMessages((prev) => {
           const without = prev.filter((m) => m.id !== tempId)
           return [...without, resp.user_message, resp.ai_message]
         })
+        if (resp.applied_scope !== undefined) {
+          setAppliedScope(resp.applied_scope ?? null)
+        }
       } catch (err) {
         // optimistic message を撤回
         setMessages((prev) => prev.filter((m) => m.id !== tempId))
@@ -211,6 +242,7 @@ export function useAdviceChat() {
     const sid = sessionId
     setSessionId(null)
     setMessages([])
+    setAppliedScope(null)
     writeStoredSid(null)
     if (sid != null) {
       try {
@@ -229,5 +261,6 @@ export function useAdviceChat() {
     error,
     sendMessage,
     resetSession,
+    appliedScope,
   }
 }
