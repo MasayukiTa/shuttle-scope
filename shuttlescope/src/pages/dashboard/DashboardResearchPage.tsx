@@ -3,6 +3,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
+import { PeerComparisonCard } from '@/components/dashboard/PeerComparisonCard'
 import { EvidenceBadge, EvidenceLevel } from '@/components/dashboard/EvidenceBadge'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { MarkovEPV } from '@/components/analysis/MarkovEPV'
@@ -58,6 +59,11 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
         promotionCriteria="各項目が実用移行するには、十分なサンプルサイズ・CI品質・コーチ有用性の確認が必要です。"
       />
       </div>
+
+      {/* admin-only コミュニティ peer 比較 (research / experimental) */}
+      <ErrorBoundary>
+        <PeerComparisonCard />
+      </ErrorBoundary>
 
       {/* EPV分析（Markov） */}
       <ErrorBoundary>

@@ -302,6 +302,17 @@ _RAW: list[dict] = [
         "section": "research",
     },
     {
+        "analysis_type": "peer_comparison",
+        "tier": "research",
+        "evidence_level": "exploratory",
+        "min_recommended_sample": 5,
+        "caution": "コミュニティ peer 比較は admin-only の experimental 機能です。k-anonymity (N>=5) と demo 除外で privacy を担保しています。",
+        "assumptions": "非デモプレイヤー全体から cohort を抽出し、p25/p50/p75/mean/sd の集計値のみ返します。個別選手の値は返しません。",
+        "promotion_criteria": "opt-in consent 機能の実装・cohort 設計の妥当性検証",
+        "page": "dashboard",
+        "section": "research",
+    },
+    {
         "analysis_type": "bayesian_rt",
         "tier": "research",
         "evidence_level": "exploratory",
@@ -398,7 +409,7 @@ def _build_registry() -> dict[str, RegistryEntry]:
             "analysis_type": raw["analysis_type"],
             "tier": tier,  # type: ignore[typeddict-item]
             "evidence_level": raw["evidence_level"],  # type: ignore[typeddict-item]
-            "min_recommended_sample": TIER_MIN_SAMPLES.get(tier, 50),
+            "min_recommended_sample": raw.get("min_recommended_sample", TIER_MIN_SAMPLES.get(tier, 50)),
             "caution": raw.get("caution"),
             "assumptions": raw.get("assumptions"),
             "promotion_criteria": raw.get("promotion_criteria"),
