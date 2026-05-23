@@ -1,57 +1,245 @@
-"""外部 LLM (NVIDIA NIM / OpenAI / Anthropic / Local Ollama) 用スタブ。
+"""外部 LLM (NVIDIA NIM / OpenAI 互換) 用ジェネレータ。
 
-現時点では実 API call はせず、未設定なら NotImplementedError を投げる。
-factory がそれを拾って Template にフォールバックする。
-
-将来の実装時の契約:
-- 入力: `ctx.analytics` を要約した dict をプロンプトに同梱
-- system prompt (必須・選手安全ガード):
-    "You are a badminton coach speaking to a player.
-     Use growth-oriented framing, never use the word 弱点 / weakness.
-     Output 2-3 short sentences in {lang}."
-- 出力 JSON shape は InsightResult / InsightItem に揃える
-- network 失敗 / レート制限時も NotImplementedError 系の例外で
-  template フォールバックさせる
+NVIDIA NIM の OpenAI 互換 `/v1/chat/completions` を実呼び出しする。
+未設定や HTTP/接続エラーは例外を投げ、HarnessedGenerator 側で
+template fallback されることを想定する (NEVER hard-fail)。
 """
 from __future__ import annotations
 
+import json
 import os
+import time
+from datetime import datetime, timezone
+from typing import Any
 
-from backend.analysis.insights.types import InsightContext, InsightResult
+import httpx
+
+from backend.analysis.insights.safety.audit import log_llm_call
+from backend.analysis.insights.safety.system_prompts import (
+    SYSTEM_PROMPT_V1_EN,
+    SYSTEM_PROMPT_V1_JA,
+)
+from backend.analysis.insights.types import (
+    InsightContext,
+    InsightItem,
+    InsightResult,
+)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _extract_sample_size(analytics: dict | None) -> int:
+    """analytics から最大 sample_n を拾う (heuristic 用)。"""
+    if not analytics:
+        return 0
+    max_n = 0
+    for v in analytics.values():
+        if isinstance(v, dict):
+            n = int(v.get("sample_n", 0) or 0)
+            if n > max_n:
+                max_n = n
+        elif isinstance(v, list):
+            for it in v:
+                if isinstance(it, dict):
+                    n = int(it.get("sample_n", 0) or 0)
+                    if n > max_n:
+                        max_n = n
+    return max_n
+
+
+def _confidence_heuristic(analytics: dict | None) -> float:
+    """baseline 0.6, sample_n>=30 で +0.2, 上限 0.85。"""
+    n = _extract_sample_size(analytics)
+    c = 0.6
+    if n >= 30:
+        c += 0.2
+    if c > 0.85:
+        c = 0.85
+    return c
 
 
 class ExternalApiGenerator:
-    """LLM プロバイダ抽象。
+    """NVIDIA NIM (OpenAI 互換) ジェネレータ。
 
     Args:
-        provider: 'nvidia' / 'openai' / 'anthropic' / 'local_ollama'
-        endpoint_env: エンドポイント URL を保持する環境変数名
-        api_key_env: API key を保持する環境変数名 (local の場合は None 可)
+        provider: 'nvidia' (現状サポートはこれのみ)
+        endpoint_env: 互換性のため受けるが NVIDIA_BASE_URL を優先参照
+        api_key_env: 互換性のため受けるが NVIDIA_API_KEY を優先参照
     """
 
     def __init__(
         self,
-        provider: str,
-        endpoint_env: str,
+        provider: str = "nvidia",
+        endpoint_env: str | None = None,
         api_key_env: str | None = None,
     ) -> None:
         self.provider = provider
-        self.endpoint_env = endpoint_env
-        self.api_key_env = api_key_env
-        self.name = f"{provider}-stub"
+        # 後方互換: factory から渡される env 名も尊重する
+        base_url = (
+            os.environ.get(endpoint_env or "")
+            if endpoint_env
+            else None
+        ) or os.environ.get("NVIDIA_BASE_URL") or "https://integrate.api.nvidia.com/v1"
+        api_key = (
+            os.environ.get(api_key_env or "")
+            if api_key_env
+            else None
+        ) or os.environ.get("NVIDIA_API_KEY")
+
+        if not api_key:
+            raise NotImplementedError(
+                f"External insight generator not configured "
+                f"(provider={provider}, missing NVIDIA_API_KEY)"
+            )
+
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = os.environ.get(
+            "NVIDIA_MODEL", "meta/llama-3.3-70b-instruct"
+        )
+        self.name = f"{provider}:{self.model}"
+
+    def _post_with_retry(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+    ) -> httpx.Response:
+        """接続エラーのみ最大 2 回リトライ。4xx/5xx は即返す。"""
+        last_exc: Exception | None = None
+        with httpx.Client(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            for attempt in range(3):
+                try:
+                    return client.post(url, headers=headers, json=payload)
+                except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                    last_exc = exc
+                    if attempt >= 2:
+                        raise
+                    time.sleep(0.5 * (attempt + 1))
+        assert last_exc is not None  # pragma: no cover
+        raise last_exc
 
     def generate(self, ctx: InsightContext) -> InsightResult:
-        endpoint = os.environ.get(self.endpoint_env)
-        api_key = os.environ.get(self.api_key_env) if self.api_key_env else "local"
-        if not endpoint or not api_key:
-            raise NotImplementedError(
-                "External insight generator not configured "
-                f"(provider={self.provider}, missing env: "
-                f"{self.endpoint_env}/{self.api_key_env})"
+        lang = ctx.get("lang", "ja")
+        analytics = ctx.get("analytics") or {}
+        role = ctx.get("role", "player")
+        role_label = {
+            "player": "選手",
+            "coach": "コーチ",
+            "analyst": "アナリスト",
+            "admin": "管理者",
+        }.get(role, role) if lang == "ja" else role
+
+        # NOTE: prompt 本文に {count} {pct} 等の中括弧があるため .format は使えず replace で。
+        system_prompt = (
+            SYSTEM_PROMPT_V1_JA if lang == "ja" else SYSTEM_PROMPT_V1_EN
+        ).replace("{role_label}", str(role_label))
+
+        if lang == "ja":
+            question_hint = (
+                "成長アドバイスを 1 件、3 文以内・200 文字以内で出してください。"
+                "N=<count> または信頼度 <pct>% を必ず含めてください。"
             )
-        # NOTE: 実装者が後から埋める。プロンプト整形 → HTTP 呼び出し → JSON parse →
-        # InsightResult に整形。今は呼び出されたら明示エラー。
-        raise NotImplementedError(
-            "External insight generator wiring is intentionally stubbed; "
-            "see file docstring for prompt-shaping contract."
+        else:
+            question_hint = (
+                "Generate 1 short growth insight (<=3 sentences, <=100 words). "
+                "Include N=<count> or confidence percentage."
+            )
+
+        user_body = json.dumps(
+            {"analytics": analytics, "question_hint": question_hint},
+            ensure_ascii=False,
+        )
+
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_body},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 350,
+            "top_p": 0.9,
+        }
+
+        t0 = time.monotonic()
+        try:
+            resp = self._post_with_retry(url, headers, payload)
+        except Exception as exc:
+            try:
+                log_llm_call(
+                    user_id=ctx.get("user_id") if isinstance(ctx, dict) else None,
+                    provider=self.name,
+                    validation_result={"ok": False, "reason": f"network:{type(exc).__name__}"},
+                    latency_ms=int((time.monotonic() - t0) * 1000),
+                )
+            except Exception:
+                pass
+            raise
+
+        latency_ms = int((time.monotonic() - t0) * 1000)
+
+        if resp.status_code >= 400:
+            try:
+                log_llm_call(
+                    user_id=ctx.get("user_id") if isinstance(ctx, dict) else None,
+                    provider=self.name,
+                    validation_result={
+                        "ok": False,
+                        "reason": f"http_{resp.status_code}",
+                    },
+                    latency_ms=latency_ms,
+                )
+            except Exception:
+                pass
+            resp.raise_for_status()
+
+        data = resp.json()
+        content = (
+            data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        ) or ""
+        usage = data.get("usage", {}) or {}
+        tokens_in = int(usage.get("prompt_tokens", 0) or 0)
+        tokens_out = int(usage.get("completion_tokens", 0) or 0)
+        tokens_total = int(usage.get("total_tokens", tokens_in + tokens_out) or 0)
+
+        try:
+            log_llm_call(
+                user_id=ctx.get("user_id") if isinstance(ctx, dict) else None,
+                provider=self.name,
+                validation_result={"ok": True, "reason": None},
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                latency_ms=latency_ms,
+            )
+        except Exception:
+            pass
+
+        confidence = _confidence_heuristic(analytics)
+        item = InsightItem(
+            id="growth_main",
+            prose=content.strip(),
+            evidence_path="",  # NIM 出力はテキストのみ
+            confidence=confidence,
+            metric=analytics,
+        )
+        return InsightResult(
+            items=[item],
+            generator=self.name,
+            generated_at=_now_iso(),
+            meta={  # type: ignore[typeddict-unknown-key]
+                "tokens": {
+                    "in": tokens_in,
+                    "out": tokens_out,
+                    "total": tokens_total,
+                },
+                "latency_ms": latency_ms,
+            },
         )
