@@ -228,7 +228,7 @@ export function DashboardShell() {
       ),
     enabled: !!selectedPlayerId,
   })
-  const matches: MatchSummary[] = matchesResp?.data ?? []
+  const matches: MatchSummary[] = useMemo(() => matchesResp?.data ?? [], [matchesResp?.data])
 
   // スライダーの両端を実データの月に合わせる
   const matchDates = useMemo(

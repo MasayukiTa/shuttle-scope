@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import {
   BILLING_UI_ENABLED, AdminOrder, Product,
@@ -22,7 +22,7 @@ function AdminBillingPageInner() {
   const [error, setError] = useState<string | null>(null)
   const [showProductForm, setShowProductForm] = useState(false)
 
-  const refetch = async () => {
+  const refetch = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -37,9 +37,9 @@ function AdminBillingPageInner() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [statusFilter])
 
-  useEffect(() => { refetch() }, [statusFilter])
+  useEffect(() => { refetch() }, [refetch])
 
   // 売上集計
   const paidOrders = orders.filter((o) => o.status === 'paid')

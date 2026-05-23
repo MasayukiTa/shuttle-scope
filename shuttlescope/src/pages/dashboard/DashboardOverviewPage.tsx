@@ -80,6 +80,8 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
   const { t } = useTranslation()
   const { card, textHeading, textSecondary, textMuted, textFaint, loading: loadingClass, isLight } = useCardTheme()
   // テレメトリ: 滞在 dwell
+  // dwell テレメトリは mount/unmount のライフサイクル計測。playerId 切替時の再計測は不要
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => analyticsViewLifecycle('dashboard.overview', { playerId }), [])
 
   const TOOLTIP_STYLE = getTooltipStyle(isLight)

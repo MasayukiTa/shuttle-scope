@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound, ChevronDown, RotateCcw, _AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
@@ -223,7 +223,7 @@ export function UserManagementPage() {
     })
   }, [searchTerm, sortKey, users, limits])
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const [ur, pr, tr] = await Promise.all([
@@ -250,7 +250,7 @@ export function UserManagementPage() {
         // backend 旧版で endpoint が無い場合は無視 (UI 側は欠損として処理)
       }
     }
-  }
+  }, [myRole])
 
   type LimitKind = 'all' | 'exfil' | 'uploads' | 'failed_attempts' | 'lock'
   const handleResetLimits = async (u: UserRow, kind: LimitKind = 'all') => {
@@ -278,7 +278,7 @@ export function UserManagementPage() {
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
   const canCreate = myRole === 'admin' || myRole === 'analyst'
   const canDelete = myRole === 'admin'

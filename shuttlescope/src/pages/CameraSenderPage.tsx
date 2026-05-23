@@ -227,7 +227,9 @@ export function CameraSenderPage() {
     reconnectTimerRef.current = setTimeout(() => {
       connectWs(code, pid)  
     }, RECONNECT_DELAY_MS)
-  }, [t]) // connectWs is defined below and used via closure
+    // connectWs is defined below and used via closure (mutually recursive callbacks)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t])
 
   // ─── WebSocket 接続 ───────────────────────────────────────────────────────
    
@@ -300,6 +302,8 @@ export function CameraSenderPage() {
     ws.onerror = () => {
       // onclose も発火するので状態変更はそちらに委ねる
     }
+    // serverRecorder は安定参照 (custom hook の戻り値) なので deps 不要
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scheduleReconnect])
 
   // ─── セッション参加 ───────────────────────────────────────────────────────
@@ -432,6 +436,9 @@ export function CameraSenderPage() {
     } finally {
       setStartingCamera(false)
     }
+    // recordingMatchId / serverRecorder は read-only スナップショットとして使い、
+    // 再カメラ起動時に最新値で動けばよい (callback 再生成は不要)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [participantId, startRttPolling])
 
   // ─── 配信停止 ─────────────────────────────────────────────────────────────

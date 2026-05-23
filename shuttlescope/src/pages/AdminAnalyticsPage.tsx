@@ -10,7 +10,7 @@
  *
  * すべてリアルタイム集計。重くなれば backend 側で MV 化すれば良い設計。
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiGet } from '@/api/client'
 import { MIcon } from '@/components/common/MIcon'
 
@@ -47,7 +47,7 @@ export default function AdminAnalyticsPage() {
   const [err, setErr] = useState<string | null>(null)
   const [days, setDays] = useState(30)
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     setLoading(true)
     setErr(null)
     try {
@@ -68,9 +68,9 @@ export default function AdminAnalyticsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [days])
 
-  useEffect(() => { void reload()   }, [days])
+  useEffect(() => { void reload()   }, [reload])
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">

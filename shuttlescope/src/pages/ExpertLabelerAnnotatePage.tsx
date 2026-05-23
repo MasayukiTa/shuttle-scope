@@ -137,8 +137,8 @@ function AnnotateContent() {
     return m
   }, [shotLabelsQuery.data])
 
-  const clips = clipsQuery.data?.clips ?? []
-  const labels = labelsQuery.data?.labels ?? []
+  const clips = useMemo(() => clipsQuery.data?.clips ?? [], [clipsQuery.data?.clips])
+  const labels = useMemo(() => labelsQuery.data?.labels ?? [], [labelsQuery.data?.labels])
 
   // stroke_id → 既存ラベルの索引
   const labelByStroke = useMemo(() => {
@@ -197,7 +197,7 @@ function AnnotateContent() {
     } else {
       setShotAnnotation({ shot_type: '', confidence: 2, comment: '' })
     }
-  }, [currentClip?.stroke_id, labelByStroke, shotLabelByStroke])
+  }, [currentClip, labelByStroke, shotLabelByStroke])
 
   // 保存
   const saveMutation = useMutation({

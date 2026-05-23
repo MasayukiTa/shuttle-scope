@@ -208,8 +208,10 @@ export function MobileAnnotatePage() {
   }, [cvCandidatesQuery.data, pausedAtSec])
   const match = matchQuery.data?.data
   // available_qualities は backend が `[{quality, height, ready}, ...]` で返す
-  const availableQualities: { quality: string; height: number; ready: boolean }[] =
-    match?.available_qualities || [{ quality: 'source', height: 0, ready: true }]
+  const availableQualities: { quality: string; height: number; ready: boolean }[] = useMemo(
+    () => match?.available_qualities || [{ quality: 'source', height: 0, ready: true }],
+    [match?.available_qualities],
+  )
 
   const effectiveQuality = useMemo<'source' | 'uhd' | 'fhd' | 'hd'>(() => {
     const found = availableQualities.find((q) => q.quality === videoQuality && q.ready)

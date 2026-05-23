@@ -17,7 +17,15 @@ import { useEffect, useRef } from 'react'
 declare global {
   interface Window {
     turnstile?: {
-      render: (container: HTMLElement, opts: any) => string
+      render: (container: HTMLElement, opts: {
+        sitekey: string
+        callback?: (token: string) => void
+        'expired-callback'?: () => void
+        theme?: 'light' | 'dark' | 'auto'
+        size?: 'normal' | 'compact'
+        action?: string
+        [key: string]: unknown
+      }) => string
       remove: (id: string) => void
       reset: (id?: string) => void
     }
@@ -91,6 +99,9 @@ export function TurnstileWidget({ onToken, onExpired, theme = 'auto' }: Props) {
         }
       }
     }
+    // onToken/onExpired はマウント時にキャプチャするだけで十分（親が再生成しても
+    // ウィジェット内で参照する関数を入れ替えると Turnstile を再ロードしてしまう）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteKey, theme])
 
   if (!siteKey) return null
