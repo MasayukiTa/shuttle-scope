@@ -135,7 +135,6 @@ export function powerIterationPCA(
       v = vNext
       const newLambda = wn
       if (Math.abs(newLambda - lambda) < tol && diff < tol) {
-        lambda = newLambda
         break
       }
       lambda = newLambda

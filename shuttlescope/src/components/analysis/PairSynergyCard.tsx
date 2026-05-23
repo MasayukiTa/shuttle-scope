@@ -31,7 +31,6 @@ interface Response {
 }
 
 function SynergyBar({ score }: { score: number }) {
-  const { t } = useTranslation()
 
   const MAX = 0.5
   const pct = Math.min(Math.abs(score) / MAX * 50, 50)

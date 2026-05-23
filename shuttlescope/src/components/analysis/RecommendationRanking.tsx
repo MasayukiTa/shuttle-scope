@@ -33,7 +33,6 @@ interface Response {
 }
 
 function RankCard({ item, isPlayer }: { item: RankItem; isPlayer: boolean }) {
-  const { t } = useTranslation()
   const isLight = useIsLightMode()
 
   // プレイヤー向けは伸びしろ言語に変換

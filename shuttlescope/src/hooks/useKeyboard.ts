@@ -174,7 +174,7 @@ export function useKeyboard({
 
       // Access store state directly to avoid stale closure issues
       const store = useAnnotationStore.getState()
-      const { inputStep, isRallyActive, currentStrokes, currentStrokeNum, pendingStroke } = store
+      const { inputStep, isRallyActive, currentStrokes, currentStrokeNum, _pendingStroke } = store
 
       // ─── グローバル: 動画シーク（常時有効） ────────────────────────────────
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -216,7 +216,7 @@ export function useKeyboard({
             active.blur()
           }
           const v = videoRef?.current
-          if (v) v.paused ? v.play() : v.pause()
+          if (v) { if (v.paused) v.play(); else v.pause() }
           return
         }
       }
@@ -470,7 +470,7 @@ export function useKeyboard({
       }
     },
     // videoRef is a stable ref object. All other deps (enabled, callbacks) are accessed via refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [videoRef]
   )
 

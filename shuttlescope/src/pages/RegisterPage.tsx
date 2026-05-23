@@ -6,7 +6,7 @@ import { TurnstileWidget } from '@/components/auth/TurnstileWidget'
 
 export default function RegisterPage() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
+  const _navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

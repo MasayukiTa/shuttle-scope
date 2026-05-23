@@ -138,7 +138,7 @@ function drawMatrix(
         .attr('fill', isDiag ? '#374151' : seqBlueColor(prob, maxVal))
         .attr('stroke', 'none')
         .style('cursor', isDiag ? 'default' : 'pointer')
-        .on('mouseover', function (event) {
+        .on('mouseover', function (_event) {
           if (isDiag) return
           const fromLabel = shot_labels[ri] ?? shot_keys_fallback(ri)
           const toLabel = shot_labels[ci] ?? shot_keys_fallback(ci)

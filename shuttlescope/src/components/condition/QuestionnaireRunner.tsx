@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { _useMemo, useRef, _useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { QuestionItem, ScaleKind } from '@/hooks/useConditions'
 import { trackConditionInput } from '@/utils/analytics'

@@ -13,7 +13,7 @@
  * AnnotatorPage 側の JSX インライン callbacks に残す（シンプルな1行）。
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useQuery, useMutation, QueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, _QueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
 
 // ── 型定義 ───────────────────────────────────────────────────────────────────

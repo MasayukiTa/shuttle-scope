@@ -13,7 +13,6 @@ import { useTranslation } from 'react-i18next'
  * Phase Pay-2 切替時には env を埋めるだけで内容が反映される。
  */
 export default function CommerceLawPage() {
-  const { t } = useTranslation()
 
   if (!BILLING_UI_ENABLED) return <Navigate to="/" replace />
   return <CommerceLawPageInner />

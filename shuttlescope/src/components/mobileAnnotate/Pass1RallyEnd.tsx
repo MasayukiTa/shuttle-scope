@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 // 規約: lucide-react は段階廃止。Material Symbols (MIcon) を使う。
 import { MIcon } from '@/components/common/MIcon'
-import { trackInput, trackPassAbandoned, trackPassCompleted, trackPassStarted } from '@/utils/analytics'
+import { trackInput, trackPassAbandoned, _trackPassCompleted, trackPassStarted } from '@/utils/analytics'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { setWinner, isSetPoint, isDeuce, isGoldenPoint } from '@/utils/badmintonRules'
 import { useTranslation } from 'react-i18next'

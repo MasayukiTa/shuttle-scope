@@ -109,7 +109,7 @@ export function MatchListPage() {
   const [deleteConfirmMatchId, setDeleteConfirmMatchId] = useState<number | null>(null)
   // 一括選択
   const [selectedMatchIds, setSelectedMatchIds] = useState<Set<number>>(new Set())
-  const [downloadJobIds, setDownloadJobIds] = useState<Record<number, string>>({})
+  const [_downloadJobIds, setDownloadJobIds] = useState<Record<number, string>>({})
   const [downloadQuality, setDownloadQuality] = useState<string>('720')
   const [downloadCookieBrowser, setDownloadCookieBrowser] = useState<string>('')
   // DL オプションモーダル (2026-05-08): 全部DL / 範囲指定 / 手入力 を選べる。
@@ -238,7 +238,7 @@ export function MatchListPage() {
       resetPlayerFields()
     },
     onError: (err: any) => {
-      let detail = ''
+      let detail: string
       try {
         const parsed = JSON.parse(err.message)
         if (Array.isArray(parsed?.detail)) {
@@ -257,14 +257,14 @@ export function MatchListPage() {
       apiDelete(`/matches/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches'] }),
     onError: (err: any) => {
-      let detail = ''
+      let detail: string
       try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
       alert(`削除に失敗しました (HTTP ${err.status ?? '?'}):\n${detail || '不明なエラー'}`)
     },
   })
 
   // 動画ダウンロード開始
-  const startDownload = useMutation({
+  const _startDownload = useMutation({
     mutationFn: ({ matchId, quality, cookieBrowser }: { matchId: number; quality: string; cookieBrowser: string }) =>
       apiPost(`/matches/${matchId}/download`, { quality, cookie_browser: cookieBrowser }),
     onSuccess: (data: any, { matchId }) => {
@@ -397,7 +397,6 @@ export function MatchListPage() {
     if (form.is_public_pool) body.is_public_pool = true
 
     if (editingMatchId !== null) {
-      console.log('[updateMatch] body:', JSON.stringify(body, null, 2))
       updateMatch.mutate({ id: editingMatchId, body })
     } else {
       createMatch.mutate(body)
@@ -489,7 +488,7 @@ export function MatchListPage() {
   function toggleSelectMatch(id: number) {
     setSelectedMatchIds((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }

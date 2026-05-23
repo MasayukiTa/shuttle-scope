@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound, ChevronDown, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound, ChevronDown, RotateCcw, _AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -179,7 +179,7 @@ export function UserManagementPage() {
   const textMuted = isLight ? 'text-gray-500' : 'text-gray-400'
   const rowHover = isLight ? 'hover:bg-gray-50' : 'hover:bg-gray-700/50'
   const inputCls = `w-full border ${isLight ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-700'} rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${textMain}`
-  const inlinePanelBg = isLight ? 'bg-blue-50 border-blue-100' : 'bg-gray-750 border-blue-900/40'
+  const _inlinePanelBg = isLight ? 'bg-blue-50 border-blue-100' : 'bg-gray-750 border-blue-900/40'
 
   const isPlayerRole = form.role === 'player'
   // 旧版: admin は team_name 必須でないため UI ごと出していなかった。

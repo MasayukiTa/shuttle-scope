@@ -73,12 +73,12 @@ export function ViewerPage() {
     setReconnectCount(count)
     setViewerState('connecting')
     reconnectTimerRef.current = setTimeout(() => {
-      connectWs(code, pid) // eslint-disable-line
+      connectWs(code, pid)  
     }, RECONNECT_DELAY_MS)
   }, []) // connectWs is defined below
 
   // ─── WebSocket 接続 ───────────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   const connectWs = useCallback((code: string, pid: number) => {
     if (wsRef.current) {
       wsRef.current.onclose = null
@@ -225,7 +225,7 @@ export function ViewerPage() {
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       pcRef.current?.close()
-      wsRef.current?.onclose && (wsRef.current.onclose = null)
+      if (wsRef.current?.onclose) wsRef.current.onclose = null
       wsRef.current?.close()
     }
   }, [])

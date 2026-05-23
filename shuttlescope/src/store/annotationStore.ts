@@ -467,7 +467,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
     }),
 
   // ラリー確定: 勝者が次のサーバーになる（バドミントンラリーポイント制）
-  confirmRally: (winner, endType) => {
+  confirmRally: (winner, _endType) => {
     const { currentStrokes, currentRallyNum, scoreA, scoreB } = get()
     const newScoreA = winner === 'player_a' ? scoreA + 1 : scoreA
     const newScoreB = winner === 'player_b' ? scoreB + 1 : scoreB

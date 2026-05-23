@@ -9,7 +9,6 @@ import { useTranslation } from 'react-i18next'
  * VITE_SS_BILLING_UI_ENABLED=false のときは / にリダイレクト。
  */
 export default function AccountOrdersPage() {
-  const { t } = useTranslation()
 
   // フラグ判定は hook を持たない外側で行う (rules-of-hooks 準拠)
   if (!BILLING_UI_ENABLED) return <Navigate to="/" replace />

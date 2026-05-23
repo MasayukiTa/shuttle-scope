@@ -137,7 +137,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                     ? `${tMin != null ? tMin.toFixed(1) : '—'}〜${tMax != null ? tMax.toFixed(1) : '—'}${unit ? unit : ''}`
                     : null
 
-                  let gapNode: ReactNode = null
+                  let gapNode: ReactNode
                   if (gap === null || gap === undefined) {
                     gapNode = null
                   } else if (gap === 0) {

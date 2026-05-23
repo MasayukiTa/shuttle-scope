@@ -45,7 +45,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string>('')
   // 下端ツールバーを一時的に隠す (= コート底辺の点を BL/BR に置きたい時用)
-  const [toolbarHidden, setToolbarHidden] = useState(false)
+  const [_toolbarHidden, _setToolbarHidden] = useState(false)
   // 初期で既存点が入った場合の「復元済み」インジケータを保持
   const [restoredFromExisting] = useState<boolean>(initial.length === 6)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -162,7 +162,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
       const payload = { points: points.map((p) => [p.x, p.y] as [number, number]) }
       try {
         await apiPost(`/matches/${matchId}/court_calibration`, payload)
-      } catch (_e) {
+      } catch {
         // backend 失敗時も localStorage は保存して desktop と共有可能にする
         setErr('サーバ保存失敗 — ローカルのみ保存しました')
       }

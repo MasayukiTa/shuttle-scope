@@ -125,7 +125,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                       backgroundColor: bgColor,
                       border: isTop ? `1.5px solid ${WIN}` : `1px solid ${isLight ? '#e2e8f0' : 'transparent'}`,
                       minHeight: '48px',
-                      // @ts-ignore
+                      // @ts-expect-error CSS custom property not in React.CSSProperties type
                       '--tw-ring-color': WIN,
                     }}
                   >

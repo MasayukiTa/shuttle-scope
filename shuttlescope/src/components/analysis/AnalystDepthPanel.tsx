@@ -83,7 +83,7 @@ interface Props {
 function RecentFormSection({ data, isLight }: { data: RecentForm; isLight: boolean }) {
   const { t } = useTranslation()
   const subText = isLight ? '#64748b' : '#9ca3af'
-  const neutral = isLight ? '#334155' : '#d1d5db'
+  const _neutral = isLight ? '#334155' : '#d1d5db'
 
   const trendColor =
     data.trend === 'improving' ? WIN

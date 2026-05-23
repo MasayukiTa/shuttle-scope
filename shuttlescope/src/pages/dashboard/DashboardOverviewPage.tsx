@@ -12,7 +12,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { apiGet } from '@/api/client'
 import { AnalysisFilters } from '@/types'
 import { Maximize2, ChevronLeft, ChevronRight } from 'lucide-react'
-import { BAR, TOOLTIP_STYLE as CW_TOOLTIP, getTooltipStyle, AXIS_TICK_LIGHT } from '@/styles/colors'
+import { BAR, TOOLTIP_STYLE as _CW_TOOLTIP, getTooltipStyle, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { ScoreProgression, type RallyPoint } from '@/components/analysis/ScoreProgression'
 import { IntervalReport } from '@/components/analysis/IntervalReport'
@@ -60,7 +60,7 @@ interface MatchSummary {
 }
 
 // END_TYPE_LABELS は t('shot_end_type.<key>') で参照する (関数経由で動的に解決)
-const END_TYPE_KEYS = ['ace', 'forced_error', 'unforced_error', 'net_error', 'net', 'out', 'winner', 'cant_reach'] as const
+const _END_TYPE_KEYS = ['ace', 'forced_error', 'unforced_error', 'net_error', 'net', 'out', 'winner', 'cant_reach'] as const
 
 function pct(value: number) {
   return `${(value * 100).toFixed(1)}%`

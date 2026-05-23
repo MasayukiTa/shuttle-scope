@@ -282,7 +282,6 @@ function Sidebar() {
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { t } = useTranslation()
 
   const { role } = useAuth()
   if (role !== 'admin') return <Navigate to="/matches" replace />
@@ -290,7 +289,6 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 function PageAccessRoute({ pageKey, children }: { pageKey: string; children: React.ReactNode }) {
-  const { t } = useTranslation()
 
   const { hasPageAccess } = useAuth()
   if (!hasPageAccess(pageKey)) return <Navigate to="/matches" replace />
@@ -320,7 +318,6 @@ function AnnotatorOrMobileAnnotate() {
 
 
 function MainLayout() {
-  const { t } = useTranslation()
 
   return (
     <div className="flex h-screen">
@@ -367,7 +364,6 @@ function MainLayout() {
 }
 
 function ThemeApplier({ children }: { children: React.ReactNode }) {
-  const { t } = useTranslation()
 
   const { theme } = useTheme()
   useEffect(() => {

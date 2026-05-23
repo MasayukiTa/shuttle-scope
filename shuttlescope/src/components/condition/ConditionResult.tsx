@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/useAuth'
-import { ConditionResult as ConditionResultType, FactorKey } from '@/hooks/useConditions'
+import { ConditionResult as ConditionResultType, _FactorKey } from '@/hooks/useConditions'
 
 interface Props {
   result: ConditionResultType

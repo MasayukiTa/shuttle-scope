@@ -9,7 +9,7 @@ import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters, Player } from '@/types'
 import { DashboardSectionNav, AdvancedSection } from '@/components/dashboard/DashboardSectionNav'
 import { ShotWinLoss } from '@/components/analysis/ShotWinLoss'
-import { SetComparison } from '@/components/analysis/SetComparison'
+import { _SetComparison } from '@/components/analysis/SetComparison'
 import { RallyLengthWinRate } from '@/components/analysis/RallyLengthWinRate'
 import { PressurePerformance } from '@/components/analysis/PressurePerformance'
 import { TransitionMatrix } from '@/components/analysis/TransitionMatrix'
@@ -59,7 +59,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
   const [pairMode, setPairMode] = useState(false)
   const [partnerPlayerId, setPartnerPlayerId] = useState<number | null>(null)
   const { getMeta } = useAnalysisMeta()
-  const { card, cardInner, textHeading, textSecondary, textMuted, textFaint, badge, border, isLight } = useCardTheme()
+  const { card, _cardInner, textHeading, textSecondary, textMuted, _textFaint, badge, _border, isLight } = useCardTheme()
   const { role } = useAuth()
 
   // Override summary: admin/analyst/coach のみクエリ

@@ -52,7 +52,6 @@ interface Props {
 }
 
 function InfluenceBar({ value, max = 1, isLight }: { value: number; max?: number; isLight: boolean }) {
-  const { t } = useTranslation()
 
   const ratio = Math.min(value / max, 1)
   return (

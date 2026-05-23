@@ -290,7 +290,7 @@ export function useCVJobs({
   // マウント時: YOLO モデルをバックグラウンドでウォームアップ（初回検出遅延の解消）
   useEffect(() => {
     apiPost('/yolo/warmup', {}).catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])  
 
   // ── ビデオオーバーレイ ────────────────────────────────────────────────────
 
@@ -484,14 +484,14 @@ export function useCVJobs({
   )
   const handleYoloReset = useCallback(async () => {
     if (!matchId) { console.warn('[YoloReset] no matchId'); return }
-    console.info('[YoloReset] start match=', matchId, 'jobId=', yoloJobId, 'status=', yoloJob?.status)
+    console.warn('[YoloReset] start match=', matchId, 'jobId=', yoloJobId, 'status=', yoloJob?.status)
     // 進行中ジョブがあれば abort 要求（バックグラウンドの書き戻し防止）
     if (yoloJobId && yoloJob && (yoloJob.status === 'pending' || yoloJob.status === 'running')) {
       try { await apiPost(`/yolo/batch/${yoloJobId}/stop`, {}) } catch (e) { console.warn('[YoloReset] stop failed', e) }
     }
     try {
       const res = await apiDelete<{ success: boolean; data: { deleted: number } }>(`/yolo/results/${matchId}`)
-      console.info('[YoloReset] delete response', res)
+      console.warn('[YoloReset] delete response', res)
       setYoloJob(null)
       setYoloFrames([])
       setTrackFrames([])

@@ -172,8 +172,8 @@ export function CourtDiagram({
 
   const isComposite = mode === 'composite'
   // composite: 自コート（下）がアクティブ（hit相当）
-  const activeZones = mode === 'land' ? OPPONENT_ZONES : OWN_ZONES
-  const inactiveZones = mode === 'land' ? OWN_ZONES : OPPONENT_ZONES
+  const _activeZones = mode === 'land' ? OPPONENT_ZONES : OWN_ZONES
+  const _inactiveZones = mode === 'land' ? OWN_ZONES : OPPONENT_ZONES
 
   const heatmapMax = heatmapData
     ? Math.max(...Object.values(heatmapData), 1)

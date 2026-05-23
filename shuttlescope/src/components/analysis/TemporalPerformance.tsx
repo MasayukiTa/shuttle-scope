@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { perfColor, lightSafe, getTooltipStyle, AXIS_TICK } from '@/styles/colors'
+import { perfColor, lightSafe, getTooltipStyle, _AXIS_TICK } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 

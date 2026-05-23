@@ -5,7 +5,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
-import { perfColor, BAR, AXIS_TICK } from '@/styles/colors'
+import { perfColor, _BAR, _AXIS_TICK } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
 
 interface OpponentAdaptiveShotsProps {
@@ -37,7 +37,6 @@ interface Response {
 }
 
 function ShotBar({ label, winRate, lift, count }: { label: string; winRate: number; lift: number; count: number }) {
-  const { t } = useTranslation()
 
   const pct = Math.round(winRate * 100)
   const liftPositive = lift >= 0

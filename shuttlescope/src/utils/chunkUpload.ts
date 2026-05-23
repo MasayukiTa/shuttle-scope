@@ -200,7 +200,7 @@ export async function uploadVideoInChunks(opts: ChunkUploadOptions): Promise<Chu
     let lastErr: unknown = null
     for (let attempt = 0; attempt < maxRetriesPerChunk; attempt++) {
       try {
-        const chunkStartTs = performance.now()
+        const _chunkStartTs = performance.now()
         const res = await fetch(`${API_BASE_URL}/v1/uploads/video/chunk`, {
           method: 'POST',
           headers: getAuthHeaders(),

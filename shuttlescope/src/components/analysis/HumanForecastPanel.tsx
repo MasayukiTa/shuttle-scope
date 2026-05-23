@@ -78,7 +78,7 @@ const CONFIDENCE_OPTIONS = [
 function ForecastForm({ matchId, playerId, onSaved }: Props & { onSaved: () => void }) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
-  const subText = isLight ? '#64748b' : '#9ca3af'
+  const _subText = isLight ? '#64748b' : '#9ca3af'
   const inputClass = `text-sm rounded px-2 py-1.5 focus:outline-none ${
     isLight
       ? 'bg-white border border-gray-300 text-gray-800'

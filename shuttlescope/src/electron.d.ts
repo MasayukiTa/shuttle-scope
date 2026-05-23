@@ -35,7 +35,7 @@ declare global {
 // Electron の webviewTag: true を有効にすると <webview> が使えるが、
 // React の JSX 型定義には含まれないため独自に宣言する。
 
-declare namespace JSX {
+declare namespace _JSX {
   interface IntrinsicElements {
     webview: React.DetailedHTMLProps<WebviewHTMLAttributes, HTMLElement>
   }

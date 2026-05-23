@@ -93,7 +93,7 @@ function BodyDataConsentToggles() {
       queryClient.invalidateQueries({ queryKey: ['my-consents'] })
     } catch (e) {
       // backend が version mismatch (409) 等を返す場合はユーザに知らせる
-      // eslint-disable-next-line no-alert
+       
       alert(`${t('condition.consent_update_failed', 'Failed to update consent')}: ${String(e).slice(0, 200)}`)
     }
   }

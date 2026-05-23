@@ -7,7 +7,7 @@
  *  - 'semi-auto' は flip するが 500ms 以内の次ショット tap で revert
  *  - 500ms 経過後の次ショット tap は revert しない
  */
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi, _afterEach } from 'vitest'
 import { useAnnotationStore } from '../annotationStore'
 
 describe('annotationStore flipMode', () => {

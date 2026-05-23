@@ -29,7 +29,6 @@ interface Props {
 }
 
 export function PurchaseModal(props: Props) {
-  const { t } = useTranslation()
 
   if (!BILLING_UI_ENABLED) return null
   return <PurchaseModalInner {...props} />

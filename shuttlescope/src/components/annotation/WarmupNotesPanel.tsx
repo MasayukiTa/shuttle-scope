@@ -217,7 +217,7 @@ export function WarmupNotesPanel({
     partner_b: setObsPartnerB,
     player_b: setObsB,
   }
-  const idMap: Record<PlayerKey, number | undefined> = {
+  const _idMap: Record<PlayerKey, number | undefined> = {
     player_a: playerAId,
     partner_a: partnerAId,
     partner_b: partnerBId,

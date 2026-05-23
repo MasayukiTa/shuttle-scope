@@ -30,7 +30,6 @@ interface Response {
 }
 
 function SequencePill({ labels, winRate }: { labels: string[]; winRate: number }) {
-  const { t } = useTranslation()
 
   return (
     <div className="flex items-center gap-1 flex-wrap">

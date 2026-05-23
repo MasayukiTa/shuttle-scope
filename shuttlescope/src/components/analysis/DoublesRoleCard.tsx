@@ -134,7 +134,6 @@ function pct(v: number) {
 }
 
 function RatioBar({ front, back, neutral }: { front: number; back: number; neutral: number }) {
-  const { t } = useTranslation()
 
   return (
     <div className="flex h-2 w-full rounded-full overflow-hidden gap-px">

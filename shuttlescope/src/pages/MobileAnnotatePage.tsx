@@ -143,13 +143,7 @@ export function MobileAnnotatePage() {
   const [calibEditingTop, setCalibEditingTop] = useState(false)
   // 診断: calib 中に "セット未登録" バナー等が裏で render されていないか確認。
   // 本来 !calibEditingTop で gate しているが、user 報告で center タップ阻害の
-  // 可能性指摘あり。実機検証用 console.log。
-  useEffect(() => {
-    if (calibEditingTop) {
-      console.log('[calib-diag] entered calib, screen=', screen, 'pass=', pass)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calibEditingTop])
+  // 可能性指摘あり。実機検証用 console.log は削除済み。
   const [queueStatus, setQueueStatus] = useState<{
     pending: number
     manualRetry: number
@@ -385,7 +379,7 @@ export function MobileAnnotatePage() {
 
   // フルスクリーン API (iOS Safari は video element に対してのみ可)
   // 任意のタイミングでユーザがタップして full screen に入れるよう関数を用意
-  const requestVideoFullscreen = () => {
+  const _requestVideoFullscreen = () => {
     const v = videoElRef.current
     if (!v) return
     const anyV = v as any
@@ -859,7 +853,7 @@ function Pass2RallyPicker({
  * Pass3ShotDetail を起動。
  */
 function Pass3RallyPicker({
-  matchId,
+  _matchId,
   rallies,
   sets,
   pausedAtSec,

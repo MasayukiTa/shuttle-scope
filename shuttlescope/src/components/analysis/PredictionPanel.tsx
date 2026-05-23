@@ -552,7 +552,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
 
 // ─── フィルターバー ───────────────────────────────────────────────────────────
 
-function FilterBar({
+function _FilterBar({
   players,
   playerId,
   opponentId,

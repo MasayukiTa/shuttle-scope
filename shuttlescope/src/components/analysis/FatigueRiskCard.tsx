@@ -39,7 +39,6 @@ interface FatigueRiskCardProps {
 }
 
 function RiskBar({ value, label }: { value: number; label: string }) {
-  const { t } = useTranslation()
 
   const pct = Math.min(100, Math.round(value * 100))
   const color = pct >= 12 ? LOSS : pct >= 6 ? '#f59e0b' : '#6b7280'

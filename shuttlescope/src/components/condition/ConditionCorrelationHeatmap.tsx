@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConditions, type ConditionRecord } from '@/hooks/useConditions'
-import { useAuth } from '@/hooks/useAuth'
+import { _useAuth } from '@/hooks/useAuth'
 import { pearson } from '@/utils/stats'
 
 // コンディション指標間の Pearson 相関ヒートマップ (coach/analyst 専用)

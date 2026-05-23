@@ -39,7 +39,7 @@ function fmtTime(sec: number): string {
 export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = 'B' }: Props) {
   const { t } = useTranslation()
 
-  const { card, textPrimary, textMuted, textSecondary, border, rowHover, isLight } = useCardTheme()
+  const { _card, textPrimary, textMuted, textSecondary, border, rowHover, isLight } = useCardTheme()
 
   // フィルター状態
   const [filterWinner, setFilterWinner] = useState<string>('')
