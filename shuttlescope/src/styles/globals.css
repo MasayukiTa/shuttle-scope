@@ -1172,3 +1172,48 @@ video::-webkit-media-controls-play-button {
 .dark .tutorial-tooltip-arrow-right {
   border-left-color: #1f2937;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Growth Advisor chat animations
+ * 全て prefers-reduced-motion: reduce で無効化する。
+ * ═══════════════════════════════════════════════════════════════════ */
+
+@keyframes chat-bubble-enter-frames {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.chat-bubble-enter {
+  animation: chat-bubble-enter-frames 0.2s ease-out both;
+}
+
+@keyframes chat-typing-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40%           { transform: translateY(-4px); opacity: 1; }
+}
+.chat-typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: #6b7280;
+  animation: chat-typing-bounce 1s ease-in-out infinite;
+}
+html[data-theme="light"] .chat-typing-dot {
+  background-color: #94a3b8;
+}
+
+@keyframes chat-cursor-blink {
+  0%, 50%   { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.chat-cursor-blink {
+  animation: chat-cursor-blink 1s steps(1, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble-enter,
+  .chat-typing-dot,
+  .chat-cursor-blink {
+    animation: none !important;
+  }
+}
