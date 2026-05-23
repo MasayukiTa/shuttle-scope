@@ -1072,3 +1072,57 @@ video::-webkit-media-controls-play-button {
   z-index: 301;
   animation: tutorial-ring-pulse 1s ease-in-out infinite;
 }
+
+/* チュートリアル吹き出しの矢印 (CSS三角形, target 方向を指す) */
+.tutorial-tooltip-arrow {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.tutorial-tooltip-arrow-up {
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid #fff;
+  filter: drop-shadow(0 -1px 0 rgba(0,0,0,0.15));
+}
+.dark .tutorial-tooltip-arrow-up {
+  border-bottom-color: #1f2937;
+}
+.tutorial-tooltip-arrow-down {
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 8px solid #fff;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.15));
+}
+.dark .tutorial-tooltip-arrow-down {
+  border-top-color: #1f2937;
+}
+.tutorial-tooltip-arrow-left {
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 8px solid #fff;
+}
+.dark .tutorial-tooltip-arrow-left {
+  border-right-color: #1f2937;
+}
+.tutorial-tooltip-arrow-right {
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 8px solid #fff;
+}
+.dark .tutorial-tooltip-arrow-right {
+  border-left-color: #1f2937;
+}
