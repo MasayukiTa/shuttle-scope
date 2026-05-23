@@ -172,7 +172,7 @@ export function useCVJobs({
   match,
   tracknetBackend,
   queryClient,
-  t,
+  t: _t,
   videoRef,
   roiRect,
 }: Options): CVJobsResult {

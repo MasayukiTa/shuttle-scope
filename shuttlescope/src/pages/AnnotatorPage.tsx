@@ -1011,8 +1011,8 @@ export function AnnotatorPage() {
             // ペンディングストローク（ショット種別まで入力済み）も復元
             const restoredPending = saved.pendingStroke as { shot_type?: string } | undefined
             if (restoredPending?.shot_type) {
-              useAnnotationStore.setState((s) => ({
-                pendingStroke: restoredPending as unknown as typeof s.pendingStroke,
+              useAnnotationStore.setState((_s) => ({
+                pendingStroke: restoredPending as unknown as typeof _s.pendingStroke,
                 inputStep: (saved.inputStep as typeof s.inputStep) ?? 'idle',
               }))
             }
