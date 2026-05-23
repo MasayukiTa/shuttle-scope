@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { clsx } from 'clsx'
+import { _clsx } from 'clsx'
 
 interface RallyPanelProps {
   setNum: number

@@ -98,7 +98,7 @@ function bucketize(
   if (mode === 'dow') size = 7
 
   const buckets: Bucket[] = Array.from({ length: size }, (_, i) => {
-    let label = ''
+    let label: string
     if (mode === 'month') label = t('condition.seasonality.month_label', { n: i + 1 })
     else if (mode === 'quarter') label = `Q${i + 1}`
     else label = t(`condition.seasonality.dow.${i}`)
@@ -110,7 +110,7 @@ function bucketize(
   for (const rec of records) {
     const d = parseLocalDate(rec.measured_at)
     if (!d) continue
-    let idx = 0
+    let idx: number
     if (mode === 'month') idx = d.getMonth() // 0-11
     else if (mode === 'quarter') idx = Math.floor(d.getMonth() / 3) // 0-3
     else {

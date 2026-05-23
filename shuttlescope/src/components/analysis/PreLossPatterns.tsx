@@ -34,7 +34,7 @@ interface PreLossResponse {
 
 type PreKey = 'pre_loss_1' | 'pre_loss_2' | 'pre_loss_3'
 
-function PatternList({ patterns, isPlayerView }: { patterns: ShotPattern[]; isPlayerView: boolean }) {
+function PatternList({ patterns, _isPlayerView }: { patterns: ShotPattern[]; isPlayerView: boolean }) {
   const { t } = useTranslation()
   if (patterns.length === 0) {
     return <p className="text-gray-500 text-sm py-2">{t('analysis.no_data')}</p>

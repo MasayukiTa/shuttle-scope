@@ -62,7 +62,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   // intervalSet=3 (= 全セット) を default。旧版は 1/2/3 を選ばせていたが、
   // 「セット間 = 試合進行に伴うセット推移」を見るのが目的なら全セット表示が
   // 正解 (ユーザ報告: 「選ばせる意味がない」)。
-  const [intervalSet, setIntervalSet] = useState(3)
+  const [intervalSet, _setIntervalSet] = useState(3)
 
   // セット間解析モーダル用ステート
   const [intervalSummarySetId, setIntervalSummarySetIdValue] = useState<number | null>(null)

@@ -13,7 +13,7 @@ export function AuditLogPage() {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
   const { role } = useAuth()
-  const [tab, setTab] = useState<LogTab>('audit')
+  const [tab, _setTab] = useState<LogTab>('audit')
   const [rows, setRows] = useState<AuditLogEntry[]>([])
   const [reqRows, setReqRows] = useState<RequestLogEntry[]>([])
   const [secRows, setSecRows] = useState<SecurityEventEntry[]>([])

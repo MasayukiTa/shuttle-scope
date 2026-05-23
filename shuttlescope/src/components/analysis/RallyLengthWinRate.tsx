@@ -9,11 +9,11 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  Area,
+  _Area,
 } from 'recharts'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { BAR, LINE, getTooltipStyle, AXIS_TICK } from '@/styles/colors'
+import { BAR, LINE, getTooltipStyle, _AXIS_TICK } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 

@@ -242,7 +242,6 @@ function Cell({
   divide?: boolean
   children: React.ReactNode
 }) {
-  const { t } = useTranslation()
 
   return (
     <div

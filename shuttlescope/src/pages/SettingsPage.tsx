@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { setLanguage, SUPPORTED_LANGS, type SupportedLang } from '@/i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut, ScrollText } from 'lucide-react'
+import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, _Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut, ScrollText } from 'lucide-react'
 import { MIcon } from '@/components/common/MIcon'
 import { TUTORIALS } from '@/components/tutorial/tutorials'
 import { replayTutorial, useTutorialState } from '@/components/tutorial/useTutorial'
 import QRCode from 'qrcode'
 import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
-import { Player, TeamHistoryEntry, SharedSession, NetworkDiagnostics } from '@/types'
+import { Player, TeamHistoryEntry, _SharedSession, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSettings } from '@/hooks/useSettings'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -178,7 +178,7 @@ export function SettingsPage() {
   // クリップボードコピー済みの選手ID（一時表示用）
   const [copiedPlayerId, setCopiedPlayerId] = useState<number | null>(null)
   const { settings: appSettings, updateSettings, loading: settingsLoading } = useSettings()
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const [_copiedUrl, _setCopiedUrl] = useState<string | null>(null)
   const navigate = useNavigate()
 
   async function handleLogout() {
@@ -205,8 +205,8 @@ export function SettingsPage() {
   const [backupRunning, setBackupRunning] = useState(false)
 
   // CV ベンチマーク（旧）
-  const [benchmarkRunning, setBenchmarkRunning] = useState(false)
-  const [benchmarkResult, setBenchmarkResult] = useState<{ yolo: BenchmarkItem; tracknet: BenchmarkItem; tracking?: BenchmarkItem } | null>(null)
+  const [_benchmarkRunning, setBenchmarkRunning] = useState(false)
+  const [_benchmarkResult, setBenchmarkResult] = useState<{ yolo: BenchmarkItem; tracknet: BenchmarkItem; tracking?: BenchmarkItem } | null>(null)
 
   // 新ベンチマーク UI 用ステート
   const [bmDevices, setBmDevices] = useState<ComputeDevice[]>([])
@@ -352,13 +352,13 @@ export function SettingsPage() {
   })
   const conflicts = (conflictsData as any)?.data ?? []
 
-  async function runCvBenchmark() {
+  async function _runCvBenchmark() {
     setBenchmarkRunning(true)
     setBenchmarkResult(null)
     try {
       const res = await apiPost<{ success: boolean; data: { yolo: BenchmarkItem; tracknet: BenchmarkItem; tracking?: BenchmarkItem } }>('/cv/benchmark', {})
       if (res.success) setBenchmarkResult(res.data)
-    } catch (_e) {
+    } catch {
       // ignore
     } finally {
       setBenchmarkRunning(false)
@@ -375,7 +375,7 @@ export function SettingsPage() {
       const devs = await getDevices()
       setBmDevices(devs)
       setBmSelectedDevices(devs.filter((d) => d.available).map((d) => d.device_id))
-    } catch (_e) {
+    } catch {
       setBmError('デバイス取得に失敗しました')
     } finally {
       setBmDetecting(false)
@@ -394,7 +394,7 @@ export function SettingsPage() {
       const jobId = await runBenchmark(bmSelectedDevices, bmTargets, bmNFrames)
       bmJobIdRef.current = jobId
       setBmJobId(jobId)
-    } catch (_e) {
+    } catch {
       setBmError('ベンチマーク開始に失敗しました')
       setBmRunning(false)
     }
@@ -407,7 +407,7 @@ export function SettingsPage() {
     if (jobId) {
       try {
         await cancelJob(jobId)
-      } catch (_e) {
+      } catch {
         // キャンセル失敗は無視
       }
     }
@@ -425,14 +425,14 @@ export function SettingsPage() {
       if (job.status === 'done' || job.status === 'failed') {
         setBmRunning(false)
       }
-    } catch (_e) {
+    } catch {
       // ポーリングエラーは無視して次のポーリングに任せる
     }
   }
 
   // バッチ fps 選択時に処理時間を試算し、長い場合は確認ダイアログを出す
   // measuredFps: ベンチマーク実測値（未計測なら保守的デフォルト）
-  function selectBatchFps(
+  function _selectBatchFps(
     label: string,
     selectedFps: number,
     measuredFps: number | null,
@@ -490,7 +490,7 @@ export function SettingsPage() {
       const res = await setAutoVacuum(mode) as any
       setDbAvMessage(res.message ?? (res.error ? `エラー: ${res.error}` : '完了'))
       refetchDbStats()
-    } catch (e) {
+    } catch {
       setDbAvMessage('設定に失敗しました')
     } finally {
       setDbAvRunning(false)
@@ -522,7 +522,7 @@ export function SettingsPage() {
       } else {
         setPkgImportResult({ success: false, message: data.detail ?? 'インポートに失敗しました' })
       }
-    } catch (e) {
+    } catch {
       setPkgImportResult({ success: false, message: 'ネットワークエラーが発生しました' })
     } finally {
       setPkgImportRunning(false)
@@ -536,7 +536,7 @@ export function SettingsPage() {
       const res = await runDbMaintenance()
       setDbMaintResult({ freed_mb: (res as any).freed_mb ?? 0, freed_pages: (res as any).freed_pages ?? 0 })
       refetchDbStats()
-    } catch (e) {
+    } catch {
       setDbMaintResult({ freed_mb: 0, freed_pages: 0 })
     } finally {
       setDbMaintRunning(false)
@@ -626,7 +626,7 @@ export function SettingsPage() {
       setPlayerForm(defaultPlayerForm())
     },
     onError: (err: any) => {
-      let detail = ''
+      let detail: string
       try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
       alert(`保存に失敗しました (HTTP ${err.status ?? '?'}):\n${detail || '不明なエラー'}`)
     },
@@ -639,7 +639,7 @@ export function SettingsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['players'] }),
     onError: (err: any, playerId: number) => {
       // err.message はサーバーが返したJSONテキスト ("{"detail":"..."}") or プレーンテキスト
-      let detail = ''
+      let detail: string
       try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
       const isReferenced = (err as any).status === 409
       if (isReferenced) {
@@ -660,7 +660,7 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['players-needs-review'] })
     },
     onError: (err: any) => {
-      let detail = ''
+      let detail: string
       try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
       alert(`確認済み設定に失敗しました: ${detail || '不明なエラー'}`)
     },
@@ -797,7 +797,7 @@ export function SettingsPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [showPlayerForm])
 
-  const { card, textHeading, textSecondary, textMuted, textFaint, isLight } = useCardTheme()
+  const { card, textHeading, textSecondary, textMuted, _textFaint, isLight } = useCardTheme()
   const { theme, setTheme } = useTheme()
   const bodyBg = isLight ? 'bg-gray-50' : 'bg-gray-900'
   const borderLine = isLight ? 'border-gray-200' : 'border-gray-700'

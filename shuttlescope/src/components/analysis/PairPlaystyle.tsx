@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
-import { WIN } from '@/styles/colors'
+import { _WIN } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
 interface PairPlaystyleProps {

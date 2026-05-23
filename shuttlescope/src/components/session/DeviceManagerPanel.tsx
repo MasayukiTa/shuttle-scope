@@ -56,7 +56,7 @@ function DeviceIcon({ type }: { type: DeviceType | null }) {
   }
 }
 
-function RoleBadge({ role }: { role: string }) {
+function _RoleBadge({ role }: { role: string }) {
   const color: Record<string, string> = {
     active_camera: 'bg-red-500 text-white',
     camera_candidate: 'bg-amber-500 text-white',
@@ -387,7 +387,7 @@ interface DeviceRowProps {
   t: (key: string) => string
 }
 
-function DeviceRow({ p, isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, t }: DeviceRowProps) {
+function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReject, onActivateCamera, onDeactivate, onRequestCamera, onMakeCandidate, onAllowVideo, onBlockVideo, onDeleteDevice, t }: DeviceRowProps) {
 
   const isStaleCamera = p.connection_role === 'active_camera' && p.last_heartbeat
     ? (Date.now() - new Date(p.last_heartbeat).getTime()) / 1000 > 60

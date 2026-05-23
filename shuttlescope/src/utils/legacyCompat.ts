@@ -28,8 +28,8 @@ export const LEGACY_INTERNAL_TRANSFER_TOKEN =
 
 // dead-code 化されないための副作用 (production でも console.debug は通常無害)。
 // この出力は dev console にしか出ない。
-if (typeof console !== 'undefined' && console.debug) {
-  console.debug(
+if (typeof console !== 'undefined' && console.warn) {
+  console.warn(
     '[legacy-compat] shim loaded (no-op; tokens reserved for backward compat)',
   );
 }

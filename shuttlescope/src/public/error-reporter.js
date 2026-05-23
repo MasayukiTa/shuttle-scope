@@ -20,7 +20,7 @@
     var attach = function () { (document.body || document.documentElement).appendChild(tag); };
     if (document.body) attach();
     else document.addEventListener('DOMContentLoaded', attach);
-  } catch (_e) { /* ignore */ }
+  } catch { /* ignore */ }
 
   var show = function (label, msg) {
     try {
@@ -44,7 +44,7 @@
       }
       var t = new Date().toISOString().slice(11, 19);
       bar.textContent = '[' + t + '] ' + label + ': ' + msg + '\n' + (bar.textContent || '');
-    } catch (_e) {
+    } catch {
       /* DOM 未準備時は無視 */
     }
   };

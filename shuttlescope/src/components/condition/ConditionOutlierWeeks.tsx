@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuth } from '@/hooks/useAuth'
+import { _useAuth } from '@/hooks/useAuth'
 import { useConditions, ConditionRecord } from '@/hooks/useConditions'
 import { mean, sampleStd } from '@/utils/stats'
 

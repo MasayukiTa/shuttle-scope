@@ -206,14 +206,13 @@ function MiniCourtHeatmap({
 
 function CumulativeDistanceChart({
   playerStats,
-  playerNames,
+  _playerNames,
   isLight,
 }: {
   playerStats: Record<string, PlayerStats>
   playerNames: Record<string, string>
   isLight: boolean
 }) {
-  const { t } = useTranslation()
 
   const W = 280
   const H = 80
@@ -389,10 +388,10 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
                       if (syncing) return
                       setSyncing(true)
                       setSyncResult('💾 DB へ同期中...')
-                      console.info('[GridSync] start')
+                      console.warn('[GridSync] start')
                       try {
                         const r = await onSyncGridFromLocal()
-                        console.info('[GridSync] result', r)
+                        console.warn('[GridSync] result', r)
                         if (r.ok) setSyncResult('✓ DB 同期完了')
                         else setSyncResult(`✗ 失敗 (${r.status ?? '?'}): ${r.message ?? ''}`)
                       } catch (err) {

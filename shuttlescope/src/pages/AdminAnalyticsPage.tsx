@@ -70,7 +70,7 @@ export default function AdminAnalyticsPage() {
     }
   }
 
-  useEffect(() => { void reload() /* eslint-disable-next-line */ }, [days])
+  useEffect(() => { void reload()   }, [days])
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">

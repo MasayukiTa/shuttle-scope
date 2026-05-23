@@ -68,7 +68,6 @@ const LEVEL_META: Record<string, { Icon: typeof AlertTriangle; iconColor?: strin
 }
 
 function CardItem({ card, tokens }: { card: SummaryCard; tokens: Tokens }) {
-  const { t } = useTranslation()
 
   const meta = LEVEL_META[card.level] ?? LEVEL_META.info
   const Icon = meta.Icon

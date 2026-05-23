@@ -30,7 +30,7 @@ interface Props {
 export function DashboardResearchPage({ playerId, filters }: Props) {
   const { t } = useTranslation()
   const { getMeta } = useAnalysisMeta()
-  const { card, textHeading, textMuted, textFaint, badge, isLight } = useCardTheme()
+  const { card, textHeading, textMuted, _textFaint, _badge, _isLight } = useCardTheme()
 
   // 研究タブ bundle（optional）: backend 未実装でも silent fail で undefined
   // → 各カードは provided=false で個別 fetch にフォールバックする

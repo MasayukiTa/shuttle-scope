@@ -152,7 +152,6 @@ const ACTION_LABEL: Record<string, string> = {
 }
 
 function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: boolean }) {
-  const { t } = useTranslation()
 
   const icon = item.met === true ? '✓' : item.met === false ? '✗' : '○'
   const color =
@@ -184,7 +183,7 @@ function OverrideForm({
   onClose: () => void
 }) {
   const { t } = useTranslation()
-  const { isLight, textHeading, textMuted, textFaint, cardInner, border } = theme
+  const { isLight, textHeading, textMuted, _textFaint, cardInner, border } = theme
   const { role } = useAuth()
   const qc = useQueryClient()
   const [status, setStatus] = useState(currentOverride?.status ?? 'requires_review')

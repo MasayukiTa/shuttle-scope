@@ -320,7 +320,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
   }, [players, nameFilter, teamFilter])
 
   // 絞り込み後のうち選択済み / 未選択
-  const filteredSelectedIds = useMemo(
+  const _filteredSelectedIds = useMemo(
     () => filteredPlayers.filter((p) => selectedIds.has(p.id)).map((p) => p.id),
     [filteredPlayers, selectedIds]
   )

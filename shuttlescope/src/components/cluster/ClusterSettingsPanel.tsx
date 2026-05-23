@@ -104,7 +104,6 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function GaugeBar({ value, limit, label }: { value: number; limit: number; label: string }) {
-  const { t } = useTranslation()
 
   const pct = Math.min(100, Math.round(value))
   const over = value >= limit
@@ -140,8 +139,8 @@ export function ClusterSettingsPanel() {
   const [rayConnecting, setRayConnecting] = useState(false)
   const [detectingWorkers, setDetectingWorkers] = useState<Record<number, boolean>>({})
   const [detectErrors, setDetectErrors] = useState<Record<number, string>>({})
-  const [arpDevices, setArpDevices] = useState<Array<{ ip: string; known_label?: string }>>([])
-  const [arpScanning, setArpScanning] = useState(false)
+  const [_arpDevices, setArpDevices] = useState<Array<{ ip: string; known_label?: string }>>([])
+  const [_arpScanning, setArpScanning] = useState(false)
   const [startHeadLoading, setStartHeadLoading] = useState(false)
   const [startHeadMsg, setStartHeadMsg] = useState<string | null>(null)
   const [workerCmds, setWorkerCmds] = useState<Array<{ label: string; ip: string; cmd: string }>>([])
@@ -225,7 +224,7 @@ export function ClusterSettingsPanel() {
   const workers = cfg.network?.workers ?? []
 
   // dGPU があるか確認（laptop GPU ボタン表示判定用）
-  const hasDgpu = typeof window !== 'undefined'
+  const _hasDgpu = typeof window !== 'undefined'
     ? true  // サーバーサイドは常に true として扱い、クライアントで判断
     : false
 
@@ -301,7 +300,7 @@ export function ClusterSettingsPanel() {
     }
   }
 
-  const scanArp = async () => {
+  const _scanArp = async () => {
     setArpScanning(true)
     try {
       const devices = await apiGet<Array<{ ip: string; known_label?: string }>>('/cluster/network/arp')
@@ -311,7 +310,7 @@ export function ClusterSettingsPanel() {
     }
   }
 
-  const addArpAsWorker = (ip: string) => {
+  const _addArpAsWorker = (ip: string) => {
     setCfg(c => ({
       ...c,
       network: {

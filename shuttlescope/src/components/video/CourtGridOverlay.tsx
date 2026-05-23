@@ -76,9 +76,9 @@ function halfGridLines(
   const lines: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
 
   const startR = includeOuter ? 0 : 1
-  const endR = includeOuter ? GRID_ROWS : GRID_ROWS - 1
-  const startC = includeOuter ? 0 : 1
-  const endC = includeOuter ? GRID_COLS : GRID_COLS - 1
+  const _endR = includeOuter ? GRID_ROWS : GRID_ROWS - 1
+  const _startC = includeOuter ? 0 : 1
+  const _endC = includeOuter ? GRID_COLS : GRID_COLS - 1
 
   // 横線 (v direction)
   for (let r = startR; r <= GRID_ROWS; r++) {

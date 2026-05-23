@@ -56,7 +56,6 @@ function getDeviceTypeLabel(): string {
 // ─── バッテリー表示 ──────────────────────────────────────────────────────────
 
 function BatteryIndicator({ level, charging }: { level: number; charging: boolean }) {
-  const { t } = useTranslation()
 
   const pct = Math.round(level * 100)
   const Icon = pct > 60 ? BatteryFull : pct > 25 ? BatteryMedium : BatteryLow
@@ -226,12 +225,12 @@ export function CameraSenderPage() {
     setReconnectCount(count)
     setSenderState('connecting')
     reconnectTimerRef.current = setTimeout(() => {
-      connectWs(code, pid) // eslint-disable-line
+      connectWs(code, pid)  
     }, RECONNECT_DELAY_MS)
   }, [t]) // connectWs is defined below and used via closure
 
   // ─── WebSocket 接続 ───────────────────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   const connectWs = useCallback((code: string, pid: number) => {
     if (wsRef.current) {
       wsRef.current.onclose = null
@@ -480,7 +479,7 @@ export function CameraSenderPage() {
       stopRttPolling()
       localStreamRef.current?.getTracks().forEach((t) => t.stop())
       pcRef.current?.close()
-      wsRef.current?.onclose && (wsRef.current.onclose = null)
+      if (wsRef.current?.onclose) wsRef.current.onclose = null
       wsRef.current?.close()
     }
   }, [stopRttPolling])

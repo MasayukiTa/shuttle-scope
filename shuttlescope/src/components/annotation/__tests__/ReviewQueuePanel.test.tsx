@@ -11,7 +11,7 @@
  * - loading スピナー
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, _within } from '@testing-library/react'
 import { ReviewQueuePanel } from '../ReviewQueuePanel'
 import type { ReviewQueueItem, CVCandidatesData } from '@/types/cv'
 

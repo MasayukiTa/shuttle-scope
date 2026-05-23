@@ -8,11 +8,11 @@ import { Player, AnalysisFilters } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
-import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
+import { _ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { DashboardTopNav } from '@/components/dashboard/DashboardTopNav'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { AdviceStrip } from '@/components/common/AdviceStrip'
-import { useAutoTutorial, openTutorial } from '@/components/tutorial/useTutorial'
+import { useAutoTutorial, _openTutorial } from '@/components/tutorial/useTutorial'
 import { DashboardOverviewPage } from './DashboardOverviewPage'
 import { DashboardLivePage } from './DashboardLivePage'
 import { DashboardReviewPage } from './DashboardReviewPage'
@@ -207,7 +207,7 @@ export function DashboardShell() {
     })
 
   // ── Descriptive（StatCards 用） ──
-  const { data: descriptiveResp, isLoading: loadingDescriptive } = useQuery({
+  const { data: descriptiveResp, isLoading: _loadingDescriptive } = useQuery({
     queryKey: ['analysis-descriptive', selectedPlayerId, filters],
     queryFn: () =>
       apiGet<{ success: boolean; data: DescriptiveSummary }>(

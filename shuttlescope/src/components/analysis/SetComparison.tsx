@@ -136,7 +136,7 @@ export function SetComparison({ playerId, chartHeight = 200, filters = DEFAULT_F
 
       {/* 統計サマリーカード */}
       <div className="grid grid-cols-3 gap-2">
-        {sets.map((s, i) => (
+        {sets.map((s, _i) => (
           <div
             key={s.set_number}
             className="bg-gray-700/30 rounded-lg px-3 py-2 text-center"

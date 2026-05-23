@@ -125,7 +125,6 @@ function formatUpdatedAt(ts: number): string {
 // ─── EntropyBar ──────────────────────────────────────────────────────────────
 
 function EntropyBar({ entropy, maxEntropy = 2.5, isLight }: { entropy: number | undefined; maxEntropy?: number; isLight: boolean }) {
-  const { t } = useTranslation()
 
   const safeEntropy = entropy ?? 0
   const ratio = Math.min(safeEntropy / maxEntropy, 1)

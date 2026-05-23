@@ -85,7 +85,7 @@ export function DateRangeSlider({
   onChange,
   isLight,
 }: DateRangeSliderProps) {
-  const uid = useId()
+  const _uid = useId()
   const trackRef = useRef<HTMLDivElement>(null)
   // ドラッグ中のつまみ（null = 非表示）
   const [activeHandle, setActiveHandle] = useState<'a' | 'b' | null>(null)

@@ -18,7 +18,7 @@ import {
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
-import { WIN, LOSS, BAR, perfColor, lightSafe, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
+import { WIN, LOSS, BAR, perfColor, _lightSafe, getTooltipStyle, AXIS_TICK, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 
@@ -144,7 +144,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
   ]
 
   const serveStyleEntries = Object.entries(d.serve_style)
-  const totalServes = serveStyleEntries.reduce((s, [, v]) => s + v, 0)
+  const _totalServes = serveStyleEntries.reduce((s, [, v]) => s + v, 0)
 
   return (
     <div className="space-y-3">

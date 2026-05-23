@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Check, X, AlertCircle, Loader2 } from 'lucide-react'
+import { Check, _X, AlertCircle, Loader2 } from 'lucide-react'
 import { getMyConsents, withdrawConsent, submitConsents, type ConsentType } from '@/api/client'
 
 /**

@@ -17,7 +17,6 @@ interface Props {
 // ─── ソース種別アイコン ───────────────────────────────────────────────────────
 
 function SourceIcon({ kind }: { kind: string }) {
-  const { t } = useTranslation()
 
   const cls = 'w-4 h-4 flex-shrink-0'
   switch (kind) {
@@ -32,7 +31,6 @@ function SourceIcon({ kind }: { kind: string }) {
 // ─── 適合性バッジ ─────────────────────────────────────────────────────────────
 
 function SuitabilityBadge({ value }: { value: string }) {
-  const { t } = useTranslation()
 
   const color = value === 'high' ? 'bg-green-600 text-white'
     : value === 'usable' ? 'bg-yellow-600 text-white'
@@ -102,7 +100,7 @@ export function LiveSourceSelector({ sessionCode }: Props) {
     } catch { /* ignore */ }
   }
 
-  const handleRegisterLocal = async (deviceId: string, label: string) => {
+  const _handleRegisterLocal = async (deviceId: string, label: string) => {
     // USB / 内蔵カメラを候補ソースとして登録
     const isUsb = label.toLowerCase().includes('usb')
     const kind = isUsb ? 'usb_camera' : 'builtin_camera'

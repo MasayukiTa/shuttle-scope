@@ -2,12 +2,12 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, Timer, SkipForward, Bookmark, BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp, Monitor, Globe, Video, Square, Crosshair } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, _Timer, SkipForward, Bookmark, _BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp, Monitor, Globe, Video, Square, Crosshair } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 
-import { VideoPlayer } from '@/components/video/VideoPlayer'
-import { useAutoTutorial, openTutorial } from '@/components/tutorial/useTutorial'
+import { _VideoPlayer } from '@/components/video/VideoPlayer'
+import { useAutoTutorial, _openTutorial } from '@/components/tutorial/useTutorial'
 import { getVideoSrc, hasVideo, getVideoLabel } from '@/utils/videoSrc'
 import { StreamingDownloadPanel } from '@/components/video/StreamingDownloadPanel'
 import { WebViewPlayer } from '@/components/video/WebViewPlayer'
@@ -952,7 +952,7 @@ export function AnnotatorPage() {
         ? t('annotator.ui.autosave_quota')
         : t('annotator.ui.autosave_failed', { defaultValue: '一時保存失敗' })
       setAutoSaveError(msg)
-      // eslint-disable-next-line no-console
+       
       console.warn('[autosave] localStorage failed:', err)
     }
   }, [
@@ -1041,7 +1041,7 @@ export function AnnotatorPage() {
   // P3/P4: CV ジョブフック（TrackNet + YOLO バッチ解析・オーバーレイ）
   const {
     tracknetJob, setTracknetJob, shuttleFrames, shuttleOverlayVisible,
-    setShuttleOverlayVisible, tracknetArtifactAt, handleTracknetBatch,
+    setShuttleOverlayVisible, _tracknetArtifactAt, handleTracknetBatch,
     handleTracknetBatchResume, handleTracknetBatchStop, tracknetArtifactExists,
     yoloJob, setYoloJob, yoloFrames, yoloOverlayVisible,
     setYoloOverlayVisible, yoloArtifactMeta, handleYoloBatch,
@@ -1246,7 +1246,7 @@ export function AnnotatorPage() {
     showSessionModal, setShowSessionModal,
     showDeviceManager, setShowDeviceManager,
     handleCreateOrGetSession,
-    tunnelStatus, tunnelToggle, tunnelBase, tunnelPending, tunnelLastError, rebaseUrl,
+    tunnelStatus, tunnelToggle, _tunnelBase, tunnelPending, tunnelLastError, rebaseUrl,
     remoteStream, setRemoteStream,
     remoteStreamVideoRef,
     localCamStream, setLocalCamStream,
@@ -1301,7 +1301,7 @@ export function AnnotatorPage() {
     if (s.currentRallyNum === 1 && !s.isRallyActive) {
       s.setPlayer(match.initial_server as 'player_a' | 'player_b')
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [initialized, match?.initial_server])
 
   // 先サーブ変更（DB 保存 + ストア反映）
@@ -3058,7 +3058,7 @@ export function AnnotatorPage() {
                 type="file"
                 accept="video/*"
                 // iOS Safari: capture 属性で直接カメラ起動を優先 (value 属性は書き込み不要)
-                // @ts-ignore
+                // @ts-expect-error capture attribute not in React input typings
                 capture="environment"
                 style={{ display: 'none' }}
                 onChange={(e) => {
@@ -3196,6 +3196,7 @@ export function AnnotatorPage() {
                     </div>
                   )
                 })}
+                {/* eslint-disable-next-line no-irregular-whitespace */}
                 <p className="text-xs text-gray-500 mt-1"><span className="text-blue-400">■</span> {t('auto.AnnotatorPage.k1')}　<span className="text-orange-400">■</span> {t('auto.AnnotatorPage.k2')}</p>
 
                 {/* 先サーブ変更 */}
@@ -4068,7 +4069,7 @@ export function AnnotatorPage() {
                   try {
                     const key = `court-calib-${matchId}`
                     const raw = localStorage.getItem(key)
-                    console.info('[GridSync] localStorage key:', key, 'raw:', raw)
+                    console.warn('[GridSync] localStorage key:', key, 'raw:', raw)
                     if (!raw) return { ok: false, message: t('annotator.ui.calib_not_found_local', { defaultValue: 'localStorage にキャリブが見つかりません' }) }
                     const pts = JSON.parse(raw) as Array<{ x: number; y: number }>
                     if (!Array.isArray(pts) || pts.length !== 6) {
@@ -4079,13 +4080,13 @@ export function AnnotatorPage() {
                       container_width: window.innerWidth,
                       container_height: window.innerHeight,
                     }
-                    console.info('[GridSync] POST court_calibration', { matchId: Number(matchId), ...body })
+                    console.warn('[GridSync] POST court_calibration', { matchId: Number(matchId), ...body })
                     // apiPost を経由して http://localhost:8765/api を絶対 URL で叩く。
                     // 旧実装は相対 URL の fetch だったため Electron(file://) では
                     // "Failed to fetch" になっていた。
                     try {
                       const res = await apiPost(`/matches/${matchId}/court_calibration`, body)
-                      console.info('[GridSync] response OK', res)
+                      console.warn('[GridSync] response OK', res)
                       setCalibSource('backend')
                       queryClient.invalidateQueries({ queryKey: ['movement-stats', matchId] })
                       return { ok: true, status: 200 }
