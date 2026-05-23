@@ -94,6 +94,17 @@ export function ChatMessageBubble({
           >
             <div className="whitespace-pre-wrap break-words">{renderedContent}</div>
           </div>
+          {(msg.date_from || msg.date_to) && (
+            <div
+              className="mt-1 inline-flex items-center gap-1 text-[10px] bg-indigo-100 dark:bg-indigo-900/50 text-indigo-900 dark:text-indigo-100 px-1.5 py-0.5 rounded-full"
+              aria-label={t('auto.AdviceChat.period.chipLabel')}
+            >
+              <MIcon name="event" size={11} ariaHidden />
+              <span>
+                {(msg.date_from ?? '…')} → {(msg.date_to ?? t('auto.AdviceChat.period.today'))}
+              </span>
+            </div>
+          )}
           {hovered && tsText && (
             <div className="text-[10px] text-gray-500 mt-0.5">{tsText}</div>
           )}

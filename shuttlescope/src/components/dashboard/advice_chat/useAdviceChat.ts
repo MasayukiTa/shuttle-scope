@@ -31,6 +31,8 @@ export interface ChatMessage {
   generator?: string | null
   is_fallback?: boolean
   validation_reason?: string | null
+  date_from?: string | null
+  date_to?: string | null
   created_at?: string | null
   /** Optimistic で生成中のメッセージは true。サーバ応答で false になる。 */
   _pending?: boolean
@@ -144,11 +146,17 @@ export function useAdviceChat() {
   }, [sessionId, lang])
 
   const sendMessage = useCallback(
-    async (content: string): Promise<void> => {
+    async (
+      content: string,
+      period?: { dateFrom: string | null; dateTo: string | null } | null,
+    ): Promise<void> => {
       const trimmed = content.trim()
       if (!trimmed || isSending) return
       setError(null)
       setIsSending(true)
+
+      const periodDateFrom = period?.dateFrom ?? null
+      const periodDateTo = period?.dateTo ?? null
 
       // ── optimistic user message ──
       tempIdRef.current += 1
@@ -158,6 +166,8 @@ export function useAdviceChat() {
         turn: -1,
         author: 'user',
         content: trimmed,
+        date_from: periodDateFrom,
+        date_to: periodDateTo,
         _pending: true,
       }
       setMessages((prev) => [...prev, optimistic])
@@ -166,7 +176,11 @@ export function useAdviceChat() {
         const sid = await ensureSession()
         const resp = await apiPost<SendMessageResp>(
           `/insights/chat/sessions/${sid}/messages`,
-          { content: trimmed },
+          {
+            content: trimmed,
+            date_from: periodDateFrom,
+            date_to: periodDateTo,
+          },
         )
         setMessages((prev) => {
           const without = prev.filter((m) => m.id !== tempId)

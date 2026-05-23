@@ -16,12 +16,13 @@ coach / analyst / admin のみ利用可能。player は 403。
 """
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
@@ -87,12 +88,22 @@ def _serialize_message(m: ChatMessage) -> dict:
         "generator": m.generator,
         "is_fallback": bool(m.is_fallback),
         "validation_reason": m.validation_reason,
+        "date_from": m.date_from,
+        "date_to": m.date_to,
         "created_at": (m.created_at.isoformat() if m.created_at else None),
     }
 
 
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def _build_analytics_context(
-    db: Session, ctx: AuthCtx, sess: ChatSession, lang: str
+    db: Session,
+    ctx: AuthCtx,
+    sess: ChatSession,
+    lang: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> dict:
     """チャット応答生成用の analytics スナップショット。
 
@@ -119,7 +130,7 @@ def _build_analytics_context(
             },
         }
     try:
-        return build_player_summary(db, player_id, None, None, None)
+        return build_player_summary(db, player_id, date_from, date_to, None)
     except Exception:
         return {
             "player_id": player_id,
@@ -134,6 +145,22 @@ class _CreateSessionBody(BaseModel):
 
 class _SendMessageBody(BaseModel):
     content: str = Field(..., min_length=1, max_length=4000)
+    date_from: Optional[str] = Field(default=None)
+    date_to: Optional[str] = Field(default=None)
+
+    @field_validator("date_from", "date_to")
+    @classmethod
+    def _check_iso_date(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if not _ISO_DATE_RE.match(v):
+            raise ValueError("must be YYYY-MM-DD")
+        # 妥当性検証 (例えば 2025-02-30 を弾く)
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError("invalid calendar date") from exc
+        return v
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────
@@ -236,6 +263,8 @@ def send_chat_message(
         content=cleaned,
         tokens=_APPROX_TOKENS_PER_MESSAGE // 2,
         validation_reason=("injection_attempt" if injection else None),
+        date_from=body.date_from,
+        date_to=body.date_to,
     )
     db.add(user_msg)
     db.flush()
@@ -257,7 +286,10 @@ def send_chat_message(
             evidence_path=None,
         )
     else:
-        analytics = _build_analytics_context(db, ctx, sess, sess.lang)
+        analytics = _build_analytics_context(
+            db, ctx, sess, sess.lang,
+            date_from=body.date_from, date_to=body.date_to,
+        )
         insight_ctx: InsightContext = {
             "player_id": 0,
             "period_days": 30,
