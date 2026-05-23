@@ -403,7 +403,7 @@ export function DashboardShell() {
               </div>
             </div>
 
-            <div className={`px-6 py-2 border-b ${borderColor}`}>
+            <div className={`px-6 py-2 border-b ${borderColor}`} data-tutorial="dashboard.matchPicker">
               <div className={`flex gap-2 flex-wrap items-center rounded-lg px-3 py-2 ${isLight ? 'bg-gray-100' : 'bg-gray-800/50'}`}>
                 <span className={`text-xs ${textMuted} shrink-0`}>{t('analysis.filter.result')}:</span>
                 <select

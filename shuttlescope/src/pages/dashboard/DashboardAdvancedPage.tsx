@@ -140,7 +140,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
           <RoleGuard allowedRoles={['analyst', 'coach']} fallback={restrictedFallback}>
             <div className="space-y-5">
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                <div className={`${card} rounded-lg p-4`}>
+                <div className={`${card} rounded-lg p-4`} data-tutorial="dashboard.shotWinLoss">
                   <SectionTitle>{t('auto.DashboardAdvancedPage.k1')}</SectionTitle>
                   <ShotWinLoss playerId={playerId} filters={filters} />
                 </div>

@@ -51,11 +51,13 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
     <ResearchBundleProvider value={{ data: bundleQuery.data, isLoading: bundleQuery.isLoading }}>
     <div className="space-y-5">
       {/* ページレベルの注意 */}
+      <div data-tutorial="dashboard.researchNotice">
       <ResearchNotice
         caution="このページの分析はすべて探索的・研究段階です。実戦判断や選手評価の根拠として単独使用しないでください。"
         reason="サンプルサイズ・モデル前提・校正品質がいずれも実用水準に達していない項目を含みます。"
         promotionCriteria="各項目が実用移行するには、十分なサンプルサイズ・CI品質・コーチ有用性の確認が必要です。"
       />
+      </div>
 
       {/* EPV分析（Markov） */}
       <ErrorBoundary>
