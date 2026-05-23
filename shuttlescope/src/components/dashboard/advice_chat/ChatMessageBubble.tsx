@@ -105,6 +105,24 @@ export function ChatMessageBubble({
               </span>
             </div>
           )}
+          {msg.shot_type && (
+            <div
+              className="mt-1 inline-flex items-center gap-1 text-[10px] bg-emerald-100 dark:bg-emerald-900/50 text-emerald-900 dark:text-emerald-100 px-1.5 py-0.5 rounded-full"
+              aria-label={t('auto.AdviceChat.scope.slot.shotType')}
+            >
+              <MIcon name="sports_tennis" size={11} ariaHidden />
+              <span>{msg.shot_type}</span>
+            </div>
+          )}
+          {msg.zone && (
+            <div
+              className="mt-1 inline-flex items-center gap-1 text-[10px] bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-100 px-1.5 py-0.5 rounded-full"
+              aria-label={t('auto.AdviceChat.scope.slot.zone')}
+            >
+              <MIcon name="place" size={11} ariaHidden />
+              <span>{msg.zone}</span>
+            </div>
+          )}
           {hovered && tsText && (
             <div className="text-[10px] text-gray-500 mt-0.5">{tsText}</div>
           )}

@@ -19,7 +19,8 @@ import { useDemoModeStore } from '@/store/demoModeStore'
 import { useAdviceChat, ChatMessage } from './useAdviceChat'
 import { ChatHeader } from './ChatHeader'
 import { ChatMessageBubble } from './ChatMessageBubble'
-import { ChatComposer } from './ChatComposer'
+import { ChatComposer, ComposerExtras } from './ChatComposer'
+import { ActiveScopeBar } from './ActiveScopeBar'
 import { ChatEmptyState } from './ChatEmptyState'
 import { ChatTypingIndicator } from './ChatTypingIndicator'
 import { ResetConfirmModal } from './ResetConfirmModal'
@@ -38,6 +39,7 @@ export function AdviceChatPanel() {
     error,
     sendMessage,
     resetSession,
+    appliedScope,
   } = useAdviceChat()
 
   const [draft, setDraft] = useState('')
@@ -92,16 +94,35 @@ export function AdviceChatPanel() {
   }, [messages, isSending])
 
   const handleSend = useCallback(
-    async (period: { dateFrom: string | null; dateTo: string | null } | null) => {
+    async (extras: ComposerExtras) => {
       const text = draft.trim()
       if (!text || isSending) return
       setDraft('')
       pendingNewRef.current = true
-      await sendMessage(text, period)
+      await sendMessage(text, {
+        period: extras.period,
+        shotType: extras.shotType,
+        zone: extras.zone,
+      })
       textareaRef.current?.focus()
     },
     [draft, isSending, sendMessage],
   )
+
+  const onClearSlot = useCallback(
+    (slot: 'period' | 'shot_type' | 'zone') => {
+      // 個別スロットクリアを即時反映するため、短い ack メッセージを送る。
+      void sendMessage(slot === 'period' ? '全期間で見直して' : 'フィルタを更新', {
+        clearSlots: [slot],
+      })
+    },
+    [sendMessage],
+  )
+  const onClearAll = useCallback(() => {
+    void sendMessage('全部リセット', {
+      clearSlots: ['period', 'shot_type', 'zone'],
+    })
+  }, [sendMessage])
 
   const onTypewriterDone = useCallback((id: ChatMessage['id']) => {
     setNewMessageIds((prev) => {
@@ -182,6 +203,11 @@ export function AdviceChatPanel() {
 
       {/* ── Composer ──────────────────────────────────────── */}
       <div className="border-t border-gray-200 dark:border-gray-700 p-2 md:p-3 bg-white dark:bg-gray-800 sticky bottom-0">
+        <ActiveScopeBar
+          scope={appliedScope}
+          onClearSlot={onClearSlot}
+          onClearAll={onClearAll}
+        />
         <ChatComposer
           ref={textareaRef}
           value={draft}
