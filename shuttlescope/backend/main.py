@@ -120,6 +120,7 @@ from backend.routers import _comprehensive_report_endpoints as comprehensive_rep
 from backend.routers import advice as advice_router
 from backend.routers import insights as insights_router
 from backend.routers import insights_chat as insights_chat_router
+from backend.routers import insights_summary as insights_summary_router
 from backend.routers import live_coach as live_coach_router
 from backend.utils.video_downloader import video_downloader
 from backend.utils import response_cache
@@ -2606,6 +2607,7 @@ app.include_router(comprehensive_report_router.router, prefix="/api")
 app.include_router(advice_router.router, prefix="/api")
 app.include_router(insights_router.router, prefix="/api")
 app.include_router(insights_chat_router.router, prefix="/api")
+app.include_router(insights_summary_router.router, prefix="/api")
 app.include_router(live_coach_router.router, prefix="/api")
 app.include_router(public_site.router)
 app.include_router(legal_docs.router)
