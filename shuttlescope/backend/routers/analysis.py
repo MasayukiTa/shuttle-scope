@@ -17,6 +17,7 @@ from backend.routers.analysis_advanced import router as advanced_router
 from backend.routers.analysis_research import router as research_router
 from backend.routers.analysis_spine import router as spine_router
 from backend.routers.analysis_bundle import router as bundle_router
+from backend.routers.peer_comparison import router as peer_comparison_router
 
 router = APIRouter()
 router.include_router(stable_router)
@@ -24,3 +25,4 @@ router.include_router(advanced_router)
 router.include_router(research_router)
 router.include_router(spine_router)
 router.include_router(bundle_router)
+router.include_router(peer_comparison_router)
