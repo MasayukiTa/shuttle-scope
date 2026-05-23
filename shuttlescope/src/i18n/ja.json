@@ -3908,6 +3908,12 @@
     "GrowthJudgmentCard": {
       "analyzed": "分析済"
     },
+    "GrowthSnapshotCard": {
+      "title": "今週の伸びしろ",
+      "beta_chip": "テンプレ生成 (ベータ)",
+      "empty": "もう少しデータが集まると伸びしろが出せます",
+      "details": "→ 詳細"
+    },
     "GrowthTimeline": {
       "k1": "勝率",
       "k2": "サーブ勝率",

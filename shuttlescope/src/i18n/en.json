@@ -3901,6 +3901,12 @@
     "GrowthJudgmentCard": {
       "analyzed": "Analyzed"
     },
+    "GrowthSnapshotCard": {
+      "title": "This week's growth area",
+      "beta_chip": "Template-generated (beta)",
+      "empty": "Need a bit more data to surface growth areas",
+      "details": "→ Details"
+    },
     "GrowthTimeline": {
       "k1": "Win rate",
       "k2": "Serve win rate",
