@@ -13,6 +13,10 @@ import { QuickSummaryCard } from '@/components/analysis/QuickSummaryCard'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { AnomalyBanner } from '@/components/dashboard/live/AnomalyBanner'
+import { IntervalSuggestionsStrip } from '@/components/dashboard/live/IntervalSuggestionsStrip'
+import { BenchModeToggle, useBenchMode } from '@/components/dashboard/live/BenchModeToggle'
+import { useAuth } from '@/hooks/useAuth'
 
 interface SetScore {
   set_num: number
@@ -50,6 +54,9 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   const { t } = useTranslation()
   const { card, textMuted } = useCardTheme()
   const isLight = useIsLightMode()
+  const { role } = useAuth()
+  const isCoachish = role === 'coach' || role === 'analyst' || role === 'admin'
+  const [benchMode, setBenchMode] = useBenchMode()
 
   // 速報用ステート
   const [flashMatchId, setFlashMatchId] = useState<number | null>(null)
@@ -76,7 +83,37 @@ export function DashboardLivePage({ playerId, matches }: Props) {
   }))
 
   return (
-    <div className="space-y-4">
+    <div
+      className={
+        benchMode
+          ? 'space-y-4 bg-gray-900 text-white p-3 rounded-lg text-xl'
+          : 'space-y-4'
+      }
+    >
+      {/* ベンチモード toggle + ライブ強化バナー類 (coach 以上のみ) */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <BenchModeToggle active={benchMode} onToggle={setBenchMode} />
+      </div>
+      {isCoachish && flashMatchId && (
+        <AnomalyBanner playerId={playerId} matchId={flashMatchId} windowSize={5} />
+      )}
+      {isCoachish && flashMatchId && !benchMode && (
+        <IntervalSuggestionsStrip
+          playerId={playerId}
+          matchId={flashMatchId}
+          setScore={0}
+          rallyCountSinceLast={0}
+        />
+      )}
+      {isCoachish && flashMatchId && benchMode && (
+        <IntervalSuggestionsStrip
+          playerId={playerId}
+          matchId={flashMatchId}
+          setScore={11}
+          rallyCountSinceLast={0}
+        />
+      )}
+
       {/* 速報アドバイス */}
       <ErrorBoundary>
         <div className="space-y-4">
@@ -165,8 +202,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
             </div>
           )}
 
-          {/* 推奨アドバイスランキング */}
-          <RecommendationRanking playerId={playerId} />
+          {/* 推奨アドバイスランキング (ベンチモード時は非表示で集中度UP) */}
+          {!benchMode && <RecommendationRanking playerId={playerId} />}
 
           {showRallyPicker && flashMatchId && (
             <RallyPickerModal
@@ -188,7 +225,8 @@ export function DashboardLivePage({ playerId, matches }: Props) {
         </div>
       </ErrorBoundary>
 
-      {/* インターバルレポート */}
+      {/* インターバルレポート (ベンチモード時は非表示) */}
+      {!benchMode && (
       <ErrorBoundary>
         <div className={`${card} rounded-lg p-4`}>
           <div className="flex items-center justify-between mb-3">
@@ -232,6 +270,7 @@ export function DashboardLivePage({ playerId, matches }: Props) {
           )}
         </div>
       </ErrorBoundary>
+      )}
 
       {/* SetIntervalSummary モーダル */}
       {showIntervalSummary && intervalSummarySetId && (

@@ -2802,6 +2802,26 @@
       "set_model_label": "セットモデル:",
       "calibration_line": "v1勝率 {{v1}}% → キャリブレーション済み {{v2}}%"
     },
+    "AnomalyBanner": {
+      "title": "今、ふだんと違う",
+      "confidence": "確信度 {{pct}}%",
+      "detail": "詳細を見る",
+      "detail_title": "ショット種別の乖離 (直近 vs 季節)",
+      "dismiss": "閉じる",
+      "close": "閉じる"
+    },
+    "BenchMode": {
+      "on_label": "ベンチモード ON",
+      "off_label": "ベンチモード"
+    },
+    "IntervalSuggestionsStrip": {
+      "title": "インターバル戦術提案 (Top 3)",
+      "refresh_now": "今すぐ提案",
+      "idle_hint": "11点 / セット間 / 60ラリーごとに自動表示。今すぐ提案で手動取得。",
+      "loading": "提案を生成中…",
+      "empty": "現時点で確信度0.5以上の提案はありません。",
+      "confidence": "確信度 {{pct}}%"
+    },
     "BayesMatchupCard": {
       "total_matches": "総試合数: {{n}}",
       "global_wr": "全体勝率: {{v}}",

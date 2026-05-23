@@ -2795,6 +2795,26 @@
       "set_model_label": "Set model:",
       "calibration_line": "v1 win rate {{v1}}% → calibrated {{v2}}%"
     },
+    "AnomalyBanner": {
+      "title": "Something different right now",
+      "confidence": "Confidence {{pct}}%",
+      "detail": "See details",
+      "detail_title": "Shot-type divergence (recent vs season)",
+      "dismiss": "Dismiss",
+      "close": "Close"
+    },
+    "BenchMode": {
+      "on_label": "Bench mode ON",
+      "off_label": "Bench mode"
+    },
+    "IntervalSuggestionsStrip": {
+      "title": "Interval tactical suggestions (Top 3)",
+      "refresh_now": "Suggest now",
+      "idle_hint": "Auto-shows at 11 points / set break / every 60 rallies. Use Suggest now for manual fetch.",
+      "loading": "Generating suggestions…",
+      "empty": "No suggestions above 0.5 confidence right now.",
+      "confidence": "Confidence {{pct}}%"
+    },
     "BayesMatchupCard": {
       "total_matches": "Total matches: {{n}}",
       "global_wr": "Overall win rate: {{v}}",
