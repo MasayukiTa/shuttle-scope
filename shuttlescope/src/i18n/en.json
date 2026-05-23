@@ -4126,8 +4126,12 @@
     "TutorialOverlay": {
       "header": "{{title}} · {{n}} / {{total}}",
       "prev": "Previous",
+      "next": "Next",
+      "done": "Done",
       "skip": "Skip",
-      "never": "Don't show again"
+      "never": "Don't show again",
+      "demo_chip": "Showing demo data",
+      "kbd_hint": "← / → / Enter to navigate, Esc to close"
     },
     "RoiRectOverlay": {
       "analysis_region": "Analysis region",
@@ -4533,6 +4537,123 @@
       "player": "Player",
       "coach": "Coach",
       "analyst": "Analyst"
+    }
+  },
+  "tutorials": {
+    "mobile_annotate_pass": {
+      "_title": "Mobile annotation (Pass 1 → 2 → 3)",
+      "intro": {
+        "title": "Start here",
+        "body": "Mobile input is split into three small passes. You don't have to do everything at once — you can finish later on desktop."
+      },
+      "passSwitch": {
+        "title": "Pass switch buttons",
+        "body": "Tap the vertical buttons in the red box to switch between Pass 1 / 2 / 3. Start with whichever pass feels easiest."
+      },
+      "pass1": {
+        "title": "Pass 1: Rally splits",
+        "body": "Tap the video to pause, then press the big A or B scoring button. The score and serving side update automatically."
+      },
+      "pass2": {
+        "title": "Pass 2: Serve & final shot",
+        "body": "For each rally, add the serve position and the final shot type in 4 taps. That alone is enough for the analysis to work."
+      },
+      "pass3": {
+        "title": "Pass 3: Stroke detail",
+        "body": "Fill in every stroke of each rally. A 9-zone snap grid and a touch magnifier help you place coordinates accurately."
+      },
+      "offline": {
+        "title": "Safe offline",
+        "body": "Everything is saved on your device (IndexedDB) and sent automatically when you're back online. Your input is never lost."
+      }
+    },
+    "mobile_court_calibration": {
+      "_title": "Mobile court calibration",
+      "what": {
+        "title": "What is calibration?",
+        "body": "Tap the 4 court corners and 2 net points to link the image to real court coordinates. The analysis accuracy depends on this."
+      },
+      "loupe": {
+        "title": "A magnifier follows your finger",
+        "body": "Your finger area is shown enlarged so you can line it up exactly with the court line intersections. Tap again to fix it."
+      },
+      "retry": {
+        "title": "Redo any time",
+        "body": "You can reopen and adjust the calibration even after saving. The most recent saved value is always used."
+      }
+    },
+    "desktop_annotator": {
+      "_title": "Desktop annotator",
+      "welcome": {
+        "title": "Welcome",
+        "body": "We'll walk through the main controls. The element glowing red is what we're talking about right now. Press Next to continue."
+      },
+      "modeTabs": {
+        "title": "Mode tabs switch the workspace",
+        "body": "The Input / Review / Analysis / Settings tabs in the red box change the right-side panel. Pick Input while you're annotating."
+      },
+      "videoPane": {
+        "title": "Video player",
+        "body": "The red-boxed player lets you play, pause, and scrub. Pause exactly at the moment of contact before logging a shot. (Space to play/pause)"
+      },
+      "rallyPanel": {
+        "title": "Score panel",
+        "body": "Check the current score in the red box. When a rally ends, pick scorer and end type to confirm it. Score and serve side update automatically."
+      },
+      "hitZone": {
+        "title": "Pick the hit zone",
+        "body": "Choose where on the court the shot was hit, using the 9 zones in the red box. If CV suggests one, just click to confirm."
+      },
+      "shotTypes": {
+        "title": "Log the shot type",
+        "body": "Use the buttons in the red box to record the shot type of the paused frame. Each button also has a keyboard shortcut (number keys)."
+      },
+      "historyStrip": {
+        "title": "Recent strokes",
+        "body": "Click an item in the red-boxed history strip to seek the video to that moment. Handy for fixing a wrong entry quickly."
+      },
+      "commandPalette": {
+        "title": "Ctrl+K finds anything",
+        "body": "Press Ctrl+K (⌘K on Mac) anywhere to open the command palette: switch matches, find players, change settings — all from here. (Ctrl+K / ⌘K)"
+      },
+      "flow": {
+        "title": "The basic loop",
+        "body": "Play and pause the video, log scores and strokes, check in Review, then look at Analysis for patterns. Press Ctrl+K if you get lost."
+      }
+    },
+    "analysis_reading": {
+      "_title": "How to read the analysis screen",
+      "tabs": {
+        "title": "Switch via the top tabs",
+        "body": "The red-boxed tabs switch between Overview / Live / Review / Growth / Detailed. Scroll horizontally to see the rest if needed."
+      },
+      "confidence": {
+        "title": "Always check confidence",
+        "body": "Each result shows a confidence badge and sample-size warning. When samples are small, focus on the trend, not the exact number."
+      },
+      "epv": {
+        "title": "Reading EPV and win rate",
+        "body": "EPV is the expected point value of a rally. Win rate is estimated from the current score situation, not the whole match."
+      },
+      "growth": {
+        "title": "Players see growth, not weakness",
+        "body": "Player-facing screens use \"growth areas\" instead of \"weakness\". Raw EPV and win rates are never shown to the player role."
+      }
+    },
+    "body_disclosure_toggle": {
+      "_title": "Body composition disclosure settings",
+      "where": {
+        "title": "This is the disclosure setting",
+        "body": "From the red-boxed \"Body composition disclosure\" you can turn sharing with analysts/coaches on or off. It starts at whatever you chose in the consent popup."
+      },
+      "revoke": {
+        "title": "You can revoke any time",
+        "body": "Turning it off takes effect immediately. That role can no longer see raw values (only the 3-tier overall rating)."
+      },
+      "impact": {
+        "title": "What happens if you don't disclose",
+        "body": "Annotation features still work as normal. You just lose the body-composition correlations in coaching and analysis views."
+      }
     }
   }
 }

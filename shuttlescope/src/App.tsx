@@ -39,7 +39,7 @@ import AdminBillingPage from '@/pages/AdminBillingPage'
 import AdminAnalyticsPage from '@/pages/AdminAnalyticsPage'
 import { TutorialOverlay } from '@/components/tutorial/TutorialOverlay'
 import { TUTORIALS } from '@/components/tutorial/tutorials'
-import { closeTutorial, useTutorialChannel } from '@/components/tutorial/useTutorial'
+import { closeTutorial, useTutorialChannel, useTutorialState } from '@/components/tutorial/useTutorial'
 import { DemoModeBanner } from '@/components/tutorial/DemoModeBanner'
 import { useDemoModeStore } from '@/store/demoModeStore'
 import { getTutorialDemoTarget } from '@/api/client'
@@ -578,10 +578,17 @@ function GlobalTutorialMount() {
     return () => { cancelled = true; disableDemo() }
   }, [id, enableDemo, disableDemo])
 
+  const { state: tutState } = useTutorialState()
   if (!id) return null
   const tut = TUTORIALS[id as keyof typeof TUTORIALS]
   if (!tut) return null
-  return <TutorialOverlay tutorial={tut} onClose={() => closeTutorial()} />
+  // 中断時に保存された last_step から再開する (status === 'in_progress' のみ)
+  const rec = tutState.find((s) => s.tutorial_id === id)
+  const startStep =
+    rec && rec.status === 'in_progress' && rec.last_step > 0 && rec.last_step < tut.steps.length
+      ? rec.last_step
+      : 0
+  return <TutorialOverlay tutorial={tut} onClose={() => closeTutorial()} startStep={startStep} />
 }
 
 export default App
