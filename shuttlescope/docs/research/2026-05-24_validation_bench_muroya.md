@@ -109,3 +109,43 @@ os.add_dll_directory(os.path.join(os.path.dirname(torch.__file__), "lib"))
 - **YOLO + RTMPose**: 既存採用継続。コートフィルタ追加で更に高速化余地あり ✓
 - **TrackNet**: **このダブルス映像では機能していない**。代替検証 (WASB) または再学習が必要 ✗
 - **新モデル追加 (RTMPose 等)**: 不要 (既統合済み、CV survey 確認済)
+
+## ── Addendum (2026-05-24 後追い): GPU 実行確認 + 真の FPS ──
+
+初版ベンチで「全 GPU 推論されてる」と仮定していたが、検証の結果 **YOLO だけ CPU で走っていた** ことが判明。OpenVINO 経由読み込みが silent failure → ultralytics CUDA も `_ul_device=cpu` で着地 → CPU 推論 (39ms)。
+
+`torch.cuda.is_available()=True`, `torch.version.cuda=12.8`, RTX 5060 Ti 認識済みなので **本来 CUDA EP で動くべきところが運用バグ**。
+
+### 修正: 直接 onnxruntime CUDA で YOLO 起動
+`backend/yolo/inference.py` のフォールバック chain を回避し、`yolov8n_fp16.onnx` を `ort.InferenceSession` で CUDA EP 直指定。
+
+### 確定 FPS (全 CUDA, 1798 frame, 600-630s slice, FP16)
+
+| Stage | 実装 | ms/frame mean (p95) | VRAM Δ | Solo FPS |
+|---|---|---|---|---|
+| YOLO | ORT CUDA FP16 (yolov8n_fp16.onnx) | 30.0 (37.9) | +66 MiB | **33** |
+| RTMPose | get_rtmpose_engine() CUDA | 22.3 (29.3) | +463 MiB | **45** (4人) |
+| TrackNet | TrackNetInference(backend='cuda') | 34.7 (38.2) for 3-frame batch | +3012 MiB | **29** (batch) |
+| **Total sequential** | | **86.9 (103.6)** | **+3541 MiB** | **10.8 realized** |
+
+VRAM 最終 5536 MiB / 5060 Ti 16 GB → 余裕 10.6 GB。
+
+### YOLO synthetic vs live の差 (7.7ms → 30ms)
+同一フレーム連続推論 (synthetic): 7.7ms (130 FPS) = 純粋なGPU forward。
+新規フレーム逐次推論 (bench): 30ms = +20ms は Python 内の preprocess (cv2.resize → cvtColor → transpose) + cv2.dnn.NMSBoxes の CPU 処理。
+
+### 30 FPS 達成への道筋
+現状 sequential 87ms = 11.5 FPS。30 FPS 達成には:
+- (a) **CUDA streams で YOLO/Pose/TrackNet を並列実行** → 推論時間の最大値 (~35ms) に律速 = **28 FPS**
+- (b) preprocess を GPU で行う (CUDA kernel for resize+norm or torchvision) → YOLO 30ms → 12ms 想定
+- (a)+(b) 併用で **~40 FPS 達成可能**
+
+### 真の所見
+- **GPU 推論問題**: YOLO の OpenVINO/ultralytics fallback chain が壊れていた → ORT CUDA 直接で解決
+- **TrackNet 0% 検出**: GPU で確実に動作確認 (TensorRT 警告も解消後)、それでも shuttle_conf max=0.15 で全 frame 「無し」判定。これは **モデル × 映像** の本質的 mismatch。Phase 2 で WASB-SBDT との比較必須
+- **本番 backend のリスク**: 同じ silent CPU fallback が本番で起きていた可能性。`backend/yolo/inference.py` の load() ロジック修正 + 起動時に backend ログ出力する hardening が必要
+
+### 採否更新
+- **YOLO ORT CUDA 直接化**: 採用推奨。`backend/yolo/inference.py` を ORT CUDA 優先順に再構成
+- **TrackNet 代替**: Phase 2 で WASB-SBDT と shuttle 検出率を直接比較
+- **30 FPS パイプライン**: CUDA streams 並列化 + preprocess GPU 化で十分到達可能
