@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { AnalysisFilters, Player } from '@/types'
 import { GrowthJudgmentCard } from '@/components/analysis/GrowthJudgmentCard'
+import { GrowthSnapshotCard } from '@/components/analysis/GrowthSnapshotCard'
 import { GrowthTimeline } from '@/components/analysis/GrowthTimeline'
 import { PairCombinedView } from '@/components/analysis/PairCombinedView'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -29,6 +30,12 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
 
   return (
     <div className="space-y-5">
+      {/* 伸びしろ Snapshot (テンプレ生成・LLM プラガブル) */}
+      {playerId && (
+        <ErrorBoundary>
+          <GrowthSnapshotCard playerId={playerId} />
+        </ErrorBoundary>
+      )}
       {/* 5. Growth Timeline 上部: 実データ起点の advice strip (8w vs 8w 比較) */}
       {playerId && <AdviceStrip context="growth.timeline" playerId={playerId} />}
       {/* ペアモードトグル（is_target 選手が2人以上いる場合のみ表示） */}
