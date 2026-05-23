@@ -1630,3 +1630,38 @@ class ErrorLog(Base):
     internal_code: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     ip_addr: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+
+# ─── 0035: chat_sessions / chat_messages (Growth Advisor chat) ────────────
+class ChatSession(Base):
+    """Growth Advisor chat セッション。coach/analyst/admin のみ作成可能。
+    player には公開しない (player 安全 UX 上、対話的 LLM チャットは coach/analyst
+    の補助ツールとして提供)。"""
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    role_at_creation: Mapped[str] = mapped_column(String(32), nullable=False)
+    lang: Mapped[str] = mapped_column(String(8), nullable=False, default="ja")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class ChatMessage(Base):
+    """Chat 1 発話。author='user'|'ai'|'system'。LLM 出力時は validation_reason /
+    is_fallback / confidence / evidence_path / generator を必ず付与する。"""
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("chat_sessions.id"), nullable=False, index=True)
+    turn: Mapped[int] = mapped_column(Integer, nullable=False)
+    author: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    generator: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    is_fallback: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    validation_reason: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    evidence_path: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
