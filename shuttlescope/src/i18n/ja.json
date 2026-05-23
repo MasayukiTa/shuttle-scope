@@ -2805,7 +2805,17 @@
       "confirm": "リセットする",
       "help_tooltip": "このアドバイスは AI / テンプレ生成です。誤りがある可能性があります",
       "safety_hint_admin": "AI 応答が安全基準で差し替えられました",
-      "char_counter": "{{n}}/2000"
+      "char_counter": "{{n}}/2000",
+      "period": {
+        "chipLabel": "期間",
+        "estimated": "推定",
+        "edit": "編集",
+        "clear": "クリア",
+        "popoverFrom": "開始日",
+        "popoverTo": "終了日",
+        "popoverApply": "適用",
+        "today": "今日"
+      }
     },
     "App": {
       "k1": "認証状態を確認しています...",

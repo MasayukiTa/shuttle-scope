@@ -91,14 +91,17 @@ export function AdviceChatPanel() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, isSending])
 
-  const handleSend = useCallback(async () => {
-    const text = draft.trim()
-    if (!text || isSending) return
-    setDraft('')
-    pendingNewRef.current = true
-    await sendMessage(text)
-    textareaRef.current?.focus()
-  }, [draft, isSending, sendMessage])
+  const handleSend = useCallback(
+    async (period: { dateFrom: string | null; dateTo: string | null } | null) => {
+      const text = draft.trim()
+      if (!text || isSending) return
+      setDraft('')
+      pendingNewRef.current = true
+      await sendMessage(text, period)
+      textareaRef.current?.focus()
+    },
+    [draft, isSending, sendMessage],
+  )
 
   const onTypewriterDone = useCallback((id: ChatMessage['id']) => {
     setNewMessageIds((prev) => {

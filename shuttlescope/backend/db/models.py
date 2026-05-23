@@ -1664,4 +1664,7 @@ class ChatMessage(Base):
     validation_reason: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     evidence_path: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    # ユーザがメッセージに添付した分析対象期間 (parsePeriod 抽出, YYYY-MM-DD)
+    date_from: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    date_to: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
