@@ -140,7 +140,7 @@ export function LiveSourceSelector({ sessionCode }: Props) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={`text-xs font-medium truncate ${titleColor}`}>
-                      {t(`live_source.source_kind_${src.source_kind}` as any, src.source_kind)}
+                      {t(`live_source.source_kind_${src.source_kind}` as Parameters<typeof t>[0], src.source_kind)}
                     </span>
                     <SuitabilityBadge value={src.suitability} />
                     <StatusBadge status={src.source_status} />

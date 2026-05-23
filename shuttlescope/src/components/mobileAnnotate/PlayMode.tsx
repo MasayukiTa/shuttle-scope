@@ -110,7 +110,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
     if (typeof window === 'undefined') return false
     try {
       // iOS Safari: navigator.standalone
-      if ((navigator as any).standalone === true) return true
+      if ((navigator as unknown as { standalone?: boolean }).standalone === true) return true
       // Android Chrome / desktop PWA: matchMedia
       if (window.matchMedia('(display-mode: standalone)').matches) return true
     } catch { /* ignore */ }
@@ -334,7 +334,12 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
   //  - iOS Safari は要素単位 requestFullscreen 非対応 → 「ホーム画面に追加」を
   //    1 回だけガイド (Add-to-Home-Screen で PWA フルスクリーン化が可能)
   const enterFullscreen = useCallback(() => {
-    const target: any = document.documentElement
+    const target = document.documentElement as HTMLElement & {
+      requestFullscreen?: () => Promise<void>
+      webkitRequestFullscreen?: () => Promise<void> | void
+      mozRequestFullScreen?: () => Promise<void> | void
+      msRequestFullscreen?: () => Promise<void> | void
+    }
     const reqFs =
       target.requestFullscreen ||
       target.webkitRequestFullscreen ||

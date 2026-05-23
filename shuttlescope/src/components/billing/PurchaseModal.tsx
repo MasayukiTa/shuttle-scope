@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { createOrder, PAYMENT_METHODS, BILLING_UI_ENABLED } from '@/api/billing'
 import { useTranslation } from 'react-i18next'
+import { errorMessage } from '@/utils/errors'
 
 /**
  * 商品購入モーダル (Phase Pay-1、フロント非公開)。
@@ -49,8 +50,8 @@ function PurchaseModalInner({ productCode, productLabel, priceJpy, extraMetadata
       const order = await createOrder(productCode, paymentMethod, extraMetadata)
       // プロバイダ Hosted Checkout へ遷移
       window.location.href = order.redirect_url
-    } catch (err: any) {
-      setError(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setError(errorMessage(err))
     } finally {
       setLoading(false)
     }

@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useServerSideRecording } from '@/hooks/session/useServerSideRecording'
+import { errorStatus } from '@/utils/errors'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
 
@@ -160,7 +161,7 @@ export function CameraSenderPage() {
 
   // ─── バッテリー API ───────────────────────────────────────────────────────
   useEffect(() => {
-    const nav = navigator as any
+    const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryManager> }
     if (!nav.getBattery) return
     let bm: BatteryManager | null = null
     const update = () => {
@@ -340,8 +341,8 @@ export function CameraSenderPage() {
       }
       reconnectCountRef.current = 0
       connectWs(code, pid)
-    } catch (err: any) {
-      const status = err?.status
+    } catch (err: unknown) {
+      const status = errorStatus(err)
       if (status === 401) {
         setErrorMsg(t('camera_sender.join_error_invalid'))
       } else if (status === 404) {

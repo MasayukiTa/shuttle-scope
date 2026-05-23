@@ -3,7 +3,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
-import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
+import { EvidenceBadge, EvidenceLevel } from '@/components/dashboard/EvidenceBadge'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { MarkovEPV } from '@/components/analysis/MarkovEPV'
 import { CounterfactualShots } from '@/components/analysis/CounterfactualShots'
@@ -65,7 +65,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
               <h2 className={`text-sm font-semibold ${textHeading}`}>{t('analysis.epv.title')}</h2>
               <EvidenceBadge
                 tier="research"
-                evidenceLevel={(epvMeta?.evidence_level as any) ?? 'directional'}
+                evidenceLevel={(epvMeta?.evidence_level as EvidenceLevel) ?? 'directional'}
                 recommendationAllowed={false}
               />
             </div>
@@ -87,7 +87,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
               <h3 className={`text-xs font-semibold uppercase tracking-wider ${textMuted}`}>{t('auto.DashboardResearchPage.k2')}</h3>
               <EvidenceBadge
                 tier="research"
-                evidenceLevel={(cfMeta?.evidence_level as any) ?? 'exploratory'}
+                evidenceLevel={(cfMeta?.evidence_level as EvidenceLevel) ?? 'exploratory'}
                 recommendationAllowed={false}
               />
             </div>
@@ -109,7 +109,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
               <h3 className={`text-xs font-semibold uppercase tracking-wider ${textMuted}`}>{t('auto.DashboardResearchPage.k3')}</h3>
               <EvidenceBadge
                 tier="research"
-                evidenceLevel={(spatialMeta?.evidence_level as any) ?? 'exploratory'}
+                evidenceLevel={(spatialMeta?.evidence_level as EvidenceLevel) ?? 'exploratory'}
               />
             </div>
             <ResearchNotice

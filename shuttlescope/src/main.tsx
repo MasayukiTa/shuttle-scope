@@ -49,7 +49,7 @@ if (typeof window !== 'undefined') {
     showError('Error', `${msg}\n  at ${e.filename}:${e.lineno}:${e.colno}`)
   })
   window.addEventListener('unhandledrejection', (e) => {
-    const reason: any = e.reason
+    const reason = e.reason as { stack?: string; message?: string; name?: string } | null | undefined
     const msg = (reason && (reason.stack || reason.message)) || String(reason)
     // AbortError は video unmount/seek 時に必ず出る既知良性エラー。bar に
     // 出すと calib 出入りのたび煩雑になるので suppress (error-reporter.js
@@ -67,8 +67,13 @@ if (typeof window !== 'undefined') {
 // ⚠️ 1.2 秒経過してもロード完了しなければ諦めて表示する (= "アイコン全消失で
 // 画面が極端に遅く見える" 問題を防ぐ)。フォントが間に合わない場合は raw text が
 // 一瞬出るが、空白 5 秒よりは UX 上はるかにマシ。
-if (typeof document !== 'undefined' && (document as any).fonts) {
-  const fontsApi = (document as any).fonts
+type FontFaceSetLike = {
+  check?: (font: string) => boolean
+  ready?: Promise<unknown>
+}
+const _docFonts: FontFaceSetLike | undefined = (document as unknown as { fonts?: FontFaceSetLike })?.fonts
+if (typeof document !== 'undefined' && _docFonts) {
+  const fontsApi = _docFonts
   const markReady = () => {
     if (document.body) document.body.classList.add('ss-fonts-ready')
     else document.addEventListener('DOMContentLoaded', markReady)

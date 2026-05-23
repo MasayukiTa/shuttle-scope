@@ -8,6 +8,7 @@ import { MIcon } from '@/components/common/MIcon'
 import { TUTORIALS } from '@/components/tutorial/tutorials'
 import { replayTutorial, useTutorialState } from '@/components/tutorial/useTutorial'
 import QRCode from 'qrcode'
+import { errorMessage, errorStatus } from '@/utils/errors'
 import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { Player, TeamHistoryEntry, _SharedSession, NetworkDiagnostics } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -197,9 +198,30 @@ export function SettingsPage() {
   const [exportSince, setExportSince] = useState<string>('')
   const [exportMode, setExportMode] = useState<'match' | 'change_set'>('match')
   const [importFile, setImportFile] = useState<File | null>(null)
-  const [importPreview, setImportPreview] = useState<any>(null)
+  // import preview / result の型 (backend からの動的レスポンス)
+  type ImportPreview = {
+    success: boolean
+    data?: {
+      error?: string
+      merge_preview?: {
+        added?: number
+        updated?: number
+        kept?: number
+        conflicts?: number
+        [key: string]: unknown
+      }
+      [key: string]: unknown
+    } & Record<string, unknown>
+  } & Record<string, unknown>
+  type ImportResult = {
+    success: boolean
+    data?: Record<string, unknown>
+    error?: string
+    message?: string
+  } & Record<string, unknown>
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [importPreviewLoading, setImportPreviewLoading] = useState(false)
-  const [importResult, setImportResult] = useState<any>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importRunning, setImportRunning] = useState(false)
   const [backupResult, setBackupResult] = useState<string | null>(null)
   const [backupRunning, setBackupRunning] = useState(false)
@@ -342,7 +364,7 @@ export function SettingsPage() {
     queryFn: () => apiGet<{ data: Array<{ id: number; date: string; tournament: string; result: string }> }>('/matches'),
     enabled: activeTab === 'data',
   })
-  const exportMatchList = (matchesForExport as any)?.data ?? []
+  const exportMatchList = matchesForExport?.data ?? []
 
   // 競合レビュー一覧
   const { data: conflictsData, refetch: refetchConflicts } = useQuery({
@@ -350,7 +372,7 @@ export function SettingsPage() {
     queryFn: () => apiGet<{ success: boolean; data: Array<{ id: number; record_table: string; record_uuid: string; import_device: string; import_updated_at: string; local_updated_at: string; reason: string; created_at: string }> }>('/sync/conflicts'),
     enabled: activeTab === 'data',
   })
-  const conflicts = (conflictsData as any)?.data ?? []
+  const conflicts = conflictsData?.data ?? []
 
   async function _runCvBenchmark() {
     setBenchmarkRunning(true)
@@ -480,14 +502,14 @@ export function SettingsPage() {
     queryFn: () => apiGet<{ success: boolean; data: Array<{ filename: string; path: string; size_bytes: number; modified_at: string }>; configured: boolean; folder: string }>('/sync/cloud/packages'),
     enabled: activeTab === 'data',
   })
-  const cloudPackages = (cloudPackagesData as any)?.data ?? []
-  const cloudFolderConfigured = (cloudPackagesData as any)?.configured ?? false
+  const cloudPackages = cloudPackagesData?.data ?? []
+  const cloudFolderConfigured = cloudPackagesData?.configured ?? false
 
   async function handleSetAutoVacuum(mode: 'incremental' | 'off') {
     setDbAvRunning(true)
     setDbAvMessage(null)
     try {
-      const res = await setAutoVacuum(mode) as any
+      const res = await setAutoVacuum(mode) as { message?: string; error?: string }
       setDbAvMessage(res.message ?? (res.error ? `エラー: ${res.error}` : '完了'))
       refetchDbStats()
     } catch {
@@ -534,7 +556,7 @@ export function SettingsPage() {
     setDbMaintResult(null)
     try {
       const res = await runDbMaintenance()
-      setDbMaintResult({ freed_mb: (res as any).freed_mb ?? 0, freed_pages: (res as any).freed_pages ?? 0 })
+      setDbMaintResult({ freed_mb: (res as { freed_mb?: number }).freed_mb ?? 0, freed_pages: (res as { freed_pages?: number }).freed_pages ?? 0 })
       refetchDbStats()
     } catch {
       setDbMaintResult({ freed_mb: 0, freed_pages: 0 })
@@ -608,7 +630,7 @@ export function SettingsPage() {
 
   // 選手作成
   const createPlayer = useMutation({
-    mutationFn: (body: any) => apiPost('/players', body),
+    mutationFn: (body: Record<string, unknown>) => apiPost('/players', body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['players'] })
       setShowPlayerForm(false)
@@ -618,17 +640,21 @@ export function SettingsPage() {
 
   // 選手更新
   const updatePlayer = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: any }) => apiPut(`/players/${id}`, body),
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) => apiPut(`/players/${id}`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['players'] })
       setShowPlayerForm(false)
       setEditingPlayer(null)
       setPlayerForm(defaultPlayerForm())
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
+      const msg = errorMessage(err)
       let detail: string
-      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
-      alert(`保存に失敗しました (HTTP ${err.status ?? '?'}):\n${detail || '不明なエラー'}`)
+      try {
+        const parsed = JSON.parse(msg) as { detail?: unknown }
+        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
+      } catch { detail = msg }
+      alert(`保存に失敗しました (HTTP ${errorStatus(err) ?? '?'}):\n${detail || '不明なエラー'}`)
     },
   })
 
@@ -637,11 +663,15 @@ export function SettingsPage() {
     mutationFn: (id: number) =>
       apiDelete(`/players/${id}`, { 'X-Idempotency-Key': newIdempotencyKey() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['players'] }),
-    onError: (err: any, playerId: number) => {
+    onError: (err: unknown, playerId: number) => {
       // err.message はサーバーが返したJSONテキスト ("{"detail":"..."}") or プレーンテキスト
+      const msg = errorMessage(err)
       let detail: string
-      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
-      const isReferenced = (err as any).status === 409
+      try {
+        const parsed = JSON.parse(msg) as { detail?: unknown }
+        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
+      } catch { detail = msg }
+      const isReferenced = errorStatus(err) === 409
       if (isReferenced) {
         const go = window.confirm(`${detail}\n\n試合一覧でこの選手の試合を確認しますか？`)
         if (go) navigate(`/matches?player_id=${playerId}`)
@@ -659,9 +689,13 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['players'] })
       queryClient.invalidateQueries({ queryKey: ['players-needs-review'] })
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
+      const msg = errorMessage(err)
       let detail: string
-      try { detail = JSON.parse(err.message)?.detail ?? '' } catch { detail = err.message ?? '' }
+      try {
+        const parsed = JSON.parse(msg) as { detail?: unknown }
+        detail = typeof parsed?.detail === 'string' ? parsed.detail : ''
+      } catch { detail = msg }
       alert(`確認済み設定に失敗しました: ${detail || '不明なエラー'}`)
     },
   })
@@ -867,7 +901,7 @@ export function SettingsPage() {
           ]).map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
+              onClick={() => setActiveTab(tab.key as 'players' | 'review' | 'tracknet' | 'sharing' | 'data' | 'cluster' | 'account')}
               className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.key
                   ? 'border-blue-500 text-blue-400'
@@ -2140,14 +2174,14 @@ export function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          const allIds = exportMatchList.map((m: any) => String(m.id))
+                          const allIds = exportMatchList.map((m) => String(m.id))
                           const currentIds = exportMatchIds ? exportMatchIds.split(',').map((s: string) => s.trim()).filter(Boolean) : []
                           const allSelected = allIds.every((id: string) => currentIds.includes(id))
                           setExportMatchIds(allSelected ? '' : allIds.join(', '))
                         }}
                         className="text-xs text-blue-400 hover:text-blue-300"
                       >
-                        {exportMatchList.every((m: any) => exportMatchIds.split(',').map((s: string) => s.trim()).includes(String(m.id)))
+                        {exportMatchList.every((m) => exportMatchIds.split(',').map((s: string) => s.trim()).includes(String(m.id)))
                           ? '選択解除' : 'すべて選択'}
                       </button>
                     )}
@@ -2163,7 +2197,7 @@ export function SettingsPage() {
                       />
                       {exportMatchList.length > 0 && (
                         <div className="max-h-40 overflow-y-auto rounded border border-gray-700 divide-y divide-gray-700">
-                          {exportMatchList.map((m: any) => (
+                          {exportMatchList.map((m) => (
                             <button
                               key={m.id}
                               type="button"
@@ -2337,11 +2371,11 @@ export function SettingsPage() {
               </div>
 
               {/* バックアップ一覧 */}
-              {(backupsData as any)?.data?.length > 0 && (
+              {(backupsData?.data?.length ?? 0) > 0 && (
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500">{t('settings.ui.saved_backups')}</p>
                   <div className="rounded border border-gray-700 divide-y divide-gray-700 max-h-48 overflow-y-auto">
-                    {((backupsData as any).data as Array<{ filename: string; size_bytes: number; created_at: string }>).map((b) => (
+                    {backupsData!.data.map((b) => (
                       <div key={b.filename} className="flex items-center justify-between px-3 py-2 text-xs text-gray-300 gap-2">
                         <span className="truncate font-mono flex-1 min-w-0" title={b.filename}>{b.filename}</span>
                         <span className="text-gray-500 shrink-0 num-cell">{(b.size_bytes / 1024).toFixed(0)} KB</span>
@@ -2362,13 +2396,13 @@ export function SettingsPage() {
                   </div>
                   <button onClick={() => refetchCloudPackages()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>{t('auto.SettingsPage.k16')}</button>
                 </div>
-                <p className="text-xs text-gray-400 font-mono truncate">{(cloudPackagesData as any)?.folder}</p>
+                <p className="text-xs text-gray-400 font-mono truncate">{cloudPackagesData?.folder}</p>
 
                 {cloudPackages.length === 0 ? (
                   <p className="text-sm text-gray-500">{t('settings.ui.no_packages')}</p>
                 ) : (
                   <div className="rounded border border-gray-700 divide-y divide-gray-700 max-h-60 overflow-y-auto">
-                    {cloudPackages.map((pkg: any) => (
+                    {cloudPackages.map((pkg) => (
                       <div key={pkg.filename} className="flex items-center justify-between px-3 py-2 text-xs gap-3">
                         <div className="min-w-0">
                           <p className="text-gray-200 font-mono truncate">{pkg.filename}</p>
@@ -2410,7 +2444,7 @@ export function SettingsPage() {
                   {t('auto.SettingsPage.conflict_review_desc')}
                 </p>
                 <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {conflicts.map((c: any) => (
+                  {conflicts.map((c) => (
                     <div key={c.id} className="rounded border border-orange-900/60 bg-orange-900/10 p-3 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">

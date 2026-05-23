@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
 import { TurnstileWidget } from '@/components/auth/TurnstileWidget'
+import { errorMessage } from '@/utils/errors'
 
 export default function RegisterPage() {
   const { t } = useTranslation()
@@ -41,8 +42,8 @@ export default function RegisterPage() {
         date_of_birth: dob || null,
       })
       setSuccess(true)
-    } catch (err: any) {
-      setError(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setError(errorMessage(err))
     } finally {
       setLoading(false)
     }

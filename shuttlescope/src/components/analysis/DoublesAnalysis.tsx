@@ -53,7 +53,7 @@ function PartnerComparison({ playerId }: { playerId: number }) {
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-partner-comparison', playerId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: { partners: PartnerItem[] }; meta: any }>(
+      apiGet<{ success: boolean; data: { partners: PartnerItem[] }; meta: Record<string, unknown> }>(
         '/analysis/partner_comparison',
         { player_id: playerId }
       ),
@@ -122,7 +122,7 @@ function ServeReceiveStats({ playerId }: { playerId: number }) {
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-doubles-serve-receive', playerId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: ServeReceiveData; meta: any }>(
+      apiGet<{ success: boolean; data: ServeReceiveData; meta: Record<string, unknown> }>(
         '/analysis/doubles_serve_receive',
         { player_id: playerId }
       ),
@@ -228,7 +228,7 @@ function StrokeSharing({ playerId }: { playerId: number }) {
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-stroke-sharing', playerId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: StrokeSharingData; meta: any }>(
+      apiGet<{ success: boolean; data: StrokeSharingData; meta: Record<string, unknown> }>(
         '/analysis/stroke_sharing',
         { player_id: playerId }
       ),
@@ -285,8 +285,8 @@ function StrokeSharing({ playerId }: { playerId: number }) {
           <YAxis type="category" dataKey="name" width={60} tick={{ fill: isLight ? AXIS_TICK_LIGHT : '#d1d5db', fontSize: 11 }} />
           <Tooltip
             contentStyle={getTooltipStyle(isLight)}
-            formatter={(v: number, _: string, entry: any) =>
-              [`${v.toFixed(1)}% (${entry.payload.count}${t('doubles_analysis.rally_suffix')})`, t('doubles_analysis.win_rate')]
+            formatter={(v: number, _: string, entry: { payload?: { count?: number } }) =>
+              [`${v.toFixed(1)}% (${entry?.payload?.count ?? 0}${t('doubles_analysis.rally_suffix')})`, t('doubles_analysis.win_rate')]
             }
           />
           <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
@@ -312,7 +312,7 @@ function CourtCoverage({ matchId }: { matchId: number }) {
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-court-coverage-split', matchId],
     queryFn: () =>
-      apiGet<{ success: boolean; data: CoverageData; meta: any }>(
+      apiGet<{ success: boolean; data: CoverageData; meta: Record<string, unknown> }>(
         '/analysis/court_coverage_split',
         { match_id: matchId }
       ),

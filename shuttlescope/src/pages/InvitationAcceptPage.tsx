@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiGet, apiPost } from '@/api/client'
+import { errorMessage } from '@/utils/errors'
 
 interface InviteInfo {
   email: string
@@ -48,8 +49,8 @@ export default function InvitationAcceptPage() {
         display_name: displayName || null,
       })
       navigate('/login')
-    } catch (err: any) {
-      setError(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setError(errorMessage(err))
     } finally {
       setSubmitting(false)
     }

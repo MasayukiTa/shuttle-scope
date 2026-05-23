@@ -32,8 +32,8 @@ function AdminBillingPageInner() {
       ])
       setOrders(o)
       setProducts(p)
-    } catch (err: any) {
-      setError(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setError(errorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -189,8 +189,8 @@ function ProductCreateForm({ onCreated }: { onCreated: () => void }) {
       })
       onCreated()
       setCode(''); setName(''); setDescription(''); setPrice('500')
-    } catch (e: any) {
-      setErr(e?.message ?? String(e))
+    } catch (e: unknown) {
+      setErr(errorMessage(e))
     } finally { setSubmitting(false) }
   }
 

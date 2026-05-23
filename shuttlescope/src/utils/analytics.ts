@@ -58,9 +58,9 @@ function detectPlatform(): string {
   try {
     if (typeof window === 'undefined') {
       _platform = 'unknown'
-    } else if ((window as any).electronAPI || /electron/i.test(navigator.userAgent || '')) {
+    } else if ((window as unknown as { electronAPI?: unknown }).electronAPI || /electron/i.test(navigator.userAgent || '')) {
       _platform = 'desktop'
-    } else if ((navigator as any).standalone || window.matchMedia('(display-mode: standalone)').matches) {
+    } else if ((navigator as unknown as { standalone?: boolean }).standalone || window.matchMedia('(display-mode: standalone)').matches) {
       _platform = 'mobile_pwa'
     } else if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || '')) {
       _platform = 'mobile_web'
@@ -76,7 +76,7 @@ function detectPlatform(): string {
 function uuid(): string {
   try {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-      return (crypto as any).randomUUID()
+      return (crypto as Crypto & { randomUUID: () => string }).randomUUID()
     }
     const buf = new Uint8Array(16)
     crypto.getRandomValues(buf)

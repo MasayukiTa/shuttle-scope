@@ -201,8 +201,8 @@ export function ViewerPage() {
       setActiveSessionCode(code)
       reconnectCountRef.current = 0
       connectWs(code, pid)
-    } catch (err: any) {
-      const status = err?.status
+    } catch (err: unknown) {
+      const status = errorStatus(err)
       if (status === 401) setErrorMsg('セッションコードまたはパスワードが正しくありません。')
       else if (status === 404) setErrorMsg('セッションが見つかりません。コードを確認してください。')
       else setErrorMsg('接続に失敗しました。ネットワークを確認してください。')

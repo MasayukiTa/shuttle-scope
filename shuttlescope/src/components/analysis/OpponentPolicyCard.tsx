@@ -51,9 +51,10 @@ type ErrorKind = 'network' | 'server' | 'unknown'
 
 function classifyError(err: unknown): ErrorKind {
   if (!err) return 'unknown'
-  const status = (err as any)?.status
+  const e = err as { status?: number; message?: string } | null
+  const status = e?.status
   if (status != null) return status >= 500 ? 'server' : 'unknown'
-  const msg: string = (err as any)?.message ?? ''
+  const msg: string = e?.message ?? ''
   if (msg.toLowerCase().includes('fetch') || err instanceof TypeError) return 'network'
   return 'unknown'
 }

@@ -27,7 +27,7 @@ import { PairPlaystyle } from '@/components/analysis/PairPlaystyle'
 import { PairSynergyCard } from '@/components/analysis/PairSynergyCard'
 import { WinLossComparison } from '@/components/analysis/WinLossComparison'
 import { TournamentComparison } from '@/components/analysis/TournamentComparison'
-import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
+import { EvidenceBadge, EvidenceLevel } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 import { useCardTheme } from '@/hooks/useCardTheme'
@@ -179,7 +179,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   <SectionTitle>{t('auto.DashboardAdvancedPage.k5')}</SectionTitle>
                   <EvidenceBadge
                     tier="advanced"
-                    evidenceLevel={(pressureMeta?.evidence_level as any) ?? 'practical_candidate'}
+                    evidenceLevel={(pressureMeta?.evidence_level as EvidenceLevel) ?? 'practical_candidate'}
                     recommendationAllowed={false}
                   />
                 </div>
@@ -199,7 +199,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                 <SectionTitle>{t('auto.DashboardAdvancedPage.k6')}</SectionTitle>
                 <EvidenceBadge
                   tier="advanced"
-                  evidenceLevel={(transitionMeta?.evidence_level as any) ?? 'practical_candidate'}
+                  evidenceLevel={(transitionMeta?.evidence_level as EvidenceLevel) ?? 'practical_candidate'}
                   recommendationAllowed={false}
                 />
               </div>
@@ -233,7 +233,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   <SectionTitle>{t('analysis.pre_loss.title')}</SectionTitle>
                   <EvidenceBadge
                     tier="advanced"
-                    evidenceLevel={(preLossMeta?.evidence_level as any) ?? 'practical_candidate'}
+                    evidenceLevel={(preLossMeta?.evidence_level as EvidenceLevel) ?? 'practical_candidate'}
                     recommendationAllowed={false}
                   />
                 </div>
@@ -244,7 +244,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   <SectionTitle>{t('analysis.first_return.title')}</SectionTitle>
                   <EvidenceBadge
                     tier="advanced"
-                    evidenceLevel={(firstReturnMeta?.evidence_level as any) ?? 'practical_candidate'}
+                    evidenceLevel={(firstReturnMeta?.evidence_level as EvidenceLevel) ?? 'practical_candidate'}
                     recommendationAllowed={false}
                   />
                 </div>
@@ -282,7 +282,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   <SectionTitle>{t('analysis.temporal.title')}</SectionTitle>
                   <EvidenceBadge
                     tier="advanced"
-                    evidenceLevel={(temporalMeta?.evidence_level as any) ?? 'directional'}
+                    evidenceLevel={(temporalMeta?.evidence_level as EvidenceLevel) ?? 'directional'}
                     recommendationAllowed={false}
                   />
                 </div>
@@ -293,7 +293,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   <SectionTitle>{t('analysis.post_long_rally.title')}</SectionTitle>
                   <EvidenceBadge
                     tier="advanced"
-                    evidenceLevel={(postLongRallyMeta?.evidence_level as any) ?? 'directional'}
+                    evidenceLevel={(postLongRallyMeta?.evidence_level as EvidenceLevel) ?? 'directional'}
                     recommendationAllowed={false}
                   />
                 </div>
@@ -325,7 +325,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
                   <SectionTitle>{t('analysis.opponent_type_affinity.title')}</SectionTitle>
                   <EvidenceBadge
                     tier="research"
-                    evidenceLevel={(opponentAffinityMeta?.evidence_level as any) ?? 'exploratory'}
+                    evidenceLevel={(opponentAffinityMeta?.evidence_level as EvidenceLevel) ?? 'exploratory'}
                     recommendationAllowed={false}
                   />
                 </div>

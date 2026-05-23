@@ -135,7 +135,7 @@ export function GrowthTimeline({
 
   // ─── ペアモード: 日付をキーにして2プレイヤーのデータをマージ ─────────────
 
-  let chartData: Record<string, any>[]
+  let chartData: Record<string, unknown>[]
   let yearBoundaryNames: string[]
 
   if (isPairMode && partnerResp) {
@@ -232,9 +232,9 @@ export function GrowthTimeline({
           data={chartData}
           margin={{ top: 4, right: 8, bottom: 0, left: -20 }}
           style={{ cursor: 'pointer' }}
-          onClick={(chart: any) => {
+          onClick={(chart: import('@/utils/rechartsTypes').RechartsClickPayload) => {
             // recharts: クリックされたポイントは chart.activePayload[0].payload
-            const p = chart?.activePayload?.[0]?.payload
+            const p = chart?.activePayload?.[0]?.payload as Record<string, unknown> | undefined
             if (!p || isPairMode) return  // ペア比較モードでは比較ポップアップ非対応
             const idx = chartData.indexOf(p)
             if (idx < 0) return
@@ -259,7 +259,10 @@ export function GrowthTimeline({
           />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelFormatter={(label, payload: any) => payload?.[0]?.payload?.fullDate ?? label}
+            labelFormatter={(label, payload) => {
+              const p = payload as Array<{ payload?: { fullDate?: string } }> | undefined
+              return p?.[0]?.payload?.fullDate ?? label
+            }}
             formatter={(v: number, name: string) => {
               if (name === 'valueA') return [`${v}${cfg.unit}`, labelA]
               if (name === 'movingAvgA') return [`${v}${cfg.unit}`, `${labelA} 移動平均`]

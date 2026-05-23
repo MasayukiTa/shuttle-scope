@@ -8,15 +8,16 @@ import { useHapticFeedback } from '../useHapticFeedback'
 
 describe('useHapticFeedback', () => {
   let vibrateMock: ReturnType<typeof vi.fn>
-  let originalVibrate: any
+  let originalVibrate: Navigator['vibrate'] | undefined
+  type VibrateNav = Navigator & { vibrate?: (pattern: number | number[]) => boolean }
 
   beforeEach(() => {
     vibrateMock = vi.fn(() => true)
-    originalVibrate = (navigator as any).vibrate
-    ;(navigator as any).vibrate = vibrateMock
+    originalVibrate = (navigator as VibrateNav).vibrate
+    ;(navigator as VibrateNav).vibrate = vibrateMock as unknown as Navigator['vibrate']
   })
   afterEach(() => {
-    ;(navigator as any).vibrate = originalVibrate
+    ;(navigator as VibrateNav).vibrate = originalVibrate
   })
 
   it('tap calls navigator.vibrate(20)', () => {
@@ -42,13 +43,13 @@ describe('useHapticFeedback', () => {
   })
 
   it('graceful no-op when navigator.vibrate is missing', () => {
-    delete (navigator as any).vibrate
+    delete (navigator as VibrateNav).vibrate
     const { result } = renderHook(() => useHapticFeedback())
     expect(() => act(() => result.current.tap())).not.toThrow()
   })
 
   it('graceful no-op when navigator.vibrate throws', () => {
-    ;(navigator as any).vibrate = () => { throw new Error('not allowed') }
+    ;(navigator as VibrateNav).vibrate = () => { throw new Error('not allowed') }
     const { result } = renderHook(() => useHapticFeedback())
     expect(() => act(() => result.current.strokeConfirm())).not.toThrow()
   })

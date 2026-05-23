@@ -63,7 +63,7 @@ describe('shotTypeColors', () => {
     for (const [shot, cat] of Object.entries(SHOT_TYPE_CATEGORY)) {
       expect(CATEGORY_STYLES[cat]).toBeDefined()
       // sanity: getStyleForShot returns same style
-      const style = getStyleForShot(shot as any)
+      const style = getStyleForShot(shot as Parameters<typeof getStyleForShot>[0])
       expect(style.bg).toBe(CATEGORY_STYLES[cat].bg)
     }
   })

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
+import { errorMessage } from '@/utils/errors'
 
 export default function PasswordResetConfirmPage() {
   const { t } = useTranslation()
@@ -40,8 +41,8 @@ export default function PasswordResetConfirmPage() {
       await apiPost('/auth/password/reset', { token, new_password: password })
       setDone(true)
       setTimeout(() => navigate('/login'), 2500)
-    } catch (err: any) {
-      setError(err?.message ?? String(err))
+    } catch (err: unknown) {
+      setError(errorMessage(err))
     } finally {
       setLoading(false)
     }

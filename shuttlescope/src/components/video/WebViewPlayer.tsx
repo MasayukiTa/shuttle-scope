@@ -23,6 +23,25 @@ import { Globe, ArrowLeft, ArrowRight, RotateCcw, ExternalLink, AlertCircle, Mon
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '@/api/client'
+import { errorMessage } from '@/utils/errors'
+
+// Electron webview tag に対する最小限の型
+interface WebViewElement extends HTMLElement {
+  src: string
+  canGoBack?: () => boolean
+  canGoForward?: () => boolean
+  goBack?: () => void
+  goForward?: () => void
+  reload?: () => void
+}
+interface WebViewFailLoadEvent { errorCode: number; errorDescription: string }
+interface WebViewTitleEvent { title: string }
+interface WebViewNavigateEvent { url: string }
+
+interface ScreenCaptureApi {
+  screenCaptureStart?: (opts: { url: string; jobId: string; token: string; matchId: number | null; quality: string }) => Promise<unknown>
+  screenCaptureStop?: () => Promise<unknown>
+}
 
 // session storage の JWT を取得 (api/client 内部の TOKEN_KEY と一致)
 function getStoredAuthToken(): string {
@@ -70,7 +89,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
 
   // webview の Electron イベントを購読
   useEffect(() => {
-    const wv = webviewRef.current as any
+    const wv = webviewRef.current as WebViewElement | null
     if (!wv) return
 
     const onDidStartLoading = () => {
@@ -82,20 +101,24 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       setCanGoBack(wv.canGoBack?.() ?? false)
       setCanGoForward(wv.canGoForward?.() ?? false)
     }
-    const onDidFailLoad = (_e: any) => {
+    const onDidFailLoad = (ev: Event) => {
+      const _e = ev as Event & WebViewFailLoadEvent
       // -3 は abort（リダイレクト中の正常キャンセル）なので無視
       if (_e.errorCode === -3) return
       setIsLoading(false)
       setLoadError(`読み込みエラー (${_e.errorCode}): ${_e.errorDescription}`)
     }
-    const onPageTitleUpdated = (e: any) => {
+    const onPageTitleUpdated = (ev: Event) => {
+      const e = ev as Event & WebViewTitleEvent
       setPageTitle(e.title || siteName)
     }
-    const onDidNavigate = (e: any) => {
+    const onDidNavigate = (ev: Event) => {
+      const e = ev as Event & WebViewNavigateEvent
       setCurrentUrl(e.url)
       setInputUrl(e.url)
     }
-    const onDidNavigateInPage = (e: any) => {
+    const onDidNavigateInPage = (ev: Event) => {
+      const e = ev as Event & WebViewNavigateEvent
       setCurrentUrl(e.url)
       setInputUrl(e.url)
       setCanGoBack(wv.canGoBack?.() ?? false)
@@ -120,7 +143,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
   }, [siteName])
 
   const handleNavigate = useCallback(() => {
-    const wv = webviewRef.current as any
+    const wv = webviewRef.current as WebViewElement | null
     if (!wv) return
     const target = inputUrl.trim()
     if (!target) return
@@ -136,17 +159,17 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
   }, [inputUrl])
 
   const handleBack = useCallback(() => {
-    const wv = webviewRef.current as any
+    const wv = webviewRef.current as WebViewElement | null
     wv?.goBack?.()
   }, [])
 
   const handleForward = useCallback(() => {
-    const wv = webviewRef.current as any
+    const wv = webviewRef.current as WebViewElement | null
     wv?.goForward?.()
   }, [])
 
   const handleReload = useCallback(() => {
-    const wv = webviewRef.current as any
+    const wv = webviewRef.current as WebViewElement | null
     wv?.reload?.()
   }, [])
 
@@ -188,7 +211,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
   const recordStartedAtRef = useRef<number>(0)
 
   // Electron API 利用可否
-  const electronApi = (typeof window !== 'undefined') ? (window as any).shuttlescope : undefined
+  const electronApi: ScreenCaptureApi | undefined = (typeof window !== 'undefined') ? (window as unknown as { shuttlescope?: ScreenCaptureApi }).shuttlescope : undefined
   const screenCaptureAvailable = !!electronApi?.screenCaptureStart && !!electronApi?.screenCaptureStop
 
   // 録画中の経過秒タイマー
@@ -264,7 +287,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
 
       // 2. Electron 側で screen capture 開始
       const token = getStoredAuthToken()
-      await electronApi.screenCaptureStart({
+      await electronApi!.screenCaptureStart!({
         url: currentUrl,
         jobId: startResp.job_id,
         token,
@@ -275,9 +298,9 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       recordStartedAtRef.current = Date.now()
       setRecordWarning('')
       setRecordState('recording')
-    } catch (err: any) {
+    } catch (err: unknown) {
       setRecordState('error')
-      setRecordError(err?.message ?? String(err))
+      setRecordError(errorMessage(err))
     }
   }, [currentUrl, matchId, electronApi, screenCaptureAvailable, quality])
 
@@ -292,9 +315,9 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       // Backend に stop シグナル → remux + archive 開始
       await apiPost(`/youtube_live/${recordJobId}/stop`, {})
       // status はポーリングで監視
-    } catch (err: any) {
+    } catch (err: unknown) {
       setRecordState('error')
-      setRecordError(err?.message ?? String(err))
+      setRecordError(errorMessage(err))
     }
   }, [recordJobId, electronApi])
 

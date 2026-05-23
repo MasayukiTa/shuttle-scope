@@ -29,6 +29,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiPost } from '@/api/client'
 import { resolveBaseUrl } from '@/utils/preferredEndpoint'
+import { errorMessage } from '@/utils/errors'
 
 
 // Round 258 R17 P3 fix (NEW-6) → R18 P1 (R18a NEW-9):
@@ -233,10 +234,10 @@ export function useServerSideRecording(
       pendingRef.current.delete(chunkIndex)
       setUploadedChunks((n) => n + 1)
       return true
-    } catch (err: any) {
+    } catch (err: unknown) {
       // ネットワーク完全切断等の throw は retry 対象に積む
       enqueuePending(chunkIndex, blob)
-      setErrorMsg(err?.message ?? String(err))
+      setErrorMsg(errorMessage(err))
       return false
     }
   }, [enqueuePending])
@@ -314,11 +315,11 @@ export function useServerSideRecording(
           chunk_size: 8_388_608,   // 8MB
         },
       )
-      initRes = (r as any).data ?? r
+      initRes = (r as { data?: InitResponse }).data ?? (r as InitResponse)
       uploadIdRef.current = initRes.upload_id
       chunkIndexRef.current = 0
-    } catch (err: any) {
-      setErrorMsg(`init 失敗: ${err?.message ?? err}`)
+    } catch (err: unknown) {
+      setErrorMsg(`init 失敗: ${errorMessage(err)}`)
       setState('error')
       return false
     }
@@ -327,8 +328,8 @@ export function useServerSideRecording(
     let recorder: MediaRecorder
     try {
       recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 })
-    } catch (err: any) {
-      setErrorMsg(`MediaRecorder 起動失敗: ${err?.message ?? err}`)
+    } catch (err: unknown) {
+      setErrorMsg(`MediaRecorder 起動失敗: ${errorMessage(err)}`)
       setState('error')
       return false
     }
@@ -340,8 +341,9 @@ export function useServerSideRecording(
       // 並行 upload でブロックしない (ベストエフォート)
       void uploadChunk(e.data, idx)
     }
-    recorder.onerror = (e: any) => {
-      setErrorMsg(`MediaRecorder エラー: ${e?.error ?? e}`)
+    recorder.onerror = (e: Event) => {
+      const err = (e as Event & { error?: unknown }).error
+      setErrorMsg(`MediaRecorder エラー: ${err != null ? String(err) : 'unknown'}`)
       setState('error')
     }
     recorder.onstop = () => {
@@ -356,8 +358,8 @@ export function useServerSideRecording(
     droppedChunksRef.current = []
     try {
       recorder.start(timesliceSec * 1000)
-    } catch (err: any) {
-      setErrorMsg(`recorder.start 失敗: ${err?.message ?? err}`)
+    } catch (err: unknown) {
+      setErrorMsg(`recorder.start 失敗: ${errorMessage(err)}`)
       setState('error')
       return false
     }
@@ -429,8 +431,8 @@ export function useServerSideRecording(
         setErrorMsg(`finalize 失敗: ${res.status} ${body.slice(0, 100)}`)
         setState('error')
       }
-    } catch (err: any) {
-      setErrorMsg(`finalize エラー: ${err?.message ?? err}`)
+    } catch (err: unknown) {
+      setErrorMsg(`finalize エラー: ${errorMessage(err)}`)
       setState('error')
     }
   }, [flushPending])

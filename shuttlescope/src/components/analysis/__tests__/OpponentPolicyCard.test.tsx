@@ -232,7 +232,7 @@ describe('OpponentPolicyCard', () => {
         ...MOCK_POLICY_RESPONSE.data,
         global_policy: {
           ...MOCK_POLICY_RESPONSE.data.global_policy,
-          entropy: undefined as any,
+          entropy: undefined as unknown as number,
         },
       },
     }

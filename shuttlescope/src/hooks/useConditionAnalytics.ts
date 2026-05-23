@@ -109,7 +109,18 @@ export function useCorrelation(
 
 // backend 実体: { key_factors:[{key, effect_size, direction}], top_profile:{[k]:{mean,std,min,max}}, rest_profile, n_top, n_rest, confidence, note }
 interface BestProfileRaw {
-  key_factors?: Array<{ key: string; effect_size?: number; direction?: string }>
+  key_factors?: Array<{
+    key: string
+    effect_size?: number
+    direction?: string
+    target_min?: number | null
+    target_max?: number | null
+    target_mean?: number | null
+    rest_mean?: number | null
+    current?: number | null
+    gap?: number | null
+  }>
+  current_values?: Record<string, number | null> | null
   top_profile?: Record<string, { mean?: number | null; min?: number | null; max?: number | null }>
   rest_profile?: Record<string, { mean?: number | null; min?: number | null; max?: number | null }>
   n_top?: number
@@ -142,13 +153,13 @@ export function useBestProfile(playerId: number | null) {
           min: p.min ?? null,
           max: p.max ?? null,
           importance: f.effect_size ?? null,
-          target_min: (f as any).target_min ?? p.min ?? null,
-          target_max: (f as any).target_max ?? p.max ?? null,
-          target_mean: (f as any).target_mean ?? p.mean ?? null,
-          rest_mean: (f as any).rest_mean ?? null,
-          current: (f as any).current ?? null,
-          gap: (f as any).gap ?? null,
-          direction: (f as any).direction ?? null,
+          target_min: f.target_min ?? p.min ?? null,
+          target_max: f.target_max ?? p.max ?? null,
+          target_mean: f.target_mean ?? p.mean ?? null,
+          rest_mean: f.rest_mean ?? null,
+          current: f.current ?? null,
+          gap: f.gap ?? null,
+          direction: f.direction ?? null,
         }
       })
       const profile: BestProfileResponse['profile'] = {}
@@ -163,7 +174,7 @@ export function useBestProfile(playerId: number | null) {
         n_matches: nMatches,
         confidence: raw.confidence ?? null,
         key_factors: keyFactors,
-        current_values: (raw as any).current_values ?? null,
+        current_values: raw.current_values ?? null,
       }
     },
     enabled: !!playerId,
