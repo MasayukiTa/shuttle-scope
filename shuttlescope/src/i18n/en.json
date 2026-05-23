@@ -197,7 +197,8 @@
       "empty": "No matching logs",
       "filter_ip": "IP",
       "filter_ip_placeholder": "e.g. 192.168. or 203.0.113.5"
-    }
+    },
+    "password": "Password"
   },
   "condition": {
     "title": "Condition",
@@ -858,7 +859,8 @@
     "body_disclose_to_coach": "Disclose to coach (default OFF)",
     "player_only_input": "Only accounts linked to a player record can submit",
     "glossary_tooltip": "Definitions for CCS / F1–F5 / Hooper Sleep / RPE etc.",
-    "glossary_btn": "Glossary"
+    "glossary_btn": "Glossary",
+    "summary_only_notice": "Per Condition Consent §5, coaches/analysts do not see raw scores, body composition, or medical notes (only validity flags and derived summaries). You can still record your own condition normally."
   },
   "research": {
     "epv_state": "State-conditioned EPV",
@@ -977,7 +979,16 @@
       "cancel_short": "Cancel",
       "public_pool_badge": "Shared",
       "public_pool_title": "Public-pool match visible to all teams",
-      "create_tentative": "Create \"{{name}}\" as tentative"
+      "create_tentative": "Create \"{{name}}\" as tentative",
+      "reissue_video_token": "Reissue video link",
+      "reissue_video_token_hint": "Replaces the video URL (app://video/...) with a new UUID",
+      "reissue_video_token_hint_short": "Any leaked URL is invalidated immediately",
+      "reissue_video_token_confirm": "Reissue the video link? If you shared the old URL, it will immediately stop playing. Continue?",
+      "reissue_video_token_done": "Reissued. Please play with the new link.",
+      "reissue_video_token_failed": "Reissue failed",
+      "copy_share_link": "Copy share link",
+      "copy_share_link_done": "Copied to clipboard",
+      "copy_share_link_warn": "This link requires authentication. Do not send it to third parties. If leaked, you can invalidate it immediately with 'Reissue video link'."
     }
   },
   "player": {
@@ -1184,8 +1195,261 @@
       "unsaved": "● Unsaved",
       "estimated_arrow": "← Estimated",
       "complete_later": "(can be completed later)",
-      "unavailable_rally": "(not available during a rally)"
-    }
+      "unavailable_rally": "(not available during a rally)",
+      "back": "Back",
+      "retry": "Retry",
+      "autosave_quota": "Autosave quota exceeded",
+      "autosave_failed": "Autosave failed",
+      "sc_player_toggle": "Toggle player",
+      "sc_hitter": "Doubles hitter selector",
+      "sc_land_zone": "Landing input",
+      "sc_hit_zone": "Hit zone override",
+      "sc_hit_zone_doubles": "Hit zone override (doubles)",
+      "sc_command_palette": "Command palette",
+      "loading_dots": "Loading…",
+      "open_file": "Open file",
+      "url_set": "Set",
+      "cancel": "Cancel",
+      "fold_up": "Collapse",
+      "rally_end_btn": "End rally",
+      "rally_end_btn_with_enter": "End rally (Enter)",
+      "undo_btn": "Undo",
+      "undo_btn_with_shortcut": "Undo (Ctrl+Z)",
+      "rally_cancel_btn": "✕ Cancel rally",
+      "manual_save_btn": "💾 Save",
+      "auto_saved_at": "✓ Auto-saved {{time}}",
+      "rally_start_btn": "▶ Start rally",
+      "land_select_marker": "Select landing point ↓",
+      "hit_zone_auto_label": "(auto)",
+      "shortcut_letters_extra": "Shift+U/I/O=after OB  Shift+J/L=OB side  -/=/\\=NET",
+      "set_a_position": "Set {{set}}: A={{pos}}",
+      "side_arrow_top": "↑ top",
+      "side_arrow_bottom": "↓ bottom",
+      "third_set_swap": "(11pt↔)",
+      "external_monitor_playing": "Playing on external monitor",
+      "pc_camera_in_use": "PC camera in use",
+      "ios_camera_receiving": "Receiving from iOS camera",
+      "drm_webview_hint": "🔒 Use the in-browser viewing mode for DRM-protected content or login-required sites",
+      "back_to_download_play": "← Back to download playback",
+      "rec_stop_local": "Stop recording (save locally)",
+      "rec_start": "Start recording",
+      "rally_end_panel_title": "End rally — pick end type then winner",
+      "last_striker_paren": "(last hitter: {{name}})",
+      "score_suffix": "point",
+      "select_end_type_mobile": "Select end type",
+      "select_end_type_desktop": "Select end type with keys 1–6 or buttons",
+      "estimated_winner_mobile": "Estimate: {{name}} point — tap to confirm",
+      "estimated_winner_desktop": "Estimate: {{name}} point — confirm with A/B keys or buttons",
+      "missing_land_warning": "Some strokes have no landing point yet (you can fill them later)",
+      "rally_end_cancel_esc": "← Cancel",
+      "rally_end_cancel_paren_esc": "(Esc)",
+      "doubles_hitter_hint": "Doubles: confirm / change hitter (keys",
+      "doubles_hitter_hint_close": ")",
+      "hit_zone_hint_doubles": "Hit zone:",
+      "hit_zone_hint_doubles_extra": "／ 7-9 are",
+      "hit_zone_hint_singles": "Hit zone: top row",
+      "cv_assist_label": "CV assist candidates",
+      "cv_assist_finish_rally": "Finish the rally to see candidates",
+      "cv_assist_no_candidate": "No candidates for this rally (re-run 'Generate candidates')",
+      "calib_not_found_local": "No calibration found in localStorage",
+      "calib_invalid_points": "Invalid points ({{got}}/6)",
+      "manage_actions": "Management actions",
+      "set_transition_to_next": "End Set {{from}} and move to Set {{to}}?",
+      "set_transition_to_prev": "Go back to Set {{to}}? (Current set progress is preserved)",
+      "confirm": "Confirm",
+      "prev_set_btn": "Previous set (Set {{n}})",
+      "next_set_btn": "Next set (Set {{n}})",
+      "rally_review_label": "Rally #{{id}}",
+      "scored_winner": "{{name}} scored",
+      "cv_tools_label": "CV tools (BBOX / trajectory / grid / ROI)",
+      "cv_tools_collapse_title": "Collapse CV tools",
+      "cv_tools_expand_title": "Expand CV tools (TrackNet / person detection / display)",
+      "save_error_count": "{{n}} items",
+      "save_error_count_x": "{{n}} items ✕",
+      "stop_btn": "Stop",
+      "resume_btn": "Resume",
+      "stopped_with_pct": "⏸ Stopped {{pct}}%",
+      "person_label": "Person",
+      "person_with_pct": "Person {{pct}}%",
+      "person_overlay_show": "Show person overlay",
+      "person_overlay_hide": "Hide person overlay",
+      "person_x_label": "✗ Person",
+      "person_detect_add": "+ Person detection",
+      "diff_update_btn": "Diff update",
+      "yolo_reset_title": "Reset person detection",
+      "yolo_reset_message": "Delete all existing person detection results and restart from 0%. Are you sure?",
+      "yolo_reset_confirm": "Reset",
+      "track_complete": "Complete",
+      "track_identify_confirm": "Confirm identification ({{n}})",
+      "track_identify_redo": "Redo identification (10 samples) for court re-entry, costume changes, etc.",
+      "track_identify_first": "Tag the gallery with 10 samples and start tracking",
+      "track_detecting": "Detecting...",
+      "track_identify_redo_btn": "Re-identify (10)",
+      "track_identify_first_btn": "+ Identify (10)",
+      "track_no_data": "No identification data (run '+ Identify' first)",
+      "bbox_show": "Show BBOX",
+      "bbox_hide": "Hide BBOX",
+      "shuttle_show": "Show shuttle trajectory",
+      "shuttle_hide": "Hide shuttle trajectory",
+      "shuttle_label": "Trajectory",
+      "court_grid_show": "Show court grid",
+      "court_grid_hide": "Hide court grid",
+      "court_grid_label": "Grid",
+      "roi_editing_title": "Confirm analysis region (click to finish)",
+      "roi_change_title": "Change analysis region (drag)",
+      "roi_set_title": "Set analysis region (TrackNet/YOLO)",
+      "roi_editing_label": "Editing...",
+      "roi_set_label": "Region▪",
+      "roi_label": "Region",
+      "both_overlay_label": "Both",
+      "cv_assist_short_label": "CV assist",
+      "cv_assist_built_at": "Candidates built ({{date}}) — rebuild",
+      "cv_assist_build_title": "Generate CV candidates",
+      "cv_assist_building": "Generating...",
+      "cv_assist_built": "✓ Candidates",
+      "cv_assist_build": "Generate candidates",
+      "cv_apply_high": "Apply high-confidence",
+      "cv_apply_land_only": "Landing only",
+      "cv_apply_hitter_only": "Hitter only",
+      "cv_apply_with_candidates": "Include candidates",
+      "cv_detail_label": "CV detail",
+      "cv_apply_result": "{{n}} applied",
+      "cv_apply_result_land": " (landing {{n}})",
+      "cv_apply_result_hitter": " (hitter {{n}})",
+      "tunnel_pending_title": "Fetching tunnel URL... please wait",
+      "tunnel_show_qr_title": "Click to show QR code / URL",
+      "tunnel_pending_dots": "...",
+      "tunnel_stop_title": "Stop tunnel",
+      "tunnel_start_title": "Start tunnel (HTTPS public exposure)",
+      "tunnel_pending_short": "Fetching...",
+      "tunnel_running": "Running",
+      "remote_health_connected": "Connected",
+      "remote_health_reconnecting": "Reconnecting",
+      "yolo_artifact_meta_title": "Last analysis: {{date}} / {{n}}f",
+      "cv_apply_breakdown_title": "Landing: {{land}} / hitter: {{hitter}}",
+      "team_prefix_title": "Team: {{team}}",
+      "player_toggle_disabled_title": "Cannot toggle while entering landing point",
+      "player_toggle_title": "Toggle player",
+      "exception_alert_warning": "⚠",
+      "fallback_app_title": "ShuttleScope",
+      "set_change_error_prefix": "Set change error:",
+      "prev_set_error_prefix": "Previous set error:",
+      "first_serve_change_error_prefix": "First-server change error:",
+      "video_only_video_files": "Only video files can be uploaded",
+      "video_max_size": "Maximum file size is 5GB",
+      "upload_error_prefix": "Upload error:",
+      "save_error_prefix": "Save error:",
+      "set_id_missing": "Set ID is missing. Please reload.",
+      "init_failed": "Initialization failed",
+      "save_failed_message": "Save failed",
+      "force_set_end_error_prefix": "Force-end set error:",
+      "score_correction_error_prefix": "Score correction error:",
+      "exception_save_failed_prefix": "Failed to save mid-stop:",
+      "unknown_error": "Unknown error",
+      "restore_dialog_title": "Restore previous unsaved data",
+      "restore_dialog_message": "Previous unsaved data found ({{desc}}, about {{age}} min ago).\nRestore?",
+      "restore_dialog_strokes_count": "{{n}} strokes confirmed",
+      "restore_dialog_shot_typing": "Entering shot type",
+      "restore_dialog_confirm": "Restore",
+      "restore_dialog_cancel": "Discard",
+      "step_label_idle_active": "Press a shot key ({{name}} is hitting)",
+      "step_label_idle": "Press a shot key to start the rally",
+      "step_label_land": "Click landing zone ({{shot}})",
+      "step_label_rally_end": "End rally — select scorer and end type",
+      "player_other": "Other",
+      "streaming_web_video": "Web video"
+    },
+    "ux": {
+      "menu_label": "Action menu",
+      "score_aria": "Score {{a}} vs {{b}}",
+      "mode_input": "Input",
+      "mode_review": "Review",
+      "mode_analysis": "Analysis",
+      "mode_settings": "Settings",
+      "mode_aria": "Switch mode",
+      "review_header": "Review mode",
+      "review_count_boundary": "Boundary {{n}}",
+      "review_count_identity": "ID-linked {{n}}",
+      "review_count_swing": "Swing {{n}}",
+      "review_empty": "CV candidates, rally boundary candidates, and identity mappings appear here. Nothing shows for rallies with no data yet.",
+      "analysis_header": "Analysis mode",
+      "analysis_now": "Current",
+      "analysis_recent_5": "Last 5 rallies (Player A win rate {{pct}}%)",
+      "analysis_no_data": "No data",
+      "analysis_shot_counts": "Shot types in current rally ({{n}})",
+      "analysis_dashboard_hint": "* Detailed analysis (EPV / momentum / win prediction) is consolidated in the Dashboard Live page.",
+      "settings_header": "Settings mode",
+      "settings_category": "Category",
+      "settings_item": "Item",
+      "menu_section_record": "Record mode",
+      "menu_section_display": "Display",
+      "menu_section_cv": "CV batch",
+      "menu_section_danger": "Danger zone",
+      "command_button_label": "Search commands",
+      "command_button_aria": "Open command palette",
+      "command_button_title": "Command palette (Ctrl/⌘+K)",
+      "settings_section_mode": "Record mode",
+      "settings_section_flip": "Hitter flip behavior",
+      "settings_section_match": "Match settings",
+      "settings_player_a_start_label": "Initial court of analyzed player (A)",
+      "settings_player_a_start_hint": "A's side (top/bottom of the screen) before court change",
+      "settings_side_top": "↑ Top",
+      "settings_side_bottom": "↓ Bottom",
+      "settings_initial_server_label": "First server (Set 1)",
+      "settings_initial_server_hint": "Server at the start of Set 1 (A/B)",
+      "settings_section_court": "Court calibration",
+      "settings_section_keys": "Keyboard",
+      "settings_match_day_label": "Match-day mode",
+      "settings_match_day_hint": "Larger buttons, keyboard hints suppressed (for live matches)",
+      "settings_assist_label": "Assisted record mode",
+      "settings_assist_hint_basic": "Currently manual recording (CV not used)",
+      "settings_assist_hint_assisted": "Currently using CV candidates",
+      "settings_step_focus_label": "Step-linked display",
+      "settings_step_focus_step": "Step-linked (focus while typing)",
+      "settings_step_focus_all": "Show all (legacy)",
+      "settings_step_focus_hint": "Step-linked: hide attribute panel / management actions while typing. Cmd+K still summons them anytime.",
+      "settings_flip_auto": "Fully automatic flip",
+      "settings_flip_semi": "Semi-automatic flip (recommended)",
+      "settings_flip_manual": "Manual (always tap hitter)",
+      "settings_flip_hint": "Semi-auto = flip but revert if next shot is within 500ms (bounce protection)",
+      "settings_court_open": "Open calibration",
+      "settings_keys_legend": "Show legend",
+      "history_title": "Recent strokes ({{n}})",
+      "history_empty": "No strokes yet",
+      "command_placeholder": "Search actions (e.g. next rally / end set)",
+      "command_no_match": "No matches",
+      "command_help": "↑↓ select / Enter execute",
+      "command_hint_global": "Ctrl+K anytime",
+      "command_mode_input": "Switch to Input mode",
+      "command_mode_review": "Switch to Review mode",
+      "command_mode_analysis": "Switch to Analysis mode",
+      "command_mode_settings": "Switch to Settings mode",
+      "command_toggle_match_day": "Toggle match-day mode",
+      "command_toggle_annot_mode": "Toggle annotation mode",
+      "command_open_exception": "Open mid-stop dialog",
+      "command_undo_last": "Undo last stroke",
+      "command_rally_end": "End rally (select scorer)",
+      "menu_yolo_run": "Run YOLO person detection",
+      "menu_tracknet_run": "Run TrackNet shuttle trajectory",
+      "overlay_cv": "Person detection",
+      "overlay_shuttle": "Shuttle trajectory",
+      "overlay_court": "Court zones",
+      "overlay_pose": "Pose",
+      "overlay_fullscreen": "Fullscreen",
+      "bottom_sheet_aria": "Bottom sheet",
+      "bottom_sheet_close": "Close"
+    },
+    "hit_zone_overridden": "Manual",
+    "hit_zone_aria": "Hit zone selector",
+    "hit_zone_cell": "Zone {{zone}}",
+    "hit_zone_cv_label": "CV estimate: zone {{zone}}",
+    "shot_color_legend": "Color legend",
+    "land_zone_label_with_dir": "Landing zone (own court {{dir}})",
+    "land_zone_hint_mobile": "Tap to select",
+    "land_zone_hint_desktop": "Numpad 1-9 / U I O J K L M , . to click",
+    "attributes_aria": "Stroke attributes",
+    "net_label": "Net:",
+    "net_position_aria": "Net above/below selector"
   },
   "annotation": {
     "hitter_select": "Hitter",
@@ -2544,7 +2808,11 @@
       "k6": "Posterior win rate"
     },
     "CoachSummaryStrip": {
-      "k1": "Limited data"
+      "k1": "Limited data",
+      "k2": "Insufficient samples (< 10)",
+      "k3": "Improving",
+      "k4": "Declining",
+      "k5": "Flat"
     },
     "ConfidenceCalibration": {
       "overall_quality": "Overall quality:",
@@ -2682,7 +2950,8 @@
     "OpponentAdaptiveShots": {
       "k1": "Loading...",
       "k2": "lift = vs overall",
-      "k3": "Shot effectiveness by opponent"
+      "k3": "Shot effectiveness by opponent",
+      "shot_winrate_vs": "Shot type win rate vs {{name}}"
     },
     "OpponentPolicyCard": {
       "k1": "Opponent policy analysis",
@@ -2751,7 +3020,8 @@
       "k1": "Win rate",
       "k2": "Avg rally length",
       "k3": "Rallies",
-      "k4": "Win-rate diff after long rallies:"
+      "k4": "Win-rate diff after long rallies:",
+      "long_rally_note": "* Rallies of 10+ shots are counted as long rallies"
     },
     "PredictionDriversBlock": {
       "computed_pre": "Computed mainly using ",
@@ -2760,7 +3030,8 @@
     },
     "PredictionPanel": {
       "k1": "Select an opponent team to see the prediction",
-      "k2": "Choose an opponent from the header \"Opponent\" selector"
+      "k2": "Choose an opponent from the header \"Opponent\" selector",
+      "computed_stat": "computed (statistics-based)"
     },
     "PrematchStatCard": {
       "k1": "Win rate (statistical)",
@@ -2854,21 +3125,24 @@
       "k2": "Loading...",
       "k3": "Rally 3-shot patterns",
       "k4": "Winning patterns",
-      "k5": "Losing patterns"
+      "k5": "Losing patterns",
+      "analyzed_rallies": "Rallies analyzed: {{n}}"
     },
     "ReceivedVulnerabilityMap": {
       "k1": "Opponent court (hit point) → Home court (landing)",
       "k2": "Click a zone for details",
       "k3": "Points lost",
       "k4": "Shots received",
-      "k5": "Maximize for details"
+      "k5": "Maximize for details",
+      "own_court_received": "← Own court (received area)　"
     },
     "RecommendationRanking": {
       "k1": "Recommended advice",
       "k2": "Loading..."
     },
     "ScorelineHistogram": {
-      "k1": "Details"
+      "k1": "Details",
+      "freq_note": " — observed scorelines (statistics-based)"
     },
     "ScoreProgression": {
       "k1": "No stroke data",
@@ -2903,7 +3177,8 @@
       "k3": "Rally tendency",
       "k4": "Overview",
       "k5": "Points lost",
-      "k6": "Shots"
+      "k6": "Shots",
+      "recent_loss_paren": "(last 10 lost points)"
     },
     "ShotInfluenceV2Card": {
       "k1": "Shot influence v2 (state-conditioned)",
@@ -3004,7 +3279,10 @@
       "click_zone_hint": "Click a zone on the left to see details"
     },
     "TargetSelector": {
-      "k1": "Frames"
+      "k1": "Frames",
+      "frames": "frames",
+      "frames_n": "{{n}} frames",
+      "frame_hint": "Adjustable per-frame. After dragging, snaps to multiples of 5."
     },
     "ClusterSettingsPanel": {
       "k1": "No worker nodes",
@@ -3015,9 +3293,31 @@
       "k6": "Disable sleep over SSH (powercfg)",
       "k7": "Run ray-restart.bat over SSH (requires ssh_user / ssh_password / ray_restart_bat in cluster.config.yaml)",
       "k8": "Username",
-      "k9": "Password"
+      "k9": "Password",
+      "ray_cluster": "Ray cluster",
+      "mode_single": "Single",
+      "mode_primary": "Primary",
+      "mode_worker": "Worker",
+      "connecting": "Checking connection...",
+      "running_nodes": "Running — {{n}} nodes connected",
+      "stopped": "Stopped",
+      "stop": "Stop",
+      "ray_start": "Start Ray",
+      "select_ip_first": "Select this PC's IP before starting Ray",
+      "join_worker": "Join worker to the cluster",
+      "k10_oneliner": "Paste this into K10's PowerShell:",
+      "ssh": "SSH",
+      "ssh_exec": "SSH exec",
+      "advanced_settings": "Advanced (network / workers / resources)",
+      "wake_wol": "Wake (WOL)",
+      "disable_sleep": "Disable sleep",
+      "ray_restart": "Restart Ray",
+      "auto_start": "Auto-start Ray when the app launches"
     },
-    "DateRangeFilter": {},
+    "DateRangeFilter": {
+      "custom_range": "Custom range",
+      "range_sep": "to"
+    },
     "RolePicker": {
       "k1": "Which player are you logging in as?",
       "k2": "Only matches you participated in will be shown",
@@ -3035,19 +3335,37 @@
       "poc_note": "POC phase: the role is stored in your browser"
     },
     "SearchableSelect": {},
-    "BestProfileCard": {},
+    "BestProfileCard": {
+      "n_matches_paren": "({{n}} matches)",
+      "rate_diff_pp": "+{{n}}pp",
+      "current_label": "Current",
+      "target_range": "Target [{{r}}]"
+    },
     "ConditionGenericScatter": {
       "k1": "Low → High"
     },
     "ConditionLagCorrelation": {},
-    "ConditionPCAScatter": {},
+    "ConditionPCAScatter": {
+      "k1": "Jan-Mar",
+      "k2": "Apr-Jun",
+      "k3": "Jul-Sep",
+      "k4": "Oct-Dec",
+      "variance_pc": "{{label}}: PC1 {{ev1}}% / PC2 {{ev2}}%"
+    },
     "ConditionPostMatchChange": {},
     "ConditionResult": {
       "k1": "By factor",
       "k2": "Score details",
-      "k3": "Analyst detail"
+      "k3": "Analyst detail",
+      "raw": "raw: {{v}}",
+      "total": "total",
+      "validity_score_label": "validity_score:"
     },
-    "GrowthInsights": {},
+    "GrowthInsights": {
+      "k_effect_winrate_up": "({{effect}} win rate ↑)",
+      "k_winrate_paren": "(win rate {{rate}})",
+      "k_low_conf_hidden_count": "{{label}} ({{n}} items)"
+    },
     "HooperRpeForm": {},
     "CourtDiagram": {
       "k1": "Opponent court (landing point)",
@@ -3056,9 +3374,15 @@
       "k4": "Home court (hit point)"
     },
     "EvidenceBadge": {
-      "k1": "Not recommended"
+      "k1": "Not recommended",
+      "n_eq": "N={{n}}"
     },
-    "ResearchNotice": {},
+    "ResearchNotice": {
+      "heading": "⚠ Research-stage analysis",
+      "assumptions": "Assumptions: {{v}}",
+      "reason": "Exploratory rationale: {{v}}",
+      "promotion": "Promotion criteria: {{v}}"
+    },
     "DeviceManagerPanel": {
       "k1": "Remote",
       "k2": "Local",
@@ -3072,16 +3396,35 @@
       "k10": "Not used (P2P direct)",
       "k11": "Remove this device",
       "k12": "Remove all disconnected devices",
-      "k13": "Affects only this PC — tablets etc. are not affected"
+      "k13": "Affects only this PC — tablets etc. are not affected",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "pending": "Pending",
+      "sending": "Sending",
+      "receiving": "Receiving",
+      "remote_receiving": "Remote receiving (participant #{{id}})",
+      "turn": "TURN",
+      "p2p": "P2P",
+      "local_camera": "Local camera in use",
+      "pending_devices": "There are devices awaiting approval",
+      "realtime_yolo": "Realtime YOLO {{state}}"
     },
     "LiveSourceSelector": {
       "k1": "Candidate",
-      "k2": "Idle"
+      "k2": "Idle",
+      "active": "Active"
     },
     "CourtGridOverlay": {
       "k1": "Configure court grid",
       "k2": "Click the 4 corners and 2 net-post points to configure",
-      "k3": "Saved locally only (not synced to backend). Click to sync to DB"
+      "k3": "Saved locally only (not synced to backend). Click to sync to DB",
+      "click_point": "Point {{n}}/{{total}}: click {{label}}",
+      "recreate_grid": "Recreate grid lines",
+      "db_saved": "✓ Saved to DB",
+      "local_only_sync": "⚠ Local only → sync",
+      "db_saving": "💾 Saving to DB...",
+      "db_save_done": "✓ Saved to DB",
+      "cancel": "Cancel"
     },
     "StreamingDownloadPanel": {
       "k1": "Stream URL",
@@ -3096,14 +3439,48 @@
       "k10": "Quality limited because ffmpeg is not installed",
       "k11": "720p (recommended)",
       "k12": "Best quality",
-      "k13": "None (public video)"
+      "k13": "None (public video)",
+      "ffmpeg_warn1": ", so quality may be limited.",
+      "ffmpeg_warn2_pre": "If you need high quality, run ",
+      "ffmpeg_cmd": "winget install ffmpeg",
+      "ffmpeg_warn2_post": " then restart the app.",
+      "info_banner": "Stream URLs cannot play directly in Electron. We download via yt-dlp and then play. For login-required sites, pick 'Cookie browser'.",
+      "retry": "Retry",
+      "starting": "Starting...",
+      "merging": "Merging...",
+      "remaining": "{{eta}} remaining",
+      "using_cookie": "🍪 Using {{label}} cookies",
+      "cookie_label": "Cookie",
+      "cookies_txt_label": "cookies.txt (for web member-only sites)",
+      "cookies_loaded": "✓ Loaded {{name}} ({{n}} KB)",
+      "ext_hint": "Install a 'Cookie-Editor' / 'Get cookies.txt LOCALLY' extension in your browser → export from the target site → upload here",
+      "pw_video_label": "Password-protected video (Vimeo Showcase etc.)",
+      "pw_hint": "For Vimeo or member-only videos that prompt for a password at playback. Not stored on the server; passed to yt-dlp and discarded.",
+      "download_play": "Download and play",
+      "range_options": "Range / advanced options...",
+      "k14": "✓ Set",
+      "k15": "Clear cookies.txt",
+      "k16": "Open advanced options (range / cookies.txt / video password)",
+      "k17": "Video password"
     },
     "WebViewPlayer": {
       "k1": "Loading...",
       "k2": "Back",
       "k3": "Forward",
       "k4": "Reload",
-      "k5": "Open in system browser"
+      "k5": "Open in system browser",
+      "saved": "✓ Saved",
+      "record": "Record",
+      "record_error": "Recording error: {{err}}",
+      "close": "Close",
+      "k6": "Low",
+      "k7": "Med",
+      "k8": "High",
+      "k9": "Recording quality: low (1.5Mbps/480p) / med (5Mbps/720p) / high (9Mbps/1080p)",
+      "k10": "Stop screen recording",
+      "k11": "Start recording this screen (works for licensed DRM streams as well)",
+      "k12": "Recording quality",
+      "k13": "Close warning"
     },
     "WebViewPlayer_test": {},
     "AnnotatorPage": {
@@ -3146,11 +3523,42 @@
       "k37": "Side A",
       "k38": "Side B",
       "k39": "⬇ Near side",
-      "k40": "⬆ Far side"
+      "k40": "⬆ Far side",
+      "icon_search": "search",
+      "kbd_cmd_k": "⌘K",
+      "icon_visibility": "visibility",
+      "icon_directions_run": "directions_run",
+      "icon_route": "route",
+      "dot_running": "●",
+      "paused_pct": "⏸ {{n}}%",
+      "icon_trash": "🗑",
+      "seek_back_5s": "⏮-5s",
+      "step_back_1f": "-1f",
+      "step_fwd_1f": "+1f",
+      "seek_fwd_5s": "+5s⏭",
+      "bbox_label": "BBOX",
+      "net_lan": "LAN",
+      "net_live": "● LIVE",
+      "net_turn": "TURN",
+      "upload_progress": "{{pct}}% / {{mbps}} Mbps",
+      "kbd_tab": "Tab",
+      "kbd_shift_7": "Shift+7",
+      "plus": "+"
     },
     "ConditionPage": {
       "k1": "Please select a player",
-      "k2": "Search by player name..."
+      "k2": "Search by player name...",
+      "k3": "Myself",
+      "k4": "Player:",
+      "k5": "PDF",
+      "k6": "JSON",
+      "k7": "Condition input is only possible from your own player account",
+      "k8": "Your login user is not linked to a player record, so you cannot enter data. If you are registered as a player, ask an admin to set the player_id on your account.",
+      "k9": "The history and analysis tabs let you view any player's data from the player selector.",
+      "k10": "Input target:",
+      "k11": "Player #{{n}}",
+      "k12": ") — proxy entry for other players is not allowed.",
+      "k13": "Measured on:"
     },
     "DashboardAdvancedPage": {
       "k1": "Points won / lost by shot",
@@ -3167,7 +3575,8 @@
       "k1": "Match",
       "k2": "Completed sets:",
       "k3": "Select a match to see the interval report",
-      "k4": "Search by date or opponent..."
+      "k4": "Search by date or opponent...",
+      "set_n": "Set {{n}}"
     },
     "DashboardOverviewPage": {
       "k1": "Loading...",
@@ -3196,7 +3605,13 @@
       "k24": "Level",
       "k25": "Date",
       "k26": "Result",
-      "k27": "Rally"
+      "k27": "Rally",
+      "k28": "Period (this list only):",
+      "k_set_n": "Set {{n}}",
+      "k_tilde": "to",
+      "k_clear": "Clear",
+      "k_match_count": "{{shown}} / {{total}} matches",
+      "k_match_meta": "{{date}}{{level}} · {{rallies}} rallies"
     },
     "DashboardResearchPage": {
       "k1": "Promotion workflow is for analysts",
@@ -3207,17 +3622,35 @@
       "k1": "Select a match to see score progression",
       "k2": "Select a match to use rally video jump",
       "k3": "Performance by set",
-      "k4": "Search by date or opponent..."
+      "k4": "Search by date or opponent...",
+      "step3_score": "STEP 3 — score progression",
+      "step35_clip": "STEP 3.5 — jump to rally clip video"
     },
     "DashboardShell": {
       "k1": "Player:",
       "k2": "Period:",
-      "k3": "Search by player name..."
+      "k3": "Search by player name...",
+      "k4": "Comprehensive PDF report covering every Analysis tab item (for print)",
+      "k5": "Complete JSON dump of all analysis items + per-match data",
+      "k6": "Legacy summary scouting PDF",
+      "k_n_rallies": "N={{n}} rallies",
+      "k7": "PDF (comprehensive)",
+      "k8": "JSON (complete)",
+      "k9": "Summary PDF",
+      "k10": "to",
+      "k11": "Reset"
     },
-    "ExpertLabelerPage": {},
+    "ExpertLabelerPage": {
+      "check_mark": "✅",
+      "json": "JSON",
+      "csv": "CSV"
+    },
     "LoginPage": {
       "k1": "Login ID",
-      "k2": "Enter login ID"
+      "k2": "Enter login ID",
+      "session_expired": "Your session has expired. Please sign in again.",
+      "password_pin": "Password / PIN",
+      "back_to_site": "← shuttle-scope.com"
     },
     "MatchListPage": {
       "k1": "Registered",
@@ -3245,7 +3678,44 @@
       "k23": "Side A (home)",
       "k24": "Side B (opponent)",
       "k25": "⬇ Bottom of screen (near)",
-      "k26": "⬆ Top of screen (far)"
+      "k26": "⬆ Top of screen (far)",
+      "k27": "Download failed",
+      "k28": "Share across all teams (public pool: e.g. BWF public matches. Checked = visible from all teams)",
+      "k29": "Register match",
+      "k30": "Last 1 week",
+      "k31": "Last 1 month",
+      "k32": "Last 3 months",
+      "k33": "Reset",
+      "k34": "{{n}} selected",
+      "k35": "Export",
+      "k36": "Deselect",
+      "k37": "No matches registered yet. Use 'Register match' to add one.",
+      "k38": "Date",
+      "k39": "Tournament",
+      "k40": "Result",
+      "k41": "Progress",
+      "k42": "Edit match",
+      "k43": "Target player (A)",
+      "k44": "Opponent (B)",
+      "k45": "Own-team partner",
+      "k46": "Opposing-team partner",
+      "k47": "Own team name",
+      "k48": "Opposing team name",
+      "k49": "Choose file",
+      "k50": "Retry",
+      "k51": "Waiting…",
+      "k52": "Preparing…",
+      "k53": "Downloading {{percent}}",
+      "k54": "Converting…",
+      "k55": "Starting…",
+      "k56": "{{eta}} remaining",
+      "k57": "Saving...",
+      "k58": "Save",
+      "k59": "Registering...",
+      "k60": "Register",
+      "k61": "Vivaldi",
+      "k62": "Chromium",
+      "k63": "●"
     },
     "NotificationInboxPage": {
       "k1": "Notification review is for the admin role only.",
@@ -3258,7 +3728,32 @@
       "k8": "Inquiry content",
       "k9": "Admin notes",
       "k10": "Please select a notification from the left.",
-      "k11": "Track status and leave notes here"
+      "k11": "Track status and leave notes here",
+      "k12": "Delete",
+      "k13": "Selection mode",
+      "k14": "Deselect",
+      "k15": "Back to list",
+      "k16": "Collapse list",
+      "k17": "Expand list",
+      "k18": "Delete this notification? This action cannot be undone.",
+      "k19": "Delete {{n}} notifications?",
+      "k20": "Delete selected ({{n}})",
+      "k21": "Bulk delete handled items",
+      "k22": "Delete by date range",
+      "k23": "Delete all resolved notifications?",
+      "k24": "Delete by range",
+      "k25": "Deletes all notifications created in this period.",
+      "k26": "Start date (inclusive)",
+      "k27": "End date (exclusive)",
+      "k28": "Cancel",
+      "k29": "Delete",
+      "k30": "Save note",
+      "k31": "Deleted",
+      "k32": "Deleted {{n}} items",
+      "k33": "No items to delete",
+      "k34": "Cloudflare auto-ban false-positive appeal",
+      "ban_appeal": "BAN APPEAL",
+      "trash_icon": "🗑"
     },
     "PredictionPage": {
       "k1": "Player:",
@@ -3267,7 +3762,10 @@
       "k4": "— All levels —",
       "k5": "Search by player name...",
       "k6": "Search by opponent name...",
-      "k7": "Search by date or tournament level..."
+      "k7": "Search by date or tournament level...",
+      "pdf": "PDF",
+      "json": "JSON",
+      "select_match": "Select match"
     },
     "SettingsPage": {
       "k1": "# or all at once: python -m backend.tracknet.setup all",
@@ -3310,7 +3808,74 @@
       "k38": "Delta (since update date)",
       "k39": "Add",
       "k40": "Keep",
-      "k41": "Conflict"
+      "k41": "Conflict",
+      "k42": "Tutorial",
+      "k43": "Loading…",
+      "k44": "· Status:",
+      "k45": "Play",
+      "cv_batch_title": "{{label}} — estimated processing time",
+      "cv_batch_estimate_prefix": "Approximately ",
+      "cv_batch_hours": "{{n}} hours",
+      "cv_batch_minutes": "{{n}} minutes",
+      "cv_batch_estimate_suffix": " per hour of video.",
+      "cv_batch_background_note": "Runs in the background — you can keep annotating while it processes.",
+      "cv_batch_confirm": "OK (proceed with this setting)",
+      "cv_batch_cancel": "Cancel",
+      "col_rk": "Rk",
+      "copied": "Copied",
+      "history_count": "History {{n}}",
+      "delete": "Delete",
+      "cancel_short": "Cancel",
+      "tracknet_cmd_download": "python -m backend.tracknet.setup download",
+      "tracknet_cmd_export": "python -m backend.tracknet.setup export",
+      "tracknet_cmd_convert": "python -m backend.tracknet.setup convert",
+      "status_dot": "●",
+      "yolo_ready": "Inference ready — {{backend}}",
+      "yolo_weights_missing": "Package installed (auto-downloads on first run)",
+      "pip_install_ultralytics": "pip install ultralytics",
+      "gpu_device_heading": "GPU / compute device settings",
+      "gpu_hint_prefix": "To enable GPU inference, install ",
+      "gpu_hint_cuda_or": " (CUDA) or ",
+      "gpu_hint_directml_suffix": " (DirectML)",
+      "tunnel_connected": "Tunnel connected — use this URL",
+      "cloudflare_named_tunnel": "Cloudflare named tunnel",
+      "lan_ip": "LAN IP: {{ips}}",
+      "export_desc_prefix": "Download match data in ",
+      "export_desc_suffix": " format. Use it to move data to another PC or hand it off.",
+      "download": "Download",
+      "diff_download": "Diff DL",
+      "import_desc_prefix": "Import a ",
+      "import_desc_suffix": " file exported from another PC. Existing data is merged record by record.",
+      "conflict_warning": "⚠ {{n}} conflicts will keep the local copy (per-item resolution in Phase 2)",
+      "import_result_summary": "Added {{added}} / updated {{updated}} / kept {{kept}} / conflicts {{conflicts}}",
+      "backup_desc": "Back up the current database locally. Up to 10 generations are kept on rotation automatically.",
+      "pkg_size_date": "{{kb}} KB · {{date}}",
+      "conflict_review_desc": "Conflicting records detected during import. Choose to keep local or overwrite with incoming.",
+      "conflict_timestamps": "Local: {{local}} / incoming: {{incoming}}",
+      "json_import_desc": "Import a JSON file exported from the match list page.",
+      "selected_file": "Selected: {{name}}",
+      "auto_vacuum_label": "auto_vacuum",
+      "db_optimize_desc": "Runs a WAL checkpoint and incremental vacuum (reclaims free pages when auto_vacuum=INCREMENTAL). Run after bulk deletes or as periodic maintenance.",
+      "account": "Account",
+      "account_role_note": "Your current role is fixed by login. To switch users or roles, sign out and sign in again.",
+      "display_name_label": "Display name: ",
+      "unset": "unset",
+      "role_label": "Role: ",
+      "not_logged_in": "Not signed in",
+      "username_label": "Username: ",
+      "team_label": "Team: ",
+      "auth_state_note": "Auth state is stored per session. Closing the app or browser brings you back to the login screen next time.",
+      "restart_desc": "Restart the app after a setting change or issue. Unsaved annotation data will be lost.",
+      "until_prefix": "until {{until}}",
+      "is_target_suffix": " (main analysis target)",
+      "backend_log_desc": "Python backend log (you can check YOLO detection errors and inference scores here)",
+      "log_lines_hint": "{{n}} lines — Ctrl+A then Ctrl+C to copy",
+      "tutorial_desc": "Replay how-tos. Completed items can be replayed anytime.",
+      "step_count": "{{n}} steps",
+      "replay_count": " · replays: {{n}}",
+      "pkg_onnxruntime_gpu": "onnxruntime-gpu",
+      "pkg_onnxruntime_directml": "onnxruntime-directml",
+      "ext_sspkg": ".sspkg"
     },
     "VideoOnlyPage": {},
     "ViewerPage": {
@@ -3321,7 +3886,426 @@
       "k5": "Viewer name",
       "k6": "Waiting for video",
       "k7": "Receiving",
-      "k8": "e.g. Coach PC"
+      "k8": "e.g. Coach PC",
+      "k9": "Join",
+      "k10": "Waiting for the operator to start the video.",
+      "k11": "Connected",
+      "k12": "(reconnected {{n}} times)",
+      "k13": "Tablets and PCs can receive video. Smartphones are summary-only.",
+      "k14": "LIVE",
+      "k15": "Try again",
+      "k16": "Start over"
+    },
+    "GrowthJudgmentCard": {
+      "analyzed": "Analyzed"
+    },
+    "GrowthTimeline": {
+      "k1": "Win rate",
+      "k2": "Serve win rate",
+      "k3": "Average rally length",
+      "compare_title": "{{date}} {{label}} comparison",
+      "this_match": "This match",
+      "moving_avg": "/ moving average {{val}}",
+      "recent5_avg": "Average of last 5 matches (excl. this match) {{val}} — diff ",
+      "season_avg": "Season average (excl. this match, n={{n}}) {{val}} — diff ",
+      "recent5_insufficient": "Insufficient samples in the last 5 matches (need 3+). Showing the season average comparison only.",
+      "sign_only_note": "Only the sign of the difference is shown. We intentionally avoid asserting 'what was good / needs improvement' — interpret the diff and sample size yourself, together with your coach (reliability-first policy)."
+    },
+    "IntervalReport": {
+      "ci_interval": "95% CI [{{lo}}, {{hi}}]",
+      "bayes_note": "* Bayesian win-rate estimate. This indicates correlation, not causation.",
+      "k1": "Details ›",
+      "k2": "Open the set's detailed analysis"
+    },
+    "MarkovEPV": {
+      "n_times": "{{n}}x",
+      "epv_def": "EPV = difference from baseline win rate (±100 reference)",
+      "effective_patterns": "(effective patterns)",
+      "improve_patterns": "(growth-area patterns)"
+    },
+    "OpponentTypeAffinity": {
+      "auto_type_note": "* Opponent type auto-classified by rally length and smash rate"
+    },
+    "PairPlaystyle": {
+      "playstyle_of": "Playstyle of {{a}} / {{b}}",
+      "k1": "Net-front distribution rate",
+      "k2": "Back-court distribution rate",
+      "k3": "Mid-court distribution rate",
+      "k4": "Smash rate",
+      "k5": "Net-shot rate"
+    },
+    "PartnerTimeline": {
+      "overall": "Overall {{pct}}%"
+    },
+    "PreMatchObservationAnalytics": {
+      "n_matches": "  N={{n}} matches",
+      "win_loss": "{{w}}W {{l}}L",
+      "footer_note": "* Reference trend (observation-based auxiliary analysis). Use as a supplement to primary analysis."
+    },
+    "AttributePanel": {
+      "bh": "(BH)",
+      "rh": "(RH)"
+    },
+    "CVAssistPanel": {
+      "k_role_a": "A:{{role}}",
+      "k_role_b": "B:{{role}}",
+      "k_reason_item": "· {{label}}",
+      "k_label_a": "A:",
+      "k_label_b": "B:"
+    },
+    "HitZoneSelector": {
+      "pencil": "✎"
+    },
+    "PlayerPositionOverlay": {
+      "assisted": "assisted"
+    },
+    "PlayerTrackingOverlay": {
+      "k_backend": "backend: {{backend}}",
+      "k_frame_brightness": "frame brightness: {{value}}",
+      "k_max_person_score": "max person score:",
+      "k_threshold": "(threshold: {{threshold}})",
+      "k_top5": "top5: [{{values}}]",
+      "k_warning": "⚠ {{warning}}",
+      "k_error": "error: {{error}}"
+    },
+    "ShuttleTrackOverlay": {
+      "shuttle_track": "shuttle track",
+      "no_shuttle_data": "No shuttle data at this timestamp"
+    },
+    "AnalysisModePanel": {
+      "set_rally": "G{{s}} / R{{r}}"
+    },
+    "CommandPalette": {
+      "k1": "Command palette",
+      "key_enter": "Enter",
+      "key_esc": "Esc"
+    },
+    "ScoreboardCompact": {
+      "set_n": "Set {{n}}",
+      "rally_n": "Rally {{n}}",
+      "shots_n": "{{n}} shots"
+    },
+    "TopBarMenu_test": {
+      "k1": "Record mode"
+    },
+    "ResultMatrix": {
+      "no_model": "No model",
+      "err": "ERR",
+      "ms_p95": "{{avg}}ms / p95={{p95}}ms"
+    },
+    "PurchaseModal": {
+      "k1": "Payment method",
+      "price": "¥{{n}}",
+      "cancel": "Cancel",
+      "payment_notice": "The payment screen redirects to an external payment provider (Stripe / KOMOJU). Card details do not pass through our servers."
+    },
+    "AdviceStrip": {
+      "dot": "·"
+    },
+    "ChartModal": {
+      "k1": "Close (Esc)",
+      "back_to_dashboard": "Back to dashboard"
+    },
+    "Notice": {
+      "k1": "Close"
+    },
+    "ConditionCorrelationHeatmap": {
+      "n_label": "N: "
+    },
+    "ConditionGlossary": {
+      "k1": "Open glossary",
+      "title": "Condition glossary",
+      "range": "Range: {{v}}",
+      "source": "Source: {{v}}"
+    },
+    "ConditionSeasonality": {
+      "n_count": "(N={{n}})"
+    },
+    "ConditionTagCompare": {
+      "n_in": "N",
+      "in": "in",
+      "out": "out"
+    },
+    "CorrelationScatter": {
+      "n_label": "N: "
+    },
+    "MobileCVOverlay": {
+      "k1": "Run TrackNet remotely",
+      "k2": "Tap to close",
+      "k3": "Run YOLO remotely",
+      "court_uncalibrated_pre": "Court not calibrated (edit from",
+      "court_uncalibrated_post": "top-right)",
+      "run_shuttle_analysis": "Run shuttle analysis",
+      "tracknet_done_zero": "TrackNet finished (0 frames — record rallies in Pass 1, then re-run)",
+      "tracknet_running": "TrackNet running… {{n}}%",
+      "tracknet_error": "TrackNet error: {{msg}}",
+      "run_player_detection": "Run player detection",
+      "yolo_done_zero": "YOLO finished (0 frames — check ROI / video range)",
+      "yolo_running": "YOLO running… {{n}}%",
+      "yolo_error": "YOLO error: {{msg}}"
+    },
+    "MobileCourtCalib": {
+      "tap_to_place_suffix": " — tap to place ({{n}}/6)",
+      "restored": "/ {{n}} points restored from previous session (adjust then save, or clear all)",
+      "all_placed": "All 6 points placed. Drag handles to fine-tune → save",
+      "restored_short": "(restored from previous session)",
+      "k1": "Undo last point",
+      "k2": "Clear all",
+      "k3": "Cancel"
+    },
+    "Pass1RallyEnd": {
+      "k1": "Player A scored",
+      "k2": "Player B scored",
+      "k3": "Undo previous rally",
+      "pass1_header": "Pass 1 — tap A / B the moment a point is scored",
+      "set_n": "Set {{n}}",
+      "set_ending": "Set-ending condition reached (21+2 / 30). Tap 'End set' below.",
+      "golden": "29-29 golden point — the next point decides the set",
+      "deuce": "Deuce ({{a}}-{{b}}) — win by 2 / first to 30",
+      "set_point": "Set point for {{side}}",
+      "undo_last": "Undo last",
+      "set_end": "End set",
+      "back_to_video": "Back to video"
+    },
+    "Pass2ServeFinal": {
+      "header": "Pass 2 · Rally {{n}} (set {{m}})",
+      "save_and_back": "Save and back",
+      "saving": "Saving ..."
+    },
+    "Pass3ShotDetail": {
+      "k1": "Smash",
+      "k2": "Clear",
+      "k3": "Drop",
+      "k4": "Hairpin",
+      "k5": "Push",
+      "k6": "Drive",
+      "k7": "Lob",
+      "k8": "Cross",
+      "header": "Pass 3 · Rally {{rally}} (set {{set}})",
+      "stroke_count": "{{n}} strokes",
+      "close": "Close",
+      "empty_hint": "Enter serve and finishing shot in Pass 2 before coming to Pass 3",
+      "pending": "pending",
+      "add_stroke": "+ Add stroke #{{n}} ({{player}})",
+      "other_later": "Other (fill in details later)",
+      "cancel": "Cancel"
+    },
+    "PlayMode": {
+      "k1": "Cannot play the video",
+      "k2": "Safari share button →",
+      "k3": "'Add to Home Screen'",
+      "k4": "Seek to previous rally end",
+      "k5": "Toggle court grid",
+      "k6": "Place / fine-tune the 4 corners + 2 net points",
+      "k7": "Desktop/Android: fullscreen. iOS Safari: guides 'Add to Home Screen'",
+      "k8": "Crop unwanted portion of bird's-eye camera",
+      "k9": "Court grid",
+      "k10": "Edit court calibration",
+      "k11": "Shuttle trajectory",
+      "k12": "Player position",
+      "k13": "Toggle display mode",
+      "k14": "Fullscreen",
+      "k15": "Edit crop",
+      "k16": "Back to full screen",
+      "no_video_cause_title": "Possible causes:",
+      "no_video_cause_1": "・No video has been registered for this match yet",
+      "no_video_cause_2": "・No video token (video_token) has been issued",
+      "no_video_cause_3": "・The video file cannot be fetched from the server",
+      "match_id": "match_id={{id}}",
+      "crop_drag_hint": "Drag to set crop area → confirm with ✓ (bottom-right)",
+      "resume_from": "▶ Resume from {{time}}",
+      "ios_fs_hint_1": "iPhone Safari does not support per-element fullscreen.",
+      "ios_fs_hint_2": "Launching as a PWA gives you a true fullscreen with no URL bar. (tap to close)",
+      "play_error": "{{msg}} (tap to close)",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "seek_back_5": "◀◀5",
+      "seek_back_1": "◀1",
+      "speed_x": "{{n}}x"
+    },
+    "TutorialOverlay": {
+      "header": "{{title}} · {{n}} / {{total}}",
+      "prev": "Previous",
+      "skip": "Skip",
+      "never": "Don't show again"
+    },
+    "RoiRectOverlay": {
+      "analysis_region": "Analysis region",
+      "drag_hint": "Drag to set the analysis region",
+      "k1": "Reset analysis region"
+    },
+    "VideoPlayer": {
+      "speed": "{{rate}}x",
+      "k1": "Back 10s (Shift+←)",
+      "k2": "Back 1 frame (←)",
+      "k3": "Forward 1 frame (→)",
+      "k4": "Forward 10s (Shift+→)"
+    },
+    "AccountOrdersPage": {
+      "k1": "Purchase history",
+      "k2": "Loading...",
+      "k3": "View past purchases and download receipts.",
+      "k4": "No purchase history.",
+      "k5": "Order ID: {{id}}…",
+      "k6": "{{date}} / status: {{status}}",
+      "k7": "¥{{amount}}",
+      "k8": "📄 Receipt"
+    },
+    "CameraSenderPage": {
+      "k1": "Edit device name",
+      "k2": "e.g. Courtside iPhone",
+      "k_device_name_label": "Device name:",
+      "k_fix_device": "Fix the device somewhere it can see the court before starting.",
+      "k_wifi_check": "Check that Wi-Fi is connected and try again.",
+      "k_retry": "Try again",
+      "k_restart": "Start over"
+    },
+    "CoGDetectionPage": {
+      "k1": "Match",
+      "k2": "-- Select match --",
+      "k3": "Stroke",
+      "k4": "-- Select stroke --",
+      "k5": "Side",
+      "k6": "Both sides",
+      "left": "Left",
+      "right": "Right"
+    },
+    "CommerceLawPage": {
+      "k1": "Loading...",
+      "k2": "Notation based on the Act on Specified Commercial Transactions",
+      "disclaimer": "Content may change without notice. Please check this page for the latest information."
+    },
+    "EmailVerifyPage": {
+      "check_mark": "✅",
+      "cross_mark": "❌"
+    },
+    "ExpertLabelerAnnotatePage": {
+      "json": "JSON",
+      "csv": "CSV",
+      "stroke_id": "stroke_id: {{n}}"
+    },
+    "LiveInputPage": {
+      "match_id_missing": "match id missing"
+    },
+    "MobileAnnotatePage": {
+      "k1": "Rotate device to landscape",
+      "k2": "Loading video info…",
+      "k3": "Back to match list (with confirm)",
+      "k4": "Back",
+      "landscape_only": "Mobile annotation is landscape-only.",
+      "rotate_device": "Please rotate the device.",
+      "safari_addressbar_1": "If the Safari address bar is in the way,",
+      "safari_addressbar_2": "swipe up from the bottom of the screen to temporarily hide it.",
+      "add_to_home": "For longer use, add to Home Screen (aA → share → 'Add to Home Screen') to go fullscreen.",
+      "match_fetch_failed": "Failed to fetch match info",
+      "no_sets_registered": "No sets are registered for this match yet",
+      "creating_set": "Creating set…",
+      "create_set1_start": "Create Set 1 and start",
+      "back_to_video": "Back to video",
+      "calib_hint_1": "To set up the court grid first, use the",
+      "calib_hint_2": "button to calibrate 6 points",
+      "match_over": "Match over — {{player}} wins",
+      "player_a": "Player A",
+      "player_b": "Player B",
+      "bestof_sets_won": "Best-of-{{n}} / sets won: A {{a}} - B {{b}}",
+      "check_result_back": "Check result (back to video)",
+      "match_saved_pc_edit": "Match data has been saved. You can review or edit it on PC later.",
+      "rally_saving_server": "This rally is still being saved to the server.",
+      "pass2_after_save": "You can enter Pass 2 once the save completes.",
+      "back_to_list": "← Back to list",
+      "pass2_select_rally": "Select a rally for Pass 2 input (sorted by closest to tap @{{sec}}s)",
+      "record_pass1_first": "Record rallies in Pass 1 first, then come back",
+      "player_point": "{{p}} scored",
+      "back_to_video_arrow": "← Back to video",
+      "rally_saving_pass3": "This rally is still being saved to the server. You can enter Pass 3 once the save completes.",
+      "pass3_select_rally": "Select a rally for Pass 3 input",
+      "set_rally_label": "S{{s}}-R{{r}}",
+      "pending": "pending"
+    },
+    "OnboardingConsentPage": {
+      "k1": "Japanese",
+      "en": "EN",
+      "dot": "·"
+    },
+    "PasswordResetConfirmPage": {
+      "check_mark": "✅"
+    },
+    "PendingUsersPage": {
+      "verified": "verified",
+      "unverified": "unverified"
+    },
+    "TeamManagementPage": {
+      "k1": "This page is for admin / coach only.",
+      "k2": "Team management",
+      "k3": "Create new",
+      "k4": "Add",
+      "k5": "New team",
+      "k6": "Display name (required)",
+      "k7": "Identifier (display_id)",
+      "k8": "Short name",
+      "k9": "Note",
+      "k10": "Loading…",
+      "k11": "No teams to display.",
+      "k12": "No team",
+      "k13": "Team",
+      "k14": "No members in this team.",
+      "k15": "Identifier",
+      "k16": "Display name",
+      "k17": "Type",
+      "k18": "Delete this team?",
+      "k19": "Active records linked to this team:",
+      "k20": "Delete",
+      "k21": "Show member list",
+      "k22": "Save",
+      "k23": "Cancel",
+      "k24": "Edit",
+      "k25": "e.g. Resonac",
+      "k26": "Any unique string (e.g. RESO-001)",
+      "k27": "Creating…",
+      "k28": "Create",
+      "k29": "Members ({{n}})",
+      "k30": "Members of '{{name}}' ({{n}})",
+      "k31": "Team",
+      "k32": "will be soft-deleted. Past data is preserved (not physically removed, to keep the audit chain).",
+      "k33": "Checking dependencies…",
+      "k34": "Users:",
+      "k35": "names",
+      "k36": "Players:",
+      "k37": "Matches:",
+      "k38": "items",
+      "k39": "Dependent records exist. Choosing 'Orphan and delete' sets team_id to NULL on the above records and then soft-deletes the team. Admin is expected to reassign them later.",
+      "k40": "No dependent records. Safe to delete.",
+      "k41": "Orphan and delete"
+    },
+    "UserManagementPage": {
+      "k1": "— Select an existing team (or type a new name below) —",
+      "k2": "Failed",
+      "k3": "Quickly see which users are rate-limited (click to sort descending)",
+      "k4": "In-progress uploads (limit 2)",
+      "k5": "API requests in the last 60s (exfil rate)",
+      "k6": "Concurrent upload limit reached (2/2)",
+      "k7": "Unlock account only",
+      "k8": "Reset failed-login counter only",
+      "k9": "Expire in-progress uploads only",
+      "k10": "Clear EXFIL rate state only",
+      "k11": "Reset everything (with confirm)",
+      "k12": "Team",
+      "k13": "(optional)",
+      "k14": "Pick an existing team or type a new team name not in the list (auto-created).",
+      "k15": "→ Pending users list (awaiting admin approval)",
+      "k16": "Limit",
+      "k17": "UL",
+      "k18": "req/60s",
+      "k19": "team:",
+      "k20": "Account locked  failed={{failed}}  until={{until}}",
+      "k21": "🔒 Lock",
+      "k22": "Login failures {{failed}}/3 — {{remaining}} attempts before lock",
+      "k23": "fail{{failed}}",
+      "k24": "UL full",
+      "k25": "exfil  req={{req}}  bytes={{bytes}}  alerted={{alerted}}  near_block={{near_block}}",
+      "k26": "EXFIL",
+      "k27": "EX",
+      "k28": "🔒"
     }
   },
   "onboarding": {
@@ -3503,5 +4487,52 @@
     "dir_diagonal": "Diagonal {{pct}}%",
     "dir_depth": "Depth {{pct}}%",
     "zone_note": "Numbers in zones are frame counts; darker = longer dwell. A: own court (top) / B: opponent court (bottom)."
+  },
+  "shot_color_categories": {
+    "attack": "Attack (green / ◆)",
+    "net": "Net / defense (cyan / ●)",
+    "mid": "Neutral high trajectory (yellow / ■)",
+    "serve": "Serve (purple / ★)",
+    "other": "Other (gray / ✕)"
+  },
+  "youtubeLive": {
+    "title": "YouTube Live recording",
+    "urlLabel": "YouTube URL",
+    "urlPlaceholder": "https://www.youtube.com/watch?v=...",
+    "startRecording": "Start recording",
+    "stopRecording": "Stop recording",
+    "probing": "Checking connection (up to 30 s)...",
+    "recording": "Recording",
+    "stopped": "Stopped",
+    "error": "Error",
+    "methodHls": "HLS (direct fetch)",
+    "methodDrm": "DRM (Electron capture)",
+    "methodDrmPending": "Checking DRM",
+    "methodDrmRequired": "DRM protection detected — starting Electron capture...",
+    "fileSize": "File size",
+    "elapsed": "Elapsed",
+    "noElectron": "DRM capture is unavailable outside the Electron environment",
+    "drmCapturing": "Recording video opened in Electron",
+    "outPath": "Output path",
+    "jobId": "Job ID",
+    "cookieBrowserLabel": "Auth cookies (for login-required streams only)",
+    "cookieBrowserNone": "None (no auth required)",
+    "cookieBrowserHint": "For login-required streams (NHK+, Niconico Live, etc.), pick a browser where you are already signed in"
+  },
+  "pendingUsers": {
+    "title": "Pending users (awaiting admin approval)",
+    "description": "Publicly registered users cannot use the service until an admin assigns their role and team.",
+    "empty": "There are no users awaiting approval.",
+    "approve": "Approve",
+    "reject": "Reject (delete)",
+    "approve_confirm": "Approve this user? They will become usable with the chosen role and team.",
+    "reject_confirm": "Reject (delete) this user? This cannot be undone.",
+    "team_id_placeholder": "team_id (numeric, optional)",
+    "team_name_placeholder": "team_name (string, optional)",
+    "role": {
+      "player": "Player",
+      "coach": "Coach",
+      "analyst": "Analyst"
+    }
   }
 }
