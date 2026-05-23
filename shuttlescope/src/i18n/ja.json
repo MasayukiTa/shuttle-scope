@@ -2780,6 +2780,21 @@
       "n_strokes": "{{n}}打",
       "n_wins_losses": "{{w}}勝{{l}}敗"
     },
+    "AdviceChat": {
+      "title": "Growth Advisor (β)",
+      "subtitle": "あなたのデータに基づく対話アドバイス",
+      "placeholder": "気になる伸びしろを聞いてみよう…",
+      "empty_state": "話しかけてみてください",
+      "send": "送信",
+      "reset": "リセット",
+      "reset_confirm": "会話をリセットしますか？",
+      "demo_chip": "デモデータで案内中",
+      "confidence": "信頼度 {{n}}%",
+      "error_rate_limited": "送信間隔が短すぎます（2秒に1回まで）",
+      "error_budget_exceeded": "本日のアドバイス上限に達しました",
+      "error_network": "接続エラー。少し時間を置いて再試行してください",
+      "error_generic": "エラーが発生しました"
+    },
     "App": {
       "k1": "認証状態を確認しています...",
       "k2": "通知"

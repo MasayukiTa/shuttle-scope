@@ -4,6 +4,8 @@ import { RoleGuard } from '@/components/common/RoleGuard'
 import { AnalysisFilters } from '@/types'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { PeerComparisonCard } from '@/components/dashboard/PeerComparisonCard'
+import { AdviceChatPanel } from '@/components/dashboard/advice_chat/AdviceChatPanel'
+import { useAuth } from '@/hooks/useAuth'
 import { EvidenceBadge, EvidenceLevel } from '@/components/dashboard/EvidenceBadge'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { MarkovEPV } from '@/components/analysis/MarkovEPV'
@@ -30,6 +32,8 @@ interface Props {
 
 export function DashboardResearchPage({ playerId, filters }: Props) {
   const { t } = useTranslation()
+  const { role } = useAuth()
+  const canAdvice = role === 'coach' || role === 'analyst' || role === 'admin'
   const { getMeta } = useAnalysisMeta()
   const { card, textHeading, textMuted, _textFaint, _badge, _isLight } = useCardTheme()
 
@@ -51,6 +55,13 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
   return (
     <ResearchBundleProvider value={{ data: bundleQuery.data, isLoading: bundleQuery.isLoading }}>
     <div className="space-y-5">
+      {/* Growth Advisor (β) — coach/analyst/admin のみ */}
+      {canAdvice && (
+        <ErrorBoundary>
+          <AdviceChatPanel />
+        </ErrorBoundary>
+      )}
+
       {/* ページレベルの注意 */}
       <div data-tutorial="dashboard.researchNotice">
       <ResearchNotice
