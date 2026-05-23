@@ -146,7 +146,7 @@ export function ConditionPage() {
     queryFn: () => apiGet<{ success: boolean; data: Player[] }>('/players'),
     enabled: role !== 'player',
   })
-  const players: Player[] = playersResp?.data ?? []
+  const players: Player[] = useMemo(() => playersResp?.data ?? [], [playersResp?.data])
   const sortedPlayers = useMemo(
     () =>
       [...players].sort((a, b) => {

@@ -601,7 +601,7 @@ export function AnnotatorPage() {
     // 切替前の値で保存される stale closure バグがあった (annotation_mode 誤分類)。
     // autoSaveKey も同様に matchId 由来だが念のため明示。midGameShown は
     // ref 経由で読むため deps 不要。
-    [matchId, queryClient, isBasicMode, autoSaveKey]
+    [matchId, queryClient, isBasicMode, autoSaveKey, t]
   )
 
   // --- セット終了 → 次のセット作成 (K-003: サマリーモーダル表示) ---
@@ -633,7 +633,7 @@ export function AnnotatorPage() {
     } catch (err: any) {
       showError(`${t('annotator.ui.set_change_error_prefix', { defaultValue: 'セット移行エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
-  }, [matchId])
+  }, [matchId, t])
 
   // K-003: モーダルから「次のセットへ」
   const handleModalNextSet = useCallback(() => {
@@ -672,7 +672,7 @@ export function AnnotatorPage() {
     } catch (err: any) {
       showError(`${t('annotator.ui.prev_set_error_prefix', { defaultValue: '前セット移行エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
-  }, [matchId, setsData, queryClient])
+  }, [matchId, setsData, queryClient, t])
 
   // --- 動画ソース: match.video_url をURLInputに同期 ---
   useEffect(() => {
@@ -778,7 +778,7 @@ export function AnnotatorPage() {
     } finally {
       if (uploadAbortRef.current === controller) uploadAbortRef.current = null
     }
-  }, [matchId, queryClient])
+  }, [matchId, queryClient, t])
 
   const handleCancelUpload = useCallback(() => {
     uploadAbortRef.current?.abort()
@@ -804,7 +804,7 @@ export function AnnotatorPage() {
     }
     // ブラウザ版: hidden input を開いてチャンクアップロード
     browserFileInputRef.current?.click()
-  }, [matchId, queryClient])
+  }, [matchId, queryClient, t])
 
   // --- URL入力保存 ---
   const handleUrlSave = useCallback(async () => {
@@ -816,7 +816,7 @@ export function AnnotatorPage() {
     } catch (err: any) {
       showError(`${t('annotator.ui.save_error_prefix', { defaultValue: '保存エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
-  }, [matchId, urlInput, queryClient])
+  }, [matchId, urlInput, queryClient, t])
 
   // K-001: 試合中モード切替
   const toggleMatchDayMode = useCallback(() => {
@@ -905,7 +905,7 @@ export function AnnotatorPage() {
     if (store.inputStep === 'rally_end' || !store.isRallyActive) {
       setEnrichmentActive(false)
     }
-  }, [store.inputStep, store.isRallyActive, store.currentStrokes.length])
+  }, [store.inputStep, store.isRallyActive, store.currentStrokes.length, annotationMode])
 
   // rally_end に入ったときエンドタイプを自動プリフィル（B-4）
   // OOB → out, NET → net を先行選択してオペレーター負荷を削減
@@ -921,7 +921,7 @@ export function AnnotatorPage() {
     } else if (lz.startsWith('NET_')) {
       setPendingEndType('net')
     }
-  }, [store.inputStep])
+  }, [store.inputStep, store.currentStrokes])
 
   // ─── 一時保存（Auto-save） ───────────────────────────────────────────────────
   // すべての入力操作（ショット種入力・落点入力・属性変更）で保存する
@@ -963,6 +963,8 @@ export function AnnotatorPage() {
     store.isRallyActive,
     store.currentSetId,
     store.currentRallyNum,
+    autoSaveError,
+    t,
   ])
 
   // 初期化完了後: 前回の未保存ストロークがあれば復元確認
@@ -1318,7 +1320,7 @@ export function AnnotatorPage() {
     } catch (err: any) {
       showError(`${t('annotator.ui.first_serve_change_error_prefix', { defaultValue: '先サーブ変更エラー:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
-  }, [matchId, queryClient])
+  }, [matchId, queryClient, t])
 
   // アナリスト視点変更（localStorage 保存）
   const handleViewpointChange = useCallback((side: 'top' | 'bottom') => {
@@ -1366,7 +1368,7 @@ export function AnnotatorPage() {
     } catch (err: any) {
       showError(`${t('annotator.ui.exception_save_failed_prefix', { defaultValue: '途中終了の保存に失敗しました:' })} ${err?.message ?? t('annotator.ui.unknown_error', { defaultValue: '不明なエラー' })}`)
     }
-  }, [exceptionReason, matchId, handleLeaveMatch])
+  }, [exceptionReason, matchId, handleLeaveMatch, t])
 
   // P1: 見逃しラリー保存
   const handleSkipRally = useCallback((winner: 'player_a' | 'player_b') => {
@@ -1409,7 +1411,7 @@ export function AnnotatorPage() {
       useAnnotationStore.getState().decrementPending()
       useAnnotationStore.getState().addSaveError({ rallyNum, error: err?.message ?? t('annotator.ui.save_failed_message', { defaultValue: '保存失敗' }) })
     })
-  }, [matchId, queryClient, isBasicMode])
+  }, [matchId, queryClient, isBasicMode, t])
 
   // P1: スコア補正（差分をスキップラリーで埋める）
   const handleScoreCorrection = useCallback(async () => {
@@ -1518,7 +1520,7 @@ export function AnnotatorPage() {
     } finally {
       useAnnotationStore.getState().decrementPending()
     }
-  }, [forceSetScoreA, forceSetScoreB, matchId, queryClient, t, handleNextSet, isBasicMode])
+  }, [forceSetScoreA, forceSetScoreB, t, handleNextSet, isBasicMode])
 
   // P4: 別モニタで動画を開く
   const handleOpenVideoWindow = useCallback(() => {
@@ -1534,7 +1536,7 @@ export function AnnotatorPage() {
     setVideoWindowOpen(true)
     // メイン側は video を保持したまま継続。別モニタは BroadcastChannel で
     // 時刻・再生状態・解析データをミラーするだけの「画面拡張」として動かす。
-  }, [match, displays, selectedDisplayId, videoRef])
+  }, [match, displays, selectedDisplayId, videoRef, matchId])
 
   const handleCloseVideoWindow = useCallback(() => {
     window.shuttlescope?.closeVideoWindow?.()
@@ -1603,6 +1605,9 @@ export function AnnotatorPage() {
     // レンダリング側の streamingSiteName チェックで StreamingDownloadPanel / WebViewPlayer を表示。
     setVideoSourceMode('local')
     }
+    // 映像モードは video_token / video_url の変化のみで再判定する。
+    // matchData.data 自体の参照変化は無視（毎クエリ再fetchで安定的にフリップしてしまう）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchData?.data?.video_token, matchData?.data?.video_url])
 
   // P2: タイムスタンプ取得（モードによって切替）

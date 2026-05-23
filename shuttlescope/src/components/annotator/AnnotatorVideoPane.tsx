@@ -156,6 +156,8 @@ export function AnnotatorVideoPane({
       video.removeEventListener('resize', update)
       ro.disconnect()
     }
+    // videoRef.current は不要 — videoAreaRef も mount-only で使用
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoRef])
   const overlayStyle = rr
     ? { position: 'absolute' as const, left: rr.left, top: rr.top, width: rr.width, height: rr.height }

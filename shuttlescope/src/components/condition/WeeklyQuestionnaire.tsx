@@ -23,7 +23,7 @@ export function WeeklyQuestionnaire({ playerId, measuredAt, isLight, onSubmitted
 
   const mut = useSubmitQuestionnaire()
 
-  const items = master?.items ?? []
+  const items = useMemo(() => master?.items ?? [], [master?.items])
   const totalQuestions = items.length
   const answered = useMemo(
     () => items.filter((q) => responses[String(q.id)] != null).length,

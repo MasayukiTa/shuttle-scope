@@ -366,7 +366,7 @@ export function useCVJobs({
         total_rallies: 0, updated_strokes: 0, error: reason,
       })
     }
-  }, [matchId, match, tracknetBackend, t, roiRect])
+  }, [matchId, match, tracknetBackend, roiRect])
 
   const handleTracknetBatch = useCallback(() => _startTracknetBatch(), [_startTracknetBatch])
   const handleTracknetBatchResume = useCallback(
@@ -464,7 +464,7 @@ export function useCVJobs({
         total_frames: 0, detected_players: 0, error: reason,
       })
     }
-  }, [matchId, match, t, roiRect])
+  }, [matchId, match, roiRect])
 
   const handleYoloBatch = useCallback(() => _startYoloBatch(), [_startYoloBatch])
   const handleYoloBatchResume = useCallback(
@@ -572,7 +572,7 @@ export function useCVJobs({
       } catch { /* ポーリング失敗は無視 */ }
     }, 2000)
     return () => clearInterval(id)
-  }, [yoloJobId, yoloJob?.status, matchId])
+  }, [yoloJobId, yoloJob?.status, matchId, queryClient])
 
   // ── P4: 動画再生位置の追跡（オーバーレイ同期） ───────────────────────────
   //

@@ -180,7 +180,7 @@ export function ConditionPCAScatter({ playerId, isLight }: Props) {
       loadings1,
       loadings2,
     }
-  }, [records])
+  }, [records, isLight])
 
   const panelBg = isLight ? 'bg-white' : 'bg-gray-800'
   const borderColor = isLight ? 'border-gray-200' : 'border-gray-700'

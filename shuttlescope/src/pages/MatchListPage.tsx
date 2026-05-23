@@ -411,7 +411,7 @@ export function MatchListPage() {
     setForm((f) => ({ ...f, video_local_path: fileUrl, video_url: '' }))
   }
 
-  const allMatches = matchesData?.data ?? []
+  const allMatches = useMemo(() => matchesData?.data ?? [], [matchesData?.data])
   const players = playersData?.data ?? []
 
   // 期間フィルター + テキスト部分検索 + クライアントサイドソート

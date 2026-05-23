@@ -75,7 +75,9 @@ export function ViewerPage() {
     reconnectTimerRef.current = setTimeout(() => {
       connectWs(code, pid)  
     }, RECONNECT_DELAY_MS)
-  }, []) // connectWs is defined below
+    // connectWs is defined below (mutually recursive callbacks)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ─── WebSocket 接続 ───────────────────────────────────────────────────────
    

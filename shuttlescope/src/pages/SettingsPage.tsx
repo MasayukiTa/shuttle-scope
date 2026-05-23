@@ -706,7 +706,7 @@ export function SettingsPage() {
     setShowPlayerForm(true)
   }
 
-  const players = playersData?.data ?? []
+  const players = useMemo(() => playersData?.data ?? [], [playersData?.data])
 
   // 選手リスト: クライアントサイドフィルタ＋ソート
   // サーバはソート前の状態を保持し、各端末が独立してソートを行う

@@ -200,7 +200,7 @@ export function ConditionGenericScatter({ playerId, isLight }: Props) {
       pts.map((p) => p.y),
     )
     return { points: pts, r: rr, n: pts.length }
-  }, [records, x, y, zKey, colorMode])
+  }, [records, x, y, zKey, colorMode, isLight])
 
   return (
     <RoleGuard allowedRoles={['coach', 'analyst']} fallback={null}>
