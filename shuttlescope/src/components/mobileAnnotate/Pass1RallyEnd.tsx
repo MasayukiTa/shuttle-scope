@@ -213,6 +213,7 @@ export function Pass1RallyEnd({
           type="button"
           disabled={busy}
           onClick={() => submit('player_a')}
+          data-tutorial="mobileAnnotate.scoreA"
           className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-blue-700 active:bg-blue-600 disabled:opacity-50 border-2 border-blue-400 relative"
         >
           {cvHint?.suggestedWinner === 'player_a' && (
@@ -233,6 +234,7 @@ export function Pass1RallyEnd({
           type="button"
           disabled={busy}
           onClick={() => submit('player_b')}
+          data-tutorial="mobileAnnotate.scoreB"
           className="flex-1 flex flex-col items-center justify-center gap-2 m-2 rounded-2xl bg-pink-700 active:bg-pink-600 disabled:opacity-50 border-2 border-pink-400 relative"
         >
           {cvHint?.suggestedWinner === 'player_b' && (
@@ -257,6 +259,7 @@ export function Pass1RallyEnd({
           type="button"
           onClick={onUndoLast}
           disabled={!onUndoLast || !lastRally}
+          data-tutorial="mobileAnnotate.undoLast"
           className="px-3 py-2 rounded bg-gray-800 text-white disabled:opacity-30 flex items-center gap-1"
           title={t('auto.Pass1RallyEnd.k3')}
         >
@@ -266,6 +269,7 @@ export function Pass1RallyEnd({
           type="button"
           onClick={onSetEnded}
           disabled={!onSetEnded || !setEndingSoon}
+          data-tutorial="mobileAnnotate.setEnd"
           className="px-3 py-2 rounded bg-amber-700 text-white disabled:opacity-30"
         >
           {t('auto.Pass1RallyEnd.set_end')}
@@ -274,6 +278,7 @@ export function Pass1RallyEnd({
         <button
           type="button"
           onClick={onCancel}
+          data-tutorial="mobileAnnotate.backToVideo"
           className="px-3 py-2 rounded bg-gray-700 text-white"
         >
           <span className="inline-flex items-center gap-1">

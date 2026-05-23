@@ -4545,27 +4545,71 @@
       "_title": "Mobile annotation (Pass 1 → 2 → 3)",
       "intro": {
         "title": "Start here",
-        "body": "Mobile input is split into three small passes. You don't have to do everything at once — you can finish later on desktop."
+        "body": "This screen lets you annotate a match. There are three passes — Pass 1 alone already gives you a usable score timeline."
       },
       "passSwitch": {
         "title": "Pass switch buttons",
-        "body": "Tap the vertical buttons in the red box to switch between Pass 1 / 2 / 3. Start with whichever pass feels easiest."
+        "body": "Tap the vertical buttons on the right to switch between Pass 1 / 2 / 3. Start with whichever pass feels easiest."
       },
-      "pass1": {
-        "title": "Pass 1: Rally splits",
-        "body": "Tap the video to pause, then press the big A or B scoring button. The score and serving side update automatically."
+      "video": {
+        "title": "Tap the video to pause",
+        "body": "When a point ends, tap the video to pause at that moment. Pass 1 will open ready to record who scored."
       },
-      "pass2": {
-        "title": "Pass 2: Serve & final shot",
-        "body": "For each rally, add the serve position and the final shot type in 4 taps. That alone is enough for the analysis to work."
+      "queueStatus": {
+        "title": "Top-left: back & queue status",
+        "body": "Back button, match ID and the unsent-count chip live here. If the cloud icon is gone, everything is safely on the server."
       },
-      "pass3": {
-        "title": "Pass 3: Stroke detail",
-        "body": "Fill in every stroke of each rally. A 9-zone snap grid and a touch magnifier help you place coordinates accurately."
+      "pass1_intro": {
+        "title": "Pass 1: just mark who scored",
+        "body": "Pass 1 only records the winner of each rally. One tap per point — this is the fastest way to log a match."
+      },
+      "scoreA": {
+        "title": "A scored → tap the left button",
+        "body": "While in Pass 1, tap the big blue A button when side A wins the rally. Score and serve side update automatically."
+      },
+      "scoreB": {
+        "title": "B scored → tap the right button",
+        "body": "Tap the pink B button when side B wins. Made a mistake? The next step shows how to undo."
+      },
+      "undoLast": {
+        "title": "Undo the last entry",
+        "body": "Rolls back the most recent rally. Take a breath and tap this if you mis-tapped — no harm done."
+      },
+      "setEnd": {
+        "title": "Set-end button",
+        "body": "When a set is decided (21 + 2-point margin etc.), this button lights up amber. Tap it to move to the next set."
+      },
+      "backToVideo": {
+        "title": "Back to video",
+        "body": "Closes Pass 1 and returns to playback. Already-entered scores are kept."
+      },
+      "pass2_intro": {
+        "title": "Pass 2: serve & finishing shot",
+        "body": "Pass 2 adds the serve hit/land zones and the finishing shot's hit/land zones for each rally — four taps per rally."
+      },
+      "zonePicker": {
+        "title": "Pick a court zone",
+        "body": "The court is divided into 9 zones. Tap where the shot was hit or where it landed. A magnifier follows your finger so you don't have to be pixel-perfect."
+      },
+      "pass3_intro": {
+        "title": "Pass 3: stroke detail (optional)",
+        "body": "Pass 3 is optional. Add a shot type to every stroke for richer analysis later."
+      },
+      "strokeChips": {
+        "title": "Stroke list",
+        "body": "Existing strokes in this rally appear here. Tap one to change its shot type (smash, clear, drop, etc.)."
+      },
+      "addStroke": {
+        "title": "Add a stroke",
+        "body": "Inserts a new stroke into the rally: pick a shot type, then tap the hit zone and the landing zone."
       },
       "offline": {
         "title": "Safe offline",
         "body": "Everything is saved on your device (IndexedDB) and sent automatically when you're back online. Your input is never lost."
+      },
+      "closing": {
+        "title": "All set",
+        "body": "Pass 1 alone produces a usable score timeline. Add Pass 2 / 3 later if you want more detail. Tap Done to start."
       }
     },
     "mobile_court_calibration": {

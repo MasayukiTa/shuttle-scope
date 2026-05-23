@@ -19,19 +19,67 @@ export const TUTORIALS: Record<string, TutorialDef> = {
     id: 'mobile_annotate_pass',
     titleKey: 'tutorials.mobile_annotate_pass._title',
     steps: [
+      // 1. 全体導入 (center modal)
       { titleKey: 'tutorials.mobile_annotate_pass.intro.title',
         bodyKey:  'tutorials.mobile_annotate_pass.intro.body' },
+      // 2. Pass 切替ボタン (右側縦列) ※既存
       { titleKey: 'tutorials.mobile_annotate_pass.passSwitch.title',
         bodyKey:  'tutorials.mobile_annotate_pass.passSwitch.body',
         target:   '[data-tutorial="mobileAnnotate.passSwitch"]' },
-      { titleKey: 'tutorials.mobile_annotate_pass.pass1.title',
-        bodyKey:  'tutorials.mobile_annotate_pass.pass1.body' },
-      { titleKey: 'tutorials.mobile_annotate_pass.pass2.title',
-        bodyKey:  'tutorials.mobile_annotate_pass.pass2.body' },
-      { titleKey: 'tutorials.mobile_annotate_pass.pass3.title',
-        bodyKey:  'tutorials.mobile_annotate_pass.pass3.body' },
+      // 3. 動画タップで pause → annotate モード
+      { titleKey: 'tutorials.mobile_annotate_pass.video.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.video.body',
+        target:   '[data-tutorial="mobileAnnotate.video"]' },
+      // 4. キュー / オフライン状態の表示
+      { titleKey: 'tutorials.mobile_annotate_pass.queueStatus.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.queueStatus.body',
+        target:   '[data-tutorial="mobileAnnotate.queueStatus"]' },
+      // 5. Pass 1 導入 (center modal)
+      { titleKey: 'tutorials.mobile_annotate_pass.pass1_intro.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.pass1_intro.body' },
+      // 6. A / B 得点ボタン (Pass1 内にいないと target は見えない)
+      { titleKey: 'tutorials.mobile_annotate_pass.scoreA.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.scoreA.body',
+        target:   '[data-tutorial="mobileAnnotate.scoreA"]' },
+      { titleKey: 'tutorials.mobile_annotate_pass.scoreB.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.scoreB.body',
+        target:   '[data-tutorial="mobileAnnotate.scoreB"]' },
+      // 7. Undo
+      { titleKey: 'tutorials.mobile_annotate_pass.undoLast.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.undoLast.body',
+        target:   '[data-tutorial="mobileAnnotate.undoLast"]' },
+      // 8. セット終了
+      { titleKey: 'tutorials.mobile_annotate_pass.setEnd.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.setEnd.body',
+        target:   '[data-tutorial="mobileAnnotate.setEnd"]' },
+      // 9. Pass1 内の動画に戻るボタン
+      { titleKey: 'tutorials.mobile_annotate_pass.backToVideo.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.backToVideo.body',
+        target:   '[data-tutorial="mobileAnnotate.backToVideo"]' },
+      // 10. Pass 2 導入 (center modal)
+      { titleKey: 'tutorials.mobile_annotate_pass.pass2_intro.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.pass2_intro.body' },
+      // 11. 9 ゾーン picker
+      { titleKey: 'tutorials.mobile_annotate_pass.zonePicker.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.zonePicker.body',
+        target:   '[data-tutorial="mobileAnnotate.zonePicker"]' },
+      // 12. Pass 3 導入 (center modal)
+      { titleKey: 'tutorials.mobile_annotate_pass.pass3_intro.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.pass3_intro.body' },
+      // 13. ストローク chip
+      { titleKey: 'tutorials.mobile_annotate_pass.strokeChips.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.strokeChips.body',
+        target:   '[data-tutorial="mobileAnnotate.strokeChips"]' },
+      // 14. add stroke ボタン
+      { titleKey: 'tutorials.mobile_annotate_pass.addStroke.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.addStroke.body',
+        target:   '[data-tutorial="mobileAnnotate.addStroke"]' },
+      // 15. オフライン保存 (center modal)
       { titleKey: 'tutorials.mobile_annotate_pass.offline.title',
         bodyKey:  'tutorials.mobile_annotate_pass.offline.body' },
+      // 16. 終わり
+      { titleKey: 'tutorials.mobile_annotate_pass.closing.title',
+        bodyKey:  'tutorials.mobile_annotate_pass.closing.body' },
     ],
   },
   mobile_court_calibration: {

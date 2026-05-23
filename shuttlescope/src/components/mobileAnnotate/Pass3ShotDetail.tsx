@@ -200,7 +200,7 @@ export function Pass3ShotDetail({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2" data-tutorial="mobileAnnotate.strokeChips">
         {sorted.length === 0 && (
           <div className="text-gray-500 text-sm text-center py-4">
             {t('auto.Pass3ShotDetail.empty_hint')}
@@ -239,6 +239,7 @@ export function Pass3ShotDetail({
         <button
           type="button"
           onClick={() => setAdd({ phase: 'pickShot' })}
+          data-tutorial="mobileAnnotate.addStroke"
           className="w-full px-3 py-3 rounded-lg border-2 border-dashed border-gray-600 text-gray-300 text-sm hover:bg-gray-800"
         >
           {t('auto.Pass3ShotDetail.add_stroke', { n: nextStrokeNum, player: nextPlayer === 'player_a' ? 'A' : 'B' })}
