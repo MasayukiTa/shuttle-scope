@@ -96,25 +96,35 @@ def _build_analytics_context(
 ) -> dict:
     """チャット応答生成用の analytics スナップショット。
 
-    NOTE: v1 は最小スタブ。将来的には既存 analysis ルータ (shot_win_loss,
-    recent_form, growth_timeline_delta 等) から本物の数値を fetch して
-    置換する想定。caller (本 router) はこの返り値を InsightContext.analytics に
-    そのまま渡す。
+    Slice Y: build_player_summary() の compact LLM-ready 構造を直接利用する。
+    coach/analyst/admin のみがチャットを使えるため raw payload を渡してよい。
+    対象選手 ID が無い (player_id=0) ケースは空サマリ相当のフォールバック。
     """
-    return {
-        "shot_win_loss": [
-            {"shot": "smash", "win_rate": 0.52, "delta_pp": 4.0,
-             "sample_n": 12, "alt_shot": "drop"},
-        ],
-        "recent_form": {"win_rate": 0.52, "delta_pp": 4.0, "sample_n": 12},
-        "growth_timeline_delta": {
-            "metric": "smash_win_rate", "delta_pp": 4.0, "sample_n": 12,
-        },
-        # 元仕様準拠の参考値
-        "sample_size": 12,
-        "recent_smash_win_rate": 0.52,
-        "season_smash_win_rate": 0.48,
-    }
+    from backend.analysis.insights.player_summary_service import (
+        build_player_summary,
+    )
+
+    player_id = ctx.player_id or 0
+    if player_id <= 0:
+        return {
+            "player_id": 0,
+            "sample": {"matches": 0, "rallies": 0, "strokes": 0},
+            "outcomes": {"win_rate": 0.0, "set_win_rate": 0.0, "n": 0},
+            "shot_mix": [],
+            "zones": {"hit_top": [], "land_top": []},
+            "conditions": {"avg_rpe": None, "avg_hooper": None, "n": 0},
+            "recent_trend": {
+                "last_5_match_win_rate": None,
+                "delta_vs_prior_5": None,
+            },
+        }
+    try:
+        return build_player_summary(db, player_id, None, None, None)
+    except Exception:
+        return {
+            "player_id": player_id,
+            "sample": {"matches": 0, "rallies": 0, "strokes": 0},
+        }
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────
