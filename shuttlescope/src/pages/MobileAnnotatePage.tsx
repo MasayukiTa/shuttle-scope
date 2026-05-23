@@ -438,7 +438,7 @@ export function MobileAnnotatePage() {
             PlayMode は screen state に依存せず常時 mount しておく (= video element を
             unmount しないので、annotate ↔ play を往復しても src が 0 秒から再 load
             しない)。Pass1/2/3 は overlay として PlayMode の **上に** 重ねる。 */}
-        <div className="absolute inset-0 bg-gray-950">
+        <div className="absolute inset-0 bg-gray-950" data-tutorial="mobileAnnotate.video">
           {matchQuery.isLoading ? (
             // 真ん中で確実に視認できる spinner + ラベル。Material Symbols font が
             // ロード中に raw 文字列が見えないよう、ここでは plain CSS の spinner を使う。
@@ -684,6 +684,7 @@ export function MobileAnnotatePage() {
         <div
           className="absolute left-2 flex items-center gap-1.5 text-xs"
           style={{ top: 'max(0.5rem, env(safe-area-inset-top))', zIndex: 45 }}
+          data-tutorial="mobileAnnotate.queueStatus"
         >
           {/* 戻るボタン: 誤タップで作業中の試合から離脱しないよう確認ダイアログを挟む */}
           <button

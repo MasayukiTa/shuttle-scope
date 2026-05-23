@@ -123,7 +123,7 @@ export function Pass2ServeFinal({ rally, onCompleted, onCancel }: Props) {
         </button>
       </div>
 
-      <div className="relative flex-1">
+      <div className="relative flex-1" data-tutorial="mobileAnnotate.zonePicker">
         <AnnotateOverlay
           prompt={STEP_PROMPT[step]}
           primaryLabel={stepIdx === STEP_ORDER.length - 1 ? '送信' : '次へ'}
