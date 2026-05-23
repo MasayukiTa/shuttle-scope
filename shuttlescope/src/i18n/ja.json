@@ -2793,7 +2793,19 @@
       "error_rate_limited": "送信間隔が短すぎます（2秒に1回まで）",
       "error_budget_exceeded": "本日のアドバイス上限に達しました",
       "error_network": "接続エラー。少し時間を置いて再試行してください",
-      "error_generic": "エラーが発生しました"
+      "error_generic": "エラーが発生しました",
+      "prompt_recent_growth": "直近5試合の伸びしろは？",
+      "prompt_net_shots": "ネット前のショット選択は？",
+      "prompt_serve": "サーブ確率を上げるには？",
+      "prompt_practice_week": "今週の練習で意識すべき点は？",
+      "you": "あなた",
+      "bot_name": "Growth Advisor",
+      "view_details": "詳細を見る →",
+      "cancel": "キャンセル",
+      "confirm": "リセットする",
+      "help_tooltip": "このアドバイスは AI / テンプレ生成です。誤りがある可能性があります",
+      "safety_hint_admin": "AI 応答が安全基準で差し替えられました",
+      "char_counter": "{{n}}/2000"
     },
     "App": {
       "k1": "認証状態を確認しています...",
