@@ -68,7 +68,7 @@ export function DashboardGrowthPage({ playerId, filters, sortedPlayers }: Props)
 
       {/* 勝率推移 */}
       <ErrorBoundary>
-        <div className={`${card} rounded-lg p-4`}>
+        <div className={`${card} rounded-lg p-4`} data-tutorial="dashboard.growthTimeline">
           <p className={`text-xs font-semibold mb-2 ${textMuted}`}>{t('analysis.growth.win_rate_label')}</p>
           <GrowthTimeline
             playerId={playerId}

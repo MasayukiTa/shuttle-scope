@@ -80,15 +80,53 @@ export const TUTORIALS: Record<string, TutorialDef> = {
     id: 'analysis_reading',
     titleKey: 'tutorials.analysis_reading._title',
     steps: [
+      // 1. Welcome (center modal, no target) — demo データであることを伝える
+      { titleKey: 'tutorials.analysis_reading.welcome.title',
+        bodyKey:  'tutorials.analysis_reading.welcome.body' },
+      // 2. Top tabs
       { titleKey: 'tutorials.analysis_reading.tabs.title',
         bodyKey:  'tutorials.analysis_reading.tabs.body',
         target:   '[data-tutorial="dashboard.topNav"]' },
+      // 3. Match / period picker
+      { titleKey: 'tutorials.analysis_reading.matchPicker.title',
+        bodyKey:  'tutorials.analysis_reading.matchPicker.body',
+        target:   '[data-tutorial="dashboard.matchPicker"]' },
+      // 4. Confidence badge (overview)
+      { titleKey: 'tutorials.analysis_reading.confidenceBadge.title',
+        bodyKey:  'tutorials.analysis_reading.confidenceBadge.body',
+        target:   '[data-tutorial="dashboard.confidenceBadge"]' },
+      // 5. Quick summary card (overview)
+      { titleKey: 'tutorials.analysis_reading.quickSummary.title',
+        bodyKey:  'tutorials.analysis_reading.quickSummary.body',
+        target:   '[data-tutorial="dashboard.quickSummary"]' },
+      // 6. Court heatmap (overview)
+      { titleKey: 'tutorials.analysis_reading.epvHeatmap.title',
+        bodyKey:  'tutorials.analysis_reading.epvHeatmap.body',
+        target:   '[data-tutorial="dashboard.epvHeatmap"]' },
+      // 7. Shot win/loss (advanced — may not be visible if not on that tab)
+      { titleKey: 'tutorials.analysis_reading.shotWinLoss.title',
+        bodyKey:  'tutorials.analysis_reading.shotWinLoss.body',
+        target:   '[data-tutorial="dashboard.shotWinLoss"]' },
+      // 8. Growth timeline (growth tab)
+      { titleKey: 'tutorials.analysis_reading.growthTimeline.title',
+        bodyKey:  'tutorials.analysis_reading.growthTimeline.body',
+        target:   '[data-tutorial="dashboard.growthTimeline"]' },
+      // 9. Research notice (research tab)
+      { titleKey: 'tutorials.analysis_reading.researchNotice.title',
+        bodyKey:  'tutorials.analysis_reading.researchNotice.body',
+        target:   '[data-tutorial="dashboard.researchNotice"]' },
+      // 10. Confidence (existing — center modal)
       { titleKey: 'tutorials.analysis_reading.confidence.title',
         bodyKey:  'tutorials.analysis_reading.confidence.body' },
+      // 11. EPV (existing)
       { titleKey: 'tutorials.analysis_reading.epv.title',
         bodyKey:  'tutorials.analysis_reading.epv.body' },
+      // 12. Growth framing (existing)
       { titleKey: 'tutorials.analysis_reading.growth.title',
         bodyKey:  'tutorials.analysis_reading.growth.body' },
+      // 13. Closing
+      { titleKey: 'tutorials.analysis_reading.closing.title',
+        bodyKey:  'tutorials.analysis_reading.closing.body' },
     ],
   },
   body_disclosure_toggle: {

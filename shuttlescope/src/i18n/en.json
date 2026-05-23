@@ -1,6 +1,7 @@
 {
   "demo": {
-    "banner": "Showing demo data (read-only)"
+    "banner": "Showing demo data (read-only)",
+    "banner_player": "({{name}})"
   },
   "app": {
     "name": "ShuttleScope",
@@ -4623,9 +4624,41 @@
     },
     "analysis_reading": {
       "_title": "How to read the analysis screen",
+      "welcome": {
+        "title": "Welcome — analysis dashboard tour",
+        "body": "What you see now is demo data, so feel free to click around as you learn. Use the arrow keys (←/→) to step through."
+      },
       "tabs": {
         "title": "Switch via the top tabs",
         "body": "The red-boxed tabs switch between Overview / Live / Review / Growth / Detailed. Scroll horizontally to see the rest if needed."
+      },
+      "matchPicker": {
+        "title": "Filter by match or period",
+        "body": "Pick a match, date range, or win/loss filter here. Leaving it on \"All\" first is a good way to get an overall feel."
+      },
+      "confidenceBadge": {
+        "title": "Confidence badge",
+        "body": "The stars indicate how much data backs the number. With few stars, watch the overall trend rather than the exact value."
+      },
+      "quickSummary": {
+        "title": "Overview card",
+        "body": "Breakdown of how rallies ended. It gives you a quick feel for what tends to close points. Remember, this is demo data — play around freely."
+      },
+      "epvHeatmap": {
+        "title": "Court heatmap",
+        "body": "Color intensity shows where shots are hit and where they land. Use the tabs to switch between hit and land points."
+      },
+      "shotWinLoss": {
+        "title": "Shot-by-shot win rate",
+        "body": "Win rate broken down by shot type. You'll find this card on the Detailed tab."
+      },
+      "growthTimeline": {
+        "title": "Growth timeline",
+        "body": "Shows how a metric changes over time. Read dips as growth areas — opportunities, not failures."
+      },
+      "researchNotice": {
+        "title": "Research-stage analyses",
+        "body": "Metrics beyond the Detailed tab are exploratory. Treat them as references, not standalone decisions."
       },
       "confidence": {
         "title": "Always check confidence",
@@ -4638,6 +4671,10 @@
       "growth": {
         "title": "Players see growth, not weakness",
         "body": "Player-facing screens use \"growth areas\" instead of \"weakness\". Raw EPV and win rates are never shown to the player role."
+      },
+      "closing": {
+        "title": "All set!",
+        "body": "This was demo data — once your real matches are annotated, you'll see your own analysis here. You can replay this tour anytime from Settings."
       }
     },
     "body_disclosure_toggle": {

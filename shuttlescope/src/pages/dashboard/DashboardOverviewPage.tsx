@@ -229,10 +229,10 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {/* 左カラム */}
         <div className="xl:col-span-2 space-y-5 min-w-0">
           {/* ラリー終了タイプ */}
-          <div className={`${card} rounded-lg p-4`}>
+          <div className={`${card} rounded-lg p-4`} data-tutorial="dashboard.quickSummary">
             <div className="flex items-center justify-between mb-3">
               <SectionTitle>{t('auto.DashboardOverviewPage.k2')}</SectionTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" data-tutorial="dashboard.confidenceBadge">
                 {descriptive && (
                   <ConfidenceBadge sampleSize={descriptive.total_rallies} className="text-[10px] shrink-0" />
                 )}
@@ -285,7 +285,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
         {/* 右カラム */}
         <div className="space-y-5 min-w-0">
           {/* コートヒートマップ */}
-          <div className={`${card} rounded-lg p-4`}>
+          <div className={`${card} rounded-lg p-4`} data-tutorial="dashboard.epvHeatmap">
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <SectionTitle>{t('auto.DashboardOverviewPage.k5')}</SectionTitle>
               <div className="flex items-center gap-1 ml-auto shrink-0">

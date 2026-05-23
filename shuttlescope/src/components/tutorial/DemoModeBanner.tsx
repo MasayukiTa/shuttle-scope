@@ -21,7 +21,7 @@ export function DemoModeBanner() {
       <MIcon name="visibility" size={16} fill={1} />
       <span>
         {t('demo.banner')}
-        {target?.player_name ? `（${target.player_name}）` : ''}
+        {target?.player_name ? t('demo.banner_player', { name: target.player_name }) : ''}
       </span>
     </div>
   )
