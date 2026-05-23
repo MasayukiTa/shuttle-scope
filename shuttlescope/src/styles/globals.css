@@ -1059,18 +1059,64 @@ video::-webkit-media-controls-play-button {
   -webkit-appearance: none !important;
 }
 
-/* チュートリアル: target を赤くチカチカ強調するリング (TutorialOverlay 用) */
+/* チュートリアル: target を赤くチカチカ強調するリング (TutorialOverlay 用)
+ * 注意誘導を最大化: 内側固定リング + 外側 glow + 周期 0.85s + 倍率の大きい縮緩 */
 @keyframes tutorial-ring-pulse {
-  0%   { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.95), 0 0 0 6px rgba(220, 38, 38, 0.35); }
-  50%  { box-shadow: 0 0 0 4px rgba(248, 113, 113, 1), 0 0 14px 6px rgba(220, 38, 38, 0.55); }
-  100% { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.95), 0 0 0 6px rgba(220, 38, 38, 0.35); }
+  0%   { box-shadow: 0 0 0 3px rgba(220, 38, 38, 1), 0 0 0 8px rgba(220, 38, 38, 0.50), 0 0 18px 6px rgba(220, 38, 38, 0.45); }
+  50%  { box-shadow: 0 0 0 5px rgba(255, 80, 80, 1), 0 0 0 14px rgba(220, 38, 38, 0.30), 0 0 32px 12px rgba(255, 80, 80, 0.75); }
+  100% { box-shadow: 0 0 0 3px rgba(220, 38, 38, 1), 0 0 0 8px rgba(220, 38, 38, 0.50), 0 0 18px 6px rgba(220, 38, 38, 0.45); }
 }
 .tutorial-ring {
   position: fixed;
-  border-radius: 8px;
+  border-radius: 10px;
   pointer-events: none;
   z-index: 301;
-  animation: tutorial-ring-pulse 1s ease-in-out infinite;
+  animation: tutorial-ring-pulse 0.85s ease-in-out infinite;
+}
+
+/* 外側に広がるリップル (二重発信で視野の周辺視に強く訴える) */
+@keyframes tutorial-ring-ripple {
+  0%   { transform: scale(1);   opacity: 0.85; }
+  100% { transform: scale(1.55); opacity: 0;    }
+}
+.tutorial-ring-ripple {
+  position: fixed;
+  border: 3px solid rgba(220, 38, 38, 0.8);
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 300;
+  animation: tutorial-ring-ripple 1.6s ease-out infinite;
+  transform-origin: center center;
+}
+
+/* 「ここを見て」と指す浮遊矢印 (target の上で上下にバウンス) */
+@keyframes tutorial-here-bounce {
+  0%, 100% { transform: translate(-50%, 0); }
+  50%      { transform: translate(-50%, -10px); }
+}
+.tutorial-here-pointer {
+  position: fixed;
+  z-index: 303;
+  pointer-events: none;
+  font-size: 24px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+  animation: tutorial-here-bounce 0.7s ease-in-out infinite;
+  color: #ef4444;
+  font-weight: 900;
+  user-select: none;
+}
+
+/* ツールチップを微妙に揺らして周辺視で気付かせる (うるさくない程度) */
+@keyframes tutorial-tooltip-attention {
+  0%, 90%, 100% { transform: translateX(0); }
+  92%           { transform: translateX(-2px); }
+  94%           { transform: translateX(2px); }
+  96%           { transform: translateX(-1px); }
+  98%           { transform: translateX(1px); }
+}
+.tutorial-tooltip-attention {
+  animation: tutorial-tooltip-attention 6s ease-in-out infinite;
 }
 
 /* チュートリアル吹き出しの矢印 (CSS三角形, target 方向を指す) */

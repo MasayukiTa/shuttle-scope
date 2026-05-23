@@ -198,31 +198,73 @@ export function TutorialOverlay({ tutorial, onClose, startStep = 0 }: Props) {
   }
 
   // スポットライト + 吹き出し
+  //   注意誘導を最大化:
+  //   - 暗幕は 0.78 まで濃く（周辺視を遮断）
+  //   - 暗幕は pointer-events: auto で外側クリックを吸収（ユーザは強制的に target / 説明を見るしかない）
+  //   - target 自体は元の操作を残すため、spotlight 矩形の上にだけ pointer-events:none の透明窓を被せる
+  //   - 赤パルスリング + 外側へ拡大するリップル + target 上に浮遊する「↓」バウンスポインタ
+  //   - tooltip は周辺視で気付かせる微小揺れ (うるさくない 6 秒周期)
   const arrowClass = `tutorial-tooltip-arrow tutorial-tooltip-arrow-${geom.arrow}`
+  // 「ここを見て」ポインタの位置: target の上端中央から 32px 上に浮かせる
+  const pointerTop = Math.max(8, geom.rect.top - 32)
+  const pointerLeft = geom.rect.left + geom.rect.width / 2
   return (
     <div className="fixed inset-0 z-[300]">
-      <div
-        className="fixed pointer-events-none"
-        style={{
-          top: geom.rect.top, left: geom.rect.left, width: geom.rect.width, height: geom.rect.height,
-          borderRadius: 8,
-          boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
-          zIndex: 300,
-        }}
-      />
+      {/* 1) 暗幕を 4 枠で target を囲む = 外側クリック吸収（強制注意）+ target 内は素通し */}
+      {(() => {
+        const dark = 'rgba(0,0,0,0.78)'
+        const absorb = (e: React.MouseEvent) => e.stopPropagation()
+        const VW = window.innerWidth, VH = window.innerHeight
+        const T = Math.max(0, geom.rect.top)
+        const L = Math.max(0, geom.rect.left)
+        const B = Math.min(VH, geom.rect.top + geom.rect.height)
+        const R = Math.min(VW, geom.rect.left + geom.rect.width)
+        return (
+          <>
+            {/* 上 */}
+            <div onClick={absorb} className="fixed" style={{ top: 0, left: 0, width: '100%', height: T, background: dark, zIndex: 300 }} />
+            {/* 下 */}
+            <div onClick={absorb} className="fixed" style={{ top: B, left: 0, width: '100%', height: Math.max(0, VH - B), background: dark, zIndex: 300 }} />
+            {/* 左 */}
+            <div onClick={absorb} className="fixed" style={{ top: T, left: 0, width: L, height: Math.max(0, B - T), background: dark, zIndex: 300 }} />
+            {/* 右 */}
+            <div onClick={absorb} className="fixed" style={{ top: T, left: R, width: Math.max(0, VW - R), height: Math.max(0, B - T), background: dark, zIndex: 300 }} />
+          </>
+        )
+      })()}
+      {/* 2) 赤パルスリング (1 重目) */}
       <div
         className="tutorial-ring"
         style={{ top: geom.rect.top, left: geom.rect.left, width: geom.rect.width, height: geom.rect.height }}
       />
-      <div className="fixed inset-0 z-[300]" style={{ pointerEvents: 'none' }} />
+      {/* 3) 外側に拡がるリップル (2 重発信で視野の周辺視に強く訴える) */}
       <div
-        className="fixed w-80 bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-4 border border-gray-300 dark:border-gray-600 z-[302] relative"
+        className="tutorial-ring-ripple"
+        style={{ top: geom.rect.top, left: geom.rect.left, width: geom.rect.width, height: geom.rect.height }}
+        aria-hidden
+      />
+      {/* 4) 「ここを見て」浮遊矢印 (バウンス) — Material Symbols ではなく文字で軽量 */}
+      <div
+        className="tutorial-here-pointer"
+        style={{ top: pointerTop, left: pointerLeft }}
+        aria-hidden
+      >▼</div>
+      {/* 5) 吹き出し: 矢印 + 注意揺れ */}
+      <div
+        className="fixed w-80 bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-4 border-2 border-red-500/70 dark:border-red-400/60 z-[302] relative tutorial-tooltip-attention"
         style={{ top: geom.tip.top, left: geom.tip.left }}
       >
         <span className={arrowClass} aria-hidden />
+        {/* ステップ番号バッジ (右上) — 一目で進捗が分かる */}
+        <div
+          className="absolute -top-3 -right-3 flex items-center justify-center w-9 h-9 rounded-full bg-red-600 text-white text-xs font-bold shadow-md ring-2 ring-white dark:ring-gray-800"
+          aria-hidden
+        >
+          {idx + 1}/{total}
+        </div>
         {header}
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mt-2">{stepTitle}</h3>
-        <div className="mt-1 text-sm leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap max-h-[40vh] overflow-y-auto">
+        <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mt-2">{stepTitle}</h3>
+        <div className="mt-1.5 text-sm leading-relaxed text-gray-700 dark:text-gray-200 whitespace-pre-wrap max-h-[40vh] overflow-y-auto">
           {stepBody}
         </div>
         {controls}
