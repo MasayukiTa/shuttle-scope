@@ -125,6 +125,33 @@ def get_auth(request: Request) -> AuthCtx:
             role = payload_role
             if role not in {r.value for r in UserRole}:
                 role = None
+            # 2026-05-24 Round 281+ fix: admin role に MFA enrollment を必須化。
+            # JWT が admin を主張しても、DB の totp_enabled=false なら role=None
+            # に downgrade して全 `ctx.is_admin` 経路を fail-closed させる。
+            # こうすることで require_admin だけでなく、`if ctx.is_admin:` の
+            # 個別チェック (list_users / user mutation 等) も一括で MFA gate
+            # 配下に置ける。SS_REQUIRE_ADMIN_MFA=0 で disable 可能。
+            # user_id は維持するので /auth/me / /mfa/setup / /mfa/confirm 等は
+            # 引き続き動作 (未 enroll admin の自己 setup 経路として機能)。
+            if role == UserRole.ADMIN.value:
+                try:
+                    from backend.config import settings as _ss_cfg
+                    if getattr(_ss_cfg, "ss_require_admin_mfa", True):
+                        uid_check = payload.get("sub")
+                        if uid_check:
+                            try:
+                                uid_check_int = int(uid_check)
+                            except (ValueError, TypeError):
+                                uid_check_int = 0
+                            if uid_check_int > 0:
+                                from backend.db.database import SessionLocal
+                                with SessionLocal() as _db_mfa:
+                                    _u_mfa = _db_mfa.get(User, uid_check_int)
+                                    if not _u_mfa or not getattr(_u_mfa, "totp_enabled", False):
+                                        role = None
+                except Exception:
+                    # DB エラー時は fail-closed (admin を None に倒す)
+                    role = None
             pid = payload.get("player_id")
             if pid is not None:
                 try:
