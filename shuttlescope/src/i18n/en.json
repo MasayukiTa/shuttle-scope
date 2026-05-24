@@ -3758,7 +3758,11 @@
       "k2": "Enter login ID",
       "session_expired": "Your session has expired. Please sign in again.",
       "password_pin": "Password / PIN",
-      "back_to_site": "← shuttle-scope.com"
+      "back_to_site": "← shuttle-scope.com",
+      "mfa_prompt": "Enter the 6-digit code shown in your authenticator app (iOS Passwords, Google Authenticator, etc.).",
+      "mfa_code_label": "Verification code (6 digits)",
+      "mfa_submit": "Verify and continue",
+      "mfa_cancel": "Back to login"
     },
     "MatchListPage": {
       "k1": "Registered",
