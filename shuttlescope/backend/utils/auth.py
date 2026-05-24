@@ -64,7 +64,8 @@ def filter_by_role(data: dict, role: str) -> dict:
 
 class AuthCtx:
     """リクエストから抽出した現在ユーザーのロール/ID。"""
-    __slots__ = ("role", "player_id", "team_name", "team_id", "user_id")
+    __slots__ = ("role", "player_id", "team_name", "team_id", "user_id",
+                 "_admin_mfa_ok")
 
     def __init__(
         self,
@@ -73,12 +74,19 @@ class AuthCtx:
         team_name: Optional[str] = None,
         user_id: Optional[int] = None,
         team_id: Optional[int] = None,
+        admin_mfa_ok: bool = False,
     ):
         self.role = role
         self.player_id = player_id
         self.team_name = team_name
         self.team_id = team_id
         self.user_id = user_id
+        # 2026-05-24 Round 281+: admin の MFA enrollment 状態。
+        # is_admin プロパティで参照される。get_auth が JWT 検証時に DB
+        # から totp_enabled を読み取って 1 回だけセットする (リクエストあたり
+        # 1 回の DB lookup 程度)。/auth/me 等で role="admin" は維持する一方、
+        # is_admin (authorization 用) は MFA enrollment と AND を取る。
+        self._admin_mfa_ok = admin_mfa_ok
 
     @property
     def is_player(self) -> bool:
@@ -94,7 +102,13 @@ class AuthCtx:
 
     @property
     def is_admin(self) -> bool:
-        return self.role == UserRole.ADMIN.value
+        # 2026-05-24 Round 281+: MFA 未 enroll の admin は authorization 用途で
+        # admin として扱わない (config SS_REQUIRE_ADMIN_MFA=0 で disable 可)。
+        # role 値は "admin" のまま維持されるので /auth/me 経由でフロントは
+        # 通常通り main app をレンダーでき、ユーザは MFA setup 画面に誘導される。
+        if self.role != UserRole.ADMIN.value:
+            return False
+        return self._admin_mfa_ok
 
 
 def get_auth(request: Request) -> AuthCtx:
@@ -126,32 +140,34 @@ def get_auth(request: Request) -> AuthCtx:
             if role not in {r.value for r in UserRole}:
                 role = None
             # 2026-05-24 Round 281+ fix: admin role に MFA enrollment を必須化。
-            # JWT が admin を主張しても、DB の totp_enabled=false なら role=None
-            # に downgrade して全 `ctx.is_admin` 経路を fail-closed させる。
-            # こうすることで require_admin だけでなく、`if ctx.is_admin:` の
-            # 個別チェック (list_users / user mutation 等) も一括で MFA gate
-            # 配下に置ける。SS_REQUIRE_ADMIN_MFA=0 で disable 可能。
-            # user_id は維持するので /auth/me / /mfa/setup / /mfa/confirm 等は
-            # 引き続き動作 (未 enroll admin の自己 setup 経路として機能)。
+            # role 値そのものは "admin" を維持 (frontend が main app をレンダー
+            # するため必要)。authorization は AuthCtx.is_admin プロパティが
+            # admin_mfa_ok との AND で判定する。SS_REQUIRE_ADMIN_MFA=0 で
+            # disable 可能。
+            _admin_mfa_ok_calc = False
             if role == UserRole.ADMIN.value:
                 try:
                     from backend.config import settings as _ss_cfg
-                    if getattr(_ss_cfg, "ss_require_admin_mfa", True):
+                    if not getattr(_ss_cfg, "ss_require_admin_mfa", True):
+                        # 強制 OFF 設定なら enrollment 状態を問わず admin 扱い
+                        _admin_mfa_ok_calc = True
+                    else:
                         uid_check = payload.get("sub")
+                        uid_check_int = 0
                         if uid_check:
                             try:
                                 uid_check_int = int(uid_check)
                             except (ValueError, TypeError):
                                 uid_check_int = 0
-                            if uid_check_int > 0:
-                                from backend.db.database import SessionLocal
-                                with SessionLocal() as _db_mfa:
-                                    _u_mfa = _db_mfa.get(User, uid_check_int)
-                                    if not _u_mfa or not getattr(_u_mfa, "totp_enabled", False):
-                                        role = None
+                        if uid_check_int > 0:
+                            from backend.db.database import SessionLocal
+                            with SessionLocal() as _db_mfa:
+                                _u_mfa = _db_mfa.get(User, uid_check_int)
+                                if _u_mfa and getattr(_u_mfa, "totp_enabled", False):
+                                    _admin_mfa_ok_calc = True
                 except Exception:
-                    # DB エラー時は fail-closed (admin を None に倒す)
-                    role = None
+                    # DB エラー時は fail-closed (admin 認可を与えない)
+                    _admin_mfa_ok_calc = False
             pid = payload.get("player_id")
             if pid is not None:
                 try:
@@ -177,7 +193,8 @@ def get_auth(request: Request) -> AuthCtx:
                     team_id = n if n > 0 else None
                 except (ValueError, TypeError):
                     team_id = None
-            return AuthCtx(role, pid, team_name, user_id=uid, team_id=team_id)
+            return AuthCtx(role, pid, team_name, user_id=uid, team_id=team_id,
+                           admin_mfa_ok=_admin_mfa_ok_calc)
 
     # ── フォールバック: X-Role ヘッダ（ローカルのみ互換）────────────────────
     # loopback 以外からの X-Role ヘッダは信用しない。
