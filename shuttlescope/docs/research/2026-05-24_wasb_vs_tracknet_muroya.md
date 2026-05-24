@@ -110,3 +110,34 @@ backend/wasb/
 2. **factory 切替 + env switch**
 3. **TrackNetV3 が苦手とする他映像種** (シングルス、低解像度、ダブルス引き) でも WASB 優位確認
 4. **MonoTrack** も同 repo に含まれるので Phase 2 候補
+
+## ── Addendum: Tier 1 最適化 (GPU preprocess + IOBinding) ──
+
+ベースライン WasbRunner (cv2 ループ preprocess + numpy I/O) を Tier 1 最適化:
+- 全フレーム batched H2D copy (uint8) → GPU 上で resize+normalize (`torch.nn.functional.interpolate`)
+- ORT IOBinding で GPU↔ORT zero-copy
+- chunk_size=128 frame、overlap=2 で sliding window 連続性維持
+
+### 実測結果 (muroya 600-630s, 1798 frame, batch=8)
+
+| 区分 | 旧 (ad-hoc) | **Tier 1 opt** | 改善 |
+|---|---|---|---|
+| Synthetic batched | 295.6 FPS | **484.2 FPS** | 1.6× |
+| 実映像 inference 単独 | ~30 FPS | **471.7 FPS** | **16×** |
+| 実映像 end-to-end (decode 別) | 29.9 FPS | **185.5 FPS** | **6.2×** |
+| 実映像 decode 込 | ~22 FPS | **101.1 FPS** | 4.6× |
+| 検出率 (conf≥0.5) | 30.9% | 31.2% | 維持 ✓ |
+
+### Tier 1 内訳 (実映像 1798 frame 処理時間)
+| Stage | wall (s) | 占有 |
+|---|---|---|
+| cv2 decode | 8.08 | (別測定) |
+| H2D + GPU preprocess | 5.82 | 60% |
+| Triplet build (GPU) | 0.06 | <1% |
+| Inference (IOBinding) | 3.81 | 40% |
+| Total inference loop | 9.68 | 100% |
+
+### 60 FPS 目標達成状況
+- **realized FPS 101 (decode 込), 185 (inference only)** → 60 FPS 余裕クリア ✓
+- 単独でも 60 FPS の **~3×** 出ている
+- 残るのは "フルパイプ (YOLO + Pose + WASB) で 60 FPS 達成" の課題
