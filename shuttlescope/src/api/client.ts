@@ -147,8 +147,58 @@ function _handleSessionExpired(): void {
   setTimeout(() => { _sessionExpiredRedirecting = false }, 3000)
 }
 
+/** すべての API 呼び出しに適用される既定タイムアウト (ms)。
+ *  バックエンドが TCP は受けたが応答しないケース (GPU job blocking,
+ *  WS deadlock, 部分障害) で UI 側 spinner が永続化する事故を防ぐ。
+ *  個別呼び出しで init.signal を渡せば上書き可能。
+ *  60s は長めだが file upload / 重い分析 API も通るバランス値。 */
+const DEFAULT_API_TIMEOUT_MS = 60_000
+
+/** init.signal を AbortController と統合し、既定タイムアウトを掛ける。
+ *  - 呼び出し側が独自 signal を渡していたらそちらを尊重しつつ、
+ *    タイムアウト signal と OR (どちらが先に発火しても abort)。
+ *  - timeout で aborted の場合は明示的なエラーメッセージに置換。 */
+function _withDefaultTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number = DEFAULT_API_TIMEOUT_MS,
+): { init: RequestInit; cleanup: () => void; isTimeout: () => boolean } {
+  const timeoutCtrl = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    timeoutCtrl.abort()
+  }, timeoutMs)
+  // 既存 signal があれば連動
+  const existing = init.signal
+  if (existing) {
+    if (existing.aborted) {
+      timeoutCtrl.abort()
+    } else {
+      existing.addEventListener('abort', () => timeoutCtrl.abort(), { once: true })
+    }
+  }
+  return {
+    init: { ...init, signal: timeoutCtrl.signal },
+    cleanup: () => clearTimeout(timer),
+    isTimeout: () => timedOut,
+  }
+}
+
 async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<Response> {
-  const res = await fetch(input, init)
+  const wrap = _withDefaultTimeout(input, init)
+  let res: Response
+  try {
+    res = await fetch(input, wrap.init)
+  } catch (e) {
+    wrap.cleanup()
+    if (wrap.isTimeout()) {
+      throw new Error(`API timeout (${DEFAULT_API_TIMEOUT_MS}ms): ${input}`, { cause: e })
+    }
+    throw e
+  } finally {
+    wrap.cleanup()
+  }
   if (res.status !== 401) return res
   // /auth/refresh 自体が 401 の場合は再試行しない
   if (input.includes('/auth/refresh') || input.includes('/auth/login')) return res
@@ -158,9 +208,21 @@ async function fetchWithAutoRefresh(input: string, init: RequestInit): Promise<R
     _handleSessionExpired()
     return res
   }
-  // 新 access token で再送
-  const headers = { ...(init.headers as Record<string, string>), ...authHeaders() }
-  return fetch(input, { ...init, headers })
+  // 新 access token で再送 (再送にもタイムアウトを掛ける)
+  const wrap2 = _withDefaultTimeout(input, {
+    ...init,
+    headers: { ...(init.headers as Record<string, string>), ...authHeaders() },
+  })
+  try {
+    return await fetch(input, wrap2.init)
+  } catch (e) {
+    if (wrap2.isTimeout()) {
+      throw new Error(`API timeout (${DEFAULT_API_TIMEOUT_MS}ms after refresh): ${input}`, { cause: e })
+    }
+    throw e
+  } finally {
+    wrap2.cleanup()
+  }
 }
 
 export async function apiGet<T>(
