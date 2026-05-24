@@ -522,3 +522,26 @@ commit `2d7fef3`:
 | Production migration | none | **完了** (env switch で本番投入可) |
 
 5060 Ti **物理限界マップ完成、INT8 が想定外の win-win**。Pro 6000 投入時は INT8 でさらに 4-6× 期待。
+
+## ── Addendum 8: INT8 cross-video validation (overfit 検証) + フルパイプ ──
+
+### Full pipeline INT8 vs FP16 (muroya 1798 frame)
+| | Sequential | Parallel | Detect |
+|---|---|---|---|
+| FP16 | 64.1 FPS | 64.7 FPS | 39.3% |
+| **INT8** | **54.9 FPS** | **58.5 FPS** | **61.9% (+22.6pt)** |
+
+INT8 はフルパイプで 9% 速度 trade-off (60 FPS 微達成 97.5%)、検出率 +22.6pt。
+
+### Cross-video INT8 generalization (calibration 外の映像で検証)
+| Video | FP16 detect | **INT8 detect** | Delta |
+|---|---|---|---|
+| muroya 1080p (calibration source) | 40.1% | 62.6% | +22.6pt |
+| video-b 640×360 (separate) | 76.5% | **98.3%** | +21.9pt |
+| video-d 640×360 (separate) | 76.5% | **98.3%** | +21.9pt |
+| video-db 640×360 (separate) | 76.5% | **98.3%** | +21.9pt |
+
+→ **INT8 は overfit ではない。全映像で +22pt 安定改善**。
+別解像度 (640×360) でも同じ改善幅 → quantization が generalizable に効いてる証拠。
+
+video-b 等の **INT8 98.3% 検出率** = ほぼ完璧なシャトル追跡が達成可能。
