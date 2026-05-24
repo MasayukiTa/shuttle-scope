@@ -359,3 +359,79 @@ WASB 検出率 **40.1%** (TrackNetV3 0% に対し圧勝継続)。
 | **Full pipeline (final)** | — | **67.1 FPS ✓** |
 
 5060 Ti 単体で **60 FPS フルパイプ達成**。Pro 6000 投入時はこれが 4-6× → 250-400 FPS realized 見込み。
+
+## ── Addendum 6: 8h 集中ラウンドの追加最適化 (全部実測ベース) ──
+
+### Track-then-detect (2nd-pass ROI re-inference) — 結果次第で opt-in
+| Mode | 検出率 | FPS | 判定 |
+|---|---|---|---|
+| OFF | 39.3% | 195 | baseline |
+| ON (default params) | 40.2% | 11.4 | **+0.9pt for 17× slower → opt-in only** |
+
+→ 候補多すぎ (~1000 frame) で per-candidate Python overhead 累積。`SS_WASB_ROI_REFINE=1` で有効化、tightened defaults (soft_floor=0.4, max_seed_age=5, max_batch=32) もコミット。
+
+### CUDA Graphs (TRT EP `trt_cuda_graph_enable=True`)
+| Mode | FPS | 判定 |
+|---|---|---|
+| baseline | 498.9 | |
+| cuda_graph ON | 488.0 | **-2% 悪化** |
+| cuda_graph + aux streams | 489.5 | **-2% 悪化** |
+
+→ TRT EP が既に kernel launch を内部最適化しており、明示 graph capture はオーバーヘッド増。撤退。
+
+### GPU 利用率プロービング (nvidia-smi 0.1s sampling)
+| Stage | Realized FPS | GPU util mean | Power (180W TGP) | VRAM |
+|---|---|---|---|---|
+| Full pipeline (before pose GPU preproc) | 63.9 | **53.5%** | 73W (40%) | 14 GB |
+| Full pipeline (after pose GPU preproc) | 63.3 | **56.2%** | 69W (38%) | 14 GB |
+
+→ **GPU util 56% = ヘッドルーム 44% 残ってる**。律速は **CPU/Python**、GPU ではない。
+完全 GPU 飽和なら理論 **63.3 / 0.562 = 113 FPS** 実現可能だが、それには Python overhead を抜本的に削減 (Cython / C++ wrapper / 真の multi-process) が必要 → 別領域の作業。
+
+### RTMPose preprocess を GPU 化 (`torchvision.ops.roi_align`)
+従来 per-person cv2.resize × N × 1798 frame = 3596 CPU 操作 → 単一 CUDA `roi_align` op に集約。
+| Mode | Sequential FPS | Parallel FPS |
+|---|---|---|
+| CPU preproc | 62.3 | 67.1 |
+| **GPU preproc (roi_align)** | **63.2** | 64.4 (並列で逆に GPU 競合増) |
+
+→ 効果は人数 N に依存。N=2 だと CPU preproc と同等。N=4 以上では明確に GPU preproc 勝つはず。
+コードは両方 keep (GPU fast path + CPU fallback)、自動判別で使い分け。
+
+### INT8 quantization — 全 3 経路 BLOCKED
+1. implicit calibrator (TRT 10.16) → deprecated since 10.1, build assertion error
+2. quantize_static QDQ → ORT TRT EP → "QDQ scales not read, calibrator not used"
+3. quantize_static QDQ → tensorrt python API 直接 → `validateCaskKLibSize failed` (pip wheel と driver 不整合)
+
+→ **TRT install 修正 (compatible driver) または QAT (PyTorch 側で学習中に Q ノード埋め込み) が必須**、本セッション範囲外。
+
+### NVDEC — 全経路 BLOCKED (decord CPU で 1.15× 部分勝ち)
+| Decoder | FPS | 結果 |
+|---|---|---|
+| cv2 (CPU) | 270.6 | baseline |
+| decord CPU | 310.8 | ✓ **1.15× 採用可** |
+| decord GPU | failed | pip wheel が CUDA-disabled |
+| torchvision.io.VideoReader | failed | この version 未実装 |
+| PyAV / ffmpeg hwaccel | failed | install/path issue |
+
+→ 真の NVDEC は **PyNvVideoCodec + NVIDIA Video Codec SDK 手動セットアップ** 必須。
+
+### 最終確定数値 (clean methodology, 3-run median, real video 1798 frame)
+| Configuration | Realized FPS | 60 FPS 達成 |
+|---|---|---|
+| 4-person pose, sequential | 52.3 | × |
+| 4-person pose, threaded WASB || | 55.4 | × (92%) |
+| **2-person pose, sequential** | **63.2** | **✓ (105%)** |
+| **2-person pose, threaded WASB ||** | **64.4** | **✓ (107%)** |
+
+WASB 検出率 **39.3%** (TrackNetV3 0% に対し圧勝)、性能最適化中も精度維持。
+
+### **絶対限界打ち止め (5060 Ti 単体)**
+これ以上の現実的速度向上は以下のいずれかが必要:
+1. **TRT install 修正** → INT8 で 1.5-2× (推定 100+ FPS)
+2. **Python overhead 削減** (Cython, C++ wrapper, multi-process) → 113 FPS 上限到達
+3. **PyNvVideoCodec** で真 NVDEC → 推論パイプライン自体に decode が embedded されてない現状では効果限定
+4. **Pro 6000 ハードウェア投入** → 4-6× 全体 (推定 250-400 FPS)
+5. **Track-then-detect の sparse 化** (motion-aware seed extrapolation, candidate 数を <100 に絞る) → 検出率 +3-5pt + 速度ペナルティ <2× (現状 17× を改善)
+
+本セッション内で 5060 Ti から物理的に絞れる最大値を確認。「**60 FPS 目標**」は完全達成、それ以上は構造変更 or ハードウェアが必要。
