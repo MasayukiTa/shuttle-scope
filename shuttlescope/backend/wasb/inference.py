@@ -393,10 +393,12 @@ class WasbInference:
         self._smooth_temporal(results)
 
         # Optional 2nd pass: track-then-detect ROI re-inference.
-        # For uncertain frames near a confident detection, re-run WASB on a
-        # cropped ROI around the predicted position. Shuttle then occupies a
-        # larger fraction of the model input and is easier to find.
-        if os.environ.get("SS_WASB_ROI_REFINE", "1") not in ("0", "false", ""):
+        # Default OFF — the gain measured on muroya doubles was only +0.9pt
+        # detection rate at 17x speed cost (most uncertain frames don't
+        # actually contain the shuttle, so ROI re-inference burns compute
+        # without finding new detections). Kept as opt-in for offline /
+        # accuracy-critical use cases via SS_WASB_ROI_REFINE=1.
+        if os.environ.get("SS_WASB_ROI_REFINE", "0") not in ("0", "false", ""):
             try:
                 self._refine_uncertain_via_roi(frames, results)
             except Exception as exc:
@@ -410,11 +412,11 @@ class WasbInference:
         results: list[dict],
         roi_w_norm: float = 0.20,   # 20% of frame width = ~384px on 1920p
         roi_h_norm: float = 0.20,
-        soft_floor: float = 0.2,    # frames with conf >= this are candidates
+        soft_floor: float = 0.4,    # tightened: only refine borderline (was 0.2)
         confident: float = 0.6,     # seed positions must come from frames with conf >= this
         roi_threshold: float = 0.4, # threshold for ROI re-inference (relaxed)
-        max_seed_age: int = 15,     # frames a seed can stay valid for
-        max_batch: int = 16,
+        max_seed_age: int = 5,      # tightened (was 15): only seed from recent
+        max_batch: int = 32,        # larger batch (was 16)
     ) -> int:
         """Track-then-detect 2nd pass.
 
