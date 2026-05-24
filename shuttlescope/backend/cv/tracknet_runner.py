@@ -30,10 +30,12 @@ def run_tracknet(video_path: str, **kwargs: Any) -> Dict[str, Any]:
             "rally_bounds": ...       # 将来実装: ラリー境界推定結果
         }
     """
-    from backend.cv.factory import get_tracknet
+    # production: get_shuttle_detector() で env switch (SS_SHUTTLE_IMPL=wasb|tracknet)
+    # を尊重する。WASB/TrackNet 双方 .run(video_path) -> List[ShuttleSample] 互換。
+    from backend.cv.factory import get_shuttle_detector
 
     try:
-        inferencer = get_tracknet()
+        inferencer = get_shuttle_detector()
         backend_name = type(inferencer).__name__
 
         logger.info("[tracknet_runner] %s で推論開始: %s", backend_name, video_path)
