@@ -17,9 +17,14 @@
  */
 
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react'
-import { MousePointer2 } from 'lucide-react'
-import { apiGet, apiPost } from '@/api/client'
+import { apiGet, API_BASE_URL, getAuthHeaders } from '@/api/client'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
+
+// バックエンド保存のクライアント側タイムアウト (ms)。
+// fetch 自体にはタイムアウトが無いため、backend が無応答だと "DBへ保存中..." が
+// 永久に表示され続けてしまう不具合があった。AbortController で 30 秒で切る。
+const SAVE_TIMEOUT_MS = 30_000
 
 // ─── 型 ─────────────────────────────────────────────────────────────────────
 
@@ -168,15 +173,41 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
     return () => { cancelled = true }
   }, [matchId])
 
+  // 進行中の保存リクエストを abort できるよう ref で保持
+  const saveAbortRef = useRef<AbortController | null>(null)
+
   const postToBackend = useCallback((pts: Pt[]) => {
+    // 既に走っている保存があれば打ち切る (連続ドラッグの古い request 防止)
+    if (saveAbortRef.current) {
+      try { saveAbortRef.current.abort() } catch { /* ignore */ }
+    }
+    const ac = new AbortController()
+    saveAbortRef.current = ac
     setSaving(true)
-    // apiPost が http://localhost:8765/api を絶対 URL で叩く（Electron file:// 対応）
-    apiPost(`/matches/${matchId}/court_calibration`, {
-      points: pts.map((p) => ({ x: p.x, y: p.y })),
-      container_width:  containerSize.w,
-      container_height: containerSize.h,
+    // 30 秒で client-side timeout — backend 無応答時に spinner が永久残るのを防ぐ
+    const timeoutId = setTimeout(() => {
+      try { ac.abort() } catch { /* ignore */ }
+    }, SAVE_TIMEOUT_MS)
+
+    // apiPost は AbortSignal を渡せないため fetch を直接叩く。
+    // 仕様 (URL / ヘッダ / ボディ shape) は apiPost と同等。
+    fetch(`${API_BASE_URL}/matches/${matchId}/court_calibration`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({
+        points: pts.map((p) => ({ x: p.x, y: p.y })),
+        container_width:  containerSize.w,
+        container_height: containerSize.h,
+      }),
+      signal: ac.signal,
     })
-      .then(() => {
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => '')
+          const err = new Error(text || res.statusText) as Error & { status?: number }
+          err.status = res.status
+          throw err
+        }
         setSaveError(null)
         setCalibSource('backend')
         setSavedNotice(true)
@@ -184,20 +215,49 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
         onCalibrationSaved?.()
       })
       .catch((err: unknown) => {
-        const status = (err as { status?: number })?.status
-        const msg = err instanceof Error ? err.message : String(err)
-        console.warn('[CourtGrid] backend save failed:', status, msg)
-        setSaveError(
-          status
-            ? (status >= 500
-                ? `DB保存失敗 (${status}) — バックエンドを再起動後に再試行してください`
-                : `DB保存失敗 (${status}): ${msg.slice(0, 200)}`)
-            : `ネットワークエラー: ${msg}`,
-        )
-        setTimeout(() => setSaveError(null), 8000)
+        // AbortError: タイムアウト or 新リクエストで上書きされたケース
+        const name = (err as { name?: string })?.name
+        if (name === 'AbortError') {
+          // timeout 由来 (タイマーがまだ生きていない = 既に発火している) なら errorMessage を出す。
+          // 新リクエストで上書きされた場合は次の postToBackend が saving を立て直すのでメッセージ不要。
+          if (ac === saveAbortRef.current) {
+            setSaveError('DB保存タイムアウト (30秒) — バックエンドが応答しません。バックエンドを再起動後に再試行してください。')
+          } else {
+            return  // 上書きされた古い request — 何もしない
+          }
+        } else {
+          const status = (err as { status?: number })?.status
+          const msg = err instanceof Error ? err.message : String(err)
+          console.warn('[CourtGrid] backend save failed:', status, msg)
+          setSaveError(
+            status
+              ? (status >= 500
+                  ? `DB保存失敗 (${status}) — バックエンドを再起動後に再試行してください`
+                  : `DB保存失敗 (${status}): ${msg.slice(0, 200)}`)
+              : `ネットワークエラー: ${msg}`,
+          )
+        }
+        // エラーメッセージは 12 秒表示 (コピー操作に十分な時間)
+        setTimeout(() => setSaveError(null), 12000)
       })
-      .finally(() => setSaving(false))
+      .finally(() => {
+        clearTimeout(timeoutId)
+        // 自分自身が最新の controller である場合のみ saving を解除
+        if (ac === saveAbortRef.current) {
+          setSaving(false)
+          saveAbortRef.current = null
+        }
+      })
   }, [matchId, containerSize, onCalibrationSaved])
+
+  // アンマウント時に進行中保存を abort してメモリリーク防止
+  useEffect(() => {
+    return () => {
+      if (saveAbortRef.current) {
+        try { saveAbortRef.current.abort() } catch { /* ignore */ }
+      }
+    }
+  }, [])
 
   const savePts = useCallback((pts: Pt[]) => {
     setPoints(pts)
@@ -296,7 +356,11 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
     <>
     <div
       className="absolute inset-0 pointer-events-none"
-      style={{ zIndex: 20 }}
+      // キャリブレーション中は ROI オーバーレイ (zIndex:30, pointer-events:auto) より
+      // 上に来るよう zIndex を上げる。これをやらないと「解析領域指定中はグリッド線が
+      // 描けない」不具合 (ROI overlay がクリックを横取りしてしまう) が起きる。
+      // 非キャリブレーション時は 20 のまま — ROI 編集を邪魔しない。
+      style={{ zIndex: calibrating ? 35 : 20 }}
     >
       <svg
         ref={svgRef}
@@ -421,13 +485,39 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
         </div>
       )}
 
-      {/* ─── 保存エラートースト（8秒） ─────────────────────────── */}
+      {/* ─── 保存エラートースト（12秒、コピー可能） ───────────────────
+          PlayerTrackingOverlay と同じ pattern: 本文 select-text +
+          コピーボタンで原文を確実に持ち出せるようにする。zIndex は
+          ROI overlay (30) と calibrating 中の自身 (35) より上に置く。 */}
       {saveError && (
         <div
-          className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded text-xs bg-red-900/90 border border-red-500 text-red-200 max-w-xs text-center"
-          style={{ pointerEvents: 'none', zIndex: 30 }}
+          className="absolute top-2 left-1/2 -translate-x-1/2 px-2 py-1.5 rounded bg-red-900/95 border border-red-500 max-w-md flex items-start gap-2"
+          style={{ pointerEvents: 'auto', zIndex: 40 }}
         >
-          ✗ {saveError}
+          <pre
+            className="text-[11px] font-mono whitespace-pre-wrap break-all text-left select-text overflow-auto"
+            style={{ color: '#fca5a5', maxHeight: '40vh', userSelect: 'text', margin: 0 }}
+          >✗ {saveError}</pre>
+          <button
+            type="button"
+            className="shrink-0 text-[10px] bg-red-800 hover:bg-red-700 active:bg-red-900 rounded px-2 py-1"
+            style={{ color: '#ffffff' }}
+            onClick={() => {
+              try { navigator.clipboard.writeText(saveError) } catch { /* ignore */ }
+            }}
+            title={t('auto.CourtGridOverlay.copy_error', { defaultValue: 'エラーをコピー' })}
+          >
+            {t('auto.CourtGridOverlay.copy', { defaultValue: 'コピー' })}
+          </button>
+          <button
+            type="button"
+            className="shrink-0 text-[10px] bg-red-800 hover:bg-red-700 active:bg-red-900 rounded px-2 py-1"
+            style={{ color: '#ffffff' }}
+            onClick={() => setSaveError(null)}
+            title={t('auto.CourtGridOverlay.dismiss', { defaultValue: '閉じる' })}
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -442,7 +532,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
             className="flex flex-col items-center gap-2 px-6 py-4 rounded-lg bg-gray-900/80 border border-gray-600 hover:bg-gray-800/90 text-sm"
             style={{ color: '#e5e7eb' }}
           >
-            <MousePointer2 size={20} className="text-cyan-400" />
+            <MIcon name="mouse" size={20} className="text-cyan-400" />
             <span>{t('auto.CourtGridOverlay.k1')}</span>
             <span className="text-xs" style={{ color: '#9ca3af' }}>{t('auto.CourtGridOverlay.k2')}</span>
           </button>
