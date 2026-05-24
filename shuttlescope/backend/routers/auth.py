@@ -181,8 +181,17 @@ def _totp_uri(secret: str, username: str) -> str:
 
 # ── ログインID バリデーション ─────────────────────────────────────────────────
 
+_ASCII_WS = " \t\r\n\x0b\x0c"
+
+
 def _normalize_login_id(value: Optional[str]) -> str:
-    return (value or "").strip()
+    # Round 279 fix: 既定 str.strip() は Unicode whitespace (U+00A0 NBSP,
+    # U+200B ZWSP, U+3000 IDEOGRAPHIC SPACE, U+FEFF BOM 等) も削除するため、
+    # "adminTakeuchi_" + NBSP のような入力が DB lookup で admin と衝突する
+    # fuzzy match を引き起こす。ASCII whitespace のみに限定する。
+    # 加えて Pydantic 層 (_reject_invalid_chars_in_id) で Unicode whitespace
+    # 自体を 422 で reject しているため、ここに到達する時点で残らない想定。
+    return (value or "").strip(_ASCII_WS)
 
 
 def _validate_login_id(login_id: str) -> str:
@@ -381,7 +390,7 @@ class LoginRequest(BaseModel):
 
     @field_validator("username", "identifier", mode="after")
     @classmethod
-    def _reject_null_byte_in_id(cls, v: Optional[str]) -> Optional[str]:
+    def _reject_invalid_chars_in_id(cls, v: Optional[str]) -> Optional[str]:
         # round 233 R7-A: PostgreSQL の text 列は NUL byte を受け付けず、
         # ValueError 経由で 500 リークする。Pydantic 層で早期拒否する。
         # 同時に C0 制御文字も拒否 (audit log injection / log noise 抑制)。
@@ -390,6 +399,28 @@ class LoginRequest(BaseModel):
         if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in v):
             from fastapi import HTTPException as _HTTP
             raise _HTTP(status_code=422, detail="username/identifier に制御文字を含めることはできません")
+        # Round 279 fix: Unicode whitespace (U+00A0 NBSP, U+200B ZWSP,
+        # U+3000 IDEOGRAPHIC SPACE, U+FEFF BOM 等) を含む入力は、
+        # 後段の str.strip() が削除して DB lookup を fuzzy match させる
+        # (例: "adminTakeuchi_" + NBSP が admin と衝突)。
+        # 認証系は string-exact 同一性が前提のため、Unicode whitespace を
+        # 含む username/identifier は API 境界で 422 拒否する。
+        # email アドレスを identifier に入れるケースも RFC 5321/5322 で
+        # whitespace は禁止 (quoted-string 形式すら通常 reject) のため副作用なし。
+        import unicodedata as _ud
+        for ch in v:
+            cat = _ud.category(ch)
+            # Zs = Space_Separator, Zl = Line_Separator, Zp = Paragraph_Separator
+            if cat in ("Zs", "Zl", "Zp"):
+                from fastapi import HTTPException as _HTTP
+                raise _HTTP(status_code=422,
+                            detail="username/identifier に空白文字を含めることはできません")
+            # U+200B-200D (ZWSP/ZWNJ/ZWJ), U+2060 (WJ), U+FEFF (BOM) は
+            # category=Cf (format) で Zs にならないが whitespace-likely。明示 reject。
+            if ord(ch) in (0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF):
+                from fastapi import HTTPException as _HTTP
+                raise _HTTP(status_code=422,
+                            detail="username/identifier にゼロ幅文字を含めることはできません")
         return v
 
 
