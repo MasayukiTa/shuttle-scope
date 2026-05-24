@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 _tracknet_cache: Optional[dict] = None  # {"key": tuple, "impl": TrackNetInferencer}
 _pose_cache: Optional[dict] = None      # {"key": tuple, "impl": PoseInferencer}
+_shuttle_cache: Optional[dict] = None   # {"key": tuple, "impl": shuttle detector}
 
 
 def _env_key() -> tuple:
@@ -40,9 +41,65 @@ def _env_key() -> tuple:
 
 def clear_cache() -> None:
     """キャッシュを破棄する（テスト用・環境変更後の強制再解決用）。"""
-    global _tracknet_cache, _pose_cache
+    global _tracknet_cache, _pose_cache, _shuttle_cache
     _tracknet_cache = None
     _pose_cache = None
+    _shuttle_cache = None
+
+
+def _shuttle_env_key() -> tuple:
+    """shuttle detector のキャッシュキー (impl + GPU 設定の組合せ)。"""
+    return (
+        os.environ.get("SS_SHUTTLE_IMPL", "tracknet").lower(),
+        os.environ.get("SS_CV_MOCK", "0"),
+        os.environ.get("SS_USE_GPU", "0"),
+        os.environ.get("SS_CUDA_DEVICE", "0"),
+        os.environ.get("SS_WASB_ONNX", ""),
+    )
+
+
+def get_shuttle_detector():
+    """シャトル検出器の唯一の入口。env switch で TrackNet / WASB を切り替える。
+
+    ``SS_SHUTTLE_IMPL=tracknet`` (デフォルト) → ``get_tracknet()`` の結果
+    ``SS_SHUTTLE_IMPL=wasb``     → ``WasbInference`` を ``load()`` 済みで返す
+
+    どちらも ``predict_frames(list[ndarray]) -> list[dict]`` を満たす。
+    WASB のロードに失敗した場合は graceful に TrackNet にフォールバックする。
+    """
+    global _shuttle_cache
+
+    key = _shuttle_env_key()
+    if _shuttle_cache is not None and _shuttle_cache["key"] == key:
+        return _shuttle_cache["impl"]
+
+    impl_name = key[0]
+    impl = None
+    if impl_name == "wasb":
+        try:
+            from backend.wasb.inference import WasbInference
+
+            cand = WasbInference(
+                cuda_device_index=int(os.environ.get("SS_CUDA_DEVICE", "0") or "0"),
+            )
+            if cand.load():
+                logger.info(
+                    "[cv.factory] Shuttle detector: WASB (backend=%s)", cand.backend_name()
+                )
+                impl = cand
+            else:
+                logger.warning(
+                    "[cv.factory] WASB load failed (%s) — TrackNet にフォールバック",
+                    cand.get_load_error(),
+                )
+        except Exception as exc:
+            logger.warning("[cv.factory] WASB 初期化失敗: %s — TrackNet にフォールバック", exc)
+
+    if impl is None:
+        impl = get_tracknet()
+
+    _shuttle_cache = {"key": key, "impl": impl}
+    return impl
 
 
 def _settings():
