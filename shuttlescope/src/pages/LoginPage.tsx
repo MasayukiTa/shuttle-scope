@@ -80,9 +80,18 @@ async function apiLogin(body: object): Promise<LoginResult> {
 
 async function apiMfaLogin(mfaToken: string, code: string): Promise<AuthSession & { error?: string }> {
   try {
+    // /api/auth/mfa/login は _GLOBAL_AUTH_EXEMPT に含まれないため
+    // GlobalAuthMiddleware が Authorization: Bearer 必須。mfa_token は
+    // role=mfa_pending JWT なので Bearer として送る (middleware は
+    // /api/auth/mfa/* path だけ mfa_pending role を通す)。
+    // body にも mfa_token を残すのはハンドラ側 verify_token が同 token を
+    // 期待しているため (重複だが冗長性で安全側)。
     const res = await fetch(`${BASE_URL}/auth/mfa/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${mfaToken}`,
+      },
       body: JSON.stringify({ mfa_token: mfaToken, code }),
     })
     if (!res.ok) {
