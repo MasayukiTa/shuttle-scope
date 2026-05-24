@@ -76,10 +76,13 @@ def _get_tracknet():
             return _InlineMockTrackNet()
     try:
         from backend.cv import factory  # type: ignore
+        # production: env switch (SS_SHUTTLE_IMPL=wasb|tracknet) を尊重する
+        if hasattr(factory, "get_shuttle_detector"):
+            return factory.get_shuttle_detector()
         if hasattr(factory, "get_tracknet"):
             return factory.get_tracknet()
     except Exception as exc:
-        logger.debug("factory.get_tracknet 未利用 (%s) — inline mock を使用", exc)
+        logger.debug("factory.get_shuttle_detector 未利用 (%s) — inline mock を使用", exc)
     return _InlineMockTrackNet()
 
 

@@ -210,6 +210,68 @@ class WasbInference:
         logger.warning("[wasb] load failed: %s", self._load_error)
         return False
 
+    def run(self, video_path: str, fps: float = 30.0) -> list:
+        """TrackNetInferencer 互換アダプタ。動画を読み込み ``List[ShuttleSample]`` を返す。
+
+        ``backend.cv.factory.get_shuttle_detector()`` 経由で production の
+        ``video_pipeline`` / ``tracknet_runner`` / ``benchmark.runner`` から
+        TrackNet と同じ呼び出し方で差し替え可能にするためのアダプタ。
+
+        - ``predict_frames`` の dict 出力を ``ShuttleSample`` に変換する。
+        - ``visible=False`` の窓は ``confidence=0.0`` で素通しする
+          (TrackNet 側もスキップせず 0 conf を返す挙動に合わせる)。
+        - ``ts_sec`` は ``frame_idx / fps`` で算出 (動画 fps 未取得時は 30 fallback)。
+        """
+        import cv2  # 遅延 import: cv2 は重いので必要時のみ
+
+        from backend.cv.base import ShuttleSample
+
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            logger.warning("[wasb.run] cannot open video: %s", video_path)
+            return []
+        try:
+            cap_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            if cap_fps > 0:
+                fps = cap_fps
+            frames: list[np.ndarray] = []
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                frames.append(frame)
+        finally:
+            cap.release()
+
+        if not frames:
+            return []
+
+        preds = self.predict_frames(frames)
+        samples = []
+        # predict_frames の frame_idx は 1-origin (窓の最終フレーム)
+        # 元フレーム index は frame_idx + FRAME_STACK - 2
+        for p in preds:
+            f_idx_orig = int(p["frame_idx"]) + FRAME_STACK - 2
+            x_norm = p.get("x_norm")
+            y_norm = p.get("y_norm")
+            # ShuttleSample は px 座標を想定 (TrackNet と同様)。
+            # WASB は normalized で返すので元動画解像度を掛ける。
+            if x_norm is None or y_norm is None:
+                x_px = 0.0
+                y_px = 0.0
+            else:
+                H0, W0 = frames[0].shape[:2]
+                x_px = float(x_norm) * float(W0)
+                y_px = float(y_norm) * float(H0)
+            samples.append(ShuttleSample(
+                frame=f_idx_orig,
+                ts_sec=float(f_idx_orig) / fps if fps > 0 else 0.0,
+                x=x_px,
+                y=y_px,
+                confidence=float(p.get("confidence", 0.0)),
+            ))
+        return samples
+
     def predict_frames(self, frames: list[np.ndarray]) -> list[dict]:
         """3 フレームのスライディングウィンドウで推論し、各窓 1 件の dict を返す。
 
