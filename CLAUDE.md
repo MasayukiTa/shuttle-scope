@@ -206,6 +206,35 @@
 - Preserve UTF-8 encoding when editing localization files.
 - If a file displays mojibake in a shell, verify encoding before assuming the source text is broken.
 
+### `t()` MUST stay inside components — production-bundle crash class
+- `const { t } = useTranslation()` binds `t` only inside the component / hook
+  body. Writing `const FOO = { label: t('key') }` at **module scope** crashes
+  the minified production bundle with `ReferenceError: t is not defined`
+  (the dev / unminified build may silently swallow the same error,
+  hiding the bug until prod).
+- Correct pattern:
+  ```tsx
+  export function Comp() {
+    const { t } = useTranslation()
+    const ROWS = useMemo(() => [
+      { key: 'a', label: t('comp.a') },
+    ], [t])
+    ...
+  }
+  ```
+- Wrong (will crash):
+  ```tsx
+  const ROWS = [
+    { key: 'a', label: t('comp.a') },  // <- t is undefined here
+  ]
+  export function Comp() { ... }
+  ```
+- Module-scope literal-translation lookups are fine via `import i18n from
+  '@/i18n'; i18n.t(...)` — that's qualified and `i18n` is always bound.
+- Enforcement: `npm run check:i18n` (calls `scripts/check_module_scope_t.py`)
+  fails CI on this pattern. Also wired in
+  `.github/workflows/check-i18n.yml`.
+
 ## コートヒートマップ合成ビューの制約
 
 - 打点タブ・着地点タブで相手コート側が灰色なのは不具合ではない。
