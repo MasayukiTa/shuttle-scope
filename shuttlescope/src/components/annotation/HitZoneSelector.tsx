@@ -15,9 +15,8 @@
  */
 import { clsx } from 'clsx'
 import { useTranslation } from 'react-i18next'
-import { Sparkles } from 'lucide-react'
-
 import { Zone9 } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 
 interface HitZoneSelectorProps {
   /** CV 自動推定値 (1-9), null = 推定なし */
@@ -102,7 +101,7 @@ export function HitZoneSelector({
             >
               <span>{zone}</span>
               {isCv && (
-                <Sparkles
+                <MIcon name="auto_awesome"
                   size={10}
                   className="absolute top-0.5 right-0.5 text-yellow-300"
                   aria-hidden

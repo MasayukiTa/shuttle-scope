@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Info } from 'lucide-react'
 import { useBestProfile } from '@/hooks/useConditionAnalytics'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   playerId: number
@@ -208,7 +208,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
           {/* 期待勝率改善 */}
           {rateDiff != null && rateDiff > 0 && (
             <div className={`pt-2 border-t ${sepColor} flex items-start gap-1.5 text-xs ${textMuted}`}>
-              <Info size={11} className="shrink-0 mt-0.5" />
+              <MIcon name="info" size={11} className="shrink-0 mt-0.5" />
               <span>
                 {t('condition.best_profile.win_rate_improvement', { diff: rateDiff })}
               </span>

@@ -2,9 +2,9 @@
 // available=true のデバイスのみチェック可。device_type に応じたアイコンを表示。
 // specs はツールチップで表示する。
 
-import { Cpu, Monitor, Zap, Network } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ComputeDevice, DeviceType } from '@/api/benchmark'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   devices: ComputeDevice[]
@@ -16,10 +16,10 @@ interface Props {
 function DeviceIcon({ type }: { type: DeviceType }) {
   const cls = 'shrink-0'
   switch (type) {
-    case 'cpu':        return <Cpu     size={14} className={cls} />
-    case 'igpu':       return <Monitor size={14} className={cls} />
-    case 'dgpu':       return <Zap     size={14} className={cls} />
-    case 'ray_worker': return <Network size={14} className={cls} />
+    case 'cpu':        return <MIcon name="memory"     size={14} className={cls} />
+    case 'igpu':       return <MIcon name="monitor" size={14} className={cls} />
+    case 'dgpu':       return <MIcon name="bolt"     size={14} className={cls} />
+    case 'ray_worker': return <MIcon name="lan" size={14} className={cls} />
   }
 }
 

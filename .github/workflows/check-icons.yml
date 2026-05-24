@@ -1,0 +1,29 @@
+name: icon usage check (Material Symbols only)
+
+# Catches non-MIcon icon usage:
+#   - lucide-react / react-icons / @heroicons / @radix-ui/react-icons / @fortawesome imports
+#   - emoji literals in src/**/*.tsx
+# All icons must use <MIcon name="..." /> from @/components/common/MIcon
+# so the Material Symbols subset (offline, CSP-safe) covers the whole UI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check-icons:
+    name: scan src/**/*.tsx for non-MIcon icon usage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: '3.12'
+      - name: Run icon usage check
+        working-directory: shuttlescope
+        run: python scripts/check_no_emoji_in_jsx.py

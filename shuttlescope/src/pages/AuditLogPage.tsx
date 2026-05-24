@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw, ArrowUp, ArrowDown, Download } from 'lucide-react'
 import { authAuditLogs, authAuditLogActions, AuditLogEntry, AuditLogActionItem, authRequestLogs, authSecurityEvents, RequestLogEntry, SecurityEventEntry } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
+import { MIcon } from '@/components/common/MIcon'
 
 type SortKey = 'created_at' | 'action' | 'user' | 'ip_addr'
 type SortDir = 'asc' | 'desc'
@@ -173,7 +173,7 @@ export function AuditLogPage() {
 
   const sortIcon = (key: SortKey) => {
     if (sortKey !== key) return <span className="opacity-30">↕</span>
-    return sortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+    return sortDir === 'asc' ? <MIcon name="arrow_upward" size={12} /> : <MIcon name="arrow_downward" size={12} />
   }
 
   return (
@@ -296,7 +296,7 @@ export function AuditLogPage() {
             isLight ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-blue-700 text-white hover:bg-blue-600'
           } disabled:opacity-50`}
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
           {t('auth.audit_log.refresh')}
         </button>
         <button
@@ -307,7 +307,7 @@ export function AuditLogPage() {
           } disabled:opacity-50`}
           title="現在の表示順で CSV ダウンロード"
         >
-          <Download size={14} /> CSV
+          <MIcon name="download" size={14} /> CSV
         </button>
         <span className={`text-xs ${textMuted}`}>表示: {tab === 'audit' ? sortedRows.length : tab === 'request' ? reqRows.length : secRows.length} 件</span>
       </div>

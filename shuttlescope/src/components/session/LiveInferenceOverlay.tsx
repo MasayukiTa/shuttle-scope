@@ -4,10 +4,10 @@
  * DeviceManagerPanel や AnnotatorPage の live camera preview に重ねて使う。
  */
 import { useState } from 'react'
-import { Zap, ZapOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLiveInference } from '@/hooks/useLiveInference'
 import type { LiveInferenceCandidate } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   videoRef: React.RefObject<HTMLVideoElement>
@@ -68,7 +68,7 @@ export function LiveInferenceOverlay({ videoRef, sessionCode, className = '' }: 
               : 'bg-black/70 border-gray-500 hover:bg-gray-800/90'
           }`}
         >
-          {enabled ? <Zap size={10} /> : <ZapOff size={10} />}
+          {enabled ? <MIcon name="bolt" size={10} /> : <MIcon name="flash_off" size={10} />}
           <span style={{ color: enabled ? 'inherit' : 'white' }}>
             {enabled ? t('live_inference.enabled') : t('live_inference.disabled')}
           </span>

@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Medal } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { SetDistributionBar } from '@/components/analysis/SetDistributionBar'
@@ -11,6 +10,7 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
+import { MIcon } from '@/components/common/MIcon'
 
 interface PlayerSummary {
   id: number
@@ -115,7 +115,7 @@ function PartnerRankingSection({
     >
       {/* ヘッダー */}
       <div className="flex items-center gap-2">
-        <Medal size={14} style={{ color: '#3b82f6' }} />
+        <MIcon name="military_tech" size={14} style={{ color: '#3b82f6' }} />
         <span className="text-xs font-semibold" style={{ color: '#3b82f6' }}>
           {t('pair.title', 'Analyst only — partner candidate ranking (record-based)')}
         </span>

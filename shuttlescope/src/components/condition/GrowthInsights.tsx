@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { ChevronDown, ChevronUp, Info } from 'lucide-react'
+import { MIcon } from '@/components/common/MIcon'
 import { useInsights } from '@/hooks/useConditionAnalytics'
 import type { GrowthCard } from '@/hooks/useConditionAnalytics'
 import { useAuth } from '@/hooks/useAuth'
@@ -113,7 +113,7 @@ function GrowthCardRow({ c, isLight, sepColor }: {
             className={`flex items-center gap-0.5 text-[11px] ${labelMuted} hover:text-blue-400 whitespace-nowrap`}
           >
             {t('condition.insights.growth_card.basis_label')}
-            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {expanded ? <MIcon name="expand_less" size={12} /> : <MIcon name="expand_more" size={12} />}
           </button>
         </div>
       </div>
@@ -135,7 +135,7 @@ function GrowthCardRow({ c, isLight, sepColor }: {
             </span>
           </div>
           <div className={`text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-start gap-1`}>
-            <Info size={10} className="shrink-0 mt-0.5" />
+            <MIcon name="info" size={10} className="shrink-0 mt-0.5" />
             <span>{t('condition.insights.growth_card.mechanism')}</span>
           </div>
         </div>

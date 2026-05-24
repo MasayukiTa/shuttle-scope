@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Check, _X, AlertCircle, Loader2 } from 'lucide-react'
 import { getMyConsents, withdrawConsent, submitConsents, type ConsentType } from '@/api/client'
+import { MIcon } from '@/components/common/MIcon'
 
 /**
  * ユーザが任意同意を撤回できる UI。GDPR Article 7(3) /
@@ -60,7 +60,7 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
           {t('settings.consent.title', '同意状態')}
         </h2>
         <div className="flex items-center gap-2 text-sm text-gray-500 mt-2">
-          <Loader2 size={14} className="animate-spin" />
+          <MIcon name="progress_activity" size={14} className="animate-spin" />
           {t('common.loading', '読み込み中…')}
         </div>
       </section>
@@ -190,7 +190,7 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                         isLight ? 'text-gray-500' : 'text-gray-400'
                       }`}
                     >
-                      <AlertCircle size={12} />
+                      <MIcon name="error" size={12} />
                       {t('settings.consent.required_note', '撤回不可')}
                     </span>
                   ) : isWithdrawn ? (
@@ -206,9 +206,9 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                       } ${pending === type ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {pending === type ? (
-                        <Loader2 size={12} className="animate-spin" />
+                        <MIcon name="progress_activity" size={12} className="animate-spin" />
                       ) : (
-                        <Check size={12} />
+                        <MIcon name="check" size={12} />
                       )}
                       {t('settings.consent.regrant_btn', '再承認')}
                     </button>
@@ -223,9 +223,9 @@ export function ConsentManagementCard({ isLight }: { isLight: boolean }) {
                       } ${pending === type ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {pending === type ? (
-                        <Loader2 size={12} className="animate-spin" />
+                        <MIcon name="progress_activity" size={12} className="animate-spin" />
                       ) : (
-                        <Check size={12} />
+                        <MIcon name="check" size={12} />
                       )}
                       {t('settings.consent.withdraw_btn', '撤回')}
                     </button>

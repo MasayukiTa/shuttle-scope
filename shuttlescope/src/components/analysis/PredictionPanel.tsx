@@ -10,7 +10,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronUp, TrendingUp } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
@@ -26,6 +25,7 @@ import { AnalystDepthPanel } from '@/components/analysis/AnalystDepthPanel'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
+import { MIcon } from '@/components/common/MIcon'
 
 interface PlayerSummary {
   id: number
@@ -178,7 +178,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
   if (!opponentId) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-        <TrendingUp size={32} className="text-gray-400" />
+        <MIcon name="trending_up" size={32} className="text-gray-400" />
         <p className="text-sm font-medium text-gray-300">{t('auto.PredictionPanel.k1')}</p>
         <p className="text-xs text-gray-500">{t('auto.PredictionPanel.k2')}</p>
       </div>
@@ -410,7 +410,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
           onClick={() => setShowLayerB((v) => !v)}
         >
           <span>{t('prediction.set_distribution')}</span>
-          {showLayerB ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {showLayerB ? <MIcon name="expand_less" size={14} /> : <MIcon name="expand_more" size={14} />}
         </button>
         {showLayerB && (
           <div className="px-4 pb-4 space-y-4">
@@ -444,7 +444,7 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
           onClick={() => setShowLayerC((v) => !v)}
         >
           <span>{t('prediction.layer_c')}</span>
-          {showLayerC ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {showLayerC ? <MIcon name="expand_less" size={14} /> : <MIcon name="expand_more" size={14} />}
         </button>
         {showLayerC && (
           <div className="px-4 pb-4 space-y-4">

@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, Plus, X, Check, Users, Loader2, Trash2, AlertTriangle } from 'lucide-react'
-
 import {
   listTeams,
   createTeam,
@@ -11,6 +9,7 @@ import {
   type TeamDTO,
   type TeamDependencies,
 } from '@/api/client'
+import { MIcon } from '@/components/common/MIcon'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslation } from 'react-i18next'
@@ -192,7 +191,7 @@ export function TeamManagementPage() {
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shrink-0"
           >
-            <Plus size={16} /> <span className="hidden sm:inline">{t('auto.TeamManagementPage.k3')}</span><span className="sm:hidden">{t('auto.TeamManagementPage.k4')}</span>
+            <MIcon name="add" size={16} /> <span className="hidden sm:inline">{t('auto.TeamManagementPage.k3')}</span><span className="sm:hidden">{t('auto.TeamManagementPage.k4')}</span>
           </button>
         )}
       </div>
@@ -259,7 +258,7 @@ export function TeamManagementPage() {
               disabled={creating}
               className="px-3 py-2 bg-blue-600 text-white rounded disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 w-full sm:w-auto"
             >
-              {creating && <Loader2 size={14} className="animate-spin" />}
+              {creating && <MIcon name="progress_activity" size={14} className="animate-spin" />}
               {creating ? t('auto.TeamManagementPage.k27') : t('auto.TeamManagementPage.k28')}
             </button>
           </div>
@@ -305,14 +304,14 @@ export function TeamManagementPage() {
                         disabled={savingId === tm.id}
                         className="p-2 text-gray-500 border rounded disabled:opacity-50"
                       >
-                        <X size={16} />
+                        <MIcon name="close" size={16} />
                       </button>
                       <button
                         onClick={() => handleSave(tm.id)}
                         disabled={savingId === tm.id}
                         className="p-2 bg-green-600 text-white rounded inline-flex items-center gap-1 disabled:opacity-60"
                       >
-                        {savingId === tm.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={16} />}
+                        {savingId === tm.id ? <MIcon name="progress_activity" size={14} className="animate-spin" /> : <MIcon name="check" size={16} />}
                       </button>
                     </div>
                   </div>
@@ -336,7 +335,7 @@ export function TeamManagementPage() {
                           onClick={() => setExpandedTeamId((cur) => (cur === tm.id ? null : tm.id))}
                           className="p-1.5 text-gray-600 border rounded inline-flex items-center gap-1"
                         >
-                          <Users size={14} />
+                          <MIcon name="group" size={14} />
                           <span className="text-xs">{members.length}</span>
                         </button>
                         {(isAdmin || isCoach) && (
@@ -344,7 +343,7 @@ export function TeamManagementPage() {
                             onClick={() => startEdit(tm)}
                             className="p-1.5 text-blue-600 border rounded"
                           >
-                            <Pencil size={14} />
+                            <MIcon name="edit" size={14} />
                           </button>
                         )}
                         {isAdmin && (
@@ -355,9 +354,9 @@ export function TeamManagementPage() {
                             title={t('auto.TeamManagementPage.k20')}
                           >
                             {deletingId === tm.id ? (
-                              <Loader2 size={14} className="animate-spin" />
+                              <MIcon name="progress_activity" size={14} className="animate-spin" />
                             ) : (
-                              <Trash2 size={14} />
+                              <MIcon name="delete" size={14} />
                             )}
                           </button>
                         )}
@@ -453,7 +452,7 @@ export function TeamManagementPage() {
                           className="p-1 text-gray-600 hover:bg-gray-100 rounded inline-flex items-center gap-1"
                           title={t('auto.TeamManagementPage.k21')}
                         >
-                          <Users size={14} />
+                          <MIcon name="group" size={14} />
                           <span className="text-xs">{(usersByTeam[tm.id] || []).length}</span>
                         </button>
                       )}
@@ -465,14 +464,14 @@ export function TeamManagementPage() {
                             className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
                             title={t('auto.TeamManagementPage.k22')}
                           >
-                            {savingId === tm.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                            {savingId === tm.id ? <MIcon name="progress_activity" size={16} className="animate-spin" /> : <MIcon name="check" size={16} />}
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
                             className="p-1 text-gray-500 hover:bg-gray-50 rounded"
                             title={t('auto.TeamManagementPage.k23')}
                           >
-                            <X size={16} />
+                            <MIcon name="close" size={16} />
                           </button>
                         </>
                       ) : canEdit || isCoach ? (
@@ -482,7 +481,7 @@ export function TeamManagementPage() {
                             className="p-1 text-blue-600 hover:bg-blue-50 rounded"
                             title={t('auto.TeamManagementPage.k24')}
                           >
-                            <Pencil size={16} />
+                            <MIcon name="edit" size={16} />
                           </button>
                           {isAdmin && (
                             <button
@@ -492,9 +491,9 @@ export function TeamManagementPage() {
                               disabled={deletingId === tm.id}
                             >
                               {deletingId === tm.id ? (
-                                <Loader2 size={16} className="animate-spin" />
+                                <MIcon name="progress_activity" size={16} className="animate-spin" />
                               ) : (
-                                <Trash2 size={16} />
+                                <MIcon name="delete" size={16} />
                               )}
                             </button>
                           )}
@@ -556,7 +555,7 @@ export function TeamManagementPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle size={20} className="text-red-600" />
+              <MIcon name="warning" size={20} className="text-red-600" />
               <h2 className="text-lg font-semibold">{t('auto.TeamManagementPage.k18')}</h2>
             </div>
             <p className="text-sm text-gray-700 mb-3">
@@ -565,7 +564,7 @@ export function TeamManagementPage() {
 
             {!deleteDeps ? (
               <div className="text-sm text-gray-500 flex items-center gap-2 py-2">
-                <Loader2 size={14} className="animate-spin" /> {t('auto.TeamManagementPage.k33')}
+                <MIcon name="progress_activity" size={14} className="animate-spin" /> {t('auto.TeamManagementPage.k33')}
               </div>
             ) : (
               <div className="mb-4">
@@ -633,7 +632,7 @@ export function TeamManagementPage() {
                     disabled={deletingId != null}
                     className="px-3 py-2 bg-orange-600 text-white rounded disabled:opacity-60 inline-flex items-center gap-2"
                   >
-                    {deletingId != null && <Loader2 size={14} className="animate-spin" />}
+                    {deletingId != null && <MIcon name="progress_activity" size={14} className="animate-spin" />}
                     {t('auto.TeamManagementPage.k41')}
                   </button>
                 )}
@@ -646,7 +645,7 @@ export function TeamManagementPage() {
                     disabled={deletingId != null}
                     className="px-3 py-2 bg-red-600 text-white rounded disabled:opacity-60 inline-flex items-center gap-2"
                   >
-                    {deletingId != null && <Loader2 size={14} className="animate-spin" />}
+                    {deletingId != null && <MIcon name="progress_activity" size={14} className="animate-spin" />}
                     {t('auto.TeamManagementPage.k20')}
                   </button>
                 )}

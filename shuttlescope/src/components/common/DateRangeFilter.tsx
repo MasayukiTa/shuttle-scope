@@ -6,8 +6,8 @@
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Calendar } from 'lucide-react'
 import { clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
 
 interface DateRangeFilterProps {
   from: string
@@ -59,7 +59,7 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
 
   return (
     <div className={clsx('flex items-center gap-1.5 flex-wrap', className)}>
-      <Calendar size={13} className="text-gray-500 shrink-0" />
+      <MIcon name="calendar_month" size={13} className="text-gray-500 shrink-0" />
       {(Object.entries(PRESET_LABELS) as [Preset, string][]).map(([key, label]) => (
         <button
           key={key}

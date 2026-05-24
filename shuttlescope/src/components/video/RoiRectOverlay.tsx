@@ -11,8 +11,8 @@
  * コーナードラッグは window イベントで追跡 — z-index 競合を回避。
  */
 import { useRef, useState, useCallback, useEffect, type RefObject } from 'react'
-import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 type Pt = { x: number; y: number }
 
@@ -227,7 +227,7 @@ export function RoiRectOverlay({ value, onChange, editing, containerRef }: Props
             onClick={(e) => { e.stopPropagation(); onChange(null) }}
             title={t('auto.RoiRectOverlay.k1')}
           >
-            <X size={10} />
+            <MIcon name="close" size={10} />
           </button>
 
           {/* 4コーナーハンドル */}

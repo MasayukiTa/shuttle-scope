@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Eye, EyeOff } from 'lucide-react'
-
 import { useAuth } from '@/hooks/useAuth'
 import type { AuthSession } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
 import { UserRole } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 
 const BASE_URL = (() => {
   if (
@@ -222,7 +221,7 @@ export function LoginPage({ onLogin }: Props) {
                 title={showPassword ? '非表示' : '表示'}
                 aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
               >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showPassword ? <MIcon name="visibility_off" size={16} /> : <MIcon name="visibility" size={16} />}
               </button>
             </div>
           </div>

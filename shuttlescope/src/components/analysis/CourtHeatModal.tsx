@@ -8,7 +8,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { X, LayoutDashboard, AlertTriangle } from 'lucide-react'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
@@ -16,6 +15,7 @@ import { apiGet } from '@/api/client'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import type { LandZone } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 
 interface MatchSummary {
   match_id: number
@@ -191,7 +191,7 @@ export function CourtHeatModal({
             onClick={onClose}
             className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 transition-colors px-3 py-1.5 rounded"
           >
-            <LayoutDashboard size={13} />
+            <MIcon name="dashboard" size={13} />
             {t('court_heat_modal.back_to_dashboard')}
           </button>
           <button
@@ -199,7 +199,7 @@ export function CourtHeatModal({
             className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
             title={t('court_heat_modal.close_esc')}
           >
-            <X size={18} />
+            <MIcon name="close" size={18} />
           </button>
         </div>
       </div>
@@ -234,7 +234,7 @@ export function CourtHeatModal({
             {/* 合成モード注意書き */}
             {mode === 'composite' && (
               <div className="flex items-start gap-2 p-3 bg-amber-950/60 border border-amber-700/50 rounded-lg text-xs max-w-xs">
-                <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />
+                <MIcon name="warning" size={13} className="text-amber-400 mt-0.5 shrink-0" />
                 <div className="text-amber-300/80">
                   {t('court_heat_modal.composite_note')}
                 </div>

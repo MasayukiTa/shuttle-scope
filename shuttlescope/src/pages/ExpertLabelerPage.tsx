@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { ClipboardCheck } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/hooks/useAuth'
 import { CoGDetectionPage } from '@/pages/CoGDetectionPage'
+import { MIcon } from '@/components/common/MIcon'
 
 // バックエンドから返る試合（動画）メタデータ
 interface ExpertVideo {
@@ -98,7 +98,7 @@ function ExpertLabelerContent() {
       {/* ヘッダー */}
       <div className={`px-6 pt-6 pb-0 border-b ${borderColor} shrink-0`}>
         <div className="flex items-center gap-3 mb-2">
-          <ClipboardCheck className="text-blue-500" size={20} />
+          <MIcon name="assignment_turned_in" className="text-blue-500" size={20} />
           <h1 className="text-xl font-semibold">{t('expert_labeler.title')}</h1>
         </div>
         <div className={`text-xs mb-3 ${textMuted}`}>{t('expert_labeler.subtitle')}</div>

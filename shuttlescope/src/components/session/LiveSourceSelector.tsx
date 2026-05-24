@@ -4,11 +4,11 @@
  * アクティブ化 / 停止 / ローカルカメラ登録 を行う。
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Camera, Smartphone, Tablet, Usb, Monitor, Star, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { apiGet, apiPost } from '@/api/client'
 import type { LiveSource } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   sessionCode: string
@@ -20,11 +20,11 @@ function SourceIcon({ kind }: { kind: string }) {
 
   const cls = 'w-4 h-4 flex-shrink-0'
   switch (kind) {
-    case 'iphone_webrtc': return <Smartphone className={cls} />
-    case 'ipad_webrtc':   return <Tablet className={cls} />
-    case 'usb_camera':    return <Usb className={cls} />
-    case 'builtin_camera': return <Camera className={cls} />
-    default:              return <Monitor className={cls} />
+    case 'iphone_webrtc': return <MIcon name="smartphone" className={cls} />
+    case 'ipad_webrtc':   return <MIcon name="tablet" className={cls} />
+    case 'usb_camera':    return <MIcon name="usb" className={cls} />
+    case 'builtin_camera': return <MIcon name="photo_camera" className={cls} />
+    default:              return <MIcon name="monitor" className={cls} />
   }
 }
 
@@ -123,7 +123,7 @@ export function LiveSourceSelector({ sessionCode }: Props) {
       <div className="flex items-center justify-between mb-2">
         <p className={`text-xs font-medium ${titleColor}`}>{t('live_source.title')}</p>
         <button onClick={fetchSources} className={`${subColor} hover:${titleColor}`}>
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          <MIcon name="refresh" size={12} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
@@ -148,7 +148,7 @@ export function LiveSourceSelector({ sessionCode }: Props) {
                   <div className={`flex items-center gap-2 mt-0.5 text-[10px] ${subColor}`}>
                     {src.source_priority <= 2 && (
                       <span className="flex items-center gap-0.5">
-                        <Star size={9} />
+                        <MIcon name="star" size={9} />
                         {t('live_source.priority_label')} {src.source_priority}
                       </span>
                     )}

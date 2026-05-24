@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
-import { ArrowLeft, RotateCcw, Users, ChevronLeft, ChevronRight, FolderOpen, Link, ClipboardEdit, OctagonX, MonitorPlay, MonitorX, Play, Pause, _Timer, SkipForward, Bookmark, _BookmarkCheck, MessageSquare, Share2, Keyboard, MoreVertical, Clock, ChevronDown, ChevronUp, Monitor, Globe, Video, Square, Crosshair } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
 
 import { _VideoPlayer } from '@/components/video/VideoPlayer'
 import { useAutoTutorial, _openTutorial } from '@/components/tutorial/useTutorial'
@@ -1772,7 +1772,7 @@ export function AnnotatorPage() {
             isMobile ? 'text-xs p-1' : 'text-sm'
           )}
         >
-          <ArrowLeft size={isMobile ? 18 : 16} aria-hidden="true" />
+          <MIcon name="arrow_back" size={isMobile ? 18 : 16} aria-hidden="true" />
           {!isMobile && t('annotator.ui.back')}
         </button>
         {/* U2: モードタブ (入力 / 確認 / 解析 / 設定) */}
@@ -1850,7 +1850,7 @@ export function AnnotatorPage() {
                     onClick={handleCloseVideoWindow}
                     className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-indigo-600 text-white hover:bg-indigo-500"
                   >
-                    <MonitorX size={14} />
+                    <MIcon name="desktop_access_disabled" size={14} />
                     {t('dual_monitor.close')}
                   </button>
                 ) : (
@@ -1858,7 +1858,7 @@ export function AnnotatorPage() {
                     onClick={handleOpenVideoWindow}
                     className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-700 text-gray-200 hover:bg-gray-600"
                   >
-                    <MonitorPlay size={14} />
+                    <MIcon name="smart_display" size={14} />
                     {t('dual_monitor.open')}
                   </button>
                 )}
@@ -1911,7 +1911,7 @@ export function AnnotatorPage() {
                 onClick={() => setShowExceptionDialog(true)}
                 className="flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium text-left bg-gray-800 text-red-300 hover:bg-gray-800"
               >
-                <OctagonX size={14} />
+                <MIcon name="block" size={14} />
                 {t('exception.title')}
               </button>
             </TopBarMenuSection>
@@ -1947,7 +1947,7 @@ export function AnnotatorPage() {
               )}
               title={t('in_match_panel.title')}
             >
-              <ClipboardEdit size={12} />
+              <MIcon name="edit_document" size={12} />
               {t('in_match_panel.opponent_info')}
             </button>
           )}
@@ -1958,7 +1958,7 @@ export function AnnotatorPage() {
               className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-amber-700/40 text-amber-300 hover:bg-amber-700/60 transition-colors"
               title={t('review_later.queue_title')}
             >
-              <Clock size={11} />
+              <MIcon name="schedule" size={11} />
               {reviewBookmarksData!.length}{t('review_later.queue_badge')}
             </button>
           )}
@@ -2415,7 +2415,7 @@ export function AnnotatorPage() {
                 }`}
                 title={roiEditing ? t('annotator.ui.roi_editing_title', { defaultValue: '解析領域の指定を確定（クリックで終了）' }) : roiRect ? t('annotator.ui.roi_change_title', { defaultValue: '解析領域を変更（ドラッグ）' }) : t('annotator.ui.roi_set_title', { defaultValue: '解析領域を指定（TrackNet/YOLO）' })}
               >
-                <Crosshair size={11} />
+                <MIcon name="gps_fixed" size={11} />
                 {roiEditing ? t('annotator.ui.roi_editing_label', { defaultValue: '指定中...' }) : roiRect ? t('annotator.ui.roi_set_label', { defaultValue: '領域▪' }) : t('annotator.ui.roi_label', { defaultValue: '領域' })}
               </button>
 
@@ -2575,7 +2575,7 @@ export function AnnotatorPage() {
                 }`}
                 title={tunnelPending ? t('annotator.ui.tunnel_pending_title', { defaultValue: 'トンネルURL取得中... しばらくお待ちください' }) : t('annotator.ui.tunnel_show_qr_title', { defaultValue: 'クリックしてQRコード・URLを表示' })}
               >
-                <Share2 size={12} />
+                <MIcon name="share" size={12} />
                 <span className="font-mono font-bold">
                   {tunnelPending ? '...' : activeSession.session_code}
                 </span>
@@ -2596,7 +2596,7 @@ export function AnnotatorPage() {
                         : 'bg-gray-700 text-gray-500 hover:text-gray-300'
                   }`}
                 >
-                  <Globe size={12} className={tunnelStatus?.data?.running ? 'animate-pulse' : ''} />
+                  <MIcon name="public" size={12} className={tunnelStatus?.data?.running ? 'animate-pulse' : ''} />
                   {tunnelPending ? t('annotator.ui.tunnel_pending_short', { defaultValue: '取得中...' }) : tunnelStatus?.data?.running ? t('annotator.ui.tunnel_running', { defaultValue: '稼働中' }) : ''}
                 </button>
               )}
@@ -2620,7 +2620,7 @@ export function AnnotatorPage() {
               }`}
               title={t('sharing.create_session')}
             >
-              <Share2 size={12} />
+              <MIcon name="share" size={12} />
               {t('sharing.share')}
             </button>
           )}
@@ -2633,7 +2633,7 @@ export function AnnotatorPage() {
               }`}
               title={t('lan_session.open_device_manager')}
             >
-              <Monitor size={12} />
+              <MIcon name="monitor" size={12} />
             </button>
           )}
           {/* リモートヘルスバナー */}
@@ -2703,7 +2703,7 @@ export function AnnotatorPage() {
             onClick={() => setShowMobileMenu((v) => !v)}
             className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
           >
-            <MoreVertical size={18} />
+            <MIcon name="more_vert" size={18} />
           </button>
         </div>
       </div>
@@ -2723,7 +2723,7 @@ export function AnnotatorPage() {
               onClick={() => { setShowExceptionDialog(true); setShowMobileMenu(false) }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-gray-700"
             >
-              <OctagonX size={14} />
+              <MIcon name="block" size={14} />
               {t('exception.title')}
             </button>
             {/* 試合中モード */}
@@ -2734,7 +2734,7 @@ export function AnnotatorPage() {
                 isMatchDayMode ? 'text-yellow-400' : 'text-gray-300'
               )}
             >
-              <Keyboard size={14} />
+              <MIcon name="keyboard" size={14} />
               {t('annotator.match_day_mode')}
             </button>
             {/* セッション共有 */}
@@ -2746,7 +2746,7 @@ export function AnnotatorPage() {
               }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-300 hover:bg-gray-700"
             >
-              <Share2 size={14} />
+              <MIcon name="share" size={14} />
               {activeSession ? activeSession.session_code : t('sharing.share')}
             </button>
             {/* 暫定相手情報 */}
@@ -2755,7 +2755,7 @@ export function AnnotatorPage() {
                 onClick={() => { setShowInMatchPanel((v) => !v); setShowMobileMenu(false) }}
                 className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-orange-300 hover:bg-gray-700"
               >
-                <ClipboardEdit size={14} />
+                <MIcon name="edit_document" size={14} />
                 {t('in_match_panel.opponent_info')}
               </button>
             )}
@@ -2777,7 +2777,7 @@ export function AnnotatorPage() {
         <div className="bg-amber-900/20 border-b border-amber-700/40 px-4 py-2 shrink-0">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-xs font-medium text-amber-300 flex items-center gap-1.5">
-              <Clock size={11} />
+              <MIcon name="schedule" size={11} />
               {t('review_later.queue_title')}
             </span>
             <button
@@ -2887,7 +2887,7 @@ export function AnnotatorPage() {
                         }`}
                         title={isRecording ? t('annotator.ui.rec_stop_local', { defaultValue: '録画停止（ローカル保存）' }) : t('annotator.ui.rec_start', { defaultValue: '録画開始' })}
                       >
-                        {isRecording ? <><Square size={11} className="fill-current" /> {t('annotator.ui.record_stop')}</> : <><Video size={11} /> {t('annotator.ui.record_start')}</>}
+                        {isRecording ? <><MIcon name="crop_square" size={11} className="fill-current" /> {t('annotator.ui.record_stop')}</> : <><MIcon name="videocam" size={11} /> {t('annotator.ui.record_start')}</>}
                       </button>
                     </div>
                   </div>
@@ -2916,7 +2916,7 @@ export function AnnotatorPage() {
                         }`}
                         title={isRecording ? t('annotator.ui.rec_stop_local', { defaultValue: '録画停止（ローカル保存）' }) : t('annotator.ui.rec_start', { defaultValue: '録画開始' })}
                       >
-                        {isRecording ? <><Square size={11} className="fill-current" /> {t('annotator.ui.record_stop')}</> : <><Video size={11} /> {t('annotator.ui.record_start')}</>}
+                        {isRecording ? <><MIcon name="crop_square" size={11} className="fill-current" /> {t('annotator.ui.record_stop')}</> : <><MIcon name="videocam" size={11} /> {t('annotator.ui.record_start')}</>}
                       </button>
                     </div>
                   </div>
@@ -3059,7 +3059,7 @@ export function AnnotatorPage() {
                 className="flex items-center gap-1 px-2 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded whitespace-nowrap"
                 title={t('auto.AnnotatorPage.k24')}
               >
-                <FolderOpen size={12} />
+                <MIcon name="folder_open" size={12} />
                 {t('annotator.ui.open_file', { defaultValue: 'ファイルを開く' })}
               </button>
               <input
@@ -3088,7 +3088,7 @@ export function AnnotatorPage() {
                 onClick={handleUrlSave}
                 className="flex items-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded whitespace-nowrap"
               >
-                <Link size={12} />
+                <MIcon name="link" size={12} />
                 {t('annotator.ui.url_set', { defaultValue: '設定' })}
               </button>
             </div>
@@ -3323,7 +3323,7 @@ export function AnnotatorPage() {
                 className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
                 title={t('auto.AnnotatorPage.k26')}
               >
-                <Keyboard size={12} />
+                <MIcon name="keyboard" size={12} />
               </button>
             )}
           </div>
@@ -3442,11 +3442,11 @@ export function AnnotatorPage() {
                       <div className="flex gap-1">
                         {!timer.isRunning ? (
                           <button onClick={timer.start} className="px-1.5 py-0.5 bg-green-700 hover:bg-green-600 text-white rounded text-[9px] flex items-center gap-0.5">
-                            <Play size={8} />{t('timer.start')}
+                            <MIcon name="play_arrow" size={8} />{t('timer.start')}
                           </button>
                         ) : (
                           <button onClick={timer.pause} className="px-1.5 py-0.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded text-[9px] flex items-center gap-0.5">
-                            <Pause size={8} />{t('timer.pause')}
+                            <MIcon name="pause" size={8} />{t('timer.pause')}
                           </button>
                         )}
                         <button onClick={timer.reset} className="px-1.5 py-0.5 bg-gray-600 hover:bg-gray-500 text-gray-300 rounded text-[9px]">
@@ -3522,7 +3522,7 @@ export function AnnotatorPage() {
                     )}
                     title={playerToggleDisabled ? t('annotator.ui.player_toggle_disabled_title', { defaultValue: '落点入力中は切替できません' }) : t('annotator.ui.player_toggle_title', { defaultValue: 'プレイヤー切替 (Tab)' })}
                   >
-                    <Users size={useLargeTouch ? 16 : 12} />
+                    <MIcon name="group" size={useLargeTouch ? 16 : 12} />
                     {!isMobile && (
                       <kbd className="text-[9px] font-mono opacity-60 bg-black/20 px-1 rounded">{t('auto.AnnotatorPage.kbd_tab')}</kbd>
                     )}
@@ -3892,7 +3892,7 @@ export function AnnotatorPage() {
                       className="px-3 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs flex items-center gap-1 whitespace-nowrap"
                       title={t('skip_rally.hint')}
                     >
-                      <SkipForward size={12} />
+                      <MIcon name="skip_next" size={12} />
                       {t('skip_rally.button')}
                     </button>
                     {/* U-001: ブックマーク */}
@@ -3904,7 +3904,7 @@ export function AnnotatorPage() {
                       )}
                       title={t('bookmark.add')}
                     >
-                      <Bookmark size={13} />
+                      <MIcon name="bookmark" size={13} />
                     </button>
                     {/* S-003: コメント */}
                     <button
@@ -3912,7 +3912,7 @@ export function AnnotatorPage() {
                       className="px-2.5 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded text-xs flex items-center transition-colors"
                       title={t('comment.add')}
                     >
-                      <MessageSquare size={13} />
+                      <MIcon name="chat" size={13} />
                     </button>
                     {/* T5: Review Later — 直前ラリーにレビューフラグ */}
                     {lastSavedRallyId != null && (
@@ -3927,7 +3927,7 @@ export function AnnotatorPage() {
                         )}
                         title={t('review_later.hint')}
                       >
-                        <Clock size={12} />
+                        <MIcon name="schedule" size={12} />
                         {reviewLaterAdded ? t('review_later.added') : t('review_later.button')}
                       </button>
                     )}
@@ -4118,7 +4118,7 @@ export function AnnotatorPage() {
                 onClick={() => setEnrichmentActive(true)}
                 className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] text-gray-600 hover:text-gray-400 border border-gray-700 rounded transition-colors"
               >
-                <ChevronDown size={11} />
+                <MIcon name="expand_more" size={11} />
                 {t('annotation_mode.enrichment_hint')}
               </button>
             )}
@@ -4169,7 +4169,7 @@ export function AnnotatorPage() {
                       onClick={() => setEnrichmentActive(false)}
                       className="flex items-center gap-0.5 text-gray-500 hover:text-gray-300 text-xs px-1"
                     >
-                      <ChevronUp size={11} />
+                      <MIcon name="expand_less" size={11} />
                       {t('annotator.ui.fold_up', { defaultValue: '折りたたむ' })}
                     </button>
                   </div>
@@ -4280,7 +4280,7 @@ export function AnnotatorPage() {
                     useLargeTouch ? 'py-3 text-base' : 'py-1.5 text-sm'
                   )}
                 >
-                  <RotateCcw size={useLargeTouch ? 16 : 14} />
+                  <MIcon name="restart_alt" size={useLargeTouch ? 16 : 14} />
                   {store.inputStep === 'land_zone'
                     ? t('annotator.ui.undo_pending_label', { defaultValue: '入力をキャンセル' })
                     : t('annotator.ui.undo_btn', { defaultValue: '戻す' })}
@@ -4395,14 +4395,14 @@ export function AnnotatorPage() {
                       disabled={store.currentSetNum <= 1}
                       className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <ChevronLeft size={12} />
+                      <MIcon name="chevron_left" size={12} />
                       {t('annotator.ui.prev_set_btn', { defaultValue: '前のセット (Set {{n}})', n: store.currentSetNum - 1 })}
                     </button>
                     <button
                       onClick={() => setSetNavConfirm({ direction: 'next' })}
                       className="flex items-center gap-1 flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded justify-center"
                     >
-                      <ChevronRight size={12} />
+                      <MIcon name="chevron_right" size={12} />
                       {t('annotator.ui.next_set_btn', { defaultValue: '次のセットへ (Set {{n}})', n: store.currentSetNum + 1 })}
                     </button>
                   </div>
@@ -4449,7 +4449,7 @@ export function AnnotatorPage() {
         <div className="fixed bottom-4 right-4 z-40 w-72 bg-gray-800 border border-orange-500/40 rounded-lg shadow-xl">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
             <div className="flex items-center gap-2 text-sm font-medium">
-              <ClipboardEdit size={14} className="text-orange-400" />
+              <MIcon name="edit_document" size={14} className="text-orange-400" />
               {t('in_match_panel.title')}
               {match.player_b.profile_status === 'provisional' && (
                 <span className="text-xs text-yellow-400 bg-yellow-400/10 px-1.5 rounded">
@@ -4559,7 +4559,7 @@ export function AnnotatorPage() {
           <div className="bg-gray-800 border border-red-700/50 rounded-lg w-80 shadow-2xl">
             <div className="px-4 py-3 border-b border-gray-700">
               <div className="flex items-center gap-2 text-sm font-medium text-red-400">
-                <OctagonX size={16} />
+                <MIcon name="block" size={16} />
                 {t('exception.title')}
               </div>
               <div className="text-xs text-gray-400 mt-0.5">{t('exception.subtitle')}</div>
@@ -4620,7 +4620,7 @@ export function AnnotatorPage() {
           <div className="bg-gray-800 border border-gray-600 rounded-lg w-72 shadow-2xl">
             <div className="px-4 py-3 border-b border-gray-700">
               <div className="text-sm font-medium text-gray-200 flex items-center gap-2">
-                <SkipForward size={14} className="text-yellow-400" />
+                <MIcon name="skip_next" size={14} className="text-yellow-400" />
                 {t('skip_rally.title')}
               </div>
               <div className="text-xs text-gray-400 mt-0.5">{t('skip_rally.hint')}</div>

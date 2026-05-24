@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw } from 'lucide-react'
 import {
   authRequestLogs, authSecurityEvents, authErrorLogs,
   RequestLogEntry, SecurityEventEntry, ErrorLogEntry,
 } from '@/api/client'
+import { MIcon } from '@/components/common/MIcon'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -201,7 +201,7 @@ export function SecurityLogPage() {
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm ${
             isLight ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-blue-700 text-white hover:bg-blue-600'
           } disabled:opacity-50`}>
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
           {t('auth.audit_log.refresh', '再読込')}
         </button>
         <span className={`text-xs ${textMuted}`}>表示: {tab === 'request' ? reqRows.length : tab === 'security' ? secRows.length : errRows.length} 件</span>

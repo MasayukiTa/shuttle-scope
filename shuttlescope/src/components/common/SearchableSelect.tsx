@@ -6,8 +6,8 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, X, ChevronDown } from 'lucide-react'
 import { clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
 
 export interface SearchableOption {
   value: string | number
@@ -159,9 +159,9 @@ export function SearchableSelect({
           ) : effectiveEmptyLabel}
         </span>
         {value != null && !disabled && (
-          <X size={14} className="text-gray-500 hover:text-white shrink-0" onClick={handleClear} />
+          <MIcon name="close" size={14} className="text-gray-500 hover:text-white shrink-0" onClick={handleClear} />
         )}
-        <ChevronDown size={14} className={clsx('text-gray-500 shrink-0 transition-transform', open && 'rotate-180')} />
+        <MIcon name="expand_more" size={14} className={clsx('text-gray-500 shrink-0 transition-transform', open && 'rotate-180')} />
       </button>
 
       {/* ドロップダウン */}
@@ -169,7 +169,7 @@ export function SearchableSelect({
         <div className={clsx('absolute z-50 mt-1 w-full bg-gray-800 border border-gray-600 rounded-lg shadow-xl overflow-hidden min-w-[200px]', dropdownAlign === 'right' ? 'right-0' : 'left-0')}>
           {/* 検索欄 */}
           <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
-            <Search size={14} className="text-gray-500 shrink-0" />
+            <MIcon name="search" size={14} className="text-gray-500 shrink-0" />
             <input
               ref={inputRef}
               type="text"
@@ -181,7 +181,7 @@ export function SearchableSelect({
             />
             {query && (
               <button onClick={() => setQuery('')} className="text-gray-500 hover:text-white">
-                <X size={12} />
+                <MIcon name="close" size={12} />
               </button>
             )}
           </div>

@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Download, Filter, AlertCircle, Search, FolderOpen, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { apiGet, apiPost, apiPut, apiDelete, newIdempotencyKey } from '@/api/client'
 import { Match, Player, TournamentLevel, MatchFormat, MatchResult, MATCH_ROUNDS } from '@/types'
 import { QuickStartModal } from '@/components/annotation/QuickStartModal'
@@ -16,6 +15,7 @@ import { DownloadOptionsModal } from '@/components/video/DownloadOptionsModal'
 import { PlayerCombobox } from '@/components/matchList/PlayerCombobox'
 import { MatchCard } from '@/components/matchList/MatchCard'
 import { MatchRow } from '@/components/matchList/MatchRow'
+import { MIcon } from '@/components/common/MIcon'
 
 // 試合登録フォーム
 interface MatchFormData {
@@ -556,7 +556,7 @@ export function MatchListPage() {
             onClick={() => { setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields(); setShowForm(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
           >
-            <Plus size={16} />
+            <MIcon name="add" size={16} />
             {t('auto.MatchListPage.k29')}
           </button>
         </div>
@@ -566,7 +566,7 @@ export function MatchListPage() {
       <div className={`hidden md:flex flex-col gap-2 px-6 py-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
         {/* テキスト部分検索 */}
         <div className="relative">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <MIcon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             type="text"
             value={filterText}
@@ -588,7 +588,7 @@ export function MatchListPage() {
           )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <Filter size={14} className="text-gray-400 shrink-0" />
+          <MIcon name="filter_alt" size={14} className="text-gray-400 shrink-0" />
           <SearchableSelect
             options={playerOptions}
             value={filterPlayer || null}
@@ -616,7 +616,7 @@ export function MatchListPage() {
             <span className={textSecondary}>{t('match.list.only_unfinished')}</span>
           </label>
           <div className={`ml-auto flex items-center gap-2 text-sm ${textMuted}`}>
-            <Download size={13} />
+            <MIcon name="download" size={13} />
             <span>{t('match.list.quality')}</span>
             <select
               value={downloadQuality}
@@ -697,7 +697,7 @@ export function MatchListPage() {
             }}
             className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm"
           >
-            <Download size={13} />
+            <MIcon name="download" size={13} />
             {t('auto.MatchListPage.k35')}
           </button>
           <button
@@ -716,7 +716,7 @@ export function MatchListPage() {
         {/* モバイル用フィルター（スクロールで上に消える） */}
         <div className={`md:hidden flex flex-col gap-2 -mx-3 px-3 py-3 mb-3 border-b ${borderLine} text-sm ${isLight ? 'bg-gray-100' : 'bg-gray-800'}`}>
           <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <MIcon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               type="text"
               value={filterText}
@@ -738,7 +738,7 @@ export function MatchListPage() {
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Filter size={14} className="text-gray-400 shrink-0" />
+            <MIcon name="filter_alt" size={14} className="text-gray-400 shrink-0" />
             <SearchableSelect
               options={playerOptions}
               value={filterPlayer || null}
@@ -841,8 +841,8 @@ export function MatchListPage() {
                     <span className="inline-flex items-center gap-0.5">
                       {t('auto.MatchListPage.k38')}
                       {matchSortKey === 'date'
-                        ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
-                        : <ChevronsUpDown size={12} className="opacity-30" />}
+                        ? matchSortDir === 'asc' ? <MIcon name="expand_less" size={12} /> : <MIcon name="expand_more" size={12} />
+                        : <MIcon name="unfold_more" size={12} className="opacity-30" />}
                     </span>
                   </th>
                   {/* ソート可能: 大会名 */}
@@ -853,8 +853,8 @@ export function MatchListPage() {
                     <span className="inline-flex items-center gap-0.5">
                       {t('auto.MatchListPage.k39')}
                       {matchSortKey === 'tournament'
-                        ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
-                        : <ChevronsUpDown size={12} className="opacity-30" />}
+                        ? matchSortDir === 'asc' ? <MIcon name="expand_less" size={12} /> : <MIcon name="expand_more" size={12} />
+                        : <MIcon name="unfold_more" size={12} className="opacity-30" />}
                     </span>
                   </th>
                   <th className="text-left py-2 pr-4">{t('match.list.col_level')}</th>
@@ -868,8 +868,8 @@ export function MatchListPage() {
                     <span className="inline-flex items-center gap-0.5">
                       {t('auto.MatchListPage.k40')}
                       {matchSortKey === 'result'
-                        ? matchSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
-                        : <ChevronsUpDown size={12} className="opacity-30" />}
+                        ? matchSortDir === 'asc' ? <MIcon name="expand_less" size={12} /> : <MIcon name="expand_more" size={12} />
+                        : <MIcon name="unfold_more" size={12} className="opacity-30" />}
                     </span>
                   </th>
                   <th className="text-left py-2 pr-4 whitespace-nowrap">
@@ -885,7 +885,7 @@ export function MatchListPage() {
                         {statusSortTarget ? (
                           <span className="text-blue-400 text-[9px] ml-0.5 font-bold">{t('auto.MatchListPage.k63')}</span>
                         ) : (
-                          <ChevronDown size={12} className="opacity-30" />
+                          <MIcon name="expand_more" size={12} className="opacity-30" />
                         )}
                       </button>
                       {showStatusDropdown && (
@@ -1165,7 +1165,7 @@ export function MatchListPage() {
                         onClick={handlePickVideoFile}
                         className={`flex items-center gap-1 px-2 py-2 ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300' : 'bg-gray-700 hover:bg-gray-600 text-gray-200 border-gray-600'} rounded text-xs whitespace-nowrap border`}
                       >
-                        <FolderOpen size={13} />
+                        <MIcon name="folder_open" size={13} />
                         {t('auto.MatchListPage.k49')}
                       </button>
                     )}
@@ -1207,7 +1207,7 @@ export function MatchListPage() {
                         >
                           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                             <div className={`flex items-start gap-1.5 text-xs flex-1 min-w-0 ${isLight ? 'text-red-700' : 'text-red-300'}`}>
-                              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                              <MIcon name="error" size={14} className="shrink-0 mt-0.5" />
                               <div className="min-w-0">
                                 <div className="font-medium">{t('auto.MatchListPage.k27')}</div>
                                 {dl.error && (
@@ -1228,7 +1228,7 @@ export function MatchListPage() {
                                   : 'bg-red-700 hover:bg-red-600 text-white'
                               }`}
                             >
-                              <Download size={12} />
+                              <MIcon name="download" size={12} />
                               {t('auto.MatchListPage.k50')}
                             </button>
                           </div>
@@ -1243,7 +1243,7 @@ export function MatchListPage() {
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs mb-1.5">
                           <span className={`flex items-center gap-1.5 font-medium ${isLight ? 'text-blue-700' : 'text-blue-300'}`}>
-                            <Download size={13} className="animate-pulse shrink-0" />
+                            <MIcon name="download" size={13} className="animate-pulse shrink-0" />
                             <span className="truncate">
                               {dl.status === 'queued' && t('auto.MatchListPage.k51')}
                               {dl.status === 'pending' && t('auto.MatchListPage.k52')}

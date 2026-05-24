@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { KeyRound } from 'lucide-react'
 import { authChangePassword } from '@/api/client'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   isLight: boolean
@@ -47,7 +47,7 @@ export function PasswordChangeCard({ isLight }: Props) {
   return (
     <section>
       <h2 className={`text-lg font-medium ${textHeading} mb-1 flex items-center gap-2`}>
-        <KeyRound size={16} />
+        <MIcon name="key" size={16} />
         {t('auth.password_change.title')}
       </h2>
       <p className={`text-xs ${textMuted} mb-3`}>{t('auth.password_change.hint')}</p>

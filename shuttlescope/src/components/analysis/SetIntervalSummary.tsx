@@ -3,12 +3,12 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
-import { X, ChevronRight, AlertTriangle } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { RallyDetailBanner, type RallyPoint } from '@/components/analysis/ScoreProgression'
 import { WIN, LOSS, BAR, LINE } from '@/styles/colors'
+import { MIcon } from '@/components/common/MIcon'
 
 interface SetIntervalSummaryProps {
   setId: number
@@ -157,7 +157,7 @@ export function SetIntervalSummary({
             ) : null}
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
-            <X size={16} />
+            <MIcon name="close" size={16} />
           </button>
         </div>
 
@@ -249,7 +249,7 @@ export function SetIntervalSummary({
                   {data.recent_loss_patterns.length > 0 ? (
                     <div>
                       <p className="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-1">
-                        <AlertTriangle size={12} style={{ color: LOSS }} />
+                        <MIcon name="warning" size={12} style={{ color: LOSS }} />
                         {t('analysis.set_summary.recent_loss_patterns')}{t('auto.SetIntervalSummary.recent_loss_paren')}
                       </p>
                       <div className="space-y-1.5">
@@ -355,7 +355,7 @@ export function SetIntervalSummary({
                 style={{ backgroundColor: WIN, color: '#ffffff' }}
               >
                 {t('analysis.set_summary.next_set')}
-                <ChevronRight size={14} />
+                <MIcon name="chevron_right" size={14} />
               </button>
             )}
           </div>
