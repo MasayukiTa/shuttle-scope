@@ -42,8 +42,14 @@
           'pointer-events:none';
         (document.body || document.documentElement).appendChild(bar);
       }
-      var t = new Date().toISOString().slice(11, 19);
-      bar.textContent = '[' + t + '] ' + label + ': ' + msg + '\n' + (bar.textContent || '');
+      // JST (Asia/Tokyo) 固定で HH:MM:SS 表示。
+      // 旧版は toISOString() = UTC で「米国時刻？」と誤解を招いていた。
+      var t = new Date().toLocaleTimeString('ja-JP', {
+        hour12: false,
+        timeZone: 'Asia/Tokyo',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
+      bar.textContent = '[' + t + ' JST] ' + label + ': ' + msg + '\n' + (bar.textContent || '');
     } catch {
       /* DOM 未準備時は無視 */
     }
