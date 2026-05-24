@@ -14,7 +14,8 @@
     "lint:fix": "eslint . --fix",
     "lint:strict": "eslint . --max-warnings=0",
     "check:i18n": "python scripts/check_module_scope_t.py",
-    "check:all": "npm run check:i18n && npm run lint"
+    "check:icons": "python scripts/check_no_emoji_in_jsx.py",
+    "check:all": "npm run check:i18n && npm run check:icons && npm run lint"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.1.0",

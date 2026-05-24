@@ -12,8 +12,8 @@
  *  - <TopBarMenuSection title="…"> でセクション見出し付きのグループに整理可能
  */
 import { ReactNode, useEffect, useRef, useState } from 'react'
-import { MoreVertical } from 'lucide-react'
 import { clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
 
 interface TopBarMenuProps {
   children: ReactNode
@@ -53,7 +53,7 @@ export function TopBarMenu({ children, ariaLabel = 'メニュー', className }: 
         aria-expanded={open}
         className="flex items-center justify-center w-8 h-8 rounded text-gray-300 hover:bg-gray-700 transition-colors"
       >
-        <MoreVertical size={18} />
+        <MIcon name="more_vert" size={18} />
       </button>
       {open && (
         <div

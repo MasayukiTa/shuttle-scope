@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
+import { MIcon } from '@/components/common/MIcon'
 
 interface AnomalyResponse {
   anomaly: boolean
@@ -62,7 +63,7 @@ export function AnomalyBanner({ playerId, matchId, windowSize = 5 }: Props) {
       data-tutorial="dashboard.anomaly"
       className="rounded-lg border border-amber-500 bg-amber-50 text-amber-900 p-3 flex items-start gap-3"
     >
-      <div className="text-2xl leading-none" aria-hidden="true">⚠</div>
+      <MIcon name="warning" size={24} aria-hidden />
       <div className="flex-1">
         <div className="font-semibold text-sm">{t('auto.AnomalyBanner.title')}</div>
         <div className="text-sm mt-1 whitespace-pre-wrap">{headline}</div>

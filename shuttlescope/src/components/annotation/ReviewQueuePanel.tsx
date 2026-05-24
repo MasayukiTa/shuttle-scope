@@ -4,8 +4,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
-import { AlertTriangle, CheckCircle, ClipboardList, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import type { ReviewQueueItem, CVCandidatesData } from '@/types/cv'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   items: ReviewQueueItem[]
@@ -71,7 +71,7 @@ function QueueItem({
   return (
     <div className="flex flex-col bg-amber-500/10 border border-amber-500/25 rounded px-2 py-1.5 gap-0.5">
       <div className="flex items-start gap-2">
-        <AlertTriangle size={11} className="text-amber-400 mt-0.5 shrink-0" />
+        <MIcon name="warning" size={11} className="text-amber-400 mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs font-semibold text-white">R{item.rally_num}</span>
@@ -87,7 +87,7 @@ function QueueItem({
               onClick={() => setExpanded((v) => !v)}
               className="flex items-center gap-0.5 text-[9px] text-amber-400/70 hover:text-amber-400 mt-0.5"
             >
-              {expanded ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+              {expanded ? <MIcon name="expand_more" size={9} /> : <MIcon name="chevron_right" size={9} />}
               {allReasonLabels.join(' / ')}
             </button>
           )}
@@ -153,19 +153,19 @@ export function ReviewQueuePanel({
   return (
     <div className={clsx('flex flex-col gap-2', className)}>
       <div className="flex items-center gap-2">
-        <ClipboardList size={14} className="text-amber-400" />
+        <MIcon name="assignment" size={14} className="text-amber-400" />
         <span className="text-xs font-semibold text-slate-300">{t('review_queue.title')}</span>
         {pending.length > 0 && (
           <span className="ml-auto text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5 font-medium">
             {t('review_queue.count_items', { count: pending.length })}
           </span>
         )}
-        {loading && <RefreshCw size={12} className="text-slate-500 animate-spin ml-1" />}
+        {loading && <MIcon name="refresh" size={12} className="text-slate-500 animate-spin ml-1" />}
       </div>
 
       {pending.length === 0 && !loading ? (
         <div className="text-center text-slate-500 text-xs py-3">
-          <CheckCircle size={14} className="inline mr-1 text-emerald-500" />
+          <MIcon name="check_circle" size={14} className="inline mr-1 text-emerald-500" />
           {t('review_queue.none')}
         </div>
       ) : (
@@ -188,7 +188,7 @@ export function ReviewQueuePanel({
             onClick={() => setShowCompleted((v) => !v)}
             className="text-[10px] text-slate-500 hover:text-slate-400 flex items-center gap-1"
           >
-            {showCompleted ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+            {showCompleted ? <MIcon name="expand_more" size={10} /> : <MIcon name="chevron_right" size={10} />}
             {t('review_queue.completed_section', { count: completed.length })}
           </button>
           {showCompleted && (
@@ -198,7 +198,7 @@ export function ReviewQueuePanel({
                   key={item.rally_id}
                   className="flex items-center gap-2 px-2 py-1 rounded bg-white/5 border border-white/10"
                 >
-                  <CheckCircle size={10} className="text-emerald-500 shrink-0" />
+                  <MIcon name="check_circle" size={10} className="text-emerald-500 shrink-0" />
                   <span className="text-[10px] text-slate-400">R{item.rally_num}</span>
                   <span className="text-[9px] text-slate-600 truncate">
                     {item.cv_reason_codes.map(reasonLabel).join(' / ')}

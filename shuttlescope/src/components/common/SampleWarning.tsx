@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react'
+import { MIcon } from '@/components/common/MIcon'
 
 interface SampleWarningProps {
   sampleSize: number
@@ -15,7 +15,7 @@ export function SampleWarning({ sampleSize, threshold = 500, message }: SampleWa
 
   return (
     <div className="flex items-start gap-2 p-3 rounded bg-gray-800 border border-gray-700 text-amber-400 text-sm">
-      <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+      <MIcon name="warning" size={16} className="mt-0.5 shrink-0" />
       <p>{message ?? `サンプル数が少ないため（${sampleSize}球）、解析結果の信頼度が低い状態です。データを蓄積してから再解析することを推奨します。`}</p>
     </div>
   )

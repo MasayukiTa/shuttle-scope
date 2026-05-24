@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { apiGet } from '@/api/client'
 import { CoGTimeline, CoGPoint } from '@/components/analysis/CoGTimeline'
 import { useTheme } from '@/hooks/useTheme'
+import { MIcon } from '@/components/common/MIcon'
 
 interface MatchSummary {
   match_id: number
@@ -148,7 +149,7 @@ export function CoGDetectionPage({ onBack }: { onBack?: () => void } = {}) {
           {strokeId && !cogQuery.isLoading && (
             <>
               {points.length < 10 && points.length > 0 && (
-                <p className="text-xs text-amber-500 mb-2">⚠ {t('cog_detection.sample_warning')}</p>
+                <p className="text-xs text-amber-500 mb-2 inline-flex items-center gap-1"><MIcon name="warning" size={12} />{t('cog_detection.sample_warning')}</p>
               )}
               <CoGTimeline
                 points={points}

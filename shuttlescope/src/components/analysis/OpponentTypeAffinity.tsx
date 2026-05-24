@@ -7,6 +7,7 @@ import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { MIcon } from '@/components/common/MIcon'
 
 interface OpponentTypeAffinityProps {
   playerId: number
@@ -43,11 +44,11 @@ interface OpponentTypeAffinityResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-// タイプ別アイコン
+// タイプ別アイコン (Material Symbols)
 const TYPE_ICON: Record<string, string> = {
-  攻撃型: '⚡',
-  守備型: '🛡',
-  バランス型: '⚖',
+  攻撃型: 'bolt',
+  守備型: 'shield',
+  バランス型: 'balance',
 }
 
 export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: OpponentTypeAffinityProps) {
@@ -93,7 +94,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
           const wr = entry.win_rate
           const barColor = wr >= 0.5 ? WIN : LOSS
           const wrText = wr >= 0.5 ? WIN : LOSS
-          const icon = TYPE_ICON[entry.opponent_type] ?? '?'
+          const iconName = TYPE_ICON[entry.opponent_type] ?? 'help'
 
           return (
             <div
@@ -103,7 +104,7 @@ export function OpponentTypeAffinity({ playerId, filters = DEFAULT_FILTERS }: Op
             >
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm">{icon}</span>
+                  <MIcon name={iconName} size={14} />
                   <span className="text-sm font-semibold" style={{ color: textMain }}>
                     {entry.opponent_type}
                   </span>

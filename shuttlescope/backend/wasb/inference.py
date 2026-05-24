@@ -514,6 +514,22 @@ class WasbInference:
                 break
             start += chunk_size - overlap
 
+        # Motion-consistency false-positive filter (honest detection rate).
+        # Before smoothing, demote frames whose position jumps >max_jump_px
+        # from BOTH adjacent confident neighbours. These are almost certainly
+        # noise peaks the model picked because no real shuttle was visible —
+        # counting them as "detected" inflates the % metric without product
+        # value. Default ON since the quality audit on muroya found 10.8%
+        # of "visible" frames jumped >200 px (physically impossible).
+        # Disable with SS_WASB_MOTION_FILTER=0 to compare against the raw rate.
+        if (frames and os.environ.get("SS_WASB_MOTION_FILTER", "1")
+                not in ("0", "false", "")):
+            try:
+                H_full, W_full = frames[0].shape[:2]
+                self._filter_motion_outliers(results, W_full, H_full)
+            except Exception as exc:
+                logger.debug("[wasb] motion filter skipped: %s", exc)
+
         # Temporal hysteresis smoothing: if a frame is just below threshold
         # but is flanked by confident detections, mark it visible too. Helps
         # bridge brief shuttle occlusions / sub-pixel motion blur frames.
@@ -695,6 +711,87 @@ class WasbInference:
             logger.info("[wasb] ROI refinement promoted %d/%d uncertain frames",
                          promoted, len(candidates))
         return promoted
+
+    def _filter_motion_outliers(
+        self,
+        results: list[dict],
+        W_full: int,
+        H_full: int,
+        max_jump_px: int = 200,
+        check_window: int = 2,
+    ) -> int:
+        """Honest detection rate enforcement.
+
+        A "visible" frame that sits >max_jump_px (in original frame coords)
+        from BOTH its nearest visible-and-positioned neighbours (within
+        ±check_window) is almost certainly a noise peak the model picked
+        because no real shuttle is in this frame. Demote it back to
+        invisible (visible=False, drop position, drop zone). Confidence
+        value is preserved so the user can still inspect why.
+
+        This is run BEFORE _smooth_temporal so the smoothing doesn't
+        propagate the bad position. Returns count demoted.
+
+        Default threshold 200 px on 1080p (~10.4% of width) corresponds to
+        ~12 m/s shuttle motion at 60fps — well above realistic limits for
+        all but the fastest smash. Adjust via threshold tuning if needed.
+        """
+        if len(results) < 3:
+            return 0
+        n = len(results)
+        demoted = 0
+        # Pre-compute pixel positions for visible frames
+        pos = [None] * n
+        for i, r in enumerate(results):
+            if r.get("visible") and r.get("x_norm") is not None and r.get("y_norm") is not None:
+                pos[i] = (r["x_norm"] * W_full, r["y_norm"] * H_full)
+        # Snapshot the visible flags so demotions inside this pass do not
+        # affect each other's neighbour-lookup.
+        for i in range(n):
+            if pos[i] is None:
+                continue
+            # find nearest visible neighbour on each side (within check_window)
+            left = None
+            for k in range(1, check_window + 1):
+                if i - k >= 0 and pos[i - k] is not None:
+                    left = pos[i - k]; break
+            right = None
+            for k in range(1, check_window + 1):
+                if i + k < n and pos[i + k] is not None:
+                    right = pos[i + k]; break
+            if left is None and right is None:
+                # isolated detection — leave alone (could be a brief shuttle
+                # entry into frame); only demote if BOTH sides disagree.
+                continue
+            x, y = pos[i]
+            left_jump = ((x - left[0]) ** 2 + (y - left[1]) ** 2) ** 0.5 if left else None
+            right_jump = ((x - right[0]) ** 2 + (y - right[1]) ** 2) ** 0.5 if right else None
+            # demote only if BOTH sides exist AND BOTH disagree (>max_jump_px),
+            # or if only one side exists AND it disagrees AND original conf
+            # was not high (avoid demoting confident isolated detects).
+            bad = False
+            if left_jump is not None and right_jump is not None:
+                if left_jump > max_jump_px and right_jump > max_jump_px:
+                    bad = True
+            elif left_jump is not None:
+                if left_jump > max_jump_px and results[i].get("confidence", 0) < 0.8:
+                    bad = True
+            elif right_jump is not None:
+                if right_jump > max_jump_px and results[i].get("confidence", 0) < 0.8:
+                    bad = True
+            if bad:
+                r = results[i]
+                r["visible"] = False
+                r["x_norm"] = None
+                r["y_norm"] = None
+                r["zone"] = None
+                # tag so downstream can distinguish from "never visible"
+                r["demoted_motion"] = True
+                demoted += 1
+        if demoted:
+            logger.info("[wasb] motion filter demoted %d frames (jumps > %d px)",
+                         demoted, max_jump_px)
+        return demoted
 
     def _smooth_temporal(self, results: list[dict], soft_floor: float = 0.25,
                           max_window: int = 3) -> None:

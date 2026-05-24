@@ -1,5 +1,17 @@
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
+
+/** N 個 filled star + (max-N) 個 outline star を MIcon で描画 */
+function StarLevel({ filled, max = 3, size = 12 }: { filled: number; max?: number; size?: number }) {
+  return (
+    <span className="inline-flex items-center shrink-0" aria-hidden="true">
+      {Array.from({ length: max }, (_, i) => (
+        <MIcon key={i} name={i < filled ? 'star' : 'star_border'} size={size} />
+      ))}
+    </span>
+  )
+}
 
 interface ConfidenceBadgeProps {
   sampleSize: number
@@ -22,20 +34,20 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
   // undefined / null / NaN を 0 に正規化（バックエンドが sample_n を省略した場合の保険）
   const size = typeof sampleSize === 'number' && isFinite(sampleSize) ? sampleSize : 0
 
-  let stars: string
+  let filled: number
   let label: string
   let colorClass: string
 
   if (size < 500) {
-    stars = '★☆☆'
+    filled = 1
     label = t('confidence.low_label')
     colorClass = 'border-red-400 bg-gray-800 text-red-300'
   } else if (size < 2000) {
-    stars = '★★☆'
+    filled = 2
     label = t('confidence.medium_label')
     colorClass = 'border-yellow-400 bg-gray-800 text-amber-400'
   } else {
-    stars = '★★★'
+    filled = 3
     label = t('confidence.high_label')
     colorClass = 'border-green-400 bg-gray-800 text-blue-300'
   }
@@ -47,7 +59,7 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
         title={`${label}（${t('confidence.sample_size')}: ${size.toLocaleString()}${t('confidence.strokes')}）`}
         tabIndex={-1}
       >
-        {stars}
+        <StarLevel filled={filled} />
       </button>
     )
   }
@@ -66,7 +78,7 @@ export function ConfidenceBadge({ sampleSize, compact = false, className }: Conf
       )}
       title={`${label}（${t('confidence.sample_size')}: ${size.toLocaleString()}${t('confidence.strokes')})`}
     >
-      <span className="font-mono shrink-0">{stars}</span>
+      <StarLevel filled={filled} />
       <span className="hidden sm:inline truncate">{label}</span>
       <span className="hidden md:inline opacity-70 truncate">
         ({t('confidence.sample_size')}: {size.toLocaleString()}{t('confidence.strokes')})

@@ -379,7 +379,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
           >
             {isLocal ? (
               <span>
-                {t('movement.grid_local_unsaved', '⚠ Grid is set locally but not yet saved to the DB.')}
+                {t('movement.grid_local_unsaved', 'Grid is set locally but not yet saved to the DB.')}
                 {onSyncGridFromLocal ? (
                   <button
                     type="button"
@@ -387,16 +387,16 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
                       e.stopPropagation()
                       if (syncing) return
                       setSyncing(true)
-                      setSyncResult('💾 DB へ同期中...')
+                      setSyncResult('DB へ同期中...')
                       console.warn('[GridSync] start')
                       try {
                         const r = await onSyncGridFromLocal()
                         console.warn('[GridSync] result', r)
-                        if (r.ok) setSyncResult('✓ DB 同期完了')
-                        else setSyncResult(`✗ 失敗 (${r.status ?? '?'}): ${r.message ?? ''}`)
+                        if (r.ok) setSyncResult('DB 同期完了')
+                        else setSyncResult(`失敗 (${r.status ?? '?'}): ${r.message ?? ''}`)
                       } catch (err) {
                         console.warn('[GridSync] error', err)
-                        setSyncResult(`✗ ネットワークエラー: ${err instanceof Error ? err.message : String(err)}`)
+                        setSyncResult(`ネットワークエラー: ${err instanceof Error ? err.message : String(err)}`)
                       } finally {
                         setSyncing(false)
                         setTimeout(() => setSyncResult(null), 6000)
@@ -417,7 +417,7 @@ export function PlayerMovementCard({ matchId, matchFormat: _matchFormat, playerN
               </span>
             ) : (
               <span>
-                {t('movement.no_calib', '⚠ Court calibration not set; showing relative values.')}
+                {t('movement.no_calib', 'Court calibration not set; showing relative values.')}
                 {canClick && <span className="underline ml-1">{t('auto.PlayerMovementCard.k4')}</span>}
               </span>
             )}

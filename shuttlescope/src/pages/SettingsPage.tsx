@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { setLanguage, SUPPORTED_LANGS, type SupportedLang } from '@/i18n'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, CheckCircle, CheckCircle2, AlertCircle, Play, Square, Cpu, Zap, ToggleLeft, ToggleRight, Wifi, WifiOff, Share2, _Bookmark, Copy, Globe, Power, PowerOff, Download, Upload, HardDrive, FileArchive, Eye, Sun, Moon, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, RotateCcw, Loader2, LogOut, ScrollText } from 'lucide-react'
 import { MIcon } from '@/components/common/MIcon'
 import { TUTORIALS } from '@/components/tutorial/tutorials'
 import { replayTutorial, useTutorialState, useAutoTutorial } from '@/components/tutorial/useTutorial'
@@ -109,7 +108,7 @@ function LanUrlCard({ url, hint }: { url: string; hint: string }) {
             className={`flex-shrink-0 p-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
             title={t('auto.SettingsPage.k21')}
           >
-            {copied ? <CheckCircle size={12} className="text-green-500" /> : <Copy size={12} />}
+            {copied ? <MIcon name="check_circle" size={12} className="text-green-500" /> : <MIcon name="content_copy" size={12} />}
           </button>
         </div>
       </div>
@@ -935,7 +934,7 @@ export function SettingsPage() {
                 onClick={() => { setEditingPlayer(null); setPlayerForm(defaultPlayerForm()); setShowPlayerForm(true) }}
                 className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm"
               >
-                <Plus size={14} />
+                <MIcon name="add" size={14} />
                 {t('settings.ui.add_player')}
               </button>
             </div>
@@ -944,7 +943,7 @@ export function SettingsPage() {
             <div className="flex flex-wrap items-center gap-2 mb-3">
               {/* テキスト検索 */}
               <div className="relative flex-1 min-w-[180px]">
-                <Search size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 ${textMuted} pointer-events-none`} />
+                <MIcon name="search" size={13} className={`absolute left-2.5 top-1/2 -translate-y-1/2 ${textMuted} pointer-events-none`} />
                 <input
                   ref={playerSearchRef}
                   type="text"
@@ -959,7 +958,7 @@ export function SettingsPage() {
                     className={`absolute right-2 top-1/2 -translate-y-1/2 ${textMuted} hover:opacity-80`}
                     aria-label={t('auto.SettingsPage.k30')}
                   >
-                    <X size={13} />
+                    <MIcon name="close" size={13} />
                   </button>
                 )}
               </div>
@@ -1003,9 +1002,9 @@ export function SettingsPage() {
                         <span className="inline-flex items-center gap-0.5">
                           {label}
                           {playerSortKey === key ? (
-                            playerSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                            playerSortDir === 'asc' ? <MIcon name="expand_less" size={12} /> : <MIcon name="expand_more" size={12} />
                           ) : (
-                            <ChevronsUpDown size={12} className="opacity-30" />
+                            <MIcon name="unfold_more" size={12} className="opacity-30" />
                           )}
                         </span>
                       </th>
@@ -1020,9 +1019,9 @@ export function SettingsPage() {
                       <span className="inline-flex items-center gap-0.5">
                         {t('auto.SettingsPage.col_rk')}
                         {playerSortKey === 'world_ranking' ? (
-                          playerSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                          playerSortDir === 'asc' ? <MIcon name="expand_less" size={12} /> : <MIcon name="expand_more" size={12} />
                         ) : (
-                          <ChevronsUpDown size={12} className="opacity-30" />
+                          <MIcon name="unfold_more" size={12} className="opacity-30" />
                         )}
                       </span>
                     </th>
@@ -1034,9 +1033,9 @@ export function SettingsPage() {
                       <span className="inline-flex items-center gap-0.5">
                         {t('settings.ui.target')}
                         {playerSortKey === 'is_target' ? (
-                          playerSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                          playerSortDir === 'asc' ? <MIcon name="expand_less" size={12} /> : <MIcon name="expand_more" size={12} />
                         ) : (
-                          <ChevronsUpDown size={12} className="opacity-30" />
+                          <MIcon name="unfold_more" size={12} className="opacity-30" />
                         )}
                       </span>
                     </th>
@@ -1089,7 +1088,7 @@ export function SettingsPage() {
                       </td>
                       <td className={`py-2 pr-4 ${textSecondary}`}>{p.world_ranking ? `#${p.world_ranking}` : '-'}</td>
                       <td className="py-2 pr-4">
-                        {p.is_target && <CheckCircle size={14} className="text-green-400" />}
+                        {p.is_target && <MIcon name="check_circle" size={14} className="text-green-400" />}
                       </td>
                       <td className="py-2">
                         {deleteConfirmId === p.id ? (
@@ -1115,13 +1114,13 @@ export function SettingsPage() {
                               onClick={() => openEdit(p)}
                               className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
                             >
-                              <Edit2 size={12} />
+                              <MIcon name="edit" size={12} />
                             </button>
                             <button
                               onClick={() => setDeleteConfirmId(p.id)}
                               className="p-1.5 rounded bg-gray-800 hover:bg-red-700 text-red-300"
                             >
-                              <Trash2 size={12} />
+                              <MIcon name="delete" size={12} />
                             </button>
                           </div>
                         )}
@@ -1152,7 +1151,7 @@ export function SettingsPage() {
             <h2 className={`text-lg font-medium ${textHeading} mb-4`}>{t('review.title')}</h2>
             <div className="mb-6">
               <h3 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
-                <AlertCircle size={14} className="text-orange-400" />
+                <MIcon name="error" size={14} className="text-orange-400" />
                 {t('review.provisional_players')}
               </h3>
               {!reviewPlayersData?.data?.length ? (
@@ -1193,7 +1192,7 @@ export function SettingsPage() {
                               className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
                               title={t('auto.SettingsPage.k23')}
                             >
-                              <Edit2 size={12} />
+                              <MIcon name="edit" size={12} />
                             </button>
                             <button
                               onClick={() => markVerified.mutate(p.id)}
@@ -1204,7 +1203,7 @@ export function SettingsPage() {
                               title={t('review.mark_verified')}
                               aria-label={t('review.mark_verified') as string}
                             >
-                              <CheckCircle size={12} />
+                              <MIcon name="check_circle" size={12} />
                             </button>
                           </div>
                         </td>
@@ -1227,14 +1226,14 @@ export function SettingsPage() {
             {/* モデルステータス */}
             <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <h3 className={`text-sm font-medium ${textSecondary} mb-3 flex items-center gap-2`}>
-                <Zap size={14} className="text-yellow-400" />
+                <MIcon name="bolt" size={14} className="text-yellow-400" />
                 {t('tracknet.model_status')}
               </h3>
               {!tracknetStatus ? (
                 <p className={`text-sm ${textMuted}`}>{t('tracknet.backend_offline')}</p>
               ) : tracknetStatus.data?.available ? (
                 <div className="flex items-center gap-2">
-                  <CheckCircle size={14} className="text-green-400" />
+                  <MIcon name="check_circle" size={14} className="text-green-400" />
                   <span className="text-sm text-green-300">
                     {t('tracknet.model_ready')} — {tracknetStatus.data.backend}
                   </span>
@@ -1242,7 +1241,7 @@ export function SettingsPage() {
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <AlertCircle size={14} className="text-orange-400" />
+                    <MIcon name="error" size={14} className="text-orange-400" />
                     <span className="text-sm text-orange-300">{t('tracknet.model_not_found')}</span>
                   </div>
                 <div className={`${isLight ? 'bg-gray-100' : 'bg-gray-900'} rounded p-3 text-xs font-mono space-y-1 ${textMuted}`}>
@@ -1268,15 +1267,15 @@ export function SettingsPage() {
                 className="flex-shrink-0"
               >
                 {appSettings.tracknet_enabled
-                  ? <ToggleRight size={32} className="text-blue-400" />
-                  : <ToggleLeft size={32} className="text-gray-500" />}
+                  ? <MIcon name="toggle_on" size={32} className="text-blue-400" />
+                  : <MIcon name="toggle_off" size={32} className="text-gray-500" />}
               </button>
             </div>
 
             {/* バックエンド選択 */}
             <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <h3 className={`text-sm font-medium ${textSecondary} mb-3 flex items-center gap-2`}>
-                <Cpu size={14} />
+                <MIcon name="memory" size={14} />
                 {t('tracknet.backend_label')}
               </h3>
               <div className="flex gap-2">
@@ -1362,8 +1361,8 @@ export function SettingsPage() {
                   className="flex-shrink-0"
                 >
                   {appSettings.yolo_enabled
-                    ? <ToggleRight size={32} className="text-blue-400" />
-                    : <ToggleLeft size={32} className="text-gray-500" />}
+                    ? <MIcon name="toggle_on" size={32} className="text-blue-400" />
+                    : <MIcon name="toggle_off" size={32} className="text-gray-500" />}
                 </button>
               </div>
 
@@ -1434,7 +1433,7 @@ export function SettingsPage() {
             <div className={`${card} rounded-lg p-4 border ${borderLine} space-y-4`}>
               <div className="flex items-center justify-between">
                 <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
-                  <Cpu size={14} className="text-purple-400" />
+                  <MIcon name="memory" size={14} className="text-purple-400" />
                   {t('auto.SettingsPage.gpu_device_heading')}
                 </h3>
                 <button
@@ -1442,7 +1441,7 @@ export function SettingsPage() {
                   disabled={devicesFetching}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
                 >
-                  {devicesFetching ? <RotateCcw size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                  {devicesFetching ? <MIcon name="restart_alt" size={11} className="animate-spin" /> : <MIcon name="restart_alt" size={11} />}
                   {t('settings.ui.redetect')}
                 </button>
               </div>
@@ -1541,7 +1540,7 @@ export function SettingsPage() {
             <div className={`${card} rounded-lg p-4 border ${borderLine} space-y-4`}>
               <div className="flex items-center justify-between">
                 <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
-                  <Zap size={14} className="text-yellow-400" />
+                  <MIcon name="bolt" size={14} className="text-yellow-400" />
                   {t('benchmark.title')}
                 </h3>
                 {/* デバイス検出ボタン */}
@@ -1551,7 +1550,7 @@ export function SettingsPage() {
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 transition-colors"
                 >
                   {bmDetecting
-                    ? <><Loader2 size={12} className="animate-spin" />{t('benchmark.detecting')}</>
+                    ? <><MIcon name="progress_activity" size={12} className="animate-spin" />{t('benchmark.detecting')}</>
                     : t('benchmark.detect_devices')
                   }
                 </button>
@@ -1586,9 +1585,9 @@ export function SettingsPage() {
                 className="flex items-center gap-1.5 px-4 py-2 text-xs text-white rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-wait transition-colors"
               >
                 {bmRunning ? (
-                  <><RotateCcw size={11} className="animate-spin" /> {t('benchmark.running')}</>
+                  <><MIcon name="restart_alt" size={11} className="animate-spin" /> {t('benchmark.running')}</>
                 ) : (
-                  <><Play size={11} /> {t('benchmark.run')}</>
+                  <><MIcon name="play_arrow" size={11} /> {t('benchmark.run')}</>
                 )}
               </button>
 
@@ -1598,7 +1597,7 @@ export function SettingsPage() {
                   onClick={stopBenchmark}
                   className="flex items-center gap-1.5 px-4 py-2 text-xs text-white rounded bg-red-700 hover:bg-red-600 transition-colors"
                 >
-                  <Square size={11} /> {t('benchmark.stop')}
+                  <MIcon name="crop_square" size={11} /> {t('benchmark.stop')}
                 </button>
               )}
 
@@ -1633,7 +1632,7 @@ export function SettingsPage() {
             {tunnelStatus?.data?.running && tunnelStatus.data.url && (
               <div className="bg-blue-900/30 border border-blue-500/40 rounded-lg p-4 space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-blue-300">
-                  <Globe size={14} />
+                  <MIcon name="public" size={14} />
                   {t('auto.SettingsPage.tunnel_connected')}
                 </div>
                 <LanUrlCard url={tunnelStatus.data.url} hint="iOSを含む全デバイスからHTTPSでアクセス可能" />
@@ -1652,8 +1651,8 @@ export function SettingsPage() {
                   className="flex-shrink-0"
                 >
                   {serverInfo?.data?.lan_mode
-                    ? <ToggleRight size={32} className="text-blue-400" />
-                    : <ToggleLeft size={32} className="text-gray-500" />}
+                    ? <MIcon name="toggle_on" size={32} className="text-blue-400" />
+                    : <MIcon name="toggle_off" size={32} className="text-gray-500" />}
                 </button>
               </div>
               {serverInfo?.data?.lan_mode && serverInfo.data.lan_ips.length > 0 ? (
@@ -1667,7 +1666,7 @@ export function SettingsPage() {
                 </div>
               ) : serverInfo?.data?.lan_mode ? (
                 <div className="flex items-center gap-2 text-xs text-orange-400">
-                  <WifiOff size={12} />
+                  <MIcon name="wifi_off" size={12} />
                   {t('sharing.lan_no_ip')}
                 </div>
               ) : (
@@ -1678,7 +1677,7 @@ export function SettingsPage() {
             {/* リモート公開 */}
             <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <h3 className={`text-sm font-medium ${textSecondary} mb-1 flex items-center gap-2`}>
-                <Globe size={14} className="text-blue-400" />
+                <MIcon name="public" size={14} className="text-blue-400" />
                 {t('sharing.remote_exposure_title')}
               </h3>
               <p className={`text-xs mb-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('sharing.remote_exposure_description')}</p>
@@ -1703,7 +1702,7 @@ export function SettingsPage() {
                           }`}
                         >
                           {p === 'auto' ? '自動' : p}
-                          {unavailable && <span className="text-orange-400 ml-0.5">✕</span>}
+                          {unavailable && <MIcon name="close" size={11} className="text-orange-400 ml-0.5" />}
                         </button>
                       )
                     })}
@@ -1725,7 +1724,7 @@ export function SettingsPage() {
                     <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${
                       isLight ? 'bg-white border border-gray-200 text-blue-700' : 'bg-gray-800 border border-gray-700 text-blue-300'
                     }`}>
-                      <CheckCircle2 size={12} />
+                      <MIcon name="check_circle" size={12} />
                       {t('sharing.ngrok_authtoken_from_env')}
                     </div>
                   ) : (
@@ -1756,7 +1755,7 @@ export function SettingsPage() {
               {tunnelStatus?.data?.available === false ? (
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2 text-xs text-orange-400">
-                    <AlertCircle size={13} />
+                    <MIcon name="error" size={13} />
                     {t('sharing.tunnel_not_available')}
                   </div>
                   <p className={`text-xs ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>{t('sharing.tunnel_install_hint')}</p>
@@ -1807,7 +1806,7 @@ export function SettingsPage() {
                           disabled={tunnelStart.isPending}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-xs text-white"
                         >
-                          <Power size={12} />
+                          <MIcon name="power_settings_new" size={12} />
                           {tunnelStart.isPending ? t('sharing.tunnel_starting') : t('sharing.tunnel_start')}
                         </button>
                       ) : (
@@ -1816,7 +1815,7 @@ export function SettingsPage() {
                           disabled={tunnelStop.isPending}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded text-xs text-white"
                         >
-                          <PowerOff size={12} />
+                          <MIcon name="power_off" size={12} />
                           {t('sharing.tunnel_stop')}
                         </button>
                       )}
@@ -1839,7 +1838,7 @@ export function SettingsPage() {
             {/* リモート映像（WebRTC） */}
             <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <h3 className={`text-sm font-medium ${textSecondary} mb-1 flex items-center gap-2`}>
-                <Wifi size={14} className="text-purple-400" />
+                <MIcon name="wifi" size={14} className="text-purple-400" />
                 {t('sharing.remote_video_title')}
               </h3>
               <p className={`text-xs mb-3 ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>{t('sharing.remote_video_description')}</p>
@@ -1871,15 +1870,15 @@ export function SettingsPage() {
                     </div>
                     <button onClick={() => updateSettings({ turn_enabled: !appSettings.turn_enabled })}>
                       {appSettings.turn_enabled
-                        ? <ToggleRight size={28} className="text-blue-400" />
-                        : <ToggleLeft size={28} className="text-gray-500" />}
+                        ? <MIcon name="toggle_on" size={28} className="text-blue-400" />
+                        : <MIcon name="toggle_off" size={28} className="text-gray-500" />}
                     </button>
                   </div>
 
                   {/* TURN なし警告 */}
                   {!appSettings.turn_enabled && (
                     <div className={`flex items-start gap-2 text-xs rounded p-2 ${isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'}`}>
-                      <AlertCircle size={12} className="flex-shrink-0 mt-0.5" />
+                      <MIcon name="error" size={12} className="flex-shrink-0 mt-0.5" />
                       {t('sharing.webrtc_best_effort_warning')}
                     </div>
                   )}
@@ -1905,7 +1904,7 @@ export function SettingsPage() {
                       />
                       {appSettings.turn_url && !/^turns?:/i.test(appSettings.turn_url) && (
                         <p className="text-[10px] text-red-400 flex items-center gap-1">
-                          <AlertCircle size={10} />
+                          <MIcon name="error" size={10} />
                           {t('sharing.turn_url_invalid')}
                         </p>
                       )}
@@ -1942,8 +1941,8 @@ export function SettingsPage() {
                         {turnTest.data && (
                           <span className={`text-xs flex items-center gap-1 ${turnTest.data.success ? 'text-green-400' : 'text-red-400'}`}>
                             {turnTest.data.success
-                              ? <><CheckCircle size={11} />{t('sharing.turn_test_ok')} ({turnTest.data.data?.host}:{turnTest.data.data?.port})</>
-                              : <><AlertCircle size={11} />{t('sharing.turn_test_fail')}: {turnTest.data.error}</>
+                              ? <><MIcon name="check_circle" size={11} />{t('sharing.turn_test_ok')} ({turnTest.data.data?.host}:{turnTest.data.data?.port})</>
+                              : <><MIcon name="error" size={11} />{t('sharing.turn_test_fail')}: {turnTest.data.error}</>
                             }
                           </span>
                         )}
@@ -1957,7 +1956,7 @@ export function SettingsPage() {
             {/* セッション作成ヘルプ */}
             <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <h3 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
-                <Share2 size={14} />
+                <MIcon name="share" size={14} />
                 {t('sharing.session_guide_title')}
               </h3>
               <ol className="space-y-2 text-xs text-gray-400">
@@ -1972,7 +1971,7 @@ export function SettingsPage() {
             <div className={`${card} rounded-lg p-4 border ${borderLine}`}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
-                  <Wifi size={14} />
+                  <MIcon name="wifi" size={14} />
                   {t('sharing.network_diag_title')}
                 </h3>
                 <button
@@ -1989,8 +1988,8 @@ export function SettingsPage() {
                   {/* 環境分類 */}
                   <div className="flex items-center gap-2">
                     {netDiag.data.environment === 'open'
-                      ? <CheckCircle size={14} className="text-green-400" />
-                      : <AlertCircle size={14} className="text-orange-400" />}
+                      ? <MIcon name="check_circle" size={14} className="text-green-400" />
+                      : <MIcon name="error" size={14} className="text-orange-400" />}
                     <span className="text-sm font-medium">
                       {{
                         open: 'オープン環境',
@@ -2011,8 +2010,8 @@ export function SettingsPage() {
                       ['TCP 80', netDiag.data.capabilities.tcp_80.ok],
                       ['Localhost', netDiag.data.capabilities.localhost_bridge.ok],
                     ] as [string, boolean][]).map(([label, ok]) => (
-                      <div key={label} className={`rounded px-2 py-1 text-center ${ok ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
-                        {ok ? '✓' : '✗'} {label}
+                      <div key={label} className={`rounded px-2 py-1 text-center inline-flex items-center justify-center gap-1 ${ok ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
+                        <MIcon name={ok ? 'check' : 'close'} size={11} />{label}
                       </div>
                     ))}
                   </div>
@@ -2048,7 +2047,7 @@ export function SettingsPage() {
             {/* ── デバイス・同期設定 (admin only) ────────────────────────── */}
             {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
-                <HardDrive size={16} className="text-gray-400" />
+                <MIcon name="storage" size={16} className="text-gray-400" />
                 <h2 className="text-base font-semibold">{t('settings.ui.sync_settings')}</h2>
               </div>
               <div className="space-y-3">
@@ -2083,7 +2082,7 @@ export function SettingsPage() {
             {role === 'admin' && (
               <section className={`${card} rounded-lg p-5 space-y-3`}>
                 <div className="flex items-center gap-2">
-                  <ScrollText size={16} className="text-amber-400" />
+                  <MIcon name="description" size={16} className="text-amber-400" />
                   <h2 className="text-base font-semibold">{t('settings.ui.audit_logs_title')}</h2>
                 </div>
                 <p className="text-xs text-gray-400">{t('settings.ui.audit_logs_desc')}</p>
@@ -2091,7 +2090,7 @@ export function SettingsPage() {
                   onClick={() => navigate('/audit-logs')}
                   className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium px-3 py-2 rounded-lg"
                 >
-                  <ScrollText size={14} />
+                  <MIcon name="description" size={14} />
                   {t('settings.ui.audit_logs_open')}
                 </button>
               </section>
@@ -2144,7 +2143,7 @@ export function SettingsPage() {
             {/* ── エクスポート ──────────────────────────────── */}
             <section className={`${card} rounded-lg p-5 space-y-4`} data-tutorial="settings.export">
               <div className="flex items-center gap-2">
-                <Download size={16} className="text-blue-400" />
+                <MIcon name="download" size={16} className="text-blue-400" />
                 <h2 className="text-base font-semibold">{t('settings.ui.export')}</h2>
               </div>
               <p className="text-xs text-gray-400">
@@ -2226,7 +2225,7 @@ export function SettingsPage() {
                       disabled={!exportMatchIds.trim()}
                       className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
                     >
-                      <Download size={14} />
+                      <MIcon name="download" size={14} />
                       {t('auto.SettingsPage.download')}
                     </button>
                   </div>
@@ -2247,7 +2246,7 @@ export function SettingsPage() {
                       disabled={!exportSince.trim()}
                       className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-medium transition-colors whitespace-nowrap"
                     >
-                      <Download size={14} />
+                      <MIcon name="download" size={14} />
                       {t('auto.SettingsPage.diff_download')}
                     </button>
                   </div>
@@ -2258,7 +2257,7 @@ export function SettingsPage() {
             {/* ── インポート ────────────────────────────────── */}
             <section className={`${card} rounded-lg p-5 space-y-4`} data-tutorial="settings.import">
               <div className="flex items-center gap-2">
-                <Upload size={16} className="text-emerald-400" />
+                <MIcon name="upload" size={16} className="text-emerald-400" />
                 <h2 className="text-base font-semibold">{t('settings.ui.import')}</h2>
               </div>
               <p className="text-xs text-gray-400">
@@ -2285,7 +2284,7 @@ export function SettingsPage() {
                   disabled={importPreviewLoading}
                   className={`flex items-center gap-1.5 px-4 py-2 disabled:opacity-40 rounded text-sm transition-colors ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-200'}`}
                 >
-                  <Eye size={14} />
+                  <MIcon name="visibility" size={14} />
                   {importPreviewLoading ? '確認中...' : '内容を確認'}
                 </button>
               )}
@@ -2321,7 +2320,7 @@ export function SettingsPage() {
                           disabled={importRunning}
                           className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded text-sm font-medium transition-colors"
                         >
-                          <Upload size={14} />
+                          <MIcon name="upload" size={14} />
                           {importRunning ? 'インポート中...' : 'インポート実行'}
                         </button>
                       )}
@@ -2350,7 +2349,7 @@ export function SettingsPage() {
             {/* ── バックアップ (admin only) ──────────────────────────────── */}
             {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
-                <HardDrive size={16} className="text-purple-400" />
+                <MIcon name="storage" size={16} className="text-purple-400" />
                 <h2 className="text-base font-semibold">{t('settings.ui.backup')}</h2>
               </div>
               <p className="text-xs text-gray-400">
@@ -2363,7 +2362,7 @@ export function SettingsPage() {
                   disabled={backupRunning}
                   className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded text-sm font-medium transition-colors text-white"
                 >
-                  <FileArchive size={14} />
+                  <MIcon name="folder_zip" size={14} />
                   {backupRunning ? t('settings.ui.backup_running') : t('settings.ui.backup_now')}
                 </button>
                 {backupResult && (
@@ -2392,7 +2391,7 @@ export function SettingsPage() {
               <section className={`${card} rounded-lg p-5 space-y-4`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Share2 size={16} className="text-cyan-400" />
+                    <MIcon name="share" size={16} className="text-cyan-400" />
                     <h2 className="text-base font-semibold">{t('settings.ui.cloud_packages')}</h2>
                   </div>
                   <button onClick={() => refetchCloudPackages()} className={`text-xs px-2 py-1 rounded ${isLight ? 'bg-gray-100 hover:bg-gray-200 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white'}`}>{t('auto.SettingsPage.k16')}</button>
@@ -2420,7 +2419,7 @@ export function SettingsPage() {
                           }}
                           className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-white whitespace-nowrap shrink-0"
                         >
-                          <Upload size={11} />
+                          <MIcon name="upload" size={11} />
                           {t('settings.ui.fetch_in')}
                         </button>
                       </div>
@@ -2435,7 +2434,7 @@ export function SettingsPage() {
               <section className={`${card} rounded-lg p-5 space-y-4`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <AlertCircle size={16} className="text-orange-400" />
+                    <MIcon name="error" size={16} className="text-orange-400" />
                     <h2 className="text-base font-semibold">{t('settings.ui.conflict_review')}</h2>
                     <span className="text-xs bg-orange-500 text-white px-1.5 py-0.5 rounded-full">{conflicts.length}</span>
                   </div>
@@ -2506,7 +2505,7 @@ export function SettingsPage() {
                     disabled={!pkgImportFile || pkgImportRunning}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed`}
                   >
-                    <Upload size={12} />
+                    <MIcon name="upload" size={12} />
                     {pkgImportRunning ? t('settings.ui.importing') : t('settings.ui.import')}
                   </button>
                   {pkgImportResult && !pkgImportResult.success && pkgImportResult.message.includes('競合') && (
@@ -2530,7 +2529,7 @@ export function SettingsPage() {
             {/* ── DB メンテナンス (admin only) ──────────────────────────────────── */}
             {role === 'admin' && <section className={`${card} rounded-lg p-5 space-y-4`}>
               <div className="flex items-center gap-2">
-                <HardDrive size={16} className="text-purple-400" />
+                <MIcon name="storage" size={16} className="text-purple-400" />
                 <h2 className="text-base font-semibold">{t('settings.ui.db_maintenance')}</h2>
               </div>
 
@@ -2565,7 +2564,7 @@ export function SettingsPage() {
                           title={t('auto.SettingsPage.k24')}
                           className="text-[10px] px-2 py-0.5 rounded bg-yellow-600 hover:bg-yellow-500 text-white disabled:opacity-40 transition-colors"
                         >
-                          {dbAvRunning ? <RotateCcw size={10} className="animate-spin inline" /> : 'INCREMENTAL に変更'}
+                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : 'INCREMENTAL に変更'}
                         </button>
                       ) : (
                         <button
@@ -2574,7 +2573,7 @@ export function SettingsPage() {
                           title={t('auto.SettingsPage.k25')}
                           className="text-[10px] px-2 py-0.5 rounded bg-gray-600 hover:bg-gray-500 text-white disabled:opacity-40 transition-colors"
                         >
-                          {dbAvRunning ? <RotateCcw size={10} className="animate-spin inline" /> : 'OFF に戻す'}
+                          {dbAvRunning ? <MIcon name="restart_alt" size={10} className="animate-spin inline" /> : 'OFF に戻す'}
                         </button>
                       )}
                     </div>
@@ -2615,8 +2614,8 @@ export function SettingsPage() {
                 }`}
               >
                 {dbMaintRunning
-                  ? <><RotateCcw size={13} className="animate-spin" /> {t('auto.SettingsPage.k18')}</>
-                  : <><Zap size={13} /> {t('auto.SettingsPage.k19')}</>
+                  ? <><MIcon name="restart_alt" size={13} className="animate-spin" /> {t('auto.SettingsPage.k18')}</>
+                  : <><MIcon name="bolt" size={13} /> {t('auto.SettingsPage.k19')}</>
                 }
               </button>
             </section>}
@@ -2657,7 +2656,7 @@ export function SettingsPage() {
                   >
                     <Icon size={16} />
                     <span className="font-medium text-sm">{label}</span>
-                    {theme === mode && <CheckCircle size={14} className="text-blue-400 ml-auto" />}
+                    {theme === mode && <MIcon name="check_circle" size={14} className="text-blue-400 ml-auto" />}
                   </button>
                 ))}
               </div>
@@ -2683,9 +2682,9 @@ export function SettingsPage() {
                             : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500'
                       }`}
                     >
-                      <Globe size={16} />
+                      <MIcon name="public" size={16} />
                       <span className="font-medium text-sm">{label}</span>
-                      {active && <CheckCircle size={14} className="text-blue-400 ml-auto" />}
+                      {active && <MIcon name="check_circle" size={14} className="text-blue-400 ml-auto" />}
                     </button>
                   )
                 })}
@@ -2714,7 +2713,7 @@ export function SettingsPage() {
                     isLight ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-red-700 hover:bg-red-600 text-white'
                   }`}
                 >
-                  <LogOut size={16} />
+                  <MIcon name="logout" size={16} />
                   {t('auth.logout')}
                 </button>
                 <p className={`text-xs ${textMuted}`}>
@@ -2750,7 +2749,7 @@ export function SettingsPage() {
                       : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-500 hover:bg-gray-700'
                     }`}
                 >
-                  <RotateCcw size={15} />
+                  <MIcon name="restart_alt" size={15} />
                   {t('settings.ui.restart_app_btn')}
                 </button>
               </section>
@@ -2771,7 +2770,7 @@ export function SettingsPage() {
           <div className={`${card} rounded-lg w-full max-w-lg`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingPlayer ? '選手編集' : '選手追加'}</h2>
-              <button onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}>✕</button>
+              <button onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={14} /></button>
             </div>
             <form onSubmit={handlePlayerSubmit} className="p-6 flex flex-col gap-3">
               <div>

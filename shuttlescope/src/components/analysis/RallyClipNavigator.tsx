@@ -6,10 +6,10 @@
  */
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Play, Clock, Filter, ChevronDown } from 'lucide-react'
 import { getPlaylist, PlaylistRally } from '@/api/review'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 const END_TYPE_LABELS: Record<string, string> = {
   forced_error: '強制エラー',
@@ -126,7 +126,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
       {/* ヘッダー */}
       <div className={`flex items-center justify-between px-4 py-3 border-b ${border}`}>
         <div className="flex items-center gap-2">
-          <Play size={14} className="text-blue-500" />
+          <MIcon name="play_arrow" size={14} className="text-blue-500" />
           <span className={`text-sm font-semibold ${textPrimary}`}>{t('auto.RallyClipNavigator.k1')}</span>
           {!hasVideo && (
             // Design Language v1.2: 警告状態は B_BAD 文字色 + 無彩色 bg (同色相重ね禁止)
@@ -149,9 +149,9 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
             isLight ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-400 hover:bg-gray-700'
           }`}
         >
-          <Filter size={12} />
+          <MIcon name="filter_alt" size={12} />
           {t('common.filter', 'Filter')}
-          <ChevronDown size={12} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          <MIcon name="expand_more" size={12} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
         </button>
       </div>
 
@@ -268,7 +268,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
                     : (isLight ? '#64748b' : '#94a3b8') /* N_GRAY[500]/[400] */,
                 }}
               >
-                {hasTs ? <Play size={10} /> : <Clock size={10} />}
+                {hasTs ? <MIcon name="play_arrow" size={10} /> : <MIcon name="schedule" size={10} />}
               </div>
 
               {/* セット / ラリー番号 */}
@@ -321,7 +321,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
 
       {/* オーバーレイポップアップ: 動画を全画面に近い大きさで再生。
          フレーム内 embed と違いサイズ変化やレイアウト依存エラーが起きない。
-         背景クリック / ✕ / Esc で閉じる。 */}
+         背景クリック / close / Esc で閉じる。 */}
       {popupRally && hasVideo && (
         <div
           className="fixed inset-0 z-[300] bg-black/85 flex items-center justify-center p-4"
@@ -355,7 +355,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
                   onClick={() => setPopupRally(null)}
                   className="px-2 py-1 text-sm rounded hover:bg-gray-700"
                   title="閉じる (Esc)"
-                >✕</button>
+                ><MIcon name="close" size={14} /></button>
               </div>
             </div>
             <video

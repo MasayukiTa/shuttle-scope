@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Medal } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { SetDistributionBar } from '@/components/analysis/SetDistributionBar'
@@ -11,6 +10,7 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useAuth } from '@/hooks/useAuth'
+import { MIcon } from '@/components/common/MIcon'
 
 interface PlayerSummary {
   id: number
@@ -115,7 +115,7 @@ function PartnerRankingSection({
     >
       {/* ヘッダー */}
       <div className="flex items-center gap-2">
-        <Medal size={14} style={{ color: '#3b82f6' }} />
+        <MIcon name="military_tech" size={14} style={{ color: '#3b82f6' }} />
         <span className="text-xs font-semibold" style={{ color: '#3b82f6' }}>
           {t('pair.title', 'Analyst only — partner candidate ranking (record-based)')}
         </span>
@@ -398,14 +398,14 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
           {d.pair_strengths.length > 0 && (
             <ul className="space-y-1">
               {d.pair_strengths.map((s, i) => (
-                <li key={i} className="text-xs" style={{ color: WIN }}>✓ {s}</li>
+                <li key={i} className="text-xs inline-flex items-center gap-1" style={{ color: WIN }}><MIcon name="check" size={12} />{s}</li>
               ))}
             </ul>
           )}
           {d.pair_cautions.length > 0 && (
             <ul className="space-y-1">
               {d.pair_cautions.map((c, i) => (
-                <li key={i} className="text-xs" style={{ color: subText }}>⚠ {c}</li>
+                <li key={i} className="text-xs inline-flex items-center gap-1" style={{ color: subText }}><MIcon name="warning" size={12} />{c}</li>
               ))}
             </ul>
           )}

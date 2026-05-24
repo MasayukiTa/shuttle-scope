@@ -7,6 +7,7 @@ import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { LOSS } from '@/styles/colors'
+import { MIcon } from '@/components/common/MIcon'
 
 interface FatigueBreakdown {
   temporal_drop: number
@@ -110,7 +111,7 @@ function Inner({ playerId, tournamentLevel }: FatigueRiskCardProps) {
         <ul className="space-y-1">
           {d.risk_signals.map((s, i) => (
             <li key={i} className="text-xs flex gap-2" style={{ color: LOSS }}>
-              <span>⚠</span>
+              <MIcon name="warning" size={14} />
               {s}
             </li>
           ))}

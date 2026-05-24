@@ -14,12 +14,12 @@
  * 画質が制限される場合がある。
  */
 import { useState, useEffect, useCallback } from 'react'
-import { Download, AlertCircle, CheckCircle, Loader2, Film, Cookie, ChevronDown, WifiOff, Scissors } from 'lucide-react'
 import { apiGet, apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
 import { DownloadOptionsModal } from '@/components/video/DownloadOptionsModal'
 import { errorMessage } from '@/utils/errors'
+import { MIcon } from '@/components/common/MIcon'
 
 interface StreamingDownloadPanelProps {
   /** 配信URL（表示 + ダウンロード元） */
@@ -246,7 +246,7 @@ export function StreamingDownloadPanel({
     >
       {/* ── サービス名 + URL ── */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Film size={16} className="text-blue-400 shrink-0" />
+        <MIcon name="movie" size={16} className="text-blue-400 shrink-0" />
         <span className={`text-sm font-semibold ${siteColor}`}>{siteName}</span>
         <span className={`text-xs ${muteColor}`}>{t('auto.StreamingDownloadPanel.k1')}</span>
       </div>
@@ -261,7 +261,7 @@ export function StreamingDownloadPanel({
       {/* ── ffmpeg 未インストール警告 ── */}
       {ffmpegMissing && dlState === 'idle' && (
         <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerWarn}`}>
-          <WifiOff size={13} className="shrink-0 mt-0.5" />
+          <MIcon name="wifi_off" size={13} className="shrink-0 mt-0.5" />
           <span>
             <strong>{t('auto.StreamingDownloadPanel.k2')}</strong>{t('auto.StreamingDownloadPanel.ffmpeg_warn1')}
             {t('auto.StreamingDownloadPanel.ffmpeg_warn2_pre')}<code className={`px-1 rounded ${isLight ? 'bg-gray-200' : 'bg-gray-700'}`}>{t('auto.StreamingDownloadPanel.ffmpeg_cmd')}</code>{t('auto.StreamingDownloadPanel.ffmpeg_warn2_post')}
@@ -271,7 +271,7 @@ export function StreamingDownloadPanel({
 
       {/* ── 説明バナー ── */}
       <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerInfo}`}>
-        <AlertCircle size={13} className="shrink-0 mt-0.5" />
+        <MIcon name="error" size={13} className="shrink-0 mt-0.5" />
         <span>
           {t('auto.StreamingDownloadPanel.info_banner')}
         </span>
@@ -280,7 +280,7 @@ export function StreamingDownloadPanel({
       {/* ── 完了 ── */}
       {dlState === 'complete' && (
         <div className={`flex items-center gap-2 text-sm rounded p-3 ${bannerSuccess}`}>
-          <CheckCircle size={16} />
+          <MIcon name="check_circle" size={16} />
           <span>{t('auto.StreamingDownloadPanel.k3')}</span>
         </div>
       )}
@@ -289,7 +289,7 @@ export function StreamingDownloadPanel({
       {dlState === 'error' && (
         <div className="flex flex-col gap-2">
           <div className={`flex items-start gap-2 text-xs rounded p-2 ${bannerError}`}>
-            <AlertCircle size={13} className="shrink-0 mt-0.5" />
+            <MIcon name="error" size={13} className="shrink-0 mt-0.5" />
             <span className="whitespace-pre-wrap break-all">{errorMsg}</span>
           </div>
           <button
@@ -306,7 +306,7 @@ export function StreamingDownloadPanel({
         <div className="space-y-1.5">
           <div className={`flex items-center justify-between text-xs ${labelColor}`}>
             <div className="flex items-center gap-1.5">
-              <Loader2 size={12} className="animate-spin text-blue-400" />
+              <MIcon name="progress_activity" size={12} className="animate-spin text-blue-400" />
               <span>
                 {dlState === 'starting'
                   ? t('auto.StreamingDownloadPanel.starting')
@@ -370,7 +370,7 @@ export function StreamingDownloadPanel({
 
             {/* Cookie ブラウザ選択 */}
             <div className="flex items-center gap-1 flex-1 min-w-0">
-              <Cookie size={12} className={`shrink-0 ${labelColor}`} />
+              <MIcon name="cookie" size={12} className={`shrink-0 ${labelColor}`} />
               <label className={`text-xs shrink-0 ${labelColor}`}>{t('auto.StreamingDownloadPanel.cookie_label')}</label>
               <div className="relative flex-1 min-w-0">
                 <select
@@ -388,7 +388,7 @@ export function StreamingDownloadPanel({
                     </option>
                   ))}
                 </select>
-                <ChevronDown size={10} className={`absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none ${labelColor}`} />
+                <MIcon name="expand_more" size={10} className={`absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none ${labelColor}`} />
               </div>
             </div>
           </div>
@@ -408,7 +408,7 @@ export function StreamingDownloadPanel({
           <div className="flex flex-col gap-1 border-t border-dashed pt-2"
                style={{ borderColor: isLight ? '#cbd5e1' : '#374151' }}>
             <label className={`text-xs ${labelColor} flex items-center gap-1`}>
-              <Cookie size={12} />
+              <MIcon name="cookie" size={12} />
               {t('auto.StreamingDownloadPanel.cookies_txt_label')}
             </label>
             <div className="flex items-center gap-2">
@@ -425,7 +425,7 @@ export function StreamingDownloadPanel({
                   className={`text-[10px] px-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
                   title={t('auto.StreamingDownloadPanel.k15')}
                 >
-                  ✕
+                  <MIcon name="close" size={10} />
                 </button>
               )}
             </div>
@@ -435,8 +435,8 @@ export function StreamingDownloadPanel({
               </div>
             )}
             {cookiesError && (
-              <div className={`text-[10px] ${isLight ? 'text-red-600' : 'text-red-400'}`}>
-                ⚠ {cookiesError}
+              <div className={`text-[10px] inline-flex items-center gap-0.5 ${isLight ? 'text-red-600' : 'text-red-400'}`}>
+                <MIcon name="warning" size={10} />{cookiesError}
               </div>
             )}
             <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
@@ -453,7 +453,7 @@ export function StreamingDownloadPanel({
               className={`text-xs ${labelColor} flex items-center gap-1 self-start`}
               aria-expanded={authPanelOpen}
             >
-              <ChevronDown size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
+              <MIcon name="expand_more" size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
               {t('auto.StreamingDownloadPanel.pw_video_label')}
               {videoPassword && <span className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>{t('auto.StreamingDownloadPanel.k14')}</span>}
             </button>
@@ -495,7 +495,7 @@ export function StreamingDownloadPanel({
             onClick={handleDownload}
             className="flex items-center justify-center gap-2 w-full py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded text-sm font-medium transition-colors"
           >
-            <Download size={15} />
+            <MIcon name="download" size={15} />
             {t('auto.StreamingDownloadPanel.download_play')}
             {ffmpegMissing && <span className="text-xs text-blue-300 ml-1">{t('auto.StreamingDownloadPanel.k9')}</span>}
           </button>
@@ -511,7 +511,7 @@ export function StreamingDownloadPanel({
             }`}
             title={t('auto.StreamingDownloadPanel.k16')}
           >
-            <Scissors size={12} />
+            <MIcon name="content_cut" size={12} />
             {t('auto.StreamingDownloadPanel.range_options')}
           </button>
         </div>

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, NavLink, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { List, BarChart2, Settings, Sun, Moon, TrendingUp, Heart, ClipboardCheck, Users, LogOut, Bell } from 'lucide-react'
 import { clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
 
 import '@/i18n'
 import { MatchListPage } from '@/pages/MatchListPage'
@@ -91,7 +91,7 @@ type NavItem = {
   to: string
   label: string
   shortLabel?: string
-  icon: typeof List
+  icon: string  // Material Symbols icon name (MIcon)
   badge?: number | null
 }
 
@@ -114,31 +114,31 @@ function Sidebar() {
   const unreadCount = unreadCountQuery.data?.data?.count ?? 0
 
   const navItems: NavItem[] = [
-    { to: '/matches', label: t('nav.matches'), icon: List },
-    { to: '/condition', label: t('nav.condition'), icon: Heart },
+    { to: '/matches', label: t('nav.matches'), icon: 'list' },
+    { to: '/condition', label: t('nav.condition'), icon: 'favorite' },
     // 解析タブ: 全ロールが /dashboard にアクセス可。player には
     // DashboardTopNav 側で overview / growth のみ表示し、review / advanced /
     // research は個別 route で /dashboard/overview に redirect する。
     // CLAUDE.md non-negotiable rule (確信が持てない解析は player に出さない)
     // は dashboard 内部で守られる。
-    { to: '/dashboard', label: t('nav.dashboard'), icon: BarChart2 },
+    { to: '/dashboard', label: t('nav.dashboard'), icon: 'bar_chart' },
     // prediction / expert_labeler は引き続き player 非表示。
     // - prediction: 絶対勝率 = CLAUDE.md "Never show player-facing screens
     //   raw absolute win-rate style judgments" 違反。
     // - expert_labeler: 専門ラベラー、player 業務外。
     ...(role !== 'player' && hasPageAccess('prediction')
-      ? [{ to: '/prediction', label: t('nav.prediction'), icon: TrendingUp }]
+      ? [{ to: '/prediction', label: t('nav.prediction'), icon: 'trending_up' }]
       : []),
     ...(role !== 'player' && hasPageAccess('expert_labeler')
-      ? [{ to: '/expert-labeler', label: t('nav.expert'), icon: ClipboardCheck }]
+      ? [{ to: '/expert-labeler', label: t('nav.expert'), icon: 'assignment_turned_in' }]
       : []),
     ...(role === 'admin'
       ? [
-          { to: '/notifications', label: t('auto.App.k2'), shortLabel: '通知', icon: Bell, badge: unreadCount > 0 ? unreadCount : null },
-          { to: '/users', label: t('nav.users'), icon: Users },
+          { to: '/notifications', label: t('auto.App.k2'), shortLabel: '通知', icon: 'notifications', badge: unreadCount > 0 ? unreadCount : null },
+          { to: '/users', label: t('nav.users'), icon: 'group' },
         ]
       : []),
-    { to: '/settings', label: t('nav.settings'), icon: Settings },
+    { to: '/settings', label: t('nav.settings'), icon: 'settings' },
   ]
 
   const sidebarBg = isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
@@ -177,7 +177,7 @@ function Sidebar() {
           )}>{t('app.name')}</span>
         </div>
         <div className="pt-4" />
-        {navItems.map(({ to, label, shortLabel, icon: Icon, badge }) => (
+        {navItems.map(({ to, label, shortLabel, icon, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -194,7 +194,7 @@ function Sidebar() {
             }
           >
             <div className="relative shrink-0">
-              <Icon size={20} />
+              <MIcon name={icon} size={20} />
               {badge ? (
                 <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
                   {badge > 99 ? '99+' : badge}
@@ -217,7 +217,7 @@ function Sidebar() {
               isLight ? 'text-gray-500 hover:text-red-700 hover:bg-red-50' : 'text-gray-400 hover:text-red-300 hover:bg-gray-700',
             )}
           >
-            <LogOut size={18} className="shrink-0" />
+            <MIcon name="logout" size={18} className="shrink-0" />
             <span className="text-[9px] leading-none lg:hidden">{t('auth.logout')}</span>
             <span className="hidden lg:inline">{t('auth.logout')}</span>
           </button>
@@ -230,7 +230,7 @@ function Sidebar() {
               isLight ? 'text-gray-500 hover:text-gray-800 hover:bg-gray-100' : 'text-gray-400 hover:text-white hover:bg-gray-700',
             )}
           >
-            {theme === 'dark' ? <Sun size={18} className="shrink-0" /> : <Moon size={18} className="shrink-0" />}
+            {theme === 'dark' ? <MIcon name="light_mode" size={18} className="shrink-0" /> : <MIcon name="dark_mode" size={18} className="shrink-0" />}
             <span className="text-[9px] leading-none lg:hidden">{theme === 'dark' ? 'Light' : 'Dark'}</span>
             <span className="hidden lg:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
           </button>
@@ -251,7 +251,7 @@ function Sidebar() {
             minHeight: 'calc(56px + env(safe-area-inset-bottom, 0px))',
           }}
         >
-          {navItems.map(({ to, label, shortLabel, icon: Icon, badge }) => (
+          {navItems.map(({ to, label, shortLabel, icon, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -265,7 +265,7 @@ function Sidebar() {
               }
             >
               <div className="relative">
-                <Icon size={22} />
+                <MIcon name={icon} size={22} />
                 {badge ? (
                   <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] leading-4 text-center">
                     {badge > 99 ? '99+' : badge}

@@ -9,11 +9,11 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle, Search, X, CheckSquare, Square } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { WIN, LOSS } from '@/styles/colors'
+import { MIcon } from '@/components/common/MIcon'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -79,7 +79,7 @@ function CoachCandidateView({
           border: `1px solid #16a34a40`,
         }}
       >
-        <AlertCircle size={13} className="shrink-0 mt-0.5" style={{ color: '#16a34a' }} />
+        <MIcon name="error" size={13} className="shrink-0 mt-0.5" style={{ color: '#16a34a' }} />
         <p className="text-[11px]" style={{ color: isLight ? '#15803d' : '#86efac' }}>
           {t('lineup.candidate_disclaimer', 'Candidate generation (reference) — not an automatic decision. Do not decide a lineup on this alone.')}
         </p>
@@ -386,7 +386,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               className="text-[10px] flex items-center gap-0.5 hover:opacity-70 transition-opacity"
               style={{ color: subText }}
             >
-              <X size={10} /> {t('lineup.clear_selection', 'Clear selection')}
+              <MIcon name="close" size={10} /> {t('lineup.clear_selection', 'Clear selection')}
             </button>
           )}
         </div>
@@ -408,7 +408,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
                   }}
                 >
                   {p.name}
-                  <X size={9} />
+                  <MIcon name="close" size={9} />
                 </button>
               ))}
           </div>
@@ -424,7 +424,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               border: `1px solid ${isLight ? '#e2e8f0' : '#4b5563'}`,
             }}
           >
-            <Search size={11} style={{ color: subText }} className="shrink-0" />
+            <MIcon name="search" size={11} style={{ color: subText }} className="shrink-0" />
             <input
               type="text"
               value={nameFilter}
@@ -435,7 +435,7 @@ export function LineupOptimizerPanel({ players, role }: Props) {
             />
             {nameFilter && (
               <button onClick={() => setNameFilter('')}>
-                <X size={10} style={{ color: subText }} />
+                <MIcon name="close" size={10} style={{ color: subText }} />
               </button>
             )}
           </div>
@@ -471,8 +471,8 @@ export function LineupOptimizerPanel({ players, role }: Props) {
               }}
             >
               {allFilteredSelected
-                ? <><CheckSquare size={11} /> {t('auto.LineupOptimizerPanel.k4')}</>
-                : <><Square size={11} /> {t('auto.LineupOptimizerPanel.k5')}</>
+                ? <><MIcon name="check_box" size={11} /> {t('auto.LineupOptimizerPanel.k4')}</>
+                : <><MIcon name="crop_square" size={11} /> {t('auto.LineupOptimizerPanel.k5')}</>
               }
               {nameFilter || teamFilter ? '（絞り込み中）' : ''}
             </button>

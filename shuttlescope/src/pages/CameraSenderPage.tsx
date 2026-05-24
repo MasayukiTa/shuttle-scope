@@ -14,15 +14,12 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
-import {
-  Camera, WifiOff, Loader2, CheckCircle2, XCircle, VideoOff,
-  BatteryFull, BatteryMedium, BatteryLow, Wifi, WifiZero, Pencil, Check,
-} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useServerSideRecording } from '@/hooks/session/useServerSideRecording'
 import { errorStatus } from '@/utils/errors'
+import { MIcon } from '@/components/common/MIcon'
 
 type SenderState = 'join' | 'connecting' | 'state_a' | 'state_b' | 'state_c' | 'error'
 
@@ -59,12 +56,12 @@ function getDeviceTypeLabel(): string {
 function BatteryIndicator({ level, charging }: { level: number; charging: boolean }) {
 
   const pct = Math.round(level * 100)
-  const Icon = pct > 60 ? BatteryFull : pct > 25 ? BatteryMedium : BatteryLow
+  const iconName = pct > 60 ? 'battery_full' : pct > 25 ? 'battery_5_bar' : 'battery_2_bar'
   const color = pct > 60 ? 'text-green-400' : pct > 25 ? 'text-yellow-400' : 'text-red-400'
   return (
     <span className={`flex items-center gap-0.5 text-[10px] ${color}`}>
-      <Icon size={12} />
-      {pct}%{charging ? ' ⚡' : ''}
+      <MIcon name={iconName} size={12} />
+      {pct}%{charging ? <MIcon name="bolt" size={10} className="ml-0.5" /> : null}
     </span>
   )
 }
@@ -75,11 +72,11 @@ function NetworkQualityIndicator({ rttMs }: { rttMs: number | null }) {
   const { t } = useTranslation()
   if (rttMs === null) return null
   const good = rttMs < 80
-  const Icon = good ? Wifi : WifiZero
+  const iconName = good ? 'wifi' : 'signal_wifi_0_bar'
   const color = good ? 'text-green-400' : 'text-yellow-400'
   return (
     <span className={`flex items-center gap-0.5 text-[10px] ${color}`}>
-      <Icon size={12} />
+      <MIcon name={iconName} size={12} />
       {t('camera_sender.network_quality')} {rttMs}ms
     </span>
   )
@@ -514,7 +511,7 @@ export function CameraSenderPage() {
       {/* ロゴ */}
       <div className="mb-4 text-center">
         <div className="inline-flex items-center gap-2 text-blue-400 mb-1">
-          <Camera size={24} />
+          <MIcon name="photo_camera" size={24} />
           <span className="text-lg font-bold">{t('app.name')}</span>
         </div>
         <p className="text-gray-400 text-sm">{t('camera_sender.join_title')}</p>
@@ -556,7 +553,7 @@ export function CameraSenderPage() {
             </div>
             {errorMsg && (
               <div className="flex items-center gap-1.5 text-red-400 text-xs">
-                <XCircle size={14} />
+                <MIcon name="cancel" size={14} />
                 {errorMsg}
               </div>
             )}
@@ -565,7 +562,7 @@ export function CameraSenderPage() {
               disabled={!form.sessionCode || senderState === 'connecting'}
               className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium inline-flex items-center justify-center gap-2"
             >
-              {senderState === 'connecting' && <Loader2 size={14} className="animate-spin" />}
+              {senderState === 'connecting' && <MIcon name="progress_activity" size={14} className="animate-spin" />}
               {senderState === 'connecting' ? '接続中…' : t('camera_sender.join_button')}
             </button>
           </div>
@@ -575,7 +572,7 @@ export function CameraSenderPage() {
       {/* ─── State: connecting ──────────── */}
       {senderState === 'connecting' && paramCode && (
         <div className="text-center">
-          <Loader2 size={40} className="animate-spin text-blue-400 mx-auto mb-3" />
+          <MIcon name="progress_activity" size={40} className="animate-spin text-blue-400 mx-auto mb-3" />
           <p className="text-gray-300 text-sm">
             {reconnectCount > 0
               ? `${t('camera_sender.reconnecting')} (${reconnectCount}/${MAX_RECONNECT}${t('camera_sender.reconnect_attempt')})`
@@ -590,12 +587,12 @@ export function CameraSenderPage() {
           <StatusBar />
           <div className="w-full bg-gray-800 rounded-xl p-8 shadow-2xl text-center">
             <div className="w-16 h-16 rounded-full bg-blue-900/50 flex items-center justify-center mx-auto mb-4">
-              <Camera size={28} className="text-blue-400" />
+              <MIcon name="photo_camera" size={28} className="text-blue-400" />
             </div>
             <p className="text-lg font-semibold mb-2">{t('camera_sender.state_a_title')}</p>
             <p className="text-gray-400 text-sm leading-relaxed">{t('camera_sender.state_a_hint')}</p>
             <div className="mt-4 flex items-center justify-center gap-1.5 text-green-400 text-xs">
-              <CheckCircle2 size={14} />
+              <MIcon name="check_circle" size={14} />
               {t('camera_sender.status_connected')}
             </div>
             {/* 端末名表示・編集 */}
@@ -628,7 +625,7 @@ export function CameraSenderPage() {
                     }}
                     className="p-1 text-green-400 hover:text-green-300"
                   >
-                    <Check size={16} />
+                    <MIcon name="check" size={16} />
                   </button>
                 </div>
               ) : (
@@ -641,7 +638,7 @@ export function CameraSenderPage() {
                     className="p-1 text-gray-500 hover:text-gray-300 rounded"
                     title={t('auto.CameraSenderPage.k1')}
                   >
-                    <Pencil size={12} />
+                    <MIcon name="edit" size={12} />
                   </button>
                 </div>
               )}
@@ -656,7 +653,7 @@ export function CameraSenderPage() {
           <StatusBar />
           <div className="w-full bg-gray-800 rounded-xl p-6 shadow-2xl border border-amber-500/40">
             <div className="w-16 h-16 rounded-full bg-amber-900/50 flex items-center justify-center mx-auto mb-4">
-              <Camera size={28} className="text-amber-400" />
+              <MIcon name="photo_camera" size={28} className="text-amber-400" />
             </div>
             <p className="text-center text-lg font-semibold mb-2">{t('camera_sender.state_b_title')}</p>
             <p className="text-center text-xs text-gray-400 mb-5">
@@ -664,7 +661,7 @@ export function CameraSenderPage() {
             </p>
             {errorMsg && (
               <div className="flex items-start gap-1.5 text-red-400 text-xs mb-3 bg-red-900/30 rounded-lg p-2">
-                <XCircle size={14} className="shrink-0 mt-0.5" />
+                <MIcon name="cancel" size={14} className="shrink-0 mt-0.5" />
                 {errorMsg}
               </div>
             )}
@@ -674,7 +671,7 @@ export function CameraSenderPage() {
                 disabled={startingCamera}
                 className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold flex items-center justify-center gap-2"
               >
-                {startingCamera ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+                {startingCamera ? <MIcon name="progress_activity" size={18} className="animate-spin" /> : <MIcon name="photo_camera" size={18} />}
                 {startingCamera ? '起動中…' : t('camera_sender.state_b_start')}
               </button>
               <button
@@ -723,7 +720,7 @@ export function CameraSenderPage() {
             onClick={stopCamera}
             className="w-full py-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-medium flex items-center justify-center gap-2"
           >
-            <VideoOff size={18} />
+            <MIcon name="videocam_off" size={18} />
             {t('camera_sender.state_c_stop')}
           </button>
         </div>
@@ -733,7 +730,7 @@ export function CameraSenderPage() {
       {senderState === 'error' && (
         <div className="w-full max-w-sm text-center">
           <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-red-500/40">
-            <WifiOff size={36} className="text-red-400 mx-auto mb-3" />
+            <MIcon name="wifi_off" size={36} className="text-red-400 mx-auto mb-3" />
             <p className="text-sm text-gray-300 mb-1">{errorMsg || t('camera_sender.join_error_network')}</p>
             <p className="text-xs text-gray-500 mb-4">
               {t('auto.CameraSenderPage.k_wifi_check')}

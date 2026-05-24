@@ -10,7 +10,7 @@
  */
 import { _useState } from 'react'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
-import { _MIcon } from '@/components/common/MIcon'
+import { MIcon } from '@/components/common/MIcon'
 import { N_GRAY } from '@/styles/colors'
 import { useTranslation } from 'react-i18next'
 
@@ -141,7 +141,7 @@ export function ConditionGlossary({ open, onClose }: Props) {
             className="text-sm px-2 py-1 rounded"
             style={{ color: textMuted }}
           >
-            ✕
+            <MIcon name="close" size={16} />
           </button>
         </header>
         <div className="px-5 py-4 space-y-4">

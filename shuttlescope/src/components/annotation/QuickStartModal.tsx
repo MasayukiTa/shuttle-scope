@@ -5,11 +5,11 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, Search, UserPlus, User, ChevronDown } from 'lucide-react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/api/client'
 import { Player, MATCH_ROUNDS } from '@/types'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   onClose: () => void
@@ -148,7 +148,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
             <h2 className="text-lg font-semibold">{t('quick_start.title')}</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
-            <X size={18} />
+            <MIcon name="close" size={18} />
           </button>
         </div>
 
@@ -163,7 +163,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                 value: p.id,
                 label: p.name,
                 searchText: p.team ?? '',
-                prefix: p.is_target ? '★' : undefined,
+                prefix: p.is_target ? 'star' : undefined,
+                prefixIsIcon: !!p.is_target,
                 suffix: p.team ? t('quick_start.team_suffix', { team: p.team }) : undefined,
               }))}
               value={playerAId === '' ? null : playerAId}
@@ -179,7 +180,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
               {t('quick_start.opponent')} *
             </label>
             <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <MIcon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 ref={searchRef}
                 value={opponentQuery}
@@ -191,7 +192,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
               />
               {opponentId !== null && (
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  <User size={12} className="text-green-400" />
+                  <MIcon name="person" size={12} className="text-green-400" />
                   <span className="text-xs text-green-400">{t('quick_start.existing')}</span>
                 </div>
               )}
@@ -214,7 +215,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                         className="w-full text-left px-3 py-2 hover:bg-gray-600 text-sm flex items-center justify-between"
                       >
                         <span className="flex items-center gap-2 min-w-0">
-                          <User size={12} className="text-gray-400 shrink-0" />
+                          <MIcon name="person" size={12} className="text-gray-400 shrink-0" />
                           <span className="truncate">{p.name}</span>
                           {p.team && (
                             <span className="text-xs text-blue-300 bg-gray-800 px-1.5 rounded shrink-0">{p.team}</span>
@@ -234,7 +235,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                         onClick={useNewOpponent}
                         className="w-full text-left px-3 py-2 hover:bg-blue-700/30 text-sm flex items-center gap-2 text-blue-300 border-t border-gray-600"
                       >
-                        <UserPlus size={12} className="shrink-0" />
+                        <MIcon name="person_add" size={12} className="shrink-0" />
                         <span>{t('quick_start.provisional_register_and_start', { name: opponentQuery.trim() })}</span>
                       </button>
                     )}
@@ -365,7 +366,7 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
-                <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <MIcon name="expand_more" size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
             </div>
           </div>

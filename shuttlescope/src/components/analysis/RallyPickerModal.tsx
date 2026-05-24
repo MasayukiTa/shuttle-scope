@@ -9,7 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from 'recharts'
-import { X } from 'lucide-react'
+import { MIcon } from '@/components/common/MIcon'
 import { apiGet } from '@/api/client'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
@@ -99,7 +99,7 @@ export function RallyPickerModal({ matchId, matchLabel, initialSet, selectedRall
             </p>
           </div>
           <button onClick={onClose} style={{ color: isLight ? '#64748b' : '#94a3b8' }} className="hover:opacity-70">
-            <X size={18} />
+            <MIcon name="close" size={18} />
           </button>
         </div>
 

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, User, UserPlus } from 'lucide-react'
 import { Player } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 
 // ─── 選手コンボボックス（名前検索 + 暫定登録対応）────────────────────────────
 // MatchListPage から純粋抽出 (2026-05-21, god-file 分割フェーズ1)。
@@ -45,7 +45,7 @@ export function PlayerCombobox({
         {label}{required && ' *'}
       </label>
       <div className="relative">
-        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <MIcon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
         <input
           type="text"
           value={query}
@@ -61,7 +61,7 @@ export function PlayerCombobox({
         />
         {value !== '' && (
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            <User size={12} className="text-green-400" />
+            <MIcon name="person" size={12} className="text-green-400" />
             <span className="text-[10px] text-green-400">{t('auto.MatchListPage.k1')}</span>
           </div>
         )}
@@ -79,7 +79,7 @@ export function PlayerCombobox({
               }}
               className={`w-full text-left px-3 py-2 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-600'} text-sm flex items-center gap-2 min-w-0`}
             >
-              <User size={12} className="text-gray-400 shrink-0" />
+              <MIcon name="person" size={12} className="text-gray-400 shrink-0" />
               <span className="truncate">{p.name}</span>
               {p.team && (
                 <span className="text-xs text-blue-300 bg-blue-900/30 px-1.5 rounded shrink-0">{p.team}</span>
@@ -95,7 +95,7 @@ export function PlayerCombobox({
             }}
             className={`w-full text-left px-3 py-2 hover:bg-blue-500/10 text-sm flex items-center gap-2 text-blue-400 border-t ${isLight ? 'border-gray-200' : 'border-gray-600'}`}
           >
-            <UserPlus size={12} className="shrink-0" />
+            <MIcon name="person_add" size={12} className="shrink-0" />
             <span>{t('match.list.create_tentative', { name: query.trim(), defaultValue: 'Create "{{name}}" as tentative' })}</span>
           </button>
         </div>

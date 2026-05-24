@@ -2,7 +2,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Maximize2 } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { useReviewBundleSlice } from '@/contexts/ReviewBundleContext'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
@@ -10,6 +9,7 @@ import { AnalysisFilters, DEFAULT_FILTERS } from '@/types'
 import { WIN } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { ZoneMapModal, ZoneEffectiveness } from './ZoneMapModal'
+import { MIcon } from '@/components/common/MIcon'
 
 interface EffectiveDistributionMapProps {
   playerId: number
@@ -90,7 +90,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
             title={t('auto.EffectiveDistributionMap.k4')}
             className={`p-1 rounded transition-colors ${isLight ? 'text-gray-400 hover:bg-gray-100 hover:text-gray-600' : 'text-gray-500 hover:bg-gray-700 hover:text-gray-300'}`}
           >
-            <Maximize2 size={14} />
+            <MIcon name="fullscreen" size={14} />
           </button>
         </div>
 
@@ -178,7 +178,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                     >
                       <td className="py-1.5 pr-3 font-semibold" style={{ color: topZones.includes(zone) ? WIN : undefined }}>
                         {ZONE_LABELS[zone] ?? zone}
-                        {topZones.includes(zone) && <span className="ml-1 text-[9px]">★</span>}
+                        {topZones.includes(zone) && <MIcon name="star" size={9} className="ml-1" />}
                       </td>
                       <td className="py-1.5 pr-3 text-center text-gray-300 num-cell">{d.win_count}</td>
                       <td className="py-1.5 pr-3 text-center num-cell">

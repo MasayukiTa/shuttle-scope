@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart2, User, Award, Activity, TrendingUp, Target, FileDown } from 'lucide-react'
 import { apiGet, API_BASE_URL } from '@/api/client'
 import { Player, AnalysisFilters } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -21,6 +20,7 @@ import { DashboardAdvancedPage } from './DashboardAdvancedPage'
 import { DashboardResearchPage } from './DashboardResearchPage'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { DateRangeSlider } from '@/components/common/DateRangeSlider'
+import { MIcon } from '@/components/common/MIcon'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,10 +76,10 @@ function StatCard({
   // 旧版は bg-gray-800 を完全ハードコードしていてライトモードでも濃紺カード
   // のままになっていた (2026-05-19 修正)。
   const isLight = useIsLightMode()
-  const stars = sampleSize === undefined ? null
-    : sampleSize < 500 ? '★☆☆'
-    : sampleSize < 2000 ? '★★☆'
-    : '★★★'
+  const starsFilled = sampleSize === undefined ? null
+    : sampleSize < 500 ? 1
+    : sampleSize < 2000 ? 2
+    : 3
 
   const cls = isLight
     ? {
@@ -106,8 +106,13 @@ function StatCard({
           {value !== undefined && value !== null ? value : '—'}
         </p>
         {sampleSize !== undefined && (
-          <p className={`text-[10px] ${cls.sampleNote} mt-0.5 num-cell tabular-nums`}>
-            {stars} {t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
+          <p className={`text-[10px] ${cls.sampleNote} mt-0.5 num-cell tabular-nums inline-flex items-center gap-1`}>
+            {starsFilled !== null && (
+              <span className="inline-flex">
+                {Array.from({ length: 3 }, (_, i) => <MIcon key={i} name={i < starsFilled ? 'star' : 'star_border'} size={10} />)}
+              </span>
+            )}
+            {t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
           </p>
         )}
       </div>
@@ -287,7 +292,7 @@ export function DashboardShell() {
       {showOverlay && selectedPlayerId && (
         <div className={`absolute top-0 left-0 right-0 z-40 shadow-lg border-b ${borderColor} ${cardBg}`}>
           <div className={`flex items-center gap-2 px-4 py-2 border-b ${borderColor}`}>
-            <User size={14} className={textMuted} />
+            <MIcon name="person" size={14} className={textMuted} />
             <span className={`text-sm font-medium ${textPrimary}`}>
               {sortedPlayers.find((p) => p.id === selectedPlayerId)?.name ?? '—'}
             </span>
@@ -303,7 +308,7 @@ export function DashboardShell() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
         <div className={`px-6 pt-6 pb-4 border-b ${borderColor}`}>
           <div className="flex items-center gap-3 mb-4">
-            <BarChart2 className="text-blue-400" size={20} />
+            <MIcon name="bar_chart" className="text-blue-400" size={20} />
             <h1 className="text-xl font-semibold">{t('nav.dashboard_title', 'ダッシュボード')}</h1>
             {role && (
               <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${(isLight ? ROLE_BADGE_CLASS_LIGHT : ROLE_BADGE_CLASS_DARK)[role] ?? (isLight ? 'bg-white border-gray-300 text-gray-700' : 'bg-gray-800 border-gray-600 text-gray-200')}`}>
@@ -313,14 +318,15 @@ export function DashboardShell() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <User size={16} className={`${textMuted} shrink-0`} />
+            <MIcon name="person" size={16} className={`${textMuted} shrink-0`} />
             <label className={`text-sm ${textMuted} shrink-0`}>{t('auto.DashboardShell.k1')}</label>
             <SearchableSelect
               options={sortedPlayers.map((p) => ({
                 value: p.id,
                 label: p.name,
                 searchText: p.team ?? '',
-                prefix: p.is_target ? '★' : undefined,
+                prefix: p.is_target ? 'star' : undefined,
+                prefixIsIcon: !!p.is_target,
                 suffix: `${p.team ? `（${p.team}）` : ''} [${p.match_count ?? 0}試合]`,
               }))}
               value={selectedPlayerId}
@@ -341,7 +347,7 @@ export function DashboardShell() {
           <>
             <div className="px-6 pt-4 pb-0">
               <div className="flex flex-wrap items-center justify-end gap-1.5">
-                <FileDown size={13} className={textMuted} />
+                <MIcon name="file_download" size={13} className={textMuted} />
                 {/* 包括レポート: 現 role が見られる解析項目を全て含む。
                    PDF = 印刷して選手+コーチが議論するための整形レポート (試合単位は除外)。
                    JSON = 試合単位データ込みの完全 dump (数値解析用)。 */}
@@ -386,16 +392,16 @@ export function DashboardShell() {
 
             <div className={`px-6 pt-3 pb-3 border-b ${borderColor}`}>
               <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3">
-                <StatCard icon={<Award size={18} />} label="試合数" value={descriptive?.total_matches} />
-                <StatCard icon={<Activity size={18} />} label="ラリー数" value={descriptive?.total_rallies} sampleSize={descriptive?.total_rallies} />
+                <StatCard icon={<MIcon name="emoji_events" size={18} />} label="試合数" value={descriptive?.total_matches} />
+                <StatCard icon={<MIcon name="monitor_heart" size={18} />} label="ラリー数" value={descriptive?.total_rallies} sampleSize={descriptive?.total_rallies} />
                 <StatCard
-                  icon={<TrendingUp size={18} />}
+                  icon={<MIcon name="trending_up" size={18} />}
                   label="勝率"
                   value={descriptive?.win_rate !== undefined ? pct(descriptive.win_rate) : undefined}
                   sampleSize={descriptive?.total_rallies}
                 />
                 <StatCard
-                  icon={<Target size={18} />}
+                  icon={<MIcon name="crisis_alert" size={18} />}
                   label="平均ラリー長"
                   value={descriptive?.avg_rally_length !== undefined ? descriptive.avg_rally_length.toFixed(1) : undefined}
                   sampleSize={descriptive?.total_rallies}

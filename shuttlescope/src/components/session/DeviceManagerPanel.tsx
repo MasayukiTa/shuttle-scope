@@ -13,12 +13,6 @@
  * - LiveInferenceOverlay 統合
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  Monitor, Smartphone, Tablet, Camera, Usb,
-  X, RefreshCw, Video, VideoOff, Shield, ShieldOff,
-  CheckCircle2, XCircle, AlertTriangle, Trash2, Users, Eye,
-  type LucideIcon,
-} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { apiGet, apiPost, apiDelete } from '@/api/client'
@@ -27,6 +21,7 @@ import { LiveInferenceOverlay } from './LiveInferenceOverlay'
 import { RealtimeYoloOverlay } from './RealtimeYoloOverlay'
 import { useRealtimeYolo } from '@/hooks/useRealtimeYolo'
 import type { SessionParticipant, LocalCameraSource, DeviceType } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 
 interface RemoteHealth {
   wsConnected: boolean
@@ -47,12 +42,12 @@ interface Props {
 function DeviceIcon({ type }: { type: DeviceType | null }) {
   const cls = 'w-4 h-4 flex-shrink-0'
   switch (type) {
-    case 'iphone': return <Smartphone className={cls} />
-    case 'ipad':   return <Tablet className={cls} />
-    case 'pc':     return <Monitor className={cls} />
-    case 'usb_camera': return <Usb className={cls} />
-    case 'builtin_camera': return <Camera className={cls} />
-    default: return <Monitor className={cls} />
+    case 'iphone': return <MIcon name="smartphone" className={cls} />
+    case 'ipad':   return <MIcon name="tablet" className={cls} />
+    case 'pc':     return <MIcon name="monitor" className={cls} />
+    case 'usb_camera': return <MIcon name="usb" className={cls} />
+    case 'builtin_camera': return <MIcon name="photo_camera" className={cls} />
+    default: return <MIcon name="monitor" className={cls} />
   }
 }
 
@@ -82,17 +77,17 @@ function ApprovalBadge({ status }: { status: string }) {
   const { t } = useTranslation()
   if (status === 'approved') return (
     <span className="flex items-center gap-0.5 text-[10px] text-green-400">
-      <CheckCircle2 size={10} /> {t('auto.DeviceManagerPanel.approved')}
+      <MIcon name="check_circle" size={10} /> {t('auto.DeviceManagerPanel.approved')}
     </span>
   )
   if (status === 'rejected') return (
     <span className="flex items-center gap-0.5 text-[10px] text-red-400">
-      <XCircle size={10} /> {t('auto.DeviceManagerPanel.rejected')}
+      <MIcon name="cancel" size={10} /> {t('auto.DeviceManagerPanel.rejected')}
     </span>
   )
   return (
     <span className="flex items-center gap-0.5 text-[10px] text-amber-400 animate-pulse">
-      <AlertTriangle size={10} /> {t('auto.DeviceManagerPanel.pending')}
+      <MIcon name="warning" size={10} /> {t('auto.DeviceManagerPanel.pending')}
     </span>
   )
 }
@@ -102,8 +97,8 @@ function HeartbeatBadge({ lastHeartbeat }: { lastHeartbeat: string | null }) {
   const diffSec = (Date.now() - new Date(lastHeartbeat).getTime()) / 1000
   const stale = diffSec > 60
   return (
-    <span className={`text-[9px] ${stale ? 'text-red-400' : 'text-gray-500'}`}>
-      {stale ? '⚠ 応答なし' : `${Math.round(diffSec)}s前`}
+    <span className={`text-[9px] inline-flex items-center gap-0.5 ${stale ? 'text-red-400' : 'text-gray-500'}`}>
+      {stale ? <><MIcon name="warning" size={9} />応答なし</> : `${Math.round(diffSec)}s前`}
     </span>
   )
 }
@@ -411,7 +406,7 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
             )}
             {isStaleCamera && (
               <span className="text-[9px] px-1 py-0.5 rounded bg-amber-900/40 text-amber-400 flex items-center gap-0.5">
-                <AlertTriangle size={8} />{t('handoff.stale_warning')}
+                <MIcon name="warning" size={8} />{t('handoff.stale_warning')}
               </span>
             )}
           </div>
@@ -421,7 +416,7 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
           title={t('auto.DeviceManagerPanel.k11')}
           className="shrink-0 text-gray-600 hover:text-red-400 transition-colors"
         >
-          <Trash2 size={12} />
+          <MIcon name="delete" size={12} />
         </button>
       </div>
       <div className="ml-6 mt-0.5">
@@ -432,12 +427,12 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
           </span>
           {p.connection_state === 'sending_video' && (
             <span className="text-red-400 flex items-center gap-0.5">
-              <Video size={10} />{t('auto.DeviceManagerPanel.sending')}
+              <MIcon name="videocam" size={10} />{t('auto.DeviceManagerPanel.sending')}
             </span>
           )}
           {p.connection_state === 'receiving_video' && (
             <span className="text-blue-400 flex items-center gap-0.5">
-              <Video size={10} />{t('auto.DeviceManagerPanel.receiving')}
+              <MIcon name="videocam" size={10} />{t('auto.DeviceManagerPanel.receiving')}
             </span>
           )}
           {p.device_class && <span>{p.device_class}</span>}
@@ -469,7 +464,7 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
             <>
               <button onClick={() => onRequestCamera(p)}
                 className="text-[10px] px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-white flex items-center gap-0.5">
-                <Video size={9} />{isStaleCamera ? t('handoff.stale_rerequest') : 'カメラ再リクエスト'}
+                <MIcon name="videocam" size={9} />{isStaleCamera ? t('handoff.stale_rerequest') : 'カメラ再リクエスト'}
               </button>
               <button onClick={() => onDeactivate(p)}
                 className="text-[10px] px-2 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white">
@@ -482,12 +477,12 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
             p.viewer_permission !== 'allowed' ? (
               <button onClick={() => onAllowVideo(p)}
                 className="text-[10px] px-2 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white flex items-center gap-0.5">
-                <Shield size={9} />{t('lan_session.action_allow_receive')}
+                <MIcon name="shield" size={9} />{t('lan_session.action_allow_receive')}
               </button>
             ) : (
               <button onClick={() => onBlockVideo(p)}
                 className="text-[10px] px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white flex items-center gap-0.5">
-                <ShieldOff size={9} />{t('lan_session.action_stop_receive')}
+                <MIcon name="gpp_bad" size={9} />{t('lan_session.action_stop_receive')}
               </button>
             )
           )}
@@ -499,10 +494,10 @@ function DeviceRow({ p, _isLight, titleColor, subColor, rowBg, onApprove, onReje
       {p.approval_status === 'pending' && (
         <div className="flex gap-1.5 mt-2">
           <button onClick={() => onApprove(p)} className="text-[10px] px-2 py-0.5 rounded bg-green-600 hover:bg-green-500 text-white flex items-center gap-0.5">
-            <CheckCircle2 size={10} />{t('device_approval.approve')}
+            <MIcon name="check_circle" size={10} />{t('device_approval.approve')}
           </button>
           <button onClick={() => onReject(p)} className="text-[10px] px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white flex items-center gap-0.5">
-            <XCircle size={10} />{t('device_approval.reject')}
+            <MIcon name="cancel" size={10} />{t('device_approval.reject')}
           </button>
         </div>
       )}
@@ -523,9 +518,9 @@ function DeviceGroupedList({ participants, isLight, titleColor, subColor, rowBg,
   const viewers = participants.filter((p) => p.connection_role === 'viewer')
   const others = participants.filter((p) => !['active_camera', 'camera_candidate', 'viewer'].includes(p.connection_role))
 
-  const GroupHeader = ({ label, icon: Icon, count }: { label: string; icon: LucideIcon; count: number }) => (
+  const GroupHeader = ({ label, iconName, count }: { label: string; iconName: string; count: number }) => (
     <div className={`flex items-center gap-1.5 text-[10px] font-medium py-1.5 ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>
-      <Icon size={11} />
+      <MIcon name={iconName} size={11} />
       <span className="uppercase tracking-wide">{label}</span>
       <span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded-full ${isLight ? 'bg-gray-200 text-gray-500' : 'bg-gray-700 text-gray-400'}`}>{count}</span>
     </div>
@@ -535,7 +530,7 @@ function DeviceGroupedList({ participants, isLight, titleColor, subColor, rowBg,
     <div className="space-y-1">
       {activeCamera.length > 0 && (
         <div>
-          <GroupHeader label="アクティブカメラ" icon={Camera} count={activeCamera.length} />
+          <GroupHeader label="アクティブカメラ" iconName="photo_camera" count={activeCamera.length} />
           <div className="space-y-2">
             {activeCamera.map((p) => <DeviceRow key={p.id} p={p} isLight={isLight} titleColor={titleColor} subColor={subColor} rowBg={rowBg} {...rowProps} />)}
           </div>
@@ -544,7 +539,7 @@ function DeviceGroupedList({ participants, isLight, titleColor, subColor, rowBg,
 
       {candidates.length > 0 && (
         <div className={activeCamera.length > 0 ? `pt-2 mt-1 border-t ${divider}` : ''}>
-          <GroupHeader label="カメラ候補" icon={Video} count={candidates.length} />
+          <GroupHeader label="カメラ候補" iconName="videocam" count={candidates.length} />
           <div className="space-y-2">
             {candidates.map((p) => <DeviceRow key={p.id} p={p} isLight={isLight} titleColor={titleColor} subColor={subColor} rowBg={rowBg} {...rowProps} />)}
           </div>
@@ -553,7 +548,7 @@ function DeviceGroupedList({ participants, isLight, titleColor, subColor, rowBg,
 
       {viewers.length > 0 && (
         <div className={activeCamera.length > 0 || candidates.length > 0 ? `pt-2 mt-1 border-t ${divider}` : ''}>
-          <GroupHeader label="リモートビューワー" icon={Eye} count={viewers.length} />
+          <GroupHeader label="リモートビューワー" iconName="visibility" count={viewers.length} />
           <div className="space-y-2">
             {viewers.map((p) => <DeviceRow key={p.id} p={p} isLight={isLight} titleColor={titleColor} subColor={subColor} rowBg={rowBg} {...rowProps} />)}
           </div>
@@ -562,7 +557,7 @@ function DeviceGroupedList({ participants, isLight, titleColor, subColor, rowBg,
 
       {others.length > 0 && (
         <div className={activeCamera.length > 0 || candidates.length > 0 || viewers.length > 0 ? `pt-2 mt-1 border-t ${divider}` : ''}>
-          <GroupHeader label="その他" icon={Users} count={others.length} />
+          <GroupHeader label="その他" iconName="group" count={others.length} />
           <div className="space-y-2">
             {others.map((p) => <DeviceRow key={p.id} p={p} isLight={isLight} titleColor={titleColor} subColor={subColor} rowBg={rowBg} {...rowProps} />)}
           </div>
@@ -752,12 +747,12 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
             title={t('auto.DeviceManagerPanel.k12')}
             className={`${subColor} hover:text-red-400`}
           >
-            <Trash2 size={14} />
+            <MIcon name="delete" size={14} />
           </button>
           <button onClick={fetchDevices} className={`${subColor}`}>
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <MIcon name="refresh" size={14} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button onClick={onClose} className={`${subColor}`}><X size={16} /></button>
+          <button onClick={onClose} className={`${subColor}`}><MIcon name="close" size={16} /></button>
         </div>
       </div>
 
@@ -887,7 +882,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
               {t('auto.DeviceManagerPanel.local_camera')}
             </p>
             <button onClick={handleStopLocal} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
-              <VideoOff size={12} />{t('lan_session.local_source_stop')}
+              <MIcon name="videocam_off" size={12} />{t('lan_session.local_source_stop')}
             </button>
           </div>
           <video
@@ -905,7 +900,7 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
           {/* 承認待ちバナー */}
           {participants.filter((p) => p.approval_status === 'pending').length > 0 && (
             <div className="mb-3 px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 flex items-center gap-2">
-              <AlertTriangle size={12} className="text-amber-400 flex-shrink-0" />
+              <MIcon name="warning" size={12} className="text-amber-400 flex-shrink-0" />
               <p className="text-xs text-amber-400">
                 {t('auto.DeviceManagerPanel.pending_devices')}
               </p>
@@ -942,13 +937,13 @@ export function DeviceManagerPanel({ sessionCode, onClose, onRemoteStream, onLoc
               <p className={`text-xs font-medium mb-2 ${titleColor}`}>{t('lan_session.local_sources_label')}</p>
               {localCameraError && (
                 <p className="text-[10px] text-red-400 mb-2 flex items-center gap-1">
-                  <XCircle size={10} />{localCameraError}
+                  <MIcon name="cancel" size={10} />{localCameraError}
                 </p>
               )}
               <div className="space-y-1.5">
                 {localSources.map((src) => (
                   <div key={src.deviceId} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${rowBg}`}>
-                    <Camera size={12} className={subColor} />
+                    <MIcon name="photo_camera" size={12} className={subColor} />
                     <span className={`flex-1 text-xs truncate ${titleColor}`}>{src.label}</span>
                     <span className={`text-[10px] ${subColor}`}>
                       {src.type === 'usb' ? t('lan_session.source_type_usb') : src.type === 'builtin' ? t('lan_session.source_type_builtin') : ''}

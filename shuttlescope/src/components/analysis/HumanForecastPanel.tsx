@@ -9,10 +9,10 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
-import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { apiGet, apiPost, apiDelete, newIdempotencyKey } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { WIN, LOSS } from '@/styles/colors'
+import { MIcon } from '@/components/common/MIcon'
 
 // ── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -297,10 +297,10 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
                   {t('auto.HumanForecastPanel.actual_label')}{c.actual_outcome === 'win' ? 'W' : 'L'}
                 </span>
                 <span style={{ color: c.human_correct ? WIN : LOSS }}>
-                  {t('auto.HumanForecastPanel.human_label')}{c.human_predicted === 'win' ? 'W' : 'L'}{c.human_correct ? '✓' : '✗'}
+                  {t('auto.HumanForecastPanel.human_label')}{c.human_predicted === 'win' ? 'W' : 'L'}<MIcon name={c.human_correct ? 'check' : 'close'} size={12} />
                 </span>
-                <span style={{ color: c.model_correct ? WIN : LOSS }}>
-                  {t('auto.HumanForecastPanel.model_label')}{c.model_win_prob}%{c.model_correct ? '✓' : '✗'}
+                <span style={{ color: c.model_correct ? WIN : LOSS }} className="inline-flex items-center gap-0.5">
+                  {t('auto.HumanForecastPanel.model_label')}{c.model_win_prob}%<MIcon name={c.model_correct ? 'check' : 'close'} size={12} />
                 </span>
               </div>
             ))}
@@ -353,7 +353,7 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
           className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600"
           style={{ color: neutral }}
         >
-          <Plus size={11} />
+          <MIcon name="add" size={11} />
           {t('prediction.human_forecast_add')}
         </button>
       </div>
@@ -400,7 +400,7 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
                 onClick={() => remove.mutate(f.id)}
                 className="ml-auto p-1 rounded hover:bg-gray-700 text-gray-500 hover:text-red-400"
               >
-                <Trash2 size={10} />
+                <MIcon name="delete" size={10} />
               </button>
             </div>
           ))}
@@ -413,7 +413,7 @@ export function HumanForecastPanel({ matchId, playerId }: Props) {
         style={{ color: subText }}
         onClick={() => setShowBenchmark((v) => !v)}
       >
-        {showBenchmark ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+        {showBenchmark ? <MIcon name="expand_less" size={11} /> : <MIcon name="expand_more" size={11} />}
         {t('prediction.benchmark_title')}
       </button>
       {showBenchmark && (
