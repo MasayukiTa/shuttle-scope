@@ -108,6 +108,12 @@ if ($StartBat -and (Test-Path $StartBat)) {
 
     $env:PYTHONPATH = $AppRoot
     $env:PYTHONUNBUFFERED = "1"
+    # Disable uvicorn --reload on prod-style deploys (git pull triggers
+    # watchfiles → infinite respawn loop → 502 Bad Gateway).
+    # Set this from the deploy script so it's process-level (the .env file
+    # is read by pydantic-settings into app_settings but does NOT populate
+    # os.environ; backend/main.py reads SS_DISABLE_RELOAD from os.environ).
+    $env:SS_DISABLE_RELOAD = "1"
     $proc = Start-Process `
         -FilePath $Python `
         -ArgumentList "-m", "backend.main" `
