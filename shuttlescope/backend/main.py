@@ -3414,7 +3414,12 @@ if __name__ == "__main__":
         "backend.main:app",
         host=host,
         port=app_settings.API_PORT,
-        reload=app_settings.ENVIRONMENT == "development",
+        # SS_DISABLE_RELOAD=1 で dev でも reload を切れる (prod deploy で
+        # ファイル更新検知 → 無限再起動ループを起こさないため)
+        reload=(
+            app_settings.ENVIRONMENT == "development"
+            and os.environ.get("SS_DISABLE_RELOAD", "0") in ("0", "false", "")
+        ),
         log_level="info",
         # uvicorn の dictConfig による basicConfig 上書きを防ぐ
         # （これがないとアプリ側 logger.info/warning が全て黙殺される）
