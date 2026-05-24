@@ -1304,6 +1304,20 @@ def _require_admin(request: Request) -> None:
             lu = getattr(u, "locked_until", None)
             if lu is not None and lu > _dt_admin.utcnow():
                 raise HTTPException(status_code=403, detail="admin account is locked")
+            # Round 281+ fix: admin role に MFA enrollment を必須化する。
+            # config SS_REQUIRE_ADMIN_MFA で disable 可能 (緊急時のみ)。
+            # /api/auth/mfa/setup / /api/auth/mfa/confirm は get_auth gate
+            # を使い _require_admin を呼ばないので本判定の影響を受けない。
+            from backend.config import settings as _ss_admin_mfa_cfg
+            if getattr(_ss_admin_mfa_cfg, "ss_require_admin_mfa", True):
+                if not getattr(u, "totp_enabled", False):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            "admin role には MFA enrollment が必須です。"
+                            "/api/auth/mfa/setup → /api/auth/mfa/confirm で設定してください。"
+                        ),
+                    )
     except HTTPException:
         raise
     except Exception:
@@ -1479,6 +1493,14 @@ def list_users(request: Request, db: Session = Depends(get_db)):
     ctx = get_auth(request)
 
     if ctx.is_admin:
+        # Round 281+ meta-audit: admin が全 user 一覧 (username + role + team +
+        # display_name + mfa_enabled + page_access) を dump した事実を audit に
+        # 記録する。admin token 漏洩時の attacker 一括収集を検出可能にする。
+        try:
+            log_access(db, "admin_users_listed",
+                       user_id=ctx.user_id, ip_addr=_get_ip(request))
+        except Exception:
+            pass
         users = db.query(User).order_by(User.id).all()
         return {"success": True, "data": [_user_to_dict(u, db, for_admin=True) for u in users]}
 
@@ -2018,6 +2040,22 @@ def list_audit_logs(
     """
     from backend.db.models import AccessLog
     _require_admin(request)
+
+    # Round 281+ meta-audit: admin による audit log の閲覧自体を audit log に
+    # 記録する (self-referential)。admin token が漏洩して attacker が全 user の
+    # username + IP を dump した場合、本人が「自分は audit を見ていないのに
+    # 閲覧 record が残っている」と気づける手がかりになる。
+    try:
+        from backend.utils.auth import get_auth as _ga_meta
+        _ctx_meta = _ga_meta(request)
+        log_access(db, "admin_audit_logs_viewed",
+                   user_id=_ctx_meta.user_id, ip_addr=_get_ip(request),
+                   details={"filter_action": action, "filter_user_id": user_id,
+                            "filter_ip": ip, "filter_since": since,
+                            "limit_requested": limit})
+    except Exception:
+        # meta-audit の失敗で本処理を止めない
+        pass
 
     # 旧 cap 500 だと「件数変更しても 500 件のまま」になりユーザが「動かない」
     # と感じる。admin の audit 用途では数千件まで取得したいケースが普通 (CSV

@@ -86,6 +86,12 @@ class Settings(BaseSettings):
     # A3: Export パッケージ HMAC-SHA256 署名鍵
     # 生成: python -c "import secrets; print(secrets.token_hex(32))"
     ss_export_signing_key: str = ""
+    # Round 281+ (2026-05-24): admin role に TOTP MFA を必須化する。
+    # require_admin() dependency 内で totp_enabled を検証し、未 setup
+    # admin は admin endpoint で 403 を返す。/api/auth/mfa/setup と
+    # /api/auth/mfa/confirm のみ get_auth gate なので setup 路は開く。
+    # 緊急時は env で SS_REQUIRE_ADMIN_MFA=0 にすると即時 disable 可能。
+    ss_require_admin_mfa: bool = True
     # ── M-A: メール / Turnstile / 招待 ───────────────────────────────────
     # M-A1: メール送信バックエンド ("console" / "mailchannels_worker" / "noop")
     ss_mail_backend: str = "console"

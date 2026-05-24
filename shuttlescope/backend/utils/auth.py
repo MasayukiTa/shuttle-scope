@@ -16,7 +16,7 @@ from fastapi import HTTPException, Request, Depends
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Match, Player
+from backend.db.models import Match, Player, User
 
 
 class UserRole(str, Enum):
@@ -416,11 +416,35 @@ def filter_matches_for_user(ctx: AuthCtx, matches: list[Match], db: Optional[Ses
     return matches
 
 
-def require_admin(request: Request) -> "AuthCtx":
-    """admin ロールのみ許可。player/coach/analyst は 403。"""
+def require_admin(request: Request, db: Session = Depends(get_db)) -> "AuthCtx":
+    """admin ロールのみ許可。player/coach/analyst は 403。
+
+    Round 281+ fix: admin role には MFA enrollment を必須化する
+    (config SS_REQUIRE_ADMIN_MFA、デフォルト true)。未 setup admin は
+    `/api/auth/mfa/setup` `/api/auth/mfa/confirm` のみアクセス可能
+    (これら endpoint は get_auth のみで gate しており require_admin を
+    呼ばないため、本変更の影響を受けない)。
+
+    admin token が漏洩しても、attacker は対応する TOTP デバイスを
+    持たないため、refresh タイミングで MFA challenge を通過できず
+    継続利用不可。
+    """
+    from backend.config import settings
     ctx = get_auth(request)
     if not ctx.is_admin:
         raise HTTPException(status_code=403, detail="admin role required")
+    if getattr(settings, "ss_require_admin_mfa", True):
+        if not ctx.user_id:
+            raise HTTPException(status_code=403, detail="admin role required")
+        user = db.get(User, ctx.user_id)
+        if not user or not getattr(user, "totp_enabled", False):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "admin role には MFA enrollment が必須です。"
+                    "/api/auth/mfa/setup → /api/auth/mfa/confirm で設定してください。"
+                ),
+            )
     return ctx
 
 
