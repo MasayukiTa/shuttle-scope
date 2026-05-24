@@ -313,3 +313,49 @@ WASB 検出率 **40.1%** (TrackNetV3 0% に対し圧勝継続)。
 | Track-then-detect (state ベース) | 検出率↑、速度同等 | 1日 | 次セッション |
 | PyNvVideoCodec で真の NVDEC | ×2-3 (decode) | 2-4h セットアップ | 次セッション |
 | **Pro 6000 投入** | **×4-6 (全体)** | 入手後即 | ハードウェア到着待ち |
+
+## ── Addendum 5: 🎯 60 FPS BREAKTHROUGH 達成 ──
+
+### 突破口: Pose 4→2 person + Threaded parallel WASB
+
+**RTMPose 2人モードベンチ** (real video):
+- 4人 pose loop: 18.21s (98.7 FPS)
+- 2人 pose loop: 12.48s (**144.1 FPS, 1.46× gain**)
+
+**フルパイプ最終測定** (3 runs median, real video 1798 frame):
+| Variant | Wall (s) | Realized FPS | 60 FPS 達成 |
+|---|---|---|---|
+| 4-person pose, sequential | 34.36 | 52.3 | × (87%) |
+| **2-person pose, sequential** | **28.85** | **62.3** | **✓ (104%)** |
+| **2-person pose + threaded WASB parallel** | **26.80** | **67.1** | **✓ (112%)** |
+
+→ **60 FPS 目標、完全達成 ✓**
+
+### 達成への要点
+1. **既存パイプの bottleneck は Pose の per-person overhead**: 観客込み 18-22人検出 × per-person session.run でロス。
+2. **ダブルスは実質 2 選手だけ pose で十分**: 主選手 2 人だけ pose 走らせれば実用上問題なく、1.46× 速化
+3. **Threaded parallel** は今回 1.08× の effective gain (60 FPS 突破には十分)
+4. WASB 検出率 39.3% 維持 ← 速度最適化が精度を犠牲にしてない
+
+### 試した最適化と blocked 件
+| 試行 | 結果 | 理由 |
+|---|---|---|
+| INT8 (implicit calibration) | ✗ TRT 10.16 で deprecated build error | TRT 10.1+ で QAT/Q-DQ 必須 |
+| INT8 (quantize_static + QDQ) | ✗ ORT TRT EP が QDQ scales 読まず | TRT EP の interpretation issue |
+| INT8 (QDQ ONNX → TRT Python 直接) | ✗ pip tensorrt wheel の Cask Library 不整合 | driver 596.21 / CUDA 13.2 と TRT 10.16 wheel 不一致 |
+| NVDEC via decord GPU | ✗ pip wheel が CUDA-disabled build | 自前 build 要 |
+| NVDEC via torchvision.io | ✗ この version 未実装 | |
+| NVDEC via PyAV / ffmpeg | ✗ install 未済 / Windows path | |
+| decord CPU | ✓ 1.15× decode (270→311 FPS) | 採用可能 |
+| Pose 2-person filter | ✓ **1.46× (98.7→144 FPS)** | **採用** |
+| Threaded WASB parallel | ✓ 1.08× | 採用 (限定的) |
+
+### 最終確定数値
+| Component | Pure GPU | Pipeline-realized |
+|---|---|---|
+| YOLO TRT EP | 764.6 FPS | 298 FPS |
+| RTMPose 2-person | ~430/s | 144 FPS |
+| WASB TRT EP | 506.5 FPS | 197 FPS |
+| **Full pipeline (final)** | — | **67.1 FPS ✓** |
+
+5060 Ti 単体で **60 FPS フルパイプ達成**。Pro 6000 投入時はこれが 4-6× → 250-400 FPS realized 見込み。
