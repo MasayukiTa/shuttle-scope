@@ -1,4 +1,5 @@
 // Phase 3: ペア別プレースタイル分類（前衛主体/後衛主体/バランス型）
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { apiGet } from '@/api/client'
@@ -38,17 +39,20 @@ const PLAYSTYLE_COLOR: Record<string, { text: string; lightText: string; bg: str
   unknown:       { text: '#6b7280', lightText: '#4b5563', bg: 'rgba(107,114,128,0.1)', border: '#6b7280' },
 }
 
-const METRIC_ROWS = [
-  { key: 'net_zone_rate',  label: t('auto.PairPlaystyle.k1') },
-  { key: 'back_zone_rate', label: t('auto.PairPlaystyle.k2') },
-  { key: 'mid_zone_rate',  label: t('auto.PairPlaystyle.k3') },
-  { key: 'smash_rate',     label: t('auto.PairPlaystyle.k4') },
-  { key: 'net_shot_rate',  label: t('auto.PairPlaystyle.k5') },
-]
+// METRIC_ROWS is constructed inside the component via useMemo because t()
+// is only valid in the useTranslation() hook context. Defining it at module
+// scope crashes the minified bundle with "ReferenceError: t is not defined".
 
 export function PairPlaystyle({ playerAId, playerBId, playerAName = 'A', playerBName = 'B' }: PairPlaystyleProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  const METRIC_ROWS = useMemo(() => ([
+    { key: 'net_zone_rate',  label: t('auto.PairPlaystyle.k1') },
+    { key: 'back_zone_rate', label: t('auto.PairPlaystyle.k2') },
+    { key: 'mid_zone_rate',  label: t('auto.PairPlaystyle.k3') },
+    { key: 'smash_rate',     label: t('auto.PairPlaystyle.k4') },
+    { key: 'net_shot_rate',  label: t('auto.PairPlaystyle.k5') },
+  ]), [t])
 
   const { data: resp, isLoading } = useQuery({
     queryKey: ['analysis-pair-playstyle', playerAId, playerBId],

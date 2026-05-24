@@ -26,18 +26,13 @@ import { AnnotateOverlay, ZoneCode } from './AnnotateOverlay'
 import { enqueue } from '@/utils/mobileAnnotateQueue'
 import { useTranslation } from 'react-i18next'
 
-const COMMON_SHOTS = [
-  { key: 'smash',    label: t('auto.Pass3ShotDetail.k1') },
-  { key: 'clear',    label: t('auto.Pass3ShotDetail.k2') },
-  { key: 'drop',     label: t('auto.Pass3ShotDetail.k3') },
-  { key: 'net',      label: t('auto.Pass3ShotDetail.k4') },
-  { key: 'push',     label: t('auto.Pass3ShotDetail.k5') },
-  { key: 'drive',    label: t('auto.Pass3ShotDetail.k6') },
-  { key: 'lift',     label: t('auto.Pass3ShotDetail.k7') },
-  { key: 'cross',    label: t('auto.Pass3ShotDetail.k8') },
-] as const
+// Build inside the component via useMemo so t() is bound to the current
+// i18next instance. Defining this at module scope crashes the minified
+// bundle with "ReferenceError: t is not defined" (t exists only in the
+// useTranslation() hook context).
+const COMMON_SHOT_KEYS = ['smash','clear','drop','net','push','drive','lift','cross'] as const
 
-type ShotKey = typeof COMMON_SHOTS[number]['key']
+type ShotKey = typeof COMMON_SHOT_KEYS[number]
 
 interface StrokeLite {
   id?: number | null
@@ -72,6 +67,10 @@ export function Pass3ShotDetail({
   onClose,
 }: Props) {
   const { t } = useTranslation()
+  const COMMON_SHOTS = useMemo(
+    () => COMMON_SHOT_KEYS.map((key, idx) => ({ key, label: t(`auto.Pass3ShotDetail.k${idx + 1}`) })),
+    [t],
+  )
   const sorted = useMemo(
     () => [...strokes].sort((a, b) => a.stroke_num - b.stroke_num),
     [strokes],
