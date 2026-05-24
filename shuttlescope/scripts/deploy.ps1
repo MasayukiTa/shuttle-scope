@@ -114,6 +114,13 @@ if ($StartBat -and (Test-Path $StartBat)) {
     # is read by pydantic-settings into app_settings but does NOT populate
     # os.environ; backend/main.py reads SS_DISABLE_RELOAD from os.environ).
     $env:SS_DISABLE_RELOAD = "1"
+    # NOTE: -BackendOnly via this script + Start-Process -RedirectStandardOutput
+    # creates pipes held by THIS deploy.ps1 process. When deploy.ps1 exits
+    # (after the health-check loop), the pipes close and the child process
+    # gets killed when it next writes to stdout. For long-running prod
+    # operation, use the NSSM-managed Windows service "ShuttleScopeBackend"
+    # instead (Start-Service ShuttleScopeBackend). This BackendOnly path is
+    # only suitable for quick dev restarts.
     $proc = Start-Process `
         -FilePath $Python `
         -ArgumentList "-m", "backend.main" `
