@@ -1,6 +1,6 @@
 // Phase 2: 成長タイムライン（試合軸×指標のLineChart + 移動平均）
 // partnerPlayerId を指定するとペア比較モード（2ライン表示）
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -43,11 +43,12 @@ interface GrowthTimelineResponse {
   meta: { sample_size: number; confidence: { level: string; stars: string; label: string } }
 }
 
-const METRIC_CONFIG: Record<Metric, { label: string; colorA: string; colorB: string; unit: string; domain: [number | 'auto', number | 'auto'] }> = {
-  win_rate:         { label: t('auto.GrowthTimeline.k1'),         colorA: '#3b82f6', colorB: '#f97316', unit: '%',  domain: [0, 1] },
-  serve_win_rate:   { label: t('auto.GrowthTimeline.k2'),   colorA: '#06b6d4', colorB: '#a855f7', unit: '%',  domain: [0, 1] },
-  avg_rally_length: { label: t('auto.GrowthTimeline.k3'), colorA: '#8b5cf6', colorB: '#10b981', unit: '球', domain: ['auto', 'auto'] },
-}
+type MetricConfig = Record<Metric, { label: string; colorA: string; colorB: string; unit: string; domain: [number | 'auto', number | 'auto'] }>
+
+// Build inside the component via useMemo so t() is bound to the current
+// i18next instance. Defining this at module scope crashes the minified
+// bundle with "ReferenceError: t is not defined" (t exists only in the
+// useTranslation() hook context).
 
 const TREND_LABELS = {
   improving: '改善傾向',
@@ -83,6 +84,11 @@ export function GrowthTimeline({
 }: GrowthTimelineProps) {
   const { t } = useTranslation()
   const isLight = useIsLightMode()
+  const METRIC_CONFIG = useMemo<MetricConfig>(() => ({
+    win_rate:         { label: t('auto.GrowthTimeline.k1'), colorA: '#3b82f6', colorB: '#f97316', unit: '%',  domain: [0, 1] },
+    serve_win_rate:   { label: t('auto.GrowthTimeline.k2'), colorA: '#06b6d4', colorB: '#a855f7', unit: '%',  domain: [0, 1] },
+    avg_rally_length: { label: t('auto.GrowthTimeline.k3'), colorA: '#8b5cf6', colorB: '#10b981', unit: '球', domain: ['auto', 'auto'] },
+  }), [t])
   // クリックされた成長ポイントの比較ポップアップ用 (#8: スコア推移パターン継承)
   const [comparePoint, setComparePoint] = useState<{
     index: number
