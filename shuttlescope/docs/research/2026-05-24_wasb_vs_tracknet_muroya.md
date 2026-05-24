@@ -141,3 +141,45 @@ backend/wasb/
 - **realized FPS 101 (decode 込), 185 (inference only)** → 60 FPS 余裕クリア ✓
 - 単独でも 60 FPS の **~3×** 出ている
 - 残るのは "フルパイプ (YOLO + Pose + WASB) で 60 FPS 達成" の課題
+
+## ── Addendum 2: Tier 2 部分実装 (Pipeline overlap, INT8 試行) ──
+
+### Pipeline 並列化 (decode thread || GPU 推論)
+producer/consumer (`queue.Queue(maxsize=3)`) で **cv2 decode を背景スレッド化**、メインスレッドは GPU upload+preprocess+inference に専念。chunk_size=128 frame、2-frame overlap で sliding window 連続性維持。
+
+| Mode | Wall | Realized FPS |
+|---|---|---|
+| Sequential (decode → GPU) | 18.33s | 98.0 |
+| **Pipelined (parallel threads)** | **13.55s** | **132.6** |
+| Gain | -26% | **+35%** |
+
+備考: GIL 競合で decode/GPU 各 stage がやや遅化 (decode 8.1→11.4s, GPU 9.7→12.1s) しても、overlap 効果で総量勝ち。**60 FPS の 2.2 倍** 達成。
+
+### INT8 試行
+ORT TRT EP の `trt_int8_enable=True` を設定したが、**calibration table 未提供のため engine build 失敗** (`TensorRT EP failed to create engine from network`)。
+
+INT8 を本格運用するには:
+1. 代表的 1080p ダブルス frame 100-300 枚でキャリブレーションデータ作成
+2. TensorRT `IInt8EntropyCalibrator2` 実装 or ORT の auto-calibration 使用
+3. ヒートマップ出力の数値劣化を per-pixel diff で検証 (HRNet は INT8 で精度落ちやすい)
+
+→ Phase 2 で本格実装。期待効果は **inference 3.8s → 2.0s** (1.9×) + メモリ半減。
+
+### 全コンポーネント 60 FPS 達成状況 (synthetic, TRT EP, 5060 Ti)
+
+| Component | FPS (canonical) | 60 FPS 倍率 |
+|---|---|---|
+| YOLOv8n FP16 batch=16 | **1451.9** | **24.2×** |
+| RTMPose-m batch=16 raw | **984.6** | **16.4×** |
+| TrackNetV3 batch=8 | 156.7 | 2.6× |
+| **WASB-SBDT (opt) batch=8** | **484.2** | **8.1×** |
+| WASB realized (end-to-end pipelined) | 132.6 | **2.2×** |
+
+→ **個別モデルは全て 60 FPS 余裕クリア**。次の課題は **フルパイプ (YOLO+Pose+Shuttle) を CUDA streams で並列実行して end-to-end 60 FPS** で、それは Phase 2 (CUDA streams + INT8 + NVDEC) で達成見込み。
+
+## Phase 2 残タスク
+1. **INT8 calibration** (代表データセット作成 → engine build → 数値劣化検証)
+2. **NVDEC decode** (PyNvVideoCodec or torchvision.io、cv2 8s → 4s 期待)
+3. **フルパイプ CUDA streams 並列** (YOLO/Pose/WASB を別 stream で並走)
+4. **`backend/wasb/weights/wasb_badminton.onnx` commit** (5.18 MB、smoke 検証後)
+5. **WASB sigmoid 適用** (raw logit → 確率) + ヒステリシス smoothing → 検出率 30% → 40-50% 期待
