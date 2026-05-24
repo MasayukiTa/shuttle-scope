@@ -493,23 +493,37 @@ class WasbInference:
                 last = torch.sigmoid(out_gpu[:, -1, :, :])  # (bsz, H, W) in [0,1]
                 flat = last.view(bsz, -1)
                 max_vals, max_idx = flat.max(dim=1)
+                # Quality gate: shuttle = sharp 3-5px point → tight peak.
+                # Body/uniform/pole = broad blob → center value ≈ neighbouring values.
+                # prominence = center / ring_mean (5x5 outer ring, 16 cells).
+                # 2026-05-24 audit: at threshold 0.8, 7/100 NG had prominence < ~1.5.
+                prom = self._compute_peak_prominence(last, max_idx)
                 ys = (max_idx // INPUT_W).cpu().numpy()
                 xs = (max_idx % INPUT_W).cpu().numpy()
                 confs = max_vals.cpu().numpy()
+                proms = prom.cpu().numpy()
+                prom_min = float(os.environ.get("SS_WASB_PROMINENCE_MIN", "1.5"))
+                gate_on = os.environ.get("SS_WASB_QUALITY_GATE", "1") not in ("0", "false", "")
                 for i in range(bsz):
                     conf = float(confs[i])
-                    visible = conf >= self._visible_threshold
+                    p = float(proms[i])
+                    quality_ok = (not gate_on) or (p >= prom_min)
+                    visible = (conf >= self._visible_threshold) and quality_ok
                     x_norm = float(xs[i]) / INPUT_W
                     y_norm = float(ys[i]) / INPUT_H
                     zone = coords_to_zone(x_norm, y_norm) if visible else None
-                    results.append({
+                    rec = {
                         "frame_idx": produced + 1,
                         "zone": zone,
                         "confidence": round(conf, 3),
                         "x_norm": round(x_norm, 4) if visible else None,
                         "y_norm": round(y_norm, 4) if visible else None,
                         "visible": visible,
-                    })
+                        "prominence": round(p, 3),
+                    }
+                    if gate_on and conf >= self._visible_threshold and not quality_ok:
+                        rec["demoted_quality"] = True
+                    results.append(rec)
                     produced += 1
             del t, triplets
 
@@ -714,6 +728,46 @@ class WasbInference:
             logger.info("[wasb] ROI refinement promoted %d/%d uncertain frames",
                          promoted, len(candidates))
         return promoted
+
+    @staticmethod
+    def _compute_peak_prominence(last, max_idx):
+        """Per-sample peak prominence = center / (outer-ring mean) on 5x5 patch.
+
+        Real shuttle = sharp 3-5px point → prominence typically > 2-3 (center
+        much brighter than ring). Body / uniform / pole = broad activation
+        → prominence ~1.0 (center about same as ring).
+
+        Args:
+          last: (bsz, H, W) sigmoid heatmap on GPU
+          max_idx: (bsz,) flat argmax index
+
+        Returns:
+          (bsz,) prominence values, on the same device as `last`.
+        """
+        import torch
+        bsz, H, W = last.shape
+        device = last.device
+        pad = 2
+        last_pad = torch.nn.functional.pad(last, (pad, pad, pad, pad), value=0.0)
+        ys = (max_idx // W).long()
+        xs = (max_idx % W).long()
+        # gather (bsz, 5, 5) patches at padded coords
+        bidx = torch.arange(bsz, device=device)
+        rows = ys[:, None] + torch.arange(2 * pad + 1, device=device)[None, :]
+        cols = xs[:, None] + torch.arange(2 * pad + 1, device=device)[None, :]
+        patches = last_pad[
+            bidx[:, None, None],
+            rows[:, :, None].expand(bsz, 2 * pad + 1, 2 * pad + 1),
+            cols[:, None, :].expand(bsz, 2 * pad + 1, 2 * pad + 1),
+        ]
+        # outer ring = 5x5 minus inner 3x3 → 25 - 9 = 16 cells
+        ring_mask = torch.ones(2 * pad + 1, 2 * pad + 1, dtype=torch.bool, device=device)
+        ring_mask[pad - 1: pad + 2, pad - 1: pad + 2] = False
+        # broadcast and average
+        ring_vals = patches[:, ring_mask]  # (bsz, 16)
+        ring_mean = ring_vals.mean(dim=1).clamp_min(1e-4)
+        center = patches[:, pad, pad]
+        return center / ring_mean
 
     def _filter_motion_outliers(
         self,
