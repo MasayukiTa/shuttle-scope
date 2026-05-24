@@ -105,6 +105,20 @@ let _sessionExpiredRedirecting = false
 function _handleSessionExpired(): void {
   if (typeof window === 'undefined' || _sessionExpiredRedirecting) return
   _sessionExpiredRedirecting = true
+  // 2026-05-24 fix: 「初回ブラウザ open でいきなり session_expired=1 バナー」が
+  // 出る不具合 (ユーザ報告)。原因: 完全初回 (token も refresh_token も無い)
+  // でも何かの API call が 401 を返した瞬間に本関数が走り、banner flag が立つ。
+  // 元々何もログインしていない状態を "session expired" と表示するのは誤り。
+  // 入口で token / refresh_token のスナップショットを取り、両方とも無かった
+  // ケースは「期限切れ」ではなく「未ログイン」として hash flag を立てない。
+  let _hadAnyToken = false
+  try {
+    _hadAnyToken =
+      !!sessionStorage.getItem('shuttlescope_token') ||
+      !!sessionStorage.getItem(REFRESH_KEY)
+  } catch {
+    /* noop */
+  }
   try {
     sessionStorage.removeItem('shuttlescope_token')
     sessionStorage.removeItem(REFRESH_KEY)
@@ -139,7 +153,9 @@ function _handleSessionExpired(): void {
   if (!isOnPublicPage) {
     // HashRouter なので hash を変えるだけで遷移する。
     // クエリ session_expired=1 で LoginPage 側に「セッション切れの旨」を表示できる。
-    window.location.hash = '/login?session_expired=1'
+    // ただし「元々何もログインしていなかった」場合は期限切れではなく
+    // 未ログイン状態なので flag を立てずに /login のみへ遷移する。
+    window.location.hash = _hadAnyToken ? '/login?session_expired=1' : '/login'
     // App ルート側が token/role を見て未ログイン状態を検出するため、
     // hash 変更だけで <LoginPage /> がレンダリングされる。
   }

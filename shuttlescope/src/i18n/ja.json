@@ -3765,7 +3765,11 @@
       "k2": "ログインIDを入力",
       "session_expired": "セッションの有効期限が切れました。再度ログインしてください。",
       "password_pin": "Password / PIN",
-      "back_to_site": "← shuttle-scope.com"
+      "back_to_site": "← shuttle-scope.com",
+      "mfa_prompt": "認証アプリ（iOS パスワード / Google Authenticator 等）に表示されている 6 桁のコードを入力してください。",
+      "mfa_code_label": "認証コード（6 桁）",
+      "mfa_submit": "認証して続行",
+      "mfa_cancel": "ログイン画面に戻る"
     },
     "MatchListPage": {
       "k1": "登録済",

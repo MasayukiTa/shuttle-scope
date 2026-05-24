@@ -16,7 +16,25 @@ const BASE_URL = (() => {
   return 'http://localhost:8765/api'
 })()
 
-async function apiLogin(body: object): Promise<AuthSession & { error?: string }> {
+type LoginResult =
+  | (AuthSession & { mfaRequired?: false; mfaToken?: undefined; error?: string })
+  | { mfaRequired: true; mfaToken: string; error?: undefined }
+  | { error: string; mfaRequired?: false; mfaToken?: undefined; token?: undefined }
+
+function _errSession(msg: string): AuthSession & { error: string } {
+  return {
+    token: '',
+    role: 'player',
+    userId: 0,
+    playerId: null,
+    teamName: null,
+    displayName: null,
+    pageAccess: [],
+    error: msg,
+  }
+}
+
+async function apiLogin(body: object): Promise<LoginResult> {
   try {
     const res = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
@@ -38,16 +56,42 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
           errorMessage = 'IDもしくはパスワードが違います'
         }
       }
-      return {
-        token: '',
-        role: 'player',
-        userId: 0,
-        playerId: null,
-        teamName: null,
-        displayName: null,
-        pageAccess: [],
-        error: errorMessage,
-      }
+      return _errSession(errorMessage)
+    }
+    const data = await res.json()
+    // MFA 第 2 段が必要な場合は access_token は空 / mfa_token が入る
+    if (data.mfa_required && typeof data.mfa_token === 'string' && data.mfa_token) {
+      return { mfaRequired: true, mfaToken: data.mfa_token }
+    }
+    return {
+      token: data.access_token,
+      refreshToken: data.refresh_token ?? null,
+      role: data.role as UserRole,
+      userId: data.user_id,
+      playerId: data.player_id ?? null,
+      teamName: data.team_name ?? null,
+      displayName: data.display_name ?? null,
+      pageAccess: (data.page_access ?? []) as string[],
+    }
+  } catch (e) {
+    return _errSession(String(e))
+  }
+}
+
+async function apiMfaLogin(mfaToken: string, code: string): Promise<AuthSession & { error?: string }> {
+  try {
+    const res = await fetch(`${BASE_URL}/auth/mfa/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mfa_token: mfaToken, code }),
+    })
+    if (!res.ok) {
+      let msg = 'MFA 認証に失敗しました'
+      try {
+        const data = await res.json()
+        if (typeof data?.detail === 'string') msg = data.detail
+      } catch { /* noop */ }
+      return _errSession(msg)
     }
     const data = await res.json()
     return {
@@ -61,16 +105,7 @@ async function apiLogin(body: object): Promise<AuthSession & { error?: string }>
       pageAccess: (data.page_access ?? []) as string[],
     }
   } catch (e) {
-    return {
-      token: '',
-      role: 'player',
-      userId: 0,
-      playerId: null,
-      teamName: null,
-      displayName: null,
-      pageAccess: [],
-      error: String(e),
-    }
+    return _errSession(String(e))
   }
 }
 
@@ -105,6 +140,10 @@ export function LoginPage({ onLogin }: Props) {
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // MFA 第 2 段: credential login が mfa_required=true を返したら mfaToken を保持
+  // して MFA 入力画面に切り替える。Submit で /api/auth/mfa/login を呼ぶ。
+  const [mfaToken, setMfaToken] = useState<string | null>(null)
+  const [mfaCode, setMfaCode] = useState('')
   // セッション期限切れリダイレクト時の通知バナー
   const sessionExpired =
     typeof window !== 'undefined' &&
@@ -136,13 +175,54 @@ export function LoginPage({ onLogin }: Props) {
     })
 
     setLoading(false)
-    if (result.error || !result.token) {
-      setError(result.error || t('auth.error.login_failed'))
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    // MFA 第 2 段が必要なら 6 桁コード入力画面に切り替える
+    if (result.mfaRequired) {
+      setMfaToken(result.mfaToken)
+      setMfaCode('')
+      setError(null)
+      return
+    }
+    if (!result.token) {
+      setError(t('auth.error.login_failed'))
       return
     }
 
     setSession(result)
     onLogin()
+  }
+
+  const handleMfaSubmit = async () => {
+    if (!mfaToken) return
+    const code = mfaCode.trim()
+    if (!/^\d{6}$/.test(code)) {
+      setError('6 桁の数字を入力してください')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    const result = await apiMfaLogin(mfaToken, code)
+    setLoading(false)
+    if (result.error || !result.token) {
+      setError(result.error || 'MFA 認証に失敗しました')
+      // mfa_token が期限切れ (5 分) の場合は最初からやり直し
+      if ((result.error || '').includes('期限切れ') || (result.error || '').includes('無効')) {
+        setMfaToken(null)
+        setMfaCode('')
+      }
+      return
+    }
+    setSession(result)
+    onLogin()
+  }
+
+  const handleMfaCancel = () => {
+    setMfaToken(null)
+    setMfaCode('')
+    setError(null)
   }
 
   const inputCls = isLight
@@ -188,6 +268,60 @@ export function LoginPage({ onLogin }: Props) {
           </div>
         )}
 
+        {mfaToken && (
+          <div className="space-y-4">
+            <div className={`text-sm ${mutedCls}`}>
+              {t('auto.LoginPage.mfa_prompt')}
+            </div>
+            <div>
+              <label className={`block text-sm font-medium mb-1 ${labelCls}`}>
+                {t('auto.LoginPage.mfa_code_label')}
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onKeyDown={(e) => e.key === 'Enter' && handleMfaSubmit()}
+                className={`${fieldCls} text-center tracking-widest text-lg font-mono`}
+                placeholder="000000"
+                autoFocus
+              />
+            </div>
+            {error && (
+              <div
+                className={`border text-sm rounded-lg px-3 py-2 ${
+                  isLight ? 'bg-red-50 border-red-200 text-red-600' : 'bg-red-900/30 border-red-700 text-red-400'
+                }`}
+              >
+                {error}
+              </div>
+            )}
+            <button
+              onClick={handleMfaSubmit}
+              disabled={loading || mfaCode.length !== 6}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors"
+            >
+              {loading ? t('auth.logging_in') : t('auto.LoginPage.mfa_submit')}
+            </button>
+            <button
+              onClick={handleMfaCancel}
+              disabled={loading}
+              className={`w-full text-sm py-2 px-4 rounded-lg transition-colors ${
+                isLight
+                  ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+              }`}
+            >
+              {t('auto.LoginPage.mfa_cancel')}
+            </button>
+          </div>
+        )}
+
+        {!mfaToken && (
         <div className="space-y-4">
           <div>
             <label className={`block text-sm font-medium mb-1 ${labelCls}`}>{t('auto.LoginPage.k1')}</label>
@@ -256,6 +390,7 @@ export function LoginPage({ onLogin }: Props) {
             </a>
           </div>
         </div>
+        )}
         <div className="mt-6 text-center">
           <a
             href="https://shuttle-scope.com"
