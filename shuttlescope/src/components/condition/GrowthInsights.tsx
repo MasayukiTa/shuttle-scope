@@ -18,24 +18,24 @@ interface Props {
 // ── 体調分析用信頼度バッジ（週数ベース）──────────────────────────────────
 function ConditionConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
   const { t } = useTranslation()
-  let stars: string
+  let filled: number
   let key: string
   let colorClass: string
 
   if (n < 10) {
-    stars = '★☆☆'
+    filled = 1
     key = 'condition.insights.growth_card.confidence_low'
     colorClass = isLight
       ? 'border-red-300 bg-red-50 text-red-600'
       : 'border-red-400 bg-red-900/20 text-red-300'
   } else if (n < 30) {
-    stars = '★★☆'
+    filled = 2
     key = 'condition.insights.growth_card.confidence_medium'
     colorClass = isLight
       ? 'border-yellow-300 bg-yellow-50 text-yellow-600'
       : 'border-yellow-400 bg-yellow-900/20 text-yellow-300'
   } else {
-    stars = '★★★'
+    filled = 3
     key = 'condition.insights.growth_card.confidence_high'
     colorClass = isLight
       ? 'border-green-300 bg-green-50 text-green-600'
@@ -47,7 +47,10 @@ function ConditionConfidenceBadge({ n, isLight }: { n: number; isLight: boolean 
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-mono ${colorClass}`}
       title={t('condition.insights.growth_card.confidence_basis')}
     >
-      {stars} <span className="font-sans">{t(key)}</span>
+      <span className="inline-flex">
+        {Array.from({ length: 3 }, (_, i) => <MIcon key={i} name={i < filled ? 'star' : 'star_border'} size={11} />)}
+      </span>
+      <span className="font-sans">{t(key)}</span>
     </span>
   )
 }

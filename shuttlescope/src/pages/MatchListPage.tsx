@@ -514,7 +514,8 @@ export function MatchListPage() {
     value: String(p.id),
     label: p.name,
     searchText: p.team ?? '',
-    prefix: p.is_target ? '★' : undefined,
+    prefix: p.is_target ? 'star' : undefined,
+                prefixIsIcon: !!p.is_target,
     suffix: p.team ? `（${p.team}）` : undefined,
   }))
 
@@ -583,7 +584,7 @@ export function MatchListPage() {
               onClick={() => setFilterText('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
             >
-              ✕
+              <MIcon name="close" size={12} />
             </button>
           )}
         </div>
@@ -710,7 +711,7 @@ export function MatchListPage() {
       )}
 
       {/* 試合一覧
-         ⚠️ flex-1 overflow-y-auto はやめ、外側の scroll に委ねる (height < 500px
+         NOTE: flex-1 overflow-y-auto はやめ、外側の scroll に委ねる (height < 500px
          の landscape phone で内側 scroll が高さ 0 になり list 行が見えない問題対策)。 */}
       <div className="px-3 md:px-6 py-4">
         {/* モバイル用フィルター（スクロールで上に消える） */}
@@ -733,7 +734,7 @@ export function MatchListPage() {
                 onClick={() => setFilterText('')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
               >
-                ✕
+                <MIcon name="close" size={12} />
               </button>
             )}
           </div>
@@ -958,7 +959,7 @@ export function MatchListPage() {
           <div className={`${card} rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingMatchId !== null ? t('auto.MatchListPage.k42') : t('auto.MatchListPage.k29')}</h2>
-              <button onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}>✕</button>
+              <button onClick={() => { setShowForm(false); setEditingMatchId(null); setForm(defaultForm()); resetPlayerFields() }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={12} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
@@ -1182,13 +1183,14 @@ export function MatchListPage() {
                         onClick={() => setForm((f) => ({ ...f, video_local_path: '' }))}
                         className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'} text-xs px-1`}
                         title={t('auto.MatchListPage.k12')}
-                      >✕</button>
+                      ><MIcon name="close" size={12} /></button>
                     )}
                   </div>
                   {/* 編集中: 新規選択ファイル名 or 既存ファイル名（パスは露出しない） */}
                   {(form.video_local_path || editingVideoFilename) && (
-                    <div className={`text-[10px] ${textMuted} mt-0.5 truncate`}>
-                      📁 {form.video_local_path
+                    <div className={`text-[10px] ${textMuted} mt-0.5 truncate inline-flex items-center gap-1`}>
+                      <MIcon name="folder" size={10} />
+                      {form.video_local_path
                         ? form.video_local_path.split(/[/\\]/).pop()
                         : editingVideoFilename}
                     </div>
@@ -1301,7 +1303,7 @@ export function MatchListPage() {
                         }`}
                         title={t('match.list.reissue_video_token_hint')}
                       >
-                        🔄 {t('match.list.reissue_video_token')}
+                        <span className="inline-flex items-center gap-1"><MIcon name="refresh" size={11} />{t('match.list.reissue_video_token')}</span>
                       </button>
                       <span className={`text-[10px] ${textMuted}`}>
                         {t('match.list.reissue_video_token_hint_short')}

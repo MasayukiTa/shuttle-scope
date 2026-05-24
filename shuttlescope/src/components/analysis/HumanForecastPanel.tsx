@@ -297,10 +297,10 @@ function BenchmarkSection({ playerId, isLight }: { playerId: number; isLight: bo
                   {t('auto.HumanForecastPanel.actual_label')}{c.actual_outcome === 'win' ? 'W' : 'L'}
                 </span>
                 <span style={{ color: c.human_correct ? WIN : LOSS }}>
-                  {t('auto.HumanForecastPanel.human_label')}{c.human_predicted === 'win' ? 'W' : 'L'}{c.human_correct ? '✓' : '✗'}
+                  {t('auto.HumanForecastPanel.human_label')}{c.human_predicted === 'win' ? 'W' : 'L'}<MIcon name={c.human_correct ? 'check' : 'close'} size={12} />
                 </span>
-                <span style={{ color: c.model_correct ? WIN : LOSS }}>
-                  {t('auto.HumanForecastPanel.model_label')}{c.model_win_prob}%{c.model_correct ? '✓' : '✗'}
+                <span style={{ color: c.model_correct ? WIN : LOSS }} className="inline-flex items-center gap-0.5">
+                  {t('auto.HumanForecastPanel.model_label')}{c.model_win_prob}%<MIcon name={c.model_correct ? 'check' : 'close'} size={12} />
                 </span>
               </div>
             ))}

@@ -416,8 +416,8 @@ export function DownloadOptionsModal({
             <MIcon name="expand_more" size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
             {t('video.dl.auth_panel', 'Member-only sites · password-protected video')}
             {(cookiesFileName || videoPassword) && (
-              <span className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
-                ✓ {t('video.dl.configured', 'Configured')}
+              <span className={`text-[10px] inline-flex items-center gap-0.5 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                <MIcon name="check" size={10} />{t('video.dl.configured', 'Configured')}
               </span>
             )}
           </button>
@@ -439,17 +439,18 @@ export function DownloadOptionsModal({
                       onClick={() => handleCookiesFile(null)}
                       className={`text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'}`}
                     >
-                      ✕
+                      <MIcon name="close" size={10} />
                     </button>
                   )}
                 </div>
                 {cookiesFileName && !cookiesError && (
-                  <div className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
-                    {t('video.dl.cookies_ok', { name: cookiesFileName, kb: Math.round(cookiesTxt.length / 1024), defaultValue: '✓ {{name}} ({{kb}} KB)' })}
+                  <div className={`text-[10px] inline-flex items-center gap-0.5 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                    <MIcon name="check" size={10} />
+                    {t('video.dl.cookies_ok', { name: cookiesFileName, kb: Math.round(cookiesTxt.length / 1024), defaultValue: '{{name}} ({{kb}} KB)' })}
                   </div>
                 )}
                 {cookiesError && (
-                  <div className="text-[10px] text-red-500">⚠ {cookiesError}</div>
+                  <div className="text-[10px] text-red-500 inline-flex items-center gap-0.5"><MIcon name="warning" size={10} />{cookiesError}</div>
                 )}
               </div>
 

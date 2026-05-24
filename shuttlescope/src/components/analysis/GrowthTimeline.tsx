@@ -10,6 +10,7 @@ import { apiGet } from '@/api/client'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { NoDataMessage } from '@/components/common/NoDataMessage'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { MIcon } from '@/components/common/MIcon'
 import { N_GRAY } from '@/styles/colors'
 
 type Metric = 'win_rate' | 'avg_rally_length' | 'serve_win_rate'
@@ -354,7 +355,7 @@ export function GrowthTimeline({
                   onClick={() => setComparePoint(null)}
                   className="text-sm px-2 py-0.5"
                   style={{ color: isLight ? N_GRAY[500] : N_GRAY[400] }}
-                >✕</button>
+                ><MIcon name="close" size={14} /></button>
               </header>
               <div className="px-4 py-3 space-y-2 text-sm">
                 <div>

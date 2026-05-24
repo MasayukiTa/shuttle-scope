@@ -147,7 +147,8 @@ export function PredictionPage() {
                 value: p.id,
                 label: p.name,
                 searchText: p.team ?? '',
-                prefix: p.is_target ? '★' : undefined,
+                prefix: p.is_target ? 'star' : undefined,
+                prefixIsIcon: !!p.is_target,
                 suffix: `${p.team ? `（${p.team}）` : ''} [${p.match_count ?? 0}試合]`,
               }))}
               value={selectedPlayerId}

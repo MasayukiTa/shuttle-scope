@@ -43,7 +43,7 @@ export function ChartModal({ title, onClose, children }: ChartModalProps) {
             <MIcon name="dashboard" size={13} />
             {t('auto.ChartModal.back_to_dashboard')}
           </button>
-          {/* ✕ボタン */}
+          {/* close ボタン */}
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"

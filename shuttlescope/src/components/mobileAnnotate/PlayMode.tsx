@@ -614,7 +614,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
             z-45 (= Pass1/2/3 overlay z-40 より上、calib editor z-50 より下)。
             set 1 未作成画面が出てもキャリブやフルスクリーンに到達できないと
             操作詰みになるため。
-            ⚠️ calib 編集中は隠す (= 編集集中、calib editor 自身に専用ボタンあり) */}
+            NOTE: calib 編集中は隠す (= 編集集中、calib editor 自身に専用ボタンあり) */}
         {!calibEditing && (
         <div
           className="absolute right-2 flex gap-1"
@@ -702,7 +702,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                       border: '1px solid #ffffff', lineHeight: 1,
                     }}
                   >
-                    ✓
+                    <MIcon name="check" size={9} />
                   </span>
                 )}
               </button>
@@ -723,7 +723,7 @@ export function PlayMode({ matchId, videoSrc, onTapVideo, videoElRef, qualities,
                       border: '1px solid #ffffff', lineHeight: 1,
                     }}
                   >
-                    ✓
+                    <MIcon name="check" size={9} />
                   </span>
                 )}
               </button>

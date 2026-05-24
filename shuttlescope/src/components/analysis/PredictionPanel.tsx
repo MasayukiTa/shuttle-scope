@@ -394,8 +394,8 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
         {d.caution_flags.length > 0 && (
           <div className="border-t border-gray-700 pt-3 space-y-1">
             {d.caution_flags.map((flag, i) => (
-              <p key={i} className="text-xs" style={{ color: LOSS }}>
-                ⚠ {flag}
+              <p key={i} className="text-xs inline-flex items-center gap-1" style={{ color: LOSS }}>
+                <MIcon name="warning" size={12} />{flag}
               </p>
             ))}
           </div>
@@ -501,8 +501,8 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                   drivers={d.prediction_drivers.drivers as unknown as Parameters<typeof PredictionDriversBlock>[0]['drivers']}
                 />
                 {meta?.confidence.warning && (
-                  <p className="text-[11px] mt-2" style={{ color: subText }}>
-                    ⚠ {meta.confidence.warning}
+                  <p className="text-[11px] mt-2 inline-flex items-center gap-1" style={{ color: subText }}>
+                    <MIcon name="warning" size={11} />{meta.confidence.warning}
                   </p>
                 )}
               </div>
@@ -516,8 +516,8 @@ export function PredictionPanel({ playerId, playerName, players, opponentId, tou
                   {t('auto._shared.n_matches', { n: d.sample_size })}{t('auto.PredictionPanel.computed_stat')}
                 </p>
                 {meta?.confidence.warning && (
-                  <p className="text-[11px] mt-1" style={{ color: subText }}>
-                    ⚠ {meta.confidence.warning}
+                  <p className="text-[11px] mt-1 inline-flex items-center gap-1" style={{ color: subText }}>
+                    <MIcon name="warning" size={11} />{meta.confidence.warning}
                   </p>
                 )}
               </div>

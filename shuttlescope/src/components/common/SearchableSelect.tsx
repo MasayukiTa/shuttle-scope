@@ -14,8 +14,10 @@ export interface SearchableOption {
   label: string
   /** 検索対象に含める補助テキスト（チーム名等） */
   searchText?: string
-  /** ラベル左に表示するバッジ・アイコン */
+  /** ラベル左に表示するバッジ・アイコン (Material Symbols name) */
   prefix?: string
+  /** prefix を MIcon として描画するかどうか (true: <MIcon name={prefix} />, false: text) */
+  prefixIsIcon?: boolean
   /** ラベル右に表示するサブ情報 */
   suffix?: string
 }
@@ -152,7 +154,11 @@ export function SearchableSelect({
         <span className={clsx('flex-1 truncate', !selectedOption && 'text-gray-500')}>
           {loading ? t('common.loading', 'Loading...') : selectedOption ? (
             <>
-              {selectedOption.prefix && <span className="mr-1">{selectedOption.prefix}</span>}
+              {selectedOption.prefix && (
+                selectedOption.prefixIsIcon
+                  ? <MIcon name={selectedOption.prefix} size={12} className="mr-1 inline" />
+                  : <span className="mr-1">{selectedOption.prefix}</span>
+              )}
               {selectedOption.label}
               {selectedOption.suffix && <span className="ml-1 text-gray-400 text-xs">{selectedOption.suffix}</span>}
             </>
@@ -208,7 +214,11 @@ export function SearchableSelect({
                         : 'text-gray-300 hover:bg-gray-700/50',
                   )}
                 >
-                  {opt.prefix && <span className="text-xs shrink-0">{opt.prefix}</span>}
+                  {opt.prefix && (
+                    opt.prefixIsIcon
+                      ? <MIcon name={opt.prefix} size={12} className="shrink-0" />
+                      : <span className="text-xs shrink-0">{opt.prefix}</span>
+                  )}
                   <span className="flex-1 truncate">{opt.label}</span>
                   {opt.suffix && <span className="text-xs text-gray-500 shrink-0">{opt.suffix}</span>}
                 </button>

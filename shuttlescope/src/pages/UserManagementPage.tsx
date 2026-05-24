@@ -776,7 +776,7 @@ export function UserManagementPage() {
                                   <span key="nearlock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700" title={
                                     t('auto.UserManagementPage.k22', { failed: L.failed_attempts, remaining: 3 - L.failed_attempts })
                                   }>
-                                    ⚠ {t('auto.UserManagementPage.k23', { failed: L.failed_attempts })}
+                                    <MIcon name="warning" size={10} />{t('auto.UserManagementPage.k23', { failed: L.failed_attempts })}
                                   </span>,
                                 )
                               }

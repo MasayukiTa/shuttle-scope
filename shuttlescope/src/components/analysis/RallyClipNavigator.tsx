@@ -321,7 +321,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
 
       {/* オーバーレイポップアップ: 動画を全画面に近い大きさで再生。
          フレーム内 embed と違いサイズ変化やレイアウト依存エラーが起きない。
-         背景クリック / ✕ / Esc で閉じる。 */}
+         背景クリック / close / Esc で閉じる。 */}
       {popupRally && hasVideo && (
         <div
           className="fixed inset-0 z-[300] bg-black/85 flex items-center justify-center p-4"
@@ -355,7 +355,7 @@ export function RallyClipNavigator({ matchId, playerAName = 'A', playerBName = '
                   onClick={() => setPopupRally(null)}
                   className="px-2 py-1 text-sm rounded hover:bg-gray-700"
                   title="閉じる (Esc)"
-                >✕</button>
+                ><MIcon name="close" size={14} /></button>
               </div>
             </div>
             <video

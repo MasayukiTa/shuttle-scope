@@ -1800,7 +1800,7 @@ export function AnnotatorPage() {
           />
         </div>
 
-        {/* U1: コマンドパレット起動ボタン (md+ で常時表示。⌘/Ctrl+K の発見性向上) */}
+        {/* U1: コマンドパレット起動ボタン (md+ で常時表示。Cmd/Ctrl+K の発見性向上) */}
         <button
           type="button"
           onClick={() => openCommandPalette()}
@@ -1932,7 +1932,7 @@ export function AnnotatorPage() {
               className="text-red-400 hover:text-red-300 font-medium"
               title={store.saveErrors.map((e) => `Rally ${e.rallyNum}: ${e.error}`).join('\n')}
             >
-              {t('annotator.save_error_title')} {t('annotator.ui.save_error_count_x', { defaultValue: '{{n}}件 ✕', n: store.saveErrors.length })}
+              {t('annotator.save_error_title')} <span className="inline-flex items-center gap-0.5">{t('annotator.ui.save_error_count_x', { defaultValue: '{{n}}件', n: store.saveErrors.length })}<MIcon name="close" size={12} /></span>
             </button>
           )}
           {/* V4-U-001: 試合中補完パネル */}
@@ -1978,7 +1978,7 @@ export function AnnotatorPage() {
             >
               <span className="material-symbols-outlined" style={{ fontSize: 13 }}>{t('auto.AnnotatorPage.icon_visibility')}</span>
               <span>CV</span>
-              {/* 圧縮ステータス: 解析中 % または 完了 ✓ */}
+              {/* 圧縮ステータス: 解析中 % または 完了 check */}
               {tracknetJob && (tracknetJob.status === 'pending' || tracknetJob.status === 'running') && (
                 <span className="num-cell text-[10px]"> {Math.round(tracknetJob.progress * 100)}%</span>
               )}
@@ -1986,7 +1986,7 @@ export function AnnotatorPage() {
                 <span className="num-cell text-[10px]"> {Math.round(yoloJob.progress * 100)}%</span>
               )}
               {tracknetJob?.status === 'complete' && yoloJob?.status === 'complete' && (
-                <span className="text-[10px] text-emerald-400">✓</span>
+                <MIcon name="check" size={10} className="text-emerald-400" />
               )}
               <span className="text-[9px] opacity-70">{cvToolsExpanded ? '▲' : '▼'}</span>
             </button>
@@ -2015,7 +2015,7 @@ export function AnnotatorPage() {
                 <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
                   isLight ? 'bg-white text-amber-700' : 'bg-gray-800 text-amber-400'
                 }`}>
-                  {t('annotator.ui.stopped_with_pct', { defaultValue: '⏸ 停止済 {{pct}}%', pct: Math.round(tracknetJob.progress * 100) })}
+                  <MIcon name="pause" size={12} />{t('annotator.ui.stopped_with_pct', { defaultValue: '停止済 {{pct}}%', pct: Math.round(tracknetJob.progress * 100) })}
                 </div>
                 <button
                   onClick={handleTracknetBatchResume}
@@ -2031,7 +2031,7 @@ export function AnnotatorPage() {
               <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${
                 isLight ? 'bg-white text-blue-700' : 'bg-gray-800 text-blue-300'
               }`}>
-                ✓ {t('tracknet.updated_strokes', { count: tracknetJob.updated_strokes })}
+                <MIcon name="check" size={12} />{t('tracknet.updated_strokes', { count: tracknetJob.updated_strokes })}
               </div>
             ) : tracknetJob?.status === 'error' ? (
               <div className="flex flex-col items-start gap-0.5">
@@ -2042,7 +2042,7 @@ export function AnnotatorPage() {
                   }`}
                   title={tracknetJob.error ?? t('tracknet.batch_error')}
                 >
-                  ✗ {t('tracknet.batch_error_retry')}
+                  <MIcon name="close" size={12} />{t('tracknet.batch_error_retry')}
                 </button>
                 {tracknetJob.error && (
                   <span className={`text-[9px] max-w-[160px] truncate ${isLight ? 'text-red-500' : 'text-red-400'}`} title={tracknetJob.error}>
@@ -2168,7 +2168,7 @@ export function AnnotatorPage() {
                     }`}
                     title={yoloJob.error ?? t('yolo.batch_error')}
                   >
-                    {t('annotator.ui.person_x_label', { defaultValue: '✗ 人物' })}
+                    <MIcon name="close" size={12} />{t('annotator.ui.person_x_label', { defaultValue: '人物' })}
                   </button>
                   {yoloJob.error && (
                     <span className={`text-[9px] max-w-[140px] truncate ${isLight ? 'text-red-500' : 'text-red-400'}`} title={yoloJob.error}>
@@ -2299,7 +2299,7 @@ export function AnnotatorPage() {
                       onClick={cancelSampler}
                       className={`px-1 py-0.5 rounded text-[10px] ${isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-gray-700'}`}
                       title={t('auto.AnnotatorPage.k14')}
-                    >✕</button>
+                    ><MIcon name="close" size={12} /></button>
                   </div>
                 ) : taggingMode ? (
                   <div className="flex items-center gap-1">
@@ -2330,7 +2330,7 @@ export function AnnotatorPage() {
                       className={`px-1 py-0.5 rounded text-xs ${
                         isLight ? 'text-gray-500 hover:bg-gray-200' : 'text-gray-400 hover:bg-gray-700'
                       }`}
-                    >✕</button>
+                    ><MIcon name="close" size={12} /></button>
                   </div>
                 ) : (
                   <button
@@ -2458,7 +2458,7 @@ export function AnnotatorPage() {
                 }`}
                 title={candidatesData ? t('annotator.ui.cv_assist_built_at', { defaultValue: '候補生成済み ({{date}}) — 再生成', date: candidatesData.built_at?.slice(0, 10) }) : t('annotator.ui.cv_assist_build_title', { defaultValue: 'CV候補を生成する' })}
               >
-                {cvBuildLoading ? t('annotator.ui.cv_assist_building', { defaultValue: '生成中...' }) : candidatesData ? t('annotator.ui.cv_assist_built', { defaultValue: '✓ 候補' }) : t('annotator.ui.cv_assist_build', { defaultValue: '候補生成' })}
+                {cvBuildLoading ? t('annotator.ui.cv_assist_building', { defaultValue: '生成中...' }) : candidatesData ? (<span className="inline-flex items-center gap-1"><MIcon name="check" size={12} />{t('annotator.ui.cv_assist_built', { defaultValue: '候補' })}</span>) : t('annotator.ui.cv_assist_build', { defaultValue: '候補生成' })}
               </button>
               {/* 適用コントロール（高確信度・フィールド別・候補含む） */}
               {candidatesData && (
@@ -2530,7 +2530,7 @@ export function AnnotatorPage() {
                   }`}
                   title={t('auto.AnnotatorPage.k21')}
                 >
-                  ⚠ {cvReviewQueue.filter(i => i.review_status !== 'completed').length}
+                  <span className="inline-flex items-center gap-0.5"><MIcon name="warning" size={12} />{cvReviewQueue.filter(i => i.review_status !== 'completed').length}</span>
                 </button>
               )}
               {/* 適用結果フィードバック */}
@@ -2550,7 +2550,7 @@ export function AnnotatorPage() {
                   title={cvBuildError}
                   onClick={clearCVBuildError}
                 >
-                  ⚠ {cvBuildError}
+                  <span className="inline-flex items-center gap-0.5"><MIcon name="warning" size={9} />{cvBuildError}</span>
                 </span>
               )}
             </div>
@@ -2606,7 +2606,7 @@ export function AnnotatorPage() {
                   className={`text-[9px] max-w-[180px] truncate cursor-help ${isLight ? 'text-red-500' : 'text-red-400'}`}
                   title={tunnelLastError}
                 >
-                  ⚠ {tunnelLastError.replace('[ngrok] ', '')}
+                  <span className="inline-flex items-center gap-0.5"><MIcon name="warning" size={9} />{tunnelLastError.replace('[ngrok] ', '')}</span>
                 </span>
               )}
             </div>
@@ -2983,7 +2983,7 @@ export function AnnotatorPage() {
                     className="text-xs text-gray-500 hover:text-blue-400 text-left px-1 flex items-center gap-1"
                     title={t('auto.AnnotatorPage.k23')}
                   >
-                    {t('annotator.ui.drm_webview_hint', { defaultValue: '🔒 DRM保護コンテンツ／ログイン必須サイトはブラウザ内視聴モードを使用' })}
+                    <MIcon name="lock" size={12} />{t('annotator.ui.drm_webview_hint', { defaultValue: 'DRM保護コンテンツ／ログイン必須サイトはブラウザ内視聴モードを使用' })}
                   </button>
                 </div>
               )
@@ -3093,8 +3093,8 @@ export function AnnotatorPage() {
               </button>
             </div>
             {hasVideo(match) && (
-              <div className="mt-1 text-gray-500 truncate">
-                {getVideoLabel(match) || `🔗 ${match?.video_url}`}
+              <div className="mt-1 text-gray-500 truncate inline-flex items-center gap-1">
+                {getVideoLabel(match) || (<><MIcon name="link" size={11} />{match?.video_url}</>)}
               </div>
             )}
             {uploadProgress && (
@@ -3344,7 +3344,7 @@ export function AnnotatorPage() {
                     onClick={() => setShowLegendOverlay(false)}
                     className="text-gray-500 hover:text-white text-lg leading-none"
                   >
-                    ✕
+                    <MIcon name="close" size={12} />
                   </button>
                 </div>
                 {/* キー一覧は ShortcutLegend に集約済 (full variant: 上級キーも含む) */}
@@ -3462,14 +3462,15 @@ export function AnnotatorPage() {
             {/* D-1: 自動保存ステータス（デスクトップのみ） */}
             <div className={clsx('flex items-center text-[10px] shrink-0 px-0.5', isMobile && 'hidden')}>
               {autoSaveError ? (
-                <span className="text-red-400 font-medium" title={autoSaveError}>
-                  ⚠ {autoSaveError}
+                <span className="text-red-400 font-medium inline-flex items-center gap-0.5" title={autoSaveError}>
+                  <MIcon name="warning" size={10} />{autoSaveError}
                 </span>
               ) : store.isRallyActive && store.currentStrokes.length > 0 ? (
                 lastAutoSaveTime ? (
-                  <span className="text-green-500">
+                  <span className="text-green-500 inline-flex items-center gap-0.5">
+                    <MIcon name="check" size={10} />
                     {t('annotator.ui.auto_saved_at', {
-                      defaultValue: '✓ 自動保存済 {{time}}',
+                      defaultValue: '自動保存済 {{time}}',
                       time: new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                     })}
                   </span>
@@ -3993,7 +3994,7 @@ export function AnnotatorPage() {
                   onClick={() => { setShowCommentInput(false); setCommentText('') }}
                   className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-400"
                 >
-                  ✕
+                  <MIcon name="close" size={12} />
                 </button>
               </div>
             )}
@@ -4040,7 +4041,7 @@ export function AnnotatorPage() {
                     onClick={() => setShowCVAssistPanel(false)}
                     className="text-gray-500 hover:text-gray-300 text-xs px-1"
                   >
-                    ✕
+                    <MIcon name="close" size={12} />
                   </button>
                 </div>
                 {lastSavedRallyId == null ? (
@@ -4297,7 +4298,7 @@ export function AnnotatorPage() {
                     useLargeTouch ? 'py-2.5 text-sm' : 'py-1.5 text-xs'
                   )}
                 >
-                  {t('annotator.ui.rally_cancel_btn', { defaultValue: '✕ ラリーキャンセル' })}
+                  <span className="inline-flex items-center justify-center gap-1"><MIcon name="close" size={12} />{t('annotator.ui.rally_cancel_btn', { defaultValue: 'ラリーキャンセル' })}</span>
                 </button>
               )}
 
@@ -4325,7 +4326,7 @@ export function AnnotatorPage() {
                   )}
                   title={t('auto.AnnotatorPage.k27')}
                 >
-                  {t('annotator.ui.manual_save_btn', { defaultValue: '💾 一時保存' })}
+                  <MIcon name="save" size={12} />{t('annotator.ui.manual_save_btn', { defaultValue: '一時保存' })}
                   {lastAutoSaveTime && (
                     <span className="text-gray-500 text-[10px]">
                       {new Date(lastAutoSaveTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -4460,7 +4461,7 @@ export function AnnotatorPage() {
             <button
               onClick={() => setShowInMatchPanel(false)}
               className="text-gray-400 hover:text-white text-xs"
-            >✕</button>
+            ><MIcon name="close" size={12} /></button>
           </div>
           <div className="p-4 flex flex-col gap-3">
             <div className="text-xs text-gray-400 truncate">{match.player_b.name}</div>
@@ -4588,7 +4589,7 @@ export function AnnotatorPage() {
               ))}
               {store.isRallyActive && (
                 <div className="text-xs text-yellow-400 flex items-center gap-1 mt-1">
-                  ⚠ {t('exception.mid_rally_warning')}
+                  <MIcon name="warning" size={12} />{t('exception.mid_rally_warning')}
                 </div>
               )}
             </div>

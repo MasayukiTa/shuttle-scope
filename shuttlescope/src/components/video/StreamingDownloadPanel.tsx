@@ -425,7 +425,7 @@ export function StreamingDownloadPanel({
                   className={`text-[10px] px-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
                   title={t('auto.StreamingDownloadPanel.k15')}
                 >
-                  ✕
+                  <MIcon name="close" size={10} />
                 </button>
               )}
             </div>
@@ -435,8 +435,8 @@ export function StreamingDownloadPanel({
               </div>
             )}
             {cookiesError && (
-              <div className={`text-[10px] ${isLight ? 'text-red-600' : 'text-red-400'}`}>
-                ⚠ {cookiesError}
+              <div className={`text-[10px] inline-flex items-center gap-0.5 ${isLight ? 'text-red-600' : 'text-red-400'}`}>
+                <MIcon name="warning" size={10} />{cookiesError}
               </div>
             )}
             <div className={`text-[10px] ${isLight ? 'text-gray-500' : 'text-gray-500'}`}>

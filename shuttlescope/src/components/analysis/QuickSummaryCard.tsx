@@ -151,11 +151,11 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
           {/* 警告件数バッジ: 件数だけ示す、色は B_BAD 文字のみ (背景なし) */}
           {warnCount > 0 && (
             <span
-              className="text-[10px] font-semibold tabular-nums"
+              className="text-[10px] font-semibold tabular-nums inline-flex items-center gap-0.5"
               style={{ color: B_BAD }}
               title={t('auto.QuickSummaryCard.k3')}
             >
-              ⚠ {warnCount}
+              <MIcon name="warning" size={10} />{warnCount}
             </span>
           )}
           {data && (

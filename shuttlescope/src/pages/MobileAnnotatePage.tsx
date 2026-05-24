@@ -485,7 +485,7 @@ export function MobileAnnotatePage() {
           )}
 
           {/* Pass overlay: annotate モード時に PlayMode 上に被せる
-             ⚠️ calib 編集中は隠す (= 編集に集中させる) */}
+             NOTE: calib 編集中は隠す (= 編集に集中させる) */}
           {!calibEditingTop && screen === 'annotate' && !matchQuery.isLoading && !matchQuery.error && pass === 'rally' && (() => {
             if (!currentSet) {
               return (

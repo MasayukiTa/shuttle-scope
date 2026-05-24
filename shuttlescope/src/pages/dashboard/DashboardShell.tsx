@@ -76,10 +76,10 @@ function StatCard({
   // 旧版は bg-gray-800 を完全ハードコードしていてライトモードでも濃紺カード
   // のままになっていた (2026-05-19 修正)。
   const isLight = useIsLightMode()
-  const stars = sampleSize === undefined ? null
-    : sampleSize < 500 ? '★☆☆'
-    : sampleSize < 2000 ? '★★☆'
-    : '★★★'
+  const starsFilled = sampleSize === undefined ? null
+    : sampleSize < 500 ? 1
+    : sampleSize < 2000 ? 2
+    : 3
 
   const cls = isLight
     ? {
@@ -106,8 +106,13 @@ function StatCard({
           {value !== undefined && value !== null ? value : '—'}
         </p>
         {sampleSize !== undefined && (
-          <p className={`text-[10px] ${cls.sampleNote} mt-0.5 num-cell tabular-nums`}>
-            {stars} {t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
+          <p className={`text-[10px] ${cls.sampleNote} mt-0.5 num-cell tabular-nums inline-flex items-center gap-1`}>
+            {starsFilled !== null && (
+              <span className="inline-flex">
+                {Array.from({ length: 3 }, (_, i) => <MIcon key={i} name={i < starsFilled ? 'star' : 'star_border'} size={10} />)}
+              </span>
+            )}
+            {t('auto.DashboardShell.k_n_rallies', { n: sampleSize.toLocaleString() })}
           </p>
         )}
       </div>
@@ -320,7 +325,8 @@ export function DashboardShell() {
                 value: p.id,
                 label: p.name,
                 searchText: p.team ?? '',
-                prefix: p.is_target ? '★' : undefined,
+                prefix: p.is_target ? 'star' : undefined,
+                prefixIsIcon: !!p.is_target,
                 suffix: `${p.team ? `（${p.team}）` : ''} [${p.match_count ?? 0}試合]`,
               }))}
               value={selectedPlayerId}

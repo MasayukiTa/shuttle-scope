@@ -178,7 +178,7 @@ export function EffectiveDistributionMap({ playerId, filters = DEFAULT_FILTERS }
                     >
                       <td className="py-1.5 pr-3 font-semibold" style={{ color: topZones.includes(zone) ? WIN : undefined }}>
                         {ZONE_LABELS[zone] ?? zone}
-                        {topZones.includes(zone) && <span className="ml-1 text-[9px]">★</span>}
+                        {topZones.includes(zone) && <MIcon name="star" size={9} className="ml-1" />}
                       </td>
                       <td className="py-1.5 pr-3 text-center text-gray-300 num-cell">{d.win_count}</td>
                       <td className="py-1.5 pr-3 text-center num-cell">

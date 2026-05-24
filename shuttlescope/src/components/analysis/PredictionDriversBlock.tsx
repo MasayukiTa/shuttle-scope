@@ -2,6 +2,7 @@
 import { useTranslation } from 'react-i18next'
 import { WIN } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Driver {
   label: string
@@ -80,8 +81,8 @@ export function PredictionDriversBlock({
 
       {/* 観察データバッジ */}
       {hasObservations && (
-        <p className="text-[10px]" style={{ color: subText }}>
-          ✓ {t('prediction.observation_augmented')}
+        <p className="text-[10px] inline-flex items-center gap-1" style={{ color: subText }}>
+          <MIcon name="check" size={10} />{t('prediction.observation_augmented')}
         </p>
       )}
     </div>

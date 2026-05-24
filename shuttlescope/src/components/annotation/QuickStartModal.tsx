@@ -163,7 +163,8 @@ export function QuickStartModal({ onClose, onStarted }: Props) {
                 value: p.id,
                 label: p.name,
                 searchText: p.team ?? '',
-                prefix: p.is_target ? '★' : undefined,
+                prefix: p.is_target ? 'star' : undefined,
+                prefixIsIcon: !!p.is_target,
                 suffix: p.team ? t('quick_start.team_suffix', { team: p.team }) : undefined,
               }))}
               value={playerAId === '' ? null : playerAId}

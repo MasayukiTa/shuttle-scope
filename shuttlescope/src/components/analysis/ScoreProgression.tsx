@@ -17,6 +17,7 @@ import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { catColor } from '@/styles/categoricalPalette'
+import { MIcon } from '@/components/common/MIcon'
 
 interface ScoreProgressionProps {
   matchId: number
@@ -130,7 +131,7 @@ export function RallyDetailBanner({
             onClick={onClose}
             className="text-gray-500 hover:text-gray-300 text-sm leading-none px-1"
             title={t('auto.ScoreProgression.k5')}
-          >✕</button>
+          ><MIcon name="close" size={14} /></button>
         )}
         <div className="flex gap-0.5">
           <button

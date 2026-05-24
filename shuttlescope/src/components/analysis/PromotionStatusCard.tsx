@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { AnalysisFilters } from '@/types'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
+import { MIcon } from '@/components/common/MIcon'
 
 interface ChecklistItem {
   item: string
@@ -153,7 +154,7 @@ const ACTION_LABEL: Record<string, string> = {
 
 function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: boolean }) {
 
-  const icon = item.met === true ? '✓' : item.met === false ? '✗' : '○'
+  const iconName = item.met === true ? 'check' : item.met === false ? 'close' : 'radio_button_unchecked'
   const color =
     item.met === true ? (isLight ? 'text-emerald-600' : 'text-emerald-400') :
     item.met === false ? (isLight ? 'text-red-600' : 'text-red-400') :
@@ -162,7 +163,7 @@ function ChecklistBullet({ item, isLight }: { item: ChecklistItem; isLight: bool
   const subColor = isLight ? 'text-gray-400' : 'text-gray-600'
   return (
     <li className="flex items-start gap-1.5 text-[10px]">
-      <span className={`${color} shrink-0 font-bold mt-px`}>{icon}</span>
+      <span className={`${color} shrink-0 font-bold mt-px`}><MIcon name={iconName} size={11} /></span>
       <span className={textColor}>{item.item}</span>
       {item.current !== null && (
         <span className={`${subColor} ml-auto shrink-0`}>{item.current} / {item.required}</span>

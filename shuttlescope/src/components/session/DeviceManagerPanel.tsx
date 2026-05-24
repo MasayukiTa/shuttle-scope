@@ -97,8 +97,8 @@ function HeartbeatBadge({ lastHeartbeat }: { lastHeartbeat: string | null }) {
   const diffSec = (Date.now() - new Date(lastHeartbeat).getTime()) / 1000
   const stale = diffSec > 60
   return (
-    <span className={`text-[9px] ${stale ? 'text-red-400' : 'text-gray-500'}`}>
-      {stale ? '⚠ 応答なし' : `${Math.round(diffSec)}s前`}
+    <span className={`text-[9px] inline-flex items-center gap-0.5 ${stale ? 'text-red-400' : 'text-gray-500'}`}>
+      {stale ? <><MIcon name="warning" size={9} />応答なし</> : `${Math.round(diffSec)}s前`}
     </span>
   )
 }

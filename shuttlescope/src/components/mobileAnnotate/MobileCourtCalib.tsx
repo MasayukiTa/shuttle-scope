@@ -248,7 +248,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
       onTouchCancel={onTouchEnd}
     >
       {/* SVG オーバーレイ: 既存点 + 結線
-         ⚠️ width/height は **明示 px** (videoWidth x videoHeight) + viewBox 同値。
+         NOTE: width/height は **明示 px** (videoWidth x videoHeight) + viewBox 同値。
          width="100%" + viewBox では iOS Safari PWA で aspect 演算がぶれて
          描画位置がズレる事象あり。明示 px なら 1:1 mapping が必ず成立する。 */}
       <svg
@@ -485,7 +485,7 @@ export function MobileCourtCalib({ matchId, initial, videoWidth, videoHeight, on
         )
       })()}
 
-      {/* 🩺 オンスクリーン診断 (中央 element stack / 最終 tap 位置の stack) */}
+      {/* オンスクリーン診断 (中央 element stack / 最終 tap 位置の stack) */}
       {diag && (
         <div
           className="absolute z-10 px-2 py-1 rounded text-[9px] font-mono pointer-events-none"

@@ -72,14 +72,14 @@ function CVFieldChip({
       >
         {srcLabel}
       </span>
-      {/* ✓ 承認ボタン (suggested のみ) */}
+      {/* 承認ボタン (suggested のみ) */}
       {field.decision_mode === 'suggested' && onAccept && (
         <button
           onClick={onAccept}
           className="text-[9px] px-1 py-0.5 rounded bg-blue-500/30 hover:bg-blue-500/50 text-blue-200 transition-colors"
           title={acceptTitle ?? t('cv_assist.panel.accept')}
         >
-          ✓
+          <MIcon name="check" size={11} />
         </button>
       )}
     </div>

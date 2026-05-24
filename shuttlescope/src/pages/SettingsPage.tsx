@@ -1702,7 +1702,7 @@ export function SettingsPage() {
                           }`}
                         >
                           {p === 'auto' ? '自動' : p}
-                          {unavailable && <span className="text-orange-400 ml-0.5">✕</span>}
+                          {unavailable && <MIcon name="close" size={11} className="text-orange-400 ml-0.5" />}
                         </button>
                       )
                     })}
@@ -2010,8 +2010,8 @@ export function SettingsPage() {
                       ['TCP 80', netDiag.data.capabilities.tcp_80.ok],
                       ['Localhost', netDiag.data.capabilities.localhost_bridge.ok],
                     ] as [string, boolean][]).map(([label, ok]) => (
-                      <div key={label} className={`rounded px-2 py-1 text-center ${ok ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
-                        {ok ? '✓' : '✗'} {label}
+                      <div key={label} className={`rounded px-2 py-1 text-center inline-flex items-center justify-center gap-1 ${ok ? 'bg-gray-800 text-blue-300' : 'bg-gray-800 text-red-300'}`}>
+                        <MIcon name={ok ? 'check' : 'close'} size={11} />{label}
                       </div>
                     ))}
                   </div>
@@ -2770,7 +2770,7 @@ export function SettingsPage() {
           <div className={`${card} rounded-lg w-full max-w-lg`}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${borderLine}`}>
               <h2 className={`text-lg font-semibold ${textHeading}`}>{editingPlayer ? '選手編集' : '選手追加'}</h2>
-              <button onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}>✕</button>
+              <button onClick={() => { setShowPlayerForm(false); setEditingPlayer(null) }} className={`${textMuted} ${isLight ? 'hover:text-gray-900' : 'hover:text-white'}`}><MIcon name="close" size={14} /></button>
             </div>
             <form onSubmit={handlePlayerSubmit} className="p-6 flex flex-col gap-3">
               <div>

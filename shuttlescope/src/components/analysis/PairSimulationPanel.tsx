@@ -398,14 +398,14 @@ export function PairSimulationPanel({ players }: PairSimulationPanelProps) {
           {d.pair_strengths.length > 0 && (
             <ul className="space-y-1">
               {d.pair_strengths.map((s, i) => (
-                <li key={i} className="text-xs" style={{ color: WIN }}>✓ {s}</li>
+                <li key={i} className="text-xs inline-flex items-center gap-1" style={{ color: WIN }}><MIcon name="check" size={12} />{s}</li>
               ))}
             </ul>
           )}
           {d.pair_cautions.length > 0 && (
             <ul className="space-y-1">
               {d.pair_cautions.map((c, i) => (
-                <li key={i} className="text-xs" style={{ color: subText }}>⚠ {c}</li>
+                <li key={i} className="text-xs inline-flex items-center gap-1" style={{ color: subText }}><MIcon name="warning" size={12} />{c}</li>
               ))}
             </ul>
           )}
