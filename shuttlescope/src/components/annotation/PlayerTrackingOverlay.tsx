@@ -8,6 +8,7 @@
 import { useState, _useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
 
 // ── 型定義 ────────────────────────────────────────────────────────────────────
 
@@ -174,18 +175,37 @@ export function PlayerTrackingOverlay({
           )
         })}
 
-        {/* ヒント / エラー表示 */}
+        {/* ヒント / エラー表示。
+            エラー文字列は user がコピーして報告できる必要があるため、
+            親 div は pointer-events-none にせず、エラーブロックは
+            select-text + コピーボタン付き。空 state (no_person_detected)
+            は pointer-events-none でもよいが、構造簡素化のため統一する。 */}
         {frameDetections.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="flex flex-col items-center gap-1 max-w-sm text-center">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-1 max-w-md text-center">
               {frameDetectError ? (
                 <>
-                  <span className="bg-red-900/90 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fca5a5' }}>
+                  <span className="bg-red-900/90 text-xs px-3 py-1.5 rounded-full pointer-events-none" style={{ color: '#fca5a5' }}>
                     {t('player_tracking.detect_error_pill')}
                   </span>
-                  <span className="bg-black/80 text-[10px] px-2 py-1 rounded" style={{ color: '#fca5a5' }}>
-                    {frameDetectError}
-                  </span>
+                  <div className="bg-black/85 rounded px-2 py-1.5 flex items-start gap-2 max-w-md">
+                    <pre
+                      className="text-[10px] font-mono whitespace-pre-wrap break-all text-left select-text overflow-auto"
+                      style={{ color: '#fca5a5', maxHeight: '40vh', userSelect: 'text' }}
+                    >{frameDetectError}</pre>
+                    <button
+                      type="button"
+                      className="shrink-0 text-[10px] bg-red-800 hover:bg-red-700 active:bg-red-900 text-white rounded px-2 py-1"
+                      onClick={() => {
+                        try {
+                          navigator.clipboard.writeText(frameDetectError ?? '')
+                        } catch { /* ignore */ }
+                      }}
+                      title={t('player_tracking.copy_error') ?? 'コピー'}
+                    >
+                      <MIcon name="content_copy" className="text-[14px] leading-none" />
+                    </button>
+                  </div>
                 </>
               ) : (
                 <span className="bg-black/80 text-xs px-3 py-1.5 rounded-full" style={{ color: '#fff' }}>
