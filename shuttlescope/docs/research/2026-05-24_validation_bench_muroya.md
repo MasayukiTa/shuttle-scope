@@ -149,3 +149,49 @@ VRAM 最終 5536 MiB / 5060 Ti 16 GB → 余裕 10.6 GB。
 - **YOLO ORT CUDA 直接化**: 採用推奨。`backend/yolo/inference.py` を ORT CUDA 優先順に再構成
 - **TrackNet 代替**: Phase 2 で WASB-SBDT と shuttle 検出率を直接比較
 - **30 FPS パイプライン**: CUDA streams 並列化 + preprocess GPU 化で十分到達可能
+
+## ── Addendum 2 (2026-05-24 公式 BenchmarkRunner 実測): 真の上限 ──
+
+ユーザ指摘により既存 `backend/benchmark/runner.py` の正規ベンチを CUDA device で実行。各ターゲットは **TensorRT EP + raw-tensor + batch 最適化** されており、本来の性能はこちら:
+
+| Target | FPS | avg ms | batch | backend | 備考 |
+|---|---|---|---|---|---|
+| **TrackNet** | **155.95** | 6.41 | 8 | `onnx_trt:0` | TensorRT EP |
+| **Pose (RTMPose)** | **984.62** | 1.02 | 16 | `trt:0` | raw tensor inference |
+| **YOLO (yolov8n_fp16)** | **1451.91** | 0.69 | 16 | TensorRT EP | |
+
+→ **30 FPS 上限は当然クリア。律速は wrapper 層 (Python preprocess/postprocess + 単 frame 直列実行) であり、モデル GPU 推論ではない**。
+
+### 私の ad-hoc bench との乖離理由
+| 要因 | 影響 |
+|---|---|
+| Python 内で cv2.resize / cvtColor / np.transpose | YOLO +20ms 程度 |
+| cv2.dnn.NMSBoxes (CPU) | YOLO +5-10ms |
+| batch=1 vs batch=16 | per-sample で 20-30× |
+| CUDA EP vs TensorRT EP | 2-3× |
+| (個別フレームごと cap.read() の Python 経由) | 数 ms |
+
+### 訂正した本番ボトルネック分析
+- **GPU 推論性能は超余裕** (全 target で目標 30 FPS の数十倍)
+- **本番が 30 FPS 出ない場合の真因は wrapper 層**:
+  - `backend/yolo/inference.py` の preprocess/postprocess が Python
+  - `backend/cv/rtmpose.py` の per-frame call (batch 化されてるか要確認)
+  - sequential 実行 (CUDA streams 並列化なし)
+  - 1080p フレーム I/O (decoding + numpy転送)
+- ad-hoc bench の YOLO 30ms / Pose 22ms / TrackNet 35ms は **wrapper 経由の実用値**として参考になる
+
+### 訂正した shuttle 検出 0% の意味
+- **TrackNet GPU 性能 (155 FPS) は健全** — 計算は超高速で行われている
+- それでも shuttle_conf max=0.15 (全 frame 「無し」判定) = 確実にモデル × 映像の問題
+- → WASB-SBDT 比較 or 再学習が必要、という結論は変わらず
+
+### 真の最終評価
+- ❌ **GPU 推論問題は無かった** (前 addendum 訂正)
+- ⚠️ **wrapper 層の高速化余地はある** (YOLO 30ms → 1ms 化、Pose 22ms → 4ms (4人batch) 化が可能)
+- 🔴 **TrackNet shuttle 検出 0% のみが本質課題** — モデル交換が必要
+
+### 採否最終版
+- **既存 CV パイプ (TRT)**: 推論カーネル自体は採用継続、全く問題なし
+- **wrapper 層の最適化**: 本番が遅い場合のみ着手 (まず本番計測)
+- **TrackNet 代替**: WASB-SBDT との shuttle 検出率比較を Phase 2 で実施
+- **新モデル追加**: 不要
