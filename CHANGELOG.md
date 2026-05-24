@@ -14,6 +14,27 @@ Read it together with:
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
+## 2026-05-24
+
+### 検出率メトリクスの撤回（量より質の原則違反）
+
+`docs/operations/cv_pipeline_runbook.md` で WASB INT8 の「検出率 87.1% / cross-video median 100%」と謳っていたが、目視 audit (12 サンプル) で **シャトルを実際に捉えていたのは INT8 で 2/12 (~17%)、FP16 で 1/12 (~8%)** であることが確定。報告値は実体の **5-6× 過大** であり、残りの "visible" は人物のユニフォームや審判台のネットポールを拾っていた。
+
+原因:
+- WASB 入力解像度 512×288 に対し 1080p 動画でのシャトル実効サイズが 3-5px → サブピクセル化で人物の高輝度ピクセルに負ける
+- INT8 量子化はピークを更にサチらせ「visible 判定が緩い」状態に。`conf>=0.5` を満たしやすくなるが実検出ではない
+- TRT INT8 EP は `DequantizeLayer` ロードで fail し CUDA EP に fallback している痕跡もあり、INT8 のメリットは更に怪しい
+
+短期対応 (本日着手):
+- `docs/operations/cv_pipeline_runbook.md` 冒頭に retraction banner を追加
+- UI から検出率 % 表示を撤去 (準備中)
+
+中期対応 (別タスク):
+- `visible` フラグを quality-gated に (peak 鋭さ + 動き整合 + 単峰性)
+- タイル推論 (3×2 overlapping crops at 512×288) で実効解像度 2-3×
+
+教訓: 「N% 検出」という単一スカラーは、何を測っているか曖昧。次回からは "frames-with-shuttle-marked / total" だけでなく "frames-where-mark-overlaps-ground-truth / total" を併記する。視覚 audit を benchmark のリリース条件に組み込む。
+
 ## 2026-05-18
 
 ### Terms of Service v1.3 — security, analytics, and minor-user scope
