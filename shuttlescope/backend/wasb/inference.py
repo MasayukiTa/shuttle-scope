@@ -503,7 +503,11 @@ class WasbInference:
                 confs = max_vals.cpu().numpy()
                 proms = prom.cpu().numpy()
                 prom_min = float(os.environ.get("SS_WASB_PROMINENCE_MIN", "1.5"))
-                gate_on = os.environ.get("SS_WASB_QUALITY_GATE", "1") not in ("0", "false", "")
+                # 2026-05-24 audit (round-3): prominence does NOT separate OK
+                # from NG — both medians ≈ 1.57. Default OFF until a better
+                # signal is designed (motion / second-peak / bg-subtraction).
+                # Still computed and stored so downstream / analysis can see it.
+                gate_on = os.environ.get("SS_WASB_QUALITY_GATE", "0") not in ("0", "false", "")
                 for i in range(bsz):
                     conf = float(confs[i])
                     p = float(proms[i])
