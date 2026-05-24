@@ -251,3 +251,65 @@ RTMPose-m ONNX が dynamic batch axis 持つので可。失敗時は per-person 
 - **batching は線形 sequential 比較で 2-3×**: 単純な multi-person inference を batch 化するだけで激変。RTMPose の 4人 14.5ms → 4.9ms は最大コスパ最適化
 - **GPU で 985 FPS 出るモデルも、wrapper 経由だと 40 FPS まで落ちる**: 律速は wrapper オーバーヘッド。最初に既存ベンチランナーで synthetic 数字取って、実装側の overhead を可視化するのが本筋
 - **並列化は最後の手段**: 単独最適化が落ち着いた上で慎重に。今回は 10% gain で目標未達
+
+## ── Addendum 4: 残った最適化試行 (INT8 / NVDEC / Track-then-detect) ──
+
+ユーザ要望「1-3 (INT8 / NVDEC / Track-then-detect) を実施」に対する実測ベースの honest 報告。
+
+### Clean baseline (3 runs median methodology)
+| Component | Pure GPU | Pipeline-realized |
+|---|---|---|
+| YOLO (TRT EP) | 764.6 FPS (1.31ms, batch=1) | 298.2 FPS |
+| RTMPose (CUDA EP) | 836.6/s (4.78ms, batch=4) | 100.2 FPS |
+| WASB (TRT EP, opt) | 506.5 FPS (39.5ms, batch=20) | 197.5 FPS |
+| **Full sequential pipeline** | — | **53.6 FPS** |
+
+WASB 検出率 **40.1%** (TrackNetV3 0% に対し圧勝継続)。
+
+### (1) INT8 — **BLOCKED**
+- TensorRT 10.16.1.11 を `pip install tensorrt` で導入
+- `IInt8EntropyCalibrator2` で muroya 動画から 200 triplet (B=8) calibration data 構築 → OK
+- engine build → **失敗**:
+  - `[TRT] [E] [builder.cpp::createCaskKernelLibraryImpl::419] Error Code 2: Internal Error (Assertion validateCaskKLibSize failed)`
+  - `DeprecationWarning: Use Deprecated in TensorRT 10.1. Superseded by explicit quantization.`
+- **TRT 10.1+ で implicit INT8 calibration は deprecated**、explicit quantization (Q/DQ ノード入り ONNX) が必須
+- 対応案: PyTorch 側で WASB に QAT (Quantization-Aware Training) を施し直す or ONNX Q/DQ ノード自動挿入ツール (onnxruntime-tools の `quantize_static`) で前処理
+- いずれも本セッション範囲外 → **Phase 2 タスク化**
+
+### (2) NVDEC decode
+| Decoder | FPS (1798 frame 1080p 60fps) | 備考 |
+|---|---|---|
+| cv2 (CPU) | 270.6 | baseline |
+| decord CPU | **310.8** | **1.15× free win**、依存追加のみ |
+| decord CPU (asnumpy explicit) | 39.8 | bridge 設定で逆に遅化、罠 |
+| **decord GPU (NVDEC)** | **failed** | pip wheel は CUDA disabled build |
+| torchvision.io.VideoReader | failed | この torchvision version に存在せず |
+| PyAV hwaccel cuda | not installed | |
+| ffmpeg subprocess hwaccel | path error | Windows path 問題 |
+
+**実用的勝ち筋**: decord CPU 採用で 1.15× decode 速化。
+**真の NVDEC**: PyNvVideoCodec (NVIDIA 公式) を NVIDIA Video Codec SDK と一緒に手動セットアップ要、別セッション化。
+
+### (3) Track-then-detect ROI — **設計レベルで保留**
+- 期待効果: 検出率 40% → 55-65% (shuttle が ROI 内で相対的に大きく映る) + 速度若干向上
+- 実装の課題: 現状 batched chunked pipeline と per-frame state tracking が衝突
+- 必要な構造変更:
+  - state (`_last_position, _last_age, _track_active`) を WasbInference に追加
+  - `_predict_frames_gpu` を per-frame ループ書き直し or 2-pass (full → ROI re-inference for uncertain frames)
+  - chunked batching とのトレードオフ評価
+- 推定工数: 半日-1日 (state machine + 比較 bench)
+- **Phase 2 タスク化**
+
+### 最終確定数値 (clean baseline)
+- **WASB単独 197.5 FPS** = 60 FPS 目標の **3.3×** ✓
+- **フルパイプ 53.6 FPS** = 60 FPS 目標の **89%** (あと 12% 不足、達成困難)
+
+### 60 FPS フルパイプ達成への現実的パス
+| 手段 | 期待 gain | 実現難度 | 推奨タイミング |
+|---|---|---|---|
+| decord CPU 採用 | ×1.15 (decode) | 即 | 今すぐ |
+| Pose 4人→2人 (主選手のみ) | ×1.5 (pose) | 1h | 次セッション |
+| INT8 (要 QAT or quantize_static) | ×1.5-2 (推論) | 半日 | 次セッション |
+| Track-then-detect (state ベース) | 検出率↑、速度同等 | 1日 | 次セッション |
+| PyNvVideoCodec で真の NVDEC | ×2-3 (decode) | 2-4h セットアップ | 次セッション |
+| **Pro 6000 投入** | **×4-6 (全体)** | 入手後即 | ハードウェア到着待ち |
