@@ -211,6 +211,12 @@ class WasbInference:
 
         スキーマ: ``{frame_idx, zone, confidence, x_norm, y_norm, visible}``
         ``frame_idx`` は窓の最終フレーム (1-origin)。
+
+        最適化:
+          - 全フレームを一度だけ前処理 (重複 resize 排除)
+          - torch + IOBinding で GPU 上 zero-copy 推論 (CUDA EP 時のみ)
+          - chunk_size=128 frame で VRAM 制御
+          - CUDA EP 不可時は従来の numpy session.run にフォールバック
         """
         if not frames:
             return []
@@ -218,21 +224,137 @@ class WasbInference:
         if n_triplets <= 0:
             return []
         if not self._loaded and not self.load():
-            # ロード失敗時は空 / placeholder を返す
             return [
                 {
-                    "frame_idx": i + 1,
-                    "zone": None,
-                    "confidence": 0.0,
-                    "x_norm": None,
-                    "y_norm": None,
-                    "visible": False,
+                    "frame_idx": i + 1, "zone": None, "confidence": 0.0,
+                    "x_norm": None, "y_norm": None, "visible": False,
                 }
                 for i in range(n_triplets)
             ]
 
+        # GPU 最適化パス
+        if self._can_use_gpu_fastpath():
+            try:
+                return self._predict_frames_gpu(frames)
+            except Exception as exc:
+                logger.warning("[wasb] GPU fastpath failed, falling back to CPU: %s", exc)
+
+        # CPU フォールバック (旧実装と同等)
+        return self._predict_frames_cpu(frames)
+
+    def _can_use_gpu_fastpath(self) -> bool:
+        if self._session is None:
+            return False
+        get_providers = getattr(self._session, "get_providers", None)
+        if not callable(get_providers):
+            return False
+        try:
+            provs = get_providers()
+        except Exception:
+            return False
+        if not any("CUDA" in p or "Tensorrt" in p for p in provs):
+            return False
+        if not hasattr(self._session, "io_binding") or not hasattr(self._session, "run_with_iobinding"):
+            return False
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return False
+        except ImportError:
+            return False
+        return True
+
+    def _predict_frames_gpu(self, frames: list[np.ndarray]) -> list[dict]:
+        """GPU 最適化パス: torch + IOBinding。"""
+        import torch
         from backend.tracknet.zone_mapper import coords_to_zone
 
+        device = f"cuda:{self._cuda_device_index}"
+        mean_gpu = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        std_gpu = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+        batch = max(1, self._max_batch)
+        chunk_size = max(batch + FRAME_STACK - 1, 128)
+        overlap = FRAME_STACK - 1
+
+        n_triplets = len(frames) - FRAME_STACK + 1
+        results: list[dict] = []
+        produced = 0
+        start = 0
+        while produced < n_triplets and start < len(frames):
+            chunk = frames[start:start + chunk_size]
+            if len(chunk) < FRAME_STACK:
+                break
+
+            # 全 frame 1 度だけ前処理 (numpy → uint8 GPU → resize+normalize)
+            arr = np.stack(chunk, axis=0)  # (N, H0, W0, 3) uint8
+            t = torch.from_numpy(arr).to(device, non_blocking=True)
+            t = t.permute(0, 3, 1, 2).contiguous().float() / 255.0
+            t = t[:, [2, 1, 0], :, :]  # BGR → RGB
+            t = torch.nn.functional.interpolate(t, size=(INPUT_H, INPUT_W),
+                                                 mode="bilinear", align_corners=False)
+            t = (t - mean_gpu) / std_gpu  # (N, 3, H, W)
+
+            # triplet build via concat along channel
+            n_trip_chunk = t.shape[0] - FRAME_STACK + 1
+            triplets = torch.cat(
+                [t[0:n_trip_chunk], t[1:n_trip_chunk + 1], t[2:n_trip_chunk + 2]],
+                dim=1,
+            )  # (n_trip, 9, H, W)
+
+            # batched IOBinding inference
+            for b0 in range(0, n_trip_chunk, batch):
+                chunk_inp = triplets[b0:b0 + batch].contiguous()
+                bsz = chunk_inp.shape[0]
+                out_gpu = torch.empty((bsz, FRAME_STACK, INPUT_H, INPUT_W),
+                                      dtype=torch.float32, device=device)
+                io = self._session.io_binding()
+                io.bind_input(
+                    name=self._input_name, device_type="cuda",
+                    device_id=self._cuda_device_index, element_type=np.float32,
+                    shape=tuple(chunk_inp.shape), buffer_ptr=chunk_inp.data_ptr(),
+                )
+                io.bind_output(
+                    name=self._session.get_outputs()[0].name, device_type="cuda",
+                    device_id=self._cuda_device_index, element_type=np.float32,
+                    shape=tuple(out_gpu.shape), buffer_ptr=out_gpu.data_ptr(),
+                )
+                self._session.run_with_iobinding(io)
+
+                # GPU postprocess: take last-frame heatmap, argmax
+                last = out_gpu[:, -1, :, :]  # (bsz, H, W)
+                flat = last.view(bsz, -1)
+                max_vals, max_idx = flat.max(dim=1)
+                ys = (max_idx // INPUT_W).cpu().numpy()
+                xs = (max_idx % INPUT_W).cpu().numpy()
+                confs = max_vals.cpu().numpy()
+                for i in range(bsz):
+                    conf = float(confs[i])
+                    visible = conf >= self._visible_threshold
+                    x_norm = float(xs[i]) / INPUT_W
+                    y_norm = float(ys[i]) / INPUT_H
+                    zone = coords_to_zone(x_norm, y_norm) if visible else None
+                    results.append({
+                        "frame_idx": produced + 1,
+                        "zone": zone,
+                        "confidence": round(conf, 3),
+                        "x_norm": round(x_norm, 4) if visible else None,
+                        "y_norm": round(y_norm, 4) if visible else None,
+                        "visible": visible,
+                    })
+                    produced += 1
+            del t, triplets
+
+            if start + chunk_size >= len(frames):
+                break
+            start += chunk_size - overlap
+
+        return results
+
+    def _predict_frames_cpu(self, frames: list[np.ndarray]) -> list[dict]:
+        """非 GPU バックエンド用フォールバック (元の実装)。"""
+        from backend.tracknet.zone_mapper import coords_to_zone
+
+        n_triplets = len(frames) - FRAME_STACK + 1
         results: list[dict] = []
         batch = max(1, self._max_batch)
         for start in range(0, n_triplets, batch):
@@ -244,17 +366,12 @@ class WasbInference:
                 logger.warning("[wasb] inference failed (batch %d-%d): %s", start, end, exc)
                 for idx in range(start, end):
                     results.append({
-                        "frame_idx": idx + 1,
-                        "zone": None,
-                        "confidence": 0.0,
-                        "x_norm": None,
-                        "y_norm": None,
-                        "visible": False,
+                        "frame_idx": idx + 1, "zone": None, "confidence": 0.0,
+                        "x_norm": None, "y_norm": None, "visible": False,
                     })
                 continue
 
             heatmaps = self._extract_last_frame_heatmaps(outputs)
-            # heatmaps: (B, H, W)
             for i, hm in enumerate(heatmaps):
                 conf, x_norm, y_norm = self._peak(hm)
                 visible = bool(conf >= self._visible_threshold)
