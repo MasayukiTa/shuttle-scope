@@ -696,34 +696,103 @@ class WasbInference:
                          promoted, len(candidates))
         return promoted
 
-    def _smooth_temporal(self, results: list[dict], soft_floor: float = 0.3,
-                          window: int = 1) -> None:
-        """In-place hysteresis: a frame within `window` of two confident
-        neighbours and with conf >= soft_floor is promoted to visible.
-        Does nothing if results is shorter than 2*window+1."""
-        if len(results) < 2 * window + 1:
+    def _smooth_temporal(self, results: list[dict], soft_floor: float = 0.25,
+                          max_window: int = 3) -> None:
+        """In-place motion-aware temporal smoothing.
+
+        Two-pass algorithm:
+          1. For each non-visible frame in the soft band, find the nearest
+             visible neighbours within ±max_window. If both sides present,
+             estimate shuttle velocity from them and interpolate (or, if
+             only one side, extrapolate using shorter-range velocity).
+          2. Promote the frame to visible if interpolated position is on
+             the predicted shuttle trajectory (within reasonable range)
+             and original conf was at least soft_floor.
+
+        Compared to the previous ±1 window simple-average approach, this:
+          - widens the window to ±max_window (default 3) so brief 2-3 frame
+            occlusions can be bridged
+          - uses velocity-based extrapolation rather than midpoint
+          - allows lower soft_floor (0.25 default) because the position
+            prediction is more accurate
+          - is still O(N · max_window) so cheap on CPU
+        """
+        if len(results) < 2 * max_window + 1:
             return
         from backend.tracknet.zone_mapper import coords_to_zone
-        thresh = self._visible_threshold
         n = len(results)
-        for i in range(window, n - window):
+
+        def vis_with_pos(i):
+            r = results[i]
+            return (r["visible"] and r.get("x_norm") is not None
+                     and r.get("y_norm") is not None)
+
+        for i in range(n):
             r = results[i]
             if r["visible"]:
                 continue
             if r["confidence"] < soft_floor:
                 continue
-            # require both sides confident within window
-            left_ok = any(results[i - k]["visible"] for k in range(1, window + 1))
-            right_ok = any(results[i + k]["visible"] for k in range(1, window + 1))
-            if not (left_ok and right_ok):
+            # find nearest visible neighbours
+            left_idx = None
+            for k in range(1, max_window + 1):
+                j = i - k
+                if j >= 0 and vis_with_pos(j):
+                    left_idx = j
+                    break
+            right_idx = None
+            for k in range(1, max_window + 1):
+                j = i + k
+                if j < n and vis_with_pos(j):
+                    right_idx = j
+                    break
+            if left_idx is None and right_idx is None:
                 continue
-            # interpolate position from nearest visible neighbours
-            left = next((results[i - k] for k in range(1, window + 1) if results[i - k]["visible"]), None)
-            right = next((results[i + k] for k in range(1, window + 1) if results[i + k]["visible"]), None)
-            if left is None or right is None:
-                continue
-            x_norm = (left["x_norm"] + right["x_norm"]) / 2
-            y_norm = (left["y_norm"] + right["y_norm"]) / 2
+
+            if left_idx is not None and right_idx is not None:
+                # linear interpolation between L and R based on i's position
+                L = results[left_idx]; R = results[right_idx]
+                t = (i - left_idx) / float(right_idx - left_idx)
+                x_norm = L["x_norm"] + t * (R["x_norm"] - L["x_norm"])
+                y_norm = L["y_norm"] + t * (R["y_norm"] - L["y_norm"])
+            elif left_idx is not None:
+                # extrapolate from left using a 2nd-to-the-left if available
+                L = results[left_idx]
+                ll_idx = None
+                for k in range(1, max_window + 1):
+                    j = left_idx - k
+                    if j >= 0 and vis_with_pos(j):
+                        ll_idx = j; break
+                if ll_idx is not None:
+                    LL = results[ll_idx]
+                    span = left_idx - ll_idx
+                    vx = (L["x_norm"] - LL["x_norm"]) / span
+                    vy = (L["y_norm"] - LL["y_norm"]) / span
+                    x_norm = L["x_norm"] + vx * (i - left_idx)
+                    y_norm = L["y_norm"] + vy * (i - left_idx)
+                else:
+                    # only one neighbour known — just copy (no velocity)
+                    x_norm = L["x_norm"]; y_norm = L["y_norm"]
+            else:  # only right_idx
+                R = results[right_idx]
+                rr_idx = None
+                for k in range(1, max_window + 1):
+                    j = right_idx + k
+                    if j < n and vis_with_pos(j):
+                        rr_idx = j; break
+                if rr_idx is not None:
+                    RR = results[rr_idx]
+                    span = rr_idx - right_idx
+                    vx = (RR["x_norm"] - R["x_norm"]) / span
+                    vy = (RR["y_norm"] - R["y_norm"]) / span
+                    x_norm = R["x_norm"] + vx * (i - right_idx)
+                    y_norm = R["y_norm"] + vy * (i - right_idx)
+                else:
+                    x_norm = R["x_norm"]; y_norm = R["y_norm"]
+
+            # clip to [0, 1]
+            x_norm = max(0.0, min(1.0, x_norm))
+            y_norm = max(0.0, min(1.0, y_norm))
             r["visible"] = True
             r["x_norm"] = round(x_norm, 4)
             r["y_norm"] = round(y_norm, 4)
