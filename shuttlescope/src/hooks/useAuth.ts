@@ -48,7 +48,13 @@ function getStored<T>(key: string, parse?: (v: string) => T): T | null {
 
 function getStoredRole(): UserRole | null {
   const v = getStored<string>(STORAGE_KEY_ROLE)
-  if (v === 'admin' || v === 'analyst' || v === 'coach' || v === 'player') return v as UserRole
+  // 2026-05-24 fix: 'demo' role の追加。本 whitelist に 'demo' が無いと、
+  // setSession で setRoleState('demo') 直後に AUTH_CHANGED_EVENT リスナーが
+  // getStoredRole() を呼び role を null に上書きする → App が LoginPage を
+  // 描画して login 画面に戻ってしまう (testtest login で再現)。
+  if (v === 'admin' || v === 'analyst' || v === 'coach' || v === 'player' || v === 'demo') {
+    return v as UserRole
+  }
   return null
 }
 

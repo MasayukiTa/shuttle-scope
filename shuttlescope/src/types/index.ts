@@ -15,7 +15,11 @@ export const DEFAULT_FILTERS: AnalysisFilters = {
   dateTo: null,
 }
 
-export type UserRole = 'admin' | 'analyst' | 'coach' | 'player'
+// 2026-05-24 fix: 'demo' role を追加。backend (utils/auth.py UserRole.DEMO) と
+// GlobalAuthMiddleware は demo を許可している。frontend で UserRole から漏れて
+// いたため getStoredRole の whitelist で demo が null 化され、demo user
+// (例: testtest) は login 直後に /#/login へ戻されていた。
+export type UserRole = 'admin' | 'analyst' | 'coach' | 'player' | 'demo'
 
 export type DominantHand = 'R' | 'L' | 'unknown'
 
