@@ -391,7 +391,181 @@ class WasbInference:
         # but is flanked by confident detections, mark it visible too. Helps
         # bridge brief shuttle occlusions / sub-pixel motion blur frames.
         self._smooth_temporal(results)
+
+        # Optional 2nd pass: track-then-detect ROI re-inference.
+        # For uncertain frames near a confident detection, re-run WASB on a
+        # cropped ROI around the predicted position. Shuttle then occupies a
+        # larger fraction of the model input and is easier to find.
+        if os.environ.get("SS_WASB_ROI_REFINE", "1") not in ("0", "false", ""):
+            try:
+                self._refine_uncertain_via_roi(frames, results)
+            except Exception as exc:
+                logger.debug("[wasb] ROI refinement failed (continuing): %s", exc)
+
         return results
+
+    def _refine_uncertain_via_roi(
+        self,
+        frames: list[np.ndarray],
+        results: list[dict],
+        roi_w_norm: float = 0.20,   # 20% of frame width = ~384px on 1920p
+        roi_h_norm: float = 0.20,
+        soft_floor: float = 0.2,    # frames with conf >= this are candidates
+        confident: float = 0.6,     # seed positions must come from frames with conf >= this
+        roi_threshold: float = 0.4, # threshold for ROI re-inference (relaxed)
+        max_seed_age: int = 15,     # frames a seed can stay valid for
+        max_batch: int = 16,
+    ) -> int:
+        """Track-then-detect 2nd pass.
+
+        For each frame in results that is uncertain (soft_floor <= conf <
+        visible_threshold), find the nearest confident detection within
+        max_seed_age frames, crop a ROI of size (roi_w, roi_h) of the
+        frame around that seed position, build a 3-frame triplet from the
+        same ROI on i-1/i/i+1, push through WASB at model-native 512x288.
+        If the re-inferred peak passes roi_threshold, mark visible and
+        update coordinates.
+
+        Returns number of frames promoted.
+        """
+        try:
+            import torch  # noqa
+        except ImportError:
+            return 0
+        from backend.tracknet.zone_mapper import coords_to_zone
+        import torch
+
+        n = len(results)
+        if n < 3:
+            return 0
+        H_full, W_full = frames[0].shape[:2] if frames else (0, 0)
+        if H_full == 0:
+            return 0
+
+        # Build seed map: index → (x_norm, y_norm) from the nearest confident
+        # frame to the left and to the right (within max_seed_age).
+        confident_idx_x_y: list[tuple[int, float, float]] = []
+        for i, r in enumerate(results):
+            if r["visible"] and r.get("x_norm") is not None and r["confidence"] >= confident:
+                confident_idx_x_y.append((i, r["x_norm"], r["y_norm"]))
+        if not confident_idx_x_y:
+            return 0
+        conf_idxs = [c[0] for c in confident_idx_x_y]
+
+        # Helper: nearest confident index, linear scan (n small enough)
+        def nearest_conf(i: int) -> tuple[int, float, float] | None:
+            best = None
+            best_d = max_seed_age + 1
+            for ci, cx, cy in confident_idx_x_y:
+                d = abs(ci - i)
+                if d < best_d:
+                    best_d = d
+                    best = (ci, cx, cy)
+            if best is None or best_d > max_seed_age:
+                return None
+            return best
+
+        # Collect candidates and their seed positions
+        candidates = []  # list of (i, x_norm, y_norm)
+        for i, r in enumerate(results):
+            if r["visible"]:
+                continue
+            if r["confidence"] < soft_floor:
+                continue
+            # need triplet: i-1, i, i+1 must all map to a valid frame.
+            # results[i] corresponds to frame index i+FRAME_STACK-1 in the
+            # original frame list (since we prepend FRAME_STACK-1 frames per
+            # sliding window). Equivalent: frames_idx = i + FRAME_STACK - 1.
+            # We need frames at fi-1, fi, fi+1 with fi = i + FRAME_STACK - 1.
+            fi = i + FRAME_STACK - 1
+            if fi - 1 < 0 or fi + 1 >= len(frames):
+                continue
+            seed = nearest_conf(i)
+            if seed is None:
+                continue
+            _, cx, cy = seed
+            candidates.append((i, cx, cy, fi))
+
+        if not candidates:
+            return 0
+
+        device = f"cuda:{self._cuda_device_index}"
+        mean_gpu = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+        std_gpu = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+
+        promoted = 0
+        roi_pw = int(roi_w_norm * W_full)
+        roi_ph = int(roi_h_norm * H_full)
+
+        # Process in batches
+        for b0 in range(0, len(candidates), max_batch):
+            batch = candidates[b0:b0 + max_batch]
+            bsz = len(batch)
+            # Build (bsz, 9, INPUT_H, INPUT_W) input from ROI crops
+            crops_np = np.empty((bsz * 3, roi_ph, roi_pw, 3), dtype=np.uint8)
+            roi_boxes = []  # (x0, y0, x1, y1) per candidate in full-frame coords
+            for k, (i, cx, cy, fi) in enumerate(batch):
+                # ROI box in full coords, clipped to frame
+                cx_pix = int(cx * W_full); cy_pix = int(cy * H_full)
+                x0 = max(0, min(W_full - roi_pw, cx_pix - roi_pw // 2))
+                y0 = max(0, min(H_full - roi_ph, cy_pix - roi_ph // 2))
+                x1 = x0 + roi_pw; y1 = y0 + roi_ph
+                roi_boxes.append((x0, y0, x1, y1))
+                for j, fr_idx in enumerate((fi - 1, fi, fi + 1)):
+                    crops_np[k * 3 + j] = frames[fr_idx][y0:y1, x0:x1]
+            # Upload to GPU and preprocess
+            t = torch.from_numpy(crops_np).to(device, non_blocking=True)
+            t = t.permute(0, 3, 1, 2).contiguous().float() / 255.0
+            t = t[:, [2, 1, 0], :, :]
+            t = torch.nn.functional.interpolate(t, size=(INPUT_H, INPUT_W),
+                                                  mode="bilinear", align_corners=False)
+            t = (t - mean_gpu) / std_gpu
+            # Reshape (bsz*3, 3, H, W) → (bsz, 9, H, W) (stack 3 frames as channels)
+            t = t.view(bsz, 3, 3, INPUT_H, INPUT_W).reshape(bsz, 9, INPUT_H, INPUT_W).contiguous()
+            # Run inference via IOBinding
+            y = torch.empty(bsz, FRAME_STACK, INPUT_H, INPUT_W,
+                             dtype=torch.float32, device=device)
+            io = self._session.io_binding()
+            io.bind_input(name=self._input_name, device_type="cuda",
+                          device_id=self._cuda_device_index,
+                          element_type=np.float32, shape=tuple(t.shape),
+                          buffer_ptr=t.data_ptr())
+            io.bind_output(name=self._session.get_outputs()[0].name,
+                           device_type="cuda", device_id=self._cuda_device_index,
+                           element_type=np.float32, shape=tuple(y.shape),
+                           buffer_ptr=y.data_ptr())
+            self._session.run_with_iobinding(io)
+            # Postprocess: sigmoid last-frame heatmap
+            last = torch.sigmoid(y[:, -1, :, :])
+            flat = last.view(bsz, -1)
+            max_vals, max_idx = flat.max(dim=1)
+            ys = (max_idx // INPUT_W).cpu().numpy()
+            xs = (max_idx % INPUT_W).cpu().numpy()
+            confs = max_vals.cpu().numpy()
+            for k, (i, _cx, _cy, _fi) in enumerate(batch):
+                conf_new = float(confs[k])
+                if conf_new < roi_threshold:
+                    continue
+                x0, y0, x1, y1 = roi_boxes[k]
+                # Map ROI-internal pixel back to full-frame normalized coords
+                px = x0 + (xs[k] + 0.5) * (x1 - x0) / INPUT_W
+                py = y0 + (ys[k] + 0.5) * (y1 - y0) / INPUT_H
+                x_norm = float(px) / W_full
+                y_norm = float(py) / H_full
+                # Only update if new conf > original
+                if conf_new > results[i]["confidence"]:
+                    results[i]["confidence"] = round(conf_new, 3)
+                    results[i]["x_norm"] = round(x_norm, 4)
+                    results[i]["y_norm"] = round(y_norm, 4)
+                    results[i]["visible"] = True
+                    results[i]["zone"] = coords_to_zone(x_norm, y_norm)
+                    promoted += 1
+            del t, y
+
+        if promoted:
+            logger.info("[wasb] ROI refinement promoted %d/%d uncertain frames",
+                         promoted, len(candidates))
+        return promoted
 
     def _smooth_temporal(self, results: list[dict], soft_floor: float = 0.3,
                           window: int = 1) -> None:
