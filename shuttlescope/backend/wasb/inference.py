@@ -243,6 +243,54 @@ class WasbInference:
 
         from backend.cv.base import ShuttleSample
 
+        # NVDEC fast path (opt-in via SS_WASB_USE_NVDEC=1).
+        # Measured 1.49× end-to-end vs cv2+predict_frames (105 → 156 FPS on
+        # muroya 1798 frame with INT8). Falls back to cv2 silently on any
+        # error (missing PyNvVideoCodec, non-NVDEC GPU, etc.).
+        use_nvdec = (
+            os.environ.get("SS_WASB_USE_NVDEC", "0") not in ("0", "false", "")
+            and self._loaded
+            and self._backend_name.startswith(("trt", "cuda"))
+        )
+        if use_nvdec:
+            try:
+                from backend.wasb import nvdec_pipe
+                if nvdec_pipe.is_available():
+                    logger.info("[wasb.run] using NVDEC fast path: %s", video_path)
+                    cap = cv2.VideoCapture(str(video_path))
+                    if cap.isOpened():
+                        cap_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                        n_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                        W0 = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+                        H0 = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+                        cap.release()
+                    else:
+                        cap_fps, n_total, W0, H0 = 0.0, 0, 0, 0
+                    if cap_fps > 0:
+                        fps = cap_fps
+                    if n_total > 0 and W0 > 0:
+                        preds = nvdec_pipe.run_wasb_on_nvdec(
+                            self, str(video_path),
+                            start_sec=0.0, n_frames=n_total,
+                            gpu_id=self._cuda_device_index,
+                            visible_threshold=self._visible_threshold,
+                        )
+                        samples = []
+                        for p in preds:
+                            f_idx = int(p["frame_idx"])
+                            xn = p.get("x_norm"); yn = p.get("y_norm")
+                            x_px = float(xn) * float(W0) if xn is not None else 0.0
+                            y_px = float(yn) * float(H0) if yn is not None else 0.0
+                            samples.append(ShuttleSample(
+                                frame=f_idx,
+                                ts_sec=float(f_idx) / fps if fps > 0 else 0.0,
+                                x=x_px, y=y_px,
+                                confidence=float(p.get("confidence", 0.0)),
+                            ))
+                        return samples
+            except Exception as exc:
+                logger.warning("[wasb.run] NVDEC path failed, falling back to cv2: %s", exc)
+
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             logger.warning("[wasb.run] cannot open video: %s", video_path)
