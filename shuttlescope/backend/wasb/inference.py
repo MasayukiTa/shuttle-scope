@@ -195,6 +195,10 @@ class WasbInference:
                 logger.info(
                     "[wasb] loaded via %s (model=%s)", name, self._model_path.name
                 )
+                # Build TRT engine for the actual max-batch at load time so
+                # later predict_frames does not pay engine-rebuild latency.
+                if name.startswith("trt") or name.startswith("cuda"):
+                    self._warmup_gpu()
                 return True
             except Exception as exc:  # pragma: no cover - depends on local EP
                 last_exc = f"{name}: {type(exc).__name__}: {exc}"
@@ -241,6 +245,39 @@ class WasbInference:
 
         # CPU フォールバック (旧実装と同等)
         return self._predict_frames_cpu(frames)
+
+    def _warmup_gpu(self, iters: int = 3) -> None:
+        """Trigger TRT engine build for _max_batch and a smaller fallback batch
+        so the first real predict_frames call doesn't pay engine compile cost.
+        Silent on failure (warmup is opportunistic)."""
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return
+            device = f"cuda:{self._cuda_device_index}"
+            sizes = sorted(set([max(1, self._max_batch), 1]))
+            for bsz in sizes:
+                x = torch.randn(bsz, FRAME_STACK * 3, INPUT_H, INPUT_W,
+                                dtype=torch.float32, device=device).contiguous()
+                out = torch.empty(bsz, FRAME_STACK, INPUT_H, INPUT_W,
+                                   dtype=torch.float32, device=device)
+                io = self._session.io_binding()
+                io.bind_input(name=self._input_name, device_type="cuda",
+                              device_id=self._cuda_device_index,
+                              element_type=np.float32, shape=tuple(x.shape),
+                              buffer_ptr=x.data_ptr())
+                io.bind_output(name=self._session.get_outputs()[0].name,
+                               device_type="cuda",
+                               device_id=self._cuda_device_index,
+                               element_type=np.float32, shape=tuple(out.shape),
+                               buffer_ptr=out.data_ptr())
+                for _ in range(iters):
+                    self._session.run_with_iobinding(io)
+                del x, out
+            torch.cuda.synchronize()
+            logger.info("[wasb] GPU warmup ok (batches=%s)", sizes)
+        except Exception as exc:
+            logger.debug("[wasb] warmup skipped: %s", exc)
 
     def _can_use_gpu_fastpath(self) -> bool:
         if self._session is None:
@@ -320,8 +357,10 @@ class WasbInference:
                 )
                 self._session.run_with_iobinding(io)
 
-                # GPU postprocess: take last-frame heatmap, argmax
-                last = out_gpu[:, -1, :, :]  # (bsz, H, W)
+                # GPU postprocess: take last-frame heatmap, sigmoid → argmax
+                # WASB outputs raw logits; sigmoid maps to [0,1] probability so
+                # the visible_threshold reads as "P(shuttle) >= 0.5" intuitively.
+                last = torch.sigmoid(out_gpu[:, -1, :, :])  # (bsz, H, W) in [0,1]
                 flat = last.view(bsz, -1)
                 max_vals, max_idx = flat.max(dim=1)
                 ys = (max_idx // INPUT_W).cpu().numpy()
@@ -348,7 +387,44 @@ class WasbInference:
                 break
             start += chunk_size - overlap
 
+        # Temporal hysteresis smoothing: if a frame is just below threshold
+        # but is flanked by confident detections, mark it visible too. Helps
+        # bridge brief shuttle occlusions / sub-pixel motion blur frames.
+        self._smooth_temporal(results)
         return results
+
+    def _smooth_temporal(self, results: list[dict], soft_floor: float = 0.3,
+                          window: int = 1) -> None:
+        """In-place hysteresis: a frame within `window` of two confident
+        neighbours and with conf >= soft_floor is promoted to visible.
+        Does nothing if results is shorter than 2*window+1."""
+        if len(results) < 2 * window + 1:
+            return
+        from backend.tracknet.zone_mapper import coords_to_zone
+        thresh = self._visible_threshold
+        n = len(results)
+        for i in range(window, n - window):
+            r = results[i]
+            if r["visible"]:
+                continue
+            if r["confidence"] < soft_floor:
+                continue
+            # require both sides confident within window
+            left_ok = any(results[i - k]["visible"] for k in range(1, window + 1))
+            right_ok = any(results[i + k]["visible"] for k in range(1, window + 1))
+            if not (left_ok and right_ok):
+                continue
+            # interpolate position from nearest visible neighbours
+            left = next((results[i - k] for k in range(1, window + 1) if results[i - k]["visible"]), None)
+            right = next((results[i + k] for k in range(1, window + 1) if results[i + k]["visible"]), None)
+            if left is None or right is None:
+                continue
+            x_norm = (left["x_norm"] + right["x_norm"]) / 2
+            y_norm = (left["y_norm"] + right["y_norm"]) / 2
+            r["visible"] = True
+            r["x_norm"] = round(x_norm, 4)
+            r["y_norm"] = round(y_norm, 4)
+            r["zone"] = coords_to_zone(x_norm, y_norm)
 
     def _predict_frames_cpu(self, frames: list[np.ndarray]) -> list[dict]:
         """非 GPU バックエンド用フォールバック (元の実装)。"""
