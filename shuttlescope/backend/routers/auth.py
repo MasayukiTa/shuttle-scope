@@ -238,15 +238,26 @@ def _get_ip(request: Request) -> Optional[str]:
 # ── アカウントロックアウト ────────────────────────────────────────────────────
 
 def _check_lockout(user: User) -> None:
-    """ロック中ならHTTPException(429)を送出。
+    """ロック中なら HTTPException を送出。
+
+    Round 280 fix: ロック中の応答が 429 + 「アカウントがロックされています」
+    本文だったため、非存在ユーザ (常時 401 "login failed") との挙動差で
+    任意 username に対し「3 回 wrong pw → 応答が変わるか」で実在判定が
+    成立していた (username enumeration oracle)。
+
+    対策: 公開 login 経路では lockout を **401 "login failed"** に偽装し、
+    non-existent / wrong-pw / locked の 3 状態を外部から不可分にする。
+    本来のロック残時間は admin 専用 endpoint (auth-users 等) からのみ可視。
+
     ロック期間が経過していたら failed_attempts を 0 に戻し、解除直後の 1 回失敗で
     再ロックされる挙動を防ぐ (新規 _MAX_FAILED_ATTEMPTS=3 回まで失敗を許容する)。
     """
     if user.locked_until and user.locked_until > datetime.utcnow():
-        remaining = max(1, int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1)
+        # 旧: 429 + 残時間明示 → 列挙オラクル
+        # 新: 401 + 汎用 "login failed" (非存在 user と同 body / 同 status)
         raise HTTPException(
-            status_code=429,
-            detail=f"アカウントがロックされています。約{remaining}分後に再試行してください。",
+            status_code=401,
+            detail="login failed",
         )
     # round155 fix: 元実装は `locked_until is None` でもリセットしてしまい
     # 通常の連続失敗時に failed_attempts が永遠に 0 に戻り続けて lockout が
@@ -326,10 +337,12 @@ def _on_login_failure(user: User, db: Session, ip: Optional[str], reason: str) -
     if user.failed_attempts >= _MAX_FAILED_ATTEMPTS:
         log_access(db, "account_locked", user_id=user.id, ip_addr=ip,
                    details={"reason": reason, "attempts": user.failed_attempts})
-        raise HTTPException(
-            status_code=429,
-            detail=f"ログイン失敗が{_MAX_FAILED_ATTEMPTS}回に達しました。{_LOCKOUT_MINUTES}分間ロックされます。",
-        )
+        # Round 280 fix: ロック確定時の 429 + 「N 回に達しました」本文は
+        # 「存在ユーザが MAX 回連続失敗した」事実を外部に露呈する
+        # enumeration oracle。非存在 user 経路と同じ 401 "login failed"
+        # に偽装する。account_locked event は内部 audit log に残るので
+        # 運用側は引き続き把握可能。
+        raise HTTPException(status_code=401, detail="login failed")
     log_access(db, "login_failed", user_id=user.id, ip_addr=ip, details={"reason": reason})
     raise HTTPException(status_code=401, detail="login failed")
 
