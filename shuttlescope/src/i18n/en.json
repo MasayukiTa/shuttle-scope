@@ -2222,6 +2222,7 @@
   "player_tracking": {
     "bbox_cycle_title": "Click to cycle roles",
     "detect_error_pill": "Detection error (closes in 3s)",
+    "copy_error": "Copy full error to clipboard",
     "no_person_detected": "No person detected (auto-closes in 3s)",
     "lost_suffix": "(lost)"
   },
@@ -3494,7 +3495,10 @@
       "local_only_sync": "⚠ Local only → sync",
       "db_saving": "💾 Saving to DB...",
       "db_save_done": "✓ Saved to DB",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "copy": "Copy",
+      "copy_error": "Copy error",
+      "dismiss": "Dismiss"
     },
     "StreamingDownloadPanel": {
       "k1": "Stream URL",
