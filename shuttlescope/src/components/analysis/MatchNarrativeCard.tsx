@@ -4,10 +4,10 @@
  * 勝敗判定・最有力スコア・決め手・ぐだりやすい局面・試合前の既知情報を
  * 1 枚のカードで表示する。PredictionPanel の冒頭に置く。
  */
-import { Swords, Target, AlertTriangle, Info } from 'lucide-react'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 export interface MatchNarrative {
   verdict: string          // "勝利有力" | "やや優勢" | "五分五分" | "やや不利" | "苦戦が予想"
@@ -60,7 +60,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
         }}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <Swords size={15} style={{ color: verdictColor, flexShrink: 0 }} />
+          <MIcon name="swords" size={15} style={{ color: verdictColor, flexShrink: 0 }} />
           <div className="min-w-0">
             <p className="text-xs font-medium" style={{ color: subText }}>
               {t('auto.MatchNarrativeCard.prematch_pred')}
@@ -86,7 +86,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
 
         {/* 決め手 */}
         <div className="px-4 py-3 flex gap-2.5">
-          <Target size={13} style={{ color: verdictColor, flexShrink: 0, marginTop: 2 }} />
+          <MIcon name="crisis_alert" size={13} style={{ color: verdictColor, flexShrink: 0, marginTop: 2 }} />
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: subText }}>
               {t('auto.MatchNarrativeCard.deciding')}
@@ -99,7 +99,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
 
         {/* ぐだりやすい局面 */}
         <div className="px-4 py-3 flex gap-2.5">
-          <AlertTriangle size={13} style={{ color: '#d97706', flexShrink: 0, marginTop: 2 }} />
+          <MIcon name="warning" size={13} style={{ color: '#d97706', flexShrink: 0, marginTop: 2 }} />
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: subText }}>
               {t('auto.MatchNarrativeCard.risk_zones')}
@@ -119,7 +119,7 @@ export function MatchNarrativeCard({ narrative, playerName, opponentName }: Prop
           className="px-4 py-2.5 flex gap-2.5"
           style={{ background: sectionBg }}
         >
-          <Info size={12} style={{ color: subText, flexShrink: 0, marginTop: 2 }} />
+          <MIcon name="info" size={12} style={{ color: subText, flexShrink: 0, marginTop: 2 }} />
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: subText }}>
               {t('auto.MatchNarrativeCard.knowns')}

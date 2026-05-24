@@ -9,6 +9,7 @@
 import { useEffect } from 'react'
 import { clsx } from 'clsx'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 export interface NoticeState {
   kind: 'error' | 'info' | 'warn'
@@ -65,7 +66,7 @@ export function NoticeBanner({ notice, onDismiss }: NoticeBannerProps) {
     >
       <div className={clsx('flex items-start gap-3 px-4 py-3 rounded-lg border shadow-2xl', palette)}>
         <span className="shrink-0 text-base leading-none">
-          {notice.kind === 'error' ? '⚠' : notice.kind === 'warn' ? '!' : 'ⓘ'}
+          <MIcon name={notice.kind === 'error' ? 'error' : notice.kind === 'warn' ? 'warning' : 'info'} size={18} />
         </span>
         <div className="flex-1 text-sm whitespace-pre-line break-words min-w-0">
           {notice.message}

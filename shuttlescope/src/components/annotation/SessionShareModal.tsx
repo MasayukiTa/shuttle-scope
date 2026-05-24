@@ -3,10 +3,10 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { X, Copy, Check, Eye, EyeOff, RefreshCw, Camera, Monitor } from 'lucide-react'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
 import { apiPost } from '@/api/client'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   sessionCode: string
@@ -148,7 +148,7 @@ export function SessionShareModal({
             </p>
           </div>
           <button onClick={onClose} className={`${subColor} hover:${titleColor}`}>
-            <X size={16} />
+            <MIcon name="close" size={16} />
           </button>
         </div>
 
@@ -170,7 +170,7 @@ export function SessionShareModal({
               onClick={() => handleCopy(coachUrl, setCopied)}
               className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
             >
-              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
               {copied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
             </button>
           </div>
@@ -206,7 +206,7 @@ export function SessionShareModal({
                   onClick={() => setShowPassword((v) => !v)}
                   className={`${subColor} hover:${titleColor}`}
                 >
-                  {showPassword ? <EyeOff size={12} /> : <Eye size={12} />}
+                  {showPassword ? <MIcon name="visibility_off" size={12} /> : <MIcon name="visibility" size={12} />}
                 </button>
               )}
             </div>
@@ -215,7 +215,7 @@ export function SessionShareModal({
                 onClick={() => handleCopy(sessionPassword, setPasswordCopied)}
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
               >
-                {passwordCopied ? <Check size={12} /> : <Copy size={12} />}
+                {passwordCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
                 {passwordCopied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
               </button>
             )}
@@ -224,7 +224,7 @@ export function SessionShareModal({
               disabled={regenerating}
               className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-amber-600 hover:bg-amber-500 text-white whitespace-nowrap disabled:opacity-50"
             >
-              <RefreshCw size={12} className={regenerating ? 'animate-spin' : ''} />
+              <MIcon name="refresh" size={12} className={regenerating ? 'animate-spin' : ''} />
               {t('lan_session.password_regenerate')}
             </button>
           </div>
@@ -237,7 +237,7 @@ export function SessionShareModal({
         {cameraUrl && (
           <div className={`border-t pt-4 ${dividerColor}`}>
             <div className="flex items-center gap-1.5 mb-2">
-              <Camera size={12} className={subColor} />
+              <MIcon name="photo_camera" size={12} className={subColor} />
               <p className={`text-xs ${sectionTitle}`}>{t('lan_session.camera_sender_url_label')}</p>
             </div>
             <div className="flex justify-center mb-3 bg-slate-100 rounded-lg p-2">
@@ -251,7 +251,7 @@ export function SessionShareModal({
                 onClick={() => handleCopy(cameraUrlWithPwd || cameraUrl, setCameraUrlCopied)}
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
               >
-                {cameraUrlCopied ? <Check size={12} /> : <Copy size={12} />}
+                {cameraUrlCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
                 {cameraUrlCopied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
               </button>
             </div>
@@ -265,7 +265,7 @@ export function SessionShareModal({
         {viewerUrl && (
           <div className={`border-t pt-4 mt-4 ${dividerColor}`}>
             <div className="flex items-center gap-1.5 mb-2">
-              <Monitor size={12} className={subColor} />
+              <MIcon name="monitor" size={12} className={subColor} />
               <p className={`text-xs ${sectionTitle}`}>{t('sharing.viewer_url_label')}</p>
             </div>
             <div className="flex justify-center mb-3 bg-slate-100 rounded-lg p-2">
@@ -279,7 +279,7 @@ export function SessionShareModal({
                 onClick={() => handleCopy(viewerUrlWithPwd || viewerUrl, setViewerUrlCopied)}
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white whitespace-nowrap"
               >
-                {viewerUrlCopied ? <Check size={12} /> : <Copy size={12} />}
+                {viewerUrlCopied ? <MIcon name="check" size={12} /> : <MIcon name="content_copy" size={12} />}
                 {viewerUrlCopied ? t('lan_session.share_modal_copied') : t('lan_session.password_copy')}
               </button>
             </div>

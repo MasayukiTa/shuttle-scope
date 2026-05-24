@@ -234,7 +234,7 @@ export default function OnboardingConsentPage({
           {/* 必須 checkbox 各々に inline で「文書を読む」ボタンを並置。
              - service_delivery: Privacy + Terms 両方の読了で enable
              - beta_agreement: Terms の読了で enable (= §14 を参照)
-             各 docs ボタンは「未読/読了」を色 + ✓ で表示。 */}
+             各 docs ボタンは「未読/読了」を色 + check で表示。 */}
 
           <ConsentCheckbox
             checked={given.service_delivery}
@@ -506,7 +506,7 @@ export default function OnboardingConsentPage({
                 onClick={() => setOtherDocsOpen(false)}
                 className="text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
               >
-                ✕
+                <MIcon name="close" size={14} />
               </button>
             </div>
             <div className="p-3 space-y-2">
@@ -823,7 +823,7 @@ function DocModal({
               onClick={onClose}
               className="text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
             >
-              ✕
+              <MIcon name="close" size={14} />
             </button>
           </div>
         </div>

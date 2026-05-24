@@ -22,9 +22,9 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X, Download, AlertCircle, Cookie, ChevronDown, Scissors } from 'lucide-react'
 import { apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
+import { MIcon } from '@/components/common/MIcon'
 
 // ── ヘルパ ───────────────────────────────────────────────────────────────────
 
@@ -266,7 +266,7 @@ export function DownloadOptionsModal({
         {/* ヘッダー */}
         <div className={`flex items-center justify-between px-5 py-3 ${headerBg}`}>
           <div className="flex items-center gap-2 min-w-0">
-            <Download size={18} className="text-blue-400 shrink-0" />
+            <MIcon name="download" size={18} className="text-blue-400 shrink-0" />
             <div className="min-w-0">
               <h2 id="download-modal-title" className="text-base font-semibold truncate">
                 {t('video.dl.title', 'Download video')}
@@ -277,7 +277,7 @@ export function DownloadOptionsModal({
             </div>
           </div>
           <button onClick={onClose} aria-label={t('common.close', 'Close')} className={muteColor + ' hover:opacity-80'}>
-            <X size={18} />
+            <MIcon name="close" size={18} />
           </button>
         </div>
 
@@ -317,7 +317,7 @@ export function DownloadOptionsModal({
           {tab === 'manual' && (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
-                <Scissors size={14} className={muteColor} />
+                <MIcon name="content_cut" size={14} className={muteColor} />
                 <span className={`text-sm ${labelColor}`}>{t('video.dl.range_label', 'Clip range (HH:MM:SS / MM:SS / sec)')}</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -390,7 +390,7 @@ export function DownloadOptionsModal({
           {/* 共通: cookie_browser (Electron loopback のみ) */}
           {isElectronLocal && (
             <div className="flex items-center gap-2">
-              <Cookie size={14} className={muteColor} />
+              <MIcon name="cookie" size={14} className={muteColor} />
               <label className={`text-sm ${labelColor}`}>{t('video.dl.cookie_browser', 'Cookie browser')}</label>
               <select
                 value={cookieBrowser}
@@ -413,11 +413,11 @@ export function DownloadOptionsModal({
             className={`text-xs flex items-center gap-1 self-start ${muteColor}`}
             aria-expanded={authPanelOpen}
           >
-            <ChevronDown size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
+            <MIcon name="expand_more" size={12} className={authPanelOpen ? 'rotate-0' : '-rotate-90'} />
             {t('video.dl.auth_panel', 'Member-only sites · password-protected video')}
             {(cookiesFileName || videoPassword) && (
-              <span className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
-                ✓ {t('video.dl.configured', 'Configured')}
+              <span className={`text-[10px] inline-flex items-center gap-0.5 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                <MIcon name="check" size={10} />{t('video.dl.configured', 'Configured')}
               </span>
             )}
           </button>
@@ -439,17 +439,18 @@ export function DownloadOptionsModal({
                       onClick={() => handleCookiesFile(null)}
                       className={`text-[10px] px-2 py-1 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'}`}
                     >
-                      ✕
+                      <MIcon name="close" size={10} />
                     </button>
                   )}
                 </div>
                 {cookiesFileName && !cookiesError && (
-                  <div className={`text-[10px] ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
-                    {t('video.dl.cookies_ok', { name: cookiesFileName, kb: Math.round(cookiesTxt.length / 1024), defaultValue: '✓ {{name}} ({{kb}} KB)' })}
+                  <div className={`text-[10px] inline-flex items-center gap-0.5 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                    <MIcon name="check" size={10} />
+                    {t('video.dl.cookies_ok', { name: cookiesFileName, kb: Math.round(cookiesTxt.length / 1024), defaultValue: '{{name}} ({{kb}} KB)' })}
                   </div>
                 )}
                 {cookiesError && (
-                  <div className="text-[10px] text-red-500">⚠ {cookiesError}</div>
+                  <div className="text-[10px] text-red-500 inline-flex items-center gap-0.5"><MIcon name="warning" size={10} />{cookiesError}</div>
                 )}
               </div>
 
@@ -481,7 +482,7 @@ export function DownloadOptionsModal({
           {/* エラー */}
           {submitError && (
             <div className="flex items-start gap-1.5 text-xs text-red-500">
-              <AlertCircle size={12} className="shrink-0 mt-0.5" />
+              <MIcon name="error" size={12} className="shrink-0 mt-0.5" />
               <span className="break-words">{submitError}</span>
             </div>
           )}
@@ -502,7 +503,7 @@ export function DownloadOptionsModal({
             disabled={submitting || !!rangeError || (tab === 'manual' && (startSec === null && endSec === null))}
             className="text-sm px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium flex items-center gap-1.5"
           >
-            <Download size={14} />
+            <MIcon name="download" size={14} />
             {submitting ? t('video.dl.starting', 'Starting...') : tab === 'manual' ? t('video.dl.download_range', 'Download range') : t('video.dl.download', 'Download')}
           </button>
         </div>

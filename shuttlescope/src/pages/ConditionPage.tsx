@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Heart, User, Trash2, FileDown } from 'lucide-react'
 import { apiGet, apiPost, apiDelete, API_BASE_URL } from '@/api/client'
 import { Player } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -38,6 +37,7 @@ import {
   ConditionPayload,
   ConditionResult as ConditionResultType,
 } from '@/hooks/useConditions'
+import { MIcon } from '@/components/common/MIcon'
 
 // Phase 2: 体調タブ
 // 入力サブタブ内 3 モード: 質問票(週次) / 試合前チェック / 身体データ
@@ -255,7 +255,7 @@ export function ConditionPage() {
       {/* ヘッダー */}
       <div className={`px-6 pt-6 pb-4 border-b ${borderColor} shrink-0`}>
         <div className="flex items-center gap-3 mb-4">
-          <Heart className="text-pink-500" size={20} />
+          <MIcon name="favorite" className="text-pink-500" size={20} />
           <h1 className="text-xl font-semibold">{t('condition.title')}</h1>
           <button
             type="button"
@@ -291,7 +291,7 @@ export function ConditionPage() {
               </div>
             )}
             <div className="flex items-center gap-2 shrink-0">
-              <User size={16} className={`${textMuted} shrink-0`} />
+              <MIcon name="person" size={16} className={`${textMuted} shrink-0`} />
               <label className={`text-sm ${textMuted}`}>
                 {t('auto.ConditionPage.k4')}
               </label>
@@ -301,7 +301,8 @@ export function ConditionPage() {
                 value: p.id,
                 label: p.name,
                 searchText: p.team ?? '',
-                prefix: p.is_target ? '★' : undefined,
+                prefix: p.is_target ? 'star' : undefined,
+                prefixIsIcon: !!p.is_target,
                 suffix: p.team ? `（${p.team}）` : undefined,
               }))}
               value={selectedPlayerId}
@@ -317,7 +318,7 @@ export function ConditionPage() {
       {/* ダウンロードボタン */}
       {effectivePlayerId && (
         <div className={`px-6 py-2 flex items-center justify-end gap-1.5 border-b ${borderColor}`}>
-          <FileDown size={13} className={textMuted} />
+          <MIcon name="file_download" size={13} className={textMuted} />
           <button
             onClick={() => dlReport(`/api/reports/condition_pdf?player_id=${effectivePlayerId}`, `condition_${effectivePlayerId}.pdf`)}
             className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}
@@ -735,7 +736,7 @@ function HistoryView({ list, isLight, canDelete, onSelect }: HistoryViewProps) {
                     disabled={deletingId === r.id}
                     className="flex items-center gap-1 text-[11px] text-red-500 hover:text-red-400 disabled:opacity-50"
                   >
-                    <Trash2 size={12} />
+                    <MIcon name="delete" size={12} />
                     {t('condition.history.delete')}
                   </button>
                 </div>

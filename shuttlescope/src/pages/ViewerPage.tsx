@@ -14,10 +14,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
-import { Eye, WifiOff, Loader2, CheckCircle2, XCircle, Video } from 'lucide-react'
 import { apiPost, apiGet } from '@/api/client'
 import { useDeviceHeartbeat } from '@/hooks/useDeviceHeartbeat'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 type ViewerState = 'join' | 'connecting' | 'waiting' | 'receiving' | 'error'
 
@@ -238,7 +238,7 @@ export function ViewerPage() {
       {/* ロゴ */}
       <div className="mb-4 text-center">
         <div className="inline-flex items-center gap-2 text-blue-400 mb-1">
-          <Eye size={24} />
+          <MIcon name="visibility" size={24} />
           <span className="text-lg font-bold">{t('app.name')}</span>
         </div>
         <p className="text-gray-400 text-sm">{t('auto.ViewerPage.k1')}</p>
@@ -281,7 +281,7 @@ export function ViewerPage() {
             </div>
             {errorMsg && (
               <div className="flex items-center gap-1.5 text-red-400 text-xs">
-                <XCircle size={14} />
+                <MIcon name="cancel" size={14} />
                 {errorMsg}
               </div>
             )}
@@ -299,7 +299,7 @@ export function ViewerPage() {
       {/* ─── State: connecting ── */}
       {viewerState === 'connecting' && paramCode && (
         <div className="text-center">
-          <Loader2 size={40} className="animate-spin text-blue-400 mx-auto mb-3" />
+          <MIcon name="progress_activity" size={40} className="animate-spin text-blue-400 mx-auto mb-3" />
           <p className="text-gray-300 text-sm">
             {reconnectCount > 0
               ? `再接続中... (${reconnectCount}/${MAX_RECONNECT})`
@@ -312,14 +312,14 @@ export function ViewerPage() {
       {viewerState === 'waiting' && (
         <div className="w-full max-w-sm bg-gray-800 rounded-xl p-8 text-center shadow-2xl">
           <div className="w-16 h-16 rounded-full bg-blue-900/50 flex items-center justify-center mx-auto mb-4">
-            <Eye size={28} className="text-blue-400" />
+            <MIcon name="visibility" size={28} className="text-blue-400" />
           </div>
           <p className="text-lg font-semibold mb-2">{t('auto.ViewerPage.k6')}</p>
           <p className="text-gray-400 text-sm leading-relaxed">
             {t('auto.ViewerPage.k10')}
           </p>
           <div className="mt-4 flex items-center justify-center gap-1.5 text-green-400 text-xs">
-            <CheckCircle2 size={14} />
+            <MIcon name="check_circle" size={14} />
             {t('auto.ViewerPage.k11')}
             {reconnectCount > 0 && (
               <span className="text-gray-500 ml-1">{t('auto.ViewerPage.k12', { n: reconnectCount })}</span>
@@ -347,7 +347,7 @@ export function ViewerPage() {
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
-            <Video size={12} />
+            <MIcon name="videocam" size={12} />
             <span>{t('auto.ViewerPage.k7')}</span>
             {activeSessionCode && (
               <span className="font-mono text-gray-500">#{activeSessionCode}</span>
@@ -360,7 +360,7 @@ export function ViewerPage() {
       {viewerState === 'error' && (
         <div className="w-full max-w-sm text-center">
           <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-red-500/40">
-            <WifiOff size={36} className="text-red-400 mx-auto mb-3" />
+            <MIcon name="wifi_off" size={36} className="text-red-400 mx-auto mb-3" />
             <p className="text-sm text-gray-300 mb-4">{errorMsg || '接続に失敗しました。'}</p>
             <div className="flex gap-2 justify-center">
               <button

@@ -12,7 +12,6 @@ import { AdviceStrip } from '@/components/common/AdviceStrip'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
-import { User, TrendingUp, Swords, FileDown } from 'lucide-react'
 import { apiGet, API_BASE_URL } from '@/api/client'
 import { PredictionPanel } from '@/components/analysis/PredictionPanel'
 import { PairSimulationPanel } from '@/components/analysis/PairSimulationPanel'
@@ -24,6 +23,7 @@ import { useCardTheme } from '@/hooks/useCardTheme'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { _RoleGuard } from '@/components/common/RoleGuard'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { MIcon } from '@/components/common/MIcon'
 
 interface PlayerSummary {
   id: number
@@ -125,7 +125,7 @@ export function PredictionPage() {
         <div className={`px-6 pt-6 pb-4 shrink-0 ${headerBg}`}>
           {/* タイトル行 */}
           <div className="flex items-center gap-3 mb-4">
-            <TrendingUp className="text-blue-400" size={20} />
+            <MIcon name="trending_up" className="text-blue-400" size={20} />
             <h1 className={`text-xl font-semibold ${textHeading}`}>{t('nav.prediction_title')}</h1>
             {role && (
               <span
@@ -140,14 +140,15 @@ export function PredictionPage() {
 
           {/* 選手セレクター行 */}
           <div className="flex items-center gap-3">
-            <User size={16} className={`${textMuted} shrink-0`} />
+            <MIcon name="person" size={16} className={`${textMuted} shrink-0`} />
             <label className={`text-sm ${textSecondary} shrink-0`}>{t('auto.PredictionPage.k1')}</label>
             <SearchableSelect
               options={sortedPlayers.map((p) => ({
                 value: p.id,
                 label: p.name,
                 searchText: p.team ?? '',
-                prefix: p.is_target ? '★' : undefined,
+                prefix: p.is_target ? 'star' : undefined,
+                prefixIsIcon: !!p.is_target,
                 suffix: `${p.team ? `（${p.team}）` : ''} [${p.match_count ?? 0}試合]`,
               }))}
               value={selectedPlayerId}
@@ -174,7 +175,7 @@ export function PredictionPage() {
           {selectedPlayerId && subTab === 'preview' && (
             <div className="flex items-center gap-4 mt-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <Swords size={15} className={`${textMuted} shrink-0`} />
+                <MIcon name="swords" size={15} className={`${textMuted} shrink-0`} />
                 <label className={`text-sm ${textSecondary} shrink-0`}>{t('auto.PredictionPage.k2')}</label>
                 <SearchableSelect
                   options={sortedPlayers
@@ -248,7 +249,7 @@ export function PredictionPage() {
         {/* ダウンロードボタン */}
         {selectedPlayerId && (
           <div className={`flex items-center justify-end gap-1.5 px-6 py-2 border-b shrink-0 ${isLight ? 'border-gray-200 bg-white' : 'border-gray-800 bg-gray-900'}`}>
-            <FileDown size={13} className={textMuted} />
+            <MIcon name="file_download" size={13} className={textMuted} />
             <button
               onClick={() => dlReport(`/api/reports/prediction_pdf?player_id=${selectedPlayerId}`, `prediction_${selectedPlayerId}.pdf`)}
               className={`text-xs px-2.5 py-1 rounded border transition-colors ${isLight ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'border-gray-600 text-gray-300 hover:bg-gray-700'}`}

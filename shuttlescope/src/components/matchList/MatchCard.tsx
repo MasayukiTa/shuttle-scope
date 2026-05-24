@@ -1,11 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
-import { Play, Download, Trash2, Pencil, AlertCircle, TrendingUp } from 'lucide-react'
 import { Match } from '@/types'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { PipelineJobBadge } from '@/components/analysis/PipelineJobBadge'
 import { statusColor, DownloadStatus } from './matchListUtils'
+import { MIcon } from '@/components/common/MIcon'
 
 // MatchListPage のモバイル用カード 1 件分。純粋抽出 (behavior 不変)。
 // theme / navigate / t は内部で解決し、ページ固有の操作だけ callback で受ける。
@@ -88,7 +88,7 @@ export function MatchCard({
           onClick={() => navigate(`/annotator/${m.id}`)}
           className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium shrink-0"
         >
-          <Play size={12} />
+          <MIcon name="play_arrow" size={12} />
           {t('match.list.open', 'Open')}
         </button>
         {m.player_a_id && (
@@ -97,7 +97,7 @@ export function MatchCard({
             className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-400 hover:bg-gray-700'}`}
             title={t('auto.MatchListPage.k5')}
           >
-            <TrendingUp size={16} />
+            <MIcon name="trending_up" size={16} />
           </button>
         )}
         {/* 動画 DL バッジ: 進行中なら percent + eta、error なら赤バッジ + 再試行 */}
@@ -110,7 +110,7 @@ export function MatchCard({
             }`}
             title={`DL 失敗: ${dl.error ?? ''}\nクリックで再試行 (オプション選択あり)`}
           >
-            <AlertCircle size={12} />
+            <MIcon name="error" size={12} />
             {t('match.list.dl_failed_retry', 'Failed · Retry')}
           </button>
         )}
@@ -121,7 +121,7 @@ export function MatchCard({
             }`}
             title={`DL中 ${dl.percent ?? ''} (残り ${dl.eta ?? '?'})`}
           >
-            <Download size={12} className="animate-pulse" />
+            <MIcon name="download" size={12} className="animate-pulse" />
             {dl.percent ?? 'DL中'}
           </span>
         )}
@@ -131,7 +131,7 @@ export function MatchCard({
             className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
             title={t('auto.MatchListPage.k6')}
           >
-            <Download size={16} />
+            <MIcon name="download" size={16} />
           </button>
         )}
         <a
@@ -140,14 +140,14 @@ export function MatchCard({
           title={t('auto.MatchListPage.k7')}
           className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-green-600 hover:bg-green-50' : 'text-gray-400 hover:text-green-400 hover:bg-gray-700'}`}
         >
-          <Download size={16} />
+          <MIcon name="download" size={16} />
         </a>
         <button
           onClick={() => onEdit(m)}
           className={`p-1 rounded ${isLight ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}
           title={t('auto.MatchListPage.k8')}
         >
-          <Pencil size={16} />
+          <MIcon name="edit" size={16} />
         </button>
         {deleteConfirmId === m.id ? (
           <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border border-white text-[10px] ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
@@ -168,7 +168,7 @@ export function MatchCard({
             className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-900/20"
             title={t('auto.MatchListPage.k9')}
           >
-            <Trash2 size={16} />
+            <MIcon name="delete" size={16} />
           </button>
         )}
       </div>

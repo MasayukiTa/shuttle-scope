@@ -19,11 +19,11 @@
  *     対象サイトが標準HTML5 VideoElementを使用している必要がある
  */
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { Globe, ArrowLeft, ArrowRight, RotateCcw, ExternalLink, AlertCircle, MonitorPlay, Circle, Square } from 'lucide-react'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
 import { apiPost, apiGet } from '@/api/client'
 import { errorMessage } from '@/utils/errors'
+import { MIcon } from '@/components/common/MIcon'
 
 // Electron webview tag に対する最小限の型
 interface WebViewElement extends HTMLElement {
@@ -354,7 +354,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
           className={`p-1 rounded disabled:cursor-not-allowed ${btnHover}`}
           title={t('auto.WebViewPlayer.k2')}
         >
-          <ArrowLeft size={14} />
+          <MIcon name="arrow_back" size={14} />
         </button>
         <button
           onClick={handleForward}
@@ -362,19 +362,19 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
           className={`p-1 rounded disabled:cursor-not-allowed ${btnHover}`}
           title={t('auto.WebViewPlayer.k3')}
         >
-          <ArrowRight size={14} />
+          <MIcon name="arrow_forward" size={14} />
         </button>
         <button
           onClick={handleReload}
           className={`p-1 rounded ${btnHover}`}
           title={t('auto.WebViewPlayer.k4')}
         >
-          <RotateCcw size={14} className={isLoading ? 'animate-spin' : ''} />
+          <MIcon name="restart_alt" size={14} className={isLoading ? 'animate-spin' : ''} />
         </button>
 
         {/* URL 入力バー */}
         <div className={`flex-1 flex items-center gap-1 rounded px-2 py-0.5 min-w-0 ${urlInputBg}`}>
-          <Globe size={11} className={`shrink-0 ${titleText}`} />
+          <MIcon name="public" size={11} className={`shrink-0 ${titleText}`} />
           <input
             type="text"
             value={inputUrl}
@@ -415,14 +415,14 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
               }`}
               title={t('auto.WebViewPlayer.k10')}
             >
-              <Square size={10} className="fill-current" />
+              <MIcon name="crop_square" size={10} className="fill-current" />
               <span className="num-cell">{formatElapsed(recordElapsedMs)}</span>
             </button>
           ) : recordState === 'stopping' || recordState === 'processing' ? (
             <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${
               isLight ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/40 text-yellow-300'
             }`}>
-              <RotateCcw size={10} className="animate-spin" />
+              <MIcon name="restart_alt" size={10} className="animate-spin" />
               {recordState === 'stopping' ? '停止中…' : '保存中…'}
             </span>
           ) : recordState === 'complete' ? (
@@ -439,7 +439,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
               }`}
               title={t('auto.WebViewPlayer.k11')}
             >
-              <Circle size={10} className="fill-current" />
+              <MIcon name="circle" size={10} className="fill-current" />
               {t('auto.WebViewPlayer.record')}
             </button>
           )
@@ -451,14 +451,14 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
           className={`p-1 rounded ${btnHover}`}
           title={t('auto.WebViewPlayer.k5')}
         >
-          <ExternalLink size={14} />
+          <MIcon name="open_in_new" size={14} />
         </button>
       </div>
 
       {/* 録画エラー表示 */}
       {recordState === 'error' && recordError && (
         <div className={`flex items-start gap-2 px-3 py-1.5 shrink-0 text-xs ${errorBanner}`}>
-          <AlertCircle size={12} className="shrink-0 mt-0.5" />
+          <MIcon name="error" size={12} className="shrink-0 mt-0.5" />
           <span className="flex-1 break-words">{t('auto.WebViewPlayer.record_error', { err: recordError })}</span>
           <button
             onClick={() => { setRecordState('idle'); setRecordError(''); setRecordJobId(null) }}
@@ -476,7 +476,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
             ? 'bg-orange-50 border-b border-orange-200 text-orange-800'
             : 'bg-orange-900/20 border-b border-orange-700/40 text-orange-300'
         }`}>
-          <AlertCircle size={12} className="shrink-0 mt-0.5" />
+          <MIcon name="error" size={12} className="shrink-0 mt-0.5" />
           <span className="flex-1 break-words">{recordWarning}</span>
           <button
             onClick={() => setRecordWarning('')}
@@ -490,7 +490,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
 
       {/* ── ページタイトル（サービス名 + 読込インジケーター） ── */}
       <div className={`flex items-center gap-1.5 px-2 py-1 shrink-0 ${titleBarBg}`}>
-        <MonitorPlay size={11} className="text-blue-400 shrink-0" />
+        <MIcon name="smart_display" size={11} className="text-blue-400 shrink-0" />
         <span className={`text-[10px] truncate flex-1 ${titleText}`}>{pageTitle}</span>
         {isLoading && (
           <span className="text-[10px] text-blue-400 shrink-0 animate-pulse">{t('auto.WebViewPlayer.k1')}</span>
@@ -500,7 +500,7 @@ export function WebViewPlayer({ url, siteName, matchId, onRecordingComplete }: W
       {/* ── エラー表示 ── */}
       {loadError && (
         <div className={`flex items-start gap-2 px-3 py-2 shrink-0 ${errorBanner}`}>
-          <AlertCircle size={13} className="shrink-0 mt-0.5" />
+          <MIcon name="error" size={13} className="shrink-0 mt-0.5" />
           <span className="text-xs">{loadError}</span>
         </div>
       )}

@@ -13,11 +13,11 @@
  *   - フロント側で文章生成・色判定の追加処理はしない
  */
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Info, CheckCircle2, RefreshCw } from 'lucide-react'
 import { getQuickSummary, SummaryCard } from '@/api/review'
 import { B_BAD, N_GRAY, A_GOOD } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Tokens {
   bgPanel: string
@@ -61,16 +61,16 @@ function useTokens(): Tokens {
  * - good  : A_GOOD の **左罫線**、ただし常に出さない (12.3 G2 ゲートを通った時のみ)
  * - info  : 色なし (アイコンのみで識別)
  */
-const LEVEL_META: Record<string, { Icon: typeof AlertTriangle; iconColor?: string; accent?: string }> = {
-  warn: { Icon: AlertTriangle, accent: B_BAD },
-  info: { Icon: Info },
-  good: { Icon: CheckCircle2, accent: A_GOOD },
+const LEVEL_META: Record<string, { iconName: string; iconColor?: string; accent?: string }> = {
+  warn: { iconName: 'warning', accent: B_BAD },
+  info: { iconName: 'info' },
+  good: { iconName: 'check_circle', accent: A_GOOD },
 }
 
 function CardItem({ card, tokens }: { card: SummaryCard; tokens: Tokens }) {
 
   const meta = LEVEL_META[card.level] ?? LEVEL_META.info
-  const Icon = meta.Icon
+  const iconName = meta.iconName
   // Design Language v1.2 (改訂):
   //   - **左罫線縦バー方式は禁止** (詐欺サイト感が出るため)。
   //   - 色を出す権利は accent があるレベルのみ、表現は:
@@ -82,7 +82,8 @@ function CardItem({ card, tokens }: { card: SummaryCard; tokens: Tokens }) {
       className="flex items-start gap-2.5 rounded px-3 py-2.5"
       style={{ backgroundColor: tokens.bgRow }}
     >
-      <Icon
+      <MIcon
+        name={iconName}
         size={15}
         className="shrink-0 mt-0.5"
         style={{ color: meta.accent ?? tokens.textMuted }}
@@ -150,11 +151,11 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
           {/* 警告件数バッジ: 件数だけ示す、色は B_BAD 文字のみ (背景なし) */}
           {warnCount > 0 && (
             <span
-              className="text-[10px] font-semibold tabular-nums"
+              className="text-[10px] font-semibold tabular-nums inline-flex items-center gap-0.5"
               style={{ color: B_BAD }}
               title={t('auto.QuickSummaryCard.k3')}
             >
-              ⚠ {warnCount}
+              <MIcon name="warning" size={10} />{warnCount}
             </span>
           )}
           {data && (
@@ -170,7 +171,7 @@ export function QuickSummaryCard({ matchId, asOfSet, asOfRally, playerSide = 'pl
           className="p-1 rounded disabled:opacity-40"
           style={{ color: tokens.textMuted }}
         >
-          <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} />
+          <MIcon name="refresh" size={12} className={isFetching ? 'animate-spin' : ''} />
         </button>
       </header>
       <div className="px-3 py-3 space-y-2">

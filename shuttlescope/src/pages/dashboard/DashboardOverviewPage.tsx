@@ -5,13 +5,13 @@ import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
+import { MIcon } from '@/components/common/MIcon'
 import { CourtDiagram } from '@/components/court/CourtDiagram'
 import { ConfidenceBadge } from '@/components/common/ConfidenceBadge'
 import { RoleGuard } from '@/components/common/RoleGuard'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { apiGet } from '@/api/client'
 import { AnalysisFilters } from '@/types'
-import { Maximize2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { BAR, TOOLTIP_STYLE as _CW_TOOLTIP, getTooltipStyle, AXIS_TICK_LIGHT } from '@/styles/colors'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { ScoreProgression, type RallyPoint } from '@/components/analysis/ScoreProgression'
@@ -96,7 +96,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
       title={t('auto.DashboardOverviewPage.k18')}
       className={`shrink-0 ${textMuted} hover:${textHeading} transition-colors p-1 rounded ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
     >
-      <Maximize2 size={13} />
+      <MIcon name="fullscreen" size={13} />
     </button>
   )
   const LoadingRow = () => (
@@ -406,7 +406,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               title={t('auto.DashboardOverviewPage.k19')}
               className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
             >
-              <ChevronLeft size={14} className={textMuted} />
+              <MIcon name="chevron_left" size={14} className={textMuted} />
             </button>
             <SearchableSelect
               options={matchOptions}
@@ -423,7 +423,7 @@ export function DashboardOverviewPage({ playerId, filters, filterApiParams, matc
               title={t('auto.DashboardOverviewPage.k20')}
               className={`p-1 rounded transition-colors disabled:opacity-30 ${isLight ? 'hover:bg-gray-100' : 'hover:bg-gray-700'}`}
             >
-              <ChevronRight size={14} className={textMuted} />
+              <MIcon name="chevron_right" size={14} className={textMuted} />
             </button>
           </div>
         </div>

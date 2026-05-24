@@ -18,6 +18,7 @@ import { clsx } from 'clsx'
 import { apiPost, apiGet } from '@/api/client'
 import { WarmupConfidence, PreMatchObservation } from '@/types'
 import { errorMessage } from '@/utils/errors'
+import { MIcon } from '@/components/common/MIcon'
 
 // 信頼度ボタンスタイル（選択時は常に text-white で視認性を確保）
 const CONFIDENCE_STYLE: Record<WarmupConfidence, string> = {
@@ -323,7 +324,7 @@ export function WarmupNotesPanel({
           className="text-gray-500 hover:text-gray-300 text-lg leading-none px-1"
           title={t('app.close')}
         >
-          ✕
+          <MIcon name="close" size={18} />
         </button>
       </div>
 
@@ -546,7 +547,7 @@ export function WarmupNotesPanel({
               saving && 'opacity-60 cursor-not-allowed',
             )}
           >
-            {saving ? t('warmup.saving') : saved ? `✓ ${t('warmup.saved')}` : t('warmup.save')}
+            {saving ? t('warmup.saving') : saved ? (<span className="inline-flex items-center gap-1"><MIcon name="check" size={12} />{t('warmup.saved')}</span>) : t('warmup.save')}
           </button>
           <button
             onClick={onClose}

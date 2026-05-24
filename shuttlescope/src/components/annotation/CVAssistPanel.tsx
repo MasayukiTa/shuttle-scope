@@ -11,9 +11,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
-import { AlertTriangle, Info, Zap, ChevronDown, ChevronRight } from 'lucide-react'
 import type { RallyCVCandidate, StrokeCVCandidate, CVFieldResult, CVSource } from '@/types/cv'
 import { CVCandidateBadge } from './CVCandidateBadge'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   rallyCandidates: RallyCVCandidate | null
@@ -72,14 +72,14 @@ function CVFieldChip({
       >
         {srcLabel}
       </span>
-      {/* ✓ 承認ボタン (suggested のみ) */}
+      {/* 承認ボタン (suggested のみ) */}
       {field.decision_mode === 'suggested' && onAccept && (
         <button
           onClick={onAccept}
           className="text-[9px] px-1 py-0.5 rounded bg-blue-500/30 hover:bg-blue-500/50 text-blue-200 transition-colors"
           title={acceptTitle ?? t('cv_assist.panel.accept')}
         >
-          ✓
+          <MIcon name="check" size={11} />
         </button>
       )}
     </div>
@@ -184,7 +184,7 @@ function StrokeRow({
             className="text-amber-400/70 hover:text-amber-400 shrink-0 mt-0.5"
             title={t('cv_assist.panel.show_reason_codes')}
           >
-            {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+            {expanded ? <MIcon name="expand_more" size={11} /> : <MIcon name="chevron_right" size={11} />}
           </button>
         )}
       </div>
@@ -220,7 +220,7 @@ export function CVAssistPanel({
   if (!rallyCandidates) {
     return (
       <div className={clsx('text-slate-500 text-xs text-center py-3', className)}>
-        <Info size={14} className="inline mr-1 opacity-50" />
+        <MIcon name="info" size={14} className="inline mr-1 opacity-50" />
         {t('cv_assist.panel.no_candidates_rally')}
       </div>
     )
@@ -248,7 +248,7 @@ export function CVAssistPanel({
       {/* ─ サマリーバー ─ */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1 text-[10px] text-slate-400">
-          <Zap size={11} className="text-emerald-400" />
+          <MIcon name="bolt" size={11} className="text-emerald-400" />
           <span>{t('cv_assist.panel.land_zone')}</span>
           <span className={clsx(
             'font-semibold ml-0.5',
@@ -259,7 +259,7 @@ export function CVAssistPanel({
           </span>
         </div>
         <div className="flex items-center gap-1 text-[10px] text-slate-400">
-          <Zap size={11} className="text-blue-400" />
+          <MIcon name="bolt" size={11} className="text-blue-400" />
           <span>{t('cv_assist.panel.hitter')}</span>
           <span className={clsx(
             'font-semibold ml-0.5',
@@ -305,7 +305,7 @@ export function CVAssistPanel({
       {hasReview && (
         <div className="flex flex-col gap-0.5 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1">
           <div className="flex items-center gap-1 mb-0.5">
-            <AlertTriangle size={10} className="text-amber-400 shrink-0" />
+            <MIcon name="warning" size={10} className="text-amber-400 shrink-0" />
             <span className="text-[9px] text-amber-400 font-semibold">{t('cv_assist.panel.review_title')}</span>
           </div>
           {dataAvailabilityReasons.length > 0 && (

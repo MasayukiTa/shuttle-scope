@@ -5,14 +5,10 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import {
-  Network, Server, Cpu, Zap, Plus, Trash2,
-  RefreshCw, CheckCircle2, XCircle, Loader2, Save, ScanSearch,
-  Play, Square, Copy, Check, Wifi, Power, Moon,
-} from 'lucide-react'
 import { apiGet, apiPost } from '@/api/client'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { MIcon } from '@/components/common/MIcon'
 
 // ────────────────────────────────────────────────────────────────────────────
 // 型定義
@@ -93,7 +89,7 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
     <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${
       ok ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
     }`}>
-      {ok ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
+      {ok ? <MIcon name="check_circle" size={10} /> : <MIcon name="cancel" size={10} />}
       {label}
     </span>
   )
@@ -498,7 +494,7 @@ export function ClusterSettingsPanel() {
   } focus:outline-none focus:ring-1 focus:ring-blue-500`
 
   if (cfgLoading) {
-    return <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-400" /></div>
+    return <div className="flex justify-center py-12"><MIcon name="progress_activity" className="animate-spin text-blue-400" /></div>
   }
 
   const rayRunning = status?.ray.status === 'running'
@@ -539,7 +535,7 @@ export function ClusterSettingsPanel() {
                 disabled={rayStopMutation.isPending}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-red-800 hover:bg-red-700 text-white disabled:opacity-50"
               >
-                {rayStopMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Square size={11} />}
+                {rayStopMutation.isPending ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="crop_square" size={11} />}
                 {t('auto.ClusterSettingsPanel.stop')}
               </button>
             ) : (
@@ -548,12 +544,12 @@ export function ClusterSettingsPanel() {
                 disabled={startHeadLoading || needsIp}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded bg-green-700 hover:bg-green-600 text-white disabled:opacity-40"
               >
-                {startHeadLoading ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                {startHeadLoading ? <MIcon name="progress_activity" size={13} className="animate-spin" /> : <MIcon name="play_arrow" size={13} />}
                 {t('auto.ClusterSettingsPanel.ray_start')}
               </button>
             )}
             <button onClick={() => refetchStatus()} className={`${textMuted} hover:text-white`}>
-              <RefreshCw size={13} />
+              <MIcon name="refresh" size={13} />
             </button>
           </div>
         </div>
@@ -562,7 +558,7 @@ export function ClusterSettingsPanel() {
         {needsIp && (
           <div className="space-y-1.5">
             <p className="text-xs text-yellow-400 flex items-center gap-1">
-              <Wifi size={11} /> {t('auto.ClusterSettingsPanel.select_ip_first')}
+              <MIcon name="wifi" size={11} /> {t('auto.ClusterSettingsPanel.select_ip_first')}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {ifOptions.map(iface => (
@@ -596,7 +592,7 @@ export function ClusterSettingsPanel() {
                   }`} />
                   <span>{w.label || w.ip}</span>
                   {pr === 'loading'
-                    ? <Loader2 size={10} className="animate-spin text-blue-400" />
+                    ? <MIcon name="progress_activity" size={10} className="animate-spin text-blue-400" />
                     : pr
                       ? <span className={pr.reachable ? 'text-green-400' : 'text-gray-500'}>
                           {pr.reachable ? `${pr.via === 'ray' ? 'Ray' : 'ICMP'} ${pr.latency_ms}ms` : 'NG'}
@@ -604,7 +600,7 @@ export function ClusterSettingsPanel() {
                       : null
                   }
                   <button onClick={() => pingWorker(w.ip, i)} className={`${textMuted} hover:text-white`} title={t('auto.ClusterSettingsPanel.k3')}>
-                    <Network size={10} />
+                    <MIcon name="lan" size={10} />
                   </button>
                   <button
                     onClick={() => wakeWorker(w.ip, i)}
@@ -612,7 +608,7 @@ export function ClusterSettingsPanel() {
                     className={`${textMuted} hover:text-yellow-400 disabled:opacity-40`}
                     title="Wake-on-LAN"
                   >
-                    {wakeLoading[i] ? <Loader2 size={10} className="animate-spin" /> : <Power size={10} />}
+                    {wakeLoading[i] ? <MIcon name="progress_activity" size={10} className="animate-spin" /> : <MIcon name="power_settings_new" size={10} />}
                   </button>
                   {wakeMsg[i] && (
                     <span className={`text-[10px] ${wakeMsg[i].startsWith('WOL') ? 'text-yellow-400' : 'text-red-400'}`}>
@@ -661,7 +657,7 @@ export function ClusterSettingsPanel() {
                 onClick={() => copyCmd(`irm http://${cfg.network!.primary_ip}:8765/api/cluster/ray/join-script | iex`, -1)}
                 className={`shrink-0 ${textMuted} hover:text-white`}
               >
-                {copiedIdx === -1 ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+                {copiedIdx === -1 ? <MIcon name="check" size={14} className="text-green-400" /> : <MIcon name="content_copy" size={14} />}
               </button>
             </div>
           </div>
@@ -682,14 +678,14 @@ export function ClusterSettingsPanel() {
                     <span className={`text-[11px] ${textMuted} shrink-0`}>{w.label}</span>
                     <code className="text-[11px] font-mono flex-1 break-all text-green-400">{w.cmd}</code>
                     <button onClick={() => copyCmd(w.cmd, idx)} className={`shrink-0 ${textMuted} hover:text-white`}>
-                      {copiedIdx === idx ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                      {copiedIdx === idx ? <MIcon name="check" size={12} className="text-green-400" /> : <MIcon name="content_copy" size={12} />}
                     </button>
                     <button
                       onClick={() => remoteRayJoin(w.ip, idx)}
                       disabled={remoteJoinLoading[idx]}
                       className="shrink-0 flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-indigo-700 hover:bg-indigo-600 text-white disabled:opacity-50"
                     >
-                      {remoteJoinLoading[idx] ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+                      {remoteJoinLoading[idx] ? <MIcon name="progress_activity" size={10} className="animate-spin" /> : <MIcon name="play_arrow" size={10} />}
                       {t('auto.ClusterSettingsPanel.ssh_exec')}
                     </button>
                   </div>
@@ -716,7 +712,7 @@ export function ClusterSettingsPanel() {
           } transition-colors`}
         >
           <span className="flex items-center gap-2">
-            <Server size={13} />
+            <MIcon name="dns" size={13} />
             {t('auto.ClusterSettingsPanel.advanced_settings')}
           </span>
           <span className={`text-xs ${textMuted} transition-transform ${showAdvanced ? 'rotate-180' : ''}`}>▼</span>
@@ -728,7 +724,7 @@ export function ClusterSettingsPanel() {
       {/* ── 動作モード ──────────────────────────────────────────────────── */}
       <section className={sectionCls}>
         <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
-          <Server size={14} /> {t('cluster.mode_label')}
+          <MIcon name="dns" size={14} /> {t('cluster.mode_label')}
         </h3>
         <div className="flex gap-2">
           {(['single', 'primary', 'worker'] as const).map(m => (
@@ -759,7 +755,7 @@ export function ClusterSettingsPanel() {
       {cfg.mode !== 'single' && (
         <section className={sectionCls}>
           <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
-            <Network size={14} /> {t('cluster.network_section')}
+            <MIcon name="lan" size={14} /> {t('cluster.network_section')}
           </h3>
 
           {[
@@ -801,13 +797,13 @@ export function ClusterSettingsPanel() {
         <section className={sectionCls}>
           <div className="flex items-center justify-between">
             <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
-              <Cpu size={14} /> {t('cluster.workers_section')}
+              <MIcon name="memory" size={14} /> {t('cluster.workers_section')}
             </h3>
             <button
               onClick={addWorker}
               className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
             >
-              <Plus size={12} /> {t('cluster.add_worker')}
+              <MIcon name="add" size={12} /> {t('cluster.add_worker')}
             </button>
           </div>
 
@@ -847,11 +843,11 @@ export function ClusterSettingsPanel() {
                     className="text-xs text-blue-400 hover:text-blue-300 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k4')}
                   >
-                    {pr === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Network size={12} />}
+                    {pr === 'loading' ? <MIcon name="progress_activity" size={12} className="animate-spin" /> : <MIcon name="lan" size={12} />}
                   </button>
                   {pr && pr !== 'loading' && (
                     <span className={`text-[11px] shrink-0 flex items-center gap-0.5 ${pr.reachable ? 'text-green-400' : 'text-red-400'}`}>
-                      {pr.reachable ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+                      {pr.reachable ? <MIcon name="check_circle" size={11} /> : <MIcon name="cancel" size={11} />}
                       {pr.reachable
                         ? `${pr.via === 'ray' ? 'Ray' : pr.via === 'icmp' ? 'ICMP' : 'HTTP'} OK${pr.latency_ms ? ` ${pr.latency_ms}ms` : ''}`
                         : 'NG'
@@ -859,7 +855,7 @@ export function ClusterSettingsPanel() {
                     </span>
                   )}
                   <button onClick={() => removeWorker(i)} className="text-red-400 hover:text-red-300 shrink-0">
-                    <Trash2 size={12} />
+                    <MIcon name="delete" size={12} />
                   </button>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -892,8 +888,8 @@ export function ClusterSettingsPanel() {
                       title={t('cluster.detect_hardware')}
                     >
                       {detecting
-                        ? <Loader2 size={11} className="animate-spin" />
-                        : <ScanSearch size={11} />}
+                        ? <MIcon name="progress_activity" size={11} className="animate-spin" />
+                        : <MIcon name="manage_search" size={11} />}
                       {t('cluster.detect_hardware')}
                     </button>
                   )}
@@ -909,7 +905,7 @@ export function ClusterSettingsPanel() {
                     className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-yellow-700 hover:bg-yellow-600 text-white disabled:opacity-50 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k5')}
                   >
-                    {wakeLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Power size={11} />}
+                    {wakeLoading[i] ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="power_settings_new" size={11} />}
                     {t('auto.ClusterSettingsPanel.wake_wol')}
                   </button>
                   <button
@@ -918,7 +914,7 @@ export function ClusterSettingsPanel() {
                     className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-slate-600 hover:bg-slate-500 text-white disabled:opacity-50 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k6')}
                   >
-                    {sleepDisableLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Moon size={11} />}
+                    {sleepDisableLoading[i] ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="dark_mode" size={11} />}
                     {t('auto.ClusterSettingsPanel.disable_sleep')}
                   </button>
                   <button
@@ -927,7 +923,7 @@ export function ClusterSettingsPanel() {
                     className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-emerald-700 hover:bg-emerald-600 text-white disabled:opacity-50 shrink-0"
                     title={t('auto.ClusterSettingsPanel.k7')}
                   >
-                    {rayRestartLoading[i] ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+                    {rayRestartLoading[i] ? <MIcon name="progress_activity" size={11} className="animate-spin" /> : <MIcon name="play_arrow" size={11} />}
                     {t('auto.ClusterSettingsPanel.ray_restart')}
                   </button>
                   {rayRestartMsg[i] && (
@@ -956,7 +952,7 @@ export function ClusterSettingsPanel() {
       {/* ── 負荷制限 ─────────────────────────────────────────────────────── */}
       <section className={sectionCls}>
         <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
-          <Zap size={14} /> {t('cluster.load_section')}
+          <MIcon name="bolt" size={14} /> {t('cluster.load_section')}
         </h3>
         <div className="space-y-3">
           {[
@@ -983,7 +979,7 @@ export function ClusterSettingsPanel() {
       {/* ── リソース上限 ─────────────────────────────────────────────────── */}
       <section className={sectionCls}>
         <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
-          <Zap size={14} /> {t('cluster.resources_section')}
+          <MIcon name="bolt" size={14} /> {t('cluster.resources_section')}
         </h3>
         <p className={`text-[11px] ${textMuted}`}>{t('cluster.limit_auto_hint')}</p>
         <div className="space-y-3">
@@ -1039,7 +1035,7 @@ export function ClusterSettingsPanel() {
       {showTaskRouting && (
         <section className={sectionCls}>
           <h3 className={`text-sm font-semibold flex items-center gap-2 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
-            <Zap size={14} /> {t('cluster.task_routing_section')}
+            <MIcon name="bolt" size={14} /> {t('cluster.task_routing_section')}
           </h3>
           <div className="space-y-3">
             {taskTypes.map(({ key, label }) => {
@@ -1080,7 +1076,7 @@ export function ClusterSettingsPanel() {
             onClick={() => refetchStatus()}
             className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
           >
-            <RefreshCw size={11} /> {t('cluster.refresh')}
+            <MIcon name="refresh" size={11} /> {t('cluster.refresh')}
           </button>
         </div>
 
@@ -1104,12 +1100,12 @@ export function ClusterSettingsPanel() {
                   disabled={rayStopMutation.isPending}
                   className="text-xs px-2 py-0.5 rounded border border-red-600 text-red-400 hover:bg-red-900/30 disabled:opacity-50 flex items-center gap-1"
                 >
-                  {rayStopMutation.isPending ? <Loader2 size={10} className="animate-spin" /> : null}
+                  {rayStopMutation.isPending ? <MIcon name="progress_activity" size={10} className="animate-spin" /> : null}
                   {rayStopMutation.isPending ? t('cluster.ray_stopping') : t('cluster.ray_stop')}
                 </button>
               ) : rayConnecting ? (
                 <span className="text-xs px-2 py-0.5 rounded border border-blue-600 text-blue-400 flex items-center gap-1">
-                  <Loader2 size={10} className="animate-spin" />
+                  <MIcon name="progress_activity" size={10} className="animate-spin" />
                   {t('cluster.ray_connecting')}
                 </span>
               ) : (
@@ -1118,7 +1114,7 @@ export function ClusterSettingsPanel() {
                   disabled={rayStartMutation.isPending}
                   className="text-xs px-2 py-0.5 rounded border border-blue-600 text-blue-400 hover:bg-blue-900/30 disabled:opacity-50 flex items-center gap-1"
                 >
-                  {rayStartMutation.isPending ? <Loader2 size={10} className="animate-spin" /> : null}
+                  {rayStartMutation.isPending ? <MIcon name="progress_activity" size={10} className="animate-spin" /> : null}
                   {rayStartMutation.isPending ? t('cluster.ray_starting') : t('cluster.ray_start')}
                 </button>
               )}
@@ -1149,7 +1145,7 @@ export function ClusterSettingsPanel() {
           disabled={saveMutation.isPending}
           className="flex items-center gap-2 px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-50"
         >
-          {saveMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+          {saveMutation.isPending ? <MIcon name="progress_activity" size={13} className="animate-spin" /> : <MIcon name="save" size={13} />}
           {t('cluster.save')}
         </button>
         {saveMsg && (

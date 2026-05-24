@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { X } from 'lucide-react'
 import { apiPatch } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
+import { MIcon } from '@/components/common/MIcon'
 
 // 履歴詳細モーダル
 // - 全ロール: 日付 / type / ccs / f1-f5 / hooper_index / session_rpe / 身体指標を表示
@@ -132,7 +132,7 @@ export function HistoryDetailModal({ record, isLight, onClose }: Props) {
             aria-label={t('condition.history_detail.close') as string}
             className={isLight ? 'text-gray-500 hover:text-gray-800' : 'text-gray-400 hover:text-white'}
           >
-            <X size={18} />
+            <MIcon name="close" size={18} />
           </button>
         </div>
 

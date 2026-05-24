@@ -1,10 +1,7 @@
 import { useRef, useState, useEffect, useCallback, RefObject, type ReactNode } from 'react'
-import {
-  Play, Pause, SkipBack, SkipForward,
-  ChevronLeft, ChevronRight,
-} from 'lucide-react'
 import { clsx } from 'clsx'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 interface VideoPlayerProps {
   src: string
@@ -156,23 +153,23 @@ export function VideoPlayer({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <button onClick={seekBackward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k1')}>
-            <SkipBack size={16} />
+            <MIcon name="skip_previous" size={16} />
           </button>
           <button onClick={stepBackward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k2')}>
-            <ChevronLeft size={16} />
+            <MIcon name="chevron_left" size={16} />
           </button>
           <button
             onClick={togglePlay}
             className="p-2 rounded bg-blue-600 hover:bg-blue-500 text-white"
             title={isPlaying ? '一時停止 (Space)' : '再生 (Space)'}
           >
-            {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+            {isPlaying ? <MIcon name="pause" size={18} /> : <MIcon name="play_arrow" size={18} />}
           </button>
           <button onClick={stepForward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k3')}>
-            <ChevronRight size={16} />
+            <MIcon name="chevron_right" size={16} />
           </button>
           <button onClick={seekForward} className="p-1 rounded hover:bg-gray-700 text-gray-300" title={t('auto.VideoPlayer.k4')}>
-            <SkipForward size={16} />
+            <MIcon name="skip_next" size={16} />
           </button>
         </div>
 

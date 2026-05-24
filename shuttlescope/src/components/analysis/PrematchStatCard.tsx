@@ -7,12 +7,12 @@
  */
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Database, RefreshCw } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { MatchNarrativeCard, type MatchNarrative } from '@/components/analysis/MatchNarrativeCard'
 import { WIN, LOSS } from '@/styles/colors'
 import { useIsLightMode } from '@/hooks/useIsLightMode'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 interface PrematchData {
   match_date: string
@@ -91,7 +91,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
           border: `1px solid ${isLight ? '#bae6fd' : '#1e3a5f'}`,
         }}
       >
-        <Database size={11} style={{ color: '#3b82f6', flexShrink: 0 }} />
+        <MIcon name="database" size={11} style={{ color: '#3b82f6', flexShrink: 0 }} />
         <span className="flex-1" style={{ color: isLight ? '#1d4ed8' : '#93c5fd' }}>
           {t('auto.PrematchStatCard.stat_pred', { date: d.cutoff_date })}
           {d.h2h_count > 0
@@ -109,7 +109,7 @@ export function PrematchStatCard({ matchId, playerId, playerName }: Props) {
           title={t('auto.PrematchStatCard.k2')}
           className="shrink-0 p-1 rounded hover:opacity-70 transition-opacity disabled:opacity-40"
         >
-          <RefreshCw size={11} style={{ color: subText }} className={isFetching ? 'animate-spin' : ''} />
+          <MIcon name="refresh" size={11} style={{ color: subText }} className={isFetching ? 'animate-spin' : ''} />
         </button>
       </div>
 

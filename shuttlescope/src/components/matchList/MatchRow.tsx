@@ -1,11 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
-import { Play, Download, Trash2, Pencil, TrendingUp } from 'lucide-react'
 import { Match } from '@/types'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { PipelineJobBadge } from '@/components/analysis/PipelineJobBadge'
 import { statusColor, DownloadStatus } from './matchListUtils'
+import { MIcon } from '@/components/common/MIcon'
 
 // MatchListPage のデスクトップ用テーブル行 1 件分。純粋抽出 (behavior 不変)。
 export interface MatchRowProps {
@@ -96,7 +96,7 @@ export function MatchRow({
             className="p-1.5 rounded bg-blue-700 hover:bg-blue-600 text-white"
             title={t('match.start_annotation')}
           >
-            <Play size={14} />
+            <MIcon name="play_arrow" size={14} />
           </button>
           {m.player_a_id && (
             <button
@@ -104,7 +104,7 @@ export function MatchRow({
               className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
               title={t('auto.MatchListPage.k5')}
             >
-              <TrendingUp size={14} />
+              <MIcon name="trending_up" size={14} />
             </button>
           )}
           {/* 動画 DL バッジ: 進行中なら percent を表示 */}
@@ -115,7 +115,7 @@ export function MatchRow({
               }`}
               title={`DL中 ${dl.percent ?? ''} (残り ${dl.eta ?? '?'})`}
             >
-              <Download size={12} className="animate-pulse" />
+              <MIcon name="download" size={12} className="animate-pulse" />
               {dl.percent ?? 'DL中'}
             </span>
           )}
@@ -125,7 +125,7 @@ export function MatchRow({
               className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
               title="動画ダウンロード (オプション選択)"
             >
-              <Download size={14} />
+              <MIcon name="download" size={14} />
             </button>
           )}
           <button
@@ -133,7 +133,7 @@ export function MatchRow({
             className={`p-1.5 rounded ${isLight ? 'bg-gray-200 hover:bg-gray-300 text-gray-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
             title={t('auto.MatchListPage.k11')}
           >
-            <Pencil size={14} />
+            <MIcon name="edit" size={14} />
           </button>
           {deleteConfirmId === m.id ? (
             <div className={`flex items-center gap-1 px-2 py-1 rounded border border-white text-xs ${isLight ? 'bg-red-50 text-red-700' : 'bg-red-900/30 text-red-400'}`}>
@@ -154,7 +154,7 @@ export function MatchRow({
               className="p-1.5 rounded bg-red-900/50 hover:bg-red-700 text-red-400"
               title={t('auto.MatchListPage.k9')}
             >
-              <Trash2 size={14} />
+              <MIcon name="delete" size={14} />
             </button>
           )}
         </div>

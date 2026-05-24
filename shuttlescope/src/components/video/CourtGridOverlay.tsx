@@ -497,7 +497,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
           <pre
             className="text-[11px] font-mono whitespace-pre-wrap break-all text-left select-text overflow-auto"
             style={{ color: '#fca5a5', maxHeight: '40vh', userSelect: 'text', margin: 0 }}
-          >✗ {saveError}</pre>
+          >{saveError}</pre>
           <button
             type="button"
             className="shrink-0 text-[10px] bg-red-800 hover:bg-red-700 active:bg-red-900 rounded px-2 py-1"
@@ -516,7 +516,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
             onClick={() => setSaveError(null)}
             title={t('auto.CourtGridOverlay.dismiss', { defaultValue: '閉じる' })}
           >
-            ✕
+            <MIcon name="close" size={12} />
           </button>
         </div>
       )}
@@ -563,7 +563,7 @@ export function CourtGridOverlay({ matchId, containerRef, visible, onCalibration
                      bg-red-700 hover:bg-red-600 border border-red-500 shadow-lg"
           style={{ color: '#ffffff' }}
         >
-          <span style={{ color: '#ffffff', fontSize: 12, lineHeight: 1 }}>✕</span>
+          <MIcon name="close" size={12} style={{ color: '#ffffff' }} />
           {t('auto.CourtGridOverlay.cancel')}
         </button>
       </div>

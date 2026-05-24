@@ -104,6 +104,22 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'eqeqeq': ['warn', 'smart'],
+
+      // ── アイコンは Material Symbols (MIcon) 限定 ────────────────
+      // 2026-05-24: lucide-react / react-icons / @heroicons / @radix-ui/react-icons /
+      // @fortawesome / inline emoji の使用を禁止。新規導入は CI で弾く。
+      // 既存違反は段階的に置換中 (docs/validation/2026-05-24_icon_audit.md 参照)。
+      'no-restricted-imports': ['error', {
+        paths: [
+          { name: 'lucide-react', message: 'Use <MIcon name="..." /> from @/components/common/MIcon instead.' },
+          { name: '@radix-ui/react-icons', message: 'Use <MIcon name="..." /> from @/components/common/MIcon instead.' },
+        ],
+        patterns: [
+          { group: ['react-icons', 'react-icons/*'], message: 'Use <MIcon name="..." /> from @/components/common/MIcon instead.' },
+          { group: ['@heroicons/*'], message: 'Use <MIcon name="..." /> from @/components/common/MIcon instead.' },
+          { group: ['@fortawesome/*'], message: 'Use <MIcon name="..." /> from @/components/common/MIcon instead.' },
+        ],
+      }],
     },
   },
 

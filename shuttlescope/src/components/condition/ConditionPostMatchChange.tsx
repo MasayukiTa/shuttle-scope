@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 import {
   BarChart,
   Bar,
@@ -145,7 +145,7 @@ export function ConditionPostMatchChange({ playerId, isLight }: Props) {
           className="w-full flex items-center justify-between gap-2 mb-1 text-left"
         >
           <div className="flex items-center gap-2">
-            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            {expanded ? <MIcon name="expand_more" size={16} /> : <MIcon name="chevron_right" size={16} />}
             <h2 className={`text-sm font-semibold ${textBase}`}>
               {t('condition.post_match.title')}
             </h2>

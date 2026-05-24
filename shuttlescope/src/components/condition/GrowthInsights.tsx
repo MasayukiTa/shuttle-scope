@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { ChevronDown, ChevronUp, Info } from 'lucide-react'
+import { MIcon } from '@/components/common/MIcon'
 import { useInsights } from '@/hooks/useConditionAnalytics'
 import type { GrowthCard } from '@/hooks/useConditionAnalytics'
 import { useAuth } from '@/hooks/useAuth'
@@ -18,24 +18,24 @@ interface Props {
 // ── 体調分析用信頼度バッジ（週数ベース）──────────────────────────────────
 function ConditionConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
   const { t } = useTranslation()
-  let stars: string
+  let filled: number
   let key: string
   let colorClass: string
 
   if (n < 10) {
-    stars = '★☆☆'
+    filled = 1
     key = 'condition.insights.growth_card.confidence_low'
     colorClass = isLight
       ? 'border-red-300 bg-red-50 text-red-600'
       : 'border-red-400 bg-red-900/20 text-red-300'
   } else if (n < 30) {
-    stars = '★★☆'
+    filled = 2
     key = 'condition.insights.growth_card.confidence_medium'
     colorClass = isLight
       ? 'border-yellow-300 bg-yellow-50 text-yellow-600'
       : 'border-yellow-400 bg-yellow-900/20 text-yellow-300'
   } else {
-    stars = '★★★'
+    filled = 3
     key = 'condition.insights.growth_card.confidence_high'
     colorClass = isLight
       ? 'border-green-300 bg-green-50 text-green-600'
@@ -47,7 +47,10 @@ function ConditionConfidenceBadge({ n, isLight }: { n: number; isLight: boolean 
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-mono ${colorClass}`}
       title={t('condition.insights.growth_card.confidence_basis')}
     >
-      {stars} <span className="font-sans">{t(key)}</span>
+      <span className="inline-flex">
+        {Array.from({ length: 3 }, (_, i) => <MIcon key={i} name={i < filled ? 'star' : 'star_border'} size={11} />)}
+      </span>
+      <span className="font-sans">{t(key)}</span>
     </span>
   )
 }
@@ -113,7 +116,7 @@ function GrowthCardRow({ c, isLight, sepColor }: {
             className={`flex items-center gap-0.5 text-[11px] ${labelMuted} hover:text-blue-400 whitespace-nowrap`}
           >
             {t('condition.insights.growth_card.basis_label')}
-            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {expanded ? <MIcon name="expand_less" size={12} /> : <MIcon name="expand_more" size={12} />}
           </button>
         </div>
       </div>
@@ -135,7 +138,7 @@ function GrowthCardRow({ c, isLight, sepColor }: {
             </span>
           </div>
           <div className={`text-[10px] ${isLight ? 'text-gray-400' : 'text-gray-600'} flex items-start gap-1`}>
-            <Info size={10} className="shrink-0 mt-0.5" />
+            <MIcon name="info" size={10} className="shrink-0 mt-0.5" />
             <span>{t('condition.insights.growth_card.mechanism')}</span>
           </div>
         </div>

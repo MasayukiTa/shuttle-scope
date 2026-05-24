@@ -31,6 +31,7 @@ import { EvidenceBadge, EvidenceLevel } from '@/components/dashboard/EvidenceBad
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useAnalysisMeta } from '@/hooks/useAnalysisMeta'
 import { useCardTheme } from '@/hooks/useCardTheme'
+import { MIcon } from '@/components/common/MIcon'
 
 interface MatchSummary {
   match_id: number
@@ -107,7 +108,7 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
       </div>
 
       {/* Override summary バナー: admin/analyst/coach のみ、active override がある場合に表示
-         Design Language v1.2 §12: bg は neutral、警告意味は文字色 + ⚠ で運ぶ
+         Design Language v1.2 §12: bg は neutral、警告意味は文字色 + warning icon で運ぶ
          (装飾 amber bg + 左罫線縦バーは禁止) */}
       {activeOverrides.length > 0 && (role === 'admin' || role === 'analyst' || role === 'coach') && (
         <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
@@ -116,10 +117,10 @@ export function DashboardAdvancedPage({ playerId, filters, matches, sortedPlayer
             : 'bg-gray-800 border-gray-700'
         }`}>
           <span
-            className="font-medium min-w-0 flex-1 truncate"
+            className="font-medium min-w-0 flex-1 truncate inline-flex items-center gap-1"
             style={{ color: isLight ? '#b45309' /* amber-700 */ : '#fbbf24' /* amber-400 */ }}
           >
-            ⚠ {t('advanced.manual_override_notice', { count: activeOverrides.length, defaultValue: 'Manual Override is set on {{count}} analyses' })}
+            <MIcon name="warning" size={12} />{t('advanced.manual_override_notice', { count: activeOverrides.length, defaultValue: 'Manual Override is set on {{count}} analyses' })}
           </span>
           {holdCount > 0 && (
             <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${

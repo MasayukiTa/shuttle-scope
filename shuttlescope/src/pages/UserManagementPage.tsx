@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Eye, EyeOff, Pencil, Plus, Trash2, X, Check, KeyRound, ChevronDown, RotateCcw, _AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
+import { MIcon } from '@/components/common/MIcon'
 
 import { apiDelete, apiGet, apiPost, apiPut, authAdminResetPassword, getUserPageAccess, setUserPageAccess, getTeamPageAccess, setTeamPageAccess, listTeams, type TeamDTO } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -120,7 +120,7 @@ function SecretField(props: {
           title={visible ? t('users.manage.pw_hide') : t('users.manage.pw_show')}
           aria-label={visible ? t('users.manage.pw_aria_hide') : t('users.manage.pw_aria_show')}
         >
-          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+          {visible ? <MIcon name="visibility_off" size={16} /> : <MIcon name="visibility" size={16} />}
         </button>
       </div>
       {props.hint ? <p className={`mt-1 text-xs ${props.textMuted}`}>{props.hint}</p> : null}
@@ -606,7 +606,7 @@ export function UserManagementPage() {
           disabled={saving}
           className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded-lg"
         >
-          <Check size={14} />
+          <MIcon name="check" size={14} />
           {saving ? t('users.manage.saving') : t('users.manage.save')}
         </button>
         <button
@@ -642,7 +642,7 @@ export function UserManagementPage() {
             onClick={openCreate}
             className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg"
           >
-            <Plus size={14} />
+            <MIcon name="add" size={14} />
             {t('users.manage.add_user')}
           </button>
         )}
@@ -682,7 +682,7 @@ export function UserManagementPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-sm font-semibold ${textMain}`}>{t('users.manage.create_title')}</h2>
               <button onClick={closeAll} className={textMuted}>
-                <X size={16} />
+                <MIcon name="close" size={16} />
               </button>
             </div>
             {renderFormFields()}
@@ -776,7 +776,7 @@ export function UserManagementPage() {
                                   <span key="nearlock" className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700" title={
                                     t('auto.UserManagementPage.k22', { failed: L.failed_attempts, remaining: 3 - L.failed_attempts })
                                   }>
-                                    ⚠ {t('auto.UserManagementPage.k23', { failed: L.failed_attempts })}
+                                    <MIcon name="warning" size={10} />{t('auto.UserManagementPage.k23', { failed: L.failed_attempts })}
                                   </span>,
                                 )
                               }
@@ -835,7 +835,7 @@ export function UserManagementPage() {
                               )}
                               <button onClick={() => handleResetLimits(u, 'all')} disabled={limitResetBusyId === u.id}
                                 title={t('auto.UserManagementPage.k11')} className={`${textMuted} hover:text-emerald-500 disabled:opacity-50`}>
-                                <RotateCcw size={14} />
+                                <MIcon name="restart_alt" size={14} />
                               </button>
                             </div>
                           )}
@@ -846,8 +846,8 @@ export function UserManagementPage() {
                             }`}
                             title={t('users.manage.edit_title')}
                           >
-                            <Pencil size={14} />
-                            <ChevronDown
+                            <MIcon name="edit" size={14} />
+                            <MIcon name="expand_more"
                               size={12}
                               className={`transition-transform ${editId === u.id ? 'rotate-180' : ''}`}
                             />
@@ -859,12 +859,12 @@ export function UserManagementPage() {
                               title={t('auth.admin_reset.title')}
                               className={`${textMuted} hover:text-amber-500 disabled:opacity-50`}
                             >
-                              <KeyRound size={14} />
+                              <MIcon name="key" size={14} />
                             </button>
                           )}
                           {canDelete && (
                             <button onClick={() => handleDelete(u)} className={`${textMuted} hover:text-red-500`}>
-                              <Trash2 size={14} />
+                              <MIcon name="delete" size={14} />
                             </button>
                           )}
                         </div>
@@ -878,7 +878,7 @@ export function UserManagementPage() {
                           <div className="flex items-center justify-between mb-3">
                             <h3 className={`text-xs font-semibold ${textMain}`}>{t('users.manage.edit_title')}: {u.display_name || u.username}</h3>
                             <button onClick={closeAll} className={`${textMuted} hover:text-red-400`}>
-                              <X size={14} />
+                              <MIcon name="close" size={14} />
                             </button>
                           </div>
                           {renderFormFields()}

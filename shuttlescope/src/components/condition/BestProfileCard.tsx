@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Info } from 'lucide-react'
 import { useBestProfile } from '@/hooks/useConditionAnalytics'
+import { MIcon } from '@/components/common/MIcon'
 
 interface Props {
   playerId: number
@@ -29,24 +29,24 @@ const FACTOR_UNITS: Record<string, string> = {
 // 試合数ベースの信頼度バッジ
 function MatchConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
   const { t } = useTranslation()
-  let stars: string
+  let filled: number
   let label: string
   let colorClass: string
 
   if (n < 5) {
-    stars = '★☆☆'
+    filled = 1
     label = t('condition.insights.growth_card.confidence_low')
     colorClass = isLight
       ? 'border-red-300 bg-red-50 text-red-600'
       : 'border-red-400 bg-red-900/20 text-red-300'
   } else if (n < 16) {
-    stars = '★★☆'
+    filled = 2
     label = t('condition.insights.growth_card.confidence_medium')
     colorClass = isLight
       ? 'border-yellow-300 bg-yellow-50 text-yellow-600'
       : 'border-yellow-400 bg-yellow-900/20 text-yellow-300'
   } else {
-    stars = '★★★'
+    filled = 3
     label = t('condition.insights.growth_card.confidence_high')
     colorClass = isLight
       ? 'border-green-300 bg-green-50 text-green-600'
@@ -58,7 +58,10 @@ function MatchConfidenceBadge({ n, isLight }: { n: number; isLight: boolean }) {
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-mono ${colorClass}`}
       title={`サンプル数: ${n}試合`}
     >
-      {stars} <span className="font-sans">{label}</span>
+      <span className="inline-flex">
+        {Array.from({ length: 3 }, (_, i) => <MIcon key={i} name={i < filled ? 'star' : 'star_border'} size={11} />)}
+      </span>
+      <span className="font-sans">{label}</span>
       <span className="font-sans ml-1 opacity-70">{t('auto.BestProfileCard.n_matches_paren', { n })}</span>
     </span>
   )
@@ -143,7 +146,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
                   } else if (gap === 0) {
                     gapNode = (
                       <span className={`font-medium ${isLight ? 'text-green-600' : 'text-green-400'}`}>
-                        ✓
+                        <MIcon name="check" size={14} />
                       </span>
                     )
                   } else if (gap > 0) {
@@ -208,7 +211,7 @@ export function BestProfileCard({ playerId, isLight }: Props) {
           {/* 期待勝率改善 */}
           {rateDiff != null && rateDiff > 0 && (
             <div className={`pt-2 border-t ${sepColor} flex items-start gap-1.5 text-xs ${textMuted}`}>
-              <Info size={11} className="shrink-0 mt-0.5" />
+              <MIcon name="info" size={11} className="shrink-0 mt-0.5" />
               <span>
                 {t('condition.best_profile.win_rate_improvement', { diff: rateDiff })}
               </span>

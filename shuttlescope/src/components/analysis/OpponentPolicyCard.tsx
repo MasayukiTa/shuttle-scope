@@ -5,8 +5,8 @@ import { EvidenceBadge } from '@/components/dashboard/EvidenceBadge'
 import { ResearchNotice } from '@/components/dashboard/ResearchNotice'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
-import { RefreshCw, WifiOff, ServerCrash, HelpCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 interface PolicyEntry {
   dominant_shot: string
@@ -61,17 +61,17 @@ function classifyError(err: unknown): ErrorKind {
 
 const ERROR_META: Record<ErrorKind, { icon: React.ReactNode; title: string; hint: string }> = {
   network: {
-    icon: <WifiOff size={14} />,
+    icon: <MIcon name="wifi_off" size={14} />,
     title: 'ネットワーク接続に失敗しました',
     hint: 'バックエンドが起動しているか確認してください。',
   },
   server: {
-    icon: <ServerCrash size={14} />,
+    icon: <MIcon name="cloud_off" size={14} />,
     title: 'サーバーエラーが発生しました',
     hint: '一時的な問題の可能性があります。再取得してください。',
   },
   unknown: {
-    icon: <HelpCircle size={14} />,
+    icon: <MIcon name="help" size={14} />,
     title: 'データ取得に失敗しました',
     hint: '再取得ボタンで再試行できます。',
   },
@@ -195,7 +195,7 @@ export function OpponentPolicyCard({ playerId, filters }: Props) {
             data-testid="refetch-button"
             className={`p-1 rounded transition-colors disabled:opacity-40 ${isLight ? 'hover:bg-gray-100 text-gray-500' : 'hover:bg-gray-700 text-gray-500'}`}
           >
-            <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} />
+            <MIcon name="refresh" size={12} className={isFetching ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>

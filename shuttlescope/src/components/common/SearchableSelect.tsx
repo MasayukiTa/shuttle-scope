@@ -6,16 +6,18 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, X, ChevronDown } from 'lucide-react'
 import { clsx } from 'clsx'
+import { MIcon } from '@/components/common/MIcon'
 
 export interface SearchableOption {
   value: string | number
   label: string
   /** 検索対象に含める補助テキスト（チーム名等） */
   searchText?: string
-  /** ラベル左に表示するバッジ・アイコン */
+  /** ラベル左に表示するバッジ・アイコン (Material Symbols name) */
   prefix?: string
+  /** prefix を MIcon として描画するかどうか (true: <MIcon name={prefix} />, false: text) */
+  prefixIsIcon?: boolean
   /** ラベル右に表示するサブ情報 */
   suffix?: string
 }
@@ -152,16 +154,20 @@ export function SearchableSelect({
         <span className={clsx('flex-1 truncate', !selectedOption && 'text-gray-500')}>
           {loading ? t('common.loading', 'Loading...') : selectedOption ? (
             <>
-              {selectedOption.prefix && <span className="mr-1">{selectedOption.prefix}</span>}
+              {selectedOption.prefix && (
+                selectedOption.prefixIsIcon
+                  ? <MIcon name={selectedOption.prefix} size={12} className="mr-1 inline" />
+                  : <span className="mr-1">{selectedOption.prefix}</span>
+              )}
               {selectedOption.label}
               {selectedOption.suffix && <span className="ml-1 text-gray-400 text-xs">{selectedOption.suffix}</span>}
             </>
           ) : effectiveEmptyLabel}
         </span>
         {value != null && !disabled && (
-          <X size={14} className="text-gray-500 hover:text-white shrink-0" onClick={handleClear} />
+          <MIcon name="close" size={14} className="text-gray-500 hover:text-white shrink-0" onClick={handleClear} />
         )}
-        <ChevronDown size={14} className={clsx('text-gray-500 shrink-0 transition-transform', open && 'rotate-180')} />
+        <MIcon name="expand_more" size={14} className={clsx('text-gray-500 shrink-0 transition-transform', open && 'rotate-180')} />
       </button>
 
       {/* ドロップダウン */}
@@ -169,7 +175,7 @@ export function SearchableSelect({
         <div className={clsx('absolute z-50 mt-1 w-full bg-gray-800 border border-gray-600 rounded-lg shadow-xl overflow-hidden min-w-[200px]', dropdownAlign === 'right' ? 'right-0' : 'left-0')}>
           {/* 検索欄 */}
           <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700">
-            <Search size={14} className="text-gray-500 shrink-0" />
+            <MIcon name="search" size={14} className="text-gray-500 shrink-0" />
             <input
               ref={inputRef}
               type="text"
@@ -181,7 +187,7 @@ export function SearchableSelect({
             />
             {query && (
               <button onClick={() => setQuery('')} className="text-gray-500 hover:text-white">
-                <X size={12} />
+                <MIcon name="close" size={12} />
               </button>
             )}
           </div>
@@ -208,7 +214,11 @@ export function SearchableSelect({
                         : 'text-gray-300 hover:bg-gray-700/50',
                   )}
                 >
-                  {opt.prefix && <span className="text-xs shrink-0">{opt.prefix}</span>}
+                  {opt.prefix && (
+                    opt.prefixIsIcon
+                      ? <MIcon name={opt.prefix} size={12} className="shrink-0" />
+                      : <span className="text-xs shrink-0">{opt.prefix}</span>
+                  )}
                   <span className="flex-1 truncate">{opt.label}</span>
                   {opt.suffix && <span className="text-xs text-gray-500 shrink-0">{opt.suffix}</span>}
                 </button>

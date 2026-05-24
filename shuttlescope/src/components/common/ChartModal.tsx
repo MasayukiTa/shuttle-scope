@@ -1,6 +1,6 @@
 import { useEffect, ReactNode } from 'react'
-import { X, LayoutDashboard } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { MIcon } from '@/components/common/MIcon'
 
 interface ChartModalProps {
   title: string
@@ -40,16 +40,16 @@ export function ChartModal({ title, onClose, children }: ChartModalProps) {
             onClick={onClose}
             className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 transition-colors px-3 py-1.5 rounded"
           >
-            <LayoutDashboard size={13} />
+            <MIcon name="dashboard" size={13} />
             {t('auto.ChartModal.back_to_dashboard')}
           </button>
-          {/* ✕ボタン */}
+          {/* close ボタン */}
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
             title={t('auto.ChartModal.k1')}
           >
-            <X size={18} />
+            <MIcon name="close" size={18} />
           </button>
         </div>
       </div>

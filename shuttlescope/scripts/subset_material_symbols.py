@@ -43,6 +43,10 @@ def collect_icon_names() -> list[str]:
     # dynamic expr inside braces: 名前候補は 'foo' / "foo" 形のリテラルだけを抽出
     dynamic_pat = re.compile(r'MIcon[^>]{0,200}name=\{([^}]+)\}', re.DOTALL)
     literal_in_expr = re.compile(r"['\"]([a-z_][a-z_0-9]*)['\"]")
+    # data-map / object-literal pattern: `iconName: 'foo'`, `prefix: 'foo'` 等で
+    # 後から MIcon name={iconName} で参照されるケース。
+    # 値が snake_case 英小文字数字のみで Material Symbols 名らしいものだけ拾う。
+    map_pat = re.compile(r"\b(?:iconName|icon_name)\s*:\s*['\"]([a-z_][a-z_0-9]*)['\"]")
     names: set[str] = set()
     for p in list(SRC.rglob("*.tsx")) + list(SRC.rglob("*.ts")):
         try:
@@ -50,12 +54,19 @@ def collect_icon_names() -> list[str]:
         except Exception:
             continue
         names.update(static_pat.findall(text))
+        names.update(map_pat.findall(text))
         for expr in dynamic_pat.findall(text):
             # 三項や OR の中の 'foo' 'bar' 等を全部拾う
             for lit in literal_in_expr.findall(expr):
                 # Material Symbols の典型 icon 名 (snake_case 英小文字数字のみ)
                 if 2 <= len(lit) <= 40 and lit.replace("_", "").isalnum():
                     names.add(lit)
+    # ExtraIcons: 動的に組み立てられる名前のうち静的解析できないもの
+    # (e.g. <MIcon name={iconName} /> で iconName が prop 経由) 用に明示登録。
+    EXTRA = {
+        "trending_down", "trending_flat", "show_chart", "balance",
+    }
+    names.update(EXTRA)
     return sorted(names)
 
 

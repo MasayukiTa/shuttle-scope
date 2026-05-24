@@ -8,11 +8,11 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { X } from 'lucide-react'
 import { apiGet } from '@/api/client'
 import { WIN, LOSS } from '@/styles/colors'
 import { useCardTheme } from '@/hooks/useCardTheme'
 import { AnalysisFilters } from '@/types'
+import { MIcon } from '@/components/common/MIcon'
 
 // ─── 型定義 ─────────────────────────────────────────────────────────────────
 
@@ -200,7 +200,7 @@ export function ZoneMapModal({
           className={`p-1.5 rounded transition-colors ${isLight ? 'text-gray-500 hover:bg-gray-100 hover:text-gray-700' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
           title={t('auto.ZoneMapModal.k5')}
         >
-          <X size={18} />
+          <MIcon name="close" size={18} />
         </button>
       </div>
 
