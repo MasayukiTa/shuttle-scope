@@ -1,1 +1,2 @@
 3ce8f4057f5cf5e97c14e72cd164789eafca6536720823ee15ad83cec0e9acfb *shuttlescope/backend/wasb/weights/wasb_badminton.onnx
+a36f5bd8f658ce5753351355b2addd4c17a5fb4cb7cdd79648f54a396e6f47a0 *shuttlescope/backend/wasb/weights/wasb_badminton_qdq_int8.onnx
