@@ -183,3 +183,71 @@ INT8 を本格運用するには:
 3. **フルパイプ CUDA streams 並列** (YOLO/Pose/WASB を別 stream で並走)
 4. **`backend/wasb/weights/wasb_badminton.onnx` commit** (5.18 MB、smoke 検証後)
 5. **WASB sigmoid 適用** (raw logit → 確率) + ヒステリシス smoothing → 検出率 30% → 40-50% 期待
+
+## ── Addendum 3: 60 FPS フルパイプ最適化ラウンド ──
+
+### 実装した最適化 (それぞれ独立にコミット)
+
+**A. WASB module への Tier 1 統合** (`e95a313`)
+GPU preprocess + IOBinding + chunk_size 128 を `backend/wasb/inference.py` 本体に組み込み。CPU fallback 保持。
+
+**B. WASB sigmoid + warmup + smoothing** (`b35d1de`)
+- `torch.sigmoid()` を peak finding 前に適用 → threshold が確率として解釈可能に
+- load 時 max_batch + batch=1 で TRT engine warmup
+- 隣接フレーム両側が visible なら間の信頼度低めフレームも昇格 (interpolate 座標)
+
+**C. RTMPose batched ONNX** (`09ab411`)
+4人分の crop を `(N, 3, 256, 192)` で stack して **単一 session.run** 化。
+RTMPose-m ONNX が dynamic batch axis 持つので可。失敗時は per-person sequential にフォールバック。
+
+### 実測結果 (RTX 5060 Ti, muroya 600-630s, 1798 frame @ 1080p 60fps)
+
+#### Step 1 後 (WASB単独)
+
+| Metric | Before | After (sigmoid + smoothing) |
+|---|---|---|
+| Realized FPS | 25.7 | **192.1** (7.5×) |
+| 検出率 (P≥0.5) | 31.1% | **39.3%** (+8.2pt) |
+
+#### Step 2 後 (フルパイプ YOLO + Pose + WASB)
+
+| Stage | Before (per-frame seq) | After RTMPose batched |
+|---|---|---|
+| YOLO | 219.7 FPS | 242.0 FPS |
+| **Pose** | **40.6 FPS** | **94.5 FPS** (2.3×) |
+| WASB | 186.6 FPS | 194.1 FPS |
+| **Total (sequential)** | **29.0 FPS** | **50.3 FPS** (1.74×) |
+
+#### Step 3: CUDA streams 並列 (YOLO+Pose ループ ‖ WASB バッチ)
+
+| Mode | Wall (s) | Realized FPS |
+|---|---|---|
+| Sequential | 35.58 | 50.5 |
+| **Threaded parallel** | **32.47** | **55.4** (1.10×) |
+| 理論上限 max(YOLO+Pose, WASB) | 26.4 | 68 |
+
+並列化の効果は 10% に留まる (理論上限の 81%)。GIL + GPU 共有競合で残り 19% がロス。
+**user 警告 (「並列やりまくっても逆に遅くなる」) が現に顕在化** — gain 小、measure 必須を再確認。
+
+### 60 FPS 達成状況: **55.4 FPS (92%、未達)**
+
+90% 突破済み、あと 8% で目標。残る打ち手:
+1. **INT8 quantization** (1.5-2× on inference, calibration set 構築要)
+2. **NVDEC decode** (decode 7.5s → ~4s)
+3. **Track-then-detect ROI** (WASB 推論を ROI crop に限定、精度+速度)
+4. **Pro 6000 投入** (4-6× 全体)
+
+### 真の累積成果
+
+| 項目 | 初版 ad-hoc | **最終 Step 3** | 改善 |
+|---|---|---|---|
+| WASB 単独 realized | 29.9 FPS | **192 FPS** | **6.4×** |
+| Full pipeline | 10.8 FPS (前バージョン bench) | **55.4 FPS** | **5.1×** |
+| WASB 検出率 | 30.9% | **40.1%** | +9.2pt |
+| TrackNetV3 比較 (検出率) | 0.0% | 40.1% | **完全勝利** |
+
+### 学んだこと (実装メモ)
+- **module ≠ standalone**: subagent が書いた WasbInference の最初実装は per-call IOBinding 再生成・cv2 ループで 25 FPS。Tier 1 + warmup を module 内に統合してやっと standalone 同等
+- **batching は線形 sequential 比較で 2-3×**: 単純な multi-person inference を batch 化するだけで激変。RTMPose の 4人 14.5ms → 4.9ms は最大コスパ最適化
+- **GPU で 985 FPS 出るモデルも、wrapper 経由だと 40 FPS まで落ちる**: 律速は wrapper オーバーヘッド。最初に既存ベンチランナーで synthetic 数字取って、実装側の overhead を可視化するのが本筋
+- **並列化は最後の手段**: 単独最適化が落ち着いた上で慎重に。今回は 10% gain で目標未達
