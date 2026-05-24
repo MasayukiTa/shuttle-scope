@@ -545,3 +545,80 @@ INT8 はフルパイプで 9% 速度 trade-off (60 FPS 微達成 97.5%)、検出
 別解像度 (640×360) でも同じ改善幅 → quantization が generalizable に効いてる証拠。
 
 video-b 等の **INT8 98.3% 検出率** = ほぼ完璧なシャトル追跡が達成可能。
+
+## ── Addendum 9: NVDEC zero-copy + motion-aware smoothing 統合 ──
+
+### NVDEC zero-copy GPU pipe (`backend/wasb/nvdec_pipe.py`)
+PyNvVideoCodec の SimpleDecoder + `OutputColorType.RGBP` + `use_device_memory=True` で
+NVDEC 出力を直接 torch GPU tensor として受け取り、cv2 + H2D upload を完全に排除。
+
+| Metric | cv2 + WASB | **NVDEC + WASB (INT8)** |
+|---|---|---|
+| Decode | 7.4s | **0.64s** (11.7×) |
+| Total end-to-end | 17.1s | **11.49s** (1.49×) |
+| Realized FPS | 105 | **156** |
+| Detect (INT8) | 62.0% | 62.0% (維持) |
+
+統合: `SS_WASB_USE_NVDEC=1` で `WasbInference.run(video_path)` が NVDEC fast path 利用。
+失敗時は cv2 fallback 自動。
+
+### Motion-aware temporal smoothing
+従来 ±1 window simple-midpoint → **±3 window velocity-extrapolation**:
+- 両側 visible: 線形補間 (近隣 spacing 考慮)
+- 片側のみ: second-nearest neighbor から速度推定 → constant-velocity 外挿
+- soft_floor 0.3 → 0.25 緩和 (position prediction が高精度になったため)
+
+#### Motion smoothing 効果 (cross-video, INT8)
+| Video | INT8 旧 smoothing | **INT8 + motion smoothing** | gain |
+|---|---|---|---|
+| muroya 1080p | 62.6% | **87.1%** | **+24.5pt** |
+| video-b 640×360 | 98.3% | **100.0%** | +1.7pt |
+| video-d 640×360 | 98.3% | **100.0%** | |
+| video-db 640×360 | 98.3% | **100.0%** | |
+
+**3 / 4 video で完璧検出 (100%)、muroya でも 87.1%**。
+
+#### Motion smoothing 効果 (cross-video, FP16)
+| Video | FP16 旧 smoothing | **FP16 + motion smoothing** | gain |
+|---|---|---|---|
+| muroya 1080p | 40.1% | **61.1%** | +21.0pt |
+| video-b 640×360 | 76.5% | **99.8%** | +23.3pt |
+
+FP16 でも massive gain。motion smoothing は INT8 と直交する純粋 win (CPU 0 コスト)。
+
+## ── 最終総合スコア (本セッション全体, 累積) ──
+
+### 検出率の進化 (cross-video median)
+| Stage | muroya | other-3 video |
+|---|---|---|
+| TrackNetV3 baseline | **0.0%** | 0.0% |
+| WASB FP16 ad-hoc | 30.9% | — |
+| WASB FP16 + ad-hoc smoothing | 40.1% | 76.5% |
+| **WASB INT8 + new smoothing** | **87.1%** | **100.0%** |
+
+→ **0% から 87-100% へ**。実用レベル超え。
+
+### 速度の進化 (real video pipeline)
+| Stage | Realized FPS |
+|---|---|
+| 初版 ad-hoc | 10.8 (full pipeline) / 29.9 (WASB) |
+| 全部最適化 | 67.1 (full pipeline) / 192 (WASB FP16) |
+| **NVDEC + INT8 end-to-end** | **156** (WASB only, INT8) |
+
+### 本番 env switch 最終 matrix
+| env combo | 用途 |
+|---|---|
+| `SS_SHUTTLE_IMPL=tracknet` (default) | 後方互換 |
+| `SS_SHUTTLE_IMPL=wasb` | 速度重視 (FP16) |
+| `SS_SHUTTLE_IMPL=wasb SS_WASB_USE_INT8=1` | **精度重視 (87% 検出)** |
+| `SS_SHUTTLE_IMPL=wasb SS_WASB_USE_INT8=1 SS_WASB_USE_NVDEC=1` | **最強組み合わせ** |
+
+### コード成果物
+- `backend/wasb/inference.py` — WASB module (Tier 1+2 opt, sigmoid, motion smoothing, ROI refinement opt-in)
+- `backend/wasb/nvdec_pipe.py` — NVDEC zero-copy GPU pipe
+- `backend/wasb/weights/wasb_badminton.onnx` (FP16, 5.18 MB)
+- `backend/wasb/weights/wasb_badminton_qdq_int8.onnx` (INT8 QDQ, 1.49 MB)
+- `backend/cv/factory.py` — get_shuttle_detector() with env switch
+- `backend/cv/rtmpose.py` — batched ONNX + GPU roi_align preproc
+- `backend/cv/tracknet_runner.py` + `backend/pipeline/video_pipeline.py` — production wiring
+- `backend/tests/test_wasb_inference.py` (9 tests) + `test_shuttle_factory_integration.py` (7 tests) all pass
