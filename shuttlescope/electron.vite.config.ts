@@ -39,6 +39,12 @@ export default defineConfig({
     : {
         renderer: {
           root: 'src',
+          // src/public/ 配下を out/renderer/ に自動コピーさせる。
+          // 既定の publicDir は <root>/public だが electron-vite では
+          // 解決されないケースがあるため絶対パスで明示。これがないと
+          // error-reporter.js / favicon 等が ship されず、白画面診断
+          // banner や PWA icon が壊れる。
+          publicDir: resolve(__dirname, 'src/public'),
           build: {
             rollupOptions: {
               input: {
