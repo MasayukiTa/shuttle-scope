@@ -36,7 +36,10 @@ _DEFAULT_INT8_ONNX = _WEIGHTS_DIR / "wasb_badminton_qdq_int8.onnx"
 _TRT_CACHE_DIR = _WEIGHTS_DIR / "trt_cache"
 _TRT_CACHE_INT8 = _WEIGHTS_DIR / "trt_cache_int8"
 
-_DEFAULT_VISIBLE_THRESHOLD = 0.5
+# 2026-05-24 audit raise: 21枚 OK / 22枚 NG @ threshold 0.5 (FP 51.2%)。
+# threshold 0.8 で 14 OK / 1 NG (FP 6.7%) と劇的改善。recall は 67% に下がるが
+# 量より質の原則を優先。詳細: CHANGELOG.md 2026-05-24 + shuttle_ok.csv。
+_DEFAULT_VISIBLE_THRESHOLD = 0.8
 
 
 def _resolve_model_path(explicit: Optional[str]) -> Path:
