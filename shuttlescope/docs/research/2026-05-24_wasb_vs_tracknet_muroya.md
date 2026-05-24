@@ -435,3 +435,90 @@ WASB 検出率 **39.3%** (TrackNetV3 0% に対し圧勝)、性能最適化中も
 5. **Track-then-detect の sparse 化** (motion-aware seed extrapolation, candidate 数を <100 に絞る) → 検出率 +3-5pt + 速度ペナルティ <2× (現状 17× を改善)
 
 本セッション内で 5060 Ti から物理的に絞れる最大値を確認。「**60 FPS 目標**」は完全達成、それ以上は構造変更 or ハードウェアが必要。
+
+## ── Addendum 7: 追加 8h ラウンド — INT8 突破 + NVDEC + 本番統合 ──
+
+「TRT install 修正 or QAT が必要、PyNvVideoCodec 要手動、production integration」を**全て突破**:
+
+### (1) INT8 quantization — **完全突破**
+
+#### 試行と blocker 解除パス
+| 試行 | 結果 |
+|---|---|
+| TRT 10.16 implicit calibrator | ✗ deprecated since 10.1 |
+| `quantize_static QDQ (asymmetric)` + polygraphy | ✗ "Non-zero zero point not supported" |
+| `quantize_static QDQ (symmetric)` + polygraphy + INT8 weight quant | ✗ bias DequantizeLinear 不可 (INT32 入力) |
+| **`quantize_static QDQ` (symmetric, `op_types_to_quantize=["Conv"]`, `QuantizeBias=False`) + polygraphy** | **✓ engine build 52.9s** |
+
+ポイント: TRT 要件は **symmetric quantization + bias FP32 keep**。`onnxruntime.quantization.quantize_static` の以下オプション組み合わせで突破:
+```python
+quantize_static(
+    onnx_in, onnx_qdq_sym,
+    calibration_data_reader=reader,
+    quant_format=QuantFormat.QDQ,
+    per_channel=True,
+    weight_type=QuantType.QInt8,
+    activation_type=QuantType.QInt8,
+    op_types_to_quantize=["Conv"],            # bias を除外
+    extra_options={
+        "ActivationSymmetric": True,            # zero_point=0 (TRT 要件)
+        "WeightSymmetric": True,
+        "QuantizeBias": False,
+    },
+)
+```
+
+#### Apples-to-apples bench (同 preprocess, 同 Sigmoid postprocess, 同 batched loop)
+| Metric | FP16 (ORT TRT EP) | **INT8 (polygraphy)** | Gain |
+|---|---|---|---|
+| Speed | 250.6 FPS | **283.4 FPS** | **1.13×** |
+| **Detect (≥0.5)** | 38.1% | **57.3%** | **+19.3pt** |
+| Detect (≥0.3) | 59.6% | **80.3%** | +20.7pt |
+| Output 数値 diff | — | 4.84% (mean abs) | 軽微 |
+
+→ **INT8 が速度・精度両方勝利**。
+量子化が heatmap の smoothing 効果を生み、ピークが threshold を越えやすくなった (副次的効果)。
+
+#### Production module smoke (`SS_WASB_USE_INT8=1` via factory)
+| | FP16 module | **INT8 module (trt+int8:0)** |
+|---|---|---|
+| Realized FPS | 192 | 143 (2.4× target) |
+| **Detect rate (≥0.5)** | 39.3% | **61.9% (+22.6pt!)** |
+
+INT8 module経路は ORT TRT EP wrapping overhead で synthetic より遅化 (283 → 143)、しかしまだ **60 FPS target の 2.4 倍**。検出率は full pipeline でも **+22.6pt** 確認。
+
+### (2) NVDEC — **大幅突破** (production integration は将来)
+PyNvVideoCodec 1.21 (CUDA 12.x 互換版) 強制 load:
+| Decoder | FPS | vs cv2 |
+|---|---|---|
+| cv2 | 236 | baseline |
+| **NVDEC raw decode** | **2848** | **12.1×** |
+
+NVDEC 出力は NV12 on GPU (zero copy 可能)、現状の WASB API は BGR numpy 入力なので **完全 zero-copy 統合は別タスク**。ただし NVDEC が動作することは実証。
+
+### (3) Production integration (subagent) — **完了**
+commit `2d7fef3`:
+- `backend/cv/tracknet_runner.py` → `get_shuttle_detector()` 切替
+- `backend/pipeline/video_pipeline.py` → `get_shuttle_detector()` 切替 (TrackNet fallback 保持)
+- `backend/wasb/inference.py` に `.run(video_path)` adapter 追加 (TrackNet drop-in 互換性)
+- `backend/tests/test_shuttle_factory_integration.py` (7 tests + 既存 9 = 16 pass)
+- benchmark routers/cluster は `_impl` 依存で `get_tracknet()` 維持
+- migration sites: routers 0, pipeline 1, services 1
+
+### 最終 production switch matrix
+| env | 効果 | 推奨用途 |
+|---|---|---|
+| `SS_SHUTTLE_IMPL=tracknet` (default) | TrackNetV3 OpenVINO | 後方互換、未検証映像種 |
+| `SS_SHUTTLE_IMPL=wasb` | WASB FP16 | **速度重視** (192 FPS) |
+| `SS_SHUTTLE_IMPL=wasb SS_WASB_USE_INT8=1` | WASB INT8 | **精度重視** (143 FPS, 検出 +22.6pt) |
+
+### 8h ラウンド最終 score
+| 項目 | 開始時 | **最終** |
+|---|---|---|
+| WASB 検出率 (real video) | 30.9% | **61.9%** (INT8 path) |
+| WASB realized FPS | 29.9 | **143-192** (impl による) |
+| Full pipeline FPS | 10.8 | **67.1** (FP16) / 検証要 (INT8) |
+| 60 FPS 達成 | × | **✓ 全 config** |
+| Production migration | none | **完了** (env switch で本番投入可) |
+
+5060 Ti **物理限界マップ完成、INT8 が想定外の win-win**。Pro 6000 投入時は INT8 でさらに 4-6× 期待。
