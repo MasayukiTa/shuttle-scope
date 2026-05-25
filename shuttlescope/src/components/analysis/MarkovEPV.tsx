@@ -35,6 +35,9 @@ interface EPVResponse {
 function EPVCard({ pattern, isPositive, rank }: { pattern: EPVPattern; isPositive: boolean; rank: number }) {
   // Design Language v1.2 §2.7.0: 左罫線縦バー禁止。
   // 色は EPV バー (長さ + accent) と数値文字色で運ぶ。
+  // 2026-05-25: module-scope 関数なので親の useTranslation() の t は
+  //   見えない。自前で hook を呼ぶ (本関数も React コンポーネントなので OK)。
+  const { t } = useTranslation()
   const accentColor = isPositive ? WIN : LOSS
   const epvSign = pattern.epv >= 0 ? '+' : ''
   const barWidth = Math.min(Math.abs(pattern.epv) * 400, 100)
