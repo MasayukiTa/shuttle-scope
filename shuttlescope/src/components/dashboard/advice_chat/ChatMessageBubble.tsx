@@ -53,10 +53,19 @@ export function ChatMessageBubble({
   }
 
   const renderedContent = isUser ? msg.content : revealed
-  const timestamp = msg.created_at ? new Date(msg.created_at) : null
-  const tsText = timestamp
-    ? `${String(timestamp.getHours()).padStart(2, '0')}:${String(timestamp.getMinutes()).padStart(2, '0')}`
-    : ''
+  // 2026-05-25: backend は datetime.utcnow().isoformat() を返すため tz サフィックス無し。
+  //   JS が naive ISO を local time と誤解して JST だと +9h ズレる。
+  //   `Z` を補って UTC 確定 → toLocaleTimeString で **ブラウザの localtime** に変換。
+  const tsText = (() => {
+    if (!msg.created_at) return ''
+    const raw = String(msg.created_at)
+    const iso = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(raw) ? raw : raw + 'Z'
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return ''
+    return d.toLocaleTimeString(undefined, {
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    })
+  })()
 
   // ── Avatar ──
   const avatar = showAvatar ? (

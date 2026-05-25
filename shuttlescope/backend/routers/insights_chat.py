@@ -92,7 +92,10 @@ def _serialize_message(m: ChatMessage) -> dict:
         "validation_reason": m.validation_reason,
         "date_from": m.date_from,
         "date_to": m.date_to,
-        "created_at": (m.created_at.isoformat() if m.created_at else None),
+        # 2026-05-25: datetime.utcnow() の naive ISO だとフロントが local 扱いするので
+        #   "Z" を付与して UTC を明示。フロントは toLocaleTimeString でブラウザの
+        #   タイムゾーンに変換する。
+        "created_at": (m.created_at.isoformat() + "Z" if m.created_at else None),
     }
 
 
@@ -203,7 +206,7 @@ def create_chat_session(
     return {
         "session_id": sess.id,
         "lang": sess.lang,
-        "created_at": sess.created_at.isoformat(),
+        "created_at": sess.created_at.isoformat() + "Z",
     }
 
 
