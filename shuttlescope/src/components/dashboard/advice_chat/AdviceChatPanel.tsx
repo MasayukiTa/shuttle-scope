@@ -175,14 +175,14 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden flex flex-col w-full">
+    <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col w-full">
       {/* ── Header ────────────────────────────────────────── */}
       <ChatHeader demoActive={demoActive} isSending={isSending} onResetClick={onResetClick} />
 
       {/* ── AI disclaimer (admin-only feature; player-tier opt-in TBD) ── */}
       <div
         role="note"
-        className="border-b border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200"
+        className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900"
       >
         {t('auto.AdviceChat.disclaimer_banner')}
       </div>
@@ -193,7 +193,7 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
         role="log"
         aria-live="polite"
         aria-label={t('auto.AdviceChat.bot_name')}
-        className="flex-1 max-h-[480px] min-h-[200px] overflow-y-auto space-y-3 px-2 md:px-4 py-3 bg-gray-50 dark:bg-gray-900/40"
+        className="flex-1 max-h-[480px] min-h-[200px] overflow-y-auto space-y-3 px-2 md:px-4 py-3 bg-gray-50"
       >
         {isInitializing && (
           <div className="text-center text-xs text-gray-500">…</div>
@@ -220,7 +220,7 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
       </div>
 
       {/* ── Composer ──────────────────────────────────────── */}
-      <div className="border-t border-gray-200 dark:border-gray-700 p-2 md:p-3 bg-white dark:bg-gray-800 sticky bottom-0">
+      <div className="border-t border-gray-200 p-2 md:p-3 bg-white sticky bottom-0">
         <ActiveScopeBar
           scope={appliedScope}
           onClearSlot={onClearSlot}
@@ -235,13 +235,13 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
         />
         {/* Error 領域 */}
         {error && !dismissedError && (
-          <div className="mt-2 flex items-start justify-between gap-2 text-xs rounded border border-red-300 bg-red-50 dark:bg-red-900/30 px-3 py-2 text-red-700 dark:text-red-200">
+          <div className="mt-2 flex items-start justify-between gap-2 text-xs rounded border border-red-300 bg-red-50 px-3 py-2 text-red-700">
             <span className="break-words">{t(error)}</span>
             <button
               type="button"
               onClick={() => setDismissedError(true)}
               aria-label={t('auto.AdviceChat.cancel')}
-              className="text-red-700 dark:text-red-200 hover:opacity-75 text-sm leading-none"
+              className="text-red-700 hover:opacity-75 text-sm leading-none"
             >
               ×
             </button>

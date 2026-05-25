@@ -40,7 +40,7 @@ export function ActiveScopeBar({ scope, onClearSlot, onClearAll }: Props) {
       className="flex items-center flex-wrap gap-1.5 text-[11px] mb-1.5"
       aria-label={t('auto.AdviceChat.scope.bar.title')}
     >
-      <span className="text-gray-600 dark:text-gray-300 font-medium">
+      <span className="text-gray-600 font-medium">
         {t('auto.AdviceChat.scope.bar.title')}:
       </span>
       {scope.period && (scope.period.date_from || scope.period.date_to) && (
@@ -70,7 +70,7 @@ export function ActiveScopeBar({ scope, onClearSlot, onClearAll }: Props) {
       <button
         type="button"
         onClick={onClearAll}
-        className="text-indigo-700 dark:text-indigo-300 hover:underline ml-1"
+        className="text-indigo-700 hover:underline ml-1"
       >
         {t('auto.AdviceChat.scope.clearAll')}
       </button>
@@ -91,16 +91,16 @@ function ScopeChip({
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-700 text-indigo-900 dark:text-indigo-100 px-2 py-0.5 rounded-full"
+      className="inline-flex items-center gap-1 bg-indigo-50 border border-indigo-200 text-indigo-900 px-2 py-0.5 rounded-full"
       aria-label={ariaLabel}
     >
-      <MIcon name={icon} size={12} ariaHidden className="text-indigo-700 dark:text-indigo-200" />
+      <MIcon name={icon} size={12} ariaHidden className="text-indigo-700" />
       <span>{label}</span>
       <button
         type="button"
         onClick={onClear}
         aria-label={`${ariaLabel} clear`}
-        className="text-indigo-700 dark:text-indigo-200 hover:text-red-600"
+        className="text-indigo-700 hover:text-red-600"
       >
         <MIcon name="close" size={12} ariaHidden />
       </button>
