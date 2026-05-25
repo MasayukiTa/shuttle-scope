@@ -193,7 +193,7 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
         role="log"
         aria-live="polite"
         aria-label={t('auto.AdviceChat.bot_name')}
-        className="flex-1 max-h-[480px] min-h-[200px] overflow-y-auto space-y-3 px-2 md:px-4 py-3 bg-gray-50"
+        className="flex-1 max-h-[480px] min-h-[200px] overflow-y-auto space-y-3 px-2 md:px-4 py-3 bg-white"
       >
         {isInitializing && (
           <div className="text-center text-xs text-gray-500">…</div>
