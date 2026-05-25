@@ -712,7 +712,42 @@ html[data-theme="light"] .bg-orange-600 .text-white,
 html[data-theme="light"] .bg-orange-700 .text-white,
 html[data-theme="light"] .bg-amber-500.text-white,
 html[data-theme="light"] .bg-amber-600.text-white,
-html[data-theme="light"] .bg-amber-700.text-white {
+html[data-theme="light"] .bg-amber-700.text-white,
+/* 2026-05-25: Tailwind gradient backgrounds (`bg-gradient-to-* from-X-Y`)
+   don't match the .bg-XXX-Y selectors above. Cover all gradient-stop
+   color tokens so any element styled `from-{color}-{shade} text-white`
+   (or its child with text-white) keeps white text in light mode.
+   AdviceChat ChatHeader uses `from-indigo-500 via-purple-500 to-pink-500`. */
+html[data-theme="light"] [class*="from-indigo-"].text-white,
+html[data-theme="light"] [class*="from-indigo-"] .text-white,
+html[data-theme="light"] [class*="from-purple-"].text-white,
+html[data-theme="light"] [class*="from-purple-"] .text-white,
+html[data-theme="light"] [class*="from-pink-"].text-white,
+html[data-theme="light"] [class*="from-pink-"] .text-white,
+html[data-theme="light"] [class*="from-blue-"].text-white,
+html[data-theme="light"] [class*="from-blue-"] .text-white,
+html[data-theme="light"] [class*="from-violet-"].text-white,
+html[data-theme="light"] [class*="from-violet-"] .text-white,
+html[data-theme="light"] [class*="from-fuchsia-"].text-white,
+html[data-theme="light"] [class*="from-fuchsia-"] .text-white,
+html[data-theme="light"] [class*="from-rose-"].text-white,
+html[data-theme="light"] [class*="from-rose-"] .text-white,
+html[data-theme="light"] [class*="from-red-"].text-white,
+html[data-theme="light"] [class*="from-red-"] .text-white,
+html[data-theme="light"] [class*="from-cyan-"].text-white,
+html[data-theme="light"] [class*="from-cyan-"] .text-white,
+html[data-theme="light"] [class*="from-teal-"].text-white,
+html[data-theme="light"] [class*="from-teal-"] .text-white,
+html[data-theme="light"] [class*="from-emerald-"].text-white,
+html[data-theme="light"] [class*="from-emerald-"] .text-white,
+html[data-theme="light"] [class*="from-green-"].text-white,
+html[data-theme="light"] [class*="from-green-"] .text-white,
+html[data-theme="light"] [class*="from-orange-"].text-white,
+html[data-theme="light"] [class*="from-orange-"] .text-white,
+html[data-theme="light"] [class*="from-amber-"].text-white,
+html[data-theme="light"] [class*="from-amber-"] .text-white,
+html[data-theme="light"] [class*="from-slate-"].text-white,
+html[data-theme="light"] [class*="from-slate-"] .text-white {
   color: #ffffff !important;
 }
 
