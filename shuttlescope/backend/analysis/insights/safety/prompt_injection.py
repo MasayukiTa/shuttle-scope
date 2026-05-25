@@ -20,8 +20,12 @@ _INJECTION_PATTERNS = (
     re.compile(r"前の指示を無視"),
 )
 
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
-_REPEATED_CHAR_RE = re.compile(r"(.)\1{50,}")
+# Bounded quantifiers eliminate polynomial backtracking on adversarial
+# inputs (CodeQL py/polynomial-redos). Caps are above any legitimate
+# value: HTML tags > 200 chars don't appear in real prose; runs > 2000
+# chars are already truncated by _MAX_LEN above.
+_HTML_TAG_RE = re.compile(r"<[^<>]{1,200}>")
+_REPEATED_CHAR_RE = re.compile(r"(.)\1{50,2000}")
 
 
 def sanitize_user_input(text: str) -> tuple[str, list[str]]:
@@ -44,14 +48,15 @@ def sanitize_user_input(text: str) -> tuple[str, list[str]]:
             flags.append("injection_attempt")
             break
 
-    # 3) HTML タグ除去
-    if _HTML_TAG_RE.search(cleaned):
-        cleaned = _HTML_TAG_RE.sub("", cleaned)
+    # 3) HTML タグ除去 (subn = 1パスで removal + count)
+    cleaned, n_html = _HTML_TAG_RE.subn("", cleaned)
+    if n_html:
         flags.append("html_stripped")
 
-    # 4) スパム連続文字 (truncated でない場合のみ collapse)
-    if "truncated" not in flags and _REPEATED_CHAR_RE.search(cleaned):
-        cleaned = _REPEATED_CHAR_RE.sub(lambda m: m.group(1) * 50, cleaned)
-        flags.append("spam_chars")
+    # 4) スパム連続文字 (truncated でない場合のみ collapse、1パスで処理)
+    if "truncated" not in flags:
+        cleaned, n_spam = _REPEATED_CHAR_RE.subn(lambda m: m.group(1) * 50, cleaned)
+        if n_spam:
+            flags.append("spam_chars")
 
     return cleaned, flags
