@@ -1217,8 +1217,11 @@ video::-webkit-media-controls-play-button {
   0%   { opacity: 0; transform: translateY(8px); }
   100% { opacity: 1; transform: translateY(0); }
 }
+/* 2026-05-25 redesign: chat 系の slide-in / bounce / cursor-blink animation
+ * は廃止 (落ち着いた静的 UI を採用)。下記クラスはレガシー互換のため残すが
+ * 既に JSX 側から参照されていない。新規でも使わないこと。 */
 .chat-bubble-enter {
-  animation: chat-bubble-enter-frames 0.2s ease-out both;
+  /* animation 無効化 */
 }
 
 @keyframes chat-typing-bounce {

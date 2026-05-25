@@ -40,19 +40,14 @@ export function ChatMessageBubble({
       ? Math.round(msg.confidence * 100)
       : null
 
-  // ── AI 用 typewriter ──
-  const { revealed, isTyping } = useTypewriter(
-    !isUser ? msg.content : '',
-    25,
-    !isUser && typewrite && !msg._pending,
-  )
-  // 完了通知
-  if (!isUser && typewrite && !isTyping && revealed === msg.content && onTypewriterDone) {
-    // 副作用は render 内で発火しないよう microtask に逃がす
+  // 2026-05-25: typewriter / cursor-blink 廃止。応答は即座に全文表示する。
+  // 副作用ハンドラはまだ呼び出し側が onTypewriterDone を期待しているため、
+  // 新着 AI msg が初回 render された次の tick で完了通知する。
+  if (!isUser && typewrite && onTypewriterDone) {
     queueMicrotask(() => onTypewriterDone(msg.id))
   }
-
-  const renderedContent = isUser ? msg.content : revealed
+  const isTyping = false
+  const renderedContent = msg.content
   // 2026-05-25: backend は datetime.utcnow().isoformat() を返すため tz サフィックス無し。
   //   JS が naive ISO を local time と誤解して JST だと +9h ズレる。
   //   `Z` を補って UTC 確定 → toLocaleTimeString で **ブラウザの localtime** に変換。
@@ -78,10 +73,10 @@ export function ChatMessageBubble({
       </div>
     ) : (
       <div
-        className="shrink-0 w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center"
+        className="shrink-0 w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center"
         aria-hidden="true"
       >
-        <MIcon name="auto_awesome" size={14} fill={1} className="text-white" ariaHidden />
+        <MIcon name="forum" size={14} ariaHidden />
       </div>
     )
   ) : (
@@ -91,7 +86,7 @@ export function ChatMessageBubble({
   if (isUser) {
     return (
       <div
-        className="chat-bubble-enter flex items-end justify-end gap-2"
+        className="flex items-end justify-end gap-2"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
@@ -144,7 +139,7 @@ export function ChatMessageBubble({
   // ── AI / system bubble ──
   return (
     <div
-      className="chat-bubble-enter flex items-end justify-start gap-2"
+      className="flex items-end justify-start gap-2"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -153,9 +148,7 @@ export function ChatMessageBubble({
         <div className="rounded-2xl rounded-tl-sm px-3 py-2 text-sm leading-relaxed bg-gray-100 text-gray-900">
           <div className="whitespace-pre-wrap break-words">
             {renderedContent}
-            {isTyping && (
-              <span className="chat-cursor-blink inline-block w-[1px] h-[1em] align-text-bottom ml-[1px] bg-gray-500" />
-            )}
+            {isTyping && null}
           </div>
         </div>
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">

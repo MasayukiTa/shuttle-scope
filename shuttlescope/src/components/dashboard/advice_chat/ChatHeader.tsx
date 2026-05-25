@@ -1,6 +1,9 @@
 /**
- * ChatHeader — Growth Advisor のグラデーションヘッダ。
- * indigo→purple→pink のミュートしたグラデーションで「会話 UI」感を出す。
+ * ChatHeader — Growth Advisor のヘッダー。
+ *
+ * 2026-05-25 redesign: 旧版は indigo→purple→pink グラデーション + 派手な
+ *   typewriter / bounce / bubble-enter で「Tailwind の悪い例」だったため、
+ *   solid な slate ベースに統一して落ち着いた業務UI に置き換え。
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -17,30 +20,29 @@ export function ChatHeader({ demoActive, isSending, onResetClick }: Props) {
   const [helpOpen, setHelpOpen] = useState(false)
 
   return (
-    <div className="relative rounded-t-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-opacity-90 px-3 py-3 md:px-4 md:py-3 text-white">
+    <div className="rounded-t-xl border-b border-slate-200 bg-slate-50 px-3 py-3 md:px-4 md:py-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 min-w-0">
-          <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/15 shrink-0 shadow-inner">
+          <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-slate-200 shrink-0">
             <MIcon
-              name="auto_awesome"
+              name="forum"
               size={20}
-              fill={1}
-              className="text-white drop-shadow"
+              className="text-slate-700"
               ariaHidden
             />
           </span>
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold leading-tight text-white">
+            <h2 className="text-sm font-semibold leading-tight text-slate-900">
               {t('auto.AdviceChat.title')}
             </h2>
-            <p className="text-[11px] text-white truncate">
+            <p className="text-[11px] text-slate-600 truncate">
               {t('auto.AdviceChat.subtitle')}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {demoActive && (
-            <span className="inline-flex items-center px-2 py-0.5 text-[10px] rounded bg-amber-400 text-amber-950 font-semibold">
+            <span className="inline-flex items-center px-2 py-0.5 text-[10px] rounded bg-amber-100 text-amber-900 border border-amber-200 font-medium">
               {t('auto.AdviceChat.demo_chip')}
             </span>
           )}
@@ -51,14 +53,14 @@ export function ChatHeader({ demoActive, isSending, onResetClick }: Props) {
               onBlur={() => setHelpOpen(false)}
               aria-label={t('auto.AdviceChat.help_tooltip')}
               title={t('auto.AdviceChat.help_tooltip')}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-white/15 text-white"
+              className="inline-flex items-center justify-center w-8 h-8 rounded text-slate-600 hover:bg-slate-200"
             >
               <MIcon name="help" size={18} ariaHidden />
             </button>
             {helpOpen && (
               <div
                 role="tooltip"
-                className="absolute right-0 top-9 z-10 w-56 rounded bg-gray-900 text-white text-[11px] px-2 py-1.5 shadow-lg"
+                className="absolute right-0 top-9 z-10 w-56 rounded bg-slate-900 text-white text-[11px] px-2 py-1.5 shadow-lg"
               >
                 {t('auto.AdviceChat.help_tooltip')}
               </div>
@@ -70,7 +72,7 @@ export function ChatHeader({ demoActive, isSending, onResetClick }: Props) {
             aria-label={t('auto.AdviceChat.reset')}
             title={t('auto.AdviceChat.reset')}
             disabled={isSending}
-            className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-white/15 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center w-8 h-8 rounded text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <MIcon name="refresh" size={18} ariaHidden />
           </button>
