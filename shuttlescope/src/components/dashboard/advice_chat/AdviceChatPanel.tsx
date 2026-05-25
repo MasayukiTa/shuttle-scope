@@ -27,7 +27,14 @@ import { ResetConfirmModal } from './ResetConfirmModal'
 
 const ALLOWED_ROLES = new Set(['coach', 'analyst', 'admin'])
 
-export function AdviceChatPanel() {
+interface AdviceChatPanelProps {
+  /** ダッシュボードで現在観察中の選手 ID。admin/coach/analyst のときに NIM へ
+   *  「ctx.player_id ではなくこの id の analytics を分析せよ」と伝える。
+   *  指定しないと従来通り ctx.player_id (=自分) が使われる。 */
+  viewedPlayerId?: number | null
+}
+
+export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps = {}) {
   const { t } = useTranslation()
   const { role, displayName } = useAuth()
   const demoActive = useDemoModeStore((s) => s.active)
@@ -103,10 +110,11 @@ export function AdviceChatPanel() {
         period: extras.period,
         shotType: extras.shotType,
         zone: extras.zone,
+        targetPlayerId: viewedPlayerId,
       })
       textareaRef.current?.focus()
     },
-    [draft, isSending, sendMessage],
+    [draft, isSending, sendMessage, viewedPlayerId],
   )
 
   const onClearSlot = useCallback(
@@ -114,15 +122,17 @@ export function AdviceChatPanel() {
       // 個別スロットクリアを即時反映するため、短い ack メッセージを送る。
       void sendMessage(slot === 'period' ? '全期間で見直して' : 'フィルタを更新', {
         clearSlots: [slot],
+        targetPlayerId: viewedPlayerId,
       })
     },
-    [sendMessage],
+    [sendMessage, viewedPlayerId],
   )
   const onClearAll = useCallback(() => {
     void sendMessage('全部リセット', {
       clearSlots: ['period', 'shot_type', 'zone'],
+      targetPlayerId: viewedPlayerId,
     })
-  }, [sendMessage])
+  }, [sendMessage, viewedPlayerId])
 
   const onTypewriterDone = useCallback((id: ChatMessage['id']) => {
     setNewMessageIds((prev) => {

@@ -52,6 +52,11 @@ export interface SendOptions {
   shotType?: string | null
   zone?: string | null
   clearSlots?: Array<'period' | 'shot_type' | 'zone'>
+  /** ダッシュボードで観察中の対象選手 ID。admin/coach/analyst のとき backend が
+   *  ctx.player_id ではなくこちらを使って analytics をスコープする。
+   *  指定しないと auth ctx の player_id (自分) が使われる。
+   */
+  targetPlayerId?: number | null
 }
 
 interface CreateSessionResp {
@@ -208,6 +213,7 @@ export function useAdviceChat() {
             shot_type: shotType,
             zone: zone,
             clear_slots: clearSlots,
+            target_player_id: opts?.targetPlayerId ?? null,
           },
         )
         setMessages((prev) => {
