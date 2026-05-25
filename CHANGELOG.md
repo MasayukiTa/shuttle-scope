@@ -121,38 +121,6 @@ Product telemetry, an admin analytics tab, and a tutorial framework landed. Tele
 
 Re-grant button after consent withdrawal; team selector for admin; exit links on the onboarding consent page (back to `shuttle-scope.com` / login). `display_name` edit now reflects in Settings → Account immediately. `NoDataMessage` gets an internal grace period; never show "データ不足" while a query is still resolving.
 
-## 2026-05-17
-
-### Player-Safe Dashboard + Body-Composition Consent
-
-Player role now gets `/dashboard` with safe tabs only (not a placeholder). `prediction` / `dashboard-research` / `expert` tabs are explicitly hidden from the player role. Player-safe Analysis page + UMP mobile-scroll + Settings username view added. New per-player body-composition disclosure consent surface allows analysts / coaches to view the data only after explicit grant.
-
-### Mobile Calibration Hardening
-
-Pixel-explicit SVG size + cover-aware loupe so the magnifier aligns with the snapshot canvas; cover-fit baked into the snapshot itself. Video kept mounted across calib open/close (`preload=auto`, no reload on close). Grid `videoTransform` revert + harden set-1 prompt + DevSkim CI. Drop unsupported DevSkim flag `--exit-code-on-recommendation`.
-
-### Misc Polish
-
-`MatchListPage` gains page-level scroll so the list shows in landscape phone. Mobile preload reverted from `auto` where it caused an iOS UI freeze; set-1 `ensureSet` feedback. Shared badminton rules util + mobile resume + match-end UI. iOS Script-error suppression + Sample Team placeholder + green ✓ contrast fix. Mobile annotate confirms back-nav + shows past-analysis badge.
-
-## 2026-05-16
-
-### Mobile Annotation: Calibration Editor + CV Overlay Crop
-
-In-browser court calibration editor (tap-to-place + drag), wired to trigger TrackNet / YOLO batch directly from the mobile annotate flow. Crop transform now applied consistently to grid / shuttle / bbox overlays so calib coords match what the user sees. Material Symbols font subset reduced 3.8 MB → 232 KB; iOS native play overlay suppressed; `video pointer-events:none` while calibrating to stop swallowed taps. Finger loupe added to calib; `preserveAspectRatio=none` removed; explicit `viewBox` added on calib + CV overlay SVGs. Document-level capture `touchstart` added to debug lost taps; canvas snapshot + force `screen=play` + on-screen diag for iOS layer-leak triage; full video unmount during calib to defeat the iOS layer leak.
-
-### Pass-Switch + Quality-Preserve UX
-
-Set-1 button + quality seek preserve + CV data hints; PlayMode state kept across orientation; CV job visibility + chip readability; right-top tools / Pass switch / back stay tappable over the Pass1 overlay (z-order fix); TDZ fix where `resumeFromSec` `useMemo` ran before `mergedRallies` was declared.
-
-### Diagnostics + CSP + Path-Injection
-
-White-screen on `/m/annotate` now shows an error banner instead of silent crash; error reporter inlined in `index.html` with no-cache headers; externalized to `/error-reporter.js` so CSP `script-src 'self'` is satisfied; SPA serves root-public static files (`error-reporter.js`, `favicon.png`) before the SPA redirect; build-tag chip added to verify the reporter actually loaded; `AbortError` noise from video remount suppressed; `__ss_error_bar__` switched to `pointer-events:none` because it was stealing taps. `MIcon` import miss + font load timeout + ignore `Script error` noise + auto-play. Hardcoded whitelist replacing user-controlled root-public path (CodeQL `py/path-injection` 2374). `extra=forbid` on `StartRequest` (`youtube_live`, R271 schema hygiene).
-
-### Icon Regulation + Dep Revert
-
-Emoji / Unicode glyphs → `MIcon` everywhere across the mobile annotate path; grey text → white per the color-contrast rule. `calib` UX rework keeps the video visible with end-aligned icons + font race fix + spinner + 保存#fff. CV chip safe-area / existing-job rescue / PWA-aware FS. Reverted `react-router-dom` 7 / `i18next` 26 / `react-i18next` 17 back to v6.x / v23 / v14 after upstream peer-dep churn.
-
 ## 2026-05-18
 
 ### Terms of Service v1.3 — security, analytics, and minor-user scope
@@ -205,6 +173,38 @@ Availability" paragraph) into a full availability disclaimer block:
 Backend `CURRENT_TERMS_VERSION` bumped 1.2 → 1.3. Existing consent rows
 remain in the DB; new consent submissions will require terms_version=1.3,
 which triggers the standard re-consent flow.
+
+## 2026-05-17
+
+### Player-Safe Dashboard + Body-Composition Consent
+
+Player role now gets `/dashboard` with safe tabs only (not a placeholder). `prediction` / `dashboard-research` / `expert` tabs are explicitly hidden from the player role. Player-safe Analysis page + UMP mobile-scroll + Settings username view added. New per-player body-composition disclosure consent surface allows analysts / coaches to view the data only after explicit grant.
+
+### Mobile Calibration Hardening
+
+Pixel-explicit SVG size + cover-aware loupe so the magnifier aligns with the snapshot canvas; cover-fit baked into the snapshot itself. Video kept mounted across calib open/close (`preload=auto`, no reload on close). Grid `videoTransform` revert + harden set-1 prompt + DevSkim CI. Drop unsupported DevSkim flag `--exit-code-on-recommendation`.
+
+### Misc Polish
+
+`MatchListPage` gains page-level scroll so the list shows in landscape phone. Mobile preload reverted from `auto` where it caused an iOS UI freeze; set-1 `ensureSet` feedback. Shared badminton rules util + mobile resume + match-end UI. iOS Script-error suppression + Sample Team placeholder + green ✓ contrast fix. Mobile annotate confirms back-nav + shows past-analysis badge.
+
+## 2026-05-16
+
+### Mobile Annotation: Calibration Editor + CV Overlay Crop
+
+In-browser court calibration editor (tap-to-place + drag), wired to trigger TrackNet / YOLO batch directly from the mobile annotate flow. Crop transform now applied consistently to grid / shuttle / bbox overlays so calib coords match what the user sees. Material Symbols font subset reduced 3.8 MB → 232 KB; iOS native play overlay suppressed; `video pointer-events:none` while calibrating to stop swallowed taps. Finger loupe added to calib; `preserveAspectRatio=none` removed; explicit `viewBox` added on calib + CV overlay SVGs. Document-level capture `touchstart` added to debug lost taps; canvas snapshot + force `screen=play` + on-screen diag for iOS layer-leak triage; full video unmount during calib to defeat the iOS layer leak.
+
+### Pass-Switch + Quality-Preserve UX
+
+Set-1 button + quality seek preserve + CV data hints; PlayMode state kept across orientation; CV job visibility + chip readability; right-top tools / Pass switch / back stay tappable over the Pass1 overlay (z-order fix); TDZ fix where `resumeFromSec` `useMemo` ran before `mergedRallies` was declared.
+
+### Diagnostics + CSP + Path-Injection
+
+White-screen on `/m/annotate` now shows an error banner instead of silent crash; error reporter inlined in `index.html` with no-cache headers; externalized to `/error-reporter.js` so CSP `script-src 'self'` is satisfied; SPA serves root-public static files (`error-reporter.js`, `favicon.png`) before the SPA redirect; build-tag chip added to verify the reporter actually loaded; `AbortError` noise from video remount suppressed; `__ss_error_bar__` switched to `pointer-events:none` because it was stealing taps. `MIcon` import miss + font load timeout + ignore `Script error` noise + auto-play. Hardcoded whitelist replacing user-controlled root-public path (CodeQL `py/path-injection` 2374). `extra=forbid` on `StartRequest` (`youtube_live`, R271 schema hygiene).
+
+### Icon Regulation + Dep Revert
+
+Emoji / Unicode glyphs → `MIcon` everywhere across the mobile annotate path; grey text → white per the color-contrast rule. `calib` UX rework keeps the video visible with end-aligned icons + font race fix + spinner + 保存#fff. CV chip safe-area / existing-job rescue / PWA-aware FS. Reverted `react-router-dom` 7 / `i18next` 26 / `react-i18next` 17 back to v6.x / v23 / v14 after upstream peer-dep churn.
 
 ## 2026-05-15
 
