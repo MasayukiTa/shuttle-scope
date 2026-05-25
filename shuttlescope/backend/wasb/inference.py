@@ -248,7 +248,7 @@ class WasbInference:
 
         # NVDEC fast path (opt-in via SS_WASB_USE_NVDEC=1).
         # Measured 1.49× end-to-end vs cv2+predict_frames (105 → 156 FPS on
-        # muroya 1798 frame with INT8). Falls back to cv2 silently on any
+        # player_a 1798 frame with INT8). Falls back to cv2 silently on any
         # error (missing PyNvVideoCodec, non-NVDEC GPU, etc.).
         use_nvdec = (
             os.environ.get("SS_WASB_USE_NVDEC", "0") not in ("0", "false", "")
@@ -540,7 +540,7 @@ class WasbInference:
         # from BOTH adjacent confident neighbours. These are almost certainly
         # noise peaks the model picked because no real shuttle was visible —
         # counting them as "detected" inflates the % metric without product
-        # value. Default ON since the quality audit on muroya found 10.8%
+        # value. Default ON since the quality audit on player_a found 10.8%
         # of "visible" frames jumped >200 px (physically impossible).
         # Disable with SS_WASB_MOTION_FILTER=0 to compare against the raw rate.
         if (frames and os.environ.get("SS_WASB_MOTION_FILTER", "1")
@@ -557,7 +557,7 @@ class WasbInference:
         self._smooth_temporal(results)
 
         # Optional 2nd pass: track-then-detect ROI re-inference.
-        # Default OFF — the gain measured on muroya doubles was only +0.9pt
+        # Default OFF — the gain measured on player_a doubles was only +0.9pt
         # detection rate at 17x speed cost (most uncertain frames don't
         # actually contain the shuttle, so ROI re-inference burns compute
         # without finding new detections). Kept as opt-in for offline /

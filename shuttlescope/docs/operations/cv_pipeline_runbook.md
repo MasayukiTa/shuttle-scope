@@ -1,6 +1,6 @@
 # CV Pipeline Runbook (WASB / INT8 / NVDEC)
 
-オペレータ向け運用ハンドブック。詳細な実験ログは `docs/research/2026-05-24_wasb_vs_tracknet_muroya.md` を参照。本ドキュメントは「本番でどの env を立てるか」「異常時どこを見るか」を最短経路で示す。
+オペレータ向け運用ハンドブック。詳細な実験ログは `docs/research/2026-05-24_wasb_vs_tracknet_player_a.md` を参照。本ドキュメントは「本番でどの env を立てるか」「異常時どこを見るか」を最短経路で示す。
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## TL;DR
 
-ShuttleScope のシャトル検出は **WASB + INT8 + NVDEC** で TrackNetV3 から完全置換可能。室屋ダブルス映像で検出率 **0% → 87.1%** (cross-video median 100%)、WASB 単独 **156 FPS** (NVDEC 込)、フルパイプ **67 FPS** (5060 Ti, FP16) を実測達成。**推奨 prod 設定**:
+ShuttleScope のシャトル検出は **WASB + INT8 + NVDEC** で TrackNetV3 から完全置換可能。Player Aダブルス映像で検出率 **0% → 87.1%** (cross-video median 100%)、WASB 単独 **156 FPS** (NVDEC 込)、フルパイプ **67 FPS** (5060 Ti, FP16) を実測達成。**推奨 prod 設定**:
 
 ```
 SS_SHUTTLE_IMPL=wasb
@@ -30,7 +30,7 @@ SS_WASB_USE_NVDEC=1
 SS_DISABLE_RELOAD=1
 ```
 
-INT8 は muroya/video-b/-d/-db の 4 映像で +22pt 安定改善 (overfit ではない、ただし N=4 と小)。失敗時は自動 FP16 → 自動 TrackNet フォールバックで本番停止しない設計。
+INT8 は player_a/video-b/-d/-db の 4 映像で +22pt 安定改善 (overfit ではない、ただし N=4 と小)。失敗時は自動 FP16 → 自動 TrackNet フォールバックで本番停止しない設計。
 
 ---
 
@@ -62,7 +62,7 @@ INT8 は muroya/video-b/-d/-db の 4 映像で +22pt 安定改善 (overfit で�
 | WASB FP16 (Tier1 opt) | 484.2 / 506.5 | 8-20 | TRT EP IOBinding | 8.1× |
 | WASB INT8 (QDQ + polygraphy) | 283.4 | 8 | TRT EP INT8 | 4.7× |
 
-### Pipeline realized FPS (real video, muroya 1798 frame @ 1080p60)
+### Pipeline realized FPS (real video, player_a 1798 frame @ 1080p60)
 
 | Config | Sequential | Threaded || | Notes |
 |---|---|---|---|
@@ -77,7 +77,7 @@ INT8 は muroya/video-b/-d/-db の 4 映像で +22pt 安定改善 (overfit で�
 
 | Video | TrackNetV3 | WASB FP16 (smoothing) | WASB INT8 (motion smoothing) |
 |---|---|---|---|
-| muroya 1080p60 (calibration source) | **0.0%** | 40.1% / 61.1% | **87.1%** |
+| player_a 1080p60 (calibration source) | **0.0%** | 40.1% / 61.1% | **87.1%** |
 | video-b 640×360 | 0.0% | 76.5% / 99.8% | **100.0%** |
 | video-d 640×360 | 0.0% | 76.5% | **100.0%** |
 | video-db 640×360 | 0.0% | 76.5% | **100.0%** |
@@ -206,11 +206,11 @@ quantize_static(
 
 ### INT8 cross-video N=4 警告
 
-INT8 +22pt は muroya / video-b / -d / -db で確認 (`Addendum 8`)。**異なる解像度 (1080p / 640×360) で同じ gain** = generalizable と判定したが、N=4 は統計的に弱い。新規映像種 (シングルス、低照度、室内体育館以外) 投入時は必ず cross-video smoke を回す。
+INT8 +22pt は player_a / video-b / -d / -db で確認 (`Addendum 8`)。**異なる解像度 (1080p / 640×360) で同じ gain** = generalizable と判定したが、N=4 は統計的に弱い。新規映像種 (シングルス、低照度、室内体育館以外) 投入時は必ず cross-video smoke を回す。
 
 ### Track-then-detect ROI refinement は opt-in only
 
-muroya では +0.9pt 検出率 vs 17× 速度ペナルティ。Python overhead が candidate 数で線形悪化。**本番では `SS_WASB_ROI_REFINE=0` 固定**、オフライン分析専用。
+player_a では +0.9pt 検出率 vs 17× 速度ペナルティ。Python overhead が candidate 数で線形悪化。**本番では `SS_WASB_ROI_REFINE=0` 固定**、オフライン分析専用。
 
 ### GPU util 56%、律速は Python overhead
 
@@ -238,8 +238,8 @@ muroya では +0.9pt 検出率 vs 17× 速度ペナルティ。Python overhead �
 | `backend/tests/test_shuttle_factory_integration.py` | factory 切替 7 tests |
 | `scripts/check_module_scope_t.py` | i18n module-scope `t()` 検出 ガード |
 | `.github/workflows/check-i18n.yml` | 上記 CI |
-| `docs/research/2026-05-24_wasb_vs_tracknet_muroya.md` | 全 9 addendum の詳細実験ログ |
-| `docs/research/2026-05-24_validation_bench_muroya.md` | TrackNet 0% 検出の発見 (本作業の起点) |
+| `docs/research/2026-05-24_wasb_vs_tracknet_player_a.md` | 全 9 addendum の詳細実験ログ |
+| `docs/research/2026-05-24_validation_bench_player_a.md` | TrackNet 0% 検出の発見 (本作業の起点) |
 | `docs/research/2026-05-23_cv_model_survey.md` | モデル survey と Phase ロードマップ |
 
 ---
@@ -262,7 +262,7 @@ muroya では +0.9pt 検出率 vs 17× 速度ペナルティ。Python overhead �
 
 | 項目 | 本セッション開始時 | 最終 |
 |---|---|---|
-| WASB 検出率 (muroya) | TrackNetV3 **0.0%** | INT8+motion smoothing **87.1%** |
+| WASB 検出率 (player_a) | TrackNetV3 **0.0%** | INT8+motion smoothing **87.1%** |
 | WASB 検出率 (other 3 video median) | 0.0% | **100.0%** |
 | WASB 単独 realized FPS | 29.9 | **156** (INT8 + NVDEC) |
 | Full pipeline realized FPS | 10.8 | **67.1** (FP16 / 2-person pose) |

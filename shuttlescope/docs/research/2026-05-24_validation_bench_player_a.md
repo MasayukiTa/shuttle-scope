@@ -1,8 +1,8 @@
-# Validation Bench: Existing CV Pipeline on Muroya Doubles (match 33)
+# Validation Bench: Existing CV Pipeline on Player A Doubles (match 33)
 
 ## Target
 - **Match**: id=33, 2025-12-26, 第79回全日本総合 女子ダブルス2回戦
-- **Players**: 室屋 叶夏 (Kanano Muroya) ペア vs 田中・植田組
+- **Players**: Player A (Player A) ペア vs Players D/E (doubles)
 - **Video**: `videos/fd425688-db28-401e-a57b-7af2d6114a4e.mp4` (YouTube `YDBA8OX5bH0`)
 - **Format**: 1920×1080, 59.94 fps, 3481 秒 (58 分)
 - **Bench windows**: 60-90s (試合開始直後) と 600-630s (ラリー中) の 2 区間 × 30秒 (1798 frame)

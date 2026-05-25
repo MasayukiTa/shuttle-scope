@@ -1,7 +1,7 @@
-# WASB-SBDT vs TrackNetV3 Head-to-Head — Muroya Doubles (match 33)
+# WASB-SBDT vs TrackNetV3 Head-to-Head — Player A Doubles (match 33)
 
 ## TL;DR
-**WASB は TrackNetV3 を ShuttleScope の現運用において全方位で上回る**。同じ室屋ダブルス映像 (TrackNetV3 が 0% 検出) で **WASB は 30.9% の frame でシャトル検出** + synthetic batched で **295 FPS (TrackNet 156 FPS の 1.9 倍)**。
+**WASB は TrackNetV3 を ShuttleScope の現運用において全方位で上回る**。同じPlayer Aダブルス映像 (TrackNetV3 が 0% 検出) で **WASB は 30.9% の frame でシャトル検出** + synthetic batched で **295 FPS (TrackNet 156 FPS の 1.9 倍)**。
 
 ## 設定
 - **モデル**: WASB-SBDT (HRNet 1.48M params, 6.1 MB pretrained)
@@ -25,7 +25,7 @@
 
 備考: TrackNetV3 は batch=8 で全 8 frame 処理 = 51ms/batch、WASB は batch=8 で 8 trip (each = 3 frames) = 27ms/batch。同じ「batch=8 frame」基準で公平比較すると **WASB の方がモデル native が高速**。
 
-### 2. Real video (muroya doubles 600-630s, 1798 frames @ 1920×1080 60fps)
+### 2. Real video (player_a doubles 600-630s, 1798 frames @ 1920×1080 60fps)
 
 | Metric | TrackNetV3 | WASB | 差 |
 |---|---|---|---|
@@ -118,7 +118,7 @@ backend/wasb/
 - ORT IOBinding で GPU↔ORT zero-copy
 - chunk_size=128 frame、overlap=2 で sliding window 連続性維持
 
-### 実測結果 (muroya 600-630s, 1798 frame, batch=8)
+### 実測結果 (player_a 600-630s, 1798 frame, batch=8)
 
 | 区分 | 旧 (ad-hoc) | **Tier 1 opt** | 改善 |
 |---|---|---|---|
@@ -200,7 +200,7 @@ GPU preprocess + IOBinding + chunk_size 128 を `backend/wasb/inference.py` 本�
 4人分の crop を `(N, 3, 256, 192)` で stack して **単一 session.run** 化。
 RTMPose-m ONNX が dynamic batch axis 持つので可。失敗時は per-person sequential にフォールバック。
 
-### 実測結果 (RTX 5060 Ti, muroya 600-630s, 1798 frame @ 1080p 60fps)
+### 実測結果 (RTX 5060 Ti, player_a 600-630s, 1798 frame @ 1080p 60fps)
 
 #### Step 1 後 (WASB単独)
 
@@ -268,7 +268,7 @@ WASB 検出率 **40.1%** (TrackNetV3 0% に対し圧勝継続)。
 
 ### (1) INT8 — **BLOCKED**
 - TensorRT 10.16.1.11 を `pip install tensorrt` で導入
-- `IInt8EntropyCalibrator2` で muroya 動画から 200 triplet (B=8) calibration data 構築 → OK
+- `IInt8EntropyCalibrator2` で player_a 動画から 200 triplet (B=8) calibration data 構築 → OK
 - engine build → **失敗**:
   - `[TRT] [E] [builder.cpp::createCaskKernelLibraryImpl::419] Error Code 2: Internal Error (Assertion validateCaskKLibSize failed)`
   - `DeprecationWarning: Use Deprecated in TensorRT 10.1. Superseded by explicit quantization.`
@@ -525,7 +525,7 @@ commit `2d7fef3`:
 
 ## ── Addendum 8: INT8 cross-video validation (overfit 検証) + フルパイプ ──
 
-### Full pipeline INT8 vs FP16 (muroya 1798 frame)
+### Full pipeline INT8 vs FP16 (player_a 1798 frame)
 | | Sequential | Parallel | Detect |
 |---|---|---|---|
 | FP16 | 64.1 FPS | 64.7 FPS | 39.3% |
@@ -536,7 +536,7 @@ INT8 はフルパイプで 9% 速度 trade-off (60 FPS 微達成 97.5%)、検出
 ### Cross-video INT8 generalization (calibration 外の映像で検証)
 | Video | FP16 detect | **INT8 detect** | Delta |
 |---|---|---|---|
-| muroya 1080p (calibration source) | 40.1% | 62.6% | +22.6pt |
+| player_a 1080p (calibration source) | 40.1% | 62.6% | +22.6pt |
 | video-b 640×360 (separate) | 76.5% | **98.3%** | +21.9pt |
 | video-d 640×360 (separate) | 76.5% | **98.3%** | +21.9pt |
 | video-db 640×360 (separate) | 76.5% | **98.3%** | +21.9pt |
@@ -571,17 +571,17 @@ NVDEC 出力を直接 torch GPU tensor として受け取り、cv2 + H2D upload 
 #### Motion smoothing 効果 (cross-video, INT8)
 | Video | INT8 旧 smoothing | **INT8 + motion smoothing** | gain |
 |---|---|---|---|
-| muroya 1080p | 62.6% | **87.1%** | **+24.5pt** |
+| player_a 1080p | 62.6% | **87.1%** | **+24.5pt** |
 | video-b 640×360 | 98.3% | **100.0%** | +1.7pt |
 | video-d 640×360 | 98.3% | **100.0%** | |
 | video-db 640×360 | 98.3% | **100.0%** | |
 
-**3 / 4 video で完璧検出 (100%)、muroya でも 87.1%**。
+**3 / 4 video で完璧検出 (100%)、player_a でも 87.1%**。
 
 #### Motion smoothing 効果 (cross-video, FP16)
 | Video | FP16 旧 smoothing | **FP16 + motion smoothing** | gain |
 |---|---|---|---|
-| muroya 1080p | 40.1% | **61.1%** | +21.0pt |
+| player_a 1080p | 40.1% | **61.1%** | +21.0pt |
 | video-b 640×360 | 76.5% | **99.8%** | +23.3pt |
 
 FP16 でも massive gain。motion smoothing は INT8 と直交する純粋 win (CPU 0 コスト)。
@@ -589,7 +589,7 @@ FP16 でも massive gain。motion smoothing は INT8 と直交する純粋 win (
 ## ── 最終総合スコア (本セッション全体, 累積) ──
 
 ### 検出率の進化 (cross-video median)
-| Stage | muroya | other-3 video |
+| Stage | player_a | other-3 video |
 |---|---|---|
 | TrackNetV3 baseline | **0.0%** | 0.0% |
 | WASB FP16 ad-hoc | 30.9% | — |

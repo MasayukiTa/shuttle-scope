@@ -122,7 +122,7 @@ The endpoint `POST /api/insights/chat/sessions/{sid}/messages` returns
 
 ## Future slots to consider
 
-- `opponent` — opponent player_id / display name ("対 田中選手")
+- `opponent` — opponent player_id / display name ("vs Player D")
 - `set_range` — set index range ("1〜2セット目だけ")
 - `score_state` — leading / trailing / tied
 - `match_phase` — early / mid / late

@@ -4,7 +4,7 @@ Decodes 1080p H.264 via NVIDIA NVDEC, keeps frames on GPU as torch tensors
 (no CPU copy), runs GPU preprocess + WASB inference. Eliminates the cv2 +
 H2D upload bottleneck.
 
-Measured on RTX 5060 Ti (muroya 1798 frame, INT8 WASB):
+Measured on RTX 5060 Ti (player_a 1798 frame, INT8 WASB):
   cv2 + WASB path:    17s (105 FPS)
   NVDEC + WASB path:  11.5s (156 FPS, 1.49x)
   Decode share dropped from ~43% to 24% of pipeline wall.
