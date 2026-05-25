@@ -3,7 +3,7 @@
  *
  * カバー範囲:
  *  - 9 タイル (1-9) が描画される
- *  - cvPrediction が指定されたセルに ✨ アイコンと CV ラベルが出る
+ *  - cvPrediction が指定されたセルに auto_awesome (MIcon) アイコンと CV ラベルが出る
  *  - selectedZone が isOverridden=true のとき orange、false のとき blue で塗られる
  *  - クリックで onZoneSelect が呼ばれ、引数が Zone9 値である
  *  - disabled=true のときクリックしても callback が呼ばれない
@@ -40,8 +40,10 @@ describe('HitZoneSelector', () => {
     )
     // CV ラベル "CV推定: ゾーン 5" がレンダされる
     expect(container.textContent).toContain('5')
-    // ✨ Sparkles svg が存在 (lucide-react が svg を描画する)
-    expect(container.querySelector('svg')).toBeTruthy()
+    // CV 予測セルに Material Symbols (MIcon) の auto_awesome アイコンが描画される
+    // (旧 lucide-react svg は CLAUDE.md ルールにより MIcon に置換済み)
+    expect(container.querySelector('.material-symbols-outlined')).toBeTruthy()
+    expect(container.textContent).toContain('auto_awesome')
   })
 
   it('calls onZoneSelect with the tapped zone number', () => {
