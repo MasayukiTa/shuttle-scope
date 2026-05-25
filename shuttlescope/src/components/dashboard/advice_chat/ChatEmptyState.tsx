@@ -24,7 +24,7 @@ export function ChatEmptyState({ onPick }: Props) {
         name="auto_awesome"
         size={48}
         fill={1}
-        className="text-gray-400 dark:text-gray-500 opacity-30"
+        className="text-white opacity-90 drop-shadow"
         ariaHidden
       />
       <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">
