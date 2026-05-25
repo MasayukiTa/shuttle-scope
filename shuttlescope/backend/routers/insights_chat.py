@@ -374,11 +374,33 @@ def send_chat_message(
             confidence = first.get("confidence")
             evidence_path = first.get("evidence_path")
         else:
-            ai_text = (
-                "現時点では十分なデータがないため、まずは試合数を積み重ねてみましょう。"
-                if sess.lang == "ja"
-                else "Not enough data yet — keep logging matches to unlock insights."
-            )
+            # 「何を送っても同じ canned response が返ってくる」状態を防ぐ。
+            # 実 sample 数 + 必要 N を明示し、ユーザ入力を echo して
+            # 「メッセージは届いているがインサイト生成に必要なデータが
+            # まだ足りない」ことを誠実に伝える。
+            sample = (analytics or {}).get("sample") or {}
+            n_match = int(sample.get("matches", 0) or 0)
+            n_rally = int(sample.get("rallies", 0) or 0)
+            min_rally = 30
+            quote = cleaned.strip()[:80]
+            if quote and sess.lang == "ja":
+                ai_text = (
+                    f"ご質問「{quote}」を受け取りました。\n"
+                    f"現在 DB には {n_match} 試合 / {n_rally} ラリーが登録されています。"
+                    f"信頼できるインサイトを出すには最低 {min_rally} ラリー必要です。"
+                )
+            elif quote:
+                ai_text = (
+                    f"Got your question: \"{quote}\".\n"
+                    f"DB currently holds {n_match} matches / {n_rally} rallies. "
+                    f"We need at least {min_rally} rallies to surface reliable insights."
+                )
+            else:
+                ai_text = (
+                    "現時点では十分なデータがないため、まずは試合数を積み重ねてみましょう。"
+                    if sess.lang == "ja"
+                    else "Not enough data yet — keep logging matches to unlock insights."
+                )
             confidence = None
             evidence_path = None
 
