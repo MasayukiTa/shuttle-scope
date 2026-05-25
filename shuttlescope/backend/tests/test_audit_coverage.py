@@ -186,6 +186,10 @@ def test_no_orphan_event_names():
         # R44: decoy maze hits (collected by attacker_swim, but may be
         # surfaced through access_log in the future)
         "decoy_maze_hit",
+        # 2026-05-24 Round 281+: admin meta-audit events emitted when admin
+        # views sensitive lists. See backend/routers/auth.py.
+        "admin_audit_logs_viewed",
+        "admin_users_listed",
     }
     idx = _all_routers_event_index()
     all_events = set()

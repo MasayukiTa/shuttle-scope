@@ -11,6 +11,26 @@ from backend.db.database import Base
 from backend.utils import response_cache
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _disable_admin_mfa_gate():
+    """Disable the admin MFA enforcement gate for the entire test session.
+
+    Production behaviour (Round 281+): an admin role must have totp_enabled=True
+    in the User row for AuthCtx.is_admin to return True. Tests bootstrap an
+    admin via BOOTSTRAP_ADMIN_USERNAME/PASSWORD with no TOTP enrolment, so
+    every admin-gated endpoint returns 403 in CI.
+
+    The gate has a designed escape hatch — `ss_require_admin_mfa=False` — so
+    we flip it for the whole test session. Tests that specifically exercise
+    the MFA-enforcement path can re-enable it locally with monkeypatch.
+    """
+    from backend.config import settings as _ss
+    original = getattr(_ss, "ss_require_admin_mfa", True)
+    _ss.ss_require_admin_mfa = False
+    yield
+    _ss.ss_require_admin_mfa = original
+
+
 @pytest.fixture(autouse=True)
 def _reset_jwt_caches():
     """各テストで JWT 関連のグローバル cache をクリアする。
