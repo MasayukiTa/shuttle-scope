@@ -2805,6 +2805,8 @@
       "cancel": "キャンセル",
       "confirm": "リセットする",
       "help_tooltip": "このアドバイスは AI / テンプレ生成です。誤りがある可能性があります",
+      "disclaimer_banner": "⚠ AI による生成です。数値や事実関係に誤りが含まれることがあります。試合判断や指導方針に使う前に、正確なレポートはアナリスト（管理者）にご依頼ください。",
+      "disclaimer_request_report": "正確なレポートを依頼する",
       "safety_hint_admin": "AI 応答が安全基準で差し替えられました",
       "char_counter": "{{n}}/2000",
       "period": {

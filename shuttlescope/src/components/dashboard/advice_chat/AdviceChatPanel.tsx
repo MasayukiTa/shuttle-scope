@@ -169,6 +169,14 @@ export function AdviceChatPanel() {
       {/* ── Header ────────────────────────────────────────── */}
       <ChatHeader demoActive={demoActive} isSending={isSending} onResetClick={onResetClick} />
 
+      {/* ── AI disclaimer (admin-only feature; player-tier opt-in TBD) ── */}
+      <div
+        role="note"
+        className="border-b border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200"
+      >
+        {t('auto.AdviceChat.disclaimer_banner')}
+      </div>
+
       {/* ── Messages ──────────────────────────────────────── */}
       <div
         ref={scrollRef}
