@@ -1,34 +1,44 @@
 """Shared pytest fixtures for backend tests."""
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+# Disable the admin-MFA gate BEFORE any backend module is imported.
+# Production behaviour (Round 281+): an admin role must have totp_enabled=True
+# in the User row for AuthCtx.is_admin to return True. Tests bootstrap an
+# admin via BOOTSTRAP_ADMIN_USERNAME/PASSWORD with no TOTP enrolment, so
+# every admin-gated endpoint returns 403 in CI. The gate has a designed
+# escape hatch — `SS_REQUIRE_ADMIN_MFA=0` — that must be in os.environ
+# BEFORE Settings() is instantiated for the first time, since pydantic
+# BaseSettings reads env vars on construction only.
+import os  # noqa: E402
+os.environ.setdefault("SS_REQUIRE_ADMIN_MFA", "0")
 
-from backend.db import database as db_module
-from backend.db import models as _models  # noqa: F401  # ensure metadata registration
-from backend.db.database import Base
-from backend.utils import response_cache
+import pytest  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from backend.db import database as db_module  # noqa: E402
+from backend.db import models as _models  # noqa: F401,E402  # ensure metadata registration
+from backend.db.database import Base  # noqa: E402
+from backend.utils import response_cache  # noqa: E402
 
 
 @pytest.fixture(autouse=True, scope="session")
 def _disable_admin_mfa_gate():
-    """Disable the admin MFA enforcement gate for the entire test session.
-
-    Production behaviour (Round 281+): an admin role must have totp_enabled=True
-    in the User row for AuthCtx.is_admin to return True. Tests bootstrap an
-    admin via BOOTSTRAP_ADMIN_USERNAME/PASSWORD with no TOTP enrolment, so
-    every admin-gated endpoint returns 403 in CI.
-
-    The gate has a designed escape hatch — `ss_require_admin_mfa=False` — so
-    we flip it for the whole test session. Tests that specifically exercise
-    the MFA-enforcement path can re-enable it locally with monkeypatch.
+    """Belt-and-braces: also override the runtime attribute in case some test
+    overwrites it. Env-var path above is the primary defence — this fixture
+    catches the case where a test directly mutates settings.ss_require_admin_mfa.
     """
     from backend.config import settings as _ss
     original = getattr(_ss, "ss_require_admin_mfa", True)
-    _ss.ss_require_admin_mfa = False
+    try:
+        _ss.ss_require_admin_mfa = False
+    except Exception:
+        pass
     yield
-    _ss.ss_require_admin_mfa = original
+    try:
+        _ss.ss_require_admin_mfa = original
+    except Exception:
+        pass
 
 
 @pytest.fixture(autouse=True)
