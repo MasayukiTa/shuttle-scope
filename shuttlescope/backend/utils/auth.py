@@ -222,7 +222,13 @@ def get_auth(request: Request) -> AuthCtx:
             team_name = unquote(team_raw).strip() or None
         except Exception:
             team_name = None
-    return AuthCtx(role, pid, team_name)
+    # 2026-05-25: X-Role fallback (loopback-only legacy header path) で admin を
+    #   名乗った場合、MFA enrollment 状態をチェックする手段が無い。allow_legacy_header_auth
+    #   が既に loopback 限定にしているので、ここに到達した時点で開発/テスト/同マシンの
+    #   admin 補助用途と扱える。admin_mfa_ok=True を付与し、is_admin プロパティが
+    #   True を返すようにする。JWT 経路は上で個別に MFA 検証済み。
+    legacy_admin_ok = (role == UserRole.ADMIN.value)
+    return AuthCtx(role, pid, team_name, admin_mfa_ok=legacy_admin_ok)
 
 
 # ─── アクセス制御ヘルパー ────────────────────────────────────────────────────
