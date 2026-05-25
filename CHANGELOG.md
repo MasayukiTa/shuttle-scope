@@ -35,6 +35,124 @@ Read it together with:
 
 教訓: 「N% 検出」という単一スカラーは、何を測っているか曖昧。次回からは "frames-with-shuttle-marked / total" だけでなく "frames-where-mark-overlaps-ground-truth / total" を併記する。視覚 audit を benchmark のリリース条件に組み込む。
 
+## 2026-05-23
+
+### Insights Chat + LLM Harness
+
+First end-to-end pass on the conversational analysis surface. `chat` introduces a rule-based JP/EN period extractor and a session-persistent scope system (slot extraction with composer chips) so an analyst can ask "先月の試合" / "last month" and have the period bind to subsequent turns. Backend adds `ChatSession` / `ChatMessage` models, an Alembic migration, and an `insights_chat` router. The `insights` package gains a `NvidiaNimGenerator` (OpenAI-compatible NIM, behind the safety harness) plus a `HarnessedGenerator` that wires validators, prompt templates, a token budget, and an audit log; a compact `player_summary` service and `/api/export/period` (with `date_from` / `date_to` + section filters, Slice Z) feed it. The `advice-chat` hook + minimal panel mounts at the top of the Research tab with typewriter output, empty-state chips, a gradient header, a11y wiring, and mobile polish.
+
+### Tutorial Engine: Force-Attention + Localization
+
+Tutorial coverage expands across the app: per-card walkthrough on the analysis-reading tour, per-button spotlight on mobile annotation passes, a new settings tour with auto-trigger and demo polish, force-attention UX (4-frame blocker, ripple, bounce pointer, step badge), and step content localized in `ja` / `en` with keyboard / progress / arrow controls and a demo chip.
+
+### Live Coach Dashboard + Admin Peer Compare
+
+`live` coach dashboard gains an anomaly banner, interval suggestions, and a bench-mode view. `research` adds admin-only peer comparison with k-anonymity `N>=5`, demo accounts excluded, and audit logging. `insights` adds a pluggable Growth Snapshot frame (template now, LLM-ready hand-off later).
+
+### i18n Burndown to Zero + Lint Cleanup
+
+Final i18n sweep across ~40 components/pages: `MobileAnnotatePage`, `AnnotatorPage`, `SettingsPage`, the mobile annotate sub-passes (`PlayMode`, `MobileCVOverlay`, `Pass1RallyEnd`, `Pass2ServeFinal`, `Pass3ShotDetail`, `MobileCourtCalib`), team / user / match management pages, viewer / condition / dashboard / account / camera overlays, `ClusterSettingsPanel`, `DeviceManagerPanel`, `StreamingDownloadPanel`, and several video/overlay components. `Pass1` and `Pass2` also picked up `useTranslation` hooks to fix latent undefined-`t` references. `en.json` backfilled for keys that previously existed only in `ja.json`. Lint cleanup: `react-hooks/exhaustive-deps`, `any → unknown`, `no-unused-vars`, `no-console`.
+
+## 2026-05-22
+
+### i18n Mass Migration: Analysis Directory to Zero
+
+A 30-commit mechanical-plus-manual i18n burndown. A fixed codemod handled ~154 strings across 35 files in one pass; the remaining strings were migrated component by component: `CounterfactualShots`, `GrowthJudgmentCard`, `MatchScoreBand`, `StateActionValueCard`, `HumanForecastPanel`, `PredictionDriversBlock`, `ShotInfluenceV2Card`, `StateEPVCard`, `ZoneMapModal`, `ConfidenceCalibration`, `MarkovEPV`, `PairSynergyCard`, `RallyLengthWinRate`, `PrematchStatCard`, `RallyPickerModal`, `PreMatchObservationAnalytics`, `BayesMatchupCard`, `SetComparison`, `PressurePerformance`, `MatchNarrativeCard`, `TransitionMatrix`, `ShotWinLoss`, `GrowthTimeline`, `YoloCVPositionCard`, `CounterfactualV2Card`, `AnalystDepthPanel`, `OpponentPolicyCard`, `HazardFatigueCard`, `DoublesRoleCard`, `RolePicker`, `QuickSummaryCard`, `PromotionStatusCard`, `ScoreProgression`. Shared count-suffix keys were factored across analysis cards (16 strings). The `analysis/` dir hit zero hardcoded strings.
+
+### Tutorial + Security Hardening
+
+Tutorial spotlight coverage expanded across key screens. Code-scanning findings hardened: a clear-text password log path removed, SQL key paths put behind an allowlist. CI fix to revert an over-eager codemod edit to a test file; codemod now skips tests. Test files exempted from `no-literal-string` to keep i18n linting practical.
+
+## 2026-05-21
+
+### Tutorial Engine + Demo Role
+
+A real tutorial engine lands: spotlight overlays, a pulsing red ring, and a "don't show again" preference. The annotator's `ShotType` panel + `HistoryStrip` and the annotator's `Mode` tabs get anchored steps with richer copy. A `demo` role is added so the tutorial can show read-only data without touching real records.
+
+### MatchListPage God-File Split
+
+Multi-step refactor extracting `PlayerCombobox`, `MatchCard` + `statusColor` util, and `MatchRow` out of `MatchListPage`. Conditional-hook violations elsewhere fixed and `rules-of-hooks` promoted to error. Self-hosted LP theme icon.
+
+### i18n Phase 2 + Standardization
+
+`MatchList` components, `DownloadOptionsModal`, `LineupOptimizerPanel`, `PairSimulationPanel`, `RallyClipNavigator`, `PlayerMovementCard` localized; the `eslint-i18next` config migrated to the v6 schema. Standardized `ユーザー` → `ユーザ` across the UI.
+
+### Deploy Script + Misc
+
+`deploy.ps1` path resolution fixed (script lives in `scripts/`, not the app root); UTF-8 BOM added so Windows PowerShell 5.1 parses it. `seed_demo.py` switched to raw docstrings to silence an invalid-escape warning.
+
+## 2026-05-20
+
+### Telemetry, Tutorial, and Player-Safe Surfaces (continued)
+
+Wired `useAutoTutorial` onto annotation, dashboard, mobile calib, and body-disclosure surfaces so the new engine actually fires. Audit-log page improvements: ID column, IP filter, action dropdown, and a limit cap raised to 5000; ship a spam-purge SQL helper. Removed the sidebar role badge.
+
+### Observability + Infra Supervisors (R44 round 1)
+
+Added request-level + security-event observability with a dedicated Security monitoring page (separate from the audit log). `SecurityEvent.details` JSON adapter fixed. Production frontend now sits behind an nginx reverse proxy; full nginx access log is ingested into `request_logs` (source-tagged) and shipped to close the DB observability gap. A Ray-head supervisor starts on backend boot/restart, captures `error_logs`, and a `cloudflared` supervisor handles reboot + crash recovery.
+
+### Design Language Cleanup + ESLint Flat Config
+
+Color-blind safe categorical palette applied to condition + analysis charts (12-color mode-aware), with per-factor explanations. Four user-reported issues fixed: icon subset, tutorial button, season bias, bar semantics. `ScoreProgression` crash + `ConfidenceCalibration` unreadable badge fixed. `condition` tab gains an in-app glossary and input restricted to the logged-in user. Overview match list moved to the bottom; rally clip popup player + growth-point comparison added. Consent state made visually obvious with English translations. Enforceable ESLint flat config landed (team-grade guardrails); rules-of-hooks violations + LP theme icon fixed. Cross-platform CI fix.
+
+### Cleanup
+
+Local-only docs (cluster auth plan, tunnel steps, `docs/`, `private_docs/`) untracked. i18n leak fixes across dashboard / prediction / condition / advice.
+
+## 2026-05-19
+
+### Design Language v1.1 + v1.2 (Grayscale-First POC)
+
+First public iteration of the new design language, focused on a grayscale-first analytical surface with color reserved for meaning, not decoration. `CoachSummaryStrip` ships as the v1.1 POC; v1.2 kills same-hue bg+text combinations and WCAG-fail badges across `FlashAdvicePanel`, `RallyClipNavigator`, `IntervalReport`, `RecommendationRanking`. Left-stripe accent bars removed wholesale. Dashboard `StatCard`s + role badges respect light mode; coolwarm middle is white; prediction sample gate added. `useTheme` now broadcasts toggles to all consumers. Sweeping pass cleans up same-hue bg+text violations across `analysis/`, `annotator/`, `settings/` and the `AnnotatorPage` + `Notice` decorative palette.
+
+### Dark/Light Mode Bleed Fixes
+
+`ResearchNotice` no longer leaks `amber-50` background into dark mode. `DashboardAdvancedPage` override banner reduced to a neutral bg + amber-text-only treatment. Dark-mode logo band fixed.
+
+### Server-Derived Advice + Reports
+
+`AdviceStrip` (server-derived) rolled out to six contexts. Reports gain comprehensive PDF + complete JSON export endpoints.
+
+### Telemetry + Tutorial Framework
+
+Product telemetry, an admin analytics tab, and a tutorial framework landed. Telemetry instrumentation extended with minor-aware registration; a `.bat` wrapper added for the `ShuttleScope-TelemetryPartition` scheduled task.
+
+### Consent + Account UX
+
+Re-grant button after consent withdrawal; team selector for admin; exit links on the onboarding consent page (back to `shuttle-scope.com` / login). `display_name` edit now reflects in Settings → Account immediately. `NoDataMessage` gets an internal grace period; never show "データ不足" while a query is still resolving.
+
+## 2026-05-17
+
+### Player-Safe Dashboard + Body-Composition Consent
+
+Player role now gets `/dashboard` with safe tabs only (not a placeholder). `prediction` / `dashboard-research` / `expert` tabs are explicitly hidden from the player role. Player-safe Analysis page + UMP mobile-scroll + Settings username view added. New per-player body-composition disclosure consent surface allows analysts / coaches to view the data only after explicit grant.
+
+### Mobile Calibration Hardening
+
+Pixel-explicit SVG size + cover-aware loupe so the magnifier aligns with the snapshot canvas; cover-fit baked into the snapshot itself. Video kept mounted across calib open/close (`preload=auto`, no reload on close). Grid `videoTransform` revert + harden set-1 prompt + DevSkim CI. Drop unsupported DevSkim flag `--exit-code-on-recommendation`.
+
+### Misc Polish
+
+`MatchListPage` gains page-level scroll so the list shows in landscape phone. Mobile preload reverted from `auto` where it caused an iOS UI freeze; set-1 `ensureSet` feedback. Shared badminton rules util + mobile resume + match-end UI. iOS Script-error suppression + Sample Team placeholder + green ✓ contrast fix. Mobile annotate confirms back-nav + shows past-analysis badge.
+
+## 2026-05-16
+
+### Mobile Annotation: Calibration Editor + CV Overlay Crop
+
+In-browser court calibration editor (tap-to-place + drag), wired to trigger TrackNet / YOLO batch directly from the mobile annotate flow. Crop transform now applied consistently to grid / shuttle / bbox overlays so calib coords match what the user sees. Material Symbols font subset reduced 3.8 MB → 232 KB; iOS native play overlay suppressed; `video pointer-events:none` while calibrating to stop swallowed taps. Finger loupe added to calib; `preserveAspectRatio=none` removed; explicit `viewBox` added on calib + CV overlay SVGs. Document-level capture `touchstart` added to debug lost taps; canvas snapshot + force `screen=play` + on-screen diag for iOS layer-leak triage; full video unmount during calib to defeat the iOS layer leak.
+
+### Pass-Switch + Quality-Preserve UX
+
+Set-1 button + quality seek preserve + CV data hints; PlayMode state kept across orientation; CV job visibility + chip readability; right-top tools / Pass switch / back stay tappable over the Pass1 overlay (z-order fix); TDZ fix where `resumeFromSec` `useMemo` ran before `mergedRallies` was declared.
+
+### Diagnostics + CSP + Path-Injection
+
+White-screen on `/m/annotate` now shows an error banner instead of silent crash; error reporter inlined in `index.html` with no-cache headers; externalized to `/error-reporter.js` so CSP `script-src 'self'` is satisfied; SPA serves root-public static files (`error-reporter.js`, `favicon.png`) before the SPA redirect; build-tag chip added to verify the reporter actually loaded; `AbortError` noise from video remount suppressed; `__ss_error_bar__` switched to `pointer-events:none` because it was stealing taps. `MIcon` import miss + font load timeout + ignore `Script error` noise + auto-play. Hardcoded whitelist replacing user-controlled root-public path (CodeQL `py/path-injection` 2374). `extra=forbid` on `StartRequest` (`youtube_live`, R271 schema hygiene).
+
+### Icon Regulation + Dep Revert
+
+Emoji / Unicode glyphs → `MIcon` everywhere across the mobile annotate path; grey text → white per the color-contrast rule. `calib` UX rework keeps the video visible with end-aligned icons + font race fix + spinner + 保存#fff. CV chip safe-area / existing-job rescue / PWA-aware FS. Reverted `react-router-dom` 7 / `i18next` 26 / `react-i18next` 17 back to v6.x / v23 / v14 after upstream peer-dep churn.
+
 ## 2026-05-18
 
 ### Terms of Service v1.3 — security, analytics, and minor-user scope
@@ -456,6 +574,44 @@ Twenty-one attack-driven backend fixes shipped in two deploy batches.
 ### Data-Loss Incident and Recovery
 
 - An automated review tool was invoked on an orphan branch and wiped a gitignored area holding validation notes, helper scripts, and downloaded video archives. Validation docs were recoverable from the production machine; the unsynced video archive was lost. Going forward, the tool is treated as destructive on this repo and a backup of the gitignored areas is taken before invoking it.
+
+## 2026-05-03
+
+### CSP Patch for Public LP
+
+`csp`: allow inline script for the public landing-page host so the reveal animations actually run. Single-commit day.
+
+## 2026-05-02
+
+### Video Download Pipeline + UI
+
+`downloader`: yt-dlp result is now stored as `server://` (not `localfile:///`) so the backend treats it uniformly with uploads; `video_local_path` is persisted on completion; ffmpeg located under SYSTEM PATH and falls back to the `imageio-ffmpeg` bundled binary when nothing resolves. Test assertion updated for the `server://` filepath format.
+
+### Match-List Download UX
+
+`MatchList` shows a "DL 中" badge (Step 1B) backed by `/matches/downloads/active` (Step 1A). The match-edit modal renders an inline progress bar (Step 2) and an inline error + retry button on failure (Step 3, both list and modal, mobile-aware).
+
+### CSP
+
+`csp`: allow `https:` in `font-src` to stop the CSP report flood.
+
+## 2026-05-01
+
+### Continuous Attack Sweep (Rounds 110-155)
+
+A long day of attack-driven backend hardening. Rounds 110-119 closed 8 findings; rounds 120-121 closed an additional cluster of findings; round 126 (V-5) made analyst export scope include their own team; round 130 (Y-1/Y-2/Y-3) rejected any `<>` in `tournament` / `round` / `notes` / `venue` and in `conditions.injury_notes`; round 131 validated `owner` / `home` / `away` `team_id` FK before write; round 136 (D-5) capped `tracknet.frame_b64` `max_length` at 2 MB; round 140 (H-3) rejected line-break / control characters in `tournament` etc.; round 142 (J-1) rate-limited refresh + email-verify; round 143 (K-1) rejected Windows reserved filenames (`CON` / `PRN` / etc.); round 147 capped TrackNet decoded frame dimensions/bytes to prevent OOM; round 155 cascade-deleted FK rows when deleting a user (cleanup of an earlier 500).
+
+### Auth / Lockout
+
+`auth`: account lockout never fired because `failed_attempts` was being reset too eagerly; the reset trigger is now narrower. WebSocket connections per session capped at 20, with an `asyncio.Lock` around the cap to prevent a race. `/v1/expert/videos` now team-scopes for non-admin actors.
+
+### Match Delete Cascade Hardening
+
+Iterative fix on `delete_match`: `UploadSession.match_id` now nulled via Core SQL `UPDATE` (with `Query.update()` bulk variant) before the match delete; `server_video_artifacts` cascade also via Core SQL `DELETE`; cascade + match delete is a single transaction with best-effort cascade; `server://` PUT on `video_local_path` blocked. Concurrent `DELETE` on the same match now returns idempotent 200. `IntegrityError` detail is exposed only to admin diag on delete failure.
+
+### CI + Misc
+
+JSON `Infinity` / `NaN` payloads now return 400 instead of 500 at the main app layer. Python mp4-atom walker fallback added for container validation in uploads. Apex `shuttle-scope.com` host allowed for the public LP. `security_ci/` excluded from CodeQL; actions in `security-attacks.yml` pinned. No-auth attack suite + scheduled GitHub Actions added. CI Build-and-Test job unbroken. README + CHANGELOG updated for 2026-04-28 → 04-30 work.
 
 ## 2026-04-30
 
