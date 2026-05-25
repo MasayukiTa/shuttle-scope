@@ -11,1013 +11,395 @@ Read it together with:
 ## How To Read This File
 
 - Dates are grouped by development day.
+- Order is ascending: the oldest entry is at the top of the file and new days are appended at the bottom.
+- All entries are written in English.
 - Entries are written at a product / workflow level, but they stay close to what was actually implemented.
 - This is not a literal dump of `git log`, but it aims to preserve the meaningful shape of the work.
 
-## 2026-05-24
-
-### 検出率メトリクスの撤回（量より質の原則違反）
-
-`docs/operations/cv_pipeline_runbook.md` で WASB INT8 の「検出率 87.1% / cross-video median 100%」と謳っていたが、目視 audit (12 サンプル) で **シャトルを実際に捉えていたのは INT8 で 2/12 (~17%)、FP16 で 1/12 (~8%)** であることが確定。報告値は実体の **5-6× 過大** であり、残りの "visible" は人物のユニフォームや審判台のネットポールを拾っていた。
-
-原因:
-- WASB 入力解像度 512×288 に対し 1080p 動画でのシャトル実効サイズが 3-5px → サブピクセル化で人物の高輝度ピクセルに負ける
-- INT8 量子化はピークを更にサチらせ「visible 判定が緩い」状態に。`conf>=0.5` を満たしやすくなるが実検出ではない
-- TRT INT8 EP は `DequantizeLayer` ロードで fail し CUDA EP に fallback している痕跡もあり、INT8 のメリットは更に怪しい
-
-短期対応 (本日着手):
-- `docs/operations/cv_pipeline_runbook.md` 冒頭に retraction banner を追加
-- UI から検出率 % 表示を撤去 (準備中)
-
-中期対応 (別タスク):
-- `visible` フラグを quality-gated に (peak 鋭さ + 動き整合 + 単峰性)
-- タイル推論 (3×2 overlapping crops at 512×288) で実効解像度 2-3×
-
-教訓: 「N% 検出」という単一スカラーは、何を測っているか曖昧。次回からは "frames-with-shuttle-marked / total" だけでなく "frames-where-mark-overlaps-ground-truth / total" を併記する。視覚 audit を benchmark のリリース条件に組み込む。
-
-## 2026-05-23
-
-### Insights Chat + LLM Harness
-
-First end-to-end pass on the conversational analysis surface. `chat` introduces a rule-based JP/EN period extractor and a session-persistent scope system (slot extraction with composer chips) so an analyst can ask "先月の試合" / "last month" and have the period bind to subsequent turns. Backend adds `ChatSession` / `ChatMessage` models, an Alembic migration, and an `insights_chat` router. The `insights` package gains a `NvidiaNimGenerator` (OpenAI-compatible NIM, behind the safety harness) plus a `HarnessedGenerator` that wires validators, prompt templates, a token budget, and an audit log; a compact `player_summary` service and `/api/export/period` (with `date_from` / `date_to` + section filters, Slice Z) feed it. The `advice-chat` hook + minimal panel mounts at the top of the Research tab with typewriter output, empty-state chips, a gradient header, a11y wiring, and mobile polish.
-
-### Tutorial Engine: Force-Attention + Localization
-
-Tutorial coverage expands across the app: per-card walkthrough on the analysis-reading tour, per-button spotlight on mobile annotation passes, a new settings tour with auto-trigger and demo polish, force-attention UX (4-frame blocker, ripple, bounce pointer, step badge), and step content localized in `ja` / `en` with keyboard / progress / arrow controls and a demo chip.
-
-### Live Coach Dashboard + Admin Peer Compare
-
-`live` coach dashboard gains an anomaly banner, interval suggestions, and a bench-mode view. `research` adds admin-only peer comparison with k-anonymity `N>=5`, demo accounts excluded, and audit logging. `insights` adds a pluggable Growth Snapshot frame (template now, LLM-ready hand-off later).
-
-### i18n Burndown to Zero + Lint Cleanup
-
-Final i18n sweep across ~40 components/pages: `MobileAnnotatePage`, `AnnotatorPage`, `SettingsPage`, the mobile annotate sub-passes (`PlayMode`, `MobileCVOverlay`, `Pass1RallyEnd`, `Pass2ServeFinal`, `Pass3ShotDetail`, `MobileCourtCalib`), team / user / match management pages, viewer / condition / dashboard / account / camera overlays, `ClusterSettingsPanel`, `DeviceManagerPanel`, `StreamingDownloadPanel`, and several video/overlay components. `Pass1` and `Pass2` also picked up `useTranslation` hooks to fix latent undefined-`t` references. `en.json` backfilled for keys that previously existed only in `ja.json`. Lint cleanup: `react-hooks/exhaustive-deps`, `any → unknown`, `no-unused-vars`, `no-console`.
-
-## 2026-05-22
-
-### i18n Mass Migration: Analysis Directory to Zero
-
-A 30-commit mechanical-plus-manual i18n burndown. A fixed codemod handled ~154 strings across 35 files in one pass; the remaining strings were migrated component by component: `CounterfactualShots`, `GrowthJudgmentCard`, `MatchScoreBand`, `StateActionValueCard`, `HumanForecastPanel`, `PredictionDriversBlock`, `ShotInfluenceV2Card`, `StateEPVCard`, `ZoneMapModal`, `ConfidenceCalibration`, `MarkovEPV`, `PairSynergyCard`, `RallyLengthWinRate`, `PrematchStatCard`, `RallyPickerModal`, `PreMatchObservationAnalytics`, `BayesMatchupCard`, `SetComparison`, `PressurePerformance`, `MatchNarrativeCard`, `TransitionMatrix`, `ShotWinLoss`, `GrowthTimeline`, `YoloCVPositionCard`, `CounterfactualV2Card`, `AnalystDepthPanel`, `OpponentPolicyCard`, `HazardFatigueCard`, `DoublesRoleCard`, `RolePicker`, `QuickSummaryCard`, `PromotionStatusCard`, `ScoreProgression`. Shared count-suffix keys were factored across analysis cards (16 strings). The `analysis/` dir hit zero hardcoded strings.
-
-### Tutorial + Security Hardening
-
-Tutorial spotlight coverage expanded across key screens. Code-scanning findings hardened: a clear-text password log path removed, SQL key paths put behind an allowlist. CI fix to revert an over-eager codemod edit to a test file; codemod now skips tests. Test files exempted from `no-literal-string` to keep i18n linting practical.
-
-## 2026-05-21
-
-### Tutorial Engine + Demo Role
-
-A real tutorial engine lands: spotlight overlays, a pulsing red ring, and a "don't show again" preference. The annotator's `ShotType` panel + `HistoryStrip` and the annotator's `Mode` tabs get anchored steps with richer copy. A `demo` role is added so the tutorial can show read-only data without touching real records.
-
-### MatchListPage God-File Split
-
-Multi-step refactor extracting `PlayerCombobox`, `MatchCard` + `statusColor` util, and `MatchRow` out of `MatchListPage`. Conditional-hook violations elsewhere fixed and `rules-of-hooks` promoted to error. Self-hosted LP theme icon.
-
-### i18n Phase 2 + Standardization
-
-`MatchList` components, `DownloadOptionsModal`, `LineupOptimizerPanel`, `PairSimulationPanel`, `RallyClipNavigator`, `PlayerMovementCard` localized; the `eslint-i18next` config migrated to the v6 schema. Standardized `ユーザー` → `ユーザ` across the UI.
-
-### Deploy Script + Misc
-
-`deploy.ps1` path resolution fixed (script lives in `scripts/`, not the app root); UTF-8 BOM added so Windows PowerShell 5.1 parses it. `seed_demo.py` switched to raw docstrings to silence an invalid-escape warning.
-
-## 2026-05-20
-
-### Telemetry, Tutorial, and Player-Safe Surfaces (continued)
-
-Wired `useAutoTutorial` onto annotation, dashboard, mobile calib, and body-disclosure surfaces so the new engine actually fires. Audit-log page improvements: ID column, IP filter, action dropdown, and a limit cap raised to 5000; ship a spam-purge SQL helper. Removed the sidebar role badge.
-
-### Observability + Infra Supervisors (R44 round 1)
-
-Added request-level + security-event observability with a dedicated Security monitoring page (separate from the audit log). `SecurityEvent.details` JSON adapter fixed. Production frontend now sits behind an nginx reverse proxy; full nginx access log is ingested into `request_logs` (source-tagged) and shipped to close the DB observability gap. A Ray-head supervisor starts on backend boot/restart, captures `error_logs`, and a `cloudflared` supervisor handles reboot + crash recovery.
-
-### Design Language Cleanup + ESLint Flat Config
-
-Color-blind safe categorical palette applied to condition + analysis charts (12-color mode-aware), with per-factor explanations. Four user-reported issues fixed: icon subset, tutorial button, season bias, bar semantics. `ScoreProgression` crash + `ConfidenceCalibration` unreadable badge fixed. `condition` tab gains an in-app glossary and input restricted to the logged-in user. Overview match list moved to the bottom; rally clip popup player + growth-point comparison added. Consent state made visually obvious with English translations. Enforceable ESLint flat config landed (team-grade guardrails); rules-of-hooks violations + LP theme icon fixed. Cross-platform CI fix.
-
-### Cleanup
-
-Local-only docs (cluster auth plan, tunnel steps, `docs/`, `private_docs/`) untracked. i18n leak fixes across dashboard / prediction / condition / advice.
-
-## 2026-05-19
-
-### Design Language v1.1 + v1.2 (Grayscale-First POC)
-
-First public iteration of the new design language, focused on a grayscale-first analytical surface with color reserved for meaning, not decoration. `CoachSummaryStrip` ships as the v1.1 POC; v1.2 kills same-hue bg+text combinations and WCAG-fail badges across `FlashAdvicePanel`, `RallyClipNavigator`, `IntervalReport`, `RecommendationRanking`. Left-stripe accent bars removed wholesale. Dashboard `StatCard`s + role badges respect light mode; coolwarm middle is white; prediction sample gate added. `useTheme` now broadcasts toggles to all consumers. Sweeping pass cleans up same-hue bg+text violations across `analysis/`, `annotator/`, `settings/` and the `AnnotatorPage` + `Notice` decorative palette.
-
-### Dark/Light Mode Bleed Fixes
-
-`ResearchNotice` no longer leaks `amber-50` background into dark mode. `DashboardAdvancedPage` override banner reduced to a neutral bg + amber-text-only treatment. Dark-mode logo band fixed.
-
-### Server-Derived Advice + Reports
-
-`AdviceStrip` (server-derived) rolled out to six contexts. Reports gain comprehensive PDF + complete JSON export endpoints.
-
-### Telemetry + Tutorial Framework
-
-Product telemetry, an admin analytics tab, and a tutorial framework landed. Telemetry instrumentation extended with minor-aware registration; a `.bat` wrapper added for the `ShuttleScope-TelemetryPartition` scheduled task.
-
-### Consent + Account UX
-
-Re-grant button after consent withdrawal; team selector for admin; exit links on the onboarding consent page (back to `shuttle-scope.com` / login). `display_name` edit now reflects in Settings → Account immediately. `NoDataMessage` gets an internal grace period; never show "データ不足" while a query is still resolving.
-
-## 2026-05-18
-
-### Terms of Service v1.3 — security, analytics, and minor-user scope
-
-Same v1.3 cycle also adds three further sections beyond the §9 availability
-rewrite:
-
-- **§18 Security Practices and Data-Breach Disclaimer.** Enumerates the
-  controls actually in place (TLS, RBAC, CodeQL/Semgrep/Bandit/DevSkim/
-  Gitleaks/Trivy/OSV/Defender scans, adversarial test loops, rate-limit
-  and lockout, audit logs, filesystem-level at-rest protection of backups).
-  Then explicitly states no absolute security warranty: zero-days,
-  quantum-class cryptographic breakthroughs, supply-chain compromise,
-  hardware fault injection, social engineering, and lawful/unlawful
-  state-level access are out of scope. Breach notification commitment
-  ties back to PRIVACY.md Art IX + GDPR 33 / APPI 26. User-side
-  responsibilities (credential hygiene, MFA, device safety) carved out.
-  Security-incident liability is folded under the §11 cap, no separate
-  uplift.
-- **§19 Analytical Output Disclaimer.** EPV / win-rate / Hooper /
-  validity / heatmap / CV tracks are statistical inferences, not
-  guarantees. Not medical, not legal, not a replacement for coaching.
-  No outcome guarantee.
-- **§20 Account Security and Minor Users.** Credential responsibility;
-  documented guardian consent required for minors (junior badminton
-  players); deletion timeline ties to consent form + PRIVACY.md.
-
-### Terms of Service v1.3 — explicit SLA disclaimer
-
-Reworked TERMS_OF_SERVICE.md §9 (previously a single "No Guarantee of
-Availability" paragraph) into a full availability disclaimer block:
-
-- §9.1 No Service Level Guarantee — no uptime / latency / RTO commitment.
-- §9.2 Operational Topology Disclosure — single-operator self-hosted setup
-  in the developer's residence; no 24/7 ops team, no geo-redundancy, no
-  third-party hosting provider.
-- §9.3 Power, Network, and Force Majeure Events — UPS is sized for ~3 min
-  runtime; anything beyond that (utility outage, brownout, grid loss) is
-  force majeure and not the developer's responsibility. Same exclusion for
-  ISP, CDN, DNS, CA, and natural-disaster events.
-- §9.4 Recovery — Best Effort Only — restoration is commercially reasonable
-  best-effort, never a binding commitment.
-- §9.5 Planned Absences and Extended Unavailability — names the obvious
-  cases (weekends, public holidays, New Year, Golden Week, Obon, year-end,
-  illness, travel) and tells users to keep their own backups.
-- §9.6 Maintenance Windows — service may go offline at any time, with or
-  without advance notice, for security/integrity reasons.
-- §9.7 No Guarantee of Availability (General) — retained as a catch-all.
-
-Backend `CURRENT_TERMS_VERSION` bumped 1.2 → 1.3. Existing consent rows
-remain in the DB; new consent submissions will require terms_version=1.3,
-which triggers the standard re-consent flow.
-
-## 2026-05-17
-
-### Player-Safe Dashboard + Body-Composition Consent
-
-Player role now gets `/dashboard` with safe tabs only (not a placeholder). `prediction` / `dashboard-research` / `expert` tabs are explicitly hidden from the player role. Player-safe Analysis page + UMP mobile-scroll + Settings username view added. New per-player body-composition disclosure consent surface allows analysts / coaches to view the data only after explicit grant.
-
-### Mobile Calibration Hardening
-
-Pixel-explicit SVG size + cover-aware loupe so the magnifier aligns with the snapshot canvas; cover-fit baked into the snapshot itself. Video kept mounted across calib open/close (`preload=auto`, no reload on close). Grid `videoTransform` revert + harden set-1 prompt + DevSkim CI. Drop unsupported DevSkim flag `--exit-code-on-recommendation`.
-
-### Misc Polish
-
-`MatchListPage` gains page-level scroll so the list shows in landscape phone. Mobile preload reverted from `auto` where it caused an iOS UI freeze; set-1 `ensureSet` feedback. Shared badminton rules util + mobile resume + match-end UI. iOS Script-error suppression + Sample Team placeholder + green ✓ contrast fix. Mobile annotate confirms back-nav + shows past-analysis badge.
-
-## 2026-05-16
-
-### Mobile Annotation: Calibration Editor + CV Overlay Crop
-
-In-browser court calibration editor (tap-to-place + drag), wired to trigger TrackNet / YOLO batch directly from the mobile annotate flow. Crop transform now applied consistently to grid / shuttle / bbox overlays so calib coords match what the user sees. Material Symbols font subset reduced 3.8 MB → 232 KB; iOS native play overlay suppressed; `video pointer-events:none` while calibrating to stop swallowed taps. Finger loupe added to calib; `preserveAspectRatio=none` removed; explicit `viewBox` added on calib + CV overlay SVGs. Document-level capture `touchstart` added to debug lost taps; canvas snapshot + force `screen=play` + on-screen diag for iOS layer-leak triage; full video unmount during calib to defeat the iOS layer leak.
-
-### Pass-Switch + Quality-Preserve UX
-
-Set-1 button + quality seek preserve + CV data hints; PlayMode state kept across orientation; CV job visibility + chip readability; right-top tools / Pass switch / back stay tappable over the Pass1 overlay (z-order fix); TDZ fix where `resumeFromSec` `useMemo` ran before `mergedRallies` was declared.
-
-### Diagnostics + CSP + Path-Injection
-
-White-screen on `/m/annotate` now shows an error banner instead of silent crash; error reporter inlined in `index.html` with no-cache headers; externalized to `/error-reporter.js` so CSP `script-src 'self'` is satisfied; SPA serves root-public static files (`error-reporter.js`, `favicon.png`) before the SPA redirect; build-tag chip added to verify the reporter actually loaded; `AbortError` noise from video remount suppressed; `__ss_error_bar__` switched to `pointer-events:none` because it was stealing taps. `MIcon` import miss + font load timeout + ignore `Script error` noise + auto-play. Hardcoded whitelist replacing user-controlled root-public path (CodeQL `py/path-injection` 2374). `extra=forbid` on `StartRequest` (`youtube_live`, R271 schema hygiene).
-
-### Icon Regulation + Dep Revert
-
-Emoji / Unicode glyphs → `MIcon` everywhere across the mobile annotate path; grey text → white per the color-contrast rule. `calib` UX rework keeps the video visible with end-aligned icons + font race fix + spinner + 保存#fff. CV chip safe-area / existing-job rescue / PWA-aware FS. Reverted `react-router-dom` 7 / `i18next` 26 / `react-i18next` 17 back to v6.x / v23 / v14 after upstream peer-dep churn.
-
-## 2026-05-15
-
-### Mobile Annotation Hardening + Supply-Chain Pin
-
-A polish + safety pass on the new mobile annotation UI and the surrounding CI surface.
-
-- **PlayMode stays mounted across pass switches.** Tapping `A` / `B` in `Pass1RallyEnd` used to flip `screen='play' <-> 'annotate'`, which conditionally rendered `PlayMode` and forced the `<video>` element to remount each time — `currentTime` reset to 0 on every rally submit, making real annotation impossible. Restructured: `PlayMode` is always mounted; `Pass1` / `Pass2` / `Pass3` render as `absolute z-40` overlays on top. The video element keeps its `src`, `currentTime`, and play state across submits.
-- **Quality switch preserves seek + play state.** Switching 720p ↔ 1080p (`videoSrc` changes) used to re-load the video from 0s. A `pendingResume` ref now captures `currentTime` + `wasPlaying` on `videoSrc` change, then restores on the new src's `loadedmetadata` — with a `duration` clamp in case the variant length differs from the source.
-- **"Resume from last rally" chip.** PlayMode now shows a `▶ M:SS から再開` overlay chip when existing rallies (server + local queue) put the most recent `video_timestamp_end` more than 3s away from the current playback position. Tap = seek. The rally / score state itself was already resuming via `mergedRallies`; this fills in the missing video-position step.
-- **`object-fit: contain` default (short-side basis).** Mobile annotate used to default to `cover`, which on landscape iPhone cropped the top/bottom of the badminton frame and hid where the shuttle landed. Default is now `contain` (letterboxed, no crop). The Square toggle still flips to `cover` for users who want full-screen fill.
-- **PWA standalone safe-area.** Add-to-Home iPhone mode hid the `試合登録` button under the iOS status bar (~47px overlay) and pushed the mobile bottom nav under the home indicator (~34px), squeezing nav content to ~22px usable. New `.ss-main-shell` utility uses `env(safe-area-inset-top/bottom)` on the main wrapper; bottom nav switches to `min-height: calc(56px + env(safe-area-inset-bottom))` so its 56px content area is preserved.
-- **Defense-in-depth path jail on variant streaming.** `stream_video_for_match` originally derived the variant path from `upload_id` parsed out of DB `Match.video_local_path`. `upload_id` is server-generated UUID in normal writers (upload finalize / yt-dlp / archiver), but the stream code now explicitly rejects `/` `\` `..` in the parsed id and runs `safe_path()` on the resolved variant path. Closes the CodeQL `py/path-injection` family on this endpoint.
-- **Manual variant regeneration endpoint.** `POST /matches/{id}/regenerate_variants` (admin / analyst / coach) enqueues a `video_variant` job for an existing match. Idempotent via `jobs.enqueue` dedup on `(match_id, job_type)` for `queued|running`. Used to fill in variants for matches uploaded before the variant pipeline existed.
-- **Supply-chain: all GitHub Actions pinned to commit SHA.** Triggered by the OpenSSF Scorecard `PinnedDependenciesID` review and the March-2025 `tj-actions/changed-files` incident as motivation. The newly added `gitleaks` / `semgrep` / `pip-audit` / `trivy` workflows had `@v6` / `@v0.36.0` / `@v1.1.0` tag references that could be re-pointed by an action maintainer compromise. All 8 references switched to 40-char SHA with the version kept as a trailing comment so Dependabot still groups bumps by semver.
-- **CI permissions: top-level write removed.** `trivy.yml` and `semgrep.yml` had `permissions: { contents: read, security-events: write }` at the top level. Moved `security-events: write` down to job level (`permissions: {}` at top, declared on each job) so other steps that don't upload SARIF run with no write permissions at all. Aligns with the existing `bandit.yml` pattern.
-- **Code-scanning triage pass.** Confirmed 0 actionable open alerts after a rule-by-rule audit:
-  - `B110/B112` defensive `try/except` patterns in migrations, JWT legacy parse, env-var loaders — sample-verified, batch-dismissed
-  - `B501/B507/B601` SSH AutoAddPolicy + paramiko shell + `requests verify=False` — intentional for cluster bootstrap, hardcoded literal commands, F-001 canary MITM gate
-  - `B608` SQLAlchemy `text()` with f-string — hardcoded table list in one-shot migration, `nosec`-annotated allow-list in field rotation, hardcoded cascade tuple in match delete
-  - `B613` + `contains-bidirectional-characters` — BIDI Unicode codepoints declared in validator sets (defensive sanitization for filename / annotation text), not exploit payloads
-  - `detect-insecure-websocket` — match was on Japanese comment string `ws://localhost:8765`; actual code uses `wsProto = isHttps ? 'wss' : 'ws'`
-  - TLS-laxity rules on `scripts/security_ci/` — TLS attack-test fixtures, weak settings are the test design
-  - `python.lang.security.audit.logging.logger-credential-leak` — log statements emit `user_id` / `jti` / metadata only; token values are hashed before any persist
-  - `wildcard-cors` — `allow_credentials=False` makes wildcard origin acceptable for public API surface
-  - `pickles-in-pytorch` — `torch.load` on bundled first-party model weights, not user uploads
-
-## 2026-05-14
-
-### Mobile Annotation: Beta Polish + CV Overlay + Video Variants
-
-Heavy iteration on the mobile annotation surface based on iPhone Safari + PWA testing, plus the new video-quality variant pipeline and a security-tool addition pass.
-
-- **Full-bleed video + overlay-style controls** (`fix(mobile-annot): full-bleed video + overlay controls (1/3-width bug)`). The previous header bar + footer flex layout consumed ~25-30% of vertical space and `object-fit: contain` letterboxed the badminton video into ~1/3 of the iPhone landscape width. `PlayMode` now uses `absolute inset-0` for the video container with overlay-style controls; pass switcher chips moved to a right-center vertical strip so they don't steal video width. Back / match-id / queue chips collapse into a top-left cluster.
-- **Theme-aware overlay chips.** Overlay buttons originally used dark blue accents on dark backgrounds (violating the house dark/light color spec and the `feedback_color_contrast` rule against dark text on dark backgrounds). Introduced `.ss-overlay-chip` / `.ss-overlay-chip-accent` / `.ss-overlay-chip-warning` / `.ss-overlay-chip-danger` utility classes in `globals.css` that swap `bg` / `color` based on `html[data-theme="light"]`. All mobile overlays migrated.
-- **Fullscreen takes the whole UI, not the iOS native player.** `videoRef.webkitEnterFullscreen()` flipped to the iOS native video player and stripped every React overlay (court grid, CV chips, A/B buttons). Replaced with `document.documentElement.requestFullscreen()` on Desktop / Android Chrome; iOS Safari (which has no `requestFullscreen` on non-`<video>` elements) shows a one-time `Add-to-Home-Screen` hint since that's the only iOS path to true URL-bar-free fullscreen with React overlays alive.
-- **Landscape prompt + iconography contrast.** Portrait-orientation guard's icons and text rendered dark on a dark background on production despite `text-white` in source (likely cache / dark-mode-variable override). Switched to inline `style={{ color: '#ffffff', stroke: '#ffffff' }}` to force white regardless of CSS cascade.
-- **CV overlay (court / shuttle / players) and timeline markers.** `MobileCVOverlay` orchestrates three read-only layers reusing the desktop components:
-  - 18-cell court grid (SVG) from `/matches/{id}/court_calibration` + shared `court-calib-{matchId}` localStorage with the desktop annotator
-  - shuttle trajectory canvas (±2s trail) from `/api/tracknet/shuttle_track/{match_id}`
-  - YOLO player bboxes (±1.5s) from `/api/yolo/results/{match_id}` (default OFF — bbox can obscure on small screens)
-  PlayMode top-right gains 3 toggle chips (`Grid3x3` / `Target` / `Users`). The bottom seek bar wears amber dots at each CV stroke-candidate timestamp (`/cv-candidates/{matchId}`) — tap = `video.currentTime` jump. `Pass1RallyEnd` accepts an optional `cvHint` (suggested winner + confidence%) and renders a `CV NN%` badge on the recommended A/B side. Final confirmation still requires a tap; no autofill.
-- **Video variant pipeline (4K / 1080p / 720p).** New `backend/services/video_variants.py` post-processes uploaded videos into smaller variants for mobile delivery while keeping the raw source for the analysis pipeline. Designed conservatively:
-  - **No upscale ever**: `decide_variants` only generates `q` when `src.height > target_h`. e.g., a 480p source produces zero variants (zero CPU, zero disk).
-  - **Source-pixel cap**: sources larger than 8192×4320 (~35 megapixels, 8K) skip the variant phase entirely to avoid pathological ffmpeg memory blow-up.
-  - **Atomic write**: ffmpeg writes to `{name}.mp4.tmp`, then `os.replace()` renames in place. The stream endpoint never serves a half-written variant.
-  - **Idempotent enqueue**: `jobs.enqueue()` checks for existing `queued|running` `(match_id, job_type)` rows so double finalize / DL hooks don't stack jobs.
-  - **YouTube DL cap**: `DownloadRequest.quality` is now a `pattern=^(360|480|720|1080|1440|2160|best)$` whitelist and the `/matches/{id}/download/status` poll re-probes the downloaded file, deleting and returning 413 if `> 2160p` slipped through yt-dlp's format selector.
-  - **PATH resolution under Windows service**: `shutil.which("ffprobe")` returns `None` in SYSTEM service context because WinGet Links is not in SYSTEM PATH; service-aware `_resolve_bin()` falls back to known install locations.
-- **Quality picker UI**: `getMobileVideoSrc(match, quality)` appends `&quality=<q>` to the stream URL. PlayMode renders an extra chip row for each ready variant (`source` / `4K` / `1080p` / `720p`); not-ready (generating) appears at 50% opacity. `available_qualities` is part of the standard `match_to_dict` response.
-- **`Settings.extra = "ignore"`.** After the dependency bumps (next bullet) pydantic 2.x started enforcing `extra="forbid"` strictly. Production `.env` legitimately holds `vite_ss_turnstile_site_key` / `ss_cf_ban_token` / `ss_ban_allowlist_*` / `ss_tor_exit_list_path` / `ss_db_migration_url` that `Settings` doesn't declare. Switched to `extra="ignore"` so the backend boots; declared fields keep their type-safety.
-- **Dependabot + Gitleaks + Semgrep + pip-audit + Trivy added.** Defense-in-depth on top of the existing Bandit / CodeQL / DevSkim / OSV / Scorecard / Defender for DevOps stack:
-  - Dependabot: weekly grouped minor/patch PRs for pip (backend + worker) / npm / github-actions, plus individual PRs for major bumps (config tuned after the first run produced a 28-pkg grouped PR that bundled React 18→19, Tailwind 3→4, Electron 39→42)
-  - Gitleaks: full-history secret scan every push + weekly
-  - Semgrep: SAST with `p/default + p/python + p/react + p/typescript + p/owasp-top-ten`
-  - pip-audit: PyPA advisory DB (broader than OSV for Python)
-  - Trivy filesystem: IaC + secrets + misconfig (covers `infra/cloudflared/`, PM2 ecosystem, `cluster.config.yaml`)
-- **Dependency bumps (25 merged, 3 closed).** Bumped Python 3.10 → 3.11 to satisfy newer scipy / pandas wheels. Merged ~25 individual + grouped bumps including `react-router-dom 6→7`, `vitest 3→4`, `tailwind-merge 2→3`, `eslint 8→10`, `react-i18next 14→17`, `numpy 1→2`, `pandas 2→3`, `openvino`, plus minor/patch groups. Closed 3 PRs that needed coordinated peer-dep bumps (`react 18→19` needed `@testing-library/react 14→16`, `vite 7→8` needed `electron-vite 5→6`, `@vitejs/plugin-react 5→6` needed paired vitest peer update).
-- **`crypto.getRandomValues` fallback in `mobileAnnotateQueue.newClientUuid`.** CodeQL `js/insecure-randomness` flagged the `Math.random()` fallback in the UUID v4 generator. Replaced with `crypto.getRandomValues` (CSPRNG) plus RFC4122 v4 version/variant bit fix-up.
-- **`test_conditions` aligned with R47 admin Tier 4 access.** The test was asserting `general_comment` should be absent on GET (assuming the old admin → analyst demotion); R47 had removed that demotion deliberately. Test updated to expect `general_comment` present for admin.
-
-## 2026-05-13
-
-### Mobile Annotation Scaffold (Pass 1 / 2 / 3)
-
-First end-to-end iteration of the new mobile annotation surface targeting iPhone Safari for the Resonac badminton team beta. Scaffolded over a single day in seven incremental commits.
-
-- **Scaffold** (`scaffold mobile annotation page`): `/m/annotate/:matchId` route + `MobileAnnotatePage` + portrait `LandscapeGuard` overlay that prompts the user to rotate the device. Mobile/desktop split is by viewport width (< 768px) so coach/analyst that accidentally opens on phone also gets the touch UI.
-- **IndexedDB offline queue** (`add IndexedDB-backed offline queue for per-input save`): every per-input save (`enqueue('POST /api/rallies', ...)`, stroke updates, etc.) goes through a local IndexedDB queue with X-Idempotency-Key on each request, exponential backoff, and a per-failure cap before flipping into `manualRetry` state. UI surfaces pending / retry counts in the top-left chip cluster.
-- **Play mode** (`play mode (video stream + bottom controls + crop region)`): video stream via `/api/v1/uploads/video/by_match/{id}/stream?token=...` (browser-friendly query-param auth). Bottom controls: ◀◀5 / ◀1 / ▶❚❚ / 1▶ / 5▶ + scrub slider + 0.5/1/1.5/2x. Crop region (Scissors) editable via touch drag, persisted to `localStorage` per-match.
-- **Annotate overlay with 9-zone snap and touch magnifier** (`annotate overlay with 9-zone snap and touch magnifier`): tap to annotate, magnifier circle for sub-zone precision, snap to court 9-zone grid.
-- **Pass 1: rally scoring UI** — two oversized A / B buttons; server / score auto-computed from previous rally; deuce / set-end banner. Submit enqueues `POST /api/rallies` and returns to play mode for the next rally.
-- **Pass 2: four-step serve / final stroke entry** — picker shows recent rallies, then steps through `service direction → return direction → final hitter → final-stroke land_zone`.
-- **Pass 3: per-stroke shot type entry** — picker → per-stroke type entry, server queues `PUT /api/strokes/{id}` updates.
-- **Security: escape user-controlled path before reflecting into HTML** — CodeQL `js/reflected-xss` in the (separate) `decoy_maze` deception layer fixed; reflected `path` now `escape()`-encoded before HTML interpolation.
-
-## 2026-05-11
-
-### Mobile Layout Stabilization + Conditions Tier-4 Admin Fix + Round 258 Final State Defense (R35-R41)
-
-A mix of UI-layer fixes for the new mobile flows, a regression unblock on the conditions router, and the closing rounds of the Round 258 deep defense pass.
-
-- **Mobile global guards triage** (`fix(mobile): triage global guards so pages don't squish into vertical text`): pages that lacked `min-width: 0` on flex children were squishing labels into vertical character columns on phone widths. Added per-page minimum-width guards and pill-nowrap rules. Separate follow-up (`specific badge / pill / confidence overflow fixes`) cleans up badge / confidence widget overflow.
-- **R47-style admin demotion removed from `resolve_role`** (`stop silently downgrading admin to analyst in resolve_role`): the previous behavior demoted JWT/X-Role admin to analyst before passing into `_serialize`. With `ROLE_MAX_TIER=4` admins ended up reading only Tier 1, which broke the dashboard scatter / top-profile views. Removed the demotion; admin keeps Tier 4. `test_conditions.test_post_and_get_roundtrip` was updated in the 2026-05-14 dep-bump pass to match.
-- **Player self-view** (`allow self-viewing player to see own analytics`): a `player` who logged in as their own player_id (Phase A linkage) was being treated as a generic "player" role for conditions visibility. Now their `ctx.player_id == target.player_id` is recognized and they see their own analytics.
-- **Frontend: scrub URL hash on logout** (`fix(security): scrub URL hash on logout so protected paths aren't leaked`): logging out at `/dashboard/research/...` left the hash in the URL bar; if the next user shoulder-surfed they could see the restricted path. Logout now sets `location.hash = ''`.
-- **Bundle-endpoint UI unblock** (`unblock per-card fetches while bundle endpoint is still loading`): cards were waiting for the spine/bundle response and blanked out for 1-2s on slow links. Per-card fetches now run in parallel; the spine merge happens when it arrives.
-- **Tor exit list load at startup** (`load Tor exit list at startup so cf_ban_policy.is_tor_exit() works`): the policy module was loading the list lazily but only on first call from a single coroutine, so subsequent callers raced. Moved to startup pre-load.
-- **Allowlist for firewall-action escalation path** (`feat: add allowlist for the firewall-action escalation path`): the canary auto-ban pipeline now honors an `SS_BAN_ALLOWLIST_*` config (IP + custom HTTP header) so testing infrastructure isn't accidentally banned during a security drill.
-- **Routing: monitored sink paths bypass global auth gate** (`fix(routing): allow specific monitored sink paths through global auth gate`): `decoy_maze` / `csp_report` / honeypot sinks must accept anonymous traffic to actually catch attackers — they were briefly being 401'd by the global gate after a route-order regression.
-- **Operator scripts polish** (`admin UI polish, operator scripts, traffic pattern aggregator`): admin UI cleanup and a traffic-pattern aggregator script for after-action review.
-- **Migrations: savepoint for guarded REVOKE statements** (`fix(migration): use savepoint for guarded REVOKE statements in 0028`): in migration 0028 (role lockdown) some REVOKE statements fail when the function being revoked doesn't exist on the local PG version. Each REVOKE is now wrapped in a SAVEPOINT so one missing function doesn't roll back the whole migration.
-- **CF cleanup script auto-loads `.env`** (`auto-load .env in CF cleanup script`): the standalone `cleanup_cf_expired_rules.py` wasn't reading the same `.env` as the API, so credentials had to be exported manually. Now imports the same loader.
-- **Round 258 R35-R41 — closing rounds.** The continuation of the R9-R34 sweep (described under 2026-05-10) closed the final regression / hardening backlog:
-  - R35.1: hotfix R35 test regression on analyst tier-1 expected field.
-  - R36 / R36.1: sync remaining test assertions to new secure ABC+α behavior + fix R36's own assertion drift against the actual implementation semantics.
-  - R37: Windows CI 60-min hang on WS threading tests fixed by skipping the offending tests on Windows only.
-  - R37.1: skip the last `WebSocketDisconnect inside lifespan` test on Windows.
-  - R37.2: Linux CI hang fix (test_turnstile network call needed a timeout method to bound execution).
-  - R38: `/api/csp_report` multi-layer hardening (defense-in-depth: size cap + content-type + rate-limit + per-IP daily budget).
-  - R39: closed Codex review F-001 through F-008.
-  - R40 + R41: state-level defense build-out — PostgreSQL hardening + the canary subsystem.
-- **`chore: admin UI polish` + `chore: misc backend cleanup and compatibility shims`** — assorted no-functional-change cleanup pulled together at the end of the day.
-
-## 2026-05-10
-
-### Round 258 Deep Security Audit (R9 — R34)
-
-A 25-round continuation of the multi-agent independent audit pass that started on 2026-05-09 (R1 — R8, recorded in that day's entry). Each round either closed findings from the prior round's audit or closed CodeQL alerts in the same area, with the explicit intent of converging the open backlog to zero.
-
-- **R9** — 9 cache / idempotency / race / DoS findings (`bandit-found` patterns + earlier P0s left after R8's deep-audit).
-- **R10** — 7 regressions introduced inside R7/R8/R9 fixes (over-tight cache key, missing rollback path, etc).
-- **R11 / R12 / R13** — three sequential regression-audit rounds closing 3 P0 + 9 P1 + 4 P2 over R10's fixes.
-- **R14** — 3 P0 + 1 P1 from R13 regression audit (auth / refresh-token edge cases).
-- **R15** — closed R13/R14 leftover P1/P2/P3 + hardened the `mfa_pending` token path so it can never satisfy access-tier checks even by mistake.
-- **R16** — 4 frontend / Electron findings (1 P0 + 3 P1/P2): contextIsolation enforcement, file-protocol jail audit, IPC payload validation.
-- **R17** — hotfix R16 regression + 4 new findings (CSRF on benchmark POST, billing webhook timing oracle, etc).
-- **R18 — Three-agent independent audit.** Ran three independent agents in parallel on the same codebase and merged the unique findings: 3 P0 + 4 P1 + 1 P2.
-- **R19** — 1 P0 + 1 P1 + 6 P2/P3 from R18's backlog.
-- **R20** — 2 P1 + 3 P2 introduced inside R19's own fixes; R7-R19 long-tail backlog closed.
-- **R21** — closed R20's introduced P0 + 4 P1 + R7-R19 long-tail backlog.
-- **R22** — 1 P0 + 4 P1 + 2 P2 in R20 → R21 regression audit.
-- **R23 / R23.1** — 2 P1 + 3 P2 closed; hotfix on sentinel `jti` length regression introduced by R23.
-- **R24** — 4 P1 + 3 P2 from R23-audit, all in admin tooling and DB maintenance paths.
-- **R25 / R25.1 / R25.2 / R25.3** — atomic `.env` write for `toggle_lan_mode` (read-modify-write race against the file watcher), Punycode review marker, jitter reverify on rate-limit decision boundaries, R22 cache bug + R24-audit P1/P2/P3.
-- **R26** — closed R25 P1/P2/P3 leftovers (1 P1 + 1 P2 + 1 P3).
-- **R27** — R26 audit P1 + P2 (1 P1 + 1 P2).
-- **R28** — R27 audit P3 + R28 audit P2 (3 P2 + 2 P3).
-- **R29 / R29.2 / R29.3** — startup warning for multi-process auth deployment (jti revocation cache only valid in-process); CodeQL `py/weak-sensitive-data-hashing` on cache key (switched to SHA-256); applied R28-audit P2/P3 (5 total).
-- **R30 / R30.2** — closed R29 P2-3 cross-team prediction leak; R30-audit P2-2 + P2-3 (2 P2).
-- **R31 / R31.2 / R31.3** — closed 2 CodeScanning HIGH alerts (path injection family); restored `list_cloud_packages` contract under the new path-injection guard; basename allowlist applied for the rest.
-- **R32** — finished R30a P2-1 across 4 prediction endpoints + 2 helpers.
-- **R33** — recorder hidden-window preload (R6 deferred P1): the recorder window now preloads a hidden helper that can't be navigated by user input.
-- **CI: split Backend tests step** (`split Backend tests step — Windows runs serial to avoid xdist 3.8 race`): pytest-xdist 3.8 has a worker IPC race on Windows that surfaced as `gw0` / `gw1` AssertionError at test start. Windows now runs the suite serially (no `-n auto`); Linux still uses `-n auto --dist loadfile` for parallel coverage.
-
-## 2026-05-09
-
-### Audit Log FK Drop + Player Dashboard Gate (User-directed remediation #2 + #3)
-
-Two follow-up product changes from the post-attack remediation pass.
-
-- **Audit log HMAC chain integrity (Round 233 R233-A — plan A):** Alembic migration `0026_drop_fk_access_logs_user_id` drops the FK constraint on `access_logs.user_id`. `delete_user` no longer modifies `access_logs.user_id` on user removal, so subsequent rows preserve their canonical bytes and the HMAC chain stays valid. The pre-existing broken segments (id 466 + 897, from earlier mismatched cleanups) are intentionally NOT rewritten — rewriting hashes would defeat the tamper-detection purpose of the chain. `verify_chain` now accepts `?from_id=N` so an admin can verify the chain from any segment boundary forward, and the `/api/auth/audit-logs/verify` endpoint surfaces this to admin operators.
-- **Player dashboard gate (Round 228 R228-F1 + F2):** the sidebar `/dashboard` entry is now wrapped in `hasPageAccess('dashboard')`. Because `hasPageAccess` returns true for admin/coach/analyst by default and false for player (whose `pageAccess` array is empty), the player no longer sees a dashboard link. Independently, `DashboardShell` now redirects `role === 'player'` to `/matches` at the top of the component — typing the URL directly no longer renders the dashboard. The `analysis.review.{section_maps,guide_step1,vulnerability_map}` i18n labels (which contain 弱点 framing) therefore can no longer reach a player view, satisfying the CLAUDE.md non-negotiable rule.
-
-### Cross-Team Page-Access Scope Check (Round 237-257 Deeper Sweep)
-
-A 21-round deep-dive sweep across already-covered areas surfaced one
-cross-team data integrity gap that needed fixing.
-
-- `GET /api/auth/users/{target_id}/page-access`, `PUT` of the same path,
-  `GET /api/auth/teams/{team_name}/page-access`, and the `PUT` for
-  team-level page access only enforced `_require_manager`
-  (admin / analyst / coach) and did not verify that the actor's team
-  matched the target. An analyst from team A could:
-  - GET another team's player's page-access list (information leak).
-  - PUT `{page_keys: []}` to another team's player → wipe their grants.
-  - The same shape applied to the team-level endpoints.
-
-  `GRANTABLE_PAGES` is allowlisted (`{"prediction", "expert_labeler"}`),
-  so the attack could not grant *new* privileges, but the
-  DELETE-then-INSERT pattern still allowed wiping existing grants —
-  a cross-team data integrity violation.
-
-  Fix: `ctx.team_id == user.team_id` (and `ctx.team_name == team_name`
-  for the team-level endpoints) is now required for non-admin actors,
-  with 404 returned on mismatch to avoid leaking existence of the
-  cross-team target.
-
-### Sweep Coverage (no findings, recorded for completeness)
-
-The remaining 20 rounds confirmed defenses across:
-
-- Open-redirect / Location-header — only `/jp` → `/` is hardcoded; no user-influenced redirect.
-- Command-injection probe — `subprocess.run(shell=True)` is not used anywhere; yt-dlp / ffmpeg invocations go through `_validate_url_for_subprocess` and use list-style args plus the `--` separator.
-- Insecure deserialization — only `yaml.safe_load` / `yaml.safe_dump` are used; no `pickle` / `marshal`.
-- ORDER BY / column injection — every `order_by(...)` uses ORM column references; no `text()` with f-string interpolation.
-- CORS — invalid `Origin` headers do not receive `Access-Control-Allow-Origin`; preflight from `null` / evil origins returns 400.
-- Stored XSS — bookmark.note / comment.text strip script / img / svg / iframe / style / meta tags; React renders all `note` / `text` fields as text, no `dangerouslySetInnerHTML` anywhere.
-- Concurrent state — 5-parallel rally / set / condition POSTs and match.result PUTs produce zero 500s. Lack of unique constraint on (set_id, rally_num), (match_id, set_num), (player_id, measured_at) is a data-quality observation rather than a security issue.
-- Rate-limit IP spoofing — `X-Forwarded-For` / `X-Real-IP` spoofing has no effect; `CF-Connecting-IP` from clients is rejected by Cloudflare itself with 403.
-- HTTP smuggling — `Content-Length` + `Transfer-Encoding` conflict and bad chunk sizes are rejected at the Cloudflare front line with 400.
-- Method-override — `X-HTTP-Method-Override` / `X-HTTP-Method` / `_method` headers are ignored. WebDAV verbs are not implemented.
-- Path traversal — `..%2F` / null-byte / file:// / Windows reserved names against video / clip / upload / training_data endpoints all return 404 / 422.
-- MFA / password reset / email verify — wrong TOTP repeated 8× yields 422 each time; arbitrary password-reset / email-verify tokens produce 400 / 405.
-- Search SQL — `pg_sleep` / `' UNION SELECT` / null-byte / `%%` payloads against `/api/players?q=` all complete in < 0.25s with 200; ORM parameterization is intact.
-- Public abuse — `/api/public/contact` rate-limits at the third inquiry per address; BIDI / huge-name / over-length payloads are 422 in the validator.
-- Host header injection — Cloudflare returns 403 for any unauthorized Host.
-- WebSocket — `/api/ws/live` / `/ws/live` / `/api/realtime/yolo` (with or without a valid session_code) require auth; 403 without it.
-- Refresh token rotation — old refresh token reuse is detected on the second use and the entire family is invalidated.
-- Cross-team match owner spoof — analyst-supplied `owner_team_id` and `is_public_pool` are silently overridden by `ctx.team_id` / `False` server-side.
-
-### P6-P10 Thin-Areas Sweep (Round 232-236)
-
-One additional backend fix and a cross-cutting operational review.
-
-- `POST /api/auth/login` with a `username` or `identifier` containing a NUL byte (or any other C0 control character) returned `500` instead of `422`. PostgreSQL's text column rejects NUL bytes via `psycopg.ValueError`, which surfaced as the generic 500 "internal error" response. `LoginRequest` now applies a `@field_validator(mode="after")` that rejects any character in `0x00-0x1F + 0x7F` with 422 before the value reaches the SQL query.
-
-### Operational observations recorded for separate handling
-
-These items came out of the Round 232-236 sweep across Windows ops, audit log integrity, ML model supply chain, backup/restore, and browser cache. They are not deployed code changes — they require migration coordination, infrastructure setup, or product-policy decisions, and are tracked in `private_docs/2026-05-09_user_must_verify_checklist.md`.
-
-- Audit-log HMAC chain integrity is broken at the first row whose `user_id` was nulled by a previous user deletion. `GET /api/auth/audit-logs/verify` reports `ok: false`. Two fix paths exist: (a) Alembic migration to drop the FK on `access_logs.user_id` so the chain canonical bytes are never modified, or (b) make `verify_chain` anonymize-aware. Either is migration-coordinated.
-- Production backup gap: `POST /api/sync/backup` returns 501 because the existing implementation is SQLite-only, and there is no Windows scheduled task or filesystem evidence of an external `pg_dump` / WAL archive. PostgreSQL data is not currently protected against volume failure.
-- File ACL on `shuttlescope/.env.development` and `cloudflare-shuttle-scope/config.yml` includes the local `MiniTakeuchi\CodexSandboxUsers` group (members: `CodexSandboxOnline`, `CodexSandboxOffline`). If those accounts are reachable over the network, `SECRET_KEY` / `SS_OPERATOR_TOKEN` / `DATABASE_URL` are exposed to them.
-- The `Cloudflared` service runs as `LocalSystem` but its binary lives in `C:\Users\kiyus\AppData\Local\Microsoft\WinGet\...\cloudflared.exe`, a path writable by the `kiyus` account. Compromising `kiyus` would allow a binary swap that the next service start runs with SYSTEM privileges.
-- `ssh.shuttle-scope.com` routes to `localhost:22` over Cloudflare Tunnel. Cloudflare Access policy on that hostname is not verifiable from inside the box; needs a dashboard check.
-- `backend_daemon.ps1` exits with the Python child's exit code; the scheduled task does not auto-restart on failure (RestartCount: 0). Single Python crashes leave the backend down until the next boot/login trigger.
-- `backend/models/` (`*.onnx`, `*.engine`) has no integrity manifest. Local model swap by an attacker with `kiyus` privileges is undetected.
-- `yt-dlp` is two months behind release; several Python deps (sqlalchemy, alembic, httpx, requests, uvicorn) are also slightly behind. `pip-audit` integration recommended.
-- `localStorage` keys for match-specific UI state (`court-calib-{matchId}`, `yolo-last-roi-{matchId}`, `shuttlescope.viewpoint.{matchId}`) are not user-scoped; on a shared PC, the previous user's state survives a logout. SaaS / per-browser deployment is unaffected.
-
-### Cascade & FK Cleanup (Round 227-231 Local Boundary / Artifact Lifecycle)
-
-Three additional backend fixes shipped after the Round 200-226 batch.
-
-- `DELETE /api/matches/{id}` now cascades comments and event_bookmarks via Core SQL `DELETE` before `db.delete(match)`. Previously, matches with attached comments or bookmarks failed at commit with `psycopg.errors.ForeignKeyViolation` and surfaced the raw SQL detail (table + constraint name) in the 500 response. The 500 detail is now sanitized; full diagnostics go to server log.
-- `DELETE /api/auth/users/{id}` repaired. The previous cleanup statement list contained typos (`access_log` vs the actual `access_logs`; `user_invitations.created_by_user_id` and `shared_sessions.created_by_user_id` did not exist) and missing FK paths (`matches.annotator_id`, `shot_annotations.annotator_user_id`, `billing_orders.user_id`, `billing_entitlements.user_id` / `granted_by_user_id`, `revoked_tokens.user_id`, `user_consents.user_id`, `player_page_access.user_id`, `user_invitations.consumed_by_user_id`). Each cleanup statement also called `db.rollback()` on exception, which reverted ALL prior successful cleanups. Each cleanup is now wrapped in `db.begin_nested()` (SAVEPOINT) so a failure on one statement no longer poisons the others, and the 409 response detail is now generic.
-
-### Validation
-
-- Round 229 post-deploy verification: 11/11 ✅. Match deletion with attached comments / bookmarks succeeds; bookmarks and comments are removed; subsequent GET / list / export return 404 / 422. User deletion (with the cleanup) succeeds for freshly-created users; the access token, refresh token, and login-after-delete all return 401. Player record survives user deletion (player_id was nulled on the user side via existing FK behaviour).
-- Round 230 (admin blast radius): admin rapid-create 30 users / 30 teams produces no 500 / no rate-limit hits — by design but worth flagging for guardrail review. Audit log spot-check confirmed 26 unique action types (login / login_failed / logout / token_refresh / user_created / user_updated / user_updated_high_risk / user_deleted / team_created / team_updated / match_updated / match_deleted / consents_submitted / consent_withdrawn / training_data_record_created / content_report_received / content_report_triaged / export_package_created / password_reset_by_admin / admin_reset_user_limits / account_locked / account_unlocked / access_denied / access_denied_write / access_denied_coach_scope / access_denied_research) over a 500-row sample.
-- Round 231 (legal / ops workflow drill): consent withdrawal correctly rejects contractual-basis types (`service_delivery`, `beta_agreement`) with 403 and accepts optional types (`ai_training`, `research_participation`) with 200, satisfying GDPR Article 7(3). Training-data records remain immutable (PUT / DELETE → 405). Self-delete is blocked (400). The Subject Access Request (SAR) and counter-notice routes are 404 / 405 / 401 — confirmed as known operational gaps tracked separately for Wave B / `SAR_PROCEDURE.md`.
-
-### Static Review (Round 227, no code change)
-
-The Electron `main.ts` (1615 lines) and `preload.ts` (92 lines) were re-read end to end. Defenses confirmed in place: `localfile://` and `app://video/{token}` schemes use URL parsing with strict path-jail and 32-hex token regex; the main BrowserWindow runs with `contextIsolation: true` / `nodeIntegration: false` / `webSecurity: true`; `will-attach-webview` strips unknown webPreferences keys and forces `sandbox: true`; `relaunch-app` is gated by sender-WC, top-frame, 5s user-gesture, and 30s rate limit; `mirror-broadcast` enforces a four-type allowlist and 32 KB cap; `save-recorded-video` validates ArrayBuffer + magic byte (webm / mp4 ftyp) + extension + dialog-only path + 4 GB cap; the Python backend is spawned with an absolute path and explicit env (no PATH lookup); packaged builds block DevTools at the input-event layer. Two minor observations (not vulnerabilities): `SS_LIVE_ARCHIVE_ROOT` not set leaves drive isolation off (warned at startup but not enforced); `_userSelectedPaths` is session-scoped and persists across the session for any file selected via dialog.
-
-### Notes
-
-- Player-facing UI policy leak (Round 228 finding) — the `Sidebar` `/dashboard` link, `DashboardTopNav` six routes, and `DashboardReviewPage` i18n labels (`analysis.review.section_maps` = "STEP 1 — 弱点・配球マップ", `guide_step1` = "① 受け側の弱点・有効配球を確認", `vulnerability_map` = "被打球弱点マップ") are reachable from the `player` role. Backend `/api/analysis/received_vulnerability` already returns 403 to player so the data is empty, but the literal labels render. This violates the CLAUDE.md non-negotiable rule "Never show players direct 'weakness' framing". Tracked as a UX-decision item (route gating / hasPageAccess('dashboard') / role-based label substitution) and intentionally not fixed in this batch.
-- Team delete API gap — `/api/auth/teams/{id}` has no DELETE handler. The model has `deleted_at` but no soft-delete endpoint. Operational gap, not a vulnerability.
-- Audit-log HMAC chain integrity vs FK enforcement — `delete_user` updates `access_logs.user_id = NULL`, but the original `row_hash` was computed with the original `user_id` and `verify_chain` re-derives canonical bytes from current row state, so the hash chain breaks after a user is deleted. Architectural tension (FK vs append-only); migration to remove the FK or switch to `ON DELETE SET NULL` is the long-term fix.
-
-### Input-Validation Defense-in-Depth (Round 200-226 Continuous Attack)
-
-Twenty-one attack-driven backend fixes shipped in two deploy batches.
-
-- Aligned Pydantic `max_length` with the underlying SQLAlchemy column lengths (`Player.name` / `name_en` / `nationality` 100/100/50; `User.display_name` / `username` / `team_name` 100; `Team.name` 100, `short_name` 50, `display_id` 64). Rejection that previously slipped past the validator and tripped a 500 at INSERT time is now a 422.
-- Replaced the local control-character-only filter on `Player` and team text fields with `text_sanitize.reject_ctrl_and_bidi`, so RTLO / LRO / ZWSP / ZWNJ / BOM / CRLF / null bytes are rejected together with C0 control characters. The same rule was applied to `bookmark.note`, `comment.text`, public-inquiry fields, `condition_tag.label`, and upload filenames; the HTML-strip regex used by the comment/note/inquiry sanitizers now iterates to a fixed point and removes lingering bare `>` characters so obfuscation patterns like `<scr<!---->ipt>` no longer leave residue.
-- Added a per-element validator for `Player.aliases`: each item must be a string passing `reject_ctrl_and_bidi(max_len=120)`, and the list is capped at 50 items.
-- Replaced `Player.dominant_hand` free-string acceptance with an enum guard (`R` / `L` / `unknown`).
-- `POST /api/auth/users` and `POST /api/auth/teams` now catch SQLAlchemy `IntegrityError` from concurrent unique-constraint races and return `409 user already exists` / `409 team already exists` instead of leaking `500` with stack-trace shape.
-- `Point2D` (court calibration) and `RoiRectModel` (TrackNet batch) now bound coordinates to `[0,1]` with `allow_inf_nan=False`. `CourtCalibrationRequest` enforces exactly 6 points at the schema layer and bounds `container_width` / `container_height` to `1..8192`. `FrameDetectRequest.timestamp_sec` is bounded to `0..86400`. Out-of-range / NaN / Infinity inputs that previously reached `numpy.linalg.svd` and surfaced as `500 SVD did not converge` are now rejected with `422` at the Pydantic layer.
-- Added `model_config = {"extra": "forbid"}` to LabelPayload, ShotAnnotationPayload, AuxiliaryInput, QuestionnaireSubmit, RegisterRequest, PasswordResetRequest, PasswordResetConfirm, InvitationCreateRequest, InvitationAcceptRequest, PendingApprovalRequest, RallyCreate, RallyUpdate, StrokeData, RallyData, SetRoleBody, QuickStartBody, HumanForecastCreate, CreateOrderRequest, CreateProductRequest, GrantEntitlementRequest, DownloadRequest, Point2D, CourtCalibrationRequest, RoiRectModel, BatchRequest, FrameDetectRequest. Field-level `max_length` / `ge` / `le` constraints were added on the same models so payload size is bounded at the schema layer.
-- `sync.backup_now` no longer returns raw exception text in the error detail; the path-related information is moved to server log via `logger.warning` / `logger.exception`, and the response uses generic status-tied messages. `label` query parameter is capped at 100 characters.
-
-### Validation
-
-- Round 212 post-deploy verification confirmed all 13 directly-found issues resolved (display_name boundary, player.name BIDI / ZWSP / CRLF / control, bookmark.note BIDI, comment.text BIDI, comment.text obfuscated HTML strip clean, aliases item BIDI / control / over-length / over-count, team-name BIDI / 101-char / short_name 51-char, parallel user-create race, dominant_hand enum).
-- Round 211 race-suite re-run showed parallel team creation now produces `1×201 + 4×409` (previously `1×201 + 4×500`); user-creation race already converted in batch 1 produces the same shape.
-- Round 225 post-deploy verification of the second batch (court / cv float bounds) returned `422` for Point2D out-of-range, NaN/Inf, points-array length ≠ 6, container_width/height out-of-range, FrameDetectRequest.timestamp_sec out-of-range, and tracknet RoiRectModel out-of-range — 13/13 ✅.
-- Sweep rounds 213-218 (data_package signature, NFKC search, role matrix, GDPR consent lifecycle, JWT corner cases, cross-team isolation, expert-label boundaries, condition / condition_tag color, DoS / rapid-write / concurrent / 413, admin training_data / audit / cluster, security headers / CORS / timing) returned 0 critical findings.
+## 2026-04-05
+
+### Repository Setup
+- Created the repository and initial ShuttleScope codebase.
+- Added the repository-level Claude guidance file.
+- Ignored local player / match database artifacts so local work would not pollute version control.
+
+### First Substantial Feature Foundation
+- Added an advanced analysis dashboard and support scripts very early in the repository lifetime, which set the tone for ShuttleScope as more than a minimal tagger.
+
+### Detailed Progress
+- Initial commit.
+- Ignored local player and match databases.
+- Added repository Claude guide.
+- Added advanced analysis dashboard and support scripts.
+
+## Notes
+
+- This changelog is intentionally detailed because the project has been evolving quickly and the accumulated work matters.
+- It is still higher-level than raw commit history; validation docs remain the best place for issue-specific detail.
+- Local-only planning notes remain in `private_docs/` and are not committed.
+## 2026-04-06
+
+### Streaming and Video Handling
+- Added DRM-capable streaming playback and download tests.
+- Improved ffmpeg fallback behavior and cookie-download guidance.
+- Added a streaming download workflow and hardened the related UI.
+
+### Annotation and Match-Day Flow
+- Adapted the shot panel to rally context.
+- Refined shot-key pause behavior.
+- Added a match-day workflow and set-summary behavior.
+- Improved desktop startup and quick-start flows.
+- Improved annotation flow and interval handling.
+- Completed a broad annotation / desktop workflow phase.
+- Added TrackNet automation and settings sync.
+- Implemented stage 1 sharing and live collaboration.
+
+### Analytics
+- Polished dashboard analytics access and labels.
+- Implemented advanced analytics and reports.
+- Enhanced EPV bootstrap and scouting reports.
+- Refined analytics visuals and doubles dashboard.
+- Added filter-aware analytics and related support.
+
+### UX and Visual System
+- Unified color-system rules and refreshed docs.
+- Implemented the light-theme color spec.
+- Polished analytics light theme and midgame review.
+
+### Detailed Progress
+- Added DRM-capable streaming playback and download tests.
+- Improved ffmpeg fallback and cookie download guidance.
+- Adapted shot panel to rally context.
+- Refined shot key pause behavior.
+- Polished dashboard analytics access and labels.
+- Implemented advanced analytics and reports.
+- Enhanced EPV bootstrap and scouting reports.
+- Refined analytics visuals and doubles dashboard.
+- Aligned private docs and validation layout.
+- Unified color system and refreshed docs.
+- Added filter-aware analytics and license documents.
+- Polished light theme readability and match round labels.
+- Implemented match day workflow and set summary.
+- Improved desktop startup flow.
+- Added quick start workflow and hardened desktop launch.
+- Improved annotation flow and interval handling.
+- Completed P1 / P2 / P4 annotation and desktop workflow.
+- Added TrackNet automation and settings sync.
+- Implemented stage 1 sharing and live collaboration.
+- Implemented color spec v1 light theme rules.
+- Polished analytics light theme and midgame review.
+- Implemented analytics review phases 1 to 3.
+- Improved annotator court flow and doubles sharing.
+- Refined match setup and documented annotation flow.
+
+## 2026-04-07
+
+### Annotation Workflow
+- Refined the annotation keymap and rally-end flow so basic annotation became faster and less error-prone.
+- Added a dedicated doubles hitter flow.
+- Improved end-state handling and match-setup ergonomics.
+
+### Analytics and Research
+- Implemented research roadmap analytics modules.
+- Added warm-up observations and related analytics context.
+- Closed major remaining gaps with tests, seed data, and CI.
+- Added heatmap modal and warm-up analytics fixes.
+
+### Prediction
+- Added the first prediction tab and pair-simulation foundation.
+- Refined the prediction tab toward coach / analyst workflows.
+- Added analyst-depth and human-benchmark oriented prediction features.
+
+### Sharing and Access
+- Added LAN and tunnel web-access support.
 
 ### Documentation
-
-- `private_docs/2026-05-08_continuous_attack_findings.md` now lists the 13 critical findings, their commits, and the post-deploy verification results.
-- `private_docs/2026-05-08_secret_scanning_candidates.md` was extended with five additional candidate rules surfaced by Round 207-210: HTML-strip fixed-point loop, validator `max_length` vs DB column AST check, `list[str]` per-element validator coverage, `IntegrityError → 409` pattern enforcement, filename BIDI smoke.
-- Per-batch validation memos under `shuttlescope/docs/validation/2026-05-09_*.md` (validator alignment batch, text-field BIDI / HTML strip, aliases validator, user-create race, static-review Pydantic field bounds).
-
-## 2026-05-08
-
-### GDPR / APPI Compliance Hardening
-
-- Promoted Privacy Notice to Version 1.1 with a new Article V-bis ("AI Model Training Data Practices") covering training-data sources, exclusions, model memorization mitigations, the right to object to training use, and transparency disclosures. Added Section 2.6 covering cookie categorization on `shuttle-scope.com`. The existing Articles VI through X retain their numbering — V-bis is inserted between V and VI without disturbing downstream references.
-- Promoted Terms of Service to Version 1.1 with a new Section 15 ("EU/EEA Operations") describing operational constraints (court ROI required; legitimate-interests basis for non-consenting third parties; bounded cross-border transmission), third-party athlete data handling under GDPR Article 21, and coordination obligations with Contributing Parties.
-- Added `contracts/DPA_TEMPLATE.md` (public) — a template Data Processing Agreement compliant with GDPR Article 28(3), with annexes covering processing details, technical and organizational measures, sub-processors, and Standard Contractual Clauses placement.
-- Added internal records (kept under `private_docs/internal/`, not committed): `RoPA.md` (Records of Processing Activities per GDPR Article 30, eight processing activities documented), `DPIA.md` (Data Protection Impact Assessment per Article 35), `SAR_PROCEDURE.md` (Subject Access Request operational procedure), `BREACH_RESPONSE.md` (Personal Data breach response plan with a 72-hour notification track and authority / data subject notification templates).
-- Added a public-facing β-period agreement at `private_docs/contracts/RBC_BETA_AGREEMENT.md` (kept private; intended for distribution to in-scope athletes outside the repository) — derived from the prior internal docx, with personal names and parent-company references removed.
-
-### Onboarding Consent Flow
-
-- Backend: introduced the `user_consents` table (Alembic migration `0024_user_consents.py`) and `users.consent_required` flag. Added `UserConsent` ORM model. Exposed `GET / POST /api/auth/consents` and `DELETE /api/auth/consents/{type}` for retrieving consent state, submitting initial / updated consent, and withdrawing optional consents (required types refuse withdrawal — those require account deletion). `/api/auth/me` now returns `consent_required` so the frontend can route to the onboarding flow.
-- Consent records capture privacy-policy version, terms version, given-at timestamp, IP address, and a SHA-256 hash of the User-Agent string (raw UA is not retained). Existing users are migrated with `consent_required=False` so the launch does not lock them out; new accounts default to `True` and must complete the consent flow before reaching the main UI.
-- Frontend: added `OnboardingConsentPage.tsx` covering two required consents (`service_delivery`, `beta_agreement`) and three optional consents (`ai_training`, `research_participation`, `cross_border_transfer`). Each consent is an independent checkbox per GDPR Article 7(2). Links to the public Privacy Notice / Terms of Service / Data Contribution Terms are surfaced inline. `ProtectedMainRoute` in `App.tsx` gates the application behind the onboarding page until the required consents are submitted.
-
-### Privacy-by-Design Hardening (CV Pipeline)
-
-- `CourtBoundedFilter` (`backend/cv/detection_hardening.py`) now defaults to `strict_mode=True`, which forces `court_margin=0` and excludes any detection outside the calibrated court polygon. Spectator and umpire zones remain excluded by their dedicated checks. Strict mode is configured in code only; the settings UI does not expose it.
-- The pipeline-run endpoint (`/v1/pipeline/run`, `backend/routers/pipeline.py`) refuses to enqueue analysis with HTTP 403 when the target match has no court calibration (`MatchCVArtifact` of type `court_calibration`). The rejection message references GDPR Article 25 / Privacy by Design so the operational reason is explicit.
-
-### Repository Hygiene
-
-- `private_docs/contracts/` and `private_docs/internal/` are kept under the existing `private_docs/` ignore rule. The new public-facing `contracts/DPA_TEMPLATE.md` (root-level) is committed.
-- Added `private_docs/2026-05-08_gdpr_compliance_implementation_plan.md` recording the strict task plan that drove the work above; it is internal-only and is referenced in the DPIA's "Integration of outcomes" section.
-
-### Consent UI Refinement (Contractual Basis vs Consent)
-
-- Following an internal legal analysis, the Onboarding consent flow now distinguishes contractual confirmation from optional consent more strictly. The two required items (`service_delivery`, `beta_agreement`) carry the GDPR Article 6(1)(b) / APPI Article 18 contract-performance basis. Their UI labels read "...の内容を確認しました" rather than "...に同意します", their description texts cite the legal basis explicitly, and the section header notes that withdrawal of these items is equivalent to ending use of the service. The required badge reads "契約履行（必須）" rather than "必須" alone.
-- The optional `cross_border_transfer` item was removed from the UI. EU→Japan transfers operate under the EU-Japan adequacy decision (effective January 2019), so a separate user consent for cross-border transfer is not the appropriate legal basis; surfacing such a checkbox risks misleading users into thinking transfers depend on their personal opt-in. APPI Article 28 cross-border safeguards remain in place via the safeguards described in `PRIVACY.md` Section 6.2 and the SCC placement of `contracts/DPA_TEMPLATE.md` Annex 4. Other future non-adequate destinations (e.g., the United States) will be handled through SCCs / equivalent measures rather than a UI checkbox.
-- Optional consent items now state their withdrawal channel inline (in-application contact form, public contact form, or email to `contact@shuttle-scope.com`).
-- `PRIVACY.md` Section 8.5 ("Withdrawal Mechanism (Interim)") added. It records the interim withdrawal channels, acknowledges the GDPR Article 7(3) "as easy to withdraw as to give" standard, and commits to delivering an in-application withdrawal interface no later than 31 December 2026. Required confirmations under the contractual basis are explicitly excluded from the withdrawal flow.
-
-### Public-Facing β Agreement
-
-- Added `contracts/BETA_DATA_HANDLING_AGREEMENT.md` as the repository's public template version of the β-period data handling agreement. Personal names and parent-organization references are stripped relative to the internal in-person `private_docs/ShuttleScope_同意書.docx`; the contact channel on the public version is `contact@shuttle-scope.com` plus the public contact form. The internal docx remains under `private_docs/` as the in-person signing instrument.
-
-### Host Liability Posture Hardening
-
-- Added `CONTENT_POLICY.md` as a public-facing description of how ShuttleScope treats user-submitted content, the channels through which a rights-holder, regulator, or data subject may file a content report, the format of such reports, and the response timeline. The Policy is written to align with the safe-harbour expectations of 17 U.S.C. § 512 (DMCA), Article 14 of Directive 2000/31/EC (EU e-Commerce Directive) as carried forward by Regulation (EU) 2022/2065 (DSA), and Articles 30 / 47-bis / 47-5 / 30-4 of the Japanese Copyright Act. The hosting posture is passive — content lawfully accessible to a User through paid streaming subscriptions, broadcast licensing, or other lawful means may be processed in the same manner as content the User has personally recorded; the developer responds after a verified report rather than by pre-screening submissions.
-- Promoted `TERMS_OF_SERVICE.md` to Version 1.2. Section 4 ("Acceptable Use") is rewritten to reflect the passive hosting posture and to make the User's responsibility for the legal basis of submissions explicit. New Section 16 ("User Content and Hosting Posture") and Section 17 ("Developer Conduct Guarantees") record the developer's role separation between operator and user, the developer-side undertaking on training-data sourcing, the no-inducement statement, and a beta-period note. A future U.S. Designated Agent under 17 U.S.C. § 512(c)(2) is anticipated in Section 16.7.
-- Promoted `PRIVACY.md` to Version 1.2 with a small addition (Article IX Section 9.3 "Beta Period Interim Measures") recording that the technical and organisational measures described in Article IX are operated under interim arrangements during the beta period and that material changes affecting personal-data protection will be reflected in subsequent updates to the Notice. No new processing purposes or recipients are introduced; existing consent records remain valid.
-- `SECURITY.md` now points content reports (non-vulnerability) to `CONTENT_POLICY.md`, separating that channel from the vulnerability reporting channel.
-
-### Internal Operational Documents (Host Liability)
-
-- Added `private_docs/internal/NOTICE_AND_TAKEDOWN_PROCEDURE.md` recording the operational notice-handling flow that backs the public commitments in `CONTENT_POLICY.md`, with templates for receipt acknowledgement, action notification (user side), and action notification (complainant side).
-- Added `private_docs/internal/DEVELOPER_CODE_OF_CONDUCT.md` codifying the developer's operator-role and user-role conduct rules, the no-inducement rule, the training-data sourcing discipline, and the annual self-audit cadence.
-- Added `private_docs/internal/LEARNING_DATA_PROVENANCE.md` defining the provenance schema, license categories (granted / public_domain / appi_47_4 / appi_47_5 / beta_legacy_assumed_legal / other), the beta-vs-production phase boundary, and the recording discipline. A database-backed implementation of this register is planned in the second wave of the Host Liability work; the document at present operates as the schema-of-record.
-- Added `private_docs/2026-05-08_host_liability_implementation_plan.md` recording the strict task plan for the host-liability hardening, the wave structure (A: documents now / B: code enforcement / C: future commercial work), and the legal mapping driving the work.
-
-### Host Liability Code Enforcement (Wave B)
-
-- Added Alembic migration `0025_content_reports_and_provenance.py` introducing two new tables. `content_reports` persists notice-and-takedown reports with the elements expected by 17 U.S.C. § 512(c)(3) and the corresponding national equivalents; the schema captures complainant identification (where provided — anonymous reports are accepted), the subject of the report, the legal basis invoked, an audit trail of the developer's triage and action, and any counter-notice received. `training_dataset_records` persists the schema described in `private_docs/internal/LEARNING_DATA_PROVENANCE.md` so that the provenance register is kept in the database rather than only as documentation; the source URL is stored as a SHA-256 hash rather than in plaintext.
-- Added `ContentReport` and `TrainingDatasetRecord` ORM models to mirror the schema.
-- Added the public reporting endpoint `POST /api/public/content_report` (anonymous accepted, rate-limited via the existing contact-form rate limiter, honeypot field for bot rejection, statement length 20–5000 characters, optional `legal_basis` from a closed enum). The response carries the report id, the receipt timestamp, and an acknowledgement message that points back to `CONTENT_POLICY.md` Section 7 for the SLA.
-- Added admin-only triage endpoints `GET /api/admin/content_reports`, `GET /api/admin/content_reports/{id}`, and `PATCH /api/admin/content_reports/{id}` so the developer can record triage status (pending / upheld / rejected / awaiting_info / on_hold), action taken (no_action / content_removed / access_restricted / account_suspended / pending_legal), counter-notice receipt, and restoration. Each transition is logged through the existing `audit_log` channel.
-- Added admin-only training-data provenance endpoints under `routers/admin_training_data.py`: `POST /api/admin/training_data/records`, `GET /api/admin/training_data/records` (filterable by license_type / beta_legacy_flag / dataset_id), and `GET /api/admin/training_data/records/{id}`. Source URLs are not retained; the endpoint hashes the URL with SHA-256 before persistence.
-- Registered the new audit-log event names (`content_report_received`, `content_report_triaged`, `training_data_record_created`) in the audit-coverage allowlist.
-
-### Wave B — Deferred to a Later Round
-
-- Mandatory `reason` parameter on admin video-access endpoints. Admin video access in the current architecture flows through team-scoped match endpoints (rather than a single dedicated admin path) and is already audited under the standard auth audit. Adding a `reason` requirement is worthwhile but requires endpoint-by-endpoint analysis and was scoped out of this round to keep the change set focused.
-
-## 2026-05-07
-
-### Streaming-Capture Recording for Member-Only Live Sites
-
-- Generalised the desktop screen-recording feature beyond the original YouTube-only path so the analyst can capture badminton broadcasts on any streaming site they are licensed to view. Recording is OS-level pixel capture (the OBS-equivalent path) only; no DRM or HDCP bypass is implemented anywhere in the project. Quality presets (low / med / high), a recording state machine, and a post-processing warning when the captured frames are mostly black (i.e. the platform actively blocked the capture) were added at the same time.
-- Added a video-password field to the streaming download panel for sites like Vimeo Showcase. Browser cookies (`cookies.txt`) and that password are passed to the downloader and discarded immediately after the job runs; neither is logged.
-- Documented the three available recording paths (yt-dlp, in-app WebView + screen capture, and the optional castLabs Electron build) in `docs/electron-drm.md`, including why castLabs is left as a user-managed opt-in.
-
-### Annotator Audit Sweep — UX, Keyboard, Errors, Mobile
-
-- Three coordinated review passes against the annotator workflow (28 items total). Highlights: improved contrast on the active stroke-type tile so it stays WCAG AA, expanded keyboard coverage (number-row binds for hit/land zones, Tab to swap player, an opt-in always-on key-hint toggle), a 4-state step indicator with focus ring and screen-reader hints, replaced every native `alert()` / `confirm()` with accessible toast and modal components, and migrated ~150 remaining hardcoded Japanese strings into the translation tree.
-- Mobile pass: walked the dashboard / settings / condition / review surfaces at iPhone widths and fixed every place tabs and tables spilled outside their container. `useBreakpoint` was extended to the full 6-stage Tailwind ladder, and a phone-sized players sheet and iPad sidebar layout were rebuilt on top of that hook.
-- Consolidated the annotator's various menu surfaces into a single top-bar menu plus a flattened settings panel, and surfaced the existing `Ctrl+K` command palette as a visible button so it is discoverable.
-
-### Operator: Production Scheduled-Task Recovery
-
-- Caught a regression where the production task supervisor had been reverted from a system-level run mode to an interactive one and would die on logoff. Re-registered it with the correct system-level principal, restart count, and start trigger. Operator notes for safe deploy and restart steps were updated.
-
-## 2026-05-04
-
-### Annotator UX Redesign
-
-- Full redesign sprint over the annotator workflow: top-bar split into a primary score display plus a kebab menu, mode tabs for Input / Review / Analysis / Settings driving a right panel that only shows what the current mode needs, a bottom history strip with click-to-seek, floating video-overlay toggles, and a `Ctrl+K` command palette. A mobile variant with a bottom sheet was added in the same sprint, and remaining hardcoded strings were migrated to the translation tree.
-- Annotator craftsmanship: hit-zone manual override, offline rally stash, semantic colour system on the stroke-type panel, haptics, and a semi-auto flip path that fixes a player-selection regression during quick rally entry.
-
-### CV Foundation — Tracks A through E
-
-- Person-tracking, pose estimation, swing detection, and hitter attribution rolled in over multiple tracks with a fallback chain documented for future tuning.
-
-### Mobile-Responsive Pass
-
-- Walked the condition / team / settings / camera / expert-labeler surfaces at iPhone widths and applied the same overflow / clipping / mobile-card recipe that the dashboard had been using.
-
-### Video Pipeline Fixes
-
-- Resolved a bundle of bugs that together had been blocking browser-side playback of server-stored matches and CV pipeline reads of the same.
-- Added an automated archive step that moves downloaded videos off the working drive after a configurable interval, with a path safety jail and DB-side path tracking.
-
-### Internal Reviews and CI
-
-- Closed two coordinated review sweeps (general code review and an analytics-focused ultra-review) and brought the TrackNet smoke workflow back to green after dependency drift in the runtime stack.
-
-### Data-Loss Incident and Recovery
-
-- An automated review tool was invoked on an orphan branch and wiped a gitignored area holding validation notes, helper scripts, and downloaded video archives. Validation docs were recoverable from the production machine; the unsynced video archive was lost. Going forward, the tool is treated as destructive on this repo and a backup of the gitignored areas is taken before invoking it.
-
-## 2026-05-03
-
-### CSP Patch for Public LP
-
-`csp`: allow inline script for the public landing-page host so the reveal animations actually run. Single-commit day.
-
-## 2026-05-02
-
-### Video Download Pipeline + UI
-
-`downloader`: yt-dlp result is now stored as `server://` (not `localfile:///`) so the backend treats it uniformly with uploads; `video_local_path` is persisted on completion; ffmpeg located under SYSTEM PATH and falls back to the `imageio-ffmpeg` bundled binary when nothing resolves. Test assertion updated for the `server://` filepath format.
-
-### Match-List Download UX
-
-`MatchList` shows a "DL 中" badge (Step 1B) backed by `/matches/downloads/active` (Step 1A). The match-edit modal renders an inline progress bar (Step 2) and an inline error + retry button on failure (Step 3, both list and modal, mobile-aware).
-
-### CSP
-
-`csp`: allow `https:` in `font-src` to stop the CSP report flood.
-
-## 2026-05-01
-
-### Continuous Attack Sweep (Rounds 110-155)
-
-A long day of attack-driven backend hardening. Rounds 110-119 closed 8 findings; rounds 120-121 closed an additional cluster of findings; round 126 (V-5) made analyst export scope include their own team; round 130 (Y-1/Y-2/Y-3) rejected any `<>` in `tournament` / `round` / `notes` / `venue` and in `conditions.injury_notes`; round 131 validated `owner` / `home` / `away` `team_id` FK before write; round 136 (D-5) capped `tracknet.frame_b64` `max_length` at 2 MB; round 140 (H-3) rejected line-break / control characters in `tournament` etc.; round 142 (J-1) rate-limited refresh + email-verify; round 143 (K-1) rejected Windows reserved filenames (`CON` / `PRN` / etc.); round 147 capped TrackNet decoded frame dimensions/bytes to prevent OOM; round 155 cascade-deleted FK rows when deleting a user (cleanup of an earlier 500).
-
-### Auth / Lockout
-
-`auth`: account lockout never fired because `failed_attempts` was being reset too eagerly; the reset trigger is now narrower. WebSocket connections per session capped at 20, with an `asyncio.Lock` around the cap to prevent a race. `/v1/expert/videos` now team-scopes for non-admin actors.
-
-### Match Delete Cascade Hardening
-
-Iterative fix on `delete_match`: `UploadSession.match_id` now nulled via Core SQL `UPDATE` (with `Query.update()` bulk variant) before the match delete; `server_video_artifacts` cascade also via Core SQL `DELETE`; cascade + match delete is a single transaction with best-effort cascade; `server://` PUT on `video_local_path` blocked. Concurrent `DELETE` on the same match now returns idempotent 200. `IntegrityError` detail is exposed only to admin diag on delete failure.
-
-### CI + Misc
-
-JSON `Infinity` / `NaN` payloads now return 400 instead of 500 at the main app layer. Python mp4-atom walker fallback added for container validation in uploads. Apex `shuttle-scope.com` host allowed for the public LP. `security_ci/` excluded from CodeQL; actions in `security-attacks.yml` pinned. No-auth attack suite + scheduled GitHub Actions added. CI Build-and-Test job unbroken. README + CHANGELOG updated for 2026-04-28 → 04-30 work.
-
-## 2026-04-30
-
-### CI Restoration on Windows and Linux
-
-- Cleaned up CI infrastructure issues so backend tests, frontend tests, build, and the security-conventions check pass on both `ubuntu-latest` and `windows-latest` runners.
-
-### Security Hardening
-
-- Closed the Critical and High findings from the static analysis sweep through additional input validation and path-safety guards. Specific finding details and the corresponding mitigations are tracked in the project's internal security log rather than this public changelog.
-- Tightened HTTP response headers (Content-Security-Policy on HTML responses, Permissions-Policy, COOP / CORP) and adjusted CORS for the public deployment posture.
-- Hardened authentication-related timing characteristics so failed login responses do not leak whether a username exists.
-- Restored the emergency token-revocation path after a regression. Operational runbook for incident response is maintained internally.
-- Added admin tooling (per-user limit visibility and category-scoped reset) to make abnormal usage visible from the admin UI rather than only in process memory.
-
-### Streaming Upload Path
-
-- Introduced a streaming-upload flag for MediaRecorder-style chunk uploads where the final file size is not known until finalize. Strict ordering on chunk receipt and an upper bound on total bytes are enforced server-side. Frontend updated to use the matching content type.
-
-### Unattended Operation
-
-- Stood up the production backend supervisor and the tunnel as proper Windows services with restart policies, so a connect-holiday absence does not lose service on crash or logoff.
-
-### Internal Verification Rounds
-
-- A multi-week sequence of attack rounds was run against the live deployment. The findings, mitigations, and per-round verifications are tracked internally; the changelog only records that the sweep happened.
-
-## 2026-04-29
-
-### Sender-Side Server Recording
-
-- Reworked the camera sender path so recordings are uploaded to the server (rather than only existing as a P2P WebRTC stream that disappears at session end). Each completed upload is registered for downstream worker / archive processing.
-
-### LAN-First Endpoint Resolution
-
-- Added preferred-endpoint resolution that races configured candidate hosts on session join, so a sender on the same Wi-Fi as the operator PC takes the LAN path directly instead of round-tripping through the public tunnel.
-
-### Cloudflare Named Tunnel Support
-
-- Routed coach / camera-sender / WebSocket URLs through the named tunnel host when active, with a fallback for tunnel configurations that are managed from the Cloudflare dashboard.
-
-### Phase Pay-1 Billing Foundation
-
-- Wired up multi-provider checkout behind a feature flag (off by default). Receipts are generated as PDFs and legal metadata is sourced from environment variables. All billing endpoints are excluded from the public OpenAPI schema.
-
-### Phase M-A Email Authentication Foundation
-
-- Implemented register / verify / password-reset / invitation flows around a mail-backend abstraction. Self-registered users land in a pending state and require admin approval before becoming active. Public registration is opt-in via configuration.
-
-### Data Protection
-
-- Added field-level encryption, encrypted backup output, signed export packages with replay defence, and operator runbooks for incident response.
-
-## 2026-04-28
-
-### Live Recording Workflow
-
-- Added a live-stream recording flow that supports cookie-based authentication for paywalled sources, with a job model and an off-volume archive step that respects the configured allowed-paths policy.
-
-### Path Safety
-
-- Centralised path validation through a single helper that accepts only the configured roots, with canonicalisation that prevents traversal and symlink games.
-
-### Video Token Privacy
-
-- Replaced the previous raw filesystem-path exposure in API responses with an opaque token plus a team-scope-gated lookup, so reading a video requires both the token and an authorised match relationship.
-
-## 2026-04-27
-
-### Shot Annotation and Centre-of-Gravity Detection
-
-- Added shot type annotation support via the expert labeler workflow, including a new `shot_labels` endpoint, `ShotAnnotation` model, and Alembic migration 0015.
-- Added two ML pipeline stubs — a CLIP-based and an LSTM-based shot classifier — ready to connect to the expert annotation flow.
-- Integrated CoG (centre-of-gravity) detection as a first-class panel in the expert labeling UI, linking motion analysis directly into the labeling session rather than keeping it as a separate standalone page.
-
-### YOLO ByteTrack and TrackNet Profiling
-
-- Added ByteTrack multi-object tracking configuration (`backend/yolo/bytetrack.yaml`) to support persistent player ID continuity across frames.
-- Extended YOLO inference to integrate ByteTrack so player tracking is more stable over long video segments.
-- Improved TrackNet frame-profiling instrumentation and zone-mapper zone-boundary precision so inference timing data is more actionable for performance tuning.
-- Added a Pareto-sweep benchmark script for systematic throughput / accuracy trade-off exploration.
-
-### Condition and Prediction Report Exports
-
-- Added PDF export endpoints for condition reports and prediction reports under `/api/reports/condition` and `/api/reports/prediction`.
-- Extended the frontend ConditionPage, PredictionPage, and UserManagementPage with export buttons and download flows.
-- Updated DashboardShell to route the new report download actions through absolute `API_BASE_URL` to avoid Electron fetch failures.
-- Added i18n strings for the new export UI elements in both English and Japanese localization files.
-
-### Beta Terms and Public Site Updates
-
-- Updated `TERMS_OF_SERVICE.md` with beta-specific usage terms.
-- Added a beta notice banner to the public landing site with corrected spacing to avoid overlap with the fixed navigation bar.
-
-### Input Validation and Sanitization
-
-- Tightened input validation and text-field sanitization across the authenticated API surface and adjusted static-analysis suppressions where appropriate.
-
-### Infrastructure and Test Stabilization
-
-- Fixed an Alembic configuration ordering issue that affected CI test isolation, and updated bootstrap tests to cover the latest migration.
-
-### Internal Adversarial Validation
-
-- Ran an internal adversarial-validation pass across input handling, authentication, public-facing endpoints, and labeler scope enforcement. Findings and verifications are tracked internally.
-- Converted findings into source-level fixes and database cleanup. 
-
-## 2026-04-26
-
-### Team Scoping / PostgreSQL Migration Rollout
-
-- Added first-class team ownership for users, players, matches, comments, bookmarks, forecasts, warm-up notes, and related analysis data.
-- Introduced the `teams` table and the Phase B migration chain (`0009` through `0014`) for moving from name/string-based team handling toward ID-based PostgreSQL-backed scoping.
-- Made `matches.owner_team_id` part of the match ownership model and restored the NOT NULL migration as an explicit rollout step after earlier opt-in staging.
-- Dropped the legacy player team string column after backfilling player `team_id`, keeping team lookup on the normalized team table instead of free-form text.
-- Tightened auth context and JWT payloads so coach / analyst / player requests carry `team_id` and are scoped against owned or permitted team data.
-
-### Team Management UI and Access Control
-
-- Added `TeamManagementPage` and frontend API helpers for listing, creating, and updating teams.
-- Extended user management so admin workflows can assign users to teams by ID, while non-admin views remain scoped to their own team boundary.
-- Updated match creation and match list flows to carry owner team information and preserve team-aware filtering.
-- Improved the audit log UI with richer filtering / presentation for team-scoped security events.
-- Added team-scoping regression tests covering match access boundaries, user creation rules, and database bootstrap behavior.
-
-### Validation Notes
-
-- Added Phase B validation documents under `docs/validation/` for the team-scoping rollout, frontend follow-up, and remaining production hardening notes.
-- Verified the focused backend auth/team test set and frontend Vitest suite during the rollout. Full backend pytest remains heavier than the normal local loop and was handled with targeted verification.
-
-### Attack-Driven Hardening
-
-- Ran several days of adversarial validation against authentication, team boundaries, player access, condition records, sharing endpoints, and warm-up observation flows.
-- Converted the findings into source-level hardening and high-level validation notes rather than publishing replayable cases.
-- Kept public notes intentionally high-level: the changelog records the security posture improvement and tested areas, while exploit mechanics, payload details, and replayable attack paths are omitted.
-
-## 2026-04-25
-
-### Live Adversarial Validation and Auth Hardening
-
-- Spent the day validating authentication, MFA, refresh, local-login, operator-only, and lockout behavior under hostile conditions.
-- Hardened auth and match input checks, tightened lockout enforcement across token refresh and MFA paths, and blocked role/scope confusion in local and development-only flows.
-- Required stronger operator or admin proof for sensitive select, seed, and legacy paths so local-only endpoints do not rely on network placement as their main defense.
-
-### Scope and Boundary Enforcement
-
-- Enforced team, player, condition, annotation, sharing, and match scope more consistently across read and write paths.
-- Tightened coach, analyst, player, and admin boundaries so cross-team access fails closed instead of depending on caller-provided identifiers.
-- Added guardrails against invalid identifiers, oversized values, integer edge cases, unsafe package/import behavior, and sync/upload/export misuse.
-
-### Regression and Merge Follow-Through
-
-- Converted validated issue classes into defensive source changes and focused regression coverage while keeping replayable mechanics out of the public changelog.
-- Merged and reconciled the hardening branches into `main`, accounting for places where the same underlying risk had been fixed by more than one implementation path.
-- Updated repository guidance so future work stays aligned with PostgreSQL-backed production assumptions rather than local SQLite shortcuts.
-
-## 2026-04-24
-
-### Production Access and Code Scanning Hardening
-
-- Reworked public and production gates around documentation, stack traces, cluster/control-plane routes, DB maintenance, network diagnostics, settings, tunnel, and admin-only operations.
-- Addressed high-priority code scanning findings in SSH/remote task handling, temporary file creation, upload path handling, and URL/path validation.
-- Added stronger access checks around sensitive local and control-plane paths while preserving the local development workflow.
-
-### Input Validation and Data Integrity
-
-- Tightened request schemas across auth, matches, players, comments/bookmarks, conditions, pipeline jobs, settings updates, sync/import/export, and sharing endpoints.
-- Added stricter URL/path normalization, UTF-8 package filename support, safer browser/video download path handling, and clearer rejection of malformed payloads.
-- Centralized ORM update safety so unknown or null writes cannot silently overwrite protected fields.
-- Added audit logging and bounded request behavior for condition, webhook, pipeline, and public inquiry flows.
-
-### Cluster, Upload, and Benchmark Readiness
-
-- Added browser chunked video upload support.
-- Added admin cluster controls, deployment scripts, benchmark resilience improvements, and i18n script updates.
-- Cleaned up cluster configuration comments and kept the deployment/benchmark notes closer to the current architecture.
-
-## 2026-04-23
-
-### Phase B Authentication and Auth UI
-
-- Token rotation with reuse detection, idle auto-logout, self-service password change, admin-driven reset, and an admin audit-log surface in the frontend.
-
-### Router Unit Test Coverage
-
-- Added unit tests for the maintenance-side routers (~20 cases) using TestClient against the same dependency-injected paths the running app uses.
-
-### Test Stabilisation
-
-- Fixed several import-order and singleton-capture issues that were causing test pollution under in-memory DB mode. Result: full backend pytest run is green on both CI runners.
-
-### Dependency Upgrades
-
-- Bumped Python dependencies to clear known advisories. Two Ray-side advisories that have no fixed release are scoped to trusted-network operation and tracked in the project's internal security log.
-
-### i18n Migration
-
-- Migrated remaining hardcoded Japanese strings across several major pages into the translation tree.
-
-### Code Scanning Triage and Supply-Chain Hardening
-
-- Triaged the static-analysis backlog with explicit rationale for each disposition, pinned every workflow `uses:` reference to a commit SHA across all eleven CI workflows, and reduced workflow token permissions to the minimum required.
-
-## 2026-04-22
-
-### Code Scanning Response
-
-- Closed the Critical and High alerts surfaced by the static analysis sweep through additional input validation and path-safety checks across the API and the desktop renderer. Specific vulnerability classes and the corresponding remediations are tracked in the project's internal security log.
-
-### CI Recovery
-
-- Resolved the conflict between two overlapping code-scanning configurations and tightened workflow token permissions across the security-scanning workflows.
-
-## 2026-04-21
-
-### Public Landing Site v7
-
-- Replaced the shuttle-scope.com top page with a full v7 design.
-  New layout includes a fixed navigation bar with hamburger menu (mobile), a dark-navy hero section with an app mock panel, a three-column feature card row, a 2×2 analysis capabilities grid, a data policy section, a footer CTA, and a mobile sticky bottom bar.
-- Added light / dark theme toggle via CSS custom properties persisted in localStorage.
-- Added scroll-reveal animations using IntersectionObserver.
-- Fixed all login / "アプリへ進む" link targets to `https://app.shuttle-scope.com/login`.
-  Previously these pointed to the app root; they now go directly to the login screen.
-- Preview route `/public-preview` continues to use link rewriting so internal development previews stay self-contained without affecting real login flow.
-
-### Permission Scope Enforcement
-
-- Role-scoped user management surfaces (admin / analyst / coach / player each see only what they should), match-result inversion so practice-match wins / losses are shown from the viewer's own perspective, and authentication added to the data export / import endpoints.
-
-### Condition Analytics Role Restrictions Removed
-
-- Removed the condition-analytics analyst-only gate that was blocking coach-role access to condition views.
-  Coaches now receive the same condition analytics responses as analysts; player-facing restrictions remain in place.
-
-### Admin Notification Inbox
-
-- Added `NotificationInboxPage` so admin users can review inquiry submissions sent through the public contact form.
-- Added backend coverage for the public-site test suite (`test_public_site`).
-
-## 2026-04-20
-
-### Admin Bootstrap Security
-
-- Removed the previously checked-in default bootstrap-admin password and replaced it with environment-driven first-run provisioning. Added a bootstrap-status path so the login screen can indicate readiness without exposing any secret value.
-
-### Auth Flow Hardening and Session Cleanup
-
-- Removed the prototype-era client-side role switcher, moved auth-context persistence to session storage so a closed app returns to the login screen, added explicit logout actions, and added a startup revalidation step that re-syncs the displayed identity with the server.
-
-### CI Stabilization and Benchmark Test Reliability
-
-- Fixed CI installation failures by removing the assumption that `onnxruntime-gpu` is available in the base backend requirements on generic GitHub Actions runners.
-- Reframed GPU ONNX Runtime as an environment-specific add-on, installed through machine setup scripts or targeted prep rather than forced into every CI or worker environment.
-- Fixed benchmark test regressions so explicit mock mode is now respected during test execution instead of being silently disabled inside the runner.
-- Aligned pipeline mock loading with the benchmark and smoke-test path, which removed false failures caused by real `ffmpeg` / runtime expectations in CI.
-
-### Validation
-
-- Verified the CI repair with a green GitHub Actions run on both `ubuntu-latest` and `windows-latest`.
-- Re-ran local backend verification after the fixes:
-  - backend tests: `624 passed, 4 skipped`
-  - frontend tests: `84 passed`
-  - production build: `npm run build` successful
+- Refreshed the README multiple times to keep it closer to reality as scope expanded.
 
 ### Detailed Progress
+- Refined annotation keymap and rally-end flow.
+- Refreshed the top-level README.
+- Polished annotation flow end-state handling.
+- Implemented research roadmap analytics modules.
+- Added warm-up observations and detail analytics context.
+- Closed remaining gaps with tests, seed data, and CI.
+- Added heatmap modal and warm-up analytics fixes.
+- Added prediction tab and pair-simulation foundation.
+- Refined prediction tab for coach and analyst workflows.
+- Added doubles annotation hitter flow.
+- Added LAN and tunnel web-access support.
+- Refreshed README for current product scope.
+- Clarified README for PoC scope.
+- Upgraded prediction with analyst depth and human benchmarks.
 
-- Removed frontend `setRole`-based role mutation and the Settings role picker path.
-- Moved token and auth-context persistence to session storage.
-- Added explicit logout controls in the sidebar and account section.
-- Added frontend auth revalidation using `/auth/me` before rendering protected routes.
-- Returned `team_name` from backend auth login / me responses.
-- Removed mandatory `onnxruntime-gpu` from generic backend dependency install flow.
-- Updated benchmark runner behavior around tiny latency metrics and unavailable non-CPU devices.
-- Preserved explicit `SS_CV_MOCK=1` behavior in benchmark execution.
-- Updated video pipeline mock resolution so real mock implementations are used when available.
+## 2026-04-08
 
-## 2026-04-19
+### Analysis Architecture and Search UX
+- Unified analysis foundations and player context so the later advanced / research stack had a cleaner base.
+- Split analysis routers into stable, advanced, and research layers.
+- Added stage 2 engines, then stage 3 research engines for counterfactual and EPV-oriented work.
+- Added searchable selects and date-range filtering across important UI paths.
 
-### Cluster Routing and Remote Task Expansion
+### Sync, DB, and Migration Foundation
+- Added sync architecture phase 1 data-management support.
+- Strengthened sync metadata and data-management flows after the first pass.
+- Closed major DB sync gaps and added analytics indexes.
+- Added Alembic migrations and the dominant-hand schema fix.
+- Hardened DB bootstrap behavior and several DB-adjacent edge cases.
 
-- Added Ray remote task support for distributed inference and analysis execution so GPU-heavy and CPU-heavy stages can now be routed more intentionally across machines.
-- Expanded cluster bootstrap and topology handling so ShuttleScope can manage primary / worker behavior, remote task routing, and worker visibility with less manual editing.
-- Strengthened the cluster settings surface so operators can inspect worker status, choose routing preferences, and tune load limits from the app rather than relying only on scripts.
+### Annotation and Review Acceleration
+- Added annotation modes and a review-acceleration flow.
+- Improved mobile UX and quick-start route behavior.
 
-### Benchmarking and Device Selection
-
-- Expanded benchmark device detection across CPU, GPU, OpenVINO-capable paths, and Ray-aware environments.
-- Added richer benchmark runner behavior including cancellation, backend overrides, YOLO as a benchmark target, and result handling better suited to mixed-device experiments.
-- Raised the cluster inference concurrency limit and tuned benchmark / inference flow so experimentation on stronger local hardware is less artificially constrained.
-
-### Worker Setup and Windows Operations
-
-- Added `requirements_worker.txt` and `scripts/setup_k10_worker.ps1` so a second Windows machine can be prepared as a Ray worker with a narrower dependency surface than the full primary machine.
-- Added and extended `scripts/fix_ray_firewall.ps1` to reduce the amount of manual Windows networking work needed to get distributed execution unstuck.
-- Improved cluster worker setup details in `cluster.config.yaml`, backend bootstrap, and the Settings UI so practical worker onboarding is closer to a repeatable workflow.
-
-### Model and Runtime Readiness
-
-- Added a checked-in `backend/models/yolov8n.onnx` baseline asset so current YOLO-oriented flows have a default ONNX model available in-repo.
-- Improved TrackNet inference fallback and backend selection behavior so OpenVINO / CPU / mock routes behave more predictably in mixed environments.
-
-### Detailed Progress
-
-- Added `backend/cluster/remote_tasks.py` and expanded cluster bootstrap / routing logic.
-- Improved benchmark runner controls, target selection, backend override behavior, and cancellation support.
-- Added YOLO benchmark target and corresponding frontend selector support.
-- Added worker-specific requirements and a K10 worker setup script.
-- Extended `ClusterSettingsPanel`, `SettingsPage`, and related i18n for cluster operations.
-- Added `yolov8n.onnx` and refined TrackNet / benchmark integration behavior.
-
-## 2026-04-18
-
-### Role-Aware Local Authentication
-
-- Added a proper local authentication surface instead of relying primarily on frontend role selection.
-- Added backend auth routing for login, logout, current-user lookup, and role-specific login candidate lists.
-- Added JWT utility handling and updated frontend auth state so the app now carries a signed backend-issued auth context rather than only local role headers.
-- Added a dedicated `Login` page with role-specific flows for admin, analyst, coach, and player access.
-
-### User and Access Management
-
-- Added a `User Management` page so internal operators can manage role-bound local users instead of treating access as a purely implicit development concern.
-- Extended the backend user model to support stronger role-linked account handling, including player-linked users and hashed credentials.
-- Added access-log groundwork around auth actions so login and logout activity now has a backend audit trail.
-
-### Protected Condition Views
-
-- Tightened condition-data access so role-aware views expose different levels of detail instead of treating all readers as equivalent.
-- Added field-sensitivity helpers and updated condition routing so coach / analyst access can be constrained to safer summaries while player self-view and privileged access remain distinct.
-- Updated condition-related frontend screens and supporting hooks so the UI behaves correctly under the new protected-data responses rather than assuming unrestricted payloads.
-
-### Prediction and Condition UX Alignment
-
-- Updated prediction and condition pages, plus several analysis cards, so they degrade more safely when sensitive fields are unavailable under the current role.
-- Refined frontend copy and i18n strings to match the new auth and protected-condition behavior.
-
-### Validation
-
-- Verified the auth and protected-condition update with:
-  - backend tests: `624 passed, 4 skipped`
-  - frontend tests: `84 passed`
-  - production build: `npm run build` successful
+### LAN, Session, and Live Source Work
+- Added LAN session auth and device-control flow.
+- Added live source control and the first LAN inference foundation.
+- Expanded single-PC validation coverage for the LAN live stack.
+- Fixed LAN join flow and multiple device-manager UX issues.
 
 ### Detailed Progress
+- Unified analysis foundations and player context.
+- Split analysis routers and added stage 2 engines.
+- Added stage 3 research engines for counterfactual and EPV.
+- Polished mobile UX and fixed quick-start route issues.
+- Added searchable selects and date-range filters.
+- Added sync architecture phase 1 data management.
+- Strengthened sync metadata and data management flows.
+- Closed remaining DB sync gaps and added analytics indexes.
+- Added Alembic migrations and dominant-hand schema fix.
+- Hardened DB bootstrap and heatmap error handling.
+- Added annotation modes and review acceleration flow.
+- Added LAN session auth and device control flow.
+- Added live source control and LAN inference foundation.
+- Added single-PC validation coverage for the LAN live stack.
+- Fixed LAN join flow and device-manager UX issues.
 
-- Added backend auth router and JWT helpers.
-- Added access-log and field-sensitivity utilities.
-- Updated backend auth extraction and main app wiring.
-- Tightened condition endpoint filtering.
-- Added login and user-management pages.
-- Updated frontend auth hook and API client to use backend-issued auth state.
-- Refined prediction and condition views for role-aware payload differences.
+## 2026-04-09
 
-## 2026-04-17
+### Dashboard Rearchitecture
+- Rebuilt the dashboard from a single large page into a structured shell with separate overview, live, review, growth, advanced, and research areas.
+- Added top-level and section-level navigation patterns that make the dashboard feel more like a product surface than a page of stacked charts.
+- Added evidence and research status presentation patterns so more experimental modules are visibly different from mature ones.
 
-### Video Window Rendering Quality (Secondary Monitor)
+### Research Spine and Advanced Analysis
+- Added the dashboard research spine and metadata / evidence groundwork.
+- Added research cards and meta integration so state-value, counterfactual, hazard / fatigue, and related work has a stable home.
+- Added promotion workflow and advanced-meta rollout so research outputs can be tracked as candidates for broader adoption.
+- Completed promotion gaps and extended the color / theming system across more dashboard surfaces.
+- Added audit log and theme fixes around promotion overrides.
+- Hardened opponent policy refresh and error-state handling.
 
-- Fixed canvas overlay blur on high-DPI secondary monitors in the video extension window.
-  `PlayerPositionOverlay` and `ShuttleTrackOverlay` were setting `canvas.width` / `canvas.height` to CSS logical pixels, causing the browser to upscale the canvas by `devicePixelRatio` and producing visibly blurred YOLO bounding boxes, shuttle trail dots, and label text.
-  Both components now set canvas physical dimensions to `videoWidth ﾃ・dpr` / `videoHeight ﾃ・dpr`, apply `ctx.scale(dpr, dpr)` to keep drawing coordinates in logical pixels, and remove the `width` / `height` JSX attributes so sizing is managed entirely in the effect.
-  On a 4K external monitor (`dpr = 2.0`), canvas resolution doubles from 1920 ﾃ・1080 to 3840 ﾃ・2160 physical pixels, utilizing the display's full native resolution while the main 1080p window remains unaffected.
+### Dashboard and Analysis UX
+- Added date slider v2 and zone-map modal workflows.
+- Fixed heatmap filtering and crash-handling issues.
+- Applied theme / card rules consistently across advanced and research surfaces.
 
-### Multi-Monitor Selection UI
+### Remote Camera and Live Collaboration
+- Added remote tunnel providers and initial WebRTC / TURN settings support.
+- Hardened remote diagnostics and stale camera cleanup behavior.
+- Added TURN diagnostics and reconnect hardening.
+- Added a remote viewer page and improved sender reconnect behavior.
+- Polished remote handoff flow and grouped viewer UX.
+- Added tunnel-provider visibility to the annotator remote health banner.
 
-- Added monitor selection support for the secondary video window when three or more displays are connected.
-  Previously `handleOpenVideoWindow` always picked the first non-primary display automatically, making it impossible to choose the target on a desktop with multiple external monitors.
-  The fix adds a `selectedDisplayId` state (initialized from `getDisplays()` to the first non-primary monitor) and a `<select>` dropdown that appears only when two or more non-primary displays are detected.
-  Single-monitor laptop setups (one external display) see no UI change; the dropdown only surfaces when a choice is meaningful.
-  The `openVideoWindow` call now routes to the user-selected display ID, with a fallback to the first non-primary if the state is uninitialised.
-
-### GPU Inference Backend 窶・Missing Pieces Completed (RTX 5060 Ti Preparation)
-
-- Added `backend/cv/tracknet_openvino.py`: OpenVINO backend wrapper that adapts `tracknet/inference.py`'s `TrackNetInference` to the `TrackNetInferencer` Protocol.
-  Implements chunked frame processing (300-frame chunks with a 2-frame overlap) so 30-minute match videos are not loaded entirely into RAM before inference starts.
-  Frame indices are accumulated with a global offset to produce correct absolute timestamps across chunk boundaries.
-- Extended `backend/cv/factory.py` with an OpenVINO intermediate tier.
-  The new priority order is: Mock 竊・CUDA (torch + RTX) 竊・OpenVINO (iGPU / CPU, also works on K10) 竊・CPU (classical CV) 竊・Mock.
-  Previously the OpenVINO inference path in `tracknet/inference.py` was entirely disconnected from the factory used by the pipeline.
-- Added `backend/cv/tracknet_runner.py` and `backend/cv/mediapipe_runner.py`: thin runner modules that `cluster/tasks.py` was already referencing via `_safe_call` but which did not exist.
-  Each module calls `factory.get_tracknet()` / `factory.get_pose()`, runs inference, and returns a status dict; the factory handles backend selection transparently so the same runner works on X1 AI (CUDA path) and K10 (CPU / OpenVINO path).
-- Added `backend/pipeline/clips.py`: ffmpeg-based rally clip extractor.
-  Detects `h264_nvenc` availability at first call and caches the result; uses NVENC when `SS_USE_GPU=1` and NVENC is present, falls back to `libx264` otherwise.
-  K10 workers receive the CPU encode path automatically since `SS_USE_GPU=0` on that node.
-- Added `backend/pipeline/statistics.py`, `backend/pipeline/cog.py`, and `backend/pipeline/shot_classifier.py`: lightweight K10-targeted entry points for statistics aggregation, centre-of-gravity calculation, and shot classification.
-  Each delegates to the relevant `backend/cv/` implementation and returns `{"status": "skipped"}` gracefully when the underlying API is not yet implemented, preventing Ray task failures from aborting the full pipeline.
-- Updated `backend/requirements.txt`: added `mediapipe>=0.10.14` and `pynvml>=11.4` as explicit entries so they are present in all environments rather than only after running the GPU setup script manually.
-- Updated `scripts/setup_gpu.ps1` and `scripts/setup_gpu.sh`: both scripts now auto-download `pose_landmarker_lite.task` to `backend/cv/models/` after the pip installs, removing the manual download step that was previously required before `CudaPose` could initialise.
-  The shell script uses `curl` with a `wget` fallback and prints a clear warning rather than failing hard if neither tool is available.
-
-### Test Coverage Additions
-
-- Added six test cases to `backend/tests/test_cv_factory.py` covering: `OpenVINOTrackNet` raising `ImportError` without openvino installed; the factory falling through to CPU / Mock when OpenVINO weights are absent; `tracknet_runner` / `mediapipe_runner` importability and callability; `pipeline/clips`, `statistics`, `cog`, `shot_classifier` importability; `extract_clips` returning `skipped` on `rally_bounds=None`; and `run_tracknet` not raising on a non-existent video path.
-  All 11 active tests pass; 2 are correctly skipped when the relevant package (torch / openvino) is already installed.
+### Documentation and Positioning
+- Rewrote the README around the practical PoC / current product scope rather than over-claiming future work.
 
 ### Detailed Progress
+- Improved LAN access troubleshooting and sharing UX.
+- Polished camera sender UX and live overlay behavior.
+- Clarified README for current PoC scope.
+- Fixed dashboard heatmap filters and crash handling.
+- Rebuilt dashboard structure and routing.
+- Added research spine and evidence metadata.
+- Completed research cards and metadata integration.
+- Added promotion workflow and advanced-meta rollout.
+- Applied card theme rules to dashboard research and advanced views.
+- Completed promotion gaps and color rollout.
+- Added promotion audit log and live theme fixes.
+- Hardened opponent policy card refresh and error states.
+- Added date slider v2 and zone-map modal workflows.
+- Added remote tunnel providers and WebRTC TURN settings.
+- Hardened remote device diagnostics and stale camera cleanup.
+- Added TURN diagnostics and receiver reconnect hardening.
+- Added remote viewer page and sender visibility reconnect.
+- Polished remote handoff flow and grouped viewer UX.
+- Showed tunnel provider in annotator remote health banner.
+- Added ngrok authtoken support and ignored local env files.
 
-- Fixed Canvas DPI scaling in PlayerPositionOverlay and ShuttleTrackOverlay for high-DPI secondary monitors.
-- Added multi-monitor selection dropdown to video extension UI (shown only with 2+ non-primary displays).
-- Added tracknet_openvino.py with chunked frame processing and connected it to factory.py.
-- Extended factory.py with CUDA 竊・OpenVINO 竊・CPU 竊・Mock priority chain.
-- Added tracknet_runner.py and mediapipe_runner.py to complete the cluster/tasks.py call chain.
-- Added pipeline/clips.py with automatic NVENC / libx264 selection.
-- Added pipeline/statistics.py, cog.py, and shot_classifier.py as K10-targeted pipeline stubs.
-- Updated requirements.txt with mediapipe and pynvml.
-- Added MediaPipe model auto-download to setup_gpu.ps1 and setup_gpu.sh.
-- Added six test cases to test_cv_factory.py covering new factory paths and module importability.
+## 2026-04-10
+
+### YOLO / TrackNet / CV-Assisted Annotation
+- Added YOLO player detection and CV alignment foundation.
+- Added shuttle overlay and a dashboard CV position card so computer vision results start to surface in both annotation and dashboard flows.
+- Polished YOLO-driven role signals and annotator-side CV controls.
+- Improved YOLO diagnostics and artifact-status visibility so missing setup / problems are easier to diagnose.
+- Added CV-assisted annotation candidates, candidate badges, and review queue groundwork.
+- Started moving from "CV exists" to "CV suggests actual annotation actions" by introducing candidate application flows and review handling.
+
+### Remote and CV Failure Handling
+- Recorded and responded to critical remote / CV failures as validation findings rather than hiding them behind optimistic assumptions.
+- Fixed remote share rebasing problems and made CV errors much more visible.
+- Improved tunnel / ngrok hardening so remote sharing state is more explicit.
+
+### Bootstrap and No-Video Work
+- Used the no-video window productively by strengthening CV assist UX, review queue flow, and environment / bootstrap tooling.
+- Added and improved bootstrap helpers and setup doctor output so the project is easier to bring up on additional devices without guesswork.
+
+### Detailed Progress
+- Added YOLO player detection and CV alignment foundation.
+- Added shuttle overlay and dashboard CV position card.
+- Polished YOLO role signal and annotator CV controls.
+- Improved YOLO diagnostics and artifact status UX.
+- Added foundation registry split and recorded critical remote CV failures.
+- Fixed remote share rebasing and CV error diagnostics.
+- Added CV-assisted annotation candidates and ngrok URL hardening.
+- Polished no-video CV assist flow and device bootstrap.
+- Improved device bootstrap guidance and doctor output.
+
+## 2026-04-11
+
+### Post-Match Video and CV Pipeline
+- Added a post-match local video import flow that moves ShuttleScope closer to a realistic "analyze after recording" workflow.
+- Added `Video Only` / second-screen foundation so playback can continue while annotation happens elsewhere.
+- Added court calibration foundation and then hardened it so backend persistence and restore behavior are more reliable.
+- Improved CV ROI mapping and court-aware handling so downstream CV artifacts can use court geometry more safely.
+- Added automation and validation scaffolding around court calibration and CV artifacts.
+
+### Match and Player Management
+- Added match editing after creation, including safer handling of referenced players.
+- Prevented player deletion when matches still reference that player.
+- Hardened match edit payload handling so empty optional values stop causing avoidable failures.
+- Added player team history support and migration so roster changes can be tracked more realistically over time.
+
+### Validation and Non-Human Checks
+- Added more non-human validation coverage around calibration, artifacts, bootstrap behavior, and match edit safety.
+- Tightened bootstrap and migration tests so DB evolution remains safer as the schema grows.
+
+### Detailed Progress
+- Added post-match video import and multi-monitor foundation.
+- Refined court calibration persistence and CV ROI mapping.
+- Closed calibration automation gaps and CV artifact hardening.
+- Added match editing and referenced-player safeguards.
+- Hardened match edit payload handling and save errors.
+- Added player team history support and migration.
+- Ignored local CV weights and kernel diagnostics so repository status stays clean.
+
+## 2026-04-12
+
+### Product and UX
+- Expanded the top-level product documentation so the repository now explains ShuttleScope in a more grounded, current-state way.
+- Added a proper root `CHANGELOG.md` so progress is visible from the repository top level.
+- Polished dashboard selectors and theme controls, including better mobile-safe selectors, same-page navigation, and overview / advanced page usability.
+- Improved responsive behavior across dashboard surfaces and heatmap-related views.
+
+### Annotation and Match Workflow
+- Improved match edit validation feedback and safer save behavior.
+- Fixed server-state handling during rally confirmation so saved annotation state is less likely to drift from UI state.
+- Improved LAN same-device access flow so sharing links behave more reliably when the same machine is both operator and consumer.
+
+### Heatmaps and Responsive UI
+- Added heatmap composite support and corresponding backend / frontend integration.
+- Tightened responsive UI behavior across overview, advanced, settings, top navigation, section navigation, and several analysis cards.
+- Added dedicated backend heatmap composite tests and updated UI behaviors so complex analysis views survive narrower layouts better.
+
+### Security and Hardening
+- Responded to a dedicated security review pass with concrete backend hardening.
+- Restricted `localfile://` handling more aggressively.
+- Added upload / body-size limits and safer request handling around file-oriented endpoints.
+- Hardened sync import / copy paths against oversized input and path traversal.
+- Added active-session and participant validation in camera WebSocket signaling.
+- Added operator-token protection for sensitive remote session management flows.
+- Switched session code generation from non-cryptographic random generation to a CSPRNG-based approach.
+
+### Validation and Test Health
+- Updated websocket signaling tests so they reflect the newer active-session requirements instead of silently depending on older assumptions.
+- Kept the full test suite green while expanding responsive / security coverage.
+
+### Detailed Progress
+- Improved match edit validation feedback and static MIME mapping.
+- Improved LAN same-device access and documented current product status more honestly.
+- Improved responsive UI and heatmap composite views.
+- Hardened remote session security and fixed annotation server state handling.
+- Polished dashboard selectors and theme controls.
+
+## 2026-04-13
+
+### Prematch, Resume, and ROI
+- Added prematch prediction snapshots so prediction outputs can be stored in a more time-aware way instead of always behaving like a live recomputation.
+- Added ROI-aware CV batch processing so selected regions actually flow through TrackNet / YOLO processing rather than staying as UI-only overlays.
+- Added CV resume and ROI-diff workflows so interrupted or changed CV analysis runs can be resumed more intentionally.
+- Improved court-grid / ROI editing and restoration behavior around annotator video workflows.
+
+### Desktop Capture and Annotation Support
+- Added ROI rectangle overlays and desktop-capture support that better match real operator use on Windows.
+- Strengthened video-pane and annotator integration so video-region capture and CV analysis can sit inside the normal annotation flow more naturally.
+
+### Test and CI Guardrails
+- Fixed CI failures around websocket signaling by ensuring the test harness consistently creates the newer session-related tables and uses the patched test session factory.
+- Added dedicated guardrail tests so similar signaling / SessionLocal regressions are more likely to fail fast in CI.
+
+### Detailed Progress
+- Add prematch snapshots and CV resume ROI workflows.
+- Add player tracking overlay controls.
+- Improve match edit validation feedback and static MIME mapping.
+- Add ROI-aware CV batch processing.
+- Improve prediction narrative and role-specific panels.
+- Stabilize websocket signaling tests in CI.
+- Add CI guardrails for websocket test harness.
+
+## 2026-04-14
+
+### Prediction and Tactical Surfaces
+- Improved prediction output so it reads more like an analyst-facing narrative and less like a raw probability panel.
+- Added role-specific panels around prediction and pair-oriented analysis so the prediction area is easier to use for coach / analyst workflows.
+- Expanded partner and lineup-related views to make pre-match and planning work more readable.
+
+### CV Throughput and Analysis UX
+- Extended CV analysis-rate options up to 60fps and added warnings around batch-processing cost so high-fidelity processing is possible without hiding the runtime tradeoff.
+- Improved benchmark controls, resume behavior, ROI diff handling, and multiple dashboard / chart interaction details.
+- Polished composite heatmaps, rally-detail modals, doubles display, and chart bugs that made detailed review surfaces harder to trust.
+
+### Annotation and Match UX
+- Improved inline confirmations, player-row consistency, silent-save handling, and match / player editing reliability.
+- Continued reducing small-but-costly operator friction around lists, selectors, and save flows.
+
+### Detailed Progress
+- Fix chart bugs and add rally detail to score progression.
+- Add CV analysis rate settings with benchmark UI, fix YOLO/TrackNet resume bug, add keyboard server select, and extend doubles support for warm-up notes and match list.
+- Fix benchmark button text color for readability.
+- Extend CV rate options to 60fps with batch processing time warning dialog.
+- Improve composite heatmap interactivity, rally detail modal UX, and doubles annotation display.
+- Polish UI with tooltips, sort, bulk select, and inline confirmations.
+- Fix silent player update failure and apply `exclude_unset` to PUT handlers.
+- Unify player row height and convert mobile delete behavior to inline confirmation.
+
+## 2026-04-15
+
+### CV, Tracking, and Desktop Workflow
+- Added realtime YOLO overlay groundwork so CV output can start surfacing during active desktop workflows rather than only after offline batch runs.
+- Added ReID groundwork for player tracking, which begins to separate simple detection from actual player identity continuity.
+- Improved player tracking overlays, movement-oriented analysis, CV result messaging, and fallback behavior around YOLO-driven flows.
+- Added ROI-aware and desktop-oriented polish around capture / annotation workflows so CV work is more usable on real operator desktops.
+
+### Auth and Settings
+- Added local auth hardening and role-aware settings flow so local security and role behavior are less implicit.
+- Added a role picker and auth-aware controls that connect settings behavior more clearly to the operator's current role.
+- Refined auth-aware analysis panels and match/settings behavior so role differences start affecting more of the product in a visible way.
+
+### Product Shape
+- At this point ShuttleScope moved further toward a product with a real operator workflow: desktop capture, ROI setup, CV overlays, role-aware settings, and player-tracking foundations now connect more visibly.
+
+### Detailed Progress
+- Refined match linking and CV result messaging.
+- Improved player tracking overlays and YOLO fallback flow.
+- Added player movement analytics and ROI desktop polish.
+- Hardened local auth and CV desktop workflows.
+- Improved desktop capture overlays and YOLO controls.
+- Polished CV job controls and YOLO annotator flow.
+- Added ReID foundation for player tracking.
+- Added role picker and auth-aware settings flow.
+- Refined auth-aware analysis panels and match settings flow.
 
 ## 2026-04-16
 
@@ -1163,388 +545,1008 @@ JSON `Infinity` / `NaN` payloads now return 400 instead of 500 at the main app l
 - Migrated 41,204 rows from SQLite to PostgreSQL 18 with boolean type fix.
 - Updated .env.development and requirements.txt for PostgreSQL.
 
-## 2026-04-15
+## 2026-04-17
 
-### CV, Tracking, and Desktop Workflow
-- Added realtime YOLO overlay groundwork so CV output can start surfacing during active desktop workflows rather than only after offline batch runs.
-- Added ReID groundwork for player tracking, which begins to separate simple detection from actual player identity continuity.
-- Improved player tracking overlays, movement-oriented analysis, CV result messaging, and fallback behavior around YOLO-driven flows.
-- Added ROI-aware and desktop-oriented polish around capture / annotation workflows so CV work is more usable on real operator desktops.
+### Video Window Rendering Quality (Secondary Monitor)
 
-### Auth and Settings
-- Added local auth hardening and role-aware settings flow so local security and role behavior are less implicit.
-- Added a role picker and auth-aware controls that connect settings behavior more clearly to the operator's current role.
-- Refined auth-aware analysis panels and match/settings behavior so role differences start affecting more of the product in a visible way.
+- Fixed canvas overlay blur on high-DPI secondary monitors in the video extension window.
+  `PlayerPositionOverlay` and `ShuttleTrackOverlay` were setting `canvas.width` / `canvas.height` to CSS logical pixels, causing the browser to upscale the canvas by `devicePixelRatio` and producing visibly blurred YOLO bounding boxes, shuttle trail dots, and label text.
+  Both components now set canvas physical dimensions to `videoWidth ﾃ・dpr` / `videoHeight ﾃ・dpr`, apply `ctx.scale(dpr, dpr)` to keep drawing coordinates in logical pixels, and remove the `width` / `height` JSX attributes so sizing is managed entirely in the effect.
+  On a 4K external monitor (`dpr = 2.0`), canvas resolution doubles from 1920 ﾃ・1080 to 3840 ﾃ・2160 physical pixels, utilizing the display's full native resolution while the main 1080p window remains unaffected.
 
-### Product Shape
-- At this point ShuttleScope moved further toward a product with a real operator workflow: desktop capture, ROI setup, CV overlays, role-aware settings, and player-tracking foundations now connect more visibly.
+### Multi-Monitor Selection UI
 
-### Detailed Progress
-- Refined match linking and CV result messaging.
-- Improved player tracking overlays and YOLO fallback flow.
-- Added player movement analytics and ROI desktop polish.
-- Hardened local auth and CV desktop workflows.
-- Improved desktop capture overlays and YOLO controls.
-- Polished CV job controls and YOLO annotator flow.
-- Added ReID foundation for player tracking.
-- Added role picker and auth-aware settings flow.
-- Refined auth-aware analysis panels and match settings flow.
+- Added monitor selection support for the secondary video window when three or more displays are connected.
+  Previously `handleOpenVideoWindow` always picked the first non-primary display automatically, making it impossible to choose the target on a desktop with multiple external monitors.
+  The fix adds a `selectedDisplayId` state (initialized from `getDisplays()` to the first non-primary monitor) and a `<select>` dropdown that appears only when two or more non-primary displays are detected.
+  Single-monitor laptop setups (one external display) see no UI change; the dropdown only surfaces when a choice is meaningful.
+  The `openVideoWindow` call now routes to the user-selected display ID, with a fallback to the first non-primary if the state is uninitialised.
 
-## 2026-04-14
+### GPU Inference Backend 窶・Missing Pieces Completed (RTX 5060 Ti Preparation)
 
-### Prediction and Tactical Surfaces
-- Improved prediction output so it reads more like an analyst-facing narrative and less like a raw probability panel.
-- Added role-specific panels around prediction and pair-oriented analysis so the prediction area is easier to use for coach / analyst workflows.
-- Expanded partner and lineup-related views to make pre-match and planning work more readable.
+- Added `backend/cv/tracknet_openvino.py`: OpenVINO backend wrapper that adapts `tracknet/inference.py`'s `TrackNetInference` to the `TrackNetInferencer` Protocol.
+  Implements chunked frame processing (300-frame chunks with a 2-frame overlap) so 30-minute match videos are not loaded entirely into RAM before inference starts.
+  Frame indices are accumulated with a global offset to produce correct absolute timestamps across chunk boundaries.
+- Extended `backend/cv/factory.py` with an OpenVINO intermediate tier.
+  The new priority order is: Mock 竊・CUDA (torch + RTX) 竊・OpenVINO (iGPU / CPU, also works on K10) 竊・CPU (classical CV) 竊・Mock.
+  Previously the OpenVINO inference path in `tracknet/inference.py` was entirely disconnected from the factory used by the pipeline.
+- Added `backend/cv/tracknet_runner.py` and `backend/cv/mediapipe_runner.py`: thin runner modules that `cluster/tasks.py` was already referencing via `_safe_call` but which did not exist.
+  Each module calls `factory.get_tracknet()` / `factory.get_pose()`, runs inference, and returns a status dict; the factory handles backend selection transparently so the same runner works on X1 AI (CUDA path) and K10 (CPU / OpenVINO path).
+- Added `backend/pipeline/clips.py`: ffmpeg-based rally clip extractor.
+  Detects `h264_nvenc` availability at first call and caches the result; uses NVENC when `SS_USE_GPU=1` and NVENC is present, falls back to `libx264` otherwise.
+  K10 workers receive the CPU encode path automatically since `SS_USE_GPU=0` on that node.
+- Added `backend/pipeline/statistics.py`, `backend/pipeline/cog.py`, and `backend/pipeline/shot_classifier.py`: lightweight K10-targeted entry points for statistics aggregation, centre-of-gravity calculation, and shot classification.
+  Each delegates to the relevant `backend/cv/` implementation and returns `{"status": "skipped"}` gracefully when the underlying API is not yet implemented, preventing Ray task failures from aborting the full pipeline.
+- Updated `backend/requirements.txt`: added `mediapipe>=0.10.14` and `pynvml>=11.4` as explicit entries so they are present in all environments rather than only after running the GPU setup script manually.
+- Updated `scripts/setup_gpu.ps1` and `scripts/setup_gpu.sh`: both scripts now auto-download `pose_landmarker_lite.task` to `backend/cv/models/` after the pip installs, removing the manual download step that was previously required before `CudaPose` could initialise.
+  The shell script uses `curl` with a `wget` fallback and prints a clear warning rather than failing hard if neither tool is available.
 
-### CV Throughput and Analysis UX
-- Extended CV analysis-rate options up to 60fps and added warnings around batch-processing cost so high-fidelity processing is possible without hiding the runtime tradeoff.
-- Improved benchmark controls, resume behavior, ROI diff handling, and multiple dashboard / chart interaction details.
-- Polished composite heatmaps, rally-detail modals, doubles display, and chart bugs that made detailed review surfaces harder to trust.
+### Test Coverage Additions
 
-### Annotation and Match UX
-- Improved inline confirmations, player-row consistency, silent-save handling, and match / player editing reliability.
-- Continued reducing small-but-costly operator friction around lists, selectors, and save flows.
+- Added six test cases to `backend/tests/test_cv_factory.py` covering: `OpenVINOTrackNet` raising `ImportError` without openvino installed; the factory falling through to CPU / Mock when OpenVINO weights are absent; `tracknet_runner` / `mediapipe_runner` importability and callability; `pipeline/clips`, `statistics`, `cog`, `shot_classifier` importability; `extract_clips` returning `skipped` on `rally_bounds=None`; and `run_tracknet` not raising on a non-existent video path.
+  All 11 active tests pass; 2 are correctly skipped when the relevant package (torch / openvino) is already installed.
 
 ### Detailed Progress
-- Fix chart bugs and add rally detail to score progression.
-- Add CV analysis rate settings with benchmark UI, fix YOLO/TrackNet resume bug, add keyboard server select, and extend doubles support for warm-up notes and match list.
-- Fix benchmark button text color for readability.
-- Extend CV rate options to 60fps with batch processing time warning dialog.
-- Improve composite heatmap interactivity, rally detail modal UX, and doubles annotation display.
-- Polish UI with tooltips, sort, bulk select, and inline confirmations.
-- Fix silent player update failure and apply `exclude_unset` to PUT handlers.
-- Unify player row height and convert mobile delete behavior to inline confirmation.
 
-## 2026-04-13
+- Fixed Canvas DPI scaling in PlayerPositionOverlay and ShuttleTrackOverlay for high-DPI secondary monitors.
+- Added multi-monitor selection dropdown to video extension UI (shown only with 2+ non-primary displays).
+- Added tracknet_openvino.py with chunked frame processing and connected it to factory.py.
+- Extended factory.py with CUDA 竊・OpenVINO 竊・CPU 竊・Mock priority chain.
+- Added tracknet_runner.py and mediapipe_runner.py to complete the cluster/tasks.py call chain.
+- Added pipeline/clips.py with automatic NVENC / libx264 selection.
+- Added pipeline/statistics.py, cog.py, and shot_classifier.py as K10-targeted pipeline stubs.
+- Updated requirements.txt with mediapipe and pynvml.
+- Added MediaPipe model auto-download to setup_gpu.ps1 and setup_gpu.sh.
+- Added six test cases to test_cv_factory.py covering new factory paths and module importability.
 
-### Prematch, Resume, and ROI
-- Added prematch prediction snapshots so prediction outputs can be stored in a more time-aware way instead of always behaving like a live recomputation.
-- Added ROI-aware CV batch processing so selected regions actually flow through TrackNet / YOLO processing rather than staying as UI-only overlays.
-- Added CV resume and ROI-diff workflows so interrupted or changed CV analysis runs can be resumed more intentionally.
-- Improved court-grid / ROI editing and restoration behavior around annotator video workflows.
+## 2026-04-18
 
-### Desktop Capture and Annotation Support
-- Added ROI rectangle overlays and desktop-capture support that better match real operator use on Windows.
-- Strengthened video-pane and annotator integration so video-region capture and CV analysis can sit inside the normal annotation flow more naturally.
+### Role-Aware Local Authentication
 
-### Test and CI Guardrails
-- Fixed CI failures around websocket signaling by ensuring the test harness consistently creates the newer session-related tables and uses the patched test session factory.
-- Added dedicated guardrail tests so similar signaling / SessionLocal regressions are more likely to fail fast in CI.
+- Added a proper local authentication surface instead of relying primarily on frontend role selection.
+- Added backend auth routing for login, logout, current-user lookup, and role-specific login candidate lists.
+- Added JWT utility handling and updated frontend auth state so the app now carries a signed backend-issued auth context rather than only local role headers.
+- Added a dedicated `Login` page with role-specific flows for admin, analyst, coach, and player access.
 
-### Detailed Progress
-- Add prematch snapshots and CV resume ROI workflows.
-- Add player tracking overlay controls.
-- Improve match edit validation feedback and static MIME mapping.
-- Add ROI-aware CV batch processing.
-- Improve prediction narrative and role-specific panels.
-- Stabilize websocket signaling tests in CI.
-- Add CI guardrails for websocket test harness.
+### User and Access Management
 
-## 2026-04-12
+- Added a `User Management` page so internal operators can manage role-bound local users instead of treating access as a purely implicit development concern.
+- Extended the backend user model to support stronger role-linked account handling, including player-linked users and hashed credentials.
+- Added access-log groundwork around auth actions so login and logout activity now has a backend audit trail.
 
-### Product and UX
-- Expanded the top-level product documentation so the repository now explains ShuttleScope in a more grounded, current-state way.
-- Added a proper root `CHANGELOG.md` so progress is visible from the repository top level.
-- Polished dashboard selectors and theme controls, including better mobile-safe selectors, same-page navigation, and overview / advanced page usability.
-- Improved responsive behavior across dashboard surfaces and heatmap-related views.
+### Protected Condition Views
 
-### Annotation and Match Workflow
-- Improved match edit validation feedback and safer save behavior.
-- Fixed server-state handling during rally confirmation so saved annotation state is less likely to drift from UI state.
-- Improved LAN same-device access flow so sharing links behave more reliably when the same machine is both operator and consumer.
+- Tightened condition-data access so role-aware views expose different levels of detail instead of treating all readers as equivalent.
+- Added field-sensitivity helpers and updated condition routing so coach / analyst access can be constrained to safer summaries while player self-view and privileged access remain distinct.
+- Updated condition-related frontend screens and supporting hooks so the UI behaves correctly under the new protected-data responses rather than assuming unrestricted payloads.
 
-### Heatmaps and Responsive UI
-- Added heatmap composite support and corresponding backend / frontend integration.
-- Tightened responsive UI behavior across overview, advanced, settings, top navigation, section navigation, and several analysis cards.
-- Added dedicated backend heatmap composite tests and updated UI behaviors so complex analysis views survive narrower layouts better.
+### Prediction and Condition UX Alignment
 
-### Security and Hardening
-- Responded to a dedicated security review pass with concrete backend hardening.
-- Restricted `localfile://` handling more aggressively.
-- Added upload / body-size limits and safer request handling around file-oriented endpoints.
-- Hardened sync import / copy paths against oversized input and path traversal.
-- Added active-session and participant validation in camera WebSocket signaling.
-- Added operator-token protection for sensitive remote session management flows.
-- Switched session code generation from non-cryptographic random generation to a CSPRNG-based approach.
+- Updated prediction and condition pages, plus several analysis cards, so they degrade more safely when sensitive fields are unavailable under the current role.
+- Refined frontend copy and i18n strings to match the new auth and protected-condition behavior.
 
-### Validation and Test Health
-- Updated websocket signaling tests so they reflect the newer active-session requirements instead of silently depending on older assumptions.
-- Kept the full test suite green while expanding responsive / security coverage.
+### Validation
+
+- Verified the auth and protected-condition update with:
+  - backend tests: `624 passed, 4 skipped`
+  - frontend tests: `84 passed`
+  - production build: `npm run build` successful
 
 ### Detailed Progress
-- Improved match edit validation feedback and static MIME mapping.
-- Improved LAN same-device access and documented current product status more honestly.
-- Improved responsive UI and heatmap composite views.
-- Hardened remote session security and fixed annotation server state handling.
-- Polished dashboard selectors and theme controls.
 
-## 2026-04-11
+- Added backend auth router and JWT helpers.
+- Added access-log and field-sensitivity utilities.
+- Updated backend auth extraction and main app wiring.
+- Tightened condition endpoint filtering.
+- Added login and user-management pages.
+- Updated frontend auth hook and API client to use backend-issued auth state.
+- Refined prediction and condition views for role-aware payload differences.
 
-### Post-Match Video and CV Pipeline
-- Added a post-match local video import flow that moves ShuttleScope closer to a realistic "analyze after recording" workflow.
-- Added `Video Only` / second-screen foundation so playback can continue while annotation happens elsewhere.
-- Added court calibration foundation and then hardened it so backend persistence and restore behavior are more reliable.
-- Improved CV ROI mapping and court-aware handling so downstream CV artifacts can use court geometry more safely.
-- Added automation and validation scaffolding around court calibration and CV artifacts.
+## 2026-04-19
 
-### Match and Player Management
-- Added match editing after creation, including safer handling of referenced players.
-- Prevented player deletion when matches still reference that player.
-- Hardened match edit payload handling so empty optional values stop causing avoidable failures.
-- Added player team history support and migration so roster changes can be tracked more realistically over time.
+### Cluster Routing and Remote Task Expansion
 
-### Validation and Non-Human Checks
-- Added more non-human validation coverage around calibration, artifacts, bootstrap behavior, and match edit safety.
-- Tightened bootstrap and migration tests so DB evolution remains safer as the schema grows.
+- Added Ray remote task support for distributed inference and analysis execution so GPU-heavy and CPU-heavy stages can now be routed more intentionally across machines.
+- Expanded cluster bootstrap and topology handling so ShuttleScope can manage primary / worker behavior, remote task routing, and worker visibility with less manual editing.
+- Strengthened the cluster settings surface so operators can inspect worker status, choose routing preferences, and tune load limits from the app rather than relying only on scripts.
 
-### Detailed Progress
-- Added post-match video import and multi-monitor foundation.
-- Refined court calibration persistence and CV ROI mapping.
-- Closed calibration automation gaps and CV artifact hardening.
-- Added match editing and referenced-player safeguards.
-- Hardened match edit payload handling and save errors.
-- Added player team history support and migration.
-- Ignored local CV weights and kernel diagnostics so repository status stays clean.
+### Benchmarking and Device Selection
 
-## 2026-04-10
+- Expanded benchmark device detection across CPU, GPU, OpenVINO-capable paths, and Ray-aware environments.
+- Added richer benchmark runner behavior including cancellation, backend overrides, YOLO as a benchmark target, and result handling better suited to mixed-device experiments.
+- Raised the cluster inference concurrency limit and tuned benchmark / inference flow so experimentation on stronger local hardware is less artificially constrained.
 
-### YOLO / TrackNet / CV-Assisted Annotation
-- Added YOLO player detection and CV alignment foundation.
-- Added shuttle overlay and a dashboard CV position card so computer vision results start to surface in both annotation and dashboard flows.
-- Polished YOLO-driven role signals and annotator-side CV controls.
-- Improved YOLO diagnostics and artifact-status visibility so missing setup / problems are easier to diagnose.
-- Added CV-assisted annotation candidates, candidate badges, and review queue groundwork.
-- Started moving from "CV exists" to "CV suggests actual annotation actions" by introducing candidate application flows and review handling.
+### Worker Setup and Windows Operations
 
-### Remote and CV Failure Handling
-- Recorded and responded to critical remote / CV failures as validation findings rather than hiding them behind optimistic assumptions.
-- Fixed remote share rebasing problems and made CV errors much more visible.
-- Improved tunnel / ngrok hardening so remote sharing state is more explicit.
+- Added `requirements_worker.txt` and `scripts/setup_k10_worker.ps1` so a second Windows machine can be prepared as a Ray worker with a narrower dependency surface than the full primary machine.
+- Added and extended `scripts/fix_ray_firewall.ps1` to reduce the amount of manual Windows networking work needed to get distributed execution unstuck.
+- Improved cluster worker setup details in `cluster.config.yaml`, backend bootstrap, and the Settings UI so practical worker onboarding is closer to a repeatable workflow.
 
-### Bootstrap and No-Video Work
-- Used the no-video window productively by strengthening CV assist UX, review queue flow, and environment / bootstrap tooling.
-- Added and improved bootstrap helpers and setup doctor output so the project is easier to bring up on additional devices without guesswork.
+### Model and Runtime Readiness
+
+- Added a checked-in `backend/models/yolov8n.onnx` baseline asset so current YOLO-oriented flows have a default ONNX model available in-repo.
+- Improved TrackNet inference fallback and backend selection behavior so OpenVINO / CPU / mock routes behave more predictably in mixed environments.
 
 ### Detailed Progress
-- Added YOLO player detection and CV alignment foundation.
-- Added shuttle overlay and dashboard CV position card.
-- Polished YOLO role signal and annotator CV controls.
-- Improved YOLO diagnostics and artifact status UX.
-- Added foundation registry split and recorded critical remote CV failures.
-- Fixed remote share rebasing and CV error diagnostics.
-- Added CV-assisted annotation candidates and ngrok URL hardening.
-- Polished no-video CV assist flow and device bootstrap.
-- Improved device bootstrap guidance and doctor output.
 
-## 2026-04-09
+- Added `backend/cluster/remote_tasks.py` and expanded cluster bootstrap / routing logic.
+- Improved benchmark runner controls, target selection, backend override behavior, and cancellation support.
+- Added YOLO benchmark target and corresponding frontend selector support.
+- Added worker-specific requirements and a K10 worker setup script.
+- Extended `ClusterSettingsPanel`, `SettingsPage`, and related i18n for cluster operations.
+- Added `yolov8n.onnx` and refined TrackNet / benchmark integration behavior.
 
-### Dashboard Rearchitecture
-- Rebuilt the dashboard from a single large page into a structured shell with separate overview, live, review, growth, advanced, and research areas.
-- Added top-level and section-level navigation patterns that make the dashboard feel more like a product surface than a page of stacked charts.
-- Added evidence and research status presentation patterns so more experimental modules are visibly different from mature ones.
+## 2026-04-20
 
-### Research Spine and Advanced Analysis
-- Added the dashboard research spine and metadata / evidence groundwork.
-- Added research cards and meta integration so state-value, counterfactual, hazard / fatigue, and related work has a stable home.
-- Added promotion workflow and advanced-meta rollout so research outputs can be tracked as candidates for broader adoption.
-- Completed promotion gaps and extended the color / theming system across more dashboard surfaces.
-- Added audit log and theme fixes around promotion overrides.
-- Hardened opponent policy refresh and error-state handling.
+### Admin Bootstrap Security
 
-### Dashboard and Analysis UX
-- Added date slider v2 and zone-map modal workflows.
-- Fixed heatmap filtering and crash-handling issues.
-- Applied theme / card rules consistently across advanced and research surfaces.
+- Removed the previously checked-in default bootstrap-admin password and replaced it with environment-driven first-run provisioning. Added a bootstrap-status path so the login screen can indicate readiness without exposing any secret value.
 
-### Remote Camera and Live Collaboration
-- Added remote tunnel providers and initial WebRTC / TURN settings support.
-- Hardened remote diagnostics and stale camera cleanup behavior.
-- Added TURN diagnostics and reconnect hardening.
-- Added a remote viewer page and improved sender reconnect behavior.
-- Polished remote handoff flow and grouped viewer UX.
-- Added tunnel-provider visibility to the annotator remote health banner.
+### Auth Flow Hardening and Session Cleanup
 
-### Documentation and Positioning
-- Rewrote the README around the practical PoC / current product scope rather than over-claiming future work.
+- Removed the prototype-era client-side role switcher, moved auth-context persistence to session storage so a closed app returns to the login screen, added explicit logout actions, and added a startup revalidation step that re-syncs the displayed identity with the server.
+
+### CI Stabilization and Benchmark Test Reliability
+
+- Fixed CI installation failures by removing the assumption that `onnxruntime-gpu` is available in the base backend requirements on generic GitHub Actions runners.
+- Reframed GPU ONNX Runtime as an environment-specific add-on, installed through machine setup scripts or targeted prep rather than forced into every CI or worker environment.
+- Fixed benchmark test regressions so explicit mock mode is now respected during test execution instead of being silently disabled inside the runner.
+- Aligned pipeline mock loading with the benchmark and smoke-test path, which removed false failures caused by real `ffmpeg` / runtime expectations in CI.
+
+### Validation
+
+- Verified the CI repair with a green GitHub Actions run on both `ubuntu-latest` and `windows-latest`.
+- Re-ran local backend verification after the fixes:
+  - backend tests: `624 passed, 4 skipped`
+  - frontend tests: `84 passed`
+  - production build: `npm run build` successful
 
 ### Detailed Progress
-- Improved LAN access troubleshooting and sharing UX.
-- Polished camera sender UX and live overlay behavior.
-- Clarified README for current PoC scope.
-- Fixed dashboard heatmap filters and crash handling.
-- Rebuilt dashboard structure and routing.
-- Added research spine and evidence metadata.
-- Completed research cards and metadata integration.
-- Added promotion workflow and advanced-meta rollout.
-- Applied card theme rules to dashboard research and advanced views.
-- Completed promotion gaps and color rollout.
-- Added promotion audit log and live theme fixes.
-- Hardened opponent policy card refresh and error states.
-- Added date slider v2 and zone-map modal workflows.
-- Added remote tunnel providers and WebRTC TURN settings.
-- Hardened remote device diagnostics and stale camera cleanup.
-- Added TURN diagnostics and receiver reconnect hardening.
-- Added remote viewer page and sender visibility reconnect.
-- Polished remote handoff flow and grouped viewer UX.
-- Showed tunnel provider in annotator remote health banner.
-- Added ngrok authtoken support and ignored local env files.
 
-## 2026-04-08
+- Removed frontend `setRole`-based role mutation and the Settings role picker path.
+- Moved token and auth-context persistence to session storage.
+- Added explicit logout controls in the sidebar and account section.
+- Added frontend auth revalidation using `/auth/me` before rendering protected routes.
+- Returned `team_name` from backend auth login / me responses.
+- Removed mandatory `onnxruntime-gpu` from generic backend dependency install flow.
+- Updated benchmark runner behavior around tiny latency metrics and unavailable non-CPU devices.
+- Preserved explicit `SS_CV_MOCK=1` behavior in benchmark execution.
+- Updated video pipeline mock resolution so real mock implementations are used when available.
 
-### Analysis Architecture and Search UX
-- Unified analysis foundations and player context so the later advanced / research stack had a cleaner base.
-- Split analysis routers into stable, advanced, and research layers.
-- Added stage 2 engines, then stage 3 research engines for counterfactual and EPV-oriented work.
-- Added searchable selects and date-range filtering across important UI paths.
+## 2026-04-21
 
-### Sync, DB, and Migration Foundation
-- Added sync architecture phase 1 data-management support.
-- Strengthened sync metadata and data-management flows after the first pass.
-- Closed major DB sync gaps and added analytics indexes.
-- Added Alembic migrations and the dominant-hand schema fix.
-- Hardened DB bootstrap behavior and several DB-adjacent edge cases.
+### Public Landing Site v7
 
-### Annotation and Review Acceleration
-- Added annotation modes and a review-acceleration flow.
-- Improved mobile UX and quick-start route behavior.
+- Replaced the shuttle-scope.com top page with a full v7 design.
+  New layout includes a fixed navigation bar with hamburger menu (mobile), a dark-navy hero section with an app mock panel, a three-column feature card row, a 2×2 analysis capabilities grid, a data policy section, a footer CTA, and a mobile sticky bottom bar.
+- Added light / dark theme toggle via CSS custom properties persisted in localStorage.
+- Added scroll-reveal animations using IntersectionObserver.
+- Fixed all login / "アプリへ進む" link targets to `https://app.shuttle-scope.com/login`.
+  Previously these pointed to the app root; they now go directly to the login screen.
+- Preview route `/public-preview` continues to use link rewriting so internal development previews stay self-contained without affecting real login flow.
 
-### LAN, Session, and Live Source Work
-- Added LAN session auth and device-control flow.
-- Added live source control and the first LAN inference foundation.
-- Expanded single-PC validation coverage for the LAN live stack.
-- Fixed LAN join flow and multiple device-manager UX issues.
+### Permission Scope Enforcement
 
-### Detailed Progress
-- Unified analysis foundations and player context.
-- Split analysis routers and added stage 2 engines.
-- Added stage 3 research engines for counterfactual and EPV.
-- Polished mobile UX and fixed quick-start route issues.
-- Added searchable selects and date-range filters.
-- Added sync architecture phase 1 data management.
-- Strengthened sync metadata and data management flows.
-- Closed remaining DB sync gaps and added analytics indexes.
-- Added Alembic migrations and dominant-hand schema fix.
-- Hardened DB bootstrap and heatmap error handling.
-- Added annotation modes and review acceleration flow.
-- Added LAN session auth and device control flow.
-- Added live source control and LAN inference foundation.
-- Added single-PC validation coverage for the LAN live stack.
-- Fixed LAN join flow and device-manager UX issues.
+- Role-scoped user management surfaces (admin / analyst / coach / player each see only what they should), match-result inversion so practice-match wins / losses are shown from the viewer's own perspective, and authentication added to the data export / import endpoints.
 
-## 2026-04-07
+### Condition Analytics Role Restrictions Removed
 
-### Annotation Workflow
-- Refined the annotation keymap and rally-end flow so basic annotation became faster and less error-prone.
-- Added a dedicated doubles hitter flow.
-- Improved end-state handling and match-setup ergonomics.
+- Removed the condition-analytics analyst-only gate that was blocking coach-role access to condition views.
+  Coaches now receive the same condition analytics responses as analysts; player-facing restrictions remain in place.
 
-### Analytics and Research
-- Implemented research roadmap analytics modules.
-- Added warm-up observations and related analytics context.
-- Closed major remaining gaps with tests, seed data, and CI.
-- Added heatmap modal and warm-up analytics fixes.
+### Admin Notification Inbox
 
-### Prediction
-- Added the first prediction tab and pair-simulation foundation.
-- Refined the prediction tab toward coach / analyst workflows.
-- Added analyst-depth and human-benchmark oriented prediction features.
+- Added `NotificationInboxPage` so admin users can review inquiry submissions sent through the public contact form.
+- Added backend coverage for the public-site test suite (`test_public_site`).
 
-### Sharing and Access
-- Added LAN and tunnel web-access support.
+## 2026-04-22
+
+### Code Scanning Response
+
+- Closed the Critical and High alerts surfaced by the static analysis sweep through additional input validation and path-safety checks across the API and the desktop renderer. Specific vulnerability classes and the corresponding remediations are tracked in the project's internal security log.
+
+### CI Recovery
+
+- Resolved the conflict between two overlapping code-scanning configurations and tightened workflow token permissions across the security-scanning workflows.
+
+## 2026-04-23
+
+### Phase B Authentication and Auth UI
+
+- Token rotation with reuse detection, idle auto-logout, self-service password change, admin-driven reset, and an admin audit-log surface in the frontend.
+
+### Router Unit Test Coverage
+
+- Added unit tests for the maintenance-side routers (~20 cases) using TestClient against the same dependency-injected paths the running app uses.
+
+### Test Stabilisation
+
+- Fixed several import-order and singleton-capture issues that were causing test pollution under in-memory DB mode. Result: full backend pytest run is green on both CI runners.
+
+### Dependency Upgrades
+
+- Bumped Python dependencies to clear known advisories. Two Ray-side advisories that have no fixed release are scoped to trusted-network operation and tracked in the project's internal security log.
+
+### i18n Migration
+
+- Migrated remaining hardcoded Japanese strings across several major pages into the translation tree.
+
+### Code Scanning Triage and Supply-Chain Hardening
+
+- Triaged the static-analysis backlog with explicit rationale for each disposition, pinned every workflow `uses:` reference to a commit SHA across all eleven CI workflows, and reduced workflow token permissions to the minimum required.
+
+## 2026-04-24
+
+### Production Access and Code Scanning Hardening
+
+- Reworked public and production gates around documentation, stack traces, cluster/control-plane routes, DB maintenance, network diagnostics, settings, tunnel, and admin-only operations.
+- Addressed high-priority code scanning findings in SSH/remote task handling, temporary file creation, upload path handling, and URL/path validation.
+- Added stronger access checks around sensitive local and control-plane paths while preserving the local development workflow.
+
+### Input Validation and Data Integrity
+
+- Tightened request schemas across auth, matches, players, comments/bookmarks, conditions, pipeline jobs, settings updates, sync/import/export, and sharing endpoints.
+- Added stricter URL/path normalization, UTF-8 package filename support, safer browser/video download path handling, and clearer rejection of malformed payloads.
+- Centralized ORM update safety so unknown or null writes cannot silently overwrite protected fields.
+- Added audit logging and bounded request behavior for condition, webhook, pipeline, and public inquiry flows.
+
+### Cluster, Upload, and Benchmark Readiness
+
+- Added browser chunked video upload support.
+- Added admin cluster controls, deployment scripts, benchmark resilience improvements, and i18n script updates.
+- Cleaned up cluster configuration comments and kept the deployment/benchmark notes closer to the current architecture.
+
+## 2026-04-25
+
+### Live Adversarial Validation and Auth Hardening
+
+- Spent the day validating authentication, MFA, refresh, local-login, operator-only, and lockout behavior under hostile conditions.
+- Hardened auth and match input checks, tightened lockout enforcement across token refresh and MFA paths, and blocked role/scope confusion in local and development-only flows.
+- Required stronger operator or admin proof for sensitive select, seed, and legacy paths so local-only endpoints do not rely on network placement as their main defense.
+
+### Scope and Boundary Enforcement
+
+- Enforced team, player, condition, annotation, sharing, and match scope more consistently across read and write paths.
+- Tightened coach, analyst, player, and admin boundaries so cross-team access fails closed instead of depending on caller-provided identifiers.
+- Added guardrails against invalid identifiers, oversized values, integer edge cases, unsafe package/import behavior, and sync/upload/export misuse.
+
+### Regression and Merge Follow-Through
+
+- Converted validated issue classes into defensive source changes and focused regression coverage while keeping replayable mechanics out of the public changelog.
+- Merged and reconciled the hardening branches into `main`, accounting for places where the same underlying risk had been fixed by more than one implementation path.
+- Updated repository guidance so future work stays aligned with PostgreSQL-backed production assumptions rather than local SQLite shortcuts.
+
+## 2026-04-26
+
+### Team Scoping / PostgreSQL Migration Rollout
+
+- Added first-class team ownership for users, players, matches, comments, bookmarks, forecasts, warm-up notes, and related analysis data.
+- Introduced the `teams` table and the Phase B migration chain (`0009` through `0014`) for moving from name/string-based team handling toward ID-based PostgreSQL-backed scoping.
+- Made `matches.owner_team_id` part of the match ownership model and restored the NOT NULL migration as an explicit rollout step after earlier opt-in staging.
+- Dropped the legacy player team string column after backfilling player `team_id`, keeping team lookup on the normalized team table instead of free-form text.
+- Tightened auth context and JWT payloads so coach / analyst / player requests carry `team_id` and are scoped against owned or permitted team data.
+
+### Team Management UI and Access Control
+
+- Added `TeamManagementPage` and frontend API helpers for listing, creating, and updating teams.
+- Extended user management so admin workflows can assign users to teams by ID, while non-admin views remain scoped to their own team boundary.
+- Updated match creation and match list flows to carry owner team information and preserve team-aware filtering.
+- Improved the audit log UI with richer filtering / presentation for team-scoped security events.
+- Added team-scoping regression tests covering match access boundaries, user creation rules, and database bootstrap behavior.
+
+### Validation Notes
+
+- Added Phase B validation documents under `docs/validation/` for the team-scoping rollout, frontend follow-up, and remaining production hardening notes.
+- Verified the focused backend auth/team test set and frontend Vitest suite during the rollout. Full backend pytest remains heavier than the normal local loop and was handled with targeted verification.
+
+### Attack-Driven Hardening
+
+- Ran several days of adversarial validation against authentication, team boundaries, player access, condition records, sharing endpoints, and warm-up observation flows.
+- Converted the findings into source-level hardening and high-level validation notes rather than publishing replayable cases.
+- Kept public notes intentionally high-level: the changelog records the security posture improvement and tested areas, while exploit mechanics, payload details, and replayable attack paths are omitted.
+
+## 2026-04-27
+
+### Shot Annotation and Centre-of-Gravity Detection
+
+- Added shot type annotation support via the expert labeler workflow, including a new `shot_labels` endpoint, `ShotAnnotation` model, and Alembic migration 0015.
+- Added two ML pipeline stubs — a CLIP-based and an LSTM-based shot classifier — ready to connect to the expert annotation flow.
+- Integrated CoG (centre-of-gravity) detection as a first-class panel in the expert labeling UI, linking motion analysis directly into the labeling session rather than keeping it as a separate standalone page.
+
+### YOLO ByteTrack and TrackNet Profiling
+
+- Added ByteTrack multi-object tracking configuration (`backend/yolo/bytetrack.yaml`) to support persistent player ID continuity across frames.
+- Extended YOLO inference to integrate ByteTrack so player tracking is more stable over long video segments.
+- Improved TrackNet frame-profiling instrumentation and zone-mapper zone-boundary precision so inference timing data is more actionable for performance tuning.
+- Added a Pareto-sweep benchmark script for systematic throughput / accuracy trade-off exploration.
+
+### Condition and Prediction Report Exports
+
+- Added PDF export endpoints for condition reports and prediction reports under `/api/reports/condition` and `/api/reports/prediction`.
+- Extended the frontend ConditionPage, PredictionPage, and UserManagementPage with export buttons and download flows.
+- Updated DashboardShell to route the new report download actions through absolute `API_BASE_URL` to avoid Electron fetch failures.
+- Added i18n strings for the new export UI elements in both English and Japanese localization files.
+
+### Beta Terms and Public Site Updates
+
+- Updated `TERMS_OF_SERVICE.md` with beta-specific usage terms.
+- Added a beta notice banner to the public landing site with corrected spacing to avoid overlap with the fixed navigation bar.
+
+### Input Validation and Sanitization
+
+- Tightened input validation and text-field sanitization across the authenticated API surface and adjusted static-analysis suppressions where appropriate.
+
+### Infrastructure and Test Stabilization
+
+- Fixed an Alembic configuration ordering issue that affected CI test isolation, and updated bootstrap tests to cover the latest migration.
+
+### Internal Adversarial Validation
+
+- Ran an internal adversarial-validation pass across input handling, authentication, public-facing endpoints, and labeler scope enforcement. Findings and verifications are tracked internally.
+- Converted findings into source-level fixes and database cleanup. 
+
+## 2026-04-28
+
+### Live Recording Workflow
+
+- Added a live-stream recording flow that supports cookie-based authentication for paywalled sources, with a job model and an off-volume archive step that respects the configured allowed-paths policy.
+
+### Path Safety
+
+- Centralised path validation through a single helper that accepts only the configured roots, with canonicalisation that prevents traversal and symlink games.
+
+### Video Token Privacy
+
+- Replaced the previous raw filesystem-path exposure in API responses with an opaque token plus a team-scope-gated lookup, so reading a video requires both the token and an authorised match relationship.
+
+## 2026-04-29
+
+### Sender-Side Server Recording
+
+- Reworked the camera sender path so recordings are uploaded to the server (rather than only existing as a P2P WebRTC stream that disappears at session end). Each completed upload is registered for downstream worker / archive processing.
+
+### LAN-First Endpoint Resolution
+
+- Added preferred-endpoint resolution that races configured candidate hosts on session join, so a sender on the same Wi-Fi as the operator PC takes the LAN path directly instead of round-tripping through the public tunnel.
+
+### Cloudflare Named Tunnel Support
+
+- Routed coach / camera-sender / WebSocket URLs through the named tunnel host when active, with a fallback for tunnel configurations that are managed from the Cloudflare dashboard.
+
+### Phase Pay-1 Billing Foundation
+
+- Wired up multi-provider checkout behind a feature flag (off by default). Receipts are generated as PDFs and legal metadata is sourced from environment variables. All billing endpoints are excluded from the public OpenAPI schema.
+
+### Phase M-A Email Authentication Foundation
+
+- Implemented register / verify / password-reset / invitation flows around a mail-backend abstraction. Self-registered users land in a pending state and require admin approval before becoming active. Public registration is opt-in via configuration.
+
+### Data Protection
+
+- Added field-level encryption, encrypted backup output, signed export packages with replay defence, and operator runbooks for incident response.
+
+## 2026-04-30
+
+### CI Restoration on Windows and Linux
+
+- Cleaned up CI infrastructure issues so backend tests, frontend tests, build, and the security-conventions check pass on both `ubuntu-latest` and `windows-latest` runners.
+
+### Security Hardening
+
+- Closed the Critical and High findings from the static analysis sweep through additional input validation and path-safety guards. Specific finding details and the corresponding mitigations are tracked in the project's internal security log rather than this public changelog.
+- Tightened HTTP response headers (Content-Security-Policy on HTML responses, Permissions-Policy, COOP / CORP) and adjusted CORS for the public deployment posture.
+- Hardened authentication-related timing characteristics so failed login responses do not leak whether a username exists.
+- Restored the emergency token-revocation path after a regression. Operational runbook for incident response is maintained internally.
+- Added admin tooling (per-user limit visibility and category-scoped reset) to make abnormal usage visible from the admin UI rather than only in process memory.
+
+### Streaming Upload Path
+
+- Introduced a streaming-upload flag for MediaRecorder-style chunk uploads where the final file size is not known until finalize. Strict ordering on chunk receipt and an upper bound on total bytes are enforced server-side. Frontend updated to use the matching content type.
+
+### Unattended Operation
+
+- Stood up the production backend supervisor and the tunnel as proper Windows services with restart policies, so a connect-holiday absence does not lose service on crash or logoff.
+
+### Internal Verification Rounds
+
+- A multi-week sequence of attack rounds was run against the live deployment. The findings, mitigations, and per-round verifications are tracked internally; the changelog only records that the sweep happened.
+
+## 2026-05-01
+
+### Continuous Attack Sweep (Rounds 110-155)
+
+A long day of attack-driven backend hardening. Rounds 110-119 closed 8 findings; rounds 120-121 closed an additional cluster of findings; round 126 (V-5) made analyst export scope include their own team; round 130 (Y-1/Y-2/Y-3) rejected any `<>` in `tournament` / `round` / `notes` / `venue` and in `conditions.injury_notes`; round 131 validated `owner` / `home` / `away` `team_id` FK before write; round 136 (D-5) capped `tracknet.frame_b64` `max_length` at 2 MB; round 140 (H-3) rejected line-break / control characters in `tournament` etc.; round 142 (J-1) rate-limited refresh + email-verify; round 143 (K-1) rejected Windows reserved filenames (`CON` / `PRN` / etc.); round 147 capped TrackNet decoded frame dimensions/bytes to prevent OOM; round 155 cascade-deleted FK rows when deleting a user (cleanup of an earlier 500).
+
+### Auth / Lockout
+
+`auth`: account lockout never fired because `failed_attempts` was being reset too eagerly; the reset trigger is now narrower. WebSocket connections per session capped at 20, with an `asyncio.Lock` around the cap to prevent a race. `/v1/expert/videos` now team-scopes for non-admin actors.
+
+### Match Delete Cascade Hardening
+
+Iterative fix on `delete_match`: `UploadSession.match_id` now nulled via Core SQL `UPDATE` (with `Query.update()` bulk variant) before the match delete; `server_video_artifacts` cascade also via Core SQL `DELETE`; cascade + match delete is a single transaction with best-effort cascade; `server://` PUT on `video_local_path` blocked. Concurrent `DELETE` on the same match now returns idempotent 200. `IntegrityError` detail is exposed only to admin diag on delete failure.
+
+### CI + Misc
+
+JSON `Infinity` / `NaN` payloads now return 400 instead of 500 at the main app layer. Python mp4-atom walker fallback added for container validation in uploads. Apex `shuttle-scope.com` host allowed for the public LP. `security_ci/` excluded from CodeQL; actions in `security-attacks.yml` pinned. No-auth attack suite + scheduled GitHub Actions added. CI Build-and-Test job unbroken. README + CHANGELOG updated for 2026-04-28 → 04-30 work.
+
+## 2026-05-02
+
+### Video Download Pipeline + UI
+
+`downloader`: yt-dlp result is now stored as `server://` (not `localfile:///`) so the backend treats it uniformly with uploads; `video_local_path` is persisted on completion; ffmpeg located under SYSTEM PATH and falls back to the `imageio-ffmpeg` bundled binary when nothing resolves. Test assertion updated for the `server://` filepath format.
+
+### Match-List Download UX
+
+`MatchList` shows a "DL 中" badge (Step 1B) backed by `/matches/downloads/active` (Step 1A). The match-edit modal renders an inline progress bar (Step 2) and an inline error + retry button on failure (Step 3, both list and modal, mobile-aware).
+
+### CSP
+
+`csp`: allow `https:` in `font-src` to stop the CSP report flood.
+
+## 2026-05-03
+
+### CSP Patch for Public LP
+
+`csp`: allow inline script for the public landing-page host so the reveal animations actually run. Single-commit day.
+
+## 2026-05-04
+
+### Annotator UX Redesign
+
+- Full redesign sprint over the annotator workflow: top-bar split into a primary score display plus a kebab menu, mode tabs for Input / Review / Analysis / Settings driving a right panel that only shows what the current mode needs, a bottom history strip with click-to-seek, floating video-overlay toggles, and a `Ctrl+K` command palette. A mobile variant with a bottom sheet was added in the same sprint, and remaining hardcoded strings were migrated to the translation tree.
+- Annotator craftsmanship: hit-zone manual override, offline rally stash, semantic colour system on the stroke-type panel, haptics, and a semi-auto flip path that fixes a player-selection regression during quick rally entry.
+
+### CV Foundation — Tracks A through E
+
+- Person-tracking, pose estimation, swing detection, and hitter attribution rolled in over multiple tracks with a fallback chain documented for future tuning.
+
+### Mobile-Responsive Pass
+
+- Walked the condition / team / settings / camera / expert-labeler surfaces at iPhone widths and applied the same overflow / clipping / mobile-card recipe that the dashboard had been using.
+
+### Video Pipeline Fixes
+
+- Resolved a bundle of bugs that together had been blocking browser-side playback of server-stored matches and CV pipeline reads of the same.
+- Added an automated archive step that moves downloaded videos off the working drive after a configurable interval, with a path safety jail and DB-side path tracking.
+
+### Internal Reviews and CI
+
+- Closed two coordinated review sweeps (general code review and an analytics-focused ultra-review) and brought the TrackNet smoke workflow back to green after dependency drift in the runtime stack.
+
+### Data-Loss Incident and Recovery
+
+- An automated review tool was invoked on an orphan branch and wiped a gitignored area holding validation notes, helper scripts, and downloaded video archives. Validation docs were recoverable from the production machine; the unsynced video archive was lost. Going forward, the tool is treated as destructive on this repo and a backup of the gitignored areas is taken before invoking it.
+
+## 2026-05-07
+
+### Streaming-Capture Recording for Member-Only Live Sites
+
+- Generalised the desktop screen-recording feature beyond the original YouTube-only path so the analyst can capture badminton broadcasts on any streaming site they are licensed to view. Recording is OS-level pixel capture (the OBS-equivalent path) only; no DRM or HDCP bypass is implemented anywhere in the project. Quality presets (low / med / high), a recording state machine, and a post-processing warning when the captured frames are mostly black (i.e. the platform actively blocked the capture) were added at the same time.
+- Added a video-password field to the streaming download panel for sites like Vimeo Showcase. Browser cookies (`cookies.txt`) and that password are passed to the downloader and discarded immediately after the job runs; neither is logged.
+- Documented the three available recording paths (yt-dlp, in-app WebView + screen capture, and the optional castLabs Electron build) in `docs/electron-drm.md`, including why castLabs is left as a user-managed opt-in.
+
+### Annotator Audit Sweep — UX, Keyboard, Errors, Mobile
+
+- Three coordinated review passes against the annotator workflow (28 items total). Highlights: improved contrast on the active stroke-type tile so it stays WCAG AA, expanded keyboard coverage (number-row binds for hit/land zones, Tab to swap player, an opt-in always-on key-hint toggle), a 4-state step indicator with focus ring and screen-reader hints, replaced every native `alert()` / `confirm()` with accessible toast and modal components, and migrated ~150 remaining hardcoded Japanese strings into the translation tree.
+- Mobile pass: walked the dashboard / settings / condition / review surfaces at iPhone widths and fixed every place tabs and tables spilled outside their container. `useBreakpoint` was extended to the full 6-stage Tailwind ladder, and a phone-sized players sheet and iPad sidebar layout were rebuilt on top of that hook.
+- Consolidated the annotator's various menu surfaces into a single top-bar menu plus a flattened settings panel, and surfaced the existing `Ctrl+K` command palette as a visible button so it is discoverable.
+
+### Operator: Production Scheduled-Task Recovery
+
+- Caught a regression where the production task supervisor had been reverted from a system-level run mode to an interactive one and would die on logoff. Re-registered it with the correct system-level principal, restart count, and start trigger. Operator notes for safe deploy and restart steps were updated.
+
+## 2026-05-08
+
+### GDPR / APPI Compliance Hardening
+
+- Promoted Privacy Notice to Version 1.1 with a new Article V-bis ("AI Model Training Data Practices") covering training-data sources, exclusions, model memorization mitigations, the right to object to training use, and transparency disclosures. Added Section 2.6 covering cookie categorization on `shuttle-scope.com`. The existing Articles VI through X retain their numbering — V-bis is inserted between V and VI without disturbing downstream references.
+- Promoted Terms of Service to Version 1.1 with a new Section 15 ("EU/EEA Operations") describing operational constraints (court ROI required; legitimate-interests basis for non-consenting third parties; bounded cross-border transmission), third-party athlete data handling under GDPR Article 21, and coordination obligations with Contributing Parties.
+- Added `contracts/DPA_TEMPLATE.md` (public) — a template Data Processing Agreement compliant with GDPR Article 28(3), with annexes covering processing details, technical and organizational measures, sub-processors, and Standard Contractual Clauses placement.
+- Added internal records (kept under `private_docs/internal/`, not committed): `RoPA.md` (Records of Processing Activities per GDPR Article 30, eight processing activities documented), `DPIA.md` (Data Protection Impact Assessment per Article 35), `SAR_PROCEDURE.md` (Subject Access Request operational procedure), `BREACH_RESPONSE.md` (Personal Data breach response plan with a 72-hour notification track and authority / data subject notification templates).
+- Added a public-facing β-period agreement at `private_docs/contracts/RBC_BETA_AGREEMENT.md` (kept private; intended for distribution to in-scope athletes outside the repository) — derived from the prior internal docx, with personal names and parent-company references removed.
+
+### Onboarding Consent Flow
+
+- Backend: introduced the `user_consents` table (Alembic migration `0024_user_consents.py`) and `users.consent_required` flag. Added `UserConsent` ORM model. Exposed `GET / POST /api/auth/consents` and `DELETE /api/auth/consents/{type}` for retrieving consent state, submitting initial / updated consent, and withdrawing optional consents (required types refuse withdrawal — those require account deletion). `/api/auth/me` now returns `consent_required` so the frontend can route to the onboarding flow.
+- Consent records capture privacy-policy version, terms version, given-at timestamp, IP address, and a SHA-256 hash of the User-Agent string (raw UA is not retained). Existing users are migrated with `consent_required=False` so the launch does not lock them out; new accounts default to `True` and must complete the consent flow before reaching the main UI.
+- Frontend: added `OnboardingConsentPage.tsx` covering two required consents (`service_delivery`, `beta_agreement`) and three optional consents (`ai_training`, `research_participation`, `cross_border_transfer`). Each consent is an independent checkbox per GDPR Article 7(2). Links to the public Privacy Notice / Terms of Service / Data Contribution Terms are surfaced inline. `ProtectedMainRoute` in `App.tsx` gates the application behind the onboarding page until the required consents are submitted.
+
+### Privacy-by-Design Hardening (CV Pipeline)
+
+- `CourtBoundedFilter` (`backend/cv/detection_hardening.py`) now defaults to `strict_mode=True`, which forces `court_margin=0` and excludes any detection outside the calibrated court polygon. Spectator and umpire zones remain excluded by their dedicated checks. Strict mode is configured in code only; the settings UI does not expose it.
+- The pipeline-run endpoint (`/v1/pipeline/run`, `backend/routers/pipeline.py`) refuses to enqueue analysis with HTTP 403 when the target match has no court calibration (`MatchCVArtifact` of type `court_calibration`). The rejection message references GDPR Article 25 / Privacy by Design so the operational reason is explicit.
+
+### Repository Hygiene
+
+- `private_docs/contracts/` and `private_docs/internal/` are kept under the existing `private_docs/` ignore rule. The new public-facing `contracts/DPA_TEMPLATE.md` (root-level) is committed.
+- Added `private_docs/2026-05-08_gdpr_compliance_implementation_plan.md` recording the strict task plan that drove the work above; it is internal-only and is referenced in the DPIA's "Integration of outcomes" section.
+
+### Consent UI Refinement (Contractual Basis vs Consent)
+
+- Following an internal legal analysis, the Onboarding consent flow now distinguishes contractual confirmation from optional consent more strictly. The two required items (`service_delivery`, `beta_agreement`) carry the GDPR Article 6(1)(b) / APPI Article 18 contract-performance basis. Their UI labels read "...の内容を確認しました" rather than "...に同意します", their description texts cite the legal basis explicitly, and the section header notes that withdrawal of these items is equivalent to ending use of the service. The required badge reads "契約履行（必須）" rather than "必須" alone.
+- The optional `cross_border_transfer` item was removed from the UI. EU→Japan transfers operate under the EU-Japan adequacy decision (effective January 2019), so a separate user consent for cross-border transfer is not the appropriate legal basis; surfacing such a checkbox risks misleading users into thinking transfers depend on their personal opt-in. APPI Article 28 cross-border safeguards remain in place via the safeguards described in `PRIVACY.md` Section 6.2 and the SCC placement of `contracts/DPA_TEMPLATE.md` Annex 4. Other future non-adequate destinations (e.g., the United States) will be handled through SCCs / equivalent measures rather than a UI checkbox.
+- Optional consent items now state their withdrawal channel inline (in-application contact form, public contact form, or email to `contact@shuttle-scope.com`).
+- `PRIVACY.md` Section 8.5 ("Withdrawal Mechanism (Interim)") added. It records the interim withdrawal channels, acknowledges the GDPR Article 7(3) "as easy to withdraw as to give" standard, and commits to delivering an in-application withdrawal interface no later than 31 December 2026. Required confirmations under the contractual basis are explicitly excluded from the withdrawal flow.
+
+### Public-Facing β Agreement
+
+- Added `contracts/BETA_DATA_HANDLING_AGREEMENT.md` as the repository's public template version of the β-period data handling agreement. Personal names and parent-organization references are stripped relative to the internal in-person `private_docs/ShuttleScope_同意書.docx`; the contact channel on the public version is `contact@shuttle-scope.com` plus the public contact form. The internal docx remains under `private_docs/` as the in-person signing instrument.
+
+### Host Liability Posture Hardening
+
+- Added `CONTENT_POLICY.md` as a public-facing description of how ShuttleScope treats user-submitted content, the channels through which a rights-holder, regulator, or data subject may file a content report, the format of such reports, and the response timeline. The Policy is written to align with the safe-harbour expectations of 17 U.S.C. § 512 (DMCA), Article 14 of Directive 2000/31/EC (EU e-Commerce Directive) as carried forward by Regulation (EU) 2022/2065 (DSA), and Articles 30 / 47-bis / 47-5 / 30-4 of the Japanese Copyright Act. The hosting posture is passive — content lawfully accessible to a User through paid streaming subscriptions, broadcast licensing, or other lawful means may be processed in the same manner as content the User has personally recorded; the developer responds after a verified report rather than by pre-screening submissions.
+- Promoted `TERMS_OF_SERVICE.md` to Version 1.2. Section 4 ("Acceptable Use") is rewritten to reflect the passive hosting posture and to make the User's responsibility for the legal basis of submissions explicit. New Section 16 ("User Content and Hosting Posture") and Section 17 ("Developer Conduct Guarantees") record the developer's role separation between operator and user, the developer-side undertaking on training-data sourcing, the no-inducement statement, and a beta-period note. A future U.S. Designated Agent under 17 U.S.C. § 512(c)(2) is anticipated in Section 16.7.
+- Promoted `PRIVACY.md` to Version 1.2 with a small addition (Article IX Section 9.3 "Beta Period Interim Measures") recording that the technical and organisational measures described in Article IX are operated under interim arrangements during the beta period and that material changes affecting personal-data protection will be reflected in subsequent updates to the Notice. No new processing purposes or recipients are introduced; existing consent records remain valid.
+- `SECURITY.md` now points content reports (non-vulnerability) to `CONTENT_POLICY.md`, separating that channel from the vulnerability reporting channel.
+
+### Internal Operational Documents (Host Liability)
+
+- Added `private_docs/internal/NOTICE_AND_TAKEDOWN_PROCEDURE.md` recording the operational notice-handling flow that backs the public commitments in `CONTENT_POLICY.md`, with templates for receipt acknowledgement, action notification (user side), and action notification (complainant side).
+- Added `private_docs/internal/DEVELOPER_CODE_OF_CONDUCT.md` codifying the developer's operator-role and user-role conduct rules, the no-inducement rule, the training-data sourcing discipline, and the annual self-audit cadence.
+- Added `private_docs/internal/LEARNING_DATA_PROVENANCE.md` defining the provenance schema, license categories (granted / public_domain / appi_47_4 / appi_47_5 / beta_legacy_assumed_legal / other), the beta-vs-production phase boundary, and the recording discipline. A database-backed implementation of this register is planned in the second wave of the Host Liability work; the document at present operates as the schema-of-record.
+- Added `private_docs/2026-05-08_host_liability_implementation_plan.md` recording the strict task plan for the host-liability hardening, the wave structure (A: documents now / B: code enforcement / C: future commercial work), and the legal mapping driving the work.
+
+### Host Liability Code Enforcement (Wave B)
+
+- Added Alembic migration `0025_content_reports_and_provenance.py` introducing two new tables. `content_reports` persists notice-and-takedown reports with the elements expected by 17 U.S.C. § 512(c)(3) and the corresponding national equivalents; the schema captures complainant identification (where provided — anonymous reports are accepted), the subject of the report, the legal basis invoked, an audit trail of the developer's triage and action, and any counter-notice received. `training_dataset_records` persists the schema described in `private_docs/internal/LEARNING_DATA_PROVENANCE.md` so that the provenance register is kept in the database rather than only as documentation; the source URL is stored as a SHA-256 hash rather than in plaintext.
+- Added `ContentReport` and `TrainingDatasetRecord` ORM models to mirror the schema.
+- Added the public reporting endpoint `POST /api/public/content_report` (anonymous accepted, rate-limited via the existing contact-form rate limiter, honeypot field for bot rejection, statement length 20–5000 characters, optional `legal_basis` from a closed enum). The response carries the report id, the receipt timestamp, and an acknowledgement message that points back to `CONTENT_POLICY.md` Section 7 for the SLA.
+- Added admin-only triage endpoints `GET /api/admin/content_reports`, `GET /api/admin/content_reports/{id}`, and `PATCH /api/admin/content_reports/{id}` so the developer can record triage status (pending / upheld / rejected / awaiting_info / on_hold), action taken (no_action / content_removed / access_restricted / account_suspended / pending_legal), counter-notice receipt, and restoration. Each transition is logged through the existing `audit_log` channel.
+- Added admin-only training-data provenance endpoints under `routers/admin_training_data.py`: `POST /api/admin/training_data/records`, `GET /api/admin/training_data/records` (filterable by license_type / beta_legacy_flag / dataset_id), and `GET /api/admin/training_data/records/{id}`. Source URLs are not retained; the endpoint hashes the URL with SHA-256 before persistence.
+- Registered the new audit-log event names (`content_report_received`, `content_report_triaged`, `training_data_record_created`) in the audit-coverage allowlist.
+
+### Wave B — Deferred to a Later Round
+
+- Mandatory `reason` parameter on admin video-access endpoints. Admin video access in the current architecture flows through team-scoped match endpoints (rather than a single dedicated admin path) and is already audited under the standard auth audit. Adding a `reason` requirement is worthwhile but requires endpoint-by-endpoint analysis and was scoped out of this round to keep the change set focused.
+
+## 2026-05-09
+
+### Audit Log FK Drop + Player Dashboard Gate (User-directed remediation #2 + #3)
+
+Two follow-up product changes from the post-attack remediation pass.
+
+- **Audit log HMAC chain integrity (Round 233 R233-A — plan A):** Alembic migration `0026_drop_fk_access_logs_user_id` drops the FK constraint on `access_logs.user_id`. `delete_user` no longer modifies `access_logs.user_id` on user removal, so subsequent rows preserve their canonical bytes and the HMAC chain stays valid. The pre-existing broken segments (id 466 + 897, from earlier mismatched cleanups) are intentionally NOT rewritten — rewriting hashes would defeat the tamper-detection purpose of the chain. `verify_chain` now accepts `?from_id=N` so an admin can verify the chain from any segment boundary forward, and the `/api/auth/audit-logs/verify` endpoint surfaces this to admin operators.
+- **Player dashboard gate (Round 228 R228-F1 + F2):** the sidebar `/dashboard` entry is now wrapped in `hasPageAccess('dashboard')`. Because `hasPageAccess` returns true for admin/coach/analyst by default and false for player (whose `pageAccess` array is empty), the player no longer sees a dashboard link. Independently, `DashboardShell` now redirects `role === 'player'` to `/matches` at the top of the component — typing the URL directly no longer renders the dashboard. The `analysis.review.{section_maps,guide_step1,vulnerability_map}` i18n labels (which contain 弱点 framing) therefore can no longer reach a player view, satisfying the CLAUDE.md non-negotiable rule.
+
+### Cross-Team Page-Access Scope Check (Round 237-257 Deeper Sweep)
+
+A 21-round deep-dive sweep across already-covered areas surfaced one
+cross-team data integrity gap that needed fixing.
+
+- `GET /api/auth/users/{target_id}/page-access`, `PUT` of the same path,
+  `GET /api/auth/teams/{team_name}/page-access`, and the `PUT` for
+  team-level page access only enforced `_require_manager`
+  (admin / analyst / coach) and did not verify that the actor's team
+  matched the target. An analyst from team A could:
+  - GET another team's player's page-access list (information leak).
+  - PUT `{page_keys: []}` to another team's player → wipe their grants.
+  - The same shape applied to the team-level endpoints.
+
+  `GRANTABLE_PAGES` is allowlisted (`{"prediction", "expert_labeler"}`),
+  so the attack could not grant *new* privileges, but the
+  DELETE-then-INSERT pattern still allowed wiping existing grants —
+  a cross-team data integrity violation.
+
+  Fix: `ctx.team_id == user.team_id` (and `ctx.team_name == team_name`
+  for the team-level endpoints) is now required for non-admin actors,
+  with 404 returned on mismatch to avoid leaking existence of the
+  cross-team target.
+
+### Sweep Coverage (no findings, recorded for completeness)
+
+The remaining 20 rounds confirmed defenses across:
+
+- Open-redirect / Location-header — only `/jp` → `/` is hardcoded; no user-influenced redirect.
+- Command-injection probe — `subprocess.run(shell=True)` is not used anywhere; yt-dlp / ffmpeg invocations go through `_validate_url_for_subprocess` and use list-style args plus the `--` separator.
+- Insecure deserialization — only `yaml.safe_load` / `yaml.safe_dump` are used; no `pickle` / `marshal`.
+- ORDER BY / column injection — every `order_by(...)` uses ORM column references; no `text()` with f-string interpolation.
+- CORS — invalid `Origin` headers do not receive `Access-Control-Allow-Origin`; preflight from `null` / evil origins returns 400.
+- Stored XSS — bookmark.note / comment.text strip script / img / svg / iframe / style / meta tags; React renders all `note` / `text` fields as text, no `dangerouslySetInnerHTML` anywhere.
+- Concurrent state — 5-parallel rally / set / condition POSTs and match.result PUTs produce zero 500s. Lack of unique constraint on (set_id, rally_num), (match_id, set_num), (player_id, measured_at) is a data-quality observation rather than a security issue.
+- Rate-limit IP spoofing — `X-Forwarded-For` / `X-Real-IP` spoofing has no effect; `CF-Connecting-IP` from clients is rejected by Cloudflare itself with 403.
+- HTTP smuggling — `Content-Length` + `Transfer-Encoding` conflict and bad chunk sizes are rejected at the Cloudflare front line with 400.
+- Method-override — `X-HTTP-Method-Override` / `X-HTTP-Method` / `_method` headers are ignored. WebDAV verbs are not implemented.
+- Path traversal — `..%2F` / null-byte / file:// / Windows reserved names against video / clip / upload / training_data endpoints all return 404 / 422.
+- MFA / password reset / email verify — wrong TOTP repeated 8× yields 422 each time; arbitrary password-reset / email-verify tokens produce 400 / 405.
+- Search SQL — `pg_sleep` / `' UNION SELECT` / null-byte / `%%` payloads against `/api/players?q=` all complete in < 0.25s with 200; ORM parameterization is intact.
+- Public abuse — `/api/public/contact` rate-limits at the third inquiry per address; BIDI / huge-name / over-length payloads are 422 in the validator.
+- Host header injection — Cloudflare returns 403 for any unauthorized Host.
+- WebSocket — `/api/ws/live` / `/ws/live` / `/api/realtime/yolo` (with or without a valid session_code) require auth; 403 without it.
+- Refresh token rotation — old refresh token reuse is detected on the second use and the entire family is invalidated.
+- Cross-team match owner spoof — analyst-supplied `owner_team_id` and `is_public_pool` are silently overridden by `ctx.team_id` / `False` server-side.
+
+### P6-P10 Thin-Areas Sweep (Round 232-236)
+
+One additional backend fix and a cross-cutting operational review.
+
+- `POST /api/auth/login` with a `username` or `identifier` containing a NUL byte (or any other C0 control character) returned `500` instead of `422`. PostgreSQL's text column rejects NUL bytes via `psycopg.ValueError`, which surfaced as the generic 500 "internal error" response. `LoginRequest` now applies a `@field_validator(mode="after")` that rejects any character in `0x00-0x1F + 0x7F` with 422 before the value reaches the SQL query.
+
+### Operational observations recorded for separate handling
+
+These items came out of the Round 232-236 sweep across Windows ops, audit log integrity, ML model supply chain, backup/restore, and browser cache. They are not deployed code changes — they require migration coordination, infrastructure setup, or product-policy decisions, and are tracked in `private_docs/2026-05-09_user_must_verify_checklist.md`.
+
+- Audit-log HMAC chain integrity is broken at the first row whose `user_id` was nulled by a previous user deletion. `GET /api/auth/audit-logs/verify` reports `ok: false`. Two fix paths exist: (a) Alembic migration to drop the FK on `access_logs.user_id` so the chain canonical bytes are never modified, or (b) make `verify_chain` anonymize-aware. Either is migration-coordinated.
+- Production backup gap: `POST /api/sync/backup` returns 501 because the existing implementation is SQLite-only, and there is no Windows scheduled task or filesystem evidence of an external `pg_dump` / WAL archive. PostgreSQL data is not currently protected against volume failure.
+- File ACL on `shuttlescope/.env.development` and `cloudflare-shuttle-scope/config.yml` includes the local `MiniTakeuchi\CodexSandboxUsers` group (members: `CodexSandboxOnline`, `CodexSandboxOffline`). If those accounts are reachable over the network, `SECRET_KEY` / `SS_OPERATOR_TOKEN` / `DATABASE_URL` are exposed to them.
+- The `Cloudflared` service runs as `LocalSystem` but its binary lives in `C:\Users\kiyus\AppData\Local\Microsoft\WinGet\...\cloudflared.exe`, a path writable by the `kiyus` account. Compromising `kiyus` would allow a binary swap that the next service start runs with SYSTEM privileges.
+- `ssh.shuttle-scope.com` routes to `localhost:22` over Cloudflare Tunnel. Cloudflare Access policy on that hostname is not verifiable from inside the box; needs a dashboard check.
+- `backend_daemon.ps1` exits with the Python child's exit code; the scheduled task does not auto-restart on failure (RestartCount: 0). Single Python crashes leave the backend down until the next boot/login trigger.
+- `backend/models/` (`*.onnx`, `*.engine`) has no integrity manifest. Local model swap by an attacker with `kiyus` privileges is undetected.
+- `yt-dlp` is two months behind release; several Python deps (sqlalchemy, alembic, httpx, requests, uvicorn) are also slightly behind. `pip-audit` integration recommended.
+- `localStorage` keys for match-specific UI state (`court-calib-{matchId}`, `yolo-last-roi-{matchId}`, `shuttlescope.viewpoint.{matchId}`) are not user-scoped; on a shared PC, the previous user's state survives a logout. SaaS / per-browser deployment is unaffected.
+
+### Cascade & FK Cleanup (Round 227-231 Local Boundary / Artifact Lifecycle)
+
+Three additional backend fixes shipped after the Round 200-226 batch.
+
+- `DELETE /api/matches/{id}` now cascades comments and event_bookmarks via Core SQL `DELETE` before `db.delete(match)`. Previously, matches with attached comments or bookmarks failed at commit with `psycopg.errors.ForeignKeyViolation` and surfaced the raw SQL detail (table + constraint name) in the 500 response. The 500 detail is now sanitized; full diagnostics go to server log.
+- `DELETE /api/auth/users/{id}` repaired. The previous cleanup statement list contained typos (`access_log` vs the actual `access_logs`; `user_invitations.created_by_user_id` and `shared_sessions.created_by_user_id` did not exist) and missing FK paths (`matches.annotator_id`, `shot_annotations.annotator_user_id`, `billing_orders.user_id`, `billing_entitlements.user_id` / `granted_by_user_id`, `revoked_tokens.user_id`, `user_consents.user_id`, `player_page_access.user_id`, `user_invitations.consumed_by_user_id`). Each cleanup statement also called `db.rollback()` on exception, which reverted ALL prior successful cleanups. Each cleanup is now wrapped in `db.begin_nested()` (SAVEPOINT) so a failure on one statement no longer poisons the others, and the 409 response detail is now generic.
+
+### Validation
+
+- Round 229 post-deploy verification: 11/11 ✅. Match deletion with attached comments / bookmarks succeeds; bookmarks and comments are removed; subsequent GET / list / export return 404 / 422. User deletion (with the cleanup) succeeds for freshly-created users; the access token, refresh token, and login-after-delete all return 401. Player record survives user deletion (player_id was nulled on the user side via existing FK behaviour).
+- Round 230 (admin blast radius): admin rapid-create 30 users / 30 teams produces no 500 / no rate-limit hits — by design but worth flagging for guardrail review. Audit log spot-check confirmed 26 unique action types (login / login_failed / logout / token_refresh / user_created / user_updated / user_updated_high_risk / user_deleted / team_created / team_updated / match_updated / match_deleted / consents_submitted / consent_withdrawn / training_data_record_created / content_report_received / content_report_triaged / export_package_created / password_reset_by_admin / admin_reset_user_limits / account_locked / account_unlocked / access_denied / access_denied_write / access_denied_coach_scope / access_denied_research) over a 500-row sample.
+- Round 231 (legal / ops workflow drill): consent withdrawal correctly rejects contractual-basis types (`service_delivery`, `beta_agreement`) with 403 and accepts optional types (`ai_training`, `research_participation`) with 200, satisfying GDPR Article 7(3). Training-data records remain immutable (PUT / DELETE → 405). Self-delete is blocked (400). The Subject Access Request (SAR) and counter-notice routes are 404 / 405 / 401 — confirmed as known operational gaps tracked separately for Wave B / `SAR_PROCEDURE.md`.
+
+### Static Review (Round 227, no code change)
+
+The Electron `main.ts` (1615 lines) and `preload.ts` (92 lines) were re-read end to end. Defenses confirmed in place: `localfile://` and `app://video/{token}` schemes use URL parsing with strict path-jail and 32-hex token regex; the main BrowserWindow runs with `contextIsolation: true` / `nodeIntegration: false` / `webSecurity: true`; `will-attach-webview` strips unknown webPreferences keys and forces `sandbox: true`; `relaunch-app` is gated by sender-WC, top-frame, 5s user-gesture, and 30s rate limit; `mirror-broadcast` enforces a four-type allowlist and 32 KB cap; `save-recorded-video` validates ArrayBuffer + magic byte (webm / mp4 ftyp) + extension + dialog-only path + 4 GB cap; the Python backend is spawned with an absolute path and explicit env (no PATH lookup); packaged builds block DevTools at the input-event layer. Two minor observations (not vulnerabilities): `SS_LIVE_ARCHIVE_ROOT` not set leaves drive isolation off (warned at startup but not enforced); `_userSelectedPaths` is session-scoped and persists across the session for any file selected via dialog.
+
+### Notes
+
+- Player-facing UI policy leak (Round 228 finding) — the `Sidebar` `/dashboard` link, `DashboardTopNav` six routes, and `DashboardReviewPage` i18n labels (`analysis.review.section_maps` = "STEP 1 — 弱点・配球マップ", `guide_step1` = "① 受け側の弱点・有効配球を確認", `vulnerability_map` = "被打球弱点マップ") are reachable from the `player` role. Backend `/api/analysis/received_vulnerability` already returns 403 to player so the data is empty, but the literal labels render. This violates the CLAUDE.md non-negotiable rule "Never show players direct 'weakness' framing". Tracked as a UX-decision item (route gating / hasPageAccess('dashboard') / role-based label substitution) and intentionally not fixed in this batch.
+- Team delete API gap — `/api/auth/teams/{id}` has no DELETE handler. The model has `deleted_at` but no soft-delete endpoint. Operational gap, not a vulnerability.
+- Audit-log HMAC chain integrity vs FK enforcement — `delete_user` updates `access_logs.user_id = NULL`, but the original `row_hash` was computed with the original `user_id` and `verify_chain` re-derives canonical bytes from current row state, so the hash chain breaks after a user is deleted. Architectural tension (FK vs append-only); migration to remove the FK or switch to `ON DELETE SET NULL` is the long-term fix.
+
+### Input-Validation Defense-in-Depth (Round 200-226 Continuous Attack)
+
+Twenty-one attack-driven backend fixes shipped in two deploy batches.
+
+- Aligned Pydantic `max_length` with the underlying SQLAlchemy column lengths (`Player.name` / `name_en` / `nationality` 100/100/50; `User.display_name` / `username` / `team_name` 100; `Team.name` 100, `short_name` 50, `display_id` 64). Rejection that previously slipped past the validator and tripped a 500 at INSERT time is now a 422.
+- Replaced the local control-character-only filter on `Player` and team text fields with `text_sanitize.reject_ctrl_and_bidi`, so RTLO / LRO / ZWSP / ZWNJ / BOM / CRLF / null bytes are rejected together with C0 control characters. The same rule was applied to `bookmark.note`, `comment.text`, public-inquiry fields, `condition_tag.label`, and upload filenames; the HTML-strip regex used by the comment/note/inquiry sanitizers now iterates to a fixed point and removes lingering bare `>` characters so obfuscation patterns like `<scr<!---->ipt>` no longer leave residue.
+- Added a per-element validator for `Player.aliases`: each item must be a string passing `reject_ctrl_and_bidi(max_len=120)`, and the list is capped at 50 items.
+- Replaced `Player.dominant_hand` free-string acceptance with an enum guard (`R` / `L` / `unknown`).
+- `POST /api/auth/users` and `POST /api/auth/teams` now catch SQLAlchemy `IntegrityError` from concurrent unique-constraint races and return `409 user already exists` / `409 team already exists` instead of leaking `500` with stack-trace shape.
+- `Point2D` (court calibration) and `RoiRectModel` (TrackNet batch) now bound coordinates to `[0,1]` with `allow_inf_nan=False`. `CourtCalibrationRequest` enforces exactly 6 points at the schema layer and bounds `container_width` / `container_height` to `1..8192`. `FrameDetectRequest.timestamp_sec` is bounded to `0..86400`. Out-of-range / NaN / Infinity inputs that previously reached `numpy.linalg.svd` and surfaced as `500 SVD did not converge` are now rejected with `422` at the Pydantic layer.
+- Added `model_config = {"extra": "forbid"}` to LabelPayload, ShotAnnotationPayload, AuxiliaryInput, QuestionnaireSubmit, RegisterRequest, PasswordResetRequest, PasswordResetConfirm, InvitationCreateRequest, InvitationAcceptRequest, PendingApprovalRequest, RallyCreate, RallyUpdate, StrokeData, RallyData, SetRoleBody, QuickStartBody, HumanForecastCreate, CreateOrderRequest, CreateProductRequest, GrantEntitlementRequest, DownloadRequest, Point2D, CourtCalibrationRequest, RoiRectModel, BatchRequest, FrameDetectRequest. Field-level `max_length` / `ge` / `le` constraints were added on the same models so payload size is bounded at the schema layer.
+- `sync.backup_now` no longer returns raw exception text in the error detail; the path-related information is moved to server log via `logger.warning` / `logger.exception`, and the response uses generic status-tied messages. `label` query parameter is capped at 100 characters.
+
+### Validation
+
+- Round 212 post-deploy verification confirmed all 13 directly-found issues resolved (display_name boundary, player.name BIDI / ZWSP / CRLF / control, bookmark.note BIDI, comment.text BIDI, comment.text obfuscated HTML strip clean, aliases item BIDI / control / over-length / over-count, team-name BIDI / 101-char / short_name 51-char, parallel user-create race, dominant_hand enum).
+- Round 211 race-suite re-run showed parallel team creation now produces `1×201 + 4×409` (previously `1×201 + 4×500`); user-creation race already converted in batch 1 produces the same shape.
+- Round 225 post-deploy verification of the second batch (court / cv float bounds) returned `422` for Point2D out-of-range, NaN/Inf, points-array length ≠ 6, container_width/height out-of-range, FrameDetectRequest.timestamp_sec out-of-range, and tracknet RoiRectModel out-of-range — 13/13 ✅.
+- Sweep rounds 213-218 (data_package signature, NFKC search, role matrix, GDPR consent lifecycle, JWT corner cases, cross-team isolation, expert-label boundaries, condition / condition_tag color, DoS / rapid-write / concurrent / 413, admin training_data / audit / cluster, security headers / CORS / timing) returned 0 critical findings.
 
 ### Documentation
-- Refreshed the README multiple times to keep it closer to reality as scope expanded.
 
-### Detailed Progress
-- Refined annotation keymap and rally-end flow.
-- Refreshed the top-level README.
-- Polished annotation flow end-state handling.
-- Implemented research roadmap analytics modules.
-- Added warm-up observations and detail analytics context.
-- Closed remaining gaps with tests, seed data, and CI.
-- Added heatmap modal and warm-up analytics fixes.
-- Added prediction tab and pair-simulation foundation.
-- Refined prediction tab for coach and analyst workflows.
-- Added doubles annotation hitter flow.
-- Added LAN and tunnel web-access support.
-- Refreshed README for current product scope.
-- Clarified README for PoC scope.
-- Upgraded prediction with analyst depth and human benchmarks.
+- `private_docs/2026-05-08_continuous_attack_findings.md` now lists the 13 critical findings, their commits, and the post-deploy verification results.
+- `private_docs/2026-05-08_secret_scanning_candidates.md` was extended with five additional candidate rules surfaced by Round 207-210: HTML-strip fixed-point loop, validator `max_length` vs DB column AST check, `list[str]` per-element validator coverage, `IntegrityError → 409` pattern enforcement, filename BIDI smoke.
+- Per-batch validation memos under `shuttlescope/docs/validation/2026-05-09_*.md` (validator alignment batch, text-field BIDI / HTML strip, aliases validator, user-create race, static-review Pydantic field bounds).
 
-## 2026-04-06
+## 2026-05-10
 
-### Streaming and Video Handling
-- Added DRM-capable streaming playback and download tests.
-- Improved ffmpeg fallback behavior and cookie-download guidance.
-- Added a streaming download workflow and hardened the related UI.
+### Round 258 Deep Security Audit (R9 — R34)
 
-### Annotation and Match-Day Flow
-- Adapted the shot panel to rally context.
-- Refined shot-key pause behavior.
-- Added a match-day workflow and set-summary behavior.
-- Improved desktop startup and quick-start flows.
-- Improved annotation flow and interval handling.
-- Completed a broad annotation / desktop workflow phase.
-- Added TrackNet automation and settings sync.
-- Implemented stage 1 sharing and live collaboration.
+A 25-round continuation of the multi-agent independent audit pass that started on 2026-05-09 (R1 — R8, recorded in that day's entry). Each round either closed findings from the prior round's audit or closed CodeQL alerts in the same area, with the explicit intent of converging the open backlog to zero.
 
-### Analytics
-- Polished dashboard analytics access and labels.
-- Implemented advanced analytics and reports.
-- Enhanced EPV bootstrap and scouting reports.
-- Refined analytics visuals and doubles dashboard.
-- Added filter-aware analytics and related support.
+- **R9** — 9 cache / idempotency / race / DoS findings (`bandit-found` patterns + earlier P0s left after R8's deep-audit).
+- **R10** — 7 regressions introduced inside R7/R8/R9 fixes (over-tight cache key, missing rollback path, etc).
+- **R11 / R12 / R13** — three sequential regression-audit rounds closing 3 P0 + 9 P1 + 4 P2 over R10's fixes.
+- **R14** — 3 P0 + 1 P1 from R13 regression audit (auth / refresh-token edge cases).
+- **R15** — closed R13/R14 leftover P1/P2/P3 + hardened the `mfa_pending` token path so it can never satisfy access-tier checks even by mistake.
+- **R16** — 4 frontend / Electron findings (1 P0 + 3 P1/P2): contextIsolation enforcement, file-protocol jail audit, IPC payload validation.
+- **R17** — hotfix R16 regression + 4 new findings (CSRF on benchmark POST, billing webhook timing oracle, etc).
+- **R18 — Three-agent independent audit.** Ran three independent agents in parallel on the same codebase and merged the unique findings: 3 P0 + 4 P1 + 1 P2.
+- **R19** — 1 P0 + 1 P1 + 6 P2/P3 from R18's backlog.
+- **R20** — 2 P1 + 3 P2 introduced inside R19's own fixes; R7-R19 long-tail backlog closed.
+- **R21** — closed R20's introduced P0 + 4 P1 + R7-R19 long-tail backlog.
+- **R22** — 1 P0 + 4 P1 + 2 P2 in R20 → R21 regression audit.
+- **R23 / R23.1** — 2 P1 + 3 P2 closed; hotfix on sentinel `jti` length regression introduced by R23.
+- **R24** — 4 P1 + 3 P2 from R23-audit, all in admin tooling and DB maintenance paths.
+- **R25 / R25.1 / R25.2 / R25.3** — atomic `.env` write for `toggle_lan_mode` (read-modify-write race against the file watcher), Punycode review marker, jitter reverify on rate-limit decision boundaries, R22 cache bug + R24-audit P1/P2/P3.
+- **R26** — closed R25 P1/P2/P3 leftovers (1 P1 + 1 P2 + 1 P3).
+- **R27** — R26 audit P1 + P2 (1 P1 + 1 P2).
+- **R28** — R27 audit P3 + R28 audit P2 (3 P2 + 2 P3).
+- **R29 / R29.2 / R29.3** — startup warning for multi-process auth deployment (jti revocation cache only valid in-process); CodeQL `py/weak-sensitive-data-hashing` on cache key (switched to SHA-256); applied R28-audit P2/P3 (5 total).
+- **R30 / R30.2** — closed R29 P2-3 cross-team prediction leak; R30-audit P2-2 + P2-3 (2 P2).
+- **R31 / R31.2 / R31.3** — closed 2 CodeScanning HIGH alerts (path injection family); restored `list_cloud_packages` contract under the new path-injection guard; basename allowlist applied for the rest.
+- **R32** — finished R30a P2-1 across 4 prediction endpoints + 2 helpers.
+- **R33** — recorder hidden-window preload (R6 deferred P1): the recorder window now preloads a hidden helper that can't be navigated by user input.
+- **CI: split Backend tests step** (`split Backend tests step — Windows runs serial to avoid xdist 3.8 race`): pytest-xdist 3.8 has a worker IPC race on Windows that surfaced as `gw0` / `gw1` AssertionError at test start. Windows now runs the suite serially (no `-n auto`); Linux still uses `-n auto --dist loadfile` for parallel coverage.
 
-### UX and Visual System
-- Unified color-system rules and refreshed docs.
-- Implemented the light-theme color spec.
-- Polished analytics light theme and midgame review.
+## 2026-05-11
 
-### Detailed Progress
-- Added DRM-capable streaming playback and download tests.
-- Improved ffmpeg fallback and cookie download guidance.
-- Adapted shot panel to rally context.
-- Refined shot key pause behavior.
-- Polished dashboard analytics access and labels.
-- Implemented advanced analytics and reports.
-- Enhanced EPV bootstrap and scouting reports.
-- Refined analytics visuals and doubles dashboard.
-- Aligned private docs and validation layout.
-- Unified color system and refreshed docs.
-- Added filter-aware analytics and license documents.
-- Polished light theme readability and match round labels.
-- Implemented match day workflow and set summary.
-- Improved desktop startup flow.
-- Added quick start workflow and hardened desktop launch.
-- Improved annotation flow and interval handling.
-- Completed P1 / P2 / P4 annotation and desktop workflow.
-- Added TrackNet automation and settings sync.
-- Implemented stage 1 sharing and live collaboration.
-- Implemented color spec v1 light theme rules.
-- Polished analytics light theme and midgame review.
-- Implemented analytics review phases 1 to 3.
-- Improved annotator court flow and doubles sharing.
-- Refined match setup and documented annotation flow.
+### Mobile Layout Stabilization + Conditions Tier-4 Admin Fix + Round 258 Final State Defense (R35-R41)
 
-## 2026-04-05
+A mix of UI-layer fixes for the new mobile flows, a regression unblock on the conditions router, and the closing rounds of the Round 258 deep defense pass.
 
-### Repository Setup
-- Created the repository and initial ShuttleScope codebase.
-- Added the repository-level Claude guidance file.
-- Ignored local player / match database artifacts so local work would not pollute version control.
+- **Mobile global guards triage** (`fix(mobile): triage global guards so pages don't squish into vertical text`): pages that lacked `min-width: 0` on flex children were squishing labels into vertical character columns on phone widths. Added per-page minimum-width guards and pill-nowrap rules. Separate follow-up (`specific badge / pill / confidence overflow fixes`) cleans up badge / confidence widget overflow.
+- **R47-style admin demotion removed from `resolve_role`** (`stop silently downgrading admin to analyst in resolve_role`): the previous behavior demoted JWT/X-Role admin to analyst before passing into `_serialize`. With `ROLE_MAX_TIER=4` admins ended up reading only Tier 1, which broke the dashboard scatter / top-profile views. Removed the demotion; admin keeps Tier 4. `test_conditions.test_post_and_get_roundtrip` was updated in the 2026-05-14 dep-bump pass to match.
+- **Player self-view** (`allow self-viewing player to see own analytics`): a `player` who logged in as their own player_id (Phase A linkage) was being treated as a generic "player" role for conditions visibility. Now their `ctx.player_id == target.player_id` is recognized and they see their own analytics.
+- **Frontend: scrub URL hash on logout** (`fix(security): scrub URL hash on logout so protected paths aren't leaked`): logging out at `/dashboard/research/...` left the hash in the URL bar; if the next user shoulder-surfed they could see the restricted path. Logout now sets `location.hash = ''`.
+- **Bundle-endpoint UI unblock** (`unblock per-card fetches while bundle endpoint is still loading`): cards were waiting for the spine/bundle response and blanked out for 1-2s on slow links. Per-card fetches now run in parallel; the spine merge happens when it arrives.
+- **Tor exit list load at startup** (`load Tor exit list at startup so cf_ban_policy.is_tor_exit() works`): the policy module was loading the list lazily but only on first call from a single coroutine, so subsequent callers raced. Moved to startup pre-load.
+- **Allowlist for firewall-action escalation path** (`feat: add allowlist for the firewall-action escalation path`): the canary auto-ban pipeline now honors an `SS_BAN_ALLOWLIST_*` config (IP + custom HTTP header) so testing infrastructure isn't accidentally banned during a security drill.
+- **Routing: monitored sink paths bypass global auth gate** (`fix(routing): allow specific monitored sink paths through global auth gate`): `decoy_maze` / `csp_report` / honeypot sinks must accept anonymous traffic to actually catch attackers — they were briefly being 401'd by the global gate after a route-order regression.
+- **Operator scripts polish** (`admin UI polish, operator scripts, traffic pattern aggregator`): admin UI cleanup and a traffic-pattern aggregator script for after-action review.
+- **Migrations: savepoint for guarded REVOKE statements** (`fix(migration): use savepoint for guarded REVOKE statements in 0028`): in migration 0028 (role lockdown) some REVOKE statements fail when the function being revoked doesn't exist on the local PG version. Each REVOKE is now wrapped in a SAVEPOINT so one missing function doesn't roll back the whole migration.
+- **CF cleanup script auto-loads `.env`** (`auto-load .env in CF cleanup script`): the standalone `cleanup_cf_expired_rules.py` wasn't reading the same `.env` as the API, so credentials had to be exported manually. Now imports the same loader.
+- **Round 258 R35-R41 — closing rounds.** The continuation of the R9-R34 sweep (described under 2026-05-10) closed the final regression / hardening backlog:
+  - R35.1: hotfix R35 test regression on analyst tier-1 expected field.
+  - R36 / R36.1: sync remaining test assertions to new secure ABC+α behavior + fix R36's own assertion drift against the actual implementation semantics.
+  - R37: Windows CI 60-min hang on WS threading tests fixed by skipping the offending tests on Windows only.
+  - R37.1: skip the last `WebSocketDisconnect inside lifespan` test on Windows.
+  - R37.2: Linux CI hang fix (test_turnstile network call needed a timeout method to bound execution).
+  - R38: `/api/csp_report` multi-layer hardening (defense-in-depth: size cap + content-type + rate-limit + per-IP daily budget).
+  - R39: closed Codex review F-001 through F-008.
+  - R40 + R41: state-level defense build-out — PostgreSQL hardening + the canary subsystem.
+- **`chore: admin UI polish` + `chore: misc backend cleanup and compatibility shims`** — assorted no-functional-change cleanup pulled together at the end of the day.
 
-### First Substantial Feature Foundation
-- Added an advanced analysis dashboard and support scripts very early in the repository lifetime, which set the tone for ShuttleScope as more than a minimal tagger.
+## 2026-05-13
 
-### Detailed Progress
-- Initial commit.
-- Ignored local player and match databases.
-- Added repository Claude guide.
-- Added advanced analysis dashboard and support scripts.
+### Mobile Annotation Scaffold (Pass 1 / 2 / 3)
 
-## Notes
+First end-to-end iteration of the new mobile annotation surface targeting iPhone Safari for the Resonac badminton team beta. Scaffolded over a single day in seven incremental commits.
 
-- This changelog is intentionally detailed because the project has been evolving quickly and the accumulated work matters.
-- It is still higher-level than raw commit history; validation docs remain the best place for issue-specific detail.
-- Local-only planning notes remain in `private_docs/` and are not committed.
+- **Scaffold** (`scaffold mobile annotation page`): `/m/annotate/:matchId` route + `MobileAnnotatePage` + portrait `LandscapeGuard` overlay that prompts the user to rotate the device. Mobile/desktop split is by viewport width (< 768px) so coach/analyst that accidentally opens on phone also gets the touch UI.
+- **IndexedDB offline queue** (`add IndexedDB-backed offline queue for per-input save`): every per-input save (`enqueue('POST /api/rallies', ...)`, stroke updates, etc.) goes through a local IndexedDB queue with X-Idempotency-Key on each request, exponential backoff, and a per-failure cap before flipping into `manualRetry` state. UI surfaces pending / retry counts in the top-left chip cluster.
+- **Play mode** (`play mode (video stream + bottom controls + crop region)`): video stream via `/api/v1/uploads/video/by_match/{id}/stream?token=...` (browser-friendly query-param auth). Bottom controls: ◀◀5 / ◀1 / ▶❚❚ / 1▶ / 5▶ + scrub slider + 0.5/1/1.5/2x. Crop region (Scissors) editable via touch drag, persisted to `localStorage` per-match.
+- **Annotate overlay with 9-zone snap and touch magnifier** (`annotate overlay with 9-zone snap and touch magnifier`): tap to annotate, magnifier circle for sub-zone precision, snap to court 9-zone grid.
+- **Pass 1: rally scoring UI** — two oversized A / B buttons; server / score auto-computed from previous rally; deuce / set-end banner. Submit enqueues `POST /api/rallies` and returns to play mode for the next rally.
+- **Pass 2: four-step serve / final stroke entry** — picker shows recent rallies, then steps through `service direction → return direction → final hitter → final-stroke land_zone`.
+- **Pass 3: per-stroke shot type entry** — picker → per-stroke type entry, server queues `PUT /api/strokes/{id}` updates.
+- **Security: escape user-controlled path before reflecting into HTML** — CodeQL `js/reflected-xss` in the (separate) `decoy_maze` deception layer fixed; reflected `path` now `escape()`-encoded before HTML interpolation.
+
+## 2026-05-14
+
+### Mobile Annotation: Beta Polish + CV Overlay + Video Variants
+
+Heavy iteration on the mobile annotation surface based on iPhone Safari + PWA testing, plus the new video-quality variant pipeline and a security-tool addition pass.
+
+- **Full-bleed video + overlay-style controls** (`fix(mobile-annot): full-bleed video + overlay controls (1/3-width bug)`). The previous header bar + footer flex layout consumed ~25-30% of vertical space and `object-fit: contain` letterboxed the badminton video into ~1/3 of the iPhone landscape width. `PlayMode` now uses `absolute inset-0` for the video container with overlay-style controls; pass switcher chips moved to a right-center vertical strip so they don't steal video width. Back / match-id / queue chips collapse into a top-left cluster.
+- **Theme-aware overlay chips.** Overlay buttons originally used dark blue accents on dark backgrounds (violating the house dark/light color spec and the `feedback_color_contrast` rule against dark text on dark backgrounds). Introduced `.ss-overlay-chip` / `.ss-overlay-chip-accent` / `.ss-overlay-chip-warning` / `.ss-overlay-chip-danger` utility classes in `globals.css` that swap `bg` / `color` based on `html[data-theme="light"]`. All mobile overlays migrated.
+- **Fullscreen takes the whole UI, not the iOS native player.** `videoRef.webkitEnterFullscreen()` flipped to the iOS native video player and stripped every React overlay (court grid, CV chips, A/B buttons). Replaced with `document.documentElement.requestFullscreen()` on Desktop / Android Chrome; iOS Safari (which has no `requestFullscreen` on non-`<video>` elements) shows a one-time `Add-to-Home-Screen` hint since that's the only iOS path to true URL-bar-free fullscreen with React overlays alive.
+- **Landscape prompt + iconography contrast.** Portrait-orientation guard's icons and text rendered dark on a dark background on production despite `text-white` in source (likely cache / dark-mode-variable override). Switched to inline `style={{ color: '#ffffff', stroke: '#ffffff' }}` to force white regardless of CSS cascade.
+- **CV overlay (court / shuttle / players) and timeline markers.** `MobileCVOverlay` orchestrates three read-only layers reusing the desktop components:
+  - 18-cell court grid (SVG) from `/matches/{id}/court_calibration` + shared `court-calib-{matchId}` localStorage with the desktop annotator
+  - shuttle trajectory canvas (±2s trail) from `/api/tracknet/shuttle_track/{match_id}`
+  - YOLO player bboxes (±1.5s) from `/api/yolo/results/{match_id}` (default OFF — bbox can obscure on small screens)
+  PlayMode top-right gains 3 toggle chips (`Grid3x3` / `Target` / `Users`). The bottom seek bar wears amber dots at each CV stroke-candidate timestamp (`/cv-candidates/{matchId}`) — tap = `video.currentTime` jump. `Pass1RallyEnd` accepts an optional `cvHint` (suggested winner + confidence%) and renders a `CV NN%` badge on the recommended A/B side. Final confirmation still requires a tap; no autofill.
+- **Video variant pipeline (4K / 1080p / 720p).** New `backend/services/video_variants.py` post-processes uploaded videos into smaller variants for mobile delivery while keeping the raw source for the analysis pipeline. Designed conservatively:
+  - **No upscale ever**: `decide_variants` only generates `q` when `src.height > target_h`. e.g., a 480p source produces zero variants (zero CPU, zero disk).
+  - **Source-pixel cap**: sources larger than 8192×4320 (~35 megapixels, 8K) skip the variant phase entirely to avoid pathological ffmpeg memory blow-up.
+  - **Atomic write**: ffmpeg writes to `{name}.mp4.tmp`, then `os.replace()` renames in place. The stream endpoint never serves a half-written variant.
+  - **Idempotent enqueue**: `jobs.enqueue()` checks for existing `queued|running` `(match_id, job_type)` rows so double finalize / DL hooks don't stack jobs.
+  - **YouTube DL cap**: `DownloadRequest.quality` is now a `pattern=^(360|480|720|1080|1440|2160|best)$` whitelist and the `/matches/{id}/download/status` poll re-probes the downloaded file, deleting and returning 413 if `> 2160p` slipped through yt-dlp's format selector.
+  - **PATH resolution under Windows service**: `shutil.which("ffprobe")` returns `None` in SYSTEM service context because WinGet Links is not in SYSTEM PATH; service-aware `_resolve_bin()` falls back to known install locations.
+- **Quality picker UI**: `getMobileVideoSrc(match, quality)` appends `&quality=<q>` to the stream URL. PlayMode renders an extra chip row for each ready variant (`source` / `4K` / `1080p` / `720p`); not-ready (generating) appears at 50% opacity. `available_qualities` is part of the standard `match_to_dict` response.
+- **`Settings.extra = "ignore"`.** After the dependency bumps (next bullet) pydantic 2.x started enforcing `extra="forbid"` strictly. Production `.env` legitimately holds `vite_ss_turnstile_site_key` / `ss_cf_ban_token` / `ss_ban_allowlist_*` / `ss_tor_exit_list_path` / `ss_db_migration_url` that `Settings` doesn't declare. Switched to `extra="ignore"` so the backend boots; declared fields keep their type-safety.
+- **Dependabot + Gitleaks + Semgrep + pip-audit + Trivy added.** Defense-in-depth on top of the existing Bandit / CodeQL / DevSkim / OSV / Scorecard / Defender for DevOps stack:
+  - Dependabot: weekly grouped minor/patch PRs for pip (backend + worker) / npm / github-actions, plus individual PRs for major bumps (config tuned after the first run produced a 28-pkg grouped PR that bundled React 18→19, Tailwind 3→4, Electron 39→42)
+  - Gitleaks: full-history secret scan every push + weekly
+  - Semgrep: SAST with `p/default + p/python + p/react + p/typescript + p/owasp-top-ten`
+  - pip-audit: PyPA advisory DB (broader than OSV for Python)
+  - Trivy filesystem: IaC + secrets + misconfig (covers `infra/cloudflared/`, PM2 ecosystem, `cluster.config.yaml`)
+- **Dependency bumps (25 merged, 3 closed).** Bumped Python 3.10 → 3.11 to satisfy newer scipy / pandas wheels. Merged ~25 individual + grouped bumps including `react-router-dom 6→7`, `vitest 3→4`, `tailwind-merge 2→3`, `eslint 8→10`, `react-i18next 14→17`, `numpy 1→2`, `pandas 2→3`, `openvino`, plus minor/patch groups. Closed 3 PRs that needed coordinated peer-dep bumps (`react 18→19` needed `@testing-library/react 14→16`, `vite 7→8` needed `electron-vite 5→6`, `@vitejs/plugin-react 5→6` needed paired vitest peer update).
+- **`crypto.getRandomValues` fallback in `mobileAnnotateQueue.newClientUuid`.** CodeQL `js/insecure-randomness` flagged the `Math.random()` fallback in the UUID v4 generator. Replaced with `crypto.getRandomValues` (CSPRNG) plus RFC4122 v4 version/variant bit fix-up.
+- **`test_conditions` aligned with R47 admin Tier 4 access.** The test was asserting `general_comment` should be absent on GET (assuming the old admin → analyst demotion); R47 had removed that demotion deliberately. Test updated to expect `general_comment` present for admin.
+
+## 2026-05-15
+
+### Mobile Annotation Hardening + Supply-Chain Pin
+
+A polish + safety pass on the new mobile annotation UI and the surrounding CI surface.
+
+- **PlayMode stays mounted across pass switches.** Tapping `A` / `B` in `Pass1RallyEnd` used to flip `screen='play' <-> 'annotate'`, which conditionally rendered `PlayMode` and forced the `<video>` element to remount each time — `currentTime` reset to 0 on every rally submit, making real annotation impossible. Restructured: `PlayMode` is always mounted; `Pass1` / `Pass2` / `Pass3` render as `absolute z-40` overlays on top. The video element keeps its `src`, `currentTime`, and play state across submits.
+- **Quality switch preserves seek + play state.** Switching 720p ↔ 1080p (`videoSrc` changes) used to re-load the video from 0s. A `pendingResume` ref now captures `currentTime` + `wasPlaying` on `videoSrc` change, then restores on the new src's `loadedmetadata` — with a `duration` clamp in case the variant length differs from the source.
+- **"Resume from last rally" chip.** PlayMode now shows a `▶ M:SS から再開` overlay chip when existing rallies (server + local queue) put the most recent `video_timestamp_end` more than 3s away from the current playback position. Tap = seek. The rally / score state itself was already resuming via `mergedRallies`; this fills in the missing video-position step.
+- **`object-fit: contain` default (short-side basis).** Mobile annotate used to default to `cover`, which on landscape iPhone cropped the top/bottom of the badminton frame and hid where the shuttle landed. Default is now `contain` (letterboxed, no crop). The Square toggle still flips to `cover` for users who want full-screen fill.
+- **PWA standalone safe-area.** Add-to-Home iPhone mode hid the `試合登録` button under the iOS status bar (~47px overlay) and pushed the mobile bottom nav under the home indicator (~34px), squeezing nav content to ~22px usable. New `.ss-main-shell` utility uses `env(safe-area-inset-top/bottom)` on the main wrapper; bottom nav switches to `min-height: calc(56px + env(safe-area-inset-bottom))` so its 56px content area is preserved.
+- **Defense-in-depth path jail on variant streaming.** `stream_video_for_match` originally derived the variant path from `upload_id` parsed out of DB `Match.video_local_path`. `upload_id` is server-generated UUID in normal writers (upload finalize / yt-dlp / archiver), but the stream code now explicitly rejects `/` `\` `..` in the parsed id and runs `safe_path()` on the resolved variant path. Closes the CodeQL `py/path-injection` family on this endpoint.
+- **Manual variant regeneration endpoint.** `POST /matches/{id}/regenerate_variants` (admin / analyst / coach) enqueues a `video_variant` job for an existing match. Idempotent via `jobs.enqueue` dedup on `(match_id, job_type)` for `queued|running`. Used to fill in variants for matches uploaded before the variant pipeline existed.
+- **Supply-chain: all GitHub Actions pinned to commit SHA.** Triggered by the OpenSSF Scorecard `PinnedDependenciesID` review and the March-2025 `tj-actions/changed-files` incident as motivation. The newly added `gitleaks` / `semgrep` / `pip-audit` / `trivy` workflows had `@v6` / `@v0.36.0` / `@v1.1.0` tag references that could be re-pointed by an action maintainer compromise. All 8 references switched to 40-char SHA with the version kept as a trailing comment so Dependabot still groups bumps by semver.
+- **CI permissions: top-level write removed.** `trivy.yml` and `semgrep.yml` had `permissions: { contents: read, security-events: write }` at the top level. Moved `security-events: write` down to job level (`permissions: {}` at top, declared on each job) so other steps that don't upload SARIF run with no write permissions at all. Aligns with the existing `bandit.yml` pattern.
+- **Code-scanning triage pass.** Confirmed 0 actionable open alerts after a rule-by-rule audit:
+  - `B110/B112` defensive `try/except` patterns in migrations, JWT legacy parse, env-var loaders — sample-verified, batch-dismissed
+  - `B501/B507/B601` SSH AutoAddPolicy + paramiko shell + `requests verify=False` — intentional for cluster bootstrap, hardcoded literal commands, F-001 canary MITM gate
+  - `B608` SQLAlchemy `text()` with f-string — hardcoded table list in one-shot migration, `nosec`-annotated allow-list in field rotation, hardcoded cascade tuple in match delete
+  - `B613` + `contains-bidirectional-characters` — BIDI Unicode codepoints declared in validator sets (defensive sanitization for filename / annotation text), not exploit payloads
+  - `detect-insecure-websocket` — match was on Japanese comment string `ws://localhost:8765`; actual code uses `wsProto = isHttps ? 'wss' : 'ws'`
+  - TLS-laxity rules on `scripts/security_ci/` — TLS attack-test fixtures, weak settings are the test design
+  - `python.lang.security.audit.logging.logger-credential-leak` — log statements emit `user_id` / `jti` / metadata only; token values are hashed before any persist
+  - `wildcard-cors` — `allow_credentials=False` makes wildcard origin acceptable for public API surface
+  - `pickles-in-pytorch` — `torch.load` on bundled first-party model weights, not user uploads
+
+## 2026-05-16
+
+### Mobile Annotation: Calibration Editor + CV Overlay Crop
+
+In-browser court calibration editor (tap-to-place + drag), wired to trigger TrackNet / YOLO batch directly from the mobile annotate flow. Crop transform now applied consistently to grid / shuttle / bbox overlays so calib coords match what the user sees. Material Symbols font subset reduced 3.8 MB → 232 KB; iOS native play overlay suppressed; `video pointer-events:none` while calibrating to stop swallowed taps. Finger loupe added to calib; `preserveAspectRatio=none` removed; explicit `viewBox` added on calib + CV overlay SVGs. Document-level capture `touchstart` added to debug lost taps; canvas snapshot + force `screen=play` + on-screen diag for iOS layer-leak triage; full video unmount during calib to defeat the iOS layer leak.
+
+### Pass-Switch + Quality-Preserve UX
+
+Set-1 button + quality seek preserve + CV data hints; PlayMode state kept across orientation; CV job visibility + chip readability; right-top tools / Pass switch / back stay tappable over the Pass1 overlay (z-order fix); TDZ fix where `resumeFromSec` `useMemo` ran before `mergedRallies` was declared.
+
+### Diagnostics + CSP + Path-Injection
+
+White-screen on `/m/annotate` now shows an error banner instead of silent crash; error reporter inlined in `index.html` with no-cache headers; externalized to `/error-reporter.js` so CSP `script-src 'self'` is satisfied; SPA serves root-public static files (`error-reporter.js`, `favicon.png`) before the SPA redirect; build-tag chip added to verify the reporter actually loaded; `AbortError` noise from video remount suppressed; `__ss_error_bar__` switched to `pointer-events:none` because it was stealing taps. `MIcon` import miss + font load timeout + ignore `Script error` noise + auto-play. Hardcoded whitelist replacing user-controlled root-public path (CodeQL `py/path-injection` 2374). `extra=forbid` on `StartRequest` (`youtube_live`, R271 schema hygiene).
+
+### Icon Regulation + Dep Revert
+
+Emoji / Unicode glyphs → `MIcon` everywhere across the mobile annotate path; grey text → white per the color-contrast rule. `calib` UX rework keeps the video visible with end-aligned icons + font race fix + spinner + 保存#fff. CV chip safe-area / existing-job rescue / PWA-aware FS. Reverted `react-router-dom` 7 / `i18next` 26 / `react-i18next` 17 back to v6.x / v23 / v14 after upstream peer-dep churn.
+
+## 2026-05-17
+
+### Player-Safe Dashboard + Body-Composition Consent
+
+Player role now gets `/dashboard` with safe tabs only (not a placeholder). `prediction` / `dashboard-research` / `expert` tabs are explicitly hidden from the player role. Player-safe Analysis page + UMP mobile-scroll + Settings username view added. New per-player body-composition disclosure consent surface allows analysts / coaches to view the data only after explicit grant.
+
+### Mobile Calibration Hardening
+
+Pixel-explicit SVG size + cover-aware loupe so the magnifier aligns with the snapshot canvas; cover-fit baked into the snapshot itself. Video kept mounted across calib open/close (`preload=auto`, no reload on close). Grid `videoTransform` revert + harden set-1 prompt + DevSkim CI. Drop unsupported DevSkim flag `--exit-code-on-recommendation`.
+
+### Misc Polish
+
+`MatchListPage` gains page-level scroll so the list shows in landscape phone. Mobile preload reverted from `auto` where it caused an iOS UI freeze; set-1 `ensureSet` feedback. Shared badminton rules util + mobile resume + match-end UI. iOS Script-error suppression + Sample Team placeholder + green ✓ contrast fix. Mobile annotate confirms back-nav + shows past-analysis badge.
+
+## 2026-05-18
+
+### Terms of Service v1.3 — security, analytics, and minor-user scope
+
+Same v1.3 cycle also adds three further sections beyond the §9 availability
+rewrite:
+
+- **§18 Security Practices and Data-Breach Disclaimer.** Enumerates the
+  controls actually in place (TLS, RBAC, CodeQL/Semgrep/Bandit/DevSkim/
+  Gitleaks/Trivy/OSV/Defender scans, adversarial test loops, rate-limit
+  and lockout, audit logs, filesystem-level at-rest protection of backups).
+  Then explicitly states no absolute security warranty: zero-days,
+  quantum-class cryptographic breakthroughs, supply-chain compromise,
+  hardware fault injection, social engineering, and lawful/unlawful
+  state-level access are out of scope. Breach notification commitment
+  ties back to PRIVACY.md Art IX + GDPR 33 / APPI 26. User-side
+  responsibilities (credential hygiene, MFA, device safety) carved out.
+  Security-incident liability is folded under the §11 cap, no separate
+  uplift.
+- **§19 Analytical Output Disclaimer.** EPV / win-rate / Hooper /
+  validity / heatmap / CV tracks are statistical inferences, not
+  guarantees. Not medical, not legal, not a replacement for coaching.
+  No outcome guarantee.
+- **§20 Account Security and Minor Users.** Credential responsibility;
+  documented guardian consent required for minors (junior badminton
+  players); deletion timeline ties to consent form + PRIVACY.md.
+
+### Terms of Service v1.3 — explicit SLA disclaimer
+
+Reworked TERMS_OF_SERVICE.md §9 (previously a single "No Guarantee of
+Availability" paragraph) into a full availability disclaimer block:
+
+- §9.1 No Service Level Guarantee — no uptime / latency / RTO commitment.
+- §9.2 Operational Topology Disclosure — single-operator self-hosted setup
+  in the developer's residence; no 24/7 ops team, no geo-redundancy, no
+  third-party hosting provider.
+- §9.3 Power, Network, and Force Majeure Events — UPS is sized for ~3 min
+  runtime; anything beyond that (utility outage, brownout, grid loss) is
+  force majeure and not the developer's responsibility. Same exclusion for
+  ISP, CDN, DNS, CA, and natural-disaster events.
+- §9.4 Recovery — Best Effort Only — restoration is commercially reasonable
+  best-effort, never a binding commitment.
+- §9.5 Planned Absences and Extended Unavailability — names the obvious
+  cases (weekends, public holidays, New Year, Golden Week, Obon, year-end,
+  illness, travel) and tells users to keep their own backups.
+- §9.6 Maintenance Windows — service may go offline at any time, with or
+  without advance notice, for security/integrity reasons.
+- §9.7 No Guarantee of Availability (General) — retained as a catch-all.
+
+Backend `CURRENT_TERMS_VERSION` bumped 1.2 → 1.3. Existing consent rows
+remain in the DB; new consent submissions will require terms_version=1.3,
+which triggers the standard re-consent flow.
+
+## 2026-05-19
+
+### Design Language v1.1 + v1.2 (Grayscale-First POC)
+
+First public iteration of the new design language, focused on a grayscale-first analytical surface with color reserved for meaning, not decoration. `CoachSummaryStrip` ships as the v1.1 POC; v1.2 kills same-hue bg+text combinations and WCAG-fail badges across `FlashAdvicePanel`, `RallyClipNavigator`, `IntervalReport`, `RecommendationRanking`. Left-stripe accent bars removed wholesale. Dashboard `StatCard`s + role badges respect light mode; coolwarm middle is white; prediction sample gate added. `useTheme` now broadcasts toggles to all consumers. Sweeping pass cleans up same-hue bg+text violations across `analysis/`, `annotator/`, `settings/` and the `AnnotatorPage` + `Notice` decorative palette.
+
+### Dark/Light Mode Bleed Fixes
+
+`ResearchNotice` no longer leaks `amber-50` background into dark mode. `DashboardAdvancedPage` override banner reduced to a neutral bg + amber-text-only treatment. Dark-mode logo band fixed.
+
+### Server-Derived Advice + Reports
+
+`AdviceStrip` (server-derived) rolled out to six contexts. Reports gain comprehensive PDF + complete JSON export endpoints.
+
+### Telemetry + Tutorial Framework
+
+Product telemetry, an admin analytics tab, and a tutorial framework landed. Telemetry instrumentation extended with minor-aware registration; a `.bat` wrapper added for the `ShuttleScope-TelemetryPartition` scheduled task.
+
+### Consent + Account UX
+
+Re-grant button after consent withdrawal; team selector for admin; exit links on the onboarding consent page (back to `shuttle-scope.com` / login). `display_name` edit now reflects in Settings → Account immediately. `NoDataMessage` gets an internal grace period; never show "データ不足" while a query is still resolving.
+
+## 2026-05-20
+
+### Telemetry, Tutorial, and Player-Safe Surfaces (continued)
+
+Wired `useAutoTutorial` onto annotation, dashboard, mobile calib, and body-disclosure surfaces so the new engine actually fires. Audit-log page improvements: ID column, IP filter, action dropdown, and a limit cap raised to 5000; ship a spam-purge SQL helper. Removed the sidebar role badge.
+
+### Observability + Infra Supervisors (R44 round 1)
+
+Added request-level + security-event observability with a dedicated Security monitoring page (separate from the audit log). `SecurityEvent.details` JSON adapter fixed. Production frontend now sits behind an nginx reverse proxy; full nginx access log is ingested into `request_logs` (source-tagged) and shipped to close the DB observability gap. A Ray-head supervisor starts on backend boot/restart, captures `error_logs`, and a `cloudflared` supervisor handles reboot + crash recovery.
+
+### Design Language Cleanup + ESLint Flat Config
+
+Color-blind safe categorical palette applied to condition + analysis charts (12-color mode-aware), with per-factor explanations. Four user-reported issues fixed: icon subset, tutorial button, season bias, bar semantics. `ScoreProgression` crash + `ConfidenceCalibration` unreadable badge fixed. `condition` tab gains an in-app glossary and input restricted to the logged-in user. Overview match list moved to the bottom; rally clip popup player + growth-point comparison added. Consent state made visually obvious with English translations. Enforceable ESLint flat config landed (team-grade guardrails); rules-of-hooks violations + LP theme icon fixed. Cross-platform CI fix.
+
+### Cleanup
+
+Local-only docs (cluster auth plan, tunnel steps, `docs/`, `private_docs/`) untracked. i18n leak fixes across dashboard / prediction / condition / advice.
+
+## 2026-05-21
+
+### Tutorial Engine + Demo Role
+
+A real tutorial engine lands: spotlight overlays, a pulsing red ring, and a "don't show again" preference. The annotator's `ShotType` panel + `HistoryStrip` and the annotator's `Mode` tabs get anchored steps with richer copy. A `demo` role is added so the tutorial can show read-only data without touching real records.
+
+### MatchListPage God-File Split
+
+Multi-step refactor extracting `PlayerCombobox`, `MatchCard` + `statusColor` util, and `MatchRow` out of `MatchListPage`. Conditional-hook violations elsewhere fixed and `rules-of-hooks` promoted to error. Self-hosted LP theme icon.
+
+### i18n Phase 2 + Standardization
+
+`MatchList` components, `DownloadOptionsModal`, `LineupOptimizerPanel`, `PairSimulationPanel`, `RallyClipNavigator`, `PlayerMovementCard` localized; the `eslint-i18next` config migrated to the v6 schema. Standardized `ユーザー` → `ユーザ` across the UI.
+
+### Deploy Script + Misc
+
+`deploy.ps1` path resolution fixed (script lives in `scripts/`, not the app root); UTF-8 BOM added so Windows PowerShell 5.1 parses it. `seed_demo.py` switched to raw docstrings to silence an invalid-escape warning.
+
+## 2026-05-22
+
+### i18n Mass Migration: Analysis Directory to Zero
+
+A 30-commit mechanical-plus-manual i18n burndown. A fixed codemod handled ~154 strings across 35 files in one pass; the remaining strings were migrated component by component: `CounterfactualShots`, `GrowthJudgmentCard`, `MatchScoreBand`, `StateActionValueCard`, `HumanForecastPanel`, `PredictionDriversBlock`, `ShotInfluenceV2Card`, `StateEPVCard`, `ZoneMapModal`, `ConfidenceCalibration`, `MarkovEPV`, `PairSynergyCard`, `RallyLengthWinRate`, `PrematchStatCard`, `RallyPickerModal`, `PreMatchObservationAnalytics`, `BayesMatchupCard`, `SetComparison`, `PressurePerformance`, `MatchNarrativeCard`, `TransitionMatrix`, `ShotWinLoss`, `GrowthTimeline`, `YoloCVPositionCard`, `CounterfactualV2Card`, `AnalystDepthPanel`, `OpponentPolicyCard`, `HazardFatigueCard`, `DoublesRoleCard`, `RolePicker`, `QuickSummaryCard`, `PromotionStatusCard`, `ScoreProgression`. Shared count-suffix keys were factored across analysis cards (16 strings). The `analysis/` dir hit zero hardcoded strings.
+
+### Tutorial + Security Hardening
+
+Tutorial spotlight coverage expanded across key screens. Code-scanning findings hardened: a clear-text password log path removed, SQL key paths put behind an allowlist. CI fix to revert an over-eager codemod edit to a test file; codemod now skips tests. Test files exempted from `no-literal-string` to keep i18n linting practical.
+
+## 2026-05-23
+
+### Insights Chat + LLM Harness
+
+First end-to-end pass on the conversational analysis surface. `chat` introduces a rule-based JP/EN period extractor and a session-persistent scope system (slot extraction with composer chips) so an analyst can ask "先月の試合" / "last month" and have the period bind to subsequent turns. Backend adds `ChatSession` / `ChatMessage` models, an Alembic migration, and an `insights_chat` router. The `insights` package gains a `NvidiaNimGenerator` (OpenAI-compatible NIM, behind the safety harness) plus a `HarnessedGenerator` that wires validators, prompt templates, a token budget, and an audit log; a compact `player_summary` service and `/api/export/period` (with `date_from` / `date_to` + section filters, Slice Z) feed it. The `advice-chat` hook + minimal panel mounts at the top of the Research tab with typewriter output, empty-state chips, a gradient header, a11y wiring, and mobile polish.
+
+### Tutorial Engine: Force-Attention + Localization
+
+Tutorial coverage expands across the app: per-card walkthrough on the analysis-reading tour, per-button spotlight on mobile annotation passes, a new settings tour with auto-trigger and demo polish, force-attention UX (4-frame blocker, ripple, bounce pointer, step badge), and step content localized in `ja` / `en` with keyboard / progress / arrow controls and a demo chip.
+
+### Live Coach Dashboard + Admin Peer Compare
+
+`live` coach dashboard gains an anomaly banner, interval suggestions, and a bench-mode view. `research` adds admin-only peer comparison with k-anonymity `N>=5`, demo accounts excluded, and audit logging. `insights` adds a pluggable Growth Snapshot frame (template now, LLM-ready hand-off later).
+
+### i18n Burndown to Zero + Lint Cleanup
+
+Final i18n sweep across ~40 components/pages: `MobileAnnotatePage`, `AnnotatorPage`, `SettingsPage`, the mobile annotate sub-passes (`PlayMode`, `MobileCVOverlay`, `Pass1RallyEnd`, `Pass2ServeFinal`, `Pass3ShotDetail`, `MobileCourtCalib`), team / user / match management pages, viewer / condition / dashboard / account / camera overlays, `ClusterSettingsPanel`, `DeviceManagerPanel`, `StreamingDownloadPanel`, and several video/overlay components. `Pass1` and `Pass2` also picked up `useTranslation` hooks to fix latent undefined-`t` references. `en.json` backfilled for keys that previously existed only in `ja.json`. Lint cleanup: `react-hooks/exhaustive-deps`, `any → unknown`, `no-unused-vars`, `no-console`.
+
+## 2026-05-24
+
+### Retraction of inflated shuttle-detection metrics
+
+The CV pipeline runbook (`docs/operations/cv_pipeline_runbook.md`) had been claiming WASB INT8 detection rates of "87.1% on muroya / cross-video median 100%". A 12-sample visual audit on the same muroya footage confirmed that **only 2/12 INT8 marks (~17%) and 1/12 FP16 marks (~8%) actually landed on the shuttle**; the rest were sitting on uniform highlights and net-post pixels. The published numbers were therefore 5-6× overstated, and the remaining "visible" frames were false positives rather than detections.
+
+Root causes:
+- WASB consumes a 512×288 input. On 1080p footage the shuttle is only 3-5 px after the resize, sub-pixel for many frames, and loses to brighter clothing or pole highlights when WASB picks the heatmap argmax.
+- INT8 quantization saturates the peak further. The `conf>=0.5` threshold passes more frames, but they are not real detections.
+- The TensorRT INT8 EP failed to load `DequantizeLayer` and silently fell back to the CUDA EP, so the "INT8 speedup" benefit was already partially illusory.
+
+Short-term actions (started today):
+- Added a retraction banner at the top of `docs/operations/cv_pipeline_runbook.md`.
+- Began removing the detection-rate % surfaces from the UI.
+
+Medium-term follow-ups (separate tasks):
+- Quality-gate the `visible` flag (peak sharpness + motion consistency + uni-modal heatmap).
+- Tile inference (3×2 overlapping crops at 512×288) to lift the effective resolution 2-3×.
+
+Lesson: a single "N% detection" scalar is ambiguous about what it measures. From here on we report both `frames-with-shuttle-marked / total` and `frames-where-mark-overlaps-ground-truth / total`, and gate any release on a visual audit step.
+
