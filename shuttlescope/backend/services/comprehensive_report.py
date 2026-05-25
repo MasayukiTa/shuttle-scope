@@ -99,44 +99,53 @@ def gather_player_report(
         tournament_level=tournament_level,
         date_from=date_from, date_to=date_to, db=db,
     )
+    # 2026-05-25: ルート関数は `Optional = Query(None)` を default に持つので、
+    #   FastAPI request 経由でないと値が fastapi.params.Query のまま残り、
+    #   後段で truthy 扱いされて SQL に Query オブジェクトが混入する。
+    #   全 named args を明示的に None 渡しすること (省略しない)。
+    _common = dict(
+        result=None,
+        tournament_level=tournament_level,
+        date_from=date_from,
+        date_to=date_to,
+    )
     sections["heatmap_hit"] = _safe_call(
         "heatmap_hit", get_heatmap,
         player_id=player_id, type="hit",
-        match_id=None, match_ids=None, db=db,
+        match_id=None, match_ids=None, db=db, **_common,
     )
     sections["heatmap_land"] = _safe_call(
         "heatmap_land", get_heatmap,
         player_id=player_id, type="land",
-        match_id=None, match_ids=None, db=db,
+        match_id=None, match_ids=None, db=db, **_common,
     )
     sections["shot_types"] = _safe_call(
         "shot_types", get_shot_types,
-        player_id=player_id,
-        match_id=None, match_ids=None, db=db,
+        player_id=player_id, db=db, **_common,
     )
     sections["shot_win_loss"] = _safe_call(
         "shot_win_loss", get_shot_win_loss,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
     sections["set_comparison"] = _safe_call(
         "set_comparison", get_set_comparison,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
     sections["first_return"] = _safe_call(
         "first_return", get_first_return_analysis,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
     sections["tournament_comparison"] = _safe_call(
         "tournament_comparison", get_tournament_level_comparison,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
     sections["pre_win_patterns"] = _safe_call(
         "pre_win_patterns", get_pre_win_patterns,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
     sections["pre_loss_patterns"] = _safe_call(
         "pre_loss_patterns", get_pre_loss_patterns,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
 
     # ── 2. Advanced (rally length / pressure / transition) ──────────
@@ -149,23 +158,24 @@ def gather_player_report(
     )
     sections["rally_length_winrate"] = _safe_call(
         "rally_length_winrate", get_rally_length_vs_winrate,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
     sections["pressure_performance"] = _safe_call(
         "pressure_performance", get_pressure_performance,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
     sections["shot_transition_matrix"] = _safe_call(
         "shot_transition_matrix", get_shot_transition_matrix,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
+    # opponent_stats は filter args を取らない
     sections["opponent_stats"] = _safe_call(
         "opponent_stats", get_opponent_stats,
         player_id=player_id, db=db,
     )
     sections["temporal_performance"] = _safe_call(
         "temporal_performance", get_temporal_performance,
-        player_id=player_id, db=db,
+        player_id=player_id, db=db, **_common,
     )
 
     # ── 3. Prediction (player には sanitize: 数値はぼかす) ──────────
@@ -174,9 +184,22 @@ def gather_player_report(
             get_match_preview,
             get_fatigue_risk,
         )
+        # get_fatigue_risk は FastAPI Request を要求する。直接呼びでは
+        # team-scope の get_auth(request) が失敗するため、最小限の Mock
+        # Request を組み立てる。loopback + role=admin として通す。
+        from starlette.requests import Request as _StarletteRequest
+        _fr_scope = {
+            "type": "http", "method": "GET", "path": "/api/predict/fatigue_risk",
+            "headers": [(b"x-role", b"admin"),
+                        (b"x-forwarded-for", b"127.0.0.1")],
+            "client": ("127.0.0.1", 0), "server": ("127.0.0.1", 8765),
+            "query_string": b"", "scheme": "http", "http_version": "1.1",
+            "raw_path": b"/api/predict/fatigue_risk", "root_path": "",
+        }
+        _fake_request = _StarletteRequest(_fr_scope)
         sections["fatigue_risk"] = _safe_call(
             "fatigue_risk", get_fatigue_risk,
-            player_id=player_id, tournament_level=None, db=db,
+            request=_fake_request, player_id=player_id, tournament_level=None, db=db,
         )
         # match_preview は対戦相手指定なので skip 可
 

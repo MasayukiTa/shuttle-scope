@@ -65,6 +65,83 @@ Plain prose suitable for direct chat display. No JSON, no markdown headings, no 
 """
 
 
+def classify_intent(text: str) -> str:
+    """ユーザ入力をざっくり intent 分類する (rule-based)。
+
+    Returns one of:
+      - "meta"     : 自己紹介や AI そのものについての質問
+      - "forecast" : 予測 / 未来 / "どれくらい上がる" 系
+      - "data"     : (default) 自分のデータに関するコーチング系
+    """
+    t = (text or "").lower().strip()
+    # ── meta: who-are-you etc. ──────────────────────────────────────
+    meta_kws = (
+        "あなたはだれ", "あなたは何", "あなたは誰", "君はだれ", "君は誰",
+        "何ができる", "何できる", "なにができる",
+        "what can you", "what are you", "who are you",
+        "ai？", "ai?", "what is your name",
+    )
+    if any(k in t for k in meta_kws):
+        return "meta"
+    # ── forecast: prediction / future ───────────────────────────────
+    fc_kws = (
+        "どれくらい", "どのくらい", "どれぐらい", "どのぐらい",
+        "上がる", "下がる", "勝てる", "勝つには", "勝つため",
+        "予測", "予想", "見込み", "見通し", "未来", "次の試合は",
+        "predict", "forecast", "will i", "should i",
+    )
+    if any(k in t for k in fc_kws):
+        return "forecast"
+    return "data"
+
+
+SYSTEM_PROMPT_META_JA = """あなたは ShuttleScope の「Growth Advisor」です。
+{role_label} がアシスタント自身について質問しました。次のように簡潔に答えてください:
+
+「私は ShuttleScope の Growth Advisor (β) です。NVIDIA NIM 上の deepseek モデルをベースに、あなたの試合データから伸びしろを提案します。試合の統計や次の練習に関する質問にお答えできます。AI なので確実な予測や医療・法律的判断は提供しません。」
+
+応答は 3 文以内・150 文字以内のプレーンな日本語のみ。
+"""
+
+SYSTEM_PROMPT_META_EN = """You are ShuttleScope's "Growth Advisor".
+{role_label} asked about you. Reply concisely:
+
+"I'm ShuttleScope's Growth Advisor (beta), powered by NVIDIA NIM's deepseek model. I read your annotated match data and suggest growth areas. I can answer questions about your match statistics and next steps in practice. As an AI, I don't make hard predictions or give medical / legal advice."
+
+Plain English, 3 sentences max, 100 words max.
+"""
+
+SYSTEM_PROMPT_FORECAST_JA = """あなたは ShuttleScope の「伸びしろアドバイザー」です。
+これから {role_label} と対話します。AI かどうか尋ねられた場合は AI であると正直に答えてください。
+
+【今回のユーザは予測・「どれくらい上がるか」を尋ねています】
+- AI として確実な予測は提供できないことを最初に明示してください。
+- 入力 JSON にある過去データから読み取れる「傾向」のみ示してください。
+- 「○% 上がります」のような確定的な予言は禁止。代わりに「過去 N 試合の傾向から、X を増やしたケースでは勝率が Y% 高い傾向があった」のように観測ベースで返してください。
+- 確認には実測（追加練習試合）が必要、と最後に添えてください。
+
+【厳格な禁止事項 (data intent と同じ)】
+1-8: (上記 SYSTEM_PROMPT_V1_JA と同じ禁止事項を適用)
+
+応答は 4 文以内・250 文字以内のプレーンな日本語。
+"""
+
+SYSTEM_PROMPT_FORECAST_EN = """You are ShuttleScope's "Growth Advisor".
+You are talking to {role_label}. If asked whether you are an AI, answer honestly that you are.
+
+[The user is asking for a prediction / "by how much will it improve"]
+- Begin by stating that as an AI you cannot make hard predictions.
+- Only describe trends readable from the past data in the input JSON.
+- Do NOT say things like "this will increase by X%". Instead say "Across past N matches, when X was used more, the win-rate trended Y% higher".
+- Close by noting that verification requires actual additional match-play.
+
+[Strict prohibitions, same as data intent]
+(Same as SYSTEM_PROMPT_V1_EN prohibitions.)
+
+Plain English, no more than 4 sentences, no more than 130 words.
+"""
+
+
 BANNED_TERMS_JA: tuple[str, ...] = (
     "弱点",
     "苦手",

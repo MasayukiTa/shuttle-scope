@@ -372,11 +372,14 @@ def send_chat_message(
             target_player_id=effective_target,
         )
         insight_ctx: InsightContext = {
-            "player_id": 0,
+            "player_id": effective_target if effective_target else 0,
             "period_days": 30,
             "analytics": analytics,
             "role": ctx.role,
             "lang": sess.lang,
+            # 2026-05-25: generator が user 入力を見て intent 分類する (meta /
+            # forecast / data) ため raw text を渡す。
+            "user_text": cleaned,  # type: ignore[typeddict-unknown-key]
         }
         try:
             result = get_generator().generate(insight_ctx)
