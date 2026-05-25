@@ -22,7 +22,7 @@
 - `PATCH /auth/teams/{id}` — admin（全チーム） / coach（自チームのみ）
 
 ### display_id 設計
-- 任意文字列を coach/admin が設定可（"Resonac" / "AAAAA" / 何でも可）
+- 任意文字列を coach/admin が設定可（"Org A" / "AAAAA" / 何でも可）
 - DB レベルで unique 制約のみ。表示名 `name` は重複可
 - 内部参照は常に `id` (int) / `uuid`
 

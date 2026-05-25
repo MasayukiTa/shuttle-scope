@@ -16,7 +16,7 @@ owner_team / 行レベル認可は本フェーズでは導入しない。後続 
 - 新規テーブル `teams`
   - `id` (PK, autoincrement)
   - `uuid` (unique, 同期用)
-  - `display_id` (unique, nullable) — coach/admin が任意で設定する公開識別子（"Resonac" や "AAAAA" など任意文字列）
+  - `display_id` (unique, nullable) — coach/admin が任意で設定する公開識別子（"Org A" や "AAAAA" など任意文字列）
   - `name` (表示名、重複可)
   - `short_name`, `notes`
   - `is_independent` (個人ユーザの「無所属」用 true)

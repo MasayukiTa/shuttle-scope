@@ -1287,7 +1287,7 @@ A mix of UI-layer fixes for the new mobile flows, a regression unblock on the co
 
 ### Mobile Annotation Scaffold (Pass 1 / 2 / 3)
 
-First end-to-end iteration of the new mobile annotation surface targeting iPhone Safari for the Resonac badminton team beta. Scaffolded over a single day in seven incremental commits.
+First end-to-end iteration of the new mobile annotation surface targeting iPhone Safari for the Org A badminton team beta. Scaffolded over a single day in seven incremental commits.
 
 - **Scaffold** (`scaffold mobile annotation page`): `/m/annotate/:matchId` route + `MobileAnnotatePage` + portrait `LandscapeGuard` overlay that prompts the user to rotate the device. Mobile/desktop split is by viewport width (< 768px) so coach/analyst that accidentally opens on phone also gets the touch UI.
 - **IndexedDB offline queue** (`add IndexedDB-backed offline queue for per-input save`): every per-input save (`enqueue('POST /api/rallies', ...)`, stroke updates, etc.) goes through a local IndexedDB queue with X-Idempotency-Key on each request, exponential backoff, and a per-failure cap before flipping into `manualRetry` state. UI surfaces pending / retry counts in the top-left chip cluster.
@@ -1533,7 +1533,7 @@ Final i18n sweep across ~40 components/pages: `MobileAnnotatePage`, `AnnotatorPa
 
 ### Retraction of inflated shuttle-detection metrics
 
-The CV pipeline runbook (`docs/operations/cv_pipeline_runbook.md`) had been claiming WASB INT8 detection rates of "87.1% on muroya / cross-video median 100%". A 12-sample visual audit on the same muroya footage confirmed that **only 2/12 INT8 marks (~17%) and 1/12 FP16 marks (~8%) actually landed on the shuttle**; the rest were sitting on uniform highlights and net-post pixels. The published numbers were therefore 5-6× overstated, and the remaining "visible" frames were false positives rather than detections.
+The CV pipeline runbook (`docs/operations/cv_pipeline_runbook.md`) had been claiming WASB INT8 detection rates of "87.1% on player_a / cross-video median 100%". A 12-sample visual audit on the same player_a footage confirmed that **only 2/12 INT8 marks (~17%) and 1/12 FP16 marks (~8%) actually landed on the shuttle**; the rest were sitting on uniform highlights and net-post pixels. The published numbers were therefore 5-6× overstated, and the remaining "visible" frames were false positives rather than detections.
 
 Root causes:
 - WASB consumes a 512×288 input. On 1080p footage the shuttle is only 3-5 px after the resize, sub-pixel for many frames, and loses to brighter clothing or pole highlights when WASB picks the heatmap argmax.

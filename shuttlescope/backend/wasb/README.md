@@ -5,7 +5,7 @@ HRNet-based shuttlecock detector ported from
 
 Used as an alternative to TrackNetV3 for high-FPS / wide-angle footage where
 TrackNet collapses (see benchmark in
-`docs/research/2026-05-24_wasb_vs_tracknet_muroya.md` —
+`docs/research/2026-05-24_wasb_vs_tracknet_player_a.md` —
 0% -> 30.9% detection on 1080p 60fps doubles).
 
 ## License
@@ -67,13 +67,13 @@ Both call `inferencer.run(video_path) -> List[ShuttleSample]`. `WasbInference`
 exposes a `.run()` adapter that wraps `predict_frames()` so it is a true
 drop-in replacement for `TrackNetInferencer`.
 
-### Performance (RTX 5060 Ti, 1080p 60fps doubles, muroya test video)
+### Performance (RTX 5060 Ti, 1080p 60fps doubles, player_a test video)
 
 - WASB: ~60+ FPS, **39.3%** shuttle detection rate (with optimizations:
   TRT EP, IOBinding, GPU preprocess, sigmoid, temporal smoothing).
 - TrackNetV3: **0%** detection rate on the same footage (well-known
   collapse on wide-angle / high-fps doubles).
-- Benchmark: `docs/research/2026-05-24_wasb_vs_tracknet_muroya.md`.
+- Benchmark: `docs/research/2026-05-24_wasb_vs_tracknet_player_a.md`.
 
 ### Fallback behaviour
 

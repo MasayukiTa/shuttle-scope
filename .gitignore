@@ -48,3 +48,6 @@ shuttlescope/run_benchmarks_direct.py
 shuttlescope/run_benchmarks_now.py
 shuttlescope/run_final.py
 shuttlescope/test_dispatch_fixed.py
+
+# 2026-05-25 PII: company-named seeding script (Org A real-data dataset). Keep local for re-seeding but not in public repo.
+shuttlescope/scripts/create_resonac_dataset.py

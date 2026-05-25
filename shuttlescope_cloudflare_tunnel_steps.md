@@ -92,7 +92,7 @@ Cloudflare Tunnel は「ローカルで動いているもの」を外へ運ぶ�
 - ログイン画面
 - 選手/コーチ向けの閲覧画面
 - review / dashboard の読み取り中心画面
-- 室屋さんデータの閲覧デモ面
+- Player Aデータの閲覧デモ面
 - スマホで価値が伝わる画面
 
 ### 今の段階で絶対にそのまま外へ出してはいけないもの
@@ -249,7 +249,7 @@ Cloudflare 側で「そもそもこの人を通すか」を判定する仕組み
 これは技術より重要。
 
 ### 最初に見せるべきもの
-- 室屋さんデータの閲覧
+- Player Aデータの閲覧
 - review / dashboard の価値が伝わる画面
 - スマホで見ても意味が分かる画面
 
@@ -307,7 +307,7 @@ Cloudflare Access を `app.shuttle-scope.com` に適用
 ### 確認項目
 - Access の前段認証が出るか
 - その後に ShuttleScope のログインへ進めるか
-- 室屋さんデータの対象画面が見えるか
+- Player Aデータの対象画面が見えるか
 - スマホでレイアウト破綻しないか
 
 ---
@@ -334,7 +334,7 @@ Cloudflare Access を `app.shuttle-scope.com` に適用
 - `app.shuttle-scope.com` で外から見える
 - Cloudflare Access で入口制限
 - ShuttleScope の内部ログインもある
-- 室屋さんデータで価値が伝わる
+- Player Aデータで価値が伝わる
 - 選手/コーチがスマホから見て導入判断しやすい
 
 ### 到達目標ではないもの
