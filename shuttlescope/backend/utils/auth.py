@@ -108,7 +108,19 @@ class AuthCtx:
         # 通常通り main app をレンダーでき、ユーザは MFA setup 画面に誘導される。
         if self.role != UserRole.ADMIN.value:
             return False
-        return self._admin_mfa_ok
+        if self._admin_mfa_ok:
+            return True
+        # 2026-05-25: gate-aware fallback for AuthCtx constructed directly
+        # (test mocks via dependency_overrides bypass get_auth, so the JWT
+        # path can't set admin_mfa_ok). When the gate is globally disabled
+        # via SS_REQUIRE_ADMIN_MFA=0, any admin role is treated as admin.
+        try:
+            from backend.config import settings as _ss
+            if not getattr(_ss, "ss_require_admin_mfa", True):
+                return True
+        except Exception:
+            pass
+        return False
 
 
 def get_auth(request: Request) -> AuthCtx:
