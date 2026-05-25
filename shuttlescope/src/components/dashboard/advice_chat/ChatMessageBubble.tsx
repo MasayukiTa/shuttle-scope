@@ -5,7 +5,6 @@
  * - showAvatar=true のときのみアバター描画 (連続同 author の最初だけ)。
  * - 新着 AI メッセージは typewriter で 1 文字ずつ表示する。
  */
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
 import { ChatMessage } from './useAdviceChat'
@@ -33,7 +32,9 @@ export function ChatMessageBubble({
 }: Props) {
   const { t } = useTranslation()
   const isUser = msg.author === 'user'
-  const [hovered, setHovered] = useState(false)
+  // 2026-05-25: hovered state を廃止。時刻は native title 属性経由で
+  //   ブラウザの tooltip として表示する → hover で DOM 入退が起きないので
+  //   バブルが上下に動く layout shift も消える。
 
   const conf =
     typeof msg.confidence === 'number' && isFinite(msg.confidence)
@@ -85,13 +86,10 @@ export function ChatMessageBubble({
 
   if (isUser) {
     return (
-      <div
-        className="flex items-end justify-end gap-2"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
+      <div className="flex items-end justify-end gap-2">
         <div className="flex flex-col items-end max-w-[75%]">
           <div
+            title={tsText || undefined}
             className={`rounded-2xl rounded-tr-sm px-3 py-2 text-sm leading-relaxed bg-blue-600 text-white ${
               msg._pending ? 'opacity-70' : ''
             }`}
@@ -127,9 +125,6 @@ export function ChatMessageBubble({
               <span>{msg.zone}</span>
             </div>
           )}
-          {hovered && tsText && (
-            <div className="text-[10px] text-gray-500 mt-0.5">{tsText}</div>
-          )}
         </div>
         {avatar}
       </div>
@@ -138,14 +133,13 @@ export function ChatMessageBubble({
 
   // ── AI / system bubble ──
   return (
-    <div
-      className="flex items-end justify-start gap-2"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
+    <div className="flex items-end justify-start gap-2">
       {avatar}
       <div className="flex flex-col items-start max-w-[85%]">
-        <div className="rounded-2xl rounded-tl-sm px-3 py-2 text-sm leading-relaxed bg-gray-100 text-gray-900">
+        <div
+          title={tsText || undefined}
+          className="rounded-2xl rounded-tl-sm px-3 py-2 text-sm leading-relaxed bg-gray-100 text-gray-900"
+        >
           <div className="whitespace-pre-wrap break-words">
             {renderedContent}
             {isTyping && null}
@@ -175,9 +169,6 @@ export function ChatMessageBubble({
             >
               {t('auto.AdviceChat.view_details')}
             </a>
-          )}
-          {hovered && tsText && (
-            <span className="text-[10px] text-gray-500">{tsText}</span>
           )}
         </div>
       </div>
