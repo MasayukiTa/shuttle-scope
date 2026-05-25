@@ -18,6 +18,11 @@ from backend.analysis.insights.safety.audit import log_llm_call
 from backend.analysis.insights.safety.system_prompts import (
     SYSTEM_PROMPT_V1_EN,
     SYSTEM_PROMPT_V1_JA,
+    SYSTEM_PROMPT_META_JA,
+    SYSTEM_PROMPT_META_EN,
+    SYSTEM_PROMPT_FORECAST_JA,
+    SYSTEM_PROMPT_FORECAST_EN,
+    classify_intent,
 )
 from backend.analysis.insights.types import (
     InsightContext,
@@ -132,21 +137,49 @@ class ExternalApiGenerator:
             "admin": "管理者",
         }.get(role, role) if lang == "ja" else role
 
-        # NOTE: prompt 本文に {count} {pct} 等の中括弧があるため .format は使えず replace で。
-        system_prompt = (
-            SYSTEM_PROMPT_V1_JA if lang == "ja" else SYSTEM_PROMPT_V1_EN
-        ).replace("{role_label}", str(role_label))
-
-        if lang == "ja":
-            question_hint = (
-                "成長アドバイスを 1 件、3 文以内・200 文字以内で出してください。"
-                "N=<count> または信頼度 <pct>% を必ず含めてください。"
-            )
+        # 2026-05-25 intent routing: ユーザの入力テキストを intent 分類して
+        #   meta / forecast / data の 3 系統で system prompt を切替える。
+        #   ctx に user_text が無い場合は data intent (旧挙動) と同等。
+        user_text = ctx.get("user_text") if isinstance(ctx, dict) else None  # type: ignore[union-attr]
+        intent = classify_intent(user_text or "")
+        if intent == "meta":
+            base_prompt = SYSTEM_PROMPT_META_JA if lang == "ja" else SYSTEM_PROMPT_META_EN
+        elif intent == "forecast":
+            base_prompt = SYSTEM_PROMPT_FORECAST_JA if lang == "ja" else SYSTEM_PROMPT_FORECAST_EN
         else:
-            question_hint = (
-                "Generate 1 short growth insight (<=3 sentences, <=100 words). "
-                "Include N=<count> or confidence percentage."
-            )
+            base_prompt = SYSTEM_PROMPT_V1_JA if lang == "ja" else SYSTEM_PROMPT_V1_EN
+        # NOTE: prompt 本文に {count} {pct} 等の中括弧があるため .format は使えず replace で。
+        system_prompt = base_prompt.replace("{role_label}", str(role_label))
+
+        if intent == "meta":
+            # meta は固定回答に近いので analytics を渡しても無視されてよい
+            if lang == "ja":
+                question_hint = "ユーザがアシスタント自身について質問しています。簡潔に自己紹介してください。"
+            else:
+                question_hint = "User asked about the assistant. Reply with a concise self-introduction."
+        elif intent == "forecast":
+            if lang == "ja":
+                question_hint = (
+                    f"ユーザの質問: 「{(user_text or '')[:80]}」 — これは予測質問です。"
+                    "AI として確実な予測は提供できないことを明示し、過去データの傾向のみ示してください。"
+                )
+            else:
+                question_hint = (
+                    f"User question: \"{(user_text or '')[:80]}\" — this is a prediction question. "
+                    "State that an AI can't make hard predictions and describe trends from past data only."
+                )
+        else:
+            if lang == "ja":
+                question_hint = (
+                    f"ユーザの質問: 「{(user_text or '直近の伸びしろは？')[:80]}」 — 成長アドバイスを 1 件、3 文以内・200 文字以内。"
+                    "N=<count> または信頼度 <pct>% を必ず含めてください。"
+                )
+            else:
+                question_hint = (
+                    f"User question: \"{(user_text or 'What is my next growth area?')[:80]}\". "
+                    "Generate 1 short growth insight (<=3 sentences, <=100 words). "
+                    "Include N=<count> or confidence percentage."
+                )
 
         user_body = json.dumps(
             {"analytics": analytics, "question_hint": question_hint},
