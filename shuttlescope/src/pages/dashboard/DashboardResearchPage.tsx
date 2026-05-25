@@ -58,7 +58,7 @@ export function DashboardResearchPage({ playerId, filters }: Props) {
       {/* Growth Advisor (β) — coach/analyst/admin のみ */}
       {canAdvice && (
         <ErrorBoundary>
-          <AdviceChatPanel />
+          <AdviceChatPanel viewedPlayerId={playerId} />
         </ErrorBoundary>
       )}
 

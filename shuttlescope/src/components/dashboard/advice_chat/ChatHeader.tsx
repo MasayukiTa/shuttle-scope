@@ -33,7 +33,7 @@ export function ChatHeader({ demoActive, isSending, onResetClick }: Props) {
             <h2 className="text-sm font-semibold leading-tight text-white">
               {t('auto.AdviceChat.title')}
             </h2>
-            <p className="text-[11px] text-white/85 truncate">
+            <p className="text-[11px] text-white truncate">
               {t('auto.AdviceChat.subtitle')}
             </p>
           </div>

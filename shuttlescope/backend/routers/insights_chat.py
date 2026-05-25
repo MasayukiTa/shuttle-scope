@@ -106,18 +106,24 @@ def _build_analytics_context(
     lang: str,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    target_player_id: Optional[int] = None,
 ) -> dict:
     """チャット応答生成用の analytics スナップショット。
 
     Slice Y: build_player_summary() の compact LLM-ready 構造を直接利用する。
     coach/analyst/admin のみがチャットを使えるため raw payload を渡してよい。
     対象選手 ID が無い (player_id=0) ケースは空サマリ相当のフォールバック。
+
+    target_player_id:
+        admin/coach/analyst が dashboard で観察中の他選手を指定するための override。
+        指定された場合は ctx.player_id ではなく target_player_id を使う。
+        ロール gate は send_message ハンドラで行うのでここでは呼ばれた時点で許可済前提。
     """
     from backend.analysis.insights.player_summary_service import (
         build_player_summary,
     )
 
-    player_id = ctx.player_id or 0
+    player_id = int(target_player_id) if (target_player_id and target_player_id > 0) else (ctx.player_id or 0)
     if player_id <= 0:
         return {
             "player_id": 0,
@@ -154,6 +160,11 @@ class _SendMessageBody(BaseModel):
     zone: Optional[str] = Field(default=None)
     # ユーザが明示的にクリアしたスロット名 (e.g. ["period", "zone"])
     clear_slots: Optional[list[str]] = Field(default=None)
+    # ダッシュボードで観察中の対象選手 ID。admin/coach/analyst が他選手を見ているときに
+    # frontend が現在の viewed playerId を渡す。admin/coach/analyst 以外の role が
+    # 指定しても無視 (ctx.player_id fallback)。player ロール自身は自分の id 以外
+    # 渡せない (cross-player snooping 防止)。
+    target_player_id: Optional[int] = Field(default=None, ge=0)
 
     @field_validator("date_from", "date_to")
     @classmethod
@@ -346,9 +357,16 @@ def send_chat_message(
             evidence_path=None,
         )
     else:
+        # target_player_id role-gate: admin/coach/analyst のみ override 可
+        effective_target = None
+        if body.target_player_id and body.target_player_id > 0:
+            if ctx.role in ("admin", "coach", "analyst"):
+                effective_target = int(body.target_player_id)
+            # それ以外の role は黙って無視 (cross-player snooping 防止)
         analytics = _build_analytics_context(
             db, ctx, sess, sess.lang,
             date_from=eff_date_from, date_to=eff_date_to,
+            target_player_id=effective_target,
         )
         insight_ctx: InsightContext = {
             "player_id": 0,
