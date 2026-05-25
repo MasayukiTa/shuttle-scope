@@ -27,7 +27,7 @@ export function ChatEmptyState({ onPick }: Props) {
         className="text-white opacity-90 drop-shadow"
         ariaHidden
       />
-      <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+      <div className="text-sm font-semibold text-gray-700">
         {t('auto.AdviceChat.empty_state')}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-md">
@@ -38,7 +38,7 @@ export function ChatEmptyState({ onPick }: Props) {
               key={k}
               type="button"
               onClick={() => onPick(text)}
-              className="text-xs px-3 py-2 rounded-full border border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-gray-700 dark:text-gray-200 text-left transition-colors"
+              className="text-xs px-3 py-2 rounded-full border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700 text-left transition-colors"
             >
               {text}
             </button>

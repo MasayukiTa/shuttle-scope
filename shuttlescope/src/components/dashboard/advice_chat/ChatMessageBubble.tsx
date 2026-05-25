@@ -62,7 +62,7 @@ export function ChatMessageBubble({
   const avatar = showAvatar ? (
     isUser ? (
       <div
-        className="shrink-0 w-6 h-6 rounded-full bg-blue-200 dark:bg-blue-900 text-blue-900 dark:text-blue-100 flex items-center justify-center text-[11px] font-semibold"
+        className="shrink-0 w-6 h-6 rounded-full bg-blue-200 text-blue-900 flex items-center justify-center text-[11px] font-semibold"
         aria-hidden="true"
       >
         {(userDisplayName ?? t('auto.AdviceChat.you'))[0] ?? 'U'}
@@ -96,7 +96,7 @@ export function ChatMessageBubble({
           </div>
           {(msg.date_from || msg.date_to) && (
             <div
-              className="mt-1 inline-flex items-center gap-1 text-[10px] bg-indigo-100 dark:bg-indigo-900/50 text-indigo-900 dark:text-indigo-100 px-1.5 py-0.5 rounded-full"
+              className="mt-1 inline-flex items-center gap-1 text-[10px] bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded-full"
               aria-label={t('auto.AdviceChat.period.chipLabel')}
             >
               <MIcon name="event" size={11} ariaHidden />
@@ -107,7 +107,7 @@ export function ChatMessageBubble({
           )}
           {msg.shot_type && (
             <div
-              className="mt-1 inline-flex items-center gap-1 text-[10px] bg-emerald-100 dark:bg-emerald-900/50 text-emerald-900 dark:text-emerald-100 px-1.5 py-0.5 rounded-full"
+              className="mt-1 inline-flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded-full"
               aria-label={t('auto.AdviceChat.scope.slot.shotType')}
             >
               <MIcon name="sports_tennis" size={11} ariaHidden />
@@ -116,7 +116,7 @@ export function ChatMessageBubble({
           )}
           {msg.zone && (
             <div
-              className="mt-1 inline-flex items-center gap-1 text-[10px] bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-100 px-1.5 py-0.5 rounded-full"
+              className="mt-1 inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-full"
               aria-label={t('auto.AdviceChat.scope.slot.zone')}
             >
               <MIcon name="place" size={11} ariaHidden />
@@ -141,7 +141,7 @@ export function ChatMessageBubble({
     >
       {avatar}
       <div className="flex flex-col items-start max-w-[85%]">
-        <div className="rounded-2xl rounded-tl-sm px-3 py-2 text-sm leading-relaxed bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+        <div className="rounded-2xl rounded-tl-sm px-3 py-2 text-sm leading-relaxed bg-gray-100 text-gray-900">
           <div className="whitespace-pre-wrap break-words">
             {renderedContent}
             {isTyping && (
@@ -151,7 +151,7 @@ export function ChatMessageBubble({
         </div>
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           {conf != null && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-gray-200 text-gray-700">
               {t('auto.AdviceChat.confidence', { n: conf })}
             </span>
           )}
@@ -159,7 +159,7 @@ export function ChatMessageBubble({
             <span
               title={t('auto.AdviceChat.safety_hint_admin')}
               aria-label={t('auto.AdviceChat.safety_hint_admin')}
-              className="inline-flex items-center text-[10px] text-amber-700 dark:text-amber-300"
+              className="inline-flex items-center text-[10px] text-amber-700"
             >
               <MIcon name="shield" size={12} ariaHidden />
             </span>
@@ -169,7 +169,7 @@ export function ChatMessageBubble({
               href={msg.evidence_path}
               target="_blank"
               rel="noreferrer"
-              className="text-[10px] text-blue-600 dark:text-blue-300 hover:underline"
+              className="text-[10px] text-blue-600 hover:underline"
             >
               {t('auto.AdviceChat.view_details')}
             </a>
