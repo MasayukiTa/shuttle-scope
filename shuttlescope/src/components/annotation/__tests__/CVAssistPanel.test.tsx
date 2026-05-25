@@ -7,7 +7,8 @@
  * - ストロークごとの候補行レンダリング（land_zone / hitter）
  * - 信頼度 % の色分け（auto_filled=emerald / suggested=blue / review_required=amber）
  * - ソースラベル（TN / YOLO / ALN / FUS）の表示
- * - ✓ 承認ボタン（suggested のみ表示）
+ * - ✓ 承認ボタン（suggested のみ表示）。MIcon 移行後は `name="check"` を
+ *   レンダリングするので getByText('check') で検出する。
  * - 理由コード展開トグル（ChevronRight → ChevronDown）
  * - ダブルスロール（front_back_role_signal）の表示
  * - 要確認理由コードのカテゴリ別表示
@@ -153,7 +154,7 @@ describe('CVAssistPanel', () => {
       />
     )
     // suggested の場合のみ ✓ ボタンが表示される
-    const acceptButton = screen.getByText('✓')
+    const acceptButton = screen.getByText('check')
     expect(acceptButton).toBeInTheDocument()
   })
 
@@ -183,13 +184,13 @@ describe('CVAssistPanel', () => {
         onAcceptLandZone={onAccept}
       />
     )
-    fireEvent.click(screen.getByText('✓'))
+    fireEvent.click(screen.getByText('check'))
     expect(onAccept).toHaveBeenCalledWith(1, 'NL')
   })
 
   it('auto_filled モードでは ✓ ボタンが表示されない', () => {
     render(<CVAssistPanel rallyCandidates={makeRallyCandidate()} />)
-    expect(screen.queryByText('✓')).not.toBeInTheDocument()
+    expect(screen.queryByText('check')).not.toBeInTheDocument()
   })
 
   // ── 理由コード展開 ─────────────────────────────────────────────────────────
