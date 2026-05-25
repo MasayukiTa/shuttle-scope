@@ -175,14 +175,14 @@ export function AdviceChatPanel({ viewedPlayerId = null }: AdviceChatPanelProps 
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col w-full">
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden flex flex-col w-full">
       {/* ── Header ────────────────────────────────────────── */}
       <ChatHeader demoActive={demoActive} isSending={isSending} onResetClick={onResetClick} />
 
       {/* ── AI disclaimer (admin-only feature; player-tier opt-in TBD) ── */}
       <div
         role="note"
-        className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900"
+        className="border-b border-slate-200 bg-slate-100 px-3 py-2 text-[11px] leading-relaxed text-slate-700"
       >
         {t('auto.AdviceChat.disclaimer_banner')}
       </div>

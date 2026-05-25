@@ -1,6 +1,8 @@
 /**
  * ChatEmptyState — メッセージ 0 件時に表示する空ステート。
  * 4 つの例文 chip を 2x2 grid (mobile は stack) で並べ、タップで composer に流し込む。
+ *
+ * 2026-05-25 redesign: 巨大スパークル + indigo hover を廃止して slate ベース。
  */
 import { useTranslation } from 'react-i18next'
 import { MIcon } from '@/components/common/MIcon'
@@ -21,13 +23,12 @@ export function ChatEmptyState({ onPick }: Props) {
   return (
     <div className="flex flex-col items-center justify-center py-8 px-2 gap-3 text-center">
       <MIcon
-        name="auto_awesome"
-        size={48}
-        fill={1}
-        className="text-white opacity-90 drop-shadow"
+        name="forum"
+        size={36}
+        className="text-slate-300"
         ariaHidden
       />
-      <div className="text-sm font-semibold text-gray-700">
+      <div className="text-sm text-slate-600">
         {t('auto.AdviceChat.empty_state')}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-md">
@@ -38,7 +39,7 @@ export function ChatEmptyState({ onPick }: Props) {
               key={k}
               type="button"
               onClick={() => onPick(text)}
-              className="text-xs px-3 py-2 rounded-full border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-gray-700 text-left transition-colors"
+              className="text-xs px-3 py-2 rounded border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-slate-700 text-left"
             >
               {text}
             </button>

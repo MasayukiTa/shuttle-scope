@@ -291,7 +291,7 @@ export const ChatComposer = forwardRef<HTMLTextAreaElement, Props>(
             disabled={disabled}
             aria-label={t('auto.AdviceChat.send')}
             title={t('auto.AdviceChat.send')}
-            className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center justify-center w-10 h-10 rounded bg-slate-800 hover:bg-slate-900 text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <MIcon name="send" size={18} ariaHidden className="text-white" />
           </button>
