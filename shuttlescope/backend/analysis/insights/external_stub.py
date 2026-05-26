@@ -176,12 +176,17 @@ class ExternalApiGenerator:
                 generated_at=_now_iso(),
                 meta={"fallback_reason": None, "intent": intent},  # type: ignore[typeddict-unknown-key]
             )
+        # 2026-05-25: session lang ("ja"/"en") に関わらず常に EN system prompt を
+        # 使う。EN prompt は「ユーザ入力言語を検出して同じ言語で返答」を含むので
+        # NIM が JA/EN/ZH/FR/DE/その他いずれの入力にも対応する言語で応答する。
+        # JA system prompt を使うと NIM の応答が JA に引っ張られて入力言語一致が
+        # 崩れる傾向があったため、英語ニュートラル prompt に統一。
         if intent == "meta":
-            base_prompt = SYSTEM_PROMPT_META_JA if lang == "ja" else SYSTEM_PROMPT_META_EN
+            base_prompt = SYSTEM_PROMPT_META_EN
         elif intent == "forecast":
-            base_prompt = SYSTEM_PROMPT_FORECAST_JA if lang == "ja" else SYSTEM_PROMPT_FORECAST_EN
+            base_prompt = SYSTEM_PROMPT_FORECAST_EN
         else:
-            base_prompt = SYSTEM_PROMPT_V1_JA if lang == "ja" else SYSTEM_PROMPT_V1_EN
+            base_prompt = SYSTEM_PROMPT_V1_EN
         # NOTE: prompt 本文に {count} {pct} 等の中括弧があるため .format は使えず replace で。
         system_prompt = base_prompt.replace("{role_label}", str(role_label))
 
