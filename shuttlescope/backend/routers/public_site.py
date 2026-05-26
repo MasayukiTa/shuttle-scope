@@ -125,130 +125,6 @@ class BanAppealCreate(BaseModel):
     website: Optional[str] = Field(default=None, max_length=100)  # honeypot
 
 
-def _base_layout_str(title: str, body: str, *, canonical_path: str = "/", noindex: bool = False) -> str:
-    """HTML 文字列を返す。HTMLResponse へのラップは呼び出し元で行う。"""
-    robots = '<meta name="robots" content="noindex,nofollow">' if noindex else ""
-    canonical = f"https://shuttle-scope.com{canonical_path}"
-    return f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{html.escape(title)}</title>
-  <meta name="description" content="ShuttleScope is a badminton analysis and review platform for structured match, player, and coaching workflows.">
-  <link rel="canonical" href="{canonical}">
-  <link rel="icon" type="image/png" href="/favicon.png">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="{canonical}">
-  <meta property="og:title" content="{html.escape(title)}">
-  <meta property="og:image" content="https://shuttle-scope.com/og-image.png">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
-  {robots}
-  <style>
-    :root {{
-      --bg: #f5f8fc;
-      --panel: rgba(255,255,255,.88);
-      --text: #11314d;
-      --muted: #4f6478;
-      --line: #d5e3f2;
-      --brand: #0f5ea8;
-      --brand-soft: #dcecff;
-      --accent: #0d7b83;
-      --danger: #b33f3f;
-      --shadow: 0 20px 60px rgba(18, 54, 90, 0.10);
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      color: var(--text);
-      font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
-      background:
-        radial-gradient(circle at top right, rgba(13,123,131,.16), transparent 26%),
-        radial-gradient(circle at top left, rgba(15,94,168,.16), transparent 24%),
-        linear-gradient(180deg, #f9fbfe 0%, var(--bg) 100%);
-    }}
-    a {{ color: var(--brand); text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    .shell {{ max-width: 1120px; margin: 0 auto; padding: 24px; }}
-    .topbar {{
-      display: flex; align-items: center; justify-content: space-between; gap: 16px;
-      margin-bottom: 28px;
-    }}
-    .brand {{
-      font-size: 1.2rem; font-weight: 800; letter-spacing: .02em; color: var(--text);
-    }}
-    .brand span {{ color: var(--brand); }}
-    .nav {{ display: flex; gap: 18px; flex-wrap: wrap; font-size: .95rem; color: var(--muted); }}
-    .hero, .panel {{
-      background: var(--panel);
-      border: 1px solid rgba(213, 227, 242, 0.9);
-      border-radius: 24px;
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(14px);
-    }}
-    .hero {{ padding: 48px; margin-bottom: 24px; }}
-    .eyebrow {{
-      display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
-      background: var(--brand-soft); color: var(--brand); font-size: .85rem; font-weight: 700;
-      margin-bottom: 18px;
-    }}
-    h1 {{ margin: 0 0 16px; font-size: clamp(2rem, 4vw, 3.3rem); line-height: 1.05; }}
-    h2 {{ margin: 0 0 14px; font-size: 1.5rem; }}
-    h3 {{ margin: 0 0 10px; font-size: 1.05rem; }}
-    p, li {{ color: var(--muted); line-height: 1.85; }}
-    .hero-actions {{ display: flex; gap: 14px; flex-wrap: wrap; margin-top: 26px; }}
-    .btn {{
-      display: inline-flex; align-items: center; justify-content: center;
-      min-height: 44px; padding: 0 18px; border-radius: 999px; font-weight: 700;
-      border: 1px solid transparent;
-    }}
-    .btn-primary {{ background: linear-gradient(135deg, var(--brand), #1679d1); color: white; }}
-    .btn-secondary {{ background: white; border-color: var(--line); color: var(--text); }}
-    .grid {{ display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }}
-    .panel {{ padding: 28px; }}
-    .meta-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }}
-    .meta-item {{ padding: 16px 18px; border-radius: 18px; background: rgba(220,236,255,.45); border: 1px solid var(--line); }}
-    .footer {{ padding: 24px 0 36px; color: var(--muted); font-size: .9rem; }}
-    .legal h2 {{ margin-top: 30px; }}
-    .legal ul, .legal ol {{ padding-left: 22px; }}
-    .notice {{
-      background: rgba(13,123,131,.10);
-      border: 1px solid rgba(13,123,131,.18);
-      padding: 14px 16px;
-      border-radius: 12px;
-      margin: 16px 0;
-    }}
-    .warning {{
-      background: rgba(179,63,63,.09);
-      border-color: rgba(179,63,63,.18);
-    }}
-    label {{ display: block; font-size: .92rem; font-weight: 700; margin-bottom: 8px; }}
-    input, textarea, select {{
-      width: 100%; border: 1px solid var(--line); border-radius: 14px; background: white;
-      padding: 12px 14px; font: inherit; color: var(--text);
-    }}
-    textarea {{ min-height: 180px; resize: vertical; }}
-    .form-grid {{ display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }}
-    .small {{ font-size: .88rem; }}
-    .hidden-field {{ position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }}
-    .result {{ margin-top: 16px; font-size: .95rem; }}
-    @media (max-width: 720px) {{
-      .shell {{ padding: 16px; }}
-      .hero, .panel {{ padding: 22px; border-radius: 20px; }}
-      .topbar {{ align-items: flex-start; flex-direction: column; }}
-    }}
-  </style>
-</head>
-<body>
-{body}
-</body>
-</html>"""
-
-
-def _base_layout(title: str, body: str, *, canonical_path: str = "/", noindex: bool = False) -> HTMLResponse:
-    return HTMLResponse(_base_layout_str(title, body, canonical_path=canonical_path, noindex=noindex))
 
 
 def _rewrite_preview_links(html_str: str) -> str:
@@ -264,41 +140,21 @@ def _rewrite_preview_links(html_str: str) -> str:
     return html_str
 
 
-def _public_nav(login_href: str, lang_href: str = "/en") -> str:
-    return f"""
-    <div class="topbar">
-      <a class="brand" href="https://shuttle-scope.com">Shuttle<span>Scope</span></a>
-      <div class="nav">
-        <a href="/">概要</a>
-        <a href="/terms">利用規約</a>
-        <a href="/privacy">プライバシーポリシー</a>
-        <a href="/contact">お問い合わせ</a>
-        <a href="https://app.shuttle-scope.com/#/register">新規登録</a>
-        <a href="{login_href}">ログイン</a>
-        <a href="{lang_href}" style="font-size:.8rem;opacity:.65;letter-spacing:.04em">EN</a>
-      </div>
-    </div>
-    """
-
-
-def _public_nav_en(login_href: str, lang_href: str = "/") -> str:
-    # EN nav からは ?lang=en を付けて SPA に渡し、起動時の言語検出で英語に揃える。
-    # (src/i18n/index.ts の detectInitialLang が URLSearchParams を読む)
-    # brand リンクは EN home (/en) に飛ばす (JA home に戻さない)。
-    return f"""
-    <div class="topbar">
-      <a class="brand" href="/en">Shuttle<span>Scope</span></a>
-      <div class="nav">
-        <a href="/en">Overview</a>
-        <a href="/en/terms">Terms of Use</a>
-        <a href="/en/privacy">Privacy Policy</a>
-        <a href="/en/contact">Contact</a>
-        <a href="https://app.shuttle-scope.com/?lang=en#/register">Register</a>
-        <a href="{login_href}">Login</a>
-        <a href="{lang_href}" style="font-size:.8rem;opacity:.65;letter-spacing:.04em">JP</a>
-      </div>
-    </div>
-    """
+def _rewrite_preview_links_en(html_str: str) -> str:
+    """EN プレビュー用にリンクを /public-preview/en/* へ書き換え、noindex を強制する。"""
+    html_str = html_str.replace('href="/en"', 'href="/public-preview/en"')
+    html_str = html_str.replace('href="/en/terms"', 'href="/public-preview/en/terms"')
+    html_str = html_str.replace('href="/en/privacy"', 'href="/public-preview/en/privacy"')
+    html_str = html_str.replace('href="/en/contact"', 'href="/public-preview/en/contact"')
+    # canonical タグの直後に noindex を差し込む (canonical_path に関係なく強制)
+    import re as _re
+    html_str = _re.sub(
+        r'(<link rel="canonical" href="https://shuttle-scope\.com[^"]*">)',
+        r'\1<meta name="robots" content="noindex,nofollow">',
+        html_str,
+        count=1,
+    )
+    return html_str
 
 
 def _public_login_href(request: Request, lang: str = "ja") -> str:
@@ -312,72 +168,6 @@ def _public_login_href(request: Request, lang: str = "ja") -> str:
 def should_serve_public_site(request: Request) -> bool:
     host = request.headers.get("host", "").split(":")[0].lower()
     return host in PUBLIC_HOSTS
-
-
-def _render_home_body(request: Request) -> str:
-    login_href = _public_login_href(request)
-    return f"""
-    <div class="shell">
-      {_public_nav(login_href)}
-      <section class="hero">
-        <div class="eyebrow">Badminton Analysis Platform</div>
-        <h1>試合・映像・コンディション情報を、<br>現場で扱いやすい形に整理する ShuttleScope</h1>
-        <p>
-          ShuttleScope は、バドミントンの試合レビュー、映像確認、選手データ整理、
-          チーム内での分析共有を支援するためのソフトウェアです。
-          現場での確認と継続的な振り返りを両立できるよう、
-          情報を見やすく束ねることを重視しています。
-        </p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="{login_href}">アプリに進む</a>
-          <a class="btn btn-secondary" href="/contact">お問い合わせ</a>
-        </div>
-      </section>
-
-      <section class="grid" style="margin-bottom:20px;">
-        <div class="panel">
-          <h3>映像と試合レビュー</h3>
-          <p>試合や練習映像をもとに、レビューや振り返りを行いやすい形で扱えるよう設計されています。</p>
-        </div>
-        <div class="panel">
-          <h3>選手・チーム情報の整理</h3>
-          <p>選手情報、試合履歴、観察メモなどを横断して参照し、日常の分析業務を支えます。</p>
-        </div>
-        <div class="panel">
-          <h3>分析共有の支援</h3>
-          <p>コーチ・分析担当・選手で見たい情報が異なる前提で、役割に応じた確認をしやすくします。</p>
-        </div>
-      </section>
-
-      <section class="panel" style="margin-bottom:20px;">
-        <h2>ShuttleScope が想定している利用シーン</h2>
-        <div class="meta-grid">
-          <div class="meta-item"><strong>チーム内レビュー</strong><p>試合直後や週次の振り返りで、映像とメモをまとめて確認。</p></div>
-          <div class="meta-item"><strong>分析担当の整理作業</strong><p>分散しがちな試合・選手情報を一か所にまとめ、比較しやすくする。</p></div>
-          <div class="meta-item"><strong>選手向け共有</strong><p>共有する情報の粒度を調整しながら、必要な内容を必要な相手に届ける。</p></div>
-          <div class="meta-item"><strong>継続的な観察</strong><p>コンディションやレビュー記録を積み重ね、単発で終わらない振り返りにする。</p></div>
-        </div>
-      </section>
-
-      <section class="panel" style="margin-bottom:20px;">
-        <h2>データの扱いについて</h2>
-        <p>
-          ShuttleScope では、利用目的に応じて試合映像、レビュー情報、選手に関する入力情報などを扱う場合があります。
-          具体的な取扱方針は <a href="/privacy">プライバシーポリシー</a> を、
-          利用条件は <a href="/terms">利用規約</a> をご確認ください。
-        </p>
-        <div class="notice">
-          本サイトはサービス概要と案内を掲載する公開サイトです。実際のアプリ利用は別ドメインの
-          <a href="{login_href}">アプリ本体</a> で行います。
-        </div>
-      </section>
-
-      <div class="footer">
-        <div>ShuttleScope</div>
-        <div><a href="/terms">利用規約</a> ・ <a href="/privacy">プライバシーポリシー</a> ・ <a href="/contact">お問い合わせ</a></div>
-      </div>
-    </div>
-    """
 
 
 _V7_HOME_HTML = r"""<!DOCTYPE html>
@@ -1020,84 +810,9 @@ def _notify_inquiry(inquiry: PublicInquiry) -> None:
         logger.warning("public inquiry webhook failed: %s", exc)
 
 
-# ── English pages ──────────────────────────────────────────────────────────────
-
-def _base_layout_str_en(title: str, body: str, *, canonical_path: str = "/en", noindex: bool = False) -> str:
-    robots = '<meta name="robots" content="noindex,nofollow">' if noindex else ""
-    canonical = f"https://shuttle-scope.com{canonical_path}"
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{html.escape(title)}</title>
-  <meta name="description" content="ShuttleScope is a badminton analysis and review platform for structured match, player, and coaching workflows.">
-  <link rel="canonical" href="{canonical}">
-  <link rel="icon" type="image/png" href="/favicon.png">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="{canonical}">
-  <meta property="og:title" content="{html.escape(title)}">
-  <meta property="og:image" content="https://shuttle-scope.com/og-image.png">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://shuttle-scope.com/og-image.png">
-  {robots}
-  <style>
-    :root {{
-      --bg: #f5f8fc; --panel: rgba(255,255,255,.88); --text: #11314d; --muted: #4f6478;
-      --line: #d5e3f2; --brand: #0f5ea8; --brand-soft: #dcecff; --accent: #0d7b83;
-      --danger: #b33f3f; --shadow: 0 20px 60px rgba(18,54,90,.10);
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0; color: var(--text);
-      font-family: "Segoe UI", system-ui, sans-serif;
-      background: radial-gradient(circle at top right,rgba(13,123,131,.16),transparent 26%),
-        radial-gradient(circle at top left,rgba(15,94,168,.16),transparent 24%),
-        linear-gradient(180deg,#f9fbfe 0%,var(--bg) 100%);
-    }}
-    a {{ color: var(--brand); text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    .shell {{ max-width: 1120px; margin: 0 auto; padding: 24px; }}
-    .topbar {{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:28px; }}
-    .brand {{ font-size:1.2rem; font-weight:800; letter-spacing:.02em; color:var(--text); }}
-    .brand span {{ color:var(--brand); }}
-    .nav {{ display:flex; gap:18px; flex-wrap:wrap; font-size:.95rem; color:var(--muted); }}
-    .hero,.panel {{ background:var(--panel); border:1px solid rgba(213,227,242,.9); border-radius:24px; box-shadow:var(--shadow); backdrop-filter:blur(14px); }}
-    .hero {{ padding:48px; margin-bottom:24px; }}
-    h1 {{ margin:0 0 16px; font-size:clamp(1.8rem,3.5vw,2.8rem); line-height:1.1; }}
-    h2 {{ margin:0 0 14px; font-size:1.4rem; }}
-    h3 {{ margin:0 0 10px; font-size:1.05rem; }}
-    p,li {{ color:var(--muted); line-height:1.85; }}
-    .hero-actions {{ display:flex; gap:14px; flex-wrap:wrap; margin-top:26px; }}
-    .btn {{ display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border-radius:999px; font-weight:700; border:1px solid transparent; }}
-    .btn-primary {{ background:linear-gradient(135deg,var(--brand),#1679d1); color:white; }}
-    .btn-secondary {{ background:white; border-color:var(--line); color:var(--text); }}
-    .grid {{ display:grid; gap:20px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }}
-    .panel {{ padding:28px; }}
-    .footer {{ padding:24px 0 36px; color:var(--muted); font-size:.9rem; }}
-    .legal h2 {{ margin-top:30px; }}
-    .legal ul {{ padding-left:22px; }}
-    label {{ display:block; font-size:.92rem; font-weight:700; margin-bottom:8px; }}
-    input,textarea,select {{ width:100%; border:1px solid var(--line); border-radius:14px; background:white; padding:12px 14px; font:inherit; color:var(--text); }}
-    textarea {{ min-height:180px; resize:vertical; }}
-    .form-grid {{ display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }}
-    .notice {{ background:rgba(13,123,131,.10); border:1px solid rgba(13,123,131,.18); padding:14px 16px; border-radius:12px; margin:16px 0; }}
-    .hidden-field {{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }}
-    .result {{ margin-top:16px; font-size:.95rem; }}
-    @media(max-width:720px) {{ .shell{{padding:16px}} .hero{{padding:22px;border-radius:20px}} .topbar{{align-items:flex-start;flex-direction:column}} }}
-  </style>
-</head>
-<body>
-{body}
-</body>
-</html>"""
-
 
 def _render_terms_str_en(request: Request) -> str:
-    """PR3 (2026-05-26): Jinja 化。terms.html.j2 の lang='en' 分岐で描画。
-    旧 _base_layout_str_en 経由の f-string body は本ファイル末尾に残しているが、
-    実際の HTML 生成には使われない (PR4 で _base_layout_str_en と共に削除予定)。"""
+    """PR3 (2026-05-26): Jinja 化。terms.html.j2 の lang='en' 分岐で描画。"""
     canonical_path = '/en/terms'
     context = {
         'request': request,
@@ -1109,114 +824,6 @@ def _render_terms_str_en(request: Request) -> str:
     resp = _public_templates.TemplateResponse('public/terms.html.j2', context)
     return resp.body.decode('utf-8')
 
-
-def _render_terms_str_en_legacy(request: Request) -> str:
-    login_href = _public_login_href(request, lang='en')
-    body = f"""
-    <div class="shell legal">
-      {_public_nav_en(login_href, lang_href="/terms")}
-      <section class="panel">
-        <h1>ShuttleScope Terms of Use</h1>
-        <p class="small" style="color:var(--muted);font-size:.88rem;">Last updated: 2026-04-27</p>
-        <p>These Terms govern your use of ShuttleScope and its related features.</p>
-
-        <h2>1. Scope</h2>
-        <p>These Terms apply to all use of the ShuttleScope website, application, and associated features.</p>
-
-        <h2>2. Service Description</h2>
-        <p>ShuttleScope provides tools for badminton match review, video-based analysis, player data management, and team-level analysis sharing. Features may be added, modified, or discontinued without prior notice.</p>
-
-        <h2>3. User Responsibilities</h2>
-        <ul>
-          <li>You are responsible for maintaining the security of your account credentials and access environment.</li>
-          <li>You must comply with applicable laws, your organization's policies, and any third-party agreements when using this service.</li>
-          <li>You may not upload or process data that infringes on the rights of others without proper authorization.</li>
-        </ul>
-
-        <h2>4. Prohibited Use</h2>
-        <ul>
-          <li>Interfering with or disrupting the operation of the service</li>
-          <li>Unauthorized access, circumvention of authentication, or probing for vulnerabilities</li>
-          <li>Use for unlawful purposes or activities contrary to public order and morals</li>
-          <li>Sharing or publishing third-party personal information, videos, or records without proper authorization</li>
-          <li>Reproducing, redistributing, or commercially exploiting service content in a misleading manner</li>
-        </ul>
-
-        <h2>5. Data and Intellectual Property</h2>
-        <p>Data that you input, store, or upload to the service remains the property of you or the rightful owner, except as otherwise required by law. You agree that such data may be processed to the extent reasonably necessary for service provision, maintenance, improvement, and incident response.</p>
-
-        <h2>6. Disclaimer</h2>
-        <ul>
-          <li>ShuttleScope does not guarantee specific outcomes, performance improvements, or the completeness and accuracy of analysis results.</li>
-          <li>All displayed content and analysis should be used as supplementary information, not as the sole basis for decisions.</li>
-          <li>Service availability may be interrupted due to network issues, maintenance, or third-party service failures.</li>
-        </ul>
-
-        <h2>7. Service Changes and Termination</h2>
-        <p>We may modify, suspend, or terminate all or part of the service when operationally or technically necessary.</p>
-
-        <h2>8. Amendments</h2>
-        <p>These Terms may be revised as needed. Amended Terms become effective upon publication on this site or within the application.</p>
-
-        <h2 id="beta">9. Beta Period Data Use (2026)</h2>
-        <div class="notice" style="margin:18px 0;">
-          <strong>Important Notice for Beta Participants</strong>
-        </div>
-        <p>
-          During the 2026 beta period, ShuttleScope may use annotated data contributed by beta participants
-          for the purpose of improving badminton-specific AI models, subject to the conditions below.
-        </p>
-
-        <h3>Scope of Data</h3>
-        <ul>
-          <li>
-            <strong>Included:</strong>
-            Annotated match clips — short rally-level video segments (typically 5–60 seconds)
-            extracted from footage processed within the application — and associated label data
-            (shot type, court position, player action, formation, etc.)
-          </li>
-          <li>
-            <strong>Excluded:</strong>
-            Full match video files; directly identifying personal information such as full names
-            or facial recognition data
-          </li>
-        </ul>
-
-        <h3>Purposes</h3>
-        <ul>
-          <li>Improving badminton-specific player detection and shot-classification AI models</li>
-          <li>Enhancing racket and shuttle detection accuracy</li>
-          <li>Developing automated annotation assistance features within ShuttleScope</li>
-        </ul>
-
-        <h3>Data Handling</h3>
-        <ul>
-          <li>Data collected during the beta period may continue to be used for model improvement after the beta period ends.</li>
-          <li>Clips are processed to minimise the presence of directly identifying personal information before use in model training.</li>
-          <li>Data will not be sold or provided to third parties for commercial purposes unrelated to ShuttleScope's model development.</li>
-        </ul>
-
-        <h3>Opt-Out</h3>
-        <p>
-          If you do not wish your annotated clips and label data to be used under this section,
-          please notify us via the <a href="/en/contact">Contact form</a>.
-          Reasonable opt-out requests will be accommodated on an individual basis.
-        </p>
-        <p class="small" style="color:var(--muted);">
-          Continued registration and use of the beta service constitutes acceptance of this section (Article 9).
-          This section applies during the beta period (throughout 2026).
-        </p>
-
-        <h2>10. Contact</h2>
-        <p>For inquiries regarding this service, please use the <a href="/en/contact">Contact form</a>.</p>
-      </section>
-      <div class="footer">
-        <div>ShuttleScope</div>
-        <div><a href="/en/terms">Terms</a> · <a href="/en/privacy">Privacy Policy</a> · <a href="/en/contact">Contact</a></div>
-      </div>
-    </div>
-    """
-    return _base_layout_str_en("ShuttleScope | Terms of Use", body, canonical_path="/en/terms")
 
 
 def _render_privacy_str_en(request: Request) -> str:
@@ -1233,69 +840,6 @@ def _render_privacy_str_en(request: Request) -> str:
     return resp.body.decode('utf-8')
 
 
-def _render_privacy_str_en_legacy(request: Request) -> str:
-    login_href = _public_login_href(request, lang='en')
-    body = f"""
-    <div class="shell legal">
-      {_public_nav_en(login_href, lang_href="/privacy")}
-      <section class="panel">
-        <h1>ShuttleScope Privacy Policy</h1>
-        <p style="color:var(--muted);font-size:.88rem;">Last updated: 2026-04-27</p>
-        <p>This Privacy Policy describes how ShuttleScope handles information we collect.</p>
-
-        <h2>1. Information We Collect</h2>
-        <ul>
-          <li>Account identifiers, display names, team-related information, and other information necessary for service use</li>
-          <li>Match data, videos, review notes, observations, condition logs, and other content you input or upload</li>
-          <li>Usage logs, access timestamps, IP addresses, and basic browser or device information</li>
-          <li>Name, affiliation, contact details, and message content submitted through the contact form</li>
-        </ul>
-
-        <h2>2. Purposes of Use</h2>
-        <ul>
-          <li>Providing, authenticating, operating, and maintaining the service</li>
-          <li>Delivering features such as match review, analysis sharing, and condition tracking</li>
-          <li>Responding to incidents, ensuring security, and preventing unauthorized use</li>
-          <li>Responding to inquiries and communicating with users</li>
-          <li>Improving service quality and evaluating new features</li>
-          <li>
-            <strong>Beta period (2026):</strong>
-            Annotated match clips (short rally-level video segments) and associated label data
-            may be used to train and improve badminton-specific AI models (player detection,
-            shot classification, etc.). See <a href="/en/terms#beta">Terms of Use, Section 9</a>
-            for full details and opt-out information.
-          </li>
-        </ul>
-
-        <h2>3. Sharing with Third Parties</h2>
-        <p>We do not share collected information with third parties except as required by law, with your consent, or when necessary for legitimate purposes such as service outsourcing.</p>
-
-        <h2>4. Data Retention</h2>
-        <p>Data is retained for as long as necessary to fulfill the purposes described above or as required by applicable law. You may request deletion of your account data through the contact form.</p>
-
-        <h2>5. Security</h2>
-        <p>We implement reasonable technical and organizational measures to protect information from unauthorized access, loss, or disclosure. However, no method of transmission or storage is completely secure.</p>
-
-        <h2>6. Cookies and Local Storage</h2>
-        <p>ShuttleScope uses browser local storage and session storage to maintain authentication state and user preferences. No third-party tracking cookies are used.</p>
-
-        <h2>7. Children's Privacy</h2>
-        <p>ShuttleScope is not directed to children under 13. We do not knowingly collect personal information from children under 13 without parental consent.</p>
-
-        <h2>8. Changes to This Policy</h2>
-        <p>This Privacy Policy may be updated from time to time. Continued use of the service after changes are posted constitutes acceptance of the revised policy.</p>
-
-        <h2>9. Contact</h2>
-        <p>For questions about this policy or your data, please use the <a href="/en/contact">Contact form</a>.</p>
-      </section>
-      <div class="footer">
-        <div>ShuttleScope</div>
-        <div><a href="/en/terms">Terms</a> · <a href="/en/privacy">Privacy Policy</a> · <a href="/en/contact">Contact</a></div>
-      </div>
-    </div>
-    """
-    return _base_layout_str_en("ShuttleScope | Privacy Policy", body, canonical_path="/en/privacy")
-
 
 def _render_contact_str_en(request: Request) -> str:
     """PR3 (2026-05-26): Jinja 化。contact.html.j2 の lang='en' 分岐で描画。"""
@@ -1311,108 +855,6 @@ def _render_contact_str_en(request: Request) -> str:
     resp = _public_templates.TemplateResponse('public/contact.html.j2', context)
     return resp.body.decode('utf-8')
 
-
-def _render_contact_str_en_legacy(request: Request) -> str:
-    login_href = _public_login_href(request, lang='en')
-    submit_path = "/api/public/contact"
-    body = f"""
-    <div class="shell">
-      {_public_nav_en(login_href, lang_href="/contact")}
-      <section class="panel" style="margin-bottom:20px;">
-        <h1>Contact</h1>
-        <p>
-          For inquiries regarding ShuttleScope, please submit your message via the form below.
-          We welcome consultations on adoption, questions about features, bug reports, and other
-          feedback or requests. If you require a reply, please indicate your preferred contact
-          method in the field below.
-        </p>
-        <div class="notice">
-          ShuttleScope is currently provided as a limited-availability beta release.
-          We will review your inquiry and, where appropriate, a team member will respond.
-          <br>This form does not send email directly; submissions are received and managed through
-          an internal administration interface.
-        </div>
-        <div class="notice" style="margin-top:12px;background:rgba(15,94,168,.07);border-color:rgba(15,94,168,.18);">
-          <strong>Beta Period Data Use (2026)</strong><br>
-          By participating in the beta programme, annotated match clips and label data you create
-          may be used to improve badminton-specific AI models.
-          For full details and opt-out instructions, see
-          <a href="/en/terms#beta">Terms of Use, Section 9</a>.
-        </div>
-      </section>
-
-      <section class="panel">
-        <form id="contact-form-en">
-          <div class="form-grid">
-            <div>
-              <label for="name-en">Name</label>
-              <input id="name-en" name="name" maxlength="120" required placeholder="Your name">
-            </div>
-            <div>
-              <label for="organization-en">Organization / Team</label>
-              <input id="organization-en" name="organization" maxlength="160" placeholder="Optional">
-            </div>
-            <div>
-              <label for="role-en">Role</label>
-              <select id="role-en" name="role">
-                <option value="">Select…</option>
-                <option value="player">Player</option>
-                <option value="coach">Coach</option>
-                <option value="analyst">Analyst</option>
-                <option value="team_staff">Team Staff</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div>
-              <label for="contact_reference-en">Preferred contact / reply method</label>
-              <input id="contact_reference-en" name="contact_reference" maxlength="200" placeholder="Optional: email, SNS handle, etc.">
-            </div>
-          </div>
-
-          <div style="margin-top:18px;">
-            <label for="message-en">Message</label>
-            <textarea id="message-en" name="message" required minlength="10" maxlength="4000" placeholder="Please describe your inquiry…"></textarea>
-          </div>
-
-          <div class="hidden-field" aria-hidden="true">
-            <label for="website-en">website</label>
-            <input id="website-en" name="website" tabindex="-1" autocomplete="off">
-          </div>
-
-          <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-            <button class="btn btn-primary" type="submit">Send</button>
-            <a class="btn btn-secondary" href="/en">Back to top</a>
-          </div>
-          <div id="contact-result-en" class="result" aria-live="polite"></div>
-        </form>
-      </section>
-    </div>
-    <script>
-      const form = document.getElementById('contact-form-en');
-      const result = document.getElementById('contact-result-en');
-      form.addEventListener('submit', async (event) => {{
-        event.preventDefault();
-        result.textContent = 'Sending…';
-        const payload = Object.fromEntries(new FormData(form).entries());
-        try {{
-          const res = await fetch('{submit_path}', {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify(payload),
-          }});
-          const data = await res.json().catch(() => ({{}}));
-          if (!res.ok) {{
-            throw new Error(data.detail || 'Submission failed.');
-          }}
-          form.reset();
-          result.textContent = 'Your inquiry has been received. We will review it and follow up as needed.';
-        }} catch (error) {{
-          result.textContent = error.message || 'Submission failed. Please try again later.';
-        }}
-      }});
-    </script>
-    """
-    return _base_layout_str_en("ShuttleScope | Contact", body, canonical_path="/en/contact")
 
 
 def _serve_public_asset(filename: str, media_type: str):
@@ -1498,6 +940,27 @@ async def public_preview_privacy(request: Request):
 @router.get("/public-preview/contact")
 async def public_preview_contact(request: Request):
     return HTMLResponse(_rewrite_preview_links(_render_contact_str(request, preview=True)))
+
+
+# EN プレビュールート (PR4): 既存 JA preview と同様 noindex + リンクを /public-preview/en/* に書き換える。
+@router.get("/public-preview/en")
+async def public_preview_en_home(request: Request):
+    return HTMLResponse(_rewrite_preview_links_en(_V7_HOME_HTML))
+
+
+@router.get("/public-preview/en/terms")
+async def public_preview_en_terms(request: Request):
+    return HTMLResponse(_rewrite_preview_links_en(_render_terms_str_en(request)))
+
+
+@router.get("/public-preview/en/privacy")
+async def public_preview_en_privacy(request: Request):
+    return HTMLResponse(_rewrite_preview_links_en(_render_privacy_str_en(request)))
+
+
+@router.get("/public-preview/en/contact")
+async def public_preview_en_contact(request: Request):
+    return HTMLResponse(_rewrite_preview_links_en(_render_contact_str_en(request)))
 
 
 @router.get("/terms")
