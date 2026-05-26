@@ -248,7 +248,11 @@ def _notify_admin_webhook(content: str) -> None:
     (Slack は text key も受けるが content も互換扱い)。例外は吸収。
     """
     url = (os.environ.get("SS_ADMIN_NOTIFY_WEBHOOK_URL", "") or "").strip()
-    if not url or not url.startswith("https://"):
+    if not url:
+        logger.warning("[auth_email] webhook URL unset (SS_ADMIN_NOTIFY_WEBHOOK_URL); skipping notify")
+        return
+    if not url.startswith("https://"):
+        logger.warning("[auth_email] webhook URL not https; skipping notify (host=%s)", url[:40])
         return
     try:
         import json as _json
@@ -261,10 +265,14 @@ def _notify_admin_webhook(content: str) -> None:
         )
         # nosec B310: scheme is https-guarded above, URL is operator-supplied secret.
         with _urlreq.urlopen(req, timeout=10) as resp:  # nosec B310
+            logger.info("[auth_email] webhook posted: status=%d url_host=%s",
+                        resp.status, url.split("/")[2] if "//" in url else "?")
             if not (200 <= resp.status < 300):
-                logger.warning("[auth_email] webhook returned %d", resp.status)
+                logger.warning("[auth_email] webhook returned non-2xx: %d body=%s",
+                               resp.status, resp.read()[:200])
     except Exception as exc:
-        logger.error("[auth_email] webhook notify failed: %s", exc)
+        logger.error("[auth_email] webhook notify failed: %s (url_host=%s)",
+                     exc, url.split("/")[2] if "//" in url else "?")
 
 
 # ─── 1. Register ─────────────────────────────────────────────────────────────
