@@ -40,7 +40,7 @@ _jinja_env = Environment(
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "htm", "xml", "j2"]),
 )
-_public_templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), env=_jinja_env)
+_public_templates = Jinja2Templates(env=_jinja_env)  # Starlette requires directory XOR env
 
 
 class PublicInquiryCreate(BaseModel):
